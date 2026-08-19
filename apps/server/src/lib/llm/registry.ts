@@ -4,6 +4,7 @@ import type { CleanupSampling } from "@openstyle/validations";
 import { parseCleanupSampling } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
 import { getDb } from "../db.js";
+import { traceLlmFetch } from "../trace.js";
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
@@ -119,13 +120,21 @@ export function mergeSamplingIntoBody(
  * A `fetch` wrapper for `createOpenAI` that rewrites the request body with the
  * user's sampling params. The SDK's `postToApi` hands the body over as an
  * already-serialized JSON string, hence the parse/merge/stringify round trip.
+ *
+ * It also writes the trace-log entry for this boundary, and does so *after* the
+ * merge — this is the only place that sees the body exactly as it goes on the
+ * wire, sampling params included. With no sampling configured the body is
+ * passed through byte-for-byte and only the trace is written.
  */
 export function createSamplingFetch(
   sampling: CleanupSampling,
 ): typeof globalThis.fetch {
+  const hasSampling = Object.keys(sampling).length > 0;
   return (input, init) => {
-    if (typeof init?.body !== "string") return fetch(input, init);
-    return fetch(input, {
+    if (!hasSampling || typeof init?.body !== "string") {
+      return traceLlmFetch(input, init);
+    }
+    return traceLlmFetch(input, {
       ...init,
       body: mergeSamplingIntoBody(init.body, sampling),
     });
@@ -228,14 +237,14 @@ const PROVIDERS: LlmProvider[] = [
         .prepare("SELECT value FROM settings WHERE key = 'cleanup_sampling'")
         .get() as { value: string } | undefined;
       const sampling = parseCleanupSampling(samplingRow?.value);
-      const hasSampling = Object.keys(sampling).length > 0;
 
       return createOpenAI({
         apiKey,
         baseURL: `${baseURL}/v1`,
-        // Only intercept when there is something to merge, so an unset (or
-        // malformed) setting leaves the request path exactly as it was.
-        ...(hasSampling ? { fetch: createSamplingFetch(sampling) } : {}),
+        // Always intercepted: this wrapper is what writes the trace log, and
+        // it is the only point that sees the final post-merge request body.
+        // With no sampling configured it forwards the body untouched.
+        fetch: createSamplingFetch(sampling),
       }).chat(modelId);
     },
   },

@@ -1,1 +1,1 @@
-export { createAppLogger, enableFileLogging } from "./logger.js";
+export { createAppLogger, enableFileLogging, traceLog } from "./logger.js";

@@ -26,6 +26,7 @@ import {
   initServerPlugins,
   plugins,
 } from "./lib/plugins/index.js";
+import { runInTraceScope } from "./lib/trace.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
 
@@ -105,6 +106,12 @@ function createApp() {
     .use(authMiddleware)
     // Correlation id per request (also surfaced via the X-Request-Id header).
     .use(requestId())
+    // Correlation scope for the raw request/response trace log. One scope per
+    // request is enough to tie a dictation together: for the batch path both
+    // traced boundaries (STT and the cleanup LLM call) happen while serving a
+    // single POST /api/transcribe. The id is only materialised if something
+    // inside actually writes a trace entry.
+    .use((_c, next) => runInTraceScope(next))
     // Access log — routed through the app logger at debug level, so it shows in
     // dev but stays quiet in production. Only method/path/status are logged.
     .use(
