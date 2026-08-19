@@ -1,4 +1,4 @@
-import { parseRetentionDays } from "@freestyle-voice/validations";
+import { parseRetentionDays } from "@openstyle/validations";
 import { getDb, readSetting } from "./db.js";
 import { countFixes } from "./fixes.js";
 import { purgeExpiredRemixData } from "./remix-store.js";

@@ -14,7 +14,7 @@ import {
   type CleanupPersonalTone,
   type CleanupToneDestination,
   type CleanupWorkTone,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 
 /** Language display names used to build the language constraint block. */
 export const LANGUAGE_LABELS: Record<string, string> = {

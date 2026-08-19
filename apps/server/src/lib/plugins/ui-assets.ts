@@ -1,12 +1,6 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { createAppLogger } from "@freestyle-voice/utils";
-import {
-  parseDisabledPlugins,
-  parsePluginsSetting,
-  pluginEntryParts,
-} from "@freestyle-voice/validations";
 import {
   defaultLocalPluginsDir,
   type PluginUIPage,
@@ -14,7 +8,13 @@ import {
   parsePluginIcon,
   parsePluginPages,
   pluginSlug,
-} from "freestyle-voice";
+} from "@openstyle/sdk";
+import { createAppLogger } from "@openstyle/utils";
+import {
+  parseDisabledPlugins,
+  parsePluginsSetting,
+  pluginEntryParts,
+} from "@openstyle/validations";
 import { readSetting } from "../db.js";
 
 const log = createAppLogger("plugins-ui");

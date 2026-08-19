@@ -9,7 +9,7 @@
 import type {
   CloudMemberPreferences,
   MemberPreferencesInput,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { cloud } from "./client";
 import { resolveActiveOrgSlug } from "./org";
 import { CloudRequestError } from "./session";

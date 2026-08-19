@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import {
   Agent,
   EnvHttpProxyAgent,

@@ -75,7 +75,7 @@ const api = {
     ipcRenderer.on("server:changed", handler);
     return () => ipcRenderer.removeListener("server:changed", handler);
   },
-  // Reveal the diagnostic logs folder (freestyle.log) in the OS file manager.
+  // Reveal the diagnostic logs folder (openstyle.log) in the OS file manager.
   openLogsFolder: (): Promise<boolean> =>
     ipcRenderer.invoke("logs:open-folder"),
   openExternal: (url: string): Promise<boolean> =>

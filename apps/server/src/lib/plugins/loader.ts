@@ -1,15 +1,15 @@
-import { createAppLogger } from "@freestyle-voice/utils";
-import {
-  parseDisabledPlugins,
-  parsePluginsSetting,
-  pluginEntryParts,
-} from "@freestyle-voice/validations";
-import type { HookFailure, Plugin, PluginEntry } from "freestyle-voice";
+import type { HookFailure, Plugin, PluginEntry } from "@openstyle/sdk";
 import {
   defaultLocalPluginsDir,
   loadPlugins,
   type PluginRegistry,
-} from "freestyle-voice";
+} from "@openstyle/sdk";
+import { createAppLogger } from "@openstyle/utils";
+import {
+  parseDisabledPlugins,
+  parsePluginsSetting,
+  pluginEntryParts,
+} from "@openstyle/validations";
 import { readSetting } from "../db.js";
 import { buildPluginContext } from "./context.js";
 

@@ -1,4 +1,4 @@
-import type { Plugin, PluginOptions, PluginStorage } from "freestyle-voice";
+import type { Plugin, PluginOptions, PluginStorage } from "@openstyle/sdk";
 import type { MiddlewareHandler } from "hono";
 import {
   buildMatchers,

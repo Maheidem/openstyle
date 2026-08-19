@@ -4,7 +4,7 @@ import winston from "winston";
 
 const isDev = process.env.NODE_ENV !== "production";
 
-const LOG_FILE = "freestyle.log";
+const LOG_FILE = "openstyle.log";
 const MAX_SIZE = 2 * 1024 * 1024; // 2 MB per file
 const MAX_FILES = 5; // keep ~10 MB of history (size-rotated, tailable)
 
@@ -75,7 +75,7 @@ export function createAppLogger(namespace: string): winston.Logger {
 }
 
 /**
- * Persist logs to `<dir>/freestyle.log` (size-rotated, tailable). Attaches the
+ * Persist logs to `<dir>/openstyle.log` (size-rotated, tailable). Attaches the
  * shared file transport to every logger created so far and every one created
  * afterwards, so the call is order-independent — it works whether loggers were
  * built before or after the log directory became known. Idempotent.

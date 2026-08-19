@@ -7,11 +7,11 @@
 import type {
   CloudMemberPreferences,
   MemberPreferencesInput,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import {
   normalizeLanguageList,
   parseStoredLanguageList,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,

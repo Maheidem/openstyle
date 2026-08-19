@@ -15,8 +15,8 @@ const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
 
 const config = {
-  user: "freestyle-voice",
-  repository: "freestyle",
+  user: "Maheidem",
+  repository: "openstyle",
   directory: "templates",
   ref: "main",
 } as const;
@@ -260,7 +260,7 @@ async function main(targetDir: string | undefined, options: Options) {
 
   // 9. Done!
   console.log();
-  console.log(pc.green(`${pc.bold("Done!")} Your Freestyle plugin is ready.`));
+  console.log(pc.green(`${pc.bold("Done!")} Your Openstyle plugin is ready.`));
   console.log();
 
   const resolvedTarget = path.resolve(target);
@@ -277,7 +277,7 @@ async function main(targetDir: string | undefined, options: Options) {
   const run = `${packageManager} run`;
   console.log(`  ${pc.gray(run)} build`);
   console.log(
-    `  ${pc.gray(run)} link    ${pc.gray("# symlink into Freestyle for testing")}`,
+    `  ${pc.gray(run)} link    ${pc.gray("# symlink into Openstyle for testing")}`,
   );
   console.log();
 }

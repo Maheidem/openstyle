@@ -1,10 +1,10 @@
-import type { Plugin } from "freestyle-voice";
+import type { Plugin } from "@openstyle/sdk";
 import {
   createHookApi,
   FreestyleEventType,
   PluginRegistry,
   sortPlugins,
-} from "freestyle-voice";
+} from "@openstyle/sdk";
 import { describe, expect, it, vi } from "vitest";
 
 describe("PluginRegistry", () => {

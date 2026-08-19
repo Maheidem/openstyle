@@ -1,5 +1,5 @@
+import type { FreestyleBridge, HostActions } from "@openstyle/sdk";
 import { contextBridge, ipcRenderer } from "electron";
-import type { FreestyleBridge, HostActions } from "freestyle-voice";
 
 /**
  * Preload injected into every plugin UI page (running in a sandboxed

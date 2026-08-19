@@ -134,7 +134,7 @@ async function importRuntime() {
 }
 
 beforeEach(() => {
-  homeDir = mkdtempSync(join(tmpdir(), "freestyle-mlx-runtime-"));
+  homeDir = mkdtempSync(join(tmpdir(), "openstyle-mlx-runtime-"));
   process.env.HOME = homeDir;
   delete process.env.FREESTYLE_MLX_ASR_RELEASE_TAG;
   delete process.env.FREESTYLE_MLX_ASR_WORKER_URL;
@@ -159,7 +159,7 @@ describe("MLX runtime versioning", () => {
     const runtime = await importRuntime();
 
     expect(runtime.getMlxRuntimeDownloadStatus().url).toBe(
-      "https://github.com/Maheidem/freestyle/releases/download/0.9.0/mlx_asr_worker-darwin-arm64.tar.gz",
+      "https://github.com/Maheidem/openstyle/releases/download/0.9.0/mlx_asr_worker-darwin-arm64.tar.gz",
     );
   });
 
@@ -191,7 +191,7 @@ describe("MLX runtime versioning", () => {
       "runtime download failed",
     );
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://github.com/Maheidem/freestyle/releases/download/0.9.1/mlx_asr_worker-darwin-arm64.tar.gz",
+      "https://github.com/Maheidem/openstyle/releases/download/0.9.1/mlx_asr_worker-darwin-arm64.tar.gz",
       expect.objectContaining({ redirect: "follow" }),
     );
   });
@@ -277,7 +277,7 @@ describe("MLX runtime versioning", () => {
     const runtime = await importRuntime();
 
     await expect(runtime.ensureMlxRuntimeDownloaded()).rejects.toThrow(
-      "this Freestyle release does not include the MLX worker asset yet",
+      "this Openstyle release does not include the MLX worker asset yet",
     );
   });
 });

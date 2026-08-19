@@ -1,9 +1,9 @@
-import type { EndpointConnectFormValues } from "@freestyle-voice/validations";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { EndpointConnectFormValues } from "@openstyle/validations";
 import {
   localLlmConnectFormSchema,
   openaiSttConnectFormSchema,
-} from "@freestyle-voice/validations";
-import { zodResolver } from "@hookform/resolvers/zod";
+} from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
@@ -854,7 +854,7 @@ function isByokLlm(llm: ConfiguredModel | undefined): boolean {
   return !MANAGED_LLM_PROVIDERS.has(llm.provider);
 }
 
-/** On-device and BYOK only — Freestyle cleanup ships with Freestyle Transcribe. */
+/** On-device and BYOK only — Openstyle cleanup ships with Openstyle Transcribe. */
 function CleanupTierPicker({
   m,
   onClose,

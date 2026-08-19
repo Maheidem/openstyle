@@ -1,18 +1,18 @@
 # syntax=docker/dockerfile:1
 
 # ---------------------------------------------------------------------------
-# Build the standalone Freestyle server.
+# Build the standalone Openstyle server.
 #
 # The server is a workspace package, so we install + build it from the repo
 # root, then use `pnpm deploy` to produce a self-contained directory (its
 # own node_modules with only production dependencies) for the runtime image.
 #
-# Released images are published to ghcr.io/freestyle-voice/freestyle-server
+# Released images are published to ghcr.io/maheidem/openstyle-server
 # (tagged with each release version and :latest). To build locally instead,
 # run from the repository root:
-#   docker build -f apps/server/Dockerfile -t freestyle-server .
+#   docker build -f apps/server/Dockerfile -t openstyle-server .
 # Run:
-#   docker run -p 4649:4649 -v freestyle-data:/data freestyle-server
+#   docker run -p 4649:4649 -v openstyle-data:/data openstyle-server
 # ---------------------------------------------------------------------------
 
 FROM node:22-slim AS build
@@ -25,16 +25,16 @@ COPY . .
 
 # Install only what the server needs and skip lifecycle scripts (the Electron
 # app's postinstall rebuilds native modules we don't need here).
-RUN pnpm install --frozen-lockfile --filter @freestyle-voice/server... --ignore-scripts
+RUN pnpm install --frozen-lockfile --filter @openstyle/server... --ignore-scripts
 
 # Build the server bundle. Build workspace deps first (they emit to dist/),
 # then the server, which pkgroll inlines them into. The scoped install above
 # omits the root `turbo`, so order the build with pnpm's `...` filter here
 # rather than `turbo build` (which CI uses).
-RUN pnpm --filter "@freestyle-voice/server..." build
+RUN pnpm --filter "@openstyle/server..." build
 
 # Produce a self-contained deployment with production deps only.
-RUN pnpm --filter @freestyle-voice/server deploy --prod --legacy /app
+RUN pnpm --filter @openstyle/server deploy --prod --legacy /app
 
 # ---------------------------------------------------------------------------
 # Runtime image

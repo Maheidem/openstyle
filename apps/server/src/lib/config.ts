@@ -1,5 +1,5 @@
 /**
- * Freestyle config file — `config.freestyle.json` in the same directory as the
+ * Openstyle config file — `config.freestyle.json` in the same directory as the
  * SQLite database (userData). Stores experimental feature flags and other
  * non-settings configuration that doesn't belong in the DB.
  *
@@ -19,7 +19,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import { z } from "zod";
 
 const log = createAppLogger("config");
@@ -32,18 +32,18 @@ const CONFIG_FILENAME = "config.freestyle.json";
 
 export const CONFIG_VERSION = 1;
 
-export const freestyleConfigSchema = z.object({
+export const openstyleConfigSchema = z.object({
   version: z.number().int().min(1),
   flags: z.record(z.string(), z.boolean()).default({}),
 });
 
-export type FreestyleConfig = z.infer<typeof freestyleConfigSchema>;
+export type OpenstyleConfig = z.infer<typeof openstyleConfigSchema>;
 
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
 
-let cachedConfig: FreestyleConfig | null = null;
+let cachedConfig: OpenstyleConfig | null = null;
 let configPath: string | null = null;
 
 function resolveConfigPath(): string | null {
@@ -54,7 +54,7 @@ function resolveConfigPath(): string | null {
   return configPath;
 }
 
-function defaultConfig(): FreestyleConfig {
+function defaultConfig(): OpenstyleConfig {
   return { version: CONFIG_VERSION, flags: {} };
 }
 
@@ -62,7 +62,7 @@ function defaultConfig(): FreestyleConfig {
  * Migrate a config object from an older version to the current one.
  * Add migration steps here as CONFIG_VERSION grows.
  */
-function migrate(config: FreestyleConfig): FreestyleConfig {
+function migrate(config: OpenstyleConfig): OpenstyleConfig {
   // v1 is the initial version — nothing to migrate yet.
   // Future: if (config.version < 2) { ... config.version = 2; }
   return config;
@@ -73,7 +73,7 @@ function migrate(config: FreestyleConfig): FreestyleConfig {
 // ---------------------------------------------------------------------------
 
 /** Load the config file from disk (or return the cached copy). */
-export function loadConfig(): FreestyleConfig {
+export function loadConfig(): OpenstyleConfig {
   if (cachedConfig) return cachedConfig;
 
   const path = resolveConfigPath();
@@ -84,7 +84,7 @@ export function loadConfig(): FreestyleConfig {
 
   try {
     const raw = readFileSync(path, "utf-8");
-    const parsed = freestyleConfigSchema.safeParse(JSON.parse(raw));
+    const parsed = openstyleConfigSchema.safeParse(JSON.parse(raw));
     if (parsed.success) {
       cachedConfig = migrate(parsed.data);
     } else {
@@ -99,7 +99,7 @@ export function loadConfig(): FreestyleConfig {
 }
 
 /** Persist the current config to disk. */
-export function saveConfig(config: FreestyleConfig): void {
+export function saveConfig(config: OpenstyleConfig): void {
   const path = resolveConfigPath();
   if (!path) return;
 
@@ -126,12 +126,12 @@ export function setFlag(key: string, value: boolean): void {
 }
 
 /** Return the full config object (clone). */
-export function getConfig(): FreestyleConfig {
+export function getConfig(): OpenstyleConfig {
   const config = loadConfig();
   return { ...config, flags: { ...config.flags } };
 }
 
 /** Replace the full config and persist. */
-export function updateConfig(incoming: FreestyleConfig): void {
+export function updateConfig(incoming: OpenstyleConfig): void {
   saveConfig({ ...incoming, version: CONFIG_VERSION });
 }

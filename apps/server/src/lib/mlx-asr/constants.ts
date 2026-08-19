@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { modelCacheDir } from "../model-cache.js";
 
 export const MLX_ASR_PROVIDER_ID = "local-mlx";
 
@@ -103,7 +103,7 @@ export function getMlxAsrModel(id: string): MlxAsrModelDef | undefined {
 }
 
 export function getMlxCacheDir(): string {
-  return join(homedir(), ".cache", "freestyle", "mlx-asr");
+  return modelCacheDir("mlx-asr");
 }
 
 export function getMlxRuntimeDir(): string {

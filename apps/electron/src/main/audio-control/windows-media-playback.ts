@@ -2,11 +2,11 @@
  * Pause background media while dictating on Windows.
  *
  * Uses the Windows Global System Media Transport Controls WinRT API through
- * PowerShell so we can pause and resume the exact media apps Freestyle changed.
+ * PowerShell so we can pause and resume the exact media apps Openstyle changed.
  */
 
 import { execFile, execFileSync } from "node:child_process";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import { AUDIO_CONTROL_CMD_TIMEOUT_MS } from "./audio-control-constants";
 
 const log = createAppLogger("windows-media-playback");

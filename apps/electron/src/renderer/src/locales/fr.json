@@ -56,7 +56,7 @@
     },
     "tutorial": {
       "almostReady": "Presque prêt — ",
-      "finish": "Commencer à utiliser Freestyle",
+      "finish": "Commencer à utiliser Openstyle",
       "chooseModel": "Choisir un modèle différent",
       "usingModel": "Utilise {{name}} · Choisir un modèle différent"
     },
@@ -130,9 +130,9 @@
       "autoUpdate": "Mises à jour automatiques",
       "autoUpdateDesc": "Télécharge les nouvelles versions en arrière-plan dès qu'elles sont disponibles.",
       "launchAtStartup": "Lancer au démarrage",
-      "launchAtStartupDesc": "Démarre Freestyle automatiquement quand vous vous connectez à votre ordinateur.",
+      "launchAtStartupDesc": "Démarre Openstyle automatiquement quand vous vous connectez à votre ordinateur.",
       "showOnLaunch": "Afficher le tableau de bord au lancement",
-      "showOnLaunchDesc": "Ouvre la fenêtre du tableau de bord quand Freestyle démarre."
+      "showOnLaunchDesc": "Ouvre la fenêtre du tableau de bord quand Openstyle démarre."
     },
     "recording": {
       "hotkey": "Raccourci clavier",
@@ -197,7 +197,7 @@
       "microphone": "Microphone",
       "microphoneDesc": "Requis pour capturer l'audio pour la transcription.",
       "accessibility": "Accessibilité",
-      "accessibilityDescMac": "Requis pour détecter le raccourci global et coller dans d'autres apps. Activez Freestyle dans Réglages Système › Confidentialité et sécurité › Accessibilité.",
+      "accessibilityDescMac": "Requis pour détecter le raccourci global et coller dans d'autres apps. Activez Openstyle dans Réglages Système › Confidentialité et sécurité › Accessibilité.",
       "accessibilityDescOther": "Requis pour détecter le raccourci global et coller dans d'autres apps.",
       "autoGranted": "Accordé automatiquement"
     },
@@ -287,7 +287,7 @@
     "entrySingular": "Entrée",
     "entryPlural": "Entrées",
     "emptyTitle": "Aucun raccourci pour l'instant.",
-    "emptyDesc": "Ajoutez une phrase que vous dites souvent, comme <example>mon adresse</example> — et Freestyle la développe en ligne.",
+    "emptyDesc": "Ajoutez une phrase que vous dites souvent, comme <example>mon adresse</example> — et Openstyle la développe en ligne.",
     "noResults": "Rien ne correspond à « {{search}} ».",
     "noEntries": "Aucune entrée — ajoutez-en une pour commencer.",
     "failedToSave": "Échec de l'enregistrement de l'entrée."
@@ -320,14 +320,12 @@
   },
   "tone": {
     "title": "Ton",
-    "subtitle": "À quel point Freestyle nettoie, et comment ça sonne dans chaque app.",
+    "subtitle": "À quel point Openstyle nettoie, et comment ça sonne dans chaque app.",
     "loading": "Chargement du ton…",
     "disabledBanner": {
       "title": "Le nettoyage est désactivé.",
       "desc": "Ces réglages d'intensité et de ton s'appliquent dès que vous activez le nettoyage par IA dans Modèles. Vos choix sont enregistrés en attendant.",
-      "goToModels": "Aller à Modèles",
-      "useCloud": "Utiliser Freestyle Cloud",
-      "useCloudBusy": "Configuration…"
+      "goToModels": "Aller à Modèles"
     },
     "routesFrom": "Routé depuis",
     "previewLabel": "Aperçu",
@@ -583,7 +581,7 @@
       "groups": {
         "everyday": "Écriture du quotidien",
         "work": "Travail et études",
-        "web": "Avec le web — Freestyle Cloud"
+        "web": "Avec le web"
       },
       "quotes": {
         "email": "Rends-le plus chaleureux et deux fois plus court — on dirait un avocat.",

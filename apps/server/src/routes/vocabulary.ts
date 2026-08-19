@@ -1,3 +1,4 @@
+import { zValidator } from "@hono/zod-validator";
 import {
   createVocabularySchema,
   exportSchema,
@@ -5,8 +6,7 @@ import {
   querySchema,
   updateVocabularySchema,
   vocabularyActionSchema,
-} from "@freestyle-voice/validations";
-import { zValidator } from "@hono/zod-validator";
+} from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {

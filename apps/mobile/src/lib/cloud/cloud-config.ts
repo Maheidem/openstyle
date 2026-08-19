@@ -5,7 +5,7 @@
  * profile-update time and are no longer returned by this endpoint.
  */
 
-import type { SuggestedLanguage } from "@freestyle-voice/validations";
+import type { SuggestedLanguage } from "@openstyle/validations";
 import { cloudUrl } from "./config";
 
 export interface CloudConfig {

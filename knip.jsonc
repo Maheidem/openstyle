@@ -54,12 +54,10 @@
       "paths": {
         "@renderer/*": ["src/renderer/src/*"],
         "@shared/*": ["src/shared/*"],
-        "freestyle-voice": ["../../packages/sdk/src/index.ts"],
-        "@freestyle-voice/server": ["../server/src/index.ts"],
-        "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
-        "@freestyle-voice/validations": [
-          "../../packages/validations/src/index.ts"
-        ]
+        "@openstyle/sdk": ["../../packages/sdk/src/index.ts"],
+        "@openstyle/server": ["../server/src/index.ts"],
+        "@openstyle/utils": ["../../packages/utils/src/index.ts"],
+        "@openstyle/validations": ["../../packages/validations/src/index.ts"]
       },
       "ignoreDependencies": [
         "@hono/node-server",
@@ -83,12 +81,10 @@
         "*.config.ts"
       ],
       "paths": {
-        "freestyle-voice": ["../../packages/sdk/src/index.ts"],
-        "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
-        "@freestyle-voice/validations": [
-          "../../packages/validations/src/index.ts"
-        ],
-        "@freestyle-voice/stt": ["../../packages/stt/src/index.ts"]
+        "@openstyle/sdk": ["../../packages/sdk/src/index.ts"],
+        "@openstyle/utils": ["../../packages/utils/src/index.ts"],
+        "@openstyle/validations": ["../../packages/validations/src/index.ts"],
+        "@openstyle/stt": ["../../packages/stt/src/index.ts"]
       },
       "vitest": {
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]

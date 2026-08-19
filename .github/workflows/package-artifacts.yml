@@ -6,7 +6,7 @@
 # on it during the publish step.
 #
 # IMPORTANT: we use `pnpm pack` (not `npm pack`) so the plugin's
-# `freestyle-voice: workspace:*` dependency is rewritten to a real version
+# `@openstyle/sdk: workspace:*` dependency is rewritten to a real version
 # range in the published tarball. Plain `npm pack` does not understand the
 # workspace: protocol.
 
@@ -50,11 +50,11 @@ jobs:
           case "$BRANCH" in
             release-sdk/*)
               echo "path=packages/sdk" >> "$GITHUB_OUTPUT"
-              echo "name=freestyle-voice" >> "$GITHUB_OUTPUT"
+              echo "name=@openstyle/sdk" >> "$GITHUB_OUTPUT"
               ;;
             release-stt/*)
               echo "path=packages/stt" >> "$GITHUB_OUTPUT"
-              echo "name=@freestyle-voice/stt" >> "$GITHUB_OUTPUT"
+              echo "name=@openstyle/stt" >> "$GITHUB_OUTPUT"
               ;;
             release-create-freestyle-plugin/*)
               echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT"

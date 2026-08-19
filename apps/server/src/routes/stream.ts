@@ -1,6 +1,6 @@
-import { sanitizeTranscriptText } from "@freestyle-voice/stt";
-import { createAppLogger } from "@freestyle-voice/utils";
 import { upgradeWebSocket } from "@hono/node-server";
+import { sanitizeTranscriptText } from "@openstyle/stt";
+import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import {
@@ -329,7 +329,7 @@ const stream = new Hono().get(
               .then((pp) => {
                 // STT and post-processing run on separate models here, so the
                 // user-perceived latency is commit → cleaned text, not just the
-                // raw transcript. Measure after cleanup resolves. (The Freestyle
+                // raw transcript. Measure after cleanup resolves. (The Openstyle
                 // Cloud streaming path above already includes cleanup because
                 // the DO returns cleaned text in a single response.)
                 const totalDurationMs =

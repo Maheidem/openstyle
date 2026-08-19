@@ -1,4 +1,4 @@
-import type { Plugin } from "freestyle-voice";
+import type { Plugin } from "@openstyle/sdk";
 
 /**
  * The Audio File Transcription plugin. Its user-facing surface is the

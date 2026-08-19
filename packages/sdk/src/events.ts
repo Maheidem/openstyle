@@ -1,7 +1,7 @@
 import type { OutputMode } from "./output.js";
 
 /**
- * The kinds of events emitted across the Freestyle dictation pipeline. A const
+ * The kinds of events emitted across the Openstyle dictation pipeline. A const
  * object (not a TS `enum`) so it has both a runtime value and a derived type,
  * stays tree-shakeable, and matches the convention used elsewhere in the
  * workspace (see {@link OutputMode}). Plugins may match either the constant
@@ -35,7 +35,7 @@ export const PipelineStage = {
 export type PipelineStage = (typeof PipelineStage)[keyof typeof PipelineStage];
 
 /**
- * Discriminated union of events emitted across the Freestyle dictation
+ * Discriminated union of events emitted across the Openstyle dictation
  * pipeline. Plugins observe these through the read-only `event` hook; they
  * cannot influence behavior here — use the mutating hooks for that.
  *

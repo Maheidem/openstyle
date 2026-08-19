@@ -1,4 +1,4 @@
-import { areAllCleanupTonesOff } from "@freestyle-voice/validations";
+import { areAllCleanupTonesOff } from "@openstyle/validations";
 import { beforeEach, describe, expect, it } from "vitest";
 import { writeSetting } from "../src/lib/db.js";
 import {

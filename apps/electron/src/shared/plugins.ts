@@ -1,4 +1,4 @@
-import type { PluginUIPage } from "freestyle-voice";
+import type { PluginUIPage } from "@openstyle/sdk";
 
 /** Serialized plugin info sent from main to the renderer (no absolute paths). */
 export interface PluginInfo {

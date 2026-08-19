@@ -1,3 +1,4 @@
+import { zValidator } from "@hono/zod-validator";
 import {
   caCertPathSettingSchema,
   cleanupAppAssignmentsSchema,
@@ -15,8 +16,7 @@ import {
   pluginsSettingSchema,
   proxyUrlSettingSchema,
   settingValueSchema,
-} from "@freestyle-voice/validations";
-import { zValidator } from "@hono/zod-validator";
+} from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {

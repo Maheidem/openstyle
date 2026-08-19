@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import {
   assertEnoughDiskSpace,
   DOWNLOAD_FREE_BUFFER_BYTES,
@@ -348,7 +348,7 @@ async function fetchExpectedSha256(
 function modelDownloadHttpError(status: number): Error {
   if (status === 404) {
     return new Error(
-      "Model download failed because the file is no longer published on Hugging Face (HTTP 404). Try updating Freestyle to a newer version.",
+      "Model download failed because the file is no longer published on Hugging Face (HTTP 404). Try updating Openstyle to a newer version.",
     );
   }
   if (status === 401 || status === 403) {
@@ -409,7 +409,7 @@ async function buildFromSource(): Promise<void> {
   if (!res.ok || !res.body) {
     if (res.status === 404) {
       throw new Error(
-        `whisper.cpp v${WHISPER_CPP_VERSION} source is no longer published on GitHub (HTTP 404). Try updating Freestyle to a newer version.`,
+        `whisper.cpp v${WHISPER_CPP_VERSION} source is no longer published on GitHub (HTTP 404). Try updating Openstyle to a newer version.`,
       );
     }
     throw new Error(
@@ -531,7 +531,7 @@ async function downloadWindowsBinaries(): Promise<void> {
   if (!res.ok || !res.body) {
     if (res.status === 404) {
       throw new Error(
-        `The whisper.cpp v${WHISPER_CPP_VERSION} Windows binaries are no longer published on GitHub (HTTP 404). Try updating Freestyle to a newer version.`,
+        `The whisper.cpp v${WHISPER_CPP_VERSION} Windows binaries are no longer published on GitHub (HTTP 404). Try updating Openstyle to a newer version.`,
       );
     }
     throw new Error(`Failed to download whisper binaries: HTTP ${res.status}`);

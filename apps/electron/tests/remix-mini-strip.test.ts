@@ -80,7 +80,7 @@ test.beforeAll(async () => {
   await new Promise<void>((r) => fakeServer.listen(0, "127.0.0.1", r));
   const port = (fakeServer.address() as { port: number }).port;
 
-  const userDataDir = mkdtempSync(join(tmpdir(), "freestyle-probe-ud-"));
+  const userDataDir = mkdtempSync(join(tmpdir(), "openstyle-probe-ud-"));
   writeFileSync(
     join(userDataDir, "settings.json"),
     JSON.stringify({

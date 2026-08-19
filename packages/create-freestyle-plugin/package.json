@@ -2,12 +2,12 @@
   "name": "create-freestyle-plugin",
   "version": "0.0.2",
   "type": "module",
-  "description": "Create a Freestyle voice plugin from a starter template.",
+  "description": "Create an Openstyle voice plugin from a starter template.",
   "license": "MIT",
-  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/packages/create-freestyle-plugin#readme",
+  "homepage": "https://github.com/Maheidem/openstyle/tree/main/packages/create-freestyle-plugin#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "url": "git+https://github.com/Maheidem/openstyle.git",
     "directory": "packages/create-freestyle-plugin"
   },
   "keywords": [

@@ -56,7 +56,7 @@
     },
     "tutorial": {
       "almostReady": "Quasi pronto — ",
-      "finish": "Inizia a usare Freestyle",
+      "finish": "Inizia a usare Openstyle",
       "chooseModel": "Scegli un altro modello",
       "usingModel": "Utilizzando {{name}} · Scegli un altro modello"
     },
@@ -130,9 +130,9 @@
       "autoUpdate": "Aggiornamenti automatici",
       "autoUpdateDesc": "Scarica nuove versioni in background non appena disponibili.",
       "launchAtStartup": "Avvia all'avvio",
-      "launchAtStartupDesc": "Avvia automaticamente Freestyle all'accesso al computer.",
+      "launchAtStartupDesc": "Avvia automaticamente Openstyle all'accesso al computer.",
       "showOnLaunch": "Mostra dashboard all'avvio",
-      "showOnLaunchDesc": "Apri la finestra della dashboard all'avvio di Freestyle."
+      "showOnLaunchDesc": "Apri la finestra della dashboard all'avvio di Openstyle."
     },
     "recording": {
       "hotkey": "Scorciatoia",
@@ -197,7 +197,7 @@
       "microphone": "Microfono",
       "microphoneDesc": "Richiesto per acquisire l'audio per la trascrizione.",
       "accessibility": "Accessibilità",
-      "accessibilityDescMac": "Richiesto per rilevare la scorciatoia globale e incollare. Abilita Freestyle sotto Impostazioni di Sistema › Privacy e Sicurezza › Accessibilità.",
+      "accessibilityDescMac": "Richiesto per rilevare la scorciatoia globale e incollare. Abilita Openstyle sotto Impostazioni di Sistema › Privacy e Sicurezza › Accessibilità.",
       "accessibilityDescOther": "Richiesto per rilevare la scorciatoia globale e incollare nelle altre app.",
       "autoGranted": "Autoconsentito"
     },
@@ -287,7 +287,7 @@
     "entrySingular": "voce",
     "entryPlural": "voci",
     "emptyTitle": "Ancora nessuna scorciatoia.",
-    "emptyDesc": "Aggiungi una frase che dici spesso e Freestyle la espanderà in linea.",
+    "emptyDesc": "Aggiungi una frase che dici spesso e Openstyle la espanderà in linea.",
     "noResults": "nessuna corrispondenza per \"{{search}}\".",
     "noEntries": "nessuna voce — aggiungine una per iniziare.",
     "failedToSave": "Salvataggio non riuscito."
@@ -319,14 +319,12 @@
   },
   "tone": {
     "title": "Tono",
-    "subtitle": "Quanto Freestyle ripulisce e come suona in ogni app.",
+    "subtitle": "Quanto Openstyle ripulisce e come suona in ogni app.",
     "loading": "Caricamento tono…",
     "disabledBanner": {
       "title": "La pulizia è disattivata.",
       "desc": "Queste impostazioni di intensità e tono si applicano quando attivi la pulizia con IA in Modelli. Le tue scelte restano salvate fino ad allora.",
-      "goToModels": "Vai a Modelli",
-      "useCloud": "Usa Freestyle Cloud",
-      "useCloudBusy": "Configurazione…"
+      "goToModels": "Vai a Modelli"
     },
     "routesFrom": "Instradato da",
     "previewLabel": "Anteprima",
@@ -582,7 +580,7 @@
       "groups": {
         "everyday": "Scrittura quotidiana",
         "work": "Lavoro e studio",
-        "web": "Con il web — Freestyle Cloud"
+        "web": "Con il web"
       },
       "quotes": {
         "email": "Rendila più calorosa e lunga la metà — sembro un avvocato.",

@@ -1,5 +1,5 @@
-appId: com.freestyle.app
-productName: Freestyle
+appId: com.openstyle.app
+productName: Openstyle
 directories:
   buildResources: build
 files:
@@ -17,7 +17,7 @@ extraResources:
     filter:
       - "**/*"
 win:
-  executableName: Freestyle
+  executableName: Openstyle
   extraResources:
     - from: "resources/whisper/win32-x64"
       to: "whisper/win32-x64"
@@ -37,7 +37,7 @@ mac:
     NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    NSAppleEventsUsageDescription: Freestyle uses Apple Events to paste transcribed text into the focused application.
+    NSAppleEventsUsageDescription: Openstyle uses Apple Events to paste transcribed text into the focused application.
   notarize: true
   extraResources:
     - from: "resources/whisper/darwin-${arch}"
@@ -49,15 +49,15 @@ mac:
 dmg:
   artifactName: ${productName}-${version}.${ext}
 linux:
-  executableName: freestyle
+  executableName: openstyle
   icon: icons
   desktop:
     entry:
-      StartupWMClass: freestyle
+      StartupWMClass: openstyle
   target:
     - AppImage
     - deb
-  maintainer: freestyle
+  maintainer: Maheidem
   category: Utility
   extraResources:
     - from: "resources/whisper/linux-x64"
@@ -72,4 +72,4 @@ npmRebuild: false
 publish:
   provider: github
   owner: Maheidem
-  repo: freestyle
+  repo: openstyle

@@ -6,7 +6,6 @@ import {
 } from "@renderer/pages/models/page-chrome";
 import { Bug, ExternalLink, Heart } from "lucide-react";
 import type { IconType } from "react-icons";
-import { SiDiscord } from "react-icons/si";
 
 type CardIcon = React.ComponentType<{ className?: string }> | IconType;
 
@@ -47,23 +46,17 @@ export default function HelpPage(): React.JSX.Element {
     <PageShell>
       <PageHeader
         title="Help"
-        subtitle="Documentation, community support, and ways to contribute to Freestyle."
+        subtitle="Documentation and ways to contribute to Openstyle."
       />
 
       <section className="mb-8">
         <Eyebrow text="Get help" accent />
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-3">
           <HelpCard
             href={LINKS.newIssue}
             icon={Bug}
             title="Report an issue"
             desc="Found a bug or have a feature request? Open a GitHub issue."
-          />
-          <HelpCard
-            href={LINKS.discord}
-            icon={SiDiscord}
-            title="Ask the community"
-            desc="Join our Discord to ask for help live and chat with other users."
           />
         </div>
       </section>
@@ -74,8 +67,8 @@ export default function HelpPage(): React.JSX.Element {
           <HelpCard
             href={LINKS.contributing}
             icon={Heart}
-            title="Contribute to Freestyle"
-            desc="PRs are welcome. Start with CONTRIBUTING.md for local setup, then say hi in Discord where contributors coordinate."
+            title="Contribute to Openstyle"
+            desc="PRs are welcome. Start with CONTRIBUTING.md for local setup."
           />
         </div>
       </section>

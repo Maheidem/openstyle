@@ -1,5 +1,5 @@
 :root {
-  /* Host injects the real Freestyle tokens; these are fallbacks. */
+  /* Host injects the real Openstyle tokens; these are fallbacks. */
   --background: #f4f0e4;
   --foreground: #16140f;
   --card: #fbf8ee;

@@ -10,7 +10,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("mic-listener");

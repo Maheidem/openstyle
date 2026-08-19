@@ -1,5 +1,5 @@
 {
-  "name": "@freestyle-voice/server",
+  "name": "@openstyle/server",
   "type": "module",
   "scripts": {
     "build": "tsc --emitDeclarationOnly && pkgroll --minify",
@@ -15,7 +15,7 @@
     }
   },
   "bin": {
-    "freestyle-server": "./dist/startup.js"
+    "openstyle-server": "./dist/startup.js"
   },
   "main": "./src/index.ts",
   "engines": {
@@ -28,7 +28,7 @@
     "@ai-sdk/groq": "^3.0.39",
     "@ai-sdk/mistral": "^3.0.37",
     "@ai-sdk/openai": "^3.0.65",
-    "@freestyle-voice/stt": "workspace:*",
+    "@openstyle/stt": "workspace:*",
     "@hono/node-server": "^2.0.4",
     "@hono/zod-validator": "^0.8.0",
     "@huggingface/hub": "^2.13.0",
@@ -43,13 +43,13 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@freestyle-voice/utils": "workspace:*",
-    "@freestyle-voice/validations": "workspace:*",
+    "@openstyle/utils": "workspace:*",
+    "@openstyle/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@types/node": "latest",
     "@types/semver": "^7.7.1",
     "@types/ws": "^8.18.1",
-    "freestyle-voice": "workspace:*",
+    "@openstyle/sdk": "workspace:*",
     "pkgroll": "^2.27.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.7"

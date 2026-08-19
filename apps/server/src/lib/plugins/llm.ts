@@ -1,6 +1,6 @@
-import { createAppLogger } from "@freestyle-voice/utils";
+import type { PluginLlm } from "@openstyle/sdk";
+import { createAppLogger } from "@openstyle/utils";
 import { generateText } from "ai";
-import type { PluginLlm } from "freestyle-voice";
 import { createChatModel, getDefaultModels } from "../providers.js";
 
 const log = createAppLogger("plugins");

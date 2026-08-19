@@ -1,9 +1,9 @@
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   apiKeySchema,
   MAX_LANGUAGES,
   normalizeLanguageList,
-} from "@freestyle-voice/validations";
-import { zodResolver } from "@hookform/resolvers/zod";
+} from "@openstyle/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import {
   LanguageMultiPickerDialog,

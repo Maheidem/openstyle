@@ -1,4 +1,4 @@
-import { normalizeLanguageList } from "@freestyle-voice/validations";
+import { normalizeLanguageList } from "@openstyle/validations";
 import WebSocket from "ws";
 import { createPendingAudio } from "../pending-audio.js";
 import {

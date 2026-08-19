@@ -35,10 +35,10 @@ function json(path: string, body: unknown, method = "POST") {
 // ---------------------------------------------------------------------------
 
 describe("Root & Health", () => {
-  it("GET / returns Freestyle API text", async () => {
+  it("GET / returns Openstyle API text", async () => {
     const res = await req("/");
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe("Freestyle API");
+    expect(await res.text()).toBe("Openstyle API");
   });
 
   it("GET /api/health returns ok", async () => {

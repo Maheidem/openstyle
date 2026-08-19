@@ -1,4 +1,4 @@
-import { PluginRegistry } from "freestyle-voice";
+import { PluginRegistry } from "@openstyle/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_KEYS } from "../../electron/src/shared/settings-keys.js";
 import { getDb } from "../src/lib/db.js";

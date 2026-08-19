@@ -56,7 +56,7 @@
     },
     "tutorial": {
       "almostReady": "Quase pronto — ",
-      "finish": "Começar a usar o Freestyle",
+      "finish": "Começar a usar o Openstyle",
       "chooseModel": "Escolher outro modelo",
       "usingModel": "Usando {{name}} · Escolher outro modelo"
     },
@@ -130,9 +130,9 @@
       "autoUpdate": "Atualizações automáticas",
       "autoUpdateDesc": "Baixar novas versões em segundo plano assim que forem lançadas.",
       "launchAtStartup": "Iniciar com o sistema",
-      "launchAtStartupDesc": "Iniciar automaticamente o Freestyle quando você entrar no computador.",
+      "launchAtStartupDesc": "Iniciar automaticamente o Openstyle quando você entrar no computador.",
       "showOnLaunch": "Mostrar painel ao iniciar",
-      "showOnLaunchDesc": "Abrir o painel quando o Freestyle for iniciado."
+      "showOnLaunchDesc": "Abrir o painel quando o Openstyle for iniciado."
     },
     "recording": {
       "hotkey": "Atalho",
@@ -197,7 +197,7 @@
       "microphone": "Microfone",
       "microphoneDesc": "Necessário para capturar áudio para a transcrição.",
       "accessibility": "Acessibilidade",
-      "accessibilityDescMac": "Necessário para detectar o atalho global e colar nos apps. Ative o Freestyle em Ajustes do Sistema › Privacidade e Segurança › Acessibilidade.",
+      "accessibilityDescMac": "Necessário para detectar o atalho global e colar nos apps. Ative o Openstyle em Ajustes do Sistema › Privacidade e Segurança › Acessibilidade.",
       "accessibilityDescOther": "Necessário para detectar o atalho global e colar em outros aplicativos.",
       "autoGranted": "Auto-concedido"
     },
@@ -287,7 +287,7 @@
     "entrySingular": "entrada",
     "entryPlural": "entradas",
     "emptyTitle": "Ainda não há atalhos.",
-    "emptyDesc": "Adicione uma frase que você usa com frequência e o Freestyle a expandirá em linha.",
+    "emptyDesc": "Adicione uma frase que você usa com frequência e o Openstyle a expandirá em linha.",
     "noResults": "nada corresponde a \"{{search}}\".",
     "noEntries": "sem entradas — adicione uma para começar.",
     "failedToSave": "Falha ao salvar a entrada."
@@ -319,14 +319,12 @@
   },
   "tone": {
     "title": "Tom",
-    "subtitle": "O quanto o Freestyle limpa — e como soa em cada app.",
+    "subtitle": "O quanto o Openstyle limpa — e como soa em cada app.",
     "loading": "Carregando tom…",
     "disabledBanner": {
       "title": "A limpeza está desativada.",
       "desc": "Estas configurações de intensidade e tom se aplicam quando você ativa a limpeza por IA em Modelos. Suas escolhas ficam salvas até lá.",
-      "goToModels": "Ir para Modelos",
-      "useCloud": "Usar Freestyle Cloud",
-      "useCloudBusy": "Configurando…"
+      "goToModels": "Ir para Modelos"
     },
     "routesFrom": "Roteado de",
     "previewLabel": "Prévia",
@@ -582,7 +580,7 @@
       "groups": {
         "everyday": "Escrita do dia a dia",
         "work": "Trabalho e estudos",
-        "web": "Com a web — Freestyle Cloud"
+        "web": "Com a web"
       },
       "quotes": {
         "email": "Deixe mais caloroso e com metade do tamanho — pareço um advogado.",

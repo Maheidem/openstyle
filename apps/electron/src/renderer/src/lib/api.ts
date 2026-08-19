@@ -1,4 +1,4 @@
-import type { AppType } from "@freestyle-voice/server";
+import type { AppType } from "@openstyle/server";
 import { hc } from "hono/client";
 import { bearerAuthHeaders } from "../../../shared/server-auth";
 
@@ -39,7 +39,7 @@ export function isRemoteServer(): boolean {
 }
 
 /**
- * fetch() against the configured Freestyle server: resolves the base URL and
+ * fetch() against the configured Openstyle server: resolves the base URL and
  * injects the bearer token (when set), while preserving every caller init
  * option (method, body, keepalive, signal, custom headers).
  *
@@ -76,7 +76,7 @@ export async function initApiBase(): Promise<void> {
 }
 
 /**
- * Verify a Freestyle server is reachable and identifies itself at `base`.
+ * Verify a Openstyle server is reachable and identifies itself at `base`.
  * `/api/health` is unauthenticated, so this checks reachability only.
  */
 export async function checkServerHealth(

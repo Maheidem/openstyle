@@ -35,7 +35,7 @@ const MLX_WORKER_ASSET_NAME = "mlx_asr_worker-darwin-arm64.tar.gz";
 // This fork publishes its own worker archive. Upstream stopped shipping the
 // asset entirely in 0.8.0 ("Remove local"), so pointing at their /latest/
 // resolves to a release that has no worker and the download fails.
-const MLX_WORKER_REPO = "Maheidem/freestyle";
+const MLX_WORKER_REPO = "Maheidem/openstyle";
 const DEFAULT_MLX_WORKER_LATEST_URL = `https://github.com/${MLX_WORKER_REPO}/releases/latest/download/${MLX_WORKER_ASSET_NAME}`;
 // Keep this in sync with scripts/build_mlx_asr_worker.sh so unchanged worker
 // builds don't force users to redownload identical archives on every app release.
@@ -401,7 +401,7 @@ function runtimeDownloadHttpError(url: string, status: number): Error {
     url.includes(`github.com/${MLX_WORKER_REPO}/releases/download/`)
   ) {
     return new Error(
-      "MLX runtime download failed because this Freestyle release does not include the MLX worker asset yet.",
+      "MLX runtime download failed because this Openstyle release does not include the MLX worker asset yet.",
     );
   }
 
@@ -410,7 +410,7 @@ function runtimeDownloadHttpError(url: string, status: number): Error {
     url.includes(`github.com/${MLX_WORKER_REPO}/releases/latest/download/`)
   ) {
     return new Error(
-      "MLX runtime download failed because no published Freestyle release contains the MLX worker asset yet.",
+      "MLX runtime download failed because no published Openstyle release contains the MLX worker asset yet.",
     );
   }
 

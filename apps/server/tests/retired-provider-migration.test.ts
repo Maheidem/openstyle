@@ -161,8 +161,20 @@ describe("retired hosted-provider migration", () => {
     // skips every migration numbered below that and keeps the retired provider.
     db = createV13Db(26);
     insertModel(db, "freestyle-cloud", "freestyle-cloud/stt", "voice", 1);
-    insertModel(db, "freestyle-cloud", "freestyle-cloud/post-process", "llm", 1);
-    insertModel(db, "local-mlx", "mlx-community/Qwen3-ASR-1.7B-8bit", "voice", 0);
+    insertModel(
+      db,
+      "freestyle-cloud",
+      "freestyle-cloud/post-process",
+      "llm",
+      1,
+    );
+    insertModel(
+      db,
+      "local-mlx",
+      "mlx-community/Qwen3-ASR-1.7B-8bit",
+      "voice",
+      0,
+    );
 
     initSchema(db);
 

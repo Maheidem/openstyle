@@ -1,7 +1,7 @@
 import type {
   CleanupAppAssignment,
   CleanupToneDestination,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { RouteMark } from "@renderer/components/tone-previews/app-marks";
 import {
   findRouteOwnership,

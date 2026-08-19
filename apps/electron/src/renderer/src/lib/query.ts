@@ -107,7 +107,7 @@ export function availableModelsQueryOptions() {
   };
 }
 
-export type FreestyleConfig = {
+export type OpenstyleConfig = {
   version: number;
   flags: Record<string, boolean>;
 };
@@ -121,10 +121,10 @@ export type FreestyleConfig = {
 export function configQueryOptions() {
   return {
     queryKey: queryKeys.config,
-    queryFn: async (): Promise<FreestyleConfig> => {
+    queryFn: async (): Promise<OpenstyleConfig> => {
       const res = await getClient().api.config.$get();
       if (!res.ok) throw new Error("Failed to load config");
-      return (await res.json()) as FreestyleConfig;
+      return (await res.json()) as OpenstyleConfig;
     },
   };
 }

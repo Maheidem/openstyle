@@ -13,7 +13,7 @@ import { MAX_MLX_KEEP_ALIVE_MINUTES, MLX_KEEP_ALIVE_ALWAYS } from "./constants";
 
 function mlxKeepAliveDescription(minutes: number): string {
   if (minutes === MLX_KEEP_ALIVE_ALWAYS) {
-    return "Keep the model loaded in memory at all times, until you quit Freestyle. Fastest repeat use, uses the most RAM.";
+    return "Keep the model loaded in memory at all times, until you quit Openstyle. Fastest repeat use, uses the most RAM.";
   }
   if (minutes === 0) {
     return "Unload the model from memory after each transcription. Uses less RAM, but the next dictation waits for a full reload.";

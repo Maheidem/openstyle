@@ -43,7 +43,7 @@
     "unlink": "node ../../scripts/link-plugin.mjs --unlink"
   },
   "dependencies": {
-    "freestyle-voice": "workspace:*"
+    "@openstyle/sdk": "workspace:*"
   },
   "devDependencies": {
     "pkgroll": "^2.27.0",

@@ -14,7 +14,7 @@ import {
   parseCleanupOverallTone,
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { AppAssignments } from "@renderer/components/tone-previews/app-assignments";
 import {
   type AppMarkId,

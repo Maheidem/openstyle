@@ -1,3 +1,4 @@
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   HISTORY_RETENTION_DAYS_MAX,
   type NetworkSettingsForm,
@@ -6,8 +7,7 @@ import {
   parseRetentionDays,
   parseStoredLanguageList,
   serverUrlSchema,
-} from "@freestyle-voice/validations";
-import { zodResolver } from "@hookform/resolvers/zod";
+} from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import {
@@ -1598,7 +1598,7 @@ type ServerTestState =
   | "unauthorized";
 
 /**
- * Connect the desktop app to a self-hosted Freestyle server (or the built-in
+ * Connect the desktop app to a self-hosted Openstyle server (or the built-in
  * local one). The URL/token live in the app's local settings.json (client-side
  * config — they can't live on the server they point at), read/written via IPC.
  *

@@ -87,7 +87,7 @@ function readEvents(eventsPath: string): RecordedEvent[] {
 async function launchPermissionApp(
   options: LaunchOptions,
 ): Promise<LaunchedApp> {
-  const testDir = mkdtempSync(join(tmpdir(), "freestyle-permissions-e2e-"));
+  const testDir = mkdtempSync(join(tmpdir(), "openstyle-permissions-e2e-"));
   const userDataDir = join(testDir, "user-data");
   const eventsPath = join(testDir, "events.jsonl");
   mkdirSync(userDataDir, { recursive: true });

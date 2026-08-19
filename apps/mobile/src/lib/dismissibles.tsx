@@ -14,7 +14,7 @@
 import {
   type DismissibleNotificationState,
   notificationKeySchema,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import {
   createContext,
   type ReactNode,

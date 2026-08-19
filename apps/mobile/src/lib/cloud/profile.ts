@@ -6,7 +6,7 @@
  * {@link useAuth}'s sign-in.
  */
 
-import type { CloudProfile, ProfileInput } from "@freestyle-voice/validations";
+import type { CloudProfile, ProfileInput } from "@openstyle/validations";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { Platform } from "react-native";
 import { authClient } from "./auth-client";

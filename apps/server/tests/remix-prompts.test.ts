@@ -1,7 +1,4 @@
-import {
-  REMIX_PRESETS,
-  remixTransformSchema,
-} from "@freestyle-voice/validations";
+import { REMIX_PRESETS, remixTransformSchema } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
 import {
   buildRemixAgentSystem,

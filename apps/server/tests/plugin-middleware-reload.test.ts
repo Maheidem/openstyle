@@ -1,5 +1,5 @@
-import type { Plugin } from "freestyle-voice";
-import { PluginRegistry } from "freestyle-voice";
+import type { Plugin } from "@openstyle/sdk";
+import { PluginRegistry } from "@openstyle/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The middleware dispatcher reads the *live* registry via `plugins()` on every

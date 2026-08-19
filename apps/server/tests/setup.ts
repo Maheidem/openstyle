@@ -15,7 +15,7 @@ let dbPath: string;
 beforeAll(() => {
   vi.useFakeTimers({ shouldAdvanceTime: false });
 
-  const dir = mkdtempSync(join(tmpdir(), "freestyle-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "openstyle-test-"));
   dbPath = join(dir, "test.db");
   process.env.FREESTYLE_DB_PATH = dbPath;
 });

@@ -1,7 +1,7 @@
 import type {
   CleanupAppAssignment,
   CleanupToneDestination,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { normalizeRouteIconHost } from "../../../../shared/route-icons";
 import type { AppMarkId } from "./app-marks";
 import {

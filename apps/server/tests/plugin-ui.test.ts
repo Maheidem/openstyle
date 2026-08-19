@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { pluginSlug } from "freestyle-voice";
+import { pluginSlug } from "@openstyle/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
 import { writeSetting } from "../src/lib/db.js";

@@ -1,6 +1,6 @@
-import { createAppLogger } from "@freestyle-voice/utils";
-import { clientErrorSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
+import { createAppLogger } from "@openstyle/utils";
+import { clientErrorSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import apiKeys from "./api-keys.js";
 import configRoute from "./config.js";

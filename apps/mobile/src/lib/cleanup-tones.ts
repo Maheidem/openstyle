@@ -1,7 +1,7 @@
 /**
  * Cleanup tone options + defaults for the mobile app.
  *
- * These mirror `@freestyle-voice/validations`'s `cleanup-tones` (the values the
+ * These mirror `@openstyle/validations`'s `cleanup-tones` (the values the
  * cloud validates and applies during post-processing). They're duplicated
  * locally — rather than depending on the workspace package — to keep the Expo
  * bundle lean and avoid pulling `zod` through Metro. Keep in sync with the

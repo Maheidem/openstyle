@@ -2,7 +2,7 @@ import {
   MAX_LANGUAGES,
   normalizeLanguageList,
   resolveLanguageOptions,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import {

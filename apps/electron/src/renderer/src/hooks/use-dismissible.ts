@@ -1,7 +1,7 @@
 import {
   type DismissibleNotificationState,
   notificationKeySchema,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { getClient } from "../lib/api";
@@ -59,7 +59,7 @@ function enqueueWrite(
  * write reverts only its own key (never an unrelated concurrent mutation).
  * Invalid / empty keys are no-ops.
  *
- * Storage follows the configured Freestyle server — the same SQLite DB as
+ * Storage follows the configured Openstyle server — the same SQLite DB as
  * settings/vocabulary. On a remote server that means dismissals are shared
  * across every renderer pointed at it (consistent with how settings work).
  *

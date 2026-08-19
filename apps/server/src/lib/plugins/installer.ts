@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createAppLogger } from "@freestyle-voice/utils";
-import { pluginSlug } from "freestyle-voice";
+import { pluginSlug } from "@openstyle/sdk";
+import { createAppLogger } from "@openstyle/utils";
 import * as tar from "tar";
 
 const log = createAppLogger("plugin-installer");

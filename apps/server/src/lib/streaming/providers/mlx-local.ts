@@ -1,5 +1,5 @@
-import { collapseAsrLineBreaks } from "@freestyle-voice/stt";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { collapseAsrLineBreaks } from "@openstyle/stt";
+import { createAppLogger } from "@openstyle/utils";
 import { MLX_ASR_PROVIDER_ID } from "../../mlx-asr/constants.js";
 import { resolveMlxLanguage } from "../../mlx-asr/language.js";
 import { getMlxModelStatus } from "../../mlx-asr/models.js";

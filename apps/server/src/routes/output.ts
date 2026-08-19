@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { FreestyleEventType, OutputMode, PipelineStage } from "freestyle-voice";
+import { FreestyleEventType, OutputMode, PipelineStage } from "@openstyle/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { parseAppContext, plugins } from "../lib/plugins/index.js";

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { zValidator } from "@hono/zod-validator";
-import { pluginSlug } from "freestyle-voice";
+import { pluginSlug } from "@openstyle/sdk";
 import { Hono } from "hono";
 import * as semver from "semver";
 import { z } from "zod";
@@ -27,7 +27,7 @@ const PLUGIN_CATALOG = [
   {
     npmName: "@freestyle-voice/plugin-audio-transcription",
     title: "Audio Transcription",
-    description: "Transcribe audio files by dropping them into Freestyle.",
+    description: "Transcribe audio files by dropping them into Openstyle.",
     icon: "FileMusic",
     homepage:
       "https://github.com/freestyle-voice/freestyle/tree/main/plugins/audio-transcription#readme",

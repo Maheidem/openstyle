@@ -42,7 +42,7 @@ export class ErrorBoundary extends Component<
           Something went wrong
         </span>
         <h1 className="serif text-foreground m-0 max-w-[28rem] text-[24px] leading-tight font-normal">
-          Freestyle hit an unexpected error.
+          Openstyle hit an unexpected error.
         </h1>
         <p className="text-muted-foreground m-0 max-w-[26rem] text-[13px] leading-relaxed">
           The error was logged for diagnostics. Reloading usually fixes it — if

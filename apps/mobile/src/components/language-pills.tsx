@@ -7,11 +7,8 @@
  * at {@link MAX_LANGUAGES}; the sheet disables adding once the cap is reached.
  */
 
-import type { SuggestedLanguage } from "@freestyle-voice/validations";
-import {
-  MAX_LANGUAGES,
-  resolveLanguageOptions,
-} from "@freestyle-voice/validations";
+import type { SuggestedLanguage } from "@openstyle/validations";
+import { MAX_LANGUAGES, resolveLanguageOptions } from "@openstyle/validations";
 import { Plus, X } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";

@@ -15,7 +15,7 @@ export type PluginMode = "server" | "app";
 export type PluginOptions = Record<string, unknown>;
 
 /**
- * A Freestyle plugin: a named object carrying optional metadata and the hooks
+ * An Openstyle plugin: a named object carrying optional metadata and the hooks
  * it implements (Vite-style). Hooks live flat on the object.
  *
  * A plugin is loaded into both the server and the app process; each hook only
@@ -25,7 +25,7 @@ export type PluginOptions = Record<string, unknown>;
  *
  * @example
  * ```ts
- * import type { Plugin } from "freestyle-voice";
+ * import type { Plugin } from "@openstyle/sdk";
  *
  * export default function myPlugin(): Plugin {
  *   return {

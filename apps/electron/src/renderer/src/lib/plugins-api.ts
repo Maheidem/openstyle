@@ -1,4 +1,4 @@
-import { parseDisabledPlugins } from "@freestyle-voice/validations";
+import { parseDisabledPlugins } from "@openstyle/validations";
 import type {
   PluginCatalogEntry,
   PluginInfo,

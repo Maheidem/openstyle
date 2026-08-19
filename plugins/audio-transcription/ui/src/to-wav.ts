@@ -1,6 +1,6 @@
 /**
  * Decode an arbitrary audio file (wav, mp3, m4a, …) into 16 kHz mono 16-bit PCM
- * WAV — the format Freestyle's transcription providers expect. Uses the
+ * WAV — the format Openstyle's transcription providers expect. Uses the
  * browser's Web Audio API, which is available in the plugin page.
  */
 

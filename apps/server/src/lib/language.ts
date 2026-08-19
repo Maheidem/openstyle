@@ -1,4 +1,4 @@
-import { parseStoredLanguageList } from "@freestyle-voice/validations";
+import { parseStoredLanguageList } from "@openstyle/validations";
 import { getDb } from "./db.js";
 
 export const ISO_LANGUAGE_NAMES: Record<string, string> = {

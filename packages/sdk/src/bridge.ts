@@ -7,7 +7,7 @@
  */
 export interface FreestyleBridge {
   /**
-   * Origin of the local Freestyle server the page is served from. Plugin UI is
+   * Origin of the local Openstyle server the page is served from. Plugin UI is
    * served same-origin by the server now, so this is simply `location.origin`.
    */
   readonly serverUrl: string;
@@ -43,7 +43,7 @@ export interface HostActions {
 
 declare global {
   interface Window {
-    /** Present only inside a plugin UI page hosted by Freestyle. */
+    /** Present only inside a plugin UI page hosted by Openstyle. */
     freestyle?: FreestyleBridge;
   }
 }

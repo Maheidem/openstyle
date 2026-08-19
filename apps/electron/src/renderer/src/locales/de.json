@@ -56,7 +56,7 @@
     },
     "tutorial": {
       "almostReady": "Fast fertig — ",
-      "finish": "Freestyle verwenden",
+      "finish": "Openstyle verwenden",
       "chooseModel": "Ein anderes Modell wählen",
       "usingModel": "Verwendet {{name}} · Ein anderes Modell wählen"
     },
@@ -130,9 +130,9 @@
       "autoUpdate": "Automatische Updates",
       "autoUpdateDesc": "Neue Versionen werden im Hintergrund heruntergeladen, sobald sie verfügbar sind.",
       "launchAtStartup": "Beim Start ausführen",
-      "launchAtStartupDesc": "Freestyle automatisch starten, wenn Sie sich an Ihrem Computer anmelden.",
+      "launchAtStartupDesc": "Openstyle automatisch starten, wenn Sie sich an Ihrem Computer anmelden.",
       "showOnLaunch": "Dashboard beim Start anzeigen",
-      "showOnLaunchDesc": "Das Dashboard-Fenster öffnen, wenn Freestyle startet."
+      "showOnLaunchDesc": "Das Dashboard-Fenster öffnen, wenn Openstyle startet."
     },
     "recording": {
       "hotkey": "Tastenkombination",
@@ -197,7 +197,7 @@
       "microphone": "Mikrofon",
       "microphoneDesc": "Erforderlich, um Audio für die Transkription aufzunehmen.",
       "accessibility": "Bedienungshilfen",
-      "accessibilityDescMac": "Erforderlich, um die globale Tastenkombination zu erkennen und in andere Apps einzufügen. Aktivieren Sie Freestyle unter Systemeinstellungen › Datenschutz & Sicherheit › Bedienungshilfen.",
+      "accessibilityDescMac": "Erforderlich, um die globale Tastenkombination zu erkennen und in andere Apps einzufügen. Aktivieren Sie Openstyle unter Systemeinstellungen › Datenschutz & Sicherheit › Bedienungshilfen.",
       "accessibilityDescOther": "Erforderlich, um die globale Tastenkombination zu erkennen und in andere Apps einzufügen.",
       "autoGranted": "Automatisch gewährt"
     },
@@ -287,7 +287,7 @@
     "entrySingular": "Eintrag",
     "entryPlural": "Einträge",
     "emptyTitle": "Noch keine Kurzbefehle.",
-    "emptyDesc": "Fügen Sie eine häufig verwendete Phrase hinzu, wie <example>meine Adresse</example> — und Freestyle erweitert sie inline.",
+    "emptyDesc": "Fügen Sie eine häufig verwendete Phrase hinzu, wie <example>meine Adresse</example> — und Openstyle erweitert sie inline.",
     "noResults": "nichts entspricht \"{{search}}\".",
     "noEntries": "keine Einträge — fügen Sie einen hinzu.",
     "failedToSave": "Eintrag konnte nicht gespeichert werden."
@@ -320,14 +320,12 @@
   },
   "tone": {
     "title": "Ton",
-    "subtitle": "Wie stark Freestyle aufräumt – und wie es in jeder App klingt.",
+    "subtitle": "Wie stark Openstyle aufräumt – und wie es in jeder App klingt.",
     "loading": "Ton wird geladen…",
     "disabledBanner": {
       "title": "Bereinigung ist aus.",
       "desc": "Diese Stärke- und Ton-Einstellungen greifen, sobald du die KI-Bereinigung in Modelle aktivierst. Deine Auswahl bleibt bis dahin gespeichert.",
-      "goToModels": "Zu Modelle",
-      "useCloud": "Freestyle Cloud verwenden",
-      "useCloudBusy": "Wird eingerichtet…"
+      "goToModels": "Zu Modelle"
     },
     "routesFrom": "Weitergeleitet von",
     "previewLabel": "Vorschau",
@@ -583,7 +581,7 @@
       "groups": {
         "everyday": "Alltagstexte",
         "work": "Arbeit & Studium",
-        "web": "Mit dem Web — Freestyle Cloud"
+        "web": "Mit dem Web"
       },
       "quotes": {
         "email": "Mach das wärmer und halb so lang — ich klinge wie ein Anwalt.",

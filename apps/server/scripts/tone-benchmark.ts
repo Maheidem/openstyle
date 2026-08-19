@@ -3,13 +3,13 @@
  *
  * Exercises the destination + tone path of `buildRewritePrompt` against
  * gpt-oss-20b on Groq. Writes one JSON file per mode under
- * /tmp/freestyle-tone-bench/runs/<timestamp>/<mode>.json, then prints a
+ * /tmp/openstyle-tone-bench/runs/<timestamp>/<mode>.json, then prints a
  * pass/fail summary.
  *
  * Usage:
- *   FREESTYLE_DB_PATH=/tmp/freestyle-tone-bench/db.sqlite \
+ *   FREESTYLE_DB_PATH=/tmp/openstyle-tone-bench/db.sqlite \
  *     tsx scripts/tone-benchmark.ts --mode=personal
- *   FREESTYLE_DB_PATH=/tmp/freestyle-tone-bench/db.sqlite \
+ *   FREESTYLE_DB_PATH=/tmp/openstyle-tone-bench/db.sqlite \
  *     tsx scripts/tone-benchmark.ts --mode=all
  */
 
@@ -18,7 +18,7 @@ import { resolve } from "node:path";
 import {
   maxOutputTokensForCleanup,
   sanitizeTranscriptText,
-} from "@freestyle-voice/stt";
+} from "@openstyle/stt";
 import { generateText } from "ai";
 import { buildRewritePrompt } from "../src/lib/editor/prompts.ts";
 import { getGroqChatModel } from "../src/lib/groq-http.ts";
@@ -397,7 +397,7 @@ async function main() {
   const { mode } = parseArgs(process.argv.slice(2));
   const modes = mode === "all" ? ["personal", "work", "email"] : [mode];
   const runDir = resolve(
-    "/tmp/freestyle-tone-bench/runs",
+    "/tmp/openstyle-tone-bench/runs",
     new Date().toISOString().replace(/[:.]/g, "-"),
   );
   await mkdir(runDir, { recursive: true });

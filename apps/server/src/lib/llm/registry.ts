@@ -1,5 +1,5 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
-import type { PostProcessParams } from "@freestyle-voice/stt";
+import type { PostProcessParams } from "@openstyle/stt";
 import type { LanguageModel } from "ai";
 import { getDb } from "../db.js";
 

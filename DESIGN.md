@@ -1,6 +1,6 @@
-# Freestyle — Design System
+# Openstyle — Design System
 
-> The single source of truth for building Freestyle UI. Read this before adding
+> The single source of truth for building Openstyle UI. Read this before adding
 > any screen, component, or marketing surface. Values here are lifted directly
 > from `apps/electron/src/renderer/src/globals.css` and the shipped settings
 > pages — match them exactly. When in doubt, copy an existing page's recipe
@@ -10,7 +10,7 @@
 
 ## 1. Essence
 
-Freestyle is **voice dictation for your desktop** — hold a key, speak, and it
+Openstyle is **voice dictation for your desktop** — hold a key, speak, and it
 types itself anywhere. The interface is **editorial, calm, and warm**: it reads
 like a well-set magazine, not a SaaS dashboard.
 
@@ -302,12 +302,12 @@ destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
 
 ## 9. Writing & microcopy
 
-- **Voice:** plain, confident, second person. "Choose how Freestyle listens."
+- **Voice:** plain, confident, second person. "Choose how Openstyle listens."
   "Audio never leaves your Mac." Short sentences. No marketing fluff, no
   exclamation marks.
 - **Labels:** mono eyebrows are terse and categorical — `VOICE · REQUIRED`,
   `LLM CLEANUP · OPTIONAL`, `PROVIDERS & KEYS`.
-- **Wordmark:** lowercase `freestyle` with an olive period — `freestyle.` Never
+- **Wordmark:** lowercase `openstyle` with an olive period — `openstyle.` Never
   capitalize it mid-sentence; never drop the period in the logo lockup.
 - Numbers/metadata (sizes, RAM, $/hr, percentages) are mono.
 - Sentence case for everything except mono labels (which are UPPERCASE).

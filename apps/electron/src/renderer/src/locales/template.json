@@ -76,7 +76,7 @@
       "waitingWhileDownloading": "Finish once the download completes"
     },
     "tutorial": {
-      "finish": "Start using Freestyle",
+      "finish": "Start using Openstyle",
       "chooseModel": "Choose a different model",
       "usingModel": "Using {{name}} · Choose a different model"
     },
@@ -151,9 +151,9 @@
       "autoUpdate": "Automatic updates",
       "autoUpdateDesc": "Download new versions in the background as soon as they ship.",
       "launchAtStartup": "Launch at startup",
-      "launchAtStartupDesc": "Automatically start Freestyle when you log in to your computer.",
+      "launchAtStartupDesc": "Automatically start Openstyle when you log in to your computer.",
       "showOnLaunch": "Show dashboard on launch",
-      "showOnLaunchDesc": "Open the dashboard window when Freestyle starts.",
+      "showOnLaunchDesc": "Open the dashboard window when Openstyle starts.",
       "advancedMode": "Advanced mode",
       "advancedModeDesc": "Show the Models page for manual voice and cleanup model configuration."
     },
@@ -237,7 +237,7 @@
       "microphone": "Microphone",
       "microphoneDesc": "Required to capture audio for transcription.",
       "accessibility": "Accessibility",
-      "accessibilityDescMac": "Required to detect the global hotkey and paste into other apps. Toggle Freestyle on under System Settings › Privacy & Security › Accessibility.",
+      "accessibilityDescMac": "Required to detect the global hotkey and paste into other apps. Toggle Openstyle on under System Settings › Privacy & Security › Accessibility.",
       "accessibilityDescOther": "Required to detect the global hotkey and paste into other apps.",
       "autoGranted": "Auto-granted"
     },
@@ -273,7 +273,7 @@
       "invalidCaCert": "Enter a valid certificate file path, or leave it blank.",
       "envNote": "The app also honors HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS and SSL_CERT_FILE from the environment.",
       "server": "Server",
-      "serverDesc": "Use the built-in local server, or connect to a self-hosted Freestyle server.",
+      "serverDesc": "Use the built-in local server, or connect to a self-hosted Openstyle server.",
       "serverTokenPlaceholder": "Access token (optional)",
       "usingLocal": "Using the built-in local server",
       "testConnection": "Test",
@@ -370,7 +370,7 @@
     "entrySingular": "entry",
     "entryPlural": "entries",
     "emptyTitle": "No shortcuts yet.",
-    "emptyDesc": "Add a phrase you say often, like <example>my address</example> — and Freestyle expands it inline.",
+    "emptyDesc": "Add a phrase you say often, like <example>my address</example> — and Openstyle expands it inline.",
     "noResults": "nothing matches \"{{search}}\".",
     "noEntries": "no entries — add one to start.",
     "failedToSave": "Failed to save entry."
@@ -409,14 +409,12 @@
   },
   "tone": {
     "title": "Tone",
-    "subtitle": "How much Freestyle cleans up — and how it sounds in each app.",
+    "subtitle": "How much Openstyle cleans up — and how it sounds in each app.",
     "loading": "Loading tone…",
     "disabledBanner": {
       "title": "Cleanup is off.",
       "desc": "These strength and tone settings apply once you turn on AI cleanup in Models. Your choices are saved until then.",
-      "goToModels": "Go to Models",
-      "useCloud": "Use Freestyle Cloud",
-      "useCloudBusy": "Setting up…"
+      "goToModels": "Go to Models"
     },
     "routesFrom": "Routes from",
     "previewLabel": "Preview",
@@ -727,7 +725,7 @@
       "groups": {
         "everyday": "Everyday writing",
         "work": "Work & school",
-        "web": "With the web — Freestyle Cloud"
+        "web": "With the web"
       },
       "quotes": {
         "email": "Make this warmer and half as long — I sound like a lawyer.",

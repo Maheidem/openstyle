@@ -5,12 +5,10 @@ import { defineConfig } from "electron-vite";
 import { visualizer } from "rollup-plugin-visualizer";
 
 const workspaceAliases = {
-  "freestyle-voice": resolve("../../packages/sdk/src/index.ts"),
-  "@freestyle-voice/server": resolve("../server/src/index.ts"),
-  "@freestyle-voice/utils": resolve("../../packages/utils/src/index.ts"),
-  "@freestyle-voice/validations": resolve(
-    "../../packages/validations/src/index.ts",
-  ),
+  "@openstyle/sdk": resolve("../../packages/sdk/src/index.ts"),
+  "@openstyle/server": resolve("../server/src/index.ts"),
+  "@openstyle/utils": resolve("../../packages/utils/src/index.ts"),
+  "@openstyle/validations": resolve("../../packages/validations/src/index.ts"),
 };
 
 // Bundle analysis is opt-in via `ANALYZE=1` (see the `analyze` npm script).

@@ -1,4 +1,4 @@
-import type { FreestyleBridge } from "freestyle-voice";
+import type { FreestyleBridge } from "@openstyle/sdk";
 import { toWav16k } from "./to-wav.js";
 
 /**
@@ -64,7 +64,7 @@ async function transcribe(file: File): Promise<void> {
   row.setAbort(abort);
 
   try {
-    // Freestyle's transcription providers expect 16 kHz mono PCM WAV, so decode
+    // Openstyle's transcription providers expect 16 kHz mono PCM WAV, so decode
     // and resample the dropped file (wav/mp3/m4a/…) before uploading.
     let wav: Blob;
     try {

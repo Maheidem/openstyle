@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * Link (or unlink) a local Freestyle plugin for development.
+ * Link (or unlink) a local Openstyle plugin for development.
  *
  * Usage:
- *   node scripts/link-plugin.mjs          # link (build + symlink into Freestyle's plugins dir)
+ *   node scripts/link-plugin.mjs          # link (build + symlink into Openstyle's plugins dir)
  *   node scripts/link-plugin.mjs --unlink # unlink (remove the dev symlink)
  *
  * The script creates a wrapper directory at `<userData>/plugins/<slug>-dev/`
@@ -47,26 +47,26 @@ function pluginSlug(name) {
     .toLowerCase();
 }
 
-/** Resolve the Freestyle userData directory for the current OS. */
-function freestyleUserData() {
+/** Resolve the Openstyle userData directory for the current OS. */
+function openstyleUserData() {
   const platform = os.platform();
   if (platform === "darwin") {
     return path.join(
       os.homedir(),
       "Library",
       "Application Support",
-      "Freestyle",
+      "Openstyle",
     );
   }
   if (platform === "win32") {
     const appData = process.env.APPDATA;
     if (!appData) throw new Error("APPDATA environment variable is not set");
-    return path.join(appData, "Freestyle");
+    return path.join(appData, "Openstyle");
   }
   // Linux / other: XDG_CONFIG_HOME or ~/.config
   const configHome =
     process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
-  return path.join(configHome, "Freestyle");
+  return path.join(configHome, "Openstyle");
 }
 
 /** Try to create a symlink; return false if it fails (e.g. Windows without dev mode). */
@@ -129,7 +129,7 @@ if (!pluginName) {
 
 const slug = pluginSlug(pluginName);
 const devSlug = `${slug}-dev`;
-const pluginsDir = path.join(freestyleUserData(), "plugins");
+const pluginsDir = path.join(openstyleUserData(), "plugins");
 const devDir = path.join(pluginsDir, devSlug);
 
 // ---- Unlink ---------------------------------------------------------------
@@ -141,7 +141,7 @@ if (unlink) {
   }
   fs.rmSync(devDir, { recursive: true, force: true });
   console.log(`Unlinked dev plugin: ${devSlug}`);
-  console.log("Restart Freestyle to apply changes.");
+  console.log("Restart Openstyle to apply changes.");
   process.exit(0);
 }
 
@@ -232,6 +232,6 @@ if (fs.lstatSync(distLink).isSymbolicLink()) {
 }
 console.log();
 console.log(
-  "Start (or restart) Freestyle to see the plugin in the Plugins page.",
+  "Start (or restart) Openstyle to see the plugin in the Plugins page.",
 );
 console.log("Enable it from there to activate its hooks and middleware.");

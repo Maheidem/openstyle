@@ -29,4 +29,4 @@ The engine uses these to inject dynamic data into the application interface at r
 
 ---
 
-If you have any doubts, please feel free to [open an issue](https://github.com/freestyle-voice/freestyle/issues) or ask us directly in our [Discord server](https://discord.gg/Fmgt5yZCDu)!
+If you have any doubts, please feel free to [open an issue](https://github.com/Maheidem/openstyle/issues)!

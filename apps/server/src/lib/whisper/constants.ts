@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { modelCacheDir } from "../model-cache.js";
 
 export const WHISPER_PROVIDER_ID = "local-whisper";
 
@@ -131,7 +131,7 @@ export function getWhisperModel(id: string): WhisperModelDef | undefined {
 }
 
 export function getModelsDir(): string {
-  return join(homedir(), ".cache", "freestyle", "whisper-models");
+  return modelCacheDir("whisper-models");
 }
 
 export function getModelPath(model: WhisperModelDef): string {
@@ -193,7 +193,7 @@ export function getResourcesDir(): string {
 }
 
 export function getBinDir(): string {
-  return join(homedir(), ".cache", "freestyle", "whisper-bin");
+  return modelCacheDir("whisper-bin");
 }
 
 export const WHISPER_CPP_VERSION = "1.8.5";

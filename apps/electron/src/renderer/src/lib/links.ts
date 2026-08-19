@@ -1,7 +1,6 @@
 export const LINKS = {
-  repo: "https://github.com/Maheidem/freestyle",
-  newIssue: "https://github.com/Maheidem/freestyle/issues/new",
-  discord: "https://discord.gg/Fmgt5yZCDu",
+  repo: "https://github.com/Maheidem/openstyle",
+  newIssue: "https://github.com/Maheidem/openstyle/issues/new",
   contributing:
-    "https://github.com/Maheidem/freestyle/blob/main/CONTRIBUTING.md",
+    "https://github.com/Maheidem/openstyle/blob/main/CONTRIBUTING.md",
 } as const;

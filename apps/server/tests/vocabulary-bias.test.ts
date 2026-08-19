@@ -14,7 +14,7 @@ describe("buildAsrVocabularyBias", () => {
 
     it("returns null for unknown providers", () => {
       expect(
-        buildAsrVocabularyBias("unknown", "model", ["Freestyle"]),
+        buildAsrVocabularyBias("unknown", "model", ["Openstyle"]),
       ).toBeNull();
     });
   });
@@ -68,9 +68,9 @@ describe("buildAsrVocabularyBias", () => {
       const bias = buildAsrVocabularyBias(
         "local-whisper",
         "local-whisper/base",
-        ["Freestyle"],
+        ["Openstyle"],
       );
-      expect(bias).toEqual({ kind: "prompt", text: "Terms: Freestyle." });
+      expect(bias).toEqual({ kind: "prompt", text: "Terms: Openstyle." });
     });
   });
 
@@ -79,12 +79,12 @@ describe("buildAsrVocabularyBias", () => {
       const bias = buildAsrVocabularyBias(
         "deepgram",
         "deepgram/nova-3",
-        ["Freestyle", "Kubernetes"],
+        ["Openstyle", "Kubernetes"],
         false,
       );
       expect(bias).toEqual({
         kind: "deepgram-keyterms",
-        terms: ["Freestyle", "Kubernetes"],
+        terms: ["Openstyle", "Kubernetes"],
       });
     });
 
@@ -129,7 +129,7 @@ describe("buildAsrVocabularyBias", () => {
 
     it("returns null for unsupported deepgram models", () => {
       expect(
-        buildAsrVocabularyBias("deepgram", "whisper-large", ["Freestyle"]),
+        buildAsrVocabularyBias("deepgram", "whisper-large", ["Openstyle"]),
       ).toBeNull();
     });
   });
@@ -139,18 +139,18 @@ describe("buildAsrVocabularyBias", () => {
       const bias = buildAsrVocabularyBias(
         "elevenlabs",
         "scribe_v2",
-        ["Freestyle", "Nguyen"],
+        ["Openstyle", "Nguyen"],
         false,
       );
       expect(bias).toEqual({
         kind: "elevenlabs-keyterms",
-        terms: ["Freestyle", "Nguyen"],
+        terms: ["Openstyle", "Nguyen"],
       });
     });
 
     it("returns null for scribe_v1", () => {
       expect(
-        buildAsrVocabularyBias("elevenlabs", "scribe_v1", ["Freestyle"]),
+        buildAsrVocabularyBias("elevenlabs", "scribe_v1", ["Openstyle"]),
       ).toBeNull();
     });
 
@@ -218,14 +218,14 @@ describe("resolveAsrVocabularyBias", () => {
 
     const db = getDb();
     db.prepare("INSERT INTO vocabulary (term, notes) VALUES (?, ?)").run(
-      "Freestyle",
+      "Openstyle",
       null,
     );
 
     const bias = resolveAsrVocabularyBias("openai", "whisper-1", false);
     expect(bias?.kind).toBe("prompt");
     if (bias?.kind === "prompt") {
-      expect(bias.text).toContain("Freestyle");
+      expect(bias.text).toContain("Openstyle");
     }
   });
 
@@ -253,12 +253,12 @@ describe("resolveAsrVocabularyBias", () => {
 describe("soniox", () => {
   it("builds soniox-context bias with terms", () => {
     const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", [
-      "Freestyle",
+      "Openstyle",
       "Kubernetes",
     ]);
     expect(bias).toEqual({
       kind: "soniox-context",
-      terms: ["Freestyle", "Kubernetes"],
+      terms: ["Openstyle", "Kubernetes"],
     });
   });
 
@@ -290,19 +290,19 @@ describe("soniox", () => {
     const bias = buildAsrVocabularyBias(
       "soniox",
       "stt-rt-v5",
-      ["Freestyle"],
+      ["Openstyle"],
       true,
-      "Freestyle: our voice dictation app",
+      "Openstyle: our voice dictation app",
     );
     expect(bias).toEqual({
       kind: "soniox-context",
-      terms: ["Freestyle"],
-      text: "Freestyle: our voice dictation app",
+      terms: ["Openstyle"],
+      text: "Openstyle: our voice dictation app",
     });
   });
 
   it("omits text when no note text is supplied", () => {
-    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", ["Freestyle"]);
-    expect(bias).toEqual({ kind: "soniox-context", terms: ["Freestyle"] });
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", ["Openstyle"]);
+    expect(bias).toEqual({ kind: "soniox-context", terms: ["Openstyle"] });
   });
 });

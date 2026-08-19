@@ -1,8 +1,9 @@
+import type { HookApi } from "@openstyle/sdk";
 import {
   postProcess as cleanupWithModel,
   sanitizeTranscriptText,
-} from "@freestyle-voice/stt";
-import { createAppLogger } from "@freestyle-voice/utils";
+} from "@openstyle/stt";
+import { createAppLogger } from "@openstyle/utils";
 import type {
   CleanupAppAssignment,
   CleanupEmailTone,
@@ -10,7 +11,7 @@ import type {
   CleanupOverallTone,
   CleanupPersonalTone,
   CleanupWorkTone,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import {
   areAllCleanupTonesOff,
   parseCleanupAppAssignments,
@@ -19,8 +20,7 @@ import {
   parseCleanupOverallTone,
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
-} from "@freestyle-voice/validations";
-import type { HookApi } from "freestyle-voice";
+} from "@openstyle/validations";
 import {
   getModelCostCached,
   isCleanupModelSupported,

@@ -1,5 +1,5 @@
-import { postProcessSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
+import { postProcessSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getLanguagesSetting } from "../lib/language.js";
 import { PipelineStage } from "../lib/plugins/index.js";

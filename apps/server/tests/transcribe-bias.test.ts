@@ -9,18 +9,18 @@ describe("sonioxContextFromBias", () => {
     expect(
       sonioxContextFromBias({
         kind: "soniox-context",
-        terms: ["Freestyle"],
-        text: "Freestyle: our dictation app",
+        terms: ["Openstyle"],
+        text: "Openstyle: our dictation app",
       }),
     ).toEqual({
-      terms: ["Freestyle"],
-      text: "Freestyle: our dictation app",
+      terms: ["Openstyle"],
+      text: "Openstyle: our dictation app",
     });
   });
 
   it("returns undefined for non-soniox bias kinds", () => {
     expect(
-      sonioxContextFromBias({ kind: "prompt", text: "Terms: Freestyle." }),
+      sonioxContextFromBias({ kind: "prompt", text: "Terms: Openstyle." }),
     ).toBeUndefined();
     expect(sonioxContextFromBias(null)).toBeUndefined();
   });
@@ -31,13 +31,13 @@ describe("sonioxGeneralFromAppContext", () => {
     const general = sonioxGeneralFromAppContext(
       JSON.stringify({
         app: "Slack",
-        windowTitle: "#engineering — Freestyle",
+        windowTitle: "#engineering — Openstyle",
         url: "https://app.slack.com/client",
       }),
     );
     expect(general).toEqual([
       { key: "application", value: "Slack" },
-      { key: "window title", value: "#engineering — Freestyle" },
+      { key: "window title", value: "#engineering — Openstyle" },
       { key: "url", value: "https://app.slack.com/client" },
     ]);
   });

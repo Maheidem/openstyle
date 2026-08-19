@@ -39,7 +39,7 @@ function RemixBar(): React.JSX.Element {
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
       onClick={open}
-      aria-label="Open Freestyle Remix"
+      aria-label="Open Openstyle Remix"
       tabIndex={-1}
     >
       <style>{`

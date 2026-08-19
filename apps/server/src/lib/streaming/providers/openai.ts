@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createOpenAI } from "@ai-sdk/openai";
-import { sanitizeSttBaseUrl } from "@freestyle-voice/validations";
+import { sanitizeSttBaseUrl } from "@openstyle/validations";
 import WebSocket from "ws";
 import { readSetting } from "../../db.js";
 import { createPcmUpsampler } from "../pcm.js";

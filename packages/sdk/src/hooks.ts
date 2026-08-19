@@ -29,7 +29,7 @@ export type Handler<I, O> = (
  * value is not required (and is ignored), except for `config`.
  *
  * Hooks are split by host process:
- * - Server hooks run inside the Freestyle server (the dictation backend).
+ * - Server hooks run inside the Openstyle server (the dictation backend).
  * - App hooks run inside the Electron main process (OS integration / output).
  */
 export interface Hooks {

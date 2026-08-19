@@ -1,4 +1,4 @@
-import { PluginRegistry } from "freestyle-voice";
+import { PluginRegistry } from "@openstyle/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { writeSetting } from "../src/lib/db.js";
 
@@ -23,8 +23,8 @@ vi.mock("../src/lib/providers.js", () => ({
   }),
 }));
 
-vi.mock("@freestyle-voice/stt", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@freestyle-voice/stt")>();
+vi.mock("@openstyle/stt", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@openstyle/stt")>();
   return { ...actual, postProcess: cleanupSpy };
 });
 

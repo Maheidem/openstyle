@@ -6,7 +6,7 @@
 #
 # The getsentry/craft action creates the publish-request issue with a title of
 # the form:  `publish: <owner>/<repo>/<path>@<version>`
-# (e.g. `publish: freestyle-voice/freestyle/packages/sdk@1.2.0`). That embedded
+# (e.g. `publish: Maheidem/openstyle/packages/sdk@1.2.0`). That embedded
 # subdirectory is what publish-package.yml uses to route the publish back to the
 # right package — no labels required.
 #

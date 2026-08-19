@@ -3,7 +3,7 @@ import {
   type PluginOptions,
   type PluginStorage,
   pluginSlug,
-} from "freestyle-voice";
+} from "@openstyle/sdk";
 import type { MiddlewareHandler } from "hono";
 
 type PlacementMode = "after" | "replace";

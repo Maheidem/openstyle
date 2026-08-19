@@ -15,7 +15,7 @@ import {
   type LanguageChoice,
   MAX_LANGUAGES,
   resolveLanguageOptions,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import {
   Dialog,

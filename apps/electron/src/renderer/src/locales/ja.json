@@ -56,7 +56,7 @@
     },
     "tutorial": {
       "almostReady": "準備完了まであと少し — ",
-      "finish": "Freestyle の使用を開始",
+      "finish": "Openstyle の使用を開始",
       "chooseModel": "別のモデルを選択",
       "usingModel": "{{name}} を使用中 · 別のモデルを選択"
     },
@@ -130,9 +130,9 @@
       "autoUpdate": "自動アップデート",
       "autoUpdateDesc": "新しいバージョンがリリースされた際、バックグラウンドで自動的にダウンロードします。",
       "launchAtStartup": "システム起動時に起動",
-      "launchAtStartupDesc": "コンピューターにログインした際、自動的に Freestyle を起動します。",
+      "launchAtStartupDesc": "コンピューターにログインした際、自動的に Openstyle を起動します。",
       "showOnLaunch": "起動時にダッシュボードを表示",
-      "showOnLaunchDesc": "Freestyle の起動時にダッシュボードウィンドウを開きます。"
+      "showOnLaunchDesc": "Openstyle の起動時にダッシュボードウィンドウを開きます。"
     },
     "recording": {
       "hotkey": "ホットキー",
@@ -197,7 +197,7 @@
       "microphone": "マイク",
       "microphoneDesc": "文字起こし用の音声をキャプチャするために必要です。",
       "accessibility": "アクセシビリティ",
-      "accessibilityDescMac": "グローバルホットキーを検出し、他のアプリに貼り付けるために必要です。「システム設定」›「プライバシーとセキュリティ」›「アクセシビリティ」で Freestyle をオンにしてください。",
+      "accessibilityDescMac": "グローバルホットキーを検出し、他のアプリに貼り付けるために必要です。「システム設定」›「プライバシーとセキュリティ」›「アクセシビリティ」で Openstyle をオンにしてください。",
       "accessibilityDescOther": "グローバルホットキーを検出し、他のアプリに貼り付けるために必要です。",
       "autoGranted": "自動許可済み"
     },
@@ -287,7 +287,7 @@
     "entrySingular": "エントリー",
     "entryPlural": "エントリー",
     "emptyTitle": "ショートカットはまだありません。",
-    "emptyDesc": "よく使うフレーズ（例：<example>自分の住所</example>）を追加すると、Freestyle が入力時にそれを展開します。",
+    "emptyDesc": "よく使うフレーズ（例：<example>自分の住所</example>）を追加すると、Openstyle が入力時にそれを展開します。",
     "noResults": "「{{search}}」に一致するものはありません。",
     "noEntries": "エントリーがありません — 追加して開始してください。",
     "failedToSave": "エントリーの保存に失敗しました。"
@@ -320,14 +320,12 @@
   },
   "tone": {
     "title": "トーン",
-    "subtitle": "Freestyle がどれだけ整えるか、そして各アプリでどう聞こえるか。",
+    "subtitle": "Openstyle がどれだけ整えるか、そして各アプリでどう聞こえるか。",
     "loading": "トーンを読み込み中…",
     "disabledBanner": {
       "title": "クリーンアップはオフです。",
       "desc": "これらの強さとトーンの設定は、モデルで AI クリーンアップをオンにすると適用されます。それまで選択内容は保存されます。",
-      "goToModels": "モデルへ",
-      "useCloud": "Freestyle Cloud を使う",
-      "useCloudBusy": "設定中…"
+      "goToModels": "モデルへ"
     },
     "routesFrom": "ルート元",
     "previewLabel": "プレビュー",
@@ -583,7 +581,7 @@
       "groups": {
         "everyday": "日常の文章",
         "work": "仕事と学び",
-        "web": "Webと一緒に — Freestyle Cloud"
+        "web": "Webと一緒に"
       },
       "quotes": {
         "email": "もっと温かく、半分の長さにして — 弁護士みたいな文面になってる。",

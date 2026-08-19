@@ -12,12 +12,10 @@
     "declarationDir": "./dist",
     "emitDeclarationOnly": true,
     "paths": {
-      "freestyle-voice": ["../../packages/sdk/src/index.ts"],
-      "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
-      "@freestyle-voice/validations": [
-        "../../packages/validations/src/index.ts"
-      ],
-      "@freestyle-voice/stt": ["../../packages/stt/src/index.ts"]
+      "@openstyle/sdk": ["../../packages/sdk/src/index.ts"],
+      "@openstyle/utils": ["../../packages/utils/src/index.ts"],
+      "@openstyle/validations": ["../../packages/validations/src/index.ts"],
+      "@openstyle/stt": ["../../packages/stt/src/index.ts"]
     }
   },
   "include": [

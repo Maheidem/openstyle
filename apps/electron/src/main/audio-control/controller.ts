@@ -81,7 +81,7 @@ export class AudioPlaybackController {
         await volumeDucker.restoreVolume();
         this.ducked = false;
       } catch {
-        // Still try to resume media below if Freestyle paused it.
+        // Still try to resume media below if Openstyle paused it.
       }
     }
 

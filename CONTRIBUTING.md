@@ -1,24 +1,6 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/freestyle-logo-full-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="media/freestyle-logo-full-light.png">
-    <img alt="Freestyle" src="media/freestyle-logo-full-light.png" width="420">
-  </picture>
-</p>
-
 # Contributing
 
-First, thank you so much for considering contributing to the project. Contributors mean a lot to us, it's people like you that grow our community and make this project so fun to work on. 
-
-## Join our Discord
-
-<p align="left">
-  <a href="https://discord.gg/Fmgt5yZCDu"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
-</p>
-
-Please consider joining our Discord server. This is where contributors communicate. We have all project discussions there. 
-
-If you have any questions, our Discord server is the place to ask. 
+Thanks for considering a contribution. Bug reports, fixes, and improvements are all welcome.
 
 ## Prerequisites
 
@@ -30,8 +12,8 @@ If you have any questions, our Discord server is the place to ask.
 1. Fork and clone the repo
 
    ```bash
-   git clone https://github.com/freestyle-voice/freestyle.git
-   cd freestyle
+   git clone https://github.com/Maheidem/openstyle.git
+   cd openstyle
    ```
 
 2. Install dependencies
@@ -56,13 +38,13 @@ If you have any questions, our Discord server is the place to ask.
 
 ```bash
 # macOS
-pnpm --filter @freestyle-voice/electron build:mac
+pnpm --filter @openstyle/electron build:mac
 
 # Windows
-pnpm --filter @freestyle-voice/electron build:win
+pnpm --filter @openstyle/electron build:win
 
 # Linux
-pnpm --filter @freestyle-voice/electron build:linux
+pnpm --filter @openstyle/electron build:linux
 ```
 
 ## Project structure
@@ -75,7 +57,7 @@ pnpm --filter @freestyle-voice/electron build:linux
 1. Create a branch from `main`
 2. Make your changes
 3. Run `pnpm biome check .` to verify lint and formatting
-4. Run `pnpm --filter @freestyle-voice/electron typecheck:web` to verify types
+4. Run `pnpm --filter @openstyle/electron typecheck:web` to verify types
 5. Commit — husky runs biome on staged files automatically
 6. Open a PR against `main`
 
@@ -117,28 +99,3 @@ refactor(server): simplify plugin loading
 ```
 
 A CI check validates PR titles automatically. If it fails, edit your PR title to match the format above — no need to open a new PR.
-
-## Freestyle Cloud backend (managed STT)
-
-Only needed if you're working on the **Freestyle Cloud** transcription provider. It's a separate Cloudflare Worker (the `cloud` repository) that exposes the `/v1/transcribe` endpoint, and the desktop app calls it when "Freestyle Cloud" is the selected voice model.
-
-1. In the cloud repo's `apps/server`, create local secrets from the template and add a Groq API key:
-
-   ```bash
-   cp apps/server/.dev.vars.example apps/server/.dev.vars
-   # set GROQ_API_KEY=... in .dev.vars
-   ```
-
-2. Start the Worker with Wrangler (defaults to `http://localhost:8787`):
-
-   ```bash
-   pnpm dev   # runs `wrangler dev`
-   ```
-
-3. Point the desktop app at it by setting this in `apps/electron/.env.local`, then restart `pnpm dev`:
-
-   ```
-   FREESTYLE_CLOUD_URL=http://localhost:8787
-   ```
-
-`.dev.vars` is gitignored — never commit real keys. For a deployed Worker, set secrets with `wrangler secret put GROQ_API_KEY` instead.

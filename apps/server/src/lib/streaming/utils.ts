@@ -1,5 +1,5 @@
-import type { TranscribeParams } from "@freestyle-voice/stt";
-import { transcribe } from "@freestyle-voice/stt";
+import type { TranscribeParams } from "@openstyle/stt";
+import { transcribe } from "@openstyle/stt";
 import type { TranscriptionModel } from "ai";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 import { providerOptionsFromBias } from "./transcribe-bias.js";

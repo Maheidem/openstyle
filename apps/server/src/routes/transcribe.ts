@@ -1,5 +1,5 @@
-import { sanitizeTranscriptText } from "@freestyle-voice/stt";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { sanitizeTranscriptText } from "@openstyle/stt";
+import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
 import { formatError } from "../lib/format-error.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";

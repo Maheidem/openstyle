@@ -1,5 +1,5 @@
 /**
- * Standalone entrypoint for running the Freestyle server outside of Electron.
+ * Standalone entrypoint for running the Openstyle server outside of Electron.
  *
  * Used by the Docker image (see Dockerfile) to run the server inside a
  * container/VM. The Electron app calls `startServer()` directly instead.
@@ -40,7 +40,7 @@ const { server, port: boundPort } = await startServer({
   );
   process.exit(1);
 });
-console.log(`Freestyle server running on http://${host}:${boundPort}`);
+console.log(`Openstyle server running on http://${host}:${boundPort}`);
 
 function shutdown(signal: string): void {
   console.log(`Received ${signal}, shutting down...`);

@@ -2,7 +2,7 @@ import {
   INDUSTRY_LABELS,
   type Industry,
   industrySchema,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Building2, Check, LogOut, Sparkles } from "lucide-react-native";

@@ -1,5 +1,5 @@
-import { REMIX_PRESETS } from "@freestyle-voice/validations";
-import { FreestyleMark } from "@renderer/components/freestyle-mark";
+import { REMIX_PRESETS } from "@openstyle/validations";
+import { OpenstyleMark } from "@renderer/components/openstyle-mark";
 import {
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
@@ -1690,7 +1690,7 @@ export default function AppPage(): React.JSX.Element {
     if (!serverOk) {
       failedTranscriptionErrorRef.current = isRemoteServer()
         ? `Cannot reach the server at ${getApiBase()}`
-        : `Cannot reach Freestyle server at ${getApiBase()}`;
+        : `Cannot reach Openstyle server at ${getApiBase()}`;
       setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
       setPillNotice("unavailable");
       setPillState("error");
@@ -3720,7 +3720,7 @@ export default function AppPage(): React.JSX.Element {
                     className="pill-remix-brand pill-rise pill-rise-1"
                     aria-hidden="true"
                   >
-                    <FreestyleMark size={15} />
+                    <OpenstyleMark size={15} />
                     <span>Remix</span>
                   </div>
 

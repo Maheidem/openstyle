@@ -1,6 +1,6 @@
-import type { AppType } from "@freestyle-voice/server";
-import { createAppLogger } from "@freestyle-voice/utils";
-import type { FreestyleEvent } from "freestyle-voice";
+import type { FreestyleEvent } from "@openstyle/sdk";
+import type { AppType } from "@openstyle/server";
+import { createAppLogger } from "@openstyle/utils";
 import { hc } from "hono/client";
 
 const log = createAppLogger("plugins");

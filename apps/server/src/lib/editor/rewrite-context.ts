@@ -1,7 +1,7 @@
 import type {
   CleanupAppAssignment,
   CleanupToneDestination,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { parseAppContextPayload } from "./app-context.js";
 import { getCleanupPromptConfig } from "./prompt-config.js";
 

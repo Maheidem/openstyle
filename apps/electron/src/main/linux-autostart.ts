@@ -17,7 +17,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const DESKTOP_FILENAME = "freestyle.desktop";
+const DESKTOP_FILENAME = "openstyle.desktop";
 
 function getAutostartDir(): string {
   const xdgConfig = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
@@ -39,7 +39,7 @@ function buildDesktopEntry(): string {
   return [
     "[Desktop Entry]",
     "Type=Application",
-    "Name=Freestyle",
+    "Name=Openstyle",
     `Exec="${getStableExecPath()}"`,
     "X-GNOME-Autostart-enabled=true",
     "",

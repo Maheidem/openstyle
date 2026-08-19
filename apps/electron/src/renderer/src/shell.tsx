@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SiDiscord, SiGithub } from "react-icons/si";
+import { SiGithub } from "react-icons/si";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
 type NavItem = {
@@ -262,16 +262,16 @@ export default function AppShell(): React.JSX.Element {
         >
           <img
             src={markLight}
-            alt="Freestyle"
+            alt="Openstyle"
             className="block h-7 w-7 dark:hidden"
           />
           <img
             src={markDark}
-            alt="Freestyle"
+            alt="Openstyle"
             className="hidden h-7 w-7 dark:block"
           />
           <span className="serif text-foreground text-[19px] font-medium tracking-tight">
-            Freestyle
+            Openstyle
           </span>
           {import.meta.env.DEV && (
             <Badge
@@ -318,15 +318,6 @@ export default function AppShell(): React.JSX.Element {
             className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
           >
             <SiGithub className="h-3.5 w-3.5" />
-          </a>
-          <a
-            href={LINKS.discord}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Join our Discord"
-            className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
-          >
-            <SiDiscord className="h-3.5 w-3.5" />
           </a>
         </div>
 

@@ -1,13 +1,13 @@
-import { createAppLogger } from "@freestyle-voice/utils";
-import type { Plugin, PluginConfig } from "freestyle-voice";
-import { PluginRegistry } from "freestyle-voice";
+import type { Plugin, PluginConfig } from "@openstyle/sdk";
+import { PluginRegistry } from "@openstyle/sdk";
+import { createAppLogger } from "@openstyle/utils";
 import { loadServerPlugins } from "./loader.js";
 
 export {
   FreestyleEventType,
   PipelineStage,
   parseAppContext,
-} from "freestyle-voice";
+} from "@openstyle/sdk";
 
 const log = createAppLogger("plugins");
 

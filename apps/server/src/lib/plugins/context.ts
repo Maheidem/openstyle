@@ -1,11 +1,11 @@
 import path from "node:path";
-import { createAppLogger } from "@freestyle-voice/utils";
 import type {
   PluginContext,
   PluginStorage,
   SettingsReader,
-} from "freestyle-voice";
-import { createPluginLogger } from "freestyle-voice";
+} from "@openstyle/sdk";
+import { createPluginLogger } from "@openstyle/sdk";
+import { createAppLogger } from "@openstyle/utils";
 import { deleteSetting, readSetting, writeSetting } from "../db.js";
 
 const STORAGE_PREFIX = "plugin:";

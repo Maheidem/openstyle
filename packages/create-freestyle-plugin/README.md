@@ -1,7 +1,7 @@
 # `create-freestyle-plugin`
 
-Scaffold a new [Freestyle](../../README.md) voice plugin from a starter
-template. Freestyle is the local-first voice dictation app; plugins extend its
+Scaffold a new [Openstyle](../../README.md) voice plugin from a starter
+template. Openstyle is the local-first voice dictation app; plugins extend its
 dictation pipeline — rewrite transcripts, inject cleanup prompts, transform the
 final text, and add UI pages. See the [plugin
 SDK](../sdk/README.md) for the full plugin contract.
@@ -37,7 +37,7 @@ manager, and whether to install dependencies. Pass flags to skip the prompts.
 | `with-ui` | Plugin with a React UI page |
 
 Templates are pulled from
-[`templates/`](../../templates) in the Freestyle monorepo.
+[`templates/`](../../templates) in the Openstyle monorepo.
 
 ## Options
 
@@ -69,15 +69,15 @@ After scaffolding:
 cd my-plugin
 pnpm install        # if you didn't pass --install
 pnpm run build      # build the plugin (and UI, for with-ui)
-pnpm run link       # symlink it into Freestyle for local testing
+pnpm run link       # symlink it into Openstyle for local testing
 ```
 
 Use `pnpm run build` / `pnpm run link` (the `run` form) rather than
 `pnpm build` / `pnpm link` — the bare `build` and `link` commands collide with
 built-in package-manager commands and would run the wrong thing.
 
-`link` drops a `-dev` copy of your plugin into Freestyle's user-data `plugins/`
-directory, symlinked to your `dist/`. Restart Freestyle, then enable the plugin
+`link` drops a `-dev` copy of your plugin into Openstyle's user-data `plugins/`
+directory, symlinked to your `dist/`. Restart Openstyle, then enable the plugin
 under **Settings → Plugins** to activate its hooks and middleware. Rebuild to
 pick up changes; run `pnpm run unlink` to remove the dev copy.
 

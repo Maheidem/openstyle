@@ -4,7 +4,7 @@ import {
   type PipelineControlState,
   type PipelineStage,
   createHookApi as sdkCreateHookApi,
-} from "freestyle-voice";
+} from "@openstyle/sdk";
 import { plugins } from "./index.js";
 import { buildPluginLlm } from "./llm.js";
 

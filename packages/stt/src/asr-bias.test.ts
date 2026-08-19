@@ -24,7 +24,7 @@ describe("buildAsrBiasPrompt", () => {
 
   it("keeps packing shorter terms after a longer term overflows the budget (no early bail-out)", () => {
     // Regression test: callers commonly pass terms sorted longest-first
-    // (e.g. Freestyle's `GET /vocabulary/all` orders by length DESC). A
+    // (e.g. Openstyle's `GET /vocabulary/all` orders by length DESC). A
     // naive packer that stops at the first term it can't fit would silently
     // drop every shorter term that comes after. This must keep trying.
     const longTerm = "x".repeat(50);

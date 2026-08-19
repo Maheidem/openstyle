@@ -1,5 +1,5 @@
-import { createAppLogger } from "@freestyle-voice/utils";
 import { type ServerType, serve } from "@hono/node-server";
+import { createAppLogger } from "@openstyle/utils";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -145,7 +145,7 @@ function createApp() {
       );
       return c.json({ error: "Internal server error" }, 500);
     })
-    .get("/", (c) => c.text("Freestyle API"))
+    .get("/", (c) => c.text("Openstyle API"))
     .route("/", routes);
 
   return app;
@@ -175,7 +175,7 @@ export interface RunningServer {
 }
 
 /**
- * Start the Freestyle HTTP server.
+ * Start the Openstyle HTTP server.
  *
  * Shared by the Electron main process (loopback, in-process) and the
  * standalone container entrypoint (see startup.ts).

@@ -1,5 +1,5 @@
-import { remixTransformSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
+import { remixTransformSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getLanguagesSetting } from "../../lib/language.js";
 import { recordRemixRun } from "../../lib/remix-store.js";

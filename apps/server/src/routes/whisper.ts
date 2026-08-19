@@ -1,5 +1,5 @@
-import { serverStartSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
+import { serverStartSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";

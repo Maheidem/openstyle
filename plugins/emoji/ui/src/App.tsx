@@ -1,5 +1,5 @@
+import type { FreestyleBridge } from "@openstyle/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { FreestyleBridge } from "freestyle-voice";
 
 type PlacementMode = "after" | "replace";
 
@@ -31,7 +31,7 @@ function assertResponse(res: unknown): asserts res is Response {
     typeof (res as Response).json !== "function"
   ) {
     throw new Error(
-      "plugin API unavailable — the host bridge is out of date; try restarting Freestyle",
+      "plugin API unavailable — the host bridge is out of date; try restarting Openstyle",
     );
   }
 }

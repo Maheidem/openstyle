@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import { getDb } from "../db.js";
 import {
   findWhisperServer,

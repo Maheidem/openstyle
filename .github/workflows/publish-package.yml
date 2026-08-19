@@ -105,7 +105,7 @@ jobs:
             exit 1
           fi
 
-          # The GitHub target's tagPrefix (e.g. "freestyle-voice@") plus the
+          # The GitHub target's tagPrefix (e.g. "openstyle-sdk@") plus the
           # version gives the release tag Craft creates. We use it below to keep
           # package releases out of GitHub's "Latest" selection so the Electron
           # auto-updater keeps resolving the app release (which alone carries the
@@ -157,7 +157,7 @@ jobs:
           # automatically by trusted publishing; we don't force NPM_CONFIG_PROVENANCE
           # (forcing it can hard-fail depending on repo visibility).
 
-      # Package/plugin tags (e.g. freestyle-voice@0.4.0) are semver-parsed by
+      # Package/plugin tags (e.g. openstyle-sdk@0.4.0) are semver-parsed by
       # GitHub's default `make_latest: legacy` rule, so a package version that
       # numerically exceeds the app version steals the "Latest" release badge.
       # electron-updater's GitHubProvider resolves updates via /releases/latest,

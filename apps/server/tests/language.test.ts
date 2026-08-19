@@ -1,4 +1,4 @@
-import { normalizeLanguageList } from "@freestyle-voice/validations";
+import { normalizeLanguageList } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
 import { resolveMlxLanguage } from "../src/lib/mlx-asr/language.js";
 import { aiSdkProviderOptions } from "../src/lib/streaming/utils.js";
@@ -50,10 +50,10 @@ describe("aiSdkProviderOptions", () => {
     expect(
       aiSdkProviderOptions("openai", "en", {
         kind: "prompt",
-        text: "Terms: Freestyle.",
+        text: "Terms: Openstyle.",
       }),
     ).toEqual({
-      openai: { prompt: "Terms: Freestyle.", language: "en" },
+      openai: { prompt: "Terms: Openstyle.", language: "en" },
     });
   });
 
@@ -61,10 +61,10 @@ describe("aiSdkProviderOptions", () => {
     expect(
       aiSdkProviderOptions("groq", undefined, {
         kind: "prompt",
-        text: "Terms: Freestyle.",
+        text: "Terms: Openstyle.",
       }),
     ).toEqual({
-      groq: { prompt: "Terms: Freestyle." },
+      groq: { prompt: "Terms: Openstyle." },
     });
   });
 

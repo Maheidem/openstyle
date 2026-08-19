@@ -4,7 +4,7 @@ import {
   parseCleanupOverallTone,
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 import { getClient } from "./api";
 

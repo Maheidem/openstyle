@@ -1,4 +1,4 @@
-import { PluginRegistry } from "freestyle-voice";
+import { PluginRegistry } from "@openstyle/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Inject a registry whose `beforeOutput` plugin drives the pipeline control

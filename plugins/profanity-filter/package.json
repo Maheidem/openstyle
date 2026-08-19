@@ -43,7 +43,7 @@
     "unlink": "node ../../scripts/link-plugin.mjs --unlink"
   },
   "dependencies": {
-    "freestyle-voice": "workspace:*"
+    "@openstyle/sdk": "workspace:*"
   },
   "devDependencies": {
     "@tanstack/react-query": "^5.101.2",

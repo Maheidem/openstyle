@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import { getDb } from "../db.js";
 import { getMlxAsrModel, isAppleSiliconMac } from "./constants.js";
 import {
@@ -172,7 +172,7 @@ export async function transcribeWithMlxAsr(opts: {
 }): Promise<string> {
   await ensureMlxServerRunning(opts.modelId);
 
-  const dir = join(tmpdir(), "freestyle-mlx-asr");
+  const dir = join(tmpdir(), "openstyle-mlx-asr");
   await mkdir(dir, { recursive: true });
   const audioPath = join(dir, `${randomUUID()}.wav`);
   await writeFile(audioPath, opts.audio);
@@ -199,7 +199,7 @@ export async function transcribePcmWithMlxAsr(opts: {
 }): Promise<string> {
   await ensureMlxServerRunning(opts.modelId);
 
-  const dir = join(tmpdir(), "freestyle-mlx-asr");
+  const dir = join(tmpdir(), "openstyle-mlx-asr");
   await mkdir(dir, { recursive: true });
   const audioPath = join(dir, `${randomUUID()}.pcm`);
   await writeFile(audioPath, opts.pcm);

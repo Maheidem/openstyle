@@ -1,6 +1,6 @@
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import { app } from "electron";
 import type { VolumeDucker } from "./interfaces/volume-ducker.interface";
 import { LinuxVolumeDucker } from "./linux-audio-ducker";

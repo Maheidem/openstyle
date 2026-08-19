@@ -1,4 +1,4 @@
-import type { CleanupAppAssignment } from "@freestyle-voice/validations";
+import type { CleanupAppAssignment } from "@openstyle/validations";
 import appleMailIcon from "@renderer/assets/route-icons/apple-mail.svg";
 import discordIcon from "@renderer/assets/route-icons/discord.svg";
 import gmailIcon from "@renderer/assets/route-icons/gmail.svg";

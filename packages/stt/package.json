@@ -1,16 +1,16 @@
 {
-  "name": "@freestyle-voice/stt",
+  "name": "@openstyle/stt",
   "version": "0.0.1",
   "description": "Provider-agnostic speech-to-text transcription + AI cleanup engine. Bring your own Vercel AI SDK model and your own prompts.",
   "license": "MIT",
-  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/packages/stt#readme",
+  "homepage": "https://github.com/Maheidem/openstyle/tree/main/packages/stt#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "url": "git+https://github.com/Maheidem/openstyle.git",
     "directory": "packages/stt"
   },
   "keywords": [
-    "freestyle",
+    "openstyle",
     "voice",
     "dictation",
     "transcription",

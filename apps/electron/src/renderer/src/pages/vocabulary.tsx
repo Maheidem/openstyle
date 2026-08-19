@@ -1,8 +1,8 @@
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   type CreateVocabularyInput,
   createVocabularySchema,
-} from "@freestyle-voice/validations";
-import { zodResolver } from "@hookform/resolvers/zod";
+} from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";

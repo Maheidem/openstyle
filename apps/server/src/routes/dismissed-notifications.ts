@@ -1,4 +1,4 @@
-import { notificationKeySchema } from "@freestyle-voice/validations";
+import { notificationKeySchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 

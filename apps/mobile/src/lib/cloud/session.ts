@@ -10,7 +10,7 @@ import {
   CloudAuthError,
   CloudRequestError,
   CloudUsageError,
-} from "@freestyle-voice/utils/cloud";
+} from "@openstyle/utils/cloud";
 import { authClient } from "./auth-client";
 import { clearCachedOrgSlug } from "./org";
 

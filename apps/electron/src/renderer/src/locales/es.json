@@ -56,7 +56,7 @@
     },
     "tutorial": {
       "almostReady": "Casi listo — ",
-      "finish": "Empezar a usar Freestyle",
+      "finish": "Empezar a usar Openstyle",
       "chooseModel": "Elegir un modelo diferente",
       "usingModel": "Usando {{name}} · Elegir un modelo diferente"
     },
@@ -130,9 +130,9 @@
       "autoUpdate": "Actualizaciones automáticas",
       "autoUpdateDesc": "Descarga nuevas versiones en segundo plano en cuanto estén disponibles.",
       "launchAtStartup": "Iniciar al arranque",
-      "launchAtStartupDesc": "Inicia Freestyle automáticamente cuando inicias sesión en tu ordenador.",
+      "launchAtStartupDesc": "Inicia Openstyle automáticamente cuando inicias sesión en tu ordenador.",
       "showOnLaunch": "Mostrar panel al iniciar",
-      "showOnLaunchDesc": "Abre la ventana del panel cuando Freestyle se inicia."
+      "showOnLaunchDesc": "Abre la ventana del panel cuando Openstyle se inicia."
     },
     "recording": {
       "hotkey": "Atajo de teclado",
@@ -197,7 +197,7 @@
       "microphone": "Micrófono",
       "microphoneDesc": "Necesario para capturar audio para la transcripción.",
       "accessibility": "Accesibilidad",
-      "accessibilityDescMac": "Necesario para detectar el atajo global y pegar en otras apps. Activa Freestyle en Ajustes del Sistema › Privacidad y Seguridad › Accesibilidad.",
+      "accessibilityDescMac": "Necesario para detectar el atajo global y pegar en otras apps. Activa Openstyle en Ajustes del Sistema › Privacidad y Seguridad › Accesibilidad.",
       "accessibilityDescOther": "Necesario para detectar el atajo global y pegar en otras apps.",
       "autoGranted": "Concedido automáticamente"
     },
@@ -287,7 +287,7 @@
     "entrySingular": "Entrada",
     "entryPlural": "Entradas",
     "emptyTitle": "Aún no hay atajos.",
-    "emptyDesc": "Agrega una frase que dices seguido, como <example>mi dirección</example> — y Freestyle la expande en el texto.",
+    "emptyDesc": "Agrega una frase que dices seguido, como <example>mi dirección</example> — y Openstyle la expande en el texto.",
     "noResults": "Nada coincide con \"{{search}}\".",
     "noEntries": "Sin entradas — agrega una para comenzar.",
     "failedToSave": "Error al guardar la entrada."
@@ -320,14 +320,12 @@
   },
   "tone": {
     "title": "Tono",
-    "subtitle": "Cuánto limpia Freestyle y cómo suena en cada app.",
+    "subtitle": "Cuánto limpia Openstyle y cómo suena en cada app.",
     "loading": "Cargando tono…",
     "disabledBanner": {
       "title": "La limpieza está desactivada.",
       "desc": "Estos ajustes de intensidad y tono se aplican cuando activas la limpieza con IA en Modelos. Tus elecciones se guardan hasta entonces.",
-      "goToModels": "Ir a Modelos",
-      "useCloud": "Usar Freestyle Cloud",
-      "useCloudBusy": "Configurando…"
+      "goToModels": "Ir a Modelos"
     },
     "routesFrom": "Se enruta desde",
     "previewLabel": "Vista previa",
@@ -583,7 +581,7 @@
       "groups": {
         "everyday": "Escritura diaria",
         "work": "Trabajo y estudios",
-        "web": "Con la web — Freestyle Cloud"
+        "web": "Con la web"
       },
       "quotes": {
         "email": "Hazlo más cálido y la mitad de largo — sueno como un abogado.",

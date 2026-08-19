@@ -16,4 +16,4 @@
 
 - [ ] PR title follows [Conventional Commits](https://www.conventionalcommits.org/) (`type(scope): summary`)
 - [ ] Ran `pnpm biome check .` (lint + formatting)
-- [ ] Ran `pnpm --filter @freestyle-voice/electron typecheck:web` (if touching the app)
+- [ ] Ran `pnpm --filter @openstyle/electron typecheck:web` (if touching the app)

@@ -1,8 +1,8 @@
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import {
   REMIX_CLIENT_TOOLS,
   type RemixAgentRequest,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import {
   convertToModelMessages,
   type FlexibleSchema,

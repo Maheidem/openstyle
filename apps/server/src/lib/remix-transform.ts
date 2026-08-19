@@ -1,9 +1,6 @@
-import {
-  maxOutputTokensForCleanup,
-  stripWrappingQuotes,
-} from "@freestyle-voice/stt";
-import { createAppLogger } from "@freestyle-voice/utils";
-import { findRemixPreset } from "@freestyle-voice/validations";
+import { maxOutputTokensForCleanup, stripWrappingQuotes } from "@openstyle/stt";
+import { createAppLogger } from "@openstyle/utils";
+import { findRemixPreset } from "@openstyle/validations";
 import { generateText } from "ai";
 import { isCleanupModelSupported } from "../routes/models.js";
 import { buildRemixPrompt } from "./editor/remix-prompts.js";

@@ -51,15 +51,12 @@ import {
   disposeServerPlugins,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
-  startServer as startFreestyleServer,
+  startServer as startOpenstyleServer,
   stopMlxServer,
   stopWhisperServer,
-} from "@freestyle-voice/server";
-import { createAppLogger, enableFileLogging } from "@freestyle-voice/utils";
-import {
-  REMIX_CLIPBOARD_LIMIT,
-  serverUrlSchema,
-} from "@freestyle-voice/validations";
+} from "@openstyle/server";
+import { createAppLogger, enableFileLogging } from "@openstyle/utils";
+import { REMIX_CLIPBOARD_LIMIT, serverUrlSchema } from "@openstyle/validations";
 import {
   app,
   BrowserWindow,
@@ -100,6 +97,7 @@ import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
+import { migrateLegacyUserData } from "./migrate-user-data";
 import { getNativeBinaryPath } from "./native-binary";
 import {
   copySelectionFromFocusedApp,
@@ -138,8 +136,8 @@ const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
 
 // Persist all logs (this process + the in-process server) to a single rotating
 // file so users can share diagnostics. `app.getPath("logs")` resolves to
-// ~/Library/Logs/Freestyle (macOS), %APPDATA%\Freestyle\logs (Windows), or
-// ~/.config/Freestyle/logs (Linux). enableFileLogging() is order-independent:
+// ~/Library/Logs/Openstyle (macOS), %APPDATA%\Openstyle\logs (Windows), or
+// ~/.config/Openstyle/logs (Linux). enableFileLogging() is order-independent:
 // it also back-fills loggers that were created during module import.
 let logsDir = "";
 try {
@@ -149,6 +147,13 @@ try {
 } catch (err) {
   log.error(`Failed to enable file logging: ${String(err)}`);
 }
+
+// Renaming the product to Openstyle moved userData from <appData>/Openstyle to
+// <appData>/Openstyle, stranding every existing install's history. Copy the old
+// profile across before the first read of settings.json (readSettings) or of
+// FREESTYLE_DB_PATH (set from userData further down). Runs after the
+// FREESTYLE_USER_DATA override above so E2E profiles are never touched.
+migrateLegacyUserData();
 
 // Global crash handlers — without these, errors in the main process vanish
 // silently (no console in a packaged app). Log, then for a truly uncaught
@@ -162,8 +167,8 @@ process.on("uncaughtException", (err, origin) => {
   try {
     dialog.showMessageBoxSync({
       type: "error",
-      title: "Freestyle ran into a problem",
-      message: "Freestyle hit an unexpected error and needs to close.",
+      title: "Openstyle ran into a problem",
+      message: "Openstyle hit an unexpected error and needs to close.",
       detail:
         `${String(err?.message ?? err)}\n\n` + `Logs are saved at:\n${logsDir}`,
       buttons: ["Quit"],
@@ -298,7 +303,7 @@ function writeSettings(patch: Record<string, unknown>): void {
 }
 
 /**
- * The configured Freestyle server URL, if the user has set one. When present,
+ * The configured Openstyle server URL, if the user has set one. When present,
  * the app talks to that server (for server-owned data: settings, history,
  * plugins, transcription) instead of the locally-run one. Returns an empty
  * string when using the default local server.
@@ -342,7 +347,7 @@ function relayServerEvent(event: Parameters<typeof relayEvent>[1]): void {
 }
 
 /**
- * Base URL the app uses to reach the Freestyle server: the configured remote
+ * Base URL the app uses to reach the Openstyle server: the configured remote
  * URL, or the locally-run server on the resolved port. The DB lives behind the
  * server, so all server-owned data (settings, plugins) is read through it.
  */
@@ -389,7 +394,7 @@ let remixHotkeyPreference: string | undefined;
 let currentRemixAccel: string | null = null;
 /** False until server settings are read once (don't spawn on defaults). */
 let remixInitialized = false;
-/** Onboarding practice: allow Remix to target Freestyle's own window. */
+/** Onboarding practice: allow Remix to target Openstyle's own window. */
 let remixPracticeTarget = false;
 const audioPlaybackController = new AudioPlaybackController();
 
@@ -1034,7 +1039,7 @@ async function buildSettingsWindow(initialPath?: string): Promise<void> {
 
 /** Perform a host action requested by a plugin UI page over the bridge. */
 function handlePluginAction(
-  channel: keyof import("freestyle-voice").HostActions,
+  channel: keyof import("@openstyle/sdk").HostActions,
   payload: unknown,
 ): void {
   switch (channel) {
@@ -1046,7 +1051,7 @@ function handlePluginAction(
     case "toast": {
       const { message } = payload as { message: string };
       if (message && Notification.isSupported()) {
-        new Notification({ title: "Freestyle", body: message }).show();
+        new Notification({ title: "Openstyle", body: message }).show();
       }
       break;
     }
@@ -1194,9 +1199,12 @@ function execAsync(
   });
 }
 
-function getFreestyleAppExclusions(): Set<string> {
+function getOpenstyleAppExclusions(): Set<string> {
   return new Set(
-    [app.getName(), app.name, "Freestyle", "Electron"]
+    // "Openstyle" stays alongside "Openstyle": a user upgrading from the old
+    // build may still have the previously-named app installed or a stale window
+    // open, and it must keep being excluded from remix targeting.
+    [app.getName(), app.name, "Openstyle", "Freestyle", "Electron"]
       .map((name) => name?.trim().toLowerCase())
       .filter((name): name is string => Boolean(name)),
   );
@@ -1205,7 +1213,7 @@ function getFreestyleAppExclusions(): Set<string> {
 function normalizeOpenAppCandidates(
   rawLabels: readonly string[],
 ): OpenAppCandidate[] {
-  const exclusions = getFreestyleAppExclusions();
+  const exclusions = getOpenstyleAppExclusions();
   const deduped = new Map<string, OpenAppCandidate>();
 
   for (const rawLabel of rawLabels) {
@@ -1691,7 +1699,7 @@ async function isOnboardingActive(): Promise<boolean> {
 }
 
 /**
- * Probe `/api/health` at `baseUrl` and confirm it's actually a Freestyle server
+ * Probe `/api/health` at `baseUrl` and confirm it's actually a Openstyle server
  * (not some other service that happens to hold the port). Returns false on any
  * network error or non-matching identity.
  */
@@ -1774,7 +1782,7 @@ async function factoryReset(): Promise<void> {
     defaultId: 0,
     cancelId: 0,
     title: "Hard Reset (Dev)",
-    message: "Delete all Freestyle settings & data and restart?",
+    message: "Delete all Openstyle settings & data and restart?",
     detail:
       "Removes settings, API keys, history, and dictionary/vocabulary, then " +
       "relaunches into onboarding. Downloaded voice models are kept. macOS " +
@@ -1889,7 +1897,7 @@ function getCurrentMicrophonePermission(): string {
 
 function openAccessibilitySettings(): void {
   if (process.platform !== "darwin") return;
-  // Passing true adds Freestyle to the Accessibility list and shows the native
+  // Passing true adds Openstyle to the Accessibility list and shows the native
   // prompt; macOS still requires the user to enable the toggle themselves.
   systemPreferences.isTrustedAccessibilityClient(true);
   void shell.openExternal(ACCESSIBILITY_SETTINGS_URL);
@@ -1926,12 +1934,12 @@ function showRequiredPermissionDialog(
           ? "Accessibility permission is required for dictation and text insertion."
           : "Microphone access is required to record dictation.",
       detail: both
-        ? "Enable Freestyle in System Settings > Privacy & Security under Accessibility and Microphone."
+        ? "Enable Openstyle in System Settings > Privacy & Security under Accessibility and Microphone."
         : accessibility
-          ? "Enable Freestyle in System Settings > Privacy & Security > Accessibility."
+          ? "Enable Openstyle in System Settings > Privacy & Security > Accessibility."
           : process.platform === "darwin"
-            ? "Enable Freestyle in System Settings > Privacy & Security > Microphone."
-            : "Enable microphone access for Freestyle in Windows Settings.",
+            ? "Enable Openstyle in System Settings > Privacy & Security > Microphone."
+            : "Enable microphone access for Openstyle in Windows Settings.",
       buttons: both
         ? ["Open Accessibility Settings", "Open Microphone Settings", "Not Now"]
         : ["Open System Settings", "Cancel"],
@@ -1983,9 +1991,9 @@ function showMoveToApplicationsDialog(): void {
     type: "warning",
     title: "Move to Applications",
     message:
-      "Freestyle is running from a read-only location and can\u2019t update itself.",
+      "Openstyle is running from a read-only location and can\u2019t update itself.",
     detail:
-      "Please drag Freestyle into your Applications folder and relaunch it from there.",
+      "Please drag Openstyle into your Applications folder and relaunch it from there.",
     buttons: ["OK"],
   });
 }
@@ -2115,7 +2123,7 @@ function createTray(): void {
   trayImage.setTemplateImage(true);
 
   tray = new Tray(trayImage);
-  tray.setToolTip("Freestyle");
+  tray.setToolTip("Openstyle");
 
   if (process.platform === "linux") {
     // Linux desktop panels often don't fire the right-click event, so
@@ -2202,7 +2210,7 @@ function rebuildMenus(): void {
       role: "help",
       submenu: [
         {
-          label: "Freestyle Help",
+          label: "Openstyle Help",
           click: () => showSettingsWindow("/help"),
         },
       ],
@@ -2242,10 +2250,10 @@ app.whenReady().then(async () => {
   void recoverDuckedVolumeFromCrash();
 
   // Set app user model id for windows
-  electronApp.setAppUserModelId("com.freestyle.app");
+  electronApp.setAppUserModelId("com.openstyle.app");
 
-  // Override app.name so macOS menu shows "Freestyle" instead of the package name
-  app.setName("Freestyle");
+  // Override app.name so macOS menu shows "Openstyle" instead of the package name
+  app.setName("Openstyle");
 
   // Register the custom app:// protocol for production SPA support
   registerAppProtocol();
@@ -2407,7 +2415,7 @@ app.whenReady().then(async () => {
     return getServerToken();
   });
 
-  // IPC: reveal the diagnostic log folder so users can share freestyle.log.
+  // IPC: reveal the diagnostic log folder so users can share openstyle.log.
   ipcMain.handle("logs:open-folder", async () => {
     if (!logsDir) return false;
     try {
@@ -2583,7 +2591,7 @@ app.whenReady().then(async () => {
 
   // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
   const startServer = (port: number): void => {
-    startFreestyleServer({ port, host: "127.0.0.1" })
+    startOpenstyleServer({ port, host: "127.0.0.1" })
       .then(({ server, port: boundPort }) => {
         httpServer = server;
         serverPort = boundPort;
@@ -2599,7 +2607,7 @@ app.whenReady().then(async () => {
       });
   };
 
-  // Check if a Freestyle server is already running on the default port. The
+  // Check if a Openstyle server is already running on the default port. The
   // 1.5s bound matters: a normal cold start fast-fails with ECONNREFUSED, but
   // without a timeout a half-open socket on the port could hang window/tray
   // creation indefinitely.
@@ -2611,7 +2619,7 @@ app.whenReady().then(async () => {
   if (existingServer) {
     serverPort = DEFAULT_PORT;
     log.info(
-      `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
+      `Reusing existing Openstyle server on http://localhost:${DEFAULT_PORT}`,
     );
   } else {
     startServer(DEFAULT_PORT);
@@ -2730,7 +2738,7 @@ app.whenReady().then(async () => {
       ) {
         notifiedAvailableVersion = info.version;
         const note = new Notification({
-          title: "Freestyle Update Available",
+          title: "Openstyle Update Available",
           body: autoUpdater.autoDownload
             ? `Version ${info.version} is downloading…`
             : `Version ${info.version} is available. Open settings to download.`,
@@ -2782,7 +2790,7 @@ app.whenReady().then(async () => {
         showMoveToApplicationsDialog();
         settingsWindow?.webContents.send("updater:error", {
           message:
-            "Freestyle is running from a read-only location. Move it to Applications and relaunch.",
+            "Openstyle is running from a read-only location. Move it to Applications and relaunch.",
         });
       } else {
         settingsWindow?.webContents.send("updater:error", { message: msg });
@@ -2792,8 +2800,8 @@ app.whenReady().then(async () => {
     if (isRunningFromReadOnlyLocation()) {
       if (Notification.isSupported()) {
         const note = new Notification({
-          title: "Move Freestyle to Applications",
-          body: "Freestyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
+          title: "Move Openstyle to Applications",
+          body: "Openstyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
         });
         note.on("click", () => showSettingsWindow("/settings"));
         note.show();
@@ -3026,7 +3034,7 @@ app.whenReady().then(async () => {
       await wait(140);
     }
     const front = await getFrontmostContext();
-    const ours = getFreestyleAppExclusions();
+    const ours = getOpenstyleAppExclusions();
     if (!isRemixTargetAllowed(front.appName, ours, remixPracticeTarget)) {
       return { ok: false, reason: "document-not-in-front" };
     }
@@ -3281,7 +3289,7 @@ app.whenReady().then(async () => {
       await wait(140);
     }
     const front = await getFrontmostContext();
-    const ours = getFreestyleAppExclusions();
+    const ours = getOpenstyleAppExclusions();
     const inDocument = isRemixTargetAllowed(
       front.appName,
       ours,
@@ -3314,7 +3322,7 @@ app.whenReady().then(async () => {
     };
   });
 
-  // Onboarding practice: allow targeting Freestyle's own window.
+  // Onboarding practice: allow targeting Openstyle's own window.
   ipcMain.on("remix:set-practice-target", (event, active: unknown) => {
     if (event.sender !== settingsWindow?.webContents) return;
     remixPracticeTarget = active === true;
@@ -3558,8 +3566,8 @@ async function focusAnchorForInjection(): Promise<boolean> {
     await wait(140);
   }
   let front = await getFrontmostContext();
-  const ours = getFreestyleAppExclusions();
-  // Practice mode: don't osascript-activate Freestyle (we're already there).
+  const ours = getOpenstyleAppExclusions();
+  // Practice mode: don't osascript-activate Openstyle (we're already there).
   if (
     front.appName &&
     !isRemixTargetAllowed(front.appName, ours, remixPracticeTarget)
@@ -4198,7 +4206,7 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
   const body = `Hold-to-talk isn't available, so "${accel}" now toggles recording on and off.${fix}`;
   hotkeyLog.warn(body);
   if (Notification.isSupported()) {
-    new Notification({ title: "Freestyle is in toggle mode", body }).show();
+    new Notification({ title: "Openstyle is in toggle mode", body }).show();
   }
 }
 
@@ -4216,7 +4224,7 @@ function notifyPasteFailed(): void {
     if (isWaylandSession()) {
       const desktop = (process.env.XDG_CURRENT_DESKTOP ?? "").toLowerCase();
       hint = desktop.includes("gnome")
-        ? " If a permission dialog appears on the next paste, allow Freestyle to control input."
+        ? " If a permission dialog appears on the next paste, allow Openstyle to control input."
         : " If a permission dialog appears on the next paste, allow it — or install wtype (e.g. sudo apt install wtype).";
     } else {
       hint =
@@ -4225,7 +4233,7 @@ function notifyPasteFailed(): void {
   }
   if (Notification.isSupported()) {
     new Notification({
-      title: "Freestyle couldn't paste",
+      title: "Openstyle couldn't paste",
       body: `Your transcript is on the clipboard — press ${shortcut} to paste it.${hint}`,
     }).show();
   }
@@ -4331,7 +4339,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
           notifyHotkeyDegraded(accel, nativeError);
         } else {
           const errorPayload = {
-            message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Freestyle or pick a different combination in Settings.`,
+            message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Openstyle or pick a different combination in Settings.`,
           };
           mainWindow?.webContents.send("hotkey:error", errorPayload);
           settingsWindow?.webContents.send("hotkey:error", errorPayload);

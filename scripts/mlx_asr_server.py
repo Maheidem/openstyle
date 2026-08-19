@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MLX ASR worker for Freestyle (Apple Silicon).
+"""MLX ASR worker for Openstyle (Apple Silicon).
 
 The Node server keeps this process alive and sends newline-delimited JSON over
 stdin. Responses are newline-delimited JSON on stdout; logs go to stderr.
@@ -25,7 +25,7 @@ import numpy as np
 
 _state: dict[str, Any] = {"model": None, "model_id": None}
 
-# mlx-audio STT models use different keyword names for Freestyle word-boost / context.
+# mlx-audio STT models use different keyword names for Openstyle word-boost / context.
 # Pick the first alias present on ``generate`` — never send all.
 _CONTEXT_PARAM_ALIASES: tuple[str, ...] = (
     "system_prompt",  # Qwen3-ASR

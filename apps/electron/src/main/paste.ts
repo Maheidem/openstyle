@@ -6,7 +6,7 @@ import {
 } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import { app, clipboard } from "electron";
 import { isLinuxTerminalFocused } from "./linux-terminal-focus";
 import { getNativeBinaryPath } from "./native-binary";
@@ -629,7 +629,7 @@ async function doCopySelection(
   // managers repopulate an emptied clipboard, and comparing against the
   // previous text alone would miss a selection whose text happens to equal
   // what was already on it.
-  const sentinel = `freestyle-remix-${Date.now()}`;
+  const sentinel = `openstyle-remix-${Date.now()}`;
   clipboard.writeText(sentinel);
 
   let selection: string | null = null;

@@ -30,11 +30,11 @@ targets:
   # Craft auto-authenticates to ghcr.io via GITHUB_TOKEN/GITHUB_API_TOKEN.
   - name: docker
     id: versioned
-    source: ghcr.io/freestyle-voice/freestyle-server
-    target: ghcr.io/freestyle-voice/freestyle-server
+    source: ghcr.io/maheidem/openstyle-server
+    target: ghcr.io/maheidem/openstyle-server
   - name: docker
     id: latest
-    source: ghcr.io/freestyle-voice/freestyle-server
+    source: ghcr.io/maheidem/openstyle-server
     target:
-      image: ghcr.io/freestyle-voice/freestyle-server
+      image: ghcr.io/maheidem/openstyle-server
       format: "{{{image}}}:latest"

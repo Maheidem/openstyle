@@ -50,7 +50,7 @@ async function waitForDashboardWindow(
 }
 
 test.beforeAll(async () => {
-  const userDataDir = mkdtempSync(join(tmpdir(), "freestyle-e2e-"));
+  const userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-"));
   const dbPath = join(userDataDir, "freestyle.db");
 
   try {
@@ -130,9 +130,9 @@ test("main process is responsive", async () => {
   expect(isPackaged).toBe(false);
 });
 
-test("app name is Freestyle", async () => {
+test("app name is Openstyle", async () => {
   const appName = await app.evaluate(({ app }) => app.getName());
-  expect(appName).toBe("Freestyle");
+  expect(appName).toBe("Openstyle");
 });
 
 test("app version is defined", async () => {
@@ -258,7 +258,7 @@ test("onboarding flow reaches the draft and remix steps and completes", async ()
     .getByText("Remix needs an assistant model", { exact: false })
     .waitFor({ state: "visible", timeout: 15_000 });
 
-  await page.getByRole("button", { name: "Start using Freestyle" }).click();
+  await page.getByRole("button", { name: "Start using Openstyle" }).click();
   await page.waitForURL(/\/today/, { timeout: 15_000 });
 
   // Practice-target mode must be off once onboarding is done.

@@ -1,5 +1,5 @@
 import { statfs } from "node:fs/promises";
-import { createAppLogger } from "@freestyle-voice/utils";
+import { createAppLogger } from "@openstyle/utils";
 import {
   isLikelyProxyOrTlsFailure,
   ProxyInterceptionError,

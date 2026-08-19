@@ -19,19 +19,19 @@ describe("applyDictionaryReplacements", () => {
   it("replaces whole words and increments usage_count", () => {
     const db = testDb();
     db.prepare("INSERT INTO dictionary (key, value) VALUES (?, ?)").run(
-      "freestyle",
-      "Freestyle",
+      "openstyle",
+      "Openstyle",
     );
 
     const result = applyDictionaryReplacements(
-      "we use freestyle for dictation",
+      "we use openstyle for dictation",
       db,
     );
 
-    expect(result).toBe("we use Freestyle for dictation");
+    expect(result).toBe("we use Openstyle for dictation");
     const count = db
       .prepare("SELECT usage_count FROM dictionary WHERE key = ?")
-      .get("freestyle") as { usage_count: number };
+      .get("openstyle") as { usage_count: number };
     expect(count.usage_count).toBe(1);
   });
 

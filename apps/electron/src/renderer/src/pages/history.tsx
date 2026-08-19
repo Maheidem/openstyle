@@ -3,7 +3,7 @@ import {
   type HistoryFiltersSetting,
   KNOWN_NOTIFICATION_KEYS,
   parseHistoryFilters,
-} from "@freestyle-voice/validations";
+} from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";

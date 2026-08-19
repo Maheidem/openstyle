@@ -1,5 +1,5 @@
 import { useChat } from "@ai-sdk/react";
-import { REMIX_PRESETS, type RemixPreset } from "@freestyle-voice/validations";
+import { REMIX_PRESETS, type RemixPreset } from "@openstyle/validations";
 import { AgentActivity } from "@renderer/components/agents/agent-activity";
 import type { AgentActivityItem } from "@renderer/components/agents/agent-activity/types";
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
@@ -30,7 +30,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RemixSelectionPayload } from "../../../shared/remix";
-import { FreestyleMark } from "./freestyle-mark";
+import { OpenstyleMark } from "./openstyle-mark";
 import {
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
@@ -152,7 +152,7 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
     return (
       <div style={{ padding: 14, fontSize: 12.5, color: INK_DIM }}>
         <style>{REMIX_CHAT_CSS}</style>
-        Couldn't open Remix. Is the Freestyle server running?
+        Couldn't open Remix. Is the Openstyle server running?
       </div>
     );
   }
@@ -739,7 +739,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         >
           <div className="remix-chat-head">
             <span className="remix-chat-title">
-              <FreestyleMark size={15} />
+              <OpenstyleMark size={15} />
               <span className="remix-chat-wordmark">Remix</span>
             </span>
             <span className="remix-chat-actions">
@@ -984,7 +984,7 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
       }
     }
   }
-  return busy ? "Thinking…" : "Freestyle Remix";
+  return busy ? "Thinking…" : "Openstyle Remix";
 }
 
 const MessageRow = memo(function MessageRow({
