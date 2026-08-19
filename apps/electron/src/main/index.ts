@@ -25,7 +25,7 @@ if (process.platform === "darwin") {
 }
 
 // In development, load a local-only env file (cwd: apps/electron) so flags like
-// FREESTYLE_ANALYTICS_DEV=1 take effect without exporting them in the shell.
+// FREESTYLE_CLOUD_URL take effect without exporting them in the shell.
 // `process.env.NODE_ENV` is replaced at build time (see electron.vite.config.ts),
 // so this whole block is dead-code-eliminated from packaged/production builds.
 if (process.env.NODE_ENV !== "production") {
@@ -47,12 +47,10 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import {
   type AppType,
   activateManagedMlxRuntimeForAppVersion,
-  captureException,
   closeDb,
   disposeServerPlugins,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
-  shutdownPosthog,
   startServer as startFreestyleServer,
   stopMlxServer,
   stopWhisperServer,
@@ -153,19 +151,14 @@ try {
 }
 
 // Global crash handlers — without these, errors in the main process vanish
-// silently (no console in a packaged app). Log + report to PostHog, then for a
-// truly uncaught exception show a dialog and quit, since process state is
-// unknown after that point.
+// silently (no console in a packaged app). Log, then for a truly uncaught
+// exception show a dialog and quit, since process state is unknown after
+// that point.
 let isHandlingFatal = false;
 process.on("uncaughtException", (err, origin) => {
   if (isHandlingFatal) return;
   isHandlingFatal = true;
   log.error(`Uncaught exception (${origin}): ${err?.stack ?? String(err)}`);
-  try {
-    captureException(err, { source: "main", origin });
-  } catch {
-    // never let reporting block the crash path
-  }
   try {
     dialog.showMessageBoxSync({
       type: "error",
@@ -178,9 +171,7 @@ process.on("uncaughtException", (err, origin) => {
   } catch {
     // dialog may be unavailable before the app is ready
   }
-  void shutdownPosthog()
-    .catch(() => {})
-    .finally(() => app.exit(1));
+  app.exit(1);
 });
 
 process.on("unhandledRejection", (reason) => {
@@ -191,14 +182,6 @@ process.on("unhandledRejection", (reason) => {
         : String(reason)
     }`,
   );
-  try {
-    captureException(
-      reason instanceof Error ? reason : new Error(String(reason)),
-      { source: "main", kind: "unhandledRejection" },
-    );
-  } catch {
-    // best-effort
-  }
 });
 
 const DEFAULT_PORT = 4649;
@@ -2615,10 +2598,6 @@ app.whenReady().then(async () => {
   // Set database path for the server before any API calls
   process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
 
-  process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
-  // Expose the app version to the in-process server so PostHog events
-  // (including autocaptured exceptions) carry the release they came from.
-  process.env.FREESTYLE_APP_VERSION = app.getVersion();
   if (!is.dev) {
     process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }

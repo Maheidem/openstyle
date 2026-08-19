@@ -62,8 +62,9 @@ function PagePad(): React.JSX.Element {
   );
 }
 
-// Analytics is captured server-side (see apps/server/src/lib/posthog.ts);
-// the renderer ships no analytics SDK.
+// Funnel uncaught renderer errors into the server's diagnostic log (see
+// report-error.ts) so crashes are captured without a separate error-reporting
+// SDK.
 installGlobalErrorHandlers();
 
 // Resolve the server base, then warm the auth-independent content queries. The

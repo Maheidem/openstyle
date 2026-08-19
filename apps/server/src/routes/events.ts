@@ -8,8 +8,7 @@ import { plugins } from "../lib/plugins/index.js";
  * Relay pipeline events that originate in the Electron main process
  * (recording start/commit/cancel, output delivered, output-stage errors) into
  * the server's single `event` hook sink, so every plugin observer sees every
- * event exactly once regardless of which process it happened in. Mirrors the
- * existing `POST /api/telemetry` relay pattern.
+ * event exactly once regardless of which process it happened in.
  *
  * The schema is a discriminated union matching the SDK's `FreestyleEvent`, so
  * the relayed payload is validated (and correctly typed) rather than cast.

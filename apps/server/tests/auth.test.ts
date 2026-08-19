@@ -14,7 +14,7 @@ afterEach(() => {
 
 describe("Bearer auth", () => {
   it("is disabled by default (no token configured)", async () => {
-    const res = await app.request("/api/device-id");
+    const res = await app.request("/api/settings");
     expect(res.status).toBe(200);
   });
 
@@ -26,13 +26,13 @@ describe("Bearer auth", () => {
 
   it("rejects requests without a token", async () => {
     setAuthToken(TOKEN);
-    const res = await app.request("/api/device-id");
+    const res = await app.request("/api/settings");
     expect(res.status).toBe(401);
   });
 
   it("rejects requests with the wrong token", async () => {
     setAuthToken(TOKEN);
-    const res = await app.request("/api/device-id", {
+    const res = await app.request("/api/settings", {
       headers: { Authorization: "Bearer wrong" },
     });
     expect(res.status).toBe(401);
@@ -40,7 +40,7 @@ describe("Bearer auth", () => {
 
   it("accepts requests with the correct token", async () => {
     setAuthToken(TOKEN);
-    const res = await app.request("/api/device-id", {
+    const res = await app.request("/api/settings", {
       headers: { Authorization: `Bearer ${TOKEN}` },
     });
     expect(res.status).toBe(200);

@@ -10,11 +10,9 @@ import { buildRemixPrompt, buildRemixSystem } from "./editor/remix-prompts.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
-  isTransientCloudError,
   postProcessWithFreestyleCloud,
 } from "./freestyle-cloud.js";
 import { getLlmProvider } from "./llm/registry.js";
-import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 import { getSessionToken } from "./sessions.js";
 
@@ -87,7 +85,6 @@ export async function runRemixTransform(
     );
   }
 
-  const started = Date.now();
   let text: string;
   let usage: RemixTransformResult["usage"];
 
@@ -161,25 +158,10 @@ export async function runRemixTransform(
     throw new RemixTransformError("The model returned nothing", "failed");
   }
 
-  capture("remix completed", {
-    remix_id: options.remixId ?? "voice",
-    spoken: !options.remixId,
-    provider: llm.provider,
-    model: llm.model_id,
-    duration_ms: Date.now() - started,
-    input_chars: options.text.length,
-    output_chars: text.length,
-  });
-
   return { text, instruction, usage };
 }
 
 /** Shared failure bookkeeping for the route's catch-all. */
-export function reportRemixTransformFailure(
-  err: unknown,
-  remixId?: string,
-): void {
-  if (!isTransientCloudError(err)) captureException(err);
-  capture("remix failed", { remix_id: remixId ?? "voice" });
+export function reportRemixTransformFailure(err: unknown): void {
   log.error(`Remix failed: ${err}`);
 }

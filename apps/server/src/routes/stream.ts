@@ -28,7 +28,6 @@ import {
   prewarmPostProcess,
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
-import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
@@ -445,8 +444,8 @@ const stream = new Hono().get(
               );
               // An afterCleanup plugin may consume/abort here (the cloud path
               // still runs that local hook); blank the delivered text so a
-              // suppressed dictation isn't pasted, and skip telemetry/history
-              // for it — matching the batch route.
+              // suppressed dictation isn't pasted, and skip history for it —
+              // matching the batch route.
               const suppressed = api.control.state !== "running";
               const finalText = suppressed ? "" : rewritten;
 
@@ -463,31 +462,6 @@ const stream = new Hono().get(
                 log.info(
                   `[pipeline] cloud_stream stt_after_commit=${sttAfterCommitMs}ms session=${durationMs}ms | ${voice.provider}/${voiceDefaults!.model_id}`,
                 );
-              }
-              if (!suppressed) {
-                const streamCtx = effectiveAppContext();
-                const streamParsed = parseAppContext(streamCtx);
-                const { destination: streamDest } = getRewritePromptContext(
-                  streamCtx,
-                  getCleanupAppAssignments(),
-                );
-                capture("streaming transcription completed", {
-                  provider: voiceDefaults!.provider,
-                  provider_category: voiceProviderCategory(
-                    voiceDefaults!.provider,
-                  ),
-                  model: voiceDefaults!.model_id,
-                  duration_ms: durationMs,
-                  audio_duration_ms: audioDurationMs,
-                  llm_provider: llmProvider,
-                  llm_model: llmModel,
-                  input_tokens: 0,
-                  output_tokens: 0,
-                  cost_usd: 0,
-                  app_name: streamParsed?.appName,
-                  destination: streamDest,
-                  has_app_context: !!streamCtx,
-                });
               }
               if (!closed) {
                 ws.send(JSON.stringify({ type: "final", text: finalText }));
@@ -585,29 +559,9 @@ const stream = new Hono().get(
                 }
                 // A beforeCleanup/afterCleanup plugin may have consumed/aborted
                 // inside postProcess; blank the delivered text so a suppressed
-                // dictation isn't pasted, and skip telemetry/history for it —
-                // matching the batch route, which returns before both.
+                // dictation isn't pasted, and skip history for it — matching
+                // the batch route, which returns before saving it.
                 const suppressed = api.control.state !== "running";
-                if (!suppressed) {
-                  const ppCtx = effectiveAppContext();
-                  capture("streaming transcription completed", {
-                    provider: voiceDefaults!.provider,
-                    provider_category: voiceProviderCategory(
-                      voiceDefaults!.provider,
-                    ),
-                    model: voiceDefaults!.model_id,
-                    duration_ms: totalDurationMs,
-                    audio_duration_ms: audioDurationMs,
-                    llm_provider: pp.llmProvider,
-                    llm_model: pp.llmModel,
-                    input_tokens: pp.inputTokens,
-                    output_tokens: pp.outputTokens,
-                    cost_usd: pp.costUsd,
-                    app_name: parseAppContext(ppCtx)?.appName,
-                    destination: pp.destination,
-                    has_app_context: !!ppCtx,
-                  });
-                }
                 const deliverText = suppressed ? "" : pp.cleaned;
                 if (!closed) {
                   ws.send(JSON.stringify({ type: "final", text: deliverText }));
@@ -658,7 +612,6 @@ const stream = new Hono().get(
                   }
                   return;
                 }
-                captureException(err);
                 if (!closed) {
                   ws.send(JSON.stringify({ type: "final", text: rawText }));
                 }

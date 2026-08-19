@@ -11,7 +11,6 @@ import { WebSocketServer } from "ws";
 import { authMiddleware, setAuthToken } from "./lib/auth.js";
 import { refreshCleanupPromptConfig } from "./lib/editor/prompt-config.js";
 import { formatError } from "./lib/format-error.js";
-import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import {
   startHistoryRetentionSweep,
   stopHistoryRetentionSweep,
@@ -28,7 +27,6 @@ import {
   initServerPlugins,
   plugins,
 } from "./lib/plugins/index.js";
-import { captureException, shutdownPosthog } from "./lib/posthog.js";
 import { pullCloudPreferences } from "./lib/preferences-sync.js";
 import {
   startSessionKeepAlive,
@@ -68,7 +66,6 @@ async function shutdownServer(): Promise<void> {
   stopHistoryRetentionSweep();
   stopOutboxDrain();
   await disposeServerPlugins().catch(() => {});
-  await shutdownPosthog();
 }
 
 process.on("SIGINT", () => shutdownServer().finally(() => process.exit(0)));
@@ -148,7 +145,6 @@ function createApp() {
           httpLog.error(
             `${c.req.method} ${c.req.path} -> ${err.status}: ${formatError(err)}`,
           );
-          captureException(err);
         }
         const res = err.getResponse();
         // Preserve CORS so the cross-origin renderer can read auth errors.
@@ -158,17 +154,10 @@ function createApp() {
       }
       // Always log the failure locally so it's visible in dev and captured in
       // the diagnostics log file — otherwise a 500 only shows as a status code
-      // in the access log with no detail. `captureException` (below) is gated,
-      // but local logging never is.
+      // in the access log with no detail.
       httpLog.error(
         `${c.req.method} ${c.req.path} -> 500: ${formatError(err)}`,
       );
-      // Transient network faults (e.g. `fetch failed` / ECONNRESET when calling
-      // Freestyle Cloud) and upstream 5xx responses aren't app defects. Every
-      // route already guards its own reporting; guard here too so anything that
-      // escapes to this catch-all still gets a graceful 500 without polluting
-      // error tracking with outages outside our control.
-      if (!isTransientCloudError(err)) captureException(err);
       return c.json({ error: "Internal server error" }, 500);
     })
     .get("/", (c) => c.text("Freestyle API"))
@@ -284,7 +273,6 @@ export {
   resolvePackage,
   uninstallPackage,
 } from "./lib/plugins/installer.js";
-export { captureException, shutdownPosthog } from "./lib/posthog.js";
 export { stopServer as stopWhisperServer } from "./lib/whisper/server.js";
 export {
   activateManagedMlxRuntimeForAppVersion,

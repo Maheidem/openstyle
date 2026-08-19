@@ -59,7 +59,7 @@ const remixRoute = new Hono().post(
       if (err instanceof FreestyleCloudUsageError) {
         return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
       }
-      reportRemixTransformFailure(err, body.remixId);
+      reportRemixTransformFailure(err);
       if (err instanceof RemixTransformError) {
         // A setup problem is the user's to fix and says so in its message; a
         // failure is ours. Both are shown verbatim in the pill's card.

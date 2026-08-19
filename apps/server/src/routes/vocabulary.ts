@@ -9,7 +9,6 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { capture } from "../lib/posthog.js";
 import { pushVocabularyToCloud } from "../lib/preferences-sync.js";
 import {
   deleteVocabularyByIds,
@@ -109,8 +108,6 @@ const vocabulary = new Hono()
         .prepare(`INSERT INTO vocabulary (term, notes) VALUES (?, ?)`)
         .run(term, notes);
 
-      capture("vocabulary term added", { has_notes: notes !== null });
-
       // Mirror the change up to the cloud (debounced, fire-and-forget).
       pushVocabularyToCloud();
 
@@ -163,7 +160,6 @@ const vocabulary = new Hono()
     const db = getDb();
     const id = Number(c.req.param("id"));
     db.prepare("DELETE FROM vocabulary WHERE id = ?").run(id);
-    capture("vocabulary term deleted", {});
 
     // Mirror the delete up to the cloud (debounced, fire-and-forget). The cloud
     // replaces its term array wholesale, so the delete propagates and won't be
@@ -174,8 +170,6 @@ const vocabulary = new Hono()
   })
   .post("/import", zValidator("json", importVocabularySchema), (c) => {
     const { imported, skipped } = importVocabularyEntries(c.req.valid("json"));
-
-    capture("vocabulary terms imported", { imported, skipped });
 
     // Mirror the imported terms up to the cloud (debounced, fire-and-forget).
     if (imported > 0) pushVocabularyToCloud();
@@ -189,7 +183,6 @@ const vocabulary = new Hono()
       case "bulk-delete": {
         const deleted = deleteVocabularyByIds(body.ids);
         if (deleted > 0) {
-          capture("vocabulary terms deleted", { count: deleted });
           // One cloud push for the whole batch — the cloud replaces its term
           // array wholesale, so every delete propagates in a single PUT.
           pushVocabularyToCloud();
@@ -199,7 +192,6 @@ const vocabulary = new Hono()
 
       case "import": {
         const { imported, skipped } = importVocabularyEntries(body.entries);
-        capture("vocabulary terms imported", { imported, skipped });
         if (imported > 0) pushVocabularyToCloud();
         return c.json({ imported, skipped });
       }

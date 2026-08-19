@@ -1,7 +1,6 @@
 import { serverStartSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
@@ -77,8 +76,6 @@ const whisper = new Hono()
 
     downloadModel(modelId).catch(() => {});
 
-    capture("whisper model download started", { model_id: modelId });
-
     return c.json({ ok: true, message: "Download started" });
   })
   .post("/models/:model/cancel", (c) => {
@@ -89,10 +86,6 @@ const whisper = new Hono()
   .delete("/models/:model", async (c) => {
     const modelId = c.req.param("model");
     const deleted = await deleteModel(modelId);
-
-    if (deleted) {
-      capture("whisper model deleted", { model_id: modelId });
-    }
 
     return c.json({ ok: deleted });
   })

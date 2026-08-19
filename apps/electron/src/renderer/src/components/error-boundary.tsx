@@ -12,8 +12,8 @@ interface ErrorBoundaryState {
 
 /**
  * App-level React error boundary. Catches render/lifecycle errors anywhere in
- * the tree, reports them to the diagnostic log + PostHog via {@link reportError},
- * and shows a calm fallback with a reload action instead of a white screen.
+ * the tree, reports them to the diagnostic log via {@link reportError}, and
+ * shows a calm fallback with a reload action instead of a white screen.
  */
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,

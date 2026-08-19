@@ -24,7 +24,6 @@ import {
   updateCloudUserName,
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
-import { capture, identifyCloudUser } from "../lib/posthog.js";
 import {
   pullCloudPreferences,
   pullCloudPreferencesWithRetry,
@@ -79,7 +78,6 @@ const auth = new Hono()
         host: freestyleCloudUrl(),
       });
       applyFreestyleCloudDefaults();
-      identifyCloudUser(user);
       // If a DIFFERENT account previously synced on this device, scrub its
       // synced preferences + vocabulary first so this account seeds cleanly and
       // the backfill can't push the prior account's leftovers up (cross-account
@@ -91,10 +89,6 @@ const auth = new Hono()
       // Flush any preference syncs queued while signed out / offline now that a
       // valid session exists. Fire-and-forget.
       void drainOutbox();
-      capture("freestyle_default_applied_on_signin", {
-        voice: true,
-        cleanup: true,
-      });
       return c.json({ authenticated: true, user });
     } catch (err) {
       if (err instanceof DeviceFlowError) {
@@ -162,7 +156,6 @@ const auth = new Hono()
       user,
       host: session.host,
     });
-    identifyCloudUser(user);
     return c.json({ user });
   })
   // Profile fields (industry / company) + read-only detected geo, scoped to the

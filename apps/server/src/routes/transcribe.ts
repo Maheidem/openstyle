@@ -8,7 +8,6 @@ import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
   FreestyleCloudUsageError,
-  isTransientCloudError,
   prewarmFreestyleCloudConnection,
   transcribeWithFreestyleCloud,
 } from "../lib/freestyle-cloud.js";
@@ -35,7 +34,6 @@ import {
   prewarmPostProcess,
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
-import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
@@ -106,12 +104,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const appContext = resolveAppContextForCleanup(
     decodeAppContext(c.req.header("x-app-context")),
   );
-  // Parse app name and resolve tone-routing destination once for analytics.
   const parsedCtx = parseAppContext(appContext);
-  const { destination: routedDestination } = getRewritePromptContext(
-    appContext,
-    getCleanupAppAssignments(),
-  );
 
   let audioDurationMs = 0;
   if (audioData.length > 44) {
@@ -348,23 +341,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           log.error(`Failed to save history: ${err}`);
         }
 
-        capture("transcription completed", {
-          provider: voiceProvider,
-          provider_category: routeVoiceProviderCategory(voiceProvider),
-          model: voiceModel,
-          duration_ms: durationMs,
-          audio_duration_ms: audioDurationMs,
-          post_processed: true,
-          llm_provider: FREESTYLE_CLOUD_PROVIDER_ID,
-          llm_model: defaults.llm?.model_id,
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          cost_usd: 0,
-          app_name: parsedCtx?.appName,
-          destination: routedDestination,
-          has_app_context: !!appContext,
-        });
-
         return c.json({
           raw: rawText,
           cleaned,
@@ -400,11 +376,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       log.error(
         `cloud transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
       );
-      // Transient network faults / upstream 5xx aren't app defects — surface
-      // them to the user but don't report them to error tracking.
-      if (!isTransientCloudError(err)) {
-        captureException(err, { provider: voiceProvider, model: voiceModel });
-      }
       return c.json(
         {
           error: "Transcription failed",
@@ -463,19 +434,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       log.error(
         `transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
       );
-      if (!isTransientCloudError(err)) {
-        captureException(err, { provider: voiceProvider, model: voiceModel });
-      }
       void plugins().emit({
         type: FreestyleEventType.PipelineError,
         stage: PipelineStage.Transcribe,
         message: err instanceof Error ? err.message : String(err),
-      });
-      capture("transcription failed", {
-        provider: voiceProvider,
-        provider_category: routeVoiceProviderCategory(voiceProvider),
-        model: voiceModel,
-        error: err instanceof Error ? err.message : String(err),
       });
       return c.json(
         {
@@ -514,18 +476,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       log.error(`Failed to save history: ${err}`);
     }
 
-    capture("transcription completed", {
-      provider: voiceProvider,
-      provider_category: routeVoiceProviderCategory(voiceProvider),
-      model: voiceModel,
-      duration_ms: durationMs,
-      audio_duration_ms: audioDurationMs,
-      post_processed: false,
-      app_name: parsedCtx?.appName,
-      destination: routedDestination,
-      has_app_context: !!appContext,
-    });
-
     return c.json({
       raw: rawText,
       cleaned: rawText,
@@ -559,7 +509,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   // STT and cleanup ran on separate models, so the user-perceived latency is
   // the full request → cleaned text. `durationMs` above is STT-only; recompute
-  // now so history, analytics, and the response all report the same total.
+  // now so history and the response both report the same total.
   const totalDurationMs = Date.now() - start;
 
   try {
@@ -581,23 +531,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   log.debug(`total ${totalDurationMs}ms`);
-
-  capture("transcription completed", {
-    provider: voiceProvider,
-    provider_category: routeVoiceProviderCategory(voiceProvider),
-    model: voiceModel,
-    duration_ms: totalDurationMs,
-    audio_duration_ms: audioDurationMs,
-    post_processed: true,
-    llm_provider: pp.llmProvider,
-    llm_model: pp.llmModel,
-    input_tokens: pp.inputTokens,
-    output_tokens: pp.outputTokens,
-    cost_usd: pp.costUsd,
-    app_name: parsedCtx?.appName,
-    destination: pp.destination,
-    has_app_context: !!appContext,
-  });
 
   // `beforeCleanup`/`afterCleanup` run inside postProcess, after the
   // raw-stage guard above — a consume/abort there still needs to suppress

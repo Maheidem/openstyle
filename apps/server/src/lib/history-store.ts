@@ -1,7 +1,6 @@
 import { parseRetentionDays } from "@freestyle-voice/validations";
 import { getDb, readSetting } from "./db.js";
 import { countFixes } from "./fixes.js";
-import { capture, captureException } from "./posthog.js";
 import { purgeExpiredRemixData } from "./remix-store.js";
 
 export const HISTORY_PAUSED_SETTING_KEY = "history_paused";
@@ -44,14 +43,7 @@ export function purgeExpiredHistory(): number {
     )
     .run(`-${days} days`);
 
-  const deleted = Number(result.changes);
-  if (deleted > 0) {
-    capture("history expired entries purged", {
-      deleted_count: deleted,
-      retention_days: days,
-    });
-  }
-  return deleted;
+  return Number(result.changes);
 }
 
 let retentionSweepTimer: NodeJS.Timeout | null = null;
@@ -64,8 +56,8 @@ export function startHistoryRetentionSweep(): void {
       purgeExpiredHistory();
       const days = getHistoryRetentionDays();
       if (days !== null) purgeExpiredRemixData(days);
-    } catch (err) {
-      captureException(err);
+    } catch {
+      // Never let a sweep failure kill the periodic timer.
     }
   };
 

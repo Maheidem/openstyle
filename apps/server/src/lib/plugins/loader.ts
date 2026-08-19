@@ -11,7 +11,6 @@ import {
   type PluginRegistry,
 } from "freestyle-voice";
 import { readSetting } from "../db.js";
-import { captureException } from "../posthog.js";
 import { buildPluginContext } from "./context.js";
 
 const log = createAppLogger("plugins");
@@ -50,5 +49,4 @@ function reportHookFailure({ plugin, hook, error }: HookFailure): void {
       error instanceof Error ? error.message : String(error)
     }`,
   );
-  captureException(error, { plugin, hook });
 }

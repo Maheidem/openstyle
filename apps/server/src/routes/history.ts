@@ -2,7 +2,6 @@ import { historyQuerySchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { capture } from "../lib/posthog.js";
 
 interface HistoryRow {
   id: number;
@@ -216,11 +215,7 @@ const history = new Hono()
   })
   .delete("/", (c) => {
     const db = getDb();
-    const countRow = db
-      .prepare("SELECT COUNT(*) as count FROM transcription_history")
-      .get() as { count: number };
     db.exec("DELETE FROM transcription_history");
-    capture("history cleared", { deleted_count: countRow.count });
     return c.json({ ok: true });
   });
 

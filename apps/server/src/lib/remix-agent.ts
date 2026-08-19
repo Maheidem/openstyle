@@ -14,7 +14,6 @@ import {
 } from "ai";
 import { buildRemixAgentSystem } from "./editor/remix-prompts.js";
 import { getLlmProvider } from "./llm/registry.js";
-import { capture } from "./posthog.js";
 import { createChatModel } from "./providers.js";
 
 const log = createAppLogger("remix-agent");
@@ -61,7 +60,6 @@ export async function runRemixAgentLocally(
   const providerOptions = getLlmProvider(llm.provider)?.providerOptions?.(
     llm.model_id,
   );
-  const started = Date.now();
 
   const result = streamText({
     model: await createChatModel(llm.provider, llm.model_id),
@@ -73,15 +71,6 @@ export async function runRemixAgentLocally(
     ...(providerOptions ? { providerOptions } : {}),
     onError: ({ error }) => {
       log.error(`Remix agent (BYOK) stream error: ${error}`);
-    },
-    onFinish: ({ usage }) => {
-      capture("remix agent completed", {
-        provider: llm.provider,
-        model: llm.model_id,
-        duration_ms: Date.now() - started,
-        input_tokens: usage.inputTokens,
-        output_tokens: usage.outputTokens,
-      });
     },
   });
 

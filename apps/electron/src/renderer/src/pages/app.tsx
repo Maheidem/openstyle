@@ -4,7 +4,6 @@ import {
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
 } from "@renderer/components/remix-chat-surface";
-import { capture } from "@renderer/lib/analytics";
 import {
   apiFetch,
   getApiBase,
@@ -812,21 +811,6 @@ export default function AppPage(): React.JSX.Element {
         console.error("[pill] paste/copy failed:", err);
       }
       window.api.sendTranscriptionDone();
-
-      // North-star usage metric: fires exactly once per completed dictation,
-      // at the single point where single-chunk and multi-chunk paths converge
-      // and text is delivered to the user.
-      const providerCategory =
-        nonEmpty.find((r) => r.providerCategory)?.providerCategory ??
-        providerCategoryRef.current ??
-        undefined;
-      capture("dictation completed", {
-        segments: nonEmpty.length,
-        multi_segment: nonEmpty.length > 1,
-        output_mode: _outputMode,
-        char_count: finalText.length,
-        provider_category: providerCategory,
-      });
 
       if (
         !recordingActiveRef.current &&
@@ -2075,10 +2059,6 @@ export default function AppPage(): React.JSX.Element {
       const session = remixRef.current;
       if (!session) return;
       remixRunningRef.current = true;
-      capture("remix_message_sent", {
-        source: "preset",
-        preset: options.remixId ?? null,
-      });
       patchRemix({ phase: "running", label: options.label });
       startBarAnimation("speaking");
 

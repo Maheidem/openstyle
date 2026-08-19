@@ -5,7 +5,6 @@ import type { AgentActivityItem } from "@renderer/components/agents/agent-activi
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
-import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import {
   DefaultChatTransport,
@@ -464,7 +463,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     sentInitialRef.current = true;
     lastInstructionRef.current = instruction;
     void sendMessage({ text: instruction });
-    capture("remix_message_sent", { source: "dictated" });
   }, [props.initialInstruction, sendMessage]);
 
   // Seed from restored thread so reloaded history never recounts tools.
@@ -486,7 +484,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         if (!isToolOrDynamicToolUIPart(part)) continue;
         if (seen.has(part.toolCallId)) continue;
         seen.add(part.toolCallId);
-        capture("remix_tool_used", { tool: getToolOrDynamicToolName(part) });
       }
     }
   }, [messages, thread.messages]);
@@ -634,14 +631,12 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     const el = inputRef.current;
     if (el) el.style.height = "auto";
     void sendText(text);
-    capture("remix_message_sent", { source: "typed" });
   }, [busy, input, sendText]);
 
   const presetRunningRef = useRef(false);
   const runPresetTransform = useCallback(async (preset: RemixPreset) => {
     const selection = contextRef.current.text;
     if (!selection) return;
-    capture("remix_message_sent", { source: "preset", preset: preset.id });
     const id = ++actionSeqRef.current;
     setActions((rows) => [
       ...rows,

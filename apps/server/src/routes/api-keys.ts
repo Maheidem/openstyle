@@ -2,7 +2,6 @@ import { apiKeySchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { capture } from "../lib/posthog.js";
 import { validateApiKey } from "../lib/validate-key.js";
 
 const apiKeys = new Hono()
@@ -56,8 +55,6 @@ const apiKeys = new Hono()
        ON CONFLICT(provider) DO UPDATE SET key = excluded.key, created_at = datetime('now'), status = 'valid'`,
     ).run(body.provider, body.key);
 
-    capture("api key configured", { provider: body.provider });
-
     return c.json({ provider: body.provider, configured: true });
   })
   .post("/validate", zValidator("json", apiKeySchema), async (c) => {
@@ -95,8 +92,6 @@ const apiKeys = new Hono()
     const db = getDb();
     const provider = c.req.param("provider");
     db.prepare("DELETE FROM api_keys WHERE provider = ?").run(provider);
-
-    capture("api key deleted", { provider });
 
     return c.json({ ok: true });
   });

@@ -37,7 +37,6 @@ import {
   keyDisplayLabel,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
-import { capture } from "@renderer/lib/analytics";
 import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { defaultLanguage } from "@renderer/lib/languages";
@@ -53,7 +52,7 @@ import {
   type WhisperStatus,
 } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
-import { IS_LINUX, IS_MAC, IS_WINDOWS, PLATFORM } from "@renderer/lib/platform";
+import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
@@ -180,16 +179,9 @@ export default function OnboardingPage(): React.JSX.Element {
   // The practice email body, lifted so it survives the draft→remix step
   // transition (and Back).
   const [draftBody, setDraftBody] = useState("");
-  const draftDictated = useRef(false);
-  const onDraftDictated = useCallback(() => {
-    if (draftDictated.current) return;
-    draftDictated.current = true;
-    capture("onboarding_draft_dictated");
-  }, []);
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
-    capture("onboarding_hotkey_changed", { hotkey: accelerator });
     getClient()
       .api.settings[":key"].$put({
         param: { key: SETTINGS_KEYS.hotkey },
@@ -202,7 +194,6 @@ export default function OnboardingPage(): React.JSX.Element {
   // listener reload has to wait for the write to land.
   const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
     setRemixHotkey(accelerator);
-    capture("onboarding_remix_hotkey_changed", { hotkey: accelerator });
     getClient()
       .api.settings[":key"].$put({
         param: { key: SETTINGS_KEYS.remixHotkey },
@@ -238,26 +229,6 @@ export default function OnboardingPage(): React.JSX.Element {
     const remixValue = settingsData?.[SETTINGS_KEYS.remixHotkey];
     if (remixValue) setRemixHotkey(remixValue);
   }, [settingsData]);
-
-  // Analytics: entry + per-step views (drives the drop-off funnel).
-  const started = useRef(false);
-  useEffect(() => {
-    if (!started.current) {
-      started.current = true;
-      capture("onboarding_started", {
-        platform: PLATFORM,
-      });
-    }
-    capture("onboarding_step_viewed", { step });
-  }, [step]);
-
-  // Analytics: fire once each permission flips to granted.
-  useEffect(() => {
-    if (micStatus === "granted") capture("onboarding_mic_granted");
-  }, [micStatus]);
-  useEffect(() => {
-    if (accessibilityStatus) capture("onboarding_accessibility_granted");
-  }, [accessibilityStatus]);
 
   // Load models + keys
   useEffect(() => {
@@ -318,21 +289,16 @@ export default function OnboardingPage(): React.JSX.Element {
   const mlxResolved = !IS_MAC || mlxQuery.isFetched;
 
   const requestMic = useCallback(async () => {
-    capture("onboarding_mic_permission_clicked", { action: "allow" });
     const status = await requestMicAccess();
     if (status) setMicStatus(status);
   }, []);
 
   const recheckLinuxSetup = useCallback(async () => {
-    capture("onboarding_linux_setup_rechecked");
     const setup = await window.api?.checkLinuxSetup();
     if (setup) setLinuxSetup(setup);
   }, []);
 
   const openMicSettings = useCallback(() => {
-    capture("onboarding_mic_permission_clicked", {
-      action: "open_settings",
-    });
     window.api?.openMicSettings();
     const interval = setInterval(async () => {
       const mic = await window.api?.checkMicPermission();
@@ -345,7 +311,6 @@ export default function OnboardingPage(): React.JSX.Element {
   }, []);
 
   const openAccessibility = useCallback(() => {
-    capture("onboarding_accessibility_clicked");
     window.api?.openAccessibilitySettings();
     const interval = setInterval(async () => {
       const ok = await window.api?.checkAccessibilityPermission();
@@ -371,12 +336,6 @@ export default function OnboardingPage(): React.JSX.Element {
         },
       })
       .catch(() => {});
-    capture("onboarding_model_completed", {
-      model_id: model.model_id,
-      kind: "cloud",
-      provider: model.provider_id,
-      source: "selector",
-    });
   }, []);
 
   const commitFreestyleCloudDefault = useCallback(() => {
@@ -402,7 +361,6 @@ export default function OnboardingPage(): React.JSX.Element {
         },
       })
       .catch(() => {});
-    capture("onboarding_cloud_default_set", { model_id: modelId });
   }, [available]);
 
   const selectCloudModel = useCallback(
@@ -443,7 +401,6 @@ export default function OnboardingPage(): React.JSX.Element {
       defId: string,
       name: string,
       engine?: "whisper" | "mlx",
-      source: "auto" | "selector" = "selector",
       makeDefault = true,
     ) => {
       if (makeDefault) {
@@ -471,16 +428,6 @@ export default function OnboardingPage(): React.JSX.Element {
           },
         })
         .catch(() => {});
-      if (makeDefault) {
-        // The funnel's model-step event: with auto-setup this fires for every
-        // user; `source` separates the silent default from explicit picks.
-        capture("onboarding_model_completed", {
-          model_id: `${provider}/${defId}`,
-          kind: "local",
-          provider,
-          source,
-        });
-      }
     },
     [],
   );
@@ -565,15 +512,11 @@ export default function OnboardingPage(): React.JSX.Element {
       recommended.defId,
       recommended.name,
       recommended.localEngine,
-      "auto",
       !cloudUser,
     );
     if (cloudUser) {
       commitFreestyleCloudDefault();
       if (recommended.status === "not_downloaded" && !window.api?.isE2E) {
-        capture("onboarding_model_auto_setup", {
-          model_id: recommended.modelId,
-        });
         downloadLocalModel(recommended.defId, recommended.localEngine);
       }
     }
@@ -624,34 +567,6 @@ export default function OnboardingPage(): React.JSX.Element {
   // back to the recommendation before the user has touched anything.
   const chosen = allVoiceItems.find((v) => v.selected) ?? recommended;
 
-  // Analytics: detect the chosen local model's download finishing or failing.
-  const chosenStatus = chosen?.kind === "local" ? chosen.status : undefined;
-  const chosenModelId = chosen?.modelId;
-  const prevDownload = useRef<{ id?: string; status?: string }>({});
-  useEffect(() => {
-    const prev = prevDownload.current;
-    prevDownload.current = { id: chosenModelId, status: chosenStatus };
-    // Only count transitions for the *same* model (not a re-selection).
-    if (
-      prev.id !== chosenModelId ||
-      !prev.status ||
-      prev.status === chosenStatus
-    )
-      return;
-    if (
-      chosenStatus === "ready" &&
-      (prev.status === "downloading" || prev.status === "verifying")
-    ) {
-      capture("onboarding_model_download_completed", {
-        model_id: chosenModelId,
-      });
-    } else if (chosenStatus === "error") {
-      capture("onboarding_model_download_failed", {
-        model_id: chosenModelId,
-      });
-    }
-  }, [chosenStatus, chosenModelId]);
-
   // Persist the language list (the transcribe path reads it per request).
   const persistLanguages = useCallback((next: string[]) => {
     getClient()
@@ -668,7 +583,6 @@ export default function OnboardingPage(): React.JSX.Element {
         const next = prev.includes(code)
           ? prev.filter((c) => c !== code)
           : normalizeLanguageList([...prev, code]);
-        capture("onboarding_language_changed", { languages: next });
         persistLanguages(next);
         return next;
       });
@@ -678,7 +592,6 @@ export default function OnboardingPage(): React.JSX.Element {
 
   const clearLanguages = useCallback(() => {
     setLanguages([]);
-    capture("onboarding_language_changed", { languages: [] });
     persistLanguages([]);
   }, [persistLanguages]);
 
@@ -693,13 +606,11 @@ export default function OnboardingPage(): React.JSX.Element {
       .api.keys.$post({ json: { provider, key: key.trim() } })
       .catch(() => {});
     setApiKeys((prev) => new Set([...prev, provider]));
-    capture("onboarding_cloud_key_saved", { provider });
     if (selectedModel) commitCloudModel(selectedModel);
     return true;
   }, [apiKeyForm, selectedModel, commitCloudModel]);
 
   const finishSetup = useCallback(() => {
-    capture("onboarding_completed");
     window.api?.setOnboardingComplete();
     navigate("/today", { replace: true });
   }, [navigate]);
@@ -730,18 +641,11 @@ export default function OnboardingPage(): React.JSX.Element {
 
   const startLocalDownload = useCallback(() => {
     if (!localSetupModel?.defId || window.api?.isE2E) return;
-    capture("onboarding_model_download_started", {
-      model_id: localSetupModel.modelId,
-    });
     downloadLocalModel(localSetupModel.defId, localSetupModel.localEngine);
   }, [localSetupModel, downloadLocalModel]);
 
   const retryLocalDownload = useCallback(() => {
     if (!localSetupModel?.defId || window.api?.isE2E) return;
-    capture("onboarding_model_download_started", {
-      model_id: localSetupModel.modelId,
-      retry: true,
-    });
     downloadLocalModel(localSetupModel.defId, localSetupModel.localEngine);
   }, [localSetupModel, downloadLocalModel]);
 
@@ -758,23 +662,12 @@ export default function OnboardingPage(): React.JSX.Element {
           signingIn={cloudSigningIn}
           error={cloudError}
           onSignIn={() => {
-            capture("onboarding_cloud_signin_clicked");
-            void cloudSignIn().then((u) => {
-              if (u) capture("onboarding_cloud_signin_succeeded");
-            });
+            void cloudSignIn();
           }}
           onContinue={() => {
-            capture("onboarding_cloud_step_completed", {
-              signed_in: true,
-              skipped: false,
-            });
             setStep("permissions");
           }}
           onSkip={() => {
-            capture("onboarding_cloud_step_completed", {
-              signed_in: false,
-              skipped: true,
-            });
             setStep("permissions");
           }}
         />
@@ -793,11 +686,9 @@ export default function OnboardingPage(): React.JSX.Element {
               onOpenAccessibility={openAccessibility}
               onRecheckLinuxSetup={recheckLinuxSetup}
               onBack={() => {
-                capture("onboarding_permissions_back_clicked");
                 setStep("cloud");
               }}
               onContinue={() => {
-                capture("onboarding_permissions_completed");
                 setStep("language");
               }}
             />
@@ -812,13 +703,11 @@ export default function OnboardingPage(): React.JSX.Element {
               onDownloadLocal={startLocalDownload}
               onRetryLocal={retryLocalDownload}
               onBack={() => {
-                capture("onboarding_language_back_clicked");
                 setStep("permissions");
               }}
               onContinue={() => {
                 // Persist even when the pre-selected locale was never toggled.
                 persistLanguages(languages);
-                capture("onboarding_language_completed", { languages });
                 setStep("draft");
               }}
             />
@@ -829,7 +718,6 @@ export default function OnboardingPage(): React.JSX.Element {
               hotkey={hotkey}
               remixHotkey={remixHotkey}
               onHotkeyRecorded={handleHotkeyRecorded}
-              modelReady={chosenReady}
               localModel={showLocalSetupPanel ? localSetupModel : undefined}
               onDownloadLocal={startLocalDownload}
               onRetryLocal={retryLocalDownload}
@@ -843,10 +731,7 @@ export default function OnboardingPage(): React.JSX.Element {
               }
               body={draftBody}
               onBodyChange={setDraftBody}
-              onDraftDictated={onDraftDictated}
-              onDictation={() => capture("onboarding_dictation_tried")}
               onBack={() => {
-                capture("onboarding_tutorial_back_clicked");
                 setStep("language");
               }}
               onContinue={() => setStep("remix")}
@@ -871,9 +756,6 @@ export default function OnboardingPage(): React.JSX.Element {
         <ModelSelectorOverlay
           source={selectorSource}
           onSourceChange={(s) => {
-            capture("onboarding_model_selector_source_changed", {
-              source: s,
-            });
             setSelectorSource(s);
           }}
           voiceItems={allVoiceItems}
@@ -1380,12 +1262,6 @@ function ModelSelectorOverlay({
   // Pick a cloud model: commit immediately when its key is already stored,
   // otherwise move into the focused key-entry view.
   const handleSelectCloud = (model: AvailableModel) => {
-    capture("onboarding_model_selected", {
-      model_id: model.model_id,
-      kind: "cloud",
-      provider: model.provider_id,
-      from: "selector",
-    });
     onSelectCloud(model);
     if (keyProviders.has(model.provider_id)) {
       onClose();
@@ -1393,9 +1269,6 @@ function ModelSelectorOverlay({
       // Keep the selector open while the account flow runs; close only after
       // cloudUser updates and the selected model becomes ready.
     } else {
-      capture("onboarding_cloud_key_entry_viewed", {
-        provider: model.provider_id,
-      });
       setView("key");
     }
   };
@@ -1406,12 +1279,6 @@ function ModelSelectorOverlay({
     name: string,
     engine?: "whisper" | "mlx",
   ) => {
-    capture("onboarding_model_selected", {
-      model_id: `${engine === "mlx" ? "local-mlx" : "local-whisper"}/${defId}`,
-      kind: "local",
-      provider: engine === "mlx" ? "local-mlx" : "local-whisper",
-      from: "selector",
-    });
     onSelectLocal(defId, name, engine);
     onClose();
   };
@@ -1743,7 +1610,6 @@ function DraftStep({
   hotkey,
   remixHotkey,
   onHotkeyRecorded,
-  modelReady,
   localModel,
   onDownloadLocal,
   onRetryLocal,
@@ -1751,15 +1617,12 @@ function DraftStep({
   continueBlockedReason,
   body,
   onBodyChange,
-  onDraftDictated,
-  onDictation,
   onBack,
   onContinue,
 }: {
   hotkey: string;
   remixHotkey: string;
   onHotkeyRecorded: (accelerator: string) => void;
-  modelReady: boolean;
   localModel: VoiceItem | undefined;
   onDownloadLocal: () => void;
   onRetryLocal: () => void;
@@ -1767,37 +1630,11 @@ function DraftStep({
   continueBlockedReason: "downloading" | "notReady" | null;
   body: string;
   onBodyChange: (text: string) => void;
-  onDraftDictated: () => void;
-  onDictation: () => void;
   onBack: () => void;
   onContinue: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const onDictationRef = useRef(onDictation);
-  onDictationRef.current = onDictation;
-  const { phase, getLiveLevel } = useCoachPress("dictation", {
-    onDown: () => {
-      if (modelReady) onDictationRef.current();
-    },
-  });
-
-  // A dictation counts as such only when the paste is corroborated by the
-  // pill's transcription:done ping — manual typing still enables Continue,
-  // it just isn't counted as a dictation.
-  const bodyRef = useRef(body);
-  bodyRef.current = body;
-  const transcribedRef = useRef(false);
-  const onDraftDictatedRef = useRef(onDraftDictated);
-  onDraftDictatedRef.current = onDraftDictated;
-  useEffect(() => {
-    return window.api?.onTranscriptionDone(() => {
-      transcribedRef.current = true;
-      if (bodyRef.current.trim()) onDraftDictatedRef.current();
-    });
-  }, []);
-  useEffect(() => {
-    if (body.trim() && transcribedRef.current) onDraftDictatedRef.current();
-  }, [body]);
+  const { phase, getLiveLevel } = useCoachPress("dictation");
 
   const statusLabel =
     phase === "pressed"
@@ -1841,7 +1678,6 @@ function DraftStep({
         conflictHotkey={remixHotkey}
         conflictNotice={t("settings.recording.conflict")}
         onRecorded={onHotkeyRecorded}
-        onStartRecording={() => capture("onboarding_hotkey_change_started")}
       />
 
       <div className="mt-7 flex items-center justify-between">
@@ -1938,20 +1774,11 @@ function RemixStep({
   const [deliveredCount, setDeliveredCount] = useState(0);
   const remixedRef = useRef(false);
   const extraDoneRef = useRef(false);
-  const triedRef = useRef(false);
   const extraTriedRef = useRef(false);
-  const chipShownRef = useRef(false);
   const chipVisibleRef = useRef(false);
-  const viewedRef = useRef(false);
   const inFlightUntilRef = useRef(0);
   const lastDeliveredAtRef = useRef(0);
   const workingTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!ready || viewedRef.current) return;
-    viewedRef.current = true;
-    capture("onboarding_remix_step_viewed", { interactive });
-  }, [ready, interactive]);
 
   // The one gate this feature opens: while this step is interactive, main
   // treats our own window as a legal Remix target. Unmount is the primary
@@ -1977,7 +1804,6 @@ function RemixStep({
     if (!remixedRef.current) {
       remixedRef.current = true;
       setRemixed(true);
-      capture("onboarding_remix_completed");
       return;
     }
     // A late second paste from beat one must not count as the third beat —
@@ -1989,7 +1815,6 @@ function RemixStep({
     ) {
       extraDoneRef.current = true;
       setExtraDone(true);
-      capture("onboarding_remix_extra_completed");
     }
   }, []);
   const handleDeliveredRef = useRef(handleDelivered);
@@ -2005,13 +1830,8 @@ function RemixStep({
   const { phase, getLiveLevel } = useCoachPress("remix", {
     onDown: () => {
       inFlightUntilRef.current = Number.MAX_SAFE_INTEGER;
-      if (!triedRef.current) {
-        triedRef.current = true;
-        capture("onboarding_remix_tried");
-      }
       if (chipVisibleRef.current && !extraTriedRef.current) {
         extraTriedRef.current = true;
-        capture("onboarding_remix_extra_tried");
       }
     },
     onUp: () => {
@@ -2037,14 +1857,9 @@ function RemixStep({
   const chipVisible = interactive && remixed && searchCapable;
   useEffect(() => {
     chipVisibleRef.current = chipVisible;
-    if (chipVisible && !chipShownRef.current) {
-      chipShownRef.current = true;
-      capture("onboarding_remix_extra_shown");
-    }
   }, [chipVisible]);
 
   const handleFinish = useCallback(() => {
-    if (!remixedRef.current) capture("onboarding_remix_skipped");
     onFinish();
   }, [onFinish]);
 
@@ -2182,9 +1997,6 @@ function RemixStep({
         conflictHotkey={dictationHotkey}
         conflictNotice={t("settings.remix.conflict")}
         onRecorded={onRemixHotkeyRecorded}
-        onStartRecording={() =>
-          capture("onboarding_remix_hotkey_change_started")
-        }
       />
 
       <div className="mt-7 flex items-center justify-between">
