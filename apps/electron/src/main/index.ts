@@ -2764,7 +2764,10 @@ app.whenReady().then(async () => {
   if (!is.dev) {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
     autoUpdater.autoDownload = autoUpdateEnabled;
-    autoUpdater.autoInstallOnAppQuit = true;
+    // Honour the same preference on quit. Upstream hardcoded this to true, so a
+    // single manual "Check for Updates" could stage a release that then
+    // installed itself on the next quit even with auto-update turned off.
+    autoUpdater.autoInstallOnAppQuit = autoUpdateEnabled;
     autoUpdater.logger = createAppLogger("updater");
 
     autoUpdater.on("update-available", (info) => {
