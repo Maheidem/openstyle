@@ -207,26 +207,15 @@ test("sidebar navigation is rendered", async () => {
     return;
   }
 
-  // Signed out, /today shows the login gate instead of the shell — assert
-  // that page rather than a sidebar that deliberately isn't there.
-  const signIn = dashboardPage.getByRole("button", {
-    name: "Sign in via browser",
-  });
-  if (await signIn.isVisible().catch(() => false)) {
-    await expect(signIn).toBeEnabled();
-    return;
-  }
-
   await dashboardPage.waitForSelector("nav", { timeout: 10_000 });
-  // The exact link count varies by state (signed-in hides the footer group,
-  // advanced mode reveals Models, plugins append) — assert the core set.
+  // The exact link count varies by state (advanced mode reveals Models,
+  // plugins append) — assert the core set.
   const navLinks = await dashboardPage.locator("nav a").all();
   expect(navLinks.length).toBeGreaterThanOrEqual(6);
 });
 
 // Runs LAST among the dashboard tests: completing onboarding changes the
-// window's route (and, signed out, lands on the login gate), which the
-// earlier tests must not inherit.
+// window's route, which the earlier tests must not inherit.
 test("onboarding flow reaches the draft and remix steps and completes", async () => {
   test.skip(
     !dashboardPage.url().includes("/onboarding"),
@@ -234,10 +223,7 @@ test("onboarding flow reaches the draft and remix steps and completes", async ()
   );
   const page = dashboardPage;
 
-  // Cloud step — E2E takes the skip affordance.
-  await page.getByRole("button", { name: "Skip for now (dev)" }).click();
-
-  // Permissions step — E2E bypasses the OS grants.
+  // Permissions step, now first — E2E bypasses the OS grants.
   await page.getByRole("button", { name: "Continue" }).click();
 
   // Language step.
