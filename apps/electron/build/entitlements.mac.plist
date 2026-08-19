@@ -8,6 +8,13 @@
     <true/>
     <key>com.apple.security.cs.allow-dyld-environment-variables</key>
     <true/>
+    <!-- Required for ad-hoc signed builds. The hardened runtime enforces library
+         validation, which demands every loaded library share the main binary's
+         Team ID. Ad-hoc signatures have no Team ID, so Electron Framework is
+         rejected by its own app and launch fails in dyld. Also covers the
+         PyInstaller MLX worker, which ships its own dylibs. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
     <key>com.apple.security.device.audio-input</key>
     <true/>
     <key>com.apple.security.automation.apple-events</key>
