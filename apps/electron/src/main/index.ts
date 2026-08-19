@@ -2853,7 +2853,10 @@ app.whenReady().then(async () => {
         note.on("click", () => showSettingsWindow("/settings"));
         note.show();
       }
-    } else {
+    } else if (autoUpdateEnabled) {
+      // Only poll when auto-update is actually on. Upstream polled every 5
+      // minutes regardless of the setting, so turning auto-update off still
+      // talked to the release feed and still raised update notifications.
       runUpdateCheck();
       startUpdateCheckInterval();
     }

@@ -159,7 +159,7 @@ describe("MLX runtime versioning", () => {
     const runtime = await importRuntime();
 
     expect(runtime.getMlxRuntimeDownloadStatus().url).toBe(
-      "https://github.com/freestyle-voice/freestyle/releases/download/0.9.0/mlx_asr_worker-darwin-arm64.tar.gz",
+      "https://github.com/Maheidem/freestyle/releases/download/0.9.0/mlx_asr_worker-darwin-arm64.tar.gz",
     );
   });
 
@@ -191,7 +191,7 @@ describe("MLX runtime versioning", () => {
       "runtime download failed",
     );
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://github.com/freestyle-voice/freestyle/releases/download/0.9.1/mlx_asr_worker-darwin-arm64.tar.gz",
+      "https://github.com/Maheidem/freestyle/releases/download/0.9.1/mlx_asr_worker-darwin-arm64.tar.gz",
       expect.objectContaining({ redirect: "follow" }),
     );
   });

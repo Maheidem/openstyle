@@ -32,7 +32,11 @@ const RUNTIME_EXTRACT_RATIO = 4;
 const MIN_RUNTIME_FREE_BYTES = 2 * 1024 ** 3; // 2 GB floor
 
 const MLX_WORKER_ASSET_NAME = "mlx_asr_worker-darwin-arm64.tar.gz";
-const DEFAULT_MLX_WORKER_LATEST_URL = `https://github.com/freestyle-voice/freestyle/releases/latest/download/${MLX_WORKER_ASSET_NAME}`;
+// This fork publishes its own worker archive. Upstream stopped shipping the
+// asset entirely in 0.8.0 ("Remove local"), so pointing at their /latest/
+// resolves to a release that has no worker and the download fails.
+const MLX_WORKER_REPO = "Maheidem/freestyle";
+const DEFAULT_MLX_WORKER_LATEST_URL = `https://github.com/${MLX_WORKER_REPO}/releases/latest/download/${MLX_WORKER_ASSET_NAME}`;
 // Keep this in sync with scripts/build_mlx_asr_worker.sh so unchanged worker
 // builds don't force users to redownload identical archives on every app release.
 const MLX_WORKER_BUILD_SPEC =
@@ -114,7 +118,7 @@ function runtimeReleaseTag(): string | null {
 }
 
 function runtimeUrlForReleaseTag(releaseTag: string): string {
-  return `https://github.com/freestyle-voice/freestyle/releases/download/${releaseTag}/${MLX_WORKER_ASSET_NAME}`;
+  return `https://github.com/${MLX_WORKER_REPO}/releases/download/${releaseTag}/${MLX_WORKER_ASSET_NAME}`;
 }
 
 function runtimeUrl(): string | null {
@@ -394,7 +398,7 @@ export function cancelMlxRuntimeDownload(): boolean {
 function runtimeDownloadHttpError(url: string, status: number): Error {
   if (
     status === 404 &&
-    url.includes("github.com/freestyle-voice/freestyle/releases/download/")
+    url.includes(`github.com/${MLX_WORKER_REPO}/releases/download/`)
   ) {
     return new Error(
       "MLX runtime download failed because this Freestyle release does not include the MLX worker asset yet.",
@@ -403,16 +407,14 @@ function runtimeDownloadHttpError(url: string, status: number): Error {
 
   if (
     status === 404 &&
-    url.includes(
-      "github.com/freestyle-voice/freestyle/releases/latest/download/",
-    )
+    url.includes(`github.com/${MLX_WORKER_REPO}/releases/latest/download/`)
   ) {
     return new Error(
       "MLX runtime download failed because no published Freestyle release contains the MLX worker asset yet.",
     );
   }
 
-  if (status === 403 && url.includes("github.com/freestyle-voice/freestyle")) {
+  if (status === 403 && url.includes(`github.com/${MLX_WORKER_REPO}`)) {
     return new Error(
       "MLX runtime download failed because GitHub temporarily rejected the request (HTTP 403). Please try again in a few minutes.",
     );
