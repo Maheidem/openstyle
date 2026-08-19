@@ -39,14 +39,9 @@ import {
 import { Textarea } from "@renderer/components/ui/textarea";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
-import { useCloudAuth } from "@renderer/lib/auth-context";
-import {
-  availableModelsQueryOptions,
-  queryKeys,
-  settingsQueryOptions,
-} from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -87,8 +82,6 @@ const TONE_TABS: readonly ToneTab[] = [
 
 const isToneTab = (value: string): value is ToneTab =>
   (TONE_TABS as readonly string[]).includes(value);
-
-const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
 
 type CleanupCardValue = CleanupIntensity;
 
@@ -236,8 +229,6 @@ const OVERALL_OPTIONS: ToneCardOption<CleanupOverallTone>[] = [
 
 export default function TonePage(): React.JSX.Element {
   const { t } = useTranslation();
-  const cloudAuth = useCloudAuth();
-  const queryClient = useQueryClient();
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [cleanupIntensity, setCleanupIntensity] =
     useState<CleanupIntensity>("medium");
@@ -257,7 +248,6 @@ export default function TonePage(): React.JSX.Element {
     DEFAULT_CLEANUP_OVERALL_TONE,
   );
   const [assignments, setAssignments] = useState<CleanupAppAssignment[]>([]);
-  const [usingCloud, setUsingCloud] = useState(false);
   const [activeTab, setActiveTab] = usePersistentState<ToneTab>(
     "tone.activeTab",
     "cleanup",
@@ -325,17 +315,6 @@ export default function TonePage(): React.JSX.Element {
     );
   }, [settingsQuery.data]);
 
-  const reload = useCallback(
-    () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.models.configured,
-        }),
-      ]),
-    [queryClient],
-  );
-
   const saveSetting = useCallback(async (key: string, value: string) => {
     // The Hono client does not throw on non-2xx — surface server rejections so
     // callers' .catch handlers fire (and "Saved" state isn't shown on failure).
@@ -353,59 +332,6 @@ export default function TonePage(): React.JSX.Element {
       window.api?.sendCleanupContextChanged();
     }
   }, []);
-
-  // Turn cleanup on by wiring Freestyle Cloud as the cleanup model. Requires a
-  // signed-in cloud session; mirrors the Models page "Use Freestyle Cloud" flow.
-  const onUseCloud = useCallback(async () => {
-    if (usingCloud) return;
-    setUsingCloud(true);
-    try {
-      const authed = cloudAuth.user
-        ? !!(await cloudAuth.refresh())
-        : !!(await cloudAuth.signIn());
-      if (!authed) return;
-
-      const client = getClient();
-      // Reuse the shared ["models","available"] cache when it's fresh instead of
-      // a redundant network round-trip; ensureQueryData fetches only on a miss.
-      const models = await queryClient.ensureQueryData(
-        availableModelsQueryOptions(),
-      );
-      const cloudLlm = models.find(
-        (model) =>
-          model.type === "llm" &&
-          model.provider_id === FREESTYLE_CLOUD_PROVIDER,
-      );
-      if (!cloudLlm) return;
-
-      // Configure the cloud cleanup model first; only flip llm_cleanup on once
-      // the model is actually persisted, otherwise cleanup would be "enabled"
-      // with no model behind it (server silently returns raw text).
-      const configRes = await client.api.models.configured.$post({
-        json: {
-          provider: cloudLlm.provider_id,
-          model_id: cloudLlm.model_id,
-          model_name: cloudLlm.model_name,
-          type: "llm",
-          is_default: true,
-        },
-      });
-      if (!configRes.ok) {
-        console.error(
-          `Failed to configure Freestyle Cloud cleanup model (${configRes.status})`,
-        );
-        return;
-      }
-
-      await saveSetting(SETTINGS_KEYS.llmCleanup, "true");
-      setLlmCleanup(true);
-      await reload();
-    } catch (err) {
-      console.error("Failed to enable cleanup:", err);
-    } finally {
-      setUsingCloud(false);
-    }
-  }, [cloudAuth, queryClient, reload, saveSetting, usingCloud]);
 
   const selectCleanupMode = useCallback(
     (next: CleanupCardValue) => {
@@ -532,11 +458,7 @@ export default function TonePage(): React.JSX.Element {
         <PageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
 
         {!llmCleanup ? (
-          <CleanupDisabledBanner
-            signedIn={!!cloudAuth.user}
-            busy={usingCloud}
-            onUseCloud={() => void onUseCloud()}
-          />
+          <CleanupDisabledBanner />
         ) : !hasCleanupModel ? (
           <CleanupNoModelBanner />
         ) : null}
@@ -654,17 +576,8 @@ export default function TonePage(): React.JSX.Element {
 }
 
 // Shown across every Tone tab while post-processing is off. Cleanup enablement
-// now lives on the Models page, so this points users there (and offers a
-// one-click Freestyle Cloud path when signed in).
-function CleanupDisabledBanner({
-  signedIn,
-  busy,
-  onUseCloud,
-}: {
-  signedIn: boolean;
-  busy: boolean;
-  onUseCloud: () => void;
-}): React.JSX.Element {
+// lives on the Models page, so this points users there.
+function CleanupDisabledBanner(): React.JSX.Element {
   const { t } = useTranslation();
   return (
     <div className="border-border/70 bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed px-4 py-3.5">
@@ -677,13 +590,6 @@ function CleanupDisabledBanner({
         </p>
       </div>
       <div className="flex items-center gap-2">
-        {signedIn ? (
-          <Button variant="ink" size="sm" onClick={onUseCloud} disabled={busy}>
-            {busy
-              ? t("tone.disabledBanner.useCloudBusy")
-              : t("tone.disabledBanner.useCloud")}
-          </Button>
-        ) : null}
         <Button asChild variant="outline" size="sm">
           <Link to="/settings/models">
             {t("tone.disabledBanner.goToModels")}

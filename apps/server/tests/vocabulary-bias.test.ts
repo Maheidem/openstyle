@@ -306,28 +306,3 @@ describe("soniox", () => {
     expect(bias).toEqual({ kind: "soniox-context", terms: ["Freestyle"] });
   });
 });
-
-describe("freestyle-cloud", () => {
-  it("builds soniox-context bias for the cloud streaming path", () => {
-    const bias = buildAsrVocabularyBias(
-      "freestyle-cloud",
-      "freestyle-cloud/streaming",
-      ["Freestyle", "Kubernetes"],
-      true,
-    );
-    expect(bias).toEqual({
-      kind: "soniox-context",
-      terms: ["Freestyle", "Kubernetes"],
-    });
-  });
-
-  it("returns null for empty terms", () => {
-    const bias = buildAsrVocabularyBias(
-      "freestyle-cloud",
-      "freestyle-cloud/streaming",
-      [],
-      true,
-    );
-    expect(bias).toBeNull();
-  });
-});

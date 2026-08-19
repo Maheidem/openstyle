@@ -99,8 +99,6 @@
       "statusWorking": "Remix läuft…",
       "statusRemixed": "Geremixt.",
       "doneNote": "Der Entwurf wurde direkt neu geschrieben. Probieren Sie eine weitere Anweisung — oder schließen Sie ab.",
-      "extraCaption": "Das dauert ein paar Sekunden.",
-      "extraDone": "Ein Fakt und ein Foto, direkt im Entwurf. Schließen Sie ab, wann immer Sie bereit sind.",
       "fallbackNote": "Remix braucht ein Assistenzmodell — fügen Sie eines in den Einstellungen hinzu, sobald Sie bereit sind.",
       "sampleDraft": "Alles Gute zum Geburtstag, Sam. Ich hoffe, dein Tag wird schön — ich bringe am Freitag Kuchen mit.",
       "sampleSignoff": "Schön, dass wir dich diese Woche feiern können.\n\nHerzliche Grüße\n{{name}}",
@@ -109,9 +107,7 @@
       "highlightNote": "Ihr Entwurf ist bereits markiert — lassen Sie ihn markiert und klicken Sie nicht in die E-Mail.",
       "instructionPrefix": "Halten Sie",
       "instructionSuffix": "gedrückt und sagen Sie Wort für Wort:",
-      "sayText": "Mach sie wärmer und unterschreibe mit {{name}}.",
-      "extraLead": "Noch ein Trick — solange der Text markiert ist:",
-      "extraSay": "Füge einen lustigen Fakt über Geburtstagskuchen hinzu, und ein Bild davon."
+      "sayText": "Mach sie wärmer und unterschreibe mit {{name}}."
     }
   },
   "settings": {

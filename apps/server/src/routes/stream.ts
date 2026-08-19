@@ -2,12 +2,6 @@ import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
-import { getRewritePromptContext } from "../lib/editor/rewrite-context.js";
-import {
-  FREESTYLE_CLOUD_PROVIDER_ID,
-  FreestyleCloudAuthError,
-  FreestyleCloudUsageError,
-} from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import {
   getLanguagesSetting,
@@ -20,16 +14,11 @@ import {
 } from "../lib/plugins/index.js";
 import { createHookApi } from "../lib/plugins/pipeline.js";
 import {
-  applyFinalRewrites,
-  getCleanupAppAssignments,
-  getEffectiveCleanupTones,
-  isLlmCleanupEnabled,
   postProcess,
   prewarmPostProcess,
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
 import { getDefaultModels } from "../lib/providers.js";
-import { invalidateSession } from "../lib/sessions.js";
 import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
@@ -98,22 +87,6 @@ const stream = new Hono().get(
         voice.model_id,
         true,
       );
-      // Freestyle Cloud post-processes server-side and reads the user's synced
-      // cleanup preferences from the member_preferences row at connect time. We
-      // no longer send those prefs inline, but a kept-warm upstream captured
-      // them (server-side) when it connected, so a local change still requires a
-      // fresh connection for the cloud to re-read the updated row. Folding the
-      // current preference values into the compare key makes `sameConfig` false
-      // on any change, forcing that reconnect. Non-cloud providers don't
-      // post-process upstream, so this stays null for them.
-      const cleanupFingerprint =
-        voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
-          ? JSON.stringify([
-              isLlmCleanupEnabled(),
-              getEffectiveCleanupTones(),
-              getCleanupAppAssignments(),
-            ])
-          : null;
       return {
         voice,
         languages,
@@ -125,7 +98,6 @@ const stream = new Hono().get(
           languages,
           translate,
           bias,
-          cleanupFingerprint,
         ]),
       };
     }
@@ -252,18 +224,10 @@ const stream = new Hono().get(
       const apiKey = getApiKeyForProvider(voice.provider);
       if (!apiKey) {
         ws.send(
-          JSON.stringify(
-            voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
-              ? {
-                  type: "error",
-                  code: "cloud_auth_required",
-                  message: "Sign in to Freestyle Transcribe",
-                }
-              : {
-                  type: "error",
-                  message: `No API key for ${voice.provider}`,
-                },
-          ),
+          JSON.stringify({
+            type: "error",
+            message: `No API key for ${voice.provider}`,
+          }),
         );
         ws.close();
         return;
@@ -278,61 +242,6 @@ const stream = new Hono().get(
 
       upstreamConfigKey = config.key;
 
-      // Freestyle Cloud post-processes server-side, so forward the desktop's
-      // cleanup settings in the streaming payload — matching the batch
-      // `/v2/transcribe` path. When cleanup is disabled, `skipPostProcess`
-      // tells the cloud to return the raw transcript (and bill accordingly).
-      //
-      // Run `beforeCleanup` locally to collect plugin system-prompt fragments,
-      // then include them in the cleanup config so the cloud appends them to
-      // its assembled prompt. `input.text` is empty (the transcript hasn't been
-      // produced yet); plugins that contribute static fragments work fine.
-      //
-      // The hook can also decide to skip cleanup outright (`skip` or a
-      // `consume()`/`abort()`). Streaming has no local cleanup path, so the
-      // only way to honor that is to tell the cloud to skip post-processing
-      // (`skipPostProcess`) and return the raw transcript. Fragments are only
-      // meaningful when cleanup actually runs, so a skip drops them too.
-      let systemFragments: string[] | undefined;
-      let pluginSkipsCleanup = false;
-      if (
-        voice.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
-        isLlmCleanupEnabled() &&
-        plugins().has("beforeCleanup")
-      ) {
-        const hookApi = await createHookApi();
-        const parsedCtx = parseAppContext(effectiveAppContext());
-        const { destination } = getRewritePromptContext(
-          effectiveAppContext(),
-          getCleanupAppAssignments(),
-        );
-        const promptHook = await plugins().run(
-          "beforeCleanup",
-          { text: "", appContext: parsedCtx, destination },
-          { system: [] as string[] },
-          hookApi,
-        );
-        pluginSkipsCleanup =
-          promptHook.skip === true || hookApi.control.state !== "running";
-        if (!pluginSkipsCleanup && promptHook.system.length > 0) {
-          systemFragments = promptHook.system;
-        }
-      }
-
-      // The cloud DO reads the user's synced cleanup preferences (intensity,
-      // custom prompt, tones, app assignments) from the member_preferences row
-      // and assembles the prompt server-side, so we no longer forward those
-      // saved defaults. Only request-scoped values travel on the `start`
-      // message: `skipPostProcess` (a per-session control flag) and plugin
-      // `systemFragments` (never synced).
-      const cleanup =
-        voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
-          ? {
-              skipPostProcess: !isLlmCleanupEnabled() || pluginSkipsCleanup,
-              ...(systemFragments ? { systemFragments } : {}),
-            }
-          : undefined;
-
       const token = ++readyToken;
       const session = openStreamingSession({
         providerId: voice.provider,
@@ -342,7 +251,6 @@ const stream = new Hono().get(
         translate: config.translate,
         bias: config.bias,
         appContext: effectiveAppContext(),
-        cleanup,
         callbacks: {
           onReady: (readyModel) => {
             if (upstream !== session) return;
@@ -356,12 +264,9 @@ const stream = new Hono().get(
             }
             ws.send(JSON.stringify({ type: "partial", text }));
           },
-          onFinal: async (rawText, upstreamRawText) => {
+          onFinal: async (rawText) => {
             if (upstream !== session) return;
             rawText = sanitizeTranscriptText(rawText);
-            const upstreamRaw = upstreamRawText
-              ? sanitizeTranscriptText(upstreamRawText)
-              : undefined;
             // One HookApi per dictation, threaded through every stage so a
             // plugin's consume()/abort() in afterTranscribe is visible to
             // cleanup + final rewrites (matching the batch /transcribe route).
@@ -374,120 +279,6 @@ const stream = new Hono().get(
                 : Date.now() - sessionStartTime;
             if (!shouldKeepStreamingUpstreamAlive(voice.provider)) {
               closeUpstreamSession(session);
-            }
-
-            // Freestyle Cloud streaming. The cloud DO returns cleaned text when
-            // post-processing is on, or the raw transcript when it is off —
-            // either because cleanup is disabled or a `beforeCleanup` plugin
-            // skipped it (both set `skipPostProcess` on connect). When the
-            // cloud returned raw text, treat it like the cleanup-off branch so
-            // `afterTranscribe`/`Transcribed` still fire on the real transcript.
-            if (voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
-              const cloudHandledPostProcess =
-                isLlmCleanupEnabled() && !pluginSkipsCleanup;
-              const cloudText = rawText?.trim() || "";
-              let text = cloudText;
-
-              // Combined cloud cleanup returns cleaned text with no separable
-              // raw transcript. An empty response (silence, or a clipped first
-              // clip on a cold provider switch) must be suppressed like every
-              // other path — otherwise we'd persist a blank history row and
-              // paste nothing. The post-process-off branch below has its own
-              // empty guard after afterTranscribe.
-              if (cloudHandledPostProcess && !cloudText) {
-                if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: "" }));
-                }
-                return;
-              }
-
-              if (!cloudHandledPostProcess) {
-                // Post-processing off: cloudText IS the raw transcript, so this
-                // is the only cloud case where we have a real raw transcript.
-                // Emit Transcribed and run afterTranscribe (voice-commands,
-                // etc.), mirroring the local path.
-                void plugins().emit({
-                  type: FreestyleEventType.Transcribed,
-                  text,
-                });
-                text = (
-                  await plugins().run(
-                    "afterTranscribe",
-                    {
-                      providerId: voiceDefaults!.provider,
-                      modelId: voiceDefaults!.model_id,
-                      appContext: parseAppContext(effectiveAppContext()),
-                    },
-                    { text },
-                    api,
-                  )
-                ).text;
-                // A plugin may suppress the transcript explicitly via
-                // consume()/abort() or implicitly by emptying the text.
-                if (api.control.state !== "running" || !text.trim()) {
-                  if (!closed) {
-                    ws.send(JSON.stringify({ type: "final", text: "" }));
-                  }
-                  return;
-                }
-              }
-              // When the cloud handled post-processing there is no separable raw
-              // transcript, so we neither emit Transcribed nor run
-              // afterTranscribe. The dictionary + afterCleanup hook are
-              // local-only, so still apply them here in both cases.
-
-              const rewritten = await applyFinalRewrites(
-                text,
-                effectiveAppContext(),
-                cloudText,
-                api,
-              );
-              // An afterCleanup plugin may consume/abort here (the cloud path
-              // still runs that local hook); blank the delivered text so a
-              // suppressed dictation isn't pasted, and skip history for it —
-              // matching the batch route.
-              const suppressed = api.control.state !== "running";
-              const finalText = suppressed ? "" : rewritten;
-
-              const llmProvider = cloudHandledPostProcess
-                ? FREESTYLE_CLOUD_PROVIDER_ID
-                : null;
-              const llmModel = cloudHandledPostProcess
-                ? "freestyle-cloud/post-process"
-                : null;
-
-              const sttAfterCommitMs =
-                commitTime > 0 ? Date.now() - commitTime : durationMs;
-              if (LOG_PIPELINE_LATENCY) {
-                log.info(
-                  `[pipeline] cloud_stream stt_after_commit=${sttAfterCommitMs}ms session=${durationMs}ms | ${voice.provider}/${voiceDefaults!.model_id}`,
-                );
-              }
-              if (!closed) {
-                ws.send(JSON.stringify({ type: "final", text: finalText }));
-              }
-              if (!suppressed) {
-                const historyRawText = upstreamRaw || cloudText;
-                try {
-                  saveProcessedHistory({
-                    rawText: historyRawText,
-                    cleanedText:
-                      finalText !== historyRawText ? finalText : null,
-                    voiceProvider: voiceDefaults!.provider,
-                    voiceModel: voiceDefaults!.model_id,
-                    llmProvider,
-                    llmModel,
-                    durationMs,
-                    audioDurationMs,
-                    inputTokens: 0,
-                    outputTokens: 0,
-                    costUsd: 0,
-                  });
-                } catch (err) {
-                  log.error(`Failed to save history: ${err}`);
-                }
-              }
-              return;
             }
 
             // Plugin hook: rewrite the raw transcript before cleanup, matching
@@ -586,32 +377,7 @@ const stream = new Hono().get(
                   }
                 }
               })
-              .catch((err) => {
-                if (err instanceof FreestyleCloudAuthError) {
-                  invalidateSession();
-                  if (!closed) {
-                    ws.send(
-                      JSON.stringify({
-                        type: "error",
-                        code: "cloud_auth_required",
-                        message: "Sign in to Freestyle Transcribe",
-                      }),
-                    );
-                  }
-                  return;
-                }
-                if (err instanceof FreestyleCloudUsageError) {
-                  if (!closed) {
-                    ws.send(
-                      JSON.stringify({
-                        type: "error",
-                        code: "usage_exceeded",
-                        message: "Freestyle Cloud usage limit reached",
-                      }),
-                    );
-                  }
-                  return;
-                }
+              .catch(() => {
                 if (!closed) {
                   ws.send(JSON.stringify({ type: "final", text: rawText }));
                 }

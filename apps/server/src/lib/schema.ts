@@ -1,13 +1,16 @@
 import type { DatabaseSync } from "node:sqlite";
 import { countFixes } from "./fixes.js";
 
-// Kept in sync with DEFAULT_CLOUD_URL in freestyle-cloud.ts. Duplicated here
-// (rather than imported) so this DB-init module — loaded very early via db.ts —
-// stays decoupled from the cloud module, which pulls in heavier dependencies
-// and would otherwise perturb test module-mock ordering.
+// The host the retired hosted service used to be keyed under. Only the
+// host-keyed `sessions` migration below still references it, to rewrite rows
+// written by older builds; nothing in the app talks to this host any more.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 21;
+// Upstream's 0.8.x line pushed its own schema past ours (a database from 0.8.5
+// reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
+// fork migration numbered below that is silently skipped for anyone arriving
+// from upstream. Keep this above the highest upstream version we have seen.
+const SCHEMA_VERSION = 27;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -469,10 +472,10 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
   }
 
   if (currentVersion < 14) {
-    // Freestyle Cloud cleanup is no longer a standalone LLM option — the v3
-    // cloud path always cleans, keyed on the voice provider alone. Drop the
-    // legacy llm model configs; if one was the default, also turn off the
-    // local cleanup toggle since no usable cleanup model remains selected.
+    // The hosted cleanup model stopped being a standalone LLM option here.
+    // Drop those legacy llm model configs; if one was the default, also turn
+    // off the cleanup toggle since no usable cleanup model remains selected.
+    // (v22 below finishes the job by dropping the voice rows too.)
     try {
       const legacyDefault = db
         .prepare(
@@ -630,10 +633,10 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     db.exec(
       "DELETE FROM settings WHERE key IN ('command_hotkey', 'commands_enabled')",
     );
-    // Dismissals for in-app dialogs/banners (changelogs, feature prompts,
-    // profile nudges). Presence of a key means the corresponding UI has been
-    // dismissed and should not be shown again. Not synced to Freestyle Cloud —
-    // stored alongside settings in this server's SQLite DB.
+    // Dismissals for in-app dialogs/banners (changelogs, feature prompts).
+    // Presence of a key means the corresponding UI has been dismissed and
+    // should not be shown again. Stored alongside settings in this server's
+    // SQLite DB.
     db.exec(`
       CREATE TABLE IF NOT EXISTS dismissed_notifications (
         key          TEXT PRIMARY KEY,
@@ -662,6 +665,62 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       db.exec(
         "CREATE INDEX IF NOT EXISTS idx_model_configs_type_default ON model_configs(type, is_default)",
       );
+    }
+  }
+
+  if (currentVersion < 27) {
+    // The hosted "freestyle-cloud" provider is gone. Databases from an install
+    // that ever signed in still carry its model_configs rows — and the v14
+    // migration deliberately left the *voice* row as the default. Those rows
+    // now name a provider no registry can resolve, which would fail every
+    // dictation with "No transcription provider for: freestyle-cloud" and show
+    // a phantom entry in the model picker. Drop them and re-point any default
+    // they held at a local engine.
+    if (tableExists(db, "model_configs")) {
+      const wasCleanupDefault = !!(db
+        .prepare(
+          "SELECT 1 FROM model_configs WHERE provider = 'freestyle-cloud' AND type = 'llm' AND is_default = 1",
+        )
+        .get() as { 1: number } | undefined);
+      const wasVoiceDefault = !!(db
+        .prepare(
+          "SELECT 1 FROM model_configs WHERE provider = 'freestyle-cloud' AND type = 'voice' AND is_default = 1",
+        )
+        .get() as { 1: number } | undefined);
+
+      db.exec("DELETE FROM model_configs WHERE provider = 'freestyle-cloud'");
+
+      // Cleanup ran on the hosted model; with it gone there is nothing to clean
+      // up with until the user picks a local/BYOK model, so turn the stage off
+      // rather than leave it pointing at nothing.
+      if (wasCleanupDefault) {
+        db.exec(
+          `INSERT INTO settings (key, value, updated_at) VALUES ('llm_cleanup', 'false', datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET value = 'false', updated_at = datetime('now')`,
+        );
+      }
+
+      // Hand the voice default to whichever local engine this machine already
+      // has configured. If neither is set up, leave no default: transcribe
+      // then answers "No voice model configured. Go to Settings > Models to
+      // add one." rather than failing on a provider that cannot be resolved.
+      if (wasVoiceDefault) {
+        const local = db
+          .prepare(
+            `SELECT id FROM model_configs
+             WHERE type = 'voice' AND provider IN ('local-mlx', 'local-whisper')
+             ORDER BY created_at DESC LIMIT 1`,
+          )
+          .get() as { id: number } | undefined;
+        if (local) {
+          db.exec(
+            "UPDATE model_configs SET is_default = 0 WHERE type = 'voice'",
+          );
+          db.prepare(
+            "UPDATE model_configs SET is_default = 1 WHERE id = ?",
+          ).run(local.id);
+        }
+      }
     }
   }
 

@@ -99,8 +99,6 @@
       "statusWorking": "Remezclando…",
       "statusRemixed": "Remezclado.",
       "doneNote": "El borrador se reescribió en su sitio. Prueba otra instrucción — o termina cuando quieras.",
-      "extraCaption": "Esto tarda unos segundos.",
-      "extraDone": "Un dato y una foto, directos al borrador. Termina cuando quieras.",
       "fallbackNote": "Remix necesita un modelo asistente — añade uno en Ajustes cuando quieras.",
       "sampleDraft": "Feliz cumpleaños, Sam. Espero que tengas un gran día — el viernes llevo tarta.",
       "sampleSignoff": "Qué ganas de celebrarte esta semana.\n\nUn abrazo,\n{{name}}",
@@ -109,9 +107,7 @@
       "highlightNote": "Tu borrador ya está resaltado — déjalo resaltado y no hagas clic en el correo.",
       "instructionPrefix": "Mantén",
       "instructionSuffix": "y di, palabra por palabra:",
-      "sayText": "Hazlo más cálido y fírmalo de parte de {{name}}.",
-      "extraLead": "Un truco más — con el texto aún resaltado:",
-      "extraSay": "Añade un dato curioso sobre las tartas de cumpleaños, y una foto de una."
+      "sayText": "Hazlo más cálido y fírmalo de parte de {{name}}."
     }
   },
   "settings": {

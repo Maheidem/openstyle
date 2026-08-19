@@ -1,13 +1,7 @@
 import { getDb } from "./db.js";
-import { FREESTYLE_CLOUD_PROVIDER_ID } from "./freestyle-cloud.js";
 import { MLX_ASR_PROVIDER_ID } from "./mlx-asr/constants.js";
-import { getSessionToken } from "./sessions.js";
 import { getProvider, supportsSessionTransport } from "./streaming/registry.js";
-import type {
-  StreamCallbacks,
-  StreamCleanupPreferences,
-  StreamSession,
-} from "./streaming/types.js";
+import type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 import type { AsrVocabularyBias } from "./vocabulary-bias.js";
 import { WHISPER_PROVIDER_ID } from "./whisper/constants.js";
 
@@ -19,13 +13,12 @@ export type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 
 const LOCAL_STT_PROVIDERS = new Set([WHISPER_PROVIDER_ID, MLX_ASR_PROVIDER_ID]);
 
-export type VoiceProviderCategory = "local" | "byok" | "freestyle_cloud";
+export type VoiceProviderCategory = "local" | "byok";
 
 export function voiceProviderCategory(
   providerId: string,
 ): VoiceProviderCategory {
   if (LOCAL_STT_PROVIDERS.has(providerId)) return "local";
-  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return "freestyle_cloud";
   return "byok";
 }
 
@@ -37,7 +30,6 @@ export function openStreamingSession(opts: {
   translate?: boolean;
   bias?: AsrVocabularyBias | null;
   appContext?: string | null;
-  cleanup?: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }): StreamSession {
   const {
@@ -48,7 +40,6 @@ export function openStreamingSession(opts: {
     translate,
     bias,
     appContext,
-    cleanup,
     callbacks,
   } = opts;
 
@@ -72,7 +63,6 @@ export function openStreamingSession(opts: {
     translate,
     bias,
     appContext,
-    cleanup,
     callbacks,
   });
 }
@@ -80,9 +70,6 @@ export function openStreamingSession(opts: {
 export function getApiKeyForProvider(providerId: string): string | null {
   // On-device engines need no key.
   if (LOCAL_STT_PROVIDERS.has(providerId)) return "local";
-  // Freestyle Cloud uses the signed-in user's session token (null = signed out).
-  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return getSessionToken();
-
   const db = getDb();
   const row = db
     .prepare("SELECT key FROM api_keys WHERE provider = ?")

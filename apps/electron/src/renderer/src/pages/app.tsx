@@ -169,13 +169,7 @@ type PillState =
  * recoveries in progress (a turning ring); the rest are stalled (an alert
  * ring).
  */
-type PillNotice =
-  | "reconnecting"
-  | "retrying"
-  | "sign-in"
-  | "limit"
-  | "unavailable"
-  | null;
+type PillNotice = "reconnecting" | "retrying" | "unavailable" | null;
 
 /** The waveform is either live, settling, or showing transcription progress. */
 type BarMode = "listening" | "settling" | "speaking";
@@ -376,8 +370,6 @@ interface TranscribeResult {
   raw: string;
   cleaned: string;
   error?: string;
-  cloudAuthRequired?: boolean;
-  usageExceeded?: boolean;
   providerCategory?: string;
   /**
    * Terminal pipeline disposition from the server. A plugin that called
@@ -387,15 +379,6 @@ interface TranscribeResult {
    */
   disposition?: "deliver" | "suppressed" | "aborted";
 }
-
-/**
- * Error text attached to usage-limit results. The interactive prompt (with an
- * "Upgrade to Pro" action) is shown by the main process via
- * `window.api.cloudPromptUpgrade()` — this string only surfaces where a plain
- * error message is needed.
- */
-const USAGE_LIMIT_DIALOG_MESSAGE =
-  "You've used your free Freestyle Cloud dictation for this week. Upgrade to Pro for unlimited dictation, or switch to a local or bring-your-own-key model in Settings > Models.";
 
 /**
  * The app context (process name + window title) can contain characters
@@ -664,16 +647,6 @@ export default function AppPage(): React.JSX.Element {
 
       const nonEmpty = results.filter(isDeliverable);
       if (nonEmpty.length === 0) {
-        if (results.some((r) => r.cloudAuthRequired)) {
-          hidePill();
-          void window.api.cloudPromptSignIn();
-          return;
-        }
-        if (results.some((r) => r.usageExceeded)) {
-          hidePill();
-          void window.api.cloudPromptUpgrade();
-          return;
-        }
         const errMsg = results.find((r) => r.error)?.error;
         if (errMsg) {
           failedTranscriptionErrorRef.current = errMsg;
@@ -715,16 +688,6 @@ export default function AppPage(): React.JSX.Element {
               data.disposition && data.disposition !== "deliver"
                 ? ""
                 : data.cleaned || combined;
-          } else if (res.status === 401) {
-            const body = (await res.json().catch(() => null)) as {
-              error?: string;
-            } | null;
-            if (body?.error === "cloud_auth_required") {
-              hidePill();
-              void window.api.cloudPromptSignIn();
-              return;
-            }
-            finalText = combined;
           } else {
             finalText = combined;
           }
@@ -856,25 +819,6 @@ export default function AppPage(): React.JSX.Element {
       })
         .then(async (res) => {
           if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as {
-              error?: string;
-            } | null;
-            if (res.status === 401 && body?.error === "cloud_auth_required") {
-              return {
-                raw: "",
-                cleaned: "",
-                error: "Sign in to Freestyle Transcribe",
-                cloudAuthRequired: true,
-              };
-            }
-            if (res.status === 429 && body?.error === "usage_exceeded") {
-              return {
-                raw: "",
-                cleaned: "",
-                error: USAGE_LIMIT_DIALOG_MESSAGE,
-                usageExceeded: true,
-              };
-            }
             return { raw: "", cleaned: "", error: errorMsg };
           }
           const data = (await res.json()) as {
@@ -946,8 +890,7 @@ export default function AppPage(): React.JSX.Element {
             }
             if (
               pillActiveRef.current &&
-              recordingSessionUsesTransportRef.current &&
-              providerCategoryRef.current === "freestyle_cloud"
+              recordingSessionUsesTransportRef.current
             ) {
               setPillNotice("reconnecting");
             }
@@ -962,7 +905,7 @@ export default function AppPage(): React.JSX.Element {
           if (!resolver) return;
           streamResolverRef.current = null;
           // A short clip can stream to a live provider that finalizes before it
-          // has recognized any words (cold Soniox/Freestyle Cloud session), so
+          // has recognized any words (a cold Soniox session, say), so
           // the streaming final comes back empty even though audio was captured.
           // Salvage via the batch REST path with the recorded WAV the streamer
           // still has buffered — the same clip transcribes fine one-shot. If no
@@ -978,44 +921,12 @@ export default function AppPage(): React.JSX.Element {
         },
         onError: (msg, code) => {
           const resolver = streamResolverRef.current;
-          // Cloud auth expiry and usage limits are terminal — don't fall back
-          // to REST (it would just re-hit the same cloud error). Surface them
-          // directly, or flag the pending result so the drain loop does.
-          if (code === "cloud_auth_required") {
-            streamResolverRef.current = null;
-            if (resolver) {
-              resolver({ raw: "", cleaned: "", cloudAuthRequired: true });
-            } else if (wantsMicRef.current) {
-              streamSessionErrorRef.current = { message: msg, code };
-              setPillNotice("sign-in");
-            } else if (pillActiveRef.current) {
-              hidePill();
-              void window.api.cloudPromptSignIn();
-            }
-            return;
-          }
-          if (code === "usage_exceeded") {
-            streamResolverRef.current = null;
-            if (resolver) {
-              resolver({ raw: "", cleaned: "", usageExceeded: true });
-            } else if (wantsMicRef.current) {
-              streamSessionErrorRef.current = { message: msg, code };
-              setPillNotice("limit");
-            } else if (pillActiveRef.current) {
-              hidePill();
-              void window.api.cloudPromptUpgrade();
-            }
-            return;
-          }
           if (resolver) {
             resolveStreamingWithFallback(msg);
             return;
           }
           if (wantsMicRef.current && recordingSessionUsesTransportRef.current) {
             streamSessionErrorRef.current = { message: msg, code };
-            if (providerCategoryRef.current === "freestyle_cloud") {
-              setPillNotice("unavailable");
-            }
             return;
           }
           if (!pillActiveRef.current) return;
@@ -1668,18 +1579,6 @@ export default function AppPage(): React.JSX.Element {
 
       const streamError = streamSessionErrorRef.current;
       streamSessionErrorRef.current = null;
-      if (streamError?.code === "cloud_auth_required") {
-        streamerRef.current.cancel();
-        hidePill();
-        void window.api.cloudPromptSignIn();
-        return;
-      }
-      if (streamError?.code === "usage_exceeded") {
-        streamerRef.current.cancel();
-        hidePill();
-        void window.api.cloudPromptUpgrade();
-        return;
-      }
 
       const transportFailure =
         streamError?.message ??
@@ -1809,22 +1708,6 @@ export default function AppPage(): React.JSX.Element {
             error?: string;
             detail?: string;
           } | null;
-          if (res.status === 401 && body?.error === "cloud_auth_required") {
-            return {
-              raw: "",
-              cleaned: "",
-              error: "Sign in to Freestyle Transcribe",
-              cloudAuthRequired: true,
-            };
-          }
-          if (res.status === 429 && body?.error === "usage_exceeded") {
-            return {
-              raw: "",
-              cleaned: "",
-              error: USAGE_LIMIT_DIALOG_MESSAGE,
-              usageExceeded: true,
-            };
-          }
           const msg =
             body?.detail ||
             body?.error ||
@@ -2083,18 +1966,6 @@ export default function AppPage(): React.JSX.Element {
             error?: string;
             detail?: string;
           } | null;
-          // Cloud auth and usage limits have their own interactive prompts in
-          // the main process; the card would only be a worse version of them.
-          if (res.status === 401 && body?.error === "cloud_auth_required") {
-            endRemix();
-            void window.api.cloudPromptSignIn();
-            return;
-          }
-          if (res.status === 429 && body?.error === "usage_exceeded") {
-            endRemix();
-            void window.api.cloudPromptUpgrade();
-            return;
-          }
           failRemix(
             "Remix failed",
             body?.detail || `The model couldn't run that (${res.status}).`,
@@ -2120,7 +1991,6 @@ export default function AppPage(): React.JSX.Element {
     },
     [
       deliverRemixResult,
-      endRemix,
       failRemix,
       patchRemix,
       requireSelection,
@@ -2669,7 +2539,6 @@ export default function AppPage(): React.JSX.Element {
   // single mark at its right-hand end. Prose belongs in the card; the capsule
   // sits over whatever the user is actually doing, so it only ever earns a
   // glyph, and the words behind it are in the tooltip and to screen readers.
-  const isFreestyleCloud = providerCategoryRef.current === "freestyle_cloud";
   const showErrorCard = state === "error";
   // A remix replaces the capsule outright: its own card carries the waveform,
   // so there is nothing left for the capsule to say while one is up.
@@ -2740,19 +2609,10 @@ export default function AppPage(): React.JSX.Element {
       ? "Reconnecting"
       : pillNotice === "retrying"
         ? "Retrying"
-        : pillNotice === "sign-in"
-          ? "Sign in needed"
-          : pillNotice === "limit"
-            ? "Limit reached"
-            : pillNotice === "unavailable"
-              ? isFreestyleCloud
-                ? "Cloud offline"
-                : "Unavailable"
-              : null;
-  const statusIsAlert =
-    pillNotice === "unavailable" ||
-    pillNotice === "sign-in" ||
-    pillNotice === "limit";
+        : pillNotice === "unavailable"
+          ? "Unavailable"
+          : null;
+  const statusIsAlert = pillNotice === "unavailable";
 
   // Only worth showing when more than one dictation is stacked up; a single
   // in-flight transcription is already implied by the sweeping waveform. A
@@ -2765,14 +2625,7 @@ export default function AppPage(): React.JSX.Element {
       : elapsedLabel;
   const wantsStatus = !showCard && !exiting && !!(statusLabel || statusCount);
 
-  const cardTitle =
-    pillNotice === "sign-in"
-      ? "Sign in to continue"
-      : pillNotice === "limit"
-        ? "Weekly limit reached"
-        : isFreestyleCloud
-          ? "Cloud offline"
-          : "Transcription failed";
+  const cardTitle = "Transcription failed";
   const cardBody = failedTranscriptionErrorRef.current;
 
   const status = {

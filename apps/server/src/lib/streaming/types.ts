@@ -3,7 +3,7 @@ import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 export interface StreamCallbacks {
   onReady: (model: string) => void;
   onPartial: (text: string) => void;
-  onFinal: (text: string, raw?: string) => void;
+  onFinal: (text: string) => void;
   onError: (message: string, code?: string) => void;
   onClose: () => void;
 }
@@ -47,27 +47,6 @@ export interface TranscribeResult {
   durationInSeconds?: number;
 }
 
-/**
- * Cleanup preferences forwarded to providers that post-process server-side
- * (currently only freestyle-cloud). Local/BYOK providers ignore these — the
- * desktop runs its own `postProcess()` for those.
- *
- * The cloud reads the user's synced cleanup config (intensity, custom prompt,
- * tones, app assignments) from the member_preferences row, so only
- * request-scoped control values travel here.
- */
-export interface StreamCleanupPreferences {
-  /** When true, the provider should return the raw transcript with no LLM cleanup. */
-  skipPostProcess: boolean;
-  /**
-   * Plugin-contributed system-prompt fragments (from `beforeCleanup` hook).
-   * The cloud appends these to the assembled system prompt so plugin
-   * instructions (e.g. emoji insertion) are honored in cloud-side cleanup.
-   * Never synced, so they must travel inline.
-   */
-  systemFragments?: string[];
-}
-
 export interface StreamingSessionOptions {
   apiKey: string;
   model: string;
@@ -86,7 +65,6 @@ export interface StreamingSessionOptions {
    * Cleanup preferences for server-side post-processing providers. Mirrors the
    * batch `/v2/transcribe` payload so streaming and batch behave identically.
    */
-  cleanup?: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }
 

@@ -24,8 +24,8 @@ if (process.platform === "darwin") {
   }
 }
 
-// In development, load a local-only env file (cwd: apps/electron) so flags like
-// FREESTYLE_CLOUD_URL take effect without exporting them in the shell.
+// In development, load a local-only env file (cwd: apps/electron) so dev flags
+// take effect without exporting them in the shell.
 // `process.env.NODE_ENV` is replaced at build time (see electron.vite.config.ts),
 // so this whole block is dead-code-eliminated from packaged/production builds.
 if (process.env.NODE_ENV !== "production") {
@@ -2427,8 +2427,7 @@ app.whenReady().then(async () => {
     if (typeof url !== "string") return false;
     try {
       const parsed = new URL(url);
-      // mailto: is allowed for support/sales links (e.g. "Contact sales" in
-      // the upgrade modal); everything else must be http(s).
+      // mailto: is allowed for support links; everything else must be http(s).
       if (
         parsed.protocol !== "https:" &&
         parsed.protocol !== "http:" &&
@@ -2441,39 +2440,6 @@ app.whenReady().then(async () => {
     } catch {
       return false;
     }
-  });
-
-  ipcMain.handle("cloud:prompt-sign-in", async () => {
-    const { response } = await dialog.showMessageBox({
-      type: "info",
-      message: "Sign in to Freestyle Transcribe",
-      detail:
-        "Freestyle Transcribe needs you to sign in before it can transcribe or clean up text. Open Models settings to sign in or switch providers.",
-      buttons: ["Open Models", "Not Now"],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (response !== 0) return false;
-    showSettingsWindow("/settings/models");
-    return true;
-  });
-
-  // Shown when Freestyle Cloud reports the free-tier usage limit is exhausted.
-  // "Upgrade" deep-links into the dashboard with `?upgrade=1`, which the
-  // renderer's UpgradeModalProvider reads to auto-open the Pro upsell modal.
-  ipcMain.handle("cloud:prompt-upgrade", async () => {
-    const { response } = await dialog.showMessageBox({
-      type: "info",
-      message: "Usage limit reached",
-      detail:
-        "You've used your free Freestyle Cloud dictation for this week. Upgrade to Pro for unlimited dictation, or switch to a local or bring-your-own-key model in Settings > Models.",
-      buttons: ["Upgrade to Pro", "Not Now"],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (response !== 0) return false;
-    showSettingsWindow("/today?upgrade=1");
-    return true;
   });
 
   ipcMain.handle(

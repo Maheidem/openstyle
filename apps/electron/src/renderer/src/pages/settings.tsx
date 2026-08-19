@@ -15,14 +15,12 @@ import {
   useLanguageOptions,
 } from "@renderer/components/language-combobox";
 import { LanguageSelector } from "@renderer/components/language-selector";
-import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
-import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import {
@@ -33,7 +31,6 @@ import {
   SelectValue,
 } from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
-import { PricingPlans } from "@renderer/components/upgrade-modal";
 import {
   acceleratorsEqual,
   comboDisplayKeys,
@@ -48,22 +45,13 @@ import {
   getLocalApiBase,
   refreshApiBase,
 } from "@renderer/lib/api";
-import { useCloudAuth } from "@renderer/lib/auth-context";
-import { formatNumber } from "@renderer/lib/format";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
-import { useCloudConfig } from "@renderer/lib/use-cloud-config";
-import {
-  type CloudUsageBalance,
-  usagePercent,
-  useCloudUsage,
-} from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
-  Cloud,
   ExternalLink,
   FolderOpen,
   Info,
@@ -73,7 +61,6 @@ import {
   Monitor,
   Moon,
   Pause,
-  RefreshCw,
   Sun,
   Trash2,
   Volume2,
@@ -122,7 +109,6 @@ const settingsSectionIds = [
   "display",
   "permissions",
   "data",
-  "billing",
   "network",
 ] as const;
 
@@ -171,8 +157,6 @@ function parseLanguagesSetting(s: Record<string, string>): string[] {
 export default function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
-  const { user } = useCloudAuth();
-  const { data: cloudConfig } = useCloudConfig(!!user);
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [hotkey, setHotkey] = useState(
@@ -218,7 +202,7 @@ export default function SettingsPage(): React.JSX.Element {
 
   // Full transcription-language set from the cloud (all Soniox languages,
   // region-ordered), falling back to the bundled list when offline.
-  const languageOptions = useLanguageOptions(cloudConfig?.suggestedLanguages);
+  const languageOptions = useLanguageOptions();
 
   // Translate mode enforces a single output language, so it only applies when
   // exactly one language is selected. Its label is that language's name.
@@ -1306,8 +1290,6 @@ export default function SettingsPage(): React.JSX.Element {
             </SettingsPanel>
           )}
 
-          {activeSection === "billing" && <BillingPanel />}
-
           {activeSection === "network" && <NetworkPanel />}
         </div>
       </div>
@@ -1385,133 +1367,6 @@ function Row({
         </p>
       </div>
       <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-function BillingPanel(): React.JSX.Element {
-  const { user } = useCloudAuth();
-  const {
-    balance,
-    isPro,
-    isFetching,
-    refresh,
-    startCheckout,
-    checkoutStatus,
-    checkoutError,
-    resetCheckout,
-    openBillingPortal,
-    portalOpening,
-  } = useCloudUsage(!!user);
-
-  return (
-    <SettingsPanel>
-      <div className="flex flex-col gap-6 pb-24">
-        <UsageSummary
-          signedIn={!!user}
-          balance={balance}
-          isPro={isPro}
-          isFetching={isFetching}
-          onRefresh={refresh}
-        />
-        <PricingPlans
-          isPro={isPro}
-          checkoutStatus={checkoutStatus}
-          checkoutError={checkoutError}
-          startCheckout={startCheckout}
-          resetCheckout={resetCheckout}
-          openBillingPortal={openBillingPortal}
-          portalOpening={portalOpening}
-        />
-      </div>
-    </SettingsPanel>
-  );
-}
-
-function UsageSummary({
-  signedIn,
-  balance,
-  isPro,
-  isFetching,
-  onRefresh,
-}: {
-  signedIn: boolean;
-  balance: CloudUsageBalance | null;
-  isPro: boolean;
-  isFetching: boolean;
-  onRefresh: () => void;
-}): React.JSX.Element {
-  if (!signedIn) {
-    return (
-      <div className="glass-card flex items-start gap-3 rounded-[12px] border p-4">
-        <Cloud className="text-primary mt-0.5 size-5 shrink-0" />
-        <div className="min-w-0">
-          <div className="text-foreground text-[13px] font-medium">
-            Sign in to Freestyle Cloud
-          </div>
-          <p className="text-muted-foreground mt-0.5 text-[12px] leading-[1.5]">
-            Sign in from the account menu in the bottom-left to track your
-            weekly usage and manage your plan.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="glass-card rounded-[12px] border p-4">
-      <div className="flex items-center justify-between">
-        <span className="text-muted-foreground mono text-[10.5px] font-medium uppercase tracking-[0.12em]">
-          This week
-        </span>
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px] transition-colors"
-        >
-          <RefreshCw className={cn("size-3", isFetching && "animate-spin")} />
-          Refresh
-        </button>
-      </div>
-
-      {isPro ? (
-        <div className="mt-3 flex items-center gap-2">
-          <span className="serif-italic text-foreground text-[30px] leading-none">
-            Unlimited
-          </span>
-          <Badge className="mono h-4 px-1.5 text-[9px] uppercase tracking-[0.12em]">
-            Pro
-          </Badge>
-        </div>
-      ) : balance ? (
-        <>
-          <div className="mt-3 mb-3 flex items-baseline gap-1.5">
-            <span className="serif-italic text-foreground text-[34px] leading-none">
-              {formatNumber(balance.remaining)}
-            </span>
-            <span className="text-muted-foreground text-[11px] font-medium">
-              / {formatNumber(balance.limit)} words remaining
-            </span>
-          </div>
-          <Progress value={usagePercent(balance)} className="h-1.5" />
-          <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
-            <span className="mono tracking-[0.08em]">
-              {usagePercent(balance)}% used
-            </span>
-            <span>
-              Resets{" "}
-              {new Date(balance.resetsAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
-            </span>
-          </div>
-        </>
-      ) : (
-        <div className="text-muted-foreground mt-3 text-[12px]">
-          Usage is unavailable right now.
-        </div>
-      )}
     </div>
   );
 }

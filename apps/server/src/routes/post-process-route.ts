@@ -1,10 +1,6 @@
 import { postProcessSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import {
-  FreestyleCloudAuthError,
-  FreestyleCloudUsageError,
-} from "../lib/freestyle-cloud.js";
 import { getLanguagesSetting } from "../lib/language.js";
 import { PipelineStage } from "../lib/plugins/index.js";
 import {
@@ -13,7 +9,6 @@ import {
   emitAbortEvent,
 } from "../lib/plugins/pipeline.js";
 import { postProcess } from "../lib/post-process.js";
-import { invalidateSession } from "../lib/sessions.js";
 
 const postProcessRoute = new Hono().post(
   "/",
@@ -25,23 +20,11 @@ const postProcessRoute = new Hono().post(
     const languages = body.languages ?? getLanguagesSetting();
     const api = await createHookApi();
 
-    let pp: Awaited<ReturnType<typeof postProcess>>;
-    try {
-      pp = await postProcess(body.text, appContext, {
-        languages,
-        source: "multi_segment",
-        api,
-      });
-    } catch (err) {
-      if (err instanceof FreestyleCloudAuthError) {
-        invalidateSession();
-        return c.json({ error: "cloud_auth_required" }, 401);
-      }
-      if (err instanceof FreestyleCloudUsageError) {
-        return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
-      }
-      throw err;
-    }
+    const pp = await postProcess(body.text, appContext, {
+      languages,
+      source: "multi_segment",
+      api,
+    });
 
     // `beforeCleanup`/`afterCleanup` can consume/abort during the multi-segment
     // merge too; surface the disposition (blanking the text when terminal) and

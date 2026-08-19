@@ -14,7 +14,6 @@ import {
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { useCloudAuth } from "@renderer/lib/auth-context";
 import type {
   AvailableModel,
   WhisperModelDownloadState,
@@ -28,7 +27,6 @@ import {
   Key,
   Laptop,
   Loader2,
-  LogIn,
   Mic,
   RefreshCw,
   Search,
@@ -45,8 +43,6 @@ import {
   PickerOption,
 } from "./picker-option";
 import {
-  FREESTYLE_CLOUD_CLEANUP,
-  FREESTYLE_CLOUD_TIER,
   OpenModelSourceButton,
   recommendedVoiceKey,
   TranscriptionPicker,
@@ -166,7 +162,6 @@ function buildLlmRows(
   const rows: Row[] = [];
 
   for (const [providerId, { providerName, models }] of m.llmModelsByProvider) {
-    if (providerId === FREESTYLE_CLOUD_CLEANUP.provider_id) continue;
     for (const model of models) {
       // For gateway models the meta line reads "<vendor> via <gateway>"
       // (e.g. "Microsoft via OpenRouter"). Vendor is the model_id prefix; some
@@ -186,9 +181,7 @@ function buildLlmRows(
         selected:
           m.defaultLlm?.model_id === model.model_id &&
           m.defaultLlm?.provider === model.provider_id,
-        hasKey:
-          providerId === FREESTYLE_CLOUD_CLEANUP.provider_id ||
-          m.keyProviders.has(providerId),
+        hasKey: m.keyProviders.has(providerId),
         onSelect: () => h.onPickCloud(model),
       });
     }
@@ -227,7 +220,6 @@ export function ModelList({
   voiceView,
   llmView,
   m,
-  cloudBusy,
   onClose,
   onPickCloud,
   onPickLocalVoice,
@@ -237,7 +229,6 @@ export function ModelList({
   voiceView?: "tiers" | "all" | "local" | "cloud";
   llmView?: "tiers" | "all" | "local" | "cloud";
   m: UseModels;
-  cloudBusy?: boolean;
   onClose: () => void;
   onPickCloud: (model: AvailableModel) => void;
   onPickLocalVoice: (
@@ -277,9 +268,7 @@ export function ModelList({
     return (
       <TranscriptionPicker
         m={m}
-        busy={cloudBusy}
         onClose={onClose}
-        onPickCloud={onPickCloud}
         onBrowseLocal={() => setView("local")}
         onBrowseCloud={() => setView("cloud")}
       />
@@ -315,15 +304,7 @@ export function ModelList({
   const curatedOnly = type === "llm" && !showAllLlm && !q;
   const filteredRows = rows.filter((r) => {
     if (localOnly && r.source !== "local") return false;
-    if (cloudOnly) {
-      if (r.source !== "cloud") return false;
-      if (
-        r.provider === FREESTYLE_CLOUD_TIER.provider_id ||
-        r.provider === FREESTYLE_CLOUD_CLEANUP.provider_id
-      ) {
-        return false;
-      }
-    }
+    if (cloudOnly && r.source !== "cloud") return false;
     if (filter === "cloud" && r.source !== "cloud") return false;
     if (filter === "local" && r.source !== "local") return false;
     if (
@@ -529,11 +510,7 @@ function ModelRow({
   row: Row;
   first: boolean;
 }): React.JSX.Element {
-  const cloud = useCloudAuth();
   const local = row.source === "local";
-  const isFreestyleCloud =
-    row.provider === FREESTYLE_CLOUD_TIER.provider_id ||
-    row.provider === FREESTYLE_CLOUD_CLEANUP.provider_id;
   const status = row.status ?? "not_downloaded";
   const downloading =
     local && (status === "downloading" || status === "verifying");
@@ -638,17 +615,6 @@ function ModelRow({
               </>
             )}
           </>
-        ) : isFreestyleCloud ? (
-          cloud.user ? (
-            <Button variant="ink" size="sm" onClick={row.onSelect}>
-              Use
-            </Button>
-          ) : (
-            <Button variant="outline" size="sm" onClick={row.onSelect}>
-              <LogIn data-icon="inline-start" />
-              Sign in to use
-            </Button>
-          )
         ) : row.hasKey ? (
           <Button variant="ink" size="sm" onClick={row.onSelect}>
             Use
@@ -877,10 +843,7 @@ function EndpointConnectForm({
   );
 }
 
-const MANAGED_LLM_PROVIDERS = new Set([
-  FREESTYLE_CLOUD_CLEANUP.provider_id,
-  "local-llm",
-]);
+const MANAGED_LLM_PROVIDERS = new Set(["local-llm"]);
 
 function isLocalLlm(llm: ConfiguredModel | undefined): boolean {
   return llm?.provider === "local-llm";
@@ -905,11 +868,8 @@ function CleanupTierPicker({
 }): React.JSX.Element {
   const { t } = useTranslation();
 
-  const byokCount = [...m.llmModelsByProvider.entries()].reduce(
-    (sum, [providerId, { models }]) =>
-      providerId === FREESTYLE_CLOUD_CLEANUP.provider_id
-        ? sum
-        : sum + models.length,
+  const byokCount = [...m.llmModelsByProvider.values()].reduce(
+    (sum, { models }) => sum + models.length,
     0,
   );
 

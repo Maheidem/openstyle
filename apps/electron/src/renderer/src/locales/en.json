@@ -118,8 +118,6 @@
       "statusWorking": "Remixing…",
       "statusRemixed": "Remixed.",
       "doneNote": "The draft rewrote itself in place. Try another instruction, or finish up.",
-      "extraCaption": "This one takes a few seconds.",
-      "extraDone": "A fact and a photo, straight into the draft. Finish whenever you're ready.",
       "fallbackNote": "Remix needs an assistant model — add one in Settings when you're ready.",
       "sampleDraft": "Happy birthday, Sam. Hope your day is a good one — I'll bring cake on Friday.",
       "sampleSignoff": "So glad we get to celebrate you this week.\n\nWarmly,\n{{name}}",
@@ -128,9 +126,7 @@
       "highlightNote": "Your draft is already highlighted — keep it highlighted and don't click into the email.",
       "instructionPrefix": "Hold",
       "instructionSuffix": "and say, word for word:",
-      "sayText": "Make it warmer and sign it from {{name}}.",
-      "extraLead": "One more trick — with the text still highlighted:",
-      "extraSay": "Add a fun fact about birthday cake, and a picture of one."
+      "sayText": "Make it warmer and sign it from {{name}}."
     }
   },
   "settings": {
@@ -147,7 +143,6 @@
       "display": "Display",
       "permissions": "Permissions",
       "data": "Data",
-      "billing": "Usage and Billing",
       "network": "Network",
       "remix": "Remix"
     },
@@ -644,25 +639,17 @@
     "pair": {
       "transcriptionKicker": "Transcription · required",
       "cleanupKicker": "AI cleanup · optional",
-      "cleanupKickerLocked": "AI cleanup · included",
       "changeVoice": "Change voice transcription model",
       "changeVoiceShort": "Change model",
       "change": "Change",
       "pickModel": "Pick a model",
       "noneSelected": "None selected",
       "via": "via",
-      "includedWithFreestyle": "Included with Freestyle Transcribe",
       "configureWarming": "Configure model warming"
     },
     "picker": {
       "transcription": "Transcription",
       "cleanup": "AI cleanup",
-      "freestyleTranscribe": "Freestyle Transcribe",
-      "recommended": "Recommended",
-      "managedSignedIn": "Managed cloud · signed in",
-      "managedSignIn": "Managed cloud · sign in once, no API key",
-      "freestyleBundleSignedIn": "Managed cloud · transcription and AI cleanup included",
-      "freestyleBundleSignIn": "Managed cloud · sign in once · transcription and cleanup included",
       "onDevice": "On {{phrase}}",
       "yourApiKey": "Your API key",
       "unavailableOnDevice": "Unavailable on this device",

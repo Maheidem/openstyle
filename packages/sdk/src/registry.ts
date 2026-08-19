@@ -68,10 +68,7 @@ export class PluginRegistry {
   /**
    * Whether any loaded plugin implements the given hook. Used by hosts to
    * decide whether it's worth taking a slower code path just to guarantee a
-   * hook fires (e.g. Freestyle Cloud's combined STT+cleanup mode is skipped in
-   * favor of the slower two-step path when a plugin implements
-   * `beforeTranscribe`/`afterTranscribe`/`beforeCleanup`, none of which would
-   * otherwise fire).
+   * hook fires.
    */
   has<K extends keyof Hooks>(name: K): boolean {
     return this.plugins.some((plugin) => typeof plugin[name] === "function");

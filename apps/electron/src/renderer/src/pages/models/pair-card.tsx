@@ -17,7 +17,6 @@ export function PairCard({
   voice,
   llm,
   llmCleanup,
-  cleanupLocked,
   onToggleCleanup,
   onChangeVoice,
   onChangeLlm,
@@ -26,8 +25,6 @@ export function PairCard({
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
   llmCleanup: boolean;
-  /** When true, cleanup stays on and the toggle is disabled (Freestyle Transcribe). */
-  cleanupLocked?: boolean;
   onToggleCleanup: (next: boolean) => void;
   onChangeVoice: () => void;
   onChangeLlm: () => void;
@@ -35,7 +32,7 @@ export function PairCard({
   onConfigureWarming?: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const cleanupOn = cleanupLocked || llmCleanup;
+  const cleanupOn = llmCleanup;
 
   return (
     <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
@@ -58,28 +55,17 @@ export function PairCard({
       />
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
         <PairSide
-          kicker={
-            cleanupLocked
-              ? t("models.pair.cleanupKickerLocked")
-              : t("models.pair.cleanupKicker")
-          }
+          kicker={t("models.pair.cleanupKicker")}
           modelName={cleanupOn ? llm?.model_name : undefined}
           providerName={
-            cleanupLocked
-              ? t("models.pair.includedWithFreestyle")
-              : cleanupOn && llm
-                ? displayName(llm.provider)
-                : undefined
+            cleanupOn && llm ? displayName(llm.provider) : undefined
           }
           cta={llm ? t("models.pair.change") : t("models.pair.pickModel")}
           noneLabel={t("models.pair.noneSelected")}
           toggle={cleanupOn}
-          toggleDisabled={cleanupLocked}
           onToggle={onToggleCleanup}
           onChange={onChangeLlm}
-          changeDisabled={cleanupLocked}
           dimmed={!cleanupOn}
-          providerIsIncluded={cleanupLocked}
         />
       </div>
     </section>

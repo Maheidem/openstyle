@@ -78,11 +78,7 @@ export interface MlxAsrStatus {
   setupHint: string | null;
 }
 
-export const FREESTYLE_CLOUD_PROVIDER_ID = "freestyle-cloud";
-export const FREESTYLE_CLOUD_MODEL_ID = "freestyle-cloud/stt";
-
 export const CLOUD_VOICE_PROVIDERS = [
-  FREESTYLE_CLOUD_PROVIDER_ID,
   "openai",
   "groq",
   "deepgram",
@@ -97,7 +93,6 @@ export const VOICE_PROVIDERS = [
 ];
 
 export const LLM_PROVIDERS = [
-  FREESTYLE_CLOUD_PROVIDER_ID,
   "openai",
   "anthropic",
   "google",
@@ -119,7 +114,6 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   mistral: "Mistral",
   openrouter: "OpenRouter",
   vercel: "Vercel AI Gateway",
-  "freestyle-cloud": "Freestyle Transcribe",
   "local-llm": "Local LLM",
   "local-whisper": "Local Whisper",
   "local-mlx": "Local MLX",
@@ -270,7 +264,6 @@ export function buildVoiceItems(
     selectedWhisperModelId?: string;
     selectedMlxModelId?: string;
     keyProviders: Set<string>;
-    cloudSignedIn?: boolean;
   },
 ): VoiceItem[] {
   const whisperLocal: VoiceItem[] = (whisperStatus?.modelDefinitions ?? []).map(
@@ -370,10 +363,7 @@ export function buildVoiceItems(
       cost: meta?.cost,
       streaming: meta?.streaming,
       note: meta?.note,
-      hasKey:
-        m.provider_id === FREESTYLE_CLOUD_PROVIDER_ID
-          ? !!ctx.cloudSignedIn
-          : ctx.keyProviders.has(m.provider_id),
+      hasKey: ctx.keyProviders.has(m.provider_id),
       available: m,
       selected:
         ctx.selectedProvider === m.provider_id &&

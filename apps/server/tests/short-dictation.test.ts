@@ -81,16 +81,8 @@ const { ElevenLabsTranscriptionProvider } = await import(
 const { OpenAITranscriptionProvider } = await import(
   "../src/lib/streaming/providers/openai.js"
 );
-const { FreestyleCloudTranscriptionProvider } = await import(
-  "../src/lib/streaming/providers/freestyle-cloud.js"
-);
 
-type Provider =
-  | "soniox"
-  | "deepgram"
-  | "elevenlabs"
-  | "openai"
-  | "freestyle-cloud";
+type Provider = "soniox" | "deepgram" | "elevenlabs" | "openai";
 
 async function openSession(provider: Provider) {
   const onFinal = vi.fn();
@@ -134,14 +126,6 @@ async function openSession(provider: Provider) {
         bias: null,
         callbacks,
       }),
-    "freestyle-cloud": () =>
-      new FreestyleCloudTranscriptionProvider().openStreamingSession({
-        apiKey: "k",
-        model: "freestyle-cloud/stt-rt-preview",
-        languages: ["en"],
-        bias: null,
-        callbacks,
-      }),
   };
   const session = providers[provider]();
   if (provider === "elevenlabs") {
@@ -177,7 +161,6 @@ describe("a dictation that ends before its session is live", () => {
     "deepgram",
     "elevenlabs",
     "openai",
-    "freestyle-cloud",
   ] as const)("sends held audio for %s", async (provider) => {
     const { session, socket } = await openSession(provider);
 

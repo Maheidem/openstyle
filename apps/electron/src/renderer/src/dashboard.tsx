@@ -1,13 +1,10 @@
 import "./globals.css";
 import "./fonts.css";
 
-import { CloudSignInModal } from "@renderer/components/cloud-signin-modal";
 import { ErrorBoundary } from "@renderer/components/error-boundary";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
-import { UpgradeModalProvider } from "@renderer/components/upgrade-modal";
 import i18n, { initI18n } from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
-import { CloudAuthProvider } from "@renderer/lib/auth-context";
 import { listPlugins } from "@renderer/lib/plugins-api";
 import {
   createQueryClient,
@@ -40,7 +37,6 @@ const PluginDetailPage = lazy(
 );
 const PluginPage = lazy(() => import("@renderer/pages/plugins/plugin-page"));
 const PluginsPage = lazy(() => import("@renderer/pages/plugins/plugins"));
-const ProfilePage = lazy(() => import("@renderer/pages/profile"));
 const RemixPage = lazy(() => import("@renderer/pages/remix"));
 const SettingsPage = lazy(() => import("@renderer/pages/settings"));
 const TonePage = lazy(() => import("@renderer/pages/tone"));
@@ -103,87 +99,64 @@ function mount(): void {
             >
               <QueryClientProvider client={queryClient}>
                 <TooltipProvider>
-                  <CloudAuthProvider>
-                    <UpgradeModalProvider>
-                      <CloudSignInModal />
-                      <Suspense fallback={<RouteFallback />}>
-                        <Routes>
+                  <Suspense fallback={<RouteFallback />}>
+                    <Routes>
+                      <Route
+                        path="/"
+                        element={<Navigate to="/today" replace />}
+                      />
+                      <Route path="/onboarding" element={<OnboardingPage />} />
+
+                      <Route element={<AppShell />}>
+                        <Route path="/today" element={<HistoryPage />} />
+                        <Route element={<PagePad />}>
+                          <Route path="/remix" element={<RemixPage />} />
+                          <Route path="/settings" element={<SettingsPage />} />
                           <Route
-                            path="/"
+                            path="/settings/general"
+                            element={<Navigate to="/settings" replace />}
+                          />
+                          <Route
+                            path="/settings/models"
+                            element={<ModelsPage />}
+                          />
+                          <Route
+                            path="/settings/dictionary"
+                            element={<DictionaryPage />}
+                          />
+                          <Route
+                            path="/settings/vocabulary"
+                            element={<VocabularyPage />}
+                          />
+                          <Route
+                            path="/settings/formats"
+                            element={<Navigate to="/settings/tone" replace />}
+                          />
+                          <Route path="/settings/tone" element={<TonePage />} />
+                          <Route
+                            path="/settings/history"
                             element={<Navigate to="/today" replace />}
                           />
+                          <Route path="/help" element={<HelpPage />} />
+                          <Route path="/plugins" element={<PluginsPage />} />
                           <Route
-                            path="/onboarding"
-                            element={<OnboardingPage />}
+                            path="/plugins/:slug"
+                            element={<PluginDetailPage />}
                           />
+                          <Route
+                            path="/plugins/:slug/:pageId"
+                            element={<PluginPage />}
+                          />
+                          <Route
+                            path="/settings/permissions"
+                            element={<Navigate to="/settings" replace />}
+                          />
+                        </Route>
+                      </Route>
 
-                          <Route element={<AppShell />}>
-                            <Route path="/today" element={<HistoryPage />} />
-                            <Route element={<PagePad />}>
-                              <Route path="/remix" element={<RemixPage />} />
-                              <Route
-                                path="/settings"
-                                element={<SettingsPage />}
-                              />
-                              <Route
-                                path="/settings/general"
-                                element={<Navigate to="/settings" replace />}
-                              />
-                              <Route
-                                path="/settings/models"
-                                element={<ModelsPage />}
-                              />
-                              <Route
-                                path="/settings/dictionary"
-                                element={<DictionaryPage />}
-                              />
-                              <Route
-                                path="/settings/vocabulary"
-                                element={<VocabularyPage />}
-                              />
-                              <Route
-                                path="/settings/formats"
-                                element={
-                                  <Navigate to="/settings/tone" replace />
-                                }
-                              />
-                              <Route
-                                path="/settings/tone"
-                                element={<TonePage />}
-                              />
-                              <Route
-                                path="/settings/history"
-                                element={<Navigate to="/today" replace />}
-                              />
-                              <Route path="/help" element={<HelpPage />} />
-                              <Route
-                                path="/profile"
-                                element={<ProfilePage />}
-                              />
-                              <Route
-                                path="/plugins"
-                                element={<PluginsPage />}
-                              />
-                              <Route
-                                path="/plugins/:slug"
-                                element={<PluginDetailPage />}
-                              />
-                              <Route
-                                path="/plugins/:slug/:pageId"
-                                element={<PluginPage />}
-                              />
-                              <Route
-                                path="/settings/permissions"
-                                element={<Navigate to="/settings" replace />}
-                              />
-                            </Route>
-                          </Route>
-
-                          <Route path="*" element={<NotFoundPage />} />
-                        </Routes>
-                      </Suspense>
-                    </UpgradeModalProvider>
-                  </CloudAuthProvider>
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
+                  </Suspense>
                 </TooltipProvider>
               </QueryClientProvider>
             </ThemeProvider>

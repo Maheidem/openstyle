@@ -9,7 +9,6 @@ import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
 import { authMiddleware, setAuthToken } from "./lib/auth.js";
-import { refreshCleanupPromptConfig } from "./lib/editor/prompt-config.js";
 import { formatError } from "./lib/format-error.js";
 import {
   startHistoryRetentionSweep,
@@ -27,24 +26,14 @@ import {
   initServerPlugins,
   plugins,
 } from "./lib/plugins/index.js";
-import { pullCloudPreferences } from "./lib/preferences-sync.js";
-import {
-  startSessionKeepAlive,
-  stopSessionKeepAlive,
-} from "./lib/session-keepalive.js";
-import {
-  drainOutbox,
-  startOutboxDrain,
-  stopOutboxDrain,
-} from "./lib/sync-outbox.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
 
 const httpLog = createAppLogger("http");
 
 // Lightweight CRUD routers get a request timeout. Transcription, post-process,
-// model downloads (whisper/mlx-asr), and the auth device-flow poll are
-// intentionally excluded — they can legitimately run longer than this window.
+// and model downloads (whisper/mlx-asr) are intentionally excluded — they can
+// legitimately run longer than this window.
 const REQUEST_TIMEOUT_MS = 30_000;
 const TIMEOUT_PREFIXES = [
   "/api/settings",
@@ -55,16 +44,12 @@ const TIMEOUT_PREFIXES = [
   "/api/history",
   "/api/models",
   "/api/plugins",
-  "/api/usage",
-  "/api/org",
   "/api/remix/thread",
   "/api/remix/runs",
 ];
 
 async function shutdownServer(): Promise<void> {
-  stopSessionKeepAlive();
   stopHistoryRetentionSweep();
-  stopOutboxDrain();
   await disposeServerPlugins().catch(() => {});
 }
 
@@ -211,19 +196,6 @@ export async function startServer(
   // anything issues a fetch, so model downloads and cloud/API calls honor it.
   configureNetwork();
 
-  // Warm the cleanup-prompt config from Freestyle Cloud so the latest presets
-  // and tone blocks are in memory before the first dictation. Fire-and-forget:
-  // it never throws and falls back to the bundled copy when offline.
-  void refreshCleanupPromptConfig();
-
-  // Seed local cleanup preferences from the cloud on launch when already signed
-  // in (cross-device sync). No-op when signed out; never throws.
-  void pullCloudPreferences();
-
-  // Flush any preference syncs that were queued while offline in a previous
-  // run. No-op when signed out / nothing pending; never throws.
-  void drainOutbox();
-
   // Load plugins (built-in + user) before serving. The app dispatches plugin
   // middleware from the live registry per request, so later runtime reloads
   // (enable/disable/install) take effect without reconstructing the app.
@@ -232,14 +204,6 @@ export async function startServer(
   const app = createApp();
 
   startHistoryRetentionSweep();
-
-  // Retry any preference syncs that fail (offline / server down); rows persist
-  // across restarts, so a change made offline eventually reaches the cloud.
-  startOutboxDrain();
-
-  // Keep the Freestyle Cloud session alive by sliding its expiry before the
-  // local token lapses (the cloud issues no refresh token). Fire-and-forget.
-  startSessionKeepAlive();
 
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ noServer: true });

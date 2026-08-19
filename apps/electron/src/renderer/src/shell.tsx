@@ -1,12 +1,7 @@
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
-import {
-  CloudProfileButton,
-  UpgradeCtaCard,
-} from "@renderer/components/cloud-profile";
 import { Badge } from "@renderer/components/ui/badge";
 import { UpdateBanner } from "@renderer/components/update-banner";
-import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
 import { listPlugins } from "@renderer/lib/plugins-api";
@@ -194,7 +189,6 @@ export default function AppShell(): React.JSX.Element {
   const location = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { t } = useTranslation();
-  const { user } = useCloudAuth();
 
   // A plugin page renders a native WebContentsView that paints above the DOM,
   // so the floating social bar would be occluded. Hide it while a plugin page
@@ -301,21 +295,10 @@ export default function AppShell(): React.JSX.Element {
             </>
           ) : null}
         </div>
-        {!user ? (
-          <>
-            {pluginNav.length > 0 ? (
-              <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-            ) : null}
-            <NavList items={footerNav} />
-          </>
+        {pluginNav.length > 0 ? (
+          <div className="border-sidebar-border mx-3 my-1.5 border-t" />
         ) : null}
-        <UpgradeCtaCard />
-        <div
-          className="border-sidebar-border mx-3 mt-2 border-t pt-2"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          <CloudProfileButton />
-        </div>
+        <NavList items={footerNav} />
         <div className="h-3" />
       </aside>
 

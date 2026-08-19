@@ -1,28 +1,12 @@
 /**
  * Cleanup-prompt configuration: the *content* of the cleanup prompts (intensity
  * preset bodies, destination tone blocks, language constraints, and app/site
- * routing tables), plus a fetcher that overrides the bundled copy with the
- * latest config served by Freestyle Cloud.
+ * routing tables).
  *
- * The strings below are the offline fallback. On startup (and every ~6 hours)
- * `refreshCleanupPromptConfig()` fetches `GET /v2/config` and swaps in the cloud
- * copy (from its `prompts` field) so prompt improvements reach users without an
- * app release. The resolution order for every read is:
- *
- *   fresh cloud (< 6h) -> stale cloud (fetch failed) -> bundled fallback
- *
- * Nothing is ever lost: the TTL only decides when we *try* to refresh. If the
- * refresh fails (offline), the last-fetched copy is kept; if we never fetched,
- * the bundled copy below is used. Prompt *assembly* stays local (see
- * `prompts.ts`/`rewrite-context.ts`) — this module only holds data + the fetch.
- *
- * IMPORTANT: keep the bundled strings below in sync with the cloud repo's
- * `apps/server/src/routes/v2/prompt-config.ts` (the single source of truth).
- * Drift only affects how quickly an improvement reaches offline users, never
- * correctness — but a synced copy keeps offline behavior identical to online.
+ * Prompt *assembly* stays in `prompts.ts`/`rewrite-context.ts` — this module
+ * only holds the data they read.
  */
 
-import { createAppLogger } from "@freestyle-voice/utils";
 import {
   CLEANUP_PRESET_PROMPTS,
   type CleanupEmailTone,
@@ -31,22 +15,6 @@ import {
   type CleanupToneDestination,
   type CleanupWorkTone,
 } from "@freestyle-voice/validations";
-import { freestyleCloudUrl } from "../freestyle-cloud.js";
-
-const log = createAppLogger("prompt-config");
-
-/** How long a fetched config is considered fresh before we try to refresh. */
-const CONFIG_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-
-/** Abort the config fetch if the cloud doesn't respond in time. */
-const CONFIG_FETCH_TIMEOUT_MS = 10_000;
-
-/**
- * Schema version this build understands. A cloud payload with a different
- * `schema` is ignored (we keep the bundled/last-good copy) so an incompatible
- * shape can never break prompt assembly.
- */
-export const CLEANUP_PROMPT_CONFIG_SCHEMA = 1 as const;
 
 /** Language display names used to build the language constraint block. */
 export const LANGUAGE_LABELS: Record<string, string> = {
@@ -251,13 +219,8 @@ export const CLEANUP_USER_PROMPT_BLOCKS: CleanupUserPromptBlocks = {
     "\n\nOutput target for this transcript: when the transcript starts with a greeting word (hi, hey, hello, dear, good morning, good afternoon, greetings) or uses email-style phrasing (i'm writing to, i hope this finds you well, i wanted to follow up, attaching, reaching out regarding, please find attached, let's stay in touch), treat it as a dictated email and return a properly formatted email body. Put the greeting on its own line followed by a blank line — this is required even for short greetings like 'hi' or 'good morning'. Break the body into one to three short paragraphs separated by blank lines. Put a spoken sign-off on its own line. If the transcript does not look like an email, return normal cleaned prose with no email layout. Never invent a subject line, greeting, sign-off, or paragraph the speaker did not say.",
 };
 
-/**
- * The full serializable cleanup-prompt configuration returned by
- * `GET /v2/prompts/cleanup`. Clients cache this and assemble prompts locally.
- */
+/** The full cleanup-prompt configuration prompt assembly reads from. */
 export interface CleanupPromptConfig {
-  /** Payload schema version (see `CLEANUP_PROMPT_CONFIG_SCHEMA`). */
-  schema: number;
   /** Intensity preset bodies (low/medium/high). */
   presets: Record<"low" | "medium" | "high", string>;
   /** Language display names for the language constraint block. */
@@ -276,12 +239,8 @@ export interface CleanupPromptConfig {
   routing: CleanupRoutingConfig;
 }
 
-/**
- * The bundled fallback config — used offline and before the first fetch. Kept
- * in sync with the cloud's `buildCleanupPromptConfig()` output.
- */
+/** The cleanup-prompt configuration used for every dictation. */
 export const BUNDLED_CLEANUP_PROMPT_CONFIG: CleanupPromptConfig = {
-  schema: CLEANUP_PROMPT_CONFIG_SCHEMA,
   presets: {
     low: CLEANUP_PRESET_PROMPTS.low,
     medium: CLEANUP_PRESET_PROMPTS.medium,
@@ -296,163 +255,9 @@ export const BUNDLED_CLEANUP_PROMPT_CONFIG: CleanupPromptConfig = {
   routing: CLEANUP_ROUTING,
 };
 
-// ---------------------------------------------------------------------------
-// Cloud override: fetch + cache with stale-on-error + bundled fallback
-// ---------------------------------------------------------------------------
-
-/** Last successfully fetched cloud config (may be stale). `null` until first success. */
-let cloudConfig: CleanupPromptConfig | null = null;
-/** When `cloudConfig` was last fetched (epoch ms). */
-let cloudConfigFetchedAt = 0;
-/** In-flight refresh, deduped so concurrent callers share one request. */
-let refreshPromise: Promise<void> | null = null;
-
-/**
- * The active cleanup-prompt config. Returns the last-fetched cloud copy when we
- * have one (fresh OR stale), otherwise the bundled fallback. Synchronous and
- * never throws — prompt assembly calls this on every request.
- *
- * This does NOT trigger a fetch; call `refreshCleanupPromptConfig()` on startup
- * and on a timer (or rely on `ensureCleanupPromptConfigFresh()`) to keep the
- * cloud copy warm.
- */
+/** The active cleanup-prompt config. Synchronous and never throws. */
 export function getCleanupPromptConfig(): CleanupPromptConfig {
-  return cloudConfig ?? BUNDLED_CLEANUP_PROMPT_CONFIG;
-}
-
-/**
- * Validate an untrusted payload before adopting it. A missing field or a
- * `schema` this build doesn't understand means we keep the current config, so a
- * malformed or newer-shaped cloud response can never degrade cleanup.
- */
-function isValidConfig(value: unknown): value is CleanupPromptConfig {
-  if (!value || typeof value !== "object") return false;
-  const c = value as Partial<CleanupPromptConfig>;
-  if (c.schema !== CLEANUP_PROMPT_CONFIG_SCHEMA) return false;
-  if (
-    typeof c.transcriptEditUserPrompt !== "string" ||
-    typeof c.autoLanguageConstraint !== "string" ||
-    typeof c.destinationPriorityBlock !== "string"
-  ) {
-    return false;
-  }
-  const isStr = (v: unknown): v is string =>
-    typeof v === "string" && v.length > 0;
-  if (
-    !isStr(c.presets?.low) ||
-    !isStr(c.presets?.medium) ||
-    !isStr(c.presets?.high)
-  ) {
-    return false;
-  }
-  const tb = c.toneBlocks;
-  if (
-    !isStr(tb?.personal?.polished) ||
-    !isStr(tb?.personal?.casual) ||
-    !isStr(tb?.personal?.very_casual) ||
-    !isStr(tb?.discordCasualOverlay) ||
-    !isStr(tb?.work?.direct) ||
-    !isStr(tb?.work?.formal) ||
-    !isStr(tb?.work?.friendly) ||
-    !isStr(tb?.email?.casual) ||
-    !isStr(tb?.email?.formal) ||
-    !isStr(tb?.email?.warm) ||
-    !isStr(tb?.overall?.casual) ||
-    !isStr(tb?.overall?.neutral) ||
-    !isStr(tb?.overall?.professional) ||
-    !isStr(tb?.emailStructure)
-  ) {
-    return false;
-  }
-  const up = c.userPromptBlocks;
-  if (
-    !up ||
-    typeof up.personalVeryCasual !== "string" ||
-    typeof up.personalCasualDiscord !== "string" ||
-    typeof up.personalCasualDefault !== "string" ||
-    typeof up.email !== "string"
-  ) {
-    return false;
-  }
-  const r = c.routing;
-  if (
-    !Array.isArray(r?.emailAppNames) ||
-    !Array.isArray(r?.workAppNames) ||
-    !Array.isArray(r?.personalAppNames) ||
-    !Array.isArray(r?.emailPatterns) ||
-    !Array.isArray(r?.workPatterns) ||
-    !Array.isArray(r?.personalPatterns) ||
-    !Array.isArray(r?.discordPatterns)
-  ) {
-    return false;
-  }
-  return true;
-}
-
-/**
- * Fetch the latest cleanup-prompt config from Freestyle Cloud and adopt it.
- * Deduped so concurrent callers share one request. On any failure (offline,
- * timeout, non-2xx, malformed body) the last-good copy is kept — this function
- * never throws and never clears an existing cloud copy.
- */
-export function refreshCleanupPromptConfig(): Promise<void> {
-  if (refreshPromise) return refreshPromise;
-
-  refreshPromise = (async () => {
-    try {
-      // `/v2/config` is the superset endpoint: it returns the cleanup prompt
-      // config under `prompts`, plus region/industry suggestions we ignore
-      // here (those are consumed by the preferences/profile paths). We keep the
-      // 6h TTL + stale-on-error + bundled fallback contract unchanged.
-      const url = `${freestyleCloudUrl()}/v2/config`;
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(CONFIG_FETCH_TIMEOUT_MS),
-      });
-      if (!res.ok) {
-        log.warn(`Cleanup prompt config fetch failed: HTTP ${res.status}`);
-        return;
-      }
-      const body = (await res.json()) as { prompts?: unknown };
-      const prompts = body?.prompts;
-      if (!isValidConfig(prompts)) {
-        log.warn(
-          "Cleanup prompt config fetch returned an unexpected shape; keeping current config",
-        );
-        return;
-      }
-      cloudConfig = prompts;
-      cloudConfigFetchedAt = Date.now();
-      log.info("Cleanup prompt config refreshed from Freestyle Cloud");
-    } catch (err) {
-      // Offline / timeout / DNS — expected; keep the last-good or bundled copy.
-      log.debug(
-        `Cleanup prompt config refresh skipped: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      refreshPromise = null;
-    }
-  })();
-
-  return refreshPromise;
-}
-
-/**
- * Refresh the config if the cached copy is missing or older than the TTL.
- * Fire-and-forget friendly — safe to call frequently; it no-ops while fresh and
- * dedupes concurrent refreshes.
- */
-export function ensureCleanupPromptConfigFresh(): Promise<void> {
-  const fresh =
-    cloudConfig !== null && Date.now() - cloudConfigFetchedAt < CONFIG_TTL_MS;
-  if (fresh) return Promise.resolve();
-  return refreshCleanupPromptConfig();
-}
-
-/** Test-only: reset the in-memory cloud cache. */
-export function __resetCleanupPromptConfigForTests(): void {
-  cloudConfig = null;
-  cloudConfigFetchedAt = 0;
-  refreshPromise = null;
+  return BUNDLED_CLEANUP_PROMPT_CONFIG;
 }
 
 /** Destination values, re-exported for consumers that assemble locally. */

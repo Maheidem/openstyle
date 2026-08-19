@@ -1,10 +1,6 @@
 import { remixTransformSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import {
-  FreestyleCloudAuthError,
-  FreestyleCloudUsageError,
-} from "../../lib/freestyle-cloud.js";
 import { getLanguagesSetting } from "../../lib/language.js";
 import { recordRemixRun } from "../../lib/remix-store.js";
 import {
@@ -12,7 +8,6 @@ import {
   reportRemixTransformFailure,
   runRemixTransform,
 } from "../../lib/remix-transform.js";
-import { invalidateSession } from "../../lib/sessions.js";
 
 /**
  * Run an AI edit over a text selection and hand back the replacement.
@@ -52,13 +47,6 @@ const remixRoute = new Hono().post(
       }
       return c.json({ text: result.text, runId });
     } catch (err) {
-      if (err instanceof FreestyleCloudAuthError) {
-        invalidateSession();
-        return c.json({ error: "cloud_auth_required" }, 401);
-      }
-      if (err instanceof FreestyleCloudUsageError) {
-        return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
-      }
       reportRemixTransformFailure(err);
       if (err instanceof RemixTransformError) {
         // A setup problem is the user's to fix and says so in its message; a

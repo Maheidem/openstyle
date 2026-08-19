@@ -2,22 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
 
-// Mirror the push machinery so we can assert a single cloud push per batch
-// without hitting the network. The route calls pushVocabularyToCloud(), which
-// debounces then flushes through the cloud transport.
-const putCloudPreferences = vi.fn(async () => ({ syncedAt: "now" }));
-const resolveActiveOrgSlug = vi.fn(async () => "acme");
-
-vi.mock("../src/lib/freestyle-cloud.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../src/lib/freestyle-cloud.js")>();
-  return {
-    ...actual,
-    putCloudPreferences: (...args: unknown[]) => putCloudPreferences(...args),
-    resolveActiveOrgSlug: (...args: unknown[]) => resolveActiveOrgSlug(...args),
-  };
-});
-
 const app = createApp();
 
 function reset(): void {

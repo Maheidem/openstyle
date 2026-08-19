@@ -65,9 +65,8 @@ export async function setPluginEnabled(
 }
 
 /**
- * The installable plugin catalog. The server proxies this from the cloud
- * registry (`GET /api/plugins/catalog`), which returns an untyped JSON body, so
- * the `{ plugins }` shape is asserted here.
+ * The installable plugin catalog (`GET /api/plugins/catalog`), which returns an
+ * untyped JSON body, so the `{ plugins }` shape is asserted here.
  */
 export async function getPluginCatalog(): Promise<PluginCatalogEntry[]> {
   const res = await getClient().api.plugins.catalog.$get(

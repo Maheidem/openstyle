@@ -165,8 +165,7 @@ export function buildAsrVocabularyBias(
         ? { kind: "elevenlabs-keyterms", terms: keyterms }
         : null;
     }
-    case "soniox":
-    case "freestyle-cloud": {
+    case "soniox": {
       const sonioxTerms = capSonioxTerms(capped);
       if (sonioxTerms.length === 0) return null;
       return {

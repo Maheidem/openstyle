@@ -119,8 +119,6 @@
       "statusWorking": "Remixing…",
       "statusRemixed": "Remixed.",
       "doneNote": "The draft rewrote itself in place. Try another instruction, or finish up.",
-      "extraCaption": "This one takes a few seconds.",
-      "extraDone": "A fact and a photo, straight into the draft. Finish whenever you're ready.",
       "fallbackNote": "Remix needs an assistant model — add one in Settings when you're ready.",
       "sampleDraft": "Happy birthday, Sam. Hope your day is a good one — I'll bring cake on Friday.",
       "sampleSignoff": "So glad we get to celebrate you this week.\n\nWarmly,\n{{name}}",
@@ -129,9 +127,7 @@
       "highlightNote": "Your draft is already highlighted — keep it highlighted and don't click into the email.",
       "instructionPrefix": "Hold",
       "instructionSuffix": "and say, word for word:",
-      "sayText": "Make it warmer and sign it from {{name}}.",
-      "extraLead": "One more trick — with the text still highlighted:",
-      "extraSay": "Add a fun fact about birthday cake, and a picture of one."
+      "sayText": "Make it warmer and sign it from {{name}}."
     }
   },
   "settings": {

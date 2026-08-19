@@ -3,11 +3,6 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
-  FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
-  FREESTYLE_CLOUD_PROVIDER_ID,
-  FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
-} from "../lib/freestyle-cloud.js";
-import {
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
@@ -121,17 +116,9 @@ const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = [
   cost_output: 0,
 }));
 
-// Curated cloud voice catalog: one flagship per provider. The models.dev
+// Curated voice catalog: one flagship per provider. The models.dev
 // registry is deliberately NOT merged for voice — untested model noise.
 const BUILTIN_VOICE_MODELS: AvailableModel[] = [
-  {
-    provider_id: FREESTYLE_CLOUD_PROVIDER_ID,
-    provider_name: "Freestyle Transcribe",
-    model_id: FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
-    model_name: "Freestyle Transcribe",
-    family: "freestyle",
-    type: "voice",
-  },
   {
     provider_id: "openai",
     provider_name: "OpenAI",
@@ -218,15 +205,6 @@ const CURATED_LLM_IDS = new Set([
 ]);
 
 const BUILTIN_LLM_MODELS: AvailableModel[] = [
-  {
-    provider_id: FREESTYLE_CLOUD_PROVIDER_ID,
-    provider_name: "Freestyle Transcribe",
-    model_id: FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
-    model_name: "Freestyle Transcribe Cleanup",
-    family: "freestyle",
-    type: "llm",
-    curated: true,
-  },
   {
     provider_id: "groq",
     provider_name: "Groq",
@@ -330,7 +308,6 @@ export async function isCleanupModelSupported(
 ): Promise<boolean> {
   if (providerId === "local-llm") return true;
   if (providerId in LLM_GATEWAYS) return true;
-  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return true;
 
   try {
     const registry = await fetchModelsFromRegistry();

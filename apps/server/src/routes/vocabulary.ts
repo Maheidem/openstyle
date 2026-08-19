@@ -9,7 +9,6 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { pushVocabularyToCloud } from "../lib/preferences-sync.js";
 import {
   deleteVocabularyByIds,
   exportVocabularyEntries,
@@ -108,9 +107,6 @@ const vocabulary = new Hono()
         .prepare(`INSERT INTO vocabulary (term, notes) VALUES (?, ?)`)
         .run(term, notes);
 
-      // Mirror the change up to the cloud (debounced, fire-and-forget).
-      pushVocabularyToCloud();
-
       return c.json(
         {
           id: result.lastInsertRowid,
@@ -145,9 +141,6 @@ const vocabulary = new Hono()
         `UPDATE vocabulary SET term = ?, notes = ?, updated_at = datetime('now') WHERE id = ?`,
       ).run(newTerm, newNotes, id);
 
-      // Mirror the change up to the cloud (debounced, fire-and-forget).
-      pushVocabularyToCloud();
-
       return c.json({ id, term: newTerm, notes: newNotes });
     } catch {
       return c.json(
@@ -161,18 +154,10 @@ const vocabulary = new Hono()
     const id = Number(c.req.param("id"));
     db.prepare("DELETE FROM vocabulary WHERE id = ?").run(id);
 
-    // Mirror the delete up to the cloud (debounced, fire-and-forget). The cloud
-    // replaces its term array wholesale, so the delete propagates and won't be
-    // re-seeded on the next pull.
-    pushVocabularyToCloud();
-
     return c.json({ ok: true });
   })
   .post("/import", zValidator("json", importVocabularySchema), (c) => {
     const { imported, skipped } = importVocabularyEntries(c.req.valid("json"));
-
-    // Mirror the imported terms up to the cloud (debounced, fire-and-forget).
-    if (imported > 0) pushVocabularyToCloud();
 
     return c.json({ imported, skipped });
   })
@@ -182,17 +167,11 @@ const vocabulary = new Hono()
     switch (body.action) {
       case "bulk-delete": {
         const deleted = deleteVocabularyByIds(body.ids);
-        if (deleted > 0) {
-          // One cloud push for the whole batch — the cloud replaces its term
-          // array wholesale, so every delete propagates in a single PUT.
-          pushVocabularyToCloud();
-        }
         return c.json({ deleted });
       }
 
       case "import": {
         const { imported, skipped } = importVocabularyEntries(body.entries);
-        if (imported > 0) pushVocabularyToCloud();
         return c.json({ imported, skipped });
       }
 

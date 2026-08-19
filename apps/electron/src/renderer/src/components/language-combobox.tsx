@@ -10,7 +10,6 @@
  *   - {@link LanguagePickerDialog} — a modal "See all" list, for onboarding.
  */
 
-import type { SuggestedLanguage } from "@freestyle-voice/validations";
 import {
   filterLanguageOptions,
   type LanguageChoice,
@@ -56,15 +55,10 @@ function useLocalFallback(): LanguageChoice[] {
   );
 }
 
-/** Resolve the ordered option list from cloud suggestions + local fallback. */
-export function useLanguageOptions(
-  suggested: SuggestedLanguage[] | undefined,
-): LanguageChoice[] {
+/** The ordered language option list, from the bundled local set. */
+export function useLanguageOptions(): LanguageChoice[] {
   const fallback = useLocalFallback();
-  return useMemo(
-    () => resolveLanguageOptions(suggested, fallback),
-    [suggested, fallback],
-  );
+  return useMemo(() => resolveLanguageOptions(undefined, fallback), [fallback]);
 }
 
 /** The scrollable, filterable list of language rows shared by both surfaces. */

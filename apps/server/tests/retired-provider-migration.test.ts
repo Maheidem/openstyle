@@ -9,14 +9,14 @@ afterEach(() => {
   db = null;
 });
 
-function createV13Db(): DatabaseSync {
+function createV13Db(startVersion = 13): DatabaseSync {
   const instance = new DatabaseSync(":memory:");
   instance.exec(`
     CREATE TABLE schema_version (
       id INTEGER PRIMARY KEY CHECK(id = 1),
       version INTEGER NOT NULL
     );
-    INSERT INTO schema_version (id, version) VALUES (1, 13);
+    INSERT INTO schema_version (id, version) VALUES (1, ${startVersion});
 
     CREATE TABLE settings (
       key TEXT PRIMARY KEY,
@@ -69,8 +69,8 @@ function insertModel(
     .run(provider, modelId, modelId, type, isDefault);
 }
 
-describe("freestyle cloud cleanup migration (v14)", () => {
-  it("drops the legacy default cleanup config and turns off llm_cleanup", () => {
+describe("retired hosted-provider migration", () => {
+  it("drops the retired provider's models and re-points the voice default at a local engine", () => {
     db = createV13Db();
     insertModel(db, "freestyle-cloud", "freestyle-cloud/stt", "voice", 1);
     insertModel(
@@ -80,42 +80,55 @@ describe("freestyle cloud cleanup migration (v14)", () => {
       "llm",
       1,
     );
+    insertModel(db, "local-mlx", "local-mlx/parakeet", "voice", 0);
     db.prepare(
       "INSERT INTO settings (key, value) VALUES ('llm_cleanup', 'true')",
     ).run();
 
     initSchema(db);
 
-    const llmRows = db
+    // Nothing may reference a provider no registry can resolve — a leftover
+    // row here would fail every dictation and show a phantom model entry.
+    const leftovers = db
       .prepare(
-        "SELECT * FROM model_configs WHERE provider = 'freestyle-cloud' AND type = 'llm'",
+        "SELECT id FROM model_configs WHERE provider = 'freestyle-cloud'",
       )
       .all();
-    expect(llmRows).toHaveLength(0);
+    expect(leftovers).toHaveLength(0);
 
-    const voiceRow = db
+    const voiceDefault = db
       .prepare(
-        "SELECT is_default FROM model_configs WHERE provider = 'freestyle-cloud' AND type = 'voice'",
+        "SELECT provider FROM model_configs WHERE type = 'voice' AND is_default = 1",
       )
-      .get() as { is_default: number };
-    expect(voiceRow.is_default).toBe(1);
+      .get() as { provider: string };
+    expect(voiceDefault.provider).toBe("local-mlx");
 
+    // Cleanup pointed at the retired model, so it gets turned off rather than
+    // left aimed at nothing.
     const cleanup = db
       .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
       .get() as { value: string };
     expect(cleanup.value).toBe("false");
   });
 
-  it("drops non-default legacy configs without touching llm_cleanup", () => {
+  it("leaves no voice default when the machine has no local engine set up", () => {
     db = createV13Db();
-    insertModel(
-      db,
-      "freestyle-cloud",
-      "freestyle-cloud/post-process",
-      "llm",
-      0,
-    );
+    insertModel(db, "freestyle-cloud", "freestyle-cloud/stt", "voice", 1);
+
+    initSchema(db);
+
+    const voiceDefault = db
+      .prepare(
+        "SELECT provider FROM model_configs WHERE type = 'voice' AND is_default = 1",
+      )
+      .get();
+    expect(voiceDefault).toBeUndefined();
+  });
+
+  it("leaves a BYOK default and llm_cleanup untouched", () => {
+    db = createV13Db();
     insertModel(db, "groq", "groq/llama-3.1-8b-instant", "llm", 1);
+    insertModel(db, "openai", "openai/gpt-4o-transcribe", "voice", 1);
     db.prepare(
       "INSERT INTO settings (key, value) VALUES ('llm_cleanup', 'true')",
     ).run();
@@ -128,9 +141,40 @@ describe("freestyle cloud cleanup migration (v14)", () => {
     expect(llmRows).toHaveLength(1);
     expect(llmRows[0]!.provider).toBe("groq");
 
+    const voiceDefault = db
+      .prepare(
+        "SELECT provider FROM model_configs WHERE type = 'voice' AND is_default = 1",
+      )
+      .get() as { provider: string };
+    expect(voiceDefault.provider).toBe("openai");
+
     const cleanup = db
       .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
       .get() as { value: string };
     expect(cleanup.value).toBe("true");
+  });
+
+  it("still runs for a database carrying upstream's higher schema version", () => {
+    // Upstream's 0.8.x line bumped the shared schema_version past this fork's
+    // own numbering: a database that ran 0.8.5 reports 26. Migrations are gated
+    // on `currentVersion < SCHEMA_VERSION`, so anyone arriving from upstream
+    // skips every migration numbered below that and keeps the retired provider.
+    db = createV13Db(26);
+    insertModel(db, "freestyle-cloud", "freestyle-cloud/stt", "voice", 1);
+    insertModel(db, "freestyle-cloud", "freestyle-cloud/post-process", "llm", 1);
+    insertModel(db, "local-mlx", "mlx-community/Qwen3-ASR-1.7B-8bit", "voice", 0);
+
+    initSchema(db);
+
+    const rows = db
+      .prepare("SELECT provider, type, is_default FROM model_configs")
+      .all() as { provider: string; type: string; is_default: number }[];
+
+    expect(rows.some((r) => r.provider === "freestyle-cloud")).toBe(false);
+    expect(rows).toContainEqual({
+      provider: "local-mlx",
+      type: "voice",
+      is_default: 1,
+    });
   });
 });

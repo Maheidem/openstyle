@@ -99,8 +99,6 @@
       "statusWorking": "Remix in corso…",
       "statusRemixed": "Remixata.",
       "doneNote": "La bozza si è riscritta da sola. Prova un'altra istruzione — o concludi quando vuoi.",
-      "extraCaption": "Questo richiede qualche secondo.",
-      "extraDone": "Una curiosità e una foto, dritte nella bozza. Concludi quando vuoi.",
       "fallbackNote": "Remix ha bisogno di un modello assistente — aggiungine uno nelle Impostazioni quando vuoi.",
       "sampleDraft": "Buon compleanno, Sam. Spero tu passi una bella giornata — venerdì porto la torta.",
       "sampleSignoff": "Non vedo l'ora di festeggiarti questa settimana.\n\nCon affetto,\n{{name}}",
@@ -109,9 +107,7 @@
       "highlightNote": "La tua bozza è già evidenziata — lasciala evidenziata e non cliccare nell'email.",
       "instructionPrefix": "Tieni premuti",
       "instructionSuffix": "e di', parola per parola:",
-      "sayText": "Rendila più calorosa e firmala da parte di {{name}}.",
-      "extraLead": "Un altro trucco — con il testo ancora evidenziato:",
-      "extraSay": "Aggiungi una curiosità sulle torte di compleanno, e una foto di una."
+      "sayText": "Rendila più calorosa e firmala da parte di {{name}}."
     }
   },
   "settings": {

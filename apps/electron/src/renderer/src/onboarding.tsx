@@ -15,7 +15,6 @@ import {
   useCoachPress,
 } from "@renderer/components/onboarding/coach-strip";
 import { EmailDraft } from "@renderer/components/onboarding/email-draft";
-import { SignInButton, SignInSplit } from "@renderer/components/sign-in-split";
 import { Button } from "@renderer/components/ui/button";
 import {
   Dialog,
@@ -38,13 +37,10 @@ import {
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
-import { useCloudAuth } from "@renderer/lib/auth-context";
 import { defaultLanguage } from "@renderer/lib/languages";
 import {
   type AvailableModel,
   buildVoiceItems,
-  FREESTYLE_CLOUD_MODEL_ID,
-  FREESTYLE_CLOUD_PROVIDER_ID,
   type MlxAsrStatus,
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_KEY_URLS,
@@ -54,7 +50,6 @@ import {
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
-import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -74,13 +69,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import type { CloudUser } from "../../shared/cloud-user";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import { getDefaultRemixHotkey } from "../../shared/remix";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 import type { ConfiguredModel } from "./pages/models/types";
 
-type Step = "permissions" | "cloud" | "language" | "draft" | "remix";
+type Step = "permissions" | "language" | "draft" | "remix";
 
 const DEFAULT_HOTKEY =
   (typeof window !== "undefined" && window.api?.defaultHotkey) ||
@@ -120,17 +114,7 @@ function hasActiveDownload(
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<Step>("cloud");
-
-  const {
-    user: cloudUser,
-    loading: cloudLoading,
-    signingIn: cloudSigningIn,
-    error: cloudError,
-    refresh: cloudRefresh,
-    signIn: cloudSignIn,
-  } = useCloudAuth();
-  const prevSignedIn = useRef(false);
+  const [step, setStep] = useState<Step>("permissions");
 
   // Permissions state
   const [micStatus, setMicStatus] = useState<string>("unknown");
@@ -154,8 +138,8 @@ export default function OnboardingPage(): React.JSX.Element {
   });
   const autoPicked = useRef(false);
   const warmed = useRef(false);
-  // Tracks the most recent explicit local pick so cloud users who briefly
-  // selected a different on-device model still download the right one.
+  // Tracks the most recent explicit local pick, so briefly selecting a
+  // different on-device model still downloads the right one.
   const lastLocalSetupRef = useRef<{
     defId: string;
     engine: "whisper" | "mlx";
@@ -163,7 +147,7 @@ export default function OnboardingPage(): React.JSX.Element {
   // Full model selector overlay (cloud + everything else)
   const [showSelector, setShowSelector] = useState(false);
   const [selectorSource, setSelectorSource] = useState<"cloud" | "local">(
-    "cloud",
+    "local",
   );
   const apiKeyForm = useForm<{ provider: string; key: string }>({
     resolver: zodResolver(apiKeySchema),
@@ -338,42 +322,8 @@ export default function OnboardingPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const commitFreestyleCloudDefault = useCallback(() => {
-    const model = available.find(
-      (m) =>
-        m.provider_id === FREESTYLE_CLOUD_PROVIDER_ID && m.type === "voice",
-    );
-    if (model) {
-      setSelectedModel(model);
-      setSelectedWhisperDefId(null);
-      setSelectedMlxDefId(null);
-    }
-    const modelId = model?.model_id ?? FREESTYLE_CLOUD_MODEL_ID;
-    const modelName = model?.model_name ?? "Freestyle Transcribe";
-    getClient()
-      .api.models.configured.$post({
-        json: {
-          provider: FREESTYLE_CLOUD_PROVIDER_ID,
-          model_id: modelId,
-          model_name: modelName,
-          type: "voice",
-          is_default: true,
-        },
-      })
-      .catch(() => {});
-  }, [available]);
-
   const selectCloudModel = useCallback(
     (model: AvailableModel) => {
-      if (model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID) {
-        void (async () => {
-          const user = cloudUser ? await cloudRefresh() : await cloudSignIn();
-          if (!user) return;
-          commitFreestyleCloudDefault();
-          setShowSelector(false);
-        })();
-        return;
-      }
       setSelectedModel(model);
       setSelectedWhisperDefId(null);
       setSelectedMlxDefId(null);
@@ -385,15 +335,7 @@ export default function OnboardingPage(): React.JSX.Element {
         apiKeyForm.reset({ provider: model.provider_id, key: "" });
       }
     },
-    [
-      apiKeys,
-      apiKeyForm,
-      commitCloudModel,
-      cloudUser,
-      cloudRefresh,
-      cloudSignIn,
-      commitFreestyleCloudDefault,
-    ],
+    [apiKeys, apiKeyForm, commitCloudModel],
   );
 
   const selectLocalModel = useCallback(
@@ -475,7 +417,6 @@ export default function OnboardingPage(): React.JSX.Element {
     selectedWhisperModelId: selectedWhisperDefId ?? undefined,
     selectedMlxModelId: selectedMlxDefId ?? undefined,
     keyProviders: apiKeys,
-    cloudSignedIn: !!cloudUser,
   });
 
   // Resolve the opinionated recommendation: Qwen3 on-device when MLX can run,
@@ -489,15 +430,12 @@ export default function OnboardingPage(): React.JSX.Element {
   const recommended: VoiceItem | undefined =
     mlxQwen && mlxStatus?.canRun ? mlxQwen : (whisperBase ?? mlxQwen);
 
-  // Auto-setup: once the MLX capability check and cloud session both settle,
-  // commit a default local model. Signed in → Freestyle Cloud is the default
-  // and the on-device fallback downloads silently in the background. Signed
-  // out → the on-device model is the default; download starts from the
-  // setup panel when the user taps Download.
+  // Auto-setup: once the MLX capability check settles, commit a default
+  // on-device model. Download starts from the setup panel when the user taps
+  // Download.
   useEffect(() => {
     if (
       autoPicked.current ||
-      cloudLoading ||
       !mlxResolved ||
       !recommended?.defId ||
       !recommended.localEngine
@@ -512,31 +450,8 @@ export default function OnboardingPage(): React.JSX.Element {
       recommended.defId,
       recommended.name,
       recommended.localEngine,
-      !cloudUser,
     );
-    if (cloudUser) {
-      commitFreestyleCloudDefault();
-      if (recommended.status === "not_downloaded" && !window.api?.isE2E) {
-        downloadLocalModel(recommended.defId, recommended.localEngine);
-      }
-    }
-  }, [
-    recommended,
-    selectLocalModel,
-    mlxResolved,
-    downloadLocalModel,
-    cloudLoading,
-    cloudUser,
-    commitFreestyleCloudDefault,
-  ]);
-
-  useEffect(() => {
-    const signedIn = !!cloudUser;
-    if (signedIn && !prevSignedIn.current && autoPicked.current) {
-      commitFreestyleCloudDefault();
-    }
-    prevSignedIn.current = signedIn;
-  }, [cloudUser, commitFreestyleCloudDefault]);
+  }, [recommended, selectLocalModel, mlxResolved]);
 
   // Pre-warm the local engine the moment its download lands, so the first
   // dictation in the tutorial is fast.
@@ -631,7 +546,6 @@ export default function OnboardingPage(): React.JSX.Element {
     }
     return recommended;
   })();
-  const showLocalSetupPanel = !cloudUser;
   const mustHaveLocalReady = chosen?.kind === "local" && !chosenReady;
   const localSetupActive =
     localSetupModel?.kind === "local" &&
@@ -656,101 +570,81 @@ export default function OnboardingPage(): React.JSX.Element {
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
 
-      {step === "cloud" ? (
-        <CloudStep
-          user={cloudUser}
-          signingIn={cloudSigningIn}
-          error={cloudError}
-          onSignIn={() => {
-            void cloudSignIn();
-          }}
-          onContinue={() => {
-            setStep("permissions");
-          }}
-          onSkip={() => {
-            setStep("permissions");
-          }}
-        />
-      ) : (
-        <div
-          className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          {step === "permissions" && (
-            <PermissionsStep
-              micStatus={micStatus}
-              accessibilityStatus={accessibilityStatus}
-              linuxSetup={linuxSetup}
-              onRequestMic={requestMic}
-              onOpenMicSettings={openMicSettings}
-              onOpenAccessibility={openAccessibility}
-              onRecheckLinuxSetup={recheckLinuxSetup}
-              onBack={() => {
-                setStep("cloud");
-              }}
-              onContinue={() => {
-                setStep("language");
-              }}
-            />
-          )}
+      <div
+        className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        {step === "permissions" && (
+          <PermissionsStep
+            micStatus={micStatus}
+            accessibilityStatus={accessibilityStatus}
+            linuxSetup={linuxSetup}
+            onRequestMic={requestMic}
+            onOpenMicSettings={openMicSettings}
+            onOpenAccessibility={openAccessibility}
+            onRecheckLinuxSetup={recheckLinuxSetup}
+            onContinue={() => {
+              setStep("language");
+            }}
+          />
+        )}
 
-          {step === "language" && (
-            <LanguageStep
-              languages={languages}
-              onToggle={toggleLanguage}
-              onClear={clearLanguages}
-              localModel={showLocalSetupPanel ? localSetupModel : undefined}
-              onDownloadLocal={startLocalDownload}
-              onRetryLocal={retryLocalDownload}
-              onBack={() => {
-                setStep("permissions");
-              }}
-              onContinue={() => {
-                // Persist even when the pre-selected locale was never toggled.
-                persistLanguages(languages);
-                setStep("draft");
-              }}
-            />
-          )}
+        {step === "language" && (
+          <LanguageStep
+            languages={languages}
+            onToggle={toggleLanguage}
+            onClear={clearLanguages}
+            localModel={localSetupModel}
+            onDownloadLocal={startLocalDownload}
+            onRetryLocal={retryLocalDownload}
+            onBack={() => {
+              setStep("permissions");
+            }}
+            onContinue={() => {
+              // Persist even when the pre-selected locale was never toggled.
+              persistLanguages(languages);
+              setStep("draft");
+            }}
+          />
+        )}
 
-          {step === "draft" && (
-            <DraftStep
-              hotkey={hotkey}
-              remixHotkey={remixHotkey}
-              onHotkeyRecorded={handleHotkeyRecorded}
-              localModel={showLocalSetupPanel ? localSetupModel : undefined}
-              onDownloadLocal={startLocalDownload}
-              onRetryLocal={retryLocalDownload}
-              canContinue={!mustHaveLocalReady || !!window.api?.isE2E}
-              continueBlockedReason={
-                mustHaveLocalReady
-                  ? localSetupActive
-                    ? "downloading"
-                    : "notReady"
-                  : null
-              }
-              body={draftBody}
-              onBodyChange={setDraftBody}
-              onBack={() => {
-                setStep("language");
-              }}
-              onContinue={() => setStep("remix")}
-            />
-          )}
+        {step === "draft" && (
+          <DraftStep
+            hotkey={hotkey}
+            remixHotkey={remixHotkey}
+            onHotkeyRecorded={handleHotkeyRecorded}
+            localModel={localSetupModel}
+            onDownloadLocal={startLocalDownload}
+            onRetryLocal={retryLocalDownload}
+            canContinue={!mustHaveLocalReady || !!window.api?.isE2E}
+            continueBlockedReason={
+              mustHaveLocalReady
+                ? localSetupActive
+                  ? "downloading"
+                  : "notReady"
+                : null
+            }
+            body={draftBody}
+            onBodyChange={setDraftBody}
+            onBack={() => {
+              setStep("language");
+            }}
+            onContinue={() => setStep("remix")}
+          />
+        )}
 
-          {step === "remix" && (
-            <RemixStep
-              body={draftBody}
-              onBodyChange={setDraftBody}
-              remixHotkey={remixHotkey}
-              dictationHotkey={hotkey}
-              onRemixHotkeyRecorded={handleRemixHotkeyRecorded}
-              onBack={() => setStep("draft")}
-              onFinish={finishSetup}
-            />
-          )}
-        </div>
-      )}
+        {step === "remix" && (
+          <RemixStep
+            body={draftBody}
+            onBodyChange={setDraftBody}
+            remixHotkey={remixHotkey}
+            dictationHotkey={hotkey}
+            onRemixHotkeyRecorded={handleRemixHotkeyRecorded}
+            onBack={() => setStep("draft")}
+            onFinish={finishSetup}
+          />
+        )}
+      </div>
 
       {showSelector && (
         <ModelSelectorOverlay
@@ -803,7 +697,6 @@ function PermissionsStep({
   onOpenMicSettings,
   onOpenAccessibility,
   onRecheckLinuxSetup,
-  onBack,
   onContinue,
 }: {
   micStatus: string;
@@ -813,7 +706,6 @@ function PermissionsStep({
   onOpenMicSettings: () => void;
   onOpenAccessibility: () => void;
   onRecheckLinuxSetup: () => void;
-  onBack: () => void;
   onContinue: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -916,10 +808,7 @@ function PermissionsStep({
           )}
       </div>
 
-      <div className="mt-7 flex items-center justify-between gap-3.5">
-        <Button variant="outline" onClick={onBack}>
-          {t("common.back")}
-        </Button>
+      <div className="mt-7 flex items-center justify-end gap-3.5">
         <div className="flex items-center gap-3.5">
           {!allGranted && (
             <span className="mono text-muted-foreground text-[10.5px] tracking-[0.1em] uppercase">
@@ -1002,84 +891,6 @@ function PermButton({
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — Welcome + Freestyle Cloud sign-in (optional, skippable)
-// ---------------------------------------------------------------------------
-function CloudStep({
-  user,
-  signingIn,
-  error,
-  onSignIn,
-  onContinue,
-  onSkip,
-}: {
-  user: CloudUser | null;
-  signingIn: boolean;
-  error: string | null;
-  onSignIn: () => void;
-  onContinue: () => void;
-  onSkip: () => void;
-}): React.JSX.Element {
-  return (
-    <SignInSplit
-      titlePrefix="Welcome to "
-      subtitle="Intelligence at your cursor"
-      error={error}
-      footer={
-        !user &&
-        // Skipping sign-in is a local-development/E2E affordance only — in
-        // production the browser sign-in is the sole way past this step.
-        (import.meta.env.DEV || window.api?.isE2E) && (
-          <div className="mt-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onSkip}
-              disabled={signingIn}
-              className="text-muted-foreground -ml-2 h-auto px-2 py-1 text-[12px]"
-            >
-              Skip for now (dev)
-            </Button>
-          </div>
-        )
-      }
-    >
-      {user ? (
-        <>
-          <div className="border-border bg-card mt-9 flex w-full items-center gap-3 rounded-[12px] border p-4 text-left">
-            {user.image ? (
-              <img
-                src={user.image}
-                alt=""
-                className="size-9 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div className="bg-accent border-primary/20 flex size-9 shrink-0 items-center justify-center rounded-full border">
-                <Check className="text-accent-foreground size-4" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1 leading-tight">
-              <div className="text-foreground truncate text-[14px] font-medium">
-                {user.name || user.email}
-              </div>
-              <div className="text-muted-foreground truncate text-[12px]">
-                {user.name ? `Signed in · ${user.email}` : "Signed in"}
-              </div>
-            </div>
-            <Check className="text-accent-foreground size-4 shrink-0" />
-          </div>
-          <Button variant="ink" onClick={onContinue} className="mt-5 w-full">
-            Continue
-            <ArrowRight data-icon="inline-end" />
-          </Button>
-        </>
-      ) : (
-        <SignInButton signingIn={signingIn} onClick={onSignIn} />
-      )}
-    </SignInSplit>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Step 3 — Language (the model sets itself up in the background)
 // ---------------------------------------------------------------------------
 function LanguageStep({
@@ -1102,9 +913,7 @@ function LanguageStep({
   onContinue: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const { user } = useCloudAuth();
-  const { data: cloudConfig } = useCloudConfig(!!user);
-  const options = useLanguageOptions(cloudConfig?.suggestedLanguages);
+  const options = useLanguageOptions();
   const [showAll, setShowAll] = useState(false);
 
   const selectedSet = useMemo(() => new Set(languages), [languages]);
@@ -1265,9 +1074,6 @@ function ModelSelectorOverlay({
     onSelectCloud(model);
     if (keyProviders.has(model.provider_id)) {
       onClose();
-    } else if (model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID) {
-      // Keep the selector open while the account flow runs; close only after
-      // cloudUser updates and the selected model becomes ready.
     } else {
       setView("key");
     }
@@ -1742,7 +1548,6 @@ function RemixStep({
   onFinish: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const { user: cloudUser } = useCloudAuth();
   const { isFetched: settingsFetched } = useQuery(settingsQueryOptions());
   const configuredQuery = useQuery({
     queryKey: queryKeys.models.configured,
@@ -1754,28 +1559,19 @@ function RemixStep({
   });
 
   // The agent only hears what the user says, so the suggested instruction
-  // must carry a concrete name: the signed-in user's first name, or a stand-in.
-  const signoffName =
-    cloudUser?.name?.trim().split(/\s+/)[0] ||
-    t("onboarding.remix.fallbackName");
+  // must carry a concrete name.
+  const signoffName = t("onboarding.remix.fallbackName");
 
   const llmDefault = (configuredQuery.data ?? []).find(
     (m) => m.type === "llm" && m.is_default === 1,
   );
   const ready = settingsFetched && configuredQuery.isFetched;
   const interactive = ready && !!llmDefault && !window.api?.isE2E;
-  // Server tools (web/image search) exist only behind the cloud proxy; the
-  // BYOK loop declares client tools only.
-  const searchCapable = llmDefault?.provider === FREESTYLE_CLOUD_PROVIDER_ID;
 
   const [remixed, setRemixed] = useState(false);
-  const [extraDone, setExtraDone] = useState(false);
   const [working, setWorking] = useState(false);
   const [deliveredCount, setDeliveredCount] = useState(0);
   const remixedRef = useRef(false);
-  const extraDoneRef = useRef(false);
-  const extraTriedRef = useRef(false);
-  const chipVisibleRef = useRef(false);
   const inFlightUntilRef = useRef(0);
   const lastDeliveredAtRef = useRef(0);
   const workingTimerRef = useRef<number | null>(null);
@@ -1804,17 +1600,6 @@ function RemixStep({
     if (!remixedRef.current) {
       remixedRef.current = true;
       setRemixed(true);
-      return;
-    }
-    // A late second paste from beat one must not count as the third beat —
-    // require a session started while the chip was showing.
-    if (
-      chipVisibleRef.current &&
-      extraTriedRef.current &&
-      !extraDoneRef.current
-    ) {
-      extraDoneRef.current = true;
-      setExtraDone(true);
     }
   }, []);
   const handleDeliveredRef = useRef(handleDelivered);
@@ -1830,9 +1615,6 @@ function RemixStep({
   const { phase, getLiveLevel } = useCoachPress("remix", {
     onDown: () => {
       inFlightUntilRef.current = Number.MAX_SAFE_INTEGER;
-      if (chipVisibleRef.current && !extraTriedRef.current) {
-        extraTriedRef.current = true;
-      }
     },
     onUp: () => {
       inFlightUntilRef.current = Date.now() + REMIX_IN_FLIGHT_GRACE_MS;
@@ -1853,11 +1635,6 @@ function RemixStep({
     if (!interactive || !body.trim()) return;
     if (Date.now() <= inFlightUntilRef.current) handleDeliveredRef.current();
   }, [body, interactive]);
-
-  const chipVisible = interactive && remixed && searchCapable;
-  useEffect(() => {
-    chipVisibleRef.current = chipVisible;
-  }, [chipVisible]);
 
   const handleFinish = useCallback(() => {
     onFinish();
@@ -1924,37 +1701,17 @@ function RemixStep({
               keys={keys}
               phase={phase}
               lead={
-                !remixed ? (
-                  t("onboarding.remix.highlightNote")
-                ) : chipVisible ? (
-                  extraDone ? (
-                    <span className="text-accent-foreground">
-                      {t("onboarding.remix.extraDone")}
-                    </span>
-                  ) : (
-                    t("onboarding.remix.extraLead")
-                  )
-                ) : (
-                  t("onboarding.remix.doneNote")
-                )
+                !remixed
+                  ? t("onboarding.remix.highlightNote")
+                  : t("onboarding.remix.doneNote")
               }
               instructionPrefix={t("onboarding.remix.instructionPrefix")}
               instructionSuffix={t("onboarding.remix.instructionSuffix")}
-              sayText={
-                chipVisible
-                  ? t("onboarding.remix.extraSay")
-                  : t("onboarding.remix.sayText", { name: signoffName })
-              }
+              sayText={t("onboarding.remix.sayText", { name: signoffName })}
               statusLabel={statusLabel}
               statusEmphasis={phase === "pressed" || working || remixed}
               getLiveLevel={getLiveLevel}
-            >
-              {chipVisible && !extraDone && (
-                <p className="text-muted-foreground/80 text-[13px] leading-relaxed">
-                  {t("onboarding.remix.extraCaption")}
-                </p>
-              )}
-            </CoachStrip>
+            />
           ) : (
             <CoachStrip
               keys={keys}

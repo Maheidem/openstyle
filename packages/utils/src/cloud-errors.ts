@@ -1,11 +1,7 @@
 /**
- * Error taxonomy shared by every Freestyle Cloud REST call, on both the desktop
- * server and the mobile app. Kept runtime-agnostic (no `node:*`/undici/expo
- * imports) so the same classes work in Node 22 and React Native/Hermes.
- *
- * The desktop server re-exports these under its historical
- * `FreestyleCloud*Error` names so existing `instanceof` checks keep working; the
- * mobile app re-exports `CloudAuthError` under the same name it already used.
+ * Error taxonomy shared by every Freestyle Cloud REST call the mobile app
+ * makes. Kept runtime-agnostic (no `node:*`/undici/expo imports) so the classes
+ * work in Node 22 and React Native/Hermes alike.
  */
 
 /** Thrown when Freestyle Cloud rejects a request with HTTP 401 (sign-in required). */

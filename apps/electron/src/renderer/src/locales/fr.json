@@ -99,8 +99,6 @@
       "statusWorking": "Remix en cours…",
       "statusRemixed": "Remixé.",
       "doneNote": "Le brouillon s'est réécrit sur place. Essayez une autre instruction — ou terminez.",
-      "extraCaption": "Cela prend quelques secondes.",
-      "extraDone": "Une anecdote et une photo, directement dans le brouillon. Terminez quand vous voulez.",
       "fallbackNote": "Remix a besoin d'un modèle assistant — ajoutez-en un dans les Réglages quand vous serez prêt.",
       "sampleDraft": "Joyeux anniversaire, Sam. J'espère que ta journée sera belle — j'apporte un gâteau vendredi.",
       "sampleSignoff": "Hâte de te fêter cette semaine.\n\nChaleureusement,\n{{name}}",
@@ -109,9 +107,7 @@
       "highlightNote": "Votre brouillon est déjà surligné — laissez-le surligné et ne cliquez pas dans l'e-mail.",
       "instructionPrefix": "Maintenez",
       "instructionSuffix": "et dites, mot pour mot :",
-      "sayText": "Rends-le plus chaleureux et signe {{name}}.",
-      "extraLead": "Encore une astuce — pendant que le texte est surligné :",
-      "extraSay": "Ajoute une anecdote sur les gâteaux d'anniversaire, et une photo."
+      "sayText": "Rends-le plus chaleureux et signe {{name}}."
     }
   },
   "settings": {

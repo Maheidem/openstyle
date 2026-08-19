@@ -3,8 +3,6 @@ import { clientErrorSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import apiKeys from "./api-keys.js";
-import auth from "./auth.js";
-import billing from "./billing.js";
 import configRoute from "./config.js";
 import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
@@ -12,16 +10,13 @@ import eventsRoute from "./events.js";
 import history from "./history.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
-import org from "./org.js";
 import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
-import pricing from "./pricing.js";
 import remixRoute from "./remix/index.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
-import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
 import whisper from "./whisper.js";
 
@@ -42,7 +37,6 @@ const apiRouter = new Hono()
   .route("/settings", settings)
   .route("/config", configRoute)
   .route("/keys", apiKeys)
-  .route("/auth", auth)
   .route("/models", models)
   .route("/transcribe", transcribe)
   .route("/transcribe", transcribePreWarmRoute)
@@ -54,10 +48,6 @@ const apiRouter = new Hono()
   .route("/remix", remixRoute)
   .route("/output", outputRoute)
   .route("/events", eventsRoute)
-  .route("/usage", usage)
-  .route("/billing", billing)
-  .route("/pricing", pricing)
-  .route("/org", org)
   .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);

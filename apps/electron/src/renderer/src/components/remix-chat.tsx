@@ -262,14 +262,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
         fetch: (async (_input: unknown, init?: RequestInit) => {
           const res = await apiFetch("/api/remix/agent", init ?? {});
-          if (res.status === 401) {
-            void window.api?.cloudPromptSignIn();
-            throw new Error("Sign in to Freestyle Cloud to use Remix.");
-          }
-          if (res.status === 429) {
-            void window.api?.cloudPromptUpgrade();
-            throw new Error("You've hit this week's free limit.");
-          }
           if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
               detail?: string;
@@ -656,14 +648,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           appName: contextRef.current.appName,
         }),
       });
-      if (res.status === 401) {
-        void window.api?.cloudPromptSignIn();
-        throw new Error("Sign in to Freestyle Cloud first.");
-      }
-      if (res.status === 429) {
-        void window.api?.cloudPromptUpgrade();
-        throw new Error("You've hit this week's free limit.");
-      }
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as {
           detail?: string;

@@ -50,7 +50,7 @@ function enqueueWrite(
 
 /**
  * Device-local dismissible state for in-app dialogs/banners (changelogs,
- * feature prompts, profile nudges). Backed by `GET/PUT/DELETE
+ * feature prompts). Backed by `GET/PUT/DELETE
  * /api/dismissed-notifications` via a shared React Query cache so every
  * consumer of the same (or different) key shares one fetch.
  *
@@ -65,7 +65,7 @@ function enqueueWrite(
  *
  * @example
  * ```tsx
- * const { dismissed, dismiss, ready } = useDismissible("profile_info_prompt");
+ * const { dismissed, dismiss, ready } = useDismissible("whats_new_0_7");
  * if (!ready || dismissed) return null;
  * return <Banner onClose={dismiss} />;
  * ```

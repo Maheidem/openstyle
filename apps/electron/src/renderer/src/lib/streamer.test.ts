@@ -127,7 +127,7 @@ describe("Streamer reconnects an active capture", () => {
       type: "config",
       streaming: true,
       sessionTransport: true,
-      providerCategory: "freestyle_cloud",
+      providerCategory: "byok",
     });
     expect(firstSocket.sent).toContainEqual(
       JSON.stringify({ type: "start", context: null }),
@@ -147,7 +147,7 @@ describe("Streamer reconnects an active capture", () => {
       type: "config",
       streaming: true,
       sessionTransport: true,
-      providerCategory: "freestyle_cloud",
+      providerCategory: "byok",
     });
 
     expect(secondSocket.sent).toContainEqual(

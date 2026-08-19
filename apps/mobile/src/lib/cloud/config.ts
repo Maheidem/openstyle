@@ -1,7 +1,7 @@
 /**
- * Freestyle Cloud connection settings. Mirrors the desktop app's
- * `apps/server/src/lib/freestyle-cloud.ts` so the mobile client talks to the
- * exact same managed backend (v2 routes) — no BYOK provider keys.
+ * Freestyle Cloud connection settings. The desktop app is local-first and no
+ * longer talks to this backend; the mobile client is the only consumer of the
+ * managed v2 routes — no BYOK provider keys.
  */
 
 import Constants from "expo-constants";
