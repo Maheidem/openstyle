@@ -174,7 +174,9 @@ export function buildAsrVocabularyBias(
         ...(noteText ? { text: noteText } : {}),
       };
     }
-    case "local-mlx": {
+    // Both run the same MLX ASR models and take the same free-text prompt.
+    case "local-mlx":
+    case "omlx": {
       const text = `Technical terms: ${capped.join(", ")}`.slice(
         0,
         PROMPT_CHAR_BUDGET,

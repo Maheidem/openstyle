@@ -207,6 +207,26 @@ describe("buildAsrVocabularyBias", () => {
       });
     });
   });
+
+  describe("omlx", () => {
+    // A self-hosted oMLX server runs the same MLX ASR models as the bundled
+    // worker, so it takes the same prompt. Without its own case it fell through
+    // to `default` and the user's vocabulary was silently dropped.
+    it("builds the same prompt as the bundled mlx worker", () => {
+      const terms = ["TypeScript", "Kubernetes"];
+      expect(
+        buildAsrVocabularyBias("omlx", "mlx-community--Qwen3-ASR-1.7B-8bit", terms),
+      ).toEqual(buildAsrVocabularyBias("local-mlx", "qwen", terms));
+    });
+
+    it("returns a prompt rather than null", () => {
+      expect(
+        buildAsrVocabularyBias("omlx", "mlx-community--Qwen3-ASR-1.7B-8bit", [
+          "presales-toolkit",
+        ]),
+      ).toEqual({ kind: "prompt", text: "Technical terms: presales-toolkit" });
+    });
+  });
 });
 
 describe("resolveAsrVocabularyBias", () => {
