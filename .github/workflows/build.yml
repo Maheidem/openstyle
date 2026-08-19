@@ -200,6 +200,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Install system dependencies
+        # The apt step wedges on the runners often enough to matter, and with no
+        # timeout it holds the job for the six-hour default instead of failing
+        # where a re-run would clear it.
+        timeout-minutes: 10
         run: sudo apt-get update && sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libgbm1 libasound2t64 libx11-xcb1 libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev
 
       - name: Build server
@@ -328,6 +332,8 @@ jobs:
         run: pnpm turbo build --filter=@openstyle/server
 
       - name: Install native build dependencies
+        # See the note on the same step in test-electron.
+        timeout-minutes: 10
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev binutils
 
       - name: Build whisper.cpp binaries
