@@ -26,6 +26,8 @@ export interface EndpointConnectState {
   connected: boolean | null;
   error: string | null;
   models: string[];
+  /** Resolved endpoint the probe verified, when it reports one (oMLX). */
+  transcribeUrl: string | null;
   test: (values: EndpointTestValues) => Promise<void>;
   clearStatus: () => void;
 }
@@ -56,6 +58,7 @@ interface TestStatus {
   setConnected: (v: boolean | null) => void;
   setError: (v: string | null) => void;
   setModels: (v: string[]) => void;
+  setTranscribeUrl: (v: string | null) => void;
   setInitialUrl: (v: string) => void;
   setInitialApiKey: (v: string) => void;
 }
@@ -108,11 +111,13 @@ async function runEndpointTest(
       const result = (await res.json()) as {
         ok?: boolean;
         models?: string[];
+        transcribeUrl?: string;
         error?: string;
       };
       if (result.ok) {
         status.setConnected(true);
         status.setModels(result.models ?? []);
+        status.setTranscribeUrl(result.transcribeUrl ?? null);
         await onDone();
         return;
       }
@@ -167,6 +172,7 @@ export function useEndpointConnect(
   const [connected, setConnected] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<string[]>([]);
+  const [transcribeUrl, setTranscribeUrl] = useState<string | null>(null);
 
   // Seed from persisted settings once, matching the original truthiness guards
   // in useModels (an empty string does not override the default).
@@ -195,6 +201,7 @@ export function useEndpointConnect(
           setConnected,
           setError,
           setModels,
+          setTranscribeUrl,
           setInitialUrl,
           setInitialApiKey,
         },
@@ -210,6 +217,7 @@ export function useEndpointConnect(
     connected,
     error,
     models,
+    transcribeUrl,
     test,
     clearStatus,
   };

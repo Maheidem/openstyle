@@ -26,7 +26,10 @@ import {
 import { getDefaultModels } from "../lib/providers.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
-import { getApiKeyForProvider } from "../lib/streaming-stt.js";
+import {
+  getApiKeyForProvider,
+  voiceProviderCategory,
+} from "../lib/streaming-stt.js";
 import {
   buildAsrVocabularyBias,
   resolveAsrVocabularyBias,
@@ -37,12 +40,6 @@ import { startInBackground } from "../lib/whisper/server.js";
 import { prewarmModelCostRegistry } from "./models.js";
 
 const log = createAppLogger("transcribe");
-
-function routeVoiceProviderCategory(providerId: string): "local" | "byok" {
-  if (providerId === "local-whisper" || providerId === "local-mlx")
-    return "local";
-  return "byok";
-}
 
 /**
  * The client percent-encodes the x-app-context header so non-Latin1
@@ -271,7 +268,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       raw: rawText,
       cleaned: rawText,
       model: voiceModel,
-      provider_category: routeVoiceProviderCategory(voiceProvider),
+      provider_category: voiceProviderCategory(voiceProvider),
       durationMs,
     });
   }
@@ -321,7 +318,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     raw: suppressed ? "" : rawText,
     cleaned: suppressed ? "" : pp.cleaned,
     model: voiceModel,
-    provider_category: routeVoiceProviderCategory(voiceProvider),
+    provider_category: voiceProviderCategory(voiceProvider),
     durationMs: totalDurationMs,
     audioDurationMs,
     llmModel: pp.llmModel,

@@ -10,6 +10,10 @@ vi.mock("../src/lib/streaming/registry.js", () => ({
 
 vi.mock("../src/lib/streaming-stt.js", () => ({
   getApiKeyForProvider: () => "test-key",
+  voiceProviderCategory: (id: string) =>
+    id === "local-whisper" || id === "local-mlx" || id === "omlx"
+      ? "local"
+      : "byok",
 }));
 
 vi.mock("../src/lib/post-process.js", () => ({

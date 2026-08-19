@@ -11,7 +11,9 @@ import type { ConfiguredModel } from "./types";
 import type { UseModels } from "./use-models";
 import { displayName } from "./utils";
 
-const LOCAL_PROVIDERS = new Set(["local-whisper", "local-mlx"]);
+// Engines that run on the user's own machine — the bundled workers plus a
+// user-run oMLX server. These belong to the On-device tier, not BYOK.
+const LOCAL_PROVIDERS = new Set(["local-whisper", "local-mlx", "omlx"]);
 
 export function recommendedVoiceKey(
   items: { key: string; localEngine?: string }[],
@@ -22,7 +24,7 @@ export function recommendedVoiceKey(
 }
 
 function isLocalVoice(voice: ConfiguredModel | undefined): boolean {
-  return voice?.provider === "local-whisper" || voice?.provider === "local-mlx";
+  return !!voice && LOCAL_PROVIDERS.has(voice.provider);
 }
 
 function isByokVoice(voice: ConfiguredModel | undefined): boolean {
@@ -52,9 +54,13 @@ export function TranscriptionPicker({
   const selectedLocal = localItems.find((it) => it.selected);
   const localHint = selectedLocal
     ? selectedLocal.name
-    : localItems.length > 0
-      ? t("models.picker.modelCount", { count: localItems.length })
-      : t("models.picker.unavailableOnDevice");
+    : // oMLX models come from the user's own server rather than `voiceItems`,
+      // so name the selected one straight off the configured default.
+      localActive
+      ? (m.defaultVoice?.model_name ?? t("models.onDevice"))
+      : localItems.length > 0
+        ? t("models.picker.modelCount", { count: localItems.length })
+        : t("models.picker.unavailableOnDevice");
 
   const byokLabel = byokActive
     ? (m.defaultVoice?.model_name ?? displayName(m.defaultVoice!.provider))

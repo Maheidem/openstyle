@@ -11,6 +11,11 @@ import {
   disabledPluginsSettingSchema,
   historyRetentionDaysSettingSchema,
   localLlmConfigSchema,
+  normalizeOmlxRoot,
+  omlxBaseUrlSchema,
+  omlxConfigSchema,
+  omlxModelsUrl,
+  omlxTranscribeUrl,
   openaiSttBaseUrlSchema,
   openaiSttConfigSchema,
   pluginsSettingSchema,
@@ -145,6 +150,16 @@ const settings = new Hono()
           {
             error:
               parsed.error.issues[0]?.message ?? "Invalid OpenAI STT base URL",
+          },
+          400,
+        );
+      }
+    } else if (key === "omlx_base_url") {
+      const parsed = omlxBaseUrlSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json(
+          {
+            error: parsed.error.issues[0]?.message ?? "Invalid oMLX server URL",
           },
           400,
         );
@@ -289,6 +304,61 @@ const settings = new Hono()
         return c.json({ error: message }, 502);
       }
     },
-  );
+  )
+  .post("/omlx/test", zValidator("json", omlxConfigSchema), async (c) => {
+    const body = c.req.valid("json");
+    // One normalizer for both URLs, so the probe can never report a server the
+    // transcription request then 404s on.
+    const root = normalizeOmlxRoot(body.url);
+    const transcribeUrl = omlxTranscribeUrl(root);
+    const auth: Record<string, string> = body.api_key
+      ? { Authorization: `Bearer ${body.api_key}` }
+      : {};
+
+    try {
+      const res = await fetch(omlxModelsUrl(root), {
+        headers: auth,
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!res.ok) {
+        return c.json(
+          { error: `Server returned ${res.status}: ${res.statusText}` },
+          502,
+        );
+      }
+
+      const data = (await res.json()) as {
+        data?: { id: string }[];
+      };
+
+      // Every id is listed — oMLX reports no modality, and the user knows
+      // which of their models is the ASR one.
+      let models: string[] = [];
+      if (data.data && Array.isArray(data.data)) {
+        models = data.data.map((m) => m.id);
+      }
+
+      // Prove the transcription route exists too. A field-less POST gets a
+      // validation error (oMLX answers 422) when the route is mounted, and a
+      // 404 when it is not — no audio needs to be sent either way.
+      const probe = await fetch(transcribeUrl, {
+        method: "POST",
+        headers: auth,
+        signal: AbortSignal.timeout(5000),
+      });
+      if (probe.status === 404) {
+        return c.json(
+          { error: `No transcription endpoint at ${transcribeUrl}` },
+          502,
+        );
+      }
+
+      return c.json({ ok: true, models, transcribeUrl });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to connect";
+      return c.json({ error: message }, 502);
+    }
+  });
 
 export default settings;

@@ -2,6 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { EndpointConnectFormValues } from "@openstyle/validations";
 import {
   localLlmConnectFormSchema,
+  omlxConnectFormSchema,
   openaiSttConnectFormSchema,
 } from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
@@ -91,11 +92,12 @@ interface VoiceHandlers {
     engine?: "whisper" | "mlx",
   ) => void;
   onRequestDeleteLocal: (defId: string, engine?: "whisper" | "mlx") => void;
+  onClose: () => void;
 }
 
 function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
   const recommendedKey = recommendedVoiceKey(m.voiceItems);
-  return m.voiceItems.map((it): Row => {
+  const rows = m.voiceItems.map((it): Row => {
     if (it.kind === "local") {
       const status = it.status ?? "not_downloaded";
       const sizeNote =
@@ -153,6 +155,35 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
         : undefined,
     };
   });
+
+  // Models served by the user's oMLX server. It runs on their own machine, so
+  // the rows sit with the on-device engines: no key gate, nothing to download.
+  const omlxNames = new Set(
+    m.available
+      .filter((a) => a.type === "voice" && a.provider_id === "omlx")
+      .map((a) => a.model_name),
+  );
+  if (m.defaultVoice?.provider === "omlx") {
+    // Keep the selected model visible even when the server is unreachable.
+    omlxNames.add(m.defaultVoice.model_id.replace(/^omlx\//, ""));
+  }
+  for (const name of omlxNames) {
+    rows.push({
+      key: `omlx/${name}`,
+      name,
+      source: "local",
+      provider: "local",
+      meta: "On-device · oMLX",
+      curated: true,
+      selected:
+        m.defaultVoice?.provider === "omlx" &&
+        m.defaultVoice?.model_id === `omlx/${name}`,
+      status: "ready",
+      onSelect: () => void m.selectOmlxModel(name).then(h.onClose),
+    });
+  }
+
+  return rows;
 }
 
 function buildLlmRows(
@@ -296,6 +327,7 @@ export function ModelList({
           onPickCloud,
           onPickLocalVoice,
           onRequestDeleteLocal,
+          onClose,
         })
       : buildLlmRows(m, { onPickCloud, onClose });
 
@@ -331,6 +363,9 @@ export function ModelList({
 
   const showLocalLlmForm = type === "llm" && localOnly;
   const showOpenaiSttForm = type === "voice" && cloudOnly;
+  // An oMLX server runs on localhost, so its connect form belongs with the
+  // on-device engines rather than under Cloud.
+  const showOmlxForm = type === "voice" && localOnly;
 
   const scopedTitle =
     type === "voice"
@@ -421,6 +456,7 @@ export function ModelList({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {showLocalLlmForm && <LocalLlmConnect m={m} />}
         {showOpenaiSttForm && <OpenaiSttConnect m={m} />}
+        {showOmlxForm && <OmlxConnect m={m} />}
         {visible.length === 0 ? (
           <ListEmptyState
             type={type}
@@ -726,6 +762,17 @@ function OpenaiSttConnect({ m }: { m: UseModels }): React.JSX.Element {
   );
 }
 
+function OmlxConnect({ m }: { m: UseModels }): React.JSX.Element {
+  return (
+    <EndpointConnectForm
+      connect={m.omlx}
+      resolver={zodResolver(omlxConnectFormSchema)}
+      description="Transcribe with an oMLX server you already run. Enter the server address — every model it serves is listed; pick the ASR one. Leave the URL empty to disconnect."
+      urlPlaceholder="http://127.0.0.1:8123"
+    />
+  );
+}
+
 /**
  * Shared connect form for OpenAI-compatible endpoints (local LLM, custom STT).
  * Drives a react-hook-form with inline validation from the shared schema; the
@@ -828,10 +875,17 @@ function EndpointConnectForm({
           )}
         />
         {connect.connected === true && (
-          <p className="text-primary text-[12px]">
-            Connected · {connect.models.length}{" "}
-            {connect.models.length === 1 ? "model" : "models"} found
-          </p>
+          <>
+            <p className="text-primary text-[12px]">
+              Connected · {connect.models.length}{" "}
+              {connect.models.length === 1 ? "model" : "models"} found
+            </p>
+            {connect.transcribeUrl && (
+              <p className="text-muted-foreground mono text-[11px] break-all">
+                {connect.transcribeUrl}
+              </p>
+            )}
+          </>
         )}
         {connect.connected === false && connect.error && (
           <p className="text-destructive text-[12px] leading-snug">

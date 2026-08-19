@@ -86,6 +86,7 @@ export interface UseModels {
 
   localLlm: EndpointConnectState;
   openaiStt: EndpointConnectState;
+  omlx: EndpointConnectState;
 
   // Actions — each refetches as needed
   configureModel: (
@@ -103,6 +104,7 @@ export interface UseModels {
   cancelLocal: (defId: string, engine?: "whisper" | "mlx") => void;
   deleteLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
   selectLocalLlmModel: (modelName: string) => Promise<void>;
+  selectOmlxModel: (modelName: string) => Promise<void>;
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
@@ -130,6 +132,14 @@ const OPENAI_STT_CONFIG: EndpointConnectConfig = {
   clearUrlWhenEmpty: true,
   probe: (client, body) =>
     client.api.settings["openai-stt"].test.$post({ json: body }),
+};
+
+const OMLX_CONFIG: EndpointConnectConfig = {
+  urlKey: SETTINGS_KEYS.omlxBaseUrl,
+  apiKeyKey: SETTINGS_KEYS.omlxApiKey,
+  defaultUrl: "http://127.0.0.1:8123",
+  clearUrlWhenEmpty: true,
+  probe: (client, body) => client.api.settings.omlx.test.$post({ json: body }),
 };
 
 export function useModels(): UseModels {
@@ -283,6 +293,7 @@ export function useModels(): UseModels {
     settingsQuery.data,
     loadData,
   );
+  const omlx = useEndpointConnect(OMLX_CONFIG, settingsQuery.data, loadData);
 
   const loadWhisperStatus = useCallback(
     () => queryClient.invalidateQueries({ queryKey: MODELS_KEYS.whisper }),
@@ -535,6 +546,22 @@ export function useModels(): UseModels {
     [loadData],
   );
 
+  const selectOmlxModel = useCallback(
+    async (modelName: string) => {
+      await getClient().api.models.configured.$post({
+        json: {
+          provider: "omlx",
+          model_id: `omlx/${modelName}`,
+          model_name: modelName,
+          type: "voice",
+          is_default: true,
+        },
+      });
+      await loadData();
+    },
+    [loadData],
+  );
+
   const setCleanup = useCallback((next: boolean) => {
     setLlmCleanup(next);
     getClient()
@@ -614,6 +641,7 @@ export function useModels(): UseModels {
     llmModelsByProvider,
     localLlm,
     openaiStt,
+    omlx,
     configureModel,
     saveKey,
     selectLocalVoice,
@@ -622,6 +650,7 @@ export function useModels(): UseModels {
     cancelLocal,
     deleteLocal,
     selectLocalLlmModel,
+    selectOmlxModel,
     setCleanup,
     saveMlxKeepAliveMinutes,
     deleteProvider,

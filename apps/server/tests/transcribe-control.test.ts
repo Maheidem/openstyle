@@ -17,6 +17,10 @@ vi.mock("../src/lib/streaming/registry.js", () => ({
 
 vi.mock("../src/lib/streaming-stt.js", () => ({
   getApiKeyForProvider: () => "test-key",
+  voiceProviderCategory: (id: string) =>
+    id === "local-whisper" || id === "local-mlx" || id === "omlx"
+      ? "local"
+      : "byok",
 }));
 
 // The cleanup call must never run once a hook consumes/aborts — spy on it so we

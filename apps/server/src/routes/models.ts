@@ -1,5 +1,9 @@
 import { zValidator } from "@hono/zod-validator";
-import { configureModelSchema } from "@openstyle/validations";
+import {
+  configureModelSchema,
+  normalizeOmlxRoot,
+  omlxModelsUrl,
+} from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
@@ -11,6 +15,12 @@ import {
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
 import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
+import {
+  OMLX_API_KEY_SETTING,
+  OMLX_BASE_URL_SETTING,
+  OMLX_PROVIDER_ID,
+  OMLX_PROVIDER_NAME,
+} from "../lib/streaming/providers/omlx.js";
 import {
   LEGACY_WHISPER_MODELS,
   WHISPER_MODELS,
@@ -80,6 +90,50 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
     model_name: m.id,
     family: "local",
     type: "llm" as const,
+    cost_input: 0,
+    cost_output: 0,
+  }));
+}
+
+/**
+ * Voice models served by the user's oMLX server. Every id is listed — oMLX
+ * reports no modality, so guessing which entry is an ASR model would be wrong
+ * more often than useful; picking a non-ASR one simply errors at dictation.
+ */
+async function fetchOmlxModels(): Promise<AvailableModel[]> {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT key, value FROM settings WHERE key IN (?, ?)")
+    .all(OMLX_BASE_URL_SETTING, OMLX_API_KEY_SETTING) as {
+    key: string;
+    value: string;
+  }[];
+  const settings = Object.fromEntries(
+    rows.map((r) => [r.key, r.value]),
+  ) as Record<string, string | undefined>;
+
+  const root = normalizeOmlxRoot(settings[OMLX_BASE_URL_SETTING] ?? "");
+  if (!root) return [];
+
+  const apiKey = settings[OMLX_API_KEY_SETTING]?.trim();
+  const res = await fetch(omlxModelsUrl(root), {
+    headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) return [];
+
+  const data = (await res.json()) as {
+    data?: { id: string }[];
+  };
+  if (!data.data || !Array.isArray(data.data)) return [];
+
+  return data.data.map((m) => ({
+    provider_id: OMLX_PROVIDER_ID,
+    provider_name: OMLX_PROVIDER_NAME,
+    model_id: `${OMLX_PROVIDER_ID}/${m.id}`,
+    model_name: m.id,
+    family: "omlx",
+    type: "voice" as const,
     cost_input: 0,
     cost_output: 0,
   }));
@@ -439,6 +493,14 @@ const models = new Hono()
         available.push(...localModels.map((m) => ({ ...m, curated: true })));
       } catch {
         // Local LLM server not reachable
+      }
+
+      try {
+        const omlxModels = await fetchOmlxModels();
+        // Same rationale: the user pointed us at this server on purpose.
+        available.push(...omlxModels.map((m) => ({ ...m, curated: true })));
+      } catch {
+        // oMLX server not reachable
       }
 
       return c.json(available);
