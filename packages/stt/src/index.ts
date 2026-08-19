@@ -8,6 +8,7 @@ export { postProcess } from "./post-process.js";
 export {
   collapseAsrLineBreaks,
   sanitizeTranscriptText,
+  stripThinkingBlocks,
   stripTrailingDuplicate,
   stripWrappingQuotes,
 } from "./text.js";

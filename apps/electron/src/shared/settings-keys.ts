@@ -6,6 +6,7 @@ export const SETTINGS_KEYS = {
   cleanupIntensity: "cleanup_intensity",
   cleanupOverallTone: "cleanup_overall_tone",
   cleanupPersonalTone: "cleanup_personal_tone",
+  cleanupSampling: "cleanup_sampling",
   cleanupWorkTone: "cleanup_work_tone",
   remixHotkey: "remix_hotkey",
   remixBarEnabled: "remix_bar_enabled",

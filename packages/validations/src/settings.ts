@@ -42,6 +42,89 @@ export function parseCleanupIntensity(
 }
 
 /**
+ * Sampling parameters sent to a local, OpenAI-compatible cleanup server
+ * (oMLX, llama.cpp, vLLM). Field names are snake_case because they go straight
+ * onto the wire — the AI SDK cannot carry `top_k`, `min_p` or
+ * `chat_template_kwargs`, so these are merged into the request body by a custom
+ * `fetch` on the `local-llm` provider entry.
+ *
+ * Every field is optional and none has a `.default()`: an empty object means
+ * "send nothing extra", which keeps the request body identical to what the SDK
+ * builds on its own. An out-of-bounds field rejects the whole object (see
+ * {@link parseCleanupSampling}) rather than being silently dropped.
+ */
+export const CLEANUP_SAMPLING_MAX_TOKENS_LIMIT = 32768;
+
+export const cleanupSamplingSchema = z.object({
+  temperature: z.number().min(0).max(2).optional(),
+  top_p: z.number().min(0).max(1).optional(),
+  top_k: z.number().int().min(0).max(500).optional(),
+  min_p: z.number().min(0).max(0.5).optional(),
+  repetition_penalty: z.number().min(1).max(1.5).optional(),
+  presence_penalty: z.number().min(-2).max(2).optional(),
+  /**
+   * Replaces the input-scaled budget from `maxOutputTokensForCleanup`. That
+   * heuristic sizes the output off the *input*, which holds for a plain edit
+   * but not with thinking on, where the output is reasoning plus answer — a
+   * one-sentence cleanup at high effort measured 437 output tokens against a
+   * 512-token floor. Raise this to give thinking room.
+   */
+  max_tokens: z
+    .number()
+    .int()
+    .min(1)
+    .max(CLEANUP_SAMPLING_MAX_TOKENS_LIMIT)
+    .optional(),
+  /**
+   * Caps reasoning independently of `max_tokens`, so the answer always has
+   * room left. This is what makes thinking safe to leave on.
+   */
+  thinking_budget: z
+    .number()
+    .int()
+    .min(0)
+    .max(CLEANUP_SAMPLING_MAX_TOKENS_LIMIT)
+    .optional(),
+  /**
+   * Top-level reasoning effort. Distinct from the `chat_template_kwargs` field
+   * of the same name — oMLX accepts both and they are not the same knob. Left
+   * as a free string so a server-specific value isn't rejected here; the
+   * server is the authority on which values it takes.
+   */
+  reasoning_effort: z.string().min(1).max(32).optional(),
+  chat_template_kwargs: z
+    .object({
+      enable_thinking: z.boolean().optional(),
+      reasoning_effort: z.string().min(1).max(32).optional(),
+      preserve_thinking: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+export type CleanupSampling = z.infer<typeof cleanupSamplingSchema>;
+
+/** No overrides — the request body stays exactly as the AI SDK built it. */
+export const DEFAULT_CLEANUP_SAMPLING: CleanupSampling = {};
+
+/**
+ * Coerce an arbitrary persisted value into a valid {@link CleanupSampling},
+ * falling back to "no overrides" when missing, unparseable or out of bounds.
+ * Never throws — a malformed setting must degrade to today's behaviour rather
+ * than break cleanup.
+ */
+export function parseCleanupSampling(
+  value: string | null | undefined,
+): CleanupSampling {
+  if (!value) return DEFAULT_CLEANUP_SAMPLING;
+  try {
+    const parsed = cleanupSamplingSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : DEFAULT_CLEANUP_SAMPLING;
+  } catch {
+    return DEFAULT_CLEANUP_SAMPLING;
+  }
+}
+
+/**
  * Enterprise network proxy URL. Empty string clears it. Must be an http(s)
  * (or socks) URL when set — this is what downloads are routed through on
  * managed corporate networks.

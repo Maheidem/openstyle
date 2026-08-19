@@ -1,5 +1,7 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import type { PostProcessParams } from "@openstyle/stt";
+import type { CleanupSampling } from "@openstyle/validations";
+import { parseCleanupSampling } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
 import { getDb } from "../db.js";
 
@@ -64,6 +66,70 @@ export function groqCleanupProviderOptions(
     default:
       return undefined;
   }
+}
+
+/**
+ * Merge user-chosen sampling parameters into an outgoing chat-completions body.
+ *
+ * `top_k`, `min_p`, `repetition_penalty` and `chat_template_kwargs` have no
+ * route through the AI SDK — `topK` is dropped with an `unsupported` warning
+ * and `providerOptions` silently strips keys its schema doesn't know — so they
+ * are written onto the wire body instead.
+ *
+ * The sampling params are spread LAST so they win over what the SDK built:
+ * cleanup hardcodes `temperature: 0`, and reversing the order would silently
+ * discard the user's temperature. Anything that isn't a JSON object is
+ * returned untouched, so a surprise body shape degrades to "send as-is".
+ */
+export function mergeSamplingIntoBody(
+  body: string,
+  sampling: CleanupSampling,
+): string {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return body;
+    }
+    const merged: Record<string, unknown> = { ...parsed, ...sampling };
+
+    // max_tokens is a floor, not a cap. The user sets it to give a thinking
+    // model room to reason; the caller computes it from the input length. Every
+    // local-llm path shares this fetch, and Remix legitimately needs a bigger
+    // budget than cleanup and has no truncation fallback -- a literal override
+    // tuned for cleanup would silently cut its rewrites short.
+    if (typeof sampling.max_tokens === "number") {
+      const computed = (parsed as { max_tokens?: unknown }).max_tokens;
+      merged.max_tokens =
+        typeof computed === "number"
+          ? Math.max(computed, sampling.max_tokens)
+          : sampling.max_tokens;
+    }
+
+    return JSON.stringify(merged);
+  } catch {
+    return body;
+  }
+}
+
+/**
+ * A `fetch` wrapper for `createOpenAI` that rewrites the request body with the
+ * user's sampling params. The SDK's `postToApi` hands the body over as an
+ * already-serialized JSON string, hence the parse/merge/stringify round trip.
+ */
+export function createSamplingFetch(
+  sampling: CleanupSampling,
+): typeof globalThis.fetch {
+  return (input, init) => {
+    if (typeof init?.body !== "string") return fetch(input, init);
+    return fetch(input, {
+      ...init,
+      body: mergeSamplingIntoBody(init.body, sampling),
+    });
+  };
 }
 
 const PROVIDERS: LlmProvider[] = [
@@ -156,7 +222,21 @@ const PROVIDERS: LlmProvider[] = [
       const baseURL = urlRow.value.replace(/\/v1\/?$/, "");
       const apiKey = keyRow?.value || "local";
 
-      return createOpenAI({ apiKey, baseURL: `${baseURL}/v1` }).chat(modelId);
+      // Read fresh on every call — `createChatModel` builds a new model per
+      // request for this provider, so an edited setting takes effect at once.
+      const samplingRow = db
+        .prepare("SELECT value FROM settings WHERE key = 'cleanup_sampling'")
+        .get() as { value: string } | undefined;
+      const sampling = parseCleanupSampling(samplingRow?.value);
+      const hasSampling = Object.keys(sampling).length > 0;
+
+      return createOpenAI({
+        apiKey,
+        baseURL: `${baseURL}/v1`,
+        // Only intercept when there is something to merge, so an unset (or
+        // malformed) setting leaves the request path exactly as it was.
+        ...(hasSampling ? { fetch: createSamplingFetch(sampling) } : {}),
+      }).chat(modelId);
     },
   },
 ];

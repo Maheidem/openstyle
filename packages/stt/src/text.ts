@@ -50,8 +50,45 @@ export function collapseAsrLineBreaks(text: string): string {
   });
 }
 
+const THINK_TAG = /<\s*\/?\s*think\s*>/i;
+const THINK_BLOCK = /<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi;
+const THINK_UNCLOSED = /<\s*think\s*>[\s\S]*$/i;
+const THINK_CLOSE = /<\s*\/\s*think\s*>/gi;
+
+/**
+ * Remove chain-of-thought a reasoning model emitted inline in its visible
+ * output. Qwen and DeepSeek wrap it in `<think>…</think>`; servers normally
+ * split that into a separate `reasoning_content` field, but the tags do leak
+ * into `content`, and when they do the pair often arrives incomplete.
+ *
+ * Three shapes, stripped in this order so each pass only sees what the last
+ * one left behind:
+ *   1. complete `<think>…</think>` blocks, anywhere in the text;
+ *   2. an opener with no closer — the model ran out of tokens mid-reasoning,
+ *      so everything from the tag onwards is reasoning;
+ *   3. a closer with no opener — the chat template emitted reasoning first and
+ *      swallowed the opening tag, so everything up to it is reasoning.
+ *
+ * Text containing no such tag is returned byte-identical.
+ */
+export function stripThinkingBlocks(text: string): string {
+  if (!THINK_TAG.test(text)) return text;
+
+  let out = text.replace(THINK_BLOCK, "").replace(THINK_UNCLOSED, "");
+
+  // Any `</think>` still standing has no opener left to match it.
+  let lastEnd = -1;
+  for (const match of out.matchAll(THINK_CLOSE)) {
+    lastEnd = match.index + match[0].length;
+  }
+  if (lastEnd >= 0) out = out.slice(lastEnd);
+
+  return out;
+}
+
 export function sanitizeTranscriptText(text: string): string {
-  let cleaned = stripWrappingQuotes(text);
+  let cleaned = stripThinkingBlocks(text);
+  cleaned = stripWrappingQuotes(cleaned);
   cleaned = stripTrailingFinTags(cleaned);
   return stripTrailingDuplicate(cleaned);
 }

@@ -73,7 +73,10 @@ export interface PostProcessParams {
 
 export interface PostProcessResult {
   cleaned: string;
-  /** `null` when cleanup was skipped (empty input) or the model call failed. */
+  /**
+   * `null` when cleanup was skipped (empty input), the model call failed, or
+   * its output was discarded as untrustworthy (see {@link postProcess}).
+   */
   model: string | null;
   inputTokens: number;
   outputTokens: number;
@@ -130,8 +133,31 @@ export async function postProcess(
       ...(params.signal ? { abortSignal: params.signal } : {}),
     });
 
+    const cleaned = sanitizeTranscriptText(result.text);
+
+    // `length` means generation was cut off, so whatever came back is
+    // untrustworthy — a half-written sentence, or, for a reasoning model whose
+    // closing `</think>` never arrived, raw chain-of-thought that the server
+    // flushed into `content` with no `reasoning_content` split and no tag left
+    // for the sanitizer to find. Output that sanitizes away to nothing is just
+    // as unusable. Return the raw transcript in both cases rather than paste
+    // the model's thinking (or an empty string) into the user's document.
+    if (result.finishReason === "length" || !cleaned) {
+      params.onError?.(
+        new Error(
+          `Cleanup output discarded (finishReason: ${result.finishReason}, ${cleaned.length} chars after sanitizing) — falling back to the raw transcript.`,
+        ),
+      );
+      return {
+        cleaned: normalizedRawText,
+        model: null,
+        inputTokens: result.usage?.inputTokens ?? 0,
+        outputTokens: result.usage?.outputTokens ?? 0,
+      };
+    }
+
     return {
-      cleaned: sanitizeTranscriptText(result.text),
+      cleaned,
       model: describeModel(params.model),
       inputTokens: result.usage?.inputTokens ?? 0,
       outputTokens: result.usage?.outputTokens ?? 0,

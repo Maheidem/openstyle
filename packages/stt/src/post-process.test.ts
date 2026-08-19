@@ -88,6 +88,96 @@ describe("postProcess", () => {
     expect(result.cleaned).toBe("hello there");
   });
 
+  // Reproduced against a live oMLX server: with thinking on and a token budget
+  // scaled off the input, generation is cut off mid-reasoning, the parser never
+  // sees the closing `</think>`, and the raw chain-of-thought is flushed into
+  // `content` with no tag left for the sanitizer to catch. `finishReason` is
+  // the only reliable signal, so this must keep failing loudly if removed.
+  it("discards truncated output and returns the raw transcript", async () => {
+    const onError = vi.fn();
+    const model = {
+      specificationVersion: "v3",
+      provider: "test",
+      modelId: "fake-model",
+      doGenerate: async () => ({
+        content: [
+          {
+            type: "text",
+            text: "The user wants me to clean up a dictated transcript. I need to fix grammar, punctuation, and remove filler words. Let me identify the core message: they were thinking about whether line breaks and n",
+          },
+        ],
+        // Provider spec v3 shape — `generateText` flattens `unified` onto the
+        // result as a plain string.
+        finishReason: { unified: "length", raw: "length" },
+        usage: { inputTokens: { total: 120 }, outputTokens: { total: 60 } },
+        warnings: [],
+      }),
+    } as never;
+    const result = await postProcess({
+      model,
+      system: "irrelevant",
+      text: "so um i was thinking about whether the line breaks should be preserved",
+      onError,
+    });
+    expect(result.cleaned).toBe(
+      "so um i was thinking about whether the line breaks should be preserved",
+    );
+    expect(result.cleaned).not.toContain("The user wants me to");
+    expect(result.model).toBeNull();
+    // Usage that actually occurred is still reported.
+    expect(result.inputTokens).toBe(120);
+    expect(result.outputTokens).toBe(60);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(String(onError.mock.calls[0]?.[0])).toContain("length");
+  });
+
+  it("returns the raw transcript when output sanitizes away to nothing", async () => {
+    const model = {
+      specificationVersion: "v3",
+      provider: "test",
+      modelId: "fake-model",
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "<think>only reasoning, no answer" }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: { inputTokens: 5, outputTokens: 7 },
+        warnings: [],
+      }),
+    } as never;
+    const result = await postProcess({
+      model,
+      system: "irrelevant",
+      text: "hello there",
+    });
+    expect(result.cleaned).toBe("hello there");
+    expect(result.model).toBeNull();
+  });
+
+  it("strips a leaked reasoning block from otherwise good output", async () => {
+    const model = {
+      specificationVersion: "v3",
+      provider: "test",
+      modelId: "fake-model",
+      doGenerate: async () => ({
+        content: [
+          {
+            type: "text",
+            text: "<think>Fix the punctuation.</think>Hello there.",
+          },
+        ],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: { inputTokens: 5, outputTokens: 7 },
+        warnings: [],
+      }),
+    } as never;
+    const result = await postProcess({
+      model,
+      system: "irrelevant",
+      text: "hello there",
+    });
+    expect(result.cleaned).toBe("Hello there.");
+    expect(result.model).toBe("fake-model");
+  });
+
   it("never calls onError when the model call succeeds", async () => {
     const onError = vi.fn();
     const model = {

@@ -7,6 +7,7 @@ import {
   cleanupIntensitySchema,
   cleanupOverallToneSchema,
   cleanupPersonalToneSchema,
+  cleanupSamplingSchema,
   cleanupWorkToneSchema,
   disabledPluginsSettingSchema,
   historyRetentionDaysSettingSchema,
@@ -120,6 +121,17 @@ const settings = new Hono()
       const parsed = cleanupAppAssignmentsSchema.safeParse(parsedJson);
       if (!parsed.success) {
         return c.json({ error: "Invalid app assignments setting" }, 400);
+      }
+    } else if (key === "cleanup_sampling") {
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(body.value);
+      } catch {
+        return c.json({ error: "Invalid sampling setting" }, 400);
+      }
+      const parsed = cleanupSamplingSchema.safeParse(parsedJson);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid sampling setting" }, 400);
       }
     } else if (key === "plugins") {
       let parsedJson: unknown;

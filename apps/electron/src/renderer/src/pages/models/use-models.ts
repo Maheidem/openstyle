@@ -1,3 +1,5 @@
+import type { CleanupSampling } from "@openstyle/validations";
+import { parseCleanupSampling } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
 import type {
   AvailableModel,
@@ -68,6 +70,8 @@ export interface UseModels {
   /** True once the editable form state has been seeded from persisted settings. */
   settingsSeeded: boolean;
   mlxKeepAliveMinutes: number;
+  /** Sampling params merged into every local-LLM request. `{}` sends nothing extra. */
+  cleanupSampling: CleanupSampling;
 
   /** Local models with an in-flight delete, keyed `${engine ?? "whisper"}:${defId}`. */
   deletingKeys: Set<string>;
@@ -107,6 +111,8 @@ export interface UseModels {
   selectOmlxModel: (modelName: string) => Promise<void>;
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
+  saveCleanupSampling: (next: CleanupSampling) => void;
+  resetCleanupSampling: () => void;
   deleteProvider: (provider: string) => Promise<void>;
   reload: () => Promise<void>;
 }
@@ -223,6 +229,7 @@ export function useModels(): UseModels {
   const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
     DEFAULT_MLX_KEEP_ALIVE_MINUTES,
   );
+  const [cleanupSampling, setCleanupSampling] = useState<CleanupSampling>({});
 
   // In-flight deletes — drive spinners on the delete buttons since deletion has
   // no server-reported status the way downloads do.
@@ -246,6 +253,7 @@ export function useModels(): UseModels {
     setSettingsSeeded(true);
     const cleanup = s[SETTINGS_KEYS.llmCleanup];
     if (cleanup) setLlmCleanup(cleanup === "true");
+    setCleanupSampling(parseCleanupSampling(s[SETTINGS_KEYS.cleanupSampling]));
     const rawMinutes = s[SETTINGS_KEYS.mlxAsrKeepAliveMinutes];
     if (rawMinutes) {
       const minutes = Number(rawMinutes);
@@ -594,6 +602,26 @@ export function useModels(): UseModels {
       .catch((err) => console.error("Failed to save MLX ASR keep-alive:", err));
   }, []);
 
+  // Persist the local-LLM sampling params. Stored as one JSON blob and read
+  // fresh by the server on every cleanup call, so there is nothing to warm.
+  const putCleanupSampling = useCallback((next: CleanupSampling) => {
+    setCleanupSampling(next);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.cleanupSampling },
+        json: { value: JSON.stringify(next) },
+      })
+      .catch((err) => console.error("Failed to save cleanup sampling:", err));
+  }, []);
+
+  // Reset clears the setting entirely rather than writing "safe" numbers: an
+  // empty object means the request body goes out exactly as the AI SDK built
+  // it, which is the only true escape from a bad combination.
+  const resetCleanupSampling = useCallback(
+    () => putCleanupSampling({}),
+    [putCleanupSampling],
+  );
+
   const deleteProvider = useCallback(
     async (provider: string) => {
       setDeletingProviders((prev) => new Set(prev).add(provider));
@@ -653,6 +681,9 @@ export function useModels(): UseModels {
     selectOmlxModel,
     setCleanup,
     saveMlxKeepAliveMinutes,
+    cleanupSampling,
+    saveCleanupSampling: putCleanupSampling,
+    resetCleanupSampling,
     deleteProvider,
     reload: loadData,
   };

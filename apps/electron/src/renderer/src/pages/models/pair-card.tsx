@@ -21,6 +21,7 @@ export function PairCard({
   onChangeVoice,
   onChangeLlm,
   onConfigureWarming,
+  onConfigureSampling,
 }: {
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
@@ -30,6 +31,8 @@ export function PairCard({
   onChangeLlm: () => void;
   /** When set, shows a "Configure model warming" link below the voice button. */
   onConfigureWarming?: () => void;
+  /** When set, shows a sampling link below the cleanup button (local LLM only). */
+  onConfigureSampling?: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const cleanupOn = llmCleanup;
@@ -66,6 +69,14 @@ export function PairCard({
           onToggle={onToggleCleanup}
           onChange={onChangeLlm}
           dimmed={!cleanupOn}
+          warmingAction={
+            onConfigureSampling
+              ? {
+                  label: t("models.pair.configureSampling"),
+                  onClick: onConfigureSampling,
+                }
+              : undefined
+          }
         />
       </div>
     </section>

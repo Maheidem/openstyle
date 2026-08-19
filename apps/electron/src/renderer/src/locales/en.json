@@ -643,7 +643,8 @@
       "pickModel": "Pick a model",
       "noneSelected": "None selected",
       "via": "via",
-      "configureWarming": "Configure model warming"
+      "configureWarming": "Configure model warming",
+      "configureSampling": "Sampling parameters"
     },
     "picker": {
       "transcription": "Transcription",

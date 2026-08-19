@@ -20,6 +20,7 @@ import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
+import { CleanupSamplingDialog } from "./sampling-dialog";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
 import { displayName } from "./utils";
@@ -48,6 +49,7 @@ export default function ModelsPage(): React.JSX.Element {
     string | null
   >(null);
   const [warmingOpen, setWarmingOpen] = useState(false);
+  const [samplingOpen, setSamplingOpen] = useState(false);
 
   // -------------------------------------------------------------------------
   // Modal flow
@@ -178,6 +180,9 @@ export default function ModelsPage(): React.JSX.Element {
   };
 
   const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
+  // Sampling params only reach a server we build the request body for, and the
+  // dialog is advanced-only like the rest of this page.
+  const showSampling = advancedMode && m.defaultLlm?.provider === "local-llm";
 
   // -------------------------------------------------------------------------
   // Render
@@ -211,6 +216,9 @@ export default function ModelsPage(): React.JSX.Element {
           onConfigureWarming={
             showMlxWarming ? () => setWarmingOpen(true) : undefined
           }
+          onConfigureSampling={
+            showSampling ? () => setSamplingOpen(true) : undefined
+          }
         />
 
         <KeysSection
@@ -235,6 +243,15 @@ export default function ModelsPage(): React.JSX.Element {
           blockedReason={m.mlxStatus?.blockedReason ?? null}
           onChange={m.saveMlxKeepAliveMinutes}
           onClose={() => setWarmingOpen(false)}
+        />
+      )}
+
+      {samplingOpen && (
+        <CleanupSamplingDialog
+          sampling={m.cleanupSampling}
+          onChange={m.saveCleanupSampling}
+          onReset={m.resetCleanupSampling}
+          onClose={() => setSamplingOpen(false)}
         />
       )}
 
