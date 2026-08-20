@@ -381,7 +381,6 @@ jobs:
           name: windows-builds
           path: |
             apps/electron/dist/*.exe
-            apps/electron/dist/*.msi
             apps/electron/dist/latest*.yml
             apps/electron/dist/*.blockmap
           if-no-files-found: error
