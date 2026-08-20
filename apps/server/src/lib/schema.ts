@@ -10,7 +10,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 27;
+const SCHEMA_VERSION = 28;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -721,6 +721,29 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
           ).run(local.id);
         }
       }
+    }
+  }
+
+  if (currentVersion < 28) {
+    // Pre-fork telemetry and cloud-sync were fully removed from source (see
+    // the v13 soniox and v27 freestyle-cloud purges above), but the *data*
+    // they wrote to `settings` outlived the code: a real PostHog device id
+    // and linked-user id, plus a real cloud account id and timezone, all
+    // copied forward from the pre-fork `Freestyle` install during the data
+    // migration. Nothing in this build can produce these keys again, so
+    // purge them once and for all.
+    //
+    // Scoped to exactly the `posthog_*` / `cloud_synced_*` prefixes: keys
+    // that merely look related (`analytics_last_version`,
+    // `cloud_prefs_backfilled`, `freestyle_cloud_panel_expanded`) are
+    // deliberately left alone, since they are outside what this cleanup
+    // targets. Guarded on table existence for the same reason as the v21
+    // indexes above: some databases reach this migration stamped at an
+    // intermediate version without every base table present.
+    if (tableExists(db, "settings")) {
+      db.exec(
+        "DELETE FROM settings WHERE key LIKE 'posthog\\_%' ESCAPE '\\' OR key LIKE 'cloud\\_synced\\_%' ESCAPE '\\'",
+      );
     }
   }
 
