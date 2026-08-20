@@ -62,3 +62,6 @@ test-results/
 .env.local
 .env.*.local
 !.env.example
+
+# Claude Code orchestrator-mode session/tool state (local-only, not project code)
+.orchestrator-mode.*
