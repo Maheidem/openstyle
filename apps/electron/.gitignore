@@ -5,3 +5,9 @@ stats
 .DS_Store
 .eslintcache
 *.log*
+
+# Stray main-process bundle occasionally emitted at the app root instead of
+# out/main/index.js (the path package.json's "main" field actually points
+# to). Harmless if left (nothing loads it), but electron-builder's default
+# file glob would package it, so keep it out of both git and the app.
+/index.js
