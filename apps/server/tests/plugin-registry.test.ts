@@ -1,7 +1,7 @@
 import type { Plugin } from "@openstyle/sdk";
 import {
   createHookApi,
-  FreestyleEventType,
+  OpenstyleEventType,
   PluginRegistry,
   sortPlugins,
 } from "@openstyle/sdk";
@@ -117,7 +117,7 @@ describe("PluginRegistry", () => {
     const registry = new PluginRegistry([a, b]);
 
     await registry.emit({
-      type: FreestyleEventType.Transcribed,
+      type: OpenstyleEventType.Transcribed,
       text: "hi",
     });
 

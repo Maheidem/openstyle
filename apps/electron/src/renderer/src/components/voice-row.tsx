@@ -96,7 +96,7 @@ export function VoiceRow({
   const isSetupError =
     item.localEngine === "mlx" &&
     !!item.state?.error &&
-    /(not installed|not found|missing|FREESTYLE|Python)/i.test(
+    /(not installed|not found|missing|FREESTYLE|OPENSTYLE|Python)/i.test(
       item.state.error,
     );
   return (

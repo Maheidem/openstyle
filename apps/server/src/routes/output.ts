@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { FreestyleEventType, OutputMode, PipelineStage } from "@openstyle/sdk";
+import { OpenstyleEventType, OutputMode, PipelineStage } from "@openstyle/sdk";
 import { Hono } from "hono";
 import { z } from "zod";
 import { parseAppContext, plugins } from "../lib/plugins/index.js";
@@ -66,13 +66,13 @@ const outputRoute = new Hono()
     // paste actually lands, so we don't emit here to avoid a duplicate.)
     if (disposition === "aborted") {
       void plugins().emit({
-        type: FreestyleEventType.PipelineError,
+        type: OpenstyleEventType.PipelineError,
         stage: PipelineStage.Output,
         message: api.control.reason ?? "aborted",
       });
     } else if (disposition === "suppressed") {
       void plugins().emit({
-        type: FreestyleEventType.OutputDelivered,
+        type: OpenstyleEventType.OutputDelivered,
         text: out.text,
         mode: OutputMode.None,
       });

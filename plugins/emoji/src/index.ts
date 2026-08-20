@@ -50,7 +50,7 @@ const SYSTEM_REPLACE = [
 ].join(" ");
 
 export default function emojiPlugin(_options?: PluginOptions): Plugin {
-  const pluginName = "@freestyle-voice/plugin-emoji";
+  const pluginName = "@openstyle/plugin-emoji";
   const baseSlug = pluginSlug(pluginName);
   let settings: EmojiSettings = { ...DEFAULT_SETTINGS };
   let storage: PluginStorage | null = null;
@@ -61,8 +61,8 @@ export default function emojiPlugin(_options?: PluginOptions): Plugin {
 
   /**
    * Check whether a request path targets this plugin's settings route. Matches
-   * both the production slug (`freestyle-voice-plugin-emoji`) and the dev-linked
-   * slug (`freestyle-voice-plugin-emoji-dev`).
+   * both the production slug (`openstyle-plugin-emoji`) and the dev-linked
+   * slug (`openstyle-plugin-emoji-dev`).
    */
   function isSettingsRoute(reqPath: string): boolean {
     const m = reqPath.match(/^\/api\/plugins\/([^/]+)\/settings$/);

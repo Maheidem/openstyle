@@ -48,7 +48,7 @@ let configPath: string | null = null;
 
 function resolveConfigPath(): string | null {
   if (configPath) return configPath;
-  const dbPath = process.env.FREESTYLE_DB_PATH;
+  const dbPath = process.env.OPENSTYLE_DB_PATH ?? process.env.FREESTYLE_DB_PATH;
   if (!dbPath) return null;
   configPath = join(dirname(dbPath), CONFIG_FILENAME);
   return configPath;

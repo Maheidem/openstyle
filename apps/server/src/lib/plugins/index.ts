@@ -4,7 +4,7 @@ import { createAppLogger } from "@openstyle/utils";
 import { loadServerPlugins } from "./loader.js";
 
 export {
-  FreestyleEventType,
+  OpenstyleEventType,
   PipelineStage,
   parseAppContext,
 } from "@openstyle/sdk";

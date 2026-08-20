@@ -3,12 +3,14 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createAppLogger } from "@openstyle/utils";
 import {
   getManagedMlxWorkerPath,
   isAppleSiliconMac,
   MLX_UNSUPPORTED_PLATFORM_REASON,
 } from "./constants.js";
 
+const log = createAppLogger("mlx-asr");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let cachedPython: string | null | undefined;
@@ -63,7 +65,7 @@ function buildPythonCandidates(): string[] {
     ordered.push(path);
   };
 
-  add(process.env.FREESTYLE_PYTHON);
+  add(process.env.OPENSTYLE_PYTHON ?? process.env.FREESTYLE_PYTHON);
   add(process.env.PYTHON);
   for (const py of projectVenvCandidates()) add(py);
   for (const py of uvPythonCandidates()) add(py);
@@ -157,7 +159,7 @@ export function describeMlxSetupBlocker(): string | null {
 
   const python = findPythonExecutable();
   if (!python) {
-    return "Bundled MLX ASR worker or Python 3 not found. Set FREESTYLE_MLX_ASR_WORKER or FREESTYLE_PYTHON.";
+    return "Bundled MLX ASR worker or Python 3 not found. Set OPENSTYLE_MLX_ASR_WORKER or OPENSTYLE_PYTHON.";
   }
   if (!existsSync(getMlxAsrServerScriptPath())) {
     return "MLX ASR server script missing from this install.";
@@ -168,6 +170,13 @@ export function describeMlxSetupBlocker(): string | null {
   return null;
 }
 
+/** The OPENSTYLE_MLX_ASR_WORKER override, or its legacy FREESTYLE_ name. */
+function mlxAsrWorkerOverride(): string | undefined {
+  return (
+    process.env.OPENSTYLE_MLX_ASR_WORKER ?? process.env.FREESTYLE_MLX_ASR_WORKER
+  );
+}
+
 function mlxAsrWorkerCandidates(): string[] {
   const candidates: string[] = [];
 
@@ -176,7 +185,15 @@ function mlxAsrWorkerCandidates(): string[] {
     candidates.push(path);
   };
 
-  add(process.env.FREESTYLE_MLX_ASR_WORKER);
+  // TRUSTED-OPERATOR-ONLY escape hatch: bypasses the managed,
+  // integrity-verified worker download in mlx-asr/runtime.ts entirely and
+  // spawns whatever binary this points at directly (mlx-asr/server.ts,
+  // spawnWorkerProcess). There's nothing to checksum here — the operator IS
+  // the trust boundary for a path they set themselves. getMlxAsrWorkerPath()
+  // below logs a warning whenever this candidate is the one actually used.
+  // Never set this from untrusted input. The legacy FREESTYLE_MLX_ASR_WORKER
+  // name is still read as a fallback.
+  add(mlxAsrWorkerOverride());
   add(getManagedMlxWorkerPath());
 
   const electronProcess = process as NodeJS.Process & {
@@ -229,6 +246,11 @@ export function getMlxAsrWorkerPath(): string {
   for (const candidate of mlxAsrWorkerCandidates()) {
     if (existsSync(candidate)) {
       cachedWorkerPath = candidate;
+      if (candidate === mlxAsrWorkerOverride()) {
+        log.warn(
+          `OPENSTYLE_MLX_ASR_WORKER is set — running the operator-supplied binary at ${candidate} instead of the managed, integrity-verified MLX ASR worker. Trusted-operator-only escape hatch; unset it for normal use.`,
+        );
+      }
       return candidate;
     }
   }
@@ -239,6 +261,13 @@ export function getMlxAsrWorkerPath(): string {
 
 let cachedScriptPath: string | null | undefined;
 
+/** The OPENSTYLE_MLX_ASR_SCRIPT override, or its legacy FREESTYLE_ name. */
+function mlxAsrScriptOverride(): string | undefined {
+  return (
+    process.env.OPENSTYLE_MLX_ASR_SCRIPT ?? process.env.FREESTYLE_MLX_ASR_SCRIPT
+  );
+}
+
 function mlxAsrScriptCandidates(): string[] {
   const candidates: string[] = [];
 
@@ -247,7 +276,12 @@ function mlxAsrScriptCandidates(): string[] {
     candidates.push(path);
   };
 
-  add(process.env.FREESTYLE_MLX_ASR_SCRIPT);
+  // TRUSTED-OPERATOR-ONLY escape hatch, same class as OPENSTYLE_MLX_ASR_WORKER
+  // above: points the script executed by the resolved Python interpreter
+  // (mlx-asr/server.ts, spawnWorkerProcess) at an arbitrary local file.
+  // getMlxAsrServerScriptPath() below logs a warning whenever this candidate
+  // is the one actually used. Never set this from untrusted input.
+  add(mlxAsrScriptOverride());
 
   const electronProcess = process as NodeJS.Process & {
     resourcesPath?: string;
@@ -280,6 +314,11 @@ export function getMlxAsrServerScriptPath(): string {
   for (const candidate of mlxAsrScriptCandidates()) {
     if (existsSync(candidate)) {
       cachedScriptPath = candidate;
+      if (candidate === mlxAsrScriptOverride()) {
+        log.warn(
+          `OPENSTYLE_MLX_ASR_SCRIPT is set — running the operator-supplied script at ${candidate} instead of the bundled MLX ASR server script. Trusted-operator-only escape hatch; unset it for normal use.`,
+        );
+      }
       return candidate;
     }
   }

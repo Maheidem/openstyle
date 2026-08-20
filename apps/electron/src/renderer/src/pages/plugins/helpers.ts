@@ -70,9 +70,10 @@ export function resolvePluginIcon(name: string | undefined): LucideIcon {
 }
 
 /**
- * Return the plugin's display name. Prefers `freestyle.displayName` from the
- * manifest; falls back to deriving a friendly title from the package name
- * (strip scope and `(freestyle-)plugin-` prefix, then Title Case).
+ * Return the plugin's display name. Prefers `openstyle.displayName` from the
+ * manifest (or the legacy `freestyle.displayName` key); falls back to
+ * deriving a friendly title from the package name (strip scope and
+ * `(freestyle-)plugin-` prefix, then Title Case).
  */
 export function pluginDisplayName(plugin: PluginInfo): string {
   if (plugin.displayName) return plugin.displayName;

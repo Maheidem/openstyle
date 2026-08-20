@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { PluginConfig } from "./config.js";
-import type { FreestyleEvent } from "./events.js";
+import type { OpenstyleEvent } from "./events.js";
 import type { HookApi } from "./hook-api.js";
 import type { Hooks } from "./hooks.js";
 import type { Plugin } from "./plugin.js";
@@ -138,7 +138,7 @@ export class PluginRegistry {
   }
 
   /** Broadcast a read-only event to every plugin's `event` hook. */
-  async emit(event: FreestyleEvent): Promise<void> {
+  async emit(event: OpenstyleEvent): Promise<void> {
     for (const plugin of this.plugins) {
       if (!plugin.event) continue;
       try {

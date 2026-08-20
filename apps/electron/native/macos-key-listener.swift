@@ -18,7 +18,7 @@ var lastModifierFlags: NSEvent.ModifierFlags = []
 
 /// Marker stamped onto the app's own injected paste events by macos-fast-paste,
 /// used to ignore them here. Keep in sync with macos-fast-paste.swift.
-let freestyleSyntheticMarker: Int64 = 0x4653_5459 // "FSTY"
+let openstyleSyntheticMarker: Int64 = 0x4653_5459 // "FSTY"
 
 /// Modifier + key hotkeys (e.g. Option+U) are swallowed so macOS dead keys do not
 /// reach the foreground app. Modifier-only hotkeys (e.g. RightOption) are not.
@@ -379,7 +379,7 @@ guard let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, h
 var keyDownMonitor: Any?
 keyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
     // Skip the app's own injected paste — see macos-fast-paste.swift.
-    if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == freestyleSyntheticMarker {
+    if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == openstyleSyntheticMarker {
         return
     }
     emitFlags(event.modifierFlags)
@@ -411,7 +411,7 @@ let keyEventTap = CGEvent.tapCreate(
         // Those events carry a synthetic Command flag with no matching key-up,
         // so reacting to them would leave a phantom "command" modifier stuck and
         // block the next Fn/Globe hotkey press. See macos-fast-paste.swift.
-        if event.getIntegerValueField(.eventSourceUserData) == freestyleSyntheticMarker {
+        if event.getIntegerValueField(.eventSourceUserData) == openstyleSyntheticMarker {
             return Unmanaged.passUnretained(event)
         }
 

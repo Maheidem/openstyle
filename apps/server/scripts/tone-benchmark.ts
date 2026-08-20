@@ -7,9 +7,9 @@
  * pass/fail summary.
  *
  * Usage:
- *   FREESTYLE_DB_PATH=/tmp/openstyle-tone-bench/db.sqlite \
+ *   OPENSTYLE_DB_PATH=/tmp/openstyle-tone-bench/db.sqlite \
  *     tsx scripts/tone-benchmark.ts --mode=personal
- *   FREESTYLE_DB_PATH=/tmp/openstyle-tone-bench/db.sqlite \
+ *   OPENSTYLE_DB_PATH=/tmp/openstyle-tone-bench/db.sqlite \
  *     tsx scripts/tone-benchmark.ts --mode=all
  */
 

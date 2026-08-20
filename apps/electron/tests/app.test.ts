@@ -59,8 +59,8 @@ test.beforeAll(async () => {
       env: {
         ...process.env,
         NODE_ENV: "development",
-        FREESTYLE_DB_PATH: dbPath,
-        FREESTYLE_E2E: "1",
+        OPENSTYLE_DB_PATH: dbPath,
+        OPENSTYLE_E2E: "1",
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
       },
       timeout: 30_000,
@@ -163,7 +163,7 @@ test("embedded server is running", async () => {
     const res = await fetch(`http://127.0.0.1:${port}/api/health`);
     return res.json() as Promise<{ status: string; name: string }>;
   }, serverPort);
-  expect(health).toEqual({ status: "ok", name: "freestyle" });
+  expect(health).toEqual({ status: "ok", name: "openstyle" });
 });
 
 test("settings API works via embedded server", async () => {

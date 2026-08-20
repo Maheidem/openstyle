@@ -1,18 +1,18 @@
 {
-  "name": "@freestyle-voice/profanity-filter",
+  "name": "@openstyle/profanity-filter",
   "version": "0.2.0",
   "type": "module",
   "description": "Swap curse words for wholesome, funnier stand-ins as you dictate.",
   "license": "MIT",
-  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/plugins/profanity-filter#readme",
+  "homepage": "https://github.com/Maheidem/openstyle/tree/main/plugins/profanity-filter#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "url": "git+https://github.com/Maheidem/openstyle.git",
     "directory": "plugins/profanity-filter"
   },
   "keywords": [
-    "freestyle",
-    "freestyle-plugin",
+    "openstyle",
+    "openstyle-plugin",
     "voice",
     "dictation",
     "profanity"
@@ -24,7 +24,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "freestyle": {
+  "openstyle": {
     "icon": "Sparkles",
     "contributes": {
       "pages": [

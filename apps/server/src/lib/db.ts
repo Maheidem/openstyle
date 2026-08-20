@@ -14,10 +14,10 @@ const statementCache = new Map<string, StatementSync>();
 export function getDb(): DatabaseSync {
   if (db) return db;
 
-  const dbPath = process.env.FREESTYLE_DB_PATH;
+  const dbPath = process.env.OPENSTYLE_DB_PATH ?? process.env.FREESTYLE_DB_PATH;
   if (!dbPath) {
     throw new Error(
-      "FREESTYLE_DB_PATH environment variable is required. Set it to the desired SQLite database file path.",
+      "OPENSTYLE_DB_PATH environment variable is required. Set it to the desired SQLite database file path.",
     );
   }
 

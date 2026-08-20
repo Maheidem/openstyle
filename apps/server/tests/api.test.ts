@@ -45,7 +45,7 @@ describe("Root & Health", () => {
     const res = await req("/api/health");
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data).toEqual({ status: "ok", name: "freestyle" });
+    expect(data).toEqual({ status: "ok", name: "openstyle" });
   });
 
   it("POST /api/client-error requires a message", async () => {
@@ -171,7 +171,7 @@ describe("Settings", () => {
   });
 
   it("PUT accepts a valid plugins setting", async () => {
-    const value = JSON.stringify(["freestyle-plugin-example"]);
+    const value = JSON.stringify(["openstyle-plugin-example"]);
 
     const res = await json("/api/settings/plugins", { value }, "PUT");
 

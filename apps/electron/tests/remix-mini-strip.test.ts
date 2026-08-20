@@ -52,7 +52,7 @@ test.beforeAll(async () => {
     res.setHeader("Content-Type", "application/json");
     const send = (body: unknown) => res.end(JSON.stringify(body));
     if (url.startsWith("/api/health")) {
-      return send({ status: "ok", name: "freestyle" });
+      return send({ status: "ok", name: "openstyle" });
     }
     if (url.startsWith("/api/remix/thread")) return send(THREAD);
     if (url.startsWith("/api/config")) return send({ version: 1, flags: {} });
@@ -95,9 +95,9 @@ test.beforeAll(async () => {
     env: {
       ...process.env,
       NODE_ENV: "development",
-      FREESTYLE_USER_DATA: userDataDir,
-      FREESTYLE_DB_PATH: join(userDataDir, "freestyle.db"),
-      FREESTYLE_E2E: "1",
+      OPENSTYLE_USER_DATA: userDataDir,
+      OPENSTYLE_DB_PATH: join(userDataDir, "freestyle.db"),
+      OPENSTYLE_E2E: "1",
       ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
     },
     timeout: 30_000,

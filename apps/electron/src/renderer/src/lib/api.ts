@@ -90,7 +90,13 @@ export async function checkServerHealth(
     );
     if (!res.ok) return false;
     const data = await res.json();
-    return data.status === "ok" && data.name === "freestyle";
+    // Accepts the legacy "freestyle" identity too so a not-yet-updated
+    // standalone/remote server (auto-update is on by default, but a
+    // separately-deployed apps/server may lag) is still recognized.
+    return (
+      data.status === "ok" &&
+      (data.name === "openstyle" || data.name === "freestyle")
+    );
   } catch {
     return false;
   }

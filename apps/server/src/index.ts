@@ -8,7 +8,7 @@ import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
-import { authMiddleware, setAuthToken } from "./lib/auth.js";
+import { authMiddleware, generateAuthToken, setAuthToken } from "./lib/auth.js";
 import { formatError } from "./lib/format-error.js";
 import {
   startHistoryRetentionSweep,
@@ -27,7 +27,10 @@ import {
   plugins,
 } from "./lib/plugins/index.js";
 import { runInTraceScope } from "./lib/trace.js";
-import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
+import {
+  isTrustedRendererOrigin,
+  trustedOriginMiddleware,
+} from "./lib/trusted-origin.js";
 import routes from "./routes";
 
 const httpLog = createAppLogger("http");
@@ -94,15 +97,29 @@ function createApp() {
     // Confine plugin-UI-originated requests to their own plugin namespace, so a
     // same-origin plugin page can't reach keys/auth/settings or other plugins.
     .use(pluginApiGuard)
-    // CORS for renderer requests. Must run BEFORE auth: the desktop renderer
-    // talks to a remote server cross-origin (app:// -> http://remote), so any
-    // request with an Authorization header triggers an OPTIONS preflight that
-    // carries no token. cors() answers the preflight and short-circuits it, so
-    // auth never rejects it; real requests still fall through to auth.
-    .use(cors())
-    // Bearer-token auth for standalone/remote deployments. A no-op when no
-    // token is configured (the default loopback Electron case), so it never
-    // affects the in-process server.
+    // CORS allowlist for renderer requests: only an Origin the desktop app's
+    // own renderer would plausibly send — app://, or a loopback http(s) dev
+    // server — gets echoed back as Access-Control-Allow-Origin (see
+    // isTrustedRendererOrigin; the same trust boundary trustedOriginMiddleware
+    // already applies to mutations). Any other Origin gets no CORS header, so
+    // a browser can't read the response even for a "simple" GET that isn't
+    // preflighted — that's what closes "any web page can read /api/settings"
+    // (authMiddleware is the actual gate on the request itself).
+    //
+    // Must run BEFORE auth: the desktop renderer talks to a remote server
+    // cross-origin (app:// -> http://remote), so any request with an
+    // Authorization header triggers an OPTIONS preflight that carries no
+    // token. cors() answers the preflight and short-circuits it, so auth
+    // never rejects it; real requests still fall through to auth.
+    .use(
+      cors({
+        origin: (origin) =>
+          origin && isTrustedRendererOrigin(origin) ? origin : undefined,
+      }),
+    )
+    // Bearer-token auth — always in effect once startServer() has run (see
+    // its docs and lib/auth.ts). A no-op only for a bare createApp() that
+    // never went through startServer() (tests / library use).
     .use(authMiddleware)
     // Correlation id per request (also surfaced via the X-Request-Id header).
     .use(requestId())
@@ -139,9 +156,16 @@ function createApp() {
           );
         }
         const res = err.getResponse();
-        // Preserve CORS so the cross-origin renderer can read auth errors.
+        // Preserve CORS so a cross-origin renderer can read auth errors — but
+        // only for a trusted origin. cors() never reaches this response (it
+        // short-circuits into onError, bypassing the normal middleware
+        // chain's return path), so without this check bearerAuth's 401 would
+        // echo back *any* Origin header verbatim here, handing a foreign page
+        // CORS read-access this same handler's success path already denies it.
         const origin = c.req.header("origin");
-        if (origin) res.headers.set("Access-Control-Allow-Origin", origin);
+        if (origin && isTrustedRendererOrigin(origin)) {
+          res.headers.set("Access-Control-Allow-Origin", origin);
+        }
         return res;
       }
       // Always log the failure locally so it's visible in dev and captured in
@@ -169,16 +193,38 @@ export interface StartServerOptions {
   host?: string;
   /**
    * Optional bearer token required on all requests (except `/api/health`).
-   * Empty/undefined disables auth — appropriate for the loopback Electron
-   * server. Set it for standalone/remote deployments exposed on a network.
+   * Auth is always in effect once the server starts: when this is
+   * empty/undefined, a strong random token is generated instead of disabling
+   * auth (see lib/auth.ts's `generateAuthToken`). Set it explicitly for
+   * standalone/remote deployments exposed on a network.
+   *
+   * A loopback bind (the default `host`) with no token supplied here *and*
+   * `tokenIsRetrievable` left false also enables the trusted-origin auth
+   * fallback — see `authMiddleware`'s `allowTrustedOriginFallback` — so the
+   * embedded Electron desktop app, which has no channel today to receive
+   * this minted token, keeps working unauthenticated-but-origin-checked. Any
+   * non-loopback bind, a bind with a token supplied here, or a bind that
+   * sets `tokenIsRetrievable`, is bearer-token-only with no fallback.
    */
   token?: string;
+  /**
+   * Set by a caller that has a real channel to hand an auto-generated token
+   * to whoever needs it (e.g. printing it to the operator's console — see
+   * startup.ts). When true, an auto-generated token is bearer-only even on a
+   * loopback bind: the trusted-origin fallback only exists because the
+   * embedded Electron server has *no* such channel, so a caller that does
+   * have one should not get it — the token it was just handed is not
+   * decorative. Defaults to false.
+   */
+  tokenIsRetrievable?: boolean;
 }
 
 export interface RunningServer {
   server: ServerType;
   /** The actual port bound (useful when `port` was 0). */
   port: number;
+  /** The bearer token now required on this server's API — see `StartServerOptions.token`. */
+  token: string;
 }
 
 /**
@@ -193,11 +239,22 @@ export interface RunningServer {
 export async function startServer(
   options: StartServerOptions = {},
 ): Promise<RunningServer> {
-  const { port = 4649, host = "127.0.0.1", token } = options;
+  const { port = 4649, host = "127.0.0.1" } = options;
 
-  // Configure bearer-token auth before the app is built so authMiddleware picks
-  // it up. Empty/undefined keeps the server open (loopback Electron default).
-  setAuthToken(token);
+  // Bearer-token auth is always in effect once the server actually starts: an
+  // explicitly supplied token is used verbatim, otherwise a strong random one
+  // is minted so auth is never silently disabled (see lib/auth.ts). Configure
+  // it before the app is built so authMiddleware picks it up. A loopback bind
+  // with no explicitly supplied token also enables the trusted-origin
+  // fallback — see StartServerOptions.token and lib/auth.ts.
+  const explicitToken = options.token?.trim();
+  const token = explicitToken || generateAuthToken();
+  const isLoopbackHost =
+    host === "127.0.0.1" || host === "localhost" || host === "::1";
+  setAuthToken(token, {
+    allowTrustedOriginFallback:
+      isLoopbackHost && !explicitToken && !options.tokenIsRetrievable,
+  });
 
   // Install the global network dispatcher (corporate proxy + custom CA) before
   // anything issues a fetch, so model downloads and cloud/API calls honor it.
@@ -222,7 +279,7 @@ export async function startServer(
         websocket: { server: wss },
       },
       (info) => {
-        resolve({ server, port: info.port });
+        resolve({ server, port: info.port, token });
       },
     );
     // Reject if the server fails to bind (e.g. EADDRINUSE) before listening.

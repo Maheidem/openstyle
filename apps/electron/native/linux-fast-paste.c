@@ -335,7 +335,7 @@ static int paste_via_portal(int use_shift, const char *restore_token) {
     GVariantBuilder opts;
     g_variant_builder_init(&opts, G_VARIANT_TYPE("a{sv}"));
     g_variant_builder_add(&opts, "{sv}", "handle_token", g_variant_new_string("createsession"));
-    g_variant_builder_add(&opts, "{sv}", "session_handle_token", g_variant_new_string("freestyle"));
+    g_variant_builder_add(&opts, "{sv}", "session_handle_token", g_variant_new_string("openstyle"));
 
     g_dbus_connection_call_sync(app.conn, PORTAL_BUS, PORTAL_PATH,
         PORTAL_IFACE, "CreateSession",
@@ -488,7 +488,7 @@ static int create_uinput_keyboard(void) {
     usetup.id.bustype = BUS_USB;
     usetup.id.vendor  = 0x1234;
     usetup.id.product = 0x5678;
-    snprintf(usetup.name, UINPUT_MAX_NAME_SIZE, "freestyle-paste");
+    snprintf(usetup.name, UINPUT_MAX_NAME_SIZE, "openstyle-paste");
 
     if (ioctl(fd, UI_DEV_SETUP, &usetup) < 0 ||
         ioctl(fd, UI_DEV_CREATE) < 0) {

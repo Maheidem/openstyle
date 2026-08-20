@@ -4,8 +4,6 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
-    "dev:ios": "turbo ios --filter=@openstyle/mobile",
-    "dev:android": "turbo android --filter=@openstyle/mobile",
     "format": "biome check --write .",
     "knip": "knip",
     "test": "turbo test",

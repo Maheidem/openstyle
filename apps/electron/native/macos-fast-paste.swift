@@ -92,9 +92,9 @@ keyUp.flags = chordFlags
 // suppresses the next solo Fn/Globe hotkey activation until an unrelated key
 // press resyncs the modifier state. Keep this constant in sync with the guard
 // in macos-key-listener.swift.
-let freestyleSyntheticMarker: Int64 = 0x4653_5459 // "FSTY"
-keyDown.setIntegerValueField(.eventSourceUserData, value: freestyleSyntheticMarker)
-keyUp.setIntegerValueField(.eventSourceUserData, value: freestyleSyntheticMarker)
+let openstyleSyntheticMarker: Int64 = 0x4653_5459 // "FSTY"
+keyDown.setIntegerValueField(.eventSourceUserData, value: openstyleSyntheticMarker)
+keyUp.setIntegerValueField(.eventSourceUserData, value: openstyleSyntheticMarker)
 
 keyDown.post(tap: .cgSessionEventTap)
 usleep(8000)

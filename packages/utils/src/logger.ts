@@ -32,7 +32,10 @@ let fileTransport: winston.transport | null = null;
 
 // Initialised from the env var so the standalone server (and tests) can opt in
 // without code changes; the Electron app calls `enableFileLogging()` instead.
-let logDir: string | undefined = process.env.FREESTYLE_LOG_DIR || undefined;
+// OPENSTYLE_LOG_DIR is the current name; the legacy FREESTYLE_LOG_DIR name is
+// still read as a fallback.
+let logDir: string | undefined =
+  process.env.OPENSTYLE_LOG_DIR || process.env.FREESTYLE_LOG_DIR || undefined;
 
 function getFileTransport(dir: string): winston.transport | null {
   if (fileTransport) return fileTransport;
@@ -146,7 +149,7 @@ function getTraceLogger(): winston.Logger | null {
  * trace, kept apart from `openstyle.log` so full bodies don't drown it.
  *
  * Always on, and silent when it cannot write: before the log directory is
- * known (standalone server without `FREESTYLE_LOG_DIR`, tests) the entry is
+ * known (standalone server without `OPENSTYLE_LOG_DIR`, tests) the entry is
  * simply dropped. Winston's File transport is stream-backed, so the write does
  * not block the caller.
  */

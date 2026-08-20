@@ -8,7 +8,7 @@ import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { canRunMlxAsr, startMlxInBackground } from "../lib/mlx-asr/server.js";
 import {
-  FreestyleEventType,
+  OpenstyleEventType,
   PipelineStage,
   parseAppContext,
   plugins,
@@ -224,7 +224,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       `transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
     );
     void plugins().emit({
-      type: FreestyleEventType.PipelineError,
+      type: OpenstyleEventType.PipelineError,
       stage: PipelineStage.Transcribe,
       message: err instanceof Error ? err.message : String(err),
     });
@@ -244,7 +244,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   void plugins().emit({
-    type: FreestyleEventType.Transcribed,
+    type: OpenstyleEventType.Transcribed,
     text: rawText,
     ...(transcribeDurationInSeconds !== undefined
       ? { durationInSeconds: transcribeDurationInSeconds }

@@ -25,9 +25,6 @@ on:
           - sdk
           - stt
           - create-freestyle-plugin
-          - plugin-audio-transcription
-          - profanity-filter
-          - plugin-emoji
       version:
         description: 'Explicit version to release (e.g. 1.2.0)'
         required: true
@@ -76,12 +73,9 @@ jobs:
           PKG: ${{ github.event.inputs.package }}
         run: |
           case "$PKG" in
-            sdk)                        echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
-            stt)                        echo "path=packages/stt" >> "$GITHUB_OUTPUT" ;;
-            create-freestyle-plugin)    echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT" ;;
-            plugin-audio-transcription) echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT" ;;
-            profanity-filter)           echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT" ;;
-            plugin-emoji)               echo "path=plugins/emoji" >> "$GITHUB_OUTPUT" ;;
+            sdk)                     echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
+            stt)                     echo "path=packages/stt" >> "$GITHUB_OUTPUT" ;;
+            create-freestyle-plugin) echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT" ;;
             *) echo "::error::Unknown package: $PKG"; exit 1 ;;
           esac
 

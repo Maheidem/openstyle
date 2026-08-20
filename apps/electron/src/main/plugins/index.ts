@@ -1,4 +1,4 @@
-export { FreestyleEventType, OutputMode, PipelineStage } from "@openstyle/sdk";
+export { OpenstyleEventType, OutputMode, PipelineStage } from "@openstyle/sdk";
 export { relayEvent } from "./events.js";
 
 // This process no longer hosts a plugin hook registry or any plugin

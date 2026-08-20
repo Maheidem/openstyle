@@ -40,12 +40,11 @@ export function buildPluginContext(name: string): PluginContext {
     },
   };
 
+  const dbPath = process.env.OPENSTYLE_DB_PATH ?? process.env.FREESTYLE_DB_PATH;
   return {
     name,
     mode: "server",
-    directory: process.env.FREESTYLE_DB_PATH
-      ? path.dirname(process.env.FREESTYLE_DB_PATH)
-      : process.cwd(),
+    directory: dbPath ? path.dirname(dbPath) : process.cwd(),
     logger: createPluginLogger(createAppLogger(`plugin:${name}`)),
     settings,
     storage,

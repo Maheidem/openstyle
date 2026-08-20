@@ -7,14 +7,17 @@ import { writeSetting } from "../src/lib/db.js";
 
 const app = createApp();
 
-const PLUGIN_NAME = "@freestyle-voice/example-plugin";
+const PLUGIN_NAME = "@openstyle/example-plugin";
 const slug = pluginSlug(PLUGIN_NAME);
 
 beforeAll(() => {
-  // FREESTYLE_DB_PATH is set by tests/setup.ts (in beforeAll) to
+  // OPENSTYLE_DB_PATH is set by tests/setup.ts (in beforeAll) to
   // <tmpdir>/test.db, so the server's plugins dir resolves to <tmpdir>/plugins.
   const pluginsDir = path.join(
-    path.dirname(process.env.FREESTYLE_DB_PATH as string),
+    path.dirname(
+      (process.env.OPENSTYLE_DB_PATH ??
+        process.env.FREESTYLE_DB_PATH) as string,
+    ),
     "plugins",
   );
   const pkgDir = path.join(pluginsDir, slug);
@@ -22,9 +25,12 @@ beforeAll(() => {
   writeFileSync(
     path.join(pkgDir, "package.json"),
     JSON.stringify({
-      name: "@freestyle-voice/example-plugin",
+      name: "@openstyle/example-plugin",
       version: "1.2.3",
       description: "An example",
+      // Deliberately the legacy manifest key (not "openstyle"): this fixture
+      // is the suite's only coverage of readManifest()'s pre-rename-SDK
+      // fallback (see apps/server/src/lib/plugins/ui-assets.ts).
       freestyle: {
         displayName: "Example",
         contributes: {
@@ -38,7 +44,7 @@ beforeAll(() => {
     "<!doctype html><title>hi</title>",
   );
   writeFileSync(path.join(pkgDir, "README.md"), "# Example");
-  writeSetting("plugins", JSON.stringify(["@freestyle-voice/example-plugin"]));
+  writeSetting("plugins", JSON.stringify(["@openstyle/example-plugin"]));
 });
 
 afterAll(() => {
@@ -55,7 +61,7 @@ describe("GET /api/plugins", () => {
     const plugin = plugins.find((p) => p.slug === slug);
     expect(plugin).toBeDefined();
     expect(plugin).toMatchObject({
-      name: "@freestyle-voice/example-plugin",
+      name: "@openstyle/example-plugin",
       slug,
       version: "1.2.3",
       displayName: "Example",
@@ -64,6 +70,14 @@ describe("GET /api/plugins", () => {
     });
     expect(plugin).not.toHaveProperty("dir");
     expect((plugin?.pages as unknown[]).length).toBe(1);
+  });
+});
+
+describe("GET /api/plugins/catalog", () => {
+  it("returns an empty catalog (this fork ships no built-in plugins)", async () => {
+    const res = await app.request("/api/plugins/catalog");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ plugins: [] });
   });
 });
 

@@ -1,9 +1,9 @@
-import type { FreestyleBridge } from "@openstyle/sdk";
+import type { OpenstyleBridge } from "@openstyle/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
-const ROUTE = "/api/plugins/freestyle-voice-profanity-filter/replacements";
+const ROUTE = "/api/plugins/openstyle-profanity-filter/replacements";
 
 interface Entry {
   word: string;
@@ -16,8 +16,8 @@ interface ReplacementsResponse {
   replacements: Entry[];
 }
 
-function getBridge(): FreestyleBridge {
-  const b = window.freestyle;
+function getBridge(): OpenstyleBridge {
+  const b = window.openstyle;
   if (!b) throw new Error("Host bridge unavailable.");
   return b;
 }

@@ -1,18 +1,18 @@
 {
-  "name": "@freestyle-voice/plugin-emoji",
+  "name": "@openstyle/plugin-emoji",
   "version": "0.1.0",
   "type": "module",
   "description": "Add emojis to your dictation based on conversational tone and style.",
   "license": "MIT",
-  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/plugins/emoji#readme",
+  "homepage": "https://github.com/Maheidem/openstyle/tree/main/plugins/emoji#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "url": "git+https://github.com/Maheidem/openstyle.git",
     "directory": "plugins/emoji"
   },
   "keywords": [
-    "freestyle",
-    "freestyle-plugin",
+    "openstyle",
+    "openstyle-plugin",
     "voice",
     "dictation",
     "emoji"
@@ -24,7 +24,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "freestyle": {
+  "openstyle": {
     "icon": "Smile",
     "contributes": {
       "pages": [

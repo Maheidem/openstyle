@@ -7,7 +7,7 @@ import {
   type ReplacementMap,
 } from "./replacements.js";
 
-const ROUTE_BASE = "/api/plugins/freestyle-voice-profanity-filter/replacements";
+const ROUTE_BASE = "/api/plugins/openstyle-profanity-filter/replacements";
 
 interface ProfanityOptions {
   preserveCase?: boolean;
@@ -127,7 +127,7 @@ export default function profanityFilter(options?: PluginOptions): Plugin {
   };
 
   return {
-    name: "@freestyle-voice/profanity-filter",
+    name: "@openstyle/profanity-filter",
     middleware: [handler],
 
     async setup(ctx) {

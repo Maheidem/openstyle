@@ -11,7 +11,7 @@ import type { Plugin } from "@openstyle/sdk";
  */
 export default function audioTranscriptionPlugin(): Plugin {
   return {
-    name: "@freestyle-voice/plugin-audio-transcription",
+    name: "@openstyle/plugin-audio-transcription",
     setup({ logger, mode }) {
       logger.info(`audio-transcription ready on ${mode}`);
     },

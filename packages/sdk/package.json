@@ -1,6 +1,6 @@
 {
   "name": "@openstyle/sdk",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "description": "The plugin SDK for Openstyle — write plugins that extend the local-first voice dictation pipeline.",
   "license": "MIT",
   "homepage": "https://github.com/Maheidem/openstyle/tree/main/packages/sdk#readme",

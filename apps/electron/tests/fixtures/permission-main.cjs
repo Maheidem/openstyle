@@ -1,8 +1,8 @@
 const { appendFileSync, mkdirSync } = require("node:fs");
 const electron = require("electron");
 
-const eventsPath = process.env.FREESTYLE_E2E_PERMISSION_EVENTS;
-const userDataDir = process.env.FREESTYLE_E2E_USER_DATA_DIR;
+const eventsPath = process.env.OPENSTYLE_E2E_PERMISSION_EVENTS;
+const userDataDir = process.env.OPENSTYLE_E2E_USER_DATA_DIR;
 
 if (userDataDir) {
   mkdirSync(userDataDir, { recursive: true });
@@ -21,7 +21,7 @@ Object.defineProperty(
     configurable: true,
     value: (prompt) => {
       record({ type: "accessibility-check", prompt });
-      return process.env.FREESTYLE_E2E_ACCESSIBILITY === "granted";
+      return process.env.OPENSTYLE_E2E_ACCESSIBILITY === "granted";
     },
   },
 );
@@ -30,7 +30,7 @@ Object.defineProperty(electron.systemPreferences, "getMediaAccessStatus", {
   configurable: true,
   value: (mediaType) => {
     record({ type: "media-check", mediaType });
-    return process.env.FREESTYLE_E2E_MICROPHONE ?? "granted";
+    return process.env.OPENSTYLE_E2E_MICROPHONE ?? "granted";
   },
 });
 
@@ -39,7 +39,7 @@ Object.defineProperty(electron.dialog, "showMessageBox", {
   value: async (options) => {
     record({ type: "dialog", options });
     return {
-      response: Number(process.env.FREESTYLE_E2E_DIALOG_RESPONSE ?? 1),
+      response: Number(process.env.OPENSTYLE_E2E_DIALOG_RESPONSE ?? 1),
       checkboxChecked: false,
     };
   },
@@ -76,7 +76,7 @@ global.fetch = async (input, init) => {
     }
   }
   if (
-    process.env.FREESTYLE_E2E_ONBOARDING_COMPLETE === "false" &&
+    process.env.OPENSTYLE_E2E_ONBOARDING_COMPLETE === "false" &&
     url.endsWith("/api/models/configured")
   ) {
     return new Response("[]", {

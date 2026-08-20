@@ -31,7 +31,7 @@ import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import { getLlmProvider } from "./llm/registry.js";
 import {
-  FreestyleEventType,
+  OpenstyleEventType,
   PipelineStage,
   parseAppContext,
   plugins,
@@ -178,7 +178,7 @@ export async function applyFinalRewrites(
 
   if (rawForCleanedEvent !== undefined && out !== rawForCleanedEvent) {
     void plugins().emit({
-      type: FreestyleEventType.Cleaned,
+      type: OpenstyleEventType.Cleaned,
       before: rawForCleanedEvent,
       after: out,
     });
@@ -340,7 +340,7 @@ export async function postProcess(
         } else {
           const err = cleanupError;
           void plugins().emit({
-            type: FreestyleEventType.PipelineError,
+            type: OpenstyleEventType.PipelineError,
             stage: PipelineStage.Cleanup,
             message: err instanceof Error ? err.message : String(err),
           });

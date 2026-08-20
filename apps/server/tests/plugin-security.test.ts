@@ -7,9 +7,9 @@ import { writeSetting } from "../src/lib/db.js";
 
 const app = createApp();
 
-const PLUGIN_NAME = "@freestyle-voice/secure-plugin";
+const PLUGIN_NAME = "@openstyle/secure-plugin";
 const slug = pluginSlug(PLUGIN_NAME);
-const OTHER_NAME = "@freestyle-voice/other-plugin";
+const OTHER_NAME = "@openstyle/other-plugin";
 
 /** A `Referer` that looks like it came from this plugin's own UI page. */
 function refererFor(pluginSlugValue: string): string {
@@ -20,7 +20,10 @@ let pluginsDir: string;
 
 beforeAll(() => {
   pluginsDir = path.join(
-    path.dirname(process.env.FREESTYLE_DB_PATH as string),
+    path.dirname(
+      (process.env.OPENSTYLE_DB_PATH ??
+        process.env.FREESTYLE_DB_PATH) as string,
+    ),
     "plugins",
   );
   const pkgDir = path.join(pluginsDir, slug);

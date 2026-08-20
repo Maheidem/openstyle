@@ -23,7 +23,7 @@ import whisper from "./whisper.js";
 const clientLog = createAppLogger("renderer");
 
 const apiRouter = new Hono()
-  .get("/health", (c) => c.json({ status: "ok", name: "freestyle" }))
+  .get("/health", (c) => c.json({ status: "ok", name: "openstyle" }))
   // Crash/error reports from the renderer (window.onerror, unhandled
   // rejections, React error boundary), persisted to the local log file for
   // diagnostics. Only message/stack/source/context are accepted — callers

@@ -1,6 +1,6 @@
 /**
  * UI contribution descriptors. A plugin may declare one or more pages in its
- * `package.json` under `freestyle.contributes.pages`; the host renders each in a
+ * `package.json` under `openstyle.contributes.pages`; the host renders each in a
  * sandboxed web view and lists it in the Plugins hub.
  */
 
@@ -49,13 +49,13 @@ export type PluginSettingField =
       default?: string;
     };
 
-/** The `freestyle.contributes` block of a plugin's `package.json`. */
+/** The `openstyle.contributes` block of a plugin's `package.json`. */
 export interface PluginContributes {
   pages?: PluginUIPage[];
   settings?: PluginSettingField[];
 }
 
-/** The `freestyle` block of a plugin's `package.json`. */
+/** The `openstyle` block of a plugin's `package.json`. */
 export interface PluginManifest {
   /**
    * Human-readable name shown in the Plugins hub. When omitted, the app
@@ -75,8 +75,8 @@ export interface PluginManifest {
 
 /**
  * Derive a URL- and route-safe slug from a package name, e.g.
- * `@freestyle-voice/plugin-audio-transcription` →
- * `freestyle-voice-plugin-audio-transcription`.
+ * `@openstyle/plugin-audio-transcription` →
+ * `openstyle-plugin-audio-transcription`.
  * Used as the `/plugins/:slug/...` route segment, the on-disk package dir, and
  * the per-plugin session partition, since package names can contain `@` and `/`
  * which are unsafe in those contexts.
@@ -95,14 +95,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Parse and validate the `freestyle` field of a plugin's `package.json` into a
+ * Parse and validate the `openstyle` field of a plugin's `package.json` into a
  * normalized list of {@link PluginUIPage}. Tolerant of missing/malformed input:
  * unknown shapes and invalid page entries are dropped rather than throwing, so a
  * bad manifest can never crash plugin discovery.
  */
-export function parsePluginPages(freestyleField: unknown): PluginUIPage[] {
-  if (!isRecord(freestyleField)) return [];
-  const contributes = freestyleField.contributes;
+export function parsePluginPages(openstyleField: unknown): PluginUIPage[] {
+  if (!isRecord(openstyleField)) return [];
+  const contributes = openstyleField.contributes;
   if (!isRecord(contributes)) return [];
   const pages = contributes.pages;
   if (!Array.isArray(pages)) return [];
@@ -139,16 +139,16 @@ function isSettingFieldType(value: string): value is SettingFieldType {
 }
 
 /**
- * Parse and validate the `freestyle` field's `contributes.settings` into a
+ * Parse and validate the `openstyle` field's `contributes.settings` into a
  * normalized list of {@link PluginSettingField}. Tolerant of missing/malformed
  * input, mirroring {@link parsePluginPages}: unknown shapes, invalid fields,
  * and duplicate keys are dropped rather than throwing.
  */
 export function parsePluginSettingsFields(
-  freestyleField: unknown,
+  openstyleField: unknown,
 ): PluginSettingField[] {
-  if (!isRecord(freestyleField)) return [];
-  const contributes = freestyleField.contributes;
+  if (!isRecord(openstyleField)) return [];
+  const contributes = openstyleField.contributes;
   if (!isRecord(contributes)) return [];
   const fields = contributes.settings;
   if (!Array.isArray(fields)) return [];
@@ -221,24 +221,24 @@ export function parsePluginSettingsFields(
 }
 
 /**
- * Read the plugin-level `freestyle.icon` from a `package.json`'s `freestyle`
+ * Read the plugin-level `openstyle.icon` from a `package.json`'s `openstyle`
  * field. Returns `undefined` when absent or not a non-empty string.
  */
-export function parsePluginIcon(freestyleField: unknown): string | undefined {
-  if (!isRecord(freestyleField)) return undefined;
-  const { icon } = freestyleField;
+export function parsePluginIcon(openstyleField: unknown): string | undefined {
+  if (!isRecord(openstyleField)) return undefined;
+  const { icon } = openstyleField;
   return typeof icon === "string" && icon ? icon : undefined;
 }
 
 /**
- * Read the plugin-level `freestyle.displayName` from a `package.json`'s
- * `freestyle` field. Returns `undefined` when absent or not a non-empty string.
+ * Read the plugin-level `openstyle.displayName` from a `package.json`'s
+ * `openstyle` field. Returns `undefined` when absent or not a non-empty string.
  */
 export function parsePluginDisplayName(
-  freestyleField: unknown,
+  openstyleField: unknown,
 ): string | undefined {
-  if (!isRecord(freestyleField)) return undefined;
-  const { displayName } = freestyleField;
+  if (!isRecord(openstyleField)) return undefined;
+  const { displayName } = openstyleField;
   return typeof displayName === "string" && displayName.trim()
     ? displayName.trim()
     : undefined;

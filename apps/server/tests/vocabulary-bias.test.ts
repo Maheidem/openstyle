@@ -215,7 +215,11 @@ describe("buildAsrVocabularyBias", () => {
     it("builds the same prompt as the bundled mlx worker", () => {
       const terms = ["TypeScript", "Kubernetes"];
       expect(
-        buildAsrVocabularyBias("omlx", "mlx-community--Qwen3-ASR-1.7B-8bit", terms),
+        buildAsrVocabularyBias(
+          "omlx",
+          "mlx-community--Qwen3-ASR-1.7B-8bit",
+          terms,
+        ),
       ).toEqual(buildAsrVocabularyBias("local-mlx", "qwen", terms));
     });
 

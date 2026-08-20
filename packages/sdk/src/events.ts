@@ -5,9 +5,9 @@ import type { OutputMode } from "./output.js";
  * object (not a TS `enum`) so it has both a runtime value and a derived type,
  * stays tree-shakeable, and matches the convention used elsewhere in the
  * workspace (see {@link OutputMode}). Plugins may match either the constant
- * (`FreestyleEventType.Transcribed`) or the literal (`"transcribed"`).
+ * (`OpenstyleEventType.Transcribed`) or the literal (`"transcribed"`).
  */
-export const FreestyleEventType = {
+export const OpenstyleEventType = {
   RecordingStarted: "recordingStarted",
   RecordingCommitted: "recordingCommitted",
   RecordingCancelled: "recordingCancelled",
@@ -17,12 +17,12 @@ export const FreestyleEventType = {
   PipelineError: "pipelineError",
 } as const;
 
-export type FreestyleEventType =
-  (typeof FreestyleEventType)[keyof typeof FreestyleEventType];
+export type OpenstyleEventType =
+  (typeof OpenstyleEventType)[keyof typeof OpenstyleEventType];
 
 /**
- * The pipeline stage a {@link FreestyleEventType.PipelineError} occurred in.
- * A const object for the same reasons as {@link FreestyleEventType}.
+ * The pipeline stage a {@link OpenstyleEventType.PipelineError} occurred in.
+ * A const object for the same reasons as {@link OpenstyleEventType}.
  */
 export const PipelineStage = {
   Capture: "capture",
@@ -44,23 +44,23 @@ export type PipelineStage = (typeof PipelineStage)[keyof typeof PipelineStage];
  * the server — so an `event` handler is delivered each event exactly once even
  * when the plugin is loaded in both processes.
  */
-export type FreestyleEvent =
-  | { type: typeof FreestyleEventType.RecordingStarted }
-  | { type: typeof FreestyleEventType.RecordingCommitted }
-  | { type: typeof FreestyleEventType.RecordingCancelled }
+export type OpenstyleEvent =
+  | { type: typeof OpenstyleEventType.RecordingStarted }
+  | { type: typeof OpenstyleEventType.RecordingCommitted }
+  | { type: typeof OpenstyleEventType.RecordingCancelled }
   | {
-      type: typeof FreestyleEventType.Transcribed;
+      type: typeof OpenstyleEventType.Transcribed;
       text: string;
       durationInSeconds?: number;
     }
-  | { type: typeof FreestyleEventType.Cleaned; before: string; after: string }
+  | { type: typeof OpenstyleEventType.Cleaned; before: string; after: string }
   | {
-      type: typeof FreestyleEventType.OutputDelivered;
+      type: typeof OpenstyleEventType.OutputDelivered;
       text: string;
       mode: OutputMode;
     }
   | {
-      type: typeof FreestyleEventType.PipelineError;
+      type: typeof OpenstyleEventType.PipelineError;
       stage: PipelineStage;
       message: string;
     };

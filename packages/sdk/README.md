@@ -43,7 +43,7 @@ import type { Plugin } from "@openstyle/sdk";
 
 export default function myPlugin(): Plugin {
   return {
-    name: "freestyle-plugin-my",
+    name: "openstyle-plugin-my",
     enforce: "pre", // optional — chain position
 
     setup({ logger, mode }) {
@@ -66,7 +66,7 @@ import { transform, type Plugin } from "@openstyle/sdk";
 
 export default function trim(): Plugin {
   return {
-    name: "freestyle-plugin-trim",
+    name: "openstyle-plugin-trim",
     afterCleanup: transform((text) => text.trimEnd()),
   };
 }
@@ -98,7 +98,7 @@ When your setup logic differs by process, branch on `ctx.mode`:
 
 ```ts
 export default (): Plugin => ({
-  name: "freestyle-plugin-stats",
+  name: "openstyle-plugin-stats",
   setup({ logger, mode }) {
     if (mode === "server") {
       // open a server-only resource
@@ -122,7 +122,7 @@ export default (): Plugin => ({
 ### Calling the server from a UI page
 
 A plugin's UI page is sandboxed and can't reach the server directly. Use the
-`window.freestyle` bridge: `api()` proxies a `fetch` through the host, and
+`window.openstyle` bridge: `api()` proxies a `fetch` through the host, and
 `serverUrl` / `token` are provided for building your own client. For a fully
 typed client, install `@openstyle/server` as a **dev dependency** (for its
 `AppType` only — it's a type-only import, nothing ships at runtime) and hand
@@ -132,10 +132,10 @@ Hono's `hc` the bridge's `fetch`:
 import { hc } from "hono/client";
 import type { AppType } from "@openstyle/server";
 
-const client = hc<AppType>(window.freestyle.serverUrl, {
+const client = hc<AppType>(window.openstyle.serverUrl, {
   // Route every request through the host bridge (handles auth + sandboxing).
   fetch: (input: RequestInfo | URL, init?: RequestInit) =>
-    window.freestyle.api(
+    window.openstyle.api(
       typeof input === "string" ? input : input.toString(),
       init,
     ),
@@ -241,20 +241,20 @@ voice-command plugins that consume the utterance instead of typing it.
 
 ## Events
 
-The read-only `event` hook receives a discriminated `FreestyleEvent`:
+The read-only `event` hook receives a discriminated `OpenstyleEvent`:
 
 ```ts
-import { FreestyleEventType } from "@openstyle/sdk";
+import { OpenstyleEventType } from "@openstyle/sdk";
 
 event: ({ event }) => {
   switch (event.type) {
-    case FreestyleEventType.RecordingStarted:   break;
-    case FreestyleEventType.RecordingCommitted: break;
-    case FreestyleEventType.RecordingCancelled: break;
-    case FreestyleEventType.Transcribed:        /* event.text, event.durationInSeconds */ break;
-    case FreestyleEventType.Cleaned:            /* event.before, event.after */ break;
-    case FreestyleEventType.OutputDelivered:    /* event.text, event.mode (OutputMode.None = suppressed) */ break;
-    case FreestyleEventType.PipelineError:      /* event.stage, event.message */ break;
+    case OpenstyleEventType.RecordingStarted:   break;
+    case OpenstyleEventType.RecordingCommitted: break;
+    case OpenstyleEventType.RecordingCancelled: break;
+    case OpenstyleEventType.Transcribed:        /* event.text, event.durationInSeconds */ break;
+    case OpenstyleEventType.Cleaned:            /* event.before, event.after */ break;
+    case OpenstyleEventType.OutputDelivered:    /* event.text, event.mode (OutputMode.None = suppressed) */ break;
+    case OpenstyleEventType.PipelineError:      /* event.stage, event.message */ break;
   }
 };
 ```

@@ -115,7 +115,7 @@ import {
   startupPermissionWarning,
 } from "./permission-checks";
 import {
-  FreestyleEventType,
+  OpenstyleEventType,
   OutputMode,
   PipelineStage,
   relayEvent,
@@ -126,8 +126,10 @@ import { isRemixTargetAllowed } from "./remix-target";
 // Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
 // share the real "Electron" userData (settings.json included) with a running
 // dev instance. Must be set before anything reads app.getPath("userData").
-if (process.env.FREESTYLE_USER_DATA) {
-  app.setPath("userData", process.env.FREESTYLE_USER_DATA);
+const userDataOverride =
+  process.env.OPENSTYLE_USER_DATA ?? process.env.FREESTYLE_USER_DATA;
+if (userDataOverride) {
+  app.setPath("userData", userDataOverride);
 }
 
 const log = createAppLogger("electron");
@@ -151,8 +153,8 @@ try {
 // Renaming the product to Openstyle moved userData from <appData>/Openstyle to
 // <appData>/Openstyle, stranding every existing install's history. Copy the old
 // profile across before the first read of settings.json (readSettings) or of
-// FREESTYLE_DB_PATH (set from userData further down). Runs after the
-// FREESTYLE_USER_DATA override above so E2E profiles are never touched.
+// OPENSTYLE_DB_PATH (set from userData further down). Runs after the
+// OPENSTYLE_USER_DATA override above so E2E profiles are never touched.
 migrateLegacyUserData();
 
 // Global crash handlers — without these, errors in the main process vanish
@@ -236,7 +238,7 @@ function stopPillHotPoll(): void {
 function setPillHotRect(rect: PillHotRect | null): void {
   // Tests drive the surfaces with synthetic DOM events; the machine's real
   // cursor must not be able to flip interactivity under them.
-  if (process.env.FREESTYLE_E2E === "1") return;
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") return;
   pillHotRect = rect;
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
@@ -936,7 +938,10 @@ function createAppWindow(): void {
             : null;
       if (text?.startsWith("[remix]")) hotkeyLog.info(text);
     });
-    if (process.env.FREESTYLE_PILL_DEVTOOLS === "1") {
+    if (
+      (process.env.OPENSTYLE_PILL_DEVTOOLS ??
+        process.env.FREESTYLE_PILL_DEVTOOLS) === "1"
+    ) {
       mainWindow.webContents.openDevTools({ mode: "detach" });
     }
   }
@@ -1591,7 +1596,7 @@ async function deliverOutput(
 ): Promise<void> {
   if (!text.trim()) {
     relayServerEvent({
-      type: FreestyleEventType.OutputDelivered,
+      type: OpenstyleEventType.OutputDelivered,
       text,
       mode: OutputMode.None,
     });
@@ -1609,7 +1614,7 @@ async function deliverOutput(
     // instead of letting the dictation silently vanish.
     notifyPasteFailed();
     relayServerEvent({
-      type: FreestyleEventType.PipelineError,
+      type: OpenstyleEventType.PipelineError,
       stage: PipelineStage.Output,
       message: err instanceof Error ? err.message : String(err),
     });
@@ -1617,7 +1622,7 @@ async function deliverOutput(
   }
 
   relayServerEvent({
-    type: FreestyleEventType.OutputDelivered,
+    type: OpenstyleEventType.OutputDelivered,
     text,
     mode,
   });
@@ -1713,7 +1718,13 @@ async function probeServerHealth(
     });
     if (!res.ok) return false;
     const data = (await res.json()) as { status?: string; name?: string };
-    return data.status === "ok" && data.name === "freestyle";
+    // Accepts the legacy "freestyle" identity too so a not-yet-updated
+    // standalone/remote server (auto-update is on by default, but a
+    // separately-deployed apps/server may lag) is still recognized.
+    return (
+      data.status === "ok" &&
+      (data.name === "openstyle" || data.name === "freestyle")
+    );
   } catch {
     return false;
   }
@@ -2376,13 +2387,13 @@ app.whenReady().then(async () => {
 
   ipcMain.on("recording:committed", () => {
     relayServerEvent({
-      type: FreestyleEventType.RecordingCommitted,
+      type: OpenstyleEventType.RecordingCommitted,
     });
   });
 
   ipcMain.on("recording:cancelled", () => {
     relayServerEvent({
-      type: FreestyleEventType.RecordingCancelled,
+      type: OpenstyleEventType.RecordingCancelled,
     });
   });
 
@@ -2499,7 +2510,7 @@ app.whenReady().then(async () => {
     openMicrophoneSettings();
   });
 
-  if (process.env.FREESTYLE_E2E === "1") {
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
     ipcMain.on("e2e:trigger-hotkey-down", handleNativeHotkeyDown);
     ipcMain.on("e2e:trigger-hotkey-up", handleNativeHotkeyUp);
   }
@@ -2569,10 +2580,17 @@ app.whenReady().then(async () => {
     );
   });
 
-  // Set database path for the server before any API calls
-  process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
+  // Set database path for the server before any API calls. Also seeded under
+  // the legacy FREESTYLE_ name (every in-repo reader checks OPENSTYLE_ first
+  // and falls back to it, so this is redundant for them) purely so
+  // third-party plugin code that still reads process.env.FREESTYLE_DB_PATH
+  // directly keeps working without an update.
+  const dbPath = join(app.getPath("userData"), "freestyle.db");
+  process.env.OPENSTYLE_DB_PATH = dbPath;
+  process.env.FREESTYLE_DB_PATH = dbPath;
 
   if (!is.dev) {
+    process.env.OPENSTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
     process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }
 
@@ -3329,7 +3347,7 @@ app.whenReady().then(async () => {
     hotkeyLog.info(`remix practice target: ${remixPracticeTarget}`);
   });
 
-  if (process.env.FREESTYLE_E2E === "1") {
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
     ipcMain.handle("e2e:remix-practice-target", () => remixPracticeTarget);
   }
 
@@ -3907,7 +3925,7 @@ function sendHotkeyDown(): void {
     return;
   }
   showPill();
-  relayServerEvent({ type: FreestyleEventType.RecordingStarted });
+  relayServerEvent({ type: OpenstyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {

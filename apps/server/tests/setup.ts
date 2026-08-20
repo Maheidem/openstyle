@@ -17,7 +17,7 @@ beforeAll(() => {
 
   const dir = mkdtempSync(join(tmpdir(), "openstyle-test-"));
   dbPath = join(dir, "test.db");
-  process.env.FREESTYLE_DB_PATH = dbPath;
+  process.env.OPENSTYLE_DB_PATH = dbPath;
 });
 
 /**

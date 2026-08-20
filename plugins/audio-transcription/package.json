@@ -1,18 +1,18 @@
 {
-  "name": "@freestyle-voice/plugin-audio-transcription",
+  "name": "@openstyle/plugin-audio-transcription",
   "version": "0.3.0",
   "type": "module",
-  "description": "Transcribe audio files by dropping them into Freestyle.",
+  "description": "Transcribe audio files by dropping them into Openstyle.",
   "license": "MIT",
-  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/plugins/audio-transcription#readme",
+  "homepage": "https://github.com/Maheidem/openstyle/tree/main/plugins/audio-transcription#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "url": "git+https://github.com/Maheidem/openstyle.git",
     "directory": "plugins/audio-transcription"
   },
   "keywords": [
-    "freestyle",
-    "freestyle-plugin",
+    "openstyle",
+    "openstyle-plugin",
     "voice",
     "dictation",
     "transcription"
@@ -24,7 +24,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "freestyle": {
+  "openstyle": {
     "icon": "FileMusic",
     "contributes": {
       "pages": [

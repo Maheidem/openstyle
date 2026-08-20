@@ -1,9 +1,9 @@
-import type { FreestyleBridge, HostActions } from "@openstyle/sdk";
+import type { HostActions, OpenstyleBridge } from "@openstyle/sdk";
 import { contextBridge, ipcRenderer } from "electron";
 
 /**
  * Preload injected into every plugin UI page (running in a sandboxed
- * WebContentsView). Exposes the `window.freestyle` bridge — the only privileged
+ * WebContentsView). Exposes the `window.openstyle` bridge — the only privileged
  * surface available to plugin web content.
  *
  * Plugin UI is served same-origin from the loopback server now (via
@@ -36,7 +36,7 @@ ipcRenderer
     /* leave defaults */
   });
 
-const bridge: FreestyleBridge = {
+const bridge: OpenstyleBridge = {
   get serverUrl() {
     return location.origin;
   },
@@ -66,4 +66,4 @@ const bridge: FreestyleBridge = {
   },
 };
 
-contextBridge.exposeInMainWorld("freestyle", bridge);
+contextBridge.exposeInMainWorld("openstyle", bridge);

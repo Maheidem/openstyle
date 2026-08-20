@@ -173,6 +173,10 @@ interface RawPackageJson {
   version?: unknown;
   description?: unknown;
   author?: unknown;
+  /** Current manifest key (SDK v1+). */
+  openstyle?: unknown;
+  /** Legacy manifest key, still honored so already-installed plugins built
+   * against pre-rename SDK versions don't lose their icon/pages/displayName. */
   freestyle?: unknown;
 }
 
@@ -194,8 +198,11 @@ function readManifest(
 
   const dir = path.dirname(pkgJsonPath);
   const name = typeof pkg.name === "string" ? pkg.name : path.basename(dir);
-  const displayName = parsePluginDisplayName(pkg.freestyle);
-  const icon = parsePluginIcon(pkg.freestyle);
+  // Prefer the current "openstyle" manifest key; fall back to the legacy
+  // "freestyle" key so plugins built against older SDK versions keep working.
+  const manifest = pkg.openstyle ?? pkg.freestyle;
+  const displayName = parsePluginDisplayName(manifest);
+  const icon = parsePluginIcon(manifest);
   const readme = readReadme(dir);
   return {
     name,
@@ -203,7 +210,7 @@ function readManifest(
     specifier,
     dir,
     enabled: true,
-    pages: parsePluginPages(pkg.freestyle),
+    pages: parsePluginPages(manifest),
     ...(typeof pkg.version === "string" ? { version: pkg.version } : {}),
     ...(typeof pkg.description === "string"
       ? { description: pkg.description }

@@ -19,41 +19,25 @@ import {
   serializePlugins,
 } from "../lib/plugins/ui-assets.js";
 
+/** A single installable entry in the Browse tab's plugin catalog. */
+interface PluginCatalogEntry {
+  npmName: string;
+  title: string;
+  description: string;
+  icon?: string;
+  homepage?: string;
+  category?: string;
+}
+
 /**
  * The plugins offered in the Browse tab. Served from here rather than fetched,
  * so the hub works offline; anything else installs by npm name.
+ *
+ * Intentionally empty: this fork doesn't maintain a built-in plugin catalog
+ * and does not republish the original project's plugins under a new scope.
+ * Any npm package can still be installed by name via `POST /install` below.
  */
-const PLUGIN_CATALOG = [
-  {
-    npmName: "@freestyle-voice/plugin-audio-transcription",
-    title: "Audio Transcription",
-    description: "Transcribe audio files by dropping them into Openstyle.",
-    icon: "FileMusic",
-    homepage:
-      "https://github.com/freestyle-voice/freestyle/tree/main/plugins/audio-transcription#readme",
-    category: "transcription",
-  },
-  {
-    npmName: "@freestyle-voice/plugin-emoji",
-    title: "Emoji",
-    description:
-      "Add emojis to your dictation based on conversational tone and style.",
-    icon: "Smile",
-    homepage:
-      "https://github.com/freestyle-voice/freestyle/tree/main/plugins/emoji#readme",
-    category: "content",
-  },
-  {
-    npmName: "@freestyle-voice/profanity-filter",
-    title: "Profanity Filter",
-    description:
-      "Swap curse words for wholesome, funnier stand-ins as you dictate.",
-    icon: "Sparkles",
-    homepage:
-      "https://github.com/freestyle-voice/freestyle/tree/main/plugins/profanity-filter#readme",
-    category: "content",
-  },
-];
+const PLUGIN_CATALOG: PluginCatalogEntry[] = [];
 
 const STORAGE_PREFIX = "plugin:";
 

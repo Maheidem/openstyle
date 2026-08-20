@@ -20,7 +20,7 @@ export type TextTransformer = (
  *
  * export default function trim(): Plugin {
  *   return {
- *     name: "freestyle-plugin-trim",
+ *     name: "openstyle-plugin-trim",
  *     afterCleanup: transform((text) => text.replace(/\s+$/, "")),
  *   };
  * }

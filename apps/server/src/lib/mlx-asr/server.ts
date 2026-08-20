@@ -17,6 +17,7 @@ import {
 import {
   isManagedMlxRuntimeAvailable,
   markManagedMlxRuntimeSyncedForAppVersion,
+  mlxAsrReleaseTagOverride,
   updateManagedMlxRuntimeIfNeeded,
 } from "./runtime.js";
 
@@ -352,7 +353,7 @@ async function startWorker(modelId: string): Promise<void> {
     workerFailed = false;
     try {
       await spawnWorkerProcess(candidate.command, candidate.spawnArgs);
-      const releaseTag = process.env.FREESTYLE_MLX_ASR_RELEASE_TAG;
+      const releaseTag = mlxAsrReleaseTagOverride();
       if (releaseTag && isManagedMlxRuntimeAvailable()) {
         markManagedMlxRuntimeSyncedForAppVersion(releaseTag);
       }

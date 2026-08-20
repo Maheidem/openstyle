@@ -1,5 +1,5 @@
 import type { PluginConfig } from "./config.js";
-import type { AppContext, FreestyleEvent } from "./events.js";
+import type { AppContext, OpenstyleEvent } from "./events.js";
 import type { HookApi } from "./hook-api.js";
 import type { OutputMode } from "./output.js";
 
@@ -37,7 +37,7 @@ export interface Hooks {
    * Observe pipeline events. Read-only: mutating `input.event` has no effect.
    * Runs in both processes for the events that process emits.
    */
-  event?: (input: { event: FreestyleEvent }) => void | Promise<void>;
+  event?: (input: { event: OpenstyleEvent }) => void | Promise<void>;
 
   /**
    * [server] Inspect and contribute configuration at server boot, after

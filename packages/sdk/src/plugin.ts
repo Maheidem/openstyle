@@ -29,7 +29,7 @@ export type PluginOptions = Record<string, unknown>;
  *
  * export default function myPlugin(): Plugin {
  *   return {
- *     name: "freestyle-plugin-my",
+ *     name: "openstyle-plugin-my",
  *     enforce: "pre",
  *     setup({ logger, mode }) {
  *       logger.info(`ready on ${mode}`);

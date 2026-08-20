@@ -8,7 +8,7 @@ import {
   getTranslateModeSetting,
 } from "../lib/language.js";
 import {
-  FreestyleEventType,
+  OpenstyleEventType,
   parseAppContext,
   plugins,
 } from "../lib/plugins/index.js";
@@ -32,8 +32,12 @@ import {
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("stream");
-const LOG_STREAM_PARTIALS = process.env.FREESTYLE_LOG_STREAM_PARTIALS === "1";
-const LOG_PIPELINE_LATENCY = process.env.FREESTYLE_LOG_PIPELINE_LATENCY !== "0";
+const LOG_STREAM_PARTIALS =
+  (process.env.OPENSTYLE_LOG_STREAM_PARTIALS ??
+    process.env.FREESTYLE_LOG_STREAM_PARTIALS) === "1";
+const LOG_PIPELINE_LATENCY =
+  (process.env.OPENSTYLE_LOG_PIPELINE_LATENCY ??
+    process.env.FREESTYLE_LOG_PIPELINE_LATENCY) !== "0";
 
 const stream = new Hono().get(
   "/",
@@ -305,7 +309,7 @@ const stream = new Hono().get(
             }
 
             void plugins().emit({
-              type: FreestyleEventType.Transcribed,
+              type: OpenstyleEventType.Transcribed,
               text: rawText,
             });
 

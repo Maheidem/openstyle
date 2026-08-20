@@ -49,6 +49,73 @@ function normalizeOpenaiBaseUrl(input: string): string {
   return input.replace(/\/+$/, "").replace(/\/v1(?:\/[^?#]*)?$/, "");
 }
 
+// ---------------------------------------------------------------------------
+// Credential redaction — GET /api/settings dumps the whole settings table,
+// which includes BYOK credentials (oMLX / local-LLM / custom-STT API keys)
+// alongside ordinary preferences. Mask anything credential-shaped there so a
+// casual read of the bulk listing never returns a secret in the clear.
+//
+// A plain substring match on "key" would also catch `hotkey` / `hotkey_mode`
+// / `remix_hotkey` — real, non-secret settings the Settings UI displays
+// directly (settings.tsx reads `s[SETTINGS_KEYS.hotkey]` straight off this
+// endpoint) — and redacting those would show a placeholder instead of the
+// user's configured hotkey. Matching whole underscore-delimited segments
+// instead avoids that false positive while still catching every current
+// credential key (`local_llm_api_key`, `omlx_api_key`, `openai_stt_api_key`
+// each end in a bare `key` segment) and any future one shaped the same way.
+// ---------------------------------------------------------------------------
+
+const CREDENTIAL_SEGMENTS = new Set([
+  "key",
+  "token",
+  "secret",
+  "password",
+  "apikey",
+]);
+
+function isCredentialKey(key: string): boolean {
+  return key
+    .split("_")
+    .some((segment) => CREDENTIAL_SEGMENTS.has(segment.toLowerCase()));
+}
+
+/**
+ * Placeholder returned in place of a credential-shaped value. Non-empty and
+ * truthy on purpose: the Settings UI seeds its API-key form fields straight
+ * from GET /api/settings (see `useEndpointConnect`'s `initialApiKey`), and an
+ * empty string there would look like "no key configured" and delete the real
+ * one on the next unrelated save. A distinctive non-empty placeholder instead
+ * round-trips safely — see the PUT handler and the `/test` probes below,
+ * which both recognize it and route around it rather than persisting or
+ * transmitting the literal placeholder text.
+ */
+const REDACTED_VALUE = "••••••••";
+
+/** Raw stored value for one setting, straight from the DB (never redacted). */
+function readStoredSetting(key: string): string | undefined {
+  const row = getDb()
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(key) as { value: string } | undefined;
+  return row?.value;
+}
+
+/**
+ * The Settings UI's connection-test forms (local LLM / oMLX / custom STT)
+ * seed their API-key field from the (now redacted) bulk listing and resend
+ * whatever's in that field on every Test click, even when the user only
+ * edited the URL. If that resend is the untouched placeholder, use the real
+ * stored key for the outbound probe instead of literally sending
+ * "••••••••" to the third-party endpoint as a bearer token.
+ */
+function resolveTestApiKey(
+  settingsKey: string,
+  provided: string | undefined,
+): string | undefined {
+  return provided === REDACTED_VALUE
+    ? readStoredSetting(settingsKey)
+    : provided;
+}
+
 const settings = new Hono()
   .get("/", (c) => {
     const db = getDb();
@@ -59,7 +126,7 @@ const settings = new Hono()
 
     const result: Record<string, string> = {};
     for (const row of rows) {
-      result[row.key] = row.value;
+      result[row.key] = isCredentialKey(row.key) ? REDACTED_VALUE : row.value;
     }
     return c.json(result);
   })
@@ -79,6 +146,15 @@ const settings = new Hono()
     const db = getDb();
     const key = c.req.param("key");
     const body = c.req.valid("json");
+
+    // The settings UI seeds credential-shaped fields from the (redacted) GET
+    // above and resends that value on every save, including ones that never
+    // touched the key field. Treat an untouched resend of the placeholder as
+    // a no-op — leave the real stored value alone — instead of overwriting a
+    // real secret with the literal placeholder text.
+    if (isCredentialKey(key) && body.value === REDACTED_VALUE) {
+      return c.json({ key, value: REDACTED_VALUE });
+    }
 
     // Key-specific validation for settings with constrained value shapes.
     if (key === "cleanup_intensity") {
@@ -222,7 +298,12 @@ const settings = new Hono()
       configureNetwork();
     }
 
-    return c.json({ key, value: body.value });
+    // Never echo a real credential value back in a response body — mask it
+    // here too, consistent with the GET listing above.
+    return c.json({
+      key,
+      value: isCredentialKey(key) ? REDACTED_VALUE : body.value,
+    });
   })
   .delete("/:key", (c) => {
     const db = getDb();
@@ -241,13 +322,12 @@ const settings = new Hono()
     async (c) => {
       const body = c.req.valid("json");
       const url = normalizeOpenaiBaseUrl(body.url);
+      const apiKey = resolveTestApiKey("local_llm_api_key", body.api_key);
 
       try {
         const res = await fetch(`${url}/v1/models`, {
           headers: {
-            ...(body.api_key
-              ? { Authorization: `Bearer ${body.api_key}` }
-              : {}),
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
           signal: AbortSignal.timeout(5000),
         });
@@ -282,13 +362,12 @@ const settings = new Hono()
     async (c) => {
       const body = c.req.valid("json");
       const url = normalizeOpenaiBaseUrl(body.url);
+      const apiKey = resolveTestApiKey("openai_stt_api_key", body.api_key);
 
       try {
         const res = await fetch(`${url}/v1/models`, {
           headers: {
-            ...(body.api_key
-              ? { Authorization: `Bearer ${body.api_key}` }
-              : {}),
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
           signal: AbortSignal.timeout(5000),
         });
@@ -323,8 +402,9 @@ const settings = new Hono()
     // transcription request then 404s on.
     const root = normalizeOmlxRoot(body.url);
     const transcribeUrl = omlxTranscribeUrl(root);
-    const auth: Record<string, string> = body.api_key
-      ? { Authorization: `Bearer ${body.api_key}` }
+    const apiKey = resolveTestApiKey("omlx_api_key", body.api_key);
+    const auth: Record<string, string> = apiKey
+      ? { Authorization: `Bearer ${apiKey}` }
       : {};
 
     try {

@@ -1,4 +1,4 @@
-import type { FreestyleEvent } from "@openstyle/sdk";
+import type { OpenstyleEvent } from "@openstyle/sdk";
 import type { AppType } from "@openstyle/server";
 import { createAppLogger } from "@openstyle/utils";
 import { hc } from "hono/client";
@@ -8,14 +8,14 @@ const log = createAppLogger("plugins");
 const RELAY_TIMEOUT_MS = 3000;
 
 /**
- * The subset of {@link FreestyleEvent}s that originate in the Electron main
+ * The subset of {@link OpenstyleEvent}s that originate in the Electron main
  * process, and so are the only ones ever relayed to the server. `transcribed`
  * and `cleaned` fire server-side and are never relayed — the server's
  * `/api/events` route rejects them, so narrowing here keeps the `hc` payload
  * type in step with the route's schema.
  */
 type RelayableEvent = Extract<
-  FreestyleEvent,
+  OpenstyleEvent,
   {
     type:
       | "recordingStarted"

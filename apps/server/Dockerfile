@@ -42,8 +42,8 @@ RUN pnpm --filter @openstyle/server deploy --prod --legacy /app
 FROM node:22-slim AS runtime
 
 ENV NODE_ENV=production \
-    FREESTYLE_ENV=production \
-    FREESTYLE_DB_PATH=/data/freestyle.db \
+    OPENSTYLE_ENV=production \
+    OPENSTYLE_DB_PATH=/data/freestyle.db \
     HOST=0.0.0.0 \
     PORT=4649
 

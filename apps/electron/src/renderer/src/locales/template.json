@@ -701,7 +701,9 @@
       "noReadme": "This plugin doesn't include a README."
     },
     "browse": {
-      "error": "Couldn't load the plugin catalog. Check your connection and try again."
+      "error": "Couldn't load the plugin catalog. Check your connection and try again.",
+      "emptyTitle": "No built-in plugins",
+      "empty": "This fork doesn't ship a built-in catalog. Any plugin can still be installed by its npm package name."
     }
   },
   "remixPage": {

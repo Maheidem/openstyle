@@ -10,7 +10,7 @@ import { plugins } from "../lib/plugins/index.js";
  * the server's single `event` hook sink, so every plugin observer sees every
  * event exactly once regardless of which process it happened in.
  *
- * The schema is a discriminated union matching the SDK's `FreestyleEvent`, so
+ * The schema is a discriminated union matching the SDK's `OpenstyleEvent`, so
  * the relayed payload is validated (and correctly typed) rather than cast.
  */
 const eventSchema = z.discriminatedUnion("type", [

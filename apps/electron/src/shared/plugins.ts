@@ -14,9 +14,9 @@ export interface PluginInfo {
   version?: string;
   description?: string;
   author?: string;
-  /** Human-readable display name from `freestyle.displayName`. */
+  /** Human-readable display name from `openstyle.displayName`. */
   displayName?: string;
-  /** Plugin-level icon name (lucide) declared via `freestyle.icon`. */
+  /** Plugin-level icon name (lucide) declared via `openstyle.icon`. */
   icon?: string;
   /** Raw README markdown shipped with the plugin, when present. */
   readme?: string;

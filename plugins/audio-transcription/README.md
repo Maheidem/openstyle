@@ -25,5 +25,5 @@ provider.
 ## How it works
 
 The plugin's page talks to the server's `/api/transcribe` endpoint through the
-Openstyle plugin bridge (`window.freestyle.api`). It ships no model of its own
+Openstyle plugin bridge (`window.openstyle.api`). It ships no model of its own
 and reuses your configured voice model and cleanup settings.

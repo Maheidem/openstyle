@@ -59,11 +59,12 @@ export function discoverLocalPlugins(dir: string): string[] {
 
 /**
  * The default local plugins directory: `<userData>/plugins/`, derived from the
- * `FREESTYLE_DB_PATH` the host sets at startup. Returns `null` when the path is
- * unset (e.g. a remote-server configuration with no local database).
+ * `OPENSTYLE_DB_PATH` the host sets at startup (the legacy `FREESTYLE_DB_PATH`
+ * name is still read as a fallback). Returns `null` when the path is unset
+ * (e.g. a remote-server configuration with no local database).
  */
 export function defaultLocalPluginsDir(): string | null {
-  const dbPath = process.env.FREESTYLE_DB_PATH;
+  const dbPath = process.env.OPENSTYLE_DB_PATH ?? process.env.FREESTYLE_DB_PATH;
   if (!dbPath) return null;
   return path.join(path.dirname(dbPath), "plugins");
 }
@@ -203,6 +204,35 @@ function safeInvoke(
 }
 
 /**
+ * A leading URI scheme (`http:`, `https:`, `file:`, `data:`, `node:`, ...).
+ * Matches the same grammar `new URL()` uses to recognize a scheme, so it
+ * reliably distinguishes a URL from a bare/relative module specifier or a
+ * POSIX absolute path (neither of which starts with `<letter>+ ":"`).
+ */
+const SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+
+/**
+ * Resolve a plugin specifier to what gets handed to the dynamic `import()`.
+ * Only two shapes are trusted: an absolute local filesystem path (converted to
+ * a `file:` URL) and a bare/relative module specifier resolved by Node's
+ * normal module resolution (an npm package name, a workspace package, a
+ * relative path, ...). Anything carrying an explicit URI scheme — including
+ * `http:`/`https:` (remote code), `data:` (inline code), or an explicit
+ * `file:` URL — is rejected: plugins are trusted local code, not arbitrary
+ * strings from settings, and handing a scheme-prefixed value straight to
+ * `import()` is a code-execution primitive, not just a loader convenience.
+ */
+export function resolveImportSpecifier(specifier: string): string {
+  if (path.isAbsolute(specifier)) return pathToFileURL(specifier).href;
+  if (SCHEME_RE.test(specifier)) {
+    throw new Error(
+      `refusing to import plugin specifier "${specifier}": only local file paths and bare module specifiers are allowed, not URLs`,
+    );
+  }
+  return specifier;
+}
+
+/**
  * Import a module and return its plugin factory. Only the **default export** is
  * treated as a factory (Vite convention); this avoids accidentally invoking
  * unrelated named helper exports or re-exports as if they were plugins.
@@ -213,11 +243,7 @@ async function importFactory(
 ): Promise<PluginFactory | null> {
   let mod: PluginModule;
   try {
-    const url = specifier.includes("://")
-      ? specifier
-      : path.isAbsolute(specifier)
-        ? pathToFileURL(specifier).href
-        : specifier;
+    const url = resolveImportSpecifier(specifier);
     mod = (await dynamicImport(url)) as PluginModule;
   } catch (err) {
     // An unresolved specifier (e.g. a default plugin that isn't installed in

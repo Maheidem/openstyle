@@ -24,10 +24,10 @@ const { default: createApp } = await import("../src/index.js");
 
 const app = createApp();
 
-const ROUTE = "/api/plugins/freestyle-voice-reload-mw-fixture/ping";
+const ROUTE = "/api/plugins/openstyle-reload-mw-fixture/ping";
 
 const fixture: Plugin = {
-  name: "@freestyle-voice/reload-mw-fixture",
+  name: "@openstyle/reload-mw-fixture",
   middleware: [
     async (c, next) => {
       if (c.req.path === ROUTE) return c.json({ pong: true });
@@ -65,7 +65,7 @@ describe("plugin middleware takes effect on runtime reload", () => {
 
   it("falls through to the next plugin when the first defers", async () => {
     const passthrough: Plugin = {
-      name: "@freestyle-voice/passthrough",
+      name: "@openstyle/passthrough",
       middleware: [async (_c, next) => next()],
     };
     registryHolder.current = new PluginRegistry([passthrough, fixture]);

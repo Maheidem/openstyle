@@ -17,7 +17,6 @@ on:
       - "release-sdk/**"
       - "release-stt/**"
       - "release-create-freestyle-plugin/**"
-      - "release-plugin-**"
 
 concurrency:
   group: package-artifacts-${{ github.ref_name }}
@@ -59,18 +58,6 @@ jobs:
             release-create-freestyle-plugin/*)
               echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT"
               echo "name=create-freestyle-plugin" >> "$GITHUB_OUTPUT"
-              ;;
-            release-plugin-audio-transcription/*)
-              echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT"
-              echo "name=@freestyle-voice/plugin-audio-transcription" >> "$GITHUB_OUTPUT"
-              ;;
-            release-plugin-profanity-filter/*)
-              echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT"
-              echo "name=@freestyle-voice/profanity-filter" >> "$GITHUB_OUTPUT"
-              ;;
-            release-plugin-emoji/*)
-              echo "path=plugins/emoji" >> "$GITHUB_OUTPUT"
-              echo "name=@freestyle-voice/plugin-emoji" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "::error::No package mapping for branch $BRANCH"

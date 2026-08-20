@@ -27,7 +27,7 @@ const api = {
   // The renderer can't reach process.platform reliably (navigator.platform
   // is deprecated); expose it once here so all platform checks agree.
   platform: process.platform as string,
-  isE2E: process.env.FREESTYLE_E2E === "1",
+  isE2E: (process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1",
   defaultHotkey: getDefaultHotkey(),
   defaultRemixHotkey: getDefaultRemixHotkey(),
   pasteText: (text: string, appContext?: string | null): Promise<void> =>

@@ -21,7 +21,7 @@ const LEGACY_APP_NAME = "Freestyle";
 
 /**
  * The SQLite file keeps its original name across the rename: it is a filename,
- * not branding, and `FREESTYLE_DB_PATH` is still built from it. Copying it
+ * not branding, and `OPENSTYLE_DB_PATH` is still built from it. Copying it
  * under the same name means the migrated database opens with no schema work.
  */
 const DB_FILE = "freestyle.db";
@@ -69,7 +69,7 @@ export function migrateLegacyUserData(): void {
   const legacyDir = join(dirname(newDir), LEGACY_APP_NAME);
 
   // Already pointed at the legacy profile: either the product rename has not
-  // taken effect, or FREESTYLE_USER_DATA overrode the path for an E2E run.
+  // taken effect, or OPENSTYLE_USER_DATA overrode the path for an E2E run.
   if (legacyDir === newDir) return;
 
   // Ran to completion before. Checked first so a factory reset (which deletes

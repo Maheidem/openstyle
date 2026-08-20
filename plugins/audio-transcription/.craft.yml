@@ -1,4 +1,4 @@
-# Craft config for the `@freestyle-voice/plugin-audio-transcription` package.
+# Craft config for the `@openstyle/plugin-audio-transcription` package.
 #
 # INDEPENDENT release pipeline (see packages/sdk/.craft.yml for the rationale).
 # To add a new plugin pipeline: copy this file into the new plugin dir and

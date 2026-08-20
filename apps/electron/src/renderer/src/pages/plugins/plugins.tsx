@@ -29,7 +29,13 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Loader2, MoreHorizontal, Puzzle, Search } from "lucide-react";
+import {
+  Loader2,
+  type LucideIcon,
+  MoreHorizontal,
+  Puzzle,
+  Search,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -140,6 +146,31 @@ function matchesQuery(
   return fields.some((f) => f?.toLowerCase().includes(q));
 }
 
+/** Dashed-border placeholder card for a tab with nothing to show yet. */
+function EmptyState({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}): React.JSX.Element {
+  return (
+    <div className="border-border bg-card rounded-[14px] border border-dashed px-9 py-[52px] text-center">
+      <div className="border-border bg-secondary mx-auto mb-4 flex size-12 items-center justify-center rounded-[12px] border">
+        <Icon className="text-muted-foreground size-5" strokeWidth={1.7} />
+      </div>
+      <h2 className="serif text-foreground m-0 text-[22px] leading-tight">
+        {title}
+      </h2>
+      <p className="text-muted-foreground mx-auto mt-1.5 max-w-[360px] text-[13px] leading-[1.5]">
+        {body}
+      </p>
+    </div>
+  );
+}
+
 function InstalledTab({
   loading,
   plugins,
@@ -168,17 +199,11 @@ function InstalledTab({
   }
   if (plugins.length === 0) {
     return (
-      <div className="border-border bg-card rounded-[14px] border border-dashed px-9 py-[52px] text-center">
-        <div className="border-border bg-secondary mx-auto mb-4 flex size-12 items-center justify-center rounded-[12px] border">
-          <Puzzle className="text-muted-foreground size-5" strokeWidth={1.7} />
-        </div>
-        <h2 className="serif text-foreground m-0 text-[22px] leading-tight">
-          {t("plugins.emptyTitle")}
-        </h2>
-        <p className="text-muted-foreground mx-auto mt-1.5 max-w-[360px] text-[13px] leading-[1.5]">
-          {t("plugins.empty")}
-        </p>
-      </div>
+      <EmptyState
+        icon={Puzzle}
+        title={t("plugins.emptyTitle")}
+        body={t("plugins.empty")}
+      />
     );
   }
   if (filtered.length === 0) {
@@ -413,6 +438,15 @@ function BrowseTab({
   }
   if (!catalog) {
     return <PluginsLoadingSkeleton />;
+  }
+  if (catalog.length === 0) {
+    return (
+      <EmptyState
+        icon={Puzzle}
+        title={t("plugins.browse.emptyTitle")}
+        body={t("plugins.browse.empty")}
+      />
+    );
   }
   if (filtered.length === 0) {
     return (

@@ -1,4 +1,4 @@
-import type { FreestyleBridge } from "@openstyle/sdk";
+import type { OpenstyleBridge } from "@openstyle/sdk";
 import { toWav16k } from "./to-wav.js";
 
 /**
@@ -7,7 +7,7 @@ import { toWav16k } from "./to-wav.js";
  * cleaned text. No host privileges beyond the bridge.
  */
 
-const bridge: FreestyleBridge | undefined = window.freestyle;
+const bridge: OpenstyleBridge | undefined = window.openstyle;
 
 const dropzone = requireEl<HTMLLabelElement>("#dropzone");
 const fileInput = requireEl<HTMLInputElement>("#file-input");

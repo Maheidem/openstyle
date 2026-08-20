@@ -1,6 +1,6 @@
 import {
-  FreestyleEventType,
   type HookApi,
+  OpenstyleEventType,
   type PipelineControlState,
   type PipelineStage,
   createHookApi as sdkCreateHookApi,
@@ -54,7 +54,7 @@ export function dispositionFromControl(
 export function emitAbortEvent(api: HookApi, stage: PipelineStage): void {
   if (api.control.state !== "aborted") return;
   void plugins().emit({
-    type: FreestyleEventType.PipelineError,
+    type: OpenstyleEventType.PipelineError,
     stage,
     message: api.control.reason ?? "aborted",
   });

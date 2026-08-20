@@ -19,7 +19,7 @@
  *   macos-ax key <keycode>
  *     Posts a bare key press (no modifiers) by virtual keycode — e.g. 124 for
  *     Right Arrow, used to collapse a Select-All without Apple Events. Events
- *     carry the Freestyle synthetic marker so the key listener ignores them.
+ *     carry the Openstyle synthetic marker so the key listener ignores them.
  *   macos-ax secure
  *     Prints "1" when a password field holds Secure Event Input, else "0".
  *
@@ -60,7 +60,7 @@ if !AXIsProcessTrusted() {
 
 /// Same marker macos-fast-paste stamps on its events ('FSTY'), so the key
 /// listener's synthetic-event filter ignores these too.
-let freestyleSyntheticMarker: Int64 = 0x4653_5459
+let openstyleSyntheticMarker: Int64 = 0x4653_5459
 
 /// The focused UI element, or exit 3 — only the text commands need one.
 func focusedElement() -> AXUIElement {
@@ -161,8 +161,8 @@ case "key":
     else {
         exit(1)
     }
-    keyDown.setIntegerValueField(.eventSourceUserData, value: freestyleSyntheticMarker)
-    keyUp.setIntegerValueField(.eventSourceUserData, value: freestyleSyntheticMarker)
+    keyDown.setIntegerValueField(.eventSourceUserData, value: openstyleSyntheticMarker)
+    keyUp.setIntegerValueField(.eventSourceUserData, value: openstyleSyntheticMarker)
     keyDown.post(tap: .cghidEventTap)
     usleep(8_000)
     keyUp.post(tap: .cghidEventTap)

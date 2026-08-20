@@ -26,8 +26,8 @@ The plugin contributes a **Profanity Filter** page (React + Vite) that explains
 how the filter works, lets you preview any sentence live, and lists every word
 being swapped. It reads the live, effective list (defaults + your overrides) from
 a small read-only endpoint
-(`GET /api/plugins/freestyle-voice-profanity-filter/replacements`) through the
-`window.freestyle` host bridge.
+(`GET /api/plugins/openstyle-profanity-filter/replacements`) through the
+`window.openstyle` host bridge.
 
 ## Configuration
 
@@ -35,7 +35,7 @@ Tweak it via the `[name, options]` tuple form in the `plugins` setting:
 
 ```jsonc
 [
-  ["@freestyle-voice/profanity-filter", {
+  ["@openstyle/profanity-filter", {
     "replacements": { "fuck": ["fishsticks", "fiddlesticks"], "crap": "kerfuffle" },
     "disableDefaults": false,
     "preserveCase": true
@@ -53,5 +53,5 @@ Tweak it via the `[name, options]` tuple form in the `plugins` setting:
 
 ```
 pnpm install
-pnpm --filter @freestyle-voice/profanity-filter build
+pnpm --filter @openstyle/profanity-filter build
 ```

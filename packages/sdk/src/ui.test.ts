@@ -7,8 +7,8 @@ import {
 
 describe("pluginSlug", () => {
   it("makes scoped package names URL/route-safe", () => {
-    expect(pluginSlug("@freestyle-voice/plugin-audio-transcription")).toBe(
-      "freestyle-voice-plugin-audio-transcription",
+    expect(pluginSlug("@openstyle/plugin-audio-transcription")).toBe(
+      "openstyle-plugin-audio-transcription",
     );
   });
 
@@ -18,7 +18,7 @@ describe("pluginSlug", () => {
 
   it("round-trips through a URL host (no @ or /)", () => {
     const slug = pluginSlug("@acme/My_Plugin");
-    const url = new URL(`freestyle-plugin://${slug}/ui/index.html`);
+    const url = new URL(`openstyle-plugin://${slug}/ui/index.html`);
     expect(url.hostname).toBe(slug);
     expect(slug).toMatch(/^[a-z0-9-]+$/);
   });

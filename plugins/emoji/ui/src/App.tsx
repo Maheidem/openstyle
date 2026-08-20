@@ -1,4 +1,4 @@
-import type { FreestyleBridge } from "@openstyle/sdk";
+import type { OpenstyleBridge } from "@openstyle/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 type PlacementMode = "after" | "replace";
@@ -14,12 +14,12 @@ interface EmojiSettings {
  */
 function getRoute(): string {
   const match = window.location.pathname.match(/\/api\/plugins\/([^/]+)\/ui\//);
-  const slug = match?.[1] ?? "freestyle-voice-plugin-emoji";
+  const slug = match?.[1] ?? "openstyle-plugin-emoji";
   return `/api/plugins/${slug}/settings`;
 }
 
-function getBridge(): FreestyleBridge {
-  const b = window.freestyle;
+function getBridge(): OpenstyleBridge {
+  const b = window.openstyle;
   if (!b) throw new Error("Host bridge unavailable.");
   return b;
 }

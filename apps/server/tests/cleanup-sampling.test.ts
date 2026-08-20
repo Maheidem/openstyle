@@ -358,20 +358,18 @@ describe("max_tokens is a floor, not a cap", () => {
   // cleanup would silently cut its rewrites short.
   it("raises a budget that is smaller than the user's value", () => {
     const out = JSON.parse(
-      mergeSamplingIntoBody(
-        JSON.stringify({ model: "m", max_tokens: 64 }),
-        { max_tokens: 300 },
-      ),
+      mergeSamplingIntoBody(JSON.stringify({ model: "m", max_tokens: 64 }), {
+        max_tokens: 300,
+      }),
     );
     expect(out.max_tokens).toBe(300);
   });
 
   it("leaves a budget that is already larger alone", () => {
     const out = JSON.parse(
-      mergeSamplingIntoBody(
-        JSON.stringify({ model: "m", max_tokens: 4096 }),
-        { max_tokens: 300 },
-      ),
+      mergeSamplingIntoBody(JSON.stringify({ model: "m", max_tokens: 4096 }), {
+        max_tokens: 300,
+      }),
     );
     expect(out.max_tokens).toBe(4096);
   });
@@ -387,10 +385,9 @@ describe("max_tokens is a floor, not a cap", () => {
 
   it("does not touch max_tokens when the user set none", () => {
     const out = JSON.parse(
-      mergeSamplingIntoBody(
-        JSON.stringify({ model: "m", max_tokens: 64 }),
-        { temperature: 0.7 },
-      ),
+      mergeSamplingIntoBody(JSON.stringify({ model: "m", max_tokens: 64 }), {
+        temperature: 0.7,
+      }),
     );
     expect(out.max_tokens).toBe(64);
     expect(out.temperature).toBe(0.7);

@@ -432,7 +432,10 @@ const PASTE_SETTLE_LEGACY_MS: Record<string, number> = {
 };
 
 function pasteSettleMs(method: PasteMethod): number {
-  const override = Number(process.env.FREESTYLE_PASTE_SETTLE_MS);
+  const override = Number(
+    process.env.OPENSTYLE_PASTE_SETTLE_MS ??
+      process.env.FREESTYLE_PASTE_SETTLE_MS,
+  );
   if (Number.isFinite(override) && override >= 0) return override;
   const table = method === "native" ? PASTE_SETTLE_MS : PASTE_SETTLE_LEGACY_MS;
   return table[process.platform] ?? 500;
