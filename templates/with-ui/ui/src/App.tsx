@@ -1,8 +1,8 @@
-import type { FreestyleBridge } from "freestyle-voice";
+import type { OpenstyleBridge } from "@openstyle/sdk";
 
 declare global {
   interface Window {
-    freestyle?: FreestyleBridge;
+    openstyle?: OpenstyleBridge;
   }
 }
 
@@ -12,7 +12,7 @@ export function App() {
       <button
         type="button"
         className="back-btn"
-        onClick={() => window.freestyle?.invoke("navigate", { to: "/plugins" })}
+        onClick={() => window.openstyle?.invoke("navigate", { to: "/plugins" })}
       >
         &larr; Back
       </button>
@@ -22,7 +22,7 @@ export function App() {
         Edit <code>ui/src/App.tsx</code> to build your plugin UI.
       </p>
       <p>
-        Use <code>window.freestyle.api()</code> to call the Freestyle server, or
+        Use <code>window.openstyle.api()</code> to call the Openstyle server, or
         add custom API routes via <code>middleware</code> in your plugin.
       </p>
 

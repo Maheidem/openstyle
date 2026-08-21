@@ -1,12 +1,12 @@
 {
-  "name": "freestyle-plugin-starter",
+  "name": "openstyle-plugin-starter",
   "version": "0.0.1",
   "type": "module",
-  "description": "A Freestyle voice dictation plugin.",
+  "description": "An Openstyle voice dictation plugin.",
   "license": "MIT",
   "keywords": [
-    "freestyle",
-    "freestyle-plugin",
+    "openstyle",
+    "openstyle-plugin",
     "voice",
     "dictation"
   ],
@@ -14,7 +14,7 @@
   "files": [
     "dist"
   ],
-  "freestyle": {
+  "openstyle": {
     "displayName": "My Plugin",
     "icon": "Puzzle"
   },
@@ -25,7 +25,7 @@
     "unlink": "node scripts/link-plugin.mjs --unlink"
   },
   "dependencies": {
-    "freestyle-voice": "^0.1.0"
+    "@openstyle/sdk": "^1.0.0"
   },
   "devDependencies": {
     "pkgroll": "^2.27.0",

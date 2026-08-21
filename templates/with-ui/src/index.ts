@@ -1,18 +1,18 @@
-import type { Plugin } from "freestyle-voice";
+import type { Plugin } from "@openstyle/sdk";
 
 /**
- * A starter Freestyle plugin with a UI page.
+ * A starter Openstyle plugin with a UI page.
  *
  * The factory function is called once at load time. Hooks run many times across
  * the dictation pipeline. Use `setup` to capture context (logger, settings,
  * storage) in a closure.
  *
  * See the SDK README for the full hook reference:
- * https://github.com/freestyle-voice/freestyle/tree/main/packages/sdk#readme
+ * https://github.com/Maheidem/openstyle/tree/main/packages/sdk#readme
  */
 export default function myPlugin(): Plugin {
   return {
-    name: "freestyle-plugin-starter",
+    name: "openstyle-plugin-starter",
 
     setup({ logger, mode }) {
       logger.info(`plugin ready on ${mode}`);

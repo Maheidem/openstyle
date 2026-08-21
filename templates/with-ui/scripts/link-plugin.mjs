@@ -11,8 +11,8 @@
  * that symlinks back to the plugin's built output. This lets a dev copy coexist
  * alongside a production (npm-installed) copy of the same plugin:
  *
- *   <userData>/plugins/freestyle-voice-my-plugin/     <- npm install
- *   <userData>/plugins/freestyle-voice-my-plugin-dev/ <- this script
+ *   <userData>/plugins/openstyle-my-plugin/     <- npm install
+ *   <userData>/plugins/openstyle-my-plugin-dev/ <- this script
  *
  * On Windows, if symlinks fail (requires Developer Mode), the script falls back
  * to copying the built files instead.
@@ -96,7 +96,7 @@ function copyDir(src, dest) {
 
 /**
  * Append `-dev` to a scoped or unscoped package name.
- * @freestyle-voice/profanity-filter -> @freestyle-voice/profanity-filter-dev
+ * @openstyle/profanity-filter -> @openstyle/profanity-filter-dev
  * my-plugin -> my-plugin-dev
  */
 function devName(name) {
@@ -189,9 +189,12 @@ const devPkg = {
   main: pkg.main || "dist/index.js",
 };
 
-// Preserve the freestyle manifest (icon, pages) so the UI works.
-if (pkg.freestyle) {
-  devPkg.freestyle = pkg.freestyle;
+// Preserve the openstyle manifest (icon, pages) so the UI works. Falls back
+// to the legacy "freestyle" key for plugins built against older SDK versions
+// (mirrors the compat fallback in the Openstyle server's plugin loader).
+const manifest = pkg.openstyle ?? pkg.freestyle;
+if (manifest) {
+  devPkg.openstyle = manifest;
 }
 
 fs.writeFileSync(
