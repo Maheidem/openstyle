@@ -24,7 +24,7 @@ on:
         options:
           - sdk
           - stt
-          - create-freestyle-plugin
+          - create-openstyle-plugin
       version:
         description: 'Explicit version to release (e.g. 1.2.0)'
         required: true
@@ -75,7 +75,7 @@ jobs:
           case "$PKG" in
             sdk)                     echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
             stt)                     echo "path=packages/stt" >> "$GITHUB_OUTPUT" ;;
-            create-freestyle-plugin) echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT" ;;
+            create-openstyle-plugin) echo "path=packages/create-openstyle-plugin" >> "$GITHUB_OUTPUT" ;;
             *) echo "::error::Unknown package: $PKG"; exit 1 ;;
           esac
 

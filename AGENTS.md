@@ -15,7 +15,7 @@ Openstyle is a local-first dictation app. `apps/electron` (Electron shell) embed
 - `packages/stt` — provider-agnostic STT + cleanup utilities on the Vercel AI SDK; used only by `apps/server`.
 - `packages/utils` — shared utils incl. the logger (`src/logger.ts`).
 - `packages/validations` — shared Zod schemas; gives the Hono RPC client type safety with no codegen.
-- `packages/create-freestyle-plugin` — scaffolding CLI for third-party plugin authors, not a dependency of either app.
+- `packages/create-openstyle-plugin` — scaffolding CLI for third-party plugin authors, not a dependency of either app.
 - `plugins/{audio-transcription,emoji,profanity-filter}` — first-party plugins, shipped opt-in, not baked into `app.asar`.
 
 **Dictation pipeline** (hotkey → delivered text):

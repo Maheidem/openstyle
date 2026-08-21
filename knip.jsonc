@@ -26,7 +26,7 @@
     "apps/electron/src/renderer/src/env.d.ts",
     "plugins/*/ui/vite-env.d.ts",
     "plugins/audio-transcription/ui/src/styles.css",
-    // Templates are standalone starter projects downloaded by create-freestyle-plugin,
+    // Templates are standalone starter projects downloaded by create-openstyle-plugin,
     // not workspace code. They are never imported or built within the monorepo.
     "templates/**",
     // Docs site is a standalone Mintlify project, not a pnpm workspace member.
@@ -91,7 +91,7 @@
       },
       "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
     },
-    "packages/create-freestyle-plugin": {
+    "packages/create-openstyle-plugin": {
       "entry": ["src/index.ts"],
       "project": ["src/**/*.ts"]
     },

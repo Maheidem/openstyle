@@ -16,7 +16,7 @@ on:
     branches:
       - "release-sdk/**"
       - "release-stt/**"
-      - "release-create-freestyle-plugin/**"
+      - "release-create-openstyle-plugin/**"
 
 concurrency:
   group: package-artifacts-${{ github.ref_name }}
@@ -55,9 +55,9 @@ jobs:
               echo "path=packages/stt" >> "$GITHUB_OUTPUT"
               echo "name=@openstyle/stt" >> "$GITHUB_OUTPUT"
               ;;
-            release-create-freestyle-plugin/*)
-              echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT"
-              echo "name=create-freestyle-plugin" >> "$GITHUB_OUTPUT"
+            release-create-openstyle-plugin/*)
+              echo "path=packages/create-openstyle-plugin" >> "$GITHUB_OUTPUT"
+              echo "name=create-openstyle-plugin" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "::error::No package mapping for branch $BRANCH"

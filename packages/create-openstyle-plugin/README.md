@@ -1,4 +1,4 @@
-# `create-freestyle-plugin`
+# `create-openstyle-plugin`
 
 Scaffold a new [Openstyle](../../README.md) voice plugin from a starter
 template. Openstyle is the local-first voice dictation app; plugins extend its
@@ -11,19 +11,19 @@ SDK](../sdk/README.md) for the full plugin contract.
 Run it with your package manager's `create` command — no install needed:
 
 ```bash
-npm create freestyle-plugin@latest
+npm create openstyle-plugin@latest
 # or
-pnpm create freestyle-plugin
+pnpm create openstyle-plugin
 # or
-yarn create freestyle-plugin
+yarn create openstyle-plugin
 # or
-bun create freestyle-plugin
+bun create openstyle-plugin
 ```
 
 You can also pass the target directory directly:
 
 ```bash
-npm create freestyle-plugin@latest my-plugin
+npm create openstyle-plugin@latest my-plugin
 ```
 
 With no flags, the CLI prompts for the target directory, template, package
@@ -54,7 +54,7 @@ Templates are pulled from
 Non-interactive example:
 
 ```bash
-npm create freestyle-plugin@latest my-plugin -- --template with-ui --pm pnpm --install
+npm create openstyle-plugin@latest my-plugin -- --template with-ui --pm pnpm --install
 ```
 
 The scaffolder sets the package name (slugified from the target), the plugin's

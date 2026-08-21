@@ -68,7 +68,7 @@ function toPackageName(name: string): string {
     .replace(/^[._]/, "")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
-  return slug || "my-freestyle-plugin";
+  return slug || "my-openstyle-plugin";
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ function toPackageName(name: string): string {
 const isCurrentDirRegex = /^(\.\/|\.\\|\.)$/;
 
 program
-  .name("create-freestyle-plugin")
+  .name("create-openstyle-plugin")
   .version(version)
   .arguments("[target]")
   .addOption(
@@ -105,7 +105,7 @@ interface Options {
 }
 
 async function main(targetDir: string | undefined, options: Options) {
-  console.log(pc.gray(`create-freestyle-plugin v${version}`));
+  console.log(pc.gray(`create-openstyle-plugin v${version}`));
   console.log();
 
   // 1. Target directory
@@ -118,7 +118,7 @@ async function main(targetDir: string | undefined, options: Options) {
   } else {
     target = await input({
       message: "Target directory",
-      default: "my-freestyle-plugin",
+      default: "my-openstyle-plugin",
     });
   }
 
@@ -213,13 +213,16 @@ async function main(targetDir: string | undefined, options: Options) {
     const pkgName = toPackageName(projectName);
     pkg.name = pkgName;
 
-    // Update the plugin's display name and page title to match
-    if (pkg.freestyle) {
-      if (pkg.freestyle.displayName === "My Plugin") {
-        pkg.freestyle.displayName = projectName;
+    // Update the plugin's display name and page title to match. Prefer the
+    // current "openstyle" manifest key; fall back to the legacy "freestyle"
+    // key so plugins scaffolded from older templates keep working.
+    const manifest = pkg.openstyle ?? pkg.freestyle;
+    if (manifest) {
+      if (manifest.displayName === "My Plugin") {
+        manifest.displayName = projectName;
       }
-      if (pkg.freestyle.contributes?.pages?.[0]?.title === "My Plugin") {
-        pkg.freestyle.contributes.pages[0].title = projectName;
+      if (manifest.contributes?.pages?.[0]?.title === "My Plugin") {
+        manifest.contributes.pages[0].title = projectName;
       }
     }
 
@@ -234,7 +237,7 @@ async function main(targetDir: string | undefined, options: Options) {
   if (fs.existsSync(srcIndexPath)) {
     let src = fs.readFileSync(srcIndexPath, "utf-8");
     src = src.replace(
-      /name: "freestyle-plugin-starter"/,
+      /name: "openstyle-plugin-starter"/,
       `name: "${toPackageName(projectName)}"`,
     );
     fs.writeFileSync(srcIndexPath, src);
