@@ -106,7 +106,7 @@ const PINNED_WORKER_DIGESTS: Record<string, string> = {
 // unreachable at the exact moment a "latest" download runs; the live API
 // lookup is always tried first, so staleness here is harmless the rest of
 // the time.
-const PINNED_LATEST_WORKER_TAG = "1.0.0";
+const PINNED_LATEST_WORKER_TAG = "1.0.1";
 
 export interface MlxRuntimeDownloadStatus {
   available: boolean;
