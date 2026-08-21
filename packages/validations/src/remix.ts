@@ -5,9 +5,9 @@ import { z } from "zod/v3";
  *
  * - Transform (fast lane): preset or short spoken instruction over a captured
  *   selection, one-shot LLM call, result pasted over the selection.
- * - Agent (chat lane): a tool-using agent loop. Server-side tools run on
- *   Freestyle Cloud; client-side tools (declared here, executed on the
- *   desktop) write into the user's document.
+ * - Agent (chat lane): a tool-using agent loop. Server-side tools ran on
+ *   Freestyle Cloud (now removed); client-side tools (declared here,
+ *   executed on the desktop) write into the user's document.
  *
  * This file is mirrored byte-for-byte (below the header) into the cloud
  * repo's `packages/validations/src/remix.ts` — the same parity rule as

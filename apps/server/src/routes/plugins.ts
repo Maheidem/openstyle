@@ -153,9 +153,9 @@ const plugins = new Hono()
     return c.json({ plugins: PLUGIN_CATALOG });
   })
   // Serve a plugin's UI assets from its package dir, path-traversal guarded.
-  // Replaces the Electron `freestyle-plugin://<slug>/<asset>` custom scheme:
-  // pages now load same-origin from the loopback server, so their bridge can
-  // fetch the API directly without the old IPC proxy.
+  // Replaces the legacy upstream `freestyle-plugin://<slug>/<asset>` Electron
+  // custom scheme: pages now load same-origin from the loopback server, so
+  // their bridge can fetch the API directly without the old IPC proxy.
   .get("/:slug/ui/*", async (c) => {
     const slug = c.req.param("slug");
     const assetPath = c.req.path.split(`/${slug}/ui/`)[1] ?? "";
