@@ -91,6 +91,7 @@ const MLX_WORKER_RELEASES_API = `https://api.github.com/repos/${MLX_WORKER_REPO}
  */
 const PINNED_WORKER_DIGESTS: Record<string, string> = {
   "1.0.0": "f5f8301d055c5fd5c78e29a9a35b465df11d3947aa7d030f3b9a0a8c4529c054",
+  "1.0.1": "f5f8301d055c5fd5c78e29a9a35b465df11d3947aa7d030f3b9a0a8c4529c054",
 };
 
 // Best-effort fallback for the "no explicit release tag" (releases/latest)

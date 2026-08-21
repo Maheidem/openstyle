@@ -53,15 +53,28 @@ Thanks to the Freestyle authors and contributors for the original work.
 
 ## Requirements
 
-- macOS. Local MLX speech models need Apple Silicon.
+- macOS. The published build is Apple Silicon (arm64) only.
 - Node.js 22+ and pnpm 10+ to build.
 
 Windows and Linux targets exist in the build config and are inherited from
 upstream, but this fork is developed and tested on macOS.
 
+## Install
+
+Download the latest `.dmg` (Apple Silicon) from the
+[Releases page](https://github.com/Maheidem/openstyle/releases) and drag it
+to Applications.
+
+The build is ad-hoc signed, not notarized, so macOS will warn on first
+launch. Right-click the app and choose Open, or clear the quarantine flag:
+
+```bash
+xattr -cr /Applications/Openstyle.app
+```
+
 ## Build from source
 
-There are no published releases yet, so build it yourself:
+To build it yourself instead:
 
 ```bash
 git clone https://github.com/Maheidem/openstyle.git
@@ -78,8 +91,9 @@ To run it in development instead:
 pnpm dev
 ```
 
-On first launch macOS asks for Microphone access, and for Accessibility access
-so the app can read the global hotkey and paste into other applications.
+On first launch macOS asks for Microphone access, and for Accessibility and
+Input Monitoring access so the app can read the global hotkey and paste into
+other applications.
 
 ## Contributing
 

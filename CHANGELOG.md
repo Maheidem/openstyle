@@ -1,4 +1,47 @@
 # Changelog
+## 1.0.1
+
+### New Features ✨
+
+- (models) Connect to a self-hosted oMLX server for transcription by @Maheidem in [7cf5603c](https://github.com/Maheidem/openstyle/commit/7cf5603c3445884f5697147c2cf5cc6c7a57af70)
+- (cleanup) Make the cleanup model's sampling parameters editable by @Maheidem in [70787b97](https://github.com/Maheidem/openstyle/commit/70787b97e8e4b79600cc1d0984ee31d7c66413f4)
+- (logging) Write every model request and response to a local `openstyle-trace.log` for troubleshooting — always on, no setting to disable it, and it holds full transcripts and model output (only `Authorization`/`api_key` values are redacted). Never leaves the machine. by @Maheidem in [b60c4cc7](https://github.com/Maheidem/openstyle/commit/b60c4cc7665ea89c090707e3ae82a1c9ba6fa9e9)
+
+### Bug Fixes 🐛
+
+- (create-plugin) Rename the scaffolding CLI from `create-freestyle-plugin` to `create-openstyle-plugin` — the old name is published on npm at 0.0.1/0.0.2, switch to `npx create-openstyle-plugin@latest`. Starter templates now depend on the published `@openstyle/sdk` and the `window.openstyle` bridge instead of a stale `freestyle` reference. by @Maheidem in [a103229b](https://github.com/Maheidem/openstyle/commit/a103229b2f919314bbe89ac2de809c533d08c881), [e0b3aeb1](https://github.com/Maheidem/openstyle/commit/e0b3aeb15504c4dd2fee1bb58afa913d6da9c36c)
+- (server) Require auth and an allow-listed origin on the local API; redact credential fields from the bulk settings response by @Maheidem in [198d42d1](https://github.com/Maheidem/openstyle/commit/198d42d1a283b8afdd375238ce8707b3e99e53b7)
+- (server) Verify the MLX transcription-worker archive's checksum before extracting and running it by @Maheidem in [198d42d1](https://github.com/Maheidem/openstyle/commit/198d42d1a283b8afdd375238ce8707b3e99e53b7)
+- (sdk) Reject non-local import specifiers in the plugin loader, closing a remote-code-execution path. Plugin UI pages now get `window.openstyle` (was `window.freestyle`) and the manifest key is `openstyle` (was `freestyle`, still read as a fallback so installed plugins keep working). by @Maheidem in [198d42d1](https://github.com/Maheidem/openstyle/commit/198d42d1a283b8afdd375238ce8707b3e99e53b7)
+- (db) Purge orphaned PostHog/cloud-sync rows left over from old local databases on migration to schema v28 by @Maheidem in [82b9b8f6](https://github.com/Maheidem/openstyle/commit/82b9b8f671abd5267fa5051eae5f0ccf4c8f32b3)
+- (electron) Exclude workspace `src`, tsconfigs, and `.turbo` caches from the packaged `app.asar`; clean `dist` before pkgroll builds so stale output can't be packaged by @Maheidem in [8d14b6ed](https://github.com/Maheidem/openstyle/commit/8d14b6edc5f6a13480cd7dd2987e05579ea55796)
+
+### Internal Changes 🔧
+
+- Remove the mobile app from the repo; macOS desktop only going forward (never had a public release — no Android/iOS build ships from `.craft.yml` or the 1.0.0 release assets) by @Maheidem in [198d42d1](https://github.com/Maheidem/openstyle/commit/198d42d1a283b8afdd375238ce8707b3e99e53b7)
+
+### Other
+
+- (plugins) Drop the built-in plugin catalog; plugins are still installable by npm package name, and the Plugins page now shows an empty state instead of a curated list by @Maheidem in [198d42d1](https://github.com/Maheidem/openstyle/commit/198d42d1a283b8afdd375238ce8707b3e99e53b7)
+- (server) Rename `FREESTYLE_*` environment variables to `OPENSTYLE_*` (old names still read as a fallback) by @Maheidem in [198d42d1](https://github.com/Maheidem/openstyle/commit/198d42d1a283b8afdd375238ce8707b3e99e53b7)
+
+## 1.0.0
+
+### Bug Fixes 🐛
+
+- (macos) Let ad-hoc signed builds launch — the hardened runtime's library validation was rejecting the app's own ad-hoc signed Electron Framework before any of our code ran by @Maheidem in [ec1c61d8](https://github.com/Maheidem/openstyle/commit/ec1c61d845231e5d3e74e092c8acfe3cdceeee45)
+- (server) Fetch the MLX transcription worker from this fork's own releases instead of upstream's, which no longer publishes that asset and 404s by @Maheidem in [0ff929c5](https://github.com/Maheidem/openstyle/commit/0ff929c5634e3e6e9b854d73f8664d4794c16d8c)
+
+### Internal Changes 🔧
+
+- Drop the now-unused better-auth dependency and point the in-app Repository/Report an issue/Contributing links at this fork by @Maheidem in [20f85399](https://github.com/Maheidem/openstyle/commit/20f85399e3505d4007bbb8ea68ebc64d7a01e2cf), [e0911eff](https://github.com/Maheidem/openstyle/commit/e0911eff6a55336be4ad3b9231d9a5c16636b7c4)
+
+### Other
+
+- Fork the project as Openstyle: rename across the product name, bundle id (`com.openstyle.app`), executables, and npm scope (`@freestyle-voice/*` → `@openstyle/*`); new icon set and a rewritten README by @Maheidem in [edc97c85](https://github.com/Maheidem/openstyle/commit/edc97c8540e37577b016dd10d15d2e8c1ddb72d6)
+- Remove Freestyle Cloud: the account sign-in gate, billing/subscription/usage UI, cloud STT and cleanup providers, cloud preference sync, and the cloud plugin catalog. On-device transcription (local MLX and whisper.cpp), every bring-your-own-key provider, Remix, vocabulary, shortcuts, per-app tone, and the plugin system are unaffected — the app runs fully local with no account and no mandatory sign-in by @Maheidem in [f1d53be5](https://github.com/Maheidem/openstyle/commit/f1d53be53f9ea15fea28aa19702e474e5b7f9b38), [2a8c252b](https://github.com/Maheidem/openstyle/commit/2a8c252b1ec4e83c7a3565faf02b52a08471cd59)
+- Remove PostHog telemetry — no usage data leaves the machine by @Maheidem in [5ce08271](https://github.com/Maheidem/openstyle/commit/5ce08271c2174cf5f8b9e4458200eab3286f5184)
+
 ## 0.7.1
 
 ### New Features ✨
