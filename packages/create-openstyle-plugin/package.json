@@ -27,7 +27,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pkgroll --minify",
+    "build": "pkgroll --minify --clean-dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

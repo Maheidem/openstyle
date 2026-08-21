@@ -2,7 +2,7 @@
   "name": "@openstyle/server",
   "type": "module",
   "scripts": {
-    "build": "tsc --emitDeclarationOnly && pkgroll --minify",
+    "build": "tsc --emitDeclarationOnly && pkgroll --minify --clean-dist",
     "start": "node dist/startup.js",
     "test": "vitest run",
     "test:watch": "vitest"

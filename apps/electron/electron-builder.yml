@@ -9,6 +9,9 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!node_modules/@openstyle/*/src/**'
+  - '!node_modules/@openstyle/*/tsconfig.json'
+  - '!node_modules/@openstyle/*/.turbo/**'
 asarUnpack:
   - resources/**
 extraResources:
