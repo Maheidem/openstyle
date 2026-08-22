@@ -1993,6 +1993,9 @@ function isRunningFromReadOnlyLocation(): boolean {
 
 const READ_ONLY_UPDATE_RE = /EROFS|EACCES|read[- ]only|permission denied/i;
 
+const RELEASES_PAGE_URL =
+  "https://github.com/Maheidem/openstyle/releases/latest";
+
 let readOnlyDialogShown = false;
 
 function showMoveToApplicationsDialog(): void {
@@ -2036,10 +2039,8 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     showMoveToApplicationsDialog();
     return;
   }
-  if (updateDownloadState === "downloaded") {
-    restartAndUpdate();
-    return;
-  }
+  // updateDownloadState can't reach "downloaded" while autoDownload is forced
+  // off (see the update-available handler below) — always run a fresh check.
   try {
     const result = await autoUpdater.checkForUpdates();
     // Swallow the auto-download rejection (see runUpdateCheck).
@@ -2051,12 +2052,12 @@ async function checkForUpdatesFromMenu(): Promise<void> {
         title: "Update Available",
         message: `A new version (v${latest}) is available.`,
         detail: `You are currently running v${app.getVersion()}.`,
-        buttons: ["Download", "Later"],
+        buttons: ["View Release", "Later"],
         defaultId: 0,
         cancelId: 1,
       });
       if (response === 0) {
-        triggerDownloadUpdate();
+        void shell.openExternal(RELEASES_PAGE_URL);
       }
     } else {
       dialog.showMessageBox({
@@ -2734,7 +2735,12 @@ app.whenReady().then(async () => {
 
   if (!is.dev) {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
-    autoUpdater.autoDownload = autoUpdateEnabled;
+    // Every build is ad-hoc signed (no paid Apple Developer identity yet).
+    // Squirrel.Mac deterministically rejects ad-hoc-signed updates AFTER
+    // downloading them ("Code signature ... did not pass validation"), so
+    // silent auto-download is doomed no matter this setting. Only check +
+    // notify; restore autoDownload once builds carry a real signing identity.
+    autoUpdater.autoDownload = false;
     // Honour the same preference on quit. Upstream hardcoded this to true, so a
     // single manual "Check for Updates" could stage a release that then
     // installed itself on the next quit even with auto-update turned off.
@@ -2745,11 +2751,8 @@ app.whenReady().then(async () => {
       settingsWindow?.webContents.send("updater:available", {
         version: info.version,
       });
-      if (autoUpdater.autoDownload) {
-        updateDownloadState = "downloading";
-        settingsWindow?.webContents.send("updater:downloading");
-      }
-      // Only show a native notification once per discovered version
+      // Never auto-download (autoDownload is always false — see above). Just
+      // notify once per version and send the user to the releases page.
       if (
         Notification.isSupported() &&
         notifiedAvailableVersion !== info.version
@@ -2757,11 +2760,11 @@ app.whenReady().then(async () => {
         notifiedAvailableVersion = info.version;
         const note = new Notification({
           title: "Openstyle Update Available",
-          body: autoUpdater.autoDownload
-            ? `Version ${info.version} is downloading…`
-            : `Version ${info.version} is available. Open settings to download.`,
+          body: `Version ${info.version} is available. Click to view the release.`,
         });
-        note.on("click", () => showSettingsWindow("/settings"));
+        note.on("click", () => {
+          void shell.openExternal(RELEASES_PAGE_URL);
+        });
         note.show();
       }
     });
@@ -2863,10 +2866,9 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("settings:set-auto-update", (_event, enabled: boolean) => {
+    // autoDownload stays false regardless (see setup above) — this setting
+    // now only gates whether periodic update checks run at all.
     writeSettings({ autoUpdate: enabled });
-    if (!is.dev) {
-      autoUpdater.autoDownload = enabled;
-    }
   });
 
   // -- Launch at startup setting IPC --
