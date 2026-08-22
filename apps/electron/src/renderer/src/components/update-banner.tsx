@@ -11,23 +11,16 @@ export function UpdateBanner({
   const { t } = useTranslation();
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
     const removeAvail = window.api?.onUpdateAvailable((info) => {
       setUpdateAvailable(info.version);
     });
-    const removeDownloading = window.api?.onUpdateDownloading(() => {
-      setDownloading(true);
-      setUpdateError(null);
-    });
     const removeDownloaded = window.api?.onUpdateDownloaded(() => {
       setUpdateDownloaded(true);
-      setDownloading(false);
     });
     const removeError = window.api?.onUpdateError((info) => {
-      setDownloading(false);
       setUpdateError(info.message);
     });
     window.api
@@ -35,9 +28,7 @@ export function UpdateBanner({
       .then((result) => {
         if (result) {
           setUpdateAvailable(result.version);
-          if (result.downloadState === "downloading") {
-            setDownloading(true);
-          } else if (result.downloadState === "downloaded") {
+          if (result.downloadState === "downloaded") {
             setUpdateDownloaded(true);
           }
         }
@@ -46,7 +37,6 @@ export function UpdateBanner({
 
     return () => {
       removeAvail?.();
-      removeDownloading?.();
       removeDownloaded?.();
       removeError?.();
     };
@@ -80,15 +70,14 @@ export function UpdateBanner({
       ) : (
         <button
           type="button"
-          onClick={() => {
-            setDownloading(true);
-            setUpdateError(null);
-            window.api?.downloadUpdate();
-          }}
-          disabled={downloading}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium disabled:opacity-50"
+          // downloadUpdate() fires the updater:download IPC message, which the
+          // main process now handles by opening the GitHub releases page —
+          // ad-hoc-signed builds can't auto-install, so there is no in-app
+          // download to show progress for.
+          onClick={() => window.api?.downloadUpdate()}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
         >
-          {downloading ? t("common.downloading") : t("common.download")}
+          {t("common.viewRelease")}
         </button>
       )}
       {updateError && (

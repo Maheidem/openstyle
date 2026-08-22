@@ -2017,15 +2017,6 @@ function restartAndUpdate(): void {
   autoUpdater.quitAndInstall();
 }
 
-/** Mark state as downloading, notify the settings window, and kick off the download. */
-function triggerDownloadUpdate(): void {
-  updateDownloadState = "downloading";
-  settingsWindow?.webContents.send("updater:downloading");
-  autoUpdater.downloadUpdate().catch((err) => {
-    log.warn(`downloadUpdate rejected: ${err}`);
-  });
-}
-
 async function checkForUpdatesFromMenu(): Promise<void> {
   if (is.dev) {
     dialog.showMessageBox({
@@ -2837,7 +2828,11 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.on("updater:download", () => {
-    triggerDownloadUpdate();
+    // Every build is ad-hoc signed, so a downloaded update fails Squirrel.Mac's
+    // signature check no matter which renderer affordance fires this IPC
+    // message (see the autoDownload=false comment above) — send the user to
+    // the releases page instead of ever calling autoUpdater.downloadUpdate().
+    void shell.openExternal(RELEASES_PAGE_URL);
   });
 
   ipcMain.on("updater:install", () => {

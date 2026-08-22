@@ -12,8 +12,7 @@
     "openSettings": "Abrir Configurações",
     "recheck": "Verificar Novamente",
     "manage": "Gerenciar",
-    "download": "Baixar",
-    "downloading": "Baixando...",
+    "viewRelease": "Ver Lançamento",
     "saving": "Salvando...",
     "restartAndUpdate": "Reiniciar e Atualizar"
   },
@@ -128,7 +127,7 @@
     },
     "application": {
       "autoUpdate": "Atualizações automáticas",
-      "autoUpdateDesc": "Baixar novas versões em segundo plano assim que forem lançadas.",
+      "autoUpdateDesc": "Verifica novas versões em segundo plano e avisa você quando uma estiver disponível. A instalação é manual, feita pela página de lançamentos.",
       "launchAtStartup": "Iniciar com o sistema",
       "launchAtStartupDesc": "Iniciar automaticamente o Openstyle quando você entrar no computador.",
       "showOnLaunch": "Mostrar painel ao iniciar",

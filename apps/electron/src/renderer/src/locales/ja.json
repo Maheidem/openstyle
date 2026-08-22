@@ -12,8 +12,7 @@
     "openSettings": "設定を開く",
     "recheck": "再確認",
     "manage": "管理",
-    "download": "ダウンロード",
-    "downloading": "ダウンロード中...",
+    "viewRelease": "リリースを表示",
     "saving": "保存中...",
     "restartAndUpdate": "再起動して更新"
   },
@@ -128,7 +127,7 @@
     },
     "application": {
       "autoUpdate": "自動アップデート",
-      "autoUpdateDesc": "新しいバージョンがリリースされた際、バックグラウンドで自動的にダウンロードします。",
+      "autoUpdateDesc": "バックグラウンドで新しいバージョンを確認し、利用可能になったら通知します。インストールはリリースページから手動で行います。",
       "launchAtStartup": "システム起動時に起動",
       "launchAtStartupDesc": "コンピューターにログインした際、自動的に Openstyle を起動します。",
       "showOnLaunch": "起動時にダッシュボードを表示",
