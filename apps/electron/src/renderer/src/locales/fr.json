@@ -131,7 +131,10 @@
       "launchAtStartup": "Lancer au démarrage",
       "launchAtStartupDesc": "Démarre Openstyle automatiquement quand vous vous connectez à votre ordinateur.",
       "showOnLaunch": "Afficher le tableau de bord au lancement",
-      "showOnLaunchDesc": "Ouvre la fenêtre du tableau de bord quand Openstyle démarre."
+      "showOnLaunchDesc": "Ouvre la fenêtre du tableau de bord quand Openstyle démarre.",
+      "acknowledgments": "Remerciements",
+      "acknowledgmentsDesc": "Modèles et licences tiers utilisés par Openstyle.",
+      "acknowledgmentsText": "Les modèles de diarisation des locuteurs sont dérivés de <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
     },
     "recording": {
       "hotkey": "Raccourci clavier",
@@ -655,6 +658,7 @@
     "cancel": "Annuler",
     "me": "Moi",
     "them": "Eux",
+    "themNumbered": "Eux {{n}}",
     "actionFailed": "Une erreur est survenue. Réessayez.",
     "audioProbeHintBody": "En enregistrant une réunion, vous capturez aussi l'audio des autres participants : assurez-vous que tout le monde y consent. Un casque est recommandé pour garder un son d'appel propre. Si l'audio système reste silencieux, autorisez Openstyle dans Enregistrement de l'écran et de l'audio système ; macOS peut redemander après une mise à jour.",
     "audioProbeHintOpenSettings": "Ouvrir les réglages",
@@ -664,6 +668,10 @@
     "summaryInstructionsLabel": "Instructions de résumé",
     "summaryInstructionsHint": "Consignes supplémentaires ajoutées à chaque résumé de réunion, comme un format préféré ou des axes de focus.",
     "save": "Enregistrer",
-    "saving": "Enregistrement…"
+    "saving": "Enregistrement…",
+    "diarizationLabel": "Étiquettes des intervenants",
+    "diarizationHint": "Identifie chaque participant séparément (Eux 1, Eux 2, ...) par détection des intervenants sur l'appareil.",
+    "diarizationNotReady": "Les modèles d'intervenants sont absents de cette version.",
+    "diarizationUnavailable": "Les étiquettes des intervenants ne sont pas disponibles dans cette version."
   }
 }

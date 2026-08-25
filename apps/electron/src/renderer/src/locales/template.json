@@ -154,7 +154,10 @@
       "showOnLaunch": "Show dashboard on launch",
       "showOnLaunchDesc": "Open the dashboard window when Openstyle starts.",
       "advancedMode": "Advanced mode",
-      "advancedModeDesc": "Show the Models page for manual voice and cleanup model configuration."
+      "advancedModeDesc": "Show the Models page for manual voice and cleanup model configuration.",
+      "acknowledgments": "Acknowledgments",
+      "acknowledgmentsDesc": "Third-party models and licenses used by Openstyle.",
+      "acknowledgmentsText": "Speaker diarization models are derived from <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) via <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
     },
     "recording": {
       "hotkey": "Hotkey",
@@ -765,6 +768,7 @@
     "cancel": "Cancel",
     "me": "Me",
     "them": "Them",
+    "themNumbered": "Them {{n}}",
     "actionFailed": "Something went wrong. Try again.",
     "audioProbeHintBody": "By recording a meeting you capture other participants' audio, so make sure everyone consents. Headphones are recommended so the call audio stays clean. If system audio stays silent, grant Openstyle access under Screen & System Audio Recording; app updates may make macOS ask again.",
     "audioProbeHintOpenSettings": "Open Settings",
@@ -774,6 +778,10 @@
     "summaryInstructionsLabel": "Summary instructions",
     "summaryInstructionsHint": "Extra guidance appended to every meeting summary, such as a preferred format or focus areas.",
     "save": "Save",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "diarizationLabel": "Speaker labels",
+    "diarizationHint": "Label other participants separately (Them 1, Them 2, ...) using on-device speaker detection.",
+    "diarizationNotReady": "Speaker models are missing from this build.",
+    "diarizationUnavailable": "Speaker labels aren't available in this build."
   }
 }

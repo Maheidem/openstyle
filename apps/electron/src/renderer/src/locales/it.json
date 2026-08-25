@@ -131,7 +131,10 @@
       "launchAtStartup": "Avvia all'avvio",
       "launchAtStartupDesc": "Avvia automaticamente Openstyle all'accesso al computer.",
       "showOnLaunch": "Mostra dashboard all'avvio",
-      "showOnLaunchDesc": "Apri la finestra della dashboard all'avvio di Openstyle."
+      "showOnLaunchDesc": "Apri la finestra della dashboard all'avvio di Openstyle.",
+      "acknowledgments": "Ringraziamenti",
+      "acknowledgmentsDesc": "Modelli e licenze di terze parti utilizzati da Openstyle.",
+      "acknowledgmentsText": "I modelli di diarizzazione degli speaker derivano da <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) tramite <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
     },
     "recording": {
       "hotkey": "Scorciatoia",
@@ -654,6 +657,7 @@
     "cancel": "Annulla",
     "me": "Io",
     "them": "Loro",
+    "themNumbered": "Loro {{n}}",
     "actionFailed": "Qualcosa è andato storto. Riprova.",
     "audioProbeHintBody": "Registrando una riunione catturi anche l'audio degli altri partecipanti: assicurati che tutti acconsentano. Sono consigliate le cuffie per mantenere pulito l'audio della chiamata. Se l'audio di sistema resta muto, concedi a Openstyle l'accesso in Registrazione schermo e audio di sistema; dopo un aggiornamento macOS potrebbe richiederlo di nuovo.",
     "audioProbeHintOpenSettings": "Apri Impostazioni",
@@ -663,6 +667,10 @@
     "summaryInstructionsLabel": "Istruzioni per il riepilogo",
     "summaryInstructionsHint": "Indicazioni aggiuntive aggiunte a ogni riepilogo della riunione, come un formato preferito o aree di interesse.",
     "save": "Salva",
-    "saving": "Salvataggio…"
+    "saving": "Salvataggio…",
+    "diarizationLabel": "Etichette dei partecipanti",
+    "diarizationHint": "Etichetta separatamente ogni partecipante (Loro 1, Loro 2, ...) tramite rilevamento dei parlanti sul dispositivo.",
+    "diarizationNotReady": "I modelli dei parlanti mancano in questa versione.",
+    "diarizationUnavailable": "Le etichette dei partecipanti non sono disponibili in questa versione."
   }
 }

@@ -14,6 +14,11 @@ import { z } from "zod";
 import { getDb } from "../lib/db.js";
 import { isDictationActive } from "../lib/dictation-activity.js";
 import {
+  getMeetingDiarizationEnabledSetting,
+  probeDiarizationModels,
+  runDiarizationPass,
+} from "../lib/meetings/diarize.js";
+import {
   formatTranscriptMarkdown,
   type MergedSegment,
   mergeTranscript,
@@ -171,6 +176,10 @@ interface SegmentRow {
   end_ms: number;
   text: string | null;
   status: string | null;
+  /** Diarization label (system channel only, spec §6). Optional: the
+   * retry-failed handler's SELECT doesn't fetch it, and mic rows never have
+   * one. */
+  speaker_label?: string | null;
 }
 
 /** Rebuild the merged Me/Them transcript from persisted segments + sync.json. */
@@ -180,8 +189,8 @@ function loadMergedTranscript(
 ): MergedSegment[] {
   const rows = getDb()
     .prepare(
-      `SELECT source, start_ms, end_ms, text, status FROM meeting_segments
-       WHERE meeting_id = ? ORDER BY idx`,
+      `SELECT source, start_ms, end_ms, text, status, speaker_label
+       FROM meeting_segments WHERE meeting_id = ? ORDER BY idx`,
     )
     .all(meetingId) as unknown as SegmentRow[];
   const channel = (source: "mic" | "system"): TranscriptSegment[] =>
@@ -191,6 +200,7 @@ function loadMergedTranscript(
         startMs: r.start_ms,
         endMs: r.end_ms,
         text: r.text as string,
+        ...(r.speaker_label ? { speakerLabel: r.speaker_label } : {}),
       }));
   const sync = audioDir ? loadSyncData(audioDir) : undefined;
   return mergeTranscript(channel("mic"), channel("system"), sync);
@@ -276,6 +286,22 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       micSegments,
       systemSegments,
     });
+
+    // Diarization Phase 1 (specs/meeting-diarization.md §9): after
+    // transcription resolves, before status flips to 'transcribed' and
+    // before writeTranscriptMarkdown, so the markdown export always renders
+    // final labels, never an intermediate undiarized state. Fails closed —
+    // every failure inside runDiarizationPass degrades in-function; this
+    // .catch is defense-in-depth for anything unanticipated, never the
+    // primary error path, and never fails the transcribe job itself.
+    if (getMeetingDiarizationEnabledSetting()) {
+      await runDiarizationPass(id, audioDir).catch((err) => {
+        log.warn(
+          `meeting ${id}: diarization failed, falling back to "Them": ${String(err)}`,
+        );
+      });
+    }
+
     const failed = results.filter((r) => r.status === "failed").length;
     db.prepare("UPDATE meetings SET status = ?, error = ? WHERE id = ?").run(
       "transcribed",
@@ -354,6 +380,16 @@ const meetings = new Hono()
       .prepare("SELECT * FROM meetings WHERE status = 'recording'")
       .all() as unknown as MeetingRow[];
     return c.json({ items: rows });
+  })
+  // Diarization model readiness (spec §8) — global, not per-meeting.
+  // Registered before "/:id" for the same reason as "/orphans" above: a
+  // literal segment must be matched before the ":id" param swallows it.
+  // Models are pre-bundled (spec §4, amended 2026-08-25) — a plain probe,
+  // no download orchestration or progress polling left here.
+  .get("/diarization/status", async (c) => {
+    const enabled = getMeetingDiarizationEnabledSetting();
+    const { status, error } = await probeDiarizationModels();
+    return c.json({ enabled, status, error });
   })
   .post("/start", zValidator("json", startSchema), (c) => {
     const { id, title, audio_dir, started_at } = c.req.valid("json");

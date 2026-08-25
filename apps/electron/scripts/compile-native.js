@@ -12,7 +12,15 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+} from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +28,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const NATIVE_DIR = join(ROOT, "native");
 const BIN_DIR = join(ROOT, "resources", "bin");
+// Pre-bundled offline diarization models (specs/meeting-diarization.md §4,
+// amended 2026-08-25). Not platform/arch-scoped like BIN_DIR — the .mlmodelc
+// bundles are the same ~22MB set regardless of host arch, and diarization is
+// macOS-only already, so there's nothing to key this directory on.
+const DIARIZATION_MODELS_DIR = join(
+  ROOT,
+  "resources",
+  "models",
+  "speaker-diarization",
+);
 
 const platform = process.platform;
 const arch = process.arch;
@@ -128,6 +146,177 @@ function compileMacOS() {
       );
     }
   }
+
+  compileFluidAudioDiarizer();
+  fetchDiarizationModels();
+}
+
+/**
+ * fluidaudio-diarize (specs/meeting-diarization.md §3) is a SwiftPM package
+ * depending on FluidAudio, not a single .swift file — swiftc invoked
+ * directly (the `binaries` loop above) has no way to resolve or link a
+ * package dependency. Built as its own branch via `swift build`.
+ *
+ * Deliberately NOT recorded in the shared `failures` array the way the
+ * `binaries` loop above records its failures — see the bottom of this file:
+ * `if (failures.length > 0 && process.env.CI) process.exit(1)` turns any
+ * `failures` entry into a hard CI build blocker. That's correct for the
+ * other seven binaries (core functionality: hotkeys, paste, audio capture),
+ * but wrong for this one specifically — it's an opt-in, default-off feature,
+ * and building it needs strictly more than the others (a Swift 6 toolchain,
+ * plus network access at build time to fetch the FluidAudio dependency
+ * graph). A CI runner that can't satisfy that shouldn't fail the whole
+ * `build:mac` over a feature nobody has enabled yet. Warn-only instead, so a
+ * missing helper degrades exactly like every other diarization failure mode
+ * (spec §10): the flag stays effectively unusable, existing Meeting Mode is
+ * unaffected. (Deviation from the spec's own text, which claims this
+ * pattern "never aborts the rest of compile:native" — true for the
+ * in-process loop, not true for the CI exit gate once pushed into
+ * `failures`; see specs/meeting-diarization.md deviations.)
+ */
+function compileFluidAudioDiarizer() {
+  console.log("\n[compile:native] Building fluidaudio-diarize (SwiftPM)...\n");
+  const pkgDir = join(NATIVE_DIR, "fluidaudio-diarize");
+  const swiftArch = arch === "arm64" ? "arm64" : "x86_64";
+  const ok = runShell(
+    `swift build -c release --arch ${swiftArch} --package-path "${pkgDir}"`,
+  );
+  if (!ok) {
+    console.warn(
+      "  WARNING: diarization helper failed to build. " +
+        "Diarization will be unavailable; existing Meeting Mode is unaffected.",
+    );
+    return;
+  }
+  const builtBin = join(pkgDir, ".build", "release", "fluidaudio-diarize");
+  const out = join(outputDir, "fluidaudio-diarize");
+  ensureDir(outputDir);
+  copyFileSync(builtBin, out);
+  chmodSync(out, 0o755);
+  console.log(`  -> ${out}`);
+}
+
+// ---------------------------------------------------------------------------
+// Diarization model bundling (specs/meeting-diarization.md §4, amended
+// 2026-08-25 — pre-bundled models replacing the earlier download-on-first-
+// enable design).
+//
+// Five artifacts, ~22MB total: four .mlmodelc bundles (Segmentation, FBank,
+// Embedding, PldaRho) + plda-parameters.json, from HuggingFace repo
+// FluidInference/speaker-diarization-coreml — the exact set
+// OfflineDiarizerModels.load(from:) looks for under
+// `<dir>/speaker-diarization/`. Idempotent (skips when already present) and
+// sourced from a local FluidAudio cache when one exists on this machine
+// (fast path for dev checkouts that have already run the offline diarizer
+// once), else fetched from HuggingFace.
+// ---------------------------------------------------------------------------
+
+const DIARIZATION_MLMODELC_NAMES = [
+  "Segmentation",
+  "FBank",
+  "Embedding",
+  "PldaRho",
+];
+// Every .mlmodelc bundle FluidAudio ships for this repo has this exact file
+// set (verified against a real downloaded cache) — a compiled CoreML model
+// directory, not a single file, hence one URL/copy per relative path rather
+// than per bundle.
+const MLMODELC_RELATIVE_FILES = [
+  "metadata.json",
+  "model.mil",
+  "coremldata.bin",
+  "weights/weight.bin",
+  "analytics/coremldata.bin",
+];
+const DIARIZATION_HF_BASE_URL =
+  "https://huggingface.co/FluidInference/speaker-diarization-coreml/resolve/main";
+const FLUIDAUDIO_CACHE_DIARIZATION_DIR = join(
+  homedir(),
+  "Library",
+  "Application Support",
+  "FluidAudio",
+  "Models",
+  "speaker-diarization",
+);
+
+/** True when every required artifact is present at `dir` (cheap existence check, not a full validity check — matches the level of confidence `--probe` gives at runtime). */
+function diarizationModelsPresent(dir) {
+  if (!existsSync(join(dir, "plda-parameters.json"))) return false;
+  return DIARIZATION_MLMODELC_NAMES.every((name) =>
+    existsSync(join(dir, `${name}.mlmodelc`, "coremldata.bin")),
+  );
+}
+
+function fetchDiarizationModels() {
+  console.log(
+    "\n[compile:native] Fetching diarization models (speaker-diarization)...\n",
+  );
+
+  if (diarizationModelsPresent(DIARIZATION_MODELS_DIR)) {
+    console.log(`  Already present at ${DIARIZATION_MODELS_DIR}, skipping.`);
+    return;
+  }
+
+  if (diarizationModelsPresent(FLUIDAUDIO_CACHE_DIARIZATION_DIR)) {
+    console.log(
+      `  Copying from local FluidAudio cache: ${FLUIDAUDIO_CACHE_DIARIZATION_DIR}`,
+    );
+    try {
+      ensureDir(dirname(DIARIZATION_MODELS_DIR));
+      cpSync(FLUIDAUDIO_CACHE_DIARIZATION_DIR, DIARIZATION_MODELS_DIR, {
+        recursive: true,
+      });
+      // The cache also holds config.json/xvector-transform.json, used only
+      // by the streaming DiarizerManager (not OfflineDiarizerManager, which
+      // is all this CLI helper uses) — trim the copy to the five artifacts
+      // the app actually ships.
+      for (const extra of ["config.json", "xvector-transform.json"]) {
+        const p = join(DIARIZATION_MODELS_DIR, extra);
+        if (existsSync(p)) rmSync(p);
+      }
+      console.log(`  -> ${DIARIZATION_MODELS_DIR}`);
+      return;
+    } catch (err) {
+      console.warn(
+        `  WARNING: failed to copy from local cache: ${err.message}`,
+      );
+      rmSync(DIARIZATION_MODELS_DIR, { recursive: true, force: true });
+    }
+  }
+
+  console.log(`  Downloading from ${DIARIZATION_HF_BASE_URL} ...`);
+  ensureDir(DIARIZATION_MODELS_DIR);
+  let ok = true;
+  for (const name of DIARIZATION_MLMODELC_NAMES) {
+    for (const rel of MLMODELC_RELATIVE_FILES) {
+      const url = `${DIARIZATION_HF_BASE_URL}/${name}.mlmodelc/${rel}`;
+      const dest = join(DIARIZATION_MODELS_DIR, `${name}.mlmodelc`, rel);
+      ensureDir(dirname(dest));
+      if (!run("curl", ["-fsSL", "-o", dest, url])) {
+        ok = false;
+      }
+    }
+  }
+  if (
+    !run("curl", [
+      "-fsSL",
+      "-o",
+      join(DIARIZATION_MODELS_DIR, "plda-parameters.json"),
+      `${DIARIZATION_HF_BASE_URL}/plda-parameters.json`,
+    ])
+  ) {
+    ok = false;
+  }
+
+  if (!ok || !diarizationModelsPresent(DIARIZATION_MODELS_DIR)) {
+    console.warn(
+      "  WARNING: failed to download diarization models. " +
+        "Diarization will be unavailable; existing Meeting Mode is unaffected.",
+    );
+    rmSync(DIARIZATION_MODELS_DIR, { recursive: true, force: true });
+    return;
+  }
+  console.log(`  -> ${DIARIZATION_MODELS_DIR}`);
 }
 
 function compileWindows() {

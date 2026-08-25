@@ -131,7 +131,10 @@
       "launchAtStartup": "システム起動時に起動",
       "launchAtStartupDesc": "コンピューターにログインした際、自動的に Openstyle を起動します。",
       "showOnLaunch": "起動時にダッシュボードを表示",
-      "showOnLaunchDesc": "Openstyle の起動時にダッシュボードウィンドウを開きます。"
+      "showOnLaunchDesc": "Openstyle の起動時にダッシュボードウィンドウを開きます。",
+      "acknowledgments": "謝辞",
+      "acknowledgmentsDesc": "Openstyle が使用するサードパーティ製モデルとライセンス。",
+      "acknowledgmentsText": "話者ダイアライゼーションモデルは、<fluidaudio>FluidInference/FluidAudio</fluidaudio>(Apache-2.0)経由で <pyannote>pyannote/speaker-diarization-community-1</pyannote>(CC-BY-4.0)から派生しています。"
     },
     "recording": {
       "hotkey": "ホットキー",
@@ -655,6 +658,7 @@
     "cancel": "キャンセル",
     "me": "自分",
     "them": "相手",
+    "themNumbered": "相手{{n}}",
     "actionFailed": "問題が発生しました。もう一度お試しください。",
     "audioProbeHintBody": "ミーティングを録音すると他の参加者の音声も記録されるため、必ず全員の同意を得てください。通話音声をきれいに保つためヘッドフォンの使用をおすすめします。システム音声が無音のままの場合は、「画面とシステムオーディオの収録」でOpenstyleにアクセスを許可してください。アプリの更新後にmacOSが再度許可を求めることがあります。",
     "audioProbeHintOpenSettings": "設定を開く",
@@ -664,6 +668,10 @@
     "summaryInstructionsLabel": "要約の指示",
     "summaryInstructionsHint": "希望のフォーマットや重点項目など、すべての会議の要約に追加される補足指示です。",
     "save": "保存",
-    "saving": "保存中…"
+    "saving": "保存中…",
+    "diarizationLabel": "話者ラベル",
+    "diarizationHint": "デバイス上の話者検出を使って、他の参加者ごとにラベル(相手1、相手2、...)を付けます。",
+    "diarizationNotReady": "このビルドには話者モデルが含まれていません。",
+    "diarizationUnavailable": "このビルドでは話者ラベルを利用できません。"
   }
 }

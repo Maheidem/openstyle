@@ -21,6 +21,7 @@ export const SETTINGS_KEYS = {
   llmCleanup: "llm_cleanup",
   localLlmApiKey: "local_llm_api_key",
   localLlmUrl: "local_llm_url",
+  meetingDiarizationEnabled: "meeting_diarization_enabled",
   meetingMaxDurationHours: "meeting_max_duration_hours",
   meetingRetentionDays: "meeting_retention_days",
   meetingSummaryContextBudget: "meeting_summary_context_budget",

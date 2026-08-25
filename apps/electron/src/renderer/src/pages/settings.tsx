@@ -73,7 +73,7 @@ import {
   type ControllerRenderProps,
   useForm,
 } from "react-hook-form";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
@@ -810,12 +810,43 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.application.advancedMode")}
                 desc={t("settings.application.advancedModeDesc")}
-                last
               >
                 <Switch
                   checked={advancedMode}
                   onCheckedChange={handleAdvancedModeToggle}
                 />
+              </Row>
+              <Row
+                label={t("settings.application.acknowledgments")}
+                desc={t("settings.application.acknowledgmentsDesc")}
+                stacked
+                last
+              >
+                <p className="text-muted-foreground text-[12.5px] leading-[1.6]">
+                  <Trans
+                    i18nKey="settings.application.acknowledgmentsText"
+                    components={{
+                      pyannote: (
+                        // biome-ignore lint/a11y/useAnchorContent: Trans injects the link text from the translated string at runtime, per the acknowledgmentsText key.
+                        <a
+                          href="https://huggingface.co/pyannote/speaker-diarization-community-1"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary underline underline-offset-2"
+                        />
+                      ),
+                      fluidaudio: (
+                        // biome-ignore lint/a11y/useAnchorContent: Trans injects the link text from the translated string at runtime, per the acknowledgmentsText key.
+                        <a
+                          href="https://github.com/FluidInference/FluidAudio"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary underline underline-offset-2"
+                        />
+                      ),
+                    }}
+                  />
+                </p>
               </Row>
             </SettingsPanel>
           )}

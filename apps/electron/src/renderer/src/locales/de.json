@@ -131,7 +131,10 @@
       "launchAtStartup": "Beim Start ausführen",
       "launchAtStartupDesc": "Openstyle automatisch starten, wenn Sie sich an Ihrem Computer anmelden.",
       "showOnLaunch": "Dashboard beim Start anzeigen",
-      "showOnLaunchDesc": "Das Dashboard-Fenster öffnen, wenn Openstyle startet."
+      "showOnLaunchDesc": "Das Dashboard-Fenster öffnen, wenn Openstyle startet.",
+      "acknowledgments": "Danksagungen",
+      "acknowledgmentsDesc": "Modelle und Lizenzen von Drittanbietern, die Openstyle verwendet.",
+      "acknowledgmentsText": "Die Sprechererkennungsmodelle (Speaker Diarization) leiten sich von <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) über <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0) ab."
     },
     "recording": {
       "hotkey": "Tastenkombination",
@@ -655,6 +658,7 @@
     "cancel": "Abbrechen",
     "me": "Ich",
     "them": "Andere",
+    "themNumbered": "Andere {{n}}",
     "actionFailed": "Etwas ist schiefgelaufen. Versuch es erneut.",
     "audioProbeHintBody": "Beim Aufnehmen eines Meetings wird auch der Ton der anderen Teilnehmer erfasst, hol also deren Einverständnis ein. Kopfhörer werden empfohlen, damit der Anrufton sauber bleibt. Bleibt der Systemton stumm, erlaube Openstyle den Zugriff unter Bildschirm- & Systemaudioaufnahme; nach App-Updates fragt macOS eventuell erneut.",
     "audioProbeHintOpenSettings": "Einstellungen öffnen",
@@ -664,6 +668,10 @@
     "summaryInstructionsLabel": "Zusammenfassungsanweisungen",
     "summaryInstructionsHint": "Zusätzliche Hinweise, die jeder Besprechungszusammenfassung hinzugefügt werden, z. B. ein bevorzugtes Format oder Schwerpunkte.",
     "save": "Speichern",
-    "saving": "Speichern…"
+    "saving": "Speichern…",
+    "diarizationLabel": "Sprecherkennzeichnung",
+    "diarizationHint": "Kennzeichnet andere Teilnehmer einzeln (Andere 1, Andere 2, ...) per Spracherkennung auf dem Gerät.",
+    "diarizationNotReady": "Die Sprechermodelle fehlen in dieser Version.",
+    "diarizationUnavailable": "Sprecherkennzeichnung ist in dieser Version nicht verfügbar."
   }
 }

@@ -15,6 +15,16 @@ export interface TranscriptSegment {
   startMs: number;
   endMs: number;
   text: string;
+  /**
+   * Diarization label (Meeting Diarization Phase 1, specs/meeting-
+   * diarization.md §6) — system channel only. A locale-neutral numeral as
+   * text ("1", "2", ...), the diarizer-assigned first-appearance index, not
+   * the formatted "Them N" string (i18n: renderer formats via
+   * `meetings.themNumbered`). Undefined means undiarized (flag off, or this
+   * segment fell through to NULL) — renders as plain "Them". Never set for
+   * mic segments: `Speaker` stays the channel, not the person.
+   */
+  speakerLabel?: string;
 }
 
 export interface MergedSegment {
@@ -22,6 +32,8 @@ export interface MergedSegment {
   startMs: number;
   endMs: number;
   text: string;
+  /** Carried through unchanged from the matching `TranscriptSegment`. */
+  speakerLabel?: string;
 }
 
 /**
@@ -295,8 +307,17 @@ function formatClockMs(ms: number): string {
  * directory is self-contained without requiring the app or DB.
  */
 export function formatTranscriptMarkdown(segments: MergedSegment[]): string {
-  const lines = segments.map(
-    (s) => `**[${formatClockMs(s.startMs)}] ${s.speaker}:** ${s.text}`,
-  );
+  const lines = segments.map((s) => {
+    // Diarization label, English-only regardless of app locale — consistent
+    // with `s.speaker` itself, which is already the unlocalized literal
+    // "Me"/"Them" and never run through `t()`: the export is a plain-text
+    // artifact independent of the UI's locale (specs/meeting-diarization.md
+    // §9).
+    const label =
+      s.speaker === "Them" && s.speakerLabel
+        ? `Them ${s.speakerLabel}`
+        : s.speaker;
+    return `**[${formatClockMs(s.startMs)}] ${label}:** ${s.text}`;
+  });
   return `# Transcript\n\n${lines.length > 0 ? lines.join("\n\n") : "_No speech was detected in this recording._"}\n`;
 }

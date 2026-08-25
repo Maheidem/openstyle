@@ -20,6 +20,7 @@ import {
   PopoverTrigger,
 } from "@renderer/components/ui/popover";
 import { Progress } from "@renderer/components/ui/progress";
+import { Switch } from "@renderer/components/ui/switch";
 import {
   Tabs,
   TabsContent,
@@ -46,6 +47,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -86,6 +88,34 @@ interface TranscriptSegment {
   startMs: number;
   endMs: number;
   text: string;
+  /** Diarization label (spec §6) — raw numeral string, e.g. "2". Undefined
+   * when undiarized (flag off, or this segment fell through to NULL). */
+  speakerLabel?: string;
+}
+
+interface DiarizationStatusResponse {
+  enabled: boolean;
+  status: "ready" | "not-ready" | "unavailable" | "error";
+  error?: string;
+}
+
+// Distinct colors per "Them N" — cycles through the app's theme-aware chart
+// palette (globals.css --chart-1..5, already tuned for light/dark) so every
+// speaker gets a stable, legible color without a new bespoke palette. "Me"
+// keeps its existing text-primary treatment untouched.
+const SPEAKER_LABEL_COLORS = [
+  "text-chart-1",
+  "text-chart-2",
+  "text-chart-3",
+  "text-chart-4",
+  "text-chart-5",
+] as const;
+
+function speakerLabelColorClass(label: string): string {
+  const n = Number.parseInt(label, 10);
+  const idx =
+    Number.isFinite(n) && n > 0 ? (n - 1) % SPEAKER_LABEL_COLORS.length : 0;
+  return SPEAKER_LABEL_COLORS[idx];
 }
 
 type RecorderStatus = "idle" | "recording" | "finalizing";
@@ -592,6 +622,92 @@ function SummaryInstructionsPopover(): React.JSX.Element {
   );
 }
 
+/**
+ * Global (not per-meeting) diarization toggle (spec §8, simplified
+ * 2026-08-25). Models are pre-bundled with the app (spec §4) — there's no
+ * download to trigger any more, so the toggle just persists the flag. A
+ * cheap probe (`GET /diarization/status`) still runs on open so the popover
+ * can tell the user when a build/packaging gap makes the feature unusable,
+ * rather than the toggle silently doing nothing.
+ */
+function DiarizationSettingsPopover(): React.JSX.Element {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<DiarizationStatusResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh =
+    useCallback(async (): Promise<DiarizationStatusResponse | null> => {
+      const res = await getClient().api.meetings.diarization.status.$get();
+      if (!res.ok) return null;
+      const body = (await res.json()) as DiarizationStatusResponse;
+      setState(body);
+      return body;
+    }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    void refresh();
+  }, [open, refresh]);
+
+  const handleToggle = useCallback(async (next: boolean) => {
+    setBusy(true);
+    try {
+      await getClient().api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.meetingDiarizationEnabled },
+        json: { value: String(next) },
+      });
+      setState((s) => (s ? { ...s, enabled: next } : s));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const checked = Boolean(state?.enabled);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label={t("meetings.diarizationLabel")}
+          title={t("meetings.diarizationLabel")}
+        >
+          <Users />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-foreground m-0 text-[12.5px] font-medium">
+              {t("meetings.diarizationLabel")}
+            </p>
+            <p className="text-muted-foreground m-0 text-[11px] leading-[1.5]">
+              {t("meetings.diarizationHint")}
+            </p>
+          </div>
+          <Switch
+            checked={checked}
+            disabled={busy}
+            onCheckedChange={(v) => void handleToggle(v)}
+          />
+        </div>
+        {(state?.status === "unavailable" || state?.status === "error") && (
+          <p className="text-muted-foreground mt-2 text-[10.5px]">
+            {t("meetings.diarizationUnavailable")}
+          </p>
+        )}
+        {state?.status === "not-ready" && (
+          <p className="text-destructive mt-2 text-[10.5px]">
+            {t("meetings.diarizationNotReady")}
+          </p>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function MeetingDetailView({
   id,
   onBack,
@@ -707,10 +823,15 @@ function MeetingDetailView({
     !transcribing && meeting.status !== "recording" && busy === null;
   const failedCount = meeting.segment_counts.failed;
   const transcriptText = (transcript ?? [])
-    .map(
-      (s) =>
-        `${s.speaker === "Me" ? t("meetings.me") : t("meetings.them")}: ${s.text}`,
-    )
+    .map((s) => {
+      const label =
+        s.speaker === "Me"
+          ? t("meetings.me")
+          : s.speakerLabel
+            ? t("meetings.themNumbered", { n: s.speakerLabel })
+            : t("meetings.them");
+      return `${label}: ${s.text}`;
+    })
     .join("\n");
 
   return (
@@ -854,12 +975,16 @@ function MeetingDetailView({
                         "mono w-12 shrink-0 pt-0.5 text-right text-[9px] uppercase tracking-[0.12em]",
                         seg.speaker === "Me"
                           ? "text-primary"
-                          : "text-muted-foreground",
+                          : seg.speakerLabel
+                            ? speakerLabelColorClass(seg.speakerLabel)
+                            : "text-muted-foreground",
                       )}
                     >
                       {seg.speaker === "Me"
                         ? t("meetings.me")
-                        : t("meetings.them")}
+                        : seg.speakerLabel
+                          ? t("meetings.themNumbered", { n: seg.speakerLabel })
+                          : t("meetings.them")}
                     </span>
                     <p className="text-foreground m-0 flex-1 text-[13.5px] leading-[1.55]">
                       {seg.text}
@@ -993,12 +1118,17 @@ export default function MeetingsPage(): React.JSX.Element {
             />
           ) : (
             <>
-              <h1 className="serif text-foreground m-0 mb-2 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-                <span className="serif-italic text-primary">
-                  {t("meetings.titleAccent")}
-                </span>
-                <span>.</span>
-              </h1>
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+                  <span className="serif-italic text-primary">
+                    {t("meetings.titleAccent")}
+                  </span>
+                  <span>.</span>
+                </h1>
+                <div className="pt-2">
+                  <DiarizationSettingsPopover />
+                </div>
+              </div>
               <p className="text-muted-foreground mb-6 max-w-[580px] text-[14px] leading-[1.5]">
                 {t("meetings.subtitle")}
               </p>

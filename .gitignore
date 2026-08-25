@@ -46,6 +46,15 @@ apps/electron/tsconfig.node.tsbuildinfo
 # Compiled native binaries (built locally and in CI)
 apps/electron/resources/bin/
 
+# SwiftPM build artifacts for the fluidaudio-diarize helper (dependency
+# checkouts + compiled output — resources/bin/ above is the packaged copy).
+apps/electron/native/fluidaudio-diarize/.build/
+
+# Pre-bundled offline diarization models, fetched by compile-native.js
+# (specs/meeting-diarization.md §4) — ~22MB, same idempotent-fetch treatment
+# as resources/bin/ above, not committed.
+apps/electron/resources/models/
+
 # Local MLX ASR worker build artifacts
 /.venv-mlx-asr/
 /build/mlx_asr_worker/

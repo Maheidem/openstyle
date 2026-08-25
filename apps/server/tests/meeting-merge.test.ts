@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterConsecutiveRepeats,
+  formatTranscriptMarkdown,
   isHallucination,
   mergeTranscript,
   type SyncData,
@@ -8,8 +9,13 @@ import {
   textSimilarity,
 } from "../src/lib/meetings/merge.js";
 
-function seg(startMs: number, endMs: number, text: string): TranscriptSegment {
-  return { startMs, endMs, text };
+function seg(
+  startMs: number,
+  endMs: number,
+  text: string,
+  speakerLabel?: string,
+): TranscriptSegment {
+  return { startMs, endMs, text, ...(speakerLabel ? { speakerLabel } : {}) };
 }
 
 describe("mergeTranscript", () => {
@@ -168,6 +174,54 @@ describe("mergeTranscript", () => {
     const mic = [seg(0, 1000, "no sync info available here")];
     const merged = mergeTranscript(mic, [], sync);
     expect(merged[0].startMs).toBe(0);
+  });
+
+  it("carries a diarization speakerLabel through unchanged (system channel)", () => {
+    const system = [seg(0, 1000, "the second point is this", "2")];
+    const merged = mergeTranscript([], system);
+    expect(merged).toEqual([
+      {
+        speaker: "Them",
+        startMs: 0,
+        endMs: 1000,
+        text: "the second point is this",
+        speakerLabel: "2",
+      },
+    ]);
+  });
+
+  it("leaves speakerLabel undefined for an undiarized segment and for mic segments", () => {
+    const mic = [seg(0, 1000, "hello from the mic")];
+    const system = [seg(2000, 3000, "undiarized system speech")];
+    const merged = mergeTranscript(mic, system);
+    // Regression check (spec §12): the type extension in §6 must not touch
+    // existing bare "Me"/"Them" output.
+    expect(merged.map((m) => [m.speaker, m.text])).toEqual([
+      ["Me", "hello from the mic"],
+      ["Them", "undiarized system speech"],
+    ]);
+    expect(merged.every((m) => m.speakerLabel === undefined)).toBe(true);
+  });
+});
+
+describe("formatTranscriptMarkdown", () => {
+  it('renders "Them N" for a segment with a speakerLabel', () => {
+    const merged = mergeTranscript(
+      [],
+      [seg(0, 1000, "second speaker's point", "2")],
+    );
+    expect(formatTranscriptMarkdown(merged)).toContain(
+      "**[0:00] Them 2:** second speaker's point",
+    );
+  });
+
+  it('renders unmodified "Them"/"Me" for segments without a speakerLabel', () => {
+    const mic = [seg(0, 1000, "hello from the mic")];
+    const system = [seg(2000, 3000, "undiarized system speech")];
+    const merged = mergeTranscript(mic, system);
+    const md = formatTranscriptMarkdown(merged);
+    expect(md).toContain("**[0:00] Me:** hello from the mic");
+    expect(md).toContain("**[0:02] Them:** undiarized system speech");
   });
 });
 

@@ -58,6 +58,13 @@ mac:
         - "**/*"
     - from: "../../scripts/mlx_asr_server.py"
       to: "mlx-asr/mlx_asr_server.py"
+    # Pre-bundled offline diarization models (specs/meeting-diarization.md
+    # §4, amended 2026-08-25) — macOS-only, same as fluidaudio-diarize
+    # itself (top-level extraResources' resources/bin/${platform}-${arch}).
+    - from: "resources/models"
+      to: "models"
+      filter:
+        - "**/*"
 dmg:
   artifactName: ${productName}-${version}.${ext}
 linux:

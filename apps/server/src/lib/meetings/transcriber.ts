@@ -16,6 +16,7 @@
 import { closeSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
+import { waitForDictationIdle } from "../dictation-activity.js";
 import type {
   TranscribeResult,
   TranscriptionProvider,
@@ -253,8 +254,6 @@ export class MeetingTranscriber {
   private readonly deps: TranscriberDeps;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => number;
-  /** Wallclock of the most recent instant dictation was observed active. */
-  private lastDictationActiveAt = Number.NEGATIVE_INFINITY;
 
   constructor(deps: TranscriberDeps) {
     this.deps = deps;
@@ -369,7 +368,13 @@ export class MeetingTranscriber {
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (config.providerId === WHISPER_PROVIDER_ID) {
-        await this.waitForDictationIdle();
+        await waitForDictationIdle({
+          isDictationActive: this.deps.isDictationActive,
+          idleMs: this.deps.dictationIdleResumeMs,
+          pollMs: this.deps.dictationPollMs,
+          now: this.now,
+          sleep: this.sleep,
+        });
       }
       try {
         const audio = sliceWav(fd, info, seg.startMs, seg.endMs);
@@ -407,32 +412,6 @@ export class MeetingTranscriber {
       text: "",
       status: "failed",
     };
-  }
-
-  /**
-   * Dictation-priority lease for whisper-local: the single whisper server
-   * would be restarted out from under an active dictation if meeting chunks
-   * ran a different model concurrently. Yield while dictation is active and
-   * only resume after a sustained idle window (~15 s).
-   */
-  private async waitForDictationIdle(): Promise<void> {
-    const isActive = this.deps.isDictationActive;
-    if (!isActive) return;
-    const idleMs = this.deps.dictationIdleResumeMs ?? 15_000;
-    const pollMs = this.deps.dictationPollMs ?? 500;
-
-    for (;;) {
-      if (isActive()) {
-        this.lastDictationActiveAt = this.now();
-        await this.sleep(pollMs);
-        continue;
-      }
-      // Never observed active: no need to wait out the idle window.
-      if (this.lastDictationActiveAt === Number.NEGATIVE_INFINITY) return;
-      const idleFor = this.now() - this.lastDictationActiveAt;
-      if (idleFor >= idleMs) return;
-      await this.sleep(Math.min(pollMs, idleMs - idleFor));
-    }
   }
 }
 

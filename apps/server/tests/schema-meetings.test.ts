@@ -23,7 +23,16 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(29);
+    expect(version.version).toBe(30);
+
+    const columns = (
+      db.prepare("PRAGMA table_info(meeting_segments)").all() as {
+        name: string;
+        notnull: number;
+      }[]
+    ).find((c) => c.name === "speaker_label");
+    expect(columns).toBeDefined();
+    expect(columns?.notnull).toBe(0);
 
     const indexes = (
       db
@@ -51,7 +60,67 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(29);
+    expect(version.version).toBe(30);
+  });
+
+  it("migrates a v29 database (with existing segment rows) to v30 with a nullable speaker_label", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE schema_version (
+        id INTEGER PRIMARY KEY CHECK(id = 1),
+        version INTEGER NOT NULL
+      )
+    `);
+    db.exec("INSERT INTO schema_version (id, version) VALUES (1, 29)");
+    db.exec(`
+      CREATE TABLE meetings (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        started_at INTEGER,
+        ended_at INTEGER,
+        duration_ms INTEGER,
+        status TEXT NOT NULL CHECK(status IN (
+          'recording','interrupted','recorded','transcribing',
+          'transcribed','summarized','failed'
+        )),
+        audio_dir TEXT,
+        stt_provider TEXT,
+        stt_model TEXT,
+        error TEXT,
+        created_at INTEGER
+      )
+    `);
+    db.exec(`
+      CREATE TABLE meeting_segments (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        source TEXT NOT NULL CHECK(source IN ('mic','system')),
+        idx INTEGER,
+        start_ms INTEGER,
+        end_ms INTEGER,
+        text TEXT,
+        status TEXT
+      )
+    `);
+    db.prepare(
+      "INSERT INTO meetings (id, status, created_at) VALUES ('m1', 'transcribed', ?)",
+    ).run(Date.now());
+    db.prepare(
+      `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+       VALUES ('s1', 'm1', 'system', 0, 0, 1000, 'hi there', 'ok')`,
+    ).run();
+
+    initSchema(db);
+
+    const version = db
+      .prepare("SELECT version FROM schema_version WHERE id = 1")
+      .get() as { version: number };
+    expect(version.version).toBe(30);
+
+    const row = db
+      .prepare("SELECT speaker_label FROM meeting_segments WHERE id = 's1'")
+      .get() as { speaker_label: string | null };
+    expect(row.speaker_label).toBeNull();
   });
 
   it("enforces the status CHECK and cascades segment/summary deletes", () => {

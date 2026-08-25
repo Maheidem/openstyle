@@ -131,7 +131,10 @@
       "launchAtStartup": "Iniciar al arranque",
       "launchAtStartupDesc": "Inicia Openstyle automáticamente cuando inicias sesión en tu ordenador.",
       "showOnLaunch": "Mostrar panel al iniciar",
-      "showOnLaunchDesc": "Abre la ventana del panel cuando Openstyle se inicia."
+      "showOnLaunchDesc": "Abre la ventana del panel cuando Openstyle se inicia.",
+      "acknowledgments": "Agradecimientos",
+      "acknowledgmentsDesc": "Modelos y licencias de terceros que utiliza Openstyle.",
+      "acknowledgmentsText": "Los modelos de diarización de hablantes derivan de <pyannote>pyannote/speaker-diarization-community-1</pyannote> (CC-BY-4.0) a través de <fluidaudio>FluidInference/FluidAudio</fluidaudio> (Apache-2.0)."
     },
     "recording": {
       "hotkey": "Atajo de teclado",
@@ -655,6 +658,7 @@
     "cancel": "Cancelar",
     "me": "Yo",
     "them": "Ellos",
+    "themNumbered": "Ellos {{n}}",
     "actionFailed": "Algo salió mal. Inténtalo de nuevo.",
     "audioProbeHintBody": "Al grabar una reunión capturas el audio de los demás participantes, así que asegúrate de que todos den su consentimiento. Se recomiendan auriculares para que el audio de la llamada quede limpio. Si el audio del sistema sigue en silencio, concede acceso a Openstyle en Grabación de pantalla y audio del sistema; tras una actualización, macOS puede volver a pedirlo.",
     "audioProbeHintOpenSettings": "Abrir Ajustes",
@@ -664,6 +668,10 @@
     "summaryInstructionsLabel": "Instrucciones de resumen",
     "summaryInstructionsHint": "Orientación adicional que se agrega a cada resumen de reunión, como un formato preferido o áreas de enfoque.",
     "save": "Guardar",
-    "saving": "Guardando…"
+    "saving": "Guardando…",
+    "diarizationLabel": "Etiquetas de interlocutor",
+    "diarizationHint": "Etiqueta a cada participante por separado (Ellos 1, Ellos 2, ...) mediante detección de interlocutores en el dispositivo.",
+    "diarizationNotReady": "Faltan los modelos de interlocutor en esta versión.",
+    "diarizationUnavailable": "Las etiquetas de interlocutor no están disponibles en esta versión."
   }
 }

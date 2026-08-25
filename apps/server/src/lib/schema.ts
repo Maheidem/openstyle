@@ -10,7 +10,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 29;
+const SCHEMA_VERSION = 30;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -805,6 +805,16 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     db.exec(
       "CREATE INDEX IF NOT EXISTS idx_meetings_created_at ON meetings(created_at)",
     );
+  }
+
+  if (currentVersion < 30) {
+    // Meeting diarization Phase 1 (specs/meeting-diarization.md): nullable
+    // per-segment speaker label for the system channel only. NULL means "not
+    // diarized" — renders as "Them", identical to pre-migration behavior.
+    // Never populated for source='mic'. Stores a locale-neutral numeral as
+    // text ("1", "2", ...), not the formatted "Them N" string — see §6 of
+    // the spec for why.
+    db.exec(`ALTER TABLE meeting_segments ADD COLUMN speaker_label TEXT`);
   }
 
   // Upsert schema version
