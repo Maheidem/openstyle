@@ -1,4 +1,10 @@
 # Changelog
+## 1.1.1
+
+### Documentation 📚
+
+- Add release skill and AGENTS.md pointer by @Maheidem in [2b468a5e](https://github.com/Maheidem/openstyle/commit/2b468a5eb312762bc569c8e3ef9a639100c422c2)
+
 ## 1.1.0
 
 ### New Features ✨
