@@ -1,4 +1,26 @@
 # Changelog
+## 1.1.0
+
+### New Features ✨
+
+- (meetings) Add Meeting Mode v1 — record, transcribe, and summarize meetings by @Maheidem in [cc865784](https://github.com/Maheidem/openstyle/commit/cc865784d1e026b0c747547339cfdabb38fec4a3)
+
+### Bug Fixes 🐛
+
+#### Updater
+
+- Route all update affordances to the releases page; correct auto-update copy by @Maheidem in [3fe7c6e5](https://github.com/Maheidem/openstyle/commit/3fe7c6e53c90e0c062d3e8b2b219c9ac650c64da)
+- Stop attempting ad-hoc-signed auto-installs; notify and open the releases page instead by @Maheidem in [faf6bcbd](https://github.com/Maheidem/openstyle/commit/faf6bcbdc8e19fdd661b1592b21940aabe2441b3)
+
+#### Other
+
+- (electron) Compile macos-system-audio with a 14.2 deployment target by @Maheidem in [3b8260f6](https://github.com/Maheidem/openstyle/commit/3b8260f6d4751eabad8348507b96bc4a1d0554fa)
+
+### Internal Changes 🔧
+
+- (electron) Drop dead devDependencies and nested workspace src from app.asar; point worker fallback at 1.0.1 by @Maheidem in [11d22a3b](https://github.com/Maheidem/openstyle/commit/11d22a3b70f931fa064dcfd267d5122850a0bac5)
+- (knip) Register meeting-capture renderer entry loaded via meeting-capture.html by @Maheidem in [6814ae59](https://github.com/Maheidem/openstyle/commit/6814ae59e6c7d82a8f92708d1ed2ed863bcf86eb)
+
 ## 1.0.1
 
 ### New Features ✨
