@@ -553,7 +553,6 @@
       "vocabulary": "Vocabulaire",
       "tone": "Ton",
       "models": "Modèles",
-      "plugins": "Extensions",
       "settings": "Réglages",
       "help": "Aide",
       "remix": "Remix",
@@ -658,6 +657,13 @@
     "them": "Eux",
     "actionFailed": "Une erreur est survenue. Réessayez.",
     "audioProbeHintBody": "En enregistrant une réunion, vous capturez aussi l'audio des autres participants : assurez-vous que tout le monde y consent. Un casque est recommandé pour garder un son d'appel propre. Si l'audio système reste silencieux, autorisez Openstyle dans Enregistrement de l'écran et de l'audio système ; macOS peut redemander après une mise à jour.",
-    "audioProbeHintOpenSettings": "Ouvrir les réglages"
+    "audioProbeHintOpenSettings": "Ouvrir les réglages",
+    "rename": "Renommer",
+    "renameLabel": "Titre de la réunion",
+    "revealInFinder": "Afficher dans le Finder",
+    "summaryInstructionsLabel": "Instructions de résumé",
+    "summaryInstructionsHint": "Consignes supplémentaires ajoutées à chaque résumé de réunion, comme un format préféré ou des axes de focus.",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…"
   }
 }

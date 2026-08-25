@@ -10,7 +10,6 @@ export * from "./models.js";
 export * from "./notifications.js";
 export * from "./omlx.js";
 export * from "./openai-stt.js";
-export * from "./plugins.js";
 export * from "./post-process.js";
 export * from "./query.js";
 export * from "./remix.js";

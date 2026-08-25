@@ -33,8 +33,8 @@ const DB_FILE = "freestyle.db";
  */
 const PRE_DB_FILES = [`${DB_FILE}-wal`, `${DB_FILE}-shm`, "settings.json"];
 
-/** Copied wholesale; installed plugins live here. */
-const PRE_DB_DIRS = ["plugins"];
+/** Copied wholesale. */
+const PRE_DB_DIRS: string[] = [];
 
 /**
  * Written once the migration has fully succeeded, and the real "already done"

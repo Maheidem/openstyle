@@ -5,7 +5,6 @@ import type {
 } from "../shared/audio-playback";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import type { PillCancelMode } from "../shared/pill-cancel";
-import type { PluginViewBounds } from "../shared/plugins";
 import type {
   RemixContextResult,
   RemixCopyResult,
@@ -58,6 +57,7 @@ declare global {
         "ok" | "silent" | "unsupported" | "error"
       >;
       openAudioCaptureSettings: () => void;
+      revealMeetingInFinder: (id: string) => Promise<boolean>;
       onMeetingLevel: (
         callback: (event: {
           meetingId: string;
@@ -210,8 +210,6 @@ declare global {
       onAudioLevel: (callback: (level: number) => void) => () => void;
       // Transcription completion broadcast
       sendTranscriptionDone: () => void;
-      sendRecordingCommitted: () => void;
-      sendRecordingCancelled: () => void;
       onTranscriptionDone: (callback: () => void) => () => void;
       // Fullscreen state
       onFullscreenChanged: (
@@ -221,19 +219,6 @@ declare global {
       onMicActivityChanged: (
         callback: (state: "active" | "inactive" | "unknown") => void,
       ) => () => void;
-      // Plugins — discovery/install/catalog/updates go renderer→server over
-      // the typed client; only the native view overlay stays on IPC.
-      showPluginView: (
-        slug: string,
-        pageId: string,
-        entry: string,
-        bounds: PluginViewBounds,
-        tokens?: Record<string, string>,
-      ) => Promise<boolean>;
-      setPluginViewBounds: (bounds: PluginViewBounds) => void;
-      hidePluginView: () => void;
-      invalidatePluginView: () => void;
-      onPluginNavigate: (callback: (to: string) => void) => () => void;
     };
   }
 }

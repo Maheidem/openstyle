@@ -1,4 +1,3 @@
-import type { HookApi } from "@openstyle/sdk";
 import {
   postProcess as cleanupWithModel,
   sanitizeTranscriptText,
@@ -30,13 +29,6 @@ import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import { getLlmProvider } from "./llm/registry.js";
-import {
-  OpenstyleEventType,
-  PipelineStage,
-  parseAppContext,
-  plugins,
-} from "./plugins/index.js";
-import { createHookApi } from "./plugins/pipeline.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
 const log = createAppLogger("post-process");
@@ -69,12 +61,6 @@ export interface PostProcessOptions {
   languages?: string[];
   /** Return handoff/llm timing breakdown for pipeline logs. */
   includeTimings?: boolean;
-  /**
-   * Reuse a {@link HookApi} built earlier in this dictation's pipeline (e.g. by
-   * `/api/transcribe`, so `api.control` carries state from `afterTranscribe`
-   * into `beforeCleanup`/`afterCleanup`). A fresh one is built when omitted.
-   */
-  api?: HookApi;
 }
 
 export function isLlmCleanupEnabled(): boolean {
@@ -142,48 +128,20 @@ export function prewarmPostProcess(): void {
 
 /**
  * Final text-rewrite stage that must run on every dictation regardless of
- * whether cleanup ran. Applies the user's dictionary replacements, then runs
- * the `afterCleanup` plugin hook (each plugin sees the previous plugin's
- * output).
+ * whether cleanup ran. Applies the user's dictionary replacements.
  *
  * Kept separate from {@link postProcess} so callers can apply it to text that
- * is already cleaned.
- *
- * Dictionary replacement is skipped for empty text (nothing to replace), but
- * the `afterCleanup` hook always fires so plugins observe a consistent
- * lifecycle. When `rawForCleanedEvent` is provided, a single `Cleaned` event is
- * emitted whenever the final text differs from it.
+ * is already cleaned. Dictionary replacement is skipped for empty text
+ * (nothing to replace).
  */
 export async function applyFinalRewrites(
   text: string,
-  appContext: string | null,
-  rawForCleanedEvent?: string,
-  api?: HookApi,
+  _appContext: string | null,
 ): Promise<string> {
-  const effectiveAppContext = resolveAppContextForCleanup(appContext);
-  const hookApi = api ?? (await createHookApi());
   let out = text;
   if (out.trim()) {
     out = applyDictionaryReplacements(out, getDb());
   }
-
-  out = (
-    await plugins().run(
-      "afterCleanup",
-      { appContext: parseAppContext(effectiveAppContext) },
-      { text: out },
-      hookApi,
-    )
-  ).text;
-
-  if (rawForCleanedEvent !== undefined && out !== rawForCleanedEvent) {
-    void plugins().emit({
-      type: OpenstyleEventType.Cleaned,
-      before: rawForCleanedEvent,
-      after: out,
-    });
-  }
-
   return out;
 }
 
@@ -198,9 +156,7 @@ export async function postProcess(
 ): Promise<PostProcessResult> {
   const normalizedRawText = sanitizeTranscriptText(rawText);
   const effectiveAppContext = resolveAppContextForCleanup(appContext);
-  const parsedContext = parseAppContext(effectiveAppContext);
   const defaults = getDefaultModels();
-  const api = options.api ?? (await createHookApi());
   let inputTokens = 0;
   let outputTokens = 0;
   let llmProvider: string | null = null;
@@ -233,12 +189,7 @@ export async function postProcess(
   const llmStart = Date.now();
   let handoffMs = 0;
 
-  // A plugin already consumed/aborted the pipeline in an earlier stage (e.g.
-  // `afterTranscribe`) — skip cleanup entirely rather than spending an LLM
-  // call on text the pipeline has already decided not to deliver.
-  if (api.control.state !== "running") {
-    cleanedText = normalizedRawText;
-  } else if (llm && isLlmCleanupEnabled()) {
+  if (llm && isLlmCleanupEnabled()) {
     // Resolved cleanup config for the cleanup-model path.
     const {
       intensity,
@@ -259,107 +210,63 @@ export async function postProcess(
         getCleanupAppAssignments(),
       );
 
-      // Plugin hook: let plugins override the inferred destination, append
-      // extra system-prompt fragments, replace the prompt outright, or skip
-      // cleanup entirely. Runs before prompt assembly so overrides actually
-      // feed into buildRewritePrompt.
-      const promptHook = await plugins().run(
-        "beforeCleanup",
-        {
-          text: normalizedRawText,
-          appContext: parsedContext,
-          destination: resolvedDestination,
+      const { system, prompt } = buildRewritePrompt(normalizedRawText, {
+        languages: options.languages,
+        intensity,
+        customPrompt,
+        destination: resolvedDestination,
+        personalTone,
+        personalSurface:
+          resolvedDestination === "personal" ? personalSurface : null,
+        workTone,
+        emailTone,
+        overallTone,
+      });
+
+      handoffMs = Date.now() - handoffStart;
+
+      const chatModel = await createChatModel(llm.provider, llm.model_id);
+      let cleanupError: unknown;
+      const result = await cleanupWithModel({
+        model: chatModel,
+        text: normalizedRawText,
+        system,
+        prompt,
+        // The empty/filler-only case is already handled above for the whole
+        // function (both the cloud and local-model branches), so this call
+        // is guaranteed non-empty text — disable the package's own internal
+        // check rather than relying on two independently-maintained filler
+        // regexes staying in sync.
+        skipEmptyText: false,
+        providerOptions: getLlmProvider(llm.provider)?.providerOptions?.(
+          llm.model_id,
+        ),
+        onError: (err) => {
+          cleanupError = err;
         },
-        { system: [] as string[], destination: resolvedDestination },
-        api,
-      );
+      });
 
-      if (promptHook.skip || api.control.state !== "running") {
-        // `skip` bypasses cleanup deliberately; a `consume()`/`abort()` in the
-        // `beforeCleanup` hook does too — the dictation is already terminal, so
-        // spending an LLM call on text the pipeline has decided not to deliver
-        // would be wasted (mirrors the cloud branch's early-out above and the
-        // documented consume/abort semantics of skipping every later stage).
-        cleanedText = normalizedRawText;
+      if (result.model) {
+        inputTokens = result.inputTokens;
+        outputTokens = result.outputTokens;
+        llmProvider = llm.provider;
+        // Record the configured model id (e.g. `groq/qwen/qwen3-32b`), not
+        // the AI SDK's prefix-stripped `result.model` (`qwen/qwen3-32b`), so
+        // the persisted history label stays consistent with pre-migration
+        // rows.
+        llmModel = llm.model_id;
+        cleanedText = result.cleaned;
       } else {
-        const { system, prompt } = buildRewritePrompt(normalizedRawText, {
-          languages: options.languages,
-          intensity,
-          customPrompt,
-          destination: promptHook.destination ?? resolvedDestination,
-          personalTone,
-          personalSurface:
-            (promptHook.destination ?? resolvedDestination) === "personal"
-              ? personalSurface
-              : null,
-          workTone,
-          emailTone,
-          overallTone,
-        });
-        const pluginSystem =
-          promptHook.system.length > 0
-            ? system + promptHook.system.map((s) => `\n\n${s}`).join("")
-            : system;
-        // A plugin can replace the assembled prompt outright while still
-        // contributing `system` fragments.
-        const finalPrompt = promptHook.prompt ?? prompt;
-
-        handoffMs = Date.now() - handoffStart;
-
-        const chatModel = await createChatModel(llm.provider, llm.model_id);
-        let cleanupError: unknown;
-        const result = await cleanupWithModel({
-          model: chatModel,
-          text: normalizedRawText,
-          system: pluginSystem,
-          prompt: finalPrompt,
-          // The empty/filler-only case is already handled above for the whole
-          // function (both the cloud and local-model branches), so this call
-          // is guaranteed non-empty text — disable the package's own internal
-          // check rather than relying on two independently-maintained filler
-          // regexes staying in sync.
-          skipEmptyText: false,
-          providerOptions: getLlmProvider(llm.provider)?.providerOptions?.(
-            llm.model_id,
-          ),
-          onError: (err) => {
-            cleanupError = err;
-          },
-        });
-
-        if (result.model) {
-          inputTokens = result.inputTokens;
-          outputTokens = result.outputTokens;
-          llmProvider = llm.provider;
-          // Record the configured model id (e.g. `groq/qwen/qwen3-32b`), not
-          // the AI SDK's prefix-stripped `result.model` (`qwen/qwen3-32b`), so
-          // the persisted history label stays consistent with pre-migration
-          // rows.
-          llmModel = llm.model_id;
-          cleanedText = result.cleaned;
-        } else {
-          const err = cleanupError;
-          void plugins().emit({
-            type: OpenstyleEventType.PipelineError,
-            stage: PipelineStage.Cleanup,
-            message: err instanceof Error ? err.message : String(err),
-          });
-          log.error(`LLM cleanup failed: ${err}`);
-          cleanedText = result.cleaned;
-        }
+        log.error(`LLM cleanup failed: ${cleanupError}`);
+        cleanedText = result.cleaned;
       }
     }
   }
 
   const llmMs = Date.now() - llmStart;
-  // Dictionary replacement + `afterCleanup` plugin hook + `Cleaned` event. Runs
-  // on the full raw -> final transformation for this dictation.
-  cleanedText = await applyFinalRewrites(
-    cleanedText,
-    appContext,
-    normalizedRawText,
-    api,
-  );
+  // Dictionary replacement. Runs on the full raw -> final transformation for
+  // this dictation.
+  cleanedText = await applyFinalRewrites(cleanedText, appContext);
 
   if (inputTokens > 0 || outputTokens > 0) {
     if (llmProvider && llmModel) {

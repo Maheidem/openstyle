@@ -74,7 +74,6 @@ describe("Settings", () => {
     const res = await req("/api/settings");
     expect(res.status).toBe(200);
     const data = await res.json();
-    // Nothing is seeded; plugins are installed explicitly via the catalog.
     expect(data).toEqual({});
   });
 
@@ -168,31 +167,6 @@ describe("Settings", () => {
     expect(personal.status).toBe(400);
     expect(work.status).toBe(400);
     expect(email.status).toBe(400);
-  });
-
-  it("PUT accepts a valid plugins setting", async () => {
-    const value = JSON.stringify(["openstyle-plugin-example"]);
-
-    const res = await json("/api/settings/plugins", { value }, "PUT");
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ key: "plugins", value });
-  });
-
-  it("PUT rejects malformed plugins settings", async () => {
-    const invalidJson = await json(
-      "/api/settings/plugins",
-      { value: "not json" },
-      "PUT",
-    );
-    expect(invalidJson.status).toBe(400);
-
-    const invalidShape = await json(
-      "/api/settings/plugins",
-      { value: JSON.stringify([["plugin", "not-options"]]) },
-      "PUT",
-    );
-    expect(invalidShape.status).toBe(400);
   });
 
   it("reads history pause setting", async () => {

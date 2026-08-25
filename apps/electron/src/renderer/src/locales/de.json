@@ -553,7 +553,6 @@
       "vocabulary": "Vokabular",
       "tone": "Ton",
       "models": "Modelle",
-      "plugins": "Plugins",
       "settings": "Einstellungen",
       "help": "Hilfe",
       "remix": "Remix",
@@ -658,6 +657,13 @@
     "them": "Andere",
     "actionFailed": "Etwas ist schiefgelaufen. Versuch es erneut.",
     "audioProbeHintBody": "Beim Aufnehmen eines Meetings wird auch der Ton der anderen Teilnehmer erfasst, hol also deren Einverständnis ein. Kopfhörer werden empfohlen, damit der Anrufton sauber bleibt. Bleibt der Systemton stumm, erlaube Openstyle den Zugriff unter Bildschirm- & Systemaudioaufnahme; nach App-Updates fragt macOS eventuell erneut.",
-    "audioProbeHintOpenSettings": "Einstellungen öffnen"
+    "audioProbeHintOpenSettings": "Einstellungen öffnen",
+    "rename": "Umbenennen",
+    "renameLabel": "Besprechungstitel",
+    "revealInFinder": "Im Finder anzeigen",
+    "summaryInstructionsLabel": "Zusammenfassungsanweisungen",
+    "summaryInstructionsHint": "Zusätzliche Hinweise, die jeder Besprechungszusammenfassung hinzugefügt werden, z. B. ein bevorzugtes Format oder Schwerpunkte.",
+    "save": "Speichern",
+    "saving": "Speichern…"
   }
 }

@@ -9,9 +9,9 @@ import {
   cleanupPersonalToneSchema,
   cleanupSamplingSchema,
   cleanupWorkToneSchema,
-  disabledPluginsSettingSchema,
   historyRetentionDaysSettingSchema,
   localLlmConfigSchema,
+  meetingSummaryInstructionsSchema,
   normalizeOmlxRoot,
   omlxBaseUrlSchema,
   omlxConfigSchema,
@@ -19,7 +19,6 @@ import {
   omlxTranscribeUrl,
   openaiSttBaseUrlSchema,
   openaiSttConfigSchema,
-  pluginsSettingSchema,
   proxyUrlSettingSchema,
   settingValueSchema,
 } from "@openstyle/validations";
@@ -167,6 +166,11 @@ const settings = new Hono()
       if (!parsed.success) {
         return c.json({ error: "Custom prompt is too long" }, 400);
       }
+    } else if (key === "meeting_summary_instructions") {
+      const parsed = meetingSummaryInstructionsSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json({ error: "Summary instructions are too long" }, 400);
+      }
     } else if (key === "cleanup_personal_tone") {
       const parsed = cleanupPersonalToneSchema.safeParse(body.value);
       if (!parsed.success) {
@@ -208,28 +212,6 @@ const settings = new Hono()
       const parsed = cleanupSamplingSchema.safeParse(parsedJson);
       if (!parsed.success) {
         return c.json({ error: "Invalid sampling setting" }, 400);
-      }
-    } else if (key === "plugins") {
-      let parsedJson: unknown;
-      try {
-        parsedJson = JSON.parse(body.value);
-      } catch {
-        return c.json({ error: "Invalid plugins setting" }, 400);
-      }
-      const parsed = pluginsSettingSchema.safeParse(parsedJson);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid plugins setting" }, 400);
-      }
-    } else if (key === "disabled_plugins") {
-      let parsedJson: unknown;
-      try {
-        parsedJson = JSON.parse(body.value);
-      } catch {
-        return c.json({ error: "Invalid disabled_plugins setting" }, 400);
-      }
-      const parsed = disabledPluginsSettingSchema.safeParse(parsedJson);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid disabled_plugins setting" }, 400);
       }
     } else if (key === "openai_stt_base_url") {
       const parsed = openaiSttBaseUrlSchema.safeParse(body.value);

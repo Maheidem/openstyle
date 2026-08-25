@@ -5,12 +5,7 @@ import { ErrorBoundary } from "@renderer/components/error-boundary";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import i18n, { initI18n } from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
-import { listPlugins } from "@renderer/lib/plugins-api";
-import {
-  createQueryClient,
-  queryKeys,
-  settingsQueryOptions,
-} from "@renderer/lib/query";
+import { createQueryClient, settingsQueryOptions } from "@renderer/lib/query";
 import {
   installGlobalErrorHandlers,
   reportError,
@@ -32,11 +27,6 @@ const OnboardingPage = lazy(() => import("@renderer/onboarding"));
 const DictionaryPage = lazy(() => import("@renderer/pages/dictionary"));
 const HelpPage = lazy(() => import("@renderer/pages/help"));
 const ModelsPage = lazy(() => import("@renderer/pages/models"));
-const PluginDetailPage = lazy(
-  () => import("@renderer/pages/plugins/plugin-detail"),
-);
-const PluginPage = lazy(() => import("@renderer/pages/plugins/plugin-page"));
-const PluginsPage = lazy(() => import("@renderer/pages/plugins/plugins"));
 const MeetingsPage = lazy(() => import("@renderer/pages/meetings"));
 const RemixPage = lazy(() => import("@renderer/pages/remix"));
 const SettingsPage = lazy(() => import("@renderer/pages/settings"));
@@ -68,14 +58,10 @@ installGlobalErrorHandlers();
 // content subtree (AppShell + pages) only mounts once auth resolves, so its
 // queries would otherwise wait for GET /api/auth/status before even starting —
 // serializing the whole panel behind auth. Prefetching here races the auth
-// check, so settings + plugins are cached or in-flight by the time the subtree
-// mounts. Failures are swallowed — the real useQuery hooks retry on mount.
+// check, so settings is cached or in-flight by the time the subtree mounts.
+// Failures are swallowed — the real useQuery hooks retry on mount.
 void initApiBase().then(() => {
   void queryClient.prefetchQuery(settingsQueryOptions());
-  void queryClient.prefetchQuery({
-    queryKey: queryKeys.plugins,
-    queryFn: () => listPlugins(),
-  });
 });
 
 // Opt into the translucent "glass" surfaces only on macOS, where the window is
@@ -140,15 +126,6 @@ function mount(): void {
                             element={<Navigate to="/today" replace />}
                           />
                           <Route path="/help" element={<HelpPage />} />
-                          <Route path="/plugins" element={<PluginsPage />} />
-                          <Route
-                            path="/plugins/:slug"
-                            element={<PluginDetailPage />}
-                          />
-                          <Route
-                            path="/plugins/:slug/:pageId"
-                            element={<PluginPage />}
-                          />
                           <Route
                             path="/settings/permissions"
                             element={<Navigate to="/settings" replace />}

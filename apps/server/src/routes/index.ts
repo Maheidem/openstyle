@@ -6,13 +6,10 @@ import apiKeys from "./api-keys.js";
 import configRoute from "./config.js";
 import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
-import eventsRoute from "./events.js";
 import history from "./history.js";
 import meetings from "./meetings.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
-import outputRoute from "./output.js";
-import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
 import remixRoute from "./remix/index.js";
 import settings from "./settings.js";
@@ -48,9 +45,6 @@ const apiRouter = new Hono()
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
   .route("/remix", remixRoute)
-  .route("/output", outputRoute)
-  .route("/events", eventsRoute)
-  .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);
 

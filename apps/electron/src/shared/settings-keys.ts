@@ -24,6 +24,7 @@ export const SETTINGS_KEYS = {
   meetingMaxDurationHours: "meeting_max_duration_hours",
   meetingRetentionDays: "meeting_retention_days",
   meetingSummaryContextBudget: "meeting_summary_context_budget",
+  meetingSummaryInstructions: "meeting_summary_instructions",
   micDeviceId: "mic_device_id",
   mlxAsrKeepAliveMinutes: "mlx_asr_keep_alive_minutes",
   networkCaCertPath: "network_ca_cert_path",

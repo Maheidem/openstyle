@@ -553,7 +553,6 @@
       "vocabulary": "ボキャブラリー",
       "tone": "トーン",
       "models": "モデル",
-      "plugins": "プラグイン",
       "settings": "設定",
       "help": "ヘルプ",
       "remix": "Remix",
@@ -658,6 +657,13 @@
     "them": "相手",
     "actionFailed": "問題が発生しました。もう一度お試しください。",
     "audioProbeHintBody": "ミーティングを録音すると他の参加者の音声も記録されるため、必ず全員の同意を得てください。通話音声をきれいに保つためヘッドフォンの使用をおすすめします。システム音声が無音のままの場合は、「画面とシステムオーディオの収録」でOpenstyleにアクセスを許可してください。アプリの更新後にmacOSが再度許可を求めることがあります。",
-    "audioProbeHintOpenSettings": "設定を開く"
+    "audioProbeHintOpenSettings": "設定を開く",
+    "rename": "名前を変更",
+    "renameLabel": "会議のタイトル",
+    "revealInFinder": "Finderで表示",
+    "summaryInstructionsLabel": "要約の指示",
+    "summaryInstructionsHint": "希望のフォーマットや重点項目など、すべての会議の要約に追加される補足指示です。",
+    "save": "保存",
+    "saving": "保存中…"
   }
 }

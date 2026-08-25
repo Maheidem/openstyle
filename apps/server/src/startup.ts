@@ -19,7 +19,7 @@
  *     fallback.
  */
 
-import { closeDb, disposeServerPlugins, startServer } from "./index.js";
+import { closeDb, startServer } from "./index.js";
 
 const port = process.env.PORT ? Number(process.env.PORT) : 4649;
 const host = process.env.HOST ?? "0.0.0.0";
@@ -68,7 +68,6 @@ if (!token) {
 
 function shutdown(signal: string): void {
   console.log(`Received ${signal}, shutting down...`);
-  void disposeServerPlugins().catch(() => {});
   server.close(() => {
     try {
       closeDb();

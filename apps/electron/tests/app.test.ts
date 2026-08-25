@@ -208,8 +208,8 @@ test("sidebar navigation is rendered", async () => {
   }
 
   await dashboardPage.waitForSelector("nav", { timeout: 10_000 });
-  // The exact link count varies by state (advanced mode reveals Models,
-  // plugins append) — assert the core set.
+  // The exact link count varies by state (advanced mode reveals Models) —
+  // assert the core set.
   const navLinks = await dashboardPage.locator("nav a").all();
   expect(navLinks.length).toBeGreaterThanOrEqual(6);
 });

@@ -663,47 +663,10 @@
       "vocabulary": "Vocabulary",
       "tone": "Tone",
       "models": "Models",
-      "plugins": "Plugins",
       "settings": "Settings",
       "help": "Help",
       "remix": "Remix",
       "meetings": "Meetings"
-    }
-  },
-  "plugins": {
-    "titleAccent": "Plugins",
-    "subtitle": "Install plugins to add features. Each runs in the dictation pipeline and can ship its own page.",
-    "tabs": {
-      "installed": "Installed",
-      "browse": "Browse"
-    },
-    "emptyTitle": "No plugins yet",
-    "empty": "Install a plugin to add features. Browse the available ones or add your own.",
-    "missingBadge": "Missing",
-    "missingHint": "Listed but not installed on disk. Uninstall to remove it.",
-    "more": "More options",
-    "install": "Install",
-    "installing": "Installing…",
-    "update": "Update",
-    "updating": "Updating…",
-    "updateAvailable": "v{{version}} available",
-    "uninstall": "Uninstall plugin",
-    "enablePlugin": "Enable plugin",
-    "disablePlugin": "Disable plugin",
-    "searchPlaceholder": "Search plugins…",
-    "noResults": "No plugins match your search.",
-    "detail": {
-      "title": "Details",
-      "back": "Plugins",
-      "notFound": "This plugin is no longer installed.",
-      "enabled": "Enabled",
-      "disabled": "Disabled",
-      "noReadme": "This plugin doesn't include a README."
-    },
-    "browse": {
-      "error": "Couldn't load the plugin catalog. Check your connection and try again.",
-      "emptyTitle": "No built-in plugins",
-      "empty": "This fork doesn't ship a built-in catalog. Any plugin can still be installed by its npm package name."
     }
   },
   "remixPage": {
@@ -804,6 +767,13 @@
     "them": "Them",
     "actionFailed": "Something went wrong. Try again.",
     "audioProbeHintBody": "By recording a meeting you capture other participants' audio, so make sure everyone consents. Headphones are recommended so the call audio stays clean. If system audio stays silent, grant Openstyle access under Screen & System Audio Recording; app updates may make macOS ask again.",
-    "audioProbeHintOpenSettings": "Open Settings"
+    "audioProbeHintOpenSettings": "Open Settings",
+    "rename": "Rename",
+    "renameLabel": "Meeting title",
+    "revealInFinder": "Show in Finder",
+    "summaryInstructionsLabel": "Summary instructions",
+    "summaryInstructionsHint": "Extra guidance appended to every meeting summary, such as a preferred format or focus areas.",
+    "save": "Save",
+    "saving": "Saving…"
   }
 }

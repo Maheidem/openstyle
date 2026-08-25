@@ -4,18 +4,8 @@ import { Badge } from "@renderer/components/ui/badge";
 import { UpdateBanner } from "@renderer/components/update-banner";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
-import { listPlugins } from "@renderer/lib/plugins-api";
-import {
-  configQueryOptions,
-  queryKeys,
-  settingsQueryOptions,
-} from "@renderer/lib/query";
+import { configQueryOptions, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import {
-  pluginDisplayName,
-  resolvePluginIcon,
-} from "@renderer/pages/plugins/helpers";
-import type { PluginInfo } from "@shared/plugins";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
@@ -26,7 +16,6 @@ import {
   CircleHelp,
   Cpu,
   FileText,
-  Puzzle,
   Settings,
   Wand2,
   Zap,
@@ -34,18 +23,16 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SiGithub } from "react-icons/si";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { NavLink, Outlet, useNavigate } from "react-router";
 
 type NavItem = {
   to: string;
   label: string;
   icon: LucideIcon;
-  /** Keyboard shortcut digit (e.g. "1" for Cmd+1). Omit for plugin items. */
+  /** Keyboard shortcut digit (e.g. "1" for Cmd+1). */
   shortcut?: string;
   /** Renders in the bottom group of the sidebar instead of the top. */
   footer?: boolean;
-  /** Whether this is a local dev plugin (shows a "Dev" badge). */
-  isDev?: boolean;
 };
 
 const STATIC_NAV: {
@@ -93,22 +80,16 @@ const STATIC_NAV: {
     labelKey: "shell.nav.models",
   },
   {
-    to: "/plugins",
-    icon: Puzzle,
-    shortcut: "6",
-    labelKey: "shell.nav.plugins",
-  },
-  {
     to: "/settings",
     icon: Settings,
-    shortcut: "7",
+    shortcut: "6",
     labelKey: "shell.nav.settings",
     footer: true,
   },
   {
     to: "/help",
     icon: CircleHelp,
-    shortcut: "8",
+    shortcut: "7",
     labelKey: "shell.nav.help",
     footer: true,
   },
@@ -126,7 +107,7 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === "/settings" || item.to === "/plugins"}
+            end={item.to === "/settings"}
             className="block"
           >
             {({ isActive }) => (
@@ -145,14 +126,6 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
                   }
                 />
                 <span className="flex-1 truncate">{item.label}</span>
-                {item.isDev ? (
-                  <Badge
-                    variant="outline"
-                    className="mono h-4 shrink-0 border-yellow-500/30 bg-yellow-500/15 px-1 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
-                  >
-                    dev
-                  </Badge>
-                ) : null}
                 {item.shortcut ? (
                   <span
                     className={cn(
@@ -175,43 +148,10 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
   );
 }
 
-/** Derive sidebar nav items from installed plugins that have UI pages. */
-function usePluginNavItems(plugins: PluginInfo[]): NavItem[] {
-  return useMemo(() => {
-    const items: NavItem[] = [];
-    for (const plugin of plugins) {
-      if (!plugin.enabled || plugin.missing) continue;
-      for (const page of plugin.pages) {
-        items.push({
-          to: `/plugins/${plugin.slug}/${page.id}`,
-          label:
-            plugin.pages.length === 1 ? pluginDisplayName(plugin) : page.title,
-          icon: resolvePluginIcon(page.icon ?? plugin.icon),
-          isDev: plugin.slug.endsWith("-dev"),
-        });
-      }
-    }
-    return items;
-  }, [plugins]);
-}
-
 export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
-  const location = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { t } = useTranslation();
-
-  // A plugin page renders a native WebContentsView that paints above the DOM,
-  // so the floating social bar would be occluded. Hide it while a plugin page
-  // is open. Matches /plugins/<slug>/<pageId>.
-  const onPluginPage = /^\/plugins\/[^/]+\/[^/]+/.test(location.pathname);
-
-  const { data: plugins = [] } = useQuery({
-    queryKey: queryKeys.plugins,
-    queryFn: () => listPlugins(),
-  });
-
-  const pluginNav = usePluginNavItems(plugins);
 
   // Advanced mode gates the Models page. Read from the shared settings cache so
   // toggling it in Settings updates the sidebar without a full refetch.
@@ -224,7 +164,7 @@ export default function AppShell(): React.JSX.Element {
 
   // Filter the static nav (hide Models when advanced mode is off, Meetings
   // when its flag is off) and re-number the Cmd+N shortcuts sequentially so
-  // there's no gap when an item is hidden (e.g. Plugins becomes Cmd+5 when
+  // there's no gap when an item is hidden (e.g. Settings becomes Cmd+5 when
   // Models is absent).
   const staticNav = useMemo(
     () =>
@@ -306,16 +246,7 @@ export default function AppShell(): React.JSX.Element {
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           <NavList items={mainNav} />
-          {pluginNav.length > 0 ? (
-            <>
-              <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-              <NavList items={pluginNav} />
-            </>
-          ) : null}
         </div>
-        {pluginNav.length > 0 ? (
-          <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-        ) : null}
         <NavList items={footerNav} />
         <div className="h-3" />
       </aside>
@@ -324,7 +255,6 @@ export default function AppShell(): React.JSX.Element {
         <div
           className={cn(
             "glass-topbar absolute top-0 right-0 z-40 flex items-center gap-1.5 rounded-bl-[14px] border-b border-l px-3 py-2",
-            onPluginPage && "hidden",
           )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >

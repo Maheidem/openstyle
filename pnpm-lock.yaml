@@ -236,12 +236,6 @@ importers:
       hono:
         specifier: ^4.12.22
         version: 4.12.22
-      semver:
-        specifier: ^7.8.5
-        version: 7.8.5
-      tar:
-        specifier: ^7.5.15
-        version: 7.5.15
       undici:
         specifier: ^7.16.0
         version: 7.28.0
@@ -270,9 +264,6 @@ importers:
       '@types/node':
         specifier: latest
         version: 25.9.1
-      '@types/semver':
-        specifier: ^7.7.1
-        version: 7.7.1
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
@@ -3084,9 +3075,6 @@ packages:
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
 
-  '@types/semver@7.7.1':
-    resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
-
   '@types/set-cookie-parser@2.4.10':
     resolution: {integrity: sha512-GGmQVGpQWUe5qglJozEjZV/5dyxbOOZ0LHe/lqyWssB88Y4svNfst0uqBVscdDeIKl5Jy5+aPSvy7mI9tYRguw==}
 
@@ -5421,11 +5409,6 @@ packages:
 
   semver@7.8.1:
     resolution: {integrity: sha512-rkVq3IXh+4FDGch+KwzX3aV9W3kO54GyEgpvBzSyctDA6Xtd7RJQV1xmXbeQp5v7+VzLOfVqiutSE6GICgPFvg==}
-    engines: {node: '>=10'}
-    hasBin: true
-
-  semver@7.8.5:
-    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -8428,8 +8411,6 @@ snapshots:
     dependencies:
       '@types/node': 22.19.19
 
-  '@types/semver@7.7.1': {}
-
   '@types/set-cookie-parser@2.4.10':
     dependencies:
       '@types/node': 26.1.1
@@ -11333,8 +11314,6 @@ snapshots:
   semver@7.7.4: {}
 
   semver@7.8.1: {}
-
-  semver@7.8.5: {}
 
   send@1.2.1:
     dependencies:

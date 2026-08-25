@@ -5,9 +5,6 @@ import type { AvailableModel } from "./models";
 /** Common staleTime for cached queries (1 hour). */
 export const ONE_HOUR = 60 * 60 * 1000;
 
-/** Entry shape for the plugin-updates query key (name + installed version). */
-type PluginUpdateEntry = { name: string; currentVersion: string };
-
 /**
  * Single source of truth for every React Query key in the renderer.
  *
@@ -38,16 +35,6 @@ export const queryKeys = {
   config: ["config"] as const,
   /** Device-local dismissed-notification keys. */
   dismissedNotifications: ["dismissed-notifications"] as const,
-
-  /** Installed plugins list (via `listPlugins`). */
-  plugins: ["plugins"] as const,
-  /** Remote plugin catalog. */
-  pluginCatalog: ["plugin-catalog"] as const,
-  pluginUpdates: {
-    all: ["plugin-updates"] as const,
-    list: (entries: PluginUpdateEntry[]) =>
-      ["plugin-updates", entries] as const,
-  },
 
   meetings: {
     /** Family base — invalidates the list and every detail/transcript. */

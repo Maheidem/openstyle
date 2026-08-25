@@ -48,7 +48,6 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve("src/preload/index.ts"),
-          "plugin-bridge": resolve("src/preload/plugin-bridge.ts"),
         },
         plugins: analyze ? [mkVisualizer("preload")] : [],
       },

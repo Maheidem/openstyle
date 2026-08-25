@@ -40,15 +40,16 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
+import { OutputMode } from "@openstyle/sdk";
 import {
   type AppType,
   activateManagedMlxRuntimeForAppVersion,
   closeDb,
-  disposeServerPlugins,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
   startServer as startOpenstyleServer,
@@ -115,13 +116,6 @@ import {
   type StartupPermissionWarning,
   startupPermissionWarning,
 } from "./permission-checks";
-import {
-  OpenstyleEventType,
-  OutputMode,
-  PipelineStage,
-  relayEvent,
-} from "./plugins/index";
-import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 import { isRemixTargetAllowed } from "./remix-target";
 import { selfUpdater, sweepSelfUpdaterBackups } from "./self-updater";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
@@ -314,7 +308,7 @@ function writeSettings(patch: Record<string, unknown>): void {
 /**
  * The configured Openstyle server URL, if the user has set one. When present,
  * the app talks to that server (for server-owned data: settings, history,
- * plugins, transcription) instead of the locally-run one. Returns an empty
+ * transcription) instead of the locally-run one. Returns an empty
  * string when using the default local server.
  *
  * The local server is always started regardless, so switching back to local
@@ -351,14 +345,10 @@ function serverClient() {
 }
 
 /** Relay a main-process pipeline event to the current server target with auth. */
-function relayServerEvent(event: Parameters<typeof relayEvent>[1]): void {
-  relayEvent(getServerBaseUrl(), event, getServerAuthHeaders());
-}
-
 /**
  * Base URL the app uses to reach the Openstyle server: the configured remote
  * URL, or the locally-run server on the resolved port. The DB lives behind the
- * server, so all server-owned data (settings, plugins) is read through it.
+ * server, so all server-owned data (settings, history) is read through it.
  */
 function getServerBaseUrl(): string {
   return getServerUrl() || `http://127.0.0.1:${serverPort}`;
@@ -366,13 +356,11 @@ function getServerBaseUrl(): string {
 
 /**
  * Broadcast a server target change (URL/token) to all renderer windows so they
- * re-point their API clients and refetch, without an app restart. Cached plugin
- * views are dropped too, since they hold pages loaded from the previous origin.
+ * re-point their API clients and refetch, without an app restart.
  */
 function broadcastServerChanged(): void {
   mainWindow?.webContents.send("server:changed");
   settingsWindow?.webContents.send("server:changed");
-  invalidatePluginViews();
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1108,43 +1096,7 @@ async function buildSettingsWindow(initialPath?: string): Promise<void> {
     return { action: "deny" };
   });
 
-  // Wire the plugin UI host (view manager + host-action/view IPC) to this
-  // window. Discovery, install, and asset serving all live server-side now;
-  // the renderer talks to the server directly for those.
-  initPluginUiHost({
-    window: settingsWindow,
-    getServerBaseUrl,
-    getServerToken,
-    onAction: handlePluginAction,
-  });
-
   settingsWindow.loadURL(getDashboardURL(startPath));
-}
-
-/** Perform a host action requested by a plugin UI page over the bridge. */
-function handlePluginAction(
-  channel: keyof import("@openstyle/sdk").HostActions,
-  payload: unknown,
-): void {
-  switch (channel) {
-    case "copy": {
-      const { text } = payload as { text: string };
-      if (text) clipboard.writeText(text);
-      break;
-    }
-    case "toast": {
-      const { message } = payload as { message: string };
-      if (message && Notification.isSupported()) {
-        new Notification({ title: "Openstyle", body: message }).show();
-      }
-      break;
-    }
-    case "navigate": {
-      const { to } = payload as { to: string };
-      settingsWindow?.webContents.send("plugin:navigate", to);
-      break;
-    }
-  }
 }
 
 /**
@@ -1663,9 +1615,8 @@ function wait(ms: number): Promise<void> {
 
 /**
  * Mechanically deliver final dictation text to the user's focused app — paste
- * or copy, exactly as resolved. The `beforeOutput` plugin hook already ran
- * server-side (`POST /api/output/deliver`, called by the renderer before this
- * is invoked), so `text`/`mode` here are the host's final word: no hook runs
+ * or copy, exactly as resolved by the renderer before this is invoked, so
+ * `text`/`mode` here are the host's final word: no further transformation runs
  * in this process anymore. Emits the `outputDelivered` event (relayed to the
  * server's `event` hook sink) with whatever mode was ultimately used.
  */
@@ -1674,11 +1625,6 @@ async function deliverOutput(
   mode: typeof OutputMode.Paste | typeof OutputMode.Clipboard,
 ): Promise<void> {
   if (!text.trim()) {
-    relayServerEvent({
-      type: OpenstyleEventType.OutputDelivered,
-      text,
-      mode: OutputMode.None,
-    });
     return;
   }
 
@@ -1692,19 +1638,8 @@ async function deliverOutput(
     // pasteIntoFocusedApp left the transcript on the clipboard — tell the user
     // instead of letting the dictation silently vanish.
     notifyPasteFailed();
-    relayServerEvent({
-      type: OpenstyleEventType.PipelineError,
-      stage: PipelineStage.Output,
-      message: err instanceof Error ? err.message : String(err),
-    });
     throw err;
   }
-
-  relayServerEvent({
-    type: OpenstyleEventType.OutputDelivered,
-    text,
-    mode,
-  });
 }
 
 function resetOnboarding(): void {
@@ -1739,7 +1674,7 @@ async function putServerSetting(key: string, value: string): Promise<boolean> {
  * stored) so callers don't mistake a network blip for "unset" and clobber
  * last-known-good values (e.g. reverting the hotkey mode to its default).
  *
- * All server-owned state (settings, models, history, plugins) lives behind the
+ * All server-owned state (settings, models, history) lives behind the
  * server — local or a configured remote — so the main process reads it through
  * the API rather than opening the SQLite file directly. This keeps a single
  * source of truth and makes a configured remote server behave identically.
@@ -2480,7 +2415,7 @@ app.whenReady().then(async () => {
 
   // Mic PCM16 chunks from the hidden capture window. Only that window's
   // webContents may feed the recorder — chunks from any other renderer
-  // (main window, settings, a plugin view) are dropped.
+  // (main window, settings) are dropped.
   ipcMain.on("meeting:mic-chunk", (event, chunk: unknown) => {
     if (event.sender.id !== meetingRecorder?.captureWebContentsId) return;
     if (chunk instanceof ArrayBuffer) {
@@ -2511,6 +2446,31 @@ app.whenReady().then(async () => {
 
   ipcMain.on("meeting:open-audio-capture-settings", () => {
     openAudioCaptureSettings();
+  });
+
+  // Reveal a meeting's audio directory in Finder. The audio_dir path comes
+  // from the server-owned DB row, so mirror the same containment check the
+  // server's DELETE route applies before it removes a meeting's audio dir —
+  // never call shell.showItemInFolder on a path outside <userData>/meetings/.
+  ipcMain.handle("meeting:reveal-in-finder", async (_event, id: unknown) => {
+    if (typeof id !== "string" || !id) return false;
+    try {
+      const res = await serverClient().api.meetings[":id"].$get({
+        param: { id },
+      });
+      if (!res.ok) return false;
+      const row = (await res.json()) as { audio_dir: string | null };
+      if (!row.audio_dir) return false;
+      const dir = resolve(row.audio_dir);
+      const root = resolve(join(app.getPath("userData"), "meetings"));
+      if (!dir.startsWith(root + sep)) return false;
+      if (!existsSync(dir)) return false;
+      shell.showItemInFolder(dir);
+      return true;
+    } catch (err) {
+      log.error(`Failed to reveal meeting ${id} in Finder: ${String(err)}`);
+      return false;
+    }
   });
 
   // IPC: broadcast output mode changes to pill window
@@ -2587,18 +2547,6 @@ app.whenReady().then(async () => {
   // history-driven views (Today, History) can refetch without polling.
   ipcMain.on("transcription:done", () => {
     settingsWindow?.webContents.send("transcription:done");
-  });
-
-  ipcMain.on("recording:committed", () => {
-    relayServerEvent({
-      type: OpenstyleEventType.RecordingCommitted,
-    });
-  });
-
-  ipcMain.on("recording:cancelled", () => {
-    relayServerEvent({
-      type: OpenstyleEventType.RecordingCancelled,
-    });
   });
 
   // IPC: expose the server port to the renderer
@@ -3293,7 +3241,7 @@ app.whenReady().then(async () => {
     });
   });
 
-  // Paste over selection — not deliverOutput (no trailing space / plugin pipeline).
+  // Paste over selection — not deliverOutput (no trailing space).
   ipcMain.handle("remix:paste", async (_event, text: string) => {
     if (typeof text !== "string" || !text.trim()) return false;
     if (await isSecureInputActive()) {
@@ -4203,7 +4151,6 @@ function sendHotkeyDown(): void {
     return;
   }
   showPill();
-  relayServerEvent({ type: OpenstyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
@@ -4744,9 +4691,6 @@ function cleanupBeforeQuit(): void {
   // Finalize any in-flight meeting recording's WAV headers before the process
   // exits; the boot-time orphan sweep settles the DB row next launch.
   meetingRecorder?.stopSync();
-  // No app-host plugin registry to dispose anymore — every hook (including
-  // `dispose`) runs server-side, and the server has its own shutdown path.
-  void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
   stopWhisperServer().catch(() => {});

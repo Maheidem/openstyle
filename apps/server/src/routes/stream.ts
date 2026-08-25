@@ -8,12 +8,6 @@ import {
   getTranslateModeSetting,
 } from "../lib/language.js";
 import {
-  OpenstyleEventType,
-  parseAppContext,
-  plugins,
-} from "../lib/plugins/index.js";
-import { createHookApi } from "../lib/plugins/pipeline.js";
-import {
   postProcess,
   prewarmPostProcess,
   resolveAppContextForCleanup,
@@ -271,10 +265,6 @@ const stream = new Hono().get(
           onFinal: async (rawText) => {
             if (upstream !== session) return;
             rawText = sanitizeTranscriptText(rawText);
-            // One HookApi per dictation, threaded through every stage so a
-            // plugin's consume()/abort() in afterTranscribe is visible to
-            // cleanup + final rewrites (matching the batch /transcribe route).
-            const api = await createHookApi();
             // Use commitTime (when the user stopped speaking) to measure only
             // finalization + cleanup latency, not the entire recording session.
             const durationMs =
@@ -285,33 +275,10 @@ const stream = new Hono().get(
               closeUpstreamSession(session);
             }
 
-            // Plugin hook: rewrite the raw transcript before cleanup, matching
-            // the batch /transcribe route so streaming dictations get the same
-            // afterTranscribe + transcribed surfaces.
-            rawText = (
-              await plugins().run(
-                "afterTranscribe",
-                {
-                  providerId: voiceDefaults!.provider,
-                  modelId: voiceDefaults!.model_id,
-                  appContext: parseAppContext(effectiveAppContext()),
-                },
-                { text: rawText },
-                api,
-              )
-            ).text;
-
-            // A plugin may suppress the dictation explicitly (consume/abort) or
-            // implicitly by emptying the transcript — either skips cleanup.
-            if (api.control.state !== "running" || !rawText?.trim()) {
+            if (!rawText?.trim()) {
               ws.send(JSON.stringify({ type: "final", text: "" }));
               return;
             }
-
-            void plugins().emit({
-              type: OpenstyleEventType.Transcribed,
-              text: rawText,
-            });
 
             const useFastHandoff =
               canStream && voiceDefaults!.provider === "soniox";
@@ -326,7 +293,6 @@ const stream = new Hono().get(
                   ? "streaming"
                   : "batch",
               ...(useFastHandoff ? { includeTimings: true } : {}),
-              api,
             });
 
             cleanup
@@ -352,33 +318,25 @@ const stream = new Hono().get(
                     );
                   }
                 }
-                // A beforeCleanup/afterCleanup plugin may have consumed/aborted
-                // inside postProcess; blank the delivered text so a suppressed
-                // dictation isn't pasted, and skip history for it — matching
-                // the batch route, which returns before saving it.
-                const suppressed = api.control.state !== "running";
-                const deliverText = suppressed ? "" : pp.cleaned;
                 if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: deliverText }));
+                  ws.send(JSON.stringify({ type: "final", text: pp.cleaned }));
                 }
-                if (!suppressed) {
-                  try {
-                    saveProcessedHistory({
-                      rawText,
-                      cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
-                      voiceProvider: voiceDefaults!.provider,
-                      voiceModel: voiceDefaults!.model_id,
-                      llmProvider: pp.llmProvider,
-                      llmModel: pp.llmModel,
-                      durationMs: totalDurationMs,
-                      audioDurationMs,
-                      inputTokens: pp.inputTokens,
-                      outputTokens: pp.outputTokens,
-                      costUsd: pp.costUsd,
-                    });
-                  } catch (err) {
-                    log.error(`Failed to save history: ${err}`);
-                  }
+                try {
+                  saveProcessedHistory({
+                    rawText,
+                    cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
+                    voiceProvider: voiceDefaults!.provider,
+                    voiceModel: voiceDefaults!.model_id,
+                    llmProvider: pp.llmProvider,
+                    llmModel: pp.llmModel,
+                    durationMs: totalDurationMs,
+                    audioDurationMs,
+                    inputTokens: pp.inputTokens,
+                    outputTokens: pp.outputTokens,
+                    costUsd: pp.costUsd,
+                  });
+                } catch (err) {
+                  log.error(`Failed to save history: ${err}`);
                 }
               })
               .catch(() => {

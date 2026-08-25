@@ -552,7 +552,6 @@
       "vocabulary": "Vocabolario",
       "tone": "Tono",
       "models": "Modelli",
-      "plugins": "Plugin",
       "settings": "Impostazioni",
       "help": "Aiuto",
       "remix": "Remix",
@@ -657,6 +656,13 @@
     "them": "Loro",
     "actionFailed": "Qualcosa è andato storto. Riprova.",
     "audioProbeHintBody": "Registrando una riunione catturi anche l'audio degli altri partecipanti: assicurati che tutti acconsentano. Sono consigliate le cuffie per mantenere pulito l'audio della chiamata. Se l'audio di sistema resta muto, concedi a Openstyle l'accesso in Registrazione schermo e audio di sistema; dopo un aggiornamento macOS potrebbe richiederlo di nuovo.",
-    "audioProbeHintOpenSettings": "Apri Impostazioni"
+    "audioProbeHintOpenSettings": "Apri Impostazioni",
+    "rename": "Rinomina",
+    "renameLabel": "Titolo della riunione",
+    "revealInFinder": "Mostra nel Finder",
+    "summaryInstructionsLabel": "Istruzioni per il riepilogo",
+    "summaryInstructionsHint": "Indicazioni aggiuntive aggiunte a ogni riepilogo della riunione, come un formato preferito o aree di interesse.",
+    "save": "Salva",
+    "saving": "Salvataggio…"
   }
 }

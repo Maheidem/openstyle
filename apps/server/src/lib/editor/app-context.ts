@@ -1,7 +1,7 @@
 /**
  * Shared parsing for the app-context JSON the client sends with each dictation
  * (the frontmost app/window/url captured at record time). Both the rewrite
- * context matcher and the plugin pipeline read this same payload, so the shape
+ * context matcher reads this same payload, so the shape
  * and parse live in one place to keep them from diverging.
  *
  * The payload shape is owned by `@openstyle/sdk` (re-exported here); this module

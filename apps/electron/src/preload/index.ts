@@ -10,7 +10,6 @@ import {
   normalizePillCancelMode,
   type PillCancelMode,
 } from "../shared/pill-cancel";
-import type { PluginViewBounds } from "../shared/plugins";
 import {
   getDefaultRemixHotkey,
   type RemixContextResult,
@@ -86,6 +85,9 @@ const api = {
   /** Open System Settings > Privacy > Screen & System Audio Recording. */
   openAudioCaptureSettings: (): void =>
     ipcRenderer.send("meeting:open-audio-capture-settings"),
+  /** Reveal a meeting's audio directory in Finder. False when unavailable. */
+  revealMeetingInFinder: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke("meeting:reveal-in-finder", id),
   /** Mic/system level meter events while a meeting records. */
   onMeetingLevel: (
     callback: (event: {
@@ -467,8 +469,6 @@ const api = {
   // Fired by the pill after a successful transcription + paste, so other
   // windows (Today, History) can refetch without polling.
   sendTranscriptionDone: (): void => ipcRenderer.send("transcription:done"),
-  sendRecordingCommitted: (): void => ipcRenderer.send("recording:committed"),
-  sendRecordingCancelled: (): void => ipcRenderer.send("recording:cancelled"),
   onTranscriptionDone: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("transcription:done", handler);
@@ -493,28 +493,6 @@ const api = {
     ): void => callback(state);
     ipcRenderer.on("mic:activity-changed", handler);
     return () => ipcRenderer.removeListener("mic:activity-changed", handler);
-  },
-
-  // --- Plugins ---
-  // Discovery, install, catalog, and updates now go directly renderer→server
-  // over the typed `hc` client (see renderer/src/lib/plugins-api.ts). Only the
-  // native view overlay and the cache-invalidation signal stay on IPC.
-  showPluginView: (
-    slug: string,
-    pageId: string,
-    entry: string,
-    bounds: PluginViewBounds,
-    tokens?: Record<string, string>,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke("plugin-view:show", slug, pageId, entry, bounds, tokens),
-  setPluginViewBounds: (bounds: PluginViewBounds): void =>
-    ipcRenderer.send("plugin-view:set-bounds", bounds),
-  hidePluginView: (): void => ipcRenderer.send("plugin-view:hide"),
-  invalidatePluginView: (): void => ipcRenderer.send("plugin-view:invalidate"),
-  onPluginNavigate: (callback: (to: string) => void): (() => void) => {
-    const handler = (_: unknown, to: string): void => callback(to);
-    ipcRenderer.on("plugin:navigate", handler);
-    return () => ipcRenderer.removeListener("plugin:navigate", handler);
   },
 };
 

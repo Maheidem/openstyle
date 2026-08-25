@@ -189,6 +189,32 @@ export const MEETING_MAX_DURATION_HOURS_MAX = 24;
 export const DEFAULT_MEETING_SUMMARY_CONTEXT_BUDGET = 8000;
 export const MEETING_SUMMARY_CONTEXT_BUDGET_MAX = 200000;
 
+/**
+ * Upper bound on the user-authored meeting-summary instructions profile.
+ * Comfortably smaller than the cleanup custom prompt — this text is appended
+ * to every summary system prompt, so it also eats into the transcript
+ * context budget.
+ */
+export const MEETING_SUMMARY_INSTRUCTIONS_MAX = 4000;
+
+export const meetingSummaryInstructionsSchema = z
+  .string()
+  .max(MEETING_SUMMARY_INSTRUCTIONS_MAX);
+
+/**
+ * Coerce the persisted `meeting_summary_instructions` setting into a
+ * trimmed string, falling back to "" when missing, malformed, or over the
+ * length cap.
+ */
+export function parseMeetingSummaryInstructions(
+  value: string | null | undefined,
+): string {
+  if (value == null) return "";
+  const trimmed = value.trim();
+  if (trimmed.length > MEETING_SUMMARY_INSTRUCTIONS_MAX) return "";
+  return trimmed;
+}
+
 function parseBoundedInt(
   value: string | null | undefined,
   min: number,
