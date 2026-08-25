@@ -1,4 +1,10 @@
 # Changelog
+## 2.1.1
+
+### Bug Fixes 🐛
+
+- (ci) Require fluidaudio-diarize binary and select Swift 6 toolchain on macOS build by @Maheidem in [ba3f4a6f](https://github.com/Maheidem/openstyle/commit/ba3f4a6f985233d079902c60ebcb582cd59c69a1)
+
 ## 2.1.0
 
 ### New Features ✨
