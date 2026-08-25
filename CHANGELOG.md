@@ -1,4 +1,10 @@
 # Changelog
+## 2.1.0
+
+### New Features ✨
+
+- (meetings) Optional speaker diarization for meeting mode (FluidAudio, pre-bundled models) by @Maheidem in [3eea518d](https://github.com/Maheidem/openstyle/commit/3eea518d9eee29c98c9eaa96a052393e64c6ebdc)
+
 ## 2.0.0
 
 ### Breaking Changes 🛠

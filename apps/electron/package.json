@@ -2,7 +2,7 @@
   "name": "@openstyle/electron",
   "productName": "Openstyle",
   "desktopName": "openstyle.desktop",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Voice-to-text that works everywhere",
   "author": "Maheidem",
   "homepage": "https://github.com/Maheidem/openstyle",
