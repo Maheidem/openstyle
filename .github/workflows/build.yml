@@ -316,6 +316,27 @@ jobs:
         working-directory: apps/electron
         run: node scripts/download-whisper-cpp.mjs --resources
 
+      # macos-14 runner images default to Xcode 15.4 (Swift 5.10), but
+      # native/fluidaudio-diarize (specs/meeting-diarization.md §3) is a
+      # SwiftPM package pinned to tools version 6.0 — `swift build` (invoked
+      # from compile:native inside the "Build electron (macOS)" step below)
+      # fails with "using Swift tools version 6.0.0 but the installed
+      # version is 5.10.0" against the default toolchain. Select an Xcode
+      # whose bundled Swift is >= 6.0 right before that step, so the
+      # earlier steps above (server, MLX worker, whisper.cpp — none of
+      # which touch Swift) keep building under the same toolchain 2.1.0
+      # shipped with. 16.1 and 16.2 are the ones actually present on this
+      # image (see https://github.com/actions/runner-images macos-14
+      # readme — Xcode 16.2/16C5032a and 16.1/16B40 alongside the 15.4
+      # default); 16.2 is picked as the newest, since image refreshes prune
+      # older Xcodes first.
+      - name: Select Xcode 16.2 (Swift 6 toolchain, for fluidaudio-diarize)
+        run: |
+          echo "Installed Xcode versions on this runner:"
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode_16.2.app
+          swift --version
+
       # Ad-hoc signed, not notarized. There is no Apple Developer account
       # behind this fork, and passing empty CSC_LINK/APPLE_* secrets makes
       # electron-builder fail rather than fall back. What CI asserts here is

@@ -18,6 +18,17 @@ const EXPECTED = {
     "macos-mic-listener",
     "macos-output-volume",
     "macos-media-control",
+    // SwiftPM package (specs/meeting-diarization.md §3); compile-native.js
+    // builds it warn-only so a broken Swift toolchain doesn't block the
+    // other seven binaries, which means nothing else fails CI if it's
+    // silently missing. Require it here so that gap is loud instead of
+    // silent. Deliberately NOT pairing this with resources/models/
+    // speaker-diarization: those model files are fetched from HuggingFace
+    // over the network at build time (also warn-only, see
+    // fetchDiarizationModels() in compile-native.js) and are gitignored,
+    // not vendored — a transient HF hiccup shouldn't fail the whole mac
+    // build the way a missing pre-built, network-independent binary should.
+    "fluidaudio-diarize",
   ],
   win32: [
     "windows-key-listener.exe",

@@ -165,14 +165,20 @@ function compileMacOS() {
  * but wrong for this one specifically — it's an opt-in, default-off feature,
  * and building it needs strictly more than the others (a Swift 6 toolchain,
  * plus network access at build time to fetch the FluidAudio dependency
- * graph). A CI runner that can't satisfy that shouldn't fail the whole
- * `build:mac` over a feature nobody has enabled yet. Warn-only instead, so a
- * missing helper degrades exactly like every other diarization failure mode
- * (spec §10): the flag stays effectively unusable, existing Meeting Mode is
- * unaffected. (Deviation from the spec's own text, which claims this
- * pattern "never aborts the rest of compile:native" — true for the
- * in-process loop, not true for the CI exit gate once pushed into
- * `failures`; see specs/meeting-diarization.md deviations.)
+ * graph). Warn-only here, so a toolchain/network hiccup in *this* function
+ * doesn't itself abort the rest of compile:native. (Deviation from the
+ * spec's own text, which claims this pattern "never aborts the rest of
+ * compile:native" — true for the in-process loop, not true for the CI exit
+ * gate once pushed into `failures`; see specs/meeting-diarization.md
+ * deviations.)
+ *
+ * That said, a *missing* `fluidaudio-diarize` binary is not allowed to ship
+ * silently: scripts/verify-native-binaries.mjs requires it on darwin and
+ * hard-fails CI (both the source and packaged-app checks) if it's absent,
+ * regardless of this function staying warn-only. The CI macOS job also now
+ * selects an Xcode with a Swift 6 toolchain before the build (see
+ * .github/workflows/build.yml) specifically so this step succeeds instead
+ * of needing to fall back on that gate.
  */
 function compileFluidAudioDiarizer() {
   console.log("\n[compile:native] Building fluidaudio-diarize (SwiftPM)...\n");
