@@ -1,4 +1,14 @@
 # Changelog
+## 1.2.0
+
+### New Features ✨
+
+- (electron) Self-hosted macOS updater, replacing Squirrel.Mac install path by @Maheidem in [f8ca7da2](https://github.com/Maheidem/openstyle/commit/f8ca7da294c39239b2529f3db69b5a85f5f0684f)
+
+### Documentation 📚
+
+- Promote automated release train, demote manual publish to fallback by @Maheidem in [9effc4c5](https://github.com/Maheidem/openstyle/commit/9effc4c5586f5815d8975a786c323ab4fc86542b)
+
 ## 1.1.1
 
 ### Documentation 📚
