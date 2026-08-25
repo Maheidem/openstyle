@@ -40,6 +40,7 @@
         "src/preload/index.ts",
         "src/preload/plugin-bridge.ts",
         "src/renderer/src/dashboard.tsx",
+        "src/renderer/src/meeting-capture.ts",
         "src/renderer/src/components/pill.tsx",
         "src/renderer/src/components/remix-bar.tsx",
         "tests/**/*.ts",
