@@ -66,6 +66,8 @@ Gotchas:
 - **Typecheck build order**: `apps/electron`'s typecheck pulls in `apps/server`'s source, which imports `@openstyle/stt` via its built `dist/`. On a clean tree, build `@openstyle/server` first (as in the CI-matching command above) or you'll hit `TS2307: Cannot find module '@openstyle/stt'`.
 - `pnpm build` on electron only runs `typecheck && electron-vite build` (produces `out/`, not an installable app). The platform `build:*` scripts skip typecheck by design (CI's Typecheck job is the separate gate) and need native toolchains: Xcode Command Line Tools (macOS/Swift), MSVC or MinGW (Windows), X11/XTest/GIO/uinput dev headers (Linux), and `python3.12` on `PATH` for the MLX ASR worker (macOS/Apple Silicon only).
 
+Releases (version bump, branch, CI build, manual GitHub Release publish) are done via the release skill at `.claude/skills/release/SKILL.md` — the repo's automated "Release" workflow is currently broken (missing GitHub App secrets), so don't use it.
+
 ## Engineering specs & audits (`specs/`)
 
 Internal design docs, technical specs, and audits written before/alongside
