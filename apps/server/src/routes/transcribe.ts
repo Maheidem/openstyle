@@ -1,6 +1,7 @@
 import { sanitizeTranscriptText } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
+import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import { formatError } from "../lib/format-error.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguagesSetting } from "../lib/language.js";
@@ -55,279 +56,294 @@ function decodeAppContext(raw: string | undefined): string | null {
   }
 }
 
-const transcribeRoute = new Hono().post("/", async (c) => {
-  const start = Date.now();
-
-  const contentType = c.req.header("content-type") ?? "";
-  let audioData: Uint8Array;
-
-  if (contentType.includes("multipart/form-data")) {
-    const form = await c.req.formData();
-    const audioFile = form.get("audio");
-    if (!(audioFile instanceof File)) {
-      return c.json({ error: "audio field missing or not a file" }, 400);
+const transcribeRoute = new Hono()
+  // Dictation-activity lease: while a dictation transcription is in flight the
+  // meeting transcriber yields the (single) local whisper server to it. See
+  // `lib/dictation-activity.ts` and `lib/meetings/transcriber.ts`.
+  .use("/", async (_c, next) => {
+    beginDictation();
+    try {
+      await next();
+    } finally {
+      endDictation();
     }
-    audioData = new Uint8Array(await audioFile.arrayBuffer());
-  } else {
-    audioData = new Uint8Array(await c.req.arrayBuffer());
-  }
+  })
+  .post("/", async (c) => {
+    const start = Date.now();
 
-  if (audioData.length === 0) {
-    return c.json({ error: "Empty audio data" }, 400);
-  }
+    const contentType = c.req.header("content-type") ?? "";
+    let audioData: Uint8Array;
 
-  log.debug(
-    `received audio: ${audioData.length} bytes, header=${String.fromCharCode(
-      ...audioData.slice(0, 4),
-    )} contentType=${contentType.slice(0, 40)}`,
-  );
+    if (contentType.includes("multipart/form-data")) {
+      const form = await c.req.formData();
+      const audioFile = form.get("audio");
+      if (!(audioFile instanceof File)) {
+        return c.json({ error: "audio field missing or not a file" }, 400);
+      }
+      audioData = new Uint8Array(await audioFile.arrayBuffer());
+    } else {
+      audioData = new Uint8Array(await c.req.arrayBuffer());
+    }
 
-  const appContext = resolveAppContextForCleanup(
-    decodeAppContext(c.req.header("x-app-context")),
-  );
-  const parsedCtx = parseAppContext(appContext);
-
-  let audioDurationMs = 0;
-  if (audioData.length > 44) {
-    audioDurationMs = Math.round((audioData.length - 44) / 32);
-  }
-  if (!audioDurationMs) {
-    const h = c.req.header("x-audio-duration-ms");
-    if (h) audioDurationMs = Number(h) || 0;
-  }
-
-  const defaults = getDefaultModels();
-  if (!defaults.voice) {
-    return c.json(
-      {
-        error: "No voice model configured. Go to Settings > Models to add one.",
-      },
-      400,
-    );
-  }
-
-  let rawText: string;
-  let transcribeDurationInSeconds: number | undefined;
-  const languages = getLanguagesSetting();
-  const api = await createHookApi();
-
-  // Plugin hook: preprocess the recorded audio, or override which provider,
-  // model, language, or ASR vocabulary bias transcribes this dictation.
-  // Runs before any provider/key resolution so overrides actually take
-  // effect. `api.control.consume()` here skips STT entirely.
-  const beforeTranscribeOutput = await plugins().run(
-    "beforeTranscribe",
-    {
-      providerId: defaults.voice.provider,
-      modelId: defaults.voice.model_id,
-      audioDurationMs,
-      ...(parsedCtx ? { appContext: parsedCtx } : {}),
-    },
-    {
-      audio: audioData,
-      providerId: defaults.voice.provider,
-      modelId: defaults.voice.model_id,
-    },
-    api,
-  );
-  audioData = beforeTranscribeOutput.audio;
-  const voiceProvider = beforeTranscribeOutput.providerId;
-  const voiceModel = beforeTranscribeOutput.modelId;
-  const languageOverride = beforeTranscribeOutput.language;
-  // A plugin may override the language for this one dictation. It's a single
-  // code, so it takes precedence as the sole language; otherwise use the user's
-  // full language list. `languages[0]` is the primary for single-language
-  // providers (batch Whisper, BYOK).
-  const effectiveLanguages = languageOverride ? [languageOverride] : languages;
-  const primaryLanguage = effectiveLanguages[0];
-
-  // A plugin consumed/aborted the dictation in a server hook: return blank
-  // output so any client suppresses delivery, carry the disposition/reason,
-  // and (on abort) emit the documented `pipelineError` event exactly once.
-  const suppressedResponse = () => {
-    emitAbortEvent(api, PipelineStage.Transcribe);
-    return c.json({
-      raw: "",
-      cleaned: "",
-      model: voiceModel,
-      durationMs: Date.now() - start,
-      audioDurationMs,
-      disposition: dispositionFromControl(api.control.state),
-      ...(api.control.reason ? { reason: api.control.reason } : {}),
-    });
-  };
-
-  if (api.control.state !== "running") {
-    return suppressedResponse();
-  }
-
-  const provider = getProvider(voiceProvider);
-  if (!provider) {
-    return c.json(
-      { error: `Unsupported transcription provider: ${voiceProvider}` },
-      400,
-    );
-  }
-
-  const apiKey = getApiKeyForProvider(voiceProvider);
-  if (!apiKey) {
-    return c.json(
-      { error: `No API key configured for provider: ${voiceProvider}` },
-      400,
-    );
-  }
-
-  const skipPostProcess = c.req.header("x-skip-post-process") === "true";
-
-  try {
-    // A plugin-provided bias list is a set of raw terms — rebuild the
-    // provider-specific structure from them rather than the DB vocabulary.
-    const bias = beforeTranscribeOutput.bias
-      ? buildAsrVocabularyBias(
-          voiceProvider,
-          voiceModel,
-          beforeTranscribeOutput.bias,
-        )
-      : resolveAsrVocabularyBias(voiceProvider, voiceModel);
-    log.debug(`bias=${JSON.stringify(bias)}`);
-    const t0 = Date.now();
-    const result = await provider.transcribe({
-      audio: audioData,
-      model: voiceModel,
-      apiKey,
-      ...(primaryLanguage ? { language: primaryLanguage } : {}),
-      bias,
-      appContext,
-    });
-    rawText = sanitizeTranscriptText(result.text);
-
-    // Plugin hook: rewrite the raw transcript before cleanup.
-    rawText = (
-      await plugins().run(
-        "afterTranscribe",
-        {
-          providerId: voiceProvider,
-          modelId: voiceModel,
-          appContext: parsedCtx,
-        },
-        { text: rawText },
-        api,
-      )
-    ).text;
-    transcribeDurationInSeconds = result.durationInSeconds;
+    if (audioData.length === 0) {
+      return c.json({ error: "Empty audio data" }, 400);
+    }
 
     log.debug(
-      `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
+      `received audio: ${audioData.length} bytes, header=${String.fromCharCode(
+        ...audioData.slice(0, 4),
+      )} contentType=${contentType.slice(0, 40)}`,
     );
-  } catch (err) {
-    log.error(
-      `transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
+
+    const appContext = resolveAppContextForCleanup(
+      decodeAppContext(c.req.header("x-app-context")),
     );
-    void plugins().emit({
-      type: OpenstyleEventType.PipelineError,
-      stage: PipelineStage.Transcribe,
-      message: err instanceof Error ? err.message : String(err),
-    });
-    return c.json(
+    const parsedCtx = parseAppContext(appContext);
+
+    let audioDurationMs = 0;
+    if (audioData.length > 44) {
+      audioDurationMs = Math.round((audioData.length - 44) / 32);
+    }
+    if (!audioDurationMs) {
+      const h = c.req.header("x-audio-duration-ms");
+      if (h) audioDurationMs = Number(h) || 0;
+    }
+
+    const defaults = getDefaultModels();
+    if (!defaults.voice) {
+      return c.json(
+        {
+          error:
+            "No voice model configured. Go to Settings > Models to add one.",
+        },
+        400,
+      );
+    }
+
+    let rawText: string;
+    let transcribeDurationInSeconds: number | undefined;
+    const languages = getLanguagesSetting();
+    const api = await createHookApi();
+
+    // Plugin hook: preprocess the recorded audio, or override which provider,
+    // model, language, or ASR vocabulary bias transcribes this dictation.
+    // Runs before any provider/key resolution so overrides actually take
+    // effect. `api.control.consume()` here skips STT entirely.
+    const beforeTranscribeOutput = await plugins().run(
+      "beforeTranscribe",
       {
-        error: "Transcription failed",
-        detail: err instanceof Error ? err.message : String(err),
+        providerId: defaults.voice.provider,
+        modelId: defaults.voice.model_id,
+        audioDurationMs,
+        ...(parsedCtx ? { appContext: parsedCtx } : {}),
       },
-      500,
+      {
+        audio: audioData,
+        providerId: defaults.voice.provider,
+        modelId: defaults.voice.model_id,
+      },
+      api,
     );
-  }
+    audioData = beforeTranscribeOutput.audio;
+    const voiceProvider = beforeTranscribeOutput.providerId;
+    const voiceModel = beforeTranscribeOutput.modelId;
+    const languageOverride = beforeTranscribeOutput.language;
+    // A plugin may override the language for this one dictation. It's a single
+    // code, so it takes precedence as the sole language; otherwise use the user's
+    // full language list. `languages[0]` is the primary for single-language
+    // providers (batch Whisper, BYOK).
+    const effectiveLanguages = languageOverride
+      ? [languageOverride]
+      : languages;
+    const primaryLanguage = effectiveLanguages[0];
 
-  const durationMs = Date.now() - start;
+    // A plugin consumed/aborted the dictation in a server hook: return blank
+    // output so any client suppresses delivery, carry the disposition/reason,
+    // and (on abort) emit the documented `pipelineError` event exactly once.
+    const suppressedResponse = () => {
+      emitAbortEvent(api, PipelineStage.Transcribe);
+      return c.json({
+        raw: "",
+        cleaned: "",
+        model: voiceModel,
+        durationMs: Date.now() - start,
+        audioDurationMs,
+        disposition: dispositionFromControl(api.control.state),
+        ...(api.control.reason ? { reason: api.control.reason } : {}),
+      });
+    };
 
-  if (!rawText.trim() || api.control.state !== "running") {
-    return suppressedResponse();
-  }
+    if (api.control.state !== "running") {
+      return suppressedResponse();
+    }
 
-  void plugins().emit({
-    type: OpenstyleEventType.Transcribed,
-    text: rawText,
-    ...(transcribeDurationInSeconds !== undefined
-      ? { durationInSeconds: transcribeDurationInSeconds }
-      : {}),
-  });
+    const provider = getProvider(voiceProvider);
+    if (!provider) {
+      return c.json(
+        { error: `Unsupported transcription provider: ${voiceProvider}` },
+        400,
+      );
+    }
 
-  if (skipPostProcess) {
+    const apiKey = getApiKeyForProvider(voiceProvider);
+    if (!apiKey) {
+      return c.json(
+        { error: `No API key configured for provider: ${voiceProvider}` },
+        400,
+      );
+    }
+
+    const skipPostProcess = c.req.header("x-skip-post-process") === "true";
+
     try {
-      saveRawHistory({
+      // A plugin-provided bias list is a set of raw terms — rebuild the
+      // provider-specific structure from them rather than the DB vocabulary.
+      const bias = beforeTranscribeOutput.bias
+        ? buildAsrVocabularyBias(
+            voiceProvider,
+            voiceModel,
+            beforeTranscribeOutput.bias,
+          )
+        : resolveAsrVocabularyBias(voiceProvider, voiceModel);
+      log.debug(`bias=${JSON.stringify(bias)}`);
+      const t0 = Date.now();
+      const result = await provider.transcribe({
+        audio: audioData,
+        model: voiceModel,
+        apiKey,
+        ...(primaryLanguage ? { language: primaryLanguage } : {}),
+        bias,
+        appContext,
+      });
+      rawText = sanitizeTranscriptText(result.text);
+
+      // Plugin hook: rewrite the raw transcript before cleanup.
+      rawText = (
+        await plugins().run(
+          "afterTranscribe",
+          {
+            providerId: voiceProvider,
+            modelId: voiceModel,
+            appContext: parsedCtx,
+          },
+          { text: rawText },
+          api,
+        )
+      ).text;
+      transcribeDurationInSeconds = result.durationInSeconds;
+
+      log.debug(
+        `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
+      );
+    } catch (err) {
+      log.error(
+        `transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
+      );
+      void plugins().emit({
+        type: OpenstyleEventType.PipelineError,
+        stage: PipelineStage.Transcribe,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return c.json(
+        {
+          error: "Transcription failed",
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        500,
+      );
+    }
+
+    const durationMs = Date.now() - start;
+
+    if (!rawText.trim() || api.control.state !== "running") {
+      return suppressedResponse();
+    }
+
+    void plugins().emit({
+      type: OpenstyleEventType.Transcribed,
+      text: rawText,
+      ...(transcribeDurationInSeconds !== undefined
+        ? { durationInSeconds: transcribeDurationInSeconds }
+        : {}),
+    });
+
+    if (skipPostProcess) {
+      try {
+        saveRawHistory({
+          rawText,
+          voiceProvider,
+          voiceModel,
+          durationMs,
+          audioDurationMs,
+        });
+      } catch (err) {
+        log.error(`Failed to save history: ${err}`);
+      }
+
+      return c.json({
+        raw: rawText,
+        cleaned: rawText,
+        model: voiceModel,
+        provider_category: voiceProviderCategory(voiceProvider),
+        durationMs,
+      });
+    }
+
+    const ppStart = Date.now();
+    const pp = await postProcess(rawText, appContext, {
+      languages: effectiveLanguages,
+      source: "batch",
+      api,
+    });
+    log.debug(
+      `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
+    );
+
+    // STT and cleanup ran on separate models, so the user-perceived latency is
+    // the full request → cleaned text. `durationMs` above is STT-only; recompute
+    // now so history and the response both report the same total.
+    const totalDurationMs = Date.now() - start;
+
+    try {
+      saveProcessedHistory({
         rawText,
+        cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
         voiceProvider,
         voiceModel,
-        durationMs,
+        llmProvider: pp.llmProvider,
+        llmModel: pp.llmModel,
+        durationMs: totalDurationMs,
         audioDurationMs,
+        inputTokens: pp.inputTokens,
+        outputTokens: pp.outputTokens,
+        costUsd: pp.costUsd,
       });
     } catch (err) {
       log.error(`Failed to save history: ${err}`);
     }
 
+    log.debug(`total ${totalDurationMs}ms`);
+
+    // `beforeCleanup`/`afterCleanup` run inside postProcess, after the
+    // raw-stage guard above — a consume/abort there still needs to suppress
+    // delivery. Blank the output so any client drops it even if it ignores
+    // `disposition`, and emit the abort event on that path too.
+    const suppressed = api.control.state !== "running";
+    emitAbortEvent(api, PipelineStage.Transcribe);
     return c.json({
-      raw: rawText,
-      cleaned: rawText,
+      raw: suppressed ? "" : rawText,
+      cleaned: suppressed ? "" : pp.cleaned,
       model: voiceModel,
       provider_category: voiceProviderCategory(voiceProvider),
-      durationMs,
-    });
-  }
-
-  const ppStart = Date.now();
-  const pp = await postProcess(rawText, appContext, {
-    languages: effectiveLanguages,
-    source: "batch",
-    api,
-  });
-  log.debug(
-    `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
-  );
-
-  // STT and cleanup ran on separate models, so the user-perceived latency is
-  // the full request → cleaned text. `durationMs` above is STT-only; recompute
-  // now so history and the response both report the same total.
-  const totalDurationMs = Date.now() - start;
-
-  try {
-    saveProcessedHistory({
-      rawText,
-      cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
-      voiceProvider,
-      voiceModel,
-      llmProvider: pp.llmProvider,
-      llmModel: pp.llmModel,
       durationMs: totalDurationMs,
       audioDurationMs,
+      llmModel: pp.llmModel,
       inputTokens: pp.inputTokens,
       outputTokens: pp.outputTokens,
       costUsd: pp.costUsd,
+      disposition: dispositionFromControl(api.control.state),
     });
-  } catch (err) {
-    log.error(`Failed to save history: ${err}`);
-  }
-
-  log.debug(`total ${totalDurationMs}ms`);
-
-  // `beforeCleanup`/`afterCleanup` run inside postProcess, after the
-  // raw-stage guard above — a consume/abort there still needs to suppress
-  // delivery. Blank the output so any client drops it even if it ignores
-  // `disposition`, and emit the abort event on that path too.
-  const suppressed = api.control.state !== "running";
-  emitAbortEvent(api, PipelineStage.Transcribe);
-  return c.json({
-    raw: suppressed ? "" : rawText,
-    cleaned: suppressed ? "" : pp.cleaned,
-    model: voiceModel,
-    provider_category: voiceProviderCategory(voiceProvider),
-    durationMs: totalDurationMs,
-    audioDurationMs,
-    llmModel: pp.llmModel,
-    inputTokens: pp.inputTokens,
-    outputTokens: pp.outputTokens,
-    costUsd: pp.costUsd,
-    disposition: dispositionFromControl(api.control.state),
   });
-});
 
 export default transcribeRoute;
 

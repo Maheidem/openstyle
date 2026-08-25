@@ -14,6 +14,10 @@ import {
   startHistoryRetentionSweep,
   stopHistoryRetentionSweep,
 } from "./lib/history-store.js";
+import {
+  startMeetingRetentionSweep,
+  stopMeetingRetentionSweep,
+} from "./lib/meetings/retention.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -54,6 +58,7 @@ const TIMEOUT_PREFIXES = [
 
 async function shutdownServer(): Promise<void> {
   stopHistoryRetentionSweep();
+  stopMeetingRetentionSweep();
   await disposeServerPlugins().catch(() => {});
 }
 
@@ -268,6 +273,7 @@ export async function startServer(
   const app = createApp();
 
   startHistoryRetentionSweep();
+  startMeetingRetentionSweep();
 
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ noServer: true });

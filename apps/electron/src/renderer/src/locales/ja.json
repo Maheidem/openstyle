@@ -556,7 +556,8 @@
       "plugins": "プラグイン",
       "settings": "設定",
       "help": "ヘルプ",
-      "remix": "Remix"
+      "remix": "Remix",
+      "meetings": "ミーティング"
     }
   },
   "remixPage": {
@@ -609,5 +610,54 @@
       "step3": "Remixがその場で書き直します。気が変わったら元に戻せます。",
       "more": "選択していない場合は、今いる入力欄全体を読み取ります。さらに、Webで事実や出典を検索したり、画像を下書きに直接貼り付けたりもできます。"
     }
+  },
+  "meetings": {
+    "titleAccent": "ミーティング",
+    "subtitle": "ミーティングのマイクとシステム音声を録音し、話者ラベル付きの文字起こしと要約に変換します。文字起こしするまで音声はMacに保存されたままです。",
+    "recordTitle": "ミーティングを録音",
+    "recordDesc": "マイクと通話のシステム音声をキャプチャします。",
+    "notSupported": "ミーティング録音にはmacOS 14.4以降が必要です。",
+    "recording": "録音中",
+    "finalizing": "仕上げ中…",
+    "start": "録音を開始",
+    "stop": "停止",
+    "micLevel": "マイク",
+    "systemLevel": "システム",
+    "emptyTitle": "ミーティングはまだありません",
+    "emptyDesc": "ここかメニューバーから録音を開始してください。終了したミーティングはこの一覧に表示されます。",
+    "untitled": "無題のミーティング",
+    "back": "戻る",
+    "status": {
+      "recording": "録音中",
+      "interrupted": "中断",
+      "recorded": "録音済み",
+      "transcribing": "文字起こし中",
+      "transcribed": "文字起こし済み",
+      "summarized": "要約済み",
+      "failed": "失敗"
+    },
+    "transcribe": "文字起こし",
+    "retranscribe": "再度文字起こし",
+    "transcribing": "文字起こし中…",
+    "summarize": "要約",
+    "resummarize": "再要約",
+    "summarizing": "要約中…",
+    "retryFailed": "失敗した{{n}}件を再試行",
+    "copyTranscript": "文字起こしをコピー",
+    "copySummary": "要約をコピー",
+    "tabTranscript": "文字起こし",
+    "tabSummary": "要約",
+    "transcriptEmpty": "この録音から発話は検出されませんでした。",
+    "transcriptPending": "録音を文字起こしすると会話がここに表示されます。",
+    "summaryEmpty": "文字起こしを要約するとメモ、決定事項、アクションアイテムが得られます。",
+    "delete": "削除",
+    "deleteTitle": "このミーティングを削除しますか？",
+    "deleteDesc": "文字起こしと要約は完全に削除されます。",
+    "cancel": "キャンセル",
+    "me": "自分",
+    "them": "相手",
+    "actionFailed": "問題が発生しました。もう一度お試しください。",
+    "audioProbeHintBody": "ミーティングを録音すると他の参加者の音声も記録されるため、必ず全員の同意を得てください。通話音声をきれいに保つためヘッドフォンの使用をおすすめします。システム音声が無音のままの場合は、「画面とシステムオーディオの収録」でOpenstyleにアクセスを許可してください。アプリの更新後にmacOSが再度許可を求めることがあります。",
+    "audioProbeHintOpenSettings": "設定を開く"
   }
 }

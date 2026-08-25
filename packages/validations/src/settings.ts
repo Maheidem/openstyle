@@ -175,6 +175,79 @@ export const historyRetentionDaysSettingSchema = z
     },
   );
 
+// --- Meeting Mode settings ---------------------------------------------------
+
+/** Days recorded meeting audio is kept before the retention sweep deletes it. */
+export const DEFAULT_MEETING_RETENTION_DAYS = 30;
+export const MEETING_RETENTION_DAYS_MAX = 3650;
+
+/** Auto-stop ceiling for a single meeting recording, in hours. */
+export const DEFAULT_MEETING_MAX_DURATION_HOURS = 4;
+export const MEETING_MAX_DURATION_HOURS_MAX = 24;
+
+/** Token budget for the transcript context fed to the summary LLM. */
+export const DEFAULT_MEETING_SUMMARY_CONTEXT_BUDGET = 8000;
+export const MEETING_SUMMARY_CONTEXT_BUDGET_MAX = 200000;
+
+function parseBoundedInt(
+  value: string | null | undefined,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (value == null) return fallback;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return fallback;
+  const n = Number(trimmed);
+  if (n < min || n > max) return fallback;
+  return n;
+}
+
+/**
+ * Coerce the persisted `meeting_retention_days` setting into a valid day
+ * count, falling back to the default when missing or malformed.
+ */
+export function parseMeetingRetentionDays(
+  value: string | null | undefined,
+): number {
+  return parseBoundedInt(
+    value,
+    1,
+    MEETING_RETENTION_DAYS_MAX,
+    DEFAULT_MEETING_RETENTION_DAYS,
+  );
+}
+
+/**
+ * Coerce the persisted `meeting_max_duration_hours` setting into a valid hour
+ * count, falling back to the default when missing or malformed.
+ */
+export function parseMeetingMaxDurationHours(
+  value: string | null | undefined,
+): number {
+  return parseBoundedInt(
+    value,
+    1,
+    MEETING_MAX_DURATION_HOURS_MAX,
+    DEFAULT_MEETING_MAX_DURATION_HOURS,
+  );
+}
+
+/**
+ * Coerce the persisted `meeting_summary_context_budget` setting into a valid
+ * token budget, falling back to the default when missing or malformed.
+ */
+export function parseMeetingSummaryContextBudget(
+  value: string | null | undefined,
+): number {
+  return parseBoundedInt(
+    value,
+    100,
+    MEETING_SUMMARY_CONTEXT_BUDGET_MAX,
+    DEFAULT_MEETING_SUMMARY_CONTEXT_BUDGET,
+  );
+}
+
 /**
  * Combined shape for the Network settings form. The renderer drives a
  * react-hook-form with this schema so its inline validation matches exactly

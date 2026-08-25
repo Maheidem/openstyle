@@ -49,6 +49,7 @@ mac:
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
     NSAppleEventsUsageDescription: Openstyle uses Apple Events to paste transcribed text into the focused application.
+    NSAudioCaptureUsageDescription: Openstyle records system audio during meetings you choose to record.
   notarize: true
   extraResources:
     - from: "resources/whisper/darwin-${arch}"

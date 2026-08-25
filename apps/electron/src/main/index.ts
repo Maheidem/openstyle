@@ -96,6 +96,7 @@ import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
+import { MeetingRecorder } from "./meeting-recorder";
 import { MicListener } from "./mic-listener";
 import { migrateLegacyUserData } from "./migrate-user-data";
 import { getNativeBinaryPath } from "./native-binary";
@@ -122,6 +123,11 @@ import {
 } from "./plugins/index";
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 import { isRemixTargetAllowed } from "./remix-target";
+import { isSystemAudioCaptureSupported } from "./system-audio-capture";
+import {
+  openAudioCaptureSettings,
+  probeSystemAudio,
+} from "./system-audio-probe";
 
 // Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
 // share the real "Electron" userData (settings.json included) with a running
@@ -399,6 +405,29 @@ let remixInitialized = false;
 /** Onboarding practice: allow Remix to target Openstyle's own window. */
 let remixPracticeTarget = false;
 const audioPlaybackController = new AudioPlaybackController();
+/** Meeting Mode recorder (created on whenReady; darwin >= 14.4 only). */
+let meetingRecorder: MeetingRecorder | null = null;
+/**
+ * Cached `meetings` feature flag. Flags are server-owned (config.freestyle.json
+ * behind GET /api/config/flags/:key — see apps/server/src/lib/config.ts), so
+ * the tray reads this cache and refreshes it in the background: the tray menu
+ * template must be built synchronously.
+ */
+let meetingsFlagEnabled = false;
+
+function refreshMeetingsFlag(): void {
+  void fetch(`${getServerBaseUrl()}/api/config/flags/meetings`, {
+    headers: getServerAuthHeaders(),
+  })
+    .then(async (res) => {
+      if (!res.ok) return;
+      const body = (await res.json()) as { value?: boolean };
+      meetingsFlagEnabled = body.value === true;
+    })
+    .catch(() => {
+      // server not up yet — keep the cached value
+    });
+}
 
 function stopHotkeyRecorderProcess(): void {
   hotkeyRecorder?.stop();
@@ -451,6 +480,55 @@ function getRemixBarURL(): string {
     return `${process.env.ELECTRON_RENDERER_URL}/bar.html`;
   }
   return "app://renderer/bar.html";
+}
+
+function getMeetingCaptureURL(): string {
+  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
+    return `${process.env.ELECTRON_RENDERER_URL}/meeting-capture.html`;
+  }
+  return "app://renderer/meeting-capture.html";
+}
+
+/**
+ * Hidden mic-capture window for meeting recordings. Loads the minimal
+ * meeting-capture entry (PCM AudioWorklet -> `meeting:mic-chunk` IPC). The
+ * configured mic device id is a server-owned setting, so the URL is resolved
+ * asynchronously after creation; capture starts on page load.
+ */
+function createMeetingCaptureWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 1,
+    height: 1,
+    show: false,
+    skipTaskbar: true,
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.js"),
+      sandbox: false,
+      // Capture must keep flowing while the hidden window is occluded.
+      backgroundThrottling: false,
+    },
+  });
+
+  void (async () => {
+    let deviceParam = "";
+    try {
+      const res = await fetch(
+        `${getServerBaseUrl()}/api/settings/${SETTINGS_KEYS.micDeviceId}`,
+        { headers: getServerAuthHeaders() },
+      );
+      if (res.ok) {
+        const { value } = (await res.json()) as { value?: string };
+        if (value) deviceParam = `?device=${encodeURIComponent(value)}`;
+      }
+    } catch {
+      // no configured device — use the default mic
+    }
+    if (!win.isDestroyed()) {
+      void win.loadURL(`${getMeetingCaptureURL()}${deviceParam}`);
+    }
+  })();
+
+  return win;
 }
 
 function getDashboardURL(path = "/"): string {
@@ -2089,6 +2167,34 @@ function buildTrayContextMenu(): Menu {
       click: () => showSettingsWindow("/help"),
     },
     buildUpdateMenuItem(),
+    // Meeting Mode: feature-flagged ("meetings") and darwin >= 14.4 only.
+    ...(meetingsFlagEnabled &&
+    isSystemAudioCaptureSupported() &&
+    meetingRecorder
+      ? [
+          { type: "separator" as const },
+          meetingRecorder.status === "idle"
+            ? {
+                label: "Start meeting recording",
+                click: (): void => {
+                  void meetingRecorder?.start().catch((err) => {
+                    log.error(`Meeting start failed: ${String(err)}`);
+                    dialog.showErrorBox(
+                      "Meeting recording",
+                      err instanceof Error ? err.message : String(err),
+                    );
+                  });
+                },
+              }
+            : {
+                label: "Stop meeting recording",
+                enabled: meetingRecorder.status === "recording",
+                click: (): void => {
+                  void meetingRecorder?.stop();
+                },
+              },
+        ]
+      : []),
     ...(is.dev
       ? [
           { type: "separator" as const },
@@ -2136,6 +2242,9 @@ function createTray(): void {
     // macOS/Windows: left-click opens settings, right-click shows menu.
     // Using setContextMenu on macOS would override the click handler.
     tray.on("right-click", () => {
+      // Opportunistic background refresh — the menu template is synchronous,
+      // so a flag flip shows up on the next open.
+      refreshMeetingsFlag();
       tray!.popUpContextMenu(buildTrayContextMenu());
     });
   }
@@ -2299,6 +2408,83 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("audio:restore", async () => {
     await audioPlaybackController.restore();
+  });
+
+  // --- Meeting Mode ---------------------------------------------------------
+  meetingRecorder = new MeetingRecorder({
+    getServerBaseUrl,
+    getServerAuthHeaders,
+    createCaptureWindow: createMeetingCaptureWindow,
+    broadcastLevel: (event) => {
+      settingsWindow?.webContents.send("meeting:level", event);
+      mainWindow?.webContents.send("meeting:level", event);
+    },
+    broadcastStatus: (status) => {
+      settingsWindow?.webContents.send("meeting:status-changed", status);
+      mainWindow?.webContents.send("meeting:status-changed", status);
+      // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
+      if (process.platform === "linux") {
+        tray?.setContextMenu(buildTrayContextMenu());
+      }
+    },
+  });
+
+  ipcMain.handle("meeting:start", async () => {
+    try {
+      const id = await meetingRecorder!.start();
+      return { ok: true, id };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  ipcMain.handle("meeting:stop", async () => {
+    await meetingRecorder?.stop();
+    return { ok: true };
+  });
+
+  ipcMain.handle("meeting:status", () => ({
+    status: meetingRecorder?.status ?? "idle",
+    meetingId: meetingRecorder?.currentMeetingId ?? null,
+    supported: isSystemAudioCaptureSupported(),
+  }));
+
+  // Mic PCM16 chunks from the hidden capture window. Only that window's
+  // webContents may feed the recorder — chunks from any other renderer
+  // (main window, settings, a plugin view) are dropped.
+  ipcMain.on("meeting:mic-chunk", (event, chunk: unknown) => {
+    if (event.sender.id !== meetingRecorder?.captureWebContentsId) return;
+    if (chunk instanceof ArrayBuffer) {
+      meetingRecorder.handleMicChunk(Buffer.from(chunk));
+    } else if (ArrayBuffer.isView(chunk)) {
+      meetingRecorder.handleMicChunk(
+        Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+      );
+    }
+  });
+
+  ipcMain.on("meeting:capture-error", (event, message: unknown) => {
+    if (event.sender.id !== meetingRecorder?.captureWebContentsId) return;
+    log.error(`Meeting mic capture error: ${String(message)}`);
+  });
+
+  // TCC probe: run the real system-audio pipeline briefly to detect the
+  // silent-denial mode (denied taps deliver zero-filled buffers with success
+  // codes — there is no preflight API). Meeting-scoped and lazy by design:
+  // dictation-only users must never see this (startupPermissionWarning in
+  // permission-checks.ts intentionally knows nothing about meetings).
+  ipcMain.handle("meeting:probe-system-audio", async () => {
+    // A running recording already proves the pipeline; don't spawn a second
+    // helper under it.
+    if (meetingRecorder?.status !== "idle") return "ok";
+    return probeSystemAudio();
+  });
+
+  ipcMain.on("meeting:open-audio-capture-settings", () => {
+    openAudioCaptureSettings();
   });
 
   // IPC: broadcast output mode changes to pill window
@@ -2650,6 +2836,14 @@ app.whenReady().then(async () => {
   createTray();
 
   createAppWindow();
+
+  // Meeting Mode boot tasks, deferred until the in-process server is up:
+  // cache the feature flag for the tray and sweep meetings a crash left in
+  // 'recording' (finalize WAV headers, mark 'interrupted').
+  setTimeout(() => {
+    refreshMeetingsFlag();
+    void meetingRecorder?.sweepOrphans();
+  }, 3000);
 
   // Onboarding already has dedicated permission cards. Existing users instead
   // get one actionable warning once a user-facing window can be shown.
@@ -4460,6 +4654,9 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
+  // Finalize any in-flight meeting recording's WAV headers before the process
+  // exits; the boot-time orphan sweep settles the DB row next launch.
+  meetingRecorder?.stopSync();
   // No app-host plugin registry to dispose anymore — every hook (including
   // `dispose`) runs server-side, and the server has its own shutdown path.
   void disposeServerPlugins().catch(() => {});

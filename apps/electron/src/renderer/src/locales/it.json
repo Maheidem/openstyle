@@ -555,7 +555,8 @@
       "plugins": "Plugin",
       "settings": "Impostazioni",
       "help": "Aiuto",
-      "remix": "Remix"
+      "remix": "Remix",
+      "meetings": "Riunioni"
     }
   },
   "remixPage": {
@@ -608,5 +609,54 @@
       "step3": "Remix lo riscrive sul posto. Annulla lo ripristina se cambi idea.",
       "more": "Niente di evidenziato? Remix legge tutto il campo in cui ti trovi. Può anche cercare sul web fatti e fonti, e incollare immagini direttamente nella bozza."
     }
+  },
+  "meetings": {
+    "titleAccent": "Riunioni",
+    "subtitle": "Registra il microfono e l'audio di sistema di una riunione, poi ottieni una trascrizione etichettata e un riepilogo. L'audio resta sul tuo Mac finché non trascrivi.",
+    "recordTitle": "Registra una riunione",
+    "recordDesc": "Cattura il microfono e l'audio di sistema della chiamata.",
+    "notSupported": "La registrazione delle riunioni richiede macOS 14.4 o successivo.",
+    "recording": "Registrazione",
+    "finalizing": "Finalizzazione…",
+    "start": "Avvia registrazione",
+    "stop": "Interrompi",
+    "micLevel": "Micro",
+    "systemLevel": "Sistema",
+    "emptyTitle": "Ancora nessuna riunione",
+    "emptyDesc": "Avvia una registrazione da qui o dalla barra dei menu. Le riunioni concluse compaiono in questo elenco.",
+    "untitled": "Riunione senza titolo",
+    "back": "Indietro",
+    "status": {
+      "recording": "Registrazione",
+      "interrupted": "Interrotta",
+      "recorded": "Registrata",
+      "transcribing": "Trascrizione",
+      "transcribed": "Trascritta",
+      "summarized": "Riepilogata",
+      "failed": "Non riuscita"
+    },
+    "transcribe": "Trascrivi",
+    "retranscribe": "Trascrivi di nuovo",
+    "transcribing": "Trascrizione…",
+    "summarize": "Riepiloga",
+    "resummarize": "Riepiloga di nuovo",
+    "summarizing": "Riepilogo in corso…",
+    "retryFailed": "Riprova {{n}} non riusciti",
+    "copyTranscript": "Copia trascrizione",
+    "copySummary": "Copia riepilogo",
+    "tabTranscript": "Trascrizione",
+    "tabSummary": "Riepilogo",
+    "transcriptEmpty": "Nessun parlato rilevato in questa registrazione.",
+    "transcriptPending": "Trascrivi la registrazione per vedere qui la conversazione.",
+    "summaryEmpty": "Riepiloga la trascrizione per ottenere note, decisioni e attività.",
+    "delete": "Elimina",
+    "deleteTitle": "Eliminare questa riunione?",
+    "deleteDesc": "La trascrizione e il riepilogo verranno rimossi definitivamente.",
+    "cancel": "Annulla",
+    "me": "Io",
+    "them": "Loro",
+    "actionFailed": "Qualcosa è andato storto. Riprova.",
+    "audioProbeHintBody": "Registrando una riunione catturi anche l'audio degli altri partecipanti: assicurati che tutti acconsentano. Sono consigliate le cuffie per mantenere pulito l'audio della chiamata. Se l'audio di sistema resta muto, concedi a Openstyle l'accesso in Registrazione schermo e audio di sistema; dopo un aggiornamento macOS potrebbe richiederlo di nuovo.",
+    "audioProbeHintOpenSettings": "Apri Impostazioni"
   }
 }

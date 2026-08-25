@@ -73,6 +73,7 @@ export default defineConfig({
           index: resolve("src/renderer/index.html"),
           pill: resolve("src/renderer/pill.html"),
           bar: resolve("src/renderer/bar.html"),
+          "meeting-capture": resolve("src/renderer/meeting-capture.html"),
         },
         plugins: analyze ? [mkVisualizer("renderer")] : [],
       },

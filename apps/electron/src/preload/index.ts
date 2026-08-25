@@ -60,6 +60,57 @@ const api = {
     ipcRenderer.on("pill:hot-enter", handler);
     return () => ipcRenderer.removeListener("pill:hot-enter", handler);
   },
+  // --- Meeting Mode ---
+  /** Mic PCM16 chunk from the hidden capture window's AudioWorklet. */
+  meetingSendMicChunk: (chunk: ArrayBuffer): void =>
+    ipcRenderer.send("meeting:mic-chunk", chunk),
+  /** Fatal mic-capture error from the hidden capture window. */
+  meetingCaptureError: (message: string): void =>
+    ipcRenderer.send("meeting:capture-error", message),
+  startMeetingRecording: (): Promise<{
+    ok: boolean;
+    id?: string;
+    error?: string;
+  }> => ipcRenderer.invoke("meeting:start"),
+  stopMeetingRecording: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("meeting:stop"),
+  getMeetingStatus: (): Promise<{
+    status: "idle" | "recording" | "finalizing";
+    meetingId: string | null;
+    supported: boolean;
+  }> => ipcRenderer.invoke("meeting:status"),
+  /** TCC probe: briefly run the system-audio pipeline to detect denial. */
+  probeMeetingSystemAudio: (): Promise<
+    "ok" | "silent" | "unsupported" | "error"
+  > => ipcRenderer.invoke("meeting:probe-system-audio"),
+  /** Open System Settings > Privacy > Screen & System Audio Recording. */
+  openAudioCaptureSettings: (): void =>
+    ipcRenderer.send("meeting:open-audio-capture-settings"),
+  /** Mic/system level meter events while a meeting records. */
+  onMeetingLevel: (
+    callback: (event: {
+      meetingId: string;
+      source: "mic" | "system";
+      rms: number;
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _: unknown,
+      event: { meetingId: string; source: "mic" | "system"; rms: number },
+    ): void => callback(event);
+    ipcRenderer.on("meeting:level", handler);
+    return () => ipcRenderer.removeListener("meeting:level", handler);
+  },
+  onMeetingStatusChanged: (
+    callback: (status: "idle" | "recording" | "finalizing") => void,
+  ): (() => void) => {
+    const handler = (
+      _: unknown,
+      status: "idle" | "recording" | "finalizing",
+    ): void => callback(status);
+    ipcRenderer.on("meeting:status-changed", handler);
+    return () => ipcRenderer.removeListener("meeting:status-changed", handler);
+  },
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),

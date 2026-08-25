@@ -10,7 +10,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 28;
+const SCHEMA_VERSION = 29;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -745,6 +745,66 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         "DELETE FROM settings WHERE key LIKE 'posthog\\_%' ESCAPE '\\' OR key LIKE 'cloud\\_synced\\_%' ESCAPE '\\'",
       );
     }
+  }
+
+  if (currentVersion < 29) {
+    // Meeting Mode: dual-channel meeting recordings (mic + system audio),
+    // their transcript segments, and one summary per meeting. Audio lives on
+    // disk under `audio_dir` (userData/meetings/<id>/); the DB holds only
+    // metadata and text. `status` walks the pipeline recording → recorded →
+    // transcribing → transcribed → summarized, with 'interrupted' stamped by
+    // the boot-time orphan sweep for rows a crash left in 'recording', and
+    // 'failed' terminal with `error` populated.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meetings (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        started_at INTEGER,
+        ended_at INTEGER,
+        duration_ms INTEGER,
+        status TEXT NOT NULL CHECK(status IN (
+          'recording','interrupted','recorded','transcribing',
+          'transcribed','summarized','failed'
+        )),
+        audio_dir TEXT,
+        stt_provider TEXT,
+        stt_model TEXT,
+        error TEXT,
+        created_at INTEGER
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_segments (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        source TEXT NOT NULL CHECK(source IN ('mic','system')),
+        idx INTEGER,
+        start_ms INTEGER,
+        end_ms INTEGER,
+        text TEXT,
+        status TEXT
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_summaries (
+        meeting_id TEXT PRIMARY KEY REFERENCES meetings(id) ON DELETE CASCADE,
+        markdown TEXT,
+        llm_provider TEXT,
+        llm_model TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cost_usd REAL,
+        created_at INTEGER
+      )
+    `);
+    // Segments are always fetched per meeting, ordered by idx.
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_meeting_segments_meeting_id ON meeting_segments(meeting_id)",
+    );
+    // The list view orders meetings newest-first.
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_meetings_created_at ON meetings(created_at)",
+    );
   }
 
   // Upsert schema version

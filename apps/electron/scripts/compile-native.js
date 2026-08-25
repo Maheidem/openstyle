@@ -91,6 +91,11 @@ function compileMacOS() {
       frameworks: ["AppKit", "Foundation"],
     },
     {
+      name: "macos-system-audio",
+      src: "macos-system-audio.swift",
+      frameworks: ["CoreAudio", "AudioToolbox", "AVFAudio", "Foundation"],
+    },
+    {
       name: "macos-ax",
       src: "macos-ax.swift",
       frameworks: ["ApplicationServices", "Carbon", "Foundation"],

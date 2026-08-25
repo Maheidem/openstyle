@@ -695,7 +695,8 @@
       "plugins": "Plugins",
       "settings": "Settings",
       "help": "Help",
-      "remix": "Remix"
+      "remix": "Remix",
+      "meetings": "Meetings"
     }
   },
   "plugins": {
@@ -790,5 +791,54 @@
       "step3": "Remix rewrites it in place. Undo brings it back if you change your mind.",
       "more": "No highlight? Remix reads the whole field you're in. It can also search the web for facts and sources, and paste images straight into your draft."
     }
+  },
+  "meetings": {
+    "titleAccent": "Meetings",
+    "subtitle": "Record a meeting's mic and system audio, then turn it into a labeled transcript and a summary. Audio stays on your Mac until you transcribe.",
+    "recordTitle": "Record a meeting",
+    "recordDesc": "Captures your microphone and the system audio of the call.",
+    "notSupported": "Meeting recording needs macOS 14.4 or later.",
+    "recording": "Recording",
+    "finalizing": "Finalizing…",
+    "start": "Start recording",
+    "stop": "Stop",
+    "micLevel": "Mic",
+    "systemLevel": "System",
+    "emptyTitle": "No meetings yet",
+    "emptyDesc": "Start a recording from here or from the menu bar. Finished meetings show up in this list.",
+    "untitled": "Untitled meeting",
+    "back": "Back",
+    "status": {
+      "recording": "Recording",
+      "interrupted": "Interrupted",
+      "recorded": "Recorded",
+      "transcribing": "Transcribing",
+      "transcribed": "Transcribed",
+      "summarized": "Summarized",
+      "failed": "Failed"
+    },
+    "transcribe": "Transcribe",
+    "retranscribe": "Re-transcribe",
+    "transcribing": "Transcribing…",
+    "summarize": "Summarize",
+    "resummarize": "Re-summarize",
+    "summarizing": "Summarizing…",
+    "retryFailed": "Retry {{n}} failed",
+    "copyTranscript": "Copy transcript",
+    "copySummary": "Copy summary",
+    "tabTranscript": "Transcript",
+    "tabSummary": "Summary",
+    "transcriptEmpty": "No speech was detected in this recording.",
+    "transcriptPending": "Transcribe the recording to see the conversation here.",
+    "summaryEmpty": "Summarize the transcript to get notes, decisions, and action items.",
+    "delete": "Delete",
+    "deleteTitle": "Delete this meeting?",
+    "deleteDesc": "The transcript and summary are removed permanently.",
+    "cancel": "Cancel",
+    "me": "Me",
+    "them": "Them",
+    "actionFailed": "Something went wrong. Try again.",
+    "audioProbeHintBody": "By recording a meeting you capture other participants' audio, so make sure everyone consents. Headphones are recommended so the call audio stays clean. If system audio stays silent, grant Openstyle access under Screen & System Audio Recording; app updates may make macOS ask again.",
+    "audioProbeHintOpenSettings": "Open Settings"
   }
 }

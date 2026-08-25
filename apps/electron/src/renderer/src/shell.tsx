@@ -5,7 +5,11 @@ import { UpdateBanner } from "@renderer/components/update-banner";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
 import { listPlugins } from "@renderer/lib/plugins-api";
-import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  configQueryOptions,
+  queryKeys,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import {
   pluginDisplayName,
@@ -16,6 +20,7 @@ import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
+  AudioLines,
   Book,
   BookOpen,
   CircleHelp,
@@ -56,6 +61,12 @@ const STATIC_NAV: {
     icon: Wand2,
     shortcut: "2",
     labelKey: "shell.nav.remix",
+  },
+  {
+    to: "/meetings",
+    icon: AudioLines,
+    shortcut: "3",
+    labelKey: "shell.nav.meetings",
   },
   {
     to: "/settings/vocabulary",
@@ -207,15 +218,22 @@ export default function AppShell(): React.JSX.Element {
   const { data: settings } = useQuery(settingsQueryOptions());
   const advancedMode = settings?.[SETTINGS_KEYS.advancedMode] === "true";
 
-  // Filter the static nav (hide Models when advanced mode is off) and re-number
-  // the Cmd+N shortcuts sequentially so there's no gap when an item is hidden
-  // (e.g. Plugins becomes Cmd+5 when Models is absent).
+  // Meeting Mode is behind the server-owned `meetings` feature flag.
+  const { data: config } = useQuery(configQueryOptions());
+  const meetingsEnabled = config?.flags?.meetings === true;
+
+  // Filter the static nav (hide Models when advanced mode is off, Meetings
+  // when its flag is off) and re-number the Cmd+N shortcuts sequentially so
+  // there's no gap when an item is hidden (e.g. Plugins becomes Cmd+5 when
+  // Models is absent).
   const staticNav = useMemo(
     () =>
       STATIC_NAV.filter(
-        (item) => item.to !== "/settings/models" || advancedMode,
+        (item) =>
+          (item.to !== "/settings/models" || advancedMode) &&
+          (item.to !== "/meetings" || meetingsEnabled),
       ).map((item, idx) => ({ ...item, shortcut: String(idx + 1) })),
-    [advancedMode],
+    [advancedMode, meetingsEnabled],
   );
 
   const navItems: NavItem[] = useMemo(

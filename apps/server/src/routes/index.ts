@@ -8,6 +8,7 @@ import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
 import history from "./history.js";
+import meetings from "./meetings.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
 import outputRoute from "./output.js";
@@ -41,6 +42,7 @@ const apiRouter = new Hono()
   .route("/transcribe", transcribe)
   .route("/transcribe", transcribePreWarmRoute)
   .route("/history", history)
+  .route("/meetings", meetings)
   .route("/dictionary", dictionary)
   .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)

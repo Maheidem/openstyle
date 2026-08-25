@@ -556,7 +556,8 @@
       "plugins": "Plugins",
       "settings": "Einstellungen",
       "help": "Hilfe",
-      "remix": "Remix"
+      "remix": "Remix",
+      "meetings": "Meetings"
     }
   },
   "remixPage": {
@@ -609,5 +610,54 @@
       "step3": "Remix schreibt den Text an Ort und Stelle neu. Rückgängig bringt ihn zurück, falls Sie es sich anders überlegen.",
       "more": "Nichts markiert? Dann liest Remix das ganze Feld, in dem Sie sind. Es kann außerdem das Web nach Fakten und Quellen durchsuchen und Bilder direkt in Ihren Entwurf einfügen."
     }
+  },
+  "meetings": {
+    "titleAccent": "Meetings",
+    "subtitle": "Nimm Mikrofon- und Systemaudio eines Meetings auf und mach daraus ein beschriftetes Transkript mit Zusammenfassung. Das Audio bleibt auf deinem Mac, bis du transkribierst.",
+    "recordTitle": "Meeting aufnehmen",
+    "recordDesc": "Erfasst dein Mikrofon und das Systemaudio des Anrufs.",
+    "notSupported": "Meeting-Aufnahmen brauchen macOS 14.4 oder neuer.",
+    "recording": "Aufnahme läuft",
+    "finalizing": "Wird abgeschlossen…",
+    "start": "Aufnahme starten",
+    "stop": "Stopp",
+    "micLevel": "Mikro",
+    "systemLevel": "System",
+    "emptyTitle": "Noch keine Meetings",
+    "emptyDesc": "Starte eine Aufnahme hier oder über die Menüleiste. Abgeschlossene Meetings erscheinen in dieser Liste.",
+    "untitled": "Unbenanntes Meeting",
+    "back": "Zurück",
+    "status": {
+      "recording": "Aufnahme",
+      "interrupted": "Unterbrochen",
+      "recorded": "Aufgenommen",
+      "transcribing": "Transkribiert",
+      "transcribed": "Transkribiert",
+      "summarized": "Zusammengefasst",
+      "failed": "Fehlgeschlagen"
+    },
+    "transcribe": "Transkribieren",
+    "retranscribe": "Neu transkribieren",
+    "transcribing": "Transkribiere…",
+    "summarize": "Zusammenfassen",
+    "resummarize": "Neu zusammenfassen",
+    "summarizing": "Fasse zusammen…",
+    "retryFailed": "{{n}} fehlgeschlagene wiederholen",
+    "copyTranscript": "Transkript kopieren",
+    "copySummary": "Zusammenfassung kopieren",
+    "tabTranscript": "Transkript",
+    "tabSummary": "Zusammenfassung",
+    "transcriptEmpty": "In dieser Aufnahme wurde keine Sprache erkannt.",
+    "transcriptPending": "Transkribiere die Aufnahme, um das Gespräch hier zu sehen.",
+    "summaryEmpty": "Fasse das Transkript zusammen für Notizen, Entscheidungen und Aufgaben.",
+    "delete": "Löschen",
+    "deleteTitle": "Dieses Meeting löschen?",
+    "deleteDesc": "Transkript und Zusammenfassung werden dauerhaft entfernt.",
+    "cancel": "Abbrechen",
+    "me": "Ich",
+    "them": "Andere",
+    "actionFailed": "Etwas ist schiefgelaufen. Versuch es erneut.",
+    "audioProbeHintBody": "Beim Aufnehmen eines Meetings wird auch der Ton der anderen Teilnehmer erfasst, hol also deren Einverständnis ein. Kopfhörer werden empfohlen, damit der Anrufton sauber bleibt. Bleibt der Systemton stumm, erlaube Openstyle den Zugriff unter Bildschirm- & Systemaudioaufnahme; nach App-Updates fragt macOS eventuell erneut.",
+    "audioProbeHintOpenSettings": "Einstellungen öffnen"
   }
 }

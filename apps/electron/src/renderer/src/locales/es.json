@@ -556,7 +556,8 @@
       "plugins": "Complementos",
       "settings": "Ajustes",
       "help": "Ayuda",
-      "remix": "Remix"
+      "remix": "Remix",
+      "meetings": "Reuniones"
     }
   },
   "remixPage": {
@@ -609,5 +610,54 @@
       "step3": "Remix lo reescribe en su sitio. Deshacer lo recupera si cambias de idea.",
       "more": "¿Sin resaltar? Remix lee todo el campo en el que estás. También puede buscar en la web datos y fuentes, y pegar imágenes directamente en tu borrador."
     }
+  },
+  "meetings": {
+    "titleAccent": "Reuniones",
+    "subtitle": "Graba el micrófono y el audio del sistema de una reunión y conviértelos en una transcripción etiquetada y un resumen. El audio no sale de tu Mac hasta que transcribes.",
+    "recordTitle": "Grabar una reunión",
+    "recordDesc": "Captura tu micrófono y el audio del sistema de la llamada.",
+    "notSupported": "La grabación de reuniones requiere macOS 14.4 o posterior.",
+    "recording": "Grabando",
+    "finalizing": "Finalizando…",
+    "start": "Iniciar grabación",
+    "stop": "Detener",
+    "micLevel": "Micro",
+    "systemLevel": "Sistema",
+    "emptyTitle": "Aún no hay reuniones",
+    "emptyDesc": "Inicia una grabación desde aquí o desde la barra de menús. Las reuniones terminadas aparecen en esta lista.",
+    "untitled": "Reunión sin título",
+    "back": "Atrás",
+    "status": {
+      "recording": "Grabando",
+      "interrupted": "Interrumpida",
+      "recorded": "Grabada",
+      "transcribing": "Transcribiendo",
+      "transcribed": "Transcrita",
+      "summarized": "Resumida",
+      "failed": "Fallida"
+    },
+    "transcribe": "Transcribir",
+    "retranscribe": "Volver a transcribir",
+    "transcribing": "Transcribiendo…",
+    "summarize": "Resumir",
+    "resummarize": "Volver a resumir",
+    "summarizing": "Resumiendo…",
+    "retryFailed": "Reintentar {{n}} fallidos",
+    "copyTranscript": "Copiar transcripción",
+    "copySummary": "Copiar resumen",
+    "tabTranscript": "Transcripción",
+    "tabSummary": "Resumen",
+    "transcriptEmpty": "No se detectó voz en esta grabación.",
+    "transcriptPending": "Transcribe la grabación para ver la conversación aquí.",
+    "summaryEmpty": "Resume la transcripción para obtener notas, decisiones y tareas.",
+    "delete": "Eliminar",
+    "deleteTitle": "¿Eliminar esta reunión?",
+    "deleteDesc": "La transcripción y el resumen se eliminan de forma permanente.",
+    "cancel": "Cancelar",
+    "me": "Yo",
+    "them": "Ellos",
+    "actionFailed": "Algo salió mal. Inténtalo de nuevo.",
+    "audioProbeHintBody": "Al grabar una reunión capturas el audio de los demás participantes, así que asegúrate de que todos den su consentimiento. Se recomiendan auriculares para que el audio de la llamada quede limpio. Si el audio del sistema sigue en silencio, concede acceso a Openstyle en Grabación de pantalla y audio del sistema; tras una actualización, macOS puede volver a pedirlo.",
+    "audioProbeHintOpenSettings": "Abrir Ajustes"
   }
 }

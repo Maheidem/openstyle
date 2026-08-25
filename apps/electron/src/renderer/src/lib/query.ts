@@ -49,6 +49,14 @@ export const queryKeys = {
       ["plugin-updates", entries] as const,
   },
 
+  meetings: {
+    /** Family base — invalidates the list and every detail/transcript. */
+    all: ["meetings"] as const,
+    list: ["meetings", "list"] as const,
+    detail: (id: string) => ["meetings", "detail", id] as const,
+    transcript: (id: string) => ["meetings", "transcript", id] as const,
+  },
+
   history: {
     all: ["history"] as const,
     daily: ["history", "daily"] as const,

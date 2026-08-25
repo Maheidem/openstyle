@@ -37,6 +37,7 @@ const PluginDetailPage = lazy(
 );
 const PluginPage = lazy(() => import("@renderer/pages/plugins/plugin-page"));
 const PluginsPage = lazy(() => import("@renderer/pages/plugins/plugins"));
+const MeetingsPage = lazy(() => import("@renderer/pages/meetings"));
 const RemixPage = lazy(() => import("@renderer/pages/remix"));
 const SettingsPage = lazy(() => import("@renderer/pages/settings"));
 const TonePage = lazy(() => import("@renderer/pages/tone"));
@@ -111,6 +112,7 @@ function mount(): void {
                         <Route path="/today" element={<HistoryPage />} />
                         <Route element={<PagePad />}>
                           <Route path="/remix" element={<RemixPage />} />
+                          <Route path="/meetings" element={<MeetingsPage />} />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route
                             path="/settings/general"

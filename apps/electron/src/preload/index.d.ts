@@ -41,6 +41,33 @@ declare global {
         rect: { x: number; y: number; width: number; height: number } | null,
       ) => void;
       onPillHotEnter: (callback: () => void) => () => void;
+      meetingSendMicChunk: (chunk: ArrayBuffer) => void;
+      meetingCaptureError: (message: string) => void;
+      startMeetingRecording: () => Promise<{
+        ok: boolean;
+        id?: string;
+        error?: string;
+      }>;
+      stopMeetingRecording: () => Promise<{ ok: boolean }>;
+      getMeetingStatus: () => Promise<{
+        status: "idle" | "recording" | "finalizing";
+        meetingId: string | null;
+        supported: boolean;
+      }>;
+      probeMeetingSystemAudio: () => Promise<
+        "ok" | "silent" | "unsupported" | "error"
+      >;
+      openAudioCaptureSettings: () => void;
+      onMeetingLevel: (
+        callback: (event: {
+          meetingId: string;
+          source: "mic" | "system";
+          rms: number;
+        }) => void,
+      ) => () => void;
+      onMeetingStatusChanged: (
+        callback: (status: "idle" | "recording" | "finalizing") => void,
+      ) => () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
       getServerUrl: () => Promise<string>;
