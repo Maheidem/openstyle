@@ -123,6 +123,7 @@ import {
 } from "./plugins/index";
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 import { isRemixTargetAllowed } from "./remix-target";
+import { selfUpdater, sweepSelfUpdaterBackups } from "./self-updater";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
 import {
   openAudioCaptureSettings,
@@ -2091,6 +2092,28 @@ function showMoveToApplicationsDialog(): void {
 }
 
 function restartAndUpdate(): void {
+  if (process.platform === "darwin" && selfUpdater.isReadyToInstall) {
+    // Self-update path (see self-updater.ts): quitAndInstall() would hand
+    // this off to Squirrel.Mac, which rejects our ad-hoc-signed downloads.
+    // Extraction/swap can take a few seconds, so isUpdaterQuitting is only
+    // set right before installUpdate() actually calls app.quit() (via the
+    // onBeforeQuit callback) — not here — so a manual quit mid-install still
+    // goes through normal before-quit cleanup instead of being mistaken for
+    // the updater's own quit.
+    void selfUpdater
+      .installUpdate(() => {
+        isUpdaterQuitting = true;
+      })
+      .catch((err) => {
+        updateDownloadState = "idle";
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn(`Self-update install failed: ${msg}`);
+        settingsWindow?.webContents.send("updater:error", { message: msg });
+      });
+    return;
+  }
+  // Kept for non-macOS platforms / future signed macOS builds, where
+  // Squirrel's own install flow works.
   isUpdaterQuitting = true;
   autoUpdater.quitAndInstall();
 }
@@ -2360,6 +2383,9 @@ app.on("second-instance", () => {
 app.whenReady().then(async () => {
   void startLinuxPasteHelper();
   void recoverDuckedVolumeFromCrash();
+  // Clean up any .old-<ts> app bundle backup left behind if a previous
+  // self-update's post-swap cleanup didn't get to run (see self-updater.ts).
+  void sweepSelfUpdaterBackups();
 
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.openstyle.app");
@@ -2922,9 +2948,13 @@ app.whenReady().then(async () => {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
     // Every build is ad-hoc signed (no paid Apple Developer identity yet).
     // Squirrel.Mac deterministically rejects ad-hoc-signed updates AFTER
-    // downloading them ("Code signature ... did not pass validation"), so
-    // silent auto-download is doomed no matter this setting. Only check +
-    // notify; restore autoDownload once builds carry a real signing identity.
+    // downloading them ("Code signature ... did not pass validation"), so we
+    // still use electron-updater only to *check* the release feed. On
+    // macOS, downloading and installing goes through selfUpdater (see
+    // self-updater.ts) instead of Squirrel.Mac; other platforms keep the
+    // stock electron-updater install flow. autoDownload stays false here so
+    // electron-updater never itself downloads the (Squirrel-incompatible)
+    // update artifact.
     autoUpdater.autoDownload = false;
     // Honour the same preference on quit. Upstream hardcoded this to true, so a
     // single manual "Check for Updates" could stage a release that then
@@ -2936,8 +2966,9 @@ app.whenReady().then(async () => {
       settingsWindow?.webContents.send("updater:available", {
         version: info.version,
       });
-      // Never auto-download (autoDownload is always false — see above). Just
-      // notify once per version and send the user to the releases page.
+      // electron-updater never auto-downloads (autoDownload is always false
+      // — see above); the in-app banner/notification drives the actual
+      // download via updater:download.
       if (
         Notification.isSupported() &&
         notifiedAvailableVersion !== info.version
@@ -2945,13 +2976,46 @@ app.whenReady().then(async () => {
         notifiedAvailableVersion = info.version;
         const note = new Notification({
           title: "Openstyle Update Available",
-          body: `Version ${info.version} is available. Click to view the release.`,
+          body: `Version ${info.version} is available.`,
         });
-        note.on("click", () => {
-          void shell.openExternal(RELEASES_PAGE_URL);
-        });
+        note.on("click", () => showSettingsWindow("/settings"));
         note.show();
       }
+    });
+
+    selfUpdater.on("progress", (p) => {
+      settingsWindow?.webContents.send("updater:downloading", p);
+    });
+
+    selfUpdater.on("downloaded", (info) => {
+      updateDownloadState = "downloaded";
+      settingsWindow?.webContents.send("updater:downloaded", {
+        version: info.version,
+      });
+      if (
+        Notification.isSupported() &&
+        notifiedDownloadedVersion !== info.version
+      ) {
+        notifiedDownloadedVersion = info.version;
+        const note = new Notification({
+          title: "Update Ready to Install",
+          body: `Version ${info.version} has been downloaded. Restart to update.`,
+        });
+        note.on("click", () => showSettingsWindow("/settings"));
+        note.show();
+      }
+      if (updateCheckTimer) {
+        clearInterval(updateCheckTimer);
+        updateCheckTimer = null;
+      }
+      rebuildMenus();
+      void prefetchManagedMlxRuntimeForAppRelease(info.version).catch((err) => {
+        log.warn(
+          `Failed to stage MLX runtime for ${info.version}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
     });
 
     autoUpdater.on("update-downloaded", (info) => {
@@ -3022,11 +3086,34 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.on("updater:download", () => {
-    // Every build is ad-hoc signed, so a downloaded update fails Squirrel.Mac's
-    // signature check no matter which renderer affordance fires this IPC
-    // message (see the autoDownload=false comment above) — send the user to
-    // the releases page instead of ever calling autoUpdater.downloadUpdate().
-    void shell.openExternal(RELEASES_PAGE_URL);
+    // Every build is ad-hoc signed, so Squirrel.Mac would reject a download
+    // done through electron-updater's own downloadUpdate() (see the
+    // autoDownload=false comment above). On a packaged macOS build we
+    // instead download + verify the release zip ourselves via selfUpdater
+    // (self-updater.ts) and skip Squirrel entirely. Everywhere else (dev
+    // builds, other platforms, or if self-update can't run here) we fall
+    // back to sending the user to the releases page.
+    const reason = selfUpdater.unavailableReason();
+    if (reason) {
+      log.warn(`Self-update unavailable (${reason}); opening releases page`);
+      void shell.openExternal(RELEASES_PAGE_URL);
+      return;
+    }
+    updateDownloadState = "downloading";
+    settingsWindow?.webContents.send("updater:downloading", {
+      percent: 0,
+      transferred: 0,
+      total: 0,
+    });
+    selfUpdater.downloadUpdate().catch((err) => {
+      updateDownloadState = "idle";
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn(
+        `Self-update download failed, falling back to releases page: ${msg}`,
+      );
+      settingsWindow?.webContents.send("updater:error", { message: msg });
+      void shell.openExternal(RELEASES_PAGE_URL);
+    });
   });
 
   ipcMain.on("updater:install", () => {

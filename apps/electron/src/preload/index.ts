@@ -334,8 +334,17 @@ const api = {
     ipcRenderer.on("updater:downloaded", handler);
     return () => ipcRenderer.removeListener("updater:downloaded", handler);
   },
-  onUpdateDownloading: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
+  onUpdateDownloading: (
+    callback: (progress: {
+      percent: number;
+      transferred: number;
+      total: number;
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _: unknown,
+      progress: { percent: number; transferred: number; total: number },
+    ): void => callback(progress);
     ipcRenderer.on("updater:downloading", handler);
     return () => ipcRenderer.removeListener("updater:downloading", handler);
   },

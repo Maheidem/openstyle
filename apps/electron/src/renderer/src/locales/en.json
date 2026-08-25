@@ -14,6 +14,8 @@
     "manage": "Manage",
     "viewRelease": "View Release",
     "saving": "Saving…",
+    "downloading": "Downloading…",
+    "downloadUpdate": "Download Update",
     "restartAndUpdate": "Restart & Update",
     "noResults": "No results found"
   },

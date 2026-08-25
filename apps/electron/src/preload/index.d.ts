@@ -154,7 +154,13 @@ declare global {
       onUpdateDownloaded: (
         callback: (info: { version: string }) => void,
       ) => () => void;
-      onUpdateDownloading: (callback: () => void) => () => void;
+      onUpdateDownloading: (
+        callback: (progress: {
+          percent: number;
+          transferred: number;
+          total: number;
+        }) => void,
+      ) => () => void;
       onUpdateError: (
         callback: (info: { message: string }) => void,
       ) => () => void;
