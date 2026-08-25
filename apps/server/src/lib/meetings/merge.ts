@@ -277,3 +277,26 @@ export function mergeTranscript(
   merged.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
   return merged;
 }
+
+/** `mm:ss` (or `h:mm:ss` past an hour) clock timestamp for a segment start. */
+function formatClockMs(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+    : `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+/**
+ * Render a merged, speaker-labeled transcript as a standalone markdown
+ * document — `[timestamp] Speaker: text` per segment — so a meeting's audio
+ * directory is self-contained without requiring the app or DB.
+ */
+export function formatTranscriptMarkdown(segments: MergedSegment[]): string {
+  const lines = segments.map(
+    (s) => `**[${formatClockMs(s.startMs)}] ${s.speaker}:** ${s.text}`,
+  );
+  return `# Transcript\n\n${lines.length > 0 ? lines.join("\n\n") : "_No speech was detected in this recording._"}\n`;
+}

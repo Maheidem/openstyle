@@ -1,4 +1,5 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { Markdown } from "@renderer/components/markdown";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,6 +13,12 @@ import {
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Card } from "@renderer/components/ui/card";
+import { Input } from "@renderer/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@renderer/components/ui/popover";
 import { Progress } from "@renderer/components/ui/progress";
 import {
   Tabs,
@@ -19,10 +26,10 @@ import {
   TabsList,
   TabsTrigger,
 } from "@renderer/components/ui/tabs";
+import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
 import { configQueryOptions, queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import { PluginReadme } from "@renderer/pages/plugins/plugin-readme";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -30,9 +37,12 @@ import {
   Check,
   ChevronLeft,
   Copy,
+  FolderOpen,
   Mic,
   MonitorSpeaker,
+  Pencil,
   RefreshCw,
+  Settings2,
   Sparkles,
   Square,
   Trash2,
@@ -40,6 +50,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router";
+import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 // ---------------------------------------------------------------------------
 // API types (mirrors apps/server/src/routes/meetings.ts responses)
@@ -59,6 +70,7 @@ interface MeetingListItem {
 interface MeetingDetail extends MeetingListItem {
   stt_provider: string | null;
   stt_model: string | null;
+  audio_dir: string | null;
   job: { done: number; total: number; failed: number } | null;
   segment_counts: { total: number; failed: number };
   summary: {
@@ -418,6 +430,168 @@ function CopyButton({
   );
 }
 
+function EditableTitle({
+  id,
+  title,
+  onRenamed,
+}: {
+  id: string;
+  title: string | null;
+  onRenamed: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(title ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setValue(title ?? "");
+  }, [title, editing]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const commit = useCallback(async () => {
+    const next = value.trim();
+    setEditing(false);
+    if (!next || next === (title ?? "")) {
+      setValue(title ?? "");
+      return;
+    }
+    const res = await getClient().api.meetings[":id"].$patch({
+      param: { id },
+      json: { title: next },
+    });
+    if (res.ok) onRenamed();
+    else setValue(title ?? "");
+  }, [id, onRenamed, title, value]);
+
+  if (editing) {
+    return (
+      <Input
+        ref={inputRef}
+        value={value}
+        maxLength={512}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void commit();
+          } else if (e.key === "Escape") {
+            setValue(title ?? "");
+            setEditing(false);
+          }
+        }}
+        aria-label={t("meetings.renameLabel")}
+        className="h-7 text-[15px] font-medium"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="group flex min-w-0 items-center gap-1.5 text-left"
+      title={t("meetings.rename")}
+    >
+      <span className="text-foreground truncate text-[15px] font-medium">
+        {title || t("meetings.untitled")}
+      </span>
+      <Pencil className="text-muted-foreground/0 group-hover:text-muted-foreground h-3 w-3 shrink-0 transition-colors" />
+    </button>
+  );
+}
+
+function SummaryInstructionsPopover(): React.JSX.Element {
+  const { t } = useTranslation();
+  const [value, setValue] = useState("");
+  const [saved, setSaved] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void getClient()
+      .api.settings[":key"].$get({
+        param: { key: SETTINGS_KEYS.meetingSummaryInstructions },
+      })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          const body = (await res.json()) as { value: string };
+          setValue(body.value);
+          setSaved(body.value);
+        } else {
+          setValue("");
+          setSaved("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const save = useCallback(async () => {
+    setSaving(true);
+    try {
+      const res = await getClient().api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.meetingSummaryInstructions },
+        json: { value },
+      });
+      if (res.ok) setSaved(value);
+    } finally {
+      setSaving(false);
+    }
+  }, [value]);
+
+  const dirty = value !== saved;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label={t("meetings.summaryInstructionsLabel")}
+          title={t("meetings.summaryInstructionsLabel")}
+        >
+          <Settings2 />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <p className="text-foreground text-[12.5px] font-medium">
+          {t("meetings.summaryInstructionsLabel")}
+        </p>
+        <p className="text-muted-foreground text-[11px] leading-[1.5]">
+          {t("meetings.summaryInstructionsHint")}
+        </p>
+        <Textarea
+          value={value}
+          maxLength={4000}
+          onChange={(e) => setValue(e.target.value)}
+          spellCheck={false}
+          className="mono min-h-[120px] resize-y text-[11.5px] leading-[1.5]"
+          aria-label={t("meetings.summaryInstructionsLabel")}
+        />
+        <div className="flex justify-end">
+          <Button
+            variant="ink"
+            size="sm"
+            onClick={() => void save()}
+            disabled={!dirty || saving}
+          >
+            {saving ? t("meetings.saving") : t("meetings.save")}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function MeetingDetailView({
   id,
   onBack,
@@ -551,9 +725,7 @@ function MeetingDetailView({
           <ChevronLeft />
         </Button>
         <div className="min-w-0 flex-1">
-          <div className="text-foreground truncate text-[15px] font-medium">
-            {meeting.title || t("meetings.untitled")}
-          </div>
+          <EditableTitle id={id} title={meeting.title} onRenamed={invalidate} />
           <div className="text-muted-foreground text-[11px]">
             {formatTimestamp(meeting.started_at)} ·{" "}
             {formatDuration(meeting.duration_ms)}
@@ -600,6 +772,17 @@ function MeetingDetailView({
           </Button>
         )}
         <div className="flex-1" />
+        <SummaryInstructionsPopover />
+        <Button
+          variant="outline"
+          size="icon-sm"
+          disabled={!meeting.audio_dir}
+          onClick={() => void window.api?.revealMeetingInFinder?.(id)}
+          aria-label={t("meetings.revealInFinder")}
+          title={t("meetings.revealInFinder")}
+        >
+          <FolderOpen />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -708,7 +891,7 @@ function MeetingDetailView({
                   label={t("meetings.copySummary")}
                 />
               </div>
-              <PluginReadme source={meeting.summary.markdown} />
+              <Markdown source={meeting.summary.markdown} />
             </>
           ) : (
             <div className="border-border bg-card/30 rounded-[14px] border border-dashed px-6 py-10 text-center">

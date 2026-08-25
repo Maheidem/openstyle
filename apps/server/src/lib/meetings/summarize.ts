@@ -26,6 +26,7 @@ import {
   MEETING_SUMMARY_MAP_SYSTEM_PROMPT,
   MEETING_SUMMARY_REDUCE_SYSTEM_PROMPT,
   MEETING_SUMMARY_SYSTEM_PROMPT,
+  withSummaryInstructions,
 } from "./summary-prompt.js";
 
 /** Conservative default transcript-context budget (tokens). */
@@ -77,6 +78,12 @@ export interface SummarizeMeetingOptions {
   maxOutputTokens?: number;
   /** Override the LLM call (tests, alternate backends). */
   llmCall?: SummaryLlmCall;
+  /**
+   * User-authored instructions appended to the summary system prompt.
+   * Defaults to the persisted `meeting_summary_instructions` setting when
+   * readable, else "" (no change to the default prompt).
+   */
+  summaryInstructions?: string;
 }
 
 export interface SummarizeMeetingResult {
@@ -226,6 +233,24 @@ async function resolveContextBudget(): Promise<number> {
   }
 }
 
+/** Resolve the summary-instructions profile from settings when no option is given. */
+async function resolveSummaryInstructions(): Promise<string> {
+  try {
+    const [{ getDb }, { parseMeetingSummaryInstructions }] = await Promise.all([
+      import("../db.js"),
+      import("@openstyle/validations"),
+    ]);
+    const row = getDb()
+      .prepare(
+        "SELECT value FROM settings WHERE key = 'meeting_summary_instructions'",
+      )
+      .get() as { value: string } | undefined;
+    return parseMeetingSummaryInstructions(row?.value);
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Summarize a merged meeting transcript into markdown.
  *
@@ -254,6 +279,8 @@ export async function summarizeMeeting(
 
   const contextBudgetTokens =
     options.contextBudgetTokens ?? (await resolveContextBudget());
+  const summaryInstructions =
+    options.summaryInstructions ?? (await resolveSummaryInstructions());
 
   let inputTokens = 0;
   let outputTokens = 0;
@@ -276,7 +303,10 @@ export async function summarizeMeeting(
 
   if (estimateTokens(transcript) <= contextBudgetTokens) {
     markdown = await call({
-      system: MEETING_SUMMARY_SYSTEM_PROMPT,
+      system: withSummaryInstructions(
+        MEETING_SUMMARY_SYSTEM_PROMPT,
+        summaryInstructions,
+      ),
       prompt: buildMeetingSummaryUserPrompt(transcript),
       maxOutputTokens,
       kind: "single",
@@ -295,7 +325,10 @@ export async function summarizeMeeting(
       );
     }
     markdown = await call({
-      system: MEETING_SUMMARY_REDUCE_SYSTEM_PROMPT,
+      system: withSummaryInstructions(
+        MEETING_SUMMARY_REDUCE_SYSTEM_PROMPT,
+        summaryInstructions,
+      ),
       prompt: buildMeetingSummaryReducePrompt(partials),
       maxOutputTokens,
       kind: "reduce",

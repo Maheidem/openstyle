@@ -1,4 +1,11 @@
-import { closeSync, openSync, readFileSync, readSync, rmSync } from "node:fs";
+import {
+  closeSync,
+  openSync,
+  readFileSync,
+  readSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { zValidator } from "@hono/zod-validator";
 import { createAppLogger } from "@openstyle/utils";
@@ -7,6 +14,7 @@ import { z } from "zod";
 import { getDb } from "../lib/db.js";
 import { isDictationActive } from "../lib/dictation-activity.js";
 import {
+  formatTranscriptMarkdown,
   type MergedSegment,
   mergeTranscript,
   type SyncData,
@@ -188,6 +196,26 @@ function loadMergedTranscript(
   return mergeTranscript(channel("mic"), channel("system"), sync);
 }
 
+/**
+ * Write the merged transcript as `transcript.md` into the meeting's audio
+ * dir so the folder is self-contained. Best-effort: a write failure (e.g.
+ * the dir was purged mid-job) never fails the surrounding job.
+ */
+function writeTranscriptMarkdown(meetingId: string, audioDir: string): void {
+  try {
+    const merged = loadMergedTranscript(meetingId, audioDir);
+    writeFileSync(
+      join(audioDir, "transcript.md"),
+      formatTranscriptMarkdown(merged),
+      "utf8",
+    );
+  } catch (err) {
+    log.warn(
+      `meeting ${meetingId}: failed to write transcript.md: ${String(err)}`,
+    );
+  }
+}
+
 function persistChunk(meetingId: string, chunk: ChunkResult): void {
   getDb()
     .prepare(
@@ -254,6 +282,7 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       failed > 0 ? `${failed} of ${results.length} chunks failed` : null,
       id,
     );
+    writeTranscriptMarkdown(id, audioDir);
     log.info(
       `meeting ${id}: transcribed ${results.length} chunks (${failed} failed)`,
     );
@@ -295,6 +324,10 @@ const startSchema = z.object({
   started_at: z.number().int(),
 });
 
+const renameSchema = z.object({
+  title: z.string().trim().min(1).max(512),
+});
+
 const stopSchema = z.object({
   ended_at: z.number().int(),
   duration_ms: z.number().int().min(0),
@@ -330,6 +363,17 @@ const meetings = new Hono()
        VALUES (?, ?, ?, 'recording', ?, ?)`,
     ).run(id, title ?? null, started_at, audio_dir, Date.now());
     return c.json({ ok: true, id });
+  })
+  // Rename a meeting.
+  .patch("/:id", zValidator("json", renameSchema), (c) => {
+    const id = c.req.param("id");
+    const { title } = c.req.valid("json");
+    const db = getDb();
+    const result = db
+      .prepare("UPDATE meetings SET title = ? WHERE id = ?")
+      .run(title, id);
+    if (result.changes === 0) return c.json({ error: "Not found" }, 404);
+    return c.json({ ok: true, title });
   })
   .post("/:id/stop", zValidator("json", stopSchema), (c) => {
     const id = c.req.param("id");
@@ -451,6 +495,7 @@ const meetings = new Hono()
         stillFailed > 0 ? `${stillFailed} chunks failed` : null,
         id,
       );
+      writeTranscriptMarkdown(id, audioDir);
       return c.json({ ok: true, retried: results.length, failed: stillFailed });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

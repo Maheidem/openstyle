@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -189,6 +190,14 @@ describe("POST /api/meetings/:id/transcribe", () => {
       segments.every((s) => s.speaker === "Me" || s.speaker === "Them"),
     ).toBe(true);
     expect(segments[0].text).toBe("the quarterly numbers look great");
+
+    // transcript.md is written into the meeting's audio dir alongside the
+    // WAV files so the folder is self-contained.
+    const transcriptPath = join(audioDir, "transcript.md");
+    expect(existsSync(transcriptPath)).toBe(true);
+    const md = readFileSync(transcriptPath, "utf8");
+    expect(md).toContain("the quarterly numbers look great");
+    expect(md).toMatch(/\[\d+:\d{2}\]/);
   });
 
   it("marks the meeting failed when the pipeline throws", async () => {
@@ -205,6 +214,51 @@ describe("POST /api/meetings/:id/transcribe", () => {
     const done = await waitForTerminalStatus("m1");
     expect(done.status).toBe("failed");
     expect(done.error).toContain("no voice model configured");
+  });
+});
+
+describe("PATCH /api/meetings/:id", () => {
+  it("renames a meeting", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "  New title  " }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; title: string };
+    expect(body.title).toBe("New title");
+    const after = await getMeeting("m1");
+    expect(after.title).toBe("New title");
+  });
+
+  it("404s for an unknown meeting", async () => {
+    const res = await app.request("/api/meetings/nope", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "New title" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an empty or whitespace-only title", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "   " }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a title over the length cap", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "x".repeat(513) }),
+    });
+    expect(res.status).toBe(400);
   });
 });
 
