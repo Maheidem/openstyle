@@ -1,4 +1,14 @@
 # Changelog
+## 2.0.0
+
+### Breaking Changes 🛠
+
+- (electron) Remove plugin functionality by @Maheidem in [6211514b](https://github.com/Maheidem/openstyle/commit/6211514b52819b65c794453fa64acedc9194e406)
+
+### New Features ✨
+
+- (meetings) Add rename, summary instructions, and reveal-in-Finder by @Maheidem in [fbaa730f](https://github.com/Maheidem/openstyle/commit/fbaa730f7e9ea3bf00c465054811719770c785a4)
+
 ## 1.2.0
 
 ### New Features ✨
