@@ -56,8 +56,12 @@ function runShell(cmd, opts = {}) {
 function compileMacOS() {
   console.log("\n[compile:native] Building macOS binaries...\n");
 
-  const swiftcArgs = (src, out, frameworks) => {
+  const swiftcArgs = (src, out, frameworks, minTarget) => {
     const args = ["-O", src, "-o", out];
+    if (minTarget) {
+      const swiftArch = arch === "arm64" ? "arm64" : "x86_64";
+      args.push("-target", `${swiftArch}-apple-macos${minTarget}`);
+    }
     for (const fw of frameworks) {
       args.push("-framework", fw);
     }
@@ -94,6 +98,9 @@ function compileMacOS() {
       name: "macos-system-audio",
       src: "macos-system-audio.swift",
       frameworks: ["CoreAudio", "AudioToolbox", "AVFAudio", "Foundation"],
+      // AudioHardwareCreateProcessTap and friends need a 14.2+ deployment
+      // target; the binary self-gates to 14.4 at runtime (ERR_UNSUPPORTED_OS).
+      minTarget: "14.2",
     },
     {
       name: "macos-ax",
@@ -107,7 +114,10 @@ function compileMacOS() {
     const src = join(NATIVE_DIR, bin.src);
     const out = join(outputDir, bin.name);
 
-    const ok = run("swiftc", swiftcArgs(src, out, bin.frameworks));
+    const ok = run(
+      "swiftc",
+      swiftcArgs(src, out, bin.frameworks, bin.minTarget),
+    );
     if (ok) {
       chmodSync(out, 0o755);
       console.log(`  -> ${out}`);
