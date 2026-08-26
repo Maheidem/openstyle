@@ -1,4 +1,21 @@
 # Changelog
+## 2.3.0
+
+### New Features ✨
+
+- (ui) Full reskin to the new minimal design system by @Maheidem in [fe6eac15](https://github.com/Maheidem/openstyle/commit/fe6eac15eec00aa76a33375d90b199ddae1bfce9)
+
+### Bug Fixes 🐛
+
+#### Ui
+
+- Compact meetings rail per mockup (master-detail polish) by @Maheidem in [690b3a80](https://github.com/Maheidem/openstyle/commit/690b3a802595e12d3e9c4a91717d5a37fbf8e670)
+- Converge reskin to approved mockup (titles, widths, eyebrows, help blocks, master-detail meetings, new brand mark and app icon) by @Maheidem in [f9f57cb9](https://github.com/Maheidem/openstyle/commit/f9f57cb96bc2bfde4bc3b0f67d9eb12f2f3b0dad)
+
+#### Other
+
+- (settings) Surface system-audio permission in Settings and prune unused Info.plist usage keys by @Maheidem in [7df8c16a](https://github.com/Maheidem/openstyle/commit/7df8c16a737c590f4f729345a952be53c611189b)
+
 ## 2.2.0
 
 ### New Features ✨
