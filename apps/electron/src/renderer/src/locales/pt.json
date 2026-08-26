@@ -201,7 +201,9 @@
       "accessibility": "Acessibilidade",
       "accessibilityDescMac": "Necessário para detectar o atalho global e colar nos apps. Ative o Openstyle em Ajustes do Sistema › Privacidade e Segurança › Acessibilidade.",
       "accessibilityDescOther": "Necessário para detectar o atalho global e colar em outros aplicativos.",
-      "autoGranted": "Auto-concedido"
+      "autoGranted": "Auto-concedido",
+      "systemAudio": "Áudio do sistema",
+      "systemAudioDesc": "Necessário para capturar os outros participantes ao gravar uma reunião. O macOS não tem como verificar isso com antecedência, então o status não pode ser exibido com confiabilidade aqui: abra Configurações para conceder ou revisar."
     },
     "data": {
       "pauseHistory": "Pausar histórico",

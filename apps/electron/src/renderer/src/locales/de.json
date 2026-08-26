@@ -201,7 +201,9 @@
       "accessibility": "Bedienungshilfen",
       "accessibilityDescMac": "Erforderlich, um die globale Tastenkombination zu erkennen und in andere Apps einzufügen. Aktivieren Sie Openstyle unter Systemeinstellungen › Datenschutz & Sicherheit › Bedienungshilfen.",
       "accessibilityDescOther": "Erforderlich, um die globale Tastenkombination zu erkennen und in andere Apps einzufügen.",
-      "autoGranted": "Automatisch gewährt"
+      "autoGranted": "Automatisch gewährt",
+      "systemAudio": "Systemaudio",
+      "systemAudioDesc": "Erforderlich, um die anderen Teilnehmer aufzuzeichnen, wenn Sie ein Meeting aufnehmen. macOS bietet keine Möglichkeit, dies vorab zu prüfen, daher kann der Status hier nicht zuverlässig angezeigt werden. Öffnen Sie die Einstellungen, um die Berechtigung zu erteilen oder zu überprüfen."
     },
     "data": {
       "pauseHistory": "Verlauf pausieren",

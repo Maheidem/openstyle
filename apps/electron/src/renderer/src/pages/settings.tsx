@@ -47,7 +47,11 @@ import {
 } from "@renderer/lib/api";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
-import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  configQueryOptions,
+  queryKeys,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -248,6 +252,26 @@ export default function SettingsPage(): React.JSX.Element {
   // macOS and Windows can deep-link to the OS mic privacy settings.
   const canOpenMicSettings = isMac || isWindows;
 
+  // System audio permission (meeting mode). Meeting-scoped: dictation-only
+  // users must never see this row — same reasoning as the
+  // meeting:probe-system-audio IPC handler (index.ts) and the meetings nav
+  // entry (shell.tsx), both gated on the server-owned `meetings` flag.
+  const { data: config } = useQuery(configQueryOptions());
+  const meetingsEnabled = config?.flags?.meetings === true;
+  // `supported` mirrors isSystemAudioCaptureSupported() (darwin >= 14.4),
+  // read via the existing meeting:status IPC — cheap, no side effect.
+  const [systemAudioSupported, setSystemAudioSupported] = useState(false);
+  const showSystemAudioRow = meetingsEnabled && systemAudioSupported;
+  // macOS has no preflight API for this TCC permission (see
+  // system-audio-probe.ts): the only way to learn anything is to briefly run
+  // the real capture pipeline. 'silent' is indeterminate (denied OR simply
+  // nothing playing), so — like the meetings-page hint — we never render it
+  // as a hard "needed" failure, only as still-unknown.
+  const [systemAudioProbeResult, setSystemAudioProbeResult] = useState<
+    "ok" | "silent" | "unsupported" | "error" | null
+  >(null);
+  const systemAudioProbeStartedRef = useRef(false);
+
   const selectSection = useCallback((id: SettingsSectionId) => {
     setActiveSection(id);
     const nextHash = `#${id}`;
@@ -272,6 +296,10 @@ export default function SettingsPage(): React.JSX.Element {
     try {
       const acc = await window.api?.checkAccessibilityPermission();
       if (acc !== undefined) setAccessibilityStatus(acc);
+    } catch {}
+    try {
+      const meetingStatus = await window.api?.getMeetingStatus();
+      if (meetingStatus) setSystemAudioSupported(meetingStatus.supported);
     } catch {}
   }, []);
 
@@ -319,6 +347,29 @@ export default function SettingsPage(): React.JSX.Element {
       }
     }, 30000);
   }, []);
+
+  // No preflight/query API exists for this permission (see
+  // system-audio-probe.ts) — nothing to poll after opening Settings, unlike
+  // mic/accessibility above.
+  const openSystemAudioSettings = useCallback(() => {
+    window.api?.openAudioCaptureSettings?.();
+  }, []);
+
+  // Lazy by design (mirrors the meeting:probe-system-audio IPC handler's own
+  // comment): only spawn the real capture pipeline once the user actually
+  // opens the Permissions tab, not on every Settings window mount.
+  useEffect(() => {
+    if (activeSection !== "permissions") return;
+    if (!showSystemAudioRow) return;
+    if (systemAudioProbeStartedRef.current) return;
+    systemAudioProbeStartedRef.current = true;
+    void window.api
+      ?.probeMeetingSystemAudio?.()
+      .then((result) => {
+        setSystemAudioProbeResult(result);
+      })
+      .catch(() => {});
+  }, [activeSection, showSystemAudioRow]);
 
   const handleHotkeyModeChange = useCallback((mode: "hold" | "toggle") => {
     setHotkeyMode(mode);
@@ -1217,7 +1268,7 @@ export default function SettingsPage(): React.JSX.Element {
                     ? t("settings.permissions.accessibilityDescMac")
                     : t("settings.permissions.accessibilityDescOther")
                 }
-                last
+                last={!showSystemAudioRow}
               >
                 <PermissionControl
                   granted={accessibilityStatus === true}
@@ -1239,6 +1290,22 @@ export default function SettingsPage(): React.JSX.Element {
                   }
                 />
               </Row>
+              {showSystemAudioRow && (
+                <Row
+                  label={t("settings.permissions.systemAudio")}
+                  desc={t("settings.permissions.systemAudioDesc")}
+                  last
+                >
+                  <PermissionControl
+                    granted={systemAudioProbeResult === "ok"}
+                    checking={systemAudioProbeResult !== "ok"}
+                    actionLabel={t("common.openSettings")}
+                    external
+                    onAction={openSystemAudioSettings}
+                    onManage={openSystemAudioSettings}
+                  />
+                </Row>
+              )}
             </SettingsPanel>
           )}
           {activeSection === "data" && (

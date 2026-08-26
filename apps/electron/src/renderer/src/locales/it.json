@@ -201,7 +201,9 @@
       "accessibility": "Accessibilità",
       "accessibilityDescMac": "Richiesto per rilevare la scorciatoia globale e incollare. Abilita Openstyle sotto Impostazioni di Sistema › Privacy e Sicurezza › Accessibilità.",
       "accessibilityDescOther": "Richiesto per rilevare la scorciatoia globale e incollare nelle altre app.",
-      "autoGranted": "Autoconsentito"
+      "autoGranted": "Autoconsentito",
+      "systemAudio": "Audio di sistema",
+      "systemAudioDesc": "Necessario per catturare gli altri partecipanti quando registri una riunione. macOS non offre un modo per verificarlo in anticipo, quindi lo stato non può essere mostrato in modo affidabile qui: apri Impostazioni per concederlo o verificarlo."
     },
     "data": {
       "pauseHistory": "Metti in pausa la cronologia",

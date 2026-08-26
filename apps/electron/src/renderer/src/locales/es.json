@@ -201,7 +201,9 @@
       "accessibility": "Accesibilidad",
       "accessibilityDescMac": "Necesario para detectar el atajo global y pegar en otras apps. Activa Openstyle en Ajustes del Sistema › Privacidad y Seguridad › Accesibilidad.",
       "accessibilityDescOther": "Necesario para detectar el atajo global y pegar en otras apps.",
-      "autoGranted": "Concedido automáticamente"
+      "autoGranted": "Concedido automáticamente",
+      "systemAudio": "Audio del sistema",
+      "systemAudioDesc": "Necesario para capturar a los demás participantes al grabar una reunión. macOS no permite comprobarlo de antemano, así que el estado no se puede mostrar de forma fiable aquí: abre Ajustes para concederlo o revisarlo."
     },
     "data": {
       "pauseHistory": "Pausar historial",

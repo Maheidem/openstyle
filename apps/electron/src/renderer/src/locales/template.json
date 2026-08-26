@@ -241,7 +241,9 @@
       "accessibility": "Accessibility",
       "accessibilityDescMac": "Required to detect the global hotkey and paste into other apps. Toggle Openstyle on under System Settings › Privacy & Security › Accessibility.",
       "accessibilityDescOther": "Required to detect the global hotkey and paste into other apps.",
-      "autoGranted": "Auto-granted"
+      "autoGranted": "Auto-granted",
+      "systemAudio": "System audio",
+      "systemAudioDesc": "Required to capture the other participants when you record a meeting. macOS has no way to check this in advance, so status can't be shown reliably here: open Settings to grant or review it."
     },
     "data": {
       "pauseHistory": "Pause history",

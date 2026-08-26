@@ -201,7 +201,9 @@
       "accessibility": "Accessibilité",
       "accessibilityDescMac": "Requis pour détecter le raccourci global et coller dans d'autres apps. Activez Openstyle dans Réglages Système › Confidentialité et sécurité › Accessibilité.",
       "accessibilityDescOther": "Requis pour détecter le raccourci global et coller dans d'autres apps.",
-      "autoGranted": "Accordé automatiquement"
+      "autoGranted": "Accordé automatiquement",
+      "systemAudio": "Audio système",
+      "systemAudioDesc": "Requis pour capturer les autres participants lors de l'enregistrement d'une réunion. macOS ne permet pas de vérifier cela à l'avance, donc le statut ne peut pas être affiché de façon fiable ici : ouvrez les Réglages pour l'accorder ou le vérifier."
     },
     "data": {
       "pauseHistory": "Suspendre l'historique",
