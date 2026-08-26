@@ -312,8 +312,15 @@ function LevelMeter({
 
 function RecordingCard({
   recorder,
+  compact = false,
 }: {
   recorder: ReturnType<typeof useRecorder>;
+  /** Rail context (mockup artboard 02): swap the idle/finalizing "Record a
+   * meeting" card — whose title+description text wraps and collides with
+   * the button at ~262px — for a slim pill. An in-progress recording still
+   * gets the full Card below (timer + level meters + Stop): that layout
+   * never had the wrap bug, so it's left untouched. */
+  compact?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const [micLevel, setMicLevel] = useState(0);
@@ -321,6 +328,7 @@ function RecordingCard({
   const [elapsedMs, setElapsedMs] = useState(0);
   const startedAtRef = useRef<number | null>(null);
   const recording = recorder.status === "recording";
+  const finalizing = recorder.status === "finalizing";
 
   useEffect(() => {
     if (!recording) {
@@ -346,8 +354,43 @@ function RecordingCard({
     };
   }, [recording]);
 
+  if (compact && !recording) {
+    return (
+      <div className="mb-4">
+        <div className="flex min-w-0 items-center gap-2">
+          {finalizing ? (
+            <Button variant="outline" size="xs" disabled>
+              <RefreshCw data-icon="inline-start" className="animate-spin" />
+              {t("meetings.finalizing")}
+            </Button>
+          ) : (
+            <Button
+              variant="ink"
+              size="xs"
+              onClick={() => void recorder.start()}
+              disabled={!recorder.supported}
+            >
+              <Mic data-icon="inline-start" />
+              {t("meetings.start")}
+            </Button>
+          )}
+          {!finalizing && recorder.error && (
+            <span className="text-destructive min-w-0 flex-1 truncate text-[10px]">
+              {recorder.error}
+            </span>
+          )}
+        </div>
+        {!finalizing && !recorder.supported && (
+          <p className="text-muted-foreground mt-1.5 text-[10.5px] leading-[1.4]">
+            {t("meetings.notSupported")}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <Card className="mb-6 p-5">
+    <Card className={cn("mb-6 p-5", compact && "mb-4 p-3.5")}>
       <div className="flex items-center gap-4">
         <div className="min-w-0 flex-1">
           {recording ? (
@@ -865,6 +908,9 @@ function MeetingDetailView({
           size="icon-sm"
           onClick={onBack}
           aria-label={t("meetings.back")}
+          // The list rail is always visible at >=900px (master-detail), so
+          // "back" only means something in the narrow single-pane fallback.
+          className="min-[900px]:hidden"
         >
           <ChevronLeft />
         </Button>
@@ -1240,6 +1286,8 @@ export default function MeetingsPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto pt-5"
         style={{ scrollbarWidth: "none" } as React.CSSProperties}
       >
+        {showAudioHint && <SystemAudioHint />}
+
         <div className="grid min-h-full grid-cols-1 gap-6 min-[900px]:grid-cols-[262px_minmax(0,1fr)]">
           <aside
             className={cn(
@@ -1247,19 +1295,12 @@ export default function MeetingsPage(): React.JSX.Element {
               hideListAtNarrow && "max-[899px]:hidden",
             )}
           >
-            <div className="mb-1 flex items-start justify-between gap-2">
-              <h1 className="display text-foreground m-0 text-[22px] font-medium leading-none tracking-[-0.01em]">
-                {t("meetings.titleAccent")}
-              </h1>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="eyebrow">{t("meetings.titleAccent")}</span>
               <DiarizationSettingsPopover />
             </div>
-            <p className="text-muted-foreground mt-1 mb-4 text-[11.5px] leading-[1.5]">
-              {t("meetings.subtitle")}
-            </p>
 
-            {showAudioHint && <SystemAudioHint />}
-
-            <RecordingCard recorder={recorder} />
+            <RecordingCard recorder={recorder} compact />
 
             <div className="flex flex-col gap-0.5">
               {meetings.map((m) => {
@@ -1275,18 +1316,18 @@ export default function MeetingsPage(): React.JSX.Element {
                     type="button"
                     onClick={() => setSelectedId(m.id)}
                     className={cn(
-                      "flex flex-col gap-1 rounded-[9px] border border-transparent px-3 py-2.5 text-left transition-colors",
+                      "flex min-w-0 flex-col gap-1 rounded-[9px] border border-transparent px-3 py-2.5 text-left transition-colors",
                       "hover:bg-card/60",
                       selected && "bg-card border-border",
                       implicitlyActive &&
                         "min-[900px]:bg-card min-[900px]:border-border",
                     )}
                   >
-                    <span className="text-foreground truncate text-[12.5px] font-medium">
+                    <span className="text-foreground min-w-0 truncate text-[12.5px] font-medium">
                       {m.title || t("meetings.untitled")}
                     </span>
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="mono text-muted-foreground/70 text-[10px]">
+                    <span className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="mono text-muted-foreground/70 min-w-0 truncate text-[10px]">
                         {formatTimestamp(m.started_at)} ·{" "}
                         {formatDuration(m.duration_ms)}
                       </span>
