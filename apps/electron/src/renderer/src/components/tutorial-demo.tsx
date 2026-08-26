@@ -165,7 +165,7 @@ export function TutorialDemo({
     <div className="border-border bg-card flex flex-col items-center gap-5 rounded-[16px] border px-7 py-7">
       {/* Instructional sentence */}
       <div className="select-none text-center">
-        <div className="serif text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
+        <div className="display text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
           <StepWord active={phase === "idle"}>Press</StepWord>{" "}
           <span className="inline-block align-middle">
             {hotkeyTokens.map((tok, i) => (
@@ -246,7 +246,7 @@ export function TutorialDemo({
               transform: showResult ? "translateY(0)" : "translateY(4px)",
             }}
           >
-            <span className="serif text-foreground text-[17px] leading-[1.4]">
+            <span className="display text-foreground text-[17px] leading-[1.4]">
               "{SAMPLE_TRANSCRIPT}"
             </span>
           </div>

@@ -70,7 +70,7 @@ function ExistingAssignmentRow({
   const { t } = useTranslation();
 
   return (
-    <div className="bg-background flex items-center justify-between gap-3 rounded-[12px] border border-border px-3 py-2">
+    <div className="bg-background flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
       <div className="flex min-w-0 items-center gap-2.5">
         <RouteMark assignment={item} size={28} />
         <div className="min-w-0">
@@ -206,7 +206,7 @@ export function AppAssignments({
           type="button"
           variant="default"
           size="icon-sm"
-          className={cn("shadow-sm", className)}
+          className={className}
           aria-label={t("tone.apps.add")}
         >
           <Plus />
@@ -261,7 +261,7 @@ export function AppAssignments({
             </div>
 
             {loadingApps ? (
-              <div className="text-muted-foreground flex min-h-[84px] items-center justify-center rounded-[14px] border border-dashed border-border bg-background text-[12px]">
+              <div className="text-muted-foreground flex min-h-[84px] items-center justify-center rounded-lg border border-dashed border-border bg-background text-[12px]">
                 <Loader2 className="mr-2 size-4 animate-spin" />
                 {t("tone.apps.loadingOpenApps")}
               </div>
@@ -279,7 +279,7 @@ export function AppAssignments({
                       onClick={() => addDetectedApp(candidate)}
                       disabled={disabled}
                       className={cn(
-                        "h-auto justify-start gap-2 rounded-[12px] px-3 py-2.5 text-left",
+                        "h-auto justify-start gap-2 rounded-lg px-3 py-2.5 text-left",
                         showHoverAction ? "items-center" : "items-start",
                       )}
                     >
@@ -314,7 +314,7 @@ export function AppAssignments({
                 })}
               </div>
             ) : (
-              <div className="text-muted-foreground min-h-[84px] rounded-[14px] border border-dashed border-border bg-background px-4 py-4 text-[12px] leading-[1.55]">
+              <div className="text-muted-foreground min-h-[84px] rounded-lg border border-dashed border-border bg-background px-4 py-4 text-[12px] leading-[1.55]">
                 {t("tone.apps.openAppsEmpty")}
               </div>
             )}
@@ -365,7 +365,7 @@ export function AppAssignments({
             </div>
 
             {siteAssignment ? (
-              <div className="bg-background flex items-center gap-2.5 rounded-[12px] border border-border px-3 py-2">
+              <div className="bg-background flex items-center gap-2.5 rounded-lg border border-border px-3 py-2">
                 <RouteMark assignment={siteAssignment} size={28} />
                 <div className="min-w-0">
                   <p className="text-foreground truncate text-[13px] font-medium">

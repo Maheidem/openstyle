@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<
         <span className="mono text-muted-foreground text-[11px] tracking-[0.16em] uppercase">
           Something went wrong
         </span>
-        <h1 className="serif text-foreground m-0 max-w-[28rem] text-[24px] leading-tight font-normal">
+        <h1 className="display text-foreground m-0 max-w-[28rem] text-[24px] leading-tight font-normal">
           Openstyle hit an unexpected error.
         </h1>
         <p className="text-muted-foreground m-0 max-w-[26rem] text-[13px] leading-relaxed">

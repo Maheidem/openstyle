@@ -317,16 +317,25 @@ const STATUS_SLOT = STATUS_SIZE + STATUS_GAP;
  * single dark treatment in both themes rather than following the app theme —
  * a light pill reads as a blown-out blob over dark editors.
  */
-const SURFACE = "rgba(22, 20, 15, 0.98)";
+const SURFACE = "rgba(25, 24, 26, 0.98)";
 const SURFACE_BORDER = "1px solid rgba(255, 255, 255, 0.10)";
 const BLUR = "blur(20px) saturate(120%)";
-/** Cream ink, and the terracotta the palette reserves for failures. */
+/** Cream ink, unchanged by the reskin — the design system's pill-dark/
+ * pill-cream pair for this always-dark capsule already matches this value. */
 const INK = "#F5F1E4";
-const ALERT = "#E0805F";
+/** Error/warning glyph only — kept off the live-coral token so a failure
+ * never reads as "recording" (the same fence `--destructive` observes
+ * app-wide). Dark-mode destructive red, for contrast on the always-dark
+ * surface. */
+const ALERT = "#F87171";
+/** Live/recording accent — bars and dot while actively capturing audio. */
+const LIVE = "#E4574D";
 /**
- * The waveform is the exception to the cream: solid white at full opacity, in
- * every state. Level is expressed by bar height alone, so nothing here is
- * dimmed to encode it.
+ * The waveform is solid at full opacity in every state — level is expressed
+ * by bar height alone, so nothing here is dimmed to encode it. Color is the
+ * one channel that *does* vary: cream normally, live coral while actively
+ * recording, so the capsule's one "is this really listening" signal reads at
+ * a glance.
  */
 const BAR_COLOR = "#FFFFFF";
 
@@ -2653,6 +2662,13 @@ export default function AppPage(): React.JSX.Element {
   // The viewport the waveform is seen through. It narrows from the left as the
   // button opens; the SVG inside is pinned to its right edge, so the newest
   // samples hold their place and only the oldest slide out of view.
+  // Cream in every state except actively recording, where the waveform
+  // switches to the live-coral accent — the capsule's one glance-able
+  // "this is really listening" signal. Gated on "recording" specifically
+  // (not "transcribing" or "initializing"), matching the mockup's
+  // `.dict-card.live` treatment of the equivalent dashboard control.
+  const waveColor = state === "recording" ? LIVE : BAR_COLOR;
+
   const waveform = (
     <span
       ref={waveClipRef}
@@ -2688,7 +2704,7 @@ export default function AppPage(): React.JSX.Element {
           y1={SVG_HEIGHT / 2}
           x2={SVG_WIDTH / 2}
           y2={SVG_HEIGHT / 2}
-          stroke={BAR_COLOR}
+          stroke={waveColor}
           strokeWidth={1}
           strokeLinecap="round"
           opacity={0}
@@ -2705,7 +2721,7 @@ export default function AppPage(): React.JSX.Element {
                 y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
                 x2={x}
                 y2={SVG_HEIGHT / 2 - BAR_WIDTH / 2}
-                stroke={BAR_COLOR}
+                stroke={waveColor}
                 strokeWidth={BAR_WIDTH}
                 strokeLinecap="round"
                 style={
@@ -3166,7 +3182,7 @@ export default function AppPage(): React.JSX.Element {
           }
           .pill-action-primary {
             background: ${INK};
-            color: #16140F;
+            color: #1D2129;
           }
 
           @media (hover: hover) and (pointer: fine) {
@@ -3455,7 +3471,7 @@ export default function AppPage(): React.JSX.Element {
                     height: 20,
                     marginTop: 1,
                     borderRadius: "50%",
-                    background: "rgba(224, 128, 95, 0.16)",
+                    background: "rgba(248, 113, 113, 0.16)",
                     flexShrink: 0,
                   }}
                 >
@@ -3575,7 +3591,7 @@ export default function AppPage(): React.JSX.Element {
                         height: 20,
                         marginTop: 1,
                         borderRadius: "50%",
-                        background: "rgba(224, 128, 95, 0.16)",
+                        background: "rgba(248, 113, 113, 0.16)",
                         flexShrink: 0,
                       }}
                     >

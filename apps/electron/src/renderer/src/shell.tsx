@@ -115,14 +115,14 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
                 className={cn(
                   "flex items-center gap-2.5 rounded-[7px] border px-2.5 py-1.5 text-[13px] transition-colors",
                   isActive
-                    ? "glass-nav-active text-foreground font-medium"
+                    ? "glass-nav-active text-[color:var(--accent-passive-ink)] font-medium"
                     : "text-secondary-foreground/80 hover:bg-card/50 border-transparent font-normal",
                 )}
               >
                 <Icon
                   size={14}
                   className={
-                    isActive ? "text-primary" : "text-muted-foreground"
+                    isActive ? "text-sidebar-primary" : "text-muted-foreground"
                   }
                 />
                 <span className="flex-1 truncate">{item.label}</span>
@@ -131,7 +131,7 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
                     className={cn(
                       "mono shrink-0 text-[9.5px] tabular-nums",
                       isActive
-                        ? "text-muted-foreground/80"
+                        ? "text-[color:var(--accent-passive-ink)] opacity-[0.72]"
                         : "text-muted-foreground/60",
                     )}
                   >
@@ -228,7 +228,7 @@ export default function AppShell(): React.JSX.Element {
             alt="Openstyle"
             className="hidden h-7 w-7 dark:block"
           />
-          <span className="serif text-foreground text-[19px] font-medium tracking-tight">
+          <span className="display text-foreground text-[19px] font-medium tracking-tight">
             Openstyle
           </span>
           {import.meta.env.DEV && (

@@ -676,7 +676,10 @@ function DownloadProgress({
     <div className="mt-2 space-y-1">
       <Progress
         value={p ? p.percent : 100}
-        className={cn("h-[5px]", !p && "animate-pulse")}
+        className={cn(
+          "h-[5px] [&>[data-slot=progress-indicator]]:bg-[var(--live)]",
+          !p && "animate-pulse",
+        )}
       />
       <div className="text-muted-foreground mono flex justify-between text-[10px]">
         {p ? (
@@ -950,7 +953,7 @@ function CleanupTierPicker({
         onClose={onClose}
       />
       <div className={PICKER_MODAL_BODY}>
-        <div className="border-border divide-border overflow-hidden rounded-[12px] border divide-y">
+        <div className="border-border divide-border overflow-hidden rounded-lg border divide-y">
           <PickerOption
             icon={Laptop}
             title={t("models.picker.onDevice", { phrase: ON_DEVICE_PHRASE })}

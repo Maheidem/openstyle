@@ -45,7 +45,7 @@ function SegmentedControl({
       spacing={0.5}
       size={size}
       className={cn(
-        "border-border bg-secondary max-w-full rounded-[9px] border p-[3px]",
+        "border-border bg-secondary max-w-full rounded-full border p-[3px]",
         wrap && "grid w-full grid-cols-2 min-[1360px]:flex min-[1360px]:w-fit",
         className,
       )}
@@ -57,7 +57,7 @@ function SegmentedControl({
             key={o.value}
             value={o.value}
             className={cn(
-              "text-muted-foreground gap-1.5 rounded-md data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:font-medium data-[state=on]:shadow-sm",
+              "text-muted-foreground gap-1.5 rounded-full data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:font-medium",
               wrap && "w-full justify-center min-[1360px]:w-auto",
             )}
           >

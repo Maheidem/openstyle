@@ -842,7 +842,7 @@ function PermCard({
 }): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="border-border bg-card flex items-center gap-3.5 rounded-[12px] border p-4">
+    <div className="border-border bg-card flex items-center gap-3.5 rounded-[10px] border p-4">
       <div
         className={cn(
           "flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border",
@@ -940,11 +940,9 @@ function LanguageStep({
 
   return (
     <div className="w-full max-w-[560px]">
-      <h1 className="serif text-foreground m-0 mb-7 text-center text-[56px] leading-[0.95] font-normal tracking-[-0.025em]">
-        <span>{t("onboarding.language.titlePrefix")}</span>
-        <span className="serif-italic text-primary">
-          {t("onboarding.language.titleEmphasis")}
-        </span>
+      <h1 className="display text-foreground m-0 mb-7 text-center text-[56px] leading-[0.95] font-normal tracking-[-0.025em]">
+        {t("onboarding.language.titlePrefix")}
+        {t("onboarding.language.titleEmphasis")}
       </h1>
 
       <div className="flex flex-wrap justify-center gap-2">
@@ -1116,7 +1114,7 @@ function ModelSelectorOverlay({
             setView("list");
           }
         }}
-        className="flex max-h-[calc(100vh-5rem)] w-full max-w-[600px] flex-col gap-0 overflow-hidden rounded-[16px] border-border bg-background p-0 sm:max-w-[600px]"
+        className="flex max-h-[calc(100vh-5rem)] w-full max-w-[600px] flex-col gap-0 overflow-hidden rounded-[14px] border-border bg-background p-0 sm:max-w-[600px]"
       >
         <DialogTitle className="sr-only">Choose a voice model</DialogTitle>
         {view === "list" ? (
@@ -1127,7 +1125,7 @@ function ModelSelectorOverlay({
                 <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
                   {t("onboarding.modelSelector.chooseModel")}
                 </div>
-                <div className="serif text-foreground mt-0.5 text-[26px] leading-[1.05]">
+                <div className="display text-foreground mt-0.5 text-[26px] leading-[1.05]">
                   {t("onboarding.modelSelector.allVoiceModels")}
                 </div>
               </div>
@@ -1218,7 +1216,7 @@ function ModelSelectorOverlay({
                     provider: providerName,
                   })}
                 </div>
-                <div className="serif text-foreground mt-0.5 text-[26px] leading-[1.05]">
+                <div className="display text-foreground mt-0.5 text-[26px] leading-[1.05]">
                   {t("onboarding.modelSelector.addKey", {
                     provider: providerName,
                   })}
@@ -1310,7 +1308,7 @@ function ModelSelectorOverlay({
 
 function StepHeading({ title }: { title: string }): React.JSX.Element {
   return (
-    <h1 className="text-foreground m-0 mb-6 text-[30px] leading-[1.15] font-semibold tracking-[-0.01em]">
+    <h1 className="display text-foreground m-0 mb-6 text-[30px] leading-[1.1] font-medium">
       {title}
     </h1>
   );

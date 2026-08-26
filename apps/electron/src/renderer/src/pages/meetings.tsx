@@ -99,25 +99,6 @@ interface DiarizationStatusResponse {
   error?: string;
 }
 
-// Distinct colors per "Them N" — cycles through the app's theme-aware chart
-// palette (globals.css --chart-1..5, already tuned for light/dark) so every
-// speaker gets a stable, legible color without a new bespoke palette. "Me"
-// keeps its existing text-primary treatment untouched.
-const SPEAKER_LABEL_COLORS = [
-  "text-chart-1",
-  "text-chart-2",
-  "text-chart-3",
-  "text-chart-4",
-  "text-chart-5",
-] as const;
-
-function speakerLabelColorClass(label: string): string {
-  const n = Number.parseInt(label, 10);
-  const idx =
-    Number.isFinite(n) && n > 0 ? (n - 1) % SPEAKER_LABEL_COLORS.length : 0;
-  return SPEAKER_LABEL_COLORS[idx];
-}
-
 type RecorderStatus = "idle" | "recording" | "finalizing";
 
 // ---------------------------------------------------------------------------
@@ -159,7 +140,7 @@ function useSystemAudioProbe(shouldProbe: boolean): boolean {
 function SystemAudioHint(): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="border-border bg-card/60 mb-6 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-2.5 text-[12px]">
+    <div className="border-border bg-card/60 mb-6 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
       <AlertTriangle className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="text-foreground m-0 leading-[1.5]">
@@ -208,26 +189,37 @@ function formatClockMs(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-const STATUS_BADGE_VARIANT: Record<
-  string,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  recording: "default",
-  transcribing: "default",
+// Everything except an active failure renders as the same plain, muted badge
+// (spec: matches the approved mockup's undifferentiated `.badge` — Recorded,
+// Transcribed and Summarized are not visually distinguished from each other).
+const STATUS_BADGE_VARIANT: Record<string, "destructive" | "outline"> = {
   interrupted: "destructive",
   failed: "destructive",
-  recorded: "secondary",
-  transcribed: "outline",
-  summarized: "outline",
 };
+
+// "recording"/"transcribing" are this page's only in-progress states — the
+// one spot that earns the fenced accent-live coral (spec: record / live /
+// in-progress ONLY). Mirrors the mockup's `.badge.live` treatment (tinted
+// background + a small dot), never reused for anything else.
+const LIVE_STATUSES = new Set(["recording", "transcribing"]);
 
 function StatusBadge({ status }: { status: string }): React.JSX.Element {
   const { t } = useTranslation();
+  const live = LIVE_STATUSES.has(status);
+  const variant = STATUS_BADGE_VARIANT[status] ?? "outline";
   return (
     <Badge
-      variant={STATUS_BADGE_VARIANT[status] ?? "secondary"}
-      className="mono h-4 shrink-0 px-1.5 text-[9px] uppercase tracking-[0.12em]"
+      variant={variant}
+      className={cn(
+        "mono h-4 shrink-0 gap-1 px-1.5 text-[9px] uppercase tracking-[0.12em]",
+        variant === "outline" && !live && "text-muted-foreground",
+        live &&
+          "border-[color:var(--live)]/30 bg-[var(--live-tint)] text-[color:var(--live)]",
+      )}
     >
+      {live && (
+        <span className="h-[5px] w-[5px] shrink-0 animate-pulse rounded-full bg-[var(--live)]" />
+      )}
       {t(`meetings.status.${status}`, status)}
     </Badge>
   );
@@ -361,7 +353,7 @@ function RecordingCard({
           {recording ? (
             <div className="flex flex-col gap-2.5">
               <div className="flex items-center gap-2.5">
-                <span className="bg-destructive inline-block h-2 w-2 animate-pulse rounded-full" />
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--live)]" />
                 <span className="text-foreground text-[13px] font-medium">
                   {t("meetings.recording")}
                 </span>
@@ -985,14 +977,14 @@ function MeetingDetailView({
       )}
 
       {(meeting.error || actionError) && (
-        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-2.5 text-[12px]">
+        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{actionError ?? meeting.error}</span>
         </div>
       )}
 
       {diarizeResult && !actionError && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-2.5 text-[12px]">
+        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
           <Users className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             {diarizeResult.speakerCount === 0
@@ -1027,21 +1019,23 @@ function MeetingDetailView({
                     key={`${seg.speaker}-${seg.startMs}-${seg.endMs}`}
                     className="flex gap-3"
                   >
-                    <span
-                      className={cn(
-                        "mono w-12 shrink-0 pt-0.5 text-right text-[9px] uppercase tracking-[0.12em]",
-                        seg.speaker === "Me"
-                          ? "text-primary"
+                    <span className="w-16 shrink-0 pt-0.5 text-right leading-none">
+                      <span
+                        className={cn(
+                          "mono inline-flex items-center whitespace-nowrap rounded-[5px] px-[7px] py-[2.5px] text-[9px] font-medium uppercase tracking-[0.1em]",
+                          seg.speaker === "Me"
+                            ? "bg-transparent px-0 font-semibold text-foreground"
+                            : "bg-[var(--accent-passive-tint)] text-[color:var(--accent-passive-ink)]",
+                        )}
+                      >
+                        {seg.speaker === "Me"
+                          ? t("meetings.me")
                           : seg.speakerLabel
-                            ? speakerLabelColorClass(seg.speakerLabel)
-                            : "text-muted-foreground",
-                      )}
-                    >
-                      {seg.speaker === "Me"
-                        ? t("meetings.me")
-                        : seg.speakerLabel
-                          ? t("meetings.themNumbered", { n: seg.speakerLabel })
-                          : t("meetings.them")}
+                            ? t("meetings.themNumbered", {
+                                n: seg.speakerLabel,
+                              })
+                            : t("meetings.them")}
+                      </span>
                     </span>
                     <p className="text-foreground m-0 flex-1 text-[13.5px] leading-[1.55]">
                       {seg.text}
@@ -1054,7 +1048,7 @@ function MeetingDetailView({
               </div>
             </>
           ) : (
-            <div className="border-border bg-card/30 rounded-[14px] border border-dashed px-6 py-10 text-center">
+            <div className="border-border bg-card/30 rounded-lg border border-dashed px-6 py-10 text-center">
               <p className="text-muted-foreground m-0 text-[13px]">
                 {hasTranscript
                   ? t("meetings.transcriptEmpty")
@@ -1076,7 +1070,7 @@ function MeetingDetailView({
               <Markdown source={meeting.summary.markdown} />
             </>
           ) : (
-            <div className="border-border bg-card/30 rounded-[14px] border border-dashed px-6 py-10 text-center">
+            <div className="border-border bg-card/30 rounded-lg border border-dashed px-6 py-10 text-center">
               <p className="text-muted-foreground m-0 text-[13px]">
                 {t("meetings.summaryEmpty")}
               </p>
@@ -1176,11 +1170,8 @@ export default function MeetingsPage(): React.JSX.Element {
           ) : (
             <>
               <div className="mb-2 flex items-start justify-between gap-3">
-                <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-                  <span className="serif-italic text-primary">
-                    {t("meetings.titleAccent")}
-                  </span>
-                  <span>.</span>
+                <h1 className="display text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+                  {t("meetings.titleAccent")}.
                 </h1>
                 <div className="pt-2">
                   <DiarizationSettingsPopover />
@@ -1195,11 +1186,11 @@ export default function MeetingsPage(): React.JSX.Element {
               <RecordingCard recorder={recorder} />
 
               {meetings.length === 0 ? (
-                <div className="border-border bg-card rounded-[14px] border border-dashed px-9 py-[52px] text-center">
+                <div className="border-border bg-card rounded-lg border border-dashed px-9 py-[52px] text-center">
                   <div className="bg-accent mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl">
                     <AudioLines className="text-primary h-6 w-6" />
                   </div>
-                  <h2 className="serif text-foreground m-0 text-[26px] font-medium leading-none">
+                  <h2 className="display text-foreground m-0 text-[26px] font-medium leading-none">
                     {t("meetings.emptyTitle")}
                   </h2>
                   <p className="text-muted-foreground mx-auto mt-2.5 max-w-[420px] text-[13px] leading-[1.55]">
@@ -1213,7 +1204,7 @@ export default function MeetingsPage(): React.JSX.Element {
                       key={m.id}
                       type="button"
                       onClick={() => setSelectedId(m.id)}
-                      className="hover:bg-primary/5 flex items-center gap-3 px-4 py-3 text-left transition-colors first:rounded-t-[14px] last:rounded-b-[14px]"
+                      className="hover:bg-primary/5 flex items-center gap-3 px-4 py-3 text-left transition-colors first:rounded-t-lg last:rounded-b-lg"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="text-foreground truncate text-[13px] font-medium">

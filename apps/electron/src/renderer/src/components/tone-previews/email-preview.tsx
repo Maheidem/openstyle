@@ -42,7 +42,7 @@ export function EmailPreview({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[18px] border",
+        "overflow-hidden rounded-lg border",
         selected ? "border-primary/35 bg-accent/45" : "border-border bg-card",
       )}
     >

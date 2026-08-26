@@ -226,7 +226,7 @@ export default function DictionaryPage(): React.JSX.Element {
           <>
             {/* Search + Actions */}
             <div className="mb-5 flex flex-col items-start gap-2.5 min-[1080px]:flex-row min-[1080px]:items-center">
-              <div className="border-border bg-card flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-lg border px-3 py-2">
+              <div className="border-border bg-card flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-full border px-3.5 py-2">
                 <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                 <input
                   ref={searchInputRef}
@@ -283,7 +283,7 @@ export default function DictionaryPage(): React.JSX.Element {
             {showForm && (
               <form
                 onSubmit={handleSubmit(saveEntry)}
-                className="border-border bg-card mb-6 rounded-[12px] border px-[18px] py-4"
+                className="border-border bg-card mb-6 rounded-lg border px-[18px] py-4"
               >
                 <div className="mb-3 flex items-center justify-between">
                   <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
@@ -345,7 +345,7 @@ export default function DictionaryPage(): React.JSX.Element {
             {entries.length === 0 ? (
               <NoSearchResults search={search} />
             ) : (
-              <div className="border-border bg-card overflow-hidden rounded-[12px] border">
+              <div className="border-border bg-card overflow-hidden rounded-lg border">
                 {entries.map((entry, i) => (
                   <EntryRow
                     key={entry.id}
@@ -416,12 +416,12 @@ function PageHeader({
 }): React.JSX.Element {
   return (
     <div className="mb-7">
-      <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-        <span className="serif-italic text-primary">{title}</span>
+      <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
+        {title}
         <span>. </span>
       </h1>
       {subtitle && (
-        <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">
+        <p className="text-muted-foreground mt-1 max-w-[480px] text-[13px] leading-[1.5]">
           {subtitle}
         </p>
       )}
@@ -490,7 +490,7 @@ const EntryRow = memo(function EntryRow({
       )}
     >
       <span
-        className="mono text-foreground border-border bg-background justify-self-start truncate rounded-md border px-2 py-[3px] text-[12.5px] font-medium"
+        className="mono text-foreground border-border bg-background justify-self-start truncate rounded-[6px] border px-2 py-[3px] text-[12.5px] font-medium"
         title={entry.key}
       >
         {entry.key}
@@ -533,7 +533,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
       <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
         <Zap className="text-primary h-7 w-7" />
       </div>
-      <h2 className="serif text-foreground m-0 text-[32px] font-medium leading-none">
+      <h2 className="display text-foreground m-0 text-[32px] font-medium leading-none">
         {t("dictionary.emptyTitle")}
       </h2>
       <p className="text-muted-foreground mx-auto mt-2.5 max-w-[440px] text-[14px] leading-[1.55]">
@@ -558,7 +558,7 @@ function NoSearchResults({ search }: { search: string }): React.JSX.Element {
   const { t } = useTranslation();
   return (
     <div className="text-muted-foreground py-10 text-center">
-      <span className="serif-italic text-[20px]">
+      <span className="display text-[20px]">
         {search
           ? t("dictionary.noResults", { search })
           : t("dictionary.noEntries")}

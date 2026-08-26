@@ -101,7 +101,7 @@ export function EmailDraft({
 
   return (
     <div
-      className="w-full max-w-[560px] overflow-hidden rounded-[10px] bg-white text-left shadow-[0_10px_34px_rgba(20,12,4,0.28)]"
+      className="w-full max-w-[560px] overflow-hidden rounded-[10px] bg-white text-left shadow-[0_10px_34px_rgba(29,33,41,0.28)]"
       style={{ fontFamily: GMAIL_FONT }}
     >
       <div className="flex items-center justify-between bg-[#404346] px-4 py-2.5">

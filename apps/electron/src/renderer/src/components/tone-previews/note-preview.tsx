@@ -13,7 +13,7 @@ export function NotePreview({
   return (
     <div
       className={cn(
-        "rounded-[18px] border px-4 py-3.5",
+        "rounded-lg border px-4 py-3.5",
         selected ? "border-primary/35 bg-accent/45" : "border-border bg-card",
       )}
     >

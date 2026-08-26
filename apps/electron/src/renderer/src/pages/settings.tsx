@@ -807,11 +807,8 @@ export default function SettingsPage(): React.JSX.Element {
       <div className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 !pb-0 min-[900px]:grid-cols-[180px_minmax(0,1fr)]">
         <div className="min-[900px]:col-span-2">
           <div className="mb-7">
-            <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-              <span className="serif-italic text-primary">
-                {t("settings.title")}
-              </span>
-              <span>. </span>
+            <h1 className="display text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+              {t("settings.title")}.
             </h1>
           </div>
         </div>
@@ -819,7 +816,7 @@ export default function SettingsPage(): React.JSX.Element {
         <SettingsSidebar active={activeSection} onSelect={selectSection} />
 
         <div className="min-h-0 overflow-y-auto px-1 -mx-1">
-          <h2 className="text-foreground mb-6 text-[22px] font-medium tracking-[-0.02em]">
+          <h2 className="display text-foreground mb-6 text-[26px] font-medium tracking-[-0.02em]">
             {activeSectionLabel}
           </h2>
 
@@ -926,7 +923,7 @@ export default function SettingsPage(): React.JSX.Element {
                       </span>
                     </Button>
                     {(invalidReleaseNotice || blockedNotice) && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
                         {blockedNotice
                           ? t("settings.recording.conflict")
                           : t("settings.recording.needsModifier")}
@@ -934,7 +931,7 @@ export default function SettingsPage(): React.JSX.Element {
                     )}
                   </div>
                 ) : (
-                  <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+                  <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
                     <Keyboard className="text-primary h-4 w-4 shrink-0" />
                     {draftKeys.length > 0 ? (
                       <>
@@ -949,7 +946,7 @@ export default function SettingsPage(): React.JSX.Element {
                       </span>
                     )}
                     {invalidReleaseNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
                         {t("settings.recording.needsModifier")}
                       </div>
                     )}
@@ -1146,13 +1143,13 @@ export default function SettingsPage(): React.JSX.Element {
                       </span>
                     </Button>
                     {remixBlockedNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
                         {t("settings.remix.conflict")}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+                  <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
                     <Keyboard className="text-primary h-4 w-4 shrink-0" />
                     {remixDraftKeys.length > 0 ? (
                       <>
@@ -1421,7 +1418,7 @@ function SettingsSidebar({
               "shrink-0 rounded-[7px] border px-2.5 py-1.5 text-left text-[13px] transition-colors min-[900px]:w-full",
               isActive
                 ? "border-border bg-card text-foreground font-medium"
-                : "text-secondary-foreground/80 hover:bg-card/50 border-transparent font-normal",
+                : "text-muted-foreground hover:bg-card/50 border-transparent font-normal",
             )}
           >
             {t(`settings.sections.${id}`)}

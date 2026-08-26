@@ -374,7 +374,7 @@ function ModelsLoadingSkeleton(): React.JSX.Element {
           100% { transform: translateX(100%); }
         }
       `}</style>
-      <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
+      <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-lg border p-6 min-[820px]:grid-cols-2">
         {["voice", "cleanup"].map((key) => (
           <div
             key={key}
@@ -397,7 +397,7 @@ function ModelsLoadingSkeleton(): React.JSX.Element {
 
       <section>
         <SkeletonLine className="h-3 w-28" />
-        <div className="border-border bg-card mt-3 overflow-hidden rounded-[12px] border">
+        <div className="border-border bg-card mt-3 overflow-hidden rounded-lg border">
           {[0, 1].map((i) => (
             <div
               key={i}
@@ -447,7 +447,7 @@ function KeysSection({
       <div className="mb-3">
         <Eyebrow text={t("models.apiKeys")} />
       </div>
-      <div className="border-border bg-card overflow-hidden rounded-[12px] border">
+      <div className="border-border bg-card overflow-hidden rounded-lg border">
         {apiKeys.map((entry, i) => (
           <KeyRow
             key={entry.provider}

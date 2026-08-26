@@ -37,9 +37,9 @@ export function PageHeader({
   return (
     <div className="mb-7 flex items-end justify-between gap-4">
       <div>
-        <h1 className="serif text-foreground m-0 flex items-baseline gap-3 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+        <h1 className="display text-foreground m-0 flex items-baseline gap-3 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
           <span>
-            <span className="serif-italic text-primary">{title}</span>
+            {title}
             <span>. </span>
           </span>
           {badge ? (

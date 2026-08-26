@@ -13,7 +13,7 @@ export function CleanupPreview({
   return (
     <div
       className={cn(
-        "rounded-[14px] border px-3.5 py-3",
+        "rounded-lg border px-3.5 py-3",
         selected
           ? "border-primary/30 bg-accent/45"
           : "border-border/70 bg-background/60",

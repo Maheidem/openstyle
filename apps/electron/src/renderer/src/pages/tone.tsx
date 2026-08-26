@@ -481,7 +481,7 @@ export default function TonePage(): React.JSX.Element {
               <TabsTrigger
                 key={value}
                 value={value}
-                className="h-full flex-none rounded-full px-4 py-0 text-[13px] font-medium leading-none data-active:bg-accent data-active:text-accent-foreground dark:data-active:border-transparent dark:data-active:bg-accent dark:data-active:text-accent-foreground"
+                className="h-full flex-none rounded-full px-4 py-0 text-[13px] font-medium leading-none data-active:border-border data-active:bg-background data-active:text-foreground"
               >
                 {t(key)}
               </TabsTrigger>
@@ -580,7 +580,7 @@ export default function TonePage(): React.JSX.Element {
 function CleanupDisabledBanner(): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="border-border/70 bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed px-4 py-3.5">
+    <div className="border-border/70 bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3.5">
       <div className="min-w-0">
         <p className="text-foreground text-[13px] font-medium">
           {t("tone.disabledBanner.title")}
@@ -606,7 +606,7 @@ function CleanupDisabledBanner(): React.JSX.Element {
 function CleanupNoModelBanner(): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="border-border/70 bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed px-4 py-3.5">
+    <div className="border-border/70 bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3.5">
       <div className="min-w-0">
         <p className="text-foreground text-[13px] font-medium">
           {t("tone.cleanup.noModelTitle")}
@@ -688,7 +688,7 @@ function CleanupTonePanel({
   return (
     <div className="space-y-6">
       <section className="border-t border-border/70 pt-5">
-        <h2 className="text-foreground text-[28px] leading-[1.05] font-medium tracking-[-0.03em]">
+        <h2 className="display text-foreground text-[28px] leading-[1.05] tracking-[-0.03em]">
           {t("tone.cleanup.title")}
         </h2>
         <p className="text-muted-foreground mt-2 max-w-[52ch] text-[13px] leading-[1.55]">
@@ -720,7 +720,7 @@ function CleanupTonePanel({
                 onClick={() => onChange(option.value)}
                 onKeyDown={(event) => handleOptionKeyDown(event, index)}
                 className={cn(
-                  "group border-border bg-card relative flex flex-col gap-1.5 overflow-hidden rounded-[14px] border py-3.5 pr-3.5 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
+                  "group border-border bg-card relative flex flex-col gap-1.5 overflow-hidden rounded-lg border py-3.5 pr-3.5 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
                   "hover:border-foreground/20 hover:bg-card/90",
                   selected && "border-primary/40 bg-accent/45",
                 )}
@@ -735,7 +735,7 @@ function CleanupTonePanel({
                   )}
                 />
                 <div className="flex items-center justify-between gap-1.5">
-                  <p className="serif text-foreground text-[21px] leading-none tracking-[-0.03em]">
+                  <p className="display text-foreground text-[21px] leading-none tracking-[-0.03em]">
                     {t(option.titleKey)}
                   </p>
                   <span
@@ -764,7 +764,7 @@ function CleanupTonePanel({
         {value === "custom" ? (
           <div
             className={cn(
-              "border-border bg-card rounded-[18px] border p-5",
+              "border-border bg-card rounded-lg border p-5",
               disabled && "pointer-events-none opacity-50",
             )}
           >
@@ -817,7 +817,7 @@ function CleanupTonePanel({
             </div>
           </div>
         ) : (
-          <div className="border-border bg-card rounded-[18px] border p-5">
+          <div className="border-border bg-card rounded-lg border p-5">
             <div className="grid gap-5 min-[720px]:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] min-[720px]:gap-8">
               <div>
                 <Eyebrow text={t("tone.cleanup.preview.rawLabel")} />
@@ -954,7 +954,7 @@ function SubsetTonePanel<T extends string>({
     <div className="space-y-6">
       <section className="grid gap-5 border-t border-border/70 pt-5 min-[980px]:grid-cols-[minmax(0,1fr)_300px] min-[980px]:items-start">
         <div className="min-w-0">
-          <h2 className="text-foreground text-[28px] leading-[1.05] font-medium tracking-[-0.03em]">
+          <h2 className="display text-foreground text-[28px] leading-[1.05] tracking-[-0.03em]">
             {title}
           </h2>
           {desc ? (
@@ -1026,7 +1026,7 @@ function SubsetTonePanel<T extends string>({
                 onClick={() => onChange(option.value)}
                 onKeyDown={(event) => handleOptionKeyDown(event, index)}
                 className={cn(
-                  "group border-border bg-card relative flex items-center gap-3 overflow-hidden rounded-[16px] border py-4 pr-4 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
+                  "group border-border bg-card relative flex items-center gap-3 overflow-hidden rounded-lg border py-4 pr-4 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
                   "hover:border-foreground/20 hover:bg-card/90",
                   selected && "border-primary/40 bg-accent/45",
                 )}
@@ -1041,7 +1041,7 @@ function SubsetTonePanel<T extends string>({
                   )}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="serif text-foreground text-[24px] leading-none tracking-[-0.03em]">
+                  <p className="display text-foreground text-[24px] leading-none tracking-[-0.03em]">
                     {t(option.titleKey)}
                   </p>
                   <p className="text-muted-foreground mt-2 text-[12.5px] leading-[1.45]">

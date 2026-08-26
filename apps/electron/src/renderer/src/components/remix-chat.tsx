@@ -40,7 +40,13 @@ import {
 const INK = "rgba(245, 241, 228, 0.92)";
 const INK_DIM = "rgba(245, 241, 228, 0.70)";
 const INK_FAINT = "rgba(245, 241, 228, 0.52)";
-const OLIVE = "#8AB62A";
+// Identity/accent color for this floating dark surface — was the retired
+// olive brand green (#8AB62A); the new system splits that role into ink
+// (--primary) for buttons and accent blue (--sidebar-primary / --ring) for
+// identity affordances like this. This component is a fixed dark overlay
+// (not theme-aware, see INK above), so it uses the literal dark-mode value
+// (#5B8DEF) rather than a CSS var.
+const ACCENT = "#5B8DEF";
 
 export {
   REMIX_CHAT_STRIP,
@@ -1242,13 +1248,13 @@ const REMIX_CHAT_CSS = `
     width: 7px;
     height: 7px;
     border-radius: 999px;
-    background: ${OLIVE};
+    background: ${ACCENT};
   }
   .remix-mini-dot[data-busy="true"] {
     background: #F5F1E4;
     animation: remix-mini-pulse 1.1s ease-in-out infinite;
   }
-  .remix-mini-dot[data-failed="true"] { background: rgba(224, 128, 95, 0.9); }
+  .remix-mini-dot[data-failed="true"] { background: rgba(248, 113, 113, 0.9); }
   @keyframes remix-mini-pulse {
     0%, 100% { opacity: 0.35; transform: scale(0.8); }
     50% { opacity: 1; transform: scale(1); }
@@ -1293,9 +1299,10 @@ const REMIX_CHAT_CSS = `
     gap: 9px;
     min-width: 0;
   }
-  .remix-chat-title svg { flex-shrink: 0; color: ${OLIVE}; }
+  .remix-chat-title svg { flex-shrink: 0; color: ${ACCENT}; }
   .remix-chat-wordmark {
-    font-family: "Instrument Serif", Georgia, serif;
+    font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 500;
     font-size: 20px;
     line-height: 1;
     color: ${INK};
@@ -1425,10 +1432,10 @@ const REMIX_CHAT_CSS = `
     text-transform: uppercase;
     color: ${INK_FAINT};
   }
-  .remix-chat-action[data-failed="true"] { color: rgba(224, 128, 95, 0.9); }
+  .remix-chat-action[data-failed="true"] { color: rgba(248, 113, 113, 0.9); }
   .remix-chat-notice {
     font-size: 11px;
-    color: rgba(224, 128, 95, 0.95);
+    color: rgba(248, 113, 113, 0.95);
     padding: 6px 18px 0;
     line-height: 1.35;
   }
@@ -1520,8 +1527,7 @@ const REMIX_CHAT_CSS = `
   .remix-md ul, .remix-md ol { margin: 0 0 8px; padding-left: 18px; }
   .remix-md li { margin: 2px 0; }
   .remix-md li > ul, .remix-md li > ol { margin-bottom: 0; }
-  .remix-md a { color: ${OLIVE}; text-decoration: underline; text-underline-offset: 2px; }
-  .remix-md a:hover { color: #A6D03F; }
+  .remix-md a { color: ${ACCENT}; text-decoration: underline; text-underline-offset: 2px; }
   .remix-md strong { font-weight: 600; color: ${INK}; }
   .remix-md em { font-style: italic; }
   .remix-md code {

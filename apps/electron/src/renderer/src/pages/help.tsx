@@ -25,15 +25,17 @@ function HelpCard({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="border-border bg-card hover:bg-card/70 flex items-start gap-3 rounded-lg border p-4 transition-colors"
+      className="border-border bg-card hover:bg-card/70 flex items-start gap-3 rounded-lg border px-4 py-3.5 transition-colors"
     >
-      <Icon className="text-primary mt-0.5 h-5 w-5 shrink-0" />
+      <div className="bg-background text-foreground flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px]">
+        <Icon className="h-4 w-4" />
+      </div>
       <div className="min-w-0 flex-1">
-        <div className="text-foreground flex items-center gap-1.5 text-sm font-medium">
+        <div className="text-foreground flex items-center gap-1.5 text-[13px] font-medium">
           {title}
           <ExternalLink className="text-muted-foreground h-3 w-3" />
         </div>
-        <p className="text-muted-foreground mt-1 text-[13px] leading-[1.5]">
+        <p className="text-muted-foreground mt-1 text-[12px] leading-[1.5]">
           {desc}
         </p>
       </div>
@@ -50,7 +52,7 @@ export default function HelpPage(): React.JSX.Element {
       />
 
       <section className="mb-8">
-        <Eyebrow text="Get help" accent />
+        <Eyebrow text="Get help" />
         <div className="mt-3 grid grid-cols-1 gap-3">
           <HelpCard
             href={LINKS.newIssue}
@@ -62,7 +64,7 @@ export default function HelpPage(): React.JSX.Element {
       </section>
 
       <section className="mb-8">
-        <Eyebrow text="Contributing" accent />
+        <Eyebrow text="Contributing" />
         <div className="mt-3">
           <HelpCard
             href={LINKS.contributing}

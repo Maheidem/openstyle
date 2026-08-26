@@ -175,7 +175,7 @@ function KeyStep({
   return (
     <div className="p-7">
       <div className="mb-4 flex items-start gap-3.5">
-        <div className="bg-accent/60 border-primary/20 flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border">
+        <div className="bg-accent/60 border-primary/20 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border">
           <Key className="text-accent-foreground h-[18px] w-[18px]" />
         </div>
         <div className="flex-1">

@@ -112,7 +112,7 @@ export default function RemixPage(): React.JSX.Element {
             <div className="text-muted-foreground mb-3 text-[10px]">
               {t("remixPage.how.heading")}
             </div>
-            <div className="border-border bg-card rounded-[14px] border p-5">
+            <div className="border-border bg-card rounded-lg border p-5">
               <ol className="flex flex-col gap-3.5">
                 <HowStep index={1}>{t("remixPage.how.step1")}</HowStep>
                 <HowStep index={2}>
@@ -147,7 +147,7 @@ export default function RemixPage(): React.JSX.Element {
                 {group.quotes.map((quote) => (
                   <div
                     key={quote}
-                    className="border-border bg-card rounded-[12px] border px-4 py-3.5"
+                    className="border-border bg-card rounded-lg border px-4 py-3.5"
                   >
                     <p className="text-foreground text-[14px] leading-[1.5]">
                       "{t(`remixPage.examples.quotes.${quote}`)}"
@@ -273,7 +273,7 @@ function RemixDemo({ hotkey }: { hotkey: string }): React.JSX.Element {
   return (
     <div className="border-border bg-card flex flex-col items-center gap-5 rounded-[16px] border px-7 py-7">
       <div className="select-none text-center">
-        <div className="serif text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
+        <div className="display text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
           <StepWord active={phase === "idle"}>Hold</StepWord>{" "}
           <span className="inline-block align-middle">
             {tokens.map((tok, i) => (
@@ -302,9 +302,11 @@ function RemixDemo({ hotkey }: { hotkey: string }): React.JSX.Element {
           <span
             className={cn(
               "h-[7px] w-[7px] rounded-full transition-all duration-200",
-              pressed || showResult
-                ? "bg-primary opacity-100"
-                : "bg-muted-foreground opacity-40",
+              pressed
+                ? "bg-[var(--live)] opacity-100"
+                : showResult
+                  ? "bg-primary opacity-100"
+                  : "bg-muted-foreground opacity-40",
             )}
             style={
               pressed ? { animation: "rdot 1.6s infinite ease-in-out" } : {}
@@ -314,7 +316,7 @@ function RemixDemo({ hotkey }: { hotkey: string }): React.JSX.Element {
             className={cn(
               "mono text-[10px] font-semibold tracking-[0.16em] uppercase transition-colors",
               pressed || showResult
-                ? "text-accent-foreground"
+                ? "text-foreground"
                 : "text-muted-foreground",
             )}
           >
@@ -335,7 +337,7 @@ function RemixDemo({ hotkey }: { hotkey: string }): React.JSX.Element {
             transform: showResult ? "translateY(0)" : "translateY(4px)",
           }}
         >
-          <span className="serif text-foreground text-[17px] leading-[1.4]">
+          <span className="display text-foreground text-[17px] leading-[1.4]">
             "{t("remixPage.examples.quotes.email")}"
           </span>
         </div>
@@ -425,7 +427,7 @@ function StatCard({
           <div className="flex items-baseline gap-2">
             <span
               className={cn(
-                "serif-italic text-[30px] leading-none",
+                "display text-[30px] leading-none",
                 accent ? "text-primary" : "text-foreground",
               )}
             >
@@ -443,7 +445,7 @@ function StatCard({
         <>
           <div
             className={cn(
-              "serif-italic leading-none",
+              "display leading-none",
               small ? "pt-1.5 pb-[3px] text-[19px]" : "text-[30px]",
               accent ? "text-primary" : "text-foreground",
             )}

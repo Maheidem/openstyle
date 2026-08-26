@@ -193,7 +193,7 @@ export function StepWord({
   return (
     <span
       className={cn(
-        "serif-italic transition-colors duration-200",
+        "display transition-colors duration-200",
         active ? "text-primary" : "text-muted-foreground",
       )}
     >
@@ -232,8 +232,8 @@ export function Keycap({
         letterSpacing: "0.04em",
         transform: pressed ? `translateY(${size * 0.04}px)` : "translateY(0)",
         boxShadow: pressed
-          ? `inset 0 -1px 0 rgba(20,12,4,0.06), 0 0 0 6px var(--accent)`
-          : `0 1px 0 var(--border), 0 2px 2px -1px rgba(20,12,4,0.06)`,
+          ? `inset 0 -1px 0 rgba(29,33,41,0.06), 0 0 0 6px var(--accent)`
+          : `0 1px 0 var(--border), 0 2px 2px -1px rgba(29,33,41,0.06)`,
         transitionTimingFunction: "cubic-bezier(0.3, 0.7, 0.4, 1)",
       }}
     >

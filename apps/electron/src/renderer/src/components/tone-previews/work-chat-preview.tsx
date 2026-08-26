@@ -14,7 +14,7 @@ export function WorkChatPreview({
   return (
     <div
       className={cn(
-        "w-full rounded-[18px] border px-3 py-3",
+        "w-full rounded-lg border px-3 py-3",
         selected ? "border-primary/35 bg-accent/55" : "border-border bg-card",
       )}
     >

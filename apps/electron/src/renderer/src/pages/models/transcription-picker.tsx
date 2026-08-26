@@ -76,7 +76,7 @@ export function TranscriptionPicker({
         onClose={onClose}
       />
       <div className={PICKER_MODAL_BODY}>
-        <div className="border-border divide-border overflow-hidden rounded-[12px] border divide-y">
+        <div className="border-border divide-border overflow-hidden rounded-lg border divide-y">
           <PickerOption
             icon={Laptop}
             title={t("models.picker.onDevice", { phrase: ON_DEVICE_PHRASE })}

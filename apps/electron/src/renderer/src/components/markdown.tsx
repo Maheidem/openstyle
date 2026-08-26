@@ -11,12 +11,12 @@ export function Markdown({ source }: { source: string }): React.JSX.Element {
       <ReactMarkdown
         components={{
           h1: ({ children }) => (
-            <h1 className="serif text-foreground mb-3 mt-7 text-[24px] leading-tight first:mt-0">
+            <h1 className="display text-foreground mb-3 mt-7 text-[24px] leading-tight first:mt-0">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="serif text-foreground mb-2 mt-6 text-[19px] leading-tight">
+            <h2 className="display text-foreground mb-2 mt-6 text-[19px] leading-tight">
               {children}
             </h2>
           ),

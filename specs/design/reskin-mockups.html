@@ -1,0 +1,2126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Openstyle — reskin direction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500&family=Urbanist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ground:#F6F7F9;
+    --surface:#FFFFFF;
+    --ink:#1D2129;
+    --ink-soft:#3A3F49;
+    --muted:#6B7280;
+    --muted-soft:#9AA1AC;
+    --hairline:#E5E7EB;
+    --accent-tint:#E8F1FC;
+    --accent-blue:#2563EB;
+    --accent-blue-ink:#1D4ED8;
+    --live:#E4574D;
+    --live-tint:#FBEAE8;
+    --pill-dark:#19181A;
+    --pill-cream:#F5F1E4;
+    --shadow: 0 4px 16px rgba(29,33,41,.08);
+    --radius-card:10px;
+    --radius-window:14px;
+    --radius-pill:999px;
+    --font-display:'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-body:'Urbanist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono:'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:var(--font-body);
+    -webkit-font-smoothing:antialiased;
+    padding:56px 0 120px;
+  }
+  svg.icon{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block;flex-shrink:0;}
+  svg.icon.md{width:16px;height:16px;}
+  svg.icon.lg{width:18px;height:18px;}
+  svg.icon.sm{width:12px;height:12px;}
+
+  /* ---------- page head ---------- */
+  .page-head{
+    max-width:1120px;
+    margin:0 auto 48px;
+    padding:0 24px;
+  }
+  .page-head h1{
+    font-family:var(--font-display);
+    font-weight:500;
+    font-size:34px;
+    letter-spacing:-0.02em;
+    margin:0 0 6px;
+    color:var(--ink);
+  }
+  .page-head .kicker{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--muted-soft);
+    margin:0 0 10px;
+  }
+  .legend{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:22px;
+    margin-top:22px;
+    padding-top:20px;
+    border-top:1px solid var(--hairline);
+  }
+  .legend-item{display:flex;align-items:center;gap:8px;}
+  .swatch{width:16px;height:16px;border-radius:5px;border:1px solid rgba(29,33,41,.08);flex-shrink:0;}
+  .legend-item .lbl{font-size:12.5px;color:var(--ink-soft);font-weight:500;}
+  .legend-item .hex{font-family:var(--font-mono);font-size:10.5px;color:var(--muted-soft);}
+  .toc{display:flex;flex-wrap:wrap;gap:7px 16px;margin-top:16px;padding-top:16px;border-top:1px solid var(--hairline);}
+  .toc-item{display:inline-flex;align-items:baseline;gap:6px;font-family:var(--font-mono);font-size:11px;color:var(--muted);text-decoration:none;}
+  .toc-item b{color:var(--muted-soft);font-weight:500;}
+
+
+  /* ---------- artboard scaffolding ---------- */
+  .artboard-block{max-width:1120px;margin:0 auto 64px;padding:0 24px;}
+  .artboard-caption{
+    font-family:var(--font-mono);
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--muted-soft);
+    margin:0 0 14px;
+    padding-left:2px;
+  }
+  .artboard-caption b{color:var(--ink-soft);font-weight:500;}
+
+  .window{
+    background:var(--ground);
+    border-radius:var(--radius-window);
+    box-shadow:var(--shadow), 0 1px 0 rgba(29,33,41,.04);
+    border:1px solid rgba(29,33,41,.06);
+    overflow:hidden;
+  }
+  .titlebar{
+    height:34px;
+    display:flex;
+    align-items:center;
+    padding:0 16px;
+    gap:7px;
+    background:var(--ground);
+  }
+  .traffic{width:11px;height:11px;border-radius:50%;background:#D9DCE1;border:1px solid rgba(29,33,41,.07);}
+
+  .win-body{display:flex;min-height:0;}
+
+  /* ---------- sidebar (shared shell) ---------- */
+  .sidebar{
+    width:206px;
+    flex-shrink:0;
+    background:var(--ground);
+    border-right:1px solid var(--hairline);
+    padding:2px 12px 16px;
+    display:flex;
+    flex-direction:column;
+  }
+  .brand-row{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:14px 6px 20px;
+  }
+  .brand-mark{
+    width:24px;height:24px;border-radius:7px;background:var(--ink);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .brand-mark span{width:6px;height:6px;border-radius:50%;background:var(--pill-cream);}
+  .brand-name{font-family:var(--font-display);font-weight:500;font-size:15.5px;letter-spacing:-0.01em;color:var(--ink);}
+
+  .nav-group{display:flex;flex-direction:column;gap:1px;}
+  .nav-group + .nav-group{margin-top:auto;padding-top:10px;border-top:1px solid var(--hairline);}
+  .nav-item{
+    display:flex;align-items:center;gap:9px;
+    padding:7px 9px;border-radius:7px;
+    color:var(--ink-soft);
+    text-decoration:none;
+    font-size:12.8px;
+    font-weight:400;
+  }
+  .nav-item svg{stroke:var(--muted);}
+  .nav-item .shortcut{
+    margin-left:auto;font-family:var(--font-mono);font-size:9px;color:var(--muted-soft);
+    letter-spacing:.02em;
+  }
+  .nav-item.active{
+    background:var(--accent-tint);
+    color:var(--accent-blue-ink);
+    font-weight:500;
+  }
+  .nav-item.active svg{stroke:var(--accent-blue);}
+  .nav-item.active .shortcut{color:var(--accent-blue-ink);opacity:.72;}
+
+  /* ---------- content shell ---------- */
+  .content{
+    flex:1;
+    min-width:0;
+    background:var(--surface);
+    padding:34px 40px 44px;
+  }
+  .content h2.page-title{
+    font-family:var(--font-display);
+    font-weight:500;
+    font-size:32px;
+    letter-spacing:-0.02em;
+    margin:0 0 4px;
+    color:var(--ink);
+  }
+  .content .page-sub{font-size:13px;color:var(--muted);margin:0 0 24px;max-width:480px;line-height:1.5;}
+
+  /* ---------- generic pieces ---------- */
+  .card{
+    background:var(--surface);
+    border:1px solid var(--hairline);
+    border-radius:var(--radius-card);
+  }
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    border-radius:var(--radius-pill);
+    font-family:var(--font-body);
+    font-size:12.5px;font-weight:600;
+    padding:7px 15px;
+    border:1px solid transparent;
+    cursor:default;
+    white-space:nowrap;
+  }
+  .btn-ink{background:var(--ink);color:#fff;}
+  .btn-outline{background:var(--surface);color:var(--ink-soft);border-color:var(--hairline);}
+  .btn-ghost{background:transparent;color:var(--muted);}
+  .btn-icon{padding:7px;width:30px;height:30px;justify-content:center;}
+  .btn svg{stroke:currentColor;}
+
+  .badge{
+    display:inline-flex;align-items:center;gap:4px;
+    font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+    padding:3px 7px;border-radius:5px;border:1px solid var(--hairline);color:var(--muted);
+    background:var(--surface);
+    white-space:nowrap;
+  }
+  .badge.live{color:var(--live);border-color:rgba(228,87,77,.28);background:var(--live-tint);}
+  .badge.live .dot{width:5px;height:5px;border-radius:50%;background:var(--live);}
+
+  .chip{
+    display:inline-flex;align-items:center;
+    font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2.5px 7px;border-radius:5px;
+    background:var(--accent-tint);color:var(--accent-blue-ink);
+    font-weight:500;
+  }
+  .chip.me{background:transparent;color:var(--ink);padding:2.5px 0;font-weight:600;}
+
+  /* ================= ARTBOARD 1 — dashboard ================= */
+  .dict-row{display:flex;gap:16px;margin-bottom:30px;}
+  .dict-card{
+    flex-shrink:0;
+    background:var(--pill-dark);
+    border-radius:var(--radius-pill);
+    padding:9px 18px 9px 9px;
+    display:flex;align-items:center;gap:12px;
+    color:var(--pill-cream);
+  }
+  .dict-mic-btn{
+    width:34px;height:34px;border-radius:50%;
+    background:rgba(255,255,255,.1);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .dict-mic-btn svg{stroke:var(--pill-cream);width:15px;height:15px;}
+  .dict-label{font-size:12.5px;font-weight:500;line-height:1.25;}
+  .dict-hint{font-family:var(--font-mono);font-size:9.5px;color:rgba(245,241,228,.5);margin-top:2px;letter-spacing:.02em;}
+  .dots-row{display:flex;align-items:center;gap:5.5px;padding:0 4px;}
+  .dots-row span{width:2.5px;height:2.5px;border-radius:50%;background:rgba(245,241,228,.4);}
+
+  .dict-card.live{
+    background:var(--pill-dark);
+    box-shadow:0 0 0 1.5px rgba(228,87,77,.55), var(--shadow);
+  }
+  .live-dot-wrap{
+    width:34px;height:34px;border-radius:50%;
+    background:rgba(228,87,77,.16);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;
+  }
+  .live-dot{width:9px;height:9px;border-radius:50%;background:var(--live);}
+  .bars-row{display:flex;align-items:center;gap:3px;height:16px;padding:0 2px;}
+  .bars-row i{display:block;width:2.5px;border-radius:2px;background:var(--live);}
+  .live-timer{font-family:var(--font-mono);font-size:11.5px;color:rgba(245,241,228,.85);margin-left:2px;}
+
+  .dash-columns{display:flex;gap:28px;align-items:flex-start;}
+  .dash-main{flex:1;min-width:0;}
+  .dash-side{width:250px;flex-shrink:0;padding-top:2px;}
+
+  .search-row{display:flex;gap:8px;margin-bottom:18px;}
+  .search-box{
+    flex:1;display:flex;align-items:center;gap:8px;
+    border:1px solid var(--hairline);border-radius:var(--radius-pill);
+    padding:8px 14px;color:var(--muted);font-size:12.5px;background:var(--surface);
+  }
+  .search-box svg{stroke:var(--muted-soft);}
+  .group-label{font-size:11px;font-weight:600;color:var(--muted-soft);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 8px;}
+  .group-label:first-child{margin-top:0;}
+  .entry-list{display:flex;flex-direction:column;}
+  .entry{
+    display:flex;gap:14px;padding:11px 4px;border-bottom:1px solid var(--hairline);
+  }
+  .entry:last-child{border-bottom:none;}
+  .entry .ts{font-family:var(--font-mono);font-size:10.5px;color:var(--muted-soft);padding-top:1px;width:58px;flex-shrink:0;}
+  .entry p{margin:0;font-size:13px;line-height:1.55;color:var(--ink-soft);}
+
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px;}
+  .stat-card{border:1px solid var(--hairline);border-radius:var(--radius-card);padding:13px 14px;}
+  .stat-card.span2{grid-column:1 / -1;}
+  .stat-n{font-family:var(--font-display);font-size:24px;font-weight:500;letter-spacing:-0.01em;color:var(--ink);line-height:1.1;}
+  .stat-l{font-size:11px;color:var(--muted);margin-top:3px;}
+  .rail-label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px;}
+  .heatmap{display:flex;gap:2.5px;}
+  .heatmap .col{display:flex;flex-direction:column;gap:2.5px;}
+  .heatmap .cell{width:8px;height:8px;border-radius:2px;}
+  .heat-legend{display:flex;align-items:center;gap:5px;margin-top:9px;font-size:9.5px;color:var(--muted-soft);}
+  .heat-legend .cell{width:7px;height:7px;border-radius:2px;}
+
+  /* ================= ARTBOARD 2 — meetings ================= */
+  .meet-body{display:flex;min-width:0;flex:1;}
+  .meet-list{width:262px;flex-shrink:0;border-right:1px solid var(--hairline);padding:30px 18px 30px 0;}
+  .meet-list-title{font-family:var(--font-display);font-size:22px;font-weight:500;letter-spacing:-0.01em;margin:0 0 4px;}
+  .meet-list-sub{font-size:11.5px;color:var(--muted);line-height:1.5;margin:0 0 18px;}
+  .meet-item{
+    display:flex;flex-direction:column;gap:5px;
+    padding:11px 12px;border-radius:9px;margin-bottom:3px;
+    border:1px solid transparent;
+  }
+  .meet-item.selected{background:var(--ground);border-color:var(--hairline);}
+  .meet-item-title{font-size:12.5px;font-weight:500;color:var(--ink);}
+  .meet-item-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .meet-item-date{font-family:var(--font-mono);font-size:10px;color:var(--muted-soft);}
+
+  .meet-detail{flex:1;min-width:0;padding:30px 40px 40px;}
+  .meet-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:20px;}
+  .meet-head .back{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0;margin-top:2px;}
+  .meet-head-title{display:flex;align-items:center;gap:7px;}
+  .meet-head-title h2{font-size:17px;font-weight:600;margin:0;color:var(--ink);}
+  .meet-head-title svg{stroke:var(--muted-soft);}
+  .meet-head-meta{font-family:var(--font-mono);font-size:10.5px;color:var(--muted-soft);margin-top:3px;}
+
+  .action-row{display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap;}
+  .action-row .spacer{flex:1;}
+
+  .info-row{
+    display:flex;align-items:flex-start;gap:9px;
+    border:1px solid var(--hairline);background:var(--ground);
+    border-radius:var(--radius-card);padding:10px 14px;font-size:12px;color:var(--ink-soft);
+    margin-bottom:20px;line-height:1.5;
+  }
+  .info-row svg{stroke:var(--muted);margin-top:2px;flex-shrink:0;}
+
+  .tab-row{display:flex;gap:4px;border-bottom:1px solid var(--hairline);margin-bottom:20px;}
+  .tab{
+    font-size:12.5px;font-weight:600;padding:8px 4px 10px;color:var(--muted);
+    border-bottom:2px solid transparent;margin-bottom:-1px;
+  }
+  .tab.active{color:var(--ink);border-color:var(--ink);}
+
+  .transcript{display:flex;flex-direction:column;gap:15px;margin-bottom:30px;}
+  .seg{display:flex;gap:14px;align-items:flex-start;}
+  .seg-label{width:64px;flex-shrink:0;text-align:right;padding-top:1px;}
+  .seg p{flex:1;margin:0;font-size:13.5px;line-height:1.6;color:var(--ink-soft);}
+  .seg .ts{font-family:var(--font-mono);font-size:9px;color:var(--muted-soft);flex-shrink:0;padding-top:2px;}
+
+  .summary-head{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  .summary-head h3{font-size:13px;font-weight:600;margin:0;color:var(--ink);}
+  .summary-card{border:1px solid var(--hairline);border-radius:var(--radius-card);padding:18px 20px;background:var(--ground);}
+  .summary-card h4{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 8px;font-weight:600;}
+  .summary-card h4:not(:first-child){margin-top:16px;}
+  .summary-card ul{margin:0;padding-left:18px;}
+  .summary-card li{font-size:13px;line-height:1.6;color:var(--ink-soft);margin-bottom:4px;}
+
+  /* ================= ARTBOARD 3 — settings ================= */
+  .set-body{display:flex;flex:1;min-width:0;padding:34px 0 0;}
+  .set-tabs{width:170px;flex-shrink:0;padding:0 14px 30px 40px;display:flex;flex-direction:column;gap:2px;}
+  .set-tab{font-size:12.5px;padding:7px 10px;border-radius:7px;color:var(--muted);font-weight:400;}
+  .set-tab.active{background:var(--ground);color:var(--ink);font-weight:500;border:1px solid var(--hairline);}
+  .set-main{flex:1;min-width:0;padding:0 40px 40px 30px;}
+  .set-main h2.page-title{font-size:26px;margin-bottom:22px;}
+  .set-row{
+    display:grid;grid-template-columns:280px minmax(0,1fr);gap:36px;
+    padding:21px 0;border-bottom:1px solid var(--hairline);align-items:flex-start;
+  }
+  .set-row:last-child{border-bottom:none;}
+  .set-row-label{font-size:14px;font-weight:500;color:var(--ink);}
+  .set-row-desc{font-size:12px;color:var(--muted);line-height:1.55;margin-top:3px;}
+  .perm-control{display:flex;align-items:center;gap:10px;}
+  .perm-status{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--ink-soft);}
+  .perm-check{width:16px;height:16px;border-radius:50%;background:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .perm-check svg{stroke:var(--surface);width:9px;height:9px;stroke-width:2.6;}
+  .perm-unknown{width:16px;height:16px;border-radius:50%;border:1.6px dashed var(--muted-soft);flex-shrink:0;}
+  .ack-text{font-size:12.5px;color:var(--muted);line-height:1.65;}
+  .ack-text a{color:var(--ink-soft);text-decoration:underline;text-underline-offset:2px;font-weight:500;}
+
+  /* ================= ARTBOARD 4 — Remix ================= */
+#remix .remix-shell{flex:1;min-width:0;display:flex;}
+#remix .content{padding:34px 28px 44px;max-height:720px;overflow:hidden;}
+#remix .remix-rail{width:300px;flex-shrink:0;border-left:1px solid var(--hairline);padding:34px 22px 44px;background:var(--surface);}
+
+#remix .remix-hero{border:1px solid var(--hairline);border-radius:16px;padding:28px 26px;display:flex;flex-direction:column;align-items:center;gap:18px;margin-bottom:12px;}
+#remix .remix-hero-title{font-family:var(--font-display);font-weight:400;font-size:26px;letter-spacing:-0.01em;color:var(--muted-soft);text-align:center;line-height:1.3;}
+#remix .remix-hero-title b{color:var(--ink);font-weight:500;}
+#remix .remix-keycap{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;margin:0 2px;border:1px solid var(--hairline);border-radius:7px;background:var(--ground);font-size:13px;color:var(--ink-soft);vertical-align:middle;}
+#remix .remix-keycap.sm{min-width:20px;height:20px;font-size:11px;border-radius:5px;margin:0 1px;padding:0 4px;}
+#remix .remix-plus{color:var(--muted-soft);font-size:13px;margin:0 1px;font-family:var(--font-mono);}
+
+#remix .remix-panel{width:100%;max-width:500px;border:1px solid var(--hairline);border-radius:12px;background:var(--ground);padding:15px 17px;}
+#remix .remix-status-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+#remix .remix-status-dot{width:7px;height:7px;border-radius:50%;background:var(--ink);flex-shrink:0;}
+#remix .remix-status-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;}
+#remix .remix-wave{display:flex;align-items:center;gap:3px;height:18px;margin-bottom:10px;}
+#remix .remix-wave i{display:block;width:2.5px;border-radius:2px;background:var(--muted-soft);}
+#remix .remix-result{font-family:var(--font-display);font-size:15.5px;line-height:1.45;color:var(--ink);}
+
+#remix .remix-change{display:flex;justify-content:flex-end;margin:0 0 28px;}
+#remix .remix-change a{font-size:12px;color:var(--muted);text-decoration:underline;text-underline-offset:2px;}
+
+#remix .remix-how{padding:19px 21px;margin-bottom:28px;}
+#remix .remix-how-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;}
+#remix .remix-how-list li{display:flex;align-items:baseline;gap:12px;}
+#remix .remix-step-n{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--muted-soft);flex-shrink:0;width:16px;}
+#remix .remix-how-list span.txt{font-size:13.5px;color:var(--ink-soft);line-height:1.55;}
+#remix .remix-how-more{font-size:12.5px;color:var(--muted);line-height:1.6;margin:15px 0 0;padding-top:15px;border-top:1px solid var(--hairline);}
+
+#remix .remix-example{margin-bottom:22px;}
+#remix .remix-example-head{display:flex;align-items:center;gap:6px;margin:18px 0 8px;}
+#remix .remix-example-head .group-label{margin:0;}
+#remix .remix-example-head svg{stroke:var(--muted-soft);}
+#remix .remix-quote-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+#remix .remix-quote{padding:12px 14px;}
+#remix .remix-quote p{margin:0;font-size:12.5px;line-height:1.5;color:var(--ink-soft);}
+
+#remix .remix-tips p{margin:0;font-size:12px;line-height:1.55;color:var(--muted);padding:10px 0;}
+#remix .remix-tips p+p{border-top:1px solid var(--hairline);}
+
+#remix .stat-card.span2{display:flex;align-items:baseline;gap:8px;}
+#remix .stat-card.span2 .stat-l{margin-top:0;}
+
+  /* ================= ARTBOARD 5 — Vocabulary ================= */
+    #vocabulary .term-tag{
+      font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--ink);
+      background:var(--ground);border:1px solid var(--hairline);border-radius:6px;
+      padding:3px 8px;display:inline-block;max-width:100%;overflow:hidden;
+      text-overflow:ellipsis;white-space:nowrap;
+    }
+    #vocabulary .voc-select-bar{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      background:var(--ground);border:1px solid var(--hairline);border-radius:var(--radius-card);
+      padding:9px 14px;margin-bottom:10px;
+    }
+    #vocabulary .voc-select-left{display:flex;align-items:center;gap:14px;}
+    #vocabulary .voc-checkbox-lbl{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);font-weight:500;}
+    #vocabulary .voc-checkbox{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--muted-soft);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;background:var(--surface);}
+    #vocabulary .voc-checkbox.checked{background:var(--ink);border-color:var(--ink);}
+    #vocabulary .voc-checkbox.checked svg{stroke:#fff;width:8px;height:8px;stroke-width:2.6;}
+    #vocabulary .voc-select-count{font-family:var(--font-mono);font-size:10.5px;color:var(--muted-soft);letter-spacing:.03em;}
+    #vocabulary .voc-list{border:1px solid var(--hairline);border-radius:var(--radius-card);overflow:hidden;background:var(--surface);}
+    #vocabulary .voc-row{display:grid;grid-template-columns:22px 170px 1fr auto;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--hairline);}
+    #vocabulary .voc-row:last-child{border-bottom:none;}
+    #vocabulary .voc-row.selected{background:var(--ground);}
+    #vocabulary .voc-row .note{font-size:13px;color:var(--ink-soft);line-height:1.4;}
+    #vocabulary .voc-row .note.muted{color:var(--muted-soft);}
+    #vocabulary .voc-actions{display:flex;gap:2px;}
+    #vocabulary .voc-icon-btn{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--muted-soft);}
+    #vocabulary .voc-icon-btn svg{stroke:var(--muted-soft);width:13px;height:13px;}
+    #vocabulary .voc-footer{display:flex;align-items:center;justify-content:space-between;margin-top:14px;}
+    #vocabulary .voc-count{font-family:var(--font-mono);font-size:11px;color:var(--muted-soft);letter-spacing:.04em;}
+    #vocabulary .voc-page{display:flex;align-items:center;gap:2px;}
+    #vocabulary .voc-page-btn{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--muted);}
+    #vocabulary .voc-page-btn.disabled{color:var(--muted-soft);opacity:.4;}
+    #vocabulary .voc-page-btn svg{stroke:currentColor;}
+    #vocabulary .voc-page-num{font-family:var(--font-mono);font-size:11px;color:var(--muted-soft);padding:0 6px;}
+    #vocabulary .voc-note-below{font-size:11.5px;color:var(--muted-soft);line-height:1.5;margin:14px 2px 0;max-width:560px;}
+
+    /* compact inset — Shortcuts (dictionary.tsx) */
+    #vocabulary .inset-caption{margin-top:32px;}
+    #vocabulary .inset-card{
+      max-width:660px;background:var(--surface);border:1px solid var(--hairline);
+      border-radius:var(--radius-window);box-shadow:var(--shadow);padding:22px 24px 24px;
+    }
+    #vocabulary .inset-head{margin-bottom:14px;}
+    #vocabulary .inset-head h3{font-family:var(--font-display);font-size:19px;font-weight:500;letter-spacing:-0.01em;margin:0 0 4px;color:var(--ink);}
+    #vocabulary .inset-head p{font-size:11.5px;color:var(--muted);margin:0;line-height:1.5;max-width:440px;}
+    #vocabulary .inset-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+    #vocabulary .inset-toolbar .search-box{flex:1;padding:6px 12px;font-size:12px;margin-bottom:0;}
+    #vocabulary .sc-row{display:grid;grid-template-columns:130px 1fr auto;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px solid var(--hairline);}
+    #vocabulary .sc-row:last-child{border-bottom:none;}
+    #vocabulary .sc-row .val{font-size:12.5px;color:var(--ink-soft);line-height:1.4;}
+    #vocabulary .sc-row .usage{font-family:var(--font-mono);font-size:10.5px;color:var(--muted-soft);white-space:nowrap;}
+  
+
+  /* ================= ARTBOARD 6 — Help & Shortcuts ================= */
+    #shortcuts .eyebrow{display:block;font-family:var(--font-body);font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-soft);margin:0 0 10px;}
+    #shortcuts .help-section{margin-bottom:26px;}
+    #shortcuts .help-section:last-child{margin-bottom:0;}
+
+    #shortcuts .hotkey-card{padding:0 18px;}
+    #shortcuts .hotkey-row{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:15px 0;border-bottom:1px solid var(--hairline);}
+    #shortcuts .hotkey-row:last-child{border-bottom:none;}
+    #shortcuts .hotkey-row-label{font-size:13px;font-weight:500;color:var(--ink);}
+    #shortcuts .hotkey-row-desc{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;max-width:380px;}
+
+    #shortcuts .kbd-combo{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+    #shortcuts .kbd-key{font-family:var(--font-mono);font-size:11px;font-weight:500;color:var(--ink-soft);background:var(--ground);border:1px solid var(--hairline);border-radius:6px;padding:4px 8px;min-width:13px;text-align:center;line-height:1;}
+    #shortcuts .kbd-plus{font-size:11px;color:var(--muted-soft);}
+
+    #shortcuts .nav-shortcut-card{padding:0;overflow:hidden;}
+    #shortcuts .nav-shortcut-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--hairline);}
+    #shortcuts .nav-shortcut-item{background:var(--surface);display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 14px;}
+    #shortcuts .nav-shortcut-item .lbl{font-size:12.5px;color:var(--ink-soft);}
+
+    #shortcuts .help-link-card{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--hairline);border-radius:var(--radius-card);padding:14px 16px;background:var(--surface);}
+    #shortcuts .help-link-card .hicon{width:30px;height:30px;border-radius:8px;background:var(--ground);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--ink-soft);}
+    #shortcuts .help-link-card .htitle{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--ink);}
+    #shortcuts .help-link-card .htitle svg{stroke:var(--muted-soft);}
+    #shortcuts .help-link-card .hdesc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5;}
+  
+
+  /* ================= ARTBOARD 7 — Tone ================= */
+  #tone .tone-tabs{
+    display:inline-flex;align-items:center;gap:2px;
+    background:var(--surface);border:1px solid var(--hairline);
+    border-radius:var(--radius-pill);padding:3px;margin-bottom:26px;
+  }
+  #tone .tone-tab{
+    font-family:var(--font-body);font-size:12.5px;font-weight:500;
+    color:var(--muted);padding:7px 15px;border-radius:var(--radius-pill);
+    white-space:nowrap;
+  }
+  #tone .tone-tab.active{background:var(--ground);color:var(--ink);font-weight:500;border:1px solid var(--hairline);}
+
+  #tone .tone-section{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:24px;
+    border-top:1px solid var(--hairline);padding-top:20px;margin-bottom:22px;
+  }
+  #tone .tone-title{
+    font-family:var(--font-display);font-weight:500;font-size:26px;
+    letter-spacing:-0.02em;color:var(--ink);margin:0 0 6px;
+  }
+  #tone .tone-desc{font-size:12.5px;color:var(--muted);line-height:1.55;max-width:38ch;margin:0;}
+  #tone .routes-shelf{flex-shrink:0;text-align:right;}
+  #tone .route-row{display:flex;gap:8px;margin-top:9px;justify-content:flex-end;}
+  #tone .route-mark{
+    width:30px;height:30px;border-radius:8px;flex-shrink:0;
+    background:var(--ground);border:1px solid var(--hairline);
+    display:flex;align-items:center;justify-content:center;color:var(--ink-soft);
+  }
+  #tone .route-mark svg{stroke:var(--ink-soft);width:15px;height:15px;}
+
+  #tone .tone-eyebrow{
+    font-family:var(--font-mono);font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted-soft);
+  }
+  #tone .tone-eyebrow.accent{color:var(--ink-soft);font-weight:600;}
+
+  #tone .tone-grid{display:grid;grid-template-columns:290px minmax(0,1fr);gap:20px;align-items:flex-start;}
+
+  #tone .tone-options{display:flex;flex-direction:column;gap:8px;}
+  #tone .tone-option{
+    position:relative;display:flex;align-items:center;gap:12px;
+    border:1px solid var(--hairline);border-radius:var(--radius-card);
+    background:var(--surface);padding:12px 14px 12px 18px;overflow:hidden;
+  }
+  #tone .tone-option-rail{
+    position:absolute;left:0;top:50%;transform:translateY(-50%);
+    width:3px;height:0;border-radius:0 3px 3px 0;background:var(--ink);
+  }
+  #tone .tone-option.selected{background:var(--ground);border-color:rgba(29,33,41,.14);}
+  #tone .tone-option.selected .tone-option-rail{height:30px;}
+  #tone .tone-option-body{flex:1;min-width:0;}
+  #tone .tone-option-title{
+    font-family:var(--font-display);font-weight:500;font-size:19px;
+    letter-spacing:-0.02em;color:var(--ink);line-height:1.15;
+  }
+  #tone .tone-option-desc{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4;}
+  #tone .tone-option-check{
+    width:18px;height:18px;border-radius:50%;flex-shrink:0;
+    border:1.4px solid var(--hairline);
+    display:flex;align-items:center;justify-content:center;
+  }
+  #tone .tone-option-check svg{width:9px;height:9px;stroke:transparent;stroke-width:2.6;}
+  #tone .tone-option.selected .tone-option-check{background:var(--ink);border-color:var(--ink);}
+  #tone .tone-option.selected .tone-option-check svg{stroke:var(--surface);}
+
+  #tone .tone-preview{padding:20px 22px;}
+  #tone .tone-preview-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  #tone .tone-raw-label{margin-bottom:8px;}
+  #tone .tone-raw-text{font-size:13px;color:var(--muted);line-height:1.6;margin:0;}
+  #tone .tone-divider{display:flex;align-items:center;gap:10px;margin:16px 0;}
+  #tone .tone-divider .line{flex:1;height:1px;background:var(--hairline);}
+
+  #tone .work-bubble{
+    display:flex;gap:11px;align-items:flex-start;
+    border:1px solid var(--hairline);border-radius:var(--radius-card);background:var(--ground);
+    padding:12px 14px;
+  }
+  #tone .work-avatar{
+    width:32px;height:32px;border-radius:50%;flex-shrink:0;
+    background:var(--ink);color:var(--pill-cream);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-mono);font-size:11px;font-weight:500;
+  }
+  #tone .work-meta{display:flex;align-items:baseline;gap:8px;}
+  #tone .work-sender{font-size:12.5px;font-weight:600;color:var(--ink);}
+  #tone .work-time{font-family:var(--font-mono);font-size:9.5px;color:var(--muted-soft);}
+  #tone .work-text{font-size:13.5px;color:var(--ink-soft);line-height:1.55;margin:5px 0 0;}
+
+  /* ================= ARTBOARD 8 — Models ================= */
+  #models .models-stage{display:flex;align-items:flex-start;gap:22px;}
+  #models .models-stage .window{flex:1;min-width:0;}
+
+  /* ---- pair card (Transcription + AI cleanup) ---- */
+  #models .models-pair{display:grid;grid-template-columns:1fr 1fr;padding:26px 28px;}
+  #models .models-pair-side{display:flex;flex-direction:column;gap:13px;padding-right:24px;}
+  #models .models-pair-side-right{padding-right:0;padding-left:24px;border-left:1px solid var(--hairline);}
+  #models .models-pair-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  #models .models-eyebrow{
+    font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted-soft);font-weight:500;white-space:nowrap;
+  }
+  #models .models-pair-name{
+    font-family:var(--font-display);font-weight:500;font-size:32px;letter-spacing:-0.02em;
+    color:var(--ink);line-height:1.05;
+  }
+  #models .models-pair-sub{font-size:12.5px;color:var(--muted);}
+  #models .models-pair-sub b{color:var(--ink-soft);font-weight:600;}
+  #models .models-pair-actions{display:flex;flex-direction:column;align-items:flex-start;gap:9px;margin-top:auto;padding-top:6px;}
+  #models .models-pair-link{font-size:12.5px;color:var(--muted);}
+
+  #models .models-toggle{width:32px;height:19px;border-radius:999px;background:var(--hairline);position:relative;flex-shrink:0;}
+  #models .models-toggle::after{
+    content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+    background:var(--surface);box-shadow:0 1px 2px rgba(29,33,41,.25);
+  }
+  #models .models-toggle.on{background:var(--ink);}
+  #models .models-toggle.on::after{left:15px;}
+
+  /* ---- on-device model rows ---- */
+  #models .models-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:13px 18px;}
+  #models .models-row + .models-row{border-top:1px solid var(--hairline);}
+  #models .models-row-main{min-width:0;flex:1;}
+  #models .models-row-title-line{display:flex;align-items:center;gap:7px;}
+  #models .models-row-name{font-size:14px;font-weight:500;color:var(--ink);}
+  #models .models-row-meta{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.5;}
+  #models .models-row-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;padding-top:1px;}
+  #models .models-row-selected{font-size:11px;font-weight:600;color:var(--ink);white-space:nowrap;}
+  #models .models-check{color:var(--ink);flex-shrink:0;}
+
+  #models .models-progress{margin-top:8px;max-width:320px;}
+  #models .models-progress-track{height:5px;border-radius:999px;background:var(--hairline);overflow:hidden;}
+  #models .models-progress-fill{height:100%;border-radius:999px;background:var(--live);}
+  #models .models-progress-meta{
+    display:flex;justify-content:space-between;margin-top:5px;
+    font-family:var(--font-mono);font-size:10px;color:var(--muted-soft);
+  }
+
+  /* ---- api keys rows ---- */
+  #models .models-key-row{display:flex;align-items:center;gap:12px;padding:13px 18px;}
+  #models .models-key-row + .models-key-row{border-top:1px solid var(--hairline);}
+  #models .models-key-icon{color:var(--muted);flex-shrink:0;}
+  #models .models-key-main{min-width:0;flex:1;}
+  #models .models-key-name-line{display:flex;align-items:center;gap:6px;}
+  #models .models-key-name{font-size:13.5px;font-weight:600;color:var(--ink);}
+  #models .models-key-hint{font-family:var(--font-mono);font-size:11px;color:var(--muted-soft);margin-top:2px;}
+  #models .models-key-hint.warn{color:var(--ink-soft);font-family:var(--font-body);}
+  #models .models-key-count{font-size:11.5px;color:var(--muted);flex-shrink:0;white-space:nowrap;}
+  #models .models-key-actions{display:flex;align-items:center;gap:0;flex-shrink:0;}
+
+  /* ---- MLX model-warming dialog, shown beside the window as its own state ---- */
+  #models .models-dialog-wrap{width:270px;flex-shrink:0;padding-top:26px;}
+  #models .models-dialog-wrap .artboard-caption{margin:0 0 12px;}
+  #models .models-dialog{
+    width:100%;background:var(--surface);border-radius:var(--radius-window);
+    box-shadow:var(--shadow), 0 1px 0 rgba(29,33,41,.04);
+    border:1px solid rgba(29,33,41,.06);padding:20px 22px 18px;box-sizing:border-box;
+  }
+  #models .models-dialog-head{display:flex;align-items:center;gap:9px;margin-bottom:14px;}
+  #models .models-dialog-head svg{stroke:var(--ink-soft);}
+  #models .models-dialog-head h3{
+    font-family:var(--font-display);font-weight:500;font-size:15.5px;letter-spacing:-0.01em;
+    margin:0;color:var(--ink);
+  }
+  #models .models-dialog-desc{font-size:12.5px;line-height:1.55;color:var(--ink-soft);margin:0 0 18px;}
+  #models .models-slider-track{position:relative;height:4px;border-radius:999px;background:var(--hairline);}
+  #models .models-slider-fill{position:absolute;top:0;left:0;bottom:0;border-radius:999px;background:var(--ink);}
+  #models .models-slider-thumb{
+    position:absolute;top:50%;width:14px;height:14px;border-radius:50%;
+    background:var(--surface);border:2px solid var(--ink);transform:translate(-50%,-50%);
+    box-shadow:0 1px 3px rgba(29,33,41,.2);
+  }
+  #models .models-slider-labels{
+    display:flex;justify-content:space-between;margin-top:9px;
+    font-family:var(--font-mono);font-size:9.5px;color:var(--muted-soft);letter-spacing:.02em;
+  }
+  #models .models-dialog-actions{display:flex;justify-content:flex-end;margin-top:20px;}
+
+  /* ================= ARTBOARD 9 — Settings (full) ================= */
+  /* Scoped additions for the settings-full artboard only — reuses shared
+     tokens/classes (.window, .sidebar, .nav-item, .set-*, .btn, .chip, .badge,
+     .ack-text) and adds the handful of control primitives the real settings
+     page needs (toggle, segmented control, select trigger, key caps) that the
+     Permissions artboard didn't require. */
+
+  #settings-full .set-block{padding:26px 0 6px;}
+  #settings-full .set-block-kicker{
+    font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted-soft);margin:0 0 6px;
+  }
+  #settings-full .set-block-title{
+    font-family:var(--font-display);font-weight:500;font-size:20px;letter-spacing:-0.01em;
+    color:var(--ink);margin:0 0 4px;
+  }
+
+  #settings-full .set-row.stacked{grid-template-columns:1fr;gap:10px;}
+
+  /* toggle */
+  #settings-full .swtoggle{width:32px;height:19px;border-radius:999px;background:var(--hairline);position:relative;flex-shrink:0;}
+  #settings-full .swtoggle::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(29,33,41,.2);}
+  #settings-full .swtoggle.on{background:var(--ink);}
+  #settings-full .swtoggle.on::after{left:auto;right:2px;}
+  #settings-full .swtoggle-row{display:flex;align-items:center;gap:10px;}
+
+  /* segmented control */
+  #settings-full .seg-group{display:inline-flex;flex-wrap:wrap;gap:2px;padding:3px;border-radius:999px;background:var(--ground);border:1px solid var(--hairline);}
+  #settings-full .seg-opt{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:999px;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;}
+  #settings-full .seg-opt svg{stroke:var(--muted);width:12px;height:12px;}
+  #settings-full .seg-opt.active{background:var(--ink);color:#fff;}
+  #settings-full .seg-opt.active svg{stroke:#fff;}
+
+  /* select trigger */
+  #settings-full .select-box{
+    display:inline-flex;align-items:center;gap:9px;
+    border:1px solid var(--hairline);border-radius:999px;
+    padding:7px 12px 7px 14px;font-size:12.5px;color:var(--ink-soft);background:var(--surface);
+  }
+  #settings-full .select-box svg{stroke:var(--muted-soft);}
+
+  /* hotkey capture control */
+  #settings-full .hotkey-ctl{
+    display:inline-flex;align-items:center;gap:10px;
+    border:1px solid var(--hairline);border-radius:999px;
+    padding:7px 8px 7px 14px;background:var(--surface);
+  }
+  #settings-full .hotkey-ctl svg{stroke:var(--muted);}
+  #settings-full .kcap{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:22px;padding:4px 8px;border-radius:6px;
+    background:var(--ground);border:1px solid var(--hairline);
+    font-family:var(--font-mono);font-size:10.5px;color:var(--ink-soft);
+  }
+  #settings-full .kcap-row{display:flex;align-items:center;gap:4px;}
+  #settings-full .hotkey-change{font-size:11px;color:var(--muted-soft);margin-left:2px;}
+
+  /* language chips row */
+  #settings-full .lang-row{display:flex;flex-wrap:wrap;align-items:center;gap:7px;}
+  #settings-full .lang-chip{
+    display:inline-flex;align-items:center;gap:6px;
+    font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+    padding:4px 6px 4px 9px;border-radius:999px;
+    background:var(--accent-tint);color:var(--accent-blue-ink);font-weight:500;
+  }
+  #settings-full .lang-chip .x{opacity:.55;font-family:var(--font-body);font-size:12px;line-height:1;}
+  #settings-full .lang-add{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:11.5px;font-weight:600;color:var(--muted);
+    padding:5px 11px;border-radius:999px;border:1px dashed var(--hairline);
+  }
+
+  /* ================= ARTBOARD 10 — Onboarding ================= */
+  #onboarding .ob-body{ padding:0; }
+  #onboarding .ob-stage{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--surface);
+    padding:72px 40px;
+    min-height:480px;
+  }
+  #onboarding .ob-panel{ width:100%; max-width:404px; }
+
+  #onboarding .ob-steps{
+    display:flex; align-items:center; justify-content:center;
+    gap:6px; margin-bottom:34px;
+  }
+  #onboarding .ob-dot{ width:5px; height:5px; border-radius:50%; background:var(--hairline); }
+  #onboarding .ob-dot.is-active{ width:14px; border-radius:3px; background:var(--ink); }
+
+  #onboarding .ob-brand{
+    display:flex; flex-direction:column; align-items:center; gap:11px;
+    margin-bottom:36px;
+  }
+  #onboarding .ob-brand-mark{ width:34px; height:34px; border-radius:9px; }
+  #onboarding .ob-brand-mark span{ width:7px; height:7px; }
+  #onboarding .ob-brand-name{ font-size:17.5px; }
+
+  #onboarding .ob-cards{ display:flex; flex-direction:column; gap:10px; }
+  #onboarding .ob-card{ display:flex; align-items:center; gap:14px; padding:15px 16px; }
+  #onboarding .ob-icon{
+    width:36px; height:36px; border-radius:9px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--ground); border:1px solid var(--hairline); color:var(--muted);
+  }
+  #onboarding .ob-info{ min-width:0; flex:1; }
+  #onboarding .ob-title{ font-size:13.5px; font-weight:500; color:var(--ink); }
+  #onboarding .ob-desc{ font-size:12px; color:var(--muted); margin-top:2px; line-height:1.4; }
+  #onboarding .ob-status{ flex-shrink:0; }
+  #onboarding .ob-action{ flex-shrink:0; }
+
+  #onboarding .ob-footer{
+    display:flex; align-items:center; justify-content:flex-end; gap:14px;
+    margin-top:26px;
+  }
+  #onboarding .ob-hint{
+    font-family:var(--font-mono); font-size:10.5px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--muted-soft);
+  }
+  #onboarding .ob-continue{ opacity:.42; }
+
+  /* ================= ARTBOARD 11 — Transcript detail ================= */
+    #history-detail .entry-detail{
+      border:1px solid var(--hairline);
+      border-radius:var(--radius-card);
+      box-shadow:var(--shadow);
+      background:var(--surface);
+      padding:14px 16px 13px;
+      margin:2px 0 3px;
+    }
+    #history-detail .hd-head{display:flex;align-items:center;gap:9px;}
+    #history-detail .hd-time{font-family:var(--font-mono);font-size:14.5px;font-weight:500;color:var(--ink);}
+    #history-detail .hd-head .spacer{flex:1;}
+    #history-detail .hd-collapse{width:24px;height:24px;padding:0;color:var(--muted);}
+    #history-detail .hd-collapse svg{transform:rotate(90deg);}
+    #history-detail .entry-detail .quote{
+      margin:12px 0 13px;font-size:15px;line-height:1.62;color:var(--ink-soft);
+    }
+    #history-detail .hd-actions{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+    #history-detail .hd-actions .spacer{flex:1;}
+    #history-detail .hd-stats{
+      font-family:var(--font-mono);font-size:10px;letter-spacing:.02em;color:var(--muted-soft);
+      padding-top:11px;border-top:1px solid var(--hairline);
+    }
+  
+</style>
+</head>
+<body>
+
+<!-- icon sprite -->
+<svg style="display:none" aria-hidden="true">
+<defs>
+  <symbol id="i-book-open" viewBox="0 0 24 24"><path d="M12 6.2c-2.2-1.6-5.3-2-8-1v13.6c2.7-1 5.8-.6 8 1c2.2-1.6 5.3-2 8-1V5.2c-2.7-1-5.8-.6-8 1z"/><line x1="12" y1="6.2" x2="12" y2="19.8"/></symbol>
+  <symbol id="i-wand" viewBox="0 0 24 24"><line x1="4" y1="20" x2="15" y2="9"/><path d="M17.5 4l.9 1.9 1.9.9-1.9.9-.9 1.9-.9-1.9-1.9-.9 1.9-.9z"/></symbol>
+  <symbol id="i-audio-lines" viewBox="0 0 24 24"><line x1="4" y1="9" x2="4" y2="15"/><line x1="8.5" y1="6" x2="8.5" y2="18"/><line x1="13" y1="4" x2="13" y2="20"/><line x1="17.5" y1="7" x2="17.5" y2="17"/><line x1="21" y1="10" x2="21" y2="14"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1.6"/><line x1="9" y1="3" x2="9" y2="21"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13.5 2.5L5 14h6l-1 7.5L18 10h-6l1.5-7.5z"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1.6"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.4"/><line x1="12" y1="2.5" x2="12" y2="6.3"/><line x1="12" y1="17.7" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="6.3" y2="12"/><line x1="17.7" y1="12" x2="21.5" y2="12"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><circle cx="12" cy="12" r="7.6" stroke-dasharray="1.6 3"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.7 2.2c-.9.5-1.4 1-1.4 2.3"/><line x1="12" y1="16.6" x2="12" y2="16.7"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="10.5" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="19.5" x2="12" y2="22"/><line x1="8.5" y1="22" x2="15.5" y2="22"/></symbol>
+  <symbol id="i-square" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="8.3" cy="8" r="3"/><path d="M2.7 19.8c0-3.2 2.5-5.8 5.6-5.8s5.6 2.6 5.6 5.8"/><circle cx="17" cy="8.6" r="2.4"/><path d="M14.6 14.7c.9-.6 2-1 3.2-1c2.6 0 4.7 2 5 4.6"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M11.3 3l1.4 5.6L18 10l-5.3 1.4L11.3 17l-1.4-5.6L4.6 10l5.3-1.4z"/><path d="M18.2 3.5l.5 2 2 .5-2 .5-.5 2-.5-2-2-.5 2-.5z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.3A1.8 1.8 0 0 1 4.8 5.5h4.2l2 2h8.2A1.8 1.8 0 0 1 21 9.3v7.4A1.8 1.8 0 0 1 19.2 18.5H4.8A1.8 1.8 0 0 1 3 16.7z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><line x1="4.5" y1="7" x2="19.5" y2="7"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M6.3 7l.9 12.4a2 2 0 0 0 2 1.85h5.6a2 2 0 0 0 2-1.85L17.7 7"/></symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24"><polyline points="15 5 8 12 15 19"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l.9-3.9L15.6 5.4a1.9 1.9 0 0 1 2.7 0l1.3 1.3a1.9 1.9 0 0 1 0 2.7L9 20.1z"/><line x1="13.8" y1="7.2" x2="17.8" y2="11.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="5 13 9.5 17.5 19 6.5"/></symbol>
+  <symbol id="i-monitor-speaker" viewBox="0 0 24 24"><rect x="2.5" y="5" width="11" height="8" rx="1.2"/><line x1="6" y1="18" x2="10" y2="18"/><line x1="8" y1="13" x2="8" y2="18"/><rect x="16" y="6" width="5.5" height="11" rx="1.4"/><circle cx="18.7" cy="10" r="1.1"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.16 19.5c.5.1.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.15-1.11-1.46-1.11-1.46-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.56-1.11-4.56-4.95 0-1.1.39-2 1.03-2.7-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.6 9.6 0 0 1 5 0c1.9-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.7 0 3.85-2.35 4.7-4.58 4.94.36.31.68.92.68 1.85v2.74c0 .26.18.58.69.48A10 10 0 0 0 12 2z"/></symbol>
+
+  <!-- icons introduced by artboards 04-11 -->
+  <symbol id="i-voc-download" viewBox="0 0 24 24"><line x1="12" y1="3" x2="12" y2="14.5"/><polyline points="7.2 10 12 14.8 16.8 10"/><path d="M4.5 17v1.8A1.8 1.8 0 0 0 6.3 20.6h11.4a1.8 1.8 0 0 0 1.8-1.8V17"/></symbol>
+  <symbol id="i-voc-upload" viewBox="0 0 24 24"><line x1="12" y1="14.5" x2="12" y2="3"/><polyline points="7.2 7.7 12 2.9 16.8 7.7"/><path d="M4.5 17v1.8A1.8 1.8 0 0 0 6.3 20.6h11.4a1.8 1.8 0 0 0 1.8-1.8V17"/></symbol>
+  <symbol id="i-voc-list-checks" viewBox="0 0 24 24"><polyline points="3.3 6.2 4.6 7.5 7 5"/><line x1="10.3" y1="6.2" x2="20.5" y2="6.2"/><polyline points="3.3 12.5 4.6 13.8 7 11.3"/><line x1="10.3" y1="12.5" x2="20.5" y2="12.5"/><line x1="10.3" y1="18.8" x2="20.5" y2="18.8"/><line x1="3.3" y1="18.8" x2="7" y2="18.8"/></symbol>
+  <symbol id="i-voc-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+  <symbol id="i-sc-bug" viewBox="0 0 24 24"><rect x="8" y="8.5" width="8" height="9.5" rx="4"/><path d="M9.5 8.2L8 5.5M14.5 8.2L16 5.5"/><line x1="4.5" y1="11" x2="8" y2="11"/><line x1="4.5" y1="14" x2="8" y2="14"/><line x1="5" y1="17.5" x2="8" y2="16.5"/><line x1="19.5" y1="11" x2="16" y2="11"/><line x1="19.5" y1="14" x2="16" y2="14"/><line x1="19" y1="17.5" x2="16" y2="16.5"/></symbol>
+  <symbol id="i-sc-heart" viewBox="0 0 24 24"><path d="M12 20.2c-4.6-3-8.5-6.4-8.5-10.3a4.7 4.7 0 0 1 8.5-2.7A4.7 4.7 0 0 1 20.5 9.9c0 3.9-3.9 7.3-8.5 10.3z"/></symbol>
+  <symbol id="i-sc-external" viewBox="0 0 24 24"><path d="M9 6H5.8A1.8 1.8 0 0 0 4 7.8v10.4A1.8 1.8 0 0 0 5.8 20h10.4A1.8 1.8 0 0 0 18 18.2V15"/><path d="M13 4h7v7"/><line x1="20" y1="4" x2="11" y2="13"/></symbol>
+  <symbol id="i-chat-hash" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H10l-4 4v-4H6.5A2.5 2.5 0 0 1 4 13.5z"/><line x1="9" y1="7.5" x2="9" y2="12.5"/><line x1="13.5" y1="7.5" x2="13.5" y2="12.5"/><line x1="7" y1="9" x2="15.5" y2="9"/><line x1="7" y1="11.3" x2="15.5" y2="11.3"/></symbol>
+  <symbol id="i-node-net" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.3"/><circle cx="18" cy="6.5" r="2.3"/><circle cx="9.5" cy="18" r="2.3"/><line x1="7.8" y1="8.3" x2="16" y2="7"/><line x1="7.2" y1="9" x2="9" y2="15.9"/><line x1="16.2" y1="8.5" x2="11" y2="16.3"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="7.5" r="4"/><line x1="10.5" y1="10.5" x2="20" y2="20"/><line x1="15.5" y1="15.5" x2="18.5" y2="12.5"/><line x1="17.7" y1="17.7" x2="20.3" y2="15.1"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><line x1="12" y1="3.5" x2="12" y2="14.5"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M4.5 17.5v2A1.8 1.8 0 0 0 6.3 21.3h11.4A1.8 1.8 0 0 0 19.5 19.5v-2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12.5" rx="2"/><line x1="6" y1="10" x2="6" y2="10.2"/><line x1="9.5" y1="10" x2="9.5" y2="10.2"/><line x1="13" y1="10" x2="13" y2="10.2"/><line x1="16.5" y1="10" x2="16.5" y2="10.2"/><line x1="6" y1="14.3" x2="14" y2="14.3"/><line x1="17" y1="14.3" x2="17" y2="14.5"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><polyline points="5 9 12 16 19 9"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><ellipse cx="12" cy="12" rx="3.6" ry="8.6"/><line x1="3.6" y1="12" x2="20.4" y2="12"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><line x1="12" y1="2.5" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="21.5"/><line x1="4.6" y1="4.6" x2="6" y2="6"/><line x1="18" y1="18" x2="19.4" y2="19.4"/><line x1="2.5" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="21.5" y2="12"/><line x1="4.6" y1="19.4" x2="6" y2="18"/><line x1="18" y1="6" x2="19.4" y2="4.6"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 13.6A8.4 8.4 0 1 1 10.4 4a6.6 6.6 0 0 0 9.6 9.6z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="1.6"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16.5" x2="12" y2="20"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.4L12 6v12l-4.6-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></symbol>
+  <symbol id="ob-i-shield" viewBox="0 0 24 24"><path d="M12 3.2l6.6 2.7v5c0 4.8-2.9 8.3-6.6 9.9c-3.7-1.6-6.6-5.1-6.6-9.9v-5z"/></symbol>
+  <symbol id="ob-i-arrow-right" viewBox="0 0 24 24"><line x1="4.5" y1="12" x2="18.5" y2="12"/><polyline points="12.5 5.5 19 12 12.5 18.5"/></symbol>
+  <symbol id="hd-i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2"/></symbol>
+</defs>
+</svg>
+
+<header class="page-head">
+  <p class="kicker">Design direction · desktop app reskin</p>
+  <h1>Openstyle — reskin direction</h1>
+  <div class="legend">
+    <div class="legend-item"><span class="swatch" style="background:#F6F7F9"></span><span class="lbl">Ground</span><span class="hex">#F6F7F9</span></div>
+    <div class="legend-item"><span class="swatch" style="background:#FFFFFF"></span><span class="lbl">Surface</span><span class="hex">#FFFFFF</span></div>
+    <div class="legend-item"><span class="swatch" style="background:#1D2129"></span><span class="lbl">Ink</span><span class="hex">#1D2129</span></div>
+    <div class="legend-item"><span class="swatch" style="background:#6B7280"></span><span class="lbl">Muted</span><span class="hex">#6B7280</span></div>
+    <div class="legend-item"><span class="swatch" style="background:#E5E7EB"></span><span class="lbl">Hairline</span><span class="hex">#E5E7EB</span></div>
+    <div class="legend-item"><span class="swatch" style="background:#E8F1FC;border-color:#2563EB33"></span><span class="lbl">Accent · passive</span><span class="hex">#E8F1FC / #2563EB</span></div>
+    <div class="legend-item"><span class="swatch" style="background:#E4574D"></span><span class="lbl">Accent · live</span><span class="hex">#E4574D</span></div>
+  </div>
+  <nav class="toc">
+    <a class="toc-item" href="#dashboard"><b>01</b>Main dashboard &amp; dictation</a>
+    <a class="toc-item" href="#meetings"><b>02</b>Meeting detail</a>
+    <a class="toc-item" href="#permissions"><b>03</b>Settings · Permissions</a>
+    <a class="toc-item" href="#remix"><b>04</b>Remix hero &amp; usage rail</a>
+    <a class="toc-item" href="#vocabulary"><b>05</b>Vocabulary</a>
+    <a class="toc-item" href="#shortcuts"><b>06</b>Help &amp; Shortcuts</a>
+    <a class="toc-item" href="#tone"><b>07</b>Tone</a>
+    <a class="toc-item" href="#models"><b>08</b>Models</a>
+    <a class="toc-item" href="#settings-full"><b>09</b>Settings · full</a>
+    <a class="toc-item" href="#onboarding"><b>10</b>Onboarding</a>
+    <a class="toc-item" href="#history-detail"><b>11</b>Transcript detail</a>
+  </nav>
+</header>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 1 — Main dashboard / dictation                       -->
+<!-- ============================================================ -->
+<div class="artboard-block" id="dashboard">
+  <p class="artboard-caption"><b>01</b> — Main dashboard &amp; dictation control (Transcriptions)</p>
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+        <nav class="nav-group">
+          <a class="nav-item active"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+        </nav>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+        </nav>
+      </aside>
+
+      <div class="content">
+        <h2 class="page-title">Transcriptions</h2>
+        <p class="page-sub">Everything you've dictated, in one searchable place.</p>
+
+        <!-- record state treatment -->
+        <div class="dict-row">
+          <div class="dict-card">
+            <div class="dict-mic-btn"><svg class="icon"><use href="#i-mic"/></svg></div>
+            <div>
+              <div class="dict-label">Hold to dictate</div>
+              <div class="dict-hint">⌥ Space anywhere</div>
+            </div>
+            <div class="dots-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          </div>
+
+          <div class="dict-card live">
+            <div class="live-dot-wrap"><div class="live-dot"></div></div>
+            <div>
+              <div class="dict-label" style="color:var(--pill-cream)">Listening…</div>
+              <div class="live-timer">0:07</div>
+            </div>
+            <div class="bars-row">
+              <i style="height:5px"></i><i style="height:11px"></i><i style="height:7px"></i><i style="height:14px"></i><i style="height:6px"></i><i style="height:10px"></i><i style="height:4px"></i><i style="height:12px"></i><i style="height:8px"></i><i style="height:5px"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-columns">
+          <div class="dash-main">
+            <div class="search-row">
+              <div class="search-box"><svg class="icon"><use href="#i-search"/></svg><span>Search 214 transcripts…</span></div>
+              <div class="btn btn-outline">Filters</div>
+            </div>
+
+            <div class="group-label">Today</div>
+            <div class="entry-list">
+              <div class="entry"><span class="ts">9:14 am</span><p>Hey Sarah — the API migration is done, running the last batch of integration tests before I merge to main.</p></div>
+              <div class="entry"><span class="ts">9:02 am</span><p>Can you push the deploy to staging once QA signs off? I want to demo this at 2pm.</p></div>
+              <div class="entry"><span class="ts">8:41 am</span><p>Note to self: the retry logic on the webhook handler needs a backoff, it's hammering the endpoint on failure.</p></div>
+            </div>
+
+            <div class="group-label">Yesterday</div>
+            <div class="entry-list">
+              <div class="entry"><span class="ts">4:47 pm</span><p>Add to the onboarding doc — new hires need SSO access requested through IT at least two days before start.</p></div>
+              <div class="entry"><span class="ts">11:20 am</span><p>Reply to the vendor thread: we're fine with the updated SLA, just need the redline sent over by Friday.</p></div>
+            </div>
+          </div>
+
+          <div class="dash-side">
+            <div class="stat-grid">
+              <div class="stat-card span2"><div class="stat-n">142</div><div class="stat-l">Words per minute · All time</div></div>
+              <div class="stat-card"><div class="stat-n">18,240</div><div class="stat-l">Words</div></div>
+              <div class="stat-card"><div class="stat-n">312</div><div class="stat-l">AI fixes</div></div>
+            </div>
+            <div class="rail-label">Daily activity</div>
+            <div class="heatmap" id="heatmap"></div>
+            <div class="heat-legend"><span>Less</span><span class="cell" style="background:#EEF0F2"></span><span class="cell" style="background:#D6DAE0"></span><span class="cell" style="background:#9AA1AC"></span><span class="cell" style="background:#4B505B"></span><span class="cell" style="background:#1D2129"></span><span>More</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 2 — Meeting detail                                   -->
+<!-- ============================================================ -->
+<div class="artboard-block" id="meetings">
+  <p class="artboard-caption"><b>02</b> — Meeting detail (Meetings)</p>
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+          <a class="nav-item active"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+        </nav>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+        </nav>
+      </aside>
+
+      <div class="meet-body">
+        <div class="meet-list">
+          <h3 class="meet-list-title">Meetings</h3>
+          <p class="meet-list-sub">Record a meeting's mic and system audio, then turn it into a labeled transcript and a summary.</p>
+
+          <div class="meet-item selected">
+            <div class="meet-item-title">Q3 Roadmap Sync</div>
+            <div class="meet-item-meta"><span class="meet-item-date">Aug 25 · 42:18</span><span class="badge">Transcribed</span></div>
+          </div>
+          <div class="meet-item">
+            <div class="meet-item-title">1:1 with Alex</div>
+            <div class="meet-item-meta"><span class="meet-item-date">Aug 24 · 18:05</span><span class="badge">Summarized</span></div>
+          </div>
+          <div class="meet-item">
+            <div class="meet-item-title">Customer Call — Acme Corp</div>
+            <div class="meet-item-meta"><span class="meet-item-date">Aug 22 · 51:02</span><span class="badge live"><span class="dot"></span>Transcribing</span></div>
+          </div>
+          <div class="meet-item">
+            <div class="meet-item-title">Sprint Planning</div>
+            <div class="meet-item-meta"><span class="meet-item-date">Aug 20 · 33:40</span><span class="badge">Recorded</span></div>
+          </div>
+        </div>
+
+        <div class="meet-detail">
+          <div class="meet-head">
+            <div class="back"><svg class="icon"><use href="#i-chevron-left"/></svg></div>
+            <div style="flex:1;min-width:0;">
+              <div class="meet-head-title"><h2>Q3 Roadmap Sync</h2><svg class="icon sm"><use href="#i-pencil"/></svg></div>
+              <div class="meet-head-meta">Aug 25, 2:30 PM · 42:18</div>
+            </div>
+            <span class="badge">Transcribed</span>
+          </div>
+
+          <div class="action-row">
+            <div class="btn btn-ink"><svg class="icon"><use href="#i-audio-lines"/></svg>Re-transcribe</div>
+            <div class="btn btn-outline"><svg class="icon"><use href="#i-users"/></svg>Identify speakers</div>
+            <div class="btn btn-outline"><svg class="icon"><use href="#i-sparkles"/></svg>Summarize</div>
+            <div class="spacer"></div>
+            <div class="btn btn-outline btn-icon"><svg class="icon"><use href="#i-folder"/></svg></div>
+            <div class="btn btn-ghost btn-icon"><svg class="icon"><use href="#i-trash"/></svg></div>
+          </div>
+
+          <div class="info-row"><svg class="icon sm"><use href="#i-users"/></svg><span>Speakers identified: 2.</span></div>
+
+          <div class="tab-row">
+            <div class="tab active">Transcript</div>
+            <div class="tab">Summary</div>
+          </div>
+
+          <div class="transcript">
+            <div class="seg"><span class="seg-label"><span class="chip me">Me</span></span><p>Yeah, I think we should ship the new onboarding flow before the meetings feature ships — no reason to block on it.</p><span class="ts">0:12</span></div>
+            <div class="seg"><span class="seg-label"><span class="chip">Them 1</span></span><p>Agreed. Let's sync with design once the mockups are ready, probably Thursday.</p><span class="ts">0:34</span></div>
+            <div class="seg"><span class="seg-label"><span class="chip">Them 2</span></span><p>I can have the API contract finalized by Thursday morning, so that lines up fine.</p><span class="ts">1:02</span></div>
+            <div class="seg"><span class="seg-label"><span class="chip me">Me</span></span><p>Perfect. I'll open the tracking issue right after this call.</p><span class="ts">1:21</span></div>
+          </div>
+
+          <div class="summary-head"><svg class="icon"><use href="#i-sparkles"/></svg><h3>Summary</h3></div>
+          <div class="summary-card">
+            <h4>Decisions</h4>
+            <ul><li>Ship the onboarding flow ahead of the meetings feature GA — no hard dependency between the two.</li></ul>
+            <h4>Action items</h4>
+            <ul>
+              <li>Alex — finalize the API contract by Thursday morning.</li>
+              <li>Marcos — open the tracking issue for onboarding rollout.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 3 — Settings > Permissions                           -->
+<!-- ============================================================ -->
+<div class="artboard-block" id="permissions">
+  <p class="artboard-caption"><b>03</b> — Settings · Permissions</p>
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+        </nav>
+        <nav class="nav-group">
+          <a class="nav-item active"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+        </nav>
+      </aside>
+
+      <div class="set-body">
+        <nav class="set-tabs">
+          <div class="set-tab">Transcription</div>
+          <div class="set-tab">Remix</div>
+          <div class="set-tab">Application</div>
+          <div class="set-tab">Display</div>
+          <div class="set-tab active">Permissions</div>
+          <div class="set-tab">Data</div>
+        </nav>
+
+        <div class="set-main">
+          <h2 class="page-title">Permissions</h2>
+
+          <div class="set-row">
+            <div><div class="set-row-label">Microphone</div><div class="set-row-desc">Required to capture audio for transcription.</div></div>
+            <div class="perm-control"><div class="perm-status"><span class="perm-check"><svg class="icon"><use href="#i-check"/></svg></span>Granted</div></div>
+          </div>
+
+          <div class="set-row">
+            <div><div class="set-row-label">Accessibility</div><div class="set-row-desc">Required to detect the global hotkey and paste into other apps. Toggle Openstyle on under System Settings › Privacy &amp; Security › Accessibility.</div></div>
+            <div class="perm-control"><div class="perm-status"><span class="perm-check"><svg class="icon"><use href="#i-check"/></svg></span>Granted</div></div>
+          </div>
+
+          <div class="set-row">
+            <div><div class="set-row-label">System audio</div><div class="set-row-desc">Required to capture the other participants when you record a meeting. macOS has no way to check this in advance, so status can't be shown reliably here: open Settings to grant or review it.</div></div>
+            <div class="perm-control">
+              <div class="perm-status"><span class="perm-unknown"></span>Unknown</div>
+              <div class="btn btn-outline">Open Settings</div>
+            </div>
+          </div>
+
+          <div class="set-row">
+            <div><div class="set-row-label">Acknowledgments</div><div class="set-row-desc">Third-party models and licenses used by Openstyle.</div></div>
+            <div class="ack-text">Speaker diarization models are derived from <a>pyannote/speaker-diarization-community-1</a> (CC-BY-4.0) via <a>FluidInference/FluidAudio</a> (Apache-2.0).</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 4 — Remix                                            -->
+<!-- ============================================================ -->
+<section class="artboard-block" id="remix">
+  <p class="artboard-caption"><b>04</b> — Remix hero &amp; usage rail (Remix)</p>
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+          <a class="nav-item active"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+        </nav>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+        </nav>
+      </aside>
+
+      <div class="remix-shell">
+        <div class="content">
+          <div class="remix-hero">
+            <div class="remix-hero-title">Hold <span class="remix-keycap">⌃</span><span class="remix-plus">+</span><span class="remix-keycap">🌐</span>, speak, <b>release.</b></div>
+            <div class="remix-panel">
+              <div class="remix-status-row"><span class="remix-status-dot"></span><span class="remix-status-label">Rewritten in place</span></div>
+              <div class="remix-wave">
+                <i style="height:5px"></i><i style="height:9px"></i><i style="height:6px"></i><i style="height:12px"></i><i style="height:7px"></i><i style="height:10px"></i><i style="height:4px"></i><i style="height:8px"></i><i style="height:6px"></i><i style="height:5px"></i>
+              </div>
+              <div class="remix-result">"Make this warmer and half as long — I sound like a lawyer."</div>
+            </div>
+          </div>
+          <div class="remix-change"><a>Change hotkey</a></div>
+
+          <div class="card remix-how">
+            <div class="rail-label" style="margin-bottom:14px;">How to use it</div>
+            <ol class="remix-how-list">
+              <li><span class="remix-step-n">01</span><span class="txt">Highlight the text you want to change with your cursor.</span></li>
+              <li><span class="remix-step-n">02</span><span class="txt">Hold <span class="remix-keycap sm">⌃</span><span class="remix-plus">+</span><span class="remix-keycap sm">🌐</span> and say the change out loud.</span></li>
+              <li><span class="remix-step-n">03</span><span class="txt">Remix rewrites it in place. Undo brings it back if you change your mind.</span></li>
+            </ol>
+            <p class="remix-how-more">No highlight? Remix reads the whole field you're in. It can also search the web for facts and sources, and paste images straight into your draft.</p>
+          </div>
+
+          <div class="remix-example">
+            <div class="remix-example-head"><div class="group-label">Everyday writing</div></div>
+            <div class="remix-quote-grid">
+              <div class="card remix-quote"><p>"Make this warmer and half as long — I sound like a lawyer."</p></div>
+              <div class="card remix-quote"><p>"I wrote this angry. Make it firm but polite."</p></div>
+              <div class="card remix-quote"><p>"Punch this up and get it under 280 characters."</p></div>
+              <div class="card remix-quote"><p>"Turn these bullet points into a paragraph for the report."</p></div>
+              <div class="card remix-quote"><p>"Turn this into Spanish, but keep my sign-off in English."</p></div>
+            </div>
+          </div>
+
+          <div class="remix-example">
+            <div class="remix-example-head"><div class="group-label">Work &amp; school</div></div>
+            <div class="remix-quote-grid">
+              <div class="card remix-quote"><p>"Convert this essay's citations to MLA format."</p></div>
+              <div class="card remix-quote"><p>"Rewrite this contract clause in plain English a client can understand."</p></div>
+              <div class="card remix-quote"><p>"Rewrite this commit message to explain why, not what."</p></div>
+              <div class="card remix-quote"><p>"Turn these messy notes into a tidy bullet list, grouped by topic."</p></div>
+            </div>
+          </div>
+
+          <div class="remix-example">
+            <div class="remix-example-head">
+              <div class="group-label">With the web</div>
+              <svg class="icon sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8"/><line x1="3.2" y1="12" x2="20.8" y2="12"/><path d="M12 3.2c2.6 2.4 4 5.6 4 8.8s-1.4 6.4-4 8.8c-2.6-2.4-4-5.6-4-8.8s1.4-6.4 4-8.8z"/></svg>
+            </div>
+            <div class="remix-quote-grid">
+              <div class="card remix-quote"><p>"Fact-check this against WebMD and flag anything that's off."</p></div>
+              <div class="card remix-quote"><p>"Add a fun fact about espresso, and a picture of a pour-over."</p></div>
+            </div>
+          </div>
+
+          <div class="remix-example">
+            <div class="rail-label" style="margin-bottom:2px;">Good to know</div>
+            <div class="remix-tips">
+              <p>Highlight a sentence first to remix just that part — with nothing selected, Remix reads the whole field.</p>
+              <p>Tap the hotkey instead of holding it for one-tap quick routes (Control+1–3).</p>
+              <p>Not quite right? Type a follow-up in the chat card — it keeps the thread.</p>
+            </div>
+          </div>
+        </div>
+
+        <aside class="remix-rail">
+          <div class="rail-label" style="margin-bottom:12px;">Usage</div>
+          <div class="stat-grid" style="margin-bottom:0;">
+            <div class="stat-card span2"><div class="stat-n">184</div><div class="stat-l">remixes run</div></div>
+            <div class="stat-card"><div class="stat-n">9</div><div class="stat-l">apps remixed in</div></div>
+            <div class="stat-card"><div class="stat-n">3h ago</div><div class="stat-l">last remix</div></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 5 — Vocabulary                                       -->
+<!-- ============================================================ -->
+<section class="artboard-block" id="vocabulary">
+
+  <!-- extra icon glyphs not present in the shared sprite, namespaced to avoid ID collisions with other designers' fragments -->
+  
+
+  
+
+  <p class="artboard-caption"><b>05</b> — Vocabulary (term list &amp; bias control)</p>
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+          <a class="nav-item active"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+        </nav>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+        </nav>
+      </aside>
+
+      <div class="content">
+        <h2 class="page-title">Vocabulary</h2>
+
+        <div class="search-row">
+          <div class="search-box">
+            <svg class="icon"><use href="#i-search"/></svg>
+            <span>Search vocabulary…</span>
+            <span style="margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--muted-soft);">⌘ K</span>
+          </div>
+          <div class="btn btn-outline"><svg class="icon"><use href="#i-voc-list-checks"/></svg>Select</div>
+          <div class="btn btn-outline"><svg class="icon"><use href="#i-voc-download"/></svg>Export</div>
+          <div class="btn btn-outline"><svg class="icon"><use href="#i-voc-upload"/></svg>Import</div>
+          <div class="btn btn-ink"><svg class="icon"><use href="#i-voc-plus"/></svg>Add term</div>
+        </div>
+
+        <div class="voc-select-bar">
+          <div class="voc-select-left">
+            <span class="voc-checkbox-lbl"><span class="voc-checkbox"></span>Select all</span>
+            <span class="voc-select-count">2 selected</span>
+          </div>
+          <div class="btn btn-outline"><svg class="icon"><use href="#i-trash"/></svg>Delete selected</div>
+        </div>
+
+        <div class="voc-list">
+          <div class="voc-row selected">
+            <span class="voc-checkbox checked"><svg><use href="#i-check"/></svg></span>
+            <span class="term-tag">Nguyen</span>
+            <span class="note">client name</span>
+            <div class="voc-actions"><span class="voc-icon-btn"><svg class="icon"><use href="#i-pencil"/></svg></span><span class="voc-icon-btn"><svg class="icon"><use href="#i-trash"/></svg></span></div>
+          </div>
+          <div class="voc-row selected">
+            <span class="voc-checkbox checked"><svg><use href="#i-check"/></svg></span>
+            <span class="term-tag">account number</span>
+            <span class="note muted">—</span>
+            <div class="voc-actions"><span class="voc-icon-btn"><svg class="icon"><use href="#i-pencil"/></svg></span><span class="voc-icon-btn"><svg class="icon"><use href="#i-trash"/></svg></span></div>
+          </div>
+          <div class="voc-row">
+            <span class="voc-checkbox"></span>
+            <span class="term-tag">Sequoia Capital</span>
+            <span class="note">always capitalized</span>
+            <div class="voc-actions"><span class="voc-icon-btn"><svg class="icon"><use href="#i-pencil"/></svg></span><span class="voc-icon-btn"><svg class="icon"><use href="#i-trash"/></svg></span></div>
+          </div>
+          <div class="voc-row">
+            <span class="voc-checkbox"></span>
+            <span class="term-tag">OKR</span>
+            <span class="note">spell out as O-K-R when unclear</span>
+            <div class="voc-actions"><span class="voc-icon-btn"><svg class="icon"><use href="#i-pencil"/></svg></span><span class="voc-icon-btn"><svg class="icon"><use href="#i-trash"/></svg></span></div>
+          </div>
+          <div class="voc-row">
+            <span class="voc-checkbox"></span>
+            <span class="term-tag">Deepgram</span>
+            <span class="note muted">—</span>
+            <div class="voc-actions"><span class="voc-icon-btn"><svg class="icon"><use href="#i-pencil"/></svg></span><span class="voc-icon-btn"><svg class="icon"><use href="#i-trash"/></svg></span></div>
+          </div>
+          <div class="voc-row">
+            <span class="voc-checkbox"></span>
+            <span class="term-tag">async</span>
+            <span class="note">no hyphen, lowercase</span>
+            <div class="voc-actions"><span class="voc-icon-btn"><svg class="icon"><use href="#i-pencil"/></svg></span><span class="voc-icon-btn"><svg class="icon"><use href="#i-trash"/></svg></span></div>
+          </div>
+        </div>
+
+        <div class="voc-footer">
+          <span class="voc-count">47 terms</span>
+          <div class="voc-page">
+            <span class="voc-page-btn disabled"><svg class="icon"><use href="#i-chevron-left"/></svg></span>
+            <span class="voc-page-num">1 / 3</span>
+            <span class="voc-page-btn"><svg class="icon" style="transform:scaleX(-1)"><use href="#i-chevron-left"/></svg></span>
+          </div>
+        </div>
+
+        <p class="voc-note-below">Multi-word phrases work on Nova 3, OpenAI, and Groq. Nova 2 boosts single words. Scribe v1 does not use vocabulary bias.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="artboard-caption inset-caption"><b>05b</b> — Shortcuts, compact inset (⌘5 · key → value expansion)</p>
+  <div class="inset-card">
+    <div class="inset-head">
+      <h3>Shortcuts</h3>
+      <p>Shortcuts that expand as you speak. Say the key, get the value.</p>
+    </div>
+    <div class="inset-toolbar">
+      <div class="search-box"><svg class="icon sm"><use href="#i-search"/></svg><span>Search shortcuts…</span></div>
+      <div class="btn btn-outline btn-icon"><svg class="icon"><use href="#i-voc-download"/></svg></div>
+      <div class="btn btn-outline btn-icon"><svg class="icon"><use href="#i-voc-upload"/></svg></div>
+      <div class="btn btn-ink"><svg class="icon"><use href="#i-voc-plus"/></svg>Add entry</div>
+    </div>
+    <div>
+      <div class="sc-row">
+        <span class="term-tag">my address</span>
+        <span class="val">847 Mission Street, Apt 4, San Francisco, CA 94103</span>
+        <span class="usage">24× used</span>
+      </div>
+      <div class="sc-row">
+        <span class="term-tag">sig</span>
+        <span class="val">Best, Marcos</span>
+        <span class="usage">—</span>
+      </div>
+      <div class="sc-row">
+        <span class="term-tag">eta</span>
+        <span class="val">I'll be there in about ten minutes</span>
+        <span class="usage">8× used</span>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 6 — Help & Shortcuts                                 -->
+<!-- ============================================================ -->
+<section class="artboard-block" id="shortcuts">
+  <p class="artboard-caption"><b>06</b> — Help &amp; Shortcuts (Help)</p>
+
+  
+
+  
+
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+        </nav>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+          <a class="nav-item active"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+        </nav>
+      </aside>
+
+      <div class="content">
+        <h2 class="page-title">Help</h2>
+        <p class="page-sub">Documentation and ways to contribute to Openstyle.</p>
+
+        <section class="help-section">
+          <span class="eyebrow">Hotkeys</span>
+          <div class="card hotkey-card">
+            <div class="hotkey-row">
+              <div>
+                <div class="hotkey-row-label">Hotkey</div>
+                <div class="hotkey-row-desc">Hold the shortcut to record, release to transcribe.</div>
+              </div>
+              <div class="kbd-combo"><span class="kbd-key">fn</span></div>
+            </div>
+            <div class="hotkey-row">
+              <div>
+                <div class="hotkey-row-label">Remix hotkey</div>
+                <div class="hotkey-row-desc">Hold it and say what to change, or tap it for the quick routes.</div>
+              </div>
+              <div class="kbd-combo"><span class="kbd-key">fn</span><span class="kbd-plus">+</span><span class="kbd-key">ctrl</span></div>
+            </div>
+            <div class="hotkey-row">
+              <div>
+                <div class="hotkey-row-label">Quick routes</div>
+                <div class="hotkey-row-desc">Tap the hotkey instead of holding it for one-tap quick routes.</div>
+              </div>
+              <div class="kbd-combo"><span class="kbd-key">ctrl</span><span class="kbd-plus">+</span><span class="kbd-key">1</span><span class="kbd-plus">–</span><span class="kbd-key">3</span></div>
+            </div>
+            <div class="hotkey-row">
+              <div>
+                <div class="hotkey-row-label">Cancel</div>
+                <div class="hotkey-row-desc">Escape always cancels too.</div>
+              </div>
+              <div class="kbd-combo"><span class="kbd-key">esc</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <span class="eyebrow">Navigate</span>
+          <div class="card nav-shortcut-card">
+            <div class="nav-shortcut-grid">
+              <div class="nav-shortcut-item"><span class="lbl">Transcriptions</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">1</span></div></div>
+              <div class="nav-shortcut-item"><span class="lbl">Remix</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">2</span></div></div>
+              <div class="nav-shortcut-item"><span class="lbl">Meetings</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">3</span></div></div>
+              <div class="nav-shortcut-item"><span class="lbl">Vocabulary</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">4</span></div></div>
+              <div class="nav-shortcut-item"><span class="lbl">Shortcuts</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">5</span></div></div>
+              <div class="nav-shortcut-item"><span class="lbl">Tone</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">6</span></div></div>
+              <div class="nav-shortcut-item"><span class="lbl">Models</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">7</span></div></div>
+              <div class="nav-shortcut-item"><span class="lbl">Settings</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">8</span></div></div>
+              <div class="nav-shortcut-item"><span class="lbl">Help</span><div class="kbd-combo"><span class="kbd-key">⌘</span><span class="kbd-key">9</span></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <span class="eyebrow">Get help</span>
+          <div class="help-link-card">
+            <div class="hicon"><svg class="icon md"><use href="#i-sc-bug"/></svg></div>
+            <div>
+              <div class="htitle">Report an issue<svg class="icon sm"><use href="#i-sc-external"/></svg></div>
+              <div class="hdesc">Found a bug or have a feature request? Open a GitHub issue.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <span class="eyebrow">Contributing</span>
+          <div class="help-link-card">
+            <div class="hicon"><svg class="icon md"><use href="#i-sc-heart"/></svg></div>
+            <div>
+              <div class="htitle">Contribute to Openstyle<svg class="icon sm"><use href="#i-sc-external"/></svg></div>
+              <div class="hdesc">PRs are welcome. Start with CONTRIBUTING.md for local setup.</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 7 — Tone                                             -->
+<!-- ============================================================ -->
+<section class="artboard-block" id="tone">
+
+
+  <p class="artboard-caption"><b>07</b> — Tone (Tone · Work voice)</p>
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+          <a class="nav-item active"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+        </nav>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+        </nav>
+      </aside>
+
+      <div class="content">
+        <h2 class="page-title">Tone</h2>
+        <p class="page-sub">How much Openstyle cleans up — and how it sounds in each app.</p>
+
+        <div class="tone-tabs">
+          <span class="tone-tab">Cleanup</span>
+          <span class="tone-tab">Personal</span>
+          <span class="tone-tab active">Work</span>
+          <span class="tone-tab">Email</span>
+          <span class="tone-tab">Everything else</span>
+        </div>
+
+        <div class="tone-section">
+          <div>
+            <h3 class="tone-title">Work voice.</h3>
+            <p class="tone-desc">Used in Slack, LinkedIn, and recognized work chat surfaces.</p>
+          </div>
+          <div class="routes-shelf">
+            <div class="tone-eyebrow">Routes from</div>
+            <div class="route-row">
+              <span class="route-mark" title="Slack"><svg class="icon"><use href="#i-chat-hash"/></svg></span>
+              <span class="route-mark" title="LinkedIn"><svg class="icon"><use href="#i-node-net"/></svg></span>
+              <span class="route-mark" title="Microsoft Teams"><svg class="icon"><use href="#i-monitor-speaker"/></svg></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tone-grid">
+          <div class="tone-options" role="radiogroup" aria-label="Work voice.">
+            <div class="tone-option">
+              <span class="tone-option-rail"></span>
+              <div class="tone-option-body">
+                <div class="tone-option-title">Direct</div>
+                <div class="tone-option-desc">Short and to the point.</div>
+              </div>
+              <span class="tone-option-check"><svg class="icon"><use href="#i-check"/></svg></span>
+            </div>
+            <div class="tone-option selected">
+              <span class="tone-option-rail"></span>
+              <div class="tone-option-body">
+                <div class="tone-option-title">Enthusiastic</div>
+                <div class="tone-option-desc">Upbeat and warm.</div>
+              </div>
+              <span class="tone-option-check"><svg class="icon"><use href="#i-check"/></svg></span>
+            </div>
+            <div class="tone-option">
+              <span class="tone-option-rail"></span>
+              <div class="tone-option-body">
+                <div class="tone-option-title">Formal</div>
+                <div class="tone-option-desc">Formal and full.</div>
+              </div>
+              <span class="tone-option-check"><svg class="icon"><use href="#i-check"/></svg></span>
+            </div>
+            <div class="tone-option">
+              <span class="tone-option-rail"></span>
+              <div class="tone-option-body">
+                <div class="tone-option-title">Off</div>
+                <div class="tone-option-desc">No styling — just clean text.</div>
+              </div>
+              <span class="tone-option-check"><svg class="icon"><use href="#i-check"/></svg></span>
+            </div>
+          </div>
+
+          <div class="card tone-preview">
+            <div class="tone-preview-head">
+              <span class="tone-eyebrow">Preview</span>
+              <span class="tone-eyebrow accent">Enthusiastic</span>
+            </div>
+            <div class="tone-eyebrow tone-raw-label">Raw transcript</div>
+            <p class="tone-raw-text">reviewed the doc um a couple changes are still needed uh tighten the intro and update the footer links</p>
+            <div class="tone-divider"><span class="line"></span><span class="tone-eyebrow accent">What lands</span><span class="line"></span></div>
+            <div class="work-bubble">
+              <div class="work-avatar">A</div>
+              <div>
+                <div class="work-meta"><span class="work-sender">Alex</span><span class="work-time">2:14 PM</span></div>
+                <p class="work-text">I reviewed the doc and it's looking really close! A couple changes are still needed, mostly the intro and footer links.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  
+</section>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 8 — Models                                           -->
+<!-- ============================================================ -->
+<section class="artboard-block" id="models">
+
+
+<!-- icons not already present in the shared sprite -->
+
+
+<p class="artboard-caption"><b>08</b> — Models: pair card &amp; on-device downloads (Models)</p>
+<div class="models-stage">
+<div class="window">
+  <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+  <div class="win-body">
+    <aside class="sidebar">
+      <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+      <nav class="nav-group">
+        <a class="nav-item"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+        <a class="nav-item active"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+      </nav>
+      <nav class="nav-group">
+        <a class="nav-item"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+      </nav>
+    </aside>
+
+    <div class="content">
+      <h2 class="page-title">Models</h2>
+
+      <!-- ============== Pair card: current voice + cleanup model ============== -->
+      <div class="card models-pair">
+        <div class="models-pair-side">
+          <div class="models-pair-head"><span class="models-eyebrow">Transcription · required</span></div>
+          <div class="models-pair-name">Qwen3 Fast</div>
+          <div class="models-pair-sub">via <b>Local MLX</b></div>
+          <div class="models-pair-actions">
+            <div class="btn btn-outline">Change model</div>
+            <div class="models-pair-link">Configure model warming</div>
+          </div>
+        </div>
+        <div class="models-pair-side models-pair-side-right">
+          <div class="models-pair-head">
+            <span class="models-eyebrow">AI cleanup · optional</span>
+            <span class="models-toggle on"></span>
+          </div>
+          <div class="models-pair-name">Claude Haiku 4.5</div>
+          <div class="models-pair-sub">via <b>Anthropic</b></div>
+          <div class="models-pair-actions">
+            <div class="btn btn-outline">Change</div>
+            <div class="models-pair-link">Sampling parameters</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== On-device models: real download states ============== -->
+      <div class="group-label">On-device models</div>
+      <div class="card models-list">
+        <div class="models-row">
+          <div class="models-row-main">
+            <div class="models-row-title-line">
+              <span class="models-row-name">Qwen3 Fast</span>
+              <svg class="icon sm models-check"><use href="#i-check"/></svg>
+            </div>
+            <div class="models-row-meta">Fast, accurate, runs privately on your Mac</div>
+          </div>
+          <div class="models-row-actions"><span class="models-row-selected">Selected</span></div>
+        </div>
+
+        <div class="models-row">
+          <div class="models-row-main">
+            <div class="models-row-title-line">
+              <span class="models-row-name">Qwen3 Pro</span>
+              <span class="badge live"><span class="dot"></span>Downloading</span>
+            </div>
+            <div class="models-row-meta">Highest on-device accuracy · 1.8 GB</div>
+            <div class="models-progress">
+              <div class="models-progress-track"><div class="models-progress-fill" style="width:57%"></div></div>
+              <div class="models-progress-meta">
+                <span>1.0 GB / 1.8 GB</span>
+                <span>3.4 MB/s · 57%</span>
+              </div>
+            </div>
+          </div>
+          <div class="models-row-actions">
+            <div class="btn btn-outline"><svg class="icon"><use href="#i-x"/></svg>Cancel</div>
+          </div>
+        </div>
+
+        <div class="models-row">
+          <div class="models-row-main">
+            <div class="models-row-title-line"><span class="models-row-name">Parakeet</span></div>
+            <div class="models-row-meta">Very fast · 25 languages · no custom vocabulary · 2.5 GB</div>
+          </div>
+          <div class="models-row-actions">
+            <div class="btn btn-outline"><svg class="icon"><use href="#i-download"/></svg>Download</div>
+          </div>
+        </div>
+
+        <div class="models-row">
+          <div class="models-row-main">
+            <div class="models-row-title-line"><span class="models-row-name">Whisper Balanced</span></div>
+            <div class="models-row-meta">Solid everyday accuracy</div>
+          </div>
+          <div class="models-row-actions">
+            <div class="btn btn-ink">Use</div>
+            <div class="btn btn-ghost btn-icon" aria-label="Remove downloaded model from disk" title="Remove downloaded model from disk"><svg class="icon"><use href="#i-trash"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== API keys ============== -->
+      <div class="group-label">API keys</div>
+      <div class="card models-keys">
+        <div class="models-key-row">
+          <svg class="icon md models-key-icon"><use href="#i-key"/></svg>
+          <div class="models-key-main">
+            <div class="models-key-name-line">
+              <span class="models-key-name">Groq</span>
+              <span class="perm-check" style="width:13px;height:13px;"><svg class="icon" style="width:8px;height:8px;stroke-width:3;"><use href="#i-check"/></svg></span>
+            </div>
+            <div class="models-key-hint">Key stored in keychain</div>
+          </div>
+          <span class="models-key-count">2 models</span>
+          <div class="models-key-actions">
+            <div class="btn btn-ghost btn-icon" aria-label="Update API key" title="Update API key"><svg class="icon"><use href="#i-pencil"/></svg></div>
+            <div class="btn btn-ghost btn-icon" aria-label="Delete provider" title="Delete provider"><svg class="icon"><use href="#i-trash"/></svg></div>
+          </div>
+        </div>
+        <div class="models-key-row">
+          <svg class="icon md models-key-icon"><use href="#i-key"/></svg>
+          <div class="models-key-main">
+            <div class="models-key-name-line">
+              <span class="models-key-name">Anthropic</span>
+              <span class="perm-unknown" style="width:13px;height:13px;"></span>
+            </div>
+            <div class="models-key-hint warn">Key invalid — update or delete</div>
+          </div>
+          <span class="models-key-count">1 model</span>
+          <div class="models-key-actions">
+            <div class="btn btn-ghost btn-icon" aria-label="Update API key" title="Update API key"><svg class="icon"><use href="#i-pencil"/></svg></div>
+            <div class="btn btn-ghost btn-icon" aria-label="Delete provider" title="Delete provider"><svg class="icon"><use href="#i-trash"/></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== MLX model warming — the dialog "Configure model warming" opens ============== -->
+<div class="models-dialog-wrap">
+  <p class="artboard-caption">Opened from <b>Configure model warming</b></p>
+  <div class="models-dialog">
+    <div class="models-dialog-head">
+      <svg class="icon md"><use href="#i-cpu"/></svg>
+      <h3>Model warming</h3>
+    </div>
+    <p class="models-dialog-desc">Keep the model loaded in memory for up to 10 minutes after dictation. Faster repeat use, more RAM while warm.</p>
+    <div>
+      <div class="models-slider-track">
+        <div class="models-slider-fill" style="width:91%"></div>
+        <div class="models-slider-thumb" style="left:91%"></div>
+      </div>
+      <div class="models-slider-labels"><span>Cold start (unload)</span><span>Always on</span></div>
+    </div>
+    <div class="models-dialog-actions">
+      <div class="btn btn-ink">Done</div>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 9 — Settings (full)                                  -->
+<!-- ============================================================ -->
+<section class="artboard-block" id="settings-full">
+
+
+
+
+<p class="artboard-caption"><b>09</b> — Settings · full (Transcription)</p>
+<div class="window">
+  <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+  <div class="win-body">
+    <aside class="sidebar">
+      <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+      <nav class="nav-group">
+        <a class="nav-item"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+      </nav>
+      <nav class="nav-group">
+        <a class="nav-item active"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+        <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+      </nav>
+    </aside>
+
+    <div class="set-body">
+      <nav class="set-tabs">
+        <div class="set-tab active">Transcription</div>
+        <div class="set-tab">Remix</div>
+        <div class="set-tab">Application</div>
+        <div class="set-tab">Display</div>
+        <div class="set-tab">Permissions</div>
+        <div class="set-tab">Data</div>
+      </nav>
+
+      <div class="set-main">
+        <h2 class="page-title">Transcription</h2>
+
+        <!-- ---------------- Transcription ---------------- -->
+        <div class="set-row">
+          <div><div class="set-row-label">Hotkey</div><div class="set-row-desc">Hold the shortcut to record, release to transcribe.</div></div>
+          <div class="hotkey-ctl"><svg class="icon"><use href="#i-keyboard"/></svg><div class="kcap-row"><span class="kcap">fn</span></div><span class="hotkey-change">Change</span></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Activation</div><div class="set-row-desc">Push-to-talk while the shortcut is held.</div></div>
+          <div class="seg-group"><span class="seg-opt active">Hold</span><span class="seg-opt">Toggle</span></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Microphone</div><div class="set-row-desc">Select your audio input device.</div></div>
+          <div class="select-box"><svg class="icon sm"><use href="#i-mic"/></svg><span>System default</span><svg class="icon sm chev"><use href="#i-chevron-down"/></svg></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Language</div><div class="set-row-desc">Tuned for English. Speak another language and you get that one.</div></div>
+          <div class="lang-row"><span class="lang-chip">English<span class="x">✕</span></span><span class="lang-add"><svg class="icon sm"><use href="#i-globe"/></svg>Add language</span></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Translate mode</div><div class="set-row-desc">When translate mode is on, Language is enforced.</div></div>
+          <div class="swtoggle"></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Output mode</div><div class="set-row-desc">Paste into the active app, or copy to clipboard.</div></div>
+          <div class="seg-group"><span class="seg-opt active">Paste into app</span><span class="seg-opt">Copy to clipboard</span></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Sound feedback</div><div class="set-row-desc">Soft chimes at the start and end of recording.</div></div>
+          <div class="swtoggle-row"><svg class="icon"><use href="#i-volume"/></svg><div class="swtoggle on"></div></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Background audio</div><div class="set-row-desc">Duck lowers volume. Pause pauses current media and lowers volume.</div></div>
+          <div class="seg-group"><span class="seg-opt">Off</span><span class="seg-opt active">Duck</span><span class="seg-opt">Pause</span></div>
+        </div>
+
+        <!-- ---------------- Remix ---------------- -->
+        <div class="set-block">
+          <p class="set-block-kicker">Remix</p>
+          <h3 class="set-block-title">Remix</h3>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Remix hotkey</div><div class="set-row-desc">Hold it and say what to change, or tap it for the quick routes.</div></div>
+          <div class="hotkey-ctl"><svg class="icon"><use href="#i-keyboard"/></svg><div class="kcap-row"><span class="kcap">fn</span><span class="kcap">control</span></div><span class="hotkey-change">Change</span></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Remix bar</div><div class="set-row-desc">Keep a small bar at the bottom of your screen. Hover it to open Remix.</div></div>
+          <div class="swtoggle on"></div>
+        </div>
+
+        <!-- ---------------- Application ---------------- -->
+        <div class="set-block">
+          <p class="set-block-kicker">Application</p>
+          <h3 class="set-block-title">Application</h3>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Interface language</div><div class="set-row-desc">Change the language of the app interface.</div></div>
+          <div class="select-box"><svg class="icon sm"><use href="#i-globe"/></svg><span>English</span><svg class="icon sm chev"><use href="#i-chevron-down"/></svg></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Automatic updates</div><div class="set-row-desc">Check for new versions in the background and notify you when one ships. Install manually from the releases page.</div></div>
+          <div class="swtoggle on"></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Launch at startup</div><div class="set-row-desc">Automatically start Openstyle when you log in to your computer.</div></div>
+          <div class="swtoggle"></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Show dashboard on launch</div><div class="set-row-desc">Open the dashboard window when Openstyle starts.</div></div>
+          <div class="swtoggle on"></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Advanced mode</div><div class="set-row-desc">Show the Models page for manual voice and cleanup model configuration.</div></div>
+          <div class="swtoggle"></div>
+        </div>
+        <div class="set-row stacked">
+          <div><div class="set-row-label">Acknowledgments</div><div class="set-row-desc">Third-party models and licenses used by Openstyle.</div></div>
+          <div class="ack-text">Speaker diarization models are derived from <a>pyannote/speaker-diarization-community-1</a> (CC-BY-4.0) via <a>FluidInference/FluidAudio</a> (Apache-2.0).</div>
+        </div>
+
+        <!-- ---------------- Display ---------------- -->
+        <div class="set-block">
+          <p class="set-block-kicker">Display</p>
+          <h3 class="set-block-title">Display</h3>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Theme</div><div class="set-row-desc">Light, dark, or follow your system.</div></div>
+          <div class="seg-group">
+            <span class="seg-opt"><svg class="icon sm"><use href="#i-sun"/></svg>Light</span>
+            <span class="seg-opt"><svg class="icon sm"><use href="#i-moon"/></svg>Dark</span>
+            <span class="seg-opt active"><svg class="icon sm"><use href="#i-monitor"/></svg>System</span>
+          </div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Widget position</div><div class="set-row-desc">Where the floating pill appears on your screen.</div></div>
+          <div class="seg-group"><span class="seg-opt">Top · Center</span><span class="seg-opt">Top · Right</span><span class="seg-opt active">Bottom · Center</span><span class="seg-opt">Bottom · Right</span></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Cancel button</div><div class="set-row-desc">Show a cancel button on the floating pill. Escape always cancels too.</div></div>
+          <div class="seg-group"><span class="seg-opt active">On hover</span><span class="seg-opt">Always</span></div>
+        </div>
+
+        <!-- ---------------- Data ---------------- -->
+        <div class="set-block">
+          <p class="set-block-kicker">Data</p>
+          <h3 class="set-block-title">Data</h3>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Pause history</div><div class="set-row-desc">Stop saving new transcription sessions to history until you turn this off.</div></div>
+          <div class="swtoggle"></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Auto-delete history</div><div class="set-row-desc">Automatically delete saved sessions older than the selected period. Runs once a day.</div></div>
+          <div class="select-box"><span>Never</span><svg class="icon sm chev"><use href="#i-chevron-down"/></svg></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Transcription history</div><div class="set-row-desc">Permanently delete every saved session — this can't be undone.</div></div>
+          <div class="btn btn-outline"><svg class="icon"><use href="#i-trash"/></svg>Clear history</div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-row-label">Diagnostic logs</div><div class="set-row-desc">App logs are saved to a file on your device. Open the folder to share them when reporting a problem.</div></div>
+          <div class="btn btn-outline"><svg class="icon"><use href="#i-folder"/></svg>Open logs folder</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 10 — Onboarding                                      -->
+<!-- ============================================================ -->
+<div class="artboard-block" id="onboarding">
+  <p class="artboard-caption"><b>10</b> — Onboarding · Welcome &amp; permissions</p>
+
+  
+
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body ob-body">
+      <div class="ob-stage">
+        <div class="ob-panel">
+
+          <div class="ob-steps">
+            <span class="ob-dot is-active"></span>
+            <span class="ob-dot"></span>
+            <span class="ob-dot"></span>
+            <span class="ob-dot"></span>
+          </div>
+
+          <div class="ob-brand">
+            <div class="brand-mark ob-brand-mark"><span></span></div>
+            <span class="brand-name ob-brand-name">Openstyle</span>
+          </div>
+
+          <div class="ob-cards">
+            <div class="card ob-card">
+              <div class="ob-icon"><svg class="icon md"><use href="#i-mic"/></svg></div>
+              <div class="ob-info">
+                <div class="ob-title">Microphone</div>
+                <div class="ob-desc">To hear what you say.</div>
+              </div>
+              <div class="perm-status ob-status"><span class="perm-check"><svg class="icon"><use href="#i-check"/></svg></span>Granted</div>
+            </div>
+
+            <div class="card ob-card">
+              <div class="ob-icon"><svg class="icon md"><use href="#ob-i-shield"/></svg></div>
+              <div class="ob-info">
+                <div class="ob-title">Accessibility</div>
+                <div class="ob-desc">To detect your hotkey and paste into any app.</div>
+              </div>
+              <div class="btn btn-ink ob-action">Open Settings</div>
+            </div>
+          </div>
+
+          <div class="ob-footer">
+            <span class="ob-hint">Grant both to continue</span>
+            <div class="btn btn-ink ob-continue"><span>Continue</span><svg class="icon"><use href="#ob-i-arrow-right"/></svg></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ARTBOARD 11 — Transcript detail                               -->
+<!-- ============================================================ -->
+<section class="artboard-block" id="history-detail">
+  
+
+  
+
+  <p class="artboard-caption"><b>11</b> — Transcript detail (Transcriptions)</p>
+  <div class="window">
+    <div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <div class="brand-row"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div>
+        <nav class="nav-group">
+          <a class="nav-item active"><svg class="icon"><use href="#i-book-open"/></svg><span>Transcriptions</span><span class="shortcut">⌘1</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-wand"/></svg><span>Remix</span><span class="shortcut">⌘2</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-audio-lines"/></svg><span>Meetings</span><span class="shortcut">⌘3</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-book"/></svg><span>Vocabulary</span><span class="shortcut">⌘4</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-zap"/></svg><span>Shortcuts</span><span class="shortcut">⌘5</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-file-text"/></svg><span>Tone</span><span class="shortcut">⌘6</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-cpu"/></svg><span>Models</span><span class="shortcut">⌘7</span></a>
+        </nav>
+        <nav class="nav-group">
+          <a class="nav-item"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span><span class="shortcut">⌘8</span></a>
+          <a class="nav-item"><svg class="icon"><use href="#i-help"/></svg><span>Help</span><span class="shortcut">⌘9</span></a>
+        </nav>
+      </aside>
+
+      <div class="content">
+        <h2 class="page-title">Transcriptions</h2>
+        <p class="page-sub">Everything you've dictated, in one searchable place.</p>
+
+        <div class="search-row">
+          <div class="search-box"><svg class="icon"><use href="#i-search"/></svg><span>Search 214 transcripts…</span></div>
+          <div class="btn btn-outline">Filters</div>
+        </div>
+
+        <div style="max-width:640px;">
+          <div class="group-label">Today</div>
+          <div class="entry-list">
+            <div class="entry"><span class="ts">9:14 am</span><p>Hey Sarah — the API migration is done, running the last batch of integration tests before I merge to main.</p></div>
+
+            <div class="entry-detail">
+              <div class="hd-head">
+                <span class="hd-time">9:02 am</span>
+                <span class="chip">Nova 3</span>
+                <span class="badge">AI edits</span>
+                <span class="spacer"></span>
+                <div class="btn btn-ghost btn-icon hd-collapse" title="Collapse" aria-label="Collapse"><svg class="icon sm"><use href="#i-chevron-left"/></svg></div>
+              </div>
+              <p class="quote" dir="auto">"Can you push the deploy to staging once QA signs off? I want to demo this at 2pm."</p>
+              <div class="hd-actions">
+                <div class="btn btn-ink"><svg class="icon"><use href="#i-wand"/></svg>Remix</div>
+                <div class="btn btn-outline"><svg class="icon"><use href="#hd-i-copy"/></svg>Copy text</div>
+                <span class="spacer"></span>
+                <div class="btn btn-ghost btn-icon" title="Delete" aria-label="Delete"><svg class="icon"><use href="#i-trash"/></svg></div>
+              </div>
+              <div class="hd-stats">6.8s · 18 words · 180ms compute · 159 wpm · 32→24 tok · $0.001</div>
+            </div>
+
+            <div class="entry"><span class="ts">8:41 am</span><p>Note to self: the retry logic on the webhook handler needs a backoff, it's hammering the endpoint on failure.</p></div>
+          </div>
+
+          <div class="group-label">Yesterday</div>
+          <div class="entry-list">
+            <div class="entry"><span class="ts">4:47 pm</span><p>Add to the onboarding doc — new hires need SSO access requested through IT at least two days before start.</p></div>
+            <div class="entry"><span class="ts">11:20 am</span><p>Reply to the vendor thread: we're fine with the updated SLA, just need the redline sent over by Friday.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Trivial nicety: generate the heatmap grid (18 weeks × 7 days) with a
+  // deterministic pseudo-random distribution so it reads as real usage data.
+  (function(){
+    var el = document.getElementById('heatmap');
+    if(!el) return;
+    var shades = ['#EEF0F2','#D6DAE0','#9AA1AC','#4B505B','#1D2129'];
+    var seed = 7;
+    function rnd(){ seed = (seed*9301+49297)%233280; return seed/233280; }
+    for(var w=0; w<18; w++){
+      var col = document.createElement('div');
+      col.className = 'col';
+      for(var d=0; d<7; d++){
+        var cell = document.createElement('div');
+        cell.className = 'cell';
+        var r = rnd();
+        var idx = r<0.28?0 : r<0.5?1 : r<0.72?2 : r<0.9?3 : 4;
+        cell.style.background = shades[idx];
+        col.appendChild(cell);
+      }
+      el.appendChild(col);
+    }
+  })();
+</script>
+
+</body>
+</html>

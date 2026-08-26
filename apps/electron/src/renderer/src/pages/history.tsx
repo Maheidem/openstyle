@@ -562,7 +562,7 @@ export default function HistoryPage(): React.JSX.Element {
             {["s1", "s2", "s3", "s4", "s5", "s6"].map((k) => (
               <div
                 key={k}
-                className="border-border/50 bg-card/60 h-16 rounded-lg border"
+                className="border-border bg-card h-16 rounded-lg border"
               />
             ))}
           </div>
@@ -598,7 +598,7 @@ export default function HistoryPage(): React.JSX.Element {
 
   const searchRow = (
     <div className="mb-6 flex gap-2">
-      <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
+      <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-full border px-3.5 py-2">
         <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
         <input
           ref={searchInputRef}
@@ -620,13 +620,14 @@ export default function HistoryPage(): React.JSX.Element {
         </span>
       </div>
       <Button
-        variant="link"
+        variant="outline"
+        size="sm"
         onClick={() => setFiltersOpen(true)}
         className={cn(
-          "h-auto self-center px-2 text-[13px] underline",
+          "self-center",
           filterCount > 0
-            ? "text-primary"
-            : "text-muted-foreground hover:text-foreground",
+            ? "border-foreground/25 text-foreground"
+            : "text-muted-foreground",
         )}
       >
         {t("history.filtersBtn")}
@@ -836,7 +837,7 @@ const StatsPanel = memo(function StatsPanel({
   return (
     // Fills the full height of its grid cell and stays fixed while the feed
     // column scrolls independently beside it.
-    <div className="border-border/70 relative min-h-0 border-l">
+    <div className="border-border relative min-h-0 border-l">
       {/* Invisible drag handle straddling the panel's left border. Focusable
           window-splitter: arrow keys nudge the width for keyboard users. */}
       {/* biome-ignore lint/a11y/useSemanticElements: an <hr> can't act as a focusable, draggable window splitter */}
@@ -860,7 +861,7 @@ const StatsPanel = memo(function StatsPanel({
         }}
         className="hover:bg-primary/25 active:bg-primary/40 focus-visible:bg-primary/25 absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize transition-colors outline-none"
       />
-      <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)]">
+      <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4">
         <div className="-mr-1.5 flex justify-end">
           <Button
             variant="ghost"
@@ -948,7 +949,7 @@ const FiltersModal = memo(function FiltersModal({
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+                  className="h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium"
                 >
                   <CalendarDays data-icon="inline-start" />
                   <span className="truncate">
@@ -1010,7 +1011,7 @@ const FiltersModal = memo(function FiltersModal({
             <span className="text-muted-foreground text-[10px]">
               {t("history.viewLabel")}
             </span>
-            <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
+            <div className="border-border bg-card flex flex-col divide-y divide-border rounded-lg border">
               <ViewToggleRow
                 icon={
                   <FileDiff className="text-muted-foreground h-3.5 w-3.5" />
@@ -1138,7 +1139,7 @@ function StatCard({
   return (
     <div
       className={cn(
-        "border-border/70 bg-card/35 rounded-lg border px-3.5 py-3",
+        "border-border bg-card rounded-lg border px-3.5 py-3",
         span2 && "col-span-2",
       )}
     >
@@ -1147,7 +1148,7 @@ function StatCard({
           <div className="flex items-baseline gap-2">
             <span
               className={cn(
-                "serif-italic text-[30px] leading-none",
+                "display text-[30px] leading-none",
                 accent ? "text-primary" : "text-foreground",
               )}
             >
@@ -1165,7 +1166,7 @@ function StatCard({
         <>
           <div
             className={cn(
-              "serif-italic text-[30px] leading-none",
+              "display text-[30px] leading-none",
               accent ? "text-primary" : "text-foreground",
             )}
           >
@@ -1445,7 +1446,7 @@ const FeedItem = memo(function FeedItem({
         <span className="bg-muted-foreground/50 h-[3px] w-[3px] shrink-0 rounded-full" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-primary min-w-0 max-w-fit cursor-default truncate text-[10.5px] font-semibold">
+            <span className="mono min-w-0 max-w-fit cursor-default truncate rounded-[5px] bg-[var(--accent-passive-tint)] px-[7px] py-[2.5px] text-[9px] font-medium tracking-[0.1em] text-[var(--accent-passive-ink)] uppercase">
               {modelLabel}
             </span>
           </TooltipTrigger>
@@ -1556,7 +1557,7 @@ function DiffText({
 function HistoryPausedNotice(): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="border-yellow-500/35 bg-yellow-300/15 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border px-4 py-3 text-yellow-950 dark:border-yellow-300/35 dark:bg-yellow-400/15 dark:text-yellow-100">
+    <div className="border-yellow-500/35 bg-yellow-300/15 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 text-yellow-950 dark:border-yellow-300/35 dark:bg-yellow-400/15 dark:text-yellow-100">
       <div className="min-w-0">
         <div className="text-[13px] font-semibold">
           {t("history.pausedTitle")}
@@ -1579,7 +1580,7 @@ function EmptyState(): React.JSX.Element {
       <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
         <Clock className="text-primary h-7 w-7" />
       </div>
-      <h2 className="serif text-foreground m-0 text-[32px] font-medium leading-none">
+      <h2 className="display text-foreground m-0 text-[32px] font-medium leading-none">
         {t("history.emptyTitle")}
       </h2>
       <p className="text-muted-foreground mx-auto mt-2.5 max-w-[440px] text-[14px] leading-[1.55]">
@@ -1600,9 +1601,9 @@ function NoSearchResults({
 }): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="border-border bg-card/30 mt-4 rounded-[14px] border border-dashed px-9 py-12 text-center">
+    <div className="border-border bg-card mt-4 rounded-[14px] border border-dashed px-9 py-12 text-center">
       <div className="text-muted-foreground mb-3">
-        <span className="serif-italic text-[20px]">
+        <span className="display text-[20px]">
           {hasSearch && hasDates
             ? t("history.noResultsBoth")
             : hasSearch

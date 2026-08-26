@@ -38,7 +38,7 @@ export function PairCard({
   const cleanupOn = llmCleanup;
 
   return (
-    <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
+    <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-lg border p-6 min-[820px]:grid-cols-2">
       <PairSide
         kicker={t("models.pair.transcriptionKicker")}
         modelName={voice?.model_name}
@@ -135,19 +135,14 @@ function PairSide({
       <div>
         {modelName ? (
           <div
-            className="serif text-foreground"
-            style={{
-              fontSize: 34,
-              lineHeight: 1.05,
-              letterSpacing: "-0.02em",
-              fontWeight: 400,
-            }}
+            className="display text-foreground"
+            style={{ fontSize: 32, lineHeight: 1.05 }}
           >
             {modelName}
           </div>
         ) : (
           <div
-            className="serif-italic text-muted-foreground"
+            className="display text-muted-foreground"
             style={{ fontSize: 30, lineHeight: 1.1 }}
           >
             {noneLabel}
