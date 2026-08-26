@@ -1,4 +1,10 @@
 # Changelog
+## 2.2.0
+
+### New Features ✨
+
+- (meetings) Standalone speaker identification without re-transcription by @Maheidem in [871d6fcf](https://github.com/Maheidem/openstyle/commit/871d6fcfab47e3eff20f0464cc200c075660aa11)
+
 ## 2.1.1
 
 ### Bug Fixes 🐛
