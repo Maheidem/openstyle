@@ -672,6 +672,11 @@
     "diarizationLabel": "Étiquettes des intervenants",
     "diarizationHint": "Identifie chaque participant séparément (Eux 1, Eux 2, ...) par détection des intervenants sur l'appareil.",
     "diarizationNotReady": "Les modèles d'intervenants sont absents de cette version.",
-    "diarizationUnavailable": "Les étiquettes des intervenants ne sont pas disponibles dans cette version."
+    "diarizationUnavailable": "Les étiquettes des intervenants ne sont pas disponibles dans cette version.",
+    "identifySpeakers": "Identifier les intervenants",
+    "identifyingSpeakers": "Identification des intervenants…",
+    "diarizeResult": "Intervenants identifiés : {{n}}.",
+    "diarizeNoSpeakers": "Aucun intervenant n'a pu être identifié dans l'audio système.",
+    "diarizeSingleSpeakerNote": "Un seul autre intervenant a été détecté. C'est normal pour les appels en tête-à-tête."
   }
 }

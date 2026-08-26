@@ -672,6 +672,11 @@
     "diarizationLabel": "話者ラベル",
     "diarizationHint": "デバイス上の話者検出を使って、他の参加者ごとにラベル(相手1、相手2、...)を付けます。",
     "diarizationNotReady": "このビルドには話者モデルが含まれていません。",
-    "diarizationUnavailable": "このビルドでは話者ラベルを利用できません。"
+    "diarizationUnavailable": "このビルドでは話者ラベルを利用できません。",
+    "identifySpeakers": "話者を識別",
+    "identifyingSpeakers": "話者を識別中…",
+    "diarizeResult": "識別された話者: {{n}}人。",
+    "diarizeNoSpeakers": "システム音声から話者を識別できませんでした。",
+    "diarizeSingleSpeakerNote": "他の話者は1人だけ検出されました。1対1の通話ではこれが正常です。"
   }
 }

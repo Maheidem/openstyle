@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
+import type { DiarizeDeps } from "../src/lib/meetings/diarize.js";
 import {
   MEETING_RETENTION_SETTING_KEY,
   purgeExpiredMeetingAudio,
@@ -122,6 +123,40 @@ function fakeDeps(
     maxAttempts: 2,
     ...extras,
   });
+}
+
+/** Fake diarize deps: binary + models bundle resolve, execFile routes
+ * --probe and the real-run invocation to canned results (mirrors
+ * meeting-diarize-pipeline.test.ts's makeFakeExecFile/baseDeps). */
+function fakeDiarizeDeps(opts: {
+  probeStdout?: string;
+  runStdout?: string;
+}): DiarizeDeps {
+  return {
+    resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+    resolveModelsDirPath: () => "/fake/resources/models",
+    execFile: async (_file, args) => {
+      if (args[0] === "--probe") {
+        return { stdout: opts.probeStdout ?? "READY", stderr: "" };
+      }
+      return { stdout: opts.runStdout ?? "[]", stderr: "" };
+    },
+  };
+}
+
+function insertSystemSegment(
+  segId: string,
+  meetingId: string,
+  idx: number,
+  startMs: number,
+  endMs: number,
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+       VALUES (?, ?, 'system', ?, ?, ?, 'hello', 'ok')`,
+    )
+    .run(segId, meetingId, idx, startMs, endMs);
 }
 
 async function getMeeting(id: string): Promise<Record<string, unknown>> {
@@ -301,6 +336,119 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, retried: 0 });
+  });
+});
+
+describe("POST /api/meetings/:id/diarize", () => {
+  it("404s for an unknown meeting", async () => {
+    const res = await app.request("/api/meetings/nope/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("409s when the meeting has no transcript yet", async () => {
+    insertMeeting("m1", "recorded");
+    const res = await app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("409s while the meeting is still transcribing", async () => {
+    insertMeeting("m1", "transcribing");
+    const res = await app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("409s when the meeting has no audio directory", async () => {
+    insertMeeting("m1", "transcribed", null);
+    const res = await app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("409s when system.wav is missing from disk", async () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), "meeting-diarize-nowav-"));
+    try {
+      insertMeeting("m1", "transcribed", emptyDir);
+      const res = await app.request("/api/meetings/m1/diarize", {
+        method: "POST",
+      });
+      expect(res.status).toBe(409);
+    } finally {
+      rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it("409s when the diarization models aren't ready", async () => {
+    __setMeetingsTestOverrides({
+      diarizeDeps: fakeDiarizeDeps({ probeStdout: "NOT_READY" }),
+    });
+    insertMeeting("m1", "transcribed");
+    const res = await app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("labels system segments and reports counts on success, ignoring the disabled global flag", async () => {
+    // Global setting stays off — an explicit /diarize call must run
+    // anyway (investigation-driven design: the toggle only gates the
+    // automatic pass inside runTranscribeJob).
+    const diarJson = JSON.stringify([
+      { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 1 },
+      { speakerId: "B", startTimeSeconds: 2, endTimeSeconds: 3 },
+    ]);
+    __setMeetingsTestOverrides({
+      diarizeDeps: fakeDiarizeDeps({ runStdout: diarJson }),
+    });
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    insertSystemSegment("m1:system:1", "m1", 1, 2000, 3000);
+
+    const res = await app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      labeledCount: number;
+      speakerCount: number;
+    };
+    expect(body).toEqual({ ok: true, labeledCount: 2, speakerCount: 2 });
+
+    const rows = getDb()
+      .prepare(
+        "SELECT speaker_label FROM meeting_segments WHERE meeting_id = 'm1' ORDER BY idx",
+      )
+      .all() as { speaker_label: string | null }[];
+    expect(rows.map((r) => r.speaker_label)).toEqual(["1", "2"]);
+  });
+
+  it("collapses to a single speaker without corrupting existing labels on re-run", async () => {
+    __setMeetingsTestOverrides({
+      diarizeDeps: fakeDiarizeDeps({
+        runStdout: JSON.stringify([
+          { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 1 },
+        ]),
+      }),
+    });
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+
+    const res = await app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      labeledCount: 1,
+      speakerCount: 1,
+    });
   });
 });
 

@@ -672,6 +672,11 @@
     "diarizationLabel": "Sprecherkennzeichnung",
     "diarizationHint": "Kennzeichnet andere Teilnehmer einzeln (Andere 1, Andere 2, ...) per Spracherkennung auf dem Gerät.",
     "diarizationNotReady": "Die Sprechermodelle fehlen in dieser Version.",
-    "diarizationUnavailable": "Sprecherkennzeichnung ist in dieser Version nicht verfügbar."
+    "diarizationUnavailable": "Sprecherkennzeichnung ist in dieser Version nicht verfügbar.",
+    "identifySpeakers": "Sprecher identifizieren",
+    "identifyingSpeakers": "Sprecher werden identifiziert…",
+    "diarizeResult": "Erkannte Sprecher: {{n}}.",
+    "diarizeNoSpeakers": "In der Systemaudiospur konnten keine Sprecher erkannt werden.",
+    "diarizeSingleSpeakerNote": "Es wurde nur ein weiterer Sprecher erkannt. Das ist bei Eins-zu-eins-Gesprächen normal."
   }
 }

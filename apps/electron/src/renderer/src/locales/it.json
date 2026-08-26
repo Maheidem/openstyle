@@ -671,6 +671,11 @@
     "diarizationLabel": "Etichette dei partecipanti",
     "diarizationHint": "Etichetta separatamente ogni partecipante (Loro 1, Loro 2, ...) tramite rilevamento dei parlanti sul dispositivo.",
     "diarizationNotReady": "I modelli dei parlanti mancano in questa versione.",
-    "diarizationUnavailable": "Le etichette dei partecipanti non sono disponibili in questa versione."
+    "diarizationUnavailable": "Le etichette dei partecipanti non sono disponibili in questa versione.",
+    "identifySpeakers": "Identifica partecipanti",
+    "identifyingSpeakers": "Identificazione dei partecipanti…",
+    "diarizeResult": "Partecipanti identificati: {{n}}.",
+    "diarizeNoSpeakers": "Non è stato possibile identificare partecipanti nell'audio di sistema.",
+    "diarizeSingleSpeakerNote": "È stato rilevato solo un altro partecipante. È normale nelle chiamate individuali."
   }
 }

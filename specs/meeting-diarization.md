@@ -471,6 +471,15 @@ An undiarized system segment (`speakerLabel` undefined — flag off, or on but
 this particular segment fell through to NULL, §7) renders exactly the
 string it renders today, in whatever locale the user has selected.
 
+**UX note, added with §14's standalone action:** on a genuine 1:1 call the
+system channel carries exactly one other voice, so the diarizer (when it
+runs) correctly emits a single speaker and — via §7 step 6's collapse rule —
+the meeting renders "Them 1" throughout. That is the correct best case for
+this input, not a diarization failure, but a user who expected per-speaker
+splitting can easily read "still just one label" as "diarization didn't do
+anything." §14 covers where the UI says so explicitly (`speakerCount === 1`
+after a manual identify-speakers run).
+
 ---
 
 ## 7. Label assignment algorithm
@@ -618,6 +627,13 @@ if (getMeetingDiarizationEnabledSetting()) {
     // no rethrow — every failure here degrades to today's behavior, never
     // fails the transcribe job itself.
   });
+} else {
+  // Amended 2026-08-26: the skipped-pass branch used to log nothing at all
+  // — a meeting with the flag off and a meeting where the flag was on but
+  // every diarizer failure mode fired were indistinguishable in the server
+  // log. One info line closes that gap; still not a warn, since "flag off"
+  // is expected steady state for most installs, not a fault.
+  log.info(`meeting ${id}: diarization skipped (setting is off)`);
 }
 
 const failed = results.filter((r) => r.status === "failed").length;
@@ -705,7 +721,7 @@ behavior; call it out in the PR description.
 |---|---|
 | Settings flag off | Diarization step skipped entirely; zero behavior change from today. |
 | Binary missing (build/packaging gap) | Warn logged, step returns, meeting transcribes and renders normally. |
-| Models missing from bundle (`getFluidAudioModelsDirPath()` → `null`, or `--probe --models-dir` → `NOT_READY`) | Warn logged, step returns; user sees the settings popover reflect this (§8 — `diarizationUnavailable`/`diarizationNotReady`) so it's not a silent surprise at the settings layer, but a transcribe job that races this state still degrades cleanly. Amended 2026-08-25: this replaces the earlier "model cache not ready (never downloaded)" row — models are pre-bundled (§4), so this can only mean a build/packaging gap, never "the user hasn't downloaded them yet." |
+| Models missing from bundle (`getFluidAudioModelsDirPath()` → `null`, or `--probe --models-dir` → `NOT_READY`) | Warn logged, step returns; user sees the settings popover reflect this (§8 — `diarizationUnavailable`/`diarizationNotReady`) so it's not a silent surprise at the settings layer, but a transcribe job that races this state still degrades cleanly. Amended 2026-08-25: this replaces the earlier "model cache not ready (never downloaded)" row — models are pre-bundled (§4), so this can only mean a build/packaging gap, never "the user hasn't downloaded them yet." **Amended 2026-08-26 (§14):** the automatic pass is no longer the only caller — `POST /:id/diarize` pre-flights this exact check (`probeDiarizationModels`) synchronously and returns `409` with a real error message instead of degrading silently, because an explicit "Identify speakers" click reporting a cheerful success while writing zero labels would recreate finding (b) (the skipped-pass case logging nothing) one layer up, in the UI instead of the log. |
 | Helper spawn error (`ENOENT`, permissions) | Caught by `execFile`'s error event, same as `.catch` at the call site; degrades. |
 | Helper exits nonzero / `ERR_MODELS_MISSING` / `ERR_DIARIZE_FAILED` | Warn logged with the stderr message, degrades. |
 | Helper hangs past timeout | SIGTERM sent, treated as failure, degrades (§11). |
@@ -889,7 +905,9 @@ Modified files:
   `getMeetingDiarizationEnabledSetting()` lives directly in the new
   `diarize.ts`, not bolted onto `language.ts`. Amended 2026-08-25: `GET
   /diarization/status` simplified to a plain probe; `POST
-  /diarization/prepare-models` removed (§4/§9).
+  /diarization/prepare-models` removed (§4/§9). Amended 2026-08-26 (§14):
+  new `POST /:id/diarize` route; `else` branch on the flag-off gate in
+  `runTranscribeJob` logs one info line (previously silent).
 - `apps/server/src/lib/dictation-activity.ts` — extract `waitForDictationIdle`
   out of `MeetingTranscriber` (§11) into a standalone exported function; both
   `transcriber.ts` and the new `diarize.ts` call it.
@@ -898,11 +916,16 @@ Modified files:
   type, renderer ternary fallback (§6), `DiarizationSettingsPopover`
   (settings toggle UI, meeting-scoped rather than the general settings
   page). Amended 2026-08-25: popover simplified to a plain toggle + status
-  probe, download-progress UI removed (§8).
+  probe, download-progress UI removed (§8). Amended 2026-08-26 (§14):
+  "Identify speakers" action button next to re-transcribe; `runAction`
+  returns the parsed response body so the caller can read it on success;
+  result banner including the single-speaker note.
 - `apps/electron/src/renderer/src/locales/*.json` (7 locales + template) —
   new `meetings.themNumbered` key (§6); `meetings.diarization*` keys for
   the settings popover (§8), amended 2026-08-25 to drop
   `diarizationDownloading`/`diarizationError` and add `diarizationNotReady`.
+  Amended 2026-08-26 (§14): `identifySpeakers`, `identifyingSpeakers`,
+  `diarizeResult`, `diarizeNoSpeakers`, `diarizeSingleSpeakerNote`.
 - App acknowledgments/licenses screen — CC-BY-4.0 credit line.
 - `apps/server/tests/meeting-merge.test.ts` — passthrough regression cases.
 - `apps/server/tests/schema-meetings.test.ts` — migration 30 coverage.
@@ -910,3 +933,163 @@ Modified files:
   `DiarizeDeps` fixtures include `resolveModelsDirPath`; the "model cache
   not ready" case is now "models missing from bundle"; new case asserting
   `--models-dir` is passed on both invocations (§12).
+- `apps/server/tests/meetings-routes.test.ts` — amended 2026-08-26 (§14):
+  `describe("POST /api/meetings/:id/diarize")` — 404, invalid-state 409,
+  missing-audio-dir 409, missing-system.wav 409, not-ready-models 409,
+  happy path (labels persisted, counts returned, global flag ignored),
+  single-speaker collapse.
+
+---
+
+## 14. Standalone "Identify speakers" action (2026-08-26 addendum)
+
+Grounded in a same-day investigation of three gaps in the Phase 1 pipeline
+above: (a) `POST /:id/transcribe` deletes and re-inserts `meeting_segments`
+on every re-run, silently discarding any previously-computed
+`speaker_label` values whenever the global flag happens to be off at
+re-transcribe time; (b) the flag-off branch in `runTranscribeJob` (§9) logged
+nothing, so "diarization never ran" and "diarization ran and degraded" were
+indistinguishable from the server log alone; (c) §6's UX note above — a
+correct single-speaker result on a 1:1 call reads to a user as a broken
+feature, not as the designed collapse rule (§7 step 6).
+
+**Decision:** leave `/:id/transcribe` exactly as-is — re-transcribing is
+already a deliberate wholesale replace, and fixing (a) there would mean
+either re-diarizing on every re-transcribe (expensive, and orthogonal to
+what the user asked for) or preserving stale labels across a text rewrite
+(wrong when the underlying segments changed). Instead, add a second,
+independent way to get labels: a standalone action that re-runs *only* the
+diarization pass over segments that already exist, doing no STT work at
+all. This also directly answers (c) — after an explicit, on-demand run, the
+UI can say plainly "1 speaker found, that's expected for 1:1 calls" instead
+of leaving the user to infer it from a transcript that just doesn't split.
+
+### Route: `POST /api/meetings/:id/diarize`
+
+Runs in-request (like `/summarize` and `/retry-failed`, not like
+`/transcribe`'s fire-and-forget job) — one bounded local model pass, not a
+multi-chunk STT job that needs progress polling.
+
+1. 404 if the meeting doesn't exist.
+2. 409 (`"Meeting has no transcript to diarize"`) unless `status` is
+   `'transcribed'` or `'summarized'` — same precondition `/summarize`
+   already enforces, and it structurally excludes `'transcribing'` too, so
+   there's no separate state check needed for that case.
+3. 409 (`"Transcription already running"`) if `activeJobs.has(id)` — reusing
+   the exact map `/transcribe` and `/retry-failed` already consult (§9's
+   file inventory: no new job-tracking structure needed, spec-file review
+   confirmed the existing per-meeting map is a correct fit).
+4. 409 if `audio_dir` is null, or if `<audio_dir>/system.wav` no longer
+   exists on disk (retention (`retention.ts`) or manual deletion can null
+   or remove it after transcription finished) — checked explicitly at the
+   route, not left to `runDiarizationPass`'s own internal check, so a
+   missing-audio click gets a real 409 instead of a false `ok: true` with
+   zero labels written.
+5. **Claims the concurrency slot** — `activeJobs.set(id, ...)` — *before*
+   the pre-flight probe below, not after, with every subsequent step
+   (probe included) inside one `try`/`finally` that always
+   `activeJobs.delete(id)`s. This ordering is deliberate, not incidental:
+   `probeDiarizationModels` awaits a real spawn (up to
+   `PROBE_TIMEOUT_MS` = 30s), and claiming the slot only after it returned
+   would leave a real race window where a concurrent `/transcribe` (sees
+   `activeJobs.has(id) === false`, flips status, `DELETE`s
+   `meeting_segments`) or a second `/diarize` (its own
+   `runDiarizationPass` `BEGIN`s a transaction on the same shared `db`
+   connection this pass already holds open, and its `ROLLBACK` on failure
+   would discard labels this pass just committed) could interleave with an
+   unregistered pass. An early 409 return from inside the `try` (not-ready
+   probe, or a future step) still runs the `finally`, so the slot is
+   released even on that path.
+6. **Pre-flight `probeDiarizationModels()`** (§4/§8's existing cheap,
+   local, no-network probe), now inside the claimed slot. `status !==
+   "ready"` → 409 with a real message (`"Speaker models are missing from
+   this build"` for `not-ready`, a generic unavailable message otherwise).
+   This step exists specifically to close gap (b) one layer up: without
+   it, a build with no diarize binary or a corrupt model bundle would
+   report `ok: true, labeledCount: 0, speakerCount: 0` on every click — a
+   cheerful success banner over a no-op, the same silent-failure shape
+   finding (b) already flagged in the log, just moved into the UI instead
+   of fixed.
+7. Runs `runDiarizationPass(id, audioDir, deps)` **unconditionally** — this
+   is the one call site in the whole feature that does *not* check
+   `getMeetingDiarizationEnabledSetting()`. The global flag only gates the
+   *automatic* pass inside `runTranscribeJob`; an explicit "Identify
+   speakers" click is itself the opt-in for this one run, same reasoning
+   as a user manually clicking "Transcribe" on a meeting regardless of any
+   auto-transcribe setting.
+8. On success: a follow-up `SELECT speaker_label FROM meeting_segments
+   WHERE meeting_id = ? AND source = 'system' AND speaker_label IS NOT NULL`
+   derives `labeledCount` (row count) and `speakerCount` (count of distinct
+   `speaker_label` values) — not a new return value threaded out of
+   `runDiarizationPass` itself, so the function's existing `Promise<void>`
+   contract (and every test in `meeting-diarize-pipeline.test.ts` that
+   asserts `.resolves.toBeUndefined()`) stays untouched. Response:
+   `{ ok: true, labeledCount, speakerCount }`.
+9. Failure contract matches `runTranscribeJob`'s call site exactly:
+   `runDiarizationPass` degrades in-function on every *expected* failure
+   (binary/model/spawn/parse — §10) and only ever `UPDATE`s
+   `speaker_label` on rows that already exist, never `DELETE`s or
+   `INSERT`s — so even an unanticipated throw here (caught, 500'd, logged)
+   cannot corrupt a previous run's labels; at worst it leaves them
+   unchanged for a subset of rows if it fails mid-transaction, and the
+   pass's own `BEGIN`/`COMMIT`/`ROLLBACK` (§9 step 8) already makes that a
+   real transaction, not partial writes.
+
+### Logging fix
+
+`runTranscribeJob`'s flag-off branch (§9, previously the `if
+(getMeetingDiarizationEnabledSetting())` block with no `else`) now logs
+`meeting ${id}: diarization skipped (setting is off)` at `info` level when
+the flag is off. This directly closes gap (b): "flag off" and "flag on but
+every failure mode in §10 fired" are now distinguishable in the server log
+by grepping for `diarization skipped` vs. any of the `warn`-level
+degradation messages already in place.
+
+### UI
+
+`apps/electron/src/renderer/src/pages/meetings.tsx`: an "Identify speakers"
+button next to Re-transcribe, visible whenever `hasTranscript` is true
+(same gate as Summarize), disabled while any action is in flight. On click,
+calls the new route and — regardless of outcome — invalidates
+`queryKeys.meetings.transcript(id)` (folded into the existing
+`invalidate()` every action already runs, called out explicitly since it's
+the effect that makes newly-written labels actually show up without a
+manual refresh). On success, a result banner reports `speakerCount`:
+
+- `0` → `meetings.diarizeNoSpeakers` ("no speakers could be identified" —
+  the diarizer ran, returned nothing usable; distinct from the 409 cases
+  above, which mean the pass never ran at all).
+- `1` → `meetings.diarizeResult` plus `meetings.diarizeSingleSpeakerNote`,
+  the friendly "that's expected on 1:1 calls" line this section's decision
+  is named for (§6's UX note, §7 step 6's collapse rule).
+- `2+` → `meetings.diarizeResult` alone.
+
+Failures (any non-2xx) reuse the existing `actionError` banner
+(`meetings.actionFailed` fallback for a thrown/network error, the raw
+server message otherwise) — same unlocalized-server-message convention
+`/transcribe` and `/retry-failed` already use for their own error bodies.
+
+New i18n keys, all 8 locale files (7 locales + `template.json`, English
+source in `en.json`): `meetings.identifySpeakers`,
+`meetings.identifyingSpeakers`, `meetings.diarizeResult` (`{{n}}`
+interpolation, no plural forms — matching `meetings.retryFailed`'s existing
+`{{n}}` convention, since this codebase's i18n setup has no `_plural`/`_one`
+keys anywhere to be consistent with), `meetings.diarizeNoSpeakers`,
+`meetings.diarizeSingleSpeakerNote`.
+
+### Non-goals of this addendum
+
+- **Not fixing (a).** `/:id/transcribe` still deletes and re-inserts
+  segments with `speaker_label = NULL` on every re-run, same as before this
+  addendum. The standalone action is the fix for the *symptom* (no way to
+  get labels back after a re-transcribe without re-enabling the global
+  flag and re-transcribing again) without touching re-transcribe's own
+  wholesale-replace semantics.
+- **No re-diarize-on-retry-failed.** `POST /:id/retry-failed` still leaves
+  retried segments at `speaker_label = NULL` (§9's documented Phase 1 gap,
+  unchanged) — a user can run "Identify speakers" afterward to backfill
+  them, since the new route diarizes every system-channel row for the
+  meeting, not just ones missing a label.
+- **No new schema.** `speaker_label` (§5) and the open-speaker-set design
+  are unchanged; this addendum is pure route/UI/logging surface over the
+  existing column and existing `runDiarizationPass`.

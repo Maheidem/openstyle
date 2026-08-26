@@ -672,6 +672,11 @@
     "diarizationLabel": "Etiquetas de interlocutor",
     "diarizationHint": "Etiqueta a cada participante por separado (Ellos 1, Ellos 2, ...) mediante detección de interlocutores en el dispositivo.",
     "diarizationNotReady": "Faltan los modelos de interlocutor en esta versión.",
-    "diarizationUnavailable": "Las etiquetas de interlocutor no están disponibles en esta versión."
+    "diarizationUnavailable": "Las etiquetas de interlocutor no están disponibles en esta versión.",
+    "identifySpeakers": "Identificar interlocutores",
+    "identifyingSpeakers": "Identificando interlocutores…",
+    "diarizeResult": "Interlocutores identificados: {{n}}.",
+    "diarizeNoSpeakers": "No se pudo identificar ningún interlocutor en el audio del sistema.",
+    "diarizeSingleSpeakerNote": "Solo se detectó un interlocutor más. Es lo esperado en llamadas uno a uno."
   }
 }

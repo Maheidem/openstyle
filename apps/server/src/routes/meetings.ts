@@ -1,5 +1,6 @@
 import {
   closeSync,
+  existsSync,
   openSync,
   readFileSync,
   readSync,
@@ -14,6 +15,8 @@ import { z } from "zod";
 import { getDb } from "../lib/db.js";
 import { isDictationActive } from "../lib/dictation-activity.js";
 import {
+  createDefaultDiarizeDeps,
+  type DiarizeDeps,
   getMeetingDiarizationEnabledSetting,
   probeDiarizationModels,
   runDiarizationPass,
@@ -80,6 +83,12 @@ const activeJobs = new Map<string, MeetingJobProgress>();
 interface MeetingsTestOverrides {
   createTranscriberDeps?: typeof createDefaultTranscriberDeps;
   summarize?: typeof summarizeMeeting;
+  /** Injected into both the pre-flight probe and the real diarization pass
+   * on POST /:id/diarize, mirroring how `meeting-diarize-pipeline.test.ts`
+   * drives `runDiarizationPass` directly — a single fake deps object
+   * exercises the route's pre-flight check, the real run, and the
+   * follow-up count query together. */
+  diarizeDeps?: DiarizeDeps;
 }
 let testOverrides: MeetingsTestOverrides = {};
 export function __setMeetingsTestOverrides(
@@ -300,6 +309,8 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
           `meeting ${id}: diarization failed, falling back to "Them": ${String(err)}`,
         );
       });
+    } else {
+      log.info(`meeting ${id}: diarization skipped (setting is off)`);
     }
 
     const failed = results.filter((r) => r.status === "failed").length;
@@ -536,6 +547,102 @@ const meetings = new Hono()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message }, 500);
+    }
+  })
+  // Standalone speaker-identification action: re-runs only the diarization
+  // pass (no Whisper re-run) over a meeting's already-persisted system-
+  // channel segments. Explicit user action — ignores the global
+  // meeting_diarization_enabled flag entirely (that flag only gates the
+  // automatic pass inside runTranscribeJob above). Runs in-request, like
+  // /summarize and /retry-failed: one bounded local model pass, not a
+  // multi-chunk STT job that needs progress polling.
+  .post("/:id/diarize", async (c) => {
+    const id = c.req.param("id");
+    const db = getDb();
+    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
+      | MeetingRow
+      | undefined;
+    if (!row) return c.json({ error: "Not found" }, 404);
+    if (row.status !== "transcribed" && row.status !== "summarized") {
+      return c.json({ error: "Meeting has no transcript to diarize" }, 409);
+    }
+    // Reuse the transcription-job guard (spec §11's concurrency reasoning
+    // extends here: the diarizer targets the same on-device ANE resource a
+    // running transcribe job's whisper-local pass may also be using) —
+    // same map /transcribe and /retry-failed already check. Redundant with
+    // but cheap alongside the status check above: a meeting can only reach
+    // 'transcribing' status while activeJobs already holds its id (set by
+    // /transcribe before the status flip), so this map check is the one
+    // guard that actually fires; status is filtered to
+    // transcribed/summarized above regardless.
+    if (activeJobs.has(id)) {
+      return c.json({ error: "Transcription already running" }, 409);
+    }
+    if (!row.audio_dir) {
+      return c.json({ error: "Meeting has no audio directory" }, 409);
+    }
+    const wavPath = join(row.audio_dir, "system.wav");
+    if (!existsSync(wavPath)) {
+      return c.json({ error: "System audio is no longer on disk" }, 409);
+    }
+
+    const audioDir = row.audio_dir;
+    const deps = testOverrides.diarizeDeps ?? createDefaultDiarizeDeps();
+
+    // Claim the concurrency slot *before* the pre-flight probe, not after:
+    // probeDiarizationModels awaits a real spawn (up to PROBE_TIMEOUT_MS),
+    // and a /transcribe or a second /diarize landing in that window would
+    // otherwise see activeJobs.has(id) === false and race this pass — the
+    // second one's runDiarizationPass BEGINs a transaction on the same
+    // shared db connection this one already holds open, and its ROLLBACK
+    // on failure would discard labels this pass just committed. Every
+    // early return below is inside the try/finally so the slot is always
+    // released, including on the not-ready path.
+    activeJobs.set(id, { done: 0, total: 0, failed: 0 });
+    try {
+      // Pre-flight probe (spec §4/§8's existing cheap, local, no-network
+      // check): a build with no diarize binary or a missing/corrupt model
+      // bundle must not report a false "ok" — that's exactly the gap this
+      // action exists to close (investigation finding (a)/(b): silent
+      // no-op reads as success).
+      const readiness = await probeDiarizationModels(deps);
+      if (readiness.status !== "ready") {
+        return c.json(
+          {
+            error:
+              readiness.status === "not-ready"
+                ? "Speaker models are missing from this build"
+                : "Speaker identification isn't available in this build",
+          },
+          409,
+        );
+      }
+
+      // Ignores getMeetingDiarizationEnabledSetting() by design: an
+      // explicit "Identify speakers" click wins over the global toggle.
+      // The pass only ever UPDATEs speaker_label on already-persisted
+      // rows (never DELETEs/INSERTs), so a failure mid-pass can't corrupt
+      // existing labels — same graceful-degrade contract as the automatic
+      // pass in runTranscribeJob.
+      await runDiarizationPass(id, audioDir, deps);
+      const counts = db
+        .prepare(
+          `SELECT speaker_label FROM meeting_segments
+           WHERE meeting_id = ? AND source = 'system' AND speaker_label IS NOT NULL`,
+        )
+        .all(id) as unknown as { speaker_label: string }[];
+      const labeledCount = counts.length;
+      const speakerCount = new Set(counts.map((r) => r.speaker_label)).size;
+      return c.json({ ok: true, labeledCount, speakerCount });
+    } catch (err) {
+      // Defense-in-depth, matching runTranscribeJob's call site: in normal
+      // operation runDiarizationPass degrades in-function and never
+      // throws.
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`meeting ${id}: identify speakers failed: ${message}`);
+      return c.json({ error: message }, 500);
+    } finally {
+      activeJobs.delete(id);
     }
   })
   // Summarize the merged transcript and persist it. Runs in-request: the

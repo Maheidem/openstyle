@@ -722,6 +722,10 @@ function MeetingDetailView({
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [diarizeResult, setDiarizeResult] = useState<{
+    labeledCount: number;
+    speakerCount: number;
+  } | null>(null);
 
   const { data: meeting } = useQuery({
     queryKey: queryKeys.meetings.detail(id),
@@ -762,14 +766,23 @@ function MeetingDetailView({
     async (
       name: string,
       request: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>,
-    ) => {
+    ): Promise<unknown> => {
       setBusy(name);
       setActionError(null);
+      // Cleared on every action, not just the diarize one, so a stale
+      // "Identified N speakers" note doesn't linger through an unrelated
+      // re-transcribe/summarize click.
+      setDiarizeResult(null);
+      let result: unknown;
       try {
         const res = await request();
+        const body = await res.json();
         if (!res.ok) {
-          const body = (await res.json()) as { error?: string };
-          setActionError(body.error ?? t("meetings.actionFailed"));
+          setActionError(
+            (body as { error?: string }).error ?? t("meetings.actionFailed"),
+          );
+        } else {
+          result = body;
         }
       } catch {
         setActionError(t("meetings.actionFailed"));
@@ -777,6 +790,7 @@ function MeetingDetailView({
         setBusy(null);
         invalidate();
       }
+      return result;
     },
     [invalidate, t],
   );
@@ -804,6 +818,23 @@ function MeetingDetailView({
       ),
     [id, runAction],
   );
+  const identifySpeakers = useCallback(async () => {
+    const result = await runAction("diarize", () =>
+      getClient().api.meetings[":id"].diarize.$post({ param: { id } }),
+    );
+    if (result) {
+      setDiarizeResult(
+        result as { labeledCount: number; speakerCount: number },
+      );
+    }
+    // The route only UPDATEs speaker_label on existing rows — the merged
+    // transcript needs a re-fetch to pick the new labels up, same as every
+    // other action's invalidate() call inside runAction, called out here
+    // because it's the effect the task specifically asked to verify.
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.meetings.transcript(id),
+    });
+  }, [id, runAction, queryClient]);
   const deleteMeeting = useCallback(async () => {
     await getClient().api.meetings[":id"].$delete({ param: { id } });
     invalidate();
@@ -868,6 +899,19 @@ function MeetingDetailView({
             ? t("meetings.retranscribe")
             : t("meetings.transcribe")}
         </Button>
+        {hasTranscript && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void identifySpeakers()}
+            disabled={busy !== null}
+          >
+            <Users data-icon="inline-start" />
+            {busy === "diarize"
+              ? t("meetings.identifyingSpeakers")
+              : t("meetings.identifySpeakers")}
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -944,6 +988,19 @@ function MeetingDetailView({
         <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-2.5 text-[12px]">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{actionError ?? meeting.error}</span>
+        </div>
+      )}
+
+      {diarizeResult && !actionError && (
+        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-2.5 text-[12px]">
+          <Users className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            {diarizeResult.speakerCount === 0
+              ? t("meetings.diarizeNoSpeakers")
+              : t("meetings.diarizeResult", { n: diarizeResult.speakerCount })}
+            {diarizeResult.speakerCount === 1 &&
+              ` ${t("meetings.diarizeSingleSpeakerNote")}`}
+          </span>
         </div>
       )}
 

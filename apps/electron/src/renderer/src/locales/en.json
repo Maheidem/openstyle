@@ -813,6 +813,11 @@
     "diarizationLabel": "Speaker labels",
     "diarizationHint": "Label other participants separately (Them 1, Them 2, ...) using on-device speaker detection.",
     "diarizationNotReady": "Speaker models are missing from this build.",
-    "diarizationUnavailable": "Speaker labels aren't available in this build."
+    "diarizationUnavailable": "Speaker labels aren't available in this build.",
+    "identifySpeakers": "Identify speakers",
+    "identifyingSpeakers": "Identifying speakers…",
+    "diarizeResult": "Speakers identified: {{n}}.",
+    "diarizeNoSpeakers": "No speakers could be identified in the system audio.",
+    "diarizeSingleSpeakerNote": "Only one other speaker was detected. That's expected on one-on-one calls."
   }
 }
