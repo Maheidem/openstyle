@@ -266,11 +266,18 @@ export default function SettingsPage(): React.JSX.Element {
   // system-audio-probe.ts): the only way to learn anything is to briefly run
   // the real capture pipeline. 'silent' is indeterminate (denied OR simply
   // nothing playing), so — like the meetings-page hint — we never render it
-  // as a hard "needed" failure, only as still-unknown.
+  // as a hard "needed" failure. It's also not "checking" forever once the
+  // probe has actually returned: a finished-but-inconclusive result renders
+  // as an honest "unknown" state instead (see PermissionControl/StatusDot
+  // below), not a spinner that never resolves.
   const [systemAudioProbeResult, setSystemAudioProbeResult] = useState<
     "ok" | "silent" | "unsupported" | "error" | null
   >(null);
   const systemAudioProbeStartedRef = useRef(false);
+  const systemAudioChecking = systemAudioProbeResult === null;
+  const systemAudioGranted = systemAudioProbeResult === "ok";
+  const systemAudioUnknown =
+    systemAudioProbeResult !== null && systemAudioProbeResult !== "ok";
 
   const selectSection = useCallback((id: SettingsSectionId) => {
     setActiveSection(id);
@@ -363,12 +370,23 @@ export default function SettingsPage(): React.JSX.Element {
     if (!showSystemAudioRow) return;
     if (systemAudioProbeStartedRef.current) return;
     systemAudioProbeStartedRef.current = true;
+    if (typeof window.api?.probeMeetingSystemAudio !== "function") {
+      // No preload bridge for this build/platform — nothing to wait on, so
+      // don't leave the row stuck on "checking" forever.
+      setSystemAudioProbeResult("unsupported");
+      return;
+    }
     void window.api
-      ?.probeMeetingSystemAudio?.()
+      .probeMeetingSystemAudio()
       .then((result) => {
         setSystemAudioProbeResult(result);
       })
-      .catch(() => {});
+      .catch(() => {
+        // The probe call itself failed (not just an inconclusive "silent"
+        // read) — still an honest "unknown" resting state, not a spinner
+        // that never resolves.
+        setSystemAudioProbeResult("error");
+      });
   }, [activeSection, showSystemAudioRow]);
 
   const handleHotkeyModeChange = useCallback((mode: "hold" | "toggle") => {
@@ -807,15 +825,15 @@ export default function SettingsPage(): React.JSX.Element {
       <div className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 !pb-0 min-[900px]:grid-cols-[180px_minmax(0,1fr)]">
         <div className="min-[900px]:col-span-2">
           <div className="mb-7">
-            <h1 className="display text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-              {t("settings.title")}.
+            <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
+              {t("settings.title")}
             </h1>
           </div>
         </div>
 
         <SettingsSidebar active={activeSection} onSelect={selectSection} />
 
-        <div className="min-h-0 overflow-y-auto px-1 -mx-1">
+        <div className="min-h-0 max-w-[694px] overflow-y-auto px-1 -mx-1">
           <h2 className="display text-foreground mb-6 text-[26px] font-medium tracking-[-0.02em]">
             {activeSectionLabel}
           </h2>
@@ -1294,8 +1312,14 @@ export default function SettingsPage(): React.JSX.Element {
                   last
                 >
                   <PermissionControl
-                    granted={systemAudioProbeResult === "ok"}
-                    checking={systemAudioProbeResult !== "ok"}
+                    granted={systemAudioGranted}
+                    checking={systemAudioChecking}
+                    unknown={systemAudioUnknown}
+                    note={
+                      systemAudioUnknown
+                        ? t("settings.permissions.systemAudioUnknownNote")
+                        : undefined
+                    }
                     actionLabel={t("common.openSettings")}
                     external
                     onAction={openSystemAudioSettings}
@@ -1949,6 +1973,7 @@ function Segment({
 function PermissionControl({
   granted,
   checking,
+  unknown,
   actionLabel,
   external,
   onAction,
@@ -1957,6 +1982,11 @@ function PermissionControl({
 }: {
   granted: boolean;
   checking: boolean;
+  // Distinct from `checking`: the probe already ran and came back
+  // inconclusive (e.g. macOS gives no preflight API for this permission),
+  // not still in flight. Rendering it as "checking" forever would be
+  // dishonest — this is a resting state, not a transient one.
+  unknown?: boolean;
   actionLabel: string | null;
   external?: boolean;
   onAction?: () => void;
@@ -1967,7 +1997,7 @@ function PermissionControl({
 
   return (
     <div className="flex items-center gap-3">
-      <StatusDot granted={granted} checking={checking} />
+      <StatusDot granted={granted} checking={checking} unknown={unknown} />
       {granted ? (
         <>
           <Check className="text-primary h-4 w-4" />
@@ -1978,14 +2008,19 @@ function PermissionControl({
             </Button>
           )}
         </>
-      ) : note ? (
-        <span className="text-muted-foreground text-xs">{note}</span>
-      ) : actionLabel && onAction ? (
-        <Button variant="ink" size="sm" onClick={onAction}>
-          {actionLabel}
-          {external && <ExternalLink data-icon="inline-end" />}
-        </Button>
-      ) : null}
+      ) : (
+        <>
+          {note && (
+            <span className="text-muted-foreground text-xs">{note}</span>
+          )}
+          {actionLabel && onAction && (
+            <Button variant="ink" size="sm" onClick={onAction}>
+              {actionLabel}
+              {external && <ExternalLink data-icon="inline-end" />}
+            </Button>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1993,11 +2028,23 @@ function PermissionControl({
 function StatusDot({
   granted,
   checking,
+  unknown,
 }: {
   granted: boolean;
   checking: boolean;
+  unknown?: boolean;
 }) {
   const { t } = useTranslation();
+  const label = granted
+    ? t("common.granted")
+    : checking
+      ? t("common.checking")
+      : unknown
+        ? t("common.unknown")
+        : t("common.needed");
+  // "needed" (denied/actionable) is the only destructive state; checking
+  // and unknown are both neutral resting states, just with different copy.
+  const isDestructive = !granted && !checking && !unknown;
 
   return (
     <span
@@ -2005,9 +2052,9 @@ function StatusDot({
         "inline-flex items-center gap-1.5 text-[10px] font-medium tracking-wide uppercase",
         granted
           ? "text-primary"
-          : checking
-            ? "text-muted-foreground"
-            : "text-destructive",
+          : isDestructive
+            ? "text-destructive"
+            : "text-muted-foreground",
       )}
     >
       <span
@@ -2015,16 +2062,12 @@ function StatusDot({
           "inline-block h-1.5 w-1.5 rounded-full",
           granted
             ? "bg-primary"
-            : checking
-              ? "bg-muted-foreground/40"
-              : "bg-destructive",
+            : isDestructive
+              ? "bg-destructive"
+              : "bg-muted-foreground/40",
         )}
       />
-      {granted
-        ? t("common.granted")
-        : checking
-          ? t("common.checking")
-          : t("common.needed")}
+      {label}
     </span>
   );
 }

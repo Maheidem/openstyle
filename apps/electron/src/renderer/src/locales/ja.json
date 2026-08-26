@@ -8,6 +8,7 @@
     "granted": "許可済み",
     "checking": "確認中...",
     "needed": "必要",
+    "unknown": "不明",
     "allow": "許可する",
     "openSettings": "設定を開く",
     "recheck": "再確認",
@@ -203,7 +204,8 @@
       "accessibilityDescOther": "グローバルホットキーを検出し、他のアプリに貼り付けるために必要です。",
       "autoGranted": "自動許可済み",
       "systemAudio": "システムオーディオ",
-      "systemAudioDesc": "会議を録音する際に、他の参加者の音声をキャプチャするために必要です。macOSには事前に確認する方法がないため、ここでは状態を確実に表示できません。設定を開いて許可を確認してください。"
+      "systemAudioDesc": "会議を録音する際に、他の参加者の音声をキャプチャするために必要です。macOSにはこの権限を事前に確認する方法がありません。",
+      "systemAudioUnknownNote": "無音だからといって拒否されたとは限りません。確認中に何も再生されていなかっただけの可能性があります。"
     },
     "data": {
       "pauseHistory": "履歴を一時停止",
@@ -680,5 +682,21 @@
     "diarizeResult": "識別された話者: {{n}}人。",
     "diarizeNoSpeakers": "システム音声から話者を識別できませんでした。",
     "diarizeSingleSpeakerNote": "他の話者は1人だけ検出されました。1対1の通話ではこれが正常です。"
+  },
+  "help": {
+    "hotkeys": {
+      "eyebrow": "ホットキー",
+      "hotkeyLabel": "ホットキー",
+      "hotkeyDesc": "ショートカットを長押しして録音し、離して文字起こしします。",
+      "remixLabel": "Remixホットキー",
+      "remixDesc": "押しながら変更内容を話すか、軽く押してクイックルートを表示します。",
+      "quickRoutesLabel": "クイックルート",
+      "quickRoutesDesc": "ホットキーを押し続けずに軽くタップすると、ワンタップでクイックルートを使えます。",
+      "cancelLabel": "キャンセル",
+      "cancelDesc": "Escapeキーでもいつでもキャンセルできます。"
+    },
+    "navigate": {
+      "eyebrow": "ナビゲーション"
+    }
   }
 }

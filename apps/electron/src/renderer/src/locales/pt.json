@@ -8,6 +8,7 @@
     "granted": "Concedido",
     "checking": "Verificando...",
     "needed": "Necessário",
+    "unknown": "Desconhecido",
     "allow": "Permitir",
     "openSettings": "Abrir Configurações",
     "recheck": "Verificar Novamente",
@@ -203,7 +204,8 @@
       "accessibilityDescOther": "Necessário para detectar o atalho global e colar em outros aplicativos.",
       "autoGranted": "Auto-concedido",
       "systemAudio": "Áudio do sistema",
-      "systemAudioDesc": "Necessário para capturar os outros participantes ao gravar uma reunião. O macOS não tem como verificar isso com antecedência, então o status não pode ser exibido com confiabilidade aqui: abra Configurações para conceder ou revisar."
+      "systemAudioDesc": "Necessário para capturar os outros participantes ao gravar uma reunião. O macOS não tem como verificar essa permissão com antecedência.",
+      "systemAudioUnknownNote": "Silêncio não significa necessariamente negado. Pode ser que nada estivesse tocando durante a verificação."
     },
     "data": {
       "pauseHistory": "Pausar histórico",
@@ -679,5 +681,21 @@
     "diarizeResult": "Interlocutores identificados: {{n}}.",
     "diarizeNoSpeakers": "Não foi possível identificar interlocutores no áudio do sistema.",
     "diarizeSingleSpeakerNote": "Apenas um outro interlocutor foi detectado. Isso é esperado em chamadas individuais."
+  },
+  "help": {
+    "hotkeys": {
+      "eyebrow": "Atalhos",
+      "hotkeyLabel": "Atalho",
+      "hotkeyDesc": "Segure o atalho para gravar, solte para transcrever.",
+      "remixLabel": "Atalho do Remix",
+      "remixDesc": "Segure e diga o que mudar, ou toque para as rotas rápidas.",
+      "quickRoutesLabel": "Rotas rápidas",
+      "quickRoutesDesc": "Toque no atalho em vez de segurá-lo para usar as rotas rápidas com um toque.",
+      "cancelLabel": "Cancelar",
+      "cancelDesc": "Esc também cancela sempre."
+    },
+    "navigate": {
+      "eyebrow": "Navegar"
+    }
   }
 }

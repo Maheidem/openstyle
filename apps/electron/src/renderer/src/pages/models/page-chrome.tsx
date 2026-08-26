@@ -37,11 +37,8 @@ export function PageHeader({
   return (
     <div className="mb-7 flex items-end justify-between gap-4">
       <div>
-        <h1 className="display text-foreground m-0 flex items-baseline gap-3 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-          <span>
-            {title}
-            <span>. </span>
-          </span>
+        <h1 className="display text-foreground m-0 flex items-baseline gap-3 text-[32px] font-medium leading-tight tracking-[-0.02em]">
+          <span>{title}</span>
           {badge ? (
             <span className="bg-primary/12 text-primary mono relative -top-[6px] rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em]">
               {badge}
@@ -49,7 +46,7 @@ export function PageHeader({
           ) : null}
         </h1>
         {subtitle && (
-          <p className="text-muted-foreground mt-2.5 max-w-[480px] text-[14px] leading-[1.5]">
+          <p className="text-muted-foreground mt-1 max-w-[480px] text-[13px] leading-[1.5]">
             {subtitle}
           </p>
         )}
@@ -65,21 +62,11 @@ export function PageHeader({
 export function Eyebrow({
   text,
   accent,
-  mono = false,
 }: {
   text: string;
   accent?: boolean;
-  mono?: boolean;
 }): React.JSX.Element {
   return (
-    <span
-      className={cn(
-        "text-[11px] font-semibold",
-        mono && "mono",
-        accent ? "text-primary" : "text-muted-foreground",
-      )}
-    >
-      {text}
-    </span>
+    <span className={cn("eyebrow", accent && "eyebrow-accent")}>{text}</span>
   );
 }

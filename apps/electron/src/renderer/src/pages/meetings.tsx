@@ -1106,6 +1106,23 @@ function MeetingDetailView({
 // Page
 // ---------------------------------------------------------------------------
 
+function MeetingsEmptyState(): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="border-border bg-card rounded-lg border border-dashed px-9 py-[52px] text-center">
+      <div className="bg-accent mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl">
+        <AudioLines className="text-primary h-6 w-6" />
+      </div>
+      <h2 className="display text-foreground m-0 text-[26px] font-medium leading-none">
+        {t("meetings.emptyTitle")}
+      </h2>
+      <p className="text-muted-foreground mx-auto mt-2.5 max-w-[420px] text-[13px] leading-[1.55]">
+        {t("meetings.emptyDesc")}
+      </p>
+    </div>
+  );
+}
+
 export default function MeetingsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const recorder = useRecorder();
@@ -1139,6 +1156,23 @@ export default function MeetingsPage(): React.JSX.Element {
 
   const meetings = useMemo(() => listData ?? [], [listData]);
 
+  // Master-detail (see below) keeps the right-hand pane non-empty by default
+  // once meetings exist, so the persistent list rail never sits next to a
+  // blank pane. Captured once, from the first non-empty load only — NOT
+  // re-derived from `meetings[0]` on every render, because the list query
+  // polls every 2s while anything is recording/transcribing and a fresh
+  // recording lands at index 0 (server orders by created_at DESC). Re-deriving
+  // live would silently swap the detail pane out from under a user who never
+  // explicitly picked a meeting. `selectedId` (explicit, user-driven) always
+  // wins over this default, and once set here it never changes again.
+  const [defaultId, setDefaultId] = useState<string | null>(null);
+  useEffect(() => {
+    if (defaultId === null && meetings.length > 0) {
+      setDefaultId(meetings[0].id);
+    }
+  }, [meetings, defaultId]);
+  const activeId = selectedId ?? defaultId;
+
   // Only probe ahead of the FIRST recording: list loaded, empty, recorder
   // supported and idle.
   const showAudioHint = useSystemAudioProbe(
@@ -1153,6 +1187,52 @@ export default function MeetingsPage(): React.JSX.Element {
     return <Navigate to="/today" replace />;
   }
 
+  // Nothing to show a detail pane for yet — keep the original single-pane
+  // first-run flow (hero title, record card, empty state) rather than
+  // rendering a master-detail grid with an empty rail next to a lone empty
+  // card. Also covers the pre-load instant, same as before this change.
+  if (meetings.length === 0) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <DragSpacer />
+        <div
+          className="responsive-page-scroll flex-1 overflow-auto pt-5"
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        >
+          <div className="mx-auto max-w-[760px]">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
+                {t("meetings.titleAccent")}
+              </h1>
+              <div className="pt-2">
+                <DiarizationSettingsPopover />
+              </div>
+            </div>
+            <p className="text-muted-foreground mb-6 max-w-[480px] text-[13px] leading-[1.5]">
+              {t("meetings.subtitle")}
+            </p>
+
+            {showAudioHint && <SystemAudioHint />}
+
+            <RecordingCard recorder={recorder} />
+
+            <MeetingsEmptyState />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Master-detail (mockup artboard 02): persistent list rail + detail pane at
+  // >=900px (same collapse breakpoint settings.tsx already uses for its own
+  // rail+content split). Below that, CSS-only collapse to the old
+  // single-pane flow: `max-[899px]:hidden` on whichever pane isn't the
+  // user's current focus, driven purely by `selectedId` so the narrow-width
+  // behavior (land on the list, tap a row to drill in, back returns to the
+  // list) is byte-for-byte what it was before this change.
+  const hideListAtNarrow = Boolean(selectedId);
+  const hideDetailAtNarrow = !selectedId;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
@@ -1160,70 +1240,79 @@ export default function MeetingsPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto pt-5"
         style={{ scrollbarWidth: "none" } as React.CSSProperties}
       >
-        <div className="mx-auto max-w-[760px]">
-          {selectedId ? (
-            <MeetingDetailView
-              id={selectedId}
-              onBack={() => setSelectedId(null)}
-              onDeleted={() => setSelectedId(null)}
-            />
-          ) : (
-            <>
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <h1 className="display text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-                  {t("meetings.titleAccent")}.
-                </h1>
-                <div className="pt-2">
-                  <DiarizationSettingsPopover />
-                </div>
-              </div>
-              <p className="text-muted-foreground mb-6 max-w-[580px] text-[14px] leading-[1.5]">
-                {t("meetings.subtitle")}
-              </p>
+        <div className="grid min-h-full grid-cols-1 gap-6 min-[900px]:grid-cols-[262px_minmax(0,1fr)]">
+          <aside
+            className={cn(
+              "min-w-0 min-[900px]:border-border min-[900px]:border-r min-[900px]:pr-6",
+              hideListAtNarrow && "max-[899px]:hidden",
+            )}
+          >
+            <div className="mb-1 flex items-start justify-between gap-2">
+              <h1 className="display text-foreground m-0 text-[22px] font-medium leading-none tracking-[-0.01em]">
+                {t("meetings.titleAccent")}
+              </h1>
+              <DiarizationSettingsPopover />
+            </div>
+            <p className="text-muted-foreground mt-1 mb-4 text-[11.5px] leading-[1.5]">
+              {t("meetings.subtitle")}
+            </p>
 
-              {showAudioHint && <SystemAudioHint />}
+            {showAudioHint && <SystemAudioHint />}
 
-              <RecordingCard recorder={recorder} />
+            <RecordingCard recorder={recorder} />
 
-              {meetings.length === 0 ? (
-                <div className="border-border bg-card rounded-lg border border-dashed px-9 py-[52px] text-center">
-                  <div className="bg-accent mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl">
-                    <AudioLines className="text-primary h-6 w-6" />
-                  </div>
-                  <h2 className="display text-foreground m-0 text-[26px] font-medium leading-none">
-                    {t("meetings.emptyTitle")}
-                  </h2>
-                  <p className="text-muted-foreground mx-auto mt-2.5 max-w-[420px] text-[13px] leading-[1.55]">
-                    {t("meetings.emptyDesc")}
-                  </p>
-                </div>
-              ) : (
-                <Card className="divide-border/60 flex flex-col divide-y p-0">
-                  {meetings.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setSelectedId(m.id)}
-                      className="hover:bg-primary/5 flex items-center gap-3 px-4 py-3 text-left transition-colors first:rounded-t-lg last:rounded-b-lg"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-foreground truncate text-[13px] font-medium">
-                          {m.title || t("meetings.untitled")}
-                        </div>
-                        <div className="text-muted-foreground text-[11px]">
-                          {formatTimestamp(m.started_at)}
-                        </div>
-                      </div>
-                      <span className="mono text-muted-foreground shrink-0 text-[10px] tabular-nums">
+            <div className="flex flex-col gap-0.5">
+              {meetings.map((m) => {
+                const selected = selectedId === m.id;
+                // Visual parity for the implicit default selection — only at
+                // >=900px, where the detail pane is actually showing it. At
+                // narrow widths this row hasn't really been "opened" (the
+                // list is what's visible), so it stays unhighlighted there.
+                const implicitlyActive = !selectedId && activeId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setSelectedId(m.id)}
+                    className={cn(
+                      "flex flex-col gap-1 rounded-[9px] border border-transparent px-3 py-2.5 text-left transition-colors",
+                      "hover:bg-card/60",
+                      selected && "bg-card border-border",
+                      implicitlyActive &&
+                        "min-[900px]:bg-card min-[900px]:border-border",
+                    )}
+                  >
+                    <span className="text-foreground truncate text-[12.5px] font-medium">
+                      {m.title || t("meetings.untitled")}
+                    </span>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="mono text-muted-foreground/70 text-[10px]">
+                        {formatTimestamp(m.started_at)} ·{" "}
                         {formatDuration(m.duration_ms)}
                       </span>
                       <StatusBadge status={m.status} />
-                    </button>
-                  ))}
-                </Card>
-              )}
-            </>
-          )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <div
+            className={cn(
+              "min-w-0",
+              hideDetailAtNarrow && "max-[899px]:hidden",
+            )}
+          >
+            {activeId && (
+              <MeetingDetailView
+                key={activeId}
+                id={activeId}
+                onBack={() => setSelectedId(null)}
+                onDeleted={() => setSelectedId(null)}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

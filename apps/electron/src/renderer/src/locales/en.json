@@ -8,6 +8,7 @@
     "granted": "Granted",
     "checking": "Checking",
     "needed": "Needed",
+    "unknown": "Unknown",
     "allow": "Allow",
     "openSettings": "Open Settings",
     "recheck": "Re-check",
@@ -244,7 +245,8 @@
       "accessibilityDescOther": "Required to detect the global hotkey and paste into other apps.",
       "autoGranted": "Auto-granted",
       "systemAudio": "System audio",
-      "systemAudioDesc": "Required to capture the other participants when you record a meeting. macOS has no way to check this in advance, so status can't be shown reliably here: open Settings to grant or review it."
+      "systemAudioDesc": "Required to capture the other participants when you record a meeting. macOS provides no way to check this permission in advance.",
+      "systemAudioUnknownNote": "Silent isn't necessarily denied. Nothing may have been playing during the check."
     },
     "data": {
       "pauseHistory": "Pause history",
@@ -821,5 +823,21 @@
     "diarizeResult": "Speakers identified: {{n}}.",
     "diarizeNoSpeakers": "No speakers could be identified in the system audio.",
     "diarizeSingleSpeakerNote": "Only one other speaker was detected. That's expected on one-on-one calls."
+  },
+  "help": {
+    "hotkeys": {
+      "eyebrow": "Hotkeys",
+      "hotkeyLabel": "Hotkey",
+      "hotkeyDesc": "Hold the shortcut to record, release to transcribe.",
+      "remixLabel": "Remix hotkey",
+      "remixDesc": "Hold it and say what to change, or tap it for the quick routes.",
+      "quickRoutesLabel": "Quick routes",
+      "quickRoutesDesc": "Tap the hotkey instead of holding it for one-tap quick routes.",
+      "cancelLabel": "Cancel",
+      "cancelDesc": "Escape always cancels too."
+    },
+    "navigate": {
+      "eyebrow": "Navigate"
+    }
   }
 }

@@ -1,5 +1,3 @@
-import markDark from "@renderer/assets/mark-dark.svg";
-import markLight from "@renderer/assets/mark-light.svg";
 import { Badge } from "@renderer/components/ui/badge";
 import { UpdateBanner } from "@renderer/components/update-banner";
 import { LINKS } from "@renderer/lib/links";
@@ -218,16 +216,12 @@ export default function AppShell(): React.JSX.Element {
             !IS_MAC || isFullscreen ? "pt-4" : "pt-[44px]",
           )}
         >
-          <img
-            src={markLight}
-            alt="Openstyle"
-            className="block h-7 w-7 dark:hidden"
-          />
-          <img
-            src={markDark}
-            alt="Openstyle"
-            className="hidden h-7 w-7 dark:block"
-          />
+          <div
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-foreground"
+            aria-hidden="true"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-background" />
+          </div>
           <span className="display text-foreground text-[19px] font-medium tracking-tight">
             Openstyle
           </span>

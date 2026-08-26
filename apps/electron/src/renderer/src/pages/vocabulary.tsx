@@ -566,7 +566,6 @@ function PageHeader({
     <div className="mb-7">
       <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
         {title}
-        <span>. </span>
       </h1>
       {subtitle && (
         <p className="text-muted-foreground mt-1 max-w-[480px] text-[13px] leading-[1.5]">

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Openstyle app icon — master source.
+
+  Design system reference: specs/design-system.md + specs/design/reskin-mockups.html
+  (.brand-mark: 24x24 ink field, 7px corner radius on a 24px box == ~29% —
+  this 512 canvas keeps the same family of proportions, corner radius scaled
+  to match the pre-reskin app icon's own squircle geometry so the app icon,
+  dock icon, and Finder tile keep reading as the same rounded-square silhouette
+  the old teal Freestyle-era icon used, at ~22% of the canvas width).
+
+  Ink rounded-square field (#1D2129) + a minimal 5-bar white waveform glyph,
+  centered, symmetric ("calm" bell profile — no dramatic asymmetry). The
+  coral (#E4574D, the system's accent-live color) is folded into the glyph
+  itself as the rounded tip of the tallest, center bar — a "live level peak"
+  reading, rather than a detached corner badge, so it stays legible as one
+  shape instead of an unread-notification dot. It is a single, optional
+  accent: at tray/menu-bar sizes this file is not used directly (see the
+  separate monochrome template art in resources/tray/, alpha-only per macOS
+  template-image rules), so the color fence between accent-passive blue and
+  accent-live coral never needs mixing here — this mark uses ink/white/coral
+  only, no blue.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Openstyle">
+  <title>Openstyle</title>
+
+  <!-- Field -->
+  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="#1D2129"/>
+
+  <!-- Waveform glyph: 5 bars, rounded caps, symmetric bell heights -->
+  <g fill="#FFFFFF">
+    <rect x="146" y="220" width="28" height="72" rx="14"/>
+    <rect x="194" y="190" width="28" height="132" rx="14"/>
+    <rect x="242" y="174" width="28" height="178" rx="14"/>
+    <rect x="290" y="190" width="28" height="132" rx="14"/>
+    <rect x="338" y="220" width="28" height="72" rx="14"/>
+  </g>
+
+  <!-- Accent-live coral: rounded tip capping the center (tallest) bar -->
+  <circle cx="256" cy="174" r="14" fill="#E4574D"/>
+</svg>

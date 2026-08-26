@@ -123,7 +123,7 @@ function PairSide({
       )}
     >
       <div className="flex items-center justify-between gap-3">
-        <Eyebrow text={kicker} mono={false} />
+        <Eyebrow text={kicker} />
         {onToggle !== undefined && (
           <Toggle
             on={!!toggle}

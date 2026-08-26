@@ -82,6 +82,10 @@
   --secondary-foreground: #1D2129;
   --muted: #EEF0F2;
   --muted-foreground: #6B7280;
+  /* Lower-contrast than --muted-foreground: section-eyebrow labels and
+     similar de-emphasized caps. See specs/design/reskin-mockups.html's
+     --muted-soft token (#9AA1AC), consumed here for the first time. */
+  --muted-soft: #9AA1AC;
   --accent: #E5E7EB;
   --accent-foreground: #1D2129;
   --destructive: #DC2626;
@@ -141,6 +145,11 @@
   --secondary-foreground: #E8E9EB;
   --muted: #2A2D33;
   --muted-foreground: #8B8F98;
+  /* Invented: the mockup only specifies a light value for --muted-soft.
+     Derived the same way design-system.md's --chart ramp was: lower
+     contrast than --muted-foreground, same neutral hue, sitting between
+     it and --border. Flag for design sign-off if it reads too dim. */
+  --muted-soft: #6B6F78;
   --accent: #2A2D33;
   --accent-foreground: #E8E9EB;
   --destructive: #F87171;
@@ -224,6 +233,21 @@
 
 .mono {
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+
+/* Section eyebrow — small tracked-caps label above a group of content.
+   Matches the mockup's #shortcuts .eyebrow treatment exactly:
+   specs/design/reskin-mockups.html line ~467. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.eyebrow-accent {
+  color: var(--primary);
 }
 
 @layer components {

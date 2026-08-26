@@ -720,20 +720,11 @@ function CleanupTonePanel({
                 onClick={() => onChange(option.value)}
                 onKeyDown={(event) => handleOptionKeyDown(event, index)}
                 className={cn(
-                  "group border-border bg-card relative flex flex-col gap-1.5 overflow-hidden rounded-lg border py-3.5 pr-3.5 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
+                  "group border-border bg-card relative flex flex-col gap-1.5 overflow-hidden rounded-lg border p-3.5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
                   "hover:border-foreground/20 hover:bg-card/90",
                   selected && "border-primary/40 bg-accent/45",
                 )}
               >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r-full transition-all duration-150",
-                    selected
-                      ? "bg-primary h-9"
-                      : "bg-foreground/15 h-0 group-hover:h-5",
-                  )}
-                />
                 <div className="flex items-center justify-between gap-1.5">
                   <p className="display text-foreground text-[21px] leading-none tracking-[-0.03em]">
                     {t(option.titleKey)}

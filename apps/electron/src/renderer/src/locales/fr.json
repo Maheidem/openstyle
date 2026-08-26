@@ -8,6 +8,7 @@
     "granted": "Accordé",
     "checking": "Vérification",
     "needed": "Requis",
+    "unknown": "Inconnu",
     "allow": "Autoriser",
     "openSettings": "Ouvrir les Réglages",
     "recheck": "Revérifier",
@@ -203,7 +204,8 @@
       "accessibilityDescOther": "Requis pour détecter le raccourci global et coller dans d'autres apps.",
       "autoGranted": "Accordé automatiquement",
       "systemAudio": "Audio système",
-      "systemAudioDesc": "Requis pour capturer les autres participants lors de l'enregistrement d'une réunion. macOS ne permet pas de vérifier cela à l'avance, donc le statut ne peut pas être affiché de façon fiable ici : ouvrez les Réglages pour l'accorder ou le vérifier."
+      "systemAudioDesc": "Requis pour capturer les autres participants lors de l'enregistrement d'une réunion. macOS ne permet pas de vérifier cette autorisation à l'avance.",
+      "systemAudioUnknownNote": "Le silence ne signifie pas forcément un refus : il se peut que rien n'ait été diffusé pendant la vérification."
     },
     "data": {
       "pauseHistory": "Suspendre l'historique",
@@ -680,5 +682,21 @@
     "diarizeResult": "Intervenants identifiés : {{n}}.",
     "diarizeNoSpeakers": "Aucun intervenant n'a pu être identifié dans l'audio système.",
     "diarizeSingleSpeakerNote": "Un seul autre intervenant a été détecté. C'est normal pour les appels en tête-à-tête."
+  },
+  "help": {
+    "hotkeys": {
+      "eyebrow": "Raccourcis clavier",
+      "hotkeyLabel": "Raccourci clavier",
+      "hotkeyDesc": "Maintenez le raccourci pour enregistrer, relâchez pour transcrire.",
+      "remixLabel": "Raccourci Remix",
+      "remixDesc": "Maintenez-le et dites quoi changer, ou tapez-le pour les routes rapides.",
+      "quickRoutesLabel": "Routes rapides",
+      "quickRoutesDesc": "Appuyez brièvement sur le raccourci au lieu de le maintenir pour les routes rapides en un geste.",
+      "cancelLabel": "Annuler",
+      "cancelDesc": "Échap annule aussi, à tout moment."
+    },
+    "navigate": {
+      "eyebrow": "Navigation"
+    }
   }
 }

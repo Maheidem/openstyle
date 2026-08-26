@@ -8,6 +8,7 @@
     "granted": "Gewährt",
     "checking": "Prüfen",
     "needed": "Erforderlich",
+    "unknown": "Unbekannt",
     "allow": "Zulassen",
     "openSettings": "Einstellungen öffnen",
     "recheck": "Erneut prüfen",
@@ -203,7 +204,8 @@
       "accessibilityDescOther": "Erforderlich, um die globale Tastenkombination zu erkennen und in andere Apps einzufügen.",
       "autoGranted": "Automatisch gewährt",
       "systemAudio": "Systemaudio",
-      "systemAudioDesc": "Erforderlich, um die anderen Teilnehmer aufzuzeichnen, wenn Sie ein Meeting aufnehmen. macOS bietet keine Möglichkeit, dies vorab zu prüfen, daher kann der Status hier nicht zuverlässig angezeigt werden. Öffnen Sie die Einstellungen, um die Berechtigung zu erteilen oder zu überprüfen."
+      "systemAudioDesc": "Erforderlich, um die anderen Teilnehmer aufzuzeichnen, wenn Sie ein Meeting aufnehmen. macOS bietet keine Möglichkeit, diese Berechtigung vorab zu prüfen.",
+      "systemAudioUnknownNote": "Stille bedeutet nicht zwangsläufig eine Ablehnung. Möglicherweise wurde während der Prüfung einfach nichts wiedergegeben."
     },
     "data": {
       "pauseHistory": "Verlauf pausieren",
@@ -680,5 +682,21 @@
     "diarizeResult": "Erkannte Sprecher: {{n}}.",
     "diarizeNoSpeakers": "In der Systemaudiospur konnten keine Sprecher erkannt werden.",
     "diarizeSingleSpeakerNote": "Es wurde nur ein weiterer Sprecher erkannt. Das ist bei Eins-zu-eins-Gesprächen normal."
+  },
+  "help": {
+    "hotkeys": {
+      "eyebrow": "Tastenkombinationen",
+      "hotkeyLabel": "Tastenkombination",
+      "hotkeyDesc": "Halten Sie die Kombination zum Aufnehmen, lassen Sie sie zum Transkribieren los.",
+      "remixLabel": "Remix-Tastenkombination",
+      "remixDesc": "Halten Sie sie gedrückt und sagen Sie, was geändert werden soll — oder tippen Sie kurz für die Schnellrouten.",
+      "quickRoutesLabel": "Schnellrouten",
+      "quickRoutesDesc": "Tippen Sie die Tastenkombination kurz an, statt sie zu halten, für die Schnellrouten mit einem Tastendruck.",
+      "cancelLabel": "Abbrechen",
+      "cancelDesc": "Escape bricht ebenfalls immer ab."
+    },
+    "navigate": {
+      "eyebrow": "Navigation"
+    }
   }
 }

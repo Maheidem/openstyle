@@ -750,6 +750,7 @@ export default function HistoryPage(): React.JSX.Element {
           className="responsive-page-scroll flex-1 overflow-auto pt-5"
           style={{ scrollbarWidth: "none" } as React.CSSProperties}
         >
+          <TranscriptionsPageHeader />
           {historyPaused && <HistoryPausedNotice />}
           {hero}
           <EmptyState />
@@ -781,6 +782,7 @@ export default function HistoryPage(): React.JSX.Element {
             } as React.CSSProperties
           }
         >
+          <TranscriptionsPageHeader />
           {historyPaused && <HistoryPausedNotice />}
           {hero}
           {searchRow}
@@ -1148,13 +1150,13 @@ function StatCard({
           <div className="flex items-baseline gap-2">
             <span
               className={cn(
-                "display text-[30px] leading-none",
+                "display text-[24px] leading-none",
                 accent ? "text-primary" : "text-foreground",
               )}
             >
               {n}
             </span>
-            <span className="text-muted-foreground text-[9.5px]">{l}</span>
+            <span className="text-muted-foreground text-[11px]">{l}</span>
           </div>
           {sub && (
             <div className="text-muted-foreground/70 mt-1.5 text-[9.5px]">
@@ -1166,13 +1168,13 @@ function StatCard({
         <>
           <div
             className={cn(
-              "display text-[30px] leading-none",
+              "display text-[24px] leading-none",
               accent ? "text-primary" : "text-foreground",
             )}
           >
             {n}
           </div>
-          <div className="text-muted-foreground mt-2 text-[9.5px] leading-tight">
+          <div className="text-muted-foreground mt-2 text-[11px] leading-tight">
             {l}
           </div>
         </>
@@ -1551,6 +1553,23 @@ function DiffText({
         );
       })}
     </>
+  );
+}
+
+// Mockup artboard 01 names this page "Transcriptions" with a fixed English
+// subtitle — the "history"/"today" i18n namespaces have no matching keys
+// (only "History" as a bare title), so this hardcodes the copy the same way
+// help.tsx's PageHeader call already does, rather than touching en.json.
+function TranscriptionsPageHeader(): React.JSX.Element {
+  return (
+    <div className="mb-7">
+      <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
+        Transcriptions
+      </h1>
+      <p className="text-muted-foreground mt-1 max-w-[480px] text-[13px] leading-[1.5]">
+        Everything you've dictated, in one searchable place.
+      </p>
+    </div>
   );
 }
 

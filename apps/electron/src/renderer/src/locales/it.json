@@ -8,6 +8,7 @@
     "granted": "Consentito",
     "checking": "Verifica in corso...",
     "needed": "Necessario",
+    "unknown": "Sconosciuto",
     "allow": "Consenti",
     "openSettings": "Apri Impostazioni",
     "recheck": "Ricontrolla",
@@ -203,7 +204,8 @@
       "accessibilityDescOther": "Richiesto per rilevare la scorciatoia globale e incollare nelle altre app.",
       "autoGranted": "Autoconsentito",
       "systemAudio": "Audio di sistema",
-      "systemAudioDesc": "Necessario per catturare gli altri partecipanti quando registri una riunione. macOS non offre un modo per verificarlo in anticipo, quindi lo stato non può essere mostrato in modo affidabile qui: apri Impostazioni per concederlo o verificarlo."
+      "systemAudioDesc": "Necessario per catturare gli altri partecipanti quando registri una riunione. macOS non offre un modo per verificare questo permesso in anticipo.",
+      "systemAudioUnknownNote": "Il silenzio non significa necessariamente negato: potrebbe semplicemente non esserci stato nulla in riproduzione durante il controllo."
     },
     "data": {
       "pauseHistory": "Metti in pausa la cronologia",
@@ -679,5 +681,21 @@
     "diarizeResult": "Partecipanti identificati: {{n}}.",
     "diarizeNoSpeakers": "Non è stato possibile identificare partecipanti nell'audio di sistema.",
     "diarizeSingleSpeakerNote": "È stato rilevato solo un altro partecipante. È normale nelle chiamate individuali."
+  },
+  "help": {
+    "hotkeys": {
+      "eyebrow": "Scorciatoie",
+      "hotkeyLabel": "Scorciatoia",
+      "hotkeyDesc": "Tieni premuto per registrare, rilascia per trascrivere.",
+      "remixLabel": "Scorciatoia Remix",
+      "remixDesc": "Tienila premuta e di' cosa cambiare, oppure toccala per le route rapide.",
+      "quickRoutesLabel": "Route rapide",
+      "quickRoutesDesc": "Premi brevemente la scorciatoia invece di tenerla premuta per le route rapide con un tocco.",
+      "cancelLabel": "Annulla",
+      "cancelDesc": "Anche Esc annulla sempre."
+    },
+    "navigate": {
+      "eyebrow": "Naviga"
+    }
   }
 }
