@@ -555,7 +555,42 @@
     "deleteLocalMsg": "Eliminar <b>{{name}}</b> de {{phrase}}. Los pesos se eliminan de tu caché local; puedes descargarlos de nuevo después.",
     "deleteProviderTitle": "Eliminar proveedor",
     "deleteProviderMsgBase": "¿Eliminar la clave API de <b>{{provider}}</b>? Esto también elimina todos los modelos configurados para este proveedor",
-    "deleteProviderCurrentSuffix": ", incluyendo un modelo que estás usando actualmente"
+    "deleteProviderCurrentSuffix": ", incluyendo un modelo que estás usando actualmente",
+    "taskProfiles": {
+      "eyebrow": "Dónde trabajan tus modelos",
+      "cleanup": {
+        "name": "Limpieza",
+        "desc": "Reescrituras rápidas mientras dictas."
+      },
+      "remix": {
+        "name": "Remix",
+        "desc": "Ediciones rápidas y el agente del lienzo."
+      },
+      "meetingSummarize": {
+        "name": "Resumen de reunión",
+        "desc": "Resúmenes extensos después de que termina una reunión."
+      },
+      "meetingEnhance": {
+        "name": "Mejora de reunión",
+        "desc": "Limpia el texto de la transcripción después de una reunión."
+      },
+      "assignmentAuto": "Automático",
+      "assignmentCustomized": "Personalizado",
+      "cloudPartialNote": "Modelo en la nube: parcial",
+      "paramsLabel": "Parámetros",
+      "customOption": "Personalizado…",
+      "modelOverrideLabel": "Modelo",
+      "modelOverrideDefault": "Usar predeterminado ({{name}})",
+      "reset": "Restablecer",
+      "newPreset": "Nuevo preset",
+      "savePreset": "Guardar como preset…",
+      "presetNameLabel": "Nombre",
+      "duplicateToEdit": "Duplicar para editar",
+      "invalidJson": "JSON no válido.",
+      "notAnObject": "Debe ser un objeto JSON, no una lista ni un valor simple.",
+      "presetTooLarge": "Este preset es demasiado grande.",
+      "migratedNote": "Migrado desde tus antiguos parámetros de muestreo."
+    }
   },
   "shell": {
     "nav": {

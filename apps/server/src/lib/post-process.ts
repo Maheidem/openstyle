@@ -1,5 +1,6 @@
 import {
   postProcess as cleanupWithModel,
+  maxOutputTokensForCleanup,
   sanitizeTranscriptText,
 } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
@@ -29,6 +30,7 @@ import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import { getLlmProvider } from "./llm/registry.js";
+import { resolveTaskCall } from "./llm/task-profiles.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
 const log = createAppLogger("post-process");
@@ -225,22 +227,33 @@ export async function postProcess(
 
       handoffMs = Date.now() - handoffStart;
 
-      const chatModel = await createChatModel(llm.provider, llm.model_id);
+      const resolved = await resolveTaskCall("cleanup", {
+        autoMaxOutputTokens: maxOutputTokensForCleanup(normalizedRawText),
+      });
+      const chatModel = await createChatModel(
+        resolved.provider,
+        resolved.modelId,
+        { task: "cleanup", sampling: resolved.samplingParams },
+      );
       let cleanupError: unknown;
       const result = await cleanupWithModel({
         model: chatModel,
         text: normalizedRawText,
         system,
         prompt,
+        temperature: resolved.temperature,
+        maxOutputTokens: resolved.maxOutputTokens,
         // The empty/filler-only case is already handled above for the whole
         // function (both the cloud and local-model branches), so this call
         // is guaranteed non-empty text — disable the package's own internal
         // check rather than relying on two independently-maintained filler
         // regexes staying in sync.
         skipEmptyText: false,
-        providerOptions: getLlmProvider(llm.provider)?.providerOptions?.(
-          llm.model_id,
+        providerOptions: getLlmProvider(resolved.provider)?.providerOptions?.(
+          resolved.modelId,
+          resolved.reasoningEnabled,
         ),
+        signal: AbortSignal.timeout(resolved.timeoutMs),
         onError: (err) => {
           cleanupError = err;
         },
@@ -249,12 +262,12 @@ export async function postProcess(
       if (result.model) {
         inputTokens = result.inputTokens;
         outputTokens = result.outputTokens;
-        llmProvider = llm.provider;
-        // Record the configured model id (e.g. `groq/qwen/qwen3-32b`), not
+        llmProvider = resolved.provider;
+        // Record the resolved model id (e.g. `groq/qwen/qwen3-32b`), not
         // the AI SDK's prefix-stripped `result.model` (`qwen/qwen3-32b`), so
         // the persisted history label stays consistent with pre-migration
         // rows.
-        llmModel = llm.model_id;
+        llmModel = resolved.modelId;
         cleanedText = result.cleaned;
       } else {
         log.error(`LLM cleanup failed: ${cleanupError}`);

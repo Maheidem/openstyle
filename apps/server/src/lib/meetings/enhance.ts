@@ -147,7 +147,7 @@ export function extractJsonObject(raw: string): Record<string, unknown> | null {
 
 /** Thin wrapper around the shared default chat call (`llm-call.ts`). */
 const defaultLlmCall: EnhanceLlmCall = (request) =>
-  resolveDefaultChatCall(request);
+  resolveDefaultChatCall({ ...request, taskId: "meetingEnhance" });
 
 /**
  * Run the Enhance pass over a meeting's merged transcript and persist

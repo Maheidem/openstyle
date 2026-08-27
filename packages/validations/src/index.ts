@@ -5,6 +5,7 @@ export * from "./cloud-config.js";
 export * from "./diagnostics.js";
 export * from "./dictionary.js";
 export * from "./export.js";
+export * from "./llm-task-profiles.js";
 export * from "./local-llm.js";
 export * from "./models.js";
 export * from "./notifications.js";

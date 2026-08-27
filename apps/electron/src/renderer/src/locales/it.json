@@ -554,7 +554,42 @@
     "deleteLocalMsg": "Rimuovere <b>{{name}}</b>? I file verranno eliminati.",
     "deleteProviderTitle": "Elimina provider",
     "deleteProviderMsgBase": "Eliminare la chiave per <b>{{provider}}</b>?",
-    "deleteProviderCurrentSuffix": ", incluso il modello in uso"
+    "deleteProviderCurrentSuffix": ", incluso il modello in uso",
+    "taskProfiles": {
+      "eyebrow": "Dove lavorano i tuoi modelli",
+      "cleanup": {
+        "name": "Pulizia",
+        "desc": "Riscritture rapide mentre detti."
+      },
+      "remix": {
+        "name": "Remix",
+        "desc": "Modifiche rapide e l'agente della lavagna."
+      },
+      "meetingSummarize": {
+        "name": "Riepilogo riunione",
+        "desc": "Riepiloghi estesi dopo la fine di una riunione."
+      },
+      "meetingEnhance": {
+        "name": "Miglioramento riunione",
+        "desc": "Pulisce il testo della trascrizione dopo una riunione."
+      },
+      "assignmentAuto": "Automatico",
+      "assignmentCustomized": "Personalizzato",
+      "cloudPartialNote": "Modello cloud: parziale",
+      "paramsLabel": "Parametri",
+      "customOption": "Personalizzato…",
+      "modelOverrideLabel": "Modello",
+      "modelOverrideDefault": "Usa predefinito ({{name}})",
+      "reset": "Reimposta",
+      "newPreset": "Nuovo preset",
+      "savePreset": "Salva come preset…",
+      "presetNameLabel": "Nome",
+      "duplicateToEdit": "Duplica per modificare",
+      "invalidJson": "JSON non valido.",
+      "notAnObject": "Deve essere un oggetto JSON, non un elenco o un valore semplice.",
+      "presetTooLarge": "Questo preset è troppo grande.",
+      "migratedNote": "Migrato dai tuoi vecchi parametri di campionamento."
+    }
   },
   "shell": {
     "nav": {

@@ -554,7 +554,42 @@
     "deleteLocalMsg": "Remover <b>{{name}}</b>? Os pesos serão excluídos do cache local.",
     "deleteProviderTitle": "Excluir provedor",
     "deleteProviderMsgBase": "Excluir a chave do <b>{{provider}}</b>?",
-    "deleteProviderCurrentSuffix": ", incluindo o modelo em uso"
+    "deleteProviderCurrentSuffix": ", incluindo o modelo em uso",
+    "taskProfiles": {
+      "eyebrow": "Onde seus modelos trabalham",
+      "cleanup": {
+        "name": "Limpeza",
+        "desc": "Reescritas rápidas enquanto você dita."
+      },
+      "remix": {
+        "name": "Remix",
+        "desc": "Edições rápidas e o agente da tela."
+      },
+      "meetingSummarize": {
+        "name": "Resumo da reunião",
+        "desc": "Resumos longos após o término de uma reunião."
+      },
+      "meetingEnhance": {
+        "name": "Aprimoramento da reunião",
+        "desc": "Limpa o texto da transcrição após uma reunião."
+      },
+      "assignmentAuto": "Automático",
+      "assignmentCustomized": "Personalizado",
+      "cloudPartialNote": "Modelo em nuvem: parcial",
+      "paramsLabel": "Parâmetros",
+      "customOption": "Personalizado…",
+      "modelOverrideLabel": "Modelo",
+      "modelOverrideDefault": "Usar padrão ({{name}})",
+      "reset": "Redefinir",
+      "newPreset": "Nova predefinição",
+      "savePreset": "Salvar como predefinição…",
+      "presetNameLabel": "Nome",
+      "duplicateToEdit": "Duplicar para editar",
+      "invalidJson": "JSON inválido.",
+      "notAnObject": "Deve ser um objeto JSON, não uma lista ou um valor simples.",
+      "presetTooLarge": "Esta predefinição é muito grande.",
+      "migratedNote": "Migrado dos seus antigos parâmetros de amostragem."
+    }
   },
   "shell": {
     "nav": {

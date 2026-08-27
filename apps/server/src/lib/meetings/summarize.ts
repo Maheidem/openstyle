@@ -181,7 +181,7 @@ export function chunkTranscript(
  * `llmCall` (tests) never touches the database or provider SDKs.
  */
 const defaultLlmCall: SummaryLlmCall = (request) =>
-  resolveDefaultChatCall(request);
+  resolveDefaultChatCall({ ...request, taskId: "meetingSummarize" });
 
 /** Resolve the context budget from settings when no option is given. */
 async function resolveContextBudget(): Promise<number> {

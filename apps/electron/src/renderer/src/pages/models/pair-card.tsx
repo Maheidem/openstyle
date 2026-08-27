@@ -69,7 +69,7 @@ export function PairCard({
           onToggle={onToggleCleanup}
           onChange={onChangeLlm}
           dimmed={!cleanupOn}
-          warmingAction={
+          paramsAction={
             onConfigureSampling
               ? {
                   label: t("models.pair.configureSampling"),
@@ -98,6 +98,7 @@ function PairSide({
   dimmed,
   providerIsIncluded,
   warmingAction,
+  paramsAction,
 }: {
   kicker: string;
   modelName: string | undefined;
@@ -112,8 +113,14 @@ function PairSide({
   changeDisabled?: boolean;
   dimmed?: boolean;
   providerIsIncluded?: boolean;
+  /** Voice side only: "Configure model warming". */
   warmingAction?: { label: string; onClick: () => void };
+  /** Cleanup side only: jumps to this task's row in TaskProfilesSection
+   *  (specs/llm-task-profiles.md §9.5) — same bottom-link slot as
+   *  `warmingAction`, just a different call site's action. */
+  paramsAction?: { label: string; onClick: () => void };
 }): React.JSX.Element {
+  const bottomLink = warmingAction ?? paramsAction;
   const { t } = useTranslation();
   return (
     <div
@@ -180,14 +187,14 @@ function PairSide({
         >
           {cta}
         </Button>
-        {warmingAction && (
+        {bottomLink && (
           <Button
             variant="link"
             size="sm"
-            onClick={warmingAction.onClick}
+            onClick={bottomLink.onClick}
             className="text-muted-foreground h-auto px-0 text-[13px] font-normal"
           >
-            {warmingAction.label}
+            {bottomLink.label}
           </Button>
         )}
       </div>

@@ -555,7 +555,42 @@
     "deleteLocalMsg": "{{phrase}} から <b>{{name}}</b> を削除します。モデルデータはローカルキャッシュから削除されますが、後でいつでも再ダウンロードできます。",
     "deleteProviderTitle": "プロバイダーを削除",
     "deleteProviderMsgBase": "<b>{{provider}}</b> の API キーを削除しますか？これにより、このプロバイダー用に構成されたすべてのモデルも削除されます",
-    "deleteProviderCurrentSuffix": "（現在使用中のモデルも含みます）"
+    "deleteProviderCurrentSuffix": "（現在使用中のモデルも含みます）",
+    "taskProfiles": {
+      "eyebrow": "モデルが動く場所",
+      "cleanup": {
+        "name": "クリーンアップ",
+        "desc": "口述中の高速な書き直し。"
+      },
+      "remix": {
+        "name": "Remix",
+        "desc": "簡単な編集とキャンバスエージェント。"
+      },
+      "meetingSummarize": {
+        "name": "ミーティング要約",
+        "desc": "ミーティング終了後の長文要約。"
+      },
+      "meetingEnhance": {
+        "name": "ミーティング強化",
+        "desc": "ミーティング後にトランスクリプトのテキストをクリーンアップします。"
+      },
+      "assignmentAuto": "自動",
+      "assignmentCustomized": "カスタム設定済み",
+      "cloudPartialNote": "クラウドモデル: 一部のみ",
+      "paramsLabel": "パラメータ",
+      "customOption": "カスタム…",
+      "modelOverrideLabel": "モデル",
+      "modelOverrideDefault": "デフォルトを使用 ({{name}})",
+      "reset": "リセット",
+      "newPreset": "新しいプリセット",
+      "savePreset": "プリセットとして保存…",
+      "presetNameLabel": "名前",
+      "duplicateToEdit": "複製して編集",
+      "invalidJson": "有効なJSONではありません。",
+      "notAnObject": "リストや単純な値ではなく、JSONオブジェクトである必要があります。",
+      "presetTooLarge": "このプリセットは大きすぎます。",
+      "migratedNote": "以前のサンプリングパラメータから移行されました。"
+    }
   },
   "shell": {
     "nav": {

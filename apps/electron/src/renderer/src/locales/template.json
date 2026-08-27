@@ -665,6 +665,41 @@
       "save": "Save",
       "saving": "Saving…",
       "saved": "Saved"
+    },
+    "taskProfiles": {
+      "eyebrow": "Where your models work",
+      "cleanup": {
+        "name": "Cleanup",
+        "desc": "Fast rewrites while you dictate."
+      },
+      "remix": {
+        "name": "Remix",
+        "desc": "Quick edits and the canvas agent."
+      },
+      "meetingSummarize": {
+        "name": "Meeting summary",
+        "desc": "Long-form summaries after a meeting ends."
+      },
+      "meetingEnhance": {
+        "name": "Meeting enhance",
+        "desc": "Cleans up transcript text after a meeting."
+      },
+      "assignmentAuto": "Auto",
+      "assignmentCustomized": "Customized",
+      "cloudPartialNote": "Cloud model: partial",
+      "paramsLabel": "Params",
+      "customOption": "Custom…",
+      "modelOverrideLabel": "Model",
+      "modelOverrideDefault": "Use default ({{name}})",
+      "reset": "Reset",
+      "newPreset": "New preset",
+      "savePreset": "Save as preset…",
+      "presetNameLabel": "Name",
+      "duplicateToEdit": "Duplicate to edit",
+      "invalidJson": "Not valid JSON.",
+      "notAnObject": "Must be a JSON object, not a list or a plain value.",
+      "presetTooLarge": "This preset is too large.",
+      "migratedNote": "Migrated from your old Sampling parameters."
     }
   },
   "shell": {

@@ -1,13 +1,23 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
-import { parseCleanupSampling } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
 import { getDb } from "../db.js";
 import { traceLlmFetch } from "../trace.js";
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
+
+/**
+ * Per-task context threaded into `createModel` (specs/llm-task-profiles.md
+ * §8.1). `sampling` is the resolver's already-merged verbatim sampling object
+ * (§8.3) — only `local-llm`'s entry reads it; every other provider ignores
+ * the parameter entirely.
+ */
+export interface LlmTaskContext {
+  task: string;
+  sampling: Record<string, unknown>;
+}
 
 /**
  * A cleanup/post-processing LLM backend. Mirrors the transcription
@@ -23,14 +33,20 @@ export interface LlmProvider {
   /**
    * Build (or return a cached) chat model. `modelId` is already stripped of the
    * provider prefix for prefixed providers; `apiKey` is `"local"` for local
-   * providers.
+   * providers. `taskContext` (§8.1) carries the resolver's per-task sampling
+   * params; only `local-llm`'s entry reads it.
    */
   createModel(
     modelId: string,
     apiKey: string,
+    taskContext?: LlmTaskContext,
   ): Promise<LanguageModel> | LanguageModel;
-  /** Per-model provider options merged into the cleanup `generateText` call. */
-  providerOptions?(modelId: string): CleanupProviderOptions | undefined;
+  /** Per-model provider options merged into the cleanup `generateText` call.
+   *  `reasoningEnabled` (§6.4, §7.3) comes from the resolved task profile. */
+  providerOptions?(
+    modelId: string,
+    reasoningEnabled: boolean,
+  ): CleanupProviderOptions | undefined;
   /** Warm the connection while the user is still speaking. */
   prewarm?(modelId: string): void;
 }
@@ -42,9 +58,22 @@ function stripGroqPrefix(modelId: string): string {
 /**
  * Reasoning-mode flags for Groq models that would otherwise emit visible
  * chain-of-thought or spend latency on reasoning we don't want during cleanup.
+ *
+ * Task-aware (specs/llm-task-profiles.md §7.3): `reasoningEnabled` comes from
+ * the resolved task profile (§6.4), not a cleanup-only assumption. The
+ * `false` branch stays **per-family** — `qwen/qwen3-32b` keeps `"none"`,
+ * `openai/gpt-oss-{20b,120b}` keep `"low"` — because those are not the same
+ * value; collapsing both families to one constant would silently downgrade
+ * gpt-oss's reasoning effort from `"low"` to `"none"` for every v1 task
+ * (all default `reasoningEnabled: false`) with no UI interaction and no
+ * changelog-worthy intent behind it. `reasoningEnabled: false` reproduces
+ * today's exact behavior for both model families, byte for byte; the `true`
+ * branch (`"medium"` for both) is new and reachable only via a future task
+ * profile or per-task override that sets `reasoningEnabled: true`.
  */
 export function groqCleanupProviderOptions(
   modelId: string,
+  reasoningEnabled: boolean,
 ): { groq: GroqLanguageModelOptions } | undefined {
   const shortId = stripGroqPrefix(modelId);
 
@@ -53,7 +82,7 @@ export function groqCleanupProviderOptions(
       return {
         groq: {
           reasoningFormat: "hidden",
-          reasoningEffort: "none",
+          reasoningEffort: reasoningEnabled ? "medium" : "none",
         },
       };
     case "openai/gpt-oss-20b":
@@ -61,7 +90,7 @@ export function groqCleanupProviderOptions(
       return {
         groq: {
           reasoningFormat: "hidden",
-          reasoningEffort: "low",
+          reasoningEffort: reasoningEnabled ? "medium" : "low",
         },
       };
     default:
@@ -156,7 +185,8 @@ const PROVIDERS: LlmProvider[] = [
       const { getGroqChatModel } = await import("../groq-http.js");
       return getGroqChatModel(modelId);
     },
-    providerOptions: (modelId) => groqCleanupProviderOptions(modelId),
+    providerOptions: (modelId, reasoningEnabled) =>
+      groqCleanupProviderOptions(modelId, reasoningEnabled),
     prewarm: (modelId) => {
       void import("../groq-http.js").then(({ prewarmGroqConnection }) =>
         prewarmGroqConnection(stripGroqPrefix(modelId)),
@@ -213,7 +243,7 @@ const PROVIDERS: LlmProvider[] = [
   {
     providerId: "local-llm",
     local: true,
-    createModel: async (modelId) => {
+    createModel: async (modelId, _apiKey, taskContext) => {
       const { createOpenAI } = await import("@ai-sdk/openai");
       const db = getDb();
       const urlRow = db
@@ -231,20 +261,20 @@ const PROVIDERS: LlmProvider[] = [
       const baseURL = urlRow.value.replace(/\/v1\/?$/, "");
       const apiKey = keyRow?.value || "local";
 
-      // Read fresh on every call — `createChatModel` builds a new model per
-      // request for this provider, so an edited setting takes effect at once.
-      const samplingRow = db
-        .prepare("SELECT value FROM settings WHERE key = 'cleanup_sampling'")
-        .get() as { value: string } | undefined;
-      const sampling = parseCleanupSampling(samplingRow?.value);
-
+      // No more direct `cleanup_sampling` read here — the caller already
+      // resolved this task's sampling params (`resolveTaskCall`,
+      // specs/llm-task-profiles.md §8.3) and hands them in via
+      // `taskContext.sampling`. A call site that doesn't pass `taskContext`
+      // gets no sampling merge, same as an empty object.
       return createOpenAI({
         apiKey,
         baseURL: `${baseURL}/v1`,
         // Always intercepted: this wrapper is what writes the trace log, and
         // it is the only point that sees the final post-merge request body.
         // With no sampling configured it forwards the body untouched.
-        fetch: createSamplingFetch(sampling),
+        fetch: createSamplingFetch(
+          (taskContext?.sampling ?? {}) as CleanupSampling,
+        ),
       }).chat(modelId);
     },
   },

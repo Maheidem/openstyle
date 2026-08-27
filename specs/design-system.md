@@ -144,7 +144,12 @@ blue/coral fences that didn't have a prior equivalent.
 Two colors are load-bearing signals in this system and must not leak into decoration:
 
 - **Accent-passive** (`#E8F1FC` tint / `#2563EB`–`#1D4ED8` ink family) — **only**
-  selected-nav state and identity/diarization-speaker chips.
+  selected-nav state, identity/diarization-speaker chips, and (added by
+  specs/llm-task-profiles.md §9.2, approved as part of that spec's brief) the
+  `Badge`'s new `passive` variant for a task's "Customized" params-assignment
+  chip (`components/ui/badge.tsx`) — a third, explicitly-approved consumer of
+  this fence, recorded here per this doc's own practice of tracking every
+  fence exception rather than letting them accumulate silently.
   - Landed in this pass: `.glass-nav-active` (globals.css) now uses
     `--accent-passive-tint` for background instead of the old neutral `--card`,
     both in the solid and `html.glass` variants, and in the

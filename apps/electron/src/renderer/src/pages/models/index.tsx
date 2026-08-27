@@ -1,3 +1,4 @@
+import type { LlmTaskId } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import type { AvailableModel } from "@renderer/lib/models";
 import { settingsQueryOptions } from "@renderer/lib/query";
@@ -13,14 +14,14 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
-import { CleanupSamplingDialog } from "./sampling-dialog";
+import { TaskProfilesSection } from "./task-profiles-section";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
 import { displayName } from "./utils";
@@ -49,7 +50,26 @@ export default function ModelsPage(): React.JSX.Element {
     string | null
   >(null);
   const [warmingOpen, setWarmingOpen] = useState(false);
-  const [samplingOpen, setSamplingOpen] = useState(false);
+  // Which task profile row is expanded — lifted here (rather than owned by
+  // TaskProfilesSection) so the cleanup PairSide's "Sampling parameters"
+  // link (§9.5) can jump straight to the cleanup row from outside the
+  // section.
+  const [expandedTask, setExpandedTask] = useState<LlmTaskId | null>(null);
+  const taskProfilesRef = useRef<HTMLDivElement>(null);
+  // Scrolling has to wait for the expanded row to actually be in the DOM —
+  // firing scrollIntoView in the same tick as setExpandedTask targets the
+  // still-collapsed section, then the row expands underneath it and shifts
+  // the layout. A pending flag defers the scroll to the effect that runs
+  // after the expand commits.
+  const [pendingScrollToCleanup, setPendingScrollToCleanup] = useState(false);
+  useEffect(() => {
+    if (!pendingScrollToCleanup) return;
+    taskProfilesRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    setPendingScrollToCleanup(false);
+  }, [pendingScrollToCleanup]);
 
   // -------------------------------------------------------------------------
   // Modal flow
@@ -180,9 +200,16 @@ export default function ModelsPage(): React.JSX.Element {
   };
 
   const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
-  // Sampling params only reach a server we build the request body for, and the
-  // dialog is advanced-only like the rest of this page.
-  const showSampling = advancedMode && m.defaultLlm?.provider === "local-llm";
+  // Every task row is meaningful regardless of the effective provider — the
+  // mapped-subset tier still applies temperature/max_tokens/top_p to cloud
+  // models (specs/llm-task-profiles.md §7, §9.1) — so this is advanced-only,
+  // not also gated on `local-llm` the way the retired sampling dialog was.
+  const showParams = advancedMode;
+
+  const onOpenCleanupParams = (): void => {
+    setExpandedTask("cleanup");
+    setPendingScrollToCleanup(true);
+  };
 
   // -------------------------------------------------------------------------
   // Render
@@ -216,10 +243,25 @@ export default function ModelsPage(): React.JSX.Element {
           onConfigureWarming={
             showMlxWarming ? () => setWarmingOpen(true) : undefined
           }
-          onConfigureSampling={
-            showSampling ? () => setSamplingOpen(true) : undefined
-          }
+          onConfigureSampling={showParams ? onOpenCleanupParams : undefined}
         />
+
+        {showParams && (
+          <div ref={taskProfilesRef}>
+            <TaskProfilesSection
+              taskAssignments={m.taskAssignments}
+              userPresets={m.userPresets}
+              configured={m.configured}
+              defaultLlm={m.defaultLlm}
+              cleanupSampling={m.cleanupSampling}
+              expandedTask={expandedTask}
+              onExpandedTaskChange={setExpandedTask}
+              onSaveAssignment={m.saveTaskAssignment}
+              onResetAssignment={m.resetTaskAssignment}
+              onSavePreset={m.saveUserPreset}
+            />
+          </div>
+        )}
 
         <KeysSection
           apiKeys={m.apiKeys}
@@ -243,15 +285,6 @@ export default function ModelsPage(): React.JSX.Element {
           blockedReason={m.mlxStatus?.blockedReason ?? null}
           onChange={m.saveMlxKeepAliveMinutes}
           onClose={() => setWarmingOpen(false)}
-        />
-      )}
-
-      {samplingOpen && (
-        <CleanupSamplingDialog
-          sampling={m.cleanupSampling}
-          onChange={m.saveCleanupSampling}
-          onReset={m.resetCleanupSampling}
-          onClose={() => setSamplingOpen(false)}
         />
       )}
 

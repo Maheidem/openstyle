@@ -7,9 +7,12 @@ import {
   cleanupIntensitySchema,
   cleanupOverallToneSchema,
   cleanupPersonalToneSchema,
-  cleanupSamplingSchema,
   cleanupWorkToneSchema,
   historyRetentionDaysSettingSchema,
+  LLM_PRESET_PARAMS_MAX_BYTES,
+  LLM_TASK_IDS,
+  llmParameterPresetsSettingSchema,
+  llmTaskAssignmentSchema,
   localLlmConfigSchema,
   meetingSummaryInstructionsSchema,
   normalizeOmlxRoot,
@@ -202,16 +205,53 @@ const settings = new Hono()
       if (!parsed.success) {
         return c.json({ error: "Invalid app assignments setting" }, 400);
       }
-    } else if (key === "cleanup_sampling") {
+    } else if (key === "llm_parameter_presets") {
       let parsedJson: unknown;
       try {
         parsedJson = JSON.parse(body.value);
       } catch {
-        return c.json({ error: "Invalid sampling setting" }, 400);
+        return c.json({ error: "Invalid parameter presets setting" }, 400);
       }
-      const parsed = cleanupSamplingSchema.safeParse(parsedJson);
+      const parsed = llmParameterPresetsSettingSchema.safeParse(parsedJson);
       if (!parsed.success) {
-        return c.json({ error: "Invalid sampling setting" }, 400);
+        return c.json({ error: "Invalid parameter presets setting" }, 400);
+      }
+      for (const preset of parsed.data.presets) {
+        if (
+          JSON.stringify(preset.params).length > LLM_PRESET_PARAMS_MAX_BYTES
+        ) {
+          return c.json({ error: `Preset "${preset.name}" is too large` }, 400);
+        }
+      }
+    } else if (key === "llm_task_assignments") {
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(body.value);
+      } catch {
+        return c.json({ error: "Invalid task assignments setting" }, 400);
+      }
+      // Reuses `parseLlmTaskAssignments`'s drop-unknown-keys behavior, but a
+      // PUT must still reject a body that is not JSON-object-shaped at all,
+      // or whose *known* keys fail their own schema outright — silently
+      // accepting a malformed known-task entry would let the UI PUT
+      // something it then can't read back.
+      if (
+        typeof parsedJson !== "object" ||
+        parsedJson === null ||
+        Array.isArray(parsedJson)
+      ) {
+        return c.json({ error: "Invalid task assignments setting" }, 400);
+      }
+      for (const [taskKey, entry] of Object.entries(
+        parsedJson as Record<string, unknown>,
+      )) {
+        if (!(LLM_TASK_IDS as readonly string[]).includes(taskKey)) continue;
+        if (!llmTaskAssignmentSchema.safeParse(entry).success) {
+          return c.json(
+            { error: `Invalid assignment for task "${taskKey}"` },
+            400,
+          );
+        }
       }
     } else if (key === "openai_stt_base_url") {
       const parsed = openaiSttBaseUrlSchema.safeParse(body.value);

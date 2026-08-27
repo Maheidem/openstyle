@@ -12,6 +12,7 @@
 
 import type { PostProcessParams } from "@openstyle/stt";
 import { postProcess } from "@openstyle/stt";
+import type { LlmTaskId } from "@openstyle/validations";
 
 /**
  * Rough token estimate (~4 chars/token), mirroring `@openstyle/stt`
@@ -27,6 +28,10 @@ export interface ChatCallRequest {
   system: string;
   prompt: string;
   maxOutputTokens: number;
+  /** Which task profile (specs/llm-task-profiles.md §3) this call resolves
+   *  through — Summarize and Enhance are the only two meeting features that
+   *  share this helper. */
+  taskId: Extract<LlmTaskId, "meetingSummarize" | "meetingEnhance">;
 }
 
 /** What a chat call returns. Token fields are 0 when unknown. */
@@ -51,20 +56,24 @@ export interface ChatCallResponse {
 export async function resolveDefaultChatCall(
   request: ChatCallRequest,
 ): Promise<ChatCallResponse> {
-  const [{ createChatModel, getDefaultModels }, { getLlmProvider }] =
+  const [{ createChatModel }, { getLlmProvider }, { resolveTaskCall }] =
     await Promise.all([
       import("../providers.js"),
       import("../llm/registry.js"),
+      import("../llm/task-profiles.js"),
     ]);
-  const llm = getDefaultModels().llm;
-  if (!llm) {
-    throw new Error(
-      "No AI model is set up yet. Pick one in Settings > Models.",
-    );
-  }
-  const model = await createChatModel(llm.provider, llm.model_id);
-  const providerOptions = getLlmProvider(llm.provider)?.providerOptions?.(
-    llm.model_id,
+  const resolved = await resolveTaskCall(request.taskId, {
+    // A no-op against meetingSummarize's flat profile budget (§3.2); this is
+    // what makes meetingEnhance's per-chunk number reach the wire.
+    autoMaxOutputTokens: request.maxOutputTokens,
+  });
+  const model = await createChatModel(resolved.provider, resolved.modelId, {
+    task: request.taskId,
+    sampling: resolved.samplingParams,
+  });
+  const providerOptions = getLlmProvider(resolved.provider)?.providerOptions?.(
+    resolved.modelId,
+    resolved.reasoningEnabled,
   ) as PostProcessParams["providerOptions"];
 
   let callError: unknown = null;
@@ -73,9 +82,11 @@ export async function resolveDefaultChatCall(
     text: request.prompt,
     system: request.system,
     prompt: request.prompt,
-    maxOutputTokens: request.maxOutputTokens,
+    temperature: resolved.temperature,
+    maxOutputTokens: resolved.maxOutputTokens,
     skipEmptyText: false,
     ...(providerOptions ? { providerOptions } : {}),
+    signal: AbortSignal.timeout(resolved.timeoutMs),
     onError: (err) => {
       callError = err;
     },
@@ -89,7 +100,7 @@ export async function resolveDefaultChatCall(
   let pricing: { input: number; output: number } | null = null;
   try {
     const { getModelCostCached } = await import("../../routes/models.js");
-    pricing = getModelCostCached(llm.provider, llm.model_id);
+    pricing = getModelCostCached(resolved.provider, resolved.modelId);
   } catch {
     // Cost is best-effort; a missing registry just reports null cost.
   }
@@ -98,8 +109,8 @@ export async function resolveDefaultChatCall(
     text: result.cleaned,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
-    provider: llm.provider,
-    model: llm.model_id,
+    provider: resolved.provider,
+    model: resolved.modelId,
     pricing,
   };
 }

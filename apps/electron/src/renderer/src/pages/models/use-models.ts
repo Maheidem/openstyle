@@ -1,5 +1,14 @@
-import type { CleanupSampling } from "@openstyle/validations";
-import { parseCleanupSampling } from "@openstyle/validations";
+import type {
+  CleanupSampling,
+  LlmParameterPreset,
+  LlmTaskAssignment,
+  LlmTaskAssignments,
+  LlmTaskId,
+} from "@openstyle/validations";
+import {
+  parseCleanupSampling,
+  parseLlmTaskAssignments,
+} from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
 import type {
   AvailableModel,
@@ -70,8 +79,16 @@ export interface UseModels {
   /** True once the editable form state has been seeded from persisted settings. */
   settingsSeeded: boolean;
   mlxKeepAliveMinutes: number;
-  /** Sampling params merged into every local-LLM request. `{}` sends nothing extra. */
+  /** The retired global sampling blob (`cleanup_sampling`) — read-only here,
+   *  kept only so `TaskProfilesSection` can show the "migrated from your old
+   *  Sampling parameters" note per the §12.7 read-time fallback (no writer
+   *  remains: the dialog that used to write this is deleted, §10). */
   cleanupSampling: CleanupSampling;
+  /** Per-task sampling assignments (specs/llm-task-profiles.md §5). */
+  taskAssignments: LlmTaskAssignments;
+  /** User-created parameter presets, stored (built-ins are merged in by the
+   *  section component, never stored here — §4.2). */
+  userPresets: LlmParameterPreset[];
 
   /** Local models with an in-flight delete, keyed `${engine ?? "whisper"}:${defId}`. */
   deletingKeys: Set<string>;
@@ -111,8 +128,12 @@ export interface UseModels {
   selectOmlxModel: (modelName: string) => Promise<void>;
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
-  saveCleanupSampling: (next: CleanupSampling) => void;
-  resetCleanupSampling: () => void;
+  saveTaskAssignment: (
+    taskId: LlmTaskId,
+    assignment: LlmTaskAssignment,
+  ) => void;
+  resetTaskAssignment: (taskId: LlmTaskId) => void;
+  saveUserPreset: (preset: LlmParameterPreset) => void;
   deleteProvider: (provider: string) => Promise<void>;
   reload: () => Promise<void>;
 }
@@ -230,6 +251,10 @@ export function useModels(): UseModels {
     DEFAULT_MLX_KEEP_ALIVE_MINUTES,
   );
   const [cleanupSampling, setCleanupSampling] = useState<CleanupSampling>({});
+  const [taskAssignments, setTaskAssignments] = useState<LlmTaskAssignments>(
+    {},
+  );
+  const [userPresets, setUserPresets] = useState<LlmParameterPreset[]>([]);
 
   // In-flight deletes — drive spinners on the delete buttons since deletion has
   // no server-reported status the way downloads do.
@@ -254,6 +279,18 @@ export function useModels(): UseModels {
     const cleanup = s[SETTINGS_KEYS.llmCleanup];
     if (cleanup) setLlmCleanup(cleanup === "true");
     setCleanupSampling(parseCleanupSampling(s[SETTINGS_KEYS.cleanupSampling]));
+    setTaskAssignments(
+      parseLlmTaskAssignments(s[SETTINGS_KEYS.llmTaskAssignments]),
+    );
+    try {
+      const rawPresets = s[SETTINGS_KEYS.llmParameterPresets];
+      const parsed = rawPresets ? JSON.parse(rawPresets) : null;
+      setUserPresets(
+        parsed && Array.isArray(parsed.presets) ? parsed.presets : [],
+      );
+    } catch {
+      setUserPresets([]);
+    }
     const rawMinutes = s[SETTINGS_KEYS.mlxAsrKeepAliveMinutes];
     if (rawMinutes) {
       const minutes = Number(rawMinutes);
@@ -602,25 +639,49 @@ export function useModels(): UseModels {
       .catch((err) => console.error("Failed to save MLX ASR keep-alive:", err));
   }, []);
 
-  // Persist the local-LLM sampling params. Stored as one JSON blob and read
-  // fresh by the server on every cleanup call, so there is nothing to warm.
-  const putCleanupSampling = useCallback((next: CleanupSampling) => {
-    setCleanupSampling(next);
+  // Persist one task's sampling assignment. The whole `llm_task_assignments`
+  // blob is stored under one setting key (§5.1), so every write rewrites the
+  // full map — mirrors `cleanup_sampling`'s old one-blob-per-PUT shape.
+  const putTaskAssignments = useCallback((next: LlmTaskAssignments) => {
+    setTaskAssignments(next);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.cleanupSampling },
+        param: { key: SETTINGS_KEYS.llmTaskAssignments },
         json: { value: JSON.stringify(next) },
       })
-      .catch((err) => console.error("Failed to save cleanup sampling:", err));
+      .catch((err) => console.error("Failed to save task assignments:", err));
   }, []);
 
-  // Reset clears the setting entirely rather than writing "safe" numbers: an
-  // empty object means the request body goes out exactly as the AI SDK built
-  // it, which is the only true escape from a bad combination.
-  const resetCleanupSampling = useCallback(
-    () => putCleanupSampling({}),
-    [putCleanupSampling],
+  const saveTaskAssignment = useCallback(
+    (taskId: LlmTaskId, assignment: LlmTaskAssignment) => {
+      putTaskAssignments({ ...taskAssignments, [taskId]: assignment });
+    },
+    [putTaskAssignments, taskAssignments],
   );
+
+  // Reset clears the task's assignment entirely (back to `{ mode: "auto" }`)
+  // rather than writing "safe" defaults — an absent/auto entry is the only
+  // true escape from a bad combination, and is byte-for-byte today's
+  // pre-feature behavior (§3.2).
+  const resetTaskAssignment = useCallback(
+    (taskId: LlmTaskId) => saveTaskAssignment(taskId, { mode: "auto" }),
+    [saveTaskAssignment],
+  );
+
+  // Save (create or overwrite) one named user preset. Built-ins are never
+  // written here (§4.2) — the id regex (`/^user_/`) is enforced server-side.
+  const saveUserPreset = useCallback((preset: LlmParameterPreset) => {
+    setUserPresets((prev) => {
+      const next = [...prev.filter((p) => p.id !== preset.id), preset];
+      getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.llmParameterPresets },
+          json: { value: JSON.stringify({ presets: next }) },
+        })
+        .catch((err) => console.error("Failed to save parameter preset:", err));
+      return next;
+    });
+  }, []);
 
   const deleteProvider = useCallback(
     async (provider: string) => {
@@ -682,8 +743,11 @@ export function useModels(): UseModels {
     setCleanup,
     saveMlxKeepAliveMinutes,
     cleanupSampling,
-    saveCleanupSampling: putCleanupSampling,
-    resetCleanupSampling,
+    taskAssignments,
+    userPresets,
+    saveTaskAssignment,
+    resetTaskAssignment,
+    saveUserPreset,
     deleteProvider,
     reload: loadData,
   };

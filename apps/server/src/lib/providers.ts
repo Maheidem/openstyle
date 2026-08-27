@@ -1,5 +1,6 @@
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
+import type { LlmTaskContext } from "./llm/registry.js";
 import { getLlmProvider } from "./llm/registry.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
@@ -57,6 +58,7 @@ export function getDefaultModels(): DefaultModels {
 export async function createChatModel(
   providerId: string,
   modelId: string,
+  taskContext?: LlmTaskContext,
 ): Promise<LanguageModel> {
   const provider = getLlmProvider(providerId);
   if (!provider) throw new Error(`Unsupported provider: ${providerId}`);
@@ -66,5 +68,9 @@ export async function createChatModel(
   if (!apiKey)
     throw new Error(`No API key configured for provider: ${providerId}`);
 
-  return provider.createModel(getChatModelId(providerId, modelId), apiKey);
+  return provider.createModel(
+    getChatModelId(providerId, modelId),
+    apiKey,
+    taskContext,
+  );
 }

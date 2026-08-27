@@ -20,6 +20,8 @@ export const SETTINGS_KEYS = {
   languageHotkeys: "language_hotkeys",
   languages: "languages",
   llmCleanup: "llm_cleanup",
+  llmParameterPresets: "llm_parameter_presets",
+  llmTaskAssignments: "llm_task_assignments",
   localLlmApiKey: "local_llm_api_key",
   localLlmUrl: "local_llm_url",
   meetingDiarizationEnabled: "meeting_diarization_enabled",

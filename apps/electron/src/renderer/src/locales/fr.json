@@ -555,7 +555,42 @@
     "deleteLocalMsg": "Supprimer <b>{{name}}</b> de {{phrase}}. Les poids sont supprimés de votre cache local ; vous pouvez les retélécharger plus tard.",
     "deleteProviderTitle": "Supprimer le fournisseur",
     "deleteProviderMsgBase": "Supprimer la clé API de <b>{{provider}}</b> ? Cela supprime aussi tous les modèles configurés pour ce fournisseur",
-    "deleteProviderCurrentSuffix": ", y compris un modèle que vous utilisez actuellement"
+    "deleteProviderCurrentSuffix": ", y compris un modèle que vous utilisez actuellement",
+    "taskProfiles": {
+      "eyebrow": "Où travaillent vos modèles",
+      "cleanup": {
+        "name": "Nettoyage",
+        "desc": "Réécritures rapides pendant que vous dictez."
+      },
+      "remix": {
+        "name": "Remix",
+        "desc": "Modifications rapides et l'agent du canevas."
+      },
+      "meetingSummarize": {
+        "name": "Résumé de réunion",
+        "desc": "Résumés détaillés après la fin d'une réunion."
+      },
+      "meetingEnhance": {
+        "name": "Amélioration de réunion",
+        "desc": "Nettoie le texte de la transcription après une réunion."
+      },
+      "assignmentAuto": "Automatique",
+      "assignmentCustomized": "Personnalisé",
+      "cloudPartialNote": "Modèle cloud : partiel",
+      "paramsLabel": "Paramètres",
+      "customOption": "Personnalisé…",
+      "modelOverrideLabel": "Modèle",
+      "modelOverrideDefault": "Utiliser par défaut ({{name}})",
+      "reset": "Réinitialiser",
+      "newPreset": "Nouveau préréglage",
+      "savePreset": "Enregistrer comme préréglage…",
+      "presetNameLabel": "Nom",
+      "duplicateToEdit": "Dupliquer pour modifier",
+      "invalidJson": "JSON non valide.",
+      "notAnObject": "Doit être un objet JSON, pas une liste ni une valeur simple.",
+      "presetTooLarge": "Ce préréglage est trop volumineux.",
+      "migratedNote": "Migré depuis vos anciens paramètres d'échantillonnage."
+    }
   },
   "shell": {
     "nav": {

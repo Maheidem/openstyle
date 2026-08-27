@@ -5,6 +5,7 @@ import { generateText } from "ai";
 import { isCleanupModelSupported } from "../routes/models.js";
 import { buildRemixPrompt } from "./editor/remix-prompts.js";
 import { getLlmProvider } from "./llm/registry.js";
+import { resolveTaskCall } from "./llm/task-profiles.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
 const log = createAppLogger("remix");
@@ -91,19 +92,27 @@ export async function runRemixTransform(
   // paragraph, in particular) which would quietly eat a repeated line from a
   // legitimately list-shaped result, and it swallows model errors into a
   // raw-text fallback this path must not take.
-  const providerOptions = getLlmProvider(llm.provider)?.providerOptions?.(
-    llm.model_id,
-  );
-  const result = await generateText({
-    model: await createChatModel(llm.provider, llm.model_id),
-    system,
-    prompt,
-    temperature: 0,
+  const resolved = await resolveTaskCall("remix", {
     // The budget is sized off the input, which is the right shape here too —
     // an edit is roughly as long as what it edits. "Expand" is the exception,
     // and the helper already leaves generous headroom.
-    maxOutputTokens: maxOutputTokensForCleanup(options.text),
+    autoMaxOutputTokens: maxOutputTokensForCleanup(options.text),
+  });
+  const providerOptions = getLlmProvider(resolved.provider)?.providerOptions?.(
+    resolved.modelId,
+    resolved.reasoningEnabled,
+  );
+  const result = await generateText({
+    model: await createChatModel(resolved.provider, resolved.modelId, {
+      task: "remix",
+      sampling: resolved.samplingParams,
+    }),
+    system,
+    prompt,
+    temperature: resolved.temperature,
+    maxOutputTokens: resolved.maxOutputTokens,
     ...(providerOptions ? { providerOptions } : {}),
+    abortSignal: AbortSignal.timeout(resolved.timeoutMs),
   });
   const usage: RemixTransformResult["usage"] = {
     inputTokens: result.usage.inputTokens,
