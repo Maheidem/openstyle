@@ -93,7 +93,11 @@ import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { HotkeyRecorder } from "./hotkey-recorder";
-import { normalizeAccelerator } from "./hotkey-utils";
+import {
+  diffLanguageHotkeys,
+  isLanguageHotkeyTaken,
+  normalizeAccelerator,
+} from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
@@ -386,6 +390,12 @@ let hotkeyRecorder: HotkeyRecorder | null = null;
 /** Own listener process — native binaries only take one accelerator each. */
 let remixKeyListener: NativeKeyListener | null = null;
 let remixPressed = false;
+/** Per-language dictation hotkeys: lang code -> its native listener. */
+const languageKeyListeners = new Map<string, NativeKeyListener>();
+/** Lang code -> normalized accelerator currently registered for it. */
+const languageHotkeyAccels = new Map<string, string>();
+/** Which hotkey (if any) started the in-progress dictation session. */
+let activeDictationLanguage: string | null = null;
 /** User-configured accel (may differ from what's listening while parked/off). */
 let remixHotkeyPreference: string | undefined;
 let currentRemixAccel: string | null = null;
@@ -2663,8 +2673,8 @@ app.whenReady().then(async () => {
   });
 
   if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
-    ipcMain.on("e2e:trigger-hotkey-down", handleNativeHotkeyDown);
-    ipcMain.on("e2e:trigger-hotkey-up", handleNativeHotkeyUp);
+    ipcMain.on("e2e:trigger-hotkey-down", () => handleDictationHotkeyDown());
+    ipcMain.on("e2e:trigger-hotkey-up", () => handleDictationHotkeyUp());
   }
 
   // IPC: Linux system setup (input-group access for the hotkey listener and
@@ -3197,6 +3207,7 @@ app.whenReady().then(async () => {
     if (accel !== currentHotkeyAccel) scheduleHotkeyRegistration(configured);
     // Wait for server settings — don't spawn a listener just to tear it down.
     applyRemixSettings(settings);
+    applyLanguageHotkeySettings(settings);
   });
 
   // Start microphone activity monitoring
@@ -3238,6 +3249,22 @@ app.whenReady().then(async () => {
     void getServerSettings().then((settings) => {
       if (!settings) return;
       applyRemixSettings(settings);
+    });
+  });
+
+  // Language hotkeys: the settings UI pushes the whole map directly (no
+  // reload round-trip needed — it already has the value it just persisted).
+  ipcMain.on(
+    "language-hotkeys:update",
+    (_event, map: Record<string, string>) => {
+      scheduleLanguageHotkeysRegistration(map);
+    },
+  );
+
+  ipcMain.on("language-hotkeys:reload", () => {
+    void getServerSettings().then((settings) => {
+      if (!settings) return;
+      applyLanguageHotkeySettings(settings);
     });
   });
 
@@ -4142,25 +4169,27 @@ function hotkeyModeFromSettings(
   return settings[SETTINGS_KEYS.hotkeyMode] === "toggle" ? "toggle" : "hold";
 }
 
-function sendHotkeyDown(): void {
+function sendHotkeyDown(language?: string | null): void {
   const missingPermission = getMissingDictationPermission();
   if (missingPermission) {
     hotkeyPressed = false;
+    activeDictationLanguage = null;
     clearHotkeyStuckWatchdog();
     void showRequiredPermissionDialog(missingPermission);
     return;
   }
   showPill();
+  const payload = language ? { language } : undefined;
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
-      mainWindow?.webContents.send("hotkey:down");
-      settingsWindow?.webContents.send("hotkey:down");
+      mainWindow?.webContents.send("hotkey:down", payload);
+      settingsWindow?.webContents.send("hotkey:down", payload);
     });
     return;
   }
-  mainWindow?.webContents.send("hotkey:down");
-  settingsWindow?.webContents.send("hotkey:down");
+  mainWindow?.webContents.send("hotkey:down", payload);
+  settingsWindow?.webContents.send("hotkey:down", payload);
 }
 
 function sendHotkeyUp(): void {
@@ -4399,17 +4428,27 @@ function armHotkeyStuckWatchdog(): void {
       "Hold-mode hotkey saw no key-up for 5 minutes; forcing release.",
     );
     hotkeyPressed = false;
+    activeDictationLanguage = null;
     sendHotkeyUp();
   }, HOTKEY_STUCK_TIMEOUT_MS);
 }
 
-function handleNativeHotkeyDown(): void {
+/**
+ * Shared press state machine for every dictation-starting hotkey — the
+ * default hotkey (`language` undefined) and every per-language hotkey
+ * (§5, specs/dictation-language-hotkeys.md) alike. `hotkeyPressed` remains
+ * the single flag gating whether a dictation session is in progress, so only
+ * one can run at a time regardless of which hotkey started it.
+ */
+function handleDictationHotkeyDown(language?: string): void {
   if (hotkeyActivationMode === "toggle") {
     if (!hotkeyPressed) {
       hotkeyPressed = true;
-      sendHotkeyDown();
+      activeDictationLanguage = language ?? null;
+      sendHotkeyDown(activeDictationLanguage);
     } else {
       hotkeyPressed = false;
+      activeDictationLanguage = null;
       sendHotkeyUp();
     }
     return;
@@ -4417,16 +4456,25 @@ function handleNativeHotkeyDown(): void {
 
   if (!hotkeyPressed) {
     hotkeyPressed = true;
+    activeDictationLanguage = language ?? null;
     armHotkeyStuckWatchdog();
-    sendHotkeyDown();
+    sendHotkeyDown(activeDictationLanguage);
   }
+  // hotkeyPressed already true: a second hotkey (default or another
+  // language) pressed mid-recording is a no-op in hold mode, same as today's
+  // "press the same hotkey twice" case — only one dictation session at a
+  // time, matching the single hotkeyPressed flag's existing semantics.
 }
 
-function handleNativeHotkeyUp(): void {
+function handleDictationHotkeyUp(language?: string): void {
   if (hotkeyActivationMode === "toggle") return;
 
-  if (hotkeyPressed) {
+  // Only the hotkey that started the session ends it — a stray key-up from a
+  // *different* language hotkey (e.g. the user's finger slipped) is ignored
+  // rather than ending someone else's hold.
+  if (hotkeyPressed && (language ?? null) === activeDictationLanguage) {
     hotkeyPressed = false;
+    activeDictationLanguage = null;
     clearHotkeyStuckWatchdog();
     sendHotkeyUp();
   }
@@ -4536,6 +4584,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
       keyListener = null;
     }
     hotkeyPressed = false;
+    activeDictationLanguage = null;
     clearHotkeyStuckWatchdog();
     globalShortcut.unregisterAll();
 
@@ -4556,8 +4605,8 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     let nativeError = "";
     const listener = new NativeKeyListener({
       hotkey: accel,
-      onKeyDown: handleNativeHotkeyDown,
-      onKeyUp: handleNativeHotkeyUp,
+      onKeyDown: () => handleDictationHotkeyDown(),
+      onKeyUp: () => handleDictationHotkeyUp(),
       onError: (error) => {
         nativeError = error;
         hotkeyLog.error(`Native key listener error: ${error}`);
@@ -4644,6 +4693,120 @@ async function registerHotkey(hotkey?: string): Promise<void> {
   }
 }
 
+/**
+ * Reconcile the running per-language hotkey listeners against a desired
+ * language→accelerator map (§5, specs/dictation-language-hotkeys.md). Same
+ * pattern as `registerHotkey` — "stop, then rebuild" — scaled to a map
+ * instead of a single instance, via `diffLanguageHotkeys` (hotkey-utils.ts).
+ */
+async function registerLanguageHotkeys(
+  map: Record<string, string> | undefined,
+): Promise<void> {
+  const desired = map ?? {};
+  const { toRemove, toAdd } = diffLanguageHotkeys(
+    desired,
+    languageHotkeyAccels,
+  );
+
+  for (const lang of toRemove) {
+    languageKeyListeners.get(lang)?.stop();
+    languageKeyListeners.delete(lang);
+    languageHotkeyAccels.delete(lang);
+    if (activeDictationLanguage === lang) {
+      activeDictationLanguage = null;
+      if (hotkeyPressed) {
+        hotkeyPressed = false;
+        clearHotkeyStuckWatchdog();
+        sendHotkeyUp();
+      }
+    }
+  }
+
+  for (const [lang, hotkey] of toAdd) {
+    const normalized = isValidAccelerator(hotkey)
+      ? normalizeAccelerator(hotkey)
+      : null;
+    if (!normalized) continue; // invalid stored value; skip silently (§8)
+
+    const taken = isLanguageHotkeyTaken(normalized, {
+      dictationAccel: currentHotkeyAccel,
+      remixAccel: currentRemixAccel,
+      claimedLanguageAccels: languageHotkeyAccels.values(),
+    });
+    if (taken) {
+      hotkeyLog.warn(
+        `Language hotkey "${normalized}" for "${lang}" conflicts with an existing binding; disabled.`,
+      );
+      continue;
+    }
+
+    const listener = new NativeKeyListener({
+      hotkey: normalized,
+      onKeyDown: () => handleDictationHotkeyDown(lang),
+      onKeyUp: () => handleDictationHotkeyUp(lang),
+      onError: (error) =>
+        hotkeyLog.error(`Language hotkey listener error (${lang}): ${error}`),
+      onPermanentFailure: () => {
+        if (languageKeyListeners.get(lang) !== listener) return;
+        hotkeyLog.error(
+          `Language hotkey listener for "${lang}" permanently failed; disabled.`,
+        );
+        listener.stop();
+        languageKeyListeners.delete(lang);
+        languageHotkeyAccels.delete(lang);
+        if (activeDictationLanguage === lang) {
+          activeDictationLanguage = null;
+          if (hotkeyPressed) {
+            hotkeyPressed = false;
+            clearHotkeyStuckWatchdog();
+            sendHotkeyUp();
+          }
+        }
+      },
+    });
+    languageKeyListeners.set(lang, listener);
+    languageHotkeyAccels.set(lang, normalized);
+
+    const started = await listener.start();
+    // Another registerLanguageHotkeys call may have replaced this entry
+    // while we were awaiting — if so, abandon this attempt.
+    if (languageKeyListeners.get(lang) !== listener) {
+      listener.stop();
+      continue;
+    }
+    if (!started) {
+      hotkeyLog.warn(
+        `Language hotkey listener unavailable for "${lang}"; disabled.`,
+      );
+      listener.stop();
+      languageKeyListeners.delete(lang);
+      languageHotkeyAccels.delete(lang);
+    }
+  }
+}
+
+function scheduleLanguageHotkeysRegistration(
+  map: Record<string, string> | undefined,
+): void {
+  void registerLanguageHotkeys(map).catch((err) => {
+    hotkeyLog.error(
+      `Language hotkey registration failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
+
+/** Parse the `language_hotkeys` setting and reconcile the listeners against it. */
+function applyLanguageHotkeySettings(settings: Record<string, string>): void {
+  const raw = settings[SETTINGS_KEYS.languageHotkeys];
+  let map: Record<string, string> = {};
+  try {
+    if (raw) map = JSON.parse(raw);
+  } catch {
+    map = {};
+  }
+  scheduleLanguageHotkeysRegistration(map);
+}
+
 // Clean up key listener and mic listener on quit
 app.on("will-quit", () => {
   audioPlaybackController.restoreSync();
@@ -4656,6 +4819,11 @@ app.on("will-quit", () => {
     remixKeyListener.stop();
     remixKeyListener = null;
   }
+  for (const listener of languageKeyListeners.values()) {
+    listener.stop();
+  }
+  languageKeyListeners.clear();
+  languageHotkeyAccels.clear();
   if (remixBarFollowTimer) {
     clearInterval(remixBarFollowTimer);
     remixBarFollowTimer = null;

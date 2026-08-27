@@ -45,3 +45,67 @@ export function normalizeAccelerator(accel: string): string {
     })
     .join("+");
 }
+
+// ---------------------------------------------------------------------------
+// Language hotkeys (per-language dictation hotkeys) — pure helpers.
+//
+// Kept here rather than inline in index.ts so they're unit-testable: this
+// file has no `electron` import (index.ts does, which makes it unimportable
+// outside a running Electron process), matching why key-listener.ts and
+// hotkey-recorder.ts are already separate from index.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Diff a desired language→accelerator map against the accelerators currently
+ * registered, mirroring `registerHotkey`'s own "stop, then rebuild" shape
+ * (index.ts) scoped to one map entry at a time instead of one global.
+ *
+ * `toRemove` is every currently-registered language whose desired
+ * accelerator changed or is no longer present at all (removed from the map).
+ * `toAdd` is every desired entry that isn't already registered unchanged —
+ * i.e. every entry the caller still needs to attempt to (re)register after
+ * tearing down `toRemove`. An entry present in both `desired` and `current`
+ * with the identical accelerator is left alone ("unchanged, still running").
+ */
+export function diffLanguageHotkeys(
+  desired: Record<string, string>,
+  current: ReadonlyMap<string, string>,
+): { toRemove: string[]; toAdd: Array<[lang: string, accel: string]> } {
+  const toRemove: string[] = [];
+  const unchanged = new Set<string>();
+  for (const [lang, accel] of current) {
+    if (desired[lang] === accel) {
+      unchanged.add(lang);
+    } else {
+      toRemove.push(lang);
+    }
+  }
+  const toAdd: Array<[string, string]> = [];
+  for (const [lang, accel] of Object.entries(desired)) {
+    if (!unchanged.has(lang)) toAdd.push([lang, accel]);
+  }
+  return { toRemove, toAdd };
+}
+
+/**
+ * Whether a normalized accelerator is already claimed by the default
+ * dictation hotkey, the remix hotkey, or another already-registered language
+ * hotkey. Dictation and remix win on a clash; so does every language hotkey
+ * already claimed — same "first writer wins, log and skip" shape
+ * `registerRemixHotkey` uses against the dictation hotkey (index.ts).
+ */
+export function isLanguageHotkeyTaken(
+  normalized: string,
+  opts: {
+    dictationAccel: string | null;
+    remixAccel: string | null;
+    claimedLanguageAccels: Iterable<string>;
+  },
+): boolean {
+  if (normalized === opts.dictationAccel) return true;
+  if (normalized === opts.remixAccel) return true;
+  for (const claimed of opts.claimedLanguageAccels) {
+    if (normalized === claimed) return true;
+  }
+  return false;
+}

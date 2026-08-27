@@ -49,6 +49,12 @@ export class Streamer {
   private readonly callbacks: StreamerCallbacks;
   private readonly wsUrl: string;
   private currentContext: string | null = null;
+  /**
+   * Language pin for the next `"start"` message — set once per recording by
+   * `startCapture`, scoped to that one recording rather than persisted like
+   * `currentContext`. Set by a language hotkey; null for the default hotkey.
+   */
+  private pendingLanguage: string | null = null;
   private connectionState: StreamerConnectionState = "disconnected";
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -102,11 +108,15 @@ export class Streamer {
     return this.pcmSampleCount > 0;
   }
 
-  async startCapture(stream: MediaStream): Promise<void> {
+  async startCapture(
+    stream: MediaStream,
+    language?: string | null,
+  ): Promise<void> {
     this.capturing = true;
     this.pendingChunks = [];
     this.pcmChunks = [];
     this.pcmSampleCount = 0;
+    this.pendingLanguage = language ?? null;
     this.sessionStartPending = true;
     this.ensureConnected();
     this.startPendingSession();
@@ -258,7 +268,11 @@ export class Streamer {
       return;
     }
     this.ws.send(
-      JSON.stringify({ type: "start", context: this.currentContext }),
+      JSON.stringify({
+        type: "start",
+        context: this.currentContext,
+        language: this.pendingLanguage,
+      }),
     );
     this.sessionStartPending = false;
   }

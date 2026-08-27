@@ -133,11 +133,18 @@ const api = {
     ipcRenderer.invoke("logs:open-folder"),
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke("open:external", url),
-  onHotkeyDown: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
+  onHotkeyDown: (
+    callback: (payload?: { language?: string }) => void,
+  ): (() => void) => {
+    const handler = (_e: unknown, payload?: { language?: string }): void =>
+      callback(payload);
     ipcRenderer.on("hotkey:down", handler);
     return () => ipcRenderer.removeListener("hotkey:down", handler);
   },
+  updateLanguageHotkeys: (map: Record<string, string>): void =>
+    ipcRenderer.send("language-hotkeys:update", map),
+  reloadLanguageHotkeys: (): void =>
+    ipcRenderer.send("language-hotkeys:reload"),
   onHotkeyUp: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey:up", handler);

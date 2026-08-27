@@ -17,6 +17,7 @@ export const SETTINGS_KEYS = {
   // Legacy singular language key. Kept for one-time migration reads only;
   // the canonical setting is now `languages` (a JSON array of ISO codes).
   language: "language",
+  languageHotkeys: "language_hotkeys",
   languages: "languages",
   llmCleanup: "llm_cleanup",
   localLlmApiKey: "local_llm_api_key",

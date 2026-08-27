@@ -347,13 +347,16 @@ interface UseHotkeyRecorderReturn {
 
 export interface UseHotkeyRecorderOptions {
   /**
-   * Which hotkey is being recorded. Both use the same native recorder, but
-   * only "dictation" hands the captured accelerator back to
-   * `stopHotkeyRecording`, which is what re-registers the dictation listener.
-   * The remix listener is re-registered from its own setting instead, so
-   * recording one must not overwrite the other.
+   * Which hotkey is being recorded. All targets share the same native
+   * recorder, but only "dictation" hands the captured accelerator back to
+   * `stopHotkeyRecording`, which is what re-registers *the primary dictation*
+   * listener with it — the one binding `stopHotkeyRecording(accel)` is
+   * hard-wired to apply. Every other target ("remix", "language") stops the
+   * recorder with no accelerator and owns persisting + re-registering its own
+   * binding entirely through `onRecord` instead, so recording one can never
+   * overwrite a different hotkey.
    */
-  target?: "dictation" | "remix";
+  target?: "dictation" | "remix" | "language";
   /**
    * Rejects a completed combo (e.g. it's already the other feature's hotkey).
    * A blocked combo is not handed to `onRecord`; the previously registered
@@ -484,12 +487,13 @@ export function useHotkeyRecorder(
     if (accel) {
       onRecordRef.current(accel);
     }
-    // Re-register the global listener with the new accelerator (single IPC).
-    // The remix key only stops the recorder here: main re-reads that one
-    // from settings, so re-registering is `onRecord`'s job — it is the only
-    // caller that knows when the write has actually landed.
+    // Re-register the global listener with the new accelerator (single IPC),
+    // but only for the primary dictation hotkey. Every other target (remix,
+    // language) only stops the recorder here: main re-reads that binding from
+    // settings/its own IPC channel, so re-registering is `onRecord`'s job —
+    // it is the only caller that knows when the write has actually landed.
     window.api?.stopHotkeyRecording(
-      targetRef.current === "remix" ? undefined : accel,
+      targetRef.current === "dictation" ? accel : undefined,
     );
     recordingActiveRef.current = false;
     setState("idle");

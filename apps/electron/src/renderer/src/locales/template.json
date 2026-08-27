@@ -5,6 +5,7 @@
     "cancel": "Cancel",
     "save": "Save",
     "change": "Change",
+    "clear": "Clear",
     "granted": "Granted",
     "checking": "Checking",
     "needed": "Needed",
@@ -216,7 +217,10 @@
       "sound": "Sound feedback",
       "soundDesc": "Soft chimes at the start and end of recording.",
       "conflict": "This is already your Remix hotkey. Pick a different combination.",
-      "needsModifier": "Hotkeys need a modifier or side mouse button"
+      "needsModifier": "Hotkeys need a modifier or side mouse button",
+      "languageHotkey": "Dictate in {{language}}",
+      "languageHotkeyDesc": "Optional — pins this dictation to {{language}}, skipping auto-detect.",
+      "languageHotkeyConflict": "This combination is already in use. Pick a different one."
     },
     "display": {
       "theme": "Theme",

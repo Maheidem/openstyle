@@ -5,6 +5,7 @@
     "cancel": "Annuler",
     "save": "Enregistrer",
     "change": "Modifier",
+    "clear": "Effacer",
     "granted": "Accordé",
     "checking": "Vérification",
     "needed": "Requis",
@@ -180,7 +181,10 @@
       "sound": "Retour sonore",
       "soundDesc": "Carillons doux au début et à la fin de l'enregistrement.",
       "conflict": "C'est déjà votre raccourci Remix. Choisissez une autre combinaison.",
-      "needsModifier": "Les raccourcis nécessitent une touche modificatrice ou un bouton latéral de souris"
+      "needsModifier": "Les raccourcis nécessitent une touche modificatrice ou un bouton latéral de souris",
+      "languageHotkey": "Dicter en {{language}}",
+      "languageHotkeyDesc": "Facultatif — fixe cette dictée en {{language}}, sans détection automatique.",
+      "languageHotkeyConflict": "Cette combinaison est déjà utilisée. Choisissez-en une autre."
     },
     "display": {
       "theme": "Thème",

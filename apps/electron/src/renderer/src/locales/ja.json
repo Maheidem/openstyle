@@ -5,6 +5,7 @@
     "cancel": "キャンセル",
     "save": "保存",
     "change": "変更",
+    "clear": "クリア",
     "granted": "許可済み",
     "checking": "確認中...",
     "needed": "必要",
@@ -180,7 +181,10 @@
       "sound": "サウンドフィードバック",
       "soundDesc": "録音の開始時と終了時に短いチャイム音を鳴らします。",
       "conflict": "これはすでにRemixのホットキーです。別の組み合わせを選んでください。",
-      "needsModifier": "ホットキーには修飾キーまたはマウスのサイドボタンが必要です"
+      "needsModifier": "ホットキーには修飾キーまたはマウスのサイドボタンが必要です",
+      "languageHotkey": "{{language}}で音声入力",
+      "languageHotkeyDesc": "任意 — この音声入力を{{language}}に固定し、自動検出をスキップします。",
+      "languageHotkeyConflict": "この組み合わせはすでに使用されています。別の組み合わせを選んでください。"
     },
     "display": {
       "theme": "テーマ",

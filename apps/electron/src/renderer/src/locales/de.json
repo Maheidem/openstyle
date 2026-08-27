@@ -5,6 +5,7 @@
     "cancel": "Abbrechen",
     "save": "Speichern",
     "change": "Ändern",
+    "clear": "Löschen",
     "granted": "Gewährt",
     "checking": "Prüfen",
     "needed": "Erforderlich",
@@ -180,7 +181,10 @@
       "sound": "Klangfeedback",
       "soundDesc": "Sanfte Töne zu Beginn und Ende der Aufnahme.",
       "conflict": "Das ist bereits Ihre Remix-Tastenkombination. Wählen Sie eine andere Kombination.",
-      "needsModifier": "Tastenkombinationen benötigen eine Modifikatortaste oder Maustaste"
+      "needsModifier": "Tastenkombinationen benötigen eine Modifikatortaste oder Maustaste",
+      "languageHotkey": "Auf {{language}} diktieren",
+      "languageHotkeyDesc": "Optional — legt dieses Diktat auf {{language}} fest und überspringt die automatische Erkennung.",
+      "languageHotkeyConflict": "Diese Kombination wird bereits verwendet. Wählen Sie eine andere."
     },
     "display": {
       "theme": "Design",

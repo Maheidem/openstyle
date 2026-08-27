@@ -5,6 +5,7 @@
     "cancel": "Cancelar",
     "save": "Guardar",
     "change": "Cambiar",
+    "clear": "Borrar",
     "granted": "Concedido",
     "checking": "Verificando",
     "needed": "Necesario",
@@ -180,7 +181,10 @@
       "sound": "Retroalimentación de sonido",
       "soundDesc": "Campanillas suaves al inicio y al final de la grabación.",
       "conflict": "Este ya es tu atajo de Remix. Elige otra combinación.",
-      "needsModifier": "Los atajos necesitan una tecla modificadora o botón lateral del ratón"
+      "needsModifier": "Los atajos necesitan una tecla modificadora o botón lateral del ratón",
+      "languageHotkey": "Dictar en {{language}}",
+      "languageHotkeyDesc": "Opcional: fija este dictado en {{language}}, omitiendo la detección automática.",
+      "languageHotkeyConflict": "Esta combinación ya está en uso. Elige otra."
     },
     "display": {
       "theme": "Tema",

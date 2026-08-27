@@ -449,6 +449,14 @@ export default function AppPage(): React.JSX.Element {
     setPillNoticeState(notice);
   }, []);
   const [canRetry, setCanRetry] = useState(false);
+  // Pinned-language badge shown on the pill while a language-hotkey
+  // dictation is active (§6, specs/dictation-language-hotkeys.md). Set once
+  // at startRecording (uppercased ISO code, e.g. "PT"), cleared in
+  // resetDictation — not derived per-render from a ref, so it can't flicker
+  // off mid-session and doesn't need to be read again after commit.
+  const [pillLanguageLabel, setPillLanguageLabel] = useState<string | null>(
+    null,
+  );
 
   const supportsSessionTransportRef = useRef(false);
   const recordingSessionUsesTransportRef = useRef(false);
@@ -459,6 +467,21 @@ export default function AppPage(): React.JSX.Element {
   } | null>(null);
   const failedTranscriptionErrorRef = useRef("Transcription failed");
   const lastRecordingDurationRef = useRef(0);
+
+  // ---- Per-language dictation hotkeys (specs/dictation-language-hotkeys.md) ----
+  // Set from the hotkey-down IPC payload the instant it arrives — before any
+  // state-machine branching decides whether to start a new recording.
+  const pinnedLanguageRef = useRef<string | null>(null);
+  // Captured once, at the top of startRecording, into a value that travels
+  // with that one recording. Must not be re-read from pinnedLanguageRef at
+  // request-build time: a REST fallback can fire well after a *later*
+  // recording has already overwritten pinnedLanguageRef (see startRecording).
+  const recordingLanguageRef = useRef<string | null>(null);
+  // Paired with streamResolverRef's lifecycle (set/read/nulled together) so
+  // the three Streamer-callback call sites that resolve a pending commit —
+  // outside commitRecording's own closure — can still recover the language
+  // that commit was pinned to.
+  const streamLanguageRef = useRef<string | null>(null);
 
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -742,13 +765,17 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- REST fallback (full recorded WAV kept by the streamer) ----
   const restFallbackTranscribe = useCallback(
-    (errorMsg: string): Promise<TranscribeResult> | null => {
+    (
+      errorMsg: string,
+      language: string | null,
+    ): Promise<TranscribeResult> | null => {
       const wavBlob = streamerRef.current?.getWavBlob() ?? null;
       if (!wavBlob) return null;
       const headers: Record<string, string> = {
         "Content-Type": "audio/wav",
         "x-audio-duration-ms": String(lastRecordingDurationRef.current),
       };
+      if (language) headers["x-dictation-language"] = language;
       if (appContextRef.current)
         headers["x-app-context"] = encodeAppContext(appContextRef.current);
       if (queueRef.current.length > 0 || drainingRef.current)
@@ -783,8 +810,10 @@ export default function AppPage(): React.JSX.Element {
       const resolver = streamResolverRef.current;
       if (!resolver) return false;
       streamResolverRef.current = null;
+      const language = streamLanguageRef.current;
+      streamLanguageRef.current = null;
       setPillNotice("retrying");
-      const fallback = restFallbackTranscribe(message);
+      const fallback = restFallbackTranscribe(message, language);
       if (fallback) {
         void fallback.then(resolver);
       } else {
@@ -845,6 +874,8 @@ export default function AppPage(): React.JSX.Element {
           const resolver = streamResolverRef.current;
           if (!resolver) return;
           streamResolverRef.current = null;
+          const language = streamLanguageRef.current;
+          streamLanguageRef.current = null;
           // A short clip can stream to a live provider that finalizes before it
           // has recognized any words (a cold Soniox session, say), so
           // the streaming final comes back empty even though audio was captured.
@@ -852,7 +883,7 @@ export default function AppPage(): React.JSX.Element {
           // still has buffered — the same clip transcribes fine one-shot. If no
           // WAV exists (genuine silence) the empty result stands.
           if (!text.trim()) {
-            const fallback = restFallbackTranscribe("");
+            const fallback = restFallbackTranscribe("", language);
             if (fallback) {
               void fallback.then(resolver);
               return;
@@ -1156,8 +1187,16 @@ export default function AppPage(): React.JSX.Element {
 
   const retryFailedTranscription = useCallback(() => {
     if (stateRef.current !== "error") return;
+    // Not one of the four call sites §6 of the spec threads dictationLanguage
+    // through — this is a manual "Retry" click on the error card, reached only
+    // while `state === "error"`, i.e. no `startRecording` has run since the
+    // failed attempt (a fresh hotkey press from "error" starts a new recording
+    // and leaves this state entirely, taking the Retry button with it). So
+    // recordingLanguageRef.current is still exactly the language that failed
+    // attempt was pinned to.
     const retry = restFallbackTranscribe(
       failedTranscriptionErrorRef.current || "Transcription failed",
+      recordingLanguageRef.current,
     );
     if (!retry) {
       setCanRetry(false);
@@ -1236,6 +1275,7 @@ export default function AppPage(): React.JSX.Element {
   const resetDictation = useCallback(() => {
     setPillNotice(null);
     setCanRetry(false);
+    setPillLanguageLabel(null);
     setPillState("idle");
     setPendingCount(0);
     wantsMicRef.current = false;
@@ -1336,6 +1376,16 @@ export default function AppPage(): React.JSX.Element {
       pendingCommitRef.current = false;
       streamSessionErrorRef.current = null;
       lastRecordingDurationRef.current = 0;
+      // Capture the pinned language once, here, into a value that travels
+      // with this one recording — never re-read pinnedLanguageRef after this
+      // point (see the ref's own comment for why: a delayed REST fallback
+      // must not inherit a later dictation's pin).
+      recordingLanguageRef.current = pinnedLanguageRef.current;
+      setPillLanguageLabel(
+        recordingLanguageRef.current
+          ? recordingLanguageRef.current.toUpperCase()
+          : null,
+      );
       setPillNotice(null);
       setCanRetry(false);
       setElapsedLabel(null);
@@ -1442,7 +1492,10 @@ export default function AppPage(): React.JSX.Element {
 
         startListening(stream);
         try {
-          await getStreamer().startCapture(stream);
+          await getStreamer().startCapture(
+            stream,
+            recordingLanguageRef.current,
+          );
         } catch {}
       } catch (err) {
         if (err instanceof RecorderSupersededError) return;
@@ -1471,6 +1524,12 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Commit recording ----
   const commitRecording = useCallback(async () => {
+    // Read once, here, into a local that travels with every request this
+    // commit can produce — recordingLanguageRef itself is only ever written
+    // at the top of startRecording, so by the time a *later* recording could
+    // overwrite it, this commit's requests must already have closed over
+    // this local value (see recordingLanguageRef's own comment).
+    const dictationLanguage = recordingLanguageRef.current;
     wantsMicRef.current = false;
     recordingActiveRef.current = false;
 
@@ -1529,7 +1588,7 @@ export default function AppPage(): React.JSX.Element {
         setPillNotice("retrying");
         setPendingCount((count) => count + 1);
         const fallback =
-          restFallbackTranscribe(transportFailure) ??
+          restFallbackTranscribe(transportFailure, dictationLanguage) ??
           Promise.resolve({
             raw: "",
             cleaned: "",
@@ -1555,12 +1614,17 @@ export default function AppPage(): React.JSX.Element {
       setPendingCount((c) => c + 1);
       const transcribePromise = new Promise<TranscribeResult>((resolve) => {
         streamResolverRef.current = resolve;
+        streamLanguageRef.current = dictationLanguage;
         // Server-side commit timeouts fire at 12s; if no final arrived by
         // 15s the stream is dead — salvage via REST with the recorded WAV.
         setTimeout(() => {
           if (streamResolverRef.current === resolve) {
             streamResolverRef.current = null;
-            const fallback = restFallbackTranscribe("Transcription timed out");
+            streamLanguageRef.current = null;
+            const fallback = restFallbackTranscribe(
+              "Transcription timed out",
+              dictationLanguage,
+            );
             if (fallback) {
               void fallback.then(resolve);
             } else {
@@ -1621,6 +1685,7 @@ export default function AppPage(): React.JSX.Element {
       "Content-Type": "audio/wav",
       "x-audio-duration-ms": String(recordingDuration),
     };
+    if (dictationLanguage) headers["x-dictation-language"] = dictationLanguage;
     if (appContextRef.current)
       headers["x-app-context"] = encodeAppContext(appContextRef.current);
     if (isSubsequent) headers["x-skip-post-process"] = "true";
@@ -2271,7 +2336,8 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Hotkey handlers ----
   useEffect(() => {
-    const removeDown = window.api.onHotkeyDown(() => {
+    const removeDown = window.api.onHotkeyDown((payload) => {
+      pinnedLanguageRef.current = payload?.language ?? null;
       // Dictation is the primary use of this pill; a remix card sitting in
       // front of it (most likely one the user has already read and moved on
       // from) gets out of the way rather than blocking the press.
@@ -3327,6 +3393,23 @@ export default function AppPage(): React.JSX.Element {
                   </button>
                 </span>
 
+                {!showRemixCard &&
+                  pillLanguageLabel &&
+                  (state === "recording" || state === "transcribing") && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: "0.02em",
+                        color: waveColor,
+                        opacity: 0.85,
+                        marginInlineStart: 4,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {pillLanguageLabel}
+                    </span>
+                  )}
                 {!showRemixCard && waveform}
               </span>
 

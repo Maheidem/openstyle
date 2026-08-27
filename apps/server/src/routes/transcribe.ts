@@ -4,7 +4,10 @@ import { Hono } from "hono";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import { formatError } from "../lib/format-error.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
-import { getLanguagesSetting } from "../lib/language.js";
+import {
+  getLanguagesSetting,
+  resolveLanguageOverride,
+} from "../lib/language.js";
 import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { canRunMlxAsr, startMlxInBackground } from "../lib/mlx-asr/server.js";
@@ -110,7 +113,19 @@ const transcribeRoute = new Hono()
 
     const voiceProvider = defaults.voice.provider;
     const voiceModel = defaults.voice.model_id;
-    const effectiveLanguages = languages;
+
+    // A language-hotkey dictation pins the request to one language, overriding
+    // languages[0] and auto-detect alike. `languages` is already normalized
+    // lowercase (normalizeLanguageList, cloud-config.ts), so match case here
+    // rather than assuming the header arrives pre-normalized.
+    const languageOverride = c.req
+      .header("x-dictation-language")
+      ?.trim()
+      .toLowerCase();
+    const effectiveLanguages = resolveLanguageOverride(
+      languageOverride,
+      languages,
+    );
     const primaryLanguage = effectiveLanguages[0];
 
     const provider = getProvider(voiceProvider);
@@ -134,6 +149,9 @@ const transcribeRoute = new Hono()
     try {
       const bias = resolveAsrVocabularyBias(voiceProvider, voiceModel);
       log.debug(`bias=${JSON.stringify(bias)}`);
+      log.debug(
+        `languages=${JSON.stringify(languages)} override=${languageOverride ?? "none"} effective=${JSON.stringify(effectiveLanguages)}`,
+      );
       const t0 = Date.now();
       const result = await provider.transcribe({
         audio: audioData,

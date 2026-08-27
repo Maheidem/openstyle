@@ -172,6 +172,11 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.defaultRemixHotkey ?? getDefaultRemixHotkey(),
   );
   const [languages, setLanguages] = useState<string[]>([]);
+  // Language code -> bound accelerator. Only languages with a bound hotkey
+  // appear as keys (specs/dictation-language-hotkeys.md §7).
+  const [languageHotkeys, setLanguageHotkeys] = useState<
+    Record<string, string>
+  >({});
   const [translateMode, setTranslateMode] = useState(false);
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
@@ -445,7 +450,9 @@ export default function SettingsPage(): React.JSX.Element {
     startRecording: startHotkeyRecording,
     cancelRecording: cancelHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded, {
-    isBlocked: (accel) => acceleratorsEqual(accel, remixHotkey),
+    isBlocked: (accel) =>
+      acceleratorsEqual(accel, remixHotkey) ||
+      Object.values(languageHotkeys).some((a) => acceleratorsEqual(accel, a)),
   });
 
   const {
@@ -459,7 +466,9 @@ export default function SettingsPage(): React.JSX.Element {
     cancelRecording: cancelRemixHotkeyRecording,
   } = useHotkeyRecorder(handleRemixHotkeyRecorded, {
     target: "remix",
-    isBlocked: (accel) => acceleratorsEqual(accel, hotkey),
+    isBlocked: (accel) =>
+      acceleratorsEqual(accel, hotkey) ||
+      Object.values(languageHotkeys).some((a) => acceleratorsEqual(accel, a)),
   });
 
   const queryClient = useQueryClient();
@@ -484,6 +493,13 @@ export default function SettingsPage(): React.JSX.Element {
       setRemixHotkey(s[SETTINGS_KEYS.remixHotkey]);
     setRemixBarEnabled(s[SETTINGS_KEYS.remixBarEnabled] !== "false");
     setLanguages(parseLanguagesSetting(s));
+    if (s[SETTINGS_KEYS.languageHotkeys]) {
+      try {
+        setLanguageHotkeys(JSON.parse(s[SETTINGS_KEYS.languageHotkeys]));
+      } catch {
+        setLanguageHotkeys({});
+      }
+    }
     if (s[SETTINGS_KEYS.translateMode] === "true") setTranslateMode(true);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
     setPillCancel(normalizePillCancelMode(s[SETTINGS_KEYS.pillCancelButton]));
@@ -608,6 +624,35 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
+  // Pushes the map straight to the main process (no reload round-trip — this
+  // is the value it just persisted) alongside the server write, mirroring
+  // how the other Electron-only hotkey settings are wired.
+  const persistLanguageHotkeys = useCallback((next: Record<string, string>) => {
+    setLanguageHotkeys(next);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.languageHotkeys },
+        json: { value: JSON.stringify(next) },
+      })
+      .catch(() => {});
+    window.api?.updateLanguageHotkeys(next);
+  }, []);
+
+  const handleLanguageHotkeyRecorded = useCallback(
+    (code: string, accelerator: string) => {
+      persistLanguageHotkeys({ ...languageHotkeys, [code]: accelerator });
+    },
+    [languageHotkeys, persistLanguageHotkeys],
+  );
+
+  const handleLanguageHotkeyClear = useCallback(
+    (code: string) => {
+      const { [code]: _removed, ...rest } = languageHotkeys;
+      persistLanguageHotkeys(rest);
+    },
+    [languageHotkeys, persistLanguageHotkeys],
+  );
+
   const handleLanguagesChange = useCallback(
     (next: string[]) => {
       const normalized = normalizeLanguageList(next);
@@ -620,8 +665,24 @@ export default function SettingsPage(): React.JSX.Element {
         .catch(() => {});
       // Translate mode requires exactly one language; disable it otherwise.
       if (normalized.length !== 1 && translateMode) persistTranslateMode(false);
+
+      // Prune hotkeys bound to languages no longer configured — same
+      // remove-implies-unset rule translate mode already follows above.
+      const pruned = Object.fromEntries(
+        Object.entries(languageHotkeys).filter(([code]) =>
+          normalized.includes(code),
+        ),
+      );
+      if (Object.keys(pruned).length !== Object.keys(languageHotkeys).length) {
+        persistLanguageHotkeys(pruned);
+      }
     },
-    [translateMode, persistTranslateMode],
+    [
+      translateMode,
+      persistTranslateMode,
+      languageHotkeys,
+      persistLanguageHotkeys,
+    ],
   );
 
   const handleOutputModeChange = useCallback((value: string) => {
@@ -943,7 +1004,12 @@ export default function SettingsPage(): React.JSX.Element {
                     {(invalidReleaseNotice || blockedNotice) && (
                       <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
                         {blockedNotice
-                          ? t("settings.recording.conflict")
+                          ? // isBlocked now covers remix AND every bound language
+                            // hotkey (§7/§8 closed the reverse direction too), so
+                            // this can no longer name one specific binding —
+                            // generic copy, same reasoning as the language row's
+                            // own conflict message.
+                            t("settings.recording.languageHotkeyConflict")
                           : t("settings.recording.needsModifier")}
                       </div>
                     )}
@@ -1075,6 +1141,31 @@ export default function SettingsPage(): React.JSX.Element {
                 />
               </Row>
 
+              {languages.length > 1 &&
+                languages.map((code) => (
+                  <LanguageHotkeyRow
+                    key={code}
+                    code={code}
+                    label={
+                      languageOptions.find((o) => o.code === code)?.label ??
+                      code
+                    }
+                    value={languageHotkeys[code]}
+                    isBlocked={(accel) =>
+                      acceleratorsEqual(accel, hotkey) ||
+                      acceleratorsEqual(accel, remixHotkey) ||
+                      languages.some(
+                        (other) =>
+                          other !== code &&
+                          languageHotkeys[other] &&
+                          acceleratorsEqual(accel, languageHotkeys[other]),
+                      )
+                    }
+                    onRecorded={handleLanguageHotkeyRecorded}
+                    onClear={handleLanguageHotkeyClear}
+                  />
+                ))}
+
               <Row
                 label={t("settings.recording.outputMode")}
                 desc={t("settings.recording.outputModeDesc")}
@@ -1162,7 +1253,10 @@ export default function SettingsPage(): React.JSX.Element {
                     </Button>
                     {remixBlockedNotice && (
                       <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {t("settings.remix.conflict")}
+                        {/* isBlocked now covers dictation AND every bound
+                            language hotkey, so this can no longer name one
+                            specific binding — generic copy. */}
+                        {t("settings.recording.languageHotkeyConflict")}
                       </div>
                     )}
                   </div>
@@ -1487,6 +1581,129 @@ function Row({
       </div>
       <div className="min-w-0">{children}</div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-language dictation hotkeys (specs/dictation-language-hotkeys.md §7)
+// ---------------------------------------------------------------------------
+
+/**
+ * One row per configured language, shown only when the user has more than
+ * one (§7). Each needs its own `useHotkeyRecorder` instance — a hook, so it
+ * can't be called in a loop body — hence its own component.
+ */
+function LanguageHotkeyRow({
+  code,
+  label,
+  value,
+  isBlocked,
+  onRecorded,
+  onClear,
+  last,
+}: {
+  code: string;
+  label: string;
+  value: string | undefined;
+  isBlocked: (accelerator: string) => boolean;
+  onRecorded: (code: string, accelerator: string) => void;
+  onClear: (code: string) => void;
+  last?: boolean;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+
+  const handleRecorded = useCallback(
+    (accelerator: string) => onRecorded(code, accelerator),
+    [code, onRecorded],
+  );
+  const {
+    state: recorderState,
+    liveModifiers,
+    capturedCombo,
+    canSaveRecording,
+    needsModifierOrMouseButton,
+    blockedNotice,
+    startRecording: startLanguageHotkeyRecording,
+    cancelRecording: cancelLanguageHotkeyRecording,
+  } = useHotkeyRecorder(handleRecorded, { target: "language", isBlocked });
+
+  const liveKeys = liveModifiers.map(keyDisplayLabel);
+  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
+  const captureHint = needsModifierOrMouseButton
+    ? "Add a modifier or side mouse button · Esc to cancel"
+    : canSaveRecording
+      ? "Release to save · Esc to cancel"
+      : "Press a modifier or side mouse button... · Esc to cancel";
+
+  return (
+    <Row
+      last={last}
+      label={t("settings.recording.languageHotkey", { language: label })}
+      desc={t("settings.recording.languageHotkeyDesc", { language: label })}
+    >
+      {recorderState === "idle" ? (
+        <div className="relative inline-flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={startLanguageHotkeyRecording}
+            className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
+          >
+            <Keyboard className="text-muted-foreground size-4 shrink-0" />
+            {value ? (
+              <>
+                <KeyComboDisplay keys={formatAcceleratorKeys(value)} />
+                <span className="text-muted-foreground ml-1 text-xs">
+                  {t("common.change")}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground text-sm">
+                {t("common.change")}
+              </span>
+            )}
+          </Button>
+          {value && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onClear(code)}
+              className="text-muted-foreground"
+            >
+              {t("common.clear")}
+            </Button>
+          )}
+          {blockedNotice && (
+            <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] left-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+              {t("settings.recording.languageHotkeyConflict")}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
+          <Keyboard className="text-primary h-4 w-4 shrink-0" />
+          {draftKeys.length > 0 ? (
+            <>
+              <KeyComboDisplay keys={draftKeys} variant="dim" />
+              <span className="text-muted-foreground text-xs">
+                {captureHint}
+              </span>
+            </>
+          ) : (
+            <span className="text-muted-foreground animate-pulse text-sm">
+              {captureHint}
+            </span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={cancelLanguageHotkeyRecording}
+            className="ml-1"
+          >
+            {t("common.cancel")}
+          </Button>
+        </div>
+      )}
+    </Row>
   );
 }
 

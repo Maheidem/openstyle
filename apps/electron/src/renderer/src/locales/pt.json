@@ -5,6 +5,7 @@
     "cancel": "Cancelar",
     "save": "Salvar",
     "change": "Alterar",
+    "clear": "Limpar",
     "granted": "Concedido",
     "checking": "Verificando...",
     "needed": "Necessário",
@@ -180,7 +181,10 @@
       "sound": "Feedback sonoro",
       "soundDesc": "Sons suaves no início e fim da gravação.",
       "conflict": "Este já é o seu atalho do Remix. Escolha outra combinação.",
-      "needsModifier": "Atalhos precisam de uma tecla modificadora"
+      "needsModifier": "Atalhos precisam de uma tecla modificadora",
+      "languageHotkey": "Ditar em {{language}}",
+      "languageHotkeyDesc": "Opcional — fixa este ditado em {{language}}, pulando a detecção automática.",
+      "languageHotkeyConflict": "Esta combinação já está em uso. Escolha outra."
     },
     "display": {
       "theme": "Tema",

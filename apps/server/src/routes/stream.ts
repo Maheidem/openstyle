@@ -6,6 +6,7 @@ import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import {
   getLanguagesSetting,
   getTranslateModeSetting,
+  resolveLanguageOverride,
 } from "../lib/language.js";
 import {
   postProcess,
@@ -46,6 +47,12 @@ const stream = new Hono().get(
     /** Fingerprint of the settings the current upstream session was built with. */
     let upstreamConfigKey: string | null = null;
     let appContext: string | null = null;
+    // Per-recording language pin from a language hotkey (the "start" message's
+    // `language` field), normalized (trimmed, lowercased). Reset to null only
+    // by a fresh "start" — a mid-recording reconnect (onClose → connectUpstream)
+    // does not send a new "start", so the pin survives that reconnect, which is
+    // correct: nothing should change the pinned language mid-recording.
+    let languageOverride: string | null = null;
     const effectiveAppContext = (): string | null =>
       resolveAppContextForCleanup(appContext);
     let audioDurationMs = 0;
@@ -78,7 +85,10 @@ const stream = new Hono().get(
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
-      const languages = getLanguagesSetting();
+      const languages = resolveLanguageOverride(
+        languageOverride,
+        getLanguagesSetting(),
+      );
       const translate = getTranslateModeSetting();
       const bias = resolveAsrVocabularyBias(
         voice.provider,
@@ -468,6 +478,7 @@ const stream = new Hono().get(
           type: string;
           context?: string | null;
           audioDurationMs?: number;
+          language?: string;
         };
         try {
           msg = JSON.parse(
@@ -489,6 +500,10 @@ const stream = new Hono().get(
             audioDurationMs = 0;
             commitTime = 0;
             appContext = msg.context ?? null;
+            languageOverride =
+              typeof msg.language === "string" && msg.language.trim()
+                ? msg.language.trim().toLowerCase()
+                : null;
             pendingAudioChunks = [];
             pendingChunksDropped = false;
             pendingCommit = false;

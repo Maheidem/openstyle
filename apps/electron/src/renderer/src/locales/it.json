@@ -5,6 +5,7 @@
     "cancel": "Annulla",
     "save": "Salva",
     "change": "Modifica",
+    "clear": "Rimuovi",
     "granted": "Consentito",
     "checking": "Verifica in corso...",
     "needed": "Necessario",
@@ -180,7 +181,10 @@
       "sound": "Feedback sonoro",
       "soundDesc": "Suoni leggeri all'inizio e alla fine della registrazione.",
       "conflict": "Questa è già la tua scorciatoia Remix. Scegli un'altra combinazione.",
-      "needsModifier": "Le scorciatoie necessitano di un tasto modificatore"
+      "needsModifier": "Le scorciatoie necessitano di un tasto modificatore",
+      "languageHotkey": "Detta in {{language}}",
+      "languageHotkeyDesc": "Facoltativo: blocca questa dettatura su {{language}}, saltando il rilevamento automatico.",
+      "languageHotkeyConflict": "Questa combinazione è già in uso. Scegline un'altra."
     },
     "display": {
       "theme": "Tema",

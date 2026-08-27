@@ -5,6 +5,7 @@ import {
   buildRewritePrompt,
   resolveBaseCleanupPrompt,
 } from "../src/lib/editor/prompts.js";
+import { resolveLanguageOverride } from "../src/lib/language.js";
 
 describe("buildLanguageBlock", () => {
   it("keeps the source language for auto-detect instead of translating", () => {
@@ -49,6 +50,26 @@ describe("buildLanguageBlock", () => {
     // "auto" is filtered out; a lone real code falls to the single-language path.
     const block = buildLanguageBlock(["auto", "es"]);
     expect(block).toContain(
+      "Return the final edited text in the same language and script.",
+    );
+  });
+
+  it("routes a multi-language user into the single-language branch when pinned by a language hotkey", () => {
+    // A PT language-hotkey dictation for a user configured with ["en", "pt"]:
+    // effectiveLanguages becomes exactly [override] (resolveLanguageOverride,
+    // language.ts), which must produce the identical constraint a naturally
+    // single-configured-language user gets — proving the reuse claim in
+    // specs/dictation-language-hotkeys.md §4a rather than just asserting it.
+    const effectiveLanguages = resolveLanguageOverride("pt", ["en", "pt"]);
+    expect(effectiveLanguages).toEqual(["pt"]);
+
+    const pinnedBlock = buildLanguageBlock(effectiveLanguages);
+    const naturalSingleLanguageBlock = buildLanguageBlock(["pt"]);
+    const unpinnedMultiLanguageBlock = buildLanguageBlock(["en", "pt"]);
+
+    expect(pinnedBlock).toBe(naturalSingleLanguageBlock);
+    expect(pinnedBlock).not.toBe(unpinnedMultiLanguageBlock);
+    expect(pinnedBlock).toContain(
       "Return the final edited text in the same language and script.",
     );
   });

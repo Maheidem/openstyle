@@ -130,7 +130,7 @@ describe("Streamer reconnects an active capture", () => {
       providerCategory: "byok",
     });
     expect(firstSocket.sent).toContainEqual(
-      JSON.stringify({ type: "start", context: null }),
+      JSON.stringify({ type: "start", context: null, language: null }),
     );
 
     const pcm = new Int16Array([12, -24, 48]).buffer;
@@ -151,7 +151,7 @@ describe("Streamer reconnects an active capture", () => {
     });
 
     expect(secondSocket.sent).toContainEqual(
-      JSON.stringify({ type: "start", context: null }),
+      JSON.stringify({ type: "start", context: null, language: null }),
     );
     expect(
       secondSocket.sent.some((message) => message instanceof ArrayBuffer),
@@ -165,5 +165,29 @@ describe("Streamer reconnects an active capture", () => {
       new Int16Array([12, -24, 48]),
     );
     expect(streamer.isConnected()).toBe(true);
+  });
+
+  it("threads a per-recording language pin into the start message", async () => {
+    streamer = new Streamer("http://localhost:3000", "", {
+      onConfig: vi.fn(),
+      onReady: vi.fn(),
+      onFinal: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+
+    await streamer.startCapture({} as MediaStream, "pt");
+    socket.message({
+      type: "config",
+      streaming: true,
+      sessionTransport: true,
+      providerCategory: "byok",
+    });
+
+    expect(socket.sent).toContainEqual(
+      JSON.stringify({ type: "start", context: null, language: "pt" }),
+    );
   });
 });

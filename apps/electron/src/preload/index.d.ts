@@ -77,9 +77,13 @@ declare global {
       onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
-      onHotkeyDown: (callback: () => void) => () => void;
+      onHotkeyDown: (
+        callback: (payload?: { language?: string }) => void,
+      ) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onPillCancel: (callback: () => void) => () => void;
+      updateLanguageHotkeys: (map: Record<string, string>) => void;
+      reloadLanguageHotkeys: () => void;
       reloadRemixHotkey: () => void;
       pasteRemixResult: (text: string) => Promise<boolean>;
       onRemixDown: (callback: () => void) => () => void;

@@ -57,6 +57,26 @@ export function getLanguagesSetting(): string[] {
 }
 
 /**
+ * Membership-guarded language override: a per-dictation pin (from a
+ * language hotkey) is only honored when it's one of the user's currently
+ * configured `languages`. Falls back to the unmodified list on a stale
+ * binding (a language removed from settings after the hotkey was pressed),
+ * a malformed/hand-crafted value, or when no override was given — same
+ * fail-closed posture throughout, no error surfaced to the caller.
+ *
+ * Shared by both dictation-language-hotkey call sites: the REST transcribe
+ * route's `x-dictation-language` header (`routes/transcribe.ts`) and the
+ * streaming route's `"start"` message `language` field (`routes/stream.ts`)
+ * — same substitution, same guard, one tested implementation.
+ */
+export function resolveLanguageOverride(
+  override: string | null | undefined,
+  languages: string[],
+): string[] {
+  return override && languages.includes(override) ? [override] : languages;
+}
+
+/**
  * Whether translate mode is enabled. Translate mode only applies when exactly
  * one language is resolved (the cloud enforces the same rule); with zero or
  * multiple languages there is no single target to enforce, so translate is off.
