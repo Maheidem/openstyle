@@ -608,6 +608,37 @@ describe("POST /api/meetings/:id/diarize", () => {
       speakerCount: 1,
     });
   });
+
+  it("refreshes transcript.md on disk with the new speaker labels", async () => {
+    // Root-cause regression test: the standalone diarize pass persisted
+    // speaker_label to the DB but never rewrote the meeting's exported
+    // transcript.md, so the on-disk file kept showing plain "Them" forever
+    // — only re-transcribing or enhancing (which do call
+    // writeTranscriptMarkdown) would ever pick up the new labels.
+    const diarJson = JSON.stringify([
+      { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 1 },
+    ]);
+    __setMeetingsTestOverrides({
+      diarizeDeps: fakeDiarizeDeps({ runStdout: diarJson }),
+    });
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+
+    // transcript.md lives in the shared fixture audioDir and isn't reset
+    // between tests, so seed it with a known-stale placeholder rather than
+    // relying on whatever the previous test happened to leave behind.
+    const transcriptPath = join(audioDir, "transcript.md");
+    writeFileSync(transcriptPath, "STALE-PLACEHOLDER-CONTENT", "utf8");
+
+    const res = await app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+
+    const after = readFileSync(transcriptPath, "utf8");
+    expect(after).not.toContain("STALE-PLACEHOLDER-CONTENT");
+    expect(after).toMatch(/Them 1:/);
+  });
 });
 
 describe("POST /api/meetings/:id/summarize", () => {
@@ -758,6 +789,42 @@ describe("POST /api/meetings/:id/enhance", () => {
       )
       .get() as { enhanced_text: string };
     expect(row.enhanced_text).toBe("garbled text here");
+  });
+
+  it("writes enhanced text only to transcript-enhanced.md, never to transcript.md", async () => {
+    // §6.8 invariant: transcript.md is the RAW ASR file and must never be
+    // touched by Enhance, regardless of which route triggers the write.
+    // The enhanced rendering goes exclusively to the sibling file.
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
+      )
+      .run();
+    __setMeetingsTestOverrides({
+      enhance: async () => {
+        getDb()
+          .prepare("UPDATE meeting_segments SET enhanced_text = ? WHERE id = ?")
+          .run("garbled text here", "m1:mic:0");
+        return { correctedCount: 1 };
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+
+    const raw = readFileSync(join(audioDir, "transcript.md"), "utf8");
+    expect(raw).toContain("garbled txt here");
+    expect(raw).not.toContain("garbled text here");
+
+    const enhanced = readFileSync(
+      join(audioDir, "transcript-enhanced.md"),
+      "utf8",
+    );
+    expect(enhanced).toContain("garbled text here");
   });
 
   it("500s and reports the message when the enhance pass throws", async () => {

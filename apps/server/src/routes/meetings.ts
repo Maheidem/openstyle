@@ -797,6 +797,13 @@ const meetings = new Hono()
         .all(id) as unknown as { speaker_label: string }[];
       const labeledCount = counts.length;
       const speakerCount = new Set(counts.map((r) => r.speaker_label)).size;
+      // The new speaker_label values just committed above must reach the
+      // on-disk transcript.md (and transcript-enhanced.md if an Enhance
+      // pass already ran) — same refresh /enhance does below. Without this
+      // the standalone "Identify speakers" action leaves the DB and the
+      // exported markdown disagreeing indefinitely, since nothing else
+      // rewrites these files after this route returns.
+      writeTranscriptMarkdown(id, audioDir);
       return c.json({ ok: true, labeledCount, speakerCount });
     } catch (err) {
       // Defense-in-depth, matching runTranscribeJob's call site: in normal

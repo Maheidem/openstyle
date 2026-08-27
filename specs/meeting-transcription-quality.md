@@ -864,10 +864,20 @@ background job:
    bare `s.text` it renders today — the export doesn't distinguish
    enhanced from raw per line (no visual marker), matching how it already
    doesn't distinguish diarized from undiarized beyond the label itself.~~
-   `/:id/diarize` does **not** gain a markdown-rewrite call — diarization
+   ~~`/:id/diarize` does **not** gain a markdown-rewrite call — diarization
    only ever changes the speaker label, which markdown already renders
    correctly from `speaker_label` without a re-write; this is
-   Enhance-specific because `text` itself is what's changing.
+   Enhance-specific because `text` itself is what's changing.~~ **Also
+   superseded, 2026-08-27 (real-world finding):** that claim only held for
+   the diarization step running *inside* `runTranscribeJob`, which already
+   calls `writeTranscriptMarkdown` right after. It does not hold for the
+   standalone `POST /:id/diarize` route, which runs after transcription has
+   already completed and exported `transcript.md` — nothing else re-writes
+   that file afterward. A meeting diarized via the standalone action showed
+   `Them-N` labels in the UI (live DB reads) while the on-disk
+   `transcript.md` kept rendering plain `Them` indefinitely. `/:id/diarize`
+   now calls `writeTranscriptMarkdown(id, audioDir)` on success too, same as
+   `/:id/enhance`.
 
 ### 6.5 Auto-run setting
 
