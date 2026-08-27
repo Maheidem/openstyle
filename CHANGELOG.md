@@ -1,4 +1,40 @@
 # Changelog
+## 2.4.0
+
+### New Features ✨
+
+#### Meetings
+
+- Speaker naming with context-driven suggestions and merge (+ per-meeting context field) by @Maheidem in [9db04b73](https://github.com/Maheidem/openstyle/commit/9db04b73118287cef2cb67ae8f20cb19772ffa4e)
+- Transcription quality package — vocab-leak filter, meeting language resolution, segment merging, LLM enhance by @Maheidem in [96eba47f](https://github.com/Maheidem/openstyle/commit/96eba47f34cf2b650fb6eed89b7cd54e78ca8f76)
+
+#### Other
+
+- (dictation) Per-language dictation hotkeys with pinned language and cleanup hint by @Maheidem in [9589a32b](https://github.com/Maheidem/openstyle/commit/9589a32b01628c0ea5126813e47dfd63b521e2ec)
+- (llm) Per-task profiles and parameter presets with raw JSON editing by @Maheidem in [79e6c49a](https://github.com/Maheidem/openstyle/commit/79e6c49a7b0d49ad2c38e6f1a22cb7e30b415935)
+
+### Bug Fixes 🐛
+
+#### Meetings
+
+- Flexible speaker-label column and clarify global summary-instructions popover by @Maheidem in [763f8c82](https://github.com/Maheidem/openstyle/commit/763f8c829d7c6e5a16b4dd2e8b63599efda01f2d)
+- Require self-identifying evidence for speaker-name suggestions by @Maheidem in [72266a81](https://github.com/Maheidem/openstyle/commit/72266a817cbb41b9c8217ed6b4ee0ba20b061d44)
+- Refresh transcript markdown after standalone diarize/enhance by @Maheidem in [411d409c](https://github.com/Maheidem/openstyle/commit/411d409cbbd19e4f059052bb51d97146fd197dbd)
+- Raise summary output budget so map/reduce calls aren't truncated by @Maheidem in [5abf0947](https://github.com/Maheidem/openstyle/commit/5abf09474a75ab6773e9f0fdb5762210d165f388)
+- Dev-mode diarization resolver always took packaged branch by @Maheidem in [de9928ea](https://github.com/Maheidem/openstyle/commit/de9928ea8fb8e00ce34f981b9fe35180229acb44)
+- Stop stale empty transcript cache after re-transcribe by @Maheidem in [4aeb0089](https://github.com/Maheidem/openstyle/commit/4aeb00897f24a27cbcbdee64387cffbf2d0dbdc7)
+
+#### Other
+
+- (dictation) Strip vocabulary-prompt echoes from dictation output (shared leak filter) by @Maheidem in [a65a67fa](https://github.com/Maheidem/openstyle/commit/a65a67fae97d9fbf78c5c7a97374b7552d324a92)
+- (llm) Use repetition_penalty in built-in presets and add read-time fallback for legacy sampling settings by @Maheidem in [08c10213](https://github.com/Maheidem/openstyle/commit/08c102133e2059bcb1b4fd2149f652e4a45204b3)
+
+### Documentation 📚
+
+- Fix leak-span enumeration in transcription-quality acceptance results by @Maheidem in [cd5c7293](https://github.com/Maheidem/openstyle/commit/cd5c72933083bf2d275947643641dd8f88a5ff32)
+- Record real-audio acceptance results for transcription-quality by @Maheidem in [b9b5403d](https://github.com/Maheidem/openstyle/commit/b9b5403db4f80c763874a379fbb6d40e50cb60eb)
+- Add post-2.3.0 roadmap research report by @Maheidem in [af1694ac](https://github.com/Maheidem/openstyle/commit/af1694ac23b5ad910610017c52fb9c7daacc71a6)
+
 ## 2.3.0
 
 ### New Features ✨
