@@ -1117,24 +1117,111 @@ work on this particular meeting, so the "many tiny anchorless segments"
 problem statement is only partly borne out here; the gain is real but
 modest, concentrated on the system channel. Step 5 is fully verified.
 
-Steps 3 and 4 remain **unverified, not failed**, for an infrastructure
-reason unrelated to this code: the local oMLX/Qwen3-ASR server was
-unreachable for the transcribe leg of that same run (confirmed via log —
-`chunk mic[0] attempt 1/3 failed: fetch failed` as the very first
-transcriber line, meaning the server was already down before any audio was
-sent, and all chunks failed identically from chunk 0 — this rules out
-Phase B's larger merged payloads as the cause, since an OOM from oversized
-chunks would show some successes before a crash partway through). A later
-Phase C E2E pass ran against this same meeting with the ASR server reachable
-again, but it enhanced the meeting's existing (pre-Phase-A/B, legacy) text
-via the LLM — it did not re-run `POST /:id/transcribe`, so it exercises
-neither the leak filter's persist-time path nor the language-resolution
-probe, and isn't a substitute for steps 3-4. Re-running steps 3-4 verbatim
-(probe path included) against a fresh temp-DB copy is the one acceptance
-step this package ships without a direct, first-hand confirmation on real
-audio — the mechanisms it depends on (the leak filter, the language
-pinning, the probe) are each covered by passing unit/integration tests, just
-not this specific end-to-end real-audio composition of them.
+**Steps 3 and 4, re-run and verified, 2026-08-27 (oMLX server back up).**
+This pass exercised the piece the run above couldn't: `meetings.language`
+was left `NULL` (not pre-set to `'pt'`) going into the transcribe call, so
+`resolveMeetingLanguage`'s real probe-and-LID path ran end to end, not the
+bypass step 1 originally described.
+
+Method, tightened from the description above after the first attempt's
+infra failure: two independent `.backup` copies of the live DB (`before.db`,
+left untouched, used only to compute the pre-fix baseline; `run.db`, the one
+actually transcribed against), and a temp meeting directory containing
+**symlinks** to the real `mic.wav`/`system.wav`/`sync.json` rather than a
+117MB copy — reads follow the link, `writeTranscriptMarkdown`'s two `.md`
+writes land as new regular files in the temp dir, and the live meeting
+folder's `transcript.md`/`transcript-enhanced.md` are never touched (verified
+by mtime, unchanged across the run). `run.db`'s `audio_dir` column was
+repointed at that temp directory before the server ever started. The live
+DB's sha256 was recorded before the backup and again after the whole run
+completed and the temp server was killed: identical
+(`cd1581b4fc7454b956b180167f54d3f1a393e6bccd0341bb5e9b7db46b80827c`) — the
+live DB was genuinely never written by this test. Server: `pnpm turbo build
+--filter=@openstyle/server`, then `dist/startup.js` against `run.db` on a
+scratch port with a scratch auth token; oMLX confirmed serving `Qwen3-ASR` at
+`:8123` via `/v1/models` before starting. The whole 176-chunk run (30 min of
+audio) completed in under two minutes on local oMLX — the earlier "poll
+patiently, this can take a while" expectation didn't hold on this hardware.
+
+Leak measurement was calibrated before trusting it: a small script imports
+the real `isVocabLeak`/`normalizeText` straight from
+`apps/server/src/lib/meetings/merge.ts` (Node's native TS type-stripping, no
+bundler) and runs it over `meeting_segments` for a given DB. Run first
+against `before.db`'s untouched pre-fix rows, it reports exactly **14**
+leaks — the same 14 the original investigation found, including system idx
+37 (661300–663000ms) and the mic idx 53–55 run — confirming the measurement
+matches the spec's own count before using it on the new data.
+
+- **(a) Resolved language.** `meetings.language = 'pt'` after the run, with
+  no `language probe failed` / `no probe segment` warning anywhere in the
+  server log. `declared = ["en", "pt"]`, so this is a clean discriminator:
+  the fallback path writes `declared[0]` = `'en'`; only a successful
+  probe + `tinyld` LID call writes `'pt'`. The probe path ran and won.
+- **(b) Vocab-leak segments.** **0** — zero `status = 'ok'` rows anywhere in
+  the fresh 176 return `isVocabLeak(text, vocabTerms) === true` against the
+  current 80-term vocabulary (down from the calibrated 14 baseline). A3's
+  bias-skip and A1's persist-time filter are both visibly doing work, not
+  redundant: 8 mic chunks landed `status = 'filtered'` (leaked text nulled,
+  never reaching `'ok'`), and by timestamp overlap 6 of those 8 are the
+  *same* audio spans as 6 of the original 14 leaks (old mic idx 14, 39, 44,
+  53, 55, 67) — Phase B's merge made those chunks long enough to receive a
+  bias prompt again (A3's 3s floor), the model leaked on that same audio
+  again, and A1 caught it at persist time exactly as designed. The
+  remaining old leak spans either landed `status = 'empty'` (idx 54, 62, 69,
+  81 — silence/near-silence once no longer forced into a leak) or merged
+  into a longer segment that transcribed real speech cleanly (mic idx 6 →
+  new idx 5, `"mhm"`; system idx 37 → new idx 33, real Portuguese; system
+  idx 65 → new idx 53, real Portuguese) with zero overlap-timestamp
+  regression case where a new row over an old leak span still contains
+  vocab-echo text.
+- **(c) English-calque segments.** **0** found. A broad sweep of all 159
+  `status = 'ok'` rows for calque markers (`% the %`, `% that %`, `% with %`,
+  `%doesn't%`) returns zero matches — the pattern the investigation
+  described as "should be entirely absent, not just less frequent" (§8 step
+  4) is in fact absent. Three direct before/after examples, same underlying
+  audio span, `before.db` (language pinned wrong) vs. `run.db` (language
+  probed and pinned `pt`):
+
+  1. system 823990–846440ms — before: *"Test or some thing that he doesn't
+     necessarily stay there, taking the token, right? He will take the
+     result there by **the sandbox of him** and it will be really
+     optimized for that."* → after: *"teste ou alguma coisa que ele não vai
+     necessariamente ficar ali iman do token, né? Ele vai pegar o resultado
+     lá **pela pelo sandbox dele** e vai ser realmente é otimizado para
+     isso."* — this is the exact calque example finding #2 cites.
+  2. system 666980–687910ms — before: *"Caramba! I think my hand hit the
+     steering wheel, the button to turn on. But it's like, the guy gets a
+     leasing of time and, you know..."* → after: *"Caramba, eu acho que
+     minha mão bateu no volante no botão de pegar. É, mas é assim, o cara
+     pega um leasing de tempo e índices, entendeu?..."*
+  3. mic 1057310–1077670ms — before: *"Context-aware model routing, but
+     they can also call it semantic-aware model routing. That you don't
+     need because, like, this whole story..."* → after: *"Contextual aware
+     model routing, mas também podem chamar de semântica aware model
+     routing, que você não precisa, porque assim essa história toda..."*
+     (technical terms correctly stay English — vocabulary bias working as
+     intended — while sentence structure is now transcribed, not
+     translated).
+- **(d) Segment counts.** **176** total post-merge (mic 89 = 72 `ok` + 8
+  `filtered` + 9 `empty`; system 87, all `ok`) — an exact match to the
+  204→176 count already recorded in the table above, this time produced by
+  an actual completed `POST /:id/transcribe` run (`0 failed` per the
+  server's own completion log line) rather than the standalone
+  `segmentPcm`/`mergeSegmentsToward` script. Two independent measurements of
+  the same fix now agree down to the row.
+- **(e) Before/after examples.** Given directly under (c) above, since
+  every clean example available for this meeting was a language-pinning
+  fix, not a leak-filter one (the 14 original leak segments had no
+  meaningful "after" text to quote — a leak is nulled at persist time by
+  design, so its correct "after" state is the absence of a row's text, not
+  a replacement sentence; the calque examples are the transcript-quality
+  defect this meeting actually demonstrates a readable before/after for).
+
+No warnings or errors appear in the server log for this run outside the
+per-chunk `[omlx] inference took Nms` debug lines. The temp server process
+was killed and the temp DB/audio-symlink directory removed after collecting
+these results; the live DB and live meeting folder were never written to at
+any point in this pass.
 
 ---
 
