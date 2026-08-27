@@ -768,6 +768,7 @@
     "tabTranscript": "Transcript",
     "tabSummary": "Summary",
     "transcriptEmpty": "No speech was detected in this recording.",
+    "transcriptLoading": "Loading transcript…",
     "transcriptPending": "Transcribe the recording to see the conversation here.",
     "summaryEmpty": "Summarize the transcript to get notes, decisions, and action items.",
     "delete": "Delete",

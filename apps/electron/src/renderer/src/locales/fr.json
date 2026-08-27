@@ -658,6 +658,7 @@
     "tabTranscript": "Transcription",
     "tabSummary": "Résumé",
     "transcriptEmpty": "Aucune parole détectée dans cet enregistrement.",
+    "transcriptLoading": "Chargement de la transcription…",
     "transcriptPending": "Transcrivez l'enregistrement pour voir la conversation ici.",
     "summaryEmpty": "Résumez la transcription pour obtenir notes, décisions et actions.",
     "delete": "Supprimer",

@@ -657,6 +657,7 @@
     "tabTranscript": "Trascrizione",
     "tabSummary": "Riepilogo",
     "transcriptEmpty": "Nessun parlato rilevato in questa registrazione.",
+    "transcriptLoading": "Caricamento della trascrizione…",
     "transcriptPending": "Trascrivi la registrazione per vedere qui la conversazione.",
     "summaryEmpty": "Riepiloga la trascrizione per ottenere note, decisioni e attività.",
     "delete": "Elimina",

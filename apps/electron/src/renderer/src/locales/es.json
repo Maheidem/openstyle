@@ -658,6 +658,7 @@
     "tabTranscript": "Transcripción",
     "tabSummary": "Resumen",
     "transcriptEmpty": "No se detectó voz en esta grabación.",
+    "transcriptLoading": "Cargando la transcripción…",
     "transcriptPending": "Transcribe la grabación para ver la conversación aquí.",
     "summaryEmpty": "Resume la transcripción para obtener notas, decisiones y tareas.",
     "delete": "Eliminar",

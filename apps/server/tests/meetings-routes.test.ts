@@ -184,6 +184,26 @@ async function waitForTerminalStatus(
   throw new Error("transcription job never finished");
 }
 
+/**
+ * Same polling contract as `waitForTerminalStatus`, but yields via
+ * microtasks instead of a real `setTimeout` delay — `tests/setup.ts` installs
+ * `vi.useFakeTimers({ shouldAdvanceTime: false })` file-wide, so a real timer
+ * only ever fires if a job's own status flip already lands on the very first
+ * poll (true for every other test here, which races nothing). A test that
+ * deliberately holds a job mid-flight and polls across the flip needs this
+ * instead, or the loop hangs forever waiting on a timer nothing advances.
+ */
+async function waitForTerminalStatusNoRealTimers(
+  id: string,
+): Promise<Record<string, unknown>> {
+  for (let i = 0; i < 2000; i++) {
+    const body = await getMeeting(id);
+    if (body.status !== "transcribing") return body;
+    await Promise.resolve();
+  }
+  throw new Error("transcription job never finished");
+}
+
 describe("POST /api/meetings/:id/transcribe", () => {
   it("404s for an unknown meeting", async () => {
     const res = await app.request("/api/meetings/nope/transcribe", {
@@ -241,6 +261,60 @@ describe("POST /api/meetings/:id/transcribe", () => {
     const md = readFileSync(transcriptPath, "utf8");
     expect(md).toContain("the quarterly numbers look great");
     expect(md).toMatch(/\[\d+:\d{2}\]/);
+  });
+
+  it("re-transcribe: status flips and segments are wiped synchronously before 202 returns, so a GET /transcript racing right after legitimately returns an empty array", async () => {
+    // Server-side precondition for the frontend cache-poisoning bug: POST
+    // /:id/transcribe does `UPDATE meetings SET status='transcribing'` then
+    // `DELETE FROM meeting_segments` *before* returning 202 (the async job
+    // itself is fired with `void` and runs after). A renderer query that's
+    // still enabled from the previous 'transcribed' render can race that
+    // DELETE, legitimately receive `{ segments: [] }`, and cache it — see
+    // apps/electron/src/renderer/src/pages/meetings.tsx's transcript
+    // useQuery and `transcribe` callback for the client-side fix. This test
+    // only covers the server half: that the race window is real and that
+    // `/transcript` never lies about it.
+    // Gate the fake transcriber on a promise we control, so the job is
+    // guaranteed to still be sitting in 'transcribing' — with segments
+    // already deleted — when this test reads it back. That's the real race
+    // window; without the gate the fake job (no real I/O) can finish before
+    // the test gets a chance to observe the mid-job state at all.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        await gate;
+        return { text: "hello again" };
+      }),
+    });
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("s1", "m1", 0, 0, 1000);
+
+    const preTranscript = await app.request("/api/meetings/m1/transcript");
+    const preBody = (await preTranscript.json()) as { segments: unknown[] };
+    expect(preBody.segments.length).toBeGreaterThan(0);
+
+    const res = await app.request("/api/meetings/m1/transcribe", {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+
+    // The job is parked on `gate` inside its first transcribe call — the
+    // route's synchronous UPDATE/DELETE already ran before the 202 resolved.
+    const mid = await getMeeting("m1");
+    expect(mid.status).toBe("transcribing");
+    const tRes = await app.request("/api/meetings/m1/transcript");
+    expect(tRes.status).toBe(200);
+    const { segments } = (await tRes.json()) as { segments: unknown[] };
+    expect(segments).toEqual([]);
+
+    release();
+    const done = await waitForTerminalStatusNoRealTimers("m1");
+    expect(done.status).toBe("transcribed");
+    const counts = done.segment_counts as { total: number; failed: number };
+    expect(counts.total).toBeGreaterThan(0);
   });
 
   it("marks the meeting failed when the pipeline throws", async () => {

@@ -876,7 +876,7 @@ function MeetingDetailView({
   const hasTranscript =
     meeting?.status === "transcribed" || meeting?.status === "summarized";
 
-  const { data: transcript } = useQuery({
+  const { data: transcript, isFetching: isTranscriptFetching } = useQuery({
     queryKey: queryKeys.meetings.transcript(id),
     queryFn: async (): Promise<TranscriptSegment[]> => {
       const res = await getClient().api.meetings[":id"].transcript.$get({
@@ -887,6 +887,16 @@ function MeetingDetailView({
       return body.segments;
     },
     enabled: hasTranscript,
+    // Re-transcribe races: the server sets status='transcribing' and DELETEs
+    // meeting_segments synchronously in POST /:id/transcribe, then this
+    // component's invalidate() (runAction's finally) fires before the
+    // re-render disables this query, so it can refetch mid-DELETE and cache
+    // a legitimate-looking `[]`. The global default staleTime (ONE_HOUR,
+    // query.ts) would then treat that poisoned `[]` as fresh for the rest of
+    // the session, so re-enabling this query once the job actually finishes
+    // (hasTranscript flips back to true) would never trigger a refetch.
+    // staleTime: 0 here means every re-enable refetches for real.
+    staleTime: 0,
   });
 
   const invalidate = useCallback(() => {
@@ -927,13 +937,19 @@ function MeetingDetailView({
     [invalidate, t],
   );
 
-  const transcribe = useCallback(
-    () =>
-      runAction("transcribe", () =>
-        getClient().api.meetings[":id"].transcribe.$post({ param: { id } }),
-      ),
-    [id, runAction],
-  );
+  const transcribe = useCallback(() => {
+    // Clear the transcript cache *before* the POST fires. The server
+    // synchronously sets status='transcribing' and DELETEs meeting_segments
+    // before returning 202, so a query that's still enabled from the
+    // previous 'transcribed' render can race the DELETE and cache an empty
+    // result that then reads as "confirmed empty" (see the transcript
+    // useQuery comment above). Removing the cache entry up front means
+    // there is nothing stale for that race to serve.
+    queryClient.removeQueries({ queryKey: queryKeys.meetings.transcript(id) });
+    return runAction("transcribe", () =>
+      getClient().api.meetings[":id"].transcribe.$post({ param: { id } }),
+    );
+  }, [id, runAction, queryClient]);
   const summarize = useCallback(
     () =>
       runAction("summarize", () =>
@@ -1260,9 +1276,17 @@ function MeetingDetailView({
           ) : (
             <div className="border-border bg-card/30 rounded-lg border border-dashed px-6 py-10 text-center">
               <p className="text-muted-foreground m-0 text-[13px]">
-                {hasTranscript
-                  ? t("meetings.transcriptEmpty")
-                  : t("meetings.transcriptPending")}
+                {!hasTranscript
+                  ? t("meetings.transcriptPending")
+                  : // Distinguish "confirmed empty" from "haven't refetched this
+                    // job's result yet" — isFetching or an as-yet-undefined
+                    // cache entry means the query hasn't resolved for the
+                    // *current* transcribed state, so transcriptEmpty must
+                    // wait for a settled, non-fetching, genuinely zero-length
+                    // result (see the transcript useQuery comment above).
+                    isTranscriptFetching || transcript === undefined
+                    ? t("meetings.transcriptLoading")
+                    : t("meetings.transcriptEmpty")}
               </p>
             </div>
           )}

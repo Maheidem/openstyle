@@ -658,6 +658,7 @@
     "tabTranscript": "Transkript",
     "tabSummary": "Zusammenfassung",
     "transcriptEmpty": "In dieser Aufnahme wurde keine Sprache erkannt.",
+    "transcriptLoading": "Transkript wird geladen…",
     "transcriptPending": "Transkribiere die Aufnahme, um das Gespräch hier zu sehen.",
     "summaryEmpty": "Fasse das Transkript zusammen für Notizen, Entscheidungen und Aufgaben.",
     "delete": "Löschen",

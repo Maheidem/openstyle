@@ -658,6 +658,7 @@
     "tabTranscript": "文字起こし",
     "tabSummary": "要約",
     "transcriptEmpty": "この録音から発話は検出されませんでした。",
+    "transcriptLoading": "文字起こしを読み込み中…",
     "transcriptPending": "録音を文字起こしすると会話がここに表示されます。",
     "summaryEmpty": "文字起こしを要約するとメモ、決定事項、アクションアイテムが得られます。",
     "delete": "削除",
