@@ -711,6 +711,8 @@
     "revealInFinder": "Finderで表示",
     "summaryInstructionsLabel": "要約の指示",
     "summaryInstructionsHint": "希望のフォーマットや重点項目など、すべての会議の要約に追加される補足指示です。",
+    "summaryInstructionsGlobalNote": "すべての会議に適用されます。",
+    "summaryInstructionsPerMeetingPointer": "この会議だけに適用したい場合は、上のコンテキスト欄を使用してください。",
     "save": "保存",
     "saving": "保存中…",
     "diarizationLabel": "話者ラベル",

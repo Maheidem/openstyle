@@ -58,6 +58,7 @@ import {
   ChevronLeft,
   Copy,
   FolderOpen,
+  Info,
   Languages,
   Mic,
   MonitorSpeaker,
@@ -71,7 +72,14 @@ import {
   Users,
   WandSparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
@@ -852,6 +860,15 @@ function SummaryInstructionsPopover(): React.JSX.Element {
         <p className="text-muted-foreground text-[11px] leading-[1.5]">
           {t("meetings.summaryInstructionsHint")}
         </p>
+        <div className="border-border bg-card/30 text-muted-foreground flex items-start gap-1.5 rounded-md border px-2.5 py-2 text-[11px] leading-[1.4]">
+          <Info className="mt-0.5 h-3 w-3 shrink-0" />
+          <span>
+            <span className="text-foreground font-medium">
+              {t("meetings.summaryInstructionsGlobalNote")}
+            </span>{" "}
+            {t("meetings.summaryInstructionsPerMeetingPointer")}
+          </span>
+        </div>
         <Textarea
           value={value}
           maxLength={4000}
@@ -1730,49 +1747,66 @@ function MeetingDetailView({
                   label={t("meetings.copyTranscript")}
                 />
               </div>
-              <div className="flex flex-col gap-3.5">
-                {transcript.map((seg) => (
-                  <div
-                    key={`${seg.speaker}-${seg.startMs}-${seg.endMs}`}
-                    className="flex gap-3"
-                  >
-                    <span className="w-16 shrink-0 pt-0.5 text-right leading-none">
-                      <span
-                        className={cn(
-                          "mono inline-flex items-center whitespace-nowrap rounded-[5px] px-[7px] py-[2.5px] text-[9px] font-medium uppercase tracking-[0.1em]",
-                          seg.speaker === "Me"
-                            ? "bg-transparent px-0 font-semibold text-foreground"
-                            : seg.speakerLabel
-                              ? // Confirmed name or numbered-but-unnamed "Them
-                                // N" — a real, distinguishable speaker — gets
-                                // the full accent-passive treatment (specs/
-                                // meeting-speaker-naming.md §7.5).
-                                "bg-[var(--accent-passive-tint)] text-[color:var(--accent-passive-ink)]"
-                              : // Unidentified: a materially weaker claim
-                                // (the diarizer couldn't attribute this line
-                                // to anyone at all) — a muted outline, never
-                                // the accent-passive fill (§3.3/§7.5).
-                                "border border-border bg-transparent text-muted-foreground",
-                        )}
-                      >
-                        {seg.speaker === "Me"
-                          ? t("meetings.me")
-                          : (seg.speakerName ??
-                            (seg.speakerLabel
-                              ? t("meetings.themNumbered", {
-                                  n: seg.speakerLabel,
-                                })
-                              : t("meetings.speakerUnidentified")))}
+              {/* Speaker-label column is `max-content`, so it grows to fit
+                  the longest label on screen — flag names are arbitrary
+                  length now (confirmed names, not just "ME"/"THEM N"), so a
+                  fixed width either clips or overlaps the transcript text.
+                  `minmax(64px, …)` keeps the short-label case (the common
+                  one) at the original artboard-02 proportions; the chip
+                  itself caps at 140px with truncation for absurdly long
+                  names. A CSS grid (not per-row flex) is required so every
+                  row's label column shares one width and stays aligned. */}
+              <div className="grid grid-cols-[minmax(64px,max-content)_minmax(0,1fr)_max-content] gap-x-3 gap-y-3.5">
+                {transcript.map((seg) => {
+                  const label =
+                    seg.speaker === "Me"
+                      ? t("meetings.me")
+                      : (seg.speakerName ??
+                        (seg.speakerLabel
+                          ? t("meetings.themNumbered", {
+                              n: seg.speakerLabel,
+                            })
+                          : t("meetings.speakerUnidentified")));
+                  return (
+                    <Fragment
+                      key={`${seg.speaker}-${seg.startMs}-${seg.endMs}`}
+                    >
+                      <span className="pt-0.5 text-right leading-none">
+                        <span
+                          title={label}
+                          className={cn(
+                            "mono inline-block max-w-[140px] truncate align-bottom whitespace-nowrap rounded-[5px] px-[7px] py-[2.5px] text-[9px] font-medium uppercase tracking-[0.1em]",
+                            seg.speaker === "Me"
+                              ? "bg-transparent px-0 font-semibold text-foreground"
+                              : seg.speakerLabel
+                                ? // Confirmed name or numbered-but-unnamed
+                                  // "Them N" — a real, distinguishable
+                                  // speaker — gets the full accent-passive
+                                  // treatment (specs/meeting-speaker-naming.
+                                  // md §7.5).
+                                  "bg-[var(--accent-passive-tint)] text-[color:var(--accent-passive-ink)]"
+                                : // Unidentified: a materially weaker claim
+                                  // (the diarizer couldn't attribute this
+                                  // line to anyone at all) — a muted
+                                  // outline, never the accent-passive fill
+                                  // (§3.3/§7.5).
+                                  "border border-border bg-transparent text-muted-foreground",
+                          )}
+                        >
+                          {label}
+                        </span>
                       </span>
-                    </span>
-                    <p className="text-foreground m-0 flex-1 text-[13.5px] leading-[1.55]">
-                      {showEnhanced ? (seg.enhancedText ?? seg.text) : seg.text}
-                    </p>
-                    <span className="mono text-muted-foreground/60 shrink-0 pt-0.5 text-[9px] tabular-nums">
-                      {formatClockMs(seg.startMs)}
-                    </span>
-                  </div>
-                ))}
+                      <p className="text-foreground m-0 text-[13.5px] leading-[1.55]">
+                        {showEnhanced
+                          ? (seg.enhancedText ?? seg.text)
+                          : seg.text}
+                      </p>
+                      <span className="mono text-muted-foreground/60 pt-0.5 text-[9px] tabular-nums">
+                        {formatClockMs(seg.startMs)}
+                      </span>
+                    </Fragment>
+                  );
+                })}
               </div>
             </>
           ) : (

@@ -711,6 +711,8 @@
     "revealInFinder": "Afficher dans le Finder",
     "summaryInstructionsLabel": "Instructions de résumé",
     "summaryInstructionsHint": "Consignes supplémentaires ajoutées à chaque résumé de réunion, comme un format préféré ou des axes de focus.",
+    "summaryInstructionsGlobalNote": "S'applique à chaque réunion.",
+    "summaryInstructionsPerMeetingPointer": "Pour cette réunion uniquement, utilisez le champ de contexte ci-dessus.",
     "save": "Enregistrer",
     "saving": "Enregistrement…",
     "diarizationLabel": "Étiquettes des intervenants",

@@ -710,6 +710,8 @@
     "revealInFinder": "Mostra nel Finder",
     "summaryInstructionsLabel": "Istruzioni per il riepilogo",
     "summaryInstructionsHint": "Indicazioni aggiuntive aggiunte a ogni riepilogo della riunione, come un formato preferito o aree di interesse.",
+    "summaryInstructionsGlobalNote": "Si applica a ogni riunione.",
+    "summaryInstructionsPerMeetingPointer": "Solo per questa riunione, usa il campo di contesto qui sopra.",
     "save": "Salva",
     "saving": "Salvataggio…",
     "diarizationLabel": "Etichette dei partecipanti",

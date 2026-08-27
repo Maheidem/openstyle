@@ -821,6 +821,8 @@
     "revealInFinder": "Show in Finder",
     "summaryInstructionsLabel": "Summary instructions",
     "summaryInstructionsHint": "Extra guidance appended to every meeting summary, such as a preferred format or focus areas.",
+    "summaryInstructionsGlobalNote": "Applies to every meeting.",
+    "summaryInstructionsPerMeetingPointer": "For this meeting only, use the context field above.",
     "save": "Save",
     "saving": "Saving…",
     "diarizationLabel": "Speaker labels",

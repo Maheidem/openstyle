@@ -711,6 +711,8 @@
     "revealInFinder": "Mostrar en Finder",
     "summaryInstructionsLabel": "Instrucciones de resumen",
     "summaryInstructionsHint": "Orientación adicional que se agrega a cada resumen de reunión, como un formato preferido o áreas de enfoque.",
+    "summaryInstructionsGlobalNote": "Se aplica a todas las reuniones.",
+    "summaryInstructionsPerMeetingPointer": "Solo para esta reunión, usa el campo de contexto de arriba.",
     "save": "Guardar",
     "saving": "Guardando…",
     "diarizationLabel": "Etiquetas de interlocutor",

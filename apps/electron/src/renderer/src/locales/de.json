@@ -711,6 +711,8 @@
     "revealInFinder": "Im Finder anzeigen",
     "summaryInstructionsLabel": "Zusammenfassungsanweisungen",
     "summaryInstructionsHint": "Zusätzliche Hinweise, die jeder Besprechungszusammenfassung hinzugefügt werden, z. B. ein bevorzugtes Format oder Schwerpunkte.",
+    "summaryInstructionsGlobalNote": "Gilt für jede Besprechung.",
+    "summaryInstructionsPerMeetingPointer": "Nur für diese Besprechung: Verwenden Sie das Kontextfeld oben.",
     "save": "Speichern",
     "saving": "Speichern…",
     "diarizationLabel": "Sprecherkennzeichnung",
