@@ -1,4 +1,8 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import {
+  LanguageList,
+  useLanguageOptions,
+} from "@renderer/components/language-combobox";
 import { Markdown } from "@renderer/components/markdown";
 import {
   AlertDialog,
@@ -39,6 +43,7 @@ import {
   ChevronLeft,
   Copy,
   FolderOpen,
+  Languages,
   Mic,
   MonitorSpeaker,
   Pencil,
@@ -48,6 +53,7 @@ import {
   Square,
   Trash2,
   Users,
+  WandSparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -65,6 +71,9 @@ interface MeetingListItem {
   ended_at: number | null;
   duration_ms: number | null;
   status: string;
+  /** Resolved (or user-set) transcription language, Phase A2. NULL means
+   * "not yet resolved" — the language chip renders "Auto". */
+  language: string | null;
   error: string | null;
   created_at: number | null;
 }
@@ -91,6 +100,13 @@ interface TranscriptSegment {
   /** Diarization label (spec §6) — raw numeral string, e.g. "2". Undefined
    * when undiarized (flag off, or this segment fell through to NULL). */
   speakerLabel?: string;
+  /** `meeting_segments.id`, Phase C (specs/meeting-transcription-quality.md
+   * §6.1) — unused by the UI directly, carried through for a stable list
+   * key candidate. */
+  id?: string;
+  /** LLM-corrected text, Phase C. Undefined when never enhanced, or when
+   * Enhance ran and left this segment unchanged. */
+  enhancedText?: string;
 }
 
 interface DiarizationStatusResponse {
@@ -570,6 +586,78 @@ function EditableTitle({
   );
 }
 
+/**
+ * Editable per-meeting transcription-language chip (Phase A2 §3.2.5,
+ * specs/meeting-transcription-quality.md). Shows the resolved (or user-set)
+ * language, or "Auto" when unresolved (`meeting.language` is NULL — either
+ * `languages` is set to auto-detect, or the meeting hasn't been transcribed
+ * yet). Re-transcribe and retry-failed always read whatever is currently
+ * stored (routes/meetings.ts), so picking a language here takes effect on
+ * the next run with no other wiring.
+ */
+function MeetingLanguageChip({
+  id,
+  language,
+  onChanged,
+}: {
+  id: string;
+  language: string | null;
+  onChanged: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const options = useLanguageOptions();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const current = language ?? "auto";
+  const label =
+    options.find((o) => o.code === current)?.label ??
+    language ??
+    t("meetings.languageAuto");
+
+  const select = useCallback(
+    async (code: string) => {
+      setSaving(true);
+      try {
+        const res = await getClient().api.meetings[":id"].$patch({
+          param: { id },
+          json: { language: code === "auto" ? null : code },
+        });
+        if (res.ok) onChanged();
+      } finally {
+        setSaving(false);
+        setOpen(false);
+      }
+    },
+    [id, onChanged],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={saving}
+          className="h-6 gap-1 rounded-full px-2.5 text-[11px]"
+          aria-label={t("meetings.language")}
+          title={t("meetings.language")}
+        >
+          <Languages className="size-3" />
+          {label}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-2">
+        <LanguageList
+          options={options}
+          selectedCodes={[current]}
+          autoFocus
+          onSelect={(code) => void select(code)}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function SummaryInstructionsPopover(): React.JSX.Element {
   const { t } = useTranslation();
   const [value, setValue] = useState("");
@@ -761,6 +849,14 @@ function MeetingDetailView({
     labeledCount: number;
     speakerCount: number;
   } | null>(null);
+  const [enhanceResult, setEnhanceResult] = useState<{
+    correctedCount: number;
+  } | null>(null);
+  // Per-session viewing preference (Phase C, specs/meeting-transcription-
+  // quality.md §6.6), not persisted meeting state — a segment Enhance left
+  // unchanged (omitted from its JSON response) still renders correctly in
+  // either mode via `seg.enhancedText ?? seg.text`.
+  const [showEnhanced, setShowEnhanced] = useState(true);
 
   const { data: meeting } = useQuery({
     queryKey: queryKeys.meetings.detail(id),
@@ -804,10 +900,11 @@ function MeetingDetailView({
     ): Promise<unknown> => {
       setBusy(name);
       setActionError(null);
-      // Cleared on every action, not just the diarize one, so a stale
-      // "Identified N speakers" note doesn't linger through an unrelated
-      // re-transcribe/summarize click.
+      // Cleared on every action, not just the diarize/enhance ones, so a
+      // stale "Identified N speakers"/"Corrected N segments" note doesn't
+      // linger through an unrelated re-transcribe/summarize click.
       setDiarizeResult(null);
+      setEnhanceResult(null);
       let result: unknown;
       try {
         const res = await request();
@@ -870,6 +967,20 @@ function MeetingDetailView({
       queryKey: queryKeys.meetings.transcript(id),
     });
   }, [id, runAction, queryClient]);
+  const enhance = useCallback(async () => {
+    const result = await runAction("enhance", () =>
+      getClient().api.meetings[":id"].enhance.$post({ param: { id } }),
+    );
+    if (result) {
+      setEnhanceResult(result as { correctedCount: number });
+    }
+    // The route only UPDATEs enhanced_text on existing rows — the merged
+    // transcript needs a re-fetch to pick the corrections up, same as
+    // identifySpeakers' invalidate() above.
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.meetings.transcript(id),
+    });
+  }, [id, runAction, queryClient]);
   const deleteMeeting = useCallback(async () => {
     await getClient().api.meetings[":id"].$delete({ param: { id } });
     invalidate();
@@ -888,6 +999,9 @@ function MeetingDetailView({
   const canTranscribe =
     !transcribing && meeting.status !== "recording" && busy === null;
   const failedCount = meeting.segment_counts.failed;
+  const hasEnhanced = (transcript ?? []).some(
+    (s) => s.enhancedText !== undefined,
+  );
   const transcriptText = (transcript ?? [])
     .map((s) => {
       const label =
@@ -896,7 +1010,8 @@ function MeetingDetailView({
           : s.speakerLabel
             ? t("meetings.themNumbered", { n: s.speakerLabel })
             : t("meetings.them");
-      return `${label}: ${s.text}`;
+      const text = showEnhanced ? (s.enhancedText ?? s.text) : s.text;
+      return `${label}: ${text}`;
     })
     .join("\n");
 
@@ -921,6 +1036,11 @@ function MeetingDetailView({
             {formatDuration(meeting.duration_ms)}
           </div>
         </div>
+        <MeetingLanguageChip
+          id={id}
+          language={meeting.language}
+          onChanged={invalidate}
+        />
         <StatusBadge status={meeting.status} />
       </div>
 
@@ -948,6 +1068,21 @@ function MeetingDetailView({
             {busy === "diarize"
               ? t("meetings.identifyingSpeakers")
               : t("meetings.identifySpeakers")}
+          </Button>
+        )}
+        {hasTranscript && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void enhance()}
+            disabled={busy !== null}
+          >
+            <WandSparkles data-icon="inline-start" />
+            {busy === "enhance"
+              ? t("meetings.enhancing")
+              : hasEnhanced
+                ? t("meetings.reEnhance")
+                : t("meetings.enhance")}
           </Button>
         )}
         <Button
@@ -1042,6 +1177,19 @@ function MeetingDetailView({
         </div>
       )}
 
+      {enhanceResult && !actionError && (
+        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
+          <WandSparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            {enhanceResult.correctedCount === 0
+              ? t("meetings.enhanceNoneCorrected")
+              : t("meetings.enhanceResult", {
+                  n: enhanceResult.correctedCount,
+                })}
+          </span>
+        </div>
+      )}
+
       <Tabs defaultValue="transcript">
         <TabsList>
           <TabsTrigger value="transcript">
@@ -1053,7 +1201,23 @@ function MeetingDetailView({
         <TabsContent value="transcript" className="mt-4">
           {transcript && transcript.length > 0 ? (
             <>
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                {hasEnhanced ? (
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={showEnhanced}
+                      onCheckedChange={setShowEnhanced}
+                      aria-label={t("meetings.showEnhancedLabel")}
+                    />
+                    <span className="text-muted-foreground text-[11px]">
+                      {showEnhanced
+                        ? t("meetings.showingEnhanced")
+                        : t("meetings.showingRaw")}
+                    </span>
+                  </div>
+                ) : (
+                  <div />
+                )}
                 <CopyButton
                   text={transcriptText}
                   label={t("meetings.copyTranscript")}
@@ -1084,7 +1248,7 @@ function MeetingDetailView({
                       </span>
                     </span>
                     <p className="text-foreground m-0 flex-1 text-[13.5px] leading-[1.55]">
-                      {seg.text}
+                      {showEnhanced ? (seg.enhancedText ?? seg.text) : seg.text}
                     </p>
                     <span className="mono text-muted-foreground/60 shrink-0 pt-0.5 text-[9px] tabular-nums">
                       {formatClockMs(seg.startMs)}

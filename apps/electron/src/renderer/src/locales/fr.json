@@ -681,7 +681,17 @@
     "identifyingSpeakers": "Identification des intervenants…",
     "diarizeResult": "Intervenants identifiés : {{n}}.",
     "diarizeNoSpeakers": "Aucun intervenant n'a pu être identifié dans l'audio système.",
-    "diarizeSingleSpeakerNote": "Un seul autre intervenant a été détecté. C'est normal pour les appels en tête-à-tête."
+    "diarizeSingleSpeakerNote": "Un seul autre intervenant a été détecté. C'est normal pour les appels en tête-à-tête.",
+    "language": "Langue de transcription",
+    "languageAuto": "Automatique",
+    "enhance": "Améliorer",
+    "reEnhance": "Améliorer à nouveau",
+    "enhancing": "Amélioration…",
+    "enhanceResult": "{{n}} segments corrigés.",
+    "enhanceNoneCorrected": "Aucun segment n'a nécessité de correction.",
+    "showEnhancedLabel": "Afficher la transcription améliorée",
+    "showingEnhanced": "Améliorée",
+    "showingRaw": "Brute"
   },
   "help": {
     "hotkeys": {

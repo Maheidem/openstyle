@@ -16,8 +16,7 @@
  * off input length, which is wrong for summaries.
  */
 
-import type { PostProcessParams } from "@openstyle/stt";
-import { postProcess } from "@openstyle/stt";
+import { estimateTokens, resolveDefaultChatCall } from "./llm-call.js";
 import type { MergedSegment } from "./merge.js";
 import {
   buildMeetingSummaryMapPrompt,
@@ -97,11 +96,6 @@ export interface SummarizeMeetingResult {
   costUsd: number | null;
 }
 
-/** Rough token estimate (~4 chars/token), mirroring `@openstyle/stt` tokens.ts. */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
 /** Format one merged segment as a labeled transcript line. */
 function formatSegment(segment: MergedSegment): string {
   return `${segment.speaker}: ${segment.text}`;
@@ -154,67 +148,14 @@ export function chunkTranscript(
 }
 
 /**
- * Default LLM call: resolve the app's default chat model through the LLM
- * registry and run the prompt through the `@openstyle/stt` post-process
- * wrapper. Imports are dynamic so injecting `llmCall` (tests) never touches
- * the database or provider SDKs.
+ * Default LLM call: thin wrapper around the shared `resolveDefaultChatCall`
+ * helper (`llm-call.ts`) — `kind` is summary-specific bookkeeping the shared
+ * helper doesn't need. Kept as its own binding (rather than passing
+ * `resolveDefaultChatCall` directly as `SummaryLlmCall`) so injecting
+ * `llmCall` (tests) never touches the database or provider SDKs.
  */
-const defaultLlmCall: SummaryLlmCall = async (request) => {
-  const [{ createChatModel, getDefaultModels }, { getLlmProvider }] =
-    await Promise.all([
-      import("../providers.js"),
-      import("../llm/registry.js"),
-    ]);
-  const llm = getDefaultModels().llm;
-  if (!llm) {
-    throw new Error(
-      "No AI model is set up yet. Pick one in Settings > Models.",
-    );
-  }
-  const model = await createChatModel(llm.provider, llm.model_id);
-  const providerOptions = getLlmProvider(llm.provider)?.providerOptions?.(
-    llm.model_id,
-  ) as PostProcessParams["providerOptions"];
-
-  // The wrapper never throws — it falls back to returning the input text with
-  // `model: null`. A transcript echoed back is not a summary, so surface the
-  // failure to the caller instead.
-  let callError: unknown = null;
-  const result = await postProcess({
-    model,
-    text: request.prompt,
-    system: request.system,
-    prompt: request.prompt,
-    maxOutputTokens: request.maxOutputTokens,
-    skipEmptyText: false,
-    ...(providerOptions ? { providerOptions } : {}),
-    onError: (err) => {
-      callError = err;
-    },
-  });
-  if (result.model === null) {
-    throw callError instanceof Error
-      ? callError
-      : new Error(`Meeting summary LLM call failed: ${String(callError)}`);
-  }
-
-  let pricing: { input: number; output: number } | null = null;
-  try {
-    const { getModelCostCached } = await import("../../routes/models.js");
-    pricing = getModelCostCached(llm.provider, llm.model_id);
-  } catch {
-    // Cost is best-effort; a missing registry just reports null cost.
-  }
-
-  return {
-    text: result.cleaned,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    provider: llm.provider,
-    model: llm.model_id,
-    pricing,
-  };
-};
+const defaultLlmCall: SummaryLlmCall = (request) =>
+  resolveDefaultChatCall(request);
 
 /** Resolve the context budget from settings when no option is given. */
 async function resolveContextBudget(): Promise<number> {

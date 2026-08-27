@@ -36,8 +36,18 @@ export interface ChunkResult {
   startMs: number;
   endMs: number;
   text: string;
-  status: "ok" | "failed";
+  status: "ok" | "failed" | "empty";
 }
+
+/**
+ * Below this chunk duration, the vocabulary-bias prompt is withheld
+ * entirely (Phase A3, specs/meeting-transcription-quality.md §3.3). A
+ * short, low-signal clip has too little real audio for the 900-char bias
+ * prompt to compete with as "context" — the model echoes the prompt back as
+ * fake speech instead (finding #1). A 1.7s clip never gets a bias prompt at
+ * all under this threshold.
+ */
+export const MIN_BIAS_DURATION_MS = 3000;
 
 export interface TranscriberProgress {
   done: number;
@@ -378,20 +388,27 @@ export class MeetingTranscriber {
       }
       try {
         const audio = sliceWav(fd, info, seg.startMs, seg.endMs);
+        const durationMs = seg.endMs - seg.startMs;
+        const bias = durationMs < MIN_BIAS_DURATION_MS ? null : config.bias;
         const result: TranscribeResult = await provider.transcribe({
           audio,
           model: config.modelId,
           apiKey: config.apiKey,
           ...(config.language ? { language: config.language } : {}),
-          bias: config.bias,
+          bias,
         });
+        const text = result.text.trim();
         return {
           source,
           idx,
           startMs: seg.startMs,
           endMs: seg.endMs,
-          text: result.text.trim(),
-          status: "ok",
+          text,
+          // Phase A4: an empty result is legitimate silence, not a failure —
+          // distinguishing it from a real "ok" transcription keeps
+          // retry-failed's WHERE status = 'failed' from re-attempting
+          // silence forever (specs/meeting-transcription-quality.md §3.4).
+          status: text.length === 0 ? "empty" : "ok",
         };
       } catch (err) {
         const retry = classifyError(err);

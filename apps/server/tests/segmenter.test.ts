@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type Segment, segmentPcm } from "../src/lib/meetings/segmenter.js";
+import {
+  DEFAULT_MERGE_TOWARD_OPTIONS,
+  mergeSegmentsToward,
+  type Segment,
+  segmentPcm,
+} from "../src/lib/meetings/segmenter.js";
 
 const SAMPLE_RATE = 16_000;
 
@@ -168,5 +173,141 @@ describe("segmentPcm", () => {
 
   it("throws on invalid sample rate", () => {
     expect(() => segmentPcm(silence(100), 0)).toThrow(/sampleRate/);
+  });
+});
+
+describe("mergeSegmentsToward", () => {
+  const seg = (startMs: number, endMs: number): Segment => ({ startMs, endMs });
+
+  it("returns [] unchanged for empty input", () => {
+    expect(mergeSegmentsToward([])).toEqual([]);
+  });
+
+  it("returns a single segment unchanged (long monologue, no neighbor to merge)", () => {
+    const input = [seg(1000, 29_000)]; // 28s, already at/near target, alone
+    const out = mergeSegmentsToward(input);
+    expect(out).toEqual([{ startMs: 1000, endMs: 29_000 }]);
+  });
+
+  it("does not mutate the caller's input array", () => {
+    const input = [seg(0, 1000), seg(1500, 2500)];
+    const snapshot = input.map((s) => ({ ...s }));
+    mergeSegmentsToward(input);
+    expect(input).toEqual(snapshot);
+  });
+
+  it("merges a run of five 1s bursts 500ms apart into one ~7s segment", () => {
+    const input = [
+      seg(0, 1000),
+      seg(1500, 2500),
+      seg(3000, 4000),
+      seg(4500, 5500),
+      seg(6000, 7000),
+    ];
+    const out = mergeSegmentsToward(input);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toEqual({ startMs: 0, endMs: 7000 });
+  });
+
+  it("bridges a gap of exactly maxGapMs (inclusive boundary)", () => {
+    const { maxGapMs } = DEFAULT_MERGE_TOWARD_OPTIONS;
+    const input = [seg(0, 1000), seg(1000 + maxGapMs, 1000 + maxGapMs + 1000)];
+    const out = mergeSegmentsToward(input);
+    expect(out).toHaveLength(1);
+    expect(out[0].endMs).toBe(1000 + maxGapMs + 1000);
+  });
+
+  it("never bridges a gap one ms wider than maxGapMs", () => {
+    const { maxGapMs } = DEFAULT_MERGE_TOWARD_OPTIONS;
+    const gap = maxGapMs + 1;
+    const input = [seg(0, 1000), seg(1000 + gap, 1000 + gap + 1000)];
+    const out = mergeSegmentsToward(input);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual({ startMs: 0, endMs: 1000 });
+    expect(out[1]).toEqual({ startMs: 1000 + gap, endMs: 1000 + gap + 1000 });
+  });
+
+  it("stops merging once the combined span would exceed maxSegmentMs, even though the target hasn't been reached", () => {
+    // last duration 20_000ms is well under targetMs (22_500), so the target
+    // guard alone would allow another merge — only the hard cap should stop
+    // it: 0..20_000 merged with 20_500..32_000 spans 32_000ms > 30_000ms.
+    const input = [seg(0, 20_000), seg(20_500, 32_000)];
+    const out = mergeSegmentsToward(input);
+    expect(out).toHaveLength(2);
+    expect(out[0]).toEqual({ startMs: 0, endMs: 20_000 });
+    expect(out[1]).toEqual({ startMs: 20_500, endMs: 32_000 });
+  });
+
+  it("merges when the combined span is exactly maxSegmentMs (inclusive boundary)", () => {
+    const { maxSegmentMs } = DEFAULT_MERGE_TOWARD_OPTIONS;
+    const input = [seg(0, 20_000), seg(20_500, maxSegmentMs)];
+    const out = mergeSegmentsToward(input);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toEqual({ startMs: 0, endMs: maxSegmentMs });
+  });
+
+  it("never produces a segment over the hard maxSegmentMs cap on a long alternating-burst train", () => {
+    // 20 bursts of 1000ms speech separated by 500ms gaps (period 1500ms):
+    // the target guard (22_500ms) should force a split partway through,
+    // well before the 30_000ms hard cap would ever bind.
+    const input: Segment[] = [];
+    for (let k = 0; k < 20; k++) {
+      input.push(seg(k * 1500, k * 1500 + 1000));
+    }
+    const out = mergeSegmentsToward(input);
+
+    // Hand-computed against the algorithm: merging accumulates until the
+    // *running* segment's duration reaches/exceeds targetMs, then starts a
+    // new segment — producing exactly two merged segments for this input.
+    expect(out).toEqual([
+      { startMs: 0, endMs: 23_500 },
+      { startMs: 24_000, endMs: 29_500 },
+    ]);
+
+    for (const s of out) {
+      expect(s.endMs - s.startMs).toBeLessThanOrEqual(
+        DEFAULT_MERGE_TOWARD_OPTIONS.maxSegmentMs,
+      );
+    }
+    // Coverage: first and last input burst are both still covered.
+    expect(out[0].startMs).toBeLessThanOrEqual(0);
+    expect(out[out.length - 1].endMs).toBeGreaterThanOrEqual(29_500);
+  });
+
+  it("never exceeds the 30s hard cap when merging segmentPcm's own force-split pieces", () => {
+    // segmentPcm's forceSplit picks a low-energy split point within the
+    // 25%-75% window of an oversized span, not necessarily the midpoint, so
+    // adjacent pieces can come out uneven (verified against this codebase's
+    // real output, not assumed): a piece under targetMs immediately
+    // following another piece under targetMs, with a 0ms gap between them,
+    // is legitimately re-coalesced by the merge pass. That's expected, not
+    // a bug — the one invariant that must hold regardless is the hard cap.
+    const pcm = concat(silence(2000), tone(60_000, -20), silence(2000));
+    const split = segmentPcm(pcm, SAMPLE_RATE);
+    expect(split.length).toBeGreaterThanOrEqual(2); // precondition from the existing test above
+    for (const s of split) {
+      expect(s.endMs - s.startMs).toBeLessThanOrEqual(30_000);
+    }
+
+    const merged = mergeSegmentsToward(split);
+    for (const s of merged) {
+      expect(s.endMs - s.startMs).toBeLessThanOrEqual(
+        DEFAULT_MERGE_TOWARD_OPTIONS.maxSegmentMs,
+      );
+    }
+    // Full coverage preserved: same overall start/end span, contiguous.
+    expect(merged[0].startMs).toBe(split[0].startMs);
+    expect(merged[merged.length - 1].endMs).toBe(split[split.length - 1].endMs);
+    for (let i = 1; i < merged.length; i++) {
+      expect(merged[i].startMs).toBe(merged[i - 1].endMs);
+    }
+  });
+
+  it("respects a partial options override, keeping the rest at defaults", () => {
+    const input = [seg(0, 1000), seg(1200, 2000), seg(2200, 3000)];
+    const out = mergeSegmentsToward(input, { targetMs: 500 });
+    // With targetMs lowered to 500ms, the first segment (1000ms) already
+    // meets/exceeds target before any merge is attempted, so nothing merges.
+    expect(out).toEqual(input);
   });
 });

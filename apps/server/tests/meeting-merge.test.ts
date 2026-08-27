@@ -3,6 +3,7 @@ import {
   filterConsecutiveRepeats,
   formatTranscriptMarkdown,
   isHallucination,
+  isVocabLeak,
   mergeTranscript,
   type SyncData,
   type TranscriptSegment,
@@ -259,6 +260,77 @@ describe("isHallucination", () => {
         ),
       ),
     ).toBe(false);
+  });
+});
+
+describe("isVocabLeak", () => {
+  // Mirrors the real investigation shape (specs/meeting-transcription-
+  // quality.md §1 finding #1): an 80-term vocabulary list, comma-joined.
+  const vocabTerms = Array.from({ length: 80 }, (_, i) => `Zylotrix${i + 1}`);
+
+  it("flags a full echo of the omlx/local-mlx 'Technical terms:' prompt", () => {
+    const leak = `Technical terms: ${vocabTerms.join(", ")}`;
+    expect(isVocabLeak(leak, vocabTerms)).toBe(true);
+  });
+
+  it("flags a full echo of the openai/local-whisper 'Terms:' prompt", () => {
+    const leak = `Terms: ${vocabTerms.join(", ")}.`;
+    expect(isVocabLeak(leak, vocabTerms)).toBe(true);
+  });
+
+  it("flags a partial leak (several consecutive vocab terms dominating a short segment)", () => {
+    const leak = `${vocabTerms[0]} ${vocabTerms[1]} ${vocabTerms[2]}`;
+    expect(isVocabLeak(leak, vocabTerms)).toBe(true);
+  });
+
+  it("does not flag real speech that merely mentions one vocab term among ordinary words", () => {
+    const real = `so the plan is to ship ${vocabTerms[0]} next week once qa signs off on the release`;
+    expect(isVocabLeak(real, vocabTerms)).toBe(false);
+  });
+
+  it("never flags anything when the vocabulary list is empty", () => {
+    expect(isVocabLeak(`Terms: ${vocabTerms.join(", ")}`, [])).toBe(false);
+    expect(isVocabLeak("", [])).toBe(false);
+  });
+});
+
+describe("mergeTranscript leak backstop (Phase A1 §3.1)", () => {
+  const vocabTerms = Array.from({ length: 80 }, (_, i) => `Zylotrix${i + 1}`);
+
+  it("drops a segment matching the leak pattern when vocabTerms is passed", () => {
+    const mic = [
+      seg(0, 1700, `Technical terms: ${vocabTerms.join(", ")}`),
+      seg(2000, 4000, "let's move on to the roadmap discussion now"),
+    ];
+    const merged = mergeTranscript(mic, [], undefined, vocabTerms);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].text).toBe("let's move on to the roadmap discussion now");
+  });
+
+  it("existing three-argument call sites behave exactly as before (regression)", () => {
+    const mic = [seg(0, 1700, `Technical terms: ${vocabTerms.join(", ")}`)];
+    // No vocabTerms passed — the leak text is real "content" as far as the
+    // hallucination/repeat filters are concerned and survives unfiltered.
+    const merged = mergeTranscript(mic, []);
+    expect(merged).toHaveLength(1);
+  });
+
+  it("filter-order: three consecutive leak segments produce zero survivors, not one", () => {
+    // Proves the leak filter runs before filterConsecutiveRepeats — if it
+    // ran after, the REPEAT_MIN_RUN=3 collapse would keep one leaked
+    // segment as the "first" of the run instead of dropping all three.
+    const leakText = `Technical terms: ${vocabTerms.join(", ")}`;
+    const mic = [
+      seg(0, 1700, leakText),
+      seg(1800, 3500, leakText),
+      seg(3600, 5300, leakText),
+      seg(6000, 8000, "back to real conversation after the leak burst"),
+    ];
+    const merged = mergeTranscript(mic, [], undefined, vocabTerms);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].text).toBe(
+      "back to real conversation after the leak burst",
+    );
   });
 });
 

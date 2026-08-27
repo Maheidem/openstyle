@@ -10,7 +10,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 30;
+const SCHEMA_VERSION = 32;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -815,6 +815,25 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // text ("1", "2", ...), not the formatted "Them N" string — see §6 of
     // the spec for why.
     db.exec(`ALTER TABLE meeting_segments ADD COLUMN speaker_label TEXT`);
+  }
+
+  if (currentVersion < 31) {
+    // Meeting transcription quality Phase A2
+    // (specs/meeting-transcription-quality.md §3.2): resolved (or user-set)
+    // transcription language for the meeting, pinned once and reused by
+    // every later job for the same meeting (including re-transcribe) until
+    // the user edits it. NULL means "not yet resolved" (falls back to
+    // per-chunk auto, or triggers resolution on the next transcribe run).
+    db.exec(`ALTER TABLE meetings ADD COLUMN language TEXT`);
+  }
+
+  if (currentVersion < 32) {
+    // Meeting transcription quality Phase C
+    // (specs/meeting-transcription-quality.md §6.1): LLM-corrected segment
+    // text, separate from `text` so the raw ASR output is never destroyed.
+    // NULL means "not enhanced" (or Enhance ran and left this segment
+    // unchanged — the LLM's JSON response omits unchanged segments, §6.3).
+    db.exec(`ALTER TABLE meeting_segments ADD COLUMN enhanced_text TEXT`);
   }
 
   // Upsert schema version

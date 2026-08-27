@@ -8,7 +8,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
 import type { DiarizeDeps } from "../src/lib/meetings/diarize.js";
@@ -295,6 +303,43 @@ describe("PATCH /api/meetings/:id", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("sets the meeting's language (Phase A2 chip edit)", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: "pt" }),
+    });
+    expect(res.status).toBe(200);
+    const after = await getMeeting("m1");
+    expect(after.language).toBe("pt");
+  });
+
+  it("clears the meeting's language with an explicit null", async () => {
+    insertMeeting("m1");
+    getDb()
+      .prepare("UPDATE meetings SET language = 'en' WHERE id = 'm1'")
+      .run();
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: null }),
+    });
+    expect(res.status).toBe(200);
+    const after = await getMeeting("m1");
+    expect(after.language).toBeNull();
+  });
+
+  it("rejects a PATCH body with neither title nor language", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("POST /api/meetings/:id/retry-failed", () => {
@@ -336,6 +381,45 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, retried: 0 });
+  });
+});
+
+describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
+  afterEach(() => {
+    getDb().exec("DELETE FROM vocabulary");
+  });
+
+  it("persists a leaked chunk as status='filtered', text=NULL, end to end", async () => {
+    const terms = Array.from({ length: 20 }, (_, i) => `Zylotrix${i + 1}`);
+    for (const term of terms) {
+      getDb().prepare("INSERT INTO vocabulary (term) VALUES (?)").run(term);
+    }
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({
+        text: `Technical terms: ${terms.join(", ")}`,
+      })),
+    });
+    insertMeeting("m1");
+
+    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    const done = await waitForTerminalStatus("m1");
+    expect(done.status).toBe("transcribed");
+
+    const rows = getDb()
+      .prepare(
+        "SELECT status, text FROM meeting_segments WHERE meeting_id = 'm1'",
+      )
+      .all() as { status: string; text: string | null }[];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.status).toBe("filtered");
+      expect(r.text).toBeNull();
+    }
+    // A 'filtered' row is excluded from the merged transcript exactly like
+    // 'failed' — no new code needed for that, per spec §3.1.
+    const tRes = await app.request("/api/meetings/m1/transcript");
+    const { segments } = (await tRes.json()) as { segments: unknown[] };
+    expect(segments).toHaveLength(0);
   });
 });
 
@@ -496,6 +580,214 @@ describe("POST /api/meetings/:id/summarize", () => {
     const summary = after.summary as { markdown: string; llm_provider: string };
     expect(summary.markdown).toContain("Ship on Friday");
     expect(summary.llm_provider).toBe("fake-llm");
+  });
+});
+
+describe("POST /api/meetings/:id/enhance", () => {
+  it("404s for an unknown meeting", async () => {
+    const res = await app.request("/api/meetings/nope/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("409s when the meeting has no transcript", async () => {
+    insertMeeting("m1", "recorded");
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("409s when the merged transcript is empty", async () => {
+    insertMeeting("m1", "transcribed");
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Transcript is empty");
+  });
+
+  it("409s while another job is running for the meeting", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    // Diarize claims the concurrency slot before its (fake) execFile call
+    // resolves — a real interaction the route guards against, since diarize
+    // never touches meetings.status.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    __setMeetingsTestOverrides({
+      diarizeDeps: {
+        resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+        resolveModelsDirPath: () => "/fake/resources/models",
+        execFile: async (_file, args) => {
+          if (args[0] === "--probe") return { stdout: "READY", stderr: "" };
+          await gate;
+          return { stdout: "[]", stderr: "" };
+        },
+      },
+    });
+
+    const diarizePromise = app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    // Yield to the pending diarize handler under fake timers (setup.ts:
+    // shouldAdvanceTime: false) — advanceTimersByTimeAsync flushes
+    // microtasks between ticks, unlike a real setTimeout, which would never
+    // fire on its own here (same reasoning as waitForTerminalStatusFast
+    // above).
+    await vi.advanceTimersByTimeAsync(20);
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+
+    release();
+    await diarizePromise;
+  });
+
+  it("enhances the merged transcript and persists enhanced_text", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
+      )
+      .run();
+    __setMeetingsTestOverrides({
+      enhance: async (meetingId, segments) => {
+        expect(meetingId).toBe("m1");
+        expect(segments).toHaveLength(1);
+        expect(segments[0].id).toBe("m1:mic:0");
+        getDb()
+          .prepare("UPDATE meeting_segments SET enhanced_text = ? WHERE id = ?")
+          .run("garbled text here", "m1:mic:0");
+        return { correctedCount: 1 };
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; correctedCount: number };
+    expect(body.ok).toBe(true);
+    expect(body.correctedCount).toBe(1);
+
+    const row = getDb()
+      .prepare(
+        "SELECT enhanced_text FROM meeting_segments WHERE id = 'm1:mic:0'",
+      )
+      .get() as { enhanced_text: string };
+    expect(row.enhanced_text).toBe("garbled text here");
+  });
+
+  it("500s and reports the message when the enhance pass throws", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
+      )
+      .run();
+    __setMeetingsTestOverrides({
+      enhance: async () => {
+        throw new Error("No AI model is set up yet.");
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("No AI model is set up yet.");
+  });
+});
+
+/**
+ * Same polling contract as waitForTerminalStatus, but advances vitest's
+ * fake timers explicitly instead of waiting on a real setTimeout — the
+ * language probe adds one more await hop before the background job
+ * settles, occasionally losing the race against the shared helper's real
+ * 25ms sleep under fake timers (setup.ts: shouldAdvanceTime: false).
+ */
+async function waitForTerminalStatusFast(
+  id: string,
+): Promise<Record<string, unknown>> {
+  for (let i = 0; i < 200; i++) {
+    const body = await getMeeting(id);
+    if (body.status !== "transcribing") return body;
+    await vi.advanceTimersByTimeAsync(25);
+  }
+  throw new Error("transcription job never finished");
+}
+
+describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", () => {
+  afterEach(() => {
+    getDb().exec("DELETE FROM settings WHERE key = 'languages'");
+  });
+
+  it("resolves and persists meetings.language once; a second run (re-transcribe) does not re-probe", async () => {
+    getDb()
+      .prepare("INSERT INTO settings (key, value) VALUES ('languages', ?)")
+      .run(JSON.stringify(["en", "pt"]));
+
+    let calls = 0;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        calls++;
+        // First call is the language probe (auto, unbiased); every call
+        // after is a real chunk transcription.
+        return calls === 1
+          ? {
+              text: "Bom dia, tudo bem com você? Vamos começar a reunião agora, para falar sobre o projeto.",
+            }
+          : { text: "hello" };
+      }),
+    });
+    insertMeeting("m1");
+
+    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await waitForTerminalStatusFast("m1");
+    const after1 = await getMeeting("m1");
+    expect(after1.language).toBe("pt");
+    const callsAfterFirstRun = calls;
+    expect(callsAfterFirstRun).toBeGreaterThan(1); // probe + at least one chunk
+
+    // Re-transcribe: meetings.language is already set, so no new probe call
+    // — only chunk-transcription calls should be added.
+    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await waitForTerminalStatusFast("m1");
+    const after2 = await getMeeting("m1");
+    expect(after2.language).toBe("pt");
+    const chunksInSecondRun = calls - callsAfterFirstRun;
+    const chunksInFirstRun = callsAfterFirstRun - 1; // minus the one probe call
+    expect(chunksInSecondRun).toBe(chunksInFirstRun);
+  });
+
+  it("with a single declared language, pins immediately with no probe call", async () => {
+    getDb()
+      .prepare("INSERT INTO settings (key, value) VALUES ('languages', ?)")
+      .run(JSON.stringify(["pt"]));
+    let calls = 0;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        calls++;
+        return { text: "hello" };
+      }),
+    });
+    insertMeeting("m1");
+    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await waitForTerminalStatusFast("m1");
+    const after = await getMeeting("m1");
+    expect(after.language).toBe("pt");
+    // Every call is a real chunk — none of them is a separate probe call.
+    expect(calls).toBeGreaterThan(0);
   });
 });
 

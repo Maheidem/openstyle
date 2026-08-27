@@ -681,7 +681,17 @@
     "identifyingSpeakers": "Sprecher werden identifiziert…",
     "diarizeResult": "Erkannte Sprecher: {{n}}.",
     "diarizeNoSpeakers": "In der Systemaudiospur konnten keine Sprecher erkannt werden.",
-    "diarizeSingleSpeakerNote": "Es wurde nur ein weiterer Sprecher erkannt. Das ist bei Eins-zu-eins-Gesprächen normal."
+    "diarizeSingleSpeakerNote": "Es wurde nur ein weiterer Sprecher erkannt. Das ist bei Eins-zu-eins-Gesprächen normal.",
+    "language": "Transkriptionssprache",
+    "languageAuto": "Automatisch",
+    "enhance": "Verbessern",
+    "reEnhance": "Erneut verbessern",
+    "enhancing": "Wird verbessert…",
+    "enhanceResult": "{{n}} Segmente korrigiert.",
+    "enhanceNoneCorrected": "Keine Segmente mussten korrigiert werden.",
+    "showEnhancedLabel": "Verbesserte Abschrift anzeigen",
+    "showingEnhanced": "Verbessert",
+    "showingRaw": "Original"
   },
   "help": {
     "hotkeys": {

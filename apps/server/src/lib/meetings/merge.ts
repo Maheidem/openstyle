@@ -25,6 +25,17 @@ export interface TranscriptSegment {
    * mic segments: `Speaker` stays the channel, not the person.
    */
   speakerLabel?: string;
+  /**
+   * `meeting_segments.id` (e.g. "<meetingId>:system:12"), Phase C
+   * (specs/meeting-transcription-quality.md §6.1) — lets Enhance map LLM
+   * corrections back to rows. Optional: only `loadMergedTranscript` (which
+   * reads real DB rows) populates it; tests constructing segments by hand
+   * don't need one unless they're exercising Enhance.
+   */
+  id?: string;
+  /** LLM-corrected text for this segment, Phase C. `undefined` means the
+   * segment was never enhanced, or Enhance ran and left it unchanged. */
+  enhancedText?: string;
 }
 
 export interface MergedSegment {
@@ -34,6 +45,10 @@ export interface MergedSegment {
   text: string;
   /** Carried through unchanged from the matching `TranscriptSegment`. */
   speakerLabel?: string;
+  /** Carried through unchanged from the matching `TranscriptSegment`. */
+  id?: string;
+  /** Carried through unchanged from the matching `TranscriptSegment`. */
+  enhancedText?: string;
 }
 
 /**
@@ -69,6 +84,9 @@ const ECHO_SIMILARITY_THRESHOLD = 0.7;
 
 /** Repeat filter: identical normalized text this many times in a row. */
 const REPEAT_MIN_RUN = 3;
+
+/** Fraction of the segment's distinct words that are vocabulary words. */
+export const VOCAB_LEAK_OVERLAP_THRESHOLD = 0.6;
 
 /**
  * Common whisper hallucinations on silence/noise. Matched against the whole
@@ -137,6 +155,32 @@ export function isHallucination(seg: TranscriptSegment): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * True when a transcript segment looks like the model echoed the
+ * vocabulary-bias prompt back as fake speech, instead of transcribing real
+ * audio. Provider-agnostic by design: the same ~900-char prompt is sent as
+ * `prompt` (omlx.ts:70-72, whisper-local.ts:76-78) or `context`
+ * (mlx-local.ts:48,70) depending on provider, but the leak always shows up
+ * the same way on the *output* side — a segment whose words are
+ * overwhelmingly drawn from the vocabulary list, which real speech is not.
+ * Strips the "Terms: " / "Technical terms: " prompt-boilerplate prefixes
+ * (vocabulary-bias.ts) before comparing, so a leak that echoes the label too
+ * still matches on content, not the label.
+ */
+export function isVocabLeak(text: string, vocabTerms: string[]): boolean {
+  if (vocabTerms.length === 0) return false;
+  const norm = normalizeText(text).replace(/^(technical )?terms\s*/, "");
+  const textTokens = new Set(norm.split(" ").filter(Boolean));
+  if (textTokens.size === 0) return false;
+  const termTokens = new Set(
+    vocabTerms.flatMap((t) => normalizeText(t).split(" ")).filter(Boolean),
+  );
+  if (termTokens.size === 0) return false;
+  let matched = 0;
+  for (const tok of textTokens) if (termTokens.has(tok)) matched++;
+  return matched / textTokens.size >= VOCAB_LEAK_OVERLAP_THRESHOLD;
 }
 
 /**
@@ -264,11 +308,21 @@ export function mergeTranscript(
   micSegments: TranscriptSegment[],
   systemSegments: TranscriptSegment[],
   syncData?: SyncData,
+  vocabTerms?: string[],
 ): MergedSegment[] {
   const { mic, system } = applyDrift(micSegments, systemSegments, syncData);
 
+  // Order matters: the leak filter runs inside the same .filter() as the
+  // hallucination filter, both *before* filterConsecutiveRepeats. Several of
+  // the investigation's leaks were consecutive near-identical segments —
+  // filtering them first removes them before the repeat-collapse (which
+  // would otherwise keep one surviving leaked segment) ever sees them.
   const clean = (segs: TranscriptSegment[]) =>
-    filterConsecutiveRepeats(segs.filter((s) => !isHallucination(s)));
+    filterConsecutiveRepeats(
+      segs.filter(
+        (s) => !isHallucination(s) && !isVocabLeak(s.text, vocabTerms ?? []),
+      ),
+    );
 
   const micClean = clean(mic);
   const systemClean = clean(system);
@@ -305,8 +359,18 @@ function formatClockMs(ms: number): string {
  * Render a merged, speaker-labeled transcript as a standalone markdown
  * document — `[timestamp] Speaker: text` per segment — so a meeting's audio
  * directory is self-contained without requiring the app or DB.
+ *
+ * `useEnhanced` (Phase C, specs/meeting-transcription-quality.md §6.8):
+ * renders `s.enhancedText ?? s.text` per segment instead of the raw `s.text`
+ * — used only for the separate `transcript-enhanced.md` artifact.
+ * `transcript.md` itself must always call this with `useEnhanced` omitted
+ * (false), so the raw transcript stays byte-identical to today's output
+ * regardless of whether Enhance has ever run.
  */
-export function formatTranscriptMarkdown(segments: MergedSegment[]): string {
+export function formatTranscriptMarkdown(
+  segments: MergedSegment[],
+  useEnhanced = false,
+): string {
   const lines = segments.map((s) => {
     // Diarization label, English-only regardless of app locale — consistent
     // with `s.speaker` itself, which is already the unlocalized literal
@@ -317,7 +381,8 @@ export function formatTranscriptMarkdown(segments: MergedSegment[]): string {
       s.speaker === "Them" && s.speakerLabel
         ? `Them ${s.speakerLabel}`
         : s.speaker;
-    return `**[${formatClockMs(s.startMs)}] ${label}:** ${s.text}`;
+    const text = useEnhanced ? (s.enhancedText ?? s.text) : s.text;
+    return `**[${formatClockMs(s.startMs)}] ${label}:** ${text}`;
   });
   return `# Transcript\n\n${lines.length > 0 ? lines.join("\n\n") : "_No speech was detected in this recording._"}\n`;
 }

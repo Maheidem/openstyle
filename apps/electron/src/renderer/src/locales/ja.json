@@ -681,7 +681,17 @@
     "identifyingSpeakers": "話者を識別中…",
     "diarizeResult": "識別された話者: {{n}}人。",
     "diarizeNoSpeakers": "システム音声から話者を識別できませんでした。",
-    "diarizeSingleSpeakerNote": "他の話者は1人だけ検出されました。1対1の通話ではこれが正常です。"
+    "diarizeSingleSpeakerNote": "他の話者は1人だけ検出されました。1対1の通話ではこれが正常です。",
+    "language": "文字起こしの言語",
+    "languageAuto": "自動",
+    "enhance": "強化",
+    "reEnhance": "再強化",
+    "enhancing": "強化中…",
+    "enhanceResult": "{{n}}個のセグメントを修正しました。",
+    "enhanceNoneCorrected": "修正が必要なセグメントはありませんでした。",
+    "showEnhancedLabel": "強化後の文字起こしを表示",
+    "showingEnhanced": "強化後",
+    "showingRaw": "元のテキスト"
   },
   "help": {
     "hotkeys": {

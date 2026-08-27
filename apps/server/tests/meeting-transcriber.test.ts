@@ -155,24 +155,27 @@ function makeDeps(
 
 describe("MeetingTranscriber", () => {
   it("slices WAV segments at the right byte offsets and durations", async () => {
-    const dir = makeMeetingDir({ mic: 5000, system: 3000 });
+    const dir = makeMeetingDir({ mic: 8500, system: 5000 });
     const { provider, calls } = makeFakeProvider();
     const t = new MeetingTranscriber(makeDeps(provider));
 
+    // Durations kept >= MIN_BIAS_DURATION_MS (3s, Phase A3) so this test's
+    // "every call carried bias" assertion below stays meaningful — the
+    // bias-withholding behavior itself is covered separately.
     const results = await t.run({
       meetingDir: dir,
       micSegments: [
-        { startMs: 1000, endMs: 2000 },
-        { startMs: 2500, endMs: 4500 },
+        { startMs: 1000, endMs: 4000 },
+        { startMs: 4200, endMs: 8200 },
       ],
-      systemSegments: [{ startMs: 0, endMs: 3000 }],
+      systemSegments: [{ startMs: 0, endMs: 5000 }],
     });
 
     expect(results).toHaveLength(3);
     expect(results.every((r) => r.status === "ok")).toBe(true);
     // 1 s mono s16 @16k = 32000 data bytes + 44 header.
     const bytes = calls.map((c) => c.bytes).sort((a, b) => a - b);
-    expect(bytes).toEqual([32_000 + 44, 64_000 + 44, 96_000 + 44]);
+    expect(bytes).toEqual([96_000 + 44, 128_000 + 44, 160_000 + 44]);
     // Every call carried dictation's model + bias + language.
     for (const c of calls) {
       expect(c.model).toBe("model-x");
@@ -406,6 +409,42 @@ describe("MeetingTranscriber", () => {
     });
     expect(results[0].status).toBe("ok");
     expect(asked).toBe(0);
+  });
+
+  it("withholds bias for chunks under MIN_BIAS_DURATION_MS (Phase A3)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 100 });
+    const { provider, calls } = makeFakeProvider();
+    const t = new MeetingTranscriber(makeDeps(provider));
+    await t.run({
+      meetingDir: dir,
+      micSegments: [
+        { startMs: 0, endMs: 1700 }, // 1.7s — under threshold
+        { startMs: 2000, endMs: 5000 }, // 3s — at threshold, bias sent
+      ],
+      systemSegments: [],
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0].bias).toBeNull();
+    expect(calls[1].bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("returns status 'empty' (not 'ok') for a chunk that transcribes to blank text (Phase A4)", async () => {
+    const dir = makeMeetingDir({ mic: 2000, system: 100 });
+    const provider: TranscriptionProvider = {
+      providerId: "fake",
+      supportsStreaming: () => false,
+      async transcribe() {
+        return { text: "   " };
+      },
+    };
+    const t = new MeetingTranscriber(makeDeps(provider));
+    const results = await t.run({
+      meetingDir: dir,
+      micSegments: [{ startMs: 0, endMs: 1000 }],
+      systemSegments: [],
+    });
+    expect(results[0].status).toBe("empty");
+    expect(results[0].text).toBe("");
   });
 
   it("throws for an unknown provider", async () => {

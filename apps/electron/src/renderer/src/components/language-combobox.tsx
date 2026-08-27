@@ -61,8 +61,12 @@ export function useLanguageOptions(): LanguageChoice[] {
   return useMemo(() => resolveLanguageOptions(undefined, fallback), [fallback]);
 }
 
-/** The scrollable, filterable list of language rows shared by both surfaces. */
-function LanguageList({
+/**
+ * The scrollable, filterable list of language rows shared by both surfaces.
+ * Exported so other single-select pickers (the meetings language chip) can
+ * reuse the same searchable body instead of duplicating it.
+ */
+export function LanguageList({
   options,
   selectedCodes,
   onSelect,

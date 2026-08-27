@@ -680,7 +680,17 @@
     "identifyingSpeakers": "Identificando interlocutores…",
     "diarizeResult": "Interlocutores identificados: {{n}}.",
     "diarizeNoSpeakers": "Não foi possível identificar interlocutores no áudio do sistema.",
-    "diarizeSingleSpeakerNote": "Apenas um outro interlocutor foi detectado. Isso é esperado em chamadas individuais."
+    "diarizeSingleSpeakerNote": "Apenas um outro interlocutor foi detectado. Isso é esperado em chamadas individuais.",
+    "language": "Idioma da transcrição",
+    "languageAuto": "Automático",
+    "enhance": "Aprimorar",
+    "reEnhance": "Aprimorar novamente",
+    "enhancing": "Aprimorando…",
+    "enhanceResult": "{{n}} segmentos corrigidos.",
+    "enhanceNoneCorrected": "Nenhum segmento precisou de correção.",
+    "showEnhancedLabel": "Mostrar transcrição aprimorada",
+    "showingEnhanced": "Aprimorada",
+    "showingRaw": "Original"
   },
   "help": {
     "hotkeys": {

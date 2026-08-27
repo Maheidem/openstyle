@@ -22,13 +22,19 @@ import {
   runDiarizationPass,
 } from "../lib/meetings/diarize.js";
 import {
+  enhanceMeetingTranscript,
+  getMeetingEnhanceAutoRunSetting,
+} from "../lib/meetings/enhance.js";
+import { resolveMeetingLanguage } from "../lib/meetings/language.js";
+import {
   formatTranscriptMarkdown,
+  isVocabLeak,
   type MergedSegment,
   mergeTranscript,
   type SyncData,
   type TranscriptSegment,
 } from "../lib/meetings/merge.js";
-import { segmentPcm } from "../lib/meetings/segmenter.js";
+import { mergeSegmentsToward, segmentPcm } from "../lib/meetings/segmenter.js";
 import { summarizeMeeting } from "../lib/meetings/summarize.js";
 import {
   type ChunkResult,
@@ -37,6 +43,7 @@ import {
   parseWavHeader,
   type TranscriberDeps,
 } from "../lib/meetings/transcriber.js";
+import { loadVocabularyTerms } from "../lib/vocabulary.js";
 
 /**
  * Internal endpoints backing Meeting Mode. The Electron main process (the
@@ -89,6 +96,10 @@ interface MeetingsTestOverrides {
    * exercises the route's pre-flight check, the real run, and the
    * follow-up count query together. */
   diarizeDeps?: DiarizeDeps;
+  /** Phase C (specs/meeting-transcription-quality.md §6): injected LLM-call
+   * dependency for POST /:id/enhance and the auto-run call site inside
+   * runTranscribeJob, so route tests never touch a real LLM provider. */
+  enhance?: typeof enhanceMeetingTranscript;
 }
 let testOverrides: MeetingsTestOverrides = {};
 export function __setMeetingsTestOverrides(
@@ -180,6 +191,7 @@ function loadSyncData(audioDir: string): SyncData | undefined {
 }
 
 interface SegmentRow {
+  id?: string;
   source: "mic" | "system";
   start_ms: number;
   end_ms: number;
@@ -189,6 +201,9 @@ interface SegmentRow {
    * retry-failed handler's SELECT doesn't fetch it, and mic rows never have
    * one. */
   speaker_label?: string | null;
+  /** LLM-corrected text, Phase C §6.1. Optional: the retry-failed handler's
+   * SELECT doesn't fetch it. */
+  enhanced_text?: string | null;
 }
 
 /** Rebuild the merged Me/Them transcript from persisted segments + sync.json. */
@@ -198,7 +213,7 @@ function loadMergedTranscript(
 ): MergedSegment[] {
   const rows = getDb()
     .prepare(
-      `SELECT source, start_ms, end_ms, text, status, speaker_label
+      `SELECT id, source, start_ms, end_ms, text, status, speaker_label, enhanced_text
        FROM meeting_segments WHERE meeting_id = ? ORDER BY idx`,
     )
     .all(meetingId) as unknown as SegmentRow[];
@@ -210,15 +225,33 @@ function loadMergedTranscript(
         endMs: r.end_ms,
         text: r.text as string,
         ...(r.speaker_label ? { speakerLabel: r.speaker_label } : {}),
+        ...(r.id ? { id: r.id } : {}),
+        ...(r.enhanced_text ? { enhancedText: r.enhanced_text } : {}),
       }));
   const sync = audioDir ? loadSyncData(audioDir) : undefined;
-  return mergeTranscript(channel("mic"), channel("system"), sync);
+  // Phase A1 backstop (specs/meeting-transcription-quality.md §3.1): checks
+  // against the *current* vocabulary, not whatever it was at transcription
+  // time — best-effort for rows persisted before persistChunk's own leak
+  // check existed, or whose leak check false-negatived at persist time.
+  return mergeTranscript(
+    channel("mic"),
+    channel("system"),
+    sync,
+    loadVocabularyTerms(),
+  );
 }
 
 /**
  * Write the merged transcript as `transcript.md` into the meeting's audio
  * dir so the folder is self-contained. Best-effort: a write failure (e.g.
  * the dir was purged mid-job) never fails the surrounding job.
+ *
+ * Phase C (specs/meeting-transcription-quality.md §6.8, amended
+ * 2026-08-27): `transcript.md` is always the RAW transcript — Enhance must
+ * never touch it, regardless of which route triggers this write. When any
+ * segment carries `enhancedText`, a second sibling file,
+ * `transcript-enhanced.md`, is written (or overwritten) alongside it; it
+ * does not exist until the first successful Enhance run.
  */
 function writeTranscriptMarkdown(meetingId: string, audioDir: string): void {
   try {
@@ -228,6 +261,13 @@ function writeTranscriptMarkdown(meetingId: string, audioDir: string): void {
       formatTranscriptMarkdown(merged),
       "utf8",
     );
+    if (merged.some((s) => s.enhancedText !== undefined)) {
+      writeFileSync(
+        join(audioDir, "transcript-enhanced.md"),
+        formatTranscriptMarkdown(merged, true),
+        "utf8",
+      );
+    }
   } catch (err) {
     log.warn(
       `meeting ${meetingId}: failed to write transcript.md: ${String(err)}`,
@@ -235,7 +275,30 @@ function writeTranscriptMarkdown(meetingId: string, audioDir: string): void {
   }
 }
 
-function persistChunk(meetingId: string, chunk: ChunkResult): void {
+/**
+ * Phase A1 persist-time leak check (specs/meeting-transcription-quality.md
+ * §3.1): a chunk whose text is overwhelmingly drawn from the vocabulary list
+ * is stored as `status='filtered'`, `text=NULL` instead of the model's fake
+ * echo. Shared by both write paths (the main job's persistChunk and
+ * retry-failed's inline UPDATE) so the check can't drift between them.
+ */
+function leakCheckedTextAndStatus(
+  chunk: Pick<ChunkResult, "status" | "text">,
+  vocabTerms: string[],
+): { text: string | null; status: string } {
+  const leaked =
+    chunk.status === "ok" && chunk.text && isVocabLeak(chunk.text, vocabTerms);
+  return leaked
+    ? { text: null, status: "filtered" }
+    : { text: chunk.text, status: chunk.status };
+}
+
+function persistChunk(
+  meetingId: string,
+  chunk: ChunkResult,
+  vocabTerms: string[],
+): void {
+  const { text, status } = leakCheckedTextAndStatus(chunk, vocabTerms);
   getDb()
     .prepare(
       `INSERT OR REPLACE INTO meeting_segments
@@ -249,8 +312,8 @@ function persistChunk(meetingId: string, chunk: ChunkResult): void {
       chunk.idx,
       chunk.startMs,
       chunk.endMs,
-      chunk.text,
-      chunk.status,
+      text,
+      status,
     );
 }
 
@@ -271,16 +334,25 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     if (!mic && !system) {
       throw new Error(`No audio files found in ${audioDir}`);
     }
-    const micSegments = mic ? segmentPcm(mic.pcm, mic.sampleRate) : [];
+    // Phase B (specs/meeting-transcription-quality.md §5): merge VAD output
+    // toward a ~20-25s target per channel before transcription — pure
+    // post-processing over segmentPcm's already-detected boundaries, mic
+    // and system merged independently (never bridged across channels).
+    const micSegments = mic
+      ? mergeSegmentsToward(segmentPcm(mic.pcm, mic.sampleRate))
+      : [];
     const systemSegments = system
-      ? segmentPcm(system.pcm, system.sampleRate)
+      ? mergeSegmentsToward(segmentPcm(system.pcm, system.sampleRate))
       : [];
     const total = micSegments.length + systemSegments.length;
     activeJobs.set(id, { done: 0, total, failed: 0 });
 
+    // Loaded once per job, not per chunk — vocabulary rarely changes
+    // mid-meeting and loadVocabularyTerms() hits the DB.
+    const vocabTerms = loadVocabularyTerms();
     const deps = await buildTranscriberDeps({
       isDictationActive,
-      onChunk: (chunk) => persistChunk(id, chunk),
+      onChunk: (chunk) => persistChunk(id, chunk, vocabTerms),
       onProgress: (p) => activeJobs.set(id, p),
     });
     // Resolve once up front: stamps provider/model on the row and fails fast
@@ -290,7 +362,36 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
     ).run(config.providerId, config.modelId, id);
 
-    const results = await new MeetingTranscriber(deps).run({
+    // Phase A2 (specs/meeting-transcription-quality.md §3.2): resolve the
+    // meeting-level language once (sticky across re-transcribe via
+    // meetings.language) and wrap resolveConfig with the answer rather than
+    // widening resolveConfig's signature — the object passed to
+    // MeetingTranscriber below is what MeetingTranscriber.run() calls
+    // this.deps.resolveConfig() on, so replacing the property here is what
+    // makes the wrap take effect.
+    const provider = deps.getProvider(config.providerId);
+    const resolvedLanguage = provider
+      ? await resolveMeetingLanguage({
+          meetingId: id,
+          audioDir,
+          provider,
+          config,
+          micSegments,
+          systemSegments,
+          isDictationActive,
+        }).catch((err) => {
+          log.warn(
+            `meeting ${id}: language resolution failed, using unpinned default: ${String(err)}`,
+          );
+          return config.language;
+        })
+      : config.language;
+    const effectiveDeps: TranscriberDeps = {
+      ...deps,
+      resolveConfig: () => ({ ...config, language: resolvedLanguage }),
+    };
+
+    const results = await new MeetingTranscriber(effectiveDeps).run({
       meetingDir: audioDir,
       micSegments,
       systemSegments,
@@ -311,6 +412,24 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       });
     } else {
       log.info(`meeting ${id}: diarization skipped (setting is off)`);
+    }
+
+    // Phase C auto-run (specs/meeting-transcription-quality.md §6.5): same
+    // placement rationale as diarization above — after the diarization
+    // pass (so Enhance sees final speaker labels, though it doesn't use
+    // them) and before the status flip, so the UI never observes an
+    // intermediate un-enhanced state when the setting is on. Default off;
+    // same fail-closed .catch that never fails the job.
+    if (getMeetingEnhanceAutoRunSetting()) {
+      const enhance = testOverrides.enhance ?? enhanceMeetingTranscript;
+      await enhance(
+        id,
+        loadMergedTranscript(id, audioDir),
+        resolvedLanguage,
+        vocabTerms,
+      ).catch((err) => {
+        log.warn(`meeting ${id}: enhance auto-run failed: ${String(err)}`);
+      });
     }
 
     const failed = results.filter((r) => r.status === "failed").length;
@@ -350,6 +469,10 @@ export interface MeetingRow {
   audio_dir: string | null;
   stt_provider: string | null;
   stt_model: string | null;
+  /** Resolved (or user-set) transcription language, Phase A2. NULL means
+   * "not yet resolved" — falls back to per-chunk auto or triggers
+   * resolution on the next transcribe run. */
+  language: string | null;
   error: string | null;
   created_at: number | null;
 }
@@ -361,9 +484,18 @@ const startSchema = z.object({
   started_at: z.number().int(),
 });
 
-const renameSchema = z.object({
-  title: z.string().trim().min(1).max(512),
-});
+const renameSchema = z
+  .object({
+    title: z.string().trim().min(1).max(512).optional(),
+    // Phase A2 (specs/meeting-transcription-quality.md §3.2.5): the
+    // language chip's edit. `null` explicitly clears a resolved/user-set
+    // language back to "not yet resolved" (falls back to per-chunk auto, or
+    // triggers resolution on the next transcribe run).
+    language: z.string().trim().min(2).max(8).nullable().optional(),
+  })
+  .refine((v) => v.title !== undefined || v.language !== undefined, {
+    message: "Provide title or language",
+  });
 
 const stopSchema = z.object({
   ended_at: z.number().int(),
@@ -411,16 +543,30 @@ const meetings = new Hono()
     ).run(id, title ?? null, started_at, audio_dir, Date.now());
     return c.json({ ok: true, id });
   })
-  // Rename a meeting.
+  // Rename a meeting and/or set its transcription language (Phase A2's
+  // editable language chip). Runs whichever UPDATEs the body actually
+  // supplied — re-transcribe/retry-failed always read whatever is
+  // currently stored, so a language edit takes effect on the next run with
+  // no other wiring.
   .patch("/:id", zValidator("json", renameSchema), (c) => {
     const id = c.req.param("id");
-    const { title } = c.req.valid("json");
+    const { title, language } = c.req.valid("json");
     const db = getDb();
+    const sets: string[] = [];
+    const values: (string | null)[] = [];
+    if (title !== undefined) {
+      sets.push("title = ?");
+      values.push(title);
+    }
+    if (language !== undefined) {
+      sets.push("language = ?");
+      values.push(language);
+    }
     const result = db
-      .prepare("UPDATE meetings SET title = ? WHERE id = ?")
-      .run(title, id);
+      .prepare(`UPDATE meetings SET ${sets.join(", ")} WHERE id = ?`)
+      .run(...values, id);
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
-    return c.json({ ok: true, title });
+    return c.json({ ok: true, title, language });
   })
   .post("/:id/stop", zValidator("json", stopSchema), (c) => {
     const id = c.req.param("id");
@@ -517,21 +663,39 @@ const meetings = new Hono()
       `UPDATE meeting_segments SET text = ?, status = ?
        WHERE meeting_id = ? AND source = ? AND start_ms = ? AND end_ms = ?`,
     );
+    const vocabTerms = loadVocabularyTerms();
     try {
-      const deps = await buildTranscriberDeps({
+      const baseDeps = await buildTranscriberDeps({
         isDictationActive,
         // Chunk idx here is positional within the retry batch, so key the
-        // update on (source, start, end) — stable across runs.
-        onChunk: (chunk) =>
+        // update on (source, start, end) — stable across runs. Phase A1
+        // leak check applies here too, via the same shared helper
+        // persistChunk uses, so a leak surfacing on a retry is caught
+        // exactly as it would be on the original pass.
+        onChunk: (chunk) => {
+          const { text, status } = leakCheckedTextAndStatus(chunk, vocabTerms);
           update.run(
-            chunk.text,
-            chunk.status,
+            text,
+            status,
             id,
             chunk.source,
             chunk.startMs,
             chunk.endMs,
-          ),
+          );
+        },
       });
+      // Phase A2: reuse the meeting's already-resolved language with no
+      // re-probe — retrying a handful of failed chunks doesn't warrant a
+      // fresh language decision.
+      const deps: TranscriberDeps = row.language
+        ? {
+            ...baseDeps,
+            resolveConfig: () => ({
+              ...baseDeps.resolveConfig(),
+              language: row.language as string,
+            }),
+          }
+        : baseDeps;
       const results = await new MeetingTranscriber(deps).run({
         meetingDir: audioDir,
         micSegments: toSegments("mic"),
@@ -687,6 +851,47 @@ const meetings = new Hono()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error(`meeting ${id}: summarize failed: ${message}`);
+      return c.json({ error: message }, 500);
+    }
+  })
+  // Phase C (specs/meeting-transcription-quality.md §6.4): LLM cleanup pass
+  // over the merged transcript, in-request like /summarize and /diarize —
+  // one bounded LLM call (or a handful, chunked) per meeting, not a
+  // multi-chunk job that needs progress polling. Never destructive: only
+  // ever UPDATEs meeting_segments.enhanced_text on existing rows.
+  .post("/:id/enhance", async (c) => {
+    const id = c.req.param("id");
+    const db = getDb();
+    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
+      | MeetingRow
+      | undefined;
+    if (!row) return c.json({ error: "Not found" }, 404);
+    if (row.status !== "transcribed" && row.status !== "summarized") {
+      return c.json({ error: "Meeting has no transcript to enhance" }, 409);
+    }
+    // Same shared concurrency map /transcribe, /retry-failed and /diarize
+    // already check — an enhance pass reading meeting_segments mid-write
+    // from a running transcribe job would see a half-written transcript.
+    if (activeJobs.has(id)) {
+      return c.json({ error: "Transcription already running" }, 409);
+    }
+    const merged = loadMergedTranscript(id, row.audio_dir);
+    if (merged.length === 0) {
+      return c.json({ error: "Transcript is empty" }, 409);
+    }
+    try {
+      const enhance = testOverrides.enhance ?? enhanceMeetingTranscript;
+      const result = await enhance(
+        id,
+        merged,
+        row.language ?? undefined,
+        loadVocabularyTerms(),
+      );
+      if (row.audio_dir) writeTranscriptMarkdown(id, row.audio_dir);
+      return c.json({ ok: true, correctedCount: result.correctedCount });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`meeting ${id}: enhance failed: ${message}`);
       return c.json({ error: message }, 500);
     }
   })

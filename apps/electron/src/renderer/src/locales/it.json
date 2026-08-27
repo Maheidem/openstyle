@@ -680,7 +680,17 @@
     "identifyingSpeakers": "Identificazione dei partecipanti…",
     "diarizeResult": "Partecipanti identificati: {{n}}.",
     "diarizeNoSpeakers": "Non è stato possibile identificare partecipanti nell'audio di sistema.",
-    "diarizeSingleSpeakerNote": "È stato rilevato solo un altro partecipante. È normale nelle chiamate individuali."
+    "diarizeSingleSpeakerNote": "È stato rilevato solo un altro partecipante. È normale nelle chiamate individuali.",
+    "language": "Lingua di trascrizione",
+    "languageAuto": "Automatico",
+    "enhance": "Migliora",
+    "reEnhance": "Migliora di nuovo",
+    "enhancing": "Miglioramento…",
+    "enhanceResult": "{{n}} segmenti corretti.",
+    "enhanceNoneCorrected": "Nessun segmento ha richiesto correzioni.",
+    "showEnhancedLabel": "Mostra trascrizione migliorata",
+    "showingEnhanced": "Migliorata",
+    "showingRaw": "Originale"
   },
   "help": {
     "hotkeys": {

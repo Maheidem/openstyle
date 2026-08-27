@@ -50,6 +50,55 @@ export const DEFAULT_SEGMENTER_OPTIONS: SegmenterOptions = {
   maxSegmentMs: 30_000,
 };
 
+export interface MergeTowardOptions {
+  /** Target segment length (ms) — merging stops once a segment reaches this. */
+  targetMs: number;
+  /** Never bridge a gap wider than this (ms) — a real pause stays a pause. */
+  maxGapMs: number;
+  /** Hard cap — matches segmentPcm's existing maxSegmentMs default. */
+  maxSegmentMs: number;
+}
+
+export const DEFAULT_MERGE_TOWARD_OPTIONS: MergeTowardOptions = {
+  targetMs: 22_500, // midpoint of the ~20-25s WhisperX-style target
+  maxGapMs: 4000,
+  maxSegmentMs: DEFAULT_SEGMENTER_OPTIONS.maxSegmentMs, // 30_000, single source of truth
+};
+
+/**
+ * Greedily merge adjacent same-channel segments toward `targetMs`, never
+ * crossing a gap wider than `maxGapMs` and never exceeding `maxSegmentMs`.
+ * Input must already be time-ordered (segmentPcm's output is).
+ *
+ * Purely a post-processing pass over already-detected segment boundaries —
+ * does not touch the VAD gate itself (specs/meeting-transcription-quality.md
+ * §5, §7 non-goal: "Phase B does not retune the VAD gate").
+ */
+export function mergeSegmentsToward(
+  segments: Segment[],
+  opts: Partial<MergeTowardOptions> = {},
+): Segment[] {
+  const o = { ...DEFAULT_MERGE_TOWARD_OPTIONS, ...opts };
+  if (segments.length === 0) return [];
+  const out: Segment[] = [{ ...segments[0] }];
+  for (let i = 1; i < segments.length; i++) {
+    const last = out[out.length - 1];
+    const next = segments[i];
+    const gap = next.startMs - last.endMs;
+    const merged = next.endMs - last.startMs;
+    if (
+      gap <= o.maxGapMs &&
+      merged <= o.maxSegmentMs &&
+      last.endMs - last.startMs < o.targetMs
+    ) {
+      last.endMs = next.endMs;
+    } else {
+      out.push({ ...next });
+    }
+  }
+  return out;
+}
+
 const SILENCE_DB = -100;
 
 /** Per-frame RMS in dBFS for PCM16 samples. */

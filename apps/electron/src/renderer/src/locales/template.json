@@ -791,7 +791,17 @@
     "identifyingSpeakers": "Identifying speakers…",
     "diarizeResult": "Speakers identified: {{n}}.",
     "diarizeNoSpeakers": "No speakers could be identified in the system audio.",
-    "diarizeSingleSpeakerNote": "Only one other speaker was detected. That's expected on one-on-one calls."
+    "diarizeSingleSpeakerNote": "Only one other speaker was detected. That's expected on one-on-one calls.",
+    "language": "Transcription language",
+    "languageAuto": "Auto",
+    "enhance": "Enhance",
+    "reEnhance": "Re-enhance",
+    "enhancing": "Enhancing…",
+    "enhanceResult": "Corrected {{n}} segments.",
+    "enhanceNoneCorrected": "No segments needed correction.",
+    "showEnhancedLabel": "Show enhanced transcript",
+    "showingEnhanced": "Enhanced",
+    "showingRaw": "Raw"
   },
   "help": {
     "hotkeys": {
