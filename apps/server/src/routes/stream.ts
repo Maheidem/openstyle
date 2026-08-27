@@ -1,5 +1,5 @@
 import { upgradeWebSocket } from "@hono/node-server";
-import { sanitizeTranscriptText } from "@openstyle/stt";
+import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
@@ -24,7 +24,10 @@ import {
   supportsStreaming,
   voiceProviderCategory,
 } from "../lib/streaming-stt.js";
-import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
+import {
+  resolveAsrVocabularyBias,
+  vocabularyBiasTerms,
+} from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("stream");
 const LOG_STREAM_PARTIALS =
@@ -275,6 +278,24 @@ const stream = new Hono().get(
           onFinal: async (rawText) => {
             if (upstream !== session) return;
             rawText = sanitizeTranscriptText(rawText);
+
+            // Same vocabulary-prompt-echo guard as the REST /api/transcribe
+            // path (specs/meeting-transcription-quality.md Phase A, extended
+            // to dictation). Compare against the terms actually sent for
+            // *this* session's bias.
+            const strippedRawText = stripVocabLeak(
+              rawText,
+              vocabularyBiasTerms(config.bias),
+            );
+            if (strippedRawText !== rawText) {
+              log.info(
+                strippedRawText.trim()
+                  ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
+                  : "dropped dictation output — entirely a vocabulary-prompt echo",
+              );
+              rawText = strippedRawText;
+            }
+
             // Use commitTime (when the user stopped speaking) to measure only
             // finalization + cleanup latency, not the entire recording session.
             const durationMs =

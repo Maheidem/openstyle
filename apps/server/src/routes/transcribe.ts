@@ -1,4 +1,4 @@
-import { sanitizeTranscriptText } from "@openstyle/stt";
+import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
@@ -23,7 +23,10 @@ import {
   getApiKeyForProvider,
   voiceProviderCategory,
 } from "../lib/streaming-stt.js";
-import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
+import {
+  resolveAsrVocabularyBias,
+  vocabularyBiasTerms,
+} from "../lib/vocabulary-bias.js";
 import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import { startInBackground } from "../lib/whisper/server.js";
@@ -162,6 +165,24 @@ const transcribeRoute = new Hono()
         appContext,
       });
       rawText = sanitizeTranscriptText(result.text);
+
+      // The same vocabulary bias prompt sent above can come back echoed as
+      // fake speech instead of a real transcription (specs/meeting-
+      // transcription-quality.md Phase A, extended here to dictation — the
+      // meeting pipeline already had this guard, dictation didn't). Compare
+      // against the terms actually sent for *this* bias, not a fresh DB read.
+      const strippedRawText = stripVocabLeak(
+        rawText,
+        vocabularyBiasTerms(bias),
+      );
+      if (strippedRawText !== rawText) {
+        log.info(
+          strippedRawText.trim()
+            ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
+            : "dropped dictation output — entirely a vocabulary-prompt echo",
+        );
+        rawText = strippedRawText;
+      }
 
       log.debug(
         `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,

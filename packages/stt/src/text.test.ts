@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   collapseAsrLineBreaks,
+  isVocabLeak,
   sanitizeTranscriptText,
   stripThinkingBlocks,
   stripTrailingDuplicate,
+  stripVocabLeak,
 } from "./text.js";
 
 describe("stripThinkingBlocks", () => {
@@ -138,5 +140,95 @@ describe("stripTrailingDuplicate", () => {
     expect(stripTrailingDuplicate("Hello there.\n\nHello there.")).toBe(
       "Hello there.",
     );
+  });
+});
+
+// Shared home for merge.ts's leak detector — see meeting-merge.test.ts for
+// the full isVocabLeak suite (mergeTranscript segment scenarios). Kept here
+// too since this module is now its canonical source.
+describe("isVocabLeak", () => {
+  const vocabTerms = Array.from({ length: 80 }, (_, i) => `Zylotrix${i + 1}`);
+
+  it("flags a full echo of either prompt shape", () => {
+    expect(
+      isVocabLeak(`Technical terms: ${vocabTerms.join(", ")}`, vocabTerms),
+    ).toBe(true);
+    expect(isVocabLeak(`Terms: ${vocabTerms.join(", ")}.`, vocabTerms)).toBe(
+      true,
+    );
+  });
+
+  it("does not flag real speech that merely mentions one vocab term", () => {
+    const real = `so the plan is to ship ${vocabTerms[0]} next week`;
+    expect(isVocabLeak(real, vocabTerms)).toBe(false);
+  });
+});
+
+describe("stripVocabLeak", () => {
+  // Mirrors the real dictation incident (specs/meeting-transcription-
+  // quality.md Phase A's investigation shape, extended to dictation): an
+  // 80-term vocabulary list, comma-joined into the ASR bias prompt.
+  const vocabTerms = Array.from({ length: 80 }, (_, i) => `Zylotrix${i + 1}`);
+  const dump = vocabTerms.join(", ");
+  const realSpeech =
+    "While you wait, why don't you launch a deep research on the subject about the best practices for this?";
+
+  it("returns empty when the entire output is the omlx/local-mlx echo (the confirmed incident shape)", () => {
+    // Matches the exact 2026-08-27 14:45:12 incident: a ~900ms near-silent
+    // recording came back as nothing but the injected prompt, verbatim.
+    expect(stripVocabLeak(`Technical terms: ${dump}`, vocabTerms)).toBe("");
+  });
+
+  it("returns empty when the entire output is the openai/local-whisper echo", () => {
+    expect(stripVocabLeak(`Terms: ${dump}.`, vocabTerms)).toBe("");
+  });
+
+  it("strips a leak appended after real speech with no separating punctuation", () => {
+    // The ASR concatenates the hallucinated prompt directly onto the last
+    // real word — no period in between — which is why the split can't rely
+    // on sentence boundaries alone.
+    const mixed = `${realSpeech}Technical terms: ${dump}`;
+    expect(stripVocabLeak(mixed, vocabTerms)).toBe(realSpeech);
+  });
+
+  it("strips a leak appended after real speech with a separating period", () => {
+    const mixed = `${realSpeech} Technical terms: ${dump}`;
+    expect(stripVocabLeak(mixed, vocabTerms)).toBe(realSpeech);
+  });
+
+  it("drops everything from the label onward, even if real speech somehow trails it", () => {
+    // Not a shape seen in production (the ASR trails off *into* the echo,
+    // it doesn't resume real transcription afterward) — documents that the
+    // marker-anchored cut intentionally treats "label to end of text" as
+    // leak territory rather than trying to recover a trailing remnant.
+    const mixed = `Technical terms: ${dump} ${realSpeech}`;
+    expect(stripVocabLeak(mixed, vocabTerms)).toBe("");
+  });
+
+  it("leaves ordinary speech mentioning a vocab term untouched (byte-identical)", () => {
+    const real = `so the plan is to ship ${vocabTerms[0]} next week once qa signs off`;
+    expect(stripVocabLeak(real, vocabTerms)).toBe(real);
+  });
+
+  it("does not strip a short real sentence that happens to be all vocab words", () => {
+    // "Claude Code." as its own sentence, alongside real speech elsewhere —
+    // too short (< 4 tokens) to trust the overlap ratio on its own.
+    const mixed = `${realSpeech} ${vocabTerms[0]} ${vocabTerms[1]}.`;
+    expect(stripVocabLeak(mixed, vocabTerms)).toBe(mixed);
+  });
+
+  it("strips a label-less leak (term list echoed with no 'Terms:' prefix) via the sentence-chunk fallback", () => {
+    const mixed = `${realSpeech} ${dump}.`;
+    expect(stripVocabLeak(mixed, vocabTerms)).toBe(realSpeech);
+  });
+
+  it("is a no-op with an empty vocabulary list", () => {
+    const text = `Technical terms: ${dump}`;
+    expect(stripVocabLeak(text, [])).toBe(text);
+  });
+
+  it("is a no-op on empty input", () => {
+    expect(stripVocabLeak("", vocabTerms)).toBe("");
+    expect(stripVocabLeak("   ", vocabTerms)).toBe("   ");
   });
 });

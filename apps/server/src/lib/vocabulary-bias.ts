@@ -202,3 +202,33 @@ export function resolveAsrVocabularyBias(
     buildVocabularyNoteText(entries),
   );
 }
+
+/**
+ * Recover the vocabulary terms out of an already-resolved {@link
+ * AsrVocabularyBias}, for comparing STT output against *what was actually
+ * sent* to this request's provider — not a fresh DB read, which could race a
+ * mid-request vocabulary edit and disagree with the bias this transcription
+ * actually used (dictation leak filter, specs/meeting-transcription-quality.md
+ * Phase A extended to the dictation paths).
+ *
+ * For the `prompt` kind (openai/groq/local-whisper/local-mlx/omlx) the terms
+ * live inlined in the free-text prompt rather than as a list — returning the
+ * whole label-stripped prompt text as a single "term" is equivalent for
+ * `isVocabLeak`'s purposes, since it tokenizes on word boundaries either way.
+ */
+export function vocabularyBiasTerms(
+  bias: AsrVocabularyBias | null | undefined,
+): string[] {
+  if (!bias) return [];
+  switch (bias.kind) {
+    case "prompt":
+      return [bias.text.replace(/^(technical\s+)?terms:\s*/i, "")];
+    case "deepgram-keyterms":
+    case "deepgram-keywords":
+    case "elevenlabs-keyterms":
+    case "soniox-context":
+      return bias.terms;
+    default:
+      return [];
+  }
+}

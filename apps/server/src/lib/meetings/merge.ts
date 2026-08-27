@@ -6,8 +6,24 @@
  * hallucinations and stuck-loop repeats, dedups speaker echo (my mic picking
  * up the remote speaker), and interleaves everything by corrected start time.
  *
- * No I/O and no dependencies — deterministic on its inputs.
+ * No I/O and no dependencies of its own — deterministic on its inputs.
+ * `normalizeText`/`textSimilarity`/`isVocabLeak` live in `@openstyle/stt`
+ * (shared with the dictation leak filter, packages/stt/src/text.ts) and are
+ * re-exported here so existing importers of this module don't need to change.
  */
+import {
+  isVocabLeak,
+  normalizeText,
+  textSimilarity,
+  VOCAB_LEAK_OVERLAP_THRESHOLD,
+} from "@openstyle/stt";
+
+export {
+  isVocabLeak,
+  normalizeText,
+  textSimilarity,
+  VOCAB_LEAK_OVERLAP_THRESHOLD,
+};
 
 export type Speaker = "Me" | "Them";
 
@@ -85,9 +101,6 @@ const ECHO_SIMILARITY_THRESHOLD = 0.7;
 /** Repeat filter: identical normalized text this many times in a row. */
 const REPEAT_MIN_RUN = 3;
 
-/** Fraction of the segment's distinct words that are vocabulary words. */
-export const VOCAB_LEAK_OVERLAP_THRESHOLD = 0.6;
-
 /**
  * Common whisper hallucinations on silence/noise. Matched against the whole
  * normalized segment text (or, for the phrase-y ones, as a prefix).
@@ -122,26 +135,6 @@ const HALLUCINATION_PREFIXES = [
   "thank you for watching",
 ];
 
-/** Lowercase, strip punctuation, collapse whitespace. */
-export function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** Token-based Jaccard similarity over normalized text. */
-export function textSimilarity(a: string, b: string): number {
-  const ta = new Set(normalizeText(a).split(" ").filter(Boolean));
-  const tb = new Set(normalizeText(b).split(" ").filter(Boolean));
-  if (ta.size === 0 && tb.size === 0) return 1;
-  if (ta.size === 0 || tb.size === 0) return 0;
-  let inter = 0;
-  for (const t of ta) if (tb.has(t)) inter++;
-  return inter / (ta.size + tb.size - inter);
-}
-
 /** True when the segment is a known silence hallucination. */
 export function isHallucination(seg: TranscriptSegment): boolean {
   const norm = normalizeText(seg.text);
@@ -155,32 +148,6 @@ export function isHallucination(seg: TranscriptSegment): boolean {
     return true;
   }
   return false;
-}
-
-/**
- * True when a transcript segment looks like the model echoed the
- * vocabulary-bias prompt back as fake speech, instead of transcribing real
- * audio. Provider-agnostic by design: the same ~900-char prompt is sent as
- * `prompt` (omlx.ts:70-72, whisper-local.ts:76-78) or `context`
- * (mlx-local.ts:48,70) depending on provider, but the leak always shows up
- * the same way on the *output* side — a segment whose words are
- * overwhelmingly drawn from the vocabulary list, which real speech is not.
- * Strips the "Terms: " / "Technical terms: " prompt-boilerplate prefixes
- * (vocabulary-bias.ts) before comparing, so a leak that echoes the label too
- * still matches on content, not the label.
- */
-export function isVocabLeak(text: string, vocabTerms: string[]): boolean {
-  if (vocabTerms.length === 0) return false;
-  const norm = normalizeText(text).replace(/^(technical )?terms\s*/, "");
-  const textTokens = new Set(norm.split(" ").filter(Boolean));
-  if (textTokens.size === 0) return false;
-  const termTokens = new Set(
-    vocabTerms.flatMap((t) => normalizeText(t).split(" ")).filter(Boolean),
-  );
-  if (termTokens.size === 0) return false;
-  let matched = 0;
-  for (const tok of textTokens) if (termTokens.has(tok)) matched++;
-  return matched / textTokens.size >= VOCAB_LEAK_OVERLAP_THRESHOLD;
 }
 
 /**

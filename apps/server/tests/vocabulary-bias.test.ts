@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildAsrVocabularyBias } from "../src/lib/vocabulary-bias.js";
+import {
+  buildAsrVocabularyBias,
+  vocabularyBiasTerms,
+} from "../src/lib/vocabulary-bias.js";
 
 function terms(count: number, prefix = "term"): string[] {
   return Array.from({ length: count }, (_, i) => `${prefix}${i}`);
@@ -328,5 +331,49 @@ describe("soniox", () => {
   it("omits text when no note text is supplied", () => {
     const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", ["Openstyle"]);
     expect(bias).toEqual({ kind: "soniox-context", terms: ["Openstyle"] });
+  });
+});
+
+describe("vocabularyBiasTerms", () => {
+  // Recovers the terms out of an already-resolved bias, rather than a fresh
+  // DB read — see the doc comment on the function for why (dictation leak
+  // filter, specs/meeting-transcription-quality.md Phase A extended to
+  // dictation).
+  it("returns [] for null/undefined bias", () => {
+    expect(vocabularyBiasTerms(null)).toEqual([]);
+    expect(vocabularyBiasTerms(undefined)).toEqual([]);
+  });
+
+  it("strips the 'Technical terms:' label from a prompt-kind bias", () => {
+    const bias = buildAsrVocabularyBias("omlx", "Qwen3-ASR", [
+      "PortifolioZero",
+      "churrasqueira",
+    ]);
+    expect(bias?.kind).toBe("prompt");
+    const terms = vocabularyBiasTerms(bias);
+    expect(terms).toHaveLength(1);
+    expect(terms[0]).not.toMatch(/^technical terms:/i);
+    expect(terms[0]).toContain("PortifolioZero");
+    expect(terms[0]).toContain("churrasqueira");
+  });
+
+  it("strips the bare 'Terms:' label from an openai/groq/local-whisper bias", () => {
+    const bias = buildAsrVocabularyBias("openai", "whisper-1", ["Openstyle"]);
+    expect(bias?.kind).toBe("prompt");
+    const terms = vocabularyBiasTerms(bias);
+    expect(terms).toEqual(["Openstyle."]);
+  });
+
+  it("passes through the terms array unchanged for keyterm/context kinds", () => {
+    expect(
+      vocabularyBiasTerms({ kind: "deepgram-keyterms", terms: ["Openstyle"] }),
+    ).toEqual(["Openstyle"]);
+    expect(
+      vocabularyBiasTerms({
+        kind: "soniox-context",
+        terms: ["Openstyle"],
+        text: "Openstyle: our voice dictation app",
+      }),
+    ).toEqual(["Openstyle"]);
   });
 });
