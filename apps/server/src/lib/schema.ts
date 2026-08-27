@@ -10,7 +10,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 33;
+const SCHEMA_VERSION = 34;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -866,6 +866,33 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // default; unset is the common case and must produce a byte-identical
     // prompt to a meeting with no context (§5.2, §9.3).
     db.exec(`ALTER TABLE meetings ADD COLUMN context TEXT`);
+  }
+
+  if (currentVersion < 34) {
+    // Speaker-suggestion evidence hardening (real-E2E finding on meeting
+    // 8e6aea86: role-inference suggestions violated the naming prompt's own
+    // no-guessing rule). Two additions, both on `meeting_speakers`:
+    //
+    // suggested_kind: "name" | "role" | NULL. The LLM's `speakers` block
+    // entries now carry a `kind` alongside `name`/`evidence` — "name" when
+    // grounded in self-identifying or addressed-as evidence, "role" for a
+    // role/descriptor guess explicitly marked as not a confirmed name
+    // (enhance-prompt.ts's speaker-suggestion block). NULL for rows written
+    // before this migration, or when the LLM omitted the field — treated as
+    // "name" at read time for backward compatibility, matching the
+    // pre-hardening contract.
+    //
+    // confirmed_at: set only by a human-initiated PATCH
+    // (routes/meetings.ts's speakers PATCH handler) that writes
+    // display_name and/or merged_into — never by Enhance's suggestion
+    // upsert. Distinguishes "a user confirmed something about this speaker"
+    // from "any row touch," which `updated_at` conflates: before this
+    // column existed, `latestSpeakerUpdate` (§9.2's summary staleness hint)
+    // read MAX(updated_at) across all rows, so a fresh Enhance run's
+    // suggestion-only writes falsely marked an unrelated, already-generated
+    // summary as stale. `latestSpeakerUpdate` now reads MAX(confirmed_at).
+    db.exec(`ALTER TABLE meeting_speakers ADD COLUMN suggested_kind TEXT`);
+    db.exec(`ALTER TABLE meeting_speakers ADD COLUMN confirmed_at INTEGER`);
   }
 
   // Upsert schema version

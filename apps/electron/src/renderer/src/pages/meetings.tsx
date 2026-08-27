@@ -141,15 +141,23 @@ interface SpeakerRow {
   displayName: string | null;
   suggestedName: string | null;
   suggestedEvidence: string | null;
+  /** "role" marks `suggestedName` as a role/descriptor guess rather than a
+   * confirmed-evidence name (specs/meeting-speaker-naming.md §5.2's
+   * hardened contract) — always "name" for a pre-hardening row or when the
+   * LLM omitted the field. */
+  suggestedKind: "name" | "role";
   mergedInto: string | null;
 }
 
 interface SpeakersResponse {
   speakers: SpeakerRow[];
   unlabeledCount: number;
-  /** Max `meeting_speakers.updated_at` across this meeting's rows, or null
-   * when there are none — powers the summary-tab staleness hint (§9.2)
-   * without a second endpoint. */
+  /** Max `meeting_speakers.confirmed_at` across this meeting's rows, or
+   * null when there are none — powers the summary-tab staleness hint
+   * (§9.2) without a second endpoint. Deliberately NOT `updated_at`: that
+   * column is also bumped by Enhance's own suggestion writes, which are
+   * evidence, never a user-confirmed change, and must never mark an
+   * already-generated summary stale on their own (real-E2E fix). */
   latestSpeakerUpdate: number | null;
 }
 
@@ -1044,6 +1052,7 @@ function SpeakerRowEditor({
     row.displayName === null &&
     !!row.suggestedName &&
     name.trim() === row.suggestedName;
+  const isRoleGuess = isSuggestedUnconfirmed && row.suggestedKind === "role";
 
   const otherSpeakers = speakers.filter((s) => s.label !== row.label);
   const mergeTargetLabel = (label: string): string =>
@@ -1083,11 +1092,21 @@ function SpeakerRowEditor({
             className={cn(
               "h-8 text-[12.5px]",
               isSuggestedUnconfirmed && "border-dashed",
+              // Role guesses read visually distinct from a real name
+              // suggestion — this is a descriptor the LLM inferred, never
+              // evidence-backed identity (specs/meeting-speaker-naming.md
+              // §5.2's hardened contract; real-E2E finding on meeting
+              // 8e6aea86).
+              isRoleGuess && "italic",
             )}
           />
           {isSuggestedUnconfirmed && (
             <Badge variant="passive" className="shrink-0">
-              {t("meetings.speakerSuggested")}
+              {t(
+                isRoleGuess
+                  ? "meetings.speakerRoleGuess"
+                  : "meetings.speakerSuggested",
+              )}
             </Badge>
           )}
         </div>
@@ -1135,6 +1154,16 @@ function SpeakerRowEditor({
           </Select>
         )}
       </div>
+      {row.suggestedEvidence && (
+        <p className="text-muted-foreground m-0 mt-1 truncate text-[11px]">
+          {t(
+            isRoleGuess
+              ? "meetings.speakerRoleEvidence"
+              : "meetings.speakerEvidence",
+            { evidence: row.suggestedEvidence },
+          )}
+        </p>
+      )}
       {row.mergedInto === null && mergeHintTarget && (
         <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-[var(--accent-passive-tint)] px-2.5 py-1.5">
           <span className="text-[color:var(--accent-passive-ink)] text-[11px]">

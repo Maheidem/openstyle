@@ -155,6 +155,116 @@ export function extractJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Evidence-provenance guard (specs/meeting-speaker-naming.md §5.2/§5.3, real
+ * E2E hardening on meeting 8e6aea86): the prompt-text hardening alone did
+ * NOT converge on a real local model (Qwen3.8 via oMLX) — across repeated
+ * runs of the identical hardened prompt at temperature 0, the model still
+ * produced ungrounded suggestions the prompt explicitly forbids, just via a
+ * different mechanism than the original bug: "Them 3 = Marcos" from
+ * evidence "Thank you, Marcos." (Them 3's OWN line addressing "Me" — Marcos
+ * IS the app user, never a "Them" label), and "Them 5 = Aruna" from evidence
+ * that traces to a "Me" segment, not any Them 5 line at all. Prompt wording
+ * cannot mechanically prevent a model from misreading a vocative address as
+ * self-identification, or from citing the wrong speaker's line — so this
+ * checks the model's own cited evidence against the exact segment text it
+ * was given, deterministically, regardless of model quality.
+ */
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** True when `evidenceNorm` contains a first-person self-naming construction
+ *  next to `nameNorm` ("this is Ana", "I'm Ana", "Ana here", "Ana
+ *  speaking", "my name's Ana") — as opposed to merely containing the name in
+ *  some other, non-self-identifying role (e.g. addressing someone else:
+ *  "Thank you, Ana."). Both arguments are already lowercased/whitespace-
+ *  normalized. */
+function looksSelfIdentifying(evidenceNorm: string, nameNorm: string): boolean {
+  if (!nameNorm) return false;
+  const escaped = nameNorm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `\\b(this is|i'?m|i am|it'?s|it is|my name'?s|my name is)\\s+${escaped}\\b|\\b${escaped}\\s+(here|speaking)\\b`,
+  );
+  return pattern.test(evidenceNorm);
+}
+
+/**
+ * Locates which speaker(s) actually said something containing
+ * `evidenceNorm`, among the exact segments the model was shown in this
+ * chunk. Returns the set of "Them" `speakerLabel`s whose own text contains
+ * the evidence, plus whether it also (or only) traces to a "Me" segment.
+ * Matching is substring containment on normalized text — a real quote from
+ * the transcript is always found this way; a paraphrase or hallucination
+ * usually isn't, which is the conservative direction ground rule #1 wants
+ * (a false negative here just drops a maybe-valid suggestion; a false
+ * positive would let a fabricated one through).
+ */
+function locateEvidence(
+  chunk: EnhanceSegment[],
+  evidenceNorm: string,
+): { themLabels: Set<string>; meMatch: boolean } {
+  const themLabels = new Set<string>();
+  let meMatch = false;
+  if (!evidenceNorm) return { themLabels, meMatch };
+  for (const seg of chunk) {
+    if (!normalizeForMatch(seg.text).includes(evidenceNorm)) continue;
+    if (seg.speaker === "Me") meMatch = true;
+    else if (seg.speakerLabel) themLabels.add(seg.speakerLabel);
+  }
+  return { themLabels, meMatch };
+}
+
+/**
+ * The full provenance check for one `speakers` entry. `label` is the Them
+ * label the model is naming; `chunk` is the exact segment set it saw.
+ * Returns a reason string when the entry must be dropped, `null` when it's
+ * grounded enough to keep.
+ *
+ * Deliberately conservative and scoped to what real E2E testing actually
+ * found broken: evidence must trace to an actual non-"Me" segment (the
+ * label's own turn, or a different Them label's turn) — evidence that
+ * matches only a "Me" line, or no line at all, is dropped even though the
+ * pre-hardening prompt's original evidence menu allowed "how Me addresses
+ * them directly." Reliably telling a Me line that addresses this label
+ * ("Ana, go ahead") from a Me line that merely mentions an unrelated third
+ * party ("I'll work on this with Ana") needs semantic judgment this
+ * mechanical check doesn't attempt — so for v1 that whole evidence class is
+ * dropped rather than risk exactly the misattribution real E2E testing
+ * found (specs/meeting-speaker-naming.md non-goals). A label can still get
+ * named once it self-identifies, or once a different Them label addresses
+ * it — both remain fully supported.
+ */
+function checkEvidenceProvenance(
+  chunk: EnhanceSegment[],
+  label: string,
+  kind: "name" | "role",
+  name: string,
+  evidence: string,
+): string | null {
+  const evidenceNorm = normalizeForMatch(evidence);
+  if (!evidenceNorm) return "no evidence quote given";
+  const nameNorm = normalizeForMatch(name);
+  if (kind === "name" && !evidenceNorm.includes(nameNorm)) {
+    return "proposed name doesn't even appear in its own cited evidence";
+  }
+  const { themLabels, meMatch } = locateEvidence(chunk, evidenceNorm);
+  if (themLabels.size === 0) {
+    return meMatch
+      ? 'evidence traces only to a "Me" segment, never any Them label\'s own words'
+      : "evidence doesn't match any segment's actual text (hallucinated quote)";
+  }
+  if (kind === "role") return null; // containment in a real Them line is enough
+  const otherLabelHasIt = [...themLabels].some((l) => l !== label);
+  if (otherLabelHasIt) return null; // ADDRESSED-AS: a different Them label said it
+  // Only this label's own turn has it: must actually read as
+  // self-identifying, not merely a line that happens to contain the name
+  // (closes the "Thank you, Marcos" bug — Them 3's own outward-facing
+  // vocative, not a self-introduction).
+  if (looksSelfIdentifying(evidenceNorm, nameNorm)) return null;
+  return "evidence is from the label's own turn but doesn't read as self-identifying (e.g. addressing someone else by name, not naming itself)";
+}
+
 /** Thin wrapper around the shared default chat call (`llm-call.ts`). */
 const defaultLlmCall: EnhanceLlmCall = (request) =>
   resolveDefaultChatCall({ ...request, taskId: "meetingEnhance" });
@@ -231,7 +341,17 @@ export async function enhanceMeetingTranscript(
   const corrections = new Map<string, string>();
   const nameProposals = new Map<
     string,
-    { name: string; evidence: string; chunkIndex: number }
+    {
+      name: string;
+      evidence: string;
+      /** "role" only when the model explicitly marked this a role/
+       *  descriptor guess rather than a confirmed name
+       *  (specs/meeting-speaker-naming.md §5.2's hardened contract).
+       *  Any other/missing value defaults to "name" — backward compatible
+       *  with the pre-hardening contract, which had no `kind` field. */
+      kind: "name" | "role";
+      chunkIndex: number;
+    }
   >();
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
@@ -320,11 +440,36 @@ export async function enhanceMeetingTranscript(
             typeof evidenceRaw === "string"
               ? evidenceRaw.trim().slice(0, 240)
               : "";
+          // Only an explicit "role" marks a suggestion as a role/descriptor
+          // guess; anything else (missing, "name", or a stray value)
+          // defaults to "name" — backward compatible with the
+          // pre-hardening contract, which had no `kind` field at all.
+          const kindRaw = (entry as Record<string, unknown>).kind;
+          const cleanKind: "name" | "role" =
+            kindRaw === "role" ? "role" : "name";
+          // Mechanical evidence-provenance guard (real E2E hardening,
+          // above): drop anything the model's own cited evidence doesn't
+          // actually support against the exact segment text it was shown —
+          // independent of how well-worded the prompt is.
+          const dropReason = checkEvidenceProvenance(
+            chunk,
+            label,
+            cleanKind,
+            cleanName,
+            cleanEvidence,
+          );
+          if (dropReason) {
+            log.debug(
+              `meeting ${meetingId}: chunk ${chunkIndex} dropped suggestion "${cleanName}" for Them ${label}: ${dropReason}`,
+            );
+            continue;
+          }
           const existing = nameProposals.get(label);
           if (!existing) {
             nameProposals.set(label, {
               name: cleanName,
               evidence: cleanEvidence,
+              kind: cleanKind,
               chunkIndex,
             });
           } else if (existing.name.toLowerCase() !== cleanName.toLowerCase()) {
@@ -370,19 +515,24 @@ export async function enhanceMeetingTranscript(
   if (nameProposals.size > 0) {
     const db = getDb();
     const now = Date.now();
+    // Never writes `confirmed_at` (specs/meeting-speaker-naming.md §9.2 real
+    // E2E fix): a suggestion is evidence, not a user-confirmed change, so it
+    // must never move the summary-staleness watermark. Only the human-
+    // initiated PATCH handler (routes/meetings.ts) sets that column.
     const upsert = db.prepare(`
       INSERT INTO meeting_speakers
-        (meeting_id, speaker_label, suggested_name, suggested_evidence, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+        (meeting_id, speaker_label, suggested_name, suggested_evidence, suggested_kind, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(meeting_id, speaker_label) DO UPDATE SET
         suggested_name = excluded.suggested_name,
         suggested_evidence = excluded.suggested_evidence,
+        suggested_kind = excluded.suggested_kind,
         updated_at = excluded.updated_at
     `);
     db.exec("BEGIN");
     try {
       for (const [label, p] of nameProposals) {
-        upsert.run(meetingId, label, p.name, p.evidence, now);
+        upsert.run(meetingId, label, p.name, p.evidence, p.kind, now);
       }
       db.exec("COMMIT");
     } catch (err) {

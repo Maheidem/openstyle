@@ -781,14 +781,22 @@ function insertSpeaker(
     displayName?: string | null;
     suggestedName?: string | null;
     suggestedEvidence?: string | null;
+    suggestedKind?: string | null;
     mergedInto?: string | null;
+    /** Real-E2E fix regression coverage: only a genuinely *confirmed*
+     * write (routes/meetings.ts's PATCH handler) sets this — a plain
+     * suggestion upsert (enhance.ts) never does. Tests that simulate a
+     * confirmed row must pass this explicitly; it is NOT inferred from
+     * `displayName`/`mergedInto` being set, to keep the two independent
+     * the same way the real schema does. */
+    confirmedAt?: number | null;
   } = {},
 ): void {
   getDb()
     .prepare(
       `INSERT INTO meeting_speakers
-         (meeting_id, speaker_label, display_name, suggested_name, suggested_evidence, merged_into, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (meeting_id, speaker_label, display_name, suggested_name, suggested_evidence, suggested_kind, merged_into, updated_at, confirmed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       meetingId,
@@ -796,8 +804,10 @@ function insertSpeaker(
       opts.displayName ?? null,
       opts.suggestedName ?? null,
       opts.suggestedEvidence ?? null,
+      opts.suggestedKind ?? null,
       opts.mergedInto ?? null,
       Date.now(),
+      opts.confirmedAt ?? null,
     );
 }
 
@@ -838,6 +848,7 @@ describe("GET /api/meetings/:id/speakers", () => {
         displayName: string | null;
         suggestedName: string | null;
         suggestedEvidence: string | null;
+        suggestedKind: string;
         mergedInto: string | null;
       }>;
       unlabeledCount: number;
@@ -851,6 +862,7 @@ describe("GET /api/meetings/:id/speakers", () => {
       displayName: "Ana",
       suggestedName: "Ana",
       suggestedEvidence: "introduced herself",
+      suggestedKind: "name",
       mergedInto: null,
     });
     expect(two).toMatchObject({
@@ -858,11 +870,44 @@ describe("GET /api/meetings/:id/speakers", () => {
       displayName: null,
       suggestedName: null,
       suggestedEvidence: null,
+      suggestedKind: "name",
       mergedInto: null,
     });
   });
 
-  it("reports latestSpeakerUpdate as the max updated_at across rows, or null when there are none", async () => {
+  it("returns suggestedKind 'role' only when the stored row explicitly says so, defaulting a NULL/unknown value to 'name'", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
+      )
+      .run();
+    insertSpeaker("m1", "1", {
+      suggestedName: "the hiring manager",
+      suggestedKind: "role",
+    });
+    insertSpeaker("m1", "2", { suggestedName: "Ana" }); // suggestedKind: null
+
+    const res = await app.request("/api/meetings/m1/speakers");
+    const body = (await res.json()) as {
+      speakers: Array<{ label: string; suggestedKind: string }>;
+    };
+    expect(body.speakers.find((s) => s.label === "1")?.suggestedKind).toBe(
+      "role",
+    );
+    expect(body.speakers.find((s) => s.label === "2")?.suggestedKind).toBe(
+      "name",
+    );
+  });
+
+  it("reports latestSpeakerUpdate as the max confirmed_at across rows — never bumped by a suggestion-only write, or null when there are none confirmed", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
     getDb()
@@ -877,7 +922,28 @@ describe("GET /api/meetings/:id/speakers", () => {
     };
     expect(emptyBody.latestSpeakerUpdate).toBeNull();
 
-    insertSpeaker("m1", "1", { displayName: "Ana" });
+    // Real-E2E fix: a row that only ever received a suggestion (Enhance's
+    // upsert never sets confirmed_at) must NOT count — this is exactly the
+    // false-staleness bug found on meeting 8e6aea86, where an Enhance run's
+    // own suggestion writes made an unrelated, already-generated summary
+    // read as stale.
+    insertSpeaker("m1", "1", {
+      suggestedName: "Ana",
+      suggestedEvidence: "introduced herself",
+    });
+    const suggestionOnly = await app.request("/api/meetings/m1/speakers");
+    const suggestionOnlyBody = (await suggestionOnly.json()) as {
+      latestSpeakerUpdate: number | null;
+    };
+    expect(suggestionOnlyBody.latestSpeakerUpdate).toBeNull();
+
+    // A genuinely confirmed row (confirmed_at set, as the PATCH handler
+    // always does) does count.
+    getDb()
+      .prepare(
+        "UPDATE meeting_speakers SET display_name = 'Ana', confirmed_at = ? WHERE meeting_id = 'm1' AND speaker_label = '1'",
+      )
+      .run(Date.now());
     const withRow = await app.request("/api/meetings/m1/speakers");
     const withRowBody = (await withRow.json()) as {
       latestSpeakerUpdate: number | null;
@@ -938,6 +1004,24 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
       )
       .get() as { display_name: string };
     expect(row.display_name).toBe("Ana");
+  });
+
+  it("sets confirmed_at on a successful PATCH (real-E2E fix: this, not updated_at, drives the summary staleness hint)", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    const res = await patchSpeaker("m1", "1", { displayName: "Ana" });
+    expect(res.status).toBe(200);
+    const row = getDb()
+      .prepare(
+        "SELECT confirmed_at FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '1'",
+      )
+      .get() as { confirmed_at: number | null };
+    expect(row.confirmed_at).toEqual(expect.any(Number));
   });
 
   it("un-names a speaker with displayName: null without touching merged_into", async () => {

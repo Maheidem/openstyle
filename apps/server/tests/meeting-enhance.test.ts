@@ -384,7 +384,7 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
         speaker: "Them",
         startMs: 0,
         endMs: 1000,
-        text: "hi there",
+        text: "hi there, this is Ana",
         id: "m1:system:0",
         speakerLabel: "3",
         speakerName: "Ana", // already confirmed — formatted display is "Ana", not "Them 3"
@@ -392,7 +392,7 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
     ];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({
-        speakers: { "3": { name: "Ana", evidence: "already known" } },
+        speakers: { "3": { name: "Ana", evidence: "this is Ana" } },
       }),
     }));
 
@@ -430,12 +430,14 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
 
   it("persists a well-formed speakers block for a real label without disturbing independent text corrections", async () => {
     insertMeetingAndSegments("m1", ["m1:system:0"]);
-    const segments = [seg("m1:system:0", "Them", "garbled txt", 0, 1000, "3")];
+    const segments = [
+      seg("m1:system:0", "Them", "garbled txt, this is Ana", 0, 1000, "3"),
+    ];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({
         "m1:system:0": "corrected text",
         speakers: {
-          "3": { name: "Ana", evidence: "introduced herself as Ana" },
+          "3": { name: "Ana", evidence: "this is Ana" },
         },
       }),
     }));
@@ -458,7 +460,308 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       )
       .get() as { suggested_name: string; suggested_evidence: string };
     expect(row.suggested_name).toBe("Ana");
-    expect(row.suggested_evidence).toBe("introduced herself as Ana");
+    expect(row.suggested_evidence).toBe("this is Ana");
+  });
+
+  it('persists an explicit kind: "role" entry as a role guess, distinct from a confirmed name (real-E2E hardening)', async () => {
+    insertMeetingAndSegments("m1", ["m1:system:0"]);
+    const segments = [
+      seg(
+        "m1:system:0",
+        "Them",
+        "hi, I'll be leading the interview from our side",
+        0,
+        1000,
+        "3",
+      ),
+    ];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: {
+          "3": {
+            name: "the hiring manager",
+            kind: "role",
+            evidence: "leading the interview from our side",
+          },
+        },
+      }),
+    }));
+
+    await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      {
+        llmCall: llm.call,
+      },
+    );
+
+    const row = getDb()
+      .prepare(
+        "SELECT suggested_name, suggested_kind FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
+      )
+      .get() as { suggested_name: string; suggested_kind: string };
+    expect(row.suggested_name).toBe("the hiring manager");
+    expect(row.suggested_kind).toBe("role");
+  });
+
+  it('defaults suggested_kind to "name" when the entry omits kind (backward compatible with the pre-hardening contract) or sends an unrecognized value', async () => {
+    insertMeetingAndSegments("m1", ["m1:system:0", "m1:system:1"]);
+    const segments = [
+      seg("m1:system:0", "Them", "hi, this is Ana", 0, 1000, "3"),
+      seg("m1:system:1", "Them", "hi, this is Beto", 1000, 2000, "4"),
+    ];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: {
+          "3": { name: "Ana", evidence: "this is Ana" }, // no kind at all
+          "4": { name: "Beto", kind: "guess", evidence: "this is Beto" },
+        },
+      }),
+    }));
+
+    await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      {
+        llmCall: llm.call,
+      },
+    );
+
+    const rows = getDb()
+      .prepare(
+        "SELECT speaker_label, suggested_kind FROM meeting_speakers WHERE meeting_id = 'm1' ORDER BY speaker_label",
+      )
+      .all() as { speaker_label: string; suggested_kind: string }[];
+    expect(rows.find((r) => r.speaker_label === "3")?.suggested_kind).toBe(
+      "name",
+    );
+    expect(rows.find((r) => r.speaker_label === "4")?.suggested_kind).toBe(
+      "name",
+    );
+  });
+
+  it("never sets confirmed_at on a suggestion upsert — only a human PATCH does (real-E2E fix: prevents Enhance from falsely marking a summary stale)", async () => {
+    insertMeetingAndSegments("m1", ["m1:system:0"]);
+    const segments = [
+      seg("m1:system:0", "Them", "hi, this is Ana", 0, 1000, "3"),
+    ];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: { "3": { name: "Ana", evidence: "this is Ana" } },
+      }),
+    }));
+
+    await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      {
+        llmCall: llm.call,
+      },
+    );
+
+    const row = getDb()
+      .prepare(
+        "SELECT confirmed_at FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
+      )
+      .get() as { confirmed_at: number | null };
+    expect(row.confirmed_at).toBeNull();
+  });
+
+  it('drops a suggestion whose evidence traces only to a "Me" segment, never any Them line (real-E2E regression: meeting 8e6aea86\'s "Them 5 = Aruna", cited evidence actually spoken by "Me")', async () => {
+    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:system:0"]);
+    const segments = [
+      seg("m1:mic:0", "Me", "I'm gonna work on this alongside with Aruna"),
+      seg("m1:system:0", "Them", "sounds good, thanks", 0, 1000, "5"),
+    ];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: {
+          "5": {
+            name: "Aruna",
+            evidence: "I'm gonna work on this alongside with Aruna",
+          },
+        },
+      }),
+    }));
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result.speakerSuggestions).toBe(0);
+    const row = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS c FROM meeting_speakers WHERE meeting_id = 'm1'",
+      )
+      .get() as { c: number };
+    expect(row.c).toBe(0);
+  });
+
+  it('drops a "name" suggestion whose evidence is the label\'s own turn but reads as addressing someone else, not self-identifying (real-E2E regression: meeting 8e6aea86\'s "Them 3 = Marcos" from Them 3\'s own "Thank you, Marcos.")', async () => {
+    insertMeetingAndSegments("m1", ["m1:system:0"]);
+    const segments = [
+      seg(
+        "m1:system:0",
+        "Them",
+        "Thank you, Marcos. That looks great.",
+        0,
+        1000,
+        "3",
+      ),
+    ];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: { "3": { name: "Marcos", evidence: "Thank you, Marcos." } },
+      }),
+    }));
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result.speakerSuggestions).toBe(0);
+  });
+
+  it("accepts a \"name\" suggestion whose evidence is a DIFFERENT Them label's turn addressing this label by name (ADDRESSED-AS), even though it's not self-identifying", async () => {
+    insertMeetingAndSegments("m1", ["m1:system:0", "m1:system:1"]);
+    const segments = [
+      seg("m1:system:0", "Them", "Ana, can you start us off?", 0, 1000, "2"),
+      seg("m1:system:1", "Them", "Sure, happy to.", 1000, 2000, "3"),
+    ];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: {
+          "3": { name: "Ana", evidence: "Ana, can you start us off?" },
+        },
+      }),
+    }));
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result.speakerSuggestions).toBe(1);
+    const row = getDb()
+      .prepare(
+        "SELECT suggested_name FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
+      )
+      .get() as { suggested_name: string };
+    expect(row.suggested_name).toBe("Ana");
+  });
+
+  it("drops a suggestion whose cited evidence doesn't match any segment's actual text (hallucinated quote)", async () => {
+    insertMeetingAndSegments("m1", ["m1:system:0"]);
+    const segments = [seg("m1:system:0", "Them", "hi there", 0, 1000, "3")];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: {
+          "3": { name: "Ana", evidence: "this is Ana, nice to meet you" },
+        },
+      }),
+    }));
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result.speakerSuggestions).toBe(0);
+  });
+
+  it("drops a suggestion whose proposed name doesn't even appear in its own cited evidence", async () => {
+    insertMeetingAndSegments("m1", ["m1:system:0"]);
+    const segments = [
+      seg("m1:system:0", "Them", "hi there, this is Ana", 0, 1000, "3"),
+    ];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: { "3": { name: "Beatriz", evidence: "this is Ana" } },
+      }),
+    }));
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result.speakerSuggestions).toBe(0);
+  });
+
+  it('accepts a "role" suggestion grounded in the label\'s own real text without requiring self-identify phrasing', async () => {
+    insertMeetingAndSegments("m1", ["m1:system:0"]);
+    const segments = [
+      seg(
+        "m1:system:0",
+        "Them",
+        "as the hiring manager for this role, I'll be leading the panel",
+        0,
+        1000,
+        "3",
+      ),
+    ];
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({
+        speakers: {
+          "3": {
+            name: "the hiring manager",
+            kind: "role",
+            evidence: "as the hiring manager for this role",
+          },
+        },
+      }),
+    }));
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      segments,
+      "en",
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result.speakerSuggestions).toBe(1);
   });
 
   it("drops a speakers entry naming a label not present in this meeting's speakerLabels, without throwing", async () => {
@@ -516,13 +819,30 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   it("keeps the first chunk's name on a cross-chunk conflict for the same label, logging the conflict, no throw", async () => {
     insertMeetingAndSegments("m1", ["m1:system:0", "m1:system:1"]);
     const segments = [
-      seg("m1:system:0", "Them", "a".repeat(200), 0, 1000, "3"),
-      seg("m1:system:1", "Them", "b".repeat(200), 1000, 2000, "3"),
+      seg(
+        "m1:system:0",
+        "Them",
+        `${"a".repeat(200)} this is Ana`,
+        0,
+        1000,
+        "3",
+      ),
+      seg(
+        "m1:system:1",
+        "Them",
+        `${"b".repeat(200)} this is Beatriz`,
+        1000,
+        2000,
+        "3",
+      ),
     ];
     const llm = fakeLlm((_request, index) => ({
       text: JSON.stringify({
         speakers: {
-          "3": { name: index === 0 ? "Ana" : "Beatriz", evidence: "x" },
+          "3": {
+            name: index === 0 ? "Ana" : "Beatriz",
+            evidence: index === 0 ? "this is Ana" : "this is Beatriz",
+          },
         },
       }),
     }));
@@ -550,14 +870,33 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   it("records one row (no conflict) when two chunks propose the same name (case-insensitive) for the same label", async () => {
     insertMeetingAndSegments("m1", ["m1:system:0", "m1:system:1"]);
     const segments = [
-      seg("m1:system:0", "Them", "a".repeat(200), 0, 1000, "3"),
-      seg("m1:system:1", "Them", "b".repeat(200), 1000, 2000, "3"),
+      seg(
+        "m1:system:0",
+        "Them",
+        `${"a".repeat(200)} this is Ana`,
+        0,
+        1000,
+        "3",
+      ),
+      seg(
+        "m1:system:1",
+        "Them",
+        `${"b".repeat(200)} this is ANA`,
+        1000,
+        2000,
+        "3",
+      ),
     ];
     const llm = fakeLlm((_request, index) => ({
       text: JSON.stringify({
         // Same name, different case, from each chunk — must not be treated
         // as a conflict.
-        speakers: { "3": { name: index === 0 ? "Ana" : "ANA", evidence: "x" } },
+        speakers: {
+          "3": {
+            name: index === 0 ? "Ana" : "ANA",
+            evidence: index === 0 ? "this is Ana" : "this is ANA",
+          },
+        },
       }),
     }));
 
@@ -612,10 +951,12 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
          VALUES ('m1', '3', 'Ana', ?)`,
       )
       .run(Date.now());
-    const segments = [seg("m1:system:0", "Them", "hi", 0, 1000, "3")];
+    const segments = [
+      seg("m1:system:0", "Them", "hi, this is Beatriz", 0, 1000, "3"),
+    ];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({
-        speakers: { "3": { name: "Beatriz", evidence: "different guess" } },
+        speakers: { "3": { name: "Beatriz", evidence: "this is Beatriz" } },
       }),
     }));
 

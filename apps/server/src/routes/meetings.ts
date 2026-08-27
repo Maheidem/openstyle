@@ -938,7 +938,7 @@ const meetings = new Hono()
     ).c;
     const speakerRows = db
       .prepare(
-        `SELECT speaker_label, display_name, suggested_name, suggested_evidence, merged_into
+        `SELECT speaker_label, display_name, suggested_name, suggested_evidence, suggested_kind, merged_into, confirmed_at
          FROM meeting_speakers WHERE meeting_id = ?`,
       )
       .all(id) as unknown as {
@@ -946,7 +946,9 @@ const meetings = new Hono()
       display_name: string | null;
       suggested_name: string | null;
       suggested_evidence: string | null;
+      suggested_kind: string | null;
       merged_into: string | null;
+      confirmed_at: number | null;
     }[];
     const byLabel = new Map(speakerRows.map((r) => [r.speaker_label, r]));
 
@@ -959,24 +961,25 @@ const meetings = new Hono()
         displayName: row?.display_name ?? null,
         suggestedName: row?.suggested_name ?? null,
         suggestedEvidence: row?.suggested_evidence ?? null,
+        // NULL (pre-hardening row, or the LLM omitted the field) reads as
+        // "name" — the pre-hardening contract's only kind
+        // (specs/meeting-speaker-naming.md §5.2/§5.3).
+        suggestedKind: row?.suggested_kind === "role" ? "role" : "name",
         mergedInto: row?.merged_into ?? null,
       };
     });
     // Powers the Summary tab's staleness hint (specs/meeting-speaker-
     // naming.md §9.2) without a second endpoint: the client compares this
     // against meeting_summaries.created_at, already available on GET /:id.
+    // Real-E2E fix: reads MAX(confirmed_at), NOT MAX(updated_at) — the
+    // latter is bumped by Enhance's own suggestion upserts, which are
+    // evidence, never a user-confirmed change, and must never mark an
+    // already-generated summary stale on their own.
+    const confirmedUpdates = speakerRows
+      .map((r) => r.confirmed_at)
+      .filter((v): v is number => v != null);
     const latestSpeakerUpdate =
-      speakerRows.length > 0
-        ? Math.max(
-            ...(
-              db
-                .prepare(
-                  "SELECT updated_at FROM meeting_speakers WHERE meeting_id = ?",
-                )
-                .all(id) as unknown as { updated_at: number }[]
-            ).map((r) => r.updated_at),
-          )
-        : null;
+      confirmedUpdates.length > 0 ? Math.max(...confirmedUpdates) : null;
     return c.json({ speakers, unlabeledCount, latestSpeakerUpdate });
   })
   // specs/meeting-speaker-naming.md §6.2: partial update of one speaker's
@@ -1058,19 +1061,29 @@ const meetings = new Hono()
           // Any row currently pointing merged_into = label (this label had
           // other labels already merged into it) cascades to point at the
           // new resolved target directly, in the same transaction — keeps
-          // "no chain longer than one hop" true for the whole table.
+          // "no chain longer than one hop" true for the whole table. This
+          // is a user-driven state change (the cascaded rows' effective
+          // identity just moved), so it counts toward `confirmed_at` too.
           db.prepare(
-            "UPDATE meeting_speakers SET merged_into = ?, updated_at = ? WHERE meeting_id = ? AND merged_into = ?",
-          ).run(cascadeTarget, now, id, label);
+            "UPDATE meeting_speakers SET merged_into = ?, updated_at = ?, confirmed_at = ? WHERE meeting_id = ? AND merged_into = ?",
+          ).run(cascadeTarget, now, now, id, label);
         }
+        // `confirmed_at` is set unconditionally here: reaching this line
+        // means the request supplied `displayName` and/or `mergedInto` (the
+        // 400-on-empty-body check above already rejected a body with
+        // neither), i.e. a human explicitly confirmed a name or a merge —
+        // exactly the "confirmed change" `latestSpeakerUpdate` (§9.2) must
+        // track, as opposed to Enhance's suggestion-only upsert
+        // (enhance.ts), which never touches this column.
         db.prepare(
-          `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, merged_into, updated_at)
-           VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, merged_into, updated_at, confirmed_at)
+           VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(meeting_id, speaker_label) DO UPDATE SET
              display_name = excluded.display_name,
              merged_into = excluded.merged_into,
-             updated_at = excluded.updated_at`,
-        ).run(id, label, newDisplayName, newMergedInto, now);
+             updated_at = excluded.updated_at,
+             confirmed_at = excluded.confirmed_at`,
+        ).run(id, label, newDisplayName, newMergedInto, now, now);
         db.exec("COMMIT");
       } catch (err) {
         db.exec("ROLLBACK");
