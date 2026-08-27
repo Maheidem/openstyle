@@ -78,6 +78,13 @@ export const llmParameterPresetsSettingSchema = z.object({
  * even though it's on the resolver's denylist (§7.4) and gets stripped at
  * resolution time for every task; it's shown in the raw editor exactly as
  * approved and simply never reaches the wire.
+ *
+ * Amendment, 2026-08-27 (spec §4.2 amendment note, §12 item 6 resolved):
+ * the field is `repetition_penalty`, not `repeat_penalty` — user-verified
+ * against oMLX's own `openapi.json`, which is the wire target for both
+ * presets on `local-llm`. This also matches every other spelling of this
+ * knob already in this codebase (`cleanupSamplingSchema.repetition_penalty`,
+ * `settings.ts`). Values unchanged (`1.0` for both presets).
  */
 export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
   {
@@ -91,7 +98,7 @@ export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
       top_k: 20,
       min_p: 0.0,
       presence_penalty: 0.0,
-      repeat_penalty: 1.0,
+      repetition_penalty: 1.0,
       chat_template_kwargs: {
         enable_thinking: true,
         preserve_thinking: false,
@@ -112,7 +119,7 @@ export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
       top_k: 20,
       min_p: 0.0,
       presence_penalty: 1.5,
-      repeat_penalty: 1.0,
+      repetition_penalty: 1.0,
       chat_template_kwargs: { enable_thinking: false },
     },
     createdAt: "2026-08-27T00:00:00.000Z",

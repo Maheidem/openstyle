@@ -284,7 +284,7 @@ export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
       top_k: 20,
       min_p: 0.0,
       presence_penalty: 0.0,
-      repeat_penalty: 1.0,
+      repetition_penalty: 1.0,
       chat_template_kwargs: {
         enable_thinking: true,
         preserve_thinking: false,
@@ -305,7 +305,7 @@ export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
       top_k: 20,
       min_p: 0.0,
       presence_penalty: 1.5,
-      repeat_penalty: 1.0,
+      repetition_penalty: 1.0,
       chat_template_kwargs: { enable_thinking: false },
     },
     createdAt: "2026-08-27T00:00:00.000Z",
@@ -319,6 +319,18 @@ re-derived.** `stream: false` is kept even though it's on the resolver's
 denylist (§7.4) and gets stripped at resolution time for every task; it's
 shown in the raw editor exactly as approved and simply never reaches the
 wire, same as any other denylisted key a user might type in Custom mode.
+
+**Amendment, 2026-08-27 (resolves §12 item 6):** the field above is
+`repetition_penalty`, not the `repeat_penalty` this section originally
+specified. User-verified against oMLX's own `openapi.json` — the server
+these two presets target on `local-llm` accepts `repetition_penalty` and
+does not recognize `repeat_penalty`, so the original spelling silently
+no-opped that knob for both starter presets. This also aligns both
+built-ins with every other spelling of this knob already in the codebase
+(`cleanupSamplingSchema.repetition_penalty`, `settings.ts:63`; the §12.7
+legacy fallback, which resolves an existing `cleanup_sampling` blob using
+that same field name). Values are unchanged (`1.0` for both presets); only
+the key name moved. The code block above reflects the corrected spelling.
 
 Never written to the `llm_parameter_presets` setting row. The resolver
 (§8.3) and every UI list (§9.3) merge `BUILTIN_LLM_PRESETS` **ahead of** the
@@ -612,7 +624,7 @@ the existing shape, now named explicitly instead of accidental.
 | `temperature` | `generateText`/`streamText`'s `temperature` | every mapped-subset provider |
 | `max_tokens` | `maxOutputTokens` (after the floor, §6.2) | every mapped-subset provider |
 | `top_p` | `topP` | every mapped-subset provider |
-| everything else (`top_k`, `min_p`, `presence_penalty`, `repeat_penalty`, `chat_template_kwargs`, `stream`, arbitrary custom keys) | dropped, `log.debug`, `cloudPartial: true` | every mapped-subset provider |
+| everything else (`top_k`, `min_p`, `presence_penalty`, `repetition_penalty`, `chat_template_kwargs`, `stream`, arbitrary custom keys) | dropped, `log.debug`, `cloudPartial: true` | every mapped-subset provider |
 
 `presence_penalty` is deliberately **not** mapped even though
 `generateText` accepts a `presencePenalty` argument — the two starter
@@ -1293,6 +1305,13 @@ with no shape check) rather than being specially accepted.
    payloads are "copied verbatim from the approved spec, byte for byte,"
    so this is flagged for the approver rather than silently changed to
    match the existing schema's spelling.
+
+   **RESOLVED, 2026-08-27:** user-verified against oMLX's own
+   `openapi.json` — the server accepts `repetition_penalty`, not
+   `repeat_penalty`. §4.2's amendment note and both built-in presets
+   (`packages/validations/src/llm-task-profiles.ts`) now use
+   `repetition_penalty`, matching every other spelling of this knob in the
+   codebase. Values unchanged.
 7. **Migration atomicity, and whether write-once-with-a-sentinel is the
    right shape at all (§10, §11)** — the atomicity question (whether the
    sentinel and the assignment write need one transaction) is low-stakes

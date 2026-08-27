@@ -1,5 +1,6 @@
 import {
   BUILTIN_LLM_PRESETS,
+  cleanupSamplingSchema,
   type LlmTaskAssignments,
 } from "@openstyle/validations";
 import { generateText } from "ai";
@@ -118,6 +119,18 @@ describe("LLM_TASK_PROFILES (§3.2)", () => {
     expect(LLM_TASK_PROFILES.meetingSummarize.maxOutputTokens).toBe(
       DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS,
     );
+  });
+});
+
+describe("BUILTIN_LLM_PRESETS — param key spelling (§4.2 amendment, §12 item 6)", () => {
+  it("both starter presets use repetition_penalty, matching the server's accepted key and cleanupSamplingSchema's field name — not repeat_penalty, which the server silently ignores", () => {
+    for (const preset of BUILTIN_LLM_PRESETS) {
+      expect(preset.params).not.toHaveProperty("repeat_penalty");
+      expect(preset.params).toHaveProperty("repetition_penalty", 1.0);
+      // Tied to the schema so the two spellings can't diverge again: a
+      // future rename of the legacy field would fail this assertion too.
+      expect(cleanupSamplingSchema.shape).toHaveProperty("repetition_penalty");
+    }
   });
 });
 
