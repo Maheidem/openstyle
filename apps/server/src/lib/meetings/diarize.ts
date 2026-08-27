@@ -60,36 +60,55 @@ export function getMeetingDiarizationEnabledSetting(): boolean {
 //
 // Not `getNativeBinaryPath` (apps/electron/src/main/native-binary.ts) — that
 // resolver imports `electron` and reads `app.isPackaged`, Electron-main-only
-// code that apps/server cannot import. Follows the same precedent
-// whisper-local's binary already uses from apps/server:
-// `getResourcesDir()` in apps/server/src/lib/whisper/constants.ts, which
-// checks `process.resourcesPath` directly (set because apps/server runs
-// embedded, in-process, inside Electron main) and falls back to a
-// process.cwd()-relative dev path otherwise (spec §4).
+// code that apps/server cannot import.
+//
+// Deliberately NOT a `resourcesPath ? packaged : dev` either/or branch (the
+// bug this replaced, and the same latent bug in whisper's
+// `getResourcesDir()` in apps/server/src/lib/whisper/constants.ts):
+// `process.resourcesPath` is *always* defined in Electron's main process —
+// packaged or not — because it points at the Electron framework's own
+// bundled `Resources/` dir (locale files, `default_app.asar`), not the app's.
+// Branching on its truthiness therefore always takes the "packaged" branch in
+// `npm run dev`, even though the real dev-mode assets sit at a
+// `process.cwd()`-relative path instead. Follows the candidate-list pattern
+// `mlxAsrWorkerCandidates()` (apps/server/src/lib/mlx-asr/python.ts) already
+// gets right: build every path this could plausibly be at, and return the
+// first one that actually exists on disk, instead of guessing which context
+// we're in from a signal that doesn't distinguish them.
 // ---------------------------------------------------------------------------
 
-export function getFluidAudioDiarizeBinaryPath(): string | null {
+function fluidAudioBinaryCandidates(): string[] {
   const proc = process as NodeJS.Process & { resourcesPath?: string };
-  const dir = proc.resourcesPath
-    ? join(proc.resourcesPath, "bin")
-    : join(
-        process.cwd(),
-        "resources",
-        "bin",
-        `${process.platform}-${process.arch}`,
-      );
-  const p = join(dir, "fluidaudio-diarize");
-  return existsSync(p) ? p : null;
+  const candidates: string[] = [];
+  if (proc.resourcesPath) {
+    candidates.push(join(proc.resourcesPath, "bin", "fluidaudio-diarize"));
+  }
+  candidates.push(
+    join(
+      process.cwd(),
+      "resources",
+      "bin",
+      `${process.platform}-${process.arch}`,
+      "fluidaudio-diarize",
+    ),
+  );
+  return candidates;
+}
+
+export function getFluidAudioDiarizeBinaryPath(): string | null {
+  return fluidAudioBinaryCandidates().find(existsSync) ?? null;
 }
 
 /**
  * Pre-bundled offline diarization models (spec §4, amended 2026-08-25 — the
  * models ship inside the app instead of being downloaded on first opt-in).
- * Same resolution precedent as `getFluidAudioDiarizeBinaryPath` above: not
- * platform/arch-scoped like `resources/bin/${platform}-${arch}` — the
- * ~22MB .mlmodelc set is the same regardless of host arch, and diarization
- * is macOS-only already, so there's nothing to key this directory on
- * (electron-builder.yml ships it under mac's `extraResources` as `models`).
+ * Same resolution precedent as `getFluidAudioDiarizeBinaryPath` above (see
+ * that function's comment for why this is a candidate list, not a
+ * `resourcesPath ? packaged : dev` branch): not platform/arch-scoped like
+ * `resources/bin/${platform}-${arch}` — the ~22MB .mlmodelc set is the same
+ * regardless of host arch, and diarization is macOS-only already, so there's
+ * nothing to key this directory on (electron-builder.yml ships it under
+ * mac's `extraResources` as `models`).
  *
  * Returns the directory to pass as `--models-dir` — the parent of
  * `speaker-diarization/`, not that subfolder itself; `fluidaudio-diarize`
@@ -98,12 +117,22 @@ export function getFluidAudioDiarizeBinaryPath(): string | null {
  * (a build/packaging gap — compile-native.js failed to fetch it, or this is
  * a checkout that never ran `npm run compile:native`).
  */
-export function getFluidAudioModelsDirPath(): string | null {
+function fluidAudioModelsDirCandidates(): string[] {
   const proc = process as NodeJS.Process & { resourcesPath?: string };
-  const dir = proc.resourcesPath
-    ? join(proc.resourcesPath, "models")
-    : join(process.cwd(), "resources", "models");
-  return existsSync(join(dir, "speaker-diarization")) ? dir : null;
+  const candidates: string[] = [];
+  if (proc.resourcesPath) {
+    candidates.push(join(proc.resourcesPath, "models"));
+  }
+  candidates.push(join(process.cwd(), "resources", "models"));
+  return candidates;
+}
+
+export function getFluidAudioModelsDirPath(): string | null {
+  return (
+    fluidAudioModelsDirCandidates().find((dir) =>
+      existsSync(join(dir, "speaker-diarization")),
+    ) ?? null
+  );
 }
 
 // ---------------------------------------------------------------------------

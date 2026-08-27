@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   assignSpeakerLabels,
   type DiarizerSegment,
+  getFluidAudioDiarizeBinaryPath,
+  getFluidAudioModelsDirPath,
   type WhisperSegmentForDiarization,
 } from "../src/lib/meetings/diarize.js";
 
@@ -108,5 +113,138 @@ describe("assignSpeakerLabels", () => {
       { id: "w1", speakerLabel: null },
       { id: "w2", speakerLabel: null },
     ]);
+  });
+});
+
+// -----------------------------------------------------------------------
+// Path resolution — regression test for the dev-mode resolver bug: both
+// resolvers used to gate on `process.resourcesPath` truthiness to decide
+// "am I packaged", but Electron always sets `resourcesPath` in the main
+// process (it points at Electron's own bundled Resources/ dir, not the
+// app's), so `npm run dev` always took the "packaged" branch and always
+// missed. The fix builds a candidate list and returns the first path that
+// actually exists on disk, mirroring `mlxAsrWorkerCandidates()`
+// (apps/server/src/lib/mlx-asr/python.ts).
+// -----------------------------------------------------------------------
+describe("path resolution", () => {
+  const originalCwd = process.cwd();
+  let tmpRoot: string | undefined;
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    delete (process as NodeJS.Process & { resourcesPath?: string })
+      .resourcesPath;
+    if (tmpRoot) {
+      rmSync(tmpRoot, { recursive: true, force: true });
+      tmpRoot = undefined;
+    }
+  });
+
+  function makeDevBundle(): string {
+    const root = mkdtempSync(join(tmpdir(), "diarize-dev-"));
+    const binDir = join(
+      root,
+      "resources",
+      "bin",
+      `${process.platform}-${process.arch}`,
+    );
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, "fluidaudio-diarize"), "#!/bin/sh\n");
+    const modelsDir = join(root, "resources", "models", "speaker-diarization");
+    mkdirSync(modelsDir, { recursive: true });
+    writeFileSync(join(modelsDir, "marker"), "");
+    return root;
+  }
+
+  it("falls back to the cwd-relative dev path when resourcesPath points at a dir without the bundle (Electron dev mode)", () => {
+    tmpRoot = makeDevBundle();
+    process.chdir(tmpRoot);
+    // Re-read via process.cwd() (not the pre-chdir tmpRoot string): on macOS
+    // /tmp is a symlink to /private/tmp, and chdir resolves it.
+    const cwd = process.cwd();
+
+    // Simulates Electron main process in dev: resourcesPath is always set,
+    // but points at Electron's own framework Resources/ dir, which has no
+    // bin/ or models/ for this app.
+    const fakeElectronResources = mkdtempSync(
+      join(tmpdir(), "electron-resources-"),
+    );
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath =
+      fakeElectronResources;
+
+    try {
+      const binaryPath = getFluidAudioDiarizeBinaryPath();
+      expect(binaryPath).toBe(
+        join(
+          cwd,
+          "resources",
+          "bin",
+          `${process.platform}-${process.arch}`,
+          "fluidaudio-diarize",
+        ),
+      );
+
+      const modelsDir = getFluidAudioModelsDirPath();
+      expect(modelsDir).toBe(join(cwd, "resources", "models"));
+    } finally {
+      rmSync(fakeElectronResources, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves the cwd-relative dev path when resourcesPath is unset (plain Node)", () => {
+    tmpRoot = makeDevBundle();
+    process.chdir(tmpRoot);
+    delete (process as NodeJS.Process & { resourcesPath?: string })
+      .resourcesPath;
+    // See the previous test: process.cwd() resolves symlinks (macOS /tmp),
+    // the pre-chdir tmpRoot string doesn't.
+    const cwd = process.cwd();
+
+    expect(getFluidAudioDiarizeBinaryPath()).toBe(
+      join(
+        cwd,
+        "resources",
+        "bin",
+        `${process.platform}-${process.arch}`,
+        "fluidaudio-diarize",
+      ),
+    );
+    expect(getFluidAudioModelsDirPath()).toBe(join(cwd, "resources", "models"));
+  });
+
+  it("prefers the resourcesPath candidate when it actually holds the bundle (packaged build)", () => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "diarize-packaged-"));
+    const binDir = join(tmpRoot, "bin");
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, "fluidaudio-diarize"), "#!/bin/sh\n");
+    const modelsDir = join(tmpRoot, "models", "speaker-diarization");
+    mkdirSync(modelsDir, { recursive: true });
+    writeFileSync(join(modelsDir, "marker"), "");
+
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath =
+      tmpRoot;
+    // cwd has no resources/ dir at all, so the only way this resolves is via
+    // the resourcesPath candidate.
+    const emptyCwd = mkdtempSync(join(tmpdir(), "diarize-empty-cwd-"));
+    process.chdir(emptyCwd);
+
+    try {
+      expect(getFluidAudioDiarizeBinaryPath()).toBe(
+        join(tmpRoot, "bin", "fluidaudio-diarize"),
+      );
+      expect(getFluidAudioModelsDirPath()).toBe(join(tmpRoot, "models"));
+    } finally {
+      rmSync(emptyCwd, { recursive: true, force: true });
+    }
+  });
+
+  it("returns null when neither candidate has the bundle", () => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "diarize-missing-"));
+    process.chdir(tmpRoot);
+    delete (process as NodeJS.Process & { resourcesPath?: string })
+      .resourcesPath;
+
+    expect(getFluidAudioDiarizeBinaryPath()).toBeNull();
+    expect(getFluidAudioModelsDirPath()).toBeNull();
   });
 });
