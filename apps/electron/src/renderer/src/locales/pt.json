@@ -730,7 +730,27 @@
     "enhanceNoneCorrected": "Nenhum segmento precisou de correção.",
     "showEnhancedLabel": "Mostrar transcrição aprimorada",
     "showingEnhanced": "Aprimorada",
-    "showingRaw": "Original"
+    "showingRaw": "Original",
+    "speakers": "Interlocutores",
+    "speakersDialogTitle": "Interlocutores",
+    "speakersDialogDesc": "Confirme nomes ou combine clusters duplicados. Nunca é aplicado automaticamente — você decide o que salvar.",
+    "speakerSegments": "{{n}} segmentos",
+    "speakerNamePlaceholder": "Sem nome",
+    "speakerSuggested": "Sugerido",
+    "speakerMergeInto": "Combinar com…",
+    "speakerMergeNone": "Não combinado",
+    "speakerMergedInto": "Combinado com {{name}}",
+    "speakerUnmerge": "Desfazer combinação",
+    "speakerMergeHint": "\"{{name}}\" também foi sugerido para Eles {{label}} — combinar?",
+    "speakerMerge": "Combinar",
+    "speakerUnlabeledNote": "{{n}} segmentos não puderam ser associados a um interlocutor e permanecem rotulados como Não identificado.",
+    "speakerEmptyState": "Execute primeiro \"Identificar interlocutores\" para detectar vozes nesta reunião.",
+    "speakerResetOnRediarizeTitle": "Executar a identificação de interlocutores novamente?",
+    "speakerResetOnRediarizeDesc": "Esta reunião tem nomes ou combinações confirmados. Executar a identificação novamente os apaga, já que uma nova análise não garante numerar os interlocutores da mesma forma.",
+    "summaryStaleNames": "Os nomes dos interlocutores mudaram desde que este resumo foi gerado — Resumir novamente para incluí-los.",
+    "close": "Fechar",
+    "speakerUnidentified": "Não identificado",
+    "contextPlaceholder": "Adicionar contexto para esta reunião…"
   },
   "help": {
     "hotkeys": {

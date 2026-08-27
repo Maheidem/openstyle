@@ -10,7 +10,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 32;
+const SCHEMA_VERSION = 33;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -834,6 +834,38 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // NULL means "not enhanced" (or Enhance ran and left this segment
     // unchanged — the LLM's JSON response omits unchanged segments, §6.3).
     db.exec(`ALTER TABLE meeting_segments ADD COLUMN enhanced_text TEXT`);
+  }
+
+  if (currentVersion < 33) {
+    // Meeting speaker naming (specs/meeting-speaker-naming.md): per-meeting
+    // name/merge mapping over diarization's speaker_label index. Never
+    // touches meeting_segments.speaker_label — a row here is a *mapping*,
+    // not a rewrite. display_name is the only column the app treats as "the
+    // name"; suggested_name/suggested_evidence are LLM evidence, read only
+    // by the naming dialog, never auto-applied. merged_into, when set, is
+    // another speaker_label in the same meeting whose display_name/segments
+    // this row's segments should be attributed to; NULL = not merged.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_speakers (
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        speaker_label TEXT NOT NULL,
+        display_name TEXT,
+        suggested_name TEXT,
+        suggested_evidence TEXT,
+        merged_into TEXT,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (meeting_id, speaker_label)
+      )
+    `);
+
+    // Meeting Speaker Naming (specs/meeting-speaker-naming.md §3.4, amended
+    // 2026-08-27 sign-off point 1): free-text per-meeting context, editable
+    // anytime from the meeting detail UI. Feeds both the name-suggestion
+    // prompt (§5.2) and the summarize prompt (§9.3) as optional evidence —
+    // never required, never validated against transcript content. NULL by
+    // default; unset is the common case and must produce a byte-identical
+    // prompt to a meeting with no context (§5.2, §9.3).
+    db.exec(`ALTER TABLE meetings ADD COLUMN context TEXT`);
   }
 
   // Upsert schema version

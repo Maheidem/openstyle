@@ -52,6 +52,14 @@ export interface TranscriptSegment {
   /** LLM-corrected text for this segment, Phase C. `undefined` means the
    * segment was never enhanced, or Enhance ran and left it unchanged. */
   enhancedText?: string;
+  /** Confirmed display name for this segment's resolved speaker identity
+   *  (specs/meeting-speaker-naming.md), following any merge. Undefined when
+   *  unnamed — renderer falls back to "Them {{speakerLabel}}" exactly as
+   *  before. Never populated from a suggestion — ground rule: suggestions
+   *  are never auto-applied. Interface symmetry with `MergedSegment` only —
+   *  nothing ever sets this field here; `resolveSpeakerNames` runs after
+   *  `mergeTranscript`, only ever touching `MergedSegment`s. */
+  speakerName?: string;
 }
 
 export interface MergedSegment {
@@ -59,12 +67,22 @@ export interface MergedSegment {
   startMs: number;
   endMs: number;
   text: string;
-  /** Carried through unchanged from the matching `TranscriptSegment`. */
+  /** Carried through unchanged from the matching `TranscriptSegment`, then
+   * possibly remapped in place by `resolveSpeakerNames`
+   * (specs/meeting-speaker-naming.md §4) to collapse a merged label onto its
+   * merge target. */
   speakerLabel?: string;
   /** Carried through unchanged from the matching `TranscriptSegment`. */
   id?: string;
   /** Carried through unchanged from the matching `TranscriptSegment`. */
   enhancedText?: string;
+  /** Confirmed display name for this segment's resolved speaker identity
+   *  (specs/meeting-speaker-naming.md), following any merge. Undefined when
+   *  unnamed — renderer falls back to "Them {{speakerLabel}}". Never
+   *  populated from a suggestion (ground rule #1: suggestions are never
+   *  auto-applied) — only `resolveSpeakerNames` sets this, from a
+   *  `meeting_speakers.display_name` value. */
+  speakerName?: string;
 }
 
 /**
@@ -343,10 +361,16 @@ export function formatTranscriptMarkdown(
     // with `s.speaker` itself, which is already the unlocalized literal
     // "Me"/"Them" and never run through `t()`: the export is a plain-text
     // artifact independent of the UI's locale (specs/meeting-diarization.md
-    // §9).
+    // §9). specs/meeting-speaker-naming.md §4: prefer a confirmed
+    // `speakerName` (following any merge) over the numbered fallback; a
+    // "Them" segment with no `speakerLabel` at all (diarization never ran,
+    // or the diarizer couldn't attribute this line to anyone) renders the
+    // literal "Unidentified" — never bare "Them", which would read as a
+    // real, still-unnamed participant (§3.3 amendment).
     const label =
-      s.speaker === "Them" && s.speakerLabel
-        ? `Them ${s.speakerLabel}`
+      s.speaker === "Them"
+        ? (s.speakerName ??
+          (s.speakerLabel ? `Them ${s.speakerLabel}` : "Unidentified"))
         : s.speaker;
     const text = useEnhanced ? (s.enhancedText ?? s.text) : s.text;
     return `**[${formatClockMs(s.startMs)}] ${label}:** ${text}`;

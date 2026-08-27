@@ -42,6 +42,11 @@ export const queryKeys = {
     list: ["meetings", "list"] as const,
     detail: (id: string) => ["meetings", "detail", id] as const,
     transcript: (id: string) => ["meetings", "transcript", id] as const,
+    /** specs/meeting-speaker-naming.md §7.3: the Speakers dialog's
+     * GET /:id/speakers query — lives at MeetingDetailView level, not
+     * inside the dialog, since §7.4's re-diarize confirmation needs its
+     * data whether or not the dialog is currently open. */
+    speakers: (id: string) => ["meetings", "speakers", id] as const,
   },
 
   history: {

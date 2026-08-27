@@ -17,6 +17,14 @@ import {
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Card } from "@renderer/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
 import {
   Popover,
@@ -24,6 +32,13 @@ import {
   PopoverTrigger,
 } from "@renderer/components/ui/popover";
 import { Progress } from "@renderer/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
 import {
   Tabs,
@@ -52,6 +67,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  UserCog,
   Users,
   WandSparkles,
 } from "lucide-react";
@@ -82,6 +98,10 @@ interface MeetingDetail extends MeetingListItem {
   stt_provider: string | null;
   stt_model: string | null;
   audio_dir: string | null;
+  /** Free-text per-meeting context (specs/meeting-speaker-naming.md §3.4),
+   * editable anytime. Feeds both the naming prompt and the summarize
+   * prompt. NULL means unset. */
+  context: string | null;
   job: { done: number; total: number; failed: number } | null;
   segment_counts: { total: number; failed: number };
   summary: {
@@ -89,6 +109,7 @@ interface MeetingDetail extends MeetingListItem {
     llm_provider: string | null;
     llm_model: string | null;
     cost_usd: number | null;
+    created_at: number | null;
   } | null;
 }
 
@@ -107,6 +128,29 @@ interface TranscriptSegment {
   /** LLM-corrected text, Phase C. Undefined when never enhanced, or when
    * Enhance ran and left this segment unchanged. */
   enhancedText?: string;
+  /** Confirmed display name for this segment's resolved speaker identity
+   * (specs/meeting-speaker-naming.md §4), following any merge. Undefined
+   * when unnamed — renderer falls back to "Them {{speakerLabel}}". */
+  speakerName?: string;
+}
+
+interface SpeakerRow {
+  label: string;
+  segmentCount: number;
+  quote: string | null;
+  displayName: string | null;
+  suggestedName: string | null;
+  suggestedEvidence: string | null;
+  mergedInto: string | null;
+}
+
+interface SpeakersResponse {
+  speakers: SpeakerRow[];
+  unlabeledCount: number;
+  /** Max `meeting_speakers.updated_at` across this meeting's rows, or null
+   * when there are none — powers the summary-tab staleness hint (§9.2)
+   * without a second endpoint. */
+  latestSpeakerUpdate: number | null;
 }
 
 interface DiarizationStatusResponse {
@@ -587,6 +631,84 @@ function EditableTitle({
 }
 
 /**
+ * Editable per-meeting free-text context field (specs/meeting-speaker-
+ * naming.md §3.4/§7.6, amended 2026-08-27 sign-off point 1). Collapsed to a
+ * single muted line by default, expanding to a `Textarea` on click; saves on
+ * blur, empty string normalizes to `null` (explicit clear). Visible whenever
+ * the meeting detail view is open — not gated on `hasTranscript`, since
+ * context is useful to jot down before a meeting has even been transcribed
+ * and feeds a later Enhance/Summarize run whenever it eventually happens.
+ */
+function MeetingContextField({
+  id,
+  context,
+  onChanged,
+}: {
+  id: string;
+  context: string | null;
+  onChanged: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(context ?? "");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!editing) setValue(context ?? "");
+  }, [context, editing]);
+
+  useEffect(() => {
+    if (editing) textareaRef.current?.focus();
+  }, [editing]);
+
+  const commit = useCallback(async () => {
+    const next = value.trim();
+    setEditing(false);
+    if (next === (context ?? "")) return;
+    const res = await getClient().api.meetings[":id"].$patch({
+      param: { id },
+      json: { context: next || null },
+    });
+    if (res.ok) onChanged();
+    else setValue(context ?? "");
+  }, [id, onChanged, context, value]);
+
+  if (editing) {
+    return (
+      <Textarea
+        ref={textareaRef}
+        value={value}
+        maxLength={2000}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setValue(context ?? "");
+            setEditing(false);
+          }
+        }}
+        aria-label={t("meetings.contextPlaceholder")}
+        placeholder={t("meetings.contextPlaceholder")}
+        className="mono min-h-[64px] resize-y text-[12px] leading-[1.5]"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="group flex min-w-0 items-center gap-1.5 text-left"
+    >
+      <span className="text-muted-foreground group-hover:text-foreground truncate text-[11.5px] transition-colors">
+        {context || t("meetings.contextPlaceholder")}
+      </span>
+      <Pencil className="text-muted-foreground/0 group-hover:text-muted-foreground h-3 w-3 shrink-0 transition-colors" />
+    </button>
+  );
+}
+
+/**
  * Editable per-meeting transcription-language chip (Phase A2 §3.2.5,
  * specs/meeting-transcription-quality.md). Shows the resolved (or user-set)
  * language, or "Auto" when unresolved (`meeting.language` is NULL — either
@@ -831,6 +953,285 @@ function DiarizationSettingsPopover(): React.JSX.Element {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Meeting speaker naming (specs/meeting-speaker-naming.md §7): the
+// naming/merge dialog, one popover-turned-dialog reachable from a "Speakers"
+// action button next to "Identify speakers"/"Enhance".
+// ---------------------------------------------------------------------------
+
+/** Radix `Select` reserves `""` internally to mean "no selection" and
+ * throws — same convention `task-profiles-section.tsx` already uses. */
+const SPEAKER_MERGE_NONE_VALUE = "__none__";
+
+/** Effective (dialog-relevant) name for merge-hint matching and merge-target
+ * option labels: the confirmed name, else the suggestion, else undefined. */
+function effectiveSpeakerName(row: SpeakerRow): string | undefined {
+  return row.displayName ?? row.suggestedName ?? undefined;
+}
+
+/**
+ * Merge-hint pairs (specs/meeting-speaker-naming.md §7.2): any two unmerged
+ * rows whose effective name matches, case-insensitively, after trim.
+ * Comparing the effective name (not `suggestedName` alone) means confirming
+ * one of a duplicate pair doesn't make the hint vanish for the other.
+ */
+function computeMergeHints(speakers: SpeakerRow[]): Map<string, string> {
+  const hints = new Map<string, string>();
+  const unmerged = speakers.filter((s) => s.mergedInto === null);
+  for (let i = 0; i < unmerged.length; i++) {
+    const a = effectiveSpeakerName(unmerged[i])?.trim().toLowerCase();
+    if (!a) continue;
+    for (let j = 0; j < unmerged.length; j++) {
+      if (i === j || hints.has(unmerged[i].label)) continue;
+      const b = effectiveSpeakerName(unmerged[j])?.trim().toLowerCase();
+      if (b && a === b) hints.set(unmerged[i].label, unmerged[j].label);
+    }
+  }
+  return hints;
+}
+
+function SpeakerRowEditor({
+  meetingId,
+  row,
+  speakers,
+  mergeHintTarget,
+  onSaved,
+}: {
+  meetingId: string;
+  row: SpeakerRow;
+  speakers: SpeakerRow[];
+  mergeHintTarget: SpeakerRow | undefined;
+  onSaved: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [name, setName] = useState(row.displayName ?? row.suggestedName ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setName(row.displayName ?? row.suggestedName ?? "");
+  }, [row.displayName, row.suggestedName]);
+
+  const patch = useCallback(
+    async (body: {
+      displayName?: string | null;
+      mergedInto?: string | null;
+    }) => {
+      const res = await getClient().api.meetings[":id"].speakers[
+        ":label"
+      ].$patch({
+        param: { id: meetingId, label: row.label },
+        json: body,
+      });
+      if (res.ok) onSaved();
+      return res.ok;
+    },
+    [meetingId, row.label, onSaved],
+  );
+
+  const commitName = useCallback(async () => {
+    const next = name.trim();
+    const current = row.displayName ?? "";
+    // A blur that lands back on the currently-confirmed value (or on
+    // nothing, when nothing was ever confirmed) is a no-op — everything
+    // else, including a blur that still holds an unconfirmed suggestion, is
+    // an explicit confirmation (specs/meeting-speaker-naming.md §7.2).
+    if (next === current) return;
+    const ok = await patch({ displayName: next || null });
+    if (!ok) setName(row.displayName ?? row.suggestedName ?? "");
+  }, [name, row.displayName, row.suggestedName, patch]);
+
+  const isSuggestedUnconfirmed =
+    row.displayName === null &&
+    !!row.suggestedName &&
+    name.trim() === row.suggestedName;
+
+  const otherSpeakers = speakers.filter((s) => s.label !== row.label);
+  const mergeTargetLabel = (label: string): string =>
+    speakers.find((s) => s.label === label)?.displayName ??
+    t("meetings.themNumbered", { n: label });
+
+  return (
+    <div className="border-border border-b py-3.5 last:border-b-0">
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <span className="text-foreground text-[12.5px] font-medium">
+          {t("meetings.themNumbered", { n: row.label })}
+        </span>
+        <span className="text-muted-foreground text-[11px]">
+          {t("meetings.speakerSegments", { n: row.segmentCount })}
+        </span>
+      </div>
+      {row.quote && (
+        <p className="text-muted-foreground m-0 mb-2 truncate text-[11.5px] italic">
+          “{row.quote}”
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <div className="flex flex-1 items-center gap-1.5">
+          <Input
+            ref={inputRef}
+            value={name}
+            maxLength={80}
+            placeholder={t("meetings.speakerNamePlaceholder")}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => void commitName()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                inputRef.current?.blur();
+              }
+            }}
+            className={cn(
+              "h-8 text-[12.5px]",
+              isSuggestedUnconfirmed && "border-dashed",
+            )}
+          />
+          {isSuggestedUnconfirmed && (
+            <Badge variant="passive" className="shrink-0">
+              {t("meetings.speakerSuggested")}
+            </Badge>
+          )}
+        </div>
+        {row.mergedInto ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="text-muted-foreground text-[11px]">
+              {t("meetings.speakerMergedInto", {
+                name: mergeTargetLabel(row.mergedInto),
+              })}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              onClick={() => void patch({ mergedInto: null })}
+            >
+              {t("meetings.speakerUnmerge")}
+            </Button>
+          </div>
+        ) : (
+          <Select
+            value={SPEAKER_MERGE_NONE_VALUE}
+            onValueChange={(v) =>
+              void patch({
+                mergedInto: v === SPEAKER_MERGE_NONE_VALUE ? null : v,
+              })
+            }
+          >
+            <SelectTrigger
+              className="h-8 w-40 shrink-0 text-[12px]"
+              aria-label={t("meetings.speakerMergeInto")}
+            >
+              <SelectValue placeholder={t("meetings.speakerMergeNone")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SPEAKER_MERGE_NONE_VALUE}>
+                {t("meetings.speakerMergeNone")}
+              </SelectItem>
+              {otherSpeakers.map((s) => (
+                <SelectItem key={s.label} value={s.label}>
+                  {s.displayName ?? t("meetings.themNumbered", { n: s.label })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+      {row.mergedInto === null && mergeHintTarget && (
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-[var(--accent-passive-tint)] px-2.5 py-1.5">
+          <span className="text-[color:var(--accent-passive-ink)] text-[11px]">
+            {t("meetings.speakerMergeHint", {
+              name: effectiveSpeakerName(mergeHintTarget),
+              label: mergeHintTarget.label,
+            })}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 shrink-0 px-2 text-[11px]"
+            onClick={() => void patch({ mergedInto: mergeHintTarget.label })}
+          >
+            {t("meetings.speakerMerge")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpeakersDialog({
+  id,
+  open,
+  onOpenChange,
+  data,
+  onSaved,
+}: {
+  id: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Owned by `MeetingDetailView`, not this dialog (specs/meeting-speaker-
+   * naming.md §7.3): §7.4's re-diarize confirmation needs this data whether
+   * or not the dialog is open, so the dialog is a consumer, not the owner. */
+  data: SpeakersResponse | undefined;
+  onSaved: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+
+  const speakers = data?.speakers ?? [];
+  const unlabeledCount = data?.unlabeledCount ?? 0;
+  const mergeHints = computeMergeHints(speakers);
+  const byLabel = new Map(speakers.map((s) => [s.label, s]));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("meetings.speakersDialogTitle")}</DialogTitle>
+          <DialogDescription>
+            {t("meetings.speakersDialogDesc")}
+          </DialogDescription>
+        </DialogHeader>
+
+        {speakers.length === 0 && unlabeledCount === 0 ? (
+          <p className="text-muted-foreground py-6 text-center text-[12.5px]">
+            {t("meetings.speakerEmptyState")}
+          </p>
+        ) : (
+          <div className="max-h-[60vh] overflow-y-auto">
+            {speakers.map((row) => (
+              <SpeakerRowEditor
+                key={row.label}
+                meetingId={id}
+                row={row}
+                speakers={speakers}
+                mergeHintTarget={
+                  mergeHints.has(row.label)
+                    ? byLabel.get(mergeHints.get(row.label) as string)
+                    : undefined
+                }
+                onSaved={onSaved}
+              />
+            ))}
+            {unlabeledCount > 0 && (
+              <p className="text-muted-foreground border-border border-t pt-3 text-[11px]">
+                {t("meetings.speakerUnlabeledNote", { n: unlabeledCount })}
+              </p>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+          >
+            {t("meetings.close")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MeetingDetailView({
   id,
   onBack,
@@ -852,6 +1253,8 @@ function MeetingDetailView({
   const [enhanceResult, setEnhanceResult] = useState<{
     correctedCount: number;
   } | null>(null);
+  const [speakersOpen, setSpeakersOpen] = useState(false);
+  const [rediarizeConfirmOpen, setRediarizeConfirmOpen] = useState(false);
   // Per-session viewing preference (Phase C, specs/meeting-transcription-
   // quality.md §6.6), not persisted meeting state — a segment Enhance left
   // unchanged (omitted from its JSON response) still renders correctly in
@@ -898,6 +1301,27 @@ function MeetingDetailView({
     // staleTime: 0 here means every re-enable refetches for real.
     staleTime: 0,
   });
+
+  // specs/meeting-speaker-naming.md §7.3: kept warm whenever the detail view
+  // is open (same `hasTranscript` gate as the "Speakers" button itself),
+  // not just while the dialog is open — §7.4's re-diarize confirmation
+  // needs this data regardless of whether the dialog has ever been opened.
+  const { data: speakersData } = useQuery({
+    queryKey: queryKeys.meetings.speakers(id),
+    queryFn: async (): Promise<SpeakersResponse> => {
+      const res = await getClient().api.meetings[":id"].speakers.$get({
+        param: { id },
+      });
+      if (!res.ok) {
+        return { speakers: [], unlabeledCount: 0, latestSpeakerUpdate: null };
+      }
+      return (await res.json()) as unknown as SpeakersResponse;
+    },
+    enabled: hasTranscript,
+  });
+  const hasConfirmedSpeakerState = (speakersData?.speakers ?? []).some(
+    (s) => s.displayName !== null || s.mergedInto !== null,
+  );
 
   const invalidate = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
@@ -983,6 +1407,15 @@ function MeetingDetailView({
       queryKey: queryKeys.meetings.transcript(id),
     });
   }, [id, runAction, queryClient]);
+  // specs/meeting-speaker-naming.md §6.3/§7.4: re-diarize clears the naming
+  // mapping (label "N" has no guaranteed relationship to the new run's
+  // label "N") — guard the click with a confirmation whenever there's
+  // actually something to lose. No guard on the common case (first-ever
+  // diarization run, nothing confirmed yet).
+  const handleIdentifySpeakersClick = useCallback(() => {
+    if (hasConfirmedSpeakerState) setRediarizeConfirmOpen(true);
+    else void identifySpeakers();
+  }, [hasConfirmedSpeakerState, identifySpeakers]);
   const enhance = useCallback(async () => {
     const result = await runAction("enhance", () =>
       getClient().api.meetings[":id"].enhance.$post({ param: { id } }),
@@ -1018,14 +1451,28 @@ function MeetingDetailView({
   const hasEnhanced = (transcript ?? []).some(
     (s) => s.enhancedText !== undefined,
   );
+  // specs/meeting-speaker-naming.md §9.2: an already-generated summary is a
+  // persisted artifact, not live-computed, so confirming a name after
+  // summarizing doesn't retroactively change existing summary text — show a
+  // note instead, computed from data already loaded (no new endpoint).
+  const summaryStaleNames = Boolean(
+    meeting.summary?.markdown &&
+      meeting.summary.created_at !== null &&
+      speakersData?.latestSpeakerUpdate != null &&
+      meeting.summary.created_at < speakersData.latestSpeakerUpdate,
+  );
   const transcriptText = (transcript ?? [])
     .map((s) => {
+      // specs/meeting-speaker-naming.md §4: prefer a confirmed speakerName
+      // over the numbered fallback; a "Them" segment with no speakerLabel
+      // at all renders "Unidentified" (§3.3 amendment), never bare "Them".
       const label =
         s.speaker === "Me"
           ? t("meetings.me")
-          : s.speakerLabel
-            ? t("meetings.themNumbered", { n: s.speakerLabel })
-            : t("meetings.them");
+          : (s.speakerName ??
+            (s.speakerLabel
+              ? t("meetings.themNumbered", { n: s.speakerLabel })
+              : t("meetings.speakerUnidentified")));
       const text = showEnhanced ? (s.enhancedText ?? s.text) : s.text;
       return `${label}: ${text}`;
     })
@@ -1051,6 +1498,11 @@ function MeetingDetailView({
             {formatTimestamp(meeting.started_at)} ·{" "}
             {formatDuration(meeting.duration_ms)}
           </div>
+          <MeetingContextField
+            id={id}
+            context={meeting.context}
+            onChanged={invalidate}
+          />
         </div>
         <MeetingLanguageChip
           id={id}
@@ -1077,13 +1529,23 @@ function MeetingDetailView({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void identifySpeakers()}
+            onClick={handleIdentifySpeakersClick}
             disabled={busy !== null}
           >
             <Users data-icon="inline-start" />
             {busy === "diarize"
               ? t("meetings.identifyingSpeakers")
               : t("meetings.identifySpeakers")}
+          </Button>
+        )}
+        {hasTranscript && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSpeakersOpen(true)}
+          >
+            <UserCog data-icon="inline-start" />
+            {t("meetings.speakers")}
           </Button>
         )}
         {hasTranscript && (
@@ -1251,16 +1713,27 @@ function MeetingDetailView({
                           "mono inline-flex items-center whitespace-nowrap rounded-[5px] px-[7px] py-[2.5px] text-[9px] font-medium uppercase tracking-[0.1em]",
                           seg.speaker === "Me"
                             ? "bg-transparent px-0 font-semibold text-foreground"
-                            : "bg-[var(--accent-passive-tint)] text-[color:var(--accent-passive-ink)]",
+                            : seg.speakerLabel
+                              ? // Confirmed name or numbered-but-unnamed "Them
+                                // N" — a real, distinguishable speaker — gets
+                                // the full accent-passive treatment (specs/
+                                // meeting-speaker-naming.md §7.5).
+                                "bg-[var(--accent-passive-tint)] text-[color:var(--accent-passive-ink)]"
+                              : // Unidentified: a materially weaker claim
+                                // (the diarizer couldn't attribute this line
+                                // to anyone at all) — a muted outline, never
+                                // the accent-passive fill (§3.3/§7.5).
+                                "border border-border bg-transparent text-muted-foreground",
                         )}
                       >
                         {seg.speaker === "Me"
                           ? t("meetings.me")
-                          : seg.speakerLabel
-                            ? t("meetings.themNumbered", {
-                                n: seg.speakerLabel,
-                              })
-                            : t("meetings.them")}
+                          : (seg.speakerName ??
+                            (seg.speakerLabel
+                              ? t("meetings.themNumbered", {
+                                  n: seg.speakerLabel,
+                                })
+                              : t("meetings.speakerUnidentified")))}
                       </span>
                     </span>
                     <p className="text-foreground m-0 flex-1 text-[13.5px] leading-[1.55]">
@@ -1295,6 +1768,12 @@ function MeetingDetailView({
         <TabsContent value="summary" className="mt-4">
           {meeting.summary?.markdown ? (
             <>
+              {summaryStaleNames && (
+                <div className="border-border bg-card/30 text-muted-foreground mb-3 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{t("meetings.summaryStaleNames")}</span>
+                </div>
+              )}
               <div className="mb-3 flex justify-end">
                 <CopyButton
                   text={meeting.summary.markdown}
@@ -1328,6 +1807,43 @@ function MeetingDetailView({
               onClick={() => void deleteMeeting()}
             >
               {t("meetings.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <SpeakersDialog
+        id={id}
+        open={speakersOpen}
+        onOpenChange={setSpeakersOpen}
+        data={speakersData}
+        onSaved={() => {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.meetings.speakers(id),
+          });
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.meetings.transcript(id),
+          });
+        }}
+      />
+
+      <AlertDialog
+        open={rediarizeConfirmOpen}
+        onOpenChange={setRediarizeConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("meetings.speakerResetOnRediarizeTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("meetings.speakerResetOnRediarizeDesc")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("meetings.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void identifySpeakers()}>
+              {t("meetings.identifySpeakers")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

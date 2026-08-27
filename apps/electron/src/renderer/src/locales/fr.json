@@ -731,7 +731,27 @@
     "enhanceNoneCorrected": "Aucun segment n'a nécessité de correction.",
     "showEnhancedLabel": "Afficher la transcription améliorée",
     "showingEnhanced": "Améliorée",
-    "showingRaw": "Brute"
+    "showingRaw": "Brute",
+    "speakers": "Intervenants",
+    "speakersDialogTitle": "Intervenants",
+    "speakersDialogDesc": "Confirmez les noms ou fusionnez les groupes en double. Jamais appliqué automatiquement : c'est vous qui choisissez ce qui est enregistré.",
+    "speakerSegments": "{{n}} segments",
+    "speakerNamePlaceholder": "Sans nom",
+    "speakerSuggested": "Suggéré",
+    "speakerMergeInto": "Fusionner avec…",
+    "speakerMergeNone": "Non fusionné",
+    "speakerMergedInto": "Fusionné avec {{name}}",
+    "speakerUnmerge": "Annuler la fusion",
+    "speakerMergeHint": "« {{name}} » a aussi été suggéré pour Eux {{label}} — fusionner ?",
+    "speakerMerge": "Fusionner",
+    "speakerUnlabeledNote": "{{n}} segments n'ont pas pu être associés à un intervenant et restent marqués comme Non identifié.",
+    "speakerEmptyState": "Lancez d'abord « Identifier les intervenants » pour détecter les voix de cette réunion.",
+    "speakerResetOnRediarizeTitle": "Relancer l'identification des intervenants ?",
+    "speakerResetOnRediarizeDesc": "Cette réunion a des noms ou des fusions confirmés. Relancer l'identification les efface, car une nouvelle analyse ne garantit pas de numéroter les intervenants de la même façon.",
+    "summaryStaleNames": "Les noms des intervenants ont changé depuis la génération de ce résumé — relancez le résumé pour les inclure.",
+    "close": "Fermer",
+    "speakerUnidentified": "Non identifié",
+    "contextPlaceholder": "Ajouter du contexte pour cette réunion…"
   },
   "help": {
     "hotkeys": {

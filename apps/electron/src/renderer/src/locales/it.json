@@ -730,7 +730,27 @@
     "enhanceNoneCorrected": "Nessun segmento ha richiesto correzioni.",
     "showEnhancedLabel": "Mostra trascrizione migliorata",
     "showingEnhanced": "Migliorata",
-    "showingRaw": "Originale"
+    "showingRaw": "Originale",
+    "speakers": "Partecipanti",
+    "speakersDialogTitle": "Partecipanti",
+    "speakersDialogDesc": "Conferma i nomi o unisci i cluster duplicati. Non viene mai applicato automaticamente: decidi tu cosa salvare.",
+    "speakerSegments": "{{n}} segmenti",
+    "speakerNamePlaceholder": "Senza nome",
+    "speakerSuggested": "Suggerito",
+    "speakerMergeInto": "Unisci a…",
+    "speakerMergeNone": "Non unito",
+    "speakerMergedInto": "Unito a {{name}}",
+    "speakerUnmerge": "Annulla unione",
+    "speakerMergeHint": "È stato suggerito anche \"{{name}}\" per Loro {{label}} — unire?",
+    "speakerMerge": "Unisci",
+    "speakerUnlabeledNote": "{{n}} segmenti non è stato possibile associarli a un partecipante e restano etichettati come Non identificato.",
+    "speakerEmptyState": "Esegui prima \"Identifica partecipanti\" per rilevare le voci in questa riunione.",
+    "speakerResetOnRediarizeTitle": "Eseguire di nuovo l'identificazione dei partecipanti?",
+    "speakerResetOnRediarizeDesc": "Questa riunione ha nomi o unioni confermati. Eseguire di nuovo l'identificazione li cancella, perché una nuova analisi non garantisce di numerare i partecipanti allo stesso modo.",
+    "summaryStaleNames": "I nomi dei partecipanti sono cambiati da quando è stato generato questo riepilogo — Rigenera il riepilogo per includerli.",
+    "close": "Chiudi",
+    "speakerUnidentified": "Non identificato",
+    "contextPlaceholder": "Aggiungi contesto per questa riunione…"
   },
   "help": {
     "hotkeys": {

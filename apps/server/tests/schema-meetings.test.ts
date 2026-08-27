@@ -23,7 +23,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(32);
+    expect(version.version).toBe(33);
 
     const columns = (
       db.prepare("PRAGMA table_info(meeting_segments)").all() as {
@@ -60,7 +60,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(32);
+    expect(version.version).toBe(33);
   });
 
   it("migrates a v29 database (with existing segment rows) to v30 with a nullable speaker_label", () => {
@@ -115,7 +115,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(32);
+    expect(version.version).toBe(33);
 
     const row = db
       .prepare("SELECT speaker_label FROM meeting_segments WHERE id = 's1'")
@@ -172,7 +172,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(32);
+    expect(version.version).toBe(33);
 
     const columns = (
       db.prepare("PRAGMA table_info(meetings)").all() as {
@@ -243,7 +243,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(32);
+    expect(version.version).toBe(33);
 
     const columns = (
       db.prepare("PRAGMA table_info(meeting_segments)").all() as {
@@ -280,6 +280,125 @@ describe("schema v29 (meetings)", () => {
     ).find((c) => c.name === "enhanced_text");
     expect(enhancedTextCol).toBeDefined();
     expect(enhancedTextCol?.notnull).toBe(0);
+  });
+
+  it("has meeting_speakers with the expected columns/PK and a nullable meetings.context column on a fresh database", () => {
+    const db = new DatabaseSync(":memory:");
+    initSchema(db);
+
+    expect(tableNames(db)).toContain("meeting_speakers");
+    const cols = (
+      db.prepare("PRAGMA table_info(meeting_speakers)").all() as {
+        name: string;
+        pk: number;
+        notnull: number;
+      }[]
+    ).map((c) => c.name);
+    expect(cols.sort()).toEqual(
+      [
+        "meeting_id",
+        "speaker_label",
+        "display_name",
+        "suggested_name",
+        "suggested_evidence",
+        "merged_into",
+        "updated_at",
+      ].sort(),
+    );
+    const pkCols = (
+      db.prepare("PRAGMA table_info(meeting_speakers)").all() as {
+        name: string;
+        pk: number;
+      }[]
+    )
+      .filter((c) => c.pk > 0)
+      .sort((a, b) => a.pk - b.pk)
+      .map((c) => c.name);
+    expect(pkCols).toEqual(["meeting_id", "speaker_label"]);
+
+    const contextCol = (
+      db.prepare("PRAGMA table_info(meetings)").all() as {
+        name: string;
+        notnull: number;
+      }[]
+    ).find((c) => c.name === "context");
+    expect(contextCol).toBeDefined();
+    expect(contextCol?.notnull).toBe(0);
+  });
+
+  it("migrates a v32 database (with existing meeting rows) to v33 with no data loss, meeting_speakers created, and meetings.context NULL", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE schema_version (
+        id INTEGER PRIMARY KEY CHECK(id = 1),
+        version INTEGER NOT NULL
+      )
+    `);
+    db.exec("INSERT INTO schema_version (id, version) VALUES (1, 32)");
+    db.exec(`
+      CREATE TABLE meetings (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        started_at INTEGER,
+        ended_at INTEGER,
+        duration_ms INTEGER,
+        status TEXT NOT NULL CHECK(status IN (
+          'recording','interrupted','recorded','transcribing',
+          'transcribed','summarized','failed'
+        )),
+        audio_dir TEXT,
+        stt_provider TEXT,
+        stt_model TEXT,
+        error TEXT,
+        language TEXT,
+        created_at INTEGER
+      )
+    `);
+    db.exec(`
+      CREATE TABLE meeting_segments (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        source TEXT NOT NULL CHECK(source IN ('mic','system')),
+        idx INTEGER,
+        start_ms INTEGER,
+        end_ms INTEGER,
+        text TEXT,
+        status TEXT,
+        speaker_label TEXT,
+        enhanced_text TEXT
+      )
+    `);
+    db.prepare(
+      "INSERT INTO meetings (id, title, status, created_at) VALUES ('m1', 'Existing meeting', 'transcribed', ?)",
+    ).run(Date.now());
+    db.prepare(
+      `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status, speaker_label)
+       VALUES ('s1', 'm1', 'system', 0, 0, 1000, 'hi there', 'ok', '1')`,
+    ).run();
+
+    initSchema(db);
+
+    const version = db
+      .prepare("SELECT version FROM schema_version WHERE id = 1")
+      .get() as { version: number };
+    expect(version.version).toBe(33);
+
+    expect(tableNames(db)).toContain("meeting_speakers");
+
+    // No data loss on existing rows.
+    const meetingRow = db
+      .prepare("SELECT title, context FROM meetings WHERE id = 'm1'")
+      .get() as { title: string | null; context: string | null };
+    expect(meetingRow.title).toBe("Existing meeting");
+    expect(meetingRow.context).toBeNull();
+
+    const segRow = db
+      .prepare(
+        "SELECT text, speaker_label FROM meeting_segments WHERE id = 's1'",
+      )
+      .get() as { text: string | null; speaker_label: string | null };
+    expect(segRow.text).toBe("hi there");
+    expect(segRow.speaker_label).toBe("1");
   });
 
   it("enforces the status CHECK and cascades segment/summary deletes", () => {

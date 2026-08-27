@@ -731,7 +731,27 @@
     "enhanceNoneCorrected": "Ningún segmento necesitó corrección.",
     "showEnhancedLabel": "Mostrar transcripción mejorada",
     "showingEnhanced": "Mejorada",
-    "showingRaw": "Original"
+    "showingRaw": "Original",
+    "speakers": "Interlocutores",
+    "speakersDialogTitle": "Interlocutores",
+    "speakersDialogDesc": "Confirma nombres o combina clústeres duplicados. Nunca se aplica automáticamente: tú decides qué guardar.",
+    "speakerSegments": "{{n}} segmentos",
+    "speakerNamePlaceholder": "Sin nombre",
+    "speakerSuggested": "Sugerido",
+    "speakerMergeInto": "Combinar con…",
+    "speakerMergeNone": "Sin combinar",
+    "speakerMergedInto": "Combinado con {{name}}",
+    "speakerUnmerge": "Deshacer combinación",
+    "speakerMergeHint": "También se sugirió \"{{name}}\" para Ellos {{label}}: ¿combinar?",
+    "speakerMerge": "Combinar",
+    "speakerUnlabeledNote": "{{n}} segmentos no se pudieron asociar a ningún interlocutor y quedan marcados como Sin identificar.",
+    "speakerEmptyState": "Ejecuta primero \"Identificar interlocutores\" para detectar voces en esta reunión.",
+    "speakerResetOnRediarizeTitle": "¿Volver a identificar interlocutores?",
+    "speakerResetOnRediarizeDesc": "Esta reunión tiene nombres o combinaciones confirmados. Volver a ejecutar la identificación los borra, ya que un nuevo análisis no garantiza numerar a los interlocutores de la misma forma.",
+    "summaryStaleNames": "Los nombres de los interlocutores cambiaron desde que se generó este resumen. Vuelve a resumir para incluirlos.",
+    "close": "Cerrar",
+    "speakerUnidentified": "Sin identificar",
+    "contextPlaceholder": "Añade contexto para esta reunión…"
   },
   "help": {
     "hotkeys": {

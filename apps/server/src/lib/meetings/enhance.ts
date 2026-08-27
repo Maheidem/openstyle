@@ -74,12 +74,22 @@ export interface EnhanceMeetingOptions {
 
 export interface EnhanceMeetingResult {
   correctedCount: number;
+  /** Distinct labels for which a name suggestion was persisted this run
+   *  (specs/meeting-speaker-naming.md §5.3). */
+  speakerSuggestions: number;
 }
 
 interface EnhanceSegment {
   id: string;
   speaker: string;
   text: string;
+  /** Structured diarization label, kept alongside the formatted `speaker`
+   *  display string (specs/meeting-speaker-naming.md §5.1/§5.3) — reading
+   *  the label count for the maxOutputTokens bump below, or the phantom-
+   *  label allowlist, must never re-parse `speaker`'s formatted text: once
+   *  a speaker has a confirmed name, `speaker` renders as e.g. "Ana", not
+   *  "Them 3". Undefined for "Me" segments and undiarized "Them" segments. */
+  speakerLabel?: string;
 }
 
 function lineTokensOf(s: EnhanceSegment): number {
@@ -160,28 +170,86 @@ export async function enhanceMeetingTranscript(
   segments: MergedSegment[],
   language: string | undefined,
   vocabTerms: string[],
+  meetingTitle: string | undefined,
+  meetingContext: string | undefined,
   options: EnhanceMeetingOptions = {},
 ): Promise<EnhanceMeetingResult> {
   const llmCall = options.llmCall ?? defaultLlmCall;
   const contextBudgetTokens =
     options.contextBudgetTokens ?? DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS;
 
+  // Prerequisite fix (specs/meeting-speaker-naming.md §5.1): the transcript
+  // the model actually sees must distinguish `Them 1` from `Them 2` — bare
+  // `s.speaker` ("Me"/"Them") gives it no way to tell speakers apart at
+  // all. Prefer a confirmed `speakerName` over the numbered fallback (free
+  // improvement to correction quality for already-named meetings, not just
+  // an enabler for naming); a "Them" segment with no `speakerLabel` at all
+  // stays plain "Them" here — the "Unidentified" rendering fallback is a
+  // *display* concept (§3.3/§4), not something the LLM's own transcript
+  // view needs.
   const withIds: EnhanceSegment[] = segments
     .filter((s) => Boolean(s.id) && s.text.trim().length > 0)
-    .map((s) => ({ id: s.id as string, speaker: s.speaker, text: s.text }));
-  if (withIds.length === 0) return { correctedCount: 0 };
+    .map((s) => ({
+      id: s.id as string,
+      speaker:
+        s.speaker === "Them"
+          ? (s.speakerName ??
+            (s.speakerLabel ? `Them ${s.speakerLabel}` : "Them"))
+          : s.speaker,
+      text: s.text,
+      ...(s.speaker === "Them" && s.speakerLabel
+        ? { speakerLabel: s.speakerLabel }
+        : {}),
+    }));
+  if (withIds.length === 0) return { correctedCount: 0, speakerSuggestions: 0 };
 
-  const system = buildEnhanceSystemPrompt(language, vocabTerms);
+  // Real label set for the naming prompt/parse (§5.3): derived from the
+  // structured `speakerLabel` field, never by re-parsing `withIds[].speaker`
+  // — once a speaker is named, that string renders as e.g. "Ana", not
+  // "Them 3", so a `Them (\d+)` regex would silently drop them from both
+  // the prompt's label list and the phantom-label allowlist, and would
+  // falsely match a user who happened to name someone literally "Them 5".
+  const speakerLabels = [
+    ...new Set(
+      segments
+        .filter(
+          (s) =>
+            s.speaker === "Them" && s.speakerLabel && s.id && s.text.trim(),
+        )
+        .map((s) => s.speakerLabel as string),
+    ),
+  ];
+
+  const system = buildEnhanceSystemPrompt(
+    language,
+    vocabTerms,
+    speakerLabels,
+    meetingTitle,
+    meetingContext,
+  );
   const chunks = chunkForEnhance(withIds, contextBudgetTokens);
   const corrections = new Map<string, string>();
+  const nameProposals = new Map<
+    string,
+    { name: string; evidence: string; chunkIndex: number }
+  >();
 
-  for (const chunk of chunks) {
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
     const chunkTokens = chunk.reduce((sum, s) => sum + lineTokensOf(s), 0);
     // Worst case, correcting every segment in the chunk echoes back roughly
     // the chunk's own size (id/speaker overhead included) — size the output
     // budget off that, not a fixed constant, or a large chunk's response
-    // gets truncated mid-JSON and becomes unparseable.
-    const maxOutputTokens = Math.ceil(chunkTokens * 1.3) + 200;
+    // gets truncated mid-JSON and becomes unparseable. Speaker suggestions
+    // add a small amount to a chunk's expected output (a handful of
+    // {name, evidence} pairs) — bumped by a per-chunk-distinct-label term
+    // (specs/meeting-speaker-naming.md §12; llm-task-profiles.md §8.2 lists
+    // this line as otherwise unchanged by that spec's own work).
+    const speakerLabelsInChunk = new Set(
+      chunk.filter((s) => s.speakerLabel).map((s) => s.speakerLabel as string),
+    ).size;
+    const maxOutputTokens =
+      Math.ceil(chunkTokens * 1.3) + 200 + 60 * speakerLabelsInChunk;
 
     let raw: string;
     try {
@@ -230,6 +298,52 @@ export async function enhanceMeetingTranscript(
       if (trimmed === original.text.trim()) continue;
       corrections.set(id, trimmed);
     }
+
+    // Speaker name suggestions (specs/meeting-speaker-naming.md §5.3): a
+    // top-level "speakers" key alongside the text corrections above — the
+    // existing correction loop is unaffected by construction, since its
+    // value is an object, not a string, and `typeof text !== "string"`
+    // already skips it.
+    if (speakerLabels.length > 0) {
+      const block = parsed.speakers;
+      if (block && typeof block === "object" && !Array.isArray(block)) {
+        for (const [label, entry] of Object.entries(
+          block as Record<string, unknown>,
+        )) {
+          if (!speakerLabels.includes(label)) continue; // phantom label
+          if (!entry || typeof entry !== "object") continue;
+          const name = (entry as Record<string, unknown>).name;
+          if (typeof name !== "string" || !name.trim()) continue;
+          const cleanName = name.trim().slice(0, 80);
+          const evidenceRaw = (entry as Record<string, unknown>).evidence;
+          const cleanEvidence =
+            typeof evidenceRaw === "string"
+              ? evidenceRaw.trim().slice(0, 240)
+              : "";
+          const existing = nameProposals.get(label);
+          if (!existing) {
+            nameProposals.set(label, {
+              name: cleanName,
+              evidence: cleanEvidence,
+              chunkIndex,
+            });
+          } else if (existing.name.toLowerCase() !== cleanName.toLowerCase()) {
+            // Cross-chunk conflict on the same label — earlier chunk wins,
+            // deterministic, no scoring heuristic (same "stable, no
+            // randomness" posture as meeting-diarization.md §7's tie-break
+            // rule).
+            log.debug(
+              `meeting ${meetingId}: chunk ${chunkIndex} suggested "${cleanName}" for Them ${label}, keeping chunk ${existing.chunkIndex}'s "${existing.name}"`,
+            );
+          }
+          // Same name from a later chunk: no-op — already recorded.
+        }
+      } else if (block !== undefined) {
+        log.debug(
+          `meeting ${meetingId}: chunk ${chunkIndex}'s 'speakers' block was malformed, ignoring`,
+        );
+      }
+    }
   }
 
   if (corrections.size > 0) {
@@ -250,5 +364,35 @@ export async function enhanceMeetingTranscript(
     }
   }
 
-  return { correctedCount: corrections.size };
+  // Persisted in a separate BEGIN/COMMIT block from the corrections above —
+  // a name-suggestion write failure must never roll back already-committed
+  // text corrections or vice versa (independent failure domains).
+  if (nameProposals.size > 0) {
+    const db = getDb();
+    const now = Date.now();
+    const upsert = db.prepare(`
+      INSERT INTO meeting_speakers
+        (meeting_id, speaker_label, suggested_name, suggested_evidence, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(meeting_id, speaker_label) DO UPDATE SET
+        suggested_name = excluded.suggested_name,
+        suggested_evidence = excluded.suggested_evidence,
+        updated_at = excluded.updated_at
+    `);
+    db.exec("BEGIN");
+    try {
+      for (const [label, p] of nameProposals) {
+        upsert.run(meetingId, label, p.name, p.evidence, now);
+      }
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  return {
+    correctedCount: corrections.size,
+    speakerSuggestions: nameProposals.size,
+  };
 }

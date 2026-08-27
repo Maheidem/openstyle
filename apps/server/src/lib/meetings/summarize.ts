@@ -25,6 +25,7 @@ import {
   MEETING_SUMMARY_MAP_SYSTEM_PROMPT,
   MEETING_SUMMARY_REDUCE_SYSTEM_PROMPT,
   MEETING_SUMMARY_SYSTEM_PROMPT,
+  withMeetingContext,
   withSummaryInstructions,
 } from "./summary-prompt.js";
 
@@ -109,6 +110,15 @@ export interface SummarizeMeetingOptions {
    * readable, else "" (no change to the default prompt).
    */
   summaryInstructions?: string;
+  /**
+   * Free-text per-meeting context (specs/meeting-speaker-naming.md §3.4/
+   * §9.3). Unlike `summaryInstructions`, there is no global-setting fallback
+   * to resolve here — `summarizeMeeting` isn't given a `meetingId` to look
+   * one up by, and the field is per-meeting, not a shared default. The route
+   * always supplies `row.context ?? undefined`; omitted means "" (no change
+   * to the default prompt).
+   */
+  meetingContext?: string;
 }
 
 export interface SummarizeMeetingResult {
@@ -122,9 +132,21 @@ export interface SummarizeMeetingResult {
   costUsd: number | null;
 }
 
-/** Format one merged segment as a labeled transcript line. */
+/** Format one merged segment as a labeled transcript line. specs/meeting-
+ * speaker-naming.md §9.1: prefer a confirmed `speakerName` (following any
+ * merge) over the numbered fallback, same expression used at every other
+ * resolution site (§4); a "Them" segment with no `speakerLabel` at all
+ * renders "Unidentified" — never bare "Them", which would read as a real,
+ * still-unnamed participant. */
 function formatSegment(segment: MergedSegment): string {
-  return `${segment.speaker}: ${segment.text}`;
+  const label =
+    segment.speaker === "Them"
+      ? (segment.speakerName ??
+        (segment.speakerLabel
+          ? `Them ${segment.speakerLabel}`
+          : "Unidentified"))
+      : segment.speaker;
+  return `${label}: ${segment.text}`;
 }
 
 /**
@@ -248,6 +270,10 @@ export async function summarizeMeeting(
     options.contextBudgetTokens ?? (await resolveContextBudget());
   const summaryInstructions =
     options.summaryInstructions ?? (await resolveSummaryInstructions());
+  // specs/meeting-speaker-naming.md §9.3: no DB fallback here (unlike
+  // summaryInstructions) — the caller always supplies the meeting's own
+  // `context` column; omitted means "" (no-op).
+  const meetingContext = options.meetingContext ?? "";
 
   let inputTokens = 0;
   let outputTokens = 0;
@@ -270,9 +296,12 @@ export async function summarizeMeeting(
 
   if (estimateTokens(transcript) <= contextBudgetTokens) {
     markdown = await call({
-      system: withSummaryInstructions(
-        MEETING_SUMMARY_SYSTEM_PROMPT,
-        summaryInstructions,
+      system: withMeetingContext(
+        withSummaryInstructions(
+          MEETING_SUMMARY_SYSTEM_PROMPT,
+          summaryInstructions,
+        ),
+        meetingContext,
       ),
       prompt: buildMeetingSummaryUserPrompt(transcript),
       maxOutputTokens,
@@ -284,7 +313,10 @@ export async function summarizeMeeting(
     for (let i = 0; i < chunks.length; i++) {
       partials.push(
         await call({
-          system: MEETING_SUMMARY_MAP_SYSTEM_PROMPT,
+          system: withMeetingContext(
+            MEETING_SUMMARY_MAP_SYSTEM_PROMPT,
+            meetingContext,
+          ),
           prompt: buildMeetingSummaryMapPrompt(chunks[i], i, chunks.length),
           maxOutputTokens,
           kind: "map",
@@ -292,9 +324,12 @@ export async function summarizeMeeting(
       );
     }
     markdown = await call({
-      system: withSummaryInstructions(
-        MEETING_SUMMARY_REDUCE_SYSTEM_PROMPT,
-        summaryInstructions,
+      system: withMeetingContext(
+        withSummaryInstructions(
+          MEETING_SUMMARY_REDUCE_SYSTEM_PROMPT,
+          summaryInstructions,
+        ),
+        meetingContext,
       ),
       prompt: buildMeetingSummaryReducePrompt(partials),
       maxOutputTokens,

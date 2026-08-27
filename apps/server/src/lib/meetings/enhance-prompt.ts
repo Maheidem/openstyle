@@ -29,6 +29,9 @@ Rules:
 export function buildEnhanceSystemPrompt(
   language: string | undefined,
   vocabTerms: string[],
+  speakerLabels: string[] = [],
+  meetingTitle: string | undefined = undefined,
+  meetingContext: string | undefined = undefined,
 ): string {
   const languageLine = language
     ? `The transcript's spoken language is "${language}" (ISO code). Every corrected segment you return must stay in that language.`
@@ -37,9 +40,56 @@ export function buildEnhanceSystemPrompt(
     vocabTerms.length > 0
       ? `\n\nReference vocabulary (correct spellings of names/terms this speaker uses — use these ONLY to fix a word that is clearly a mis-transcription of one of them, never to inject a term that isn't actually being referred to):\n${vocabTerms.join(", ")}`
       : "";
-  return `You clean up a speech-to-text meeting transcript. The transcript is a two-party conversation where "Me" is the user of this app and "Them" is the other participant. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine}${vocabBlock}
+  const speakerBlock = buildSpeakerSuggestionBlock(
+    speakerLabels,
+    meetingTitle,
+    meetingContext,
+  );
+  return `You clean up a speech-to-text meeting transcript. The transcript is a two-party conversation where "Me" is the user of this app and "Them" is the other participant. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine}${vocabBlock}${speakerBlock}
 
 ${OUTPUT_CONTRACT_BLOCK}`;
+}
+
+/**
+ * Speaker name-suggestion block (specs/meeting-speaker-naming.md §5.2):
+ * asks the model to propose real names for diarized `Them N` labels,
+ * grounded only in transcript evidence, as a separate top-level "speakers"
+ * key alongside its text corrections. Only emitted when the meeting has
+ * diarization labels at all — a meeting with no diarization gets a
+ * byte-identical prompt to before this feature, since `speakerLabels` is
+ * `[]`.
+ */
+function buildSpeakerSuggestionBlock(
+  speakerLabels: string[],
+  meetingTitle: string | undefined,
+  meetingContext: string | undefined,
+): string {
+  if (speakerLabels.length === 0) return "";
+  const labelList = speakerLabels.map((n) => `Them ${n}`).join(", ");
+  const titleLine = meetingTitle
+    ? ` The meeting is titled "${meetingTitle}", which may itself name a participant.`
+    : "";
+  // meetings.context, user-authored, may name participants directly ("call
+  // with Ana from Acme") or give role/company context that makes a
+  // transcript-only name guess safer. Same trust level as the title line:
+  // evidence, not instruction — the "Do not guess a name with no textual
+  // support" rule two lines down still governs.
+  const contextLine = meetingContext?.trim()
+    ? ` Additional context for this meeting, provided by the user: "${meetingContext.trim()}"`
+    : "";
+  return `
+
+This transcript has diarized speaker labels for the other participant(s): ${labelList}. Alongside your text corrections, try to identify a real name for each label using ONLY evidence inside the transcript: how "Me" addresses them directly, how a speaker introduces or refers to themselves, a name mentioned near a label's lines.${titleLine}${contextLine} Do not guess a name with no textual support.
+
+Add a top-level "speakers" object to your JSON response, alongside your text corrections (not nested inside them):
+
+{"speakers": {"<label number, e.g. \\"2\\">": {"name": "<proposed name>", "evidence": "<one short phrase citing what supports this>"}}}
+
+Rules:
+- Only include a label if you found real textual evidence — never invent a plausible-sounding name with no support.
+- Use exactly the label numbers listed above (e.g. "2" for "Them 2"); never a label not listed.
+- Omit "speakers" entirely, or return {}, if you have no confident evidence for any label.
+- This is a suggestion, never a correction: do not write a name into the segment-text corrections themselves.`;
 }
 
 const TRANSCRIPT_GUARD =

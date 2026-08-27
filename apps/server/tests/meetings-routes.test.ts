@@ -332,6 +332,37 @@ describe("POST /api/meetings/:id/transcribe", () => {
     expect(done.status).toBe("failed");
     expect(done.error).toContain("no voice model configured");
   });
+
+  // specs/meeting-speaker-naming.md §6.3/§8: a re-run's segment ids and (if
+  // diarization runs again) clustering have no guaranteed relationship to
+  // the old run's — a stale name/merge mapping would silently misattribute
+  // a confirmed name to a different, unrelated voice.
+  it("clears meeting_speakers rows on a transcribe re-run", async () => {
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "hello again" })),
+    });
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("s1", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, updated_at)
+         VALUES ('m1', '1', 'Ana', ?)`,
+      )
+      .run(Date.now());
+
+    const res = await app.request("/api/meetings/m1/transcribe", {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    await waitForTerminalStatusNoRealTimers("m1");
+
+    const count = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS c FROM meeting_speakers WHERE meeting_id = 'm1'",
+      )
+      .get() as { c: number };
+    expect(count.c).toBe(0);
+  });
 });
 
 describe("PATCH /api/meetings/:id", () => {
@@ -411,6 +442,64 @@ describe("PATCH /api/meetings/:id", () => {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // specs/meeting-speaker-naming.md §3.4/§6.4
+  it("sets the meeting's context and returns it on the next GET", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context: "Call with Ana from Acme" }),
+    });
+    expect(res.status).toBe(200);
+    const after = await getMeeting("m1");
+    expect(after.context).toBe("Call with Ana from Acme");
+  });
+
+  it("clears a previously-set context with an explicit null", async () => {
+    insertMeeting("m1");
+    getDb()
+      .prepare("UPDATE meetings SET context = 'old context' WHERE id = 'm1'")
+      .run();
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context: null }),
+    });
+    expect(res.status).toBe(200);
+    const after = await getMeeting("m1");
+    expect(after.context).toBeNull();
+  });
+
+  it("accepts a body with only context (no title/language) — the refine no longer rejects it", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context: "just context" }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects a body with none of title/language/context", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects context over the 2000-char cap", async () => {
+    insertMeeting("m1");
+    const res = await app.request("/api/meetings/m1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context: "x".repeat(2001) }),
     });
     expect(res.status).toBe(400);
   });
@@ -576,8 +665,14 @@ describe("POST /api/meetings/:id/diarize", () => {
       ok: boolean;
       labeledCount: number;
       speakerCount: number;
+      mappingReset: boolean;
     };
-    expect(body).toEqual({ ok: true, labeledCount: 2, speakerCount: 2 });
+    expect(body).toEqual({
+      ok: true,
+      labeledCount: 2,
+      speakerCount: 2,
+      mappingReset: false,
+    });
 
     const rows = getDb()
       .prepare(
@@ -606,7 +701,44 @@ describe("POST /api/meetings/:id/diarize", () => {
       ok: true,
       labeledCount: 1,
       speakerCount: 1,
+      mappingReset: false,
     });
+  });
+
+  // specs/meeting-speaker-naming.md §6.3/§8: label "N" from a re-run has no
+  // guaranteed relationship to label "N" from the old run — a stale
+  // confirmed name is a fail-open misattribution risk, so the pass resets
+  // the naming mapping and reports it happened.
+  it("clears meeting_speakers rows and reports mappingReset: true on re-run when the meeting had a confirmed name", async () => {
+    __setMeetingsTestOverrides({
+      diarizeDeps: fakeDiarizeDeps({
+        runStdout: JSON.stringify([
+          { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 1 },
+        ]),
+      }),
+    });
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, updated_at)
+         VALUES ('m1', '1', 'Ana', ?)`,
+      )
+      .run(Date.now());
+
+    const res = await app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { mappingReset: boolean };
+    expect(body.mappingReset).toBe(true);
+
+    const count = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS c FROM meeting_speakers WHERE meeting_id = 'm1'",
+      )
+      .get() as { c: number };
+    expect(count.c).toBe(0);
   });
 
   it("refreshes transcript.md on disk with the new speaker labels", async () => {
@@ -638,6 +770,334 @@ describe("POST /api/meetings/:id/diarize", () => {
     const after = readFileSync(transcriptPath, "utf8");
     expect(after).not.toContain("STALE-PLACEHOLDER-CONTENT");
     expect(after).toMatch(/Them 1:/);
+  });
+});
+
+/** specs/meeting-speaker-naming.md §3.1: seed a meeting_speakers row directly. */
+function insertSpeaker(
+  meetingId: string,
+  label: string,
+  opts: {
+    displayName?: string | null;
+    suggestedName?: string | null;
+    suggestedEvidence?: string | null;
+    mergedInto?: string | null;
+  } = {},
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO meeting_speakers
+         (meeting_id, speaker_label, display_name, suggested_name, suggested_evidence, merged_into, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      meetingId,
+      label,
+      opts.displayName ?? null,
+      opts.suggestedName ?? null,
+      opts.suggestedEvidence ?? null,
+      opts.mergedInto ?? null,
+      Date.now(),
+    );
+}
+
+describe("GET /api/meetings/:id/speakers", () => {
+  it("404s for an unknown meeting", async () => {
+    const res = await app.request("/api/meetings/nope/speakers");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns one row per distinct labeled speaker plus unlabeledCount; a labeled row without a meeting_speakers row shows all-null optional fields", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
+      )
+      .run();
+    insertSystemSegment("m1:system:2", "m1", 2, 2000, 3000); // stays NULL
+    insertSpeaker("m1", "1", {
+      displayName: "Ana",
+      suggestedName: "Ana",
+      suggestedEvidence: "introduced herself",
+    });
+
+    const res = await app.request("/api/meetings/m1/speakers");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      speakers: Array<{
+        label: string;
+        segmentCount: number;
+        quote: string | null;
+        displayName: string | null;
+        suggestedName: string | null;
+        suggestedEvidence: string | null;
+        mergedInto: string | null;
+      }>;
+      unlabeledCount: number;
+    };
+    expect(body.unlabeledCount).toBe(1);
+    expect(body.speakers).toHaveLength(2);
+    const one = body.speakers.find((s) => s.label === "1");
+    const two = body.speakers.find((s) => s.label === "2");
+    expect(one).toMatchObject({
+      segmentCount: 1,
+      displayName: "Ana",
+      suggestedName: "Ana",
+      suggestedEvidence: "introduced herself",
+      mergedInto: null,
+    });
+    expect(two).toMatchObject({
+      segmentCount: 1,
+      displayName: null,
+      suggestedName: null,
+      suggestedEvidence: null,
+      mergedInto: null,
+    });
+  });
+
+  it("reports latestSpeakerUpdate as the max updated_at across rows, or null when there are none", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+
+    const empty = await app.request("/api/meetings/m1/speakers");
+    const emptyBody = (await empty.json()) as {
+      latestSpeakerUpdate: number | null;
+    };
+    expect(emptyBody.latestSpeakerUpdate).toBeNull();
+
+    insertSpeaker("m1", "1", { displayName: "Ana" });
+    const withRow = await app.request("/api/meetings/m1/speakers");
+    const withRowBody = (await withRow.json()) as {
+      latestSpeakerUpdate: number | null;
+    };
+    expect(withRowBody.latestSpeakerUpdate).toEqual(expect.any(Number));
+  });
+});
+
+describe("PATCH /api/meetings/:id/speakers/:label", () => {
+  function patchSpeaker(
+    meetingId: string,
+    label: string,
+    body: Record<string, unknown>,
+  ): Promise<Response> {
+    return app.request(`/api/meetings/${meetingId}/speakers/${label}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("404s when the meeting doesn't exist", async () => {
+    const res = await patchSpeaker("nope", "1", { displayName: "Ana" });
+    expect(res.status).toBe(404);
+  });
+
+  it("400s on an empty body", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    const res = await patchSpeaker("m1", "1", {});
+    expect(res.status).toBe(400);
+  });
+
+  it("404s when :label has zero segments in this meeting", async () => {
+    insertMeeting("m1", "transcribed");
+    const res = await patchSpeaker("m1", "9", { displayName: "Ana" });
+    expect(res.status).toBe(404);
+  });
+
+  it("saves a confirmed display name", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    const res = await patchSpeaker("m1", "1", { displayName: "Ana" });
+    expect(res.status).toBe(200);
+    const row = getDb()
+      .prepare(
+        "SELECT display_name FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '1'",
+      )
+      .get() as { display_name: string };
+    expect(row.display_name).toBe("Ana");
+  });
+
+  it("un-names a speaker with displayName: null without touching merged_into", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
+      )
+      .run();
+    insertSpeaker("m1", "1", { displayName: "Ana", mergedInto: "2" });
+
+    const res = await patchSpeaker("m1", "1", { displayName: null });
+    expect(res.status).toBe(200);
+    const row = getDb()
+      .prepare(
+        "SELECT display_name, merged_into FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '1'",
+      )
+      .get() as { display_name: string | null; merged_into: string | null };
+    expect(row.display_name).toBeNull();
+    expect(row.merged_into).toBe("2");
+  });
+
+  it("400s on self-merge (mergedInto === label), writing no row", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    const res = await patchSpeaker("m1", "1", { mergedInto: "1" });
+    expect(res.status).toBe(400);
+    const row = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS c FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '1'",
+      )
+      .get() as { c: number };
+    expect(row.c).toBe(0);
+  });
+
+  it("404s when mergedInto targets a nonexistent label", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    const res = await patchSpeaker("m1", "1", { mergedInto: "9" });
+    expect(res.status).toBe(404);
+  });
+
+  it("resolves a merge into an already-merged target to that target's own root, no error", async () => {
+    insertMeeting("m1", "transcribed");
+    for (const [id, idx, label] of [
+      ["m1:system:0", 0, "1"],
+      ["m1:system:1", 1, "2"],
+      ["m1:system:2", 2, "3"],
+    ] as const) {
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000);
+      getDb()
+        .prepare("UPDATE meeting_segments SET speaker_label = ? WHERE id = ?")
+        .run(label, id);
+    }
+    // "2" is already merged into "3" (the root).
+    insertSpeaker("m1", "2", { mergedInto: "3" });
+
+    const res = await patchSpeaker("m1", "1", { mergedInto: "2" });
+    expect(res.status).toBe(200);
+    const row = getDb()
+      .prepare(
+        "SELECT merged_into FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '1'",
+      )
+      .get() as { merged_into: string };
+    // Resolved to "2"'s own root ("3"), not the literal requested "2".
+    expect(row.merged_into).toBe("3");
+  });
+
+  it("cascades rows already pointing at the merged label to the new target, in the same transaction as the row's own update", async () => {
+    insertMeeting("m1", "transcribed");
+    for (const [id, idx, label] of [
+      ["m1:system:0", 0, "1"],
+      ["m1:system:1", 1, "2"],
+      ["m1:system:2", 2, "3"],
+      ["m1:system:3", 3, "4"],
+    ] as const) {
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000);
+      getDb()
+        .prepare("UPDATE meeting_segments SET speaker_label = ? WHERE id = ?")
+        .run(label, id);
+    }
+    // "1" and "4" already point at "2". Now merge "2" into "3".
+    insertSpeaker("m1", "1", { mergedInto: "2" });
+    insertSpeaker("m1", "4", { mergedInto: "2" });
+
+    const res = await patchSpeaker("m1", "2", { mergedInto: "3" });
+    expect(res.status).toBe(200);
+
+    const rows = getDb()
+      .prepare(
+        "SELECT speaker_label, merged_into FROM meeting_speakers WHERE meeting_id = 'm1' ORDER BY speaker_label",
+      )
+      .all() as { speaker_label: string; merged_into: string | null }[];
+    const byLabel = new Map(rows.map((r) => [r.speaker_label, r.merged_into]));
+    expect(byLabel.get("1")).toBe("3"); // cascaded
+    expect(byLabel.get("2")).toBe("3"); // this row's own update
+    expect(byLabel.get("4")).toBe("3"); // cascaded
+  });
+
+  it("unmerges (mergedInto: null) without touching display_name", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
+      )
+      .run();
+    insertSpeaker("m1", "1", { displayName: "Ana", mergedInto: "2" });
+
+    const res = await patchSpeaker("m1", "1", { mergedInto: null });
+    expect(res.status).toBe(200);
+    const row = getDb()
+      .prepare(
+        "SELECT display_name, merged_into FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '1'",
+      )
+      .get() as { display_name: string | null; merged_into: string | null };
+    expect(row.display_name).toBe("Ana");
+    expect(row.merged_into).toBeNull();
+  });
+
+  it("refreshes transcript.md on disk after a successful PATCH", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
+      )
+      .run();
+    const transcriptPath = join(audioDir, "transcript.md");
+    writeFileSync(transcriptPath, "STALE-PLACEHOLDER-CONTENT", "utf8");
+
+    const res = await patchSpeaker("m1", "1", { displayName: "Ana" });
+    expect(res.status).toBe(200);
+
+    const after = readFileSync(transcriptPath, "utf8");
+    expect(after).not.toContain("STALE-PLACEHOLDER-CONTENT");
+    expect(after).toContain("Ana");
   });
 });
 
@@ -685,6 +1145,43 @@ describe("POST /api/meetings/:id/summarize", () => {
     const summary = after.summary as { markdown: string; llm_provider: string };
     expect(summary.markdown).toContain("Ship on Friday");
     expect(summary.llm_provider).toBe("fake-llm");
+  });
+
+  // specs/meeting-speaker-naming.md §9.3: threading check — the route must
+  // actually read meetings.context and pass it through, not just store it.
+  it("passes row.context through to summarize as meetingContext", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        "UPDATE meetings SET context = 'Call with Ana from Acme' WHERE id = 'm1'",
+      )
+      .run();
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
+      )
+      .run();
+    let capturedOptions: { meetingContext?: string } | undefined;
+    __setMeetingsTestOverrides({
+      summarize: async (_segments, options) => {
+        capturedOptions = options;
+        return {
+          markdown: "## Overview\nx",
+          llmProvider: null,
+          llmModel: null,
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: null,
+        };
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    expect(capturedOptions?.meetingContext).toBe("Call with Ana from Acme");
   });
 });
 
@@ -789,6 +1286,52 @@ describe("POST /api/meetings/:id/enhance", () => {
       )
       .get() as { enhanced_text: string };
     expect(row.enhanced_text).toBe("garbled text here");
+  });
+
+  // specs/meeting-speaker-naming.md §5.4: threading check — row.title and
+  // row.context must reach enhanceMeetingTranscript, and the route's JSON
+  // body must surface speakerSuggestions (not just correctedCount). The
+  // other enhance-route tests all return `{ correctedCount }` with no
+  // `speakerSuggestions`, so this pass-through is otherwise unverified —
+  // `c.json` silently drops an absent key and every `toEqual` still passes.
+  it("threads meetingTitle/meetingContext to enhance and surfaces speakerSuggestions in the response", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        "UPDATE meetings SET title = 'Weekly sync', context = 'Ana from Acme' WHERE id = 'm1'",
+      )
+      .run();
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
+      )
+      .run();
+    let capturedArgs: [string | undefined, string | undefined] | undefined;
+    __setMeetingsTestOverrides({
+      enhance: async (
+        _meetingId,
+        _segments,
+        _language,
+        _vocab,
+        title,
+        context,
+      ) => {
+        capturedArgs = [title, context];
+        return { correctedCount: 0, speakerSuggestions: 2 };
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      correctedCount: number;
+      speakerSuggestions: number;
+    };
+    expect(body.speakerSuggestions).toBe(2);
+    expect(capturedArgs).toEqual(["Weekly sync", "Ana from Acme"]);
   });
 
   it("writes enhanced text only to transcript-enhanced.md, never to transcript.md", async () => {

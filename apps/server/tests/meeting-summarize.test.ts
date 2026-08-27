@@ -7,6 +7,7 @@ import {
   type SummaryLlmResponse,
   summarizeMeeting,
 } from "../src/lib/meetings/summarize.js";
+import { withMeetingContext } from "../src/lib/meetings/summary-prompt.js";
 
 function seg(
   speaker: "Me" | "Them",
@@ -58,6 +59,65 @@ function longTranscript(count = 60): MergedSegment[] {
   );
 }
 
+describe("withMeetingContext", () => {
+  it.each([
+    undefined,
+    null,
+    "",
+    "   ",
+  ])("returns base unchanged for %j (no-op guarantee)", (context) => {
+    expect(withMeetingContext("BASE", context)).toBe("BASE");
+  });
+
+  it("appends the context block, distinct from base", () => {
+    expect(withMeetingContext("BASE", "some context")).toBe(
+      "BASE\n\nContext for this specific meeting, provided by the user:\nsome context",
+    );
+  });
+});
+
+// specs/meeting-speaker-naming.md §9.1/§14: formatSegment is module-private
+// — reached through chunkTranscript (already exported, already used this
+// way elsewhere in this file), which formats every line through it.
+describe("formatSegment label resolution (via chunkTranscript)", () => {
+  it("renders a confirmed speakerName instead of the numbered fallback", () => {
+    const segments: MergedSegment[] = [
+      {
+        speaker: "Them",
+        startMs: 0,
+        endMs: 1000,
+        text: "hello",
+        speakerLabel: "2",
+        speakerName: "Ana",
+      },
+    ];
+    const [chunk] = chunkTranscript(segments, 8000);
+    expect(chunk).toBe("Ana: hello");
+  });
+
+  it("renders 'Them N' for a speakerLabel with no confirmed name (unchanged from today)", () => {
+    const segments: MergedSegment[] = [
+      {
+        speaker: "Them",
+        startMs: 0,
+        endMs: 1000,
+        text: "hello",
+        speakerLabel: "2",
+      },
+    ];
+    const [chunk] = chunkTranscript(segments, 8000);
+    expect(chunk).toBe("Them 2: hello");
+  });
+
+  it("renders the literal 'Unidentified' for a \"Them\" segment with no speakerLabel and no speakerName", () => {
+    const segments: MergedSegment[] = [
+      { speaker: "Them", startMs: 0, endMs: 1000, text: "hello" },
+    ];
+    const [chunk] = chunkTranscript(segments, 8000);
+    expect(chunk).toBe("Unidentified: hello");
+  });
+});
+
 describe("summarizeMeeting", () => {
   it("uses a single pass when the transcript fits the budget", async () => {
     const llm = fakeLlm();
@@ -69,8 +129,11 @@ describe("summarizeMeeting", () => {
     expect(llm.requests).toHaveLength(1);
     expect(llm.requests[0].kind).toBe("single");
     expect(llm.requests[0].prompt).toContain("Me: Hi, thanks for joining.");
+    // specs/meeting-speaker-naming.md §9.1: a "Them" segment with no
+    // speakerLabel (undiarized, the case these hand-built test segments
+    // are in) now renders "Unidentified", not bare "Them".
     expect(llm.requests[0].prompt).toContain(
-      "Them: Of course. Let's talk about the launch date.",
+      "Unidentified: Of course. Let's talk about the launch date.",
     );
     expect(result.markdown).toBe("summary-0");
   });
@@ -90,7 +153,13 @@ describe("summarizeMeeting", () => {
 
   it("chunks at segment boundaries with overlap", () => {
     const segments = longTranscript();
-    const lines = segments.map((s) => `${s.speaker}: ${s.text}`);
+    // specs/meeting-speaker-naming.md §9.1: mirror formatSegment's own
+    // label resolution (an undiarized "Them" segment renders
+    // "Unidentified") rather than the raw `s.speaker`, since
+    // chunkTranscript formats lines through formatSegment internally.
+    const lines = segments.map(
+      (s) => `${s.speaker === "Them" ? "Unidentified" : s.speaker}: ${s.text}`,
+    );
     const chunks = chunkTranscript(segments, 300);
 
     expect(chunks.length).toBeGreaterThanOrEqual(2);
@@ -242,5 +311,46 @@ describe("summarizeMeeting", () => {
       outputTokens: 0,
       costUsd: null,
     });
+  });
+
+  // specs/meeting-speaker-naming.md §9.3
+  it("applies meetingContext to all three system-prompt variants (single/map/reduce) when the transcript hits map-reduce", async () => {
+    const llm = fakeLlm();
+    await summarizeMeeting(longTranscript(), {
+      contextBudgetTokens: 300,
+      llmCall: llm.call,
+      meetingContext: "Weekly sync with the Acme account team.",
+    });
+
+    const kinds = llm.requests.map((r) => r.kind);
+    expect(kinds).toContain("map");
+    expect(kinds).toContain("reduce");
+    for (const request of llm.requests) {
+      expect(request.system).toContain(
+        "Context for this specific meeting, provided by the user:\nWeekly sync with the Acme account team.",
+      );
+    }
+  });
+
+  it("applies meetingContext on the single-pass system prompt, distinct from summaryInstructions", async () => {
+    const llm = fakeLlm();
+    await summarizeMeeting(SHORT_TRANSCRIPT, {
+      contextBudgetTokens: 8000,
+      llmCall: llm.call,
+      meetingContext: "Ana is the Acme account lead.",
+      summaryInstructions: "Keep it under 100 words.",
+    });
+
+    const system = llm.requests[0].system;
+    expect(system).toContain(
+      "Context for this specific meeting, provided by the user:\nAna is the Acme account lead.",
+    );
+    expect(system).toContain(
+      "Additional instructions from the user:\nKeep it under 100 words.",
+    );
+    // Both blocks present and distinct — not merged into one string.
+    expect(system.indexOf("Additional instructions")).not.toBe(
+      system.indexOf("Context for this specific meeting"),
+    );
   });
 });

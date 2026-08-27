@@ -731,7 +731,27 @@
     "enhanceNoneCorrected": "Keine Segmente mussten korrigiert werden.",
     "showEnhancedLabel": "Verbesserte Abschrift anzeigen",
     "showingEnhanced": "Verbessert",
-    "showingRaw": "Original"
+    "showingRaw": "Original",
+    "speakers": "Sprecher",
+    "speakersDialogTitle": "Sprecher",
+    "speakersDialogDesc": "Namen bestätigen oder doppelte Cluster zusammenführen. Wird nie automatisch übernommen – du entscheidest, was gespeichert wird.",
+    "speakerSegments": "{{n}} Segmente",
+    "speakerNamePlaceholder": "Unbenannt",
+    "speakerSuggested": "Vorgeschlagen",
+    "speakerMergeInto": "Zusammenführen mit…",
+    "speakerMergeNone": "Nicht zusammengeführt",
+    "speakerMergedInto": "Zusammengeführt mit {{name}}",
+    "speakerUnmerge": "Zusammenführung aufheben",
+    "speakerMergeHint": "Für Them {{label}} wurde ebenfalls „{{name}}“ vorgeschlagen – zusammenführen?",
+    "speakerMerge": "Zusammenführen",
+    "speakerUnlabeledNote": "{{n}} Segmente konnten keinem Sprecher zugeordnet werden und bleiben als „Nicht identifiziert“ markiert.",
+    "speakerEmptyState": "Führe zuerst „Sprecher identifizieren“ aus, um Stimmen in diesem Meeting zu erkennen.",
+    "speakerResetOnRediarizeTitle": "Sprechererkennung erneut ausführen?",
+    "speakerResetOnRediarizeDesc": "Für dieses Meeting sind bereits Namen oder Zusammenführungen bestätigt. Ein erneuter Durchlauf löscht diese, da eine neue Erkennung Sprecher nicht garantiert gleich nummeriert.",
+    "summaryStaleNames": "Sprechernamen haben sich seit der Erstellung dieser Zusammenfassung geändert – erneut zusammenfassen, um sie einzubeziehen.",
+    "close": "Schließen",
+    "speakerUnidentified": "Nicht identifiziert",
+    "contextPlaceholder": "Kontext für dieses Meeting hinzufügen…"
   },
   "help": {
     "hotkeys": {

@@ -216,13 +216,30 @@ describe("formatTranscriptMarkdown", () => {
     );
   });
 
-  it('renders unmodified "Them"/"Me" for segments without a speakerLabel', () => {
+  it('renders unmodified "Me" and literal "Unidentified" (not bare "Them") for a segment without a speakerLabel', () => {
+    // specs/meeting-speaker-naming.md §3.3/§4/§9.1 amendment: an
+    // undiarized "Them" segment must not render as plain "Them" —
+    // indistinguishable from a real, still-unnamed participant — so this
+    // markdown-export site renders the literal "Unidentified" instead.
     const mic = [seg(0, 1000, "hello from the mic")];
     const system = [seg(2000, 3000, "undiarized system speech")];
     const merged = mergeTranscript(mic, system);
     const md = formatTranscriptMarkdown(merged);
     expect(md).toContain("**[0:00] Me:** hello from the mic");
-    expect(md).toContain("**[0:02] Them:** undiarized system speech");
+    expect(md).toContain("**[0:02] Unidentified:** undiarized system speech");
+    expect(md).not.toContain("Them:");
+  });
+
+  it("prefers a confirmed speakerName over the numbered fallback", () => {
+    const merged = mergeTranscript(
+      [],
+      [seg(0, 1000, "second speaker's point", "2")],
+    );
+    merged[0].speakerName = "Ana";
+    expect(formatTranscriptMarkdown(merged)).toContain(
+      "**[0:00] Ana:** second speaker's point",
+    );
+    expect(formatTranscriptMarkdown(merged)).not.toContain("Them 2");
   });
 });
 

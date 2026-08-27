@@ -731,7 +731,27 @@
     "enhanceNoneCorrected": "修正が必要なセグメントはありませんでした。",
     "showEnhancedLabel": "強化後の文字起こしを表示",
     "showingEnhanced": "強化後",
-    "showingRaw": "元のテキスト"
+    "showingRaw": "元のテキスト",
+    "speakers": "話者",
+    "speakersDialogTitle": "話者",
+    "speakersDialogDesc": "名前を確定するか、重複したクラスターを統合します。自動的には適用されません — 保存する内容はあなたが選びます。",
+    "speakerSegments": "{{n}}件のセグメント",
+    "speakerNamePlaceholder": "名前未設定",
+    "speakerSuggested": "提案",
+    "speakerMergeInto": "統合先…",
+    "speakerMergeNone": "未統合",
+    "speakerMergedInto": "{{name}}に統合済み",
+    "speakerUnmerge": "統合を解除",
+    "speakerMergeHint": "相手{{label}}にも「{{name}}」が提案されています — 統合しますか?",
+    "speakerMerge": "統合",
+    "speakerUnlabeledNote": "{{n}}件のセグメントは話者を特定できず、「未識別」のままになります。",
+    "speakerEmptyState": "まず「話者を識別」を実行して、この会議内の声を検出してください。",
+    "speakerResetOnRediarizeTitle": "話者識別を再実行しますか?",
+    "speakerResetOnRediarizeDesc": "この会議には確定済みの名前または統合があります。識別を再実行すると、新しい解析で話者に同じ番号が割り当てられる保証がないため、これらはクリアされます。",
+    "summaryStaleNames": "この要約の生成後に話者名が変更されました — 再要約すると反映されます。",
+    "close": "閉じる",
+    "speakerUnidentified": "未識別",
+    "contextPlaceholder": "この会議のコンテキストを追加…"
   },
   "help": {
     "hotkeys": {

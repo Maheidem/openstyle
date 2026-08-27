@@ -35,6 +35,7 @@ import {
   type TranscriptSegment,
 } from "../lib/meetings/merge.js";
 import { mergeSegmentsToward, segmentPcm } from "../lib/meetings/segmenter.js";
+import { resolveSpeakerNames } from "../lib/meetings/speaker-names.js";
 import { summarizeMeeting } from "../lib/meetings/summarize.js";
 import {
   type ChunkResult,
@@ -233,12 +234,35 @@ function loadMergedTranscript(
   // against the *current* vocabulary, not whatever it was at transcription
   // time — best-effort for rows persisted before persistChunk's own leak
   // check existed, or whose leak check false-negatived at persist time.
-  return mergeTranscript(
+  const merged = mergeTranscript(
     channel("mic"),
     channel("system"),
     sync,
     loadVocabularyTerms(),
   );
+  // Meeting speaker naming (specs/meeting-speaker-naming.md §4): a
+  // post-process pass over the already-built merged transcript, never a
+  // change to mergeTranscript's own pure contract. Every consumer of this
+  // function — transcript UI, Enhance input, Summarize input, markdown
+  // export — goes through here, so this one call covers all of them.
+  const speakerRows = getDb()
+    .prepare(
+      "SELECT speaker_label, display_name, merged_into FROM meeting_speakers WHERE meeting_id = ?",
+    )
+    .all(meetingId) as unknown as {
+    speaker_label: string;
+    display_name: string | null;
+    merged_into: string | null;
+  }[];
+  resolveSpeakerNames(
+    merged,
+    speakerRows.map((r) => ({
+      speakerLabel: r.speaker_label,
+      displayName: r.display_name,
+      mergedInto: r.merged_into,
+    })),
+  );
+  return merged;
 }
 
 /**
@@ -422,11 +446,16 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // same fail-closed .catch that never fails the job.
     if (getMeetingEnhanceAutoRunSetting()) {
       const enhance = testOverrides.enhance ?? enhanceMeetingTranscript;
+      const meetingRow = db
+        .prepare("SELECT * FROM meetings WHERE id = ?")
+        .get(id) as MeetingRow | undefined;
       await enhance(
         id,
         loadMergedTranscript(id, audioDir),
         resolvedLanguage,
         vocabTerms,
+        meetingRow?.title ?? undefined,
+        meetingRow?.context ?? undefined,
       ).catch((err) => {
         log.warn(`meeting ${id}: enhance auto-run failed: ${String(err)}`);
       });
@@ -473,6 +502,11 @@ export interface MeetingRow {
    * "not yet resolved" — falls back to per-chunk auto or triggers
    * resolution on the next transcribe run. */
   language: string | null;
+  /** Free-text per-meeting context (specs/meeting-speaker-naming.md §3.4),
+   * editable anytime. Feeds both the naming prompt (§5.2) and the summarize
+   * prompt (§9.3). NULL means unset — the common case, and every meeting
+   * created before this migration. */
+  context: string | null;
   error: string | null;
   created_at: number | null;
 }
@@ -492,9 +526,31 @@ const renameSchema = z
     // language back to "not yet resolved" (falls back to per-chunk auto, or
     // triggers resolution on the next transcribe run).
     language: z.string().trim().min(2).max(8).nullable().optional(),
+    // specs/meeting-speaker-naming.md §3.4/§6.4 (2026-08-27 sign-off point
+    // 1): free-text context, feeds the naming prompt (§5.2) and the
+    // summarize prompt (§9.3). Unlike title, empty string is meaningful
+    // (explicitly clear the field) — trimmed but not `min(1)`-constrained.
+    context: z.string().trim().max(2000).nullable().optional(),
   })
-  .refine((v) => v.title !== undefined || v.language !== undefined, {
-    message: "Provide title or language",
+  .refine(
+    (v) =>
+      v.title !== undefined ||
+      v.language !== undefined ||
+      v.context !== undefined,
+    { message: "Provide title, language, or context" },
+  );
+
+// specs/meeting-speaker-naming.md §6.2: same partial-update idiom as
+// renameSchema — only the fields present in the body change. `null` on
+// either field is meaningful (un-name / unmerge), so both stay
+// `nullable().optional()` rather than `.optional()` alone.
+const speakerPatchSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(80).nullable().optional(),
+    mergedInto: z.string().trim().min(1).max(16).nullable().optional(),
+  })
+  .refine((v) => v.displayName !== undefined || v.mergedInto !== undefined, {
+    message: "Provide displayName or mergedInto",
   });
 
 const stopSchema = z.object({
@@ -550,7 +606,7 @@ const meetings = new Hono()
   // no other wiring.
   .patch("/:id", zValidator("json", renameSchema), (c) => {
     const id = c.req.param("id");
-    const { title, language } = c.req.valid("json");
+    const { title, language, context } = c.req.valid("json");
     const db = getDb();
     const sets: string[] = [];
     const values: (string | null)[] = [];
@@ -562,11 +618,15 @@ const meetings = new Hono()
       sets.push("language = ?");
       values.push(language);
     }
+    if (context !== undefined) {
+      sets.push("context = ?");
+      values.push(context);
+    }
     const result = db
       .prepare(`UPDATE meetings SET ${sets.join(", ")} WHERE id = ?`)
       .run(...values, id);
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
-    return c.json({ ok: true, title, language });
+    return c.json({ ok: true, title, language, context });
   })
   .post("/:id/stop", zValidator("json", stopSchema), (c) => {
     const id = c.req.param("id");
@@ -628,6 +688,12 @@ const meetings = new Hono()
     ).run(id);
     // A re-run replaces the previous transcript wholesale.
     db.prepare("DELETE FROM meeting_segments WHERE meeting_id = ?").run(id);
+    // specs/meeting-speaker-naming.md §6.3: fresh segment ids and (if
+    // diarization runs again) a fresh clustering means label "3" from the
+    // old run has no guaranteed relationship to label "3" from the new one
+    // — a stale name/merge mapping would silently misattribute a confirmed
+    // name to a different, unrelated voice.
+    db.prepare("DELETE FROM meeting_speakers WHERE meeting_id = ?").run(id);
     activeJobs.set(id, { done: 0, total: 0, failed: 0 });
     void runTranscribeJob(id, row.audio_dir);
     return c.json({ ok: true, id }, 202);
@@ -782,6 +848,22 @@ const meetings = new Hono()
         );
       }
 
+      // specs/meeting-speaker-naming.md §6.3: whether label "3" means the
+      // same real person before and after a second diarizer run depends on
+      // clustering stability nothing in this codebase guarantees — treat
+      // this the same as re-transcribe for the naming layer. Checked
+      // *before* the pass runs (not just deleted unconditionally after) so
+      // the response can report whether there was actually something to
+      // lose.
+      const hadMapping =
+        (
+          db
+            .prepare(
+              "SELECT COUNT(*) AS c FROM meeting_speakers WHERE meeting_id = ?",
+            )
+            .get(id) as { c: number }
+        ).c > 0;
+
       // Ignores getMeetingDiarizationEnabledSetting() by design: an
       // explicit "Identify speakers" click wins over the global toggle.
       // The pass only ever UPDATEs speaker_label on already-persisted
@@ -789,6 +871,7 @@ const meetings = new Hono()
       // existing labels — same graceful-degrade contract as the automatic
       // pass in runTranscribeJob.
       await runDiarizationPass(id, audioDir, deps);
+      db.prepare("DELETE FROM meeting_speakers WHERE meeting_id = ?").run(id);
       const counts = db
         .prepare(
           `SELECT speaker_label FROM meeting_segments
@@ -804,7 +887,12 @@ const meetings = new Hono()
       // exported markdown disagreeing indefinitely, since nothing else
       // rewrites these files after this route returns.
       writeTranscriptMarkdown(id, audioDir);
-      return c.json({ ok: true, labeledCount, speakerCount });
+      return c.json({
+        ok: true,
+        labeledCount,
+        speakerCount,
+        mappingReset: hadMapping,
+      });
     } catch (err) {
       // Defense-in-depth, matching runTranscribeJob's call site: in normal
       // operation runDiarizationPass degrades in-function and never
@@ -816,6 +904,190 @@ const meetings = new Hono()
       activeJobs.delete(id);
     }
   })
+  // Meeting speaker naming (specs/meeting-speaker-naming.md §6.1): one call
+  // powers the whole naming/merge dialog — no per-row round-trip.
+  .get("/:id/speakers", (c) => {
+    const id = c.req.param("id");
+    const db = getDb();
+    const meeting = db.prepare("SELECT id FROM meetings WHERE id = ?").get(id);
+    if (!meeting) return c.json({ error: "Not found" }, 404);
+
+    const labelRows = db
+      .prepare(
+        `SELECT speaker_label AS label, COUNT(*) AS segmentCount,
+                (SELECT COALESCE(enhanced_text, text) FROM meeting_segments s2
+                 WHERE s2.meeting_id = meeting_segments.meeting_id
+                   AND s2.source = 'system' AND s2.speaker_label = meeting_segments.speaker_label
+                 ORDER BY LENGTH(COALESCE(enhanced_text, text)) DESC LIMIT 1) AS quote
+         FROM meeting_segments
+         WHERE meeting_id = ? AND source = 'system' AND speaker_label IS NOT NULL
+         GROUP BY speaker_label`,
+      )
+      .all(id) as unknown as {
+      label: string;
+      segmentCount: number;
+      quote: string | null;
+    }[];
+    const unlabeledCount = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM meeting_segments
+           WHERE meeting_id = ? AND source = 'system' AND speaker_label IS NULL`,
+        )
+        .get(id) as { c: number }
+    ).c;
+    const speakerRows = db
+      .prepare(
+        `SELECT speaker_label, display_name, suggested_name, suggested_evidence, merged_into
+         FROM meeting_speakers WHERE meeting_id = ?`,
+      )
+      .all(id) as unknown as {
+      speaker_label: string;
+      display_name: string | null;
+      suggested_name: string | null;
+      suggested_evidence: string | null;
+      merged_into: string | null;
+    }[];
+    const byLabel = new Map(speakerRows.map((r) => [r.speaker_label, r]));
+
+    const speakers = labelRows.map((r) => {
+      const row = byLabel.get(r.label);
+      return {
+        label: r.label,
+        segmentCount: r.segmentCount,
+        quote: r.quote ? r.quote.slice(0, 140) : null,
+        displayName: row?.display_name ?? null,
+        suggestedName: row?.suggested_name ?? null,
+        suggestedEvidence: row?.suggested_evidence ?? null,
+        mergedInto: row?.merged_into ?? null,
+      };
+    });
+    // Powers the Summary tab's staleness hint (specs/meeting-speaker-
+    // naming.md §9.2) without a second endpoint: the client compares this
+    // against meeting_summaries.created_at, already available on GET /:id.
+    const latestSpeakerUpdate =
+      speakerRows.length > 0
+        ? Math.max(
+            ...(
+              db
+                .prepare(
+                  "SELECT updated_at FROM meeting_speakers WHERE meeting_id = ?",
+                )
+                .all(id) as unknown as { updated_at: number }[]
+            ).map((r) => r.updated_at),
+          )
+        : null;
+    return c.json({ speakers, unlabeledCount, latestSpeakerUpdate });
+  })
+  // specs/meeting-speaker-naming.md §6.2: partial update of one speaker's
+  // confirmed name and/or merge target. Same partial-update idiom as
+  // PATCH /:id — only the fields present in the body change.
+  .patch(
+    "/:id/speakers/:label",
+    zValidator("json", speakerPatchSchema),
+    (c) => {
+      const id = c.req.param("id");
+      const label = c.req.param("label");
+      const { displayName, mergedInto } = c.req.valid("json");
+      const db = getDb();
+
+      const meeting = db
+        .prepare("SELECT id FROM meetings WHERE id = ?")
+        .get(id);
+      if (!meeting) return c.json({ error: "Not found" }, 404);
+
+      const realLabels = new Set(
+        (
+          db
+            .prepare(
+              `SELECT DISTINCT speaker_label FROM meeting_segments
+               WHERE meeting_id = ? AND source = 'system' AND speaker_label IS NOT NULL`,
+            )
+            .all(id) as unknown as { speaker_label: string }[]
+        ).map((r) => r.speaker_label),
+      );
+      if (!realLabels.has(label)) {
+        return c.json({ error: "Unknown speaker label" }, 404);
+      }
+
+      const existing = db
+        .prepare(
+          "SELECT display_name, merged_into FROM meeting_speakers WHERE meeting_id = ? AND speaker_label = ?",
+        )
+        .get(id, label) as
+        | { display_name: string | null; merged_into: string | null }
+        | undefined;
+
+      let newDisplayName = existing?.display_name ?? null;
+      if (displayName !== undefined) newDisplayName = displayName;
+
+      let newMergedInto = existing?.merged_into ?? null;
+      let cascadeTarget: string | null = null;
+      if (mergedInto !== undefined) {
+        if (mergedInto === null) {
+          // Explicit unmerge: clear this row's own outgoing edge. No
+          // cascade needed — nothing pointed at this row changes.
+          newMergedInto = null;
+        } else {
+          if (mergedInto === label) {
+            return c.json({ error: "A speaker cannot merge into itself" }, 400);
+          }
+          if (!realLabels.has(mergedInto)) {
+            return c.json({ error: "Unknown merge target" }, 404);
+          }
+          // Merge depth is always <= 1 hop (§3.2): resolve through the
+          // target's own root when it's already merged, rather than
+          // rejecting a deeper request — the end state ("this label's
+          // segments render under the root's identity") is what the user
+          // meant either way.
+          const targetRow = db
+            .prepare(
+              "SELECT merged_into FROM meeting_speakers WHERE meeting_id = ? AND speaker_label = ?",
+            )
+            .get(id, mergedInto) as { merged_into: string | null } | undefined;
+          const resolved = targetRow?.merged_into ?? mergedInto;
+          newMergedInto = resolved;
+          cascadeTarget = resolved;
+        }
+      }
+
+      const now = Date.now();
+      db.exec("BEGIN");
+      try {
+        if (cascadeTarget) {
+          // Any row currently pointing merged_into = label (this label had
+          // other labels already merged into it) cascades to point at the
+          // new resolved target directly, in the same transaction — keeps
+          // "no chain longer than one hop" true for the whole table.
+          db.prepare(
+            "UPDATE meeting_speakers SET merged_into = ?, updated_at = ? WHERE meeting_id = ? AND merged_into = ?",
+          ).run(cascadeTarget, now, id, label);
+        }
+        db.prepare(
+          `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, merged_into, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(meeting_id, speaker_label) DO UPDATE SET
+             display_name = excluded.display_name,
+             merged_into = excluded.merged_into,
+             updated_at = excluded.updated_at`,
+        ).run(id, label, newDisplayName, newMergedInto, now);
+        db.exec("COMMIT");
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+
+      const row = db
+        .prepare("SELECT audio_dir FROM meetings WHERE id = ?")
+        .get(id) as { audio_dir: string | null } | undefined;
+      // Every route that changes what renders must refresh transcript.md /
+      // transcript-enhanced.md so they never drift from the DB — best-effort,
+      // never fails the PATCH itself (writeTranscriptMarkdown's own contract).
+      if (row?.audio_dir) writeTranscriptMarkdown(id, row.audio_dir);
+
+      return c.json({ ok: true });
+    },
+  )
   // Summarize the merged transcript and persist it. Runs in-request: the
   // renderer awaits the call (retries are cheap and progress is one LLM call
   // for typical meetings).
@@ -835,7 +1107,9 @@ const meetings = new Hono()
     }
     try {
       const summarize = testOverrides.summarize ?? summarizeMeeting;
-      const result = await summarize(merged);
+      const result = await summarize(merged, {
+        meetingContext: row.context ?? undefined,
+      });
       db.prepare(
         `INSERT OR REPLACE INTO meeting_summaries
            (meeting_id, markdown, llm_provider, llm_model, input_tokens,
@@ -893,9 +1167,15 @@ const meetings = new Hono()
         merged,
         row.language ?? undefined,
         loadVocabularyTerms(),
+        row.title ?? undefined,
+        row.context ?? undefined,
       );
       if (row.audio_dir) writeTranscriptMarkdown(id, row.audio_dir);
-      return c.json({ ok: true, correctedCount: result.correctedCount });
+      return c.json({
+        ok: true,
+        correctedCount: result.correctedCount,
+        speakerSuggestions: result.speakerSuggestions,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error(`meeting ${id}: enhance failed: ${message}`);
