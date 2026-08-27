@@ -1162,25 +1162,37 @@ matches the spec's own count before using it on the new data.
   current 80-term vocabulary (down from the calibrated 14 baseline). A3's
   bias-skip and A1's persist-time filter are both visibly doing work, not
   redundant: 8 mic chunks landed `status = 'filtered'` (leaked text nulled,
-  never reaching `'ok'`), and by timestamp overlap 6 of those 8 are the
-  *same* audio spans as 6 of the original 14 leaks (old mic idx 14, 39, 44,
-  53, 55, 67) — Phase B's merge made those chunks long enough to receive a
-  bias prompt again (A3's 3s floor), the model leaked on that same audio
-  again, and A1 caught it at persist time exactly as designed. The
-  remaining old leak spans either landed `status = 'empty'` (idx 54, 62, 69,
-  81 — silence/near-silence once no longer forced into a leak) or merged
-  into a longer segment that transcribed real speech cleanly (mic idx 6 →
-  new idx 5, `"mhm"`; system idx 37 → new idx 33, real Portuguese; system
-  idx 65 → new idx 53, real Portuguese) with zero overlap-timestamp
-  regression case where a new row over an old leak span still contains
-  vocab-echo text.
-- **(c) English-calque segments.** **0** found. A broad sweep of all 159
-  `status = 'ok'` rows for calque markers (`% the %`, `% that %`, `% with %`,
-  `%doesn't%`) returns zero matches — the pattern the investigation
-  described as "should be entirely absent, not just less frequent" (§8 step
-  4) is in fact absent. Three direct before/after examples, same underlying
-  audio span, `before.db` (language pinned wrong) vs. `run.db` (language
-  probed and pinned `pt`):
+  never reaching `'ok'`). By timestamp overlap, 6 of those 8 are the *same*
+  audio spans as 6 of the original 14 leaks (old mic idx 14, 39, 44, 53, 55,
+  67) — Phase B's merge made those chunks long enough to receive a bias
+  prompt again (A3's 3s floor), the model leaked on that same audio again,
+  and A1 caught it at persist time exactly as designed. The other 2 filtered
+  chunks (new idx 75, 1564090–1574550ms; new idx 83, 1713250–1735150ms) sit
+  at spans that did **not** leak pre-fix — previously sub-3s, bias-skipped
+  fragments that Phase B's merge pushed above the 3s floor for the first
+  time, where they leaked for the first time, and A1 caught them anyway.
+  That's the "not redundant" claim made concrete in both directions: A1
+  backstops both a chunk that leaked before and still does, and a chunk that
+  never had the chance to leak before and now does. The remaining 8 old leak
+  spans either landed `status = 'empty'` (old mic idx 54, 62, 66, 69, 81 →
+  new idx 47, 55, 59, 62, 73 — silence/near-silence once no longer forced
+  into a leak) or merged into a longer segment that transcribed real speech
+  cleanly (mic idx 6 → new idx 5, `"mhm"`; system idx 37 → new idx 33, real
+  Portuguese; system idx 65 → new idx 53, real Portuguese) — 6 filtered + 5
+  empty + 3 merged-clean accounts for all 14 of the original leaks, with
+  zero overlap-timestamp regression case where a new row over an old leak
+  span still contains vocab-echo text.
+- **(c) English-calque segments.** **0** found, down from **3** in
+  `before.db`. The same broad sweep (`% the %`, `% that %`, `% with %`,
+  `%doesn't%`) run first against all 204 `before.db` rows returns exactly 3
+  matches (system idx 38, system idx 47, mic idx 57 — the three quoted
+  below); run against all 159 `status = 'ok'` rows in `run.db` it returns
+  zero. The pattern the investigation described as "should be entirely
+  absent, not just less frequent" (§8 step 4) is, on this instrument,
+  entirely absent — and the instrument is shown to have had something to
+  find in the first place. Three direct before/after examples, same
+  underlying audio span, `before.db` (language pinned wrong) vs. `run.db`
+  (language probed and pinned `pt`):
 
   1. system 823990–846440ms — before: *"Test or some thing that he doesn't
      necessarily stay there, taking the token, right? He will take the
