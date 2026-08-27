@@ -163,6 +163,29 @@ describe("summarizeMeeting", () => {
     );
   });
 
+  // Regression: meeting 8e6aea86-ca4c-4aeb-9c1c-19cc4416daec's summarize call
+  // 500'd because a flat 1500-token default left a reasoning-capable local
+  // model no room to finish the reduce step after spending part of the same
+  // budget on hidden chain-of-thought — the reduce call hit finishReason
+  // "length" at exactly 1500/1500 completion tokens (a map call on a
+  // near-full chunk came within 65 tokens of the same cap). Pin the default
+  // comfortably above that observed truncation point, for every call kind.
+  it("gives map and reduce calls enough headroom to avoid the truncation that caused meeting 8e6aea86's summarize to 500", async () => {
+    expect(DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS).toBeGreaterThan(1500);
+
+    const llm = fakeLlm();
+    await summarizeMeeting(longTranscript(), {
+      contextBudgetTokens: 300,
+      llmCall: llm.call,
+    });
+    const kinds = llm.requests.map((r) => r.kind);
+    expect(kinds).toContain("map");
+    expect(kinds).toContain("reduce");
+    for (const request of llm.requests) {
+      expect(request.maxOutputTokens).toBe(DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS);
+    }
+  });
+
   it("aggregates usage and cost across map-reduce calls", async () => {
     const llm = fakeLlm(() => ({
       inputTokens: 100,

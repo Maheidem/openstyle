@@ -30,8 +30,34 @@ import {
 
 /** Conservative default transcript-context budget (tokens). */
 export const DEFAULT_SUMMARY_CONTEXT_BUDGET_TOKENS = 8000;
-/** Default output budget for the final summary (tokens). */
-export const DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS = 1500;
+/**
+ * Default output budget for the final summary (tokens), shared by every
+ * single/map/reduce call (`summarizeMeeting` below) — not scaled to input
+ * like `@openstyle/stt`'s `maxOutputTokensForCleanup`, since a summary
+ * doesn't grow with transcript length the way cleanup output does.
+ *
+ * 1500 was too tight in practice: a reasoning-capable local model spends part
+ * of this same budget on hidden `<think>` output before writing the visible
+ * summary (observed ~300-400 tokens of chain-of-thought per call, meeting
+ * 8e6aea86-ca4c-4aeb-9c1c-19cc4416daec), so only ~1100-1200 tokens were ever
+ * left for the actual markdown. A map call on a near-full 8000-token chunk
+ * came within 65 tokens of the cap (1435/1500, `finish_reason: "stop"`), and
+ * the reduce call combining two dense partials hit it exactly
+ * (`finish_reason: "length"`) — `postProcess` (`@openstyle/stt`) then
+ * discarded the truncated output as untrustworthy and
+ * `resolveDefaultChatCall` (`llm-call.ts`) turned that into a hard failure,
+ * so Summarize 500'd on a meeting Enhance had just completed fine (Enhance
+ * sizes its own per-chunk budget off actual content, `enhance.ts`'s
+ * `chunkTokens * 1.3 + 200` — summarize's flat constant didn't).
+ *
+ * 4096 was chosen over mirroring `@openstyle/stt`'s
+ * `MAX_CLEANUP_OUTPUT_TOKENS` (8192) deliberately: map calls already run
+ * near-full transcript chunks (up to `DEFAULT_SUMMARY_CONTEXT_BUDGET_TOKENS`
+ * prompt tokens), and this package has no visibility into the context window
+ * a user's local server was actually launched with — 7687 + 8192 ≈ 16k is
+ * far likelier to overrun a modest `--ctx-size` than 7687 + 4096 ≈ 11.8k.
+ */
+export const DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS = 4096;
 /**
  * Overlap carried from the tail of one chunk into the head of the next, as a
  * fraction of the chunk budget (capped in tokens). Whole segments only — a
