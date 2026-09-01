@@ -98,6 +98,7 @@ import {
   isLanguageHotkeyTaken,
   normalizeAccelerator,
 } from "./hotkey-utils";
+import { registerImportIpc } from "./import-audio";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
@@ -2379,6 +2380,13 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("audio:restore", async () => {
     await audioPlaybackController.restore();
+  });
+
+  // --- Import screen ---------------------------------------------------------
+  registerImportIpc({
+    getServerBaseUrl,
+    getServerAuthHeaders,
+    getParentWindow: () => mainWindow,
   });
 
   // --- Meeting Mode ---------------------------------------------------------

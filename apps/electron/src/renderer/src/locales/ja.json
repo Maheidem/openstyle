@@ -602,7 +602,8 @@
       "settings": "設定",
       "help": "ヘルプ",
       "remix": "Remix",
-      "meetings": "ミーティング"
+      "meetings": "ミーティング",
+      "import": "インポート"
     }
   },
   "remixPage": {
@@ -772,6 +773,32 @@
     },
     "navigate": {
       "eyebrow": "ナビゲーション"
+    }
+  },
+  "import": {
+    "title": "音声をインポート",
+    "subtitle": "録音をドロップすると、設定した音声認識で文字起こしします。",
+    "dropzone": {
+      "title": "ここに音声ファイルをドロップ",
+      "subtitle": "文字起こしします",
+      "formats": "wav、mp3、m4a、aac、ogg、mp4に対応"
+    },
+    "chooseFile": "ファイルを選択",
+    "transcribing": "文字起こし中…（設定の現在のプロバイダーを使用）",
+    "transcriptTitle": "文字起こし結果",
+    "copy": "コピー",
+    "tryAnother": "別のファイルを試す",
+    "importAnother": "別のファイルをインポート",
+    "error": {
+      "unsupportedFormat": "サポートされていない形式: .{{ext}}",
+      "tooLarge": "ファイルが大きすぎてインポートできません",
+      "decode": "このファイルをデコードできませんでした",
+      "config": "インポートはまだ設定されていません",
+      "transcription": "文字起こしに失敗しました",
+      "network": "サーバーに接続できませんでした",
+      "unknown": "問題が発生しました",
+      "noAccess": "このファイルにアクセスできませんでした",
+      "notFound": "ファイルが見つかりません"
     }
   }
 }

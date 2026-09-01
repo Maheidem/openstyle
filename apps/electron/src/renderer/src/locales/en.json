@@ -743,7 +743,8 @@
       "settings": "Settings",
       "help": "Help",
       "remix": "Remix",
-      "meetings": "Meetings"
+      "meetings": "Meetings",
+      "import": "Import"
     }
   },
   "remixPage": {
@@ -913,6 +914,32 @@
     },
     "navigate": {
       "eyebrow": "Navigate"
+    }
+  },
+  "import": {
+    "title": "Import Audio",
+    "subtitle": "Drop a recording to transcribe it using your configured speech-to-text settings.",
+    "dropzone": {
+      "title": "Drop an audio file here",
+      "subtitle": "to transcribe it",
+      "formats": "Supports wav, mp3, m4a, aac, ogg, mp4"
+    },
+    "chooseFile": "Choose File",
+    "transcribing": "Transcribing… (uses your current Settings provider)",
+    "transcriptTitle": "Transcript",
+    "copy": "Copy",
+    "tryAnother": "Try another file",
+    "importAnother": "Import another file",
+    "error": {
+      "unsupportedFormat": "Unsupported format: .{{ext}}",
+      "tooLarge": "File is too large to import",
+      "decode": "Could not decode this file",
+      "config": "Import isn't configured yet",
+      "transcription": "Transcription failed",
+      "network": "Couldn't reach the server",
+      "unknown": "Something went wrong",
+      "noAccess": "Could not access this file",
+      "notFound": "File not found"
     }
   }
 }

@@ -1,5 +1,5 @@
 import { electronAPI } from "@electron-toolkit/preload";
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
@@ -20,6 +20,26 @@ import {
   type RemixSelectionPayload,
   type RemixSelectResult,
 } from "../shared/remix";
+
+// Result of an import-audio upload; kept structural so it can also be
+// declared (without a runtime import) in `index.d.ts`.
+type ImportAudioResult =
+  | {
+      ok: true;
+      raw: string;
+      cleaned: string;
+      model: string;
+      audioDurationMs?: number;
+      durationMs?: number;
+    }
+  | {
+      ok: false;
+      status?: number;
+      error: string;
+      detail?: string;
+      code?: string;
+      reason?: string;
+    };
 
 // Custom APIs for renderer
 const api = {
@@ -116,6 +136,13 @@ const api = {
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
+  // Import screen: resolve a dropped `File`'s on-disk path, open a native
+  // file picker, or upload a chosen file for transcription.
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+  pickImportFile: (): Promise<string | null> =>
+    ipcRenderer.invoke("import:pick-file"),
+  importAudioFile: (path: string): Promise<ImportAudioResult> =>
+    ipcRenderer.invoke("import:transcribe-file", path),
   // Configured external server URL/token ("" = built-in local server / no auth).
   getServerUrl: (): Promise<string> => ipcRenderer.invoke("server:url"),
   setServerUrl: (url: string): Promise<string> =>

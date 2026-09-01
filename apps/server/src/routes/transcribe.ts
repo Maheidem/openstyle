@@ -1,52 +1,22 @@
-import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
-import { formatError } from "../lib/format-error.js";
-import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
-import {
-  getLanguagesSetting,
-  resolveLanguageOverride,
-} from "../lib/language.js";
 import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { canRunMlxAsr, startMlxInBackground } from "../lib/mlx-asr/server.js";
-import {
-  postProcess,
-  prewarmPostProcess,
-  resolveAppContextForCleanup,
-} from "../lib/post-process.js";
+import { prewarmPostProcess } from "../lib/post-process.js";
 import { getDefaultModels } from "../lib/providers.js";
-import { getProvider } from "../lib/streaming/registry.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
-  getApiKeyForProvider,
-  voiceProviderCategory,
-} from "../lib/streaming-stt.js";
-import {
-  resolveAsrVocabularyBias,
-  vocabularyBiasTerms,
-} from "../lib/vocabulary-bias.js";
+  decodeAppContext,
+  runTranscriptionPipeline,
+} from "../lib/transcription-pipeline.js";
 import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import { startInBackground } from "../lib/whisper/server.js";
 import { prewarmModelCostRegistry } from "./models.js";
 
 const log = createAppLogger("transcribe");
-
-/**
- * The client percent-encodes the x-app-context header so non-Latin1
- * characters (e.g. a Cyrillic window title) survive transport. Decode it
- * back here, tolerating values that were sent unencoded by older clients.
- */
-function decodeAppContext(raw: string | undefined): string | null {
-  if (!raw) return null;
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return raw;
-  }
-}
 
 const transcribeRoute = new Hono()
   // Dictation-activity lease: while a dictation transcription is in flight the
@@ -87,10 +57,6 @@ const transcribeRoute = new Hono()
       )} contentType=${contentType.slice(0, 40)}`,
     );
 
-    const appContext = resolveAppContextForCleanup(
-      decodeAppContext(c.req.header("x-app-context")),
-    );
-
     let audioDurationMs = 0;
     if (audioData.length > 44) {
       audioDurationMs = Math.round((audioData.length - 44) / 32);
@@ -100,186 +66,15 @@ const transcribeRoute = new Hono()
       if (h) audioDurationMs = Number(h) || 0;
     }
 
-    const defaults = getDefaultModels();
-    if (!defaults.voice) {
-      return c.json(
-        {
-          error:
-            "No voice model configured. Go to Settings > Models to add one.",
-        },
-        400,
-      );
-    }
-
-    let rawText: string;
-    const languages = getLanguagesSetting();
-
-    const voiceProvider = defaults.voice.provider;
-    const voiceModel = defaults.voice.model_id;
-
-    // A language-hotkey dictation pins the request to one language, overriding
-    // languages[0] and auto-detect alike. `languages` is already normalized
-    // lowercase (normalizeLanguageList, cloud-config.ts), so match case here
-    // rather than assuming the header arrives pre-normalized.
-    const languageOverride = c.req
-      .header("x-dictation-language")
-      ?.trim()
-      .toLowerCase();
-    const effectiveLanguages = resolveLanguageOverride(
-      languageOverride,
-      languages,
-    );
-    const primaryLanguage = effectiveLanguages[0];
-
-    const provider = getProvider(voiceProvider);
-    if (!provider) {
-      return c.json(
-        { error: `Unsupported transcription provider: ${voiceProvider}` },
-        400,
-      );
-    }
-
-    const apiKey = getApiKeyForProvider(voiceProvider);
-    if (!apiKey) {
-      return c.json(
-        { error: `No API key configured for provider: ${voiceProvider}` },
-        400,
-      );
-    }
-
-    const skipPostProcess = c.req.header("x-skip-post-process") === "true";
-
-    try {
-      const bias = resolveAsrVocabularyBias(voiceProvider, voiceModel);
-      log.debug(`bias=${JSON.stringify(bias)}`);
-      log.debug(
-        `languages=${JSON.stringify(languages)} override=${languageOverride ?? "none"} effective=${JSON.stringify(effectiveLanguages)}`,
-      );
-      const t0 = Date.now();
-      const result = await provider.transcribe({
-        audio: audioData,
-        model: voiceModel,
-        apiKey,
-        ...(primaryLanguage ? { language: primaryLanguage } : {}),
-        bias,
-        appContext,
-      });
-      rawText = sanitizeTranscriptText(result.text);
-
-      // The same vocabulary bias prompt sent above can come back echoed as
-      // fake speech instead of a real transcription (specs/meeting-
-      // transcription-quality.md Phase A, extended here to dictation — the
-      // meeting pipeline already had this guard, dictation didn't). Compare
-      // against the terms actually sent for *this* bias, not a fresh DB read.
-      const strippedRawText = stripVocabLeak(
-        rawText,
-        vocabularyBiasTerms(bias),
-      );
-      if (strippedRawText !== rawText) {
-        log.info(
-          strippedRawText.trim()
-            ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
-            : "dropped dictation output — entirely a vocabulary-prompt echo",
-        );
-        rawText = strippedRawText;
-      }
-
-      log.debug(
-        `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
-      );
-    } catch (err) {
-      log.error(
-        `transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
-      );
-      return c.json(
-        {
-          error: "Transcription failed",
-          detail: err instanceof Error ? err.message : String(err),
-        },
-        500,
-      );
-    }
-
-    const durationMs = Date.now() - start;
-
-    if (!rawText.trim()) {
-      return c.json({
-        raw: "",
-        cleaned: "",
-        model: voiceModel,
-        durationMs,
-        audioDurationMs,
-      });
-    }
-
-    if (skipPostProcess) {
-      try {
-        saveRawHistory({
-          rawText,
-          voiceProvider,
-          voiceModel,
-          durationMs,
-          audioDurationMs,
-        });
-      } catch (err) {
-        log.error(`Failed to save history: ${err}`);
-      }
-
-      return c.json({
-        raw: rawText,
-        cleaned: rawText,
-        model: voiceModel,
-        provider_category: voiceProviderCategory(voiceProvider),
-        durationMs,
-      });
-    }
-
-    const ppStart = Date.now();
-    const pp = await postProcess(rawText, appContext, {
-      languages: effectiveLanguages,
-      source: "batch",
-    });
-    log.debug(
-      `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
-    );
-
-    // STT and cleanup ran on separate models, so the user-perceived latency is
-    // the full request → cleaned text. `durationMs` above is STT-only; recompute
-    // now so history and the response both report the same total.
-    const totalDurationMs = Date.now() - start;
-
-    try {
-      saveProcessedHistory({
-        rawText,
-        cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
-        voiceProvider,
-        voiceModel,
-        llmProvider: pp.llmProvider,
-        llmModel: pp.llmModel,
-        durationMs: totalDurationMs,
-        audioDurationMs,
-        inputTokens: pp.inputTokens,
-        outputTokens: pp.outputTokens,
-        costUsd: pp.costUsd,
-      });
-    } catch (err) {
-      log.error(`Failed to save history: ${err}`);
-    }
-
-    log.debug(`total ${totalDurationMs}ms`);
-
-    return c.json({
-      raw: rawText,
-      cleaned: pp.cleaned,
-      model: voiceModel,
-      provider_category: voiceProviderCategory(voiceProvider),
-      durationMs: totalDurationMs,
+    const r = await runTranscriptionPipeline({
+      audio: audioData,
       audioDurationMs,
-      llmModel: pp.llmModel,
-      inputTokens: pp.inputTokens,
-      outputTokens: pp.outputTokens,
-      costUsd: pp.costUsd,
+      appContext: decodeAppContext(c.req.header("x-app-context")),
+      languageOverride: c.req.header("x-dictation-language"),
+      skipPostProcess: c.req.header("x-skip-post-process") === "true",
+      start,
     });
+    return c.json(r.body, r.status);
   });
 
 export default transcribeRoute;

@@ -602,7 +602,8 @@
       "settings": "Réglages",
       "help": "Aide",
       "remix": "Remix",
-      "meetings": "Réunions"
+      "meetings": "Réunions",
+      "import": "Importer"
     }
   },
   "remixPage": {
@@ -772,6 +773,32 @@
     },
     "navigate": {
       "eyebrow": "Navigation"
+    }
+  },
+  "import": {
+    "title": "Importer un audio",
+    "subtitle": "Déposez un enregistrement pour le transcrire avec vos réglages de reconnaissance vocale.",
+    "dropzone": {
+      "title": "Déposez un fichier audio ici",
+      "subtitle": "pour le transcrire",
+      "formats": "Prend en charge wav, mp3, m4a, aac, ogg, mp4"
+    },
+    "chooseFile": "Choisir un fichier",
+    "transcribing": "Transcription en cours… (utilise votre fournisseur actuel des réglages)",
+    "transcriptTitle": "Transcription",
+    "copy": "Copier",
+    "tryAnother": "Essayer un autre fichier",
+    "importAnother": "Importer un autre fichier",
+    "error": {
+      "unsupportedFormat": "Format non pris en charge : .{{ext}}",
+      "tooLarge": "Le fichier est trop volumineux pour être importé",
+      "decode": "Impossible de décoder ce fichier",
+      "config": "L'import n'est pas encore configuré",
+      "transcription": "Échec de la transcription",
+      "network": "Impossible de joindre le serveur",
+      "unknown": "Une erreur est survenue",
+      "noAccess": "Impossible d'accéder à ce fichier",
+      "notFound": "Fichier introuvable"
     }
   }
 }

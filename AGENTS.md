@@ -61,6 +61,7 @@ Toolchain: pnpm 10+ (pinned `10.32.1` via root `packageManager`), Node 22+. Inst
 | Build Windows app (NSIS .exe) | `pnpm --filter @openstyle/electron build:win` |
 | Build Linux app (AppImage/deb) | `pnpm --filter @openstyle/electron build:linux` |
 | Compile native helper binaries only | `pnpm --filter @openstyle/electron compile:native` |
+| Fetch/build the bundled ffmpeg (run once for local dev; Import needs it, `build:*` runs it automatically) | `pnpm --filter @openstyle/electron download:ffmpeg` |
 | Lint | `pnpm biome check .` |
 | Format | `pnpm format` |
 | Unused files/deps/exports check | `pnpm run knip` |

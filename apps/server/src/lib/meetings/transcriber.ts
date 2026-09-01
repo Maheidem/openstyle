@@ -13,9 +13,10 @@
  * real providers or a database.
  */
 
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
+import { parseWavHeader, sliceWav, type WavInfo } from "../audio/wav.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
 import type {
   TranscribeResult,
@@ -26,6 +27,8 @@ import { WHISPER_PROVIDER_ID } from "../whisper/constants.js";
 import type { Segment } from "./segmenter.js";
 
 const log = createAppLogger("meeting-transcriber");
+
+export { parseWavHeader, sliceWav, type WavInfo };
 
 export type ChunkSource = "mic" | "system";
 
@@ -91,131 +94,6 @@ export interface MeetingChannels {
   meetingDir: string;
   micSegments: Segment[];
   systemSegments: Segment[];
-}
-
-interface WavInfo {
-  sampleRate: number;
-  channels: number;
-  bitsPerSample: number;
-  /** Byte offset of the first PCM sample. */
-  dataOffset: number;
-  /** Byte length of the data chunk. */
-  dataLength: number;
-}
-
-/**
- * Parse a RIFF/WAVE header by walking chunks to find `fmt ` and `data`.
- * The canonical 44-byte layout is the common case, but chunk order and
- * extra chunks (LIST, fact) are handled properly.
- */
-export function parseWavHeader(fd: number): WavInfo {
-  const riff = Buffer.alloc(12);
-  if (readSync(fd, riff, 0, 12, 0) !== 12) {
-    throw new Error("WAV too short for RIFF header");
-  }
-  if (
-    riff.toString("ascii", 0, 4) !== "RIFF" ||
-    riff.toString("ascii", 8, 12) !== "WAVE"
-  ) {
-    throw new Error("not a RIFF/WAVE file");
-  }
-
-  let offset = 12;
-  let fmt: {
-    sampleRate: number;
-    channels: number;
-    bitsPerSample: number;
-  } | null = null;
-  const header = Buffer.alloc(8);
-  for (;;) {
-    if (readSync(fd, header, 0, 8, offset) !== 8) break;
-    const id = header.toString("ascii", 0, 4);
-    const size = header.readUInt32LE(4);
-    if (id === "fmt ") {
-      const body = Buffer.alloc(Math.min(size, 16));
-      readSync(fd, body, 0, body.length, offset + 8);
-      fmt = {
-        channels: body.readUInt16LE(2),
-        sampleRate: body.readUInt32LE(4),
-        bitsPerSample: body.readUInt16LE(14),
-      };
-    } else if (id === "data") {
-      if (!fmt) throw new Error("WAV data chunk before fmt chunk");
-      return {
-        sampleRate: fmt.sampleRate,
-        channels: fmt.channels,
-        bitsPerSample: fmt.bitsPerSample,
-        dataOffset: offset + 8,
-        dataLength: size,
-      };
-    }
-    // Chunks are word-aligned: odd sizes carry a pad byte.
-    offset += 8 + size + (size % 2);
-  }
-  throw new Error("WAV data chunk not found");
-}
-
-/** Build a canonical 44-byte WAV header for a mono/whatever PCM slice. */
-function wavHeader(info: WavInfo, dataBytes: number): Buffer {
-  const h = Buffer.alloc(44);
-  const byteRate = (info.sampleRate * info.channels * info.bitsPerSample) / 8;
-  const blockAlign = (info.channels * info.bitsPerSample) / 8;
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + dataBytes, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20); // PCM
-  h.writeUInt16LE(info.channels, 22);
-  h.writeUInt32LE(info.sampleRate, 24);
-  h.writeUInt32LE(byteRate, 28);
-  h.writeUInt16LE(blockAlign, 32);
-  h.writeUInt16LE(info.bitsPerSample, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(dataBytes, 40);
-  return h;
-}
-
-/**
- * Slice `[startMs, endMs)` from an open WAV file into standalone in-memory
- * WAV bytes. Reads only the slice's bytes at a computed offset.
- */
-export function sliceWav(
-  fd: number,
-  info: WavInfo,
-  startMs: number,
-  endMs: number,
-): Uint8Array {
-  const bytesPerSample = (info.channels * info.bitsPerSample) / 8;
-  const clampFrame = (ms: number) =>
-    Math.max(
-      0,
-      Math.min(
-        Math.floor((ms / 1000) * info.sampleRate),
-        Math.floor(info.dataLength / bytesPerSample),
-      ),
-    );
-  const startFrame = clampFrame(startMs);
-  const endFrame = clampFrame(endMs);
-  const byteStart = startFrame * bytesPerSample;
-  const byteLen = Math.max(0, (endFrame - startFrame) * bytesPerSample);
-
-  const data = Buffer.alloc(byteLen);
-  let read = 0;
-  // Streamed reads in 64 KiB blocks keep memory flat regardless of file size.
-  const BLOCK = 64 * 1024;
-  while (read < byteLen) {
-    const n = readSync(
-      fd,
-      data,
-      read,
-      Math.min(BLOCK, byteLen - read),
-      info.dataOffset + byteStart + read,
-    );
-    if (n <= 0) break;
-    read += n;
-  }
-  return Buffer.concat([wavHeader(info, read), data.subarray(0, read)]);
 }
 
 interface RetryInfo {

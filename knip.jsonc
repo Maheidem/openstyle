@@ -11,6 +11,7 @@
   "ignoreBinaries": [
     "cmake",
     "install_name_tool",
+    "make",
     "objdump",
     "pactl",
     "pkg-config",
@@ -62,7 +63,6 @@
       "ignoreDependencies": [
         "@hono/node-server",
         "@types/ws",
-        "playwright",
         "react-hotkeys-hook",
         "ws"
       ]

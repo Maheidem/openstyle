@@ -260,6 +260,10 @@ jobs:
         working-directory: apps/electron
         run: node scripts/download-whisper-cpp.mjs --resources
 
+      - name: Fetch/build ffmpeg
+        working-directory: apps/electron
+        run: node scripts/download-ffmpeg.mjs
+
       - name: Verify whisper binaries are portable (no AVX-512)
         working-directory: apps/electron
         run: node scripts/verify-whisper-portable.mjs
@@ -315,6 +319,19 @@ jobs:
       - name: Build whisper.cpp binaries
         working-directory: apps/electron
         run: node scripts/download-whisper-cpp.mjs --resources
+
+      # No LGPL ffmpeg prebuilt exists for macOS, so download-ffmpeg.mjs
+      # builds one from source (~5 min). Cache the finished binary keyed
+      # on the pins inside the script so a re-run is a copy, not a build.
+      - name: Cache built ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/freestyle/ffmpeg
+          key: ${{ runner.os }}-${{ runner.arch }}-ffmpeg-${{ hashFiles('apps/electron/scripts/download-ffmpeg.mjs') }}
+
+      - name: Fetch/build ffmpeg
+        working-directory: apps/electron
+        run: node scripts/download-ffmpeg.mjs
 
       # macos-14 runner images default to Xcode 15.4 (Swift 5.10), but
       # native/fluidaudio-diarize (specs/meeting-diarization.md §3) is a
@@ -387,6 +404,10 @@ jobs:
       - name: Download whisper.cpp binaries
         working-directory: apps/electron
         run: node scripts/download-whisper-cpp.mjs --resources
+
+      - name: Fetch/build ffmpeg
+        working-directory: apps/electron
+        run: node scripts/download-ffmpeg.mjs
 
       - name: Build electron (Windows)
         working-directory: apps/electron

@@ -601,7 +601,8 @@
       "settings": "Impostazioni",
       "help": "Aiuto",
       "remix": "Remix",
-      "meetings": "Riunioni"
+      "meetings": "Riunioni",
+      "import": "Importa"
     }
   },
   "remixPage": {
@@ -771,6 +772,32 @@
     },
     "navigate": {
       "eyebrow": "Naviga"
+    }
+  },
+  "import": {
+    "title": "Importa audio",
+    "subtitle": "Trascina una registrazione per trascriverla con le tue impostazioni di riconoscimento vocale.",
+    "dropzone": {
+      "title": "Trascina qui un file audio",
+      "subtitle": "per trascriverlo",
+      "formats": "Supporta wav, mp3, m4a, aac, ogg, mp4"
+    },
+    "chooseFile": "Scegli file",
+    "transcribing": "Trascrizione in corso… (usa il provider attuale delle Impostazioni)",
+    "transcriptTitle": "Trascrizione",
+    "copy": "Copia",
+    "tryAnother": "Prova un altro file",
+    "importAnother": "Importa un altro file",
+    "error": {
+      "unsupportedFormat": "Formato non supportato: .{{ext}}",
+      "tooLarge": "Il file è troppo grande per essere importato",
+      "decode": "Impossibile decodificare questo file",
+      "config": "L'importazione non è ancora configurata",
+      "transcription": "Trascrizione non riuscita",
+      "network": "Impossibile raggiungere il server",
+      "unknown": "Qualcosa è andato storto",
+      "noAccess": "Impossibile accedere a questo file",
+      "notFound": "File non trovato"
     }
   }
 }
