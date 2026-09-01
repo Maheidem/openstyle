@@ -15,6 +15,7 @@ import remixRoute from "./remix/index.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
+import transcribeFile from "./transcribe-file.js";
 import vocabulary from "./vocabulary.js";
 import whisper from "./whisper.js";
 
@@ -38,6 +39,7 @@ const apiRouter = new Hono()
   .route("/models", models)
   .route("/transcribe", transcribe)
   .route("/transcribe", transcribePreWarmRoute)
+  .route("/transcribe", transcribeFile)
   .route("/history", history)
   .route("/meetings", meetings)
   .route("/dictionary", dictionary)

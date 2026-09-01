@@ -321,6 +321,24 @@ describe("decodeToWav16kMono", () => {
     expect(existsSync(tempDirs[0])).toBe(false);
   });
 
+  it("redacts the temp dir path from the message and stderr tail", async () => {
+    const { deps, tempDirs } = makeDeps((proc, rec) => {
+      proc.stderr.write(`${rec.inputPath}: Invalid data found`);
+      proc.stdout.end();
+      proc.stderr.end();
+      setImmediate(() => proc.emit("close", 1, null));
+    });
+
+    const err = await expectDecodeError(
+      decodeToWav16kMono(Buffer.alloc(10), deps),
+    );
+    expect(tempDirs).toHaveLength(1);
+    expect(err.message).not.toContain(tempDirs[0]);
+    expect(err.details.stderrTail).not.toContain(tempDirs[0]);
+    expect(err.details.stderrTail).toBe("<tmp>/input: Invalid data found");
+    expect(err.message).toContain("<tmp>/input: Invalid data found");
+  });
+
   it("maps a header-only WAV (zero samples) to empty_output", async () => {
     const { deps } = makeDeps(succeed(buildWav({ samples: 0 })));
     const err = await expectDecodeError(

@@ -198,6 +198,14 @@ function tail(stderr: string): string {
 }
 
 /**
+ * ffmpeg echoes the input path in its diagnostics; the scratch dir is a
+ * server-side detail that must reach neither the client nor the logs.
+ */
+function redactTempDir(text: string, tempDir: string): string {
+  return tempDir ? text.split(tempDir).join("<tmp>") : text;
+}
+
+/**
  * Decode `input` (any container ffmpeg was built with) to a canonical
  * 44-byte-header 16 kHz mono PCM16 WAV. Rejects with `AudioDecodeError`.
  */
@@ -219,7 +227,12 @@ export async function decodeToWav16kMono(
     // filename is not to be trusted.
     const inputPath = join(tempDir, "input");
     writeFileSync(inputPath, input);
-    const { stdout, stderr } = await runFfmpeg(binary, inputPath, deps);
+    const { stdout, stderr } = await runFfmpeg(
+      binary,
+      inputPath,
+      tempDir,
+      deps,
+    );
     return finalizeWav(stdout, stderr);
   } finally {
     // Never let cleanup mask the real error: on Windows the input file can
@@ -242,6 +255,7 @@ export async function decodeToWav16kMono(
 function runFfmpeg(
   binary: string,
   inputPath: string,
+  tempDir: string,
   deps: DecodeDeps,
 ): Promise<{ stdout: Buffer; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -257,6 +271,9 @@ function runFfmpeg(
     const chunks: Buffer[] = [];
     let outBytes = 0;
     let stderr = "";
+    /** Redacted stderr, safe for messages, details and logs. */
+    const safeStderr = () => redactTempDir(stderr, tempDir);
+    const stderrTail = () => tail(safeStderr());
 
     const kill = () => {
       try {
@@ -277,7 +294,7 @@ function runFfmpeg(
           new AudioDecodeError(
             `ffmpeg did not finish within ${Math.round(deps.timeoutMs / 1000)} s`,
             "timeout",
-            { stderrTail: tail(stderr) },
+            { stderrTail: stderrTail() },
           ),
         );
       });
@@ -293,7 +310,7 @@ function runFfmpeg(
             new AudioDecodeError(
               `decoded audio exceeds ${deps.maxOutputBytes} bytes`,
               "decode_failed",
-              { stderrTail: tail(stderr) },
+              { stderrTail: stderrTail() },
             ),
           );
         });
@@ -320,7 +337,7 @@ function runFfmpeg(
               ? `ffmpeg binary not found: ${binary}`
               : `failed to start ffmpeg: ${err.message}`,
             missing ? "binary_missing" : "decode_failed",
-            { stderrTail: tail(stderr) },
+            { stderrTail: stderrTail() },
           ),
         );
       });
@@ -329,16 +346,17 @@ function runFfmpeg(
     proc.on("close", (code, signal) => {
       settle(() => {
         if (code !== 0) {
+          const t = stderrTail();
           reject(
             new AudioDecodeError(
-              `ffmpeg exited with ${code === null ? `signal ${signal}` : `code ${code}`}: ${tail(stderr) || "(no stderr)"}`,
+              `ffmpeg exited with ${code === null ? `signal ${signal}` : `code ${code}`}: ${t || "(no stderr)"}`,
               "decode_failed",
-              { exitCode: code, signal, stderrTail: tail(stderr) },
+              { exitCode: code, signal, stderrTail: t },
             ),
           );
           return;
         }
-        resolve({ stdout: Buffer.concat(chunks), stderr });
+        resolve({ stdout: Buffer.concat(chunks), stderr: safeStderr() });
       });
     });
   });
