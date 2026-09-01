@@ -29,14 +29,19 @@ const EXPECTED = {
     // not vendored — a transient HF hiccup shouldn't fail the whole mac
     // build the way a missing pre-built, network-independent binary should.
     "fluidaudio-diarize",
+    // ffmpeg IS network-fetched/built (scripts/download-ffmpeg.mjs) but is
+    // a hard runtime dependency of Import, so a failed fetch/build must
+    // fail CI rather than ship a build that cannot decode audio.
+    "ffmpeg",
   ],
   win32: [
     "windows-key-listener.exe",
     "windows-fast-paste.exe",
     "windows-mic-listener.exe",
     "windows-output-volume.exe",
+    "ffmpeg.exe",
   ],
-  linux: ["linux-key-listener", "linux-fast-paste"],
+  linux: ["linux-key-listener", "linux-fast-paste", "ffmpeg"],
 };
 
 const expected = EXPECTED[platform];
