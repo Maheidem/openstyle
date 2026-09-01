@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -143,6 +143,34 @@ async function hasDefaultVoiceModel(port: number): Promise<boolean> {
   return isOmlxReachable(port);
 }
 
+/**
+ * Probes a raw oMLX base URL's /v1/models the same way settings.ts and
+ * models.ts do, with a short timeout so an unreachable server fails fast
+ * instead of hanging beforeAll.
+ *
+ * Honors OPENSTYLE_E2E_OMLX_URL as an override of the base URL to probe —
+ * set it to an unreachable address (e.g. `http://127.0.0.1:1`) to force
+ * this suite through the "oMLX unreachable" / config-error branch locally,
+ * simulating what CI (no oMLX server) sees:
+ *   OPENSTYLE_E2E_OMLX_URL=http://127.0.0.1:1 npx playwright test tests/import-screen.test.ts
+ */
+async function probeOmlxReachable(defaultBaseUrl: string): Promise<boolean> {
+  const base = (process.env.OPENSTYLE_E2E_OMLX_URL || defaultBaseUrl).replace(
+    /\/+$/,
+    "",
+  );
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2_000);
+  try {
+    const res = await fetch(`${base}/v1/models`, { signal: controller.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function isOmlxReachable(port: number): Promise<boolean> {
   try {
     const settingsRes = await fetch(
@@ -166,6 +194,18 @@ async function isOmlxReachable(port: number): Promise<boolean> {
     return false;
   }
 }
+
+/** The exact string the renderer shows for import.error.config (read from
+ * the source of truth — en.json — rather than duplicating/guessing it). */
+const IMPORT_ERROR_CONFIG_TEXT: string = (() => {
+  const en = JSON.parse(
+    readFileSync(
+      resolve(__dirname, "../src/renderer/src/locales/en.json"),
+      "utf-8",
+    ),
+  ) as { import: { error: { config: string } } };
+  return en.import.error.config;
+})();
 
 async function navigateToImport(page: Page): Promise<void> {
   await page.getByRole("link", { name: "Import" }).click();
@@ -226,48 +266,66 @@ test.beforeAll(async () => {
 
     serverPort = portResult || DEFAULT_PORT;
 
-    // Seed the temp DB with a default voice model so the transcript branch
-    // is exercised locally (against the running oMLX server). If seeding
-    // fails for any reason, the tests still run — they fall back to
-    // asserting the no-model-configured branch.
-    try {
-      const urlRes = await fetch(
-        `http://127.0.0.1:${serverPort}/api/settings/omlx_base_url`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: "http://127.0.0.1:8123" }),
-        },
-      );
-      if (!urlRes.ok) {
-        console.warn(
-          `import-screen: oMLX base URL seeding failed (status ${urlRes.status}) — tests will exercise the no-model branch`,
-        );
-      }
+    // Probe oMLX reachability FIRST, before seeding anything. Seeding
+    // omlx_base_url + a default voice model unconditionally (as this used
+    // to do) leaves a real, "configured" model row in the DB even when the
+    // oMLX server is unreachable (e.g. in CI) — the app then attempts a
+    // real transcription request and surfaces a "transcription failed /
+    // server unreachable" error instead of the "no voice model configured"
+    // config error the tests expect for that branch. Only seed when the
+    // probe succeeds; otherwise leave the DB empty so the server's 400 "No
+    // voice model configured…" response (and the matching UI config-error
+    // copy) is what actually gets exercised.
+    const omlxBaseUrl = "http://127.0.0.1:8123";
+    const reachable = await probeOmlxReachable(omlxBaseUrl);
 
-      const res = await fetch(
-        `http://127.0.0.1:${serverPort}/api/models/configured`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: "omlx",
-            model_id: "omlx/Qwen3-ASR",
-            model_name: "Qwen3-ASR",
-            type: "voice",
-            is_default: true,
-          }),
-        },
+    if (reachable) {
+      console.log(
+        "import-screen beforeAll: oMLX reachable — seeding default voice model (success branch)",
       );
-      if (!res.ok) {
+      try {
+        const urlRes = await fetch(
+          `http://127.0.0.1:${serverPort}/api/settings/omlx_base_url`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ value: omlxBaseUrl }),
+          },
+        );
+        if (!urlRes.ok) {
+          console.warn(
+            `import-screen: oMLX base URL seeding failed (status ${urlRes.status}) — tests will exercise the no-model branch`,
+          );
+        }
+
+        const res = await fetch(
+          `http://127.0.0.1:${serverPort}/api/models/configured`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provider: "omlx",
+              model_id: "omlx/Qwen3-ASR",
+              model_name: "Qwen3-ASR",
+              type: "voice",
+              is_default: true,
+            }),
+          },
+        );
+        if (!res.ok) {
+          console.warn(
+            `import-screen: voice model seeding failed (status ${res.status}) — tests will exercise the no-model branch`,
+          );
+        }
+      } catch (seedError) {
         console.warn(
-          `import-screen: voice model seeding failed (status ${res.status}) — tests will exercise the no-model branch`,
+          "import-screen: voice model seeding failed — tests will exercise the no-model branch",
+          seedError,
         );
       }
-    } catch (seedError) {
-      console.warn(
-        "import-screen: voice model seeding failed — tests will exercise the no-model branch",
-        seedError,
+    } else {
+      console.log(
+        "import-screen beforeAll: oMLX unreachable — seeding nothing (config-error branch)",
       );
     }
   } catch (error) {
@@ -412,12 +470,13 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
     await expect(alert).toBeVisible({ timeout: 15_000 });
     const alertText = (await alert.textContent()) ?? "";
     // The renderer maps HTTP 400 to the generic "not configured" copy
-    // (import.error.config: "Import isn't configured yet") rather than
-    // surfacing the server's literal "No voice model configured..." string
-    // — result.error is never read by pages/import.tsx, only result.detail,
-    // which the 400 response does not set. Documented as a stage
-    // limitation rather than fixed here (out of scope for U6).
-    expect(alertText.toLowerCase()).toContain("configured");
+    // (import.error.config) rather than surfacing the server's literal "No
+    // voice model configured..." string — result.error is never read by
+    // pages/import.tsx, only result.detail, which the 400 response does
+    // not set. Documented as a stage limitation rather than fixed here
+    // (out of scope for U6). Assert the actual rendered i18n string rather
+    // than a substring guess.
+    expect(alertText).toContain(IMPORT_ERROR_CONFIG_TEXT);
 
     const countAfter = await getHistoryCount(serverPort);
     expect(countAfter).toBe(countBefore);

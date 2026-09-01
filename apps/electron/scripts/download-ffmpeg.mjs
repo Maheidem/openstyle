@@ -273,7 +273,10 @@ async function buildFromSource() {
   ];
 
   console.log("Configuring...");
-  execFileSync("./configure", configureArgs, {
+  // Resolved (not a literal "./configure") so static analysis (knip) does
+  // not mistake this shell invocation for a module import.
+  const configureBin = join(srcDir, "configure");
+  execFileSync(configureBin, configureArgs, {
     cwd: srcDir,
     stdio: "inherit",
     timeout: 600_000,
