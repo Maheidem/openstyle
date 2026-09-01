@@ -26,6 +26,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 const OnboardingPage = lazy(() => import("@renderer/onboarding"));
 const DictionaryPage = lazy(() => import("@renderer/pages/dictionary"));
 const HelpPage = lazy(() => import("@renderer/pages/help"));
+const ImportPage = lazy(() => import("@renderer/pages/import"));
 const ModelsPage = lazy(() => import("@renderer/pages/models"));
 const MeetingsPage = lazy(() => import("@renderer/pages/meetings"));
 const RemixPage = lazy(() => import("@renderer/pages/remix"));
@@ -99,6 +100,7 @@ function mount(): void {
                         <Route element={<PagePad />}>
                           <Route path="/remix" element={<RemixPage />} />
                           <Route path="/meetings" element={<MeetingsPage />} />
+                          <Route path="/import" element={<ImportPage />} />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route
                             path="/settings/general"

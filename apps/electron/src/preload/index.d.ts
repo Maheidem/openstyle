@@ -15,6 +15,26 @@ import type {
   RemixSelectResult,
 } from "../shared/remix";
 
+// Result of an import-audio upload. Kept structural to mirror the type
+// declared in `preload/index.ts` without a runtime import.
+export type ImportAudioResult =
+  | {
+      ok: true;
+      raw: string;
+      cleaned: string;
+      model: string;
+      audioDurationMs?: number;
+      durationMs?: number;
+    }
+  | {
+      ok: false;
+      status?: number;
+      error: string;
+      detail?: string;
+      code?: string;
+      reason?: string;
+    };
+
 declare global {
   interface Window {
     electron: ElectronAPI;
@@ -70,6 +90,11 @@ declare global {
       ) => () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
+      // Import screen: resolve a dropped `File`'s on-disk path, open a
+      // native file picker, or upload a chosen file for transcription.
+      getPathForFile: (file: File) => string;
+      pickImportFile: () => Promise<string | null>;
+      importAudioFile: (path: string) => Promise<ImportAudioResult>;
       getServerUrl: () => Promise<string>;
       setServerUrl: (url: string) => Promise<string>;
       getServerToken: () => Promise<string>;

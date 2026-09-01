@@ -15,6 +15,7 @@ import {
   Cpu,
   FileText,
   Settings,
+  Upload,
   Wand2,
   Zap,
 } from "lucide-react";
@@ -52,6 +53,12 @@ const STATIC_NAV: {
     icon: AudioLines,
     shortcut: "3",
     labelKey: "shell.nav.meetings",
+  },
+  {
+    to: "/import",
+    icon: Upload,
+    shortcut: "8",
+    labelKey: "shell.nav.import",
   },
   {
     to: "/settings/vocabulary",
