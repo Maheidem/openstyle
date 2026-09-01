@@ -1,4 +1,14 @@
 # Changelog
+## 2.5.0
+
+### New Features ✨
+
+- (import) Import Audio — bundled ffmpeg, /api/transcribe/file, Import screen by @Maheidem in [#9](https://github.com/Maheidem/openstyle/pull/9)
+
+### Documentation 📚
+
+- Refresh AGENTS.md for post-2.3.0 (meetings, task profiles, plugin removal) by @Maheidem in [18584939](https://github.com/Maheidem/openstyle/commit/1858493951f6fd218c35ec9d7f09290889087d27)
+
 ## 2.4.0
 
 ### New Features ✨
