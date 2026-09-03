@@ -27,6 +27,13 @@ import {
   decodeToWav16kMono,
   needsDecode,
 } from "../lib/audio/decode.js";
+import {
+  ACCEPTED_EXTENSIONS_DETAIL,
+  ACCEPTED_IMPORT_EXTENSIONS,
+  formatLimit,
+  importFileExtension,
+  MAX_IMPORT_BYTES,
+} from "../lib/audio/import-limits.js";
 import { parseWavHeader, wavDurationMs } from "../lib/audio/wav.js";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import {
@@ -36,38 +43,15 @@ import {
 
 const log = createAppLogger("transcribe-file");
 
-/** 1 GiB (1,073,741,824 B) upload ceiling (`tr_e4522000`). */
-export const MAX_IMPORT_BYTES = 1_073_741_824;
-
-/** Accepted file extensions, lowercase, without the dot (`br_56f64592`). */
-export const ACCEPTED_IMPORT_EXTENSIONS: ReadonlySet<string> = new Set([
-  "wav",
-  "mp3",
-  "m4a",
-  "aac",
-  "ogg",
-  "mp4",
-]);
-
-const ACCEPTED_EXTENSIONS_DETAIL = `Accepted extensions: ${[
-  ...ACCEPTED_IMPORT_EXTENSIONS,
-].join(", ")}`;
-
-/** Lowercase extension after the last `.`, or null when there is none. */
-export function importFileExtension(name: string): string | null {
-  const dot = name.lastIndexOf(".");
-  if (dot < 0 || dot === name.length - 1) return null;
-  return name.slice(dot + 1).toLowerCase();
-}
-
-/** Human-readable byte limit for the 413 detail: "1 GiB", "1 KiB", else "N bytes". */
-export function formatLimit(bytes: number): string {
-  const gib = 1024 ** 3;
-  const kib = 1024;
-  if (bytes % gib === 0) return `${bytes / gib} GiB`;
-  if (bytes % kib === 0) return `${bytes / kib} KiB`;
-  return `${bytes} bytes`;
-}
+// Upload limits live in `lib/audio/import-limits.ts` (shared with
+// `routes/meetings-import.ts`); re-exported here so this module's public
+// surface is unchanged.
+export {
+  ACCEPTED_IMPORT_EXTENSIONS,
+  formatLimit,
+  importFileExtension,
+  MAX_IMPORT_BYTES,
+} from "../lib/audio/import-limits.js";
 
 export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
   const maxBytes = opts.maxBytes ?? MAX_IMPORT_BYTES;
