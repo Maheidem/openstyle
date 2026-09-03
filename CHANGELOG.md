@@ -1,4 +1,10 @@
 # Changelog
+## 2.6.0
+
+### New Features ✨
+
+- (meetings) Import audio recordings as meetings by @Maheidem in [#11](https://github.com/Maheidem/openstyle/pull/11)
+
 ## 2.5.0
 
 ### New Features ✨
