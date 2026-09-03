@@ -35,6 +35,44 @@ export type ImportAudioResult =
       reason?: string;
     };
 
+// A freshly imported meeting in the exact `GET /api/meetings/:id` response
+// shape. Kept structural to mirror the type declared in `preload/index.ts`
+// without a runtime import, like `ImportAudioResult`.
+export type ImportedMeeting = {
+  id: string;
+  title: string | null;
+  started_at: number | null;
+  ended_at: number | null;
+  duration_ms: number | null;
+  status: string;
+  language: string | null;
+  error: string | null;
+  created_at: number | null;
+  stt_provider: string | null;
+  stt_model: string | null;
+  audio_dir: string | null;
+  context: string | null;
+  job: { done: number; total: number; failed: number } | null;
+  segment_counts: { total: number; failed: number };
+  summary: {
+    markdown: string | null;
+    llm_provider: string | null;
+    llm_model: string | null;
+    cost_usd: number | null;
+    created_at: number | null;
+  } | null;
+};
+
+export type MeetingImportResult =
+  | { ok: true; meeting: ImportedMeeting }
+  | {
+      ok: false;
+      status?: number;
+      error: string;
+      detail?: string;
+      code?: string;
+    };
+
 declare global {
   interface Window {
     electron: ElectronAPI;
@@ -95,6 +133,12 @@ declare global {
       getPathForFile: (file: File) => string;
       pickImportFile: () => Promise<string | null>;
       importAudioFile: (path: string) => Promise<ImportAudioResult>;
+      // Meeting import (specs/meeting-import.md §4.4).
+      pickMeetingAudioFile: () => Promise<string | null>;
+      importMeetingAudio: (
+        path: string,
+        opts?: { title?: string },
+      ) => Promise<MeetingImportResult>;
       getServerUrl: () => Promise<string>;
       setServerUrl: (url: string) => Promise<string>;
       getServerToken: () => Promise<string>;

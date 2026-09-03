@@ -102,6 +102,7 @@ import { registerImportIpc } from "./import-audio";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
+import { registerMeetingImportIpc } from "./meeting-import";
 import { MeetingRecorder } from "./meeting-recorder";
 import { MicListener } from "./mic-listener";
 import { migrateLegacyUserData } from "./migrate-user-data";
@@ -2384,6 +2385,15 @@ app.whenReady().then(async () => {
 
   // --- Import screen ---------------------------------------------------------
   registerImportIpc({
+    getServerBaseUrl,
+    getServerAuthHeaders,
+    getParentWindow: () => mainWindow,
+  });
+
+  // Meeting import (specs/meeting-import.md §4.4): same picker/upload shape
+  // as the dictation Import screen, but the upload lands in
+  // POST /api/meetings/import as a full meeting record.
+  registerMeetingImportIpc({
     getServerBaseUrl,
     getServerAuthHeaders,
     getParentWindow: () => mainWindow,
