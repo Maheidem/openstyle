@@ -800,6 +800,18 @@
     "copy": "コピー",
     "tryAnother": "別のファイルを試す",
     "importAnother": "別のファイルをインポート",
+    "cancel": "キャンセル",
+    "cancelling": "キャンセル中…",
+    "progress": {
+      "elapsed": "{{seconds}}秒"
+    },
+    "review": {
+      "transcribe": "ファイルを文字起こし",
+      "chooseAnother": "別のファイルを選択",
+      "weightWithDuration": "{{duration}} · {{size}}",
+      "sizeOnly": "{{size}}",
+      "slow": "時間がかかる場合があります。"
+    },
     "error": {
       "unsupportedFormat": "サポートされていない形式: .{{ext}}",
       "tooLarge": "ファイルが大きすぎてインポートできません",

@@ -130,9 +130,15 @@ declare global {
       getServerPort: () => Promise<number>;
       // Import screen: resolve a dropped `File`'s on-disk path, open a
       // native file picker, or upload a chosen file for transcription.
+      // `{ id }` opts pair with `abortJob(id)` — the cancel seam.
       getPathForFile: (file: File) => string;
-      pickImportFile: () => Promise<string | null>;
-      importAudioFile: (path: string) => Promise<ImportAudioResult>;
+      pickImportFile: () => Promise<{ path: string; size: number } | null>;
+      importAudioFile: (
+        path: string,
+        opts?: { id?: string },
+      ) => Promise<ImportAudioResult>;
+      /** Abort an in-flight cancellable job started with the same id. */
+      abortJob: (id: string) => void;
       // Meeting import (specs/meeting-import.md §4.4).
       pickMeetingAudioFile: () => Promise<string | null>;
       importMeetingAudio: (

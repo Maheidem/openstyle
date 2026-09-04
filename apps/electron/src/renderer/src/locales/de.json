@@ -800,6 +800,18 @@
     "copy": "Kopieren",
     "tryAnother": "Andere Datei versuchen",
     "importAnother": "Weitere Datei importieren",
+    "cancel": "Abbrechen",
+    "cancelling": "Wird abgebrochen…",
+    "progress": {
+      "elapsed": "{{seconds}}s"
+    },
+    "review": {
+      "transcribe": "Datei transkribieren",
+      "chooseAnother": "Andere Datei wählen",
+      "weightWithDuration": "{{duration}} · {{size}}",
+      "sizeOnly": "{{size}}",
+      "slow": "Das kann eine Weile dauern."
+    },
     "error": {
       "unsupportedFormat": "Nicht unterstütztes Format: .{{ext}}",
       "tooLarge": "Datei ist zu groß zum Importieren",

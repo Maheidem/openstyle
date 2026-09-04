@@ -11,6 +11,7 @@ import { stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
 import { type BrowserWindow, dialog, ipcMain } from "electron";
+import { claimAbortableJob, releaseAbortableJob } from "./abortable-jobs";
 
 const log = createAppLogger("import");
 
@@ -43,39 +44,67 @@ type ImportAudioResult =
       reason?: string;
     };
 
+/** A picked import candidate: on-disk path plus its size in bytes. */
+export interface PickedImportFile {
+  path: string;
+  size: number;
+}
+
 interface RegisterImportIpcOptions {
   getServerBaseUrl: () => string;
   getServerAuthHeaders: () => Record<string, string>;
   getParentWindow: () => BrowserWindow | null;
+  /**
+   * Fired when an upload finishes with a transcript (UX-04/UX-A4): the
+   * caller raises the native "Transcript ready" completion notification.
+   */
+  onTranscribed?: (info: { fileName: string }) => void;
 }
 
 export function registerImportIpc({
   getServerBaseUrl,
   getServerAuthHeaders,
   getParentWindow,
+  onTranscribed,
 }: RegisterImportIpcOptions): void {
-  ipcMain.handle("import:pick-file", async (): Promise<string | null> => {
-    if (isE2E() && process.env.OPENSTYLE_E2E_IMPORT_FILE) {
-      return process.env.OPENSTYLE_E2E_IMPORT_FILE;
-    }
-
-    const parent = getParentWindow();
-    const { canceled, filePaths } = parent
-      ? await dialog.showOpenDialog(parent, {
-          properties: ["openFile"],
-          filters: [{ name: "Audio", extensions: [...IMPORT_EXTENSIONS] }],
-        })
-      : await dialog.showOpenDialog({
-          properties: ["openFile"],
-          filters: [{ name: "Audio", extensions: [...IMPORT_EXTENSIONS] }],
-        });
-
-    return canceled || filePaths.length === 0 ? null : filePaths[0];
-  });
+  ipcMain.handle(
+    "import:pick-file",
+    async (): Promise<PickedImportFile | null> => {
+      let path: string | null = null;
+      if (isE2E() && process.env.OPENSTYLE_E2E_IMPORT_FILE) {
+        path = process.env.OPENSTYLE_E2E_IMPORT_FILE;
+      } else {
+        const parent = getParentWindow();
+        const { canceled, filePaths } = parent
+          ? await dialog.showOpenDialog(parent, {
+              properties: ["openFile"],
+              filters: [{ name: "Audio", extensions: [...IMPORT_EXTENSIONS] }],
+            })
+          : await dialog.showOpenDialog({
+              properties: ["openFile"],
+              filters: [{ name: "Audio", extensions: [...IMPORT_EXTENSIONS] }],
+            });
+        path = canceled || filePaths.length === 0 ? null : filePaths[0];
+      }
+      if (!path) return null;
+      // Size for the pre-upload weight hint (UX-A3). The picker path has no
+      // `File` object in the renderer, so stat here; unreadable still returns
+      // the path with size 0 and lets the review card show honest copy.
+      try {
+        return { path, size: (await stat(path)).size };
+      } catch {
+        return { path, size: 0 };
+      }
+    },
+  );
 
   ipcMain.handle(
     "import:transcribe-file",
-    async (_event, path: string): Promise<ImportAudioResult> => {
+    async (
+      _event,
+      path: string,
+      opts?: { id?: string },
+    ): Promise<ImportAudioResult> => {
       if (isE2E()) {
         const g = globalThis as { __openstyleE2E?: { importCalls: number } };
         g.__openstyleE2E ??= { importCalls: 0 };
@@ -118,6 +147,14 @@ export function registerImportIpc({
         };
       }
 
+      // Abort seam (UX-04): the renderer passes a job id it can later cancel
+      // via `job:abort`; see abortable-jobs.ts. Aborting severs this fetch,
+      // not the server-side pipeline.
+      const jobId = typeof opts?.id === "string" && opts.id ? opts.id : null;
+      const controller = jobId
+        ? claimAbortableJob(jobId)
+        : new AbortController();
+
       try {
         const blob = await openAsBlob(path);
         const form = new FormData();
@@ -129,6 +166,7 @@ export function registerImportIpc({
             method: "POST",
             headers: getServerAuthHeaders(),
             body: form,
+            signal: controller.signal,
           },
         );
 
@@ -144,6 +182,7 @@ export function registerImportIpc({
         });
 
         if (response.ok) {
+          onTranscribed?.({ fileName: basename(path) });
           return { ...json, ok: true } as ImportAudioResult;
         }
         return {
@@ -152,6 +191,14 @@ export function registerImportIpc({
           status: response.status,
         } as ImportAudioResult;
       } catch (err) {
+        if (controller.signal.aborted) {
+          log.debug("import:transcribe-file cancelled", { ext, bytes: size });
+          return {
+            ok: false,
+            code: "CANCELLED",
+            error: "Cancelled by user",
+          };
+        }
         const message = err instanceof Error ? err.message : String(err);
         log.debug("import:transcribe-file fetch failed", {
           ext,
@@ -159,6 +206,8 @@ export function registerImportIpc({
           message,
         });
         return { ok: false, error: "Server unreachable", detail: message };
+      } finally {
+        if (jobId) releaseAbortableJob(jobId);
       }
     },
   );

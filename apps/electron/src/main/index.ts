@@ -90,6 +90,7 @@ import {
 } from "../shared/remix";
 import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
+import { registerJobAbortIpc } from "./abortable-jobs";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { HotkeyRecorder } from "./hotkey-recorder";
@@ -2384,10 +2385,12 @@ app.whenReady().then(async () => {
   });
 
   // --- Import screen ---------------------------------------------------------
+  registerJobAbortIpc();
   registerImportIpc({
     getServerBaseUrl,
     getServerAuthHeaders,
     getParentWindow: () => mainWindow,
+    onTranscribed: ({ fileName }) => notifyImportComplete(fileName),
   });
 
   // Meeting import (specs/meeting-import.md §4.4): same picker/upload shape
@@ -4518,6 +4521,32 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
   if (Notification.isSupported()) {
     new Notification({ title: "Openstyle is in toggle mode", body }).show();
   }
+}
+
+// Import completion (UX-04 / UX-A4, specs/lean-audit-2026-09.md §4): the
+// update flow's native-notification pattern, reused so an import that lands
+// while the user looked away is no longer silent. English-only copy from
+// main, exactly like the update notifications — the renderer-localized
+// surface is the Import page itself. Click focuses the app on Today, where
+// the new transcript sits at the top of history.
+function notifyImportComplete(fileName: string): void {
+  // Counted before the Notification.isSupported() guard so e2e (where the
+  // OS may suppress notifications) can still assert the completion fired.
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
+    const g = globalThis as {
+      __openstyleE2E?: { importNotifications?: number };
+    };
+    g.__openstyleE2E ??= {};
+    g.__openstyleE2E.importNotifications =
+      (g.__openstyleE2E.importNotifications ?? 0) + 1;
+  }
+  if (!Notification.isSupported()) return;
+  const note = new Notification({
+    title: "Transcript ready",
+    body: `“${fileName}” has been transcribed.`,
+  });
+  note.on("click", () => showSettingsWindow("/today"));
+  note.show();
 }
 
 // Rate-limited so a broken paste backend doesn't fire a notification per

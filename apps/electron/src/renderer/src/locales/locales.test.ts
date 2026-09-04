@@ -80,6 +80,30 @@ describe("locale files", () => {
     });
   }
 
+  // Keys introduced by the import progress/cancel/review work (UX-04 +
+  // UX-A3) — same rule: primary surface, so every locale carries them.
+  const IMPORT_PROGRESS_KEYS = [
+    "import.cancel",
+    "import.cancelling",
+    "import.progress.elapsed",
+    "import.review.transcribe",
+    "import.review.chooseAnother",
+    "import.review.weightWithDuration",
+    "import.review.sizeOnly",
+    "import.review.slow",
+  ];
+
+  for (const file of ["template.json", ...localeFiles]) {
+    it(`${file}: carries the import progress keys with intact placeholders`, () => {
+      const flat = flatten(load(file));
+      const en = flatten(load("en.json"));
+      for (const key of IMPORT_PROGRESS_KEYS) {
+        expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+        expect(placeholders(flat[key])).toEqual(placeholders(en[key]));
+      }
+    });
+  }
+
   // Guardrail for the section this change touched: any meetings.* key a
   // locale carries must preserve en.json's placeholders for that key. (This
   // is intentionally scoped to meetings.* — other sections have pre-existing

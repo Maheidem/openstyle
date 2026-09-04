@@ -910,6 +910,18 @@
     "copy": "Copy",
     "tryAnother": "Try another file",
     "importAnother": "Import another file",
+    "cancel": "Cancel",
+    "cancelling": "Cancelling…",
+    "progress": {
+      "elapsed": "{{seconds}}s"
+    },
+    "review": {
+      "transcribe": "Transcribe file",
+      "chooseAnother": "Choose another file",
+      "weightWithDuration": "{{duration}} · {{size}}",
+      "sizeOnly": "{{size}}",
+      "slow": "This may take a while."
+    },
     "error": {
       "unsupportedFormat": "Unsupported format: .{{ext}}",
       "tooLarge": "File is too large to import",

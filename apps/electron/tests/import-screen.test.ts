@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  createServer,
+  type Server,
+  type ServerResponse,
+  type Socket,
+} from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -213,6 +219,22 @@ async function navigateToImport(page: Page): Promise<void> {
 }
 
 test.beforeAll(async () => {
+  // Skip (rather than silently reusing) a foreign server on the default
+  // port — the app's boot probe would find it, route test traffic at that
+  // real instance, and touch its DB. Mirrors
+  // tests/meeting-cancel-transcribe.test.ts.
+  try {
+    const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
+      signal: AbortSignal.timeout(1_500),
+    });
+    test.skip(
+      res.ok,
+      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
+    );
+  } catch {
+    // nothing listening — clean environment, proceed with the embedded server
+  }
+
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-import-"));
   const dbPath = join(userDataDir, "freestyle.db");
 
@@ -421,6 +443,13 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
 
   await dashboardPage.getByTestId("import-choose-file").click();
 
+  // UX-A3 review step: the picker landing shows the staged file and its
+  // expected weight before the upload begins; Transcribe file starts it.
+  const startButton = dashboardPage.getByTestId("import-start");
+  await expect(startButton).toBeVisible({ timeout: 5_000 });
+  await expect(dashboardPage.getByTestId("import-review-weight")).toBeVisible();
+  await startButton.click();
+
   if (voiceModelConfigured) {
     // The transcription round trip to a real oMLX server takes long enough
     // that the transient "uploading" status is reliably observable.
@@ -511,6 +540,7 @@ test("corrupt file reports a decode error (ts_307c89e8)", async () => {
   }, junkPath);
 
   await dashboardPage.getByTestId("import-choose-file").click();
+  await dashboardPage.getByTestId("import-start").click();
   // No status-visible assertion here: unlike the network round trip in the
   // picker test above, local decode failure can resolve before the next
   // Playwright poll observes the transient "uploading" status — go straight
@@ -526,4 +556,201 @@ test("corrupt file reports a decode error (ts_307c89e8)", async () => {
   await app.evaluate(() => {
     delete process.env.OPENSTYLE_E2E_IMPORT_FILE;
   });
+});
+
+// ---------------------------------------------------------------------------
+// UX-04 (specs/lean-audit-2026-09.md §3 T1-2): cancel + completion. Both
+// drive the STT backend through a local HTTP server this file owns, so they
+// are deterministic in CI (no oMLX server, no `say`) and don't depend on the
+// beforeAll oMLX probe outcome: whatever default voice model exists gets its
+// omlx_base_url re-pointed at the owned server.
+// ---------------------------------------------------------------------------
+
+interface OwnedSttServer {
+  port: number;
+  close: () => Promise<void>;
+}
+
+/** A loopback server this test owns; every socket is tracked so teardown can
+ * sever parked requests instead of waiting out server-side timeouts. */
+async function startOwnedSttServer(
+  respond: (
+    req: import("node:http").IncomingMessage,
+    res: ServerResponse,
+  ) => void,
+): Promise<OwnedSttServer> {
+  const sockets = new Set<Socket>();
+  const server: Server = createServer((req, res) => {
+    // Consume the (possibly large) multipart body so the request settles.
+    req.resume();
+    req.on("end", () => respond(req, res));
+  });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+  const port = await new Promise<number>((resolvePort) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      resolvePort(typeof address === "object" && address ? address.port : 0);
+    });
+  });
+  return {
+    port,
+    close: async () => {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((r) => server.close(() => r()));
+    },
+  };
+}
+
+/** Point the default voice model's oMLX base URL at `base`, seeding a
+ * default oMLX model row first when this environment has none (CI's
+ * no-oMLX branch of the beforeAll probe). */
+async function pointDefaultVoiceModelAt(
+  base: string,
+  seedModel: boolean,
+): Promise<void> {
+  const putBase = await fetch(
+    `http://127.0.0.1:${serverPort}/api/settings/omlx_base_url`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: base }),
+    },
+  );
+  expect(putBase.ok, `PUT omlx_base_url -> ${putBase.status}`).toBe(true);
+  if (!seedModel) return;
+  const res = await fetch(
+    `http://127.0.0.1:${serverPort}/api/models/configured`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "omlx",
+        model_id: "omlx/owned-test-model",
+        model_name: "oMLX owned-test model",
+        type: "voice",
+        is_default: true,
+      }),
+    },
+  );
+  expect(res.ok, `POST models/configured -> ${res.status}`).toBe(true);
+}
+
+test("cancelling an in-flight import returns to the dropzone (UX-04)", async () => {
+  test.setTimeout(60_000);
+  await navigateToImport(dashboardPage);
+
+  // Park server: accepts the STT request and never answers, so the import
+  // reliably sits mid-pipeline when Cancel is clicked.
+  const parked: ServerResponse[] = [];
+  const park = await startOwnedSttServer((_req, res) => {
+    parked.push(res);
+  });
+  try {
+    await pointDefaultVoiceModelAt(
+      `http://127.0.0.1:${park.port}`,
+      !voiceModelConfigured,
+    );
+
+    const wavPath = join(userDataDir, "cancel-import.wav");
+    writeSilentWav(wavPath);
+    const countBefore = await getHistoryCount(serverPort);
+
+    await app.evaluate((_electron, path) => {
+      process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
+    }, wavPath);
+
+    await dashboardPage.getByTestId("import-choose-file").click();
+    await dashboardPage.getByTestId("import-start").click();
+
+    // The progress card is up with the elapsed readout and an enabled Cancel;
+    // the old static line (bare `import-status` outside a card) is gone.
+    const progress = dashboardPage.getByTestId("import-progress");
+    await expect(progress).toBeVisible({ timeout: 10_000 });
+    await expect(dashboardPage.getByTestId("import-elapsed")).toBeVisible();
+    const cancelButton = dashboardPage.getByTestId("import-cancel");
+    await expect(cancelButton).toBeEnabled();
+
+    await cancelButton.click();
+
+    // A cancel is not an error: the empty dropzone comes back, no error card,
+    // and no history row was written (the parked STT request never finished).
+    await expect(dashboardPage.getByTestId("import-dropzone")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(progress).toHaveCount(0);
+    await expect(dashboardPage.getByTestId("import-error")).toHaveCount(0);
+    const countAfter = await getHistoryCount(serverPort);
+    expect(countAfter).toBe(countBefore);
+  } finally {
+    await app.evaluate(() => {
+      delete process.env.OPENSTYLE_E2E_IMPORT_FILE;
+    });
+    await park.close();
+  }
+});
+
+test("a completed import raises the completion notification (UX-04)", async () => {
+  test.setTimeout(60_000);
+  await navigateToImport(dashboardPage);
+
+  // Mock oMLX: answers the transcription request with a fixed transcript, so
+  // the full pipeline (upload → decode → STT → history row) completes without
+  // any external dependency — CI included.
+  const mock = await startOwnedSttServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({ text: "mock transcript from the completion test" }),
+    );
+  });
+  try {
+    await pointDefaultVoiceModelAt(
+      `http://127.0.0.1:${mock.port}`,
+      !voiceModelConfigured,
+    );
+
+    const wavPath = join(userDataDir, "notify-import.wav");
+    writeSilentWav(wavPath);
+    const countBefore = await getHistoryCount(serverPort);
+    const notesBefore = await app.evaluate(() => {
+      const g = globalThis as {
+        __openstyleE2E?: { importNotifications?: number };
+      };
+      return g.__openstyleE2E?.importNotifications ?? 0;
+    });
+
+    await app.evaluate((_electron, path) => {
+      process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
+    }, wavPath);
+
+    await dashboardPage.getByTestId("import-choose-file").click();
+    await dashboardPage.getByTestId("import-start").click();
+
+    await expect(dashboardPage.getByTestId("import-transcript")).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // The main process raised exactly one "Transcript ready" notification
+    // (counted before the OS-support guard so this asserts deterministically
+    // even where notifications are suppressed).
+    const notesAfter = await app.evaluate(() => {
+      const g = globalThis as {
+        __openstyleE2E?: { importNotifications?: number };
+      };
+      return g.__openstyleE2E?.importNotifications ?? 0;
+    });
+    expect(notesAfter).toBe(notesBefore + 1);
+
+    const countAfter = await getHistoryCount(serverPort);
+    expect(countAfter).toBe(countBefore + 1);
+
+    await dashboardPage.getByTestId("import-reset").click();
+  } finally {
+    await app.evaluate(() => {
+      delete process.env.OPENSTYLE_E2E_IMPORT_FILE;
+    });
+    await mock.close();
+  }
 });
