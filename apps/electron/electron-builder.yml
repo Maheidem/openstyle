@@ -35,6 +35,13 @@ extraResources:
     to: "bin"
     filter:
       - "**/*"
+      # UX-12 follow-on (specs/lean-audit-2026-09.md): the always-on
+      # mic-listener was removed in feat/lean-wins — nothing spawns the
+      # binary. Sources still compile (compile-native.js) pending a
+      # follow-on source removal, but the dead binary must not ship; the
+      # no-match case on the other platforms is a harmless no-op.
+      - "!macos-mic-listener"
+      - "!windows-mic-listener.exe"
 win:
   executableName: Openstyle
   extraResources:
