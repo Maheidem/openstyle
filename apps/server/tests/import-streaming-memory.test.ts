@@ -30,6 +30,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -196,14 +197,44 @@ suite("import streaming memory shape", () => {
     extraFields: Record<string, string> = {},
     filename = "big.wav",
     opts: { corruptHeader?: boolean } = {},
-  ): Promise<Response> {
+  ): Promise<{ status: number; body: string }> {
     const fields = Object.entries(extraFields)
       .map(
         ([k, v]) =>
           `--${BOUNDARY}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`,
       )
       .join("");
-    const body = Readable.toWeb(
+    return new Promise((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: route,
+          method: "POST",
+          headers: {
+            "content-type": `multipart/form-data; boundary=${BOUNDARY}`,
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (c: Buffer) => chunks.push(c));
+          res.on("error", reject);
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              body: Buffer.concat(chunks).toString("utf8"),
+            }),
+          );
+        },
+      );
+      req.on("error", reject);
+      // Raw node:http client, deliberately NOT undici fetch: the metric is
+      // process-wide arrayBuffers, and Node 22's undici (the CI runner;
+      // Node 26 streams) retains a full in-process copy of a streamed
+      // request body — exactly 1× the upload, which the measurement would
+      // attribute to the server. pipe() honors backpressure, so the
+      // client's in-flight window is the socket buffer plus the stream's
+      // highWaterMark, nothing more, on every Node version.
       Readable.from(
         (async function* () {
           yield Buffer.from(fields);
@@ -212,16 +243,7 @@ suite("import streaming memory shape", () => {
           yield* fileChunks(opts.corruptHeader === true);
           yield multipartTail();
         })(),
-      ),
-    ) as unknown as ReadableStream<Uint8Array>;
-    return fetch(`http://127.0.0.1:${port}${route}`, {
-      method: "POST",
-      headers: {
-        "content-type": `multipart/form-data; boundary=${BOUNDARY}`,
-      },
-      body,
-      // @ts-expect-error -- duplex is valid for streamed fetch bodies
-      duplex: "half",
+      ).pipe(req);
     });
   }
 
@@ -293,9 +315,7 @@ suite("import streaming memory shape", () => {
     });
 
     if (res.status !== 201)
-      process.stdout.write(
-        `DEBUG: ${res.status} ${JSON.stringify(await res.json())}\n`,
-      );
+      process.stdout.write(`DEBUG: ${res.status} ${res.body}\n`);
     expect(res.status).toBe(201);
     expect(statSync(join(audioDir, "system.wav")).size).toBe(BIG_WAV_BYTES);
     await settle();
