@@ -267,7 +267,12 @@
       "clearHistoryConfirm": "Clear all transcription history? This permanently deletes every saved session.",
       "logs": "Diagnostic logs",
       "logsDesc": "App logs are saved to a file on your device. Open the folder to share them when reporting a problem.",
-      "openLogs": "Open logs folder"
+      "openLogs": "Open logs folder",
+      "diskUsage": "Disk usage",
+      "diskUsageDesc": "How much space your meeting audio and local models take up on this device.",
+      "diskUsageLine": "Meetings audio: {{meetings}} · Local models: {{models}}",
+      "diskUsageLoading": "Measuring meetings audio and local models…",
+      "manage": "Manage…"
     },
     "network": {
       "intro": "For managed or corporate networks. Route model downloads and cloud requests through a proxy, and trust a custom certificate authority. Leave blank to use your system defaults or standard proxy environment variables.",
@@ -807,6 +812,9 @@
     "resummarize": "Re-summarize",
     "summarizing": "Summarizing…",
     "retryFailed": "Retry {{n}} failed",
+    "cancelTranscription": "Cancel",
+    "cancellingTranscription": "Cancelling…",
+    "cancelledKeptTranscript": "Cancelled — partial transcript kept ({{n}} of {{total}} segments transcribed)",
     "copyTranscript": "Copy transcript",
     "copySummary": "Copy summary",
     "tabTranscript": "Transcript",
@@ -907,6 +915,18 @@
     "copy": "Copy",
     "tryAnother": "Try another file",
     "importAnother": "Import another file",
+    "cancel": "Cancel",
+    "cancelling": "Cancelling…",
+    "progress": {
+      "elapsed": "{{seconds}}s"
+    },
+    "review": {
+      "transcribe": "Transcribe file",
+      "chooseAnother": "Choose another file",
+      "weightWithDuration": "{{duration}} · {{size}}",
+      "sizeOnly": "{{size}}",
+      "slow": "This may take a while."
+    },
     "error": {
       "unsupportedFormat": "Unsupported format: .{{ext}}",
       "tooLarge": "File is too large to import",

@@ -250,6 +250,53 @@ describe("MeetingTranscriber", () => {
     expect(maxInFlight()).toBe(2);
   });
 
+  it("shouldStop checked between chunk tasks: in-flight chunks finish, unstarted chunks never run (holes in results)", async () => {
+    const dir = makeMeetingDir({ mic: 10_000, system: 100 });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let started = 0;
+    const { provider, calls } = makeFakeProvider({
+      onCall: async () => {
+        started++;
+        if (started === 2) release();
+        await gate;
+      },
+    });
+    let stop = false;
+    const onChunk: ChunkResult[] = [];
+    const t = new MeetingTranscriber(
+      makeDeps(provider, {
+        shouldStop: () => stop,
+        onChunk: (c) => onChunk.push(c),
+      }),
+    );
+    const runPromise = t.run({
+      meetingDir: dir,
+      micSegments: [
+        { startMs: 0, endMs: 1000 },
+        { startMs: 1000, endMs: 2000 },
+        { startMs: 2000, endMs: 3000 },
+        { startMs: 3000, endMs: 4000 },
+      ],
+      systemSegments: [],
+    });
+    // Wait until both workers have a chunk in flight, then cancel.
+    await gate;
+    stop = true;
+    release();
+    const results = await runPromise;
+    // Only the two in-flight chunks ran; their results (and only theirs)
+    // are present, the rest are holes.
+    expect(calls).toHaveLength(2);
+    expect(onChunk).toHaveLength(2);
+    expect(results).toHaveLength(4);
+    expect(results.filter((r) => r !== undefined)).toHaveLength(2);
+    expect(results[2]).toBeUndefined();
+    expect(results[3]).toBeUndefined();
+  });
+
   it("runs whisper-local serially (concurrency 1)", async () => {
     const dir = makeMeetingDir({ mic: 5000, system: 100 });
     const { provider, maxInFlight } = makeFakeProvider({

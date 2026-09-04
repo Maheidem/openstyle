@@ -217,7 +217,12 @@
       "history": "Historial de transcripciones",
       "historyDesc": "Elimina permanentemente todas las sesiones guardadas — esto no se puede deshacer.",
       "clearHistory": "Borrar historial",
-      "clearHistoryConfirm": "¿Borrar todo el historial de transcripciones? Esto elimina permanentemente todas las sesiones guardadas."
+      "clearHistoryConfirm": "¿Borrar todo el historial de transcripciones? Esto elimina permanentemente todas las sesiones guardadas.",
+      "diskUsage": "Uso del disco",
+      "diskUsageDesc": "Cuánto espacio ocupan el audio de las reuniones y los modelos locales en este dispositivo.",
+      "diskUsageLine": "Audio de reuniones: {{meetings}} · Modelos locales: {{models}}",
+      "diskUsageLoading": "Midiendo el audio de las reuniones y los modelos locales…",
+      "manage": "Administrar…"
     },
     "remix": {
       "hotkey": "Atajo de Remix",
@@ -697,6 +702,9 @@
     "resummarize": "Volver a resumir",
     "summarizing": "Resumiendo…",
     "retryFailed": "Reintentar {{n}} fallidos",
+    "cancelTranscription": "Cancelar",
+    "cancellingTranscription": "Cancelando…",
+    "cancelledKeptTranscript": "Cancelado: se conservó la transcripción parcial ({{n}} de {{total}} segmentos transcritos)",
     "copyTranscript": "Copiar transcripción",
     "copySummary": "Copiar resumen",
     "tabTranscript": "Transcripción",
@@ -797,6 +805,18 @@
     "copy": "Copiar",
     "tryAnother": "Probar con otro archivo",
     "importAnother": "Importar otro archivo",
+    "cancel": "Cancelar",
+    "cancelling": "Cancelando…",
+    "progress": {
+      "elapsed": "{{seconds}}s"
+    },
+    "review": {
+      "transcribe": "Transcribir archivo",
+      "chooseAnother": "Elegir otro archivo",
+      "weightWithDuration": "{{duration}} · {{size}}",
+      "sizeOnly": "{{size}}",
+      "slow": "Esto puede tardar un poco."
+    },
     "error": {
       "unsupportedFormat": "Formato no compatible: .{{ext}}",
       "tooLarge": "El archivo es demasiado grande para importarlo",

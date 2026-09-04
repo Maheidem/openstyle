@@ -45,6 +45,7 @@ import {
   getLocalApiBase,
   refreshApiBase,
 } from "@renderer/lib/api";
+import { formatBytes } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import {
@@ -78,6 +79,7 @@ import {
   useForm,
 } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
@@ -1487,7 +1489,6 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.data.logs")}
                 desc={t("settings.data.logsDesc")}
-                last
               >
                 <Button
                   variant="outline"
@@ -1500,12 +1501,75 @@ export default function SettingsPage(): React.JSX.Element {
                   {t("settings.data.openLogs")}
                 </Button>
               </Row>
+              <Row
+                label={t("settings.data.diskUsage")}
+                desc={t("settings.data.diskUsageDesc")}
+                last
+              >
+                <DiskUsageLine />
+              </Row>
             </SettingsPanel>
           )}
 
           {activeSection === "network" && <NetworkPanel />}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Settings → Data: disk usage (UX-08, specs/lean-audit-2026-09.md T1-5)
+// ---------------------------------------------------------------------------
+
+/**
+ * One lazy, async line of aggregate disk truth: "Meetings audio: X GB ·
+ * Local models: Y GB". The walk lives in the main process
+ * (main/disk-usage.ts) behind an IPC round-trip, so the settings window
+ * never touches the filesystem — a multi-GB meetings directory cannot jank
+ * it. "Manage…" hops to the Models page (per-model "Remove from disk"),
+ * reusing the shell's existing route.
+ */
+function DiskUsageLine(): React.JSX.Element {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { data } = useQuery({
+    queryKey: queryKeys.diskUsage,
+    queryFn: () => window.api.getDiskUsage(),
+    // Disk state changes slowly and the walk isn't free — fetch once per
+    // settings visit instead of refetching on every window focus.
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  return (
+    <div className="flex min-h-[32px] flex-wrap items-center gap-x-4 gap-y-1">
+      {data ? (
+        <span
+          data-testid="settings-disk-usage"
+          className="text-foreground text-[13px]"
+        >
+          {t("settings.data.diskUsageLine", {
+            meetings: formatBytes(data.meetingsBytes),
+            models: formatBytes(data.modelsBytes),
+          })}
+        </span>
+      ) : (
+        <span
+          data-testid="settings-disk-usage-loading"
+          className="text-muted-foreground text-[13px]"
+        >
+          {t("settings.data.diskUsageLoading")}
+        </span>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2 text-[12.5px]"
+        onClick={() => navigate("/settings/models")}
+      >
+        {t("settings.data.manage")}
+      </Button>
     </div>
   );
 }

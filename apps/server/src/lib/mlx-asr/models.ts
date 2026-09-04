@@ -87,7 +87,7 @@ function hfCacheRoot(): string {
   );
 }
 
-function hfRepoCacheDir(hfId: string): string {
+export function hfRepoCacheDir(hfId: string): string {
   return join(hfCacheRoot(), `models--${hfId.replaceAll("/", "--")}`);
 }
 

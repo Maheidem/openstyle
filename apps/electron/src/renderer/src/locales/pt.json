@@ -217,7 +217,12 @@
       "history": "Histórico de transcrição",
       "historyDesc": "Excluir permanentemente todas as sessões salvas.",
       "clearHistory": "Limpar histórico",
-      "clearHistoryConfirm": "Limpar todo o histórico de transcrições? Isso apagará todas as sessões salvas."
+      "clearHistoryConfirm": "Limpar todo o histórico de transcrições? Isso apagará todas as sessões salvas.",
+      "diskUsage": "Uso do disco",
+      "diskUsageDesc": "Quanto espaço o áudio das reuniões e os modelos locais ocupam neste dispositivo.",
+      "diskUsageLine": "Áudio de reuniões: {{meetings}} · Modelos locais: {{models}}",
+      "diskUsageLoading": "Medindo o áudio das reuniões e os modelos locais…",
+      "manage": "Gerenciar…"
     },
     "remix": {
       "hotkey": "Atalho do Remix",
@@ -696,6 +701,9 @@
     "resummarize": "Resumir novamente",
     "summarizing": "Resumindo…",
     "retryFailed": "Repetir {{n}} com falha",
+    "cancelTranscription": "Cancelar",
+    "cancellingTranscription": "A cancelar…",
+    "cancelledKeptTranscript": "Cancelado — a transcrição parcial foi mantida ({{n}} de {{total}} segmentos transcritos)",
     "copyTranscript": "Copiar transcrição",
     "copySummary": "Copiar resumo",
     "tabTranscript": "Transcrição",
@@ -796,6 +804,18 @@
     "copy": "Copiar",
     "tryAnother": "Tentar outro arquivo",
     "importAnother": "Importar outro arquivo",
+    "cancel": "Cancelar",
+    "cancelling": "A cancelar…",
+    "progress": {
+      "elapsed": "{{seconds}}s"
+    },
+    "review": {
+      "transcribe": "Transcrever arquivo",
+      "chooseAnother": "Escolher outro arquivo",
+      "weightWithDuration": "{{duration}} · {{size}}",
+      "sizeOnly": "{{size}}",
+      "slow": "Isto pode demorar um pouco."
+    },
     "error": {
       "unsupportedFormat": "Formato não suportado: .{{ext}}",
       "tooLarge": "O arquivo é grande demais para importar",

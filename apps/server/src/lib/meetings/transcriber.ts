@@ -76,6 +76,13 @@ export interface TranscriberDeps {
   isDictationActive?: () => boolean;
   onChunk?: (chunk: ChunkResult) => void;
   onProgress?: (progress: TranscriberProgress) => void;
+  /** Cancellation seam (POST /api/meetings/:id/cancel-transcribe): polled
+   * *between* chunk tasks — true stops new chunks from launching while any
+   * in-flight chunk (≤2, or 1 for whisper-local) finishes normally. `run()`
+   * then returns early with a holey results array: completed indices hold
+   * their ChunkResult, never-started indices are absent. Callers that pass
+   * shouldStop must treat holes as "not transcribed". */
+  shouldStop?: () => boolean;
   /** Injected for tests. */
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -155,6 +162,8 @@ export class MeetingTranscriber {
    * (source, idx) order regardless of completion order.
    */
   async run(input: MeetingChannels): Promise<ChunkResult[]> {
+    // Early-return note: when shouldStop fires, the results array keeps
+    // absent (hole) slots for chunks that never ran — see shouldStop.
     const config = this.deps.resolveConfig();
     const provider = this.deps.getProvider(config.providerId);
     if (!provider) {
@@ -205,6 +214,10 @@ export class MeetingTranscriber {
 
       const worker = async (): Promise<void> => {
         for (;;) {
+          // Between chunk tasks: a cancellation stops this worker from
+          // claiming anything further; chunks already in flight finish
+          // normally (their results are persisted via onChunk as usual).
+          if (this.deps.shouldStop?.()) return;
           const i = cursor++;
           if (i >= tasks.length) return;
           const t = tasks[i];

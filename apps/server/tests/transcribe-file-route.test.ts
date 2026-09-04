@@ -1,5 +1,23 @@
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { getDb } from "../src/lib/db.js";
 
 // ---------------------------------------------------------------------------
@@ -33,7 +51,7 @@ vi.mock("../src/lib/post-process.js", () => ({
 vi.mock("../src/lib/audio/decode.js", async (importOriginal) => {
   const real =
     await importOriginal<typeof import("../src/lib/audio/decode.js")>();
-  return { ...real, decodeToWav16kMono: mocks.decode };
+  return { ...real, decodeFileToWav16kMono: mocks.decode };
 });
 
 vi.mock("../src/lib/dictation-activity.js", async (importOriginal) => {
@@ -123,6 +141,14 @@ function postFile(
   });
 }
 
+/** No route temp dirs may survive any request (success or failure). */
+function expectNoImportTempDirs(): void {
+  const leftovers = readdirSync(scanDir).filter((n) =>
+    n.startsWith("openstyle-import-"),
+  );
+  expect(leftovers).toEqual([]);
+}
+
 function postDictation(
   headers: Record<string, string> = {},
   body: Uint8Array = new Uint8Array([1, 2, 3, 4]),
@@ -155,9 +181,26 @@ function historyRows(): Array<{
 // Tests
 // ---------------------------------------------------------------------------
 
+// Route temp dirs land in a private TMPDIR so leftover assertions can't be
+// polluted by other test files running in parallel forks.
+let scanDir: string;
+let originalTmpDir: string | undefined;
+
+beforeAll(() => {
+  originalTmpDir = process.env.TMPDIR;
+  scanDir = mkdtempSync(join(tmpdir(), "import-route-tests-"));
+  process.env.TMPDIR = scanDir;
+});
+
+afterAll(() => {
+  if (originalTmpDir === undefined) delete process.env.TMPDIR;
+  else process.env.TMPDIR = originalTmpDir;
+  rmSync(scanDir, { recursive: true, force: true });
+});
+
 describe("POST /api/transcribe/file", () => {
   beforeEach(() => {
-    // Real timers: the route awaits real async I/O (formData, arrayBuffer).
+    // Real timers: the route awaits real async I/O (streaming, decode).
     vi.useRealTimers();
     vi.clearAllMocks();
     mocks.transcribe.mockResolvedValue({ text: "raw import text" });
@@ -168,6 +211,12 @@ describe("POST /api/transcribe/file", () => {
       inputTokens: 10,
       outputTokens: 5,
       costUsd: 0.001,
+    });
+    // Default decode seam: write a small canonical WAV to the output path.
+    mocks.decode.mockImplementation(async (_input: string, output: string) => {
+      const decoded = buildWav({ samples: 1600 });
+      writeFileSync(output, decoded);
+      return { bytes: decoded.length };
     });
 
     const db = getDb();
@@ -230,6 +279,7 @@ describe("POST /api/transcribe/file", () => {
       error: "audio field missing or not a file",
     });
     expect(mocks.transcribe).not.toHaveBeenCalled();
+    expectNoImportTempDirs();
   });
 
   it("413 with PAYLOAD_TOO_LARGE when the body exceeds the limit", async () => {
@@ -237,7 +287,8 @@ describe("POST /api/transcribe/file", () => {
       "/api/transcribe",
       createTranscribeFileRoute({ maxBytes: 1024 }),
     );
-    // 2 KiB of samples → well over a 1 KiB body limit.
+    // 2 KiB of samples → well over a 1 KiB body limit. No content-length on
+    // an app.request FormData post, so this is the mid-stream bound.
     const res = await postFile(
       formWith("big.wav", buildWav({ samples: 1024 })),
       {},
@@ -251,6 +302,37 @@ describe("POST /api/transcribe/file", () => {
       code: "PAYLOAD_TOO_LARGE",
     });
     expect(mocks.transcribe).not.toHaveBeenCalled();
+    expectNoImportTempDirs();
+  });
+
+  it("413 on the content-length header alone, before any parsing", async () => {
+    const mini = new Hono().route(
+      "/api/transcribe",
+      createTranscribeFileRoute({ maxBytes: 1024 }),
+    );
+    const res = await postFile(
+      formWith("big.wav", buildWav({ samples: 1024 })),
+      { "content-length": "999999999" },
+      mini,
+    );
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({
+      error: "File too large",
+      detail: "Maximum upload size is 1 KiB",
+      code: "PAYLOAD_TOO_LARGE",
+    });
+    expect(mocks.decode).not.toHaveBeenCalled();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("400 Empty audio data for a zero-byte file part", async () => {
+    const res = await postFile(formWith("clip.wav", new Uint8Array(0)));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Empty audio data" });
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+    expectNoImportTempDirs();
   });
 
   it("422 with a fixed detail (no ffmpeg stderr) when decoding fails, and persists no row", async () => {
@@ -273,6 +355,7 @@ describe("POST /api/transcribe/file", () => {
     });
     expect(mocks.transcribe).not.toHaveBeenCalled();
     expect(historyRows()).toHaveLength(0);
+    expectNoImportTempDirs();
   });
 
   it("500 when STT fails, and persists no row", async () => {
@@ -324,11 +407,16 @@ describe("POST /api/transcribe/file", () => {
     });
   });
 
-  it("200 for an .m4a: decodes the original bytes, duration from the decoded WAV", async () => {
+  it("200 for an .m4a: decodes the streamed upload, duration from the decoded WAV", async () => {
     const input = new Uint8Array(512);
     for (let i = 0; i < input.length; i++) input[i] = (i * 31) & 0xff;
     const decoded = buildWav({ samples: 8_000 }); // 0.5 s
-    mocks.decode.mockResolvedValue(decoded);
+    let seenInput: Buffer | null = null;
+    mocks.decode.mockImplementation(async (input: string, output: string) => {
+      seenInput = readFileSync(input); // captured before the route cleans up
+      writeFileSync(output, decoded);
+      return { bytes: decoded.length };
+    });
 
     const res = await postFile(formWith("memo.m4a", input));
 
@@ -337,11 +425,14 @@ describe("POST /api/transcribe/file", () => {
     expect(body.audioDurationMs).toBe(500);
 
     expect(mocks.decode).toHaveBeenCalledTimes(1);
-    expect(
-      Buffer.from(mocks.decode.mock.calls[0][0] as Uint8Array).equals(
-        Buffer.from(input),
-      ),
-    ).toBe(true);
+    // The decode seam got the streamed upload on disk, verbatim.
+    const [inputPath, outputPath] = mocks.decode.mock.calls[0] as [
+      string,
+      string,
+    ];
+    expect(inputPath).not.toBe(outputPath);
+    expect(seenInput!.equals(Buffer.from(input))).toBe(true);
+    expect(outputPath.endsWith("decoded.wav")).toBe(true);
     const sent = mocks.transcribe.mock.calls[0][0];
     expect(Buffer.from(sent.audio).equals(decoded)).toBe(true);
 

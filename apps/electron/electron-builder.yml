@@ -9,17 +9,25 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-  - '!node_modules/@openstyle/*/src/**'
-  - '!node_modules/@openstyle/*/tsconfig.json'
-  - '!node_modules/@openstyle/*/.turbo/**'
-  - '!node_modules/@openstyle/*/node_modules/@openstyle/*/src/**'
-  - '!node_modules/@openstyle/*/node_modules/@openstyle/*/tsconfig.json'
-  - '!node_modules/@openstyle/*/node_modules/@openstyle/*/.turbo/**'
-  - '!node_modules/react/**'
-  - '!node_modules/react-dom/**'
-  - '!node_modules/typescript/**'
-  - '!node_modules/@types/react/**'
-  - '!node_modules/@types/react-dom/**'
+  # Build inputs and dev tooling, never loaded at runtime:
+  #
+  # - `native/**` — SwiftPM sources + the ~665 MiB `.build` directory of
+  #   fluidaudio-diarize; shipped binaries resolve from `resources/bin` via
+  #   the candidate lists in src/main/native-binary.ts (regression that
+  #   tripled the macOS download in 2.1.1 — specs/lean-audit-2026-09.md §3 T0-1).
+  # - `node_modules/**` — main and preload are self-contained bundles
+  #   (externalizeDeps: false in electron.vite.config.ts) and the renderer is
+  #   Vite-bundled, so nothing resolves a require() into node_modules. Keep the
+  #   preload bundling and this exclusion in lockstep — a runtime
+  #   require("@electron-toolkit/preload") would kill every window's window.api.
+  # - tests/, scripts/, and tool configs — dev-only.
+  - '!native/**'
+  - '!node_modules/**'
+  - '!tests/**'
+  - '!test-results/**'
+  - '!.turbo/**'
+  - '!scripts/**'
+  - '!{playwright.config.ts,vitest.config.ts,components.json}'
 asarUnpack:
   - resources/**
 extraResources:
@@ -27,6 +35,13 @@ extraResources:
     to: "bin"
     filter:
       - "**/*"
+      # UX-12 follow-on (specs/lean-audit-2026-09.md): the always-on
+      # mic-listener was removed in feat/lean-wins — nothing spawns the
+      # binary. Sources still compile (compile-native.js) pending a
+      # follow-on source removal, but the dead binary must not ship; the
+      # no-match case on the other platforms is a harmless no-op.
+      - "!macos-mic-listener"
+      - "!windows-mic-listener.exe"
 win:
   executableName: Openstyle
   extraResources:

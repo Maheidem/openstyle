@@ -521,10 +521,14 @@ export class MeetingRecorder {
   /**
    * Boot-time orphan sweep: any meeting row a crash left in 'recording' gets
    * its WAV headers finalized from the on-disk file sizes and its row marked
-   * 'interrupted'. Call once after the server is reachable.
+   * 'interrupted'; any row left in 'transcribing' (the in-process server died
+   * mid-job, so the job is gone for good) is marked 'failed' with a named
+   * cause — its partial transcript survives and stays retryable. Call once
+   * after the server is reachable.
    */
   async sweepOrphans(): Promise<void> {
-    let orphans: { id: string; audio_dir: string | null }[] = [];
+    let orphans: { id: string; status: string; audio_dir: string | null }[] =
+      [];
     try {
       const res = await this.api("/meetings/orphans");
       if (!res.ok) return;
@@ -534,6 +538,25 @@ export class MeetingRecorder {
     }
 
     for (const orphan of orphans) {
+      // A quit mid-transcription leaves no recorder state to repair (the
+      // WAVs were finalized when the recording stopped) — the row just
+      // flips to 'failed'. The server endpoint is strict: only valid from
+      // 'transcribing'.
+      if (orphan.status === "transcribing") {
+        try {
+          await this.api(`/meetings/${orphan.id}/transcribe-interrupted`, {
+            method: "POST",
+          });
+          log.info(
+            `Marked orphaned transcription failed (app quit mid-job): ${orphan.id}`,
+          );
+        } catch (err) {
+          log.warn(
+            `Failed to mark orphan transcription interrupted for ${orphan.id}: ${String(err)}`,
+          );
+        }
+        continue;
+      }
       let durationMs: number | undefined;
       if (orphan.audio_dir) {
         try {

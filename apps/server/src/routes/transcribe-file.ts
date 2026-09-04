@@ -8,24 +8,34 @@
  * same LLM cleanup, same history row. Sibling of `routes/transcribe.ts`, not
  * a fork of it.
  *
- * Memory note: this handler holds up to ~3–4× the upload in memory for a
- * worst-case input — `formData()` buffers the body (~1×), `arrayBuffer()`
- * copies it (~1×), and the decode helper writes a temp file and collects
- * ffmpeg stdout (capped at 1 GiB). The upload itself is bounded by
- * `bodyLimit` (`MAX_IMPORT_BYTES`). Streaming the upload to disk instead is
- * follow-up card `19fcec19`. The dictation lease is also held across
- * decode + STT (single whisper server) — accepted, tracked on the same card.
+ * Memory: the upload streams to a temp file and ffmpeg decodes file → file
+ * (specs/import-streaming.md), so the only full-size allocation is the single
+ * `readFile` of the decoded WAV the pipeline consumes — ≈1× decoded size, not
+ * the 2–3× upload the old `formData()`/`arrayBuffer()` buffering held. The
+ * byte bound is enforced while streaming (`lib/audio/multipart-stream.ts`,
+ * replacing `hono/body-limit`, which itself buffered chunked bodies). The
+ * dictation lease is still held across decode + STT (single whisper server).
  *
  * Never log the client filename: it is untrusted and may carry personal data.
  */
 
+import {
+  closeSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import {
   AudioDecodeError,
-  decodeToWav16kMono,
-  needsDecode,
+  decodeFileToWav16kMono,
+  needsDecodeFile,
 } from "../lib/audio/decode.js";
 import {
   ACCEPTED_EXTENSIONS_DETAIL,
@@ -34,6 +44,12 @@ import {
   importFileExtension,
   MAX_IMPORT_BYTES,
 } from "../lib/audio/import-limits.js";
+import {
+  extractBoundary,
+  MultipartStreamError,
+  requestBodyTooLarge,
+  streamMultipartForm,
+} from "../lib/audio/multipart-stream.js";
 import { parseWavHeader, wavDurationMs } from "../lib/audio/wav.js";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import {
@@ -53,9 +69,26 @@ export {
   MAX_IMPORT_BYTES,
 } from "../lib/audio/import-limits.js";
 
+function tooLargeBody(maxBytes: number) {
+  return {
+    error: "File too large",
+    detail: `Maximum upload size is ${formatLimit(maxBytes)}`,
+    code: "PAYLOAD_TOO_LARGE",
+  } as const;
+}
+
+/** Header info of an on-disk WAV (`parseWavHeader` accepts an open fd). */
+function wavInfoAt(path: string) {
+  const fd = openSync(path, "r");
+  try {
+    return parseWavHeader(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
   const maxBytes = opts.maxBytes ?? MAX_IMPORT_BYTES;
-  const tooLargeDetail = `Maximum upload size is ${formatLimit(maxBytes)}`;
 
   return (
     new Hono()
@@ -70,40 +103,62 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
           endDictation();
         }
       })
-      .post(
-        "/file",
-        bodyLimit({
-          maxSize: maxBytes,
-          onError: (c) =>
-            c.json(
-              {
-                error: "File too large",
-                detail: tooLargeDetail,
-                code: "PAYLOAD_TOO_LARGE",
-              },
-              413,
-            ),
-        }),
-        async (c) => {
-          const start = Date.now();
+      .post("/file", async (c) => {
+        const start = Date.now();
 
-          const contentType = c.req.header("content-type") ?? "";
-          if (!contentType.includes("multipart/form-data")) {
-            return c.json({ error: "Expected multipart/form-data" }, 400);
-          }
-          let form: FormData;
+        // Known-size over-limit uploads are rejected on the header alone —
+        // the same fast path `bodyLimit` provided. Chunked bodies are bounded
+        // while streaming, inside the multipart parser.
+        if (
+          requestBodyTooLarge(
+            c.req.header("content-length"),
+            c.req.header("transfer-encoding"),
+            maxBytes,
+          )
+        ) {
+          return c.json(tooLargeBody(maxBytes), 413);
+        }
+
+        const contentType = c.req.header("content-type") ?? "";
+        if (!contentType.includes("multipart/form-data")) {
+          return c.json({ error: "Expected multipart/form-data" }, 400);
+        }
+
+        const tempDir = mkdtempSync(join(tmpdir(), "openstyle-import-"));
+        try {
+          let files: Map<
+            string,
+            { path: string; filename: string; bytes: number }
+          >;
           try {
-            form = await c.req.formData();
-          } catch {
+            ({ files } = await streamMultipartForm(
+              c.req.raw.body,
+              extractBoundary(contentType),
+              {
+                maxTotalBytes: maxBytes,
+                tempDir,
+              },
+            ));
+          } catch (err) {
+            if (err instanceof MultipartStreamError) {
+              if (err.kind === "too_large") {
+                return c.json(tooLargeBody(maxBytes), 413);
+              }
+              // Same envelope the `formData()` failure path produced.
+              return c.json(
+                { error: "audio field missing or not a file" },
+                400,
+              );
+            }
+            throw err;
+          }
+
+          const audio = files.get("audio");
+          if (!audio) {
             return c.json({ error: "audio field missing or not a file" }, 400);
           }
 
-          const audioFile = form.get("audio");
-          if (!(audioFile instanceof File)) {
-            return c.json({ error: "audio field missing or not a file" }, 400);
-          }
-
-          const ext = importFileExtension(audioFile.name);
+          const ext = importFileExtension(audio.filename);
           if (!ext || !ACCEPTED_IMPORT_EXTENSIONS.has(ext)) {
             return c.json(
               {
@@ -115,23 +170,25 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
             );
           }
 
-          const bytes = new Uint8Array(await audioFile.arrayBuffer());
-          if (bytes.length === 0) {
+          if (audio.bytes === 0) {
             return c.json({ error: "Empty audio data" }, 400);
           }
 
           log.debug(
-            `received file: ${bytes.length} bytes, ext=${ext} header=${Buffer.from(
-              bytes.subarray(0, 4),
-            ).toString("hex")}`,
+            `received file: ${audio.bytes} bytes, ext=${ext} header=${firstFourHex(
+              audio.path,
+            )}`,
           );
 
-          let wav: Uint8Array;
+          let wavPath = audio.path;
           try {
-            const needed = needsDecode(bytes);
-            wav = needed ? await decodeToWav16kMono(bytes) : bytes;
+            const needed = needsDecodeFile(audio.path);
+            if (needed) {
+              wavPath = join(tempDir, "decoded.wav");
+              await decodeFileToWav16kMono(audio.path, wavPath);
+            }
             log.debug(
-              `decode=${needed} (${bytes.length} -> ${wav.length} bytes)`,
+              `decode=${needed} (${audio.bytes} -> ${statSync(wavPath).size} bytes)`,
             );
           } catch (err) {
             if (err instanceof AudioDecodeError) {
@@ -153,9 +210,12 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
 
           // Duration from the post-transcode WAV (`fr_f86c5c0f`), rounded to an
           // integer like the dictation route's `(len-44)/32`.
-          const audioDurationMs = Math.round(
-            wavDurationMs(parseWavHeader(wav)),
-          );
+          const audioDurationMs = Math.round(wavDurationMs(wavInfoAt(wavPath)));
+
+          // The one full-size allocation on this path: the pipeline consumes
+          // the decoded WAV exactly once. (`readFile` returns a Buffer,
+          // which *is* the Uint8Array the pipeline takes — no second copy.)
+          const wav = await readFile(wavPath);
 
           const r = await runTranscriptionPipeline({
             audio: wav,
@@ -166,9 +226,36 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
             start,
           });
           return c.json(r.body, r.status);
-        },
-      )
+        } finally {
+          // Never let cleanup mask the real error: on Windows files can stay
+          // locked (EBUSY) briefly after a SIGKILL.
+          try {
+            rmSync(tempDir, {
+              recursive: true,
+              force: true,
+              maxRetries: 3,
+              retryDelay: 50,
+            });
+          } catch (err) {
+            console.warn(
+              `[transcribe-file] failed to remove temp dir ${tempDir}: ${(err as Error).message}`,
+            );
+          }
+        }
+      })
   );
+}
+
+/** First four bytes of a file as hex, for the debug log line. */
+function firstFourHex(path: string): string {
+  const fd = openSync(path, "r");
+  try {
+    const b = Buffer.alloc(4);
+    const n = readSync(fd, b, 0, 4, 0);
+    return b.subarray(0, n).toString("hex");
+  } finally {
+    closeSync(fd);
+  }
 }
 
 const transcribeFileRoute = createTranscribeFileRoute();

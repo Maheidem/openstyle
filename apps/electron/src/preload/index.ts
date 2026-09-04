@@ -175,12 +175,19 @@ const api = {
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
   // Import screen: resolve a dropped `File`'s on-disk path, open a native
-  // file picker, or upload a chosen file for transcription.
+  // file picker, or upload a chosen file for transcription. The optional
+  // `{ id }` opts pair with `abortJob(id)` — the renderer-owned cancel seam
+  // (see main/abortable-jobs.ts).
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
-  pickImportFile: (): Promise<string | null> =>
+  pickImportFile: (): Promise<{ path: string; size: number } | null> =>
     ipcRenderer.invoke("import:pick-file"),
-  importAudioFile: (path: string): Promise<ImportAudioResult> =>
-    ipcRenderer.invoke("import:transcribe-file", path),
+  importAudioFile: (
+    path: string,
+    opts?: { id?: string },
+  ): Promise<ImportAudioResult> =>
+    ipcRenderer.invoke("import:transcribe-file", path, opts),
+  /** Abort an in-flight cancellable job started with the same id. */
+  abortJob: (id: string): void => ipcRenderer.send("job:abort", id),
   // Meeting import (specs/meeting-import.md §4.4): same picker/upload shape
   // as the dictation import above, but the upload creates a meeting.
   pickMeetingAudioFile: (): Promise<string | null> =>
@@ -205,6 +212,12 @@ const api = {
   // Reveal the diagnostic logs folder (openstyle.log) in the OS file manager.
   openLogsFolder: (): Promise<boolean> =>
     ipcRenderer.invoke("logs:open-folder"),
+  // Settings → Data: aggregate meetings/models disk usage (async main-side
+  // walk — the renderer never touches the filesystem).
+  getDiskUsage: (): Promise<{
+    meetingsBytes: number;
+    modelsBytes: number;
+  }> => ipcRenderer.invoke("data:get-disk-usage"),
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke("open:external", url),
   onHotkeyDown: (
@@ -563,17 +576,6 @@ const api = {
       callback(isFullscreen);
     ipcRenderer.on("fullscreen:changed", handler);
     return () => ipcRenderer.removeListener("fullscreen:changed", handler);
-  },
-  // Microphone activity detection
-  onMicActivityChanged: (
-    callback: (state: "active" | "inactive" | "unknown") => void,
-  ): (() => void) => {
-    const handler = (
-      _: unknown,
-      state: "active" | "inactive" | "unknown",
-    ): void => callback(state);
-    ipcRenderer.on("mic:activity-changed", handler);
-    return () => ipcRenderer.removeListener("mic:activity-changed", handler);
   },
 };
 

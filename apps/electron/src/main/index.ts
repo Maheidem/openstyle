@@ -90,8 +90,10 @@ import {
 } from "../shared/remix";
 import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
+import { registerJobAbortIpc } from "./abortable-jobs";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
+import { registerDiskUsageIpc } from "./disk-usage";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import {
   diffLanguageHotkeys,
@@ -104,7 +106,6 @@ import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { registerMeetingImportIpc } from "./meeting-import";
 import { MeetingRecorder } from "./meeting-recorder";
-import { MicListener } from "./mic-listener";
 import { migrateLegacyUserData } from "./migrate-user-data";
 import { getNativeBinaryPath } from "./native-binary";
 import {
@@ -387,7 +388,6 @@ let accessibilityConfirmed = false;
 let hotkeyPressed = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
-let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
 /** Own listener process — native binaries only take one accelerator each. */
 let remixKeyListener: NativeKeyListener | null = null;
@@ -1835,10 +1835,6 @@ async function factoryReset(): Promise<void> {
       keyListener.stop();
       keyListener = null;
     }
-    if (micListener) {
-      micListener.stop();
-      micListener = null;
-    }
     if (process.platform === "win32") {
       globalShortcut.unregisterAll();
     }
@@ -2352,9 +2348,10 @@ app.whenReady().then(async () => {
   });
 
   // IPC: paste text at cursor. `appContext` is accepted for backward
-  // compatibility with the preload signature but is unused here — the
-  // `beforeOutput` hook already ran server-side (`POST /api/output/deliver`)
-  // with it before the renderer called this.
+  // compatibility with the preload signature but is unused here — the plugin
+  // system that once consumed it server-side (beforeOutput /
+  // POST /api/output/deliver) was removed in v2.0.0 (6211514); cleanup
+  // routing is now resolved upstream in the transcription pipeline.
   ipcMain.handle(
     "paste:text",
     async (_event, text: string, _appContext?: string | null) => {
@@ -2383,11 +2380,17 @@ app.whenReady().then(async () => {
     await audioPlaybackController.restore();
   });
 
+  // Settings → Data: aggregate disk usage (UX-08) — async walk in the main
+  // process, so the settings window never touches the filesystem.
+  registerDiskUsageIpc();
+
   // --- Import screen ---------------------------------------------------------
+  registerJobAbortIpc();
   registerImportIpc({
     getServerBaseUrl,
     getServerAuthHeaders,
     getParentWindow: () => mainWindow,
+    onTranscribed: ({ fileName }) => notifyImportComplete(fileName),
   });
 
   // Meeting import (specs/meeting-import.md §4.4): same picker/upload shape
@@ -2841,7 +2844,8 @@ app.whenReady().then(async () => {
 
   // Meeting Mode boot tasks, deferred until the in-process server is up:
   // cache the feature flag for the tray and sweep meetings a crash left in
-  // 'recording' (finalize WAV headers, mark 'interrupted').
+  // 'recording' (finalize WAV headers, mark 'interrupted') or 'transcribing'
+  // (job died with the process — mark 'failed', partial transcript kept).
   setTimeout(() => {
     refreshMeetingsFlag();
     void meetingRecorder?.sweepOrphans();
@@ -3227,16 +3231,6 @@ app.whenReady().then(async () => {
     applyRemixSettings(settings);
     applyLanguageHotkeySettings(settings);
   });
-
-  // Start microphone activity monitoring
-  micListener = new MicListener({
-    excludePid: process.pid,
-    onStateChange: (state) => {
-      mainWindow?.webContents.send("mic:activity-changed", state);
-      settingsWindow?.webContents.send("mic:activity-changed", state);
-    },
-  });
-  micListener.start();
 
   // Listen for hotkey changes from the settings UI
   ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
@@ -4519,6 +4513,32 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
   }
 }
 
+// Import completion (UX-04 / UX-A4, specs/lean-audit-2026-09.md §4): the
+// update flow's native-notification pattern, reused so an import that lands
+// while the user looked away is no longer silent. English-only copy from
+// main, exactly like the update notifications — the renderer-localized
+// surface is the Import page itself. Click focuses the app on Today, where
+// the new transcript sits at the top of history.
+function notifyImportComplete(fileName: string): void {
+  // Counted before the Notification.isSupported() guard so e2e (where the
+  // OS may suppress notifications) can still assert the completion fired.
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
+    const g = globalThis as {
+      __openstyleE2E?: { importNotifications?: number };
+    };
+    g.__openstyleE2E ??= {};
+    g.__openstyleE2E.importNotifications =
+      (g.__openstyleE2E.importNotifications ?? 0) + 1;
+  }
+  if (!Notification.isSupported()) return;
+  const note = new Notification({
+    title: "Transcript ready",
+    body: `“${fileName}” has been transcribed.`,
+  });
+  note.on("click", () => showSettingsWindow("/today"));
+  note.show();
+}
+
 // Rate-limited so a broken paste backend doesn't fire a notification per
 // dictation.
 const PASTE_FAILED_NOTIFY_INTERVAL_MS = 30_000;
@@ -4846,10 +4866,6 @@ app.on("will-quit", () => {
     clearInterval(remixBarFollowTimer);
     remixBarFollowTimer = null;
   }
-  if (micListener) {
-    micListener.stop();
-    micListener = null;
-  }
   globalShortcut.unregisterAll();
 });
 
@@ -4884,10 +4900,6 @@ function cleanupBeforeQuit(): void {
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
-  }
-  if (micListener) {
-    micListener.stop();
-    micListener = null;
   }
   stopHotkeyRecorderProcess();
   globalShortcut.unregisterAll();

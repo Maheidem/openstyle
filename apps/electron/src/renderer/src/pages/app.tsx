@@ -202,6 +202,33 @@ const SILENCE_MS = 1600;
 const FLAT_EASE = 0.14;
 const ELAPSED_AFTER_MS = 60_000;
 
+/**
+ * T1-3 / UX-01 (specs/lean-audit-2026-09.md §3): after handover, a cold local
+ * model pays spawn + model-load before the first result — 5–90 s where
+ * "working" is indistinguishable from "hung". The status slot names that
+ * wait, but only once it has actually been long enough to be worth a mark
+ * (the handover sweep itself is the "working" signal for the first moments).
+ */
+const WARMING_AFTER_MS = 3_000;
+/** Carried by the status slot's word channels (tooltip + live region) — the
+ * same treatment "Retrying" gets; see the warming effect below for why it is
+ * not rendered as visible capsule text. */
+const WARMING_LABEL = "Warming up local model…";
+
+/**
+ * T1-4 / UX-02: client-side bound on the batch dictation wait, so a wedged
+ * local ASR server turns into a named failure instead of an infinite sweep.
+ * Never lower than this (audit trap 5): whisper spawn waits up to 90 s and a
+ * legitimate MLX transcription can run to 300 s — a false "failed" on a real
+ * long local dictation is worse than the rare hang this cures.
+ */
+const BATCH_TRANSCRIBE_TIMEOUT_MS = 360_000;
+/** Names the cause instead of surfacing a raw TimeoutError (UX-A5: this is
+ * the one error string this change adds — the rest of the batch error copy
+ * stays as is). */
+const LOCAL_MODEL_TIMEOUT_MSG =
+  "Local model didn't respond — it may still be starting. Try again.";
+
 // ---------------------------------------------------------------------------
 // Sound
 // ---------------------------------------------------------------------------
@@ -547,6 +574,17 @@ export default function AppPage(): React.JSX.Element {
   const [micSilent, setMicSilent] = useState(false);
   const micSilentRef = useRef(false);
   const [elapsedLabel, setElapsedLabel] = useState<string | null>(null);
+
+  // ---- Warming (T1-3 / UX-01) ----
+  /** Latched per recording by the pre-warm call in `startRecording`: true
+   * only when the local ASR server was cold at hotkey-down, so a spawn +
+   * model load is genuinely what the post-handover wait is paying for.
+   * State, not a ref, so a pre-warm response that lands during the wait
+   * re-triggers the effect below (short utterances can hand over before the
+   * response arrives). */
+  const [coldLocalModel, setColdLocalModel] = useState(false);
+  /** Whether the warming mark is currently up in the status slot. */
+  const [warming, setWarming] = useState(false);
   const [exiting, setExiting] = useState<PillExit | null>(null);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref guard prevents generic queue cleanup from replacing a specific exit.
@@ -784,6 +822,10 @@ export default function AppPage(): React.JSX.Element {
         method: "POST",
         body: wavBlob,
         headers,
+        // Same 360s bound as the batch path in commitRecording — this is
+        // also what the failure card's Retry re-posts through, so a wedged
+        // local server can't turn Retry back into an infinite sweep.
+        signal: AbortSignal.timeout(BATCH_TRANSCRIBE_TIMEOUT_MS),
       })
         .then(async (res) => {
           if (!res.ok) {
@@ -1396,8 +1438,20 @@ export default function AppPage(): React.JSX.Element {
       // cloud cleanup LLM connection (e.g. Groq TLS handshake). Fire-and-forget:
       // the server decides what needs warming (no-op where nothing applies), and
       // lazy start at submission remains the fallback if this doesn't land.
+      // T1-3 (UX-01): the response also says whether a *cold* local server had
+      // to be spawned — latched per recording so the pill can name the
+      // post-handover wait as "warming" only when a model load is genuinely
+      // in flight (never for an already-warm server, never for cloud).
+      setColdLocalModel(false);
       void getClient()
         .api.transcribe["pre-warm"].$post()
+        .then(async (res) => {
+          const body = (await res.json().catch(() => null)) as {
+            warming?: string | null;
+            cold?: boolean;
+          } | null;
+          if (body?.warming && body.cold) setColdLocalModel(true);
+        })
         .catch(() => {});
 
       appContextRef.current = null;
@@ -1704,7 +1758,17 @@ export default function AppPage(): React.JSX.Element {
     setPendingCount((c) => c + 1);
     const transcribePromise: Promise<TranscribeResult> = apiFetch(
       "/api/transcribe",
-      { method: "POST", body: wavBlob, headers },
+      {
+        method: "POST",
+        body: wavBlob,
+        headers,
+        // T1-4 / UX-02: bound the batch wait so a wedged local ASR server
+        // can't keep the sweep up forever. Transcription is deliberately
+        // outside the server's TIMEOUT_PREFIXES, so without this nothing
+        // ever fails the request client-side. 360s minimum — see
+        // BATCH_TRANSCRIBE_TIMEOUT_MS.
+        signal: AbortSignal.timeout(BATCH_TRANSCRIBE_TIMEOUT_MS),
+      },
     )
       .then(async (res) => {
         if (!res.ok) {
@@ -1732,6 +1796,13 @@ export default function AppPage(): React.JSX.Element {
         };
       })
       .catch((err) => {
+        // The bound fired: name the likely cause rather than surfacing a raw
+        // TimeoutError. AbortSignal.timeout rejects with a DOMException
+        // whose name is "TimeoutError" (an AbortError would mean something
+        // else cancelled the fetch, which nothing on this path does).
+        if (err instanceof Error && err.name === "TimeoutError") {
+          return { raw: "", cleaned: "", error: LOCAL_MODEL_TIMEOUT_MSG };
+        }
         const msg = err instanceof Error ? err.message : "Transcription failed";
         const hint =
           msg.includes("fetch") || msg.includes("Failed")
@@ -2601,8 +2672,34 @@ export default function AppPage(): React.JSX.Element {
     return () => clearInterval(timer);
   }, [state]);
 
+  // ---- Warming ----
+  // Names the post-handover wait when a cold local model is loading. The
+  // mark opens only after WARMING_AFTER_MS of transcribing with a latched
+  // cold-model flag, and comes down the moment the state leaves
+  // "transcribing" (result landed, error card, or the pill exiting) — the
+  // result arriving *is* the "server ready" signal from the client's side.
+  // Gated on the latch, not a bare elapsed heuristic, so a merely-slow cloud
+  // cleanup never gets a warming mark (the PillNotice doc comment's
+  // crying-wolf bar).
+  useEffect(() => {
+    if (state !== "transcribing" || !coldLocalModel) {
+      setWarming(false);
+      return;
+    }
+    const timer = setTimeout(() => setWarming(true), WARMING_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+      setWarming(false);
+    };
+  }, [state, coldLocalModel]);
+
   // What that mark means. Errors are the card's job, so a "working" notice
-  // here is a spinner and a stalled one is the alert mark.
+  // here is a spinner and a stalled one is the alert mark. Warming rides the
+  // same slot as a "working" mark — the words live in the tooltip and the
+  // live region (exactly how "Retrying" is carried): the pill window is
+  // 160px wide (APP_WIDTH in main/index.ts) and the capsule's fixed core + a
+  // language chip leave no room for a visible sentence, and the motion spec
+  // (§2, principle 3) keeps prose out of the capsule anyway.
   const statusLabel = showCard
     ? null
     : pillNotice === "reconnecting"
@@ -2611,7 +2708,9 @@ export default function AppPage(): React.JSX.Element {
         ? "Retrying"
         : pillNotice === "unavailable"
           ? "Unavailable"
-          : null;
+          : warming
+            ? WARMING_LABEL
+            : null;
   const statusIsAlert = pillNotice === "unavailable";
 
   // Only worth showing when more than one dictation is stacked up; a single

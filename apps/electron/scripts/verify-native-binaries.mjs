@@ -15,7 +15,10 @@ const EXPECTED = {
   darwin: [
     "macos-key-listener",
     "macos-fast-paste",
-    "macos-mic-listener",
+    // macos-mic-listener is deliberately absent: the always-on listener
+    // was removed in feat/lean-wins (UX-12, specs/lean-audit-2026-09.md) —
+    // nothing spawns it, and electron-builder.yml filters it out of
+    // extraResources. Its sources still compile (follow-on removal).
     "macos-output-volume",
     "macos-media-control",
     // SwiftPM package (specs/meeting-diarization.md §3); compile-native.js
@@ -37,7 +40,7 @@ const EXPECTED = {
   win32: [
     "windows-key-listener.exe",
     "windows-fast-paste.exe",
-    "windows-mic-listener.exe",
+    // windows-mic-listener.exe: same UX-12 removal as the macOS twin above.
     "windows-output-volume.exe",
     "ffmpeg.exe",
   ],

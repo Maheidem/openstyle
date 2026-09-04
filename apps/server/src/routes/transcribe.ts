@@ -3,7 +3,11 @@ import { Hono } from "hono";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
-import { canRunMlxAsr, startMlxInBackground } from "../lib/mlx-asr/server.js";
+import {
+  canRunMlxAsr,
+  isMlxServerRunning,
+  startMlxInBackground,
+} from "../lib/mlx-asr/server.js";
 import { prewarmPostProcess } from "../lib/post-process.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
@@ -13,7 +17,7 @@ import {
 } from "../lib/transcription-pipeline.js";
 import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
-import { startInBackground } from "../lib/whisper/server.js";
+import { isServerRunning, startInBackground } from "../lib/whisper/server.js";
 import { prewarmModelCostRegistry } from "./models.js";
 
 const log = createAppLogger("transcribe");
@@ -92,6 +96,12 @@ export default transcribeRoute;
  * Kept as a separate router (mounted alongside `transcribeRoute` at
  * `/transcribe`) so it can be added to the typed RPC surface without reindenting
  * the large batch-transcribe handler above.
+ *
+ * The response's `warming` names the local engine whose spawn was dispatched
+ * ("whisper" | "mlx" | null); `cold` is true only when that engine's server
+ * was not already running — together they let the client distinguish "model
+ * load genuinely in flight" from "already warm" (startInBackground no-ops on
+ * a warm server, so `warming` alone would report a spawn that never happens).
  */
 export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
   try {
@@ -109,32 +119,41 @@ export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
     const provider = defaults.voice?.provider;
 
     if (!defaults.voice || !provider) {
-      return c.json({ ok: true, warming: null });
+      return c.json({ ok: true, warming: null, cold: false });
     }
 
     const modelId = stripProviderPrefix(defaults.voice.model_id);
 
     if (provider === WHISPER_PROVIDER_ID) {
       if (!isServerBinaryAvailable()) {
-        return c.json({ ok: true, warming: null });
+        return c.json({ ok: true, warming: null, cold: false });
       }
+      // T1-3 (UX-01, specs/lean-audit-2026-09.md §3): report whether the ASR
+      // server was cold *before* the spawn was dispatched, so the pill can
+      // name the wait only when a model load is genuinely in flight —
+      // `startInBackground` no-ops on an already-warm server, so `warming`
+      // alone would cry wolf on every local dictation.
+      const cold = !isServerRunning();
       startInBackground(modelId);
-      return c.json({ ok: true, warming: "whisper" });
+      return c.json({ ok: true, warming: "whisper", cold });
     }
 
     if (provider === MLX_ASR_PROVIDER_ID) {
-      if (!canRunMlxAsr()) return c.json({ ok: true, warming: null });
-      if (getMlxModelStatus(modelId)?.status !== "ready") {
-        return c.json({ ok: true, warming: null });
+      if (!canRunMlxAsr()) {
+        return c.json({ ok: true, warming: null, cold: false });
       }
+      if (getMlxModelStatus(modelId)?.status !== "ready") {
+        return c.json({ ok: true, warming: null, cold: false });
+      }
+      const cold = !isMlxServerRunning();
       startMlxInBackground(modelId);
-      return c.json({ ok: true, warming: "mlx" });
+      return c.json({ ok: true, warming: "mlx", cold });
     }
 
-    return c.json({ ok: true, warming: null });
+    return c.json({ ok: true, warming: null, cold: false });
   } catch {
     // Best-effort warmup — DB not ready or any other init issue is non-fatal;
     // the lazy start at submission time remains the fallback.
-    return c.json({ ok: true, warming: null });
+    return c.json({ ok: true, warming: null, cold: false });
   }
 });

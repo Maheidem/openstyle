@@ -217,7 +217,12 @@
       "history": "Transkriptionsverlauf",
       "historyDesc": "Alle gespeicherten Sitzungen dauerhaft löschen — dies kann nicht rückgängig gemacht werden.",
       "clearHistory": "Verlauf löschen",
-      "clearHistoryConfirm": "Gesamten Transkriptionsverlauf löschen? Alle gespeicherten Sitzungen werden dauerhaft gelöscht."
+      "clearHistoryConfirm": "Gesamten Transkriptionsverlauf löschen? Alle gespeicherten Sitzungen werden dauerhaft gelöscht.",
+      "diskUsage": "Speicherplatz",
+      "diskUsageDesc": "Wie viel Platz Ihre Besprechungsaudioaufnahmen und lokalen Modelle auf diesem Gerät belegen.",
+      "diskUsageLine": "Besprechungsaudio: {{meetings}} · Lokale Modelle: {{models}}",
+      "diskUsageLoading": "Besprechungsaudio und lokale Modelle werden gemessen…",
+      "manage": "Verwalten…"
     },
     "remix": {
       "hotkey": "Remix-Tastenkombination",
@@ -697,6 +702,9 @@
     "resummarize": "Neu zusammenfassen",
     "summarizing": "Fasse zusammen…",
     "retryFailed": "{{n}} fehlgeschlagene wiederholen",
+    "cancelTranscription": "Abbrechen",
+    "cancellingTranscription": "Wird abgebrochen…",
+    "cancelledKeptTranscript": "Abgebrochen — das Teiltranskript bleibt erhalten ({{n}} von {{total}} Segmenten transkribiert)",
     "copyTranscript": "Transkript kopieren",
     "copySummary": "Zusammenfassung kopieren",
     "tabTranscript": "Transkript",
@@ -797,6 +805,18 @@
     "copy": "Kopieren",
     "tryAnother": "Andere Datei versuchen",
     "importAnother": "Weitere Datei importieren",
+    "cancel": "Abbrechen",
+    "cancelling": "Wird abgebrochen…",
+    "progress": {
+      "elapsed": "{{seconds}}s"
+    },
+    "review": {
+      "transcribe": "Datei transkribieren",
+      "chooseAnother": "Andere Datei wählen",
+      "weightWithDuration": "{{duration}} · {{size}}",
+      "sizeOnly": "{{size}}",
+      "slow": "Das kann eine Weile dauern."
+    },
     "error": {
       "unsupportedFormat": "Nicht unterstütztes Format: .{{ext}}",
       "tooLarge": "Datei ist zu groß zum Importieren",
