@@ -44,6 +44,12 @@ export default defineConfig({
   },
   preload: {
     build: {
+      // Bundle everything except `electron` itself: the app ships without
+      // node_modules (electron-builder.yml `!node_modules/**`), so a runtime
+      // `require("@electron-toolkit/preload")` would resolve to nothing and
+      // leave every window without `window.api` — the app-dead failure mode
+      // specs/lean-audit-2026-09.md §3 T0-2 calls the landmine.
+      externalizeDeps: false,
       sourcemap: analyze,
       rollupOptions: {
         input: {
