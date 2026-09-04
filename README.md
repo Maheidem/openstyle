@@ -33,7 +33,6 @@ Kept from upstream:
 - Bring-your-own-key access to third-party providers, configured by you
 - Remix, the in-place rewriting agent
 - Vocabulary, dictionary, and per-app tone settings
-- The plugin system and its SDK
 
 Thanks to the Freestyle authors and contributors for the original work.
 
@@ -49,7 +48,6 @@ Thanks to the Freestyle authors and contributors for the original work.
 - **Translation** — speak one language, paste another.
 - **Vocabulary and dictionary** — teach it names, jargon, and shorthand it would
   otherwise get wrong.
-- **Plugins** — extend the dictation pipeline. See `packages/sdk`.
 
 ## Requirements
 
