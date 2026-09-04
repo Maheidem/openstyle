@@ -19,9 +19,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Bug, ExternalLink, Heart } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { IconType } from "react-icons";
 
-type CardIcon = React.ComponentType<{ className?: string }> | IconType;
+type CardIcon = React.ComponentType<{ className?: string }>;
 
 function HelpCard({
   href,
