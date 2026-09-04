@@ -547,6 +547,405 @@ describe("POST /api/meetings/:id/retry-failed", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// T1-1 (specs/lean-audit-2026-09.md §3): cancellable transcription jobs +
+// boot recovery for a quit mid-job. The shared fixture WAV is a single burst
+// per channel (2 chunks total, both in flight at once under concurrency 2) —
+// the cancel tests below need more chunks than workers, so they get their
+// own fixture: 3 bursts per channel separated by 6 s of silence (gap >
+// mergeSegmentsToward's 4 s maxGapMs, so nothing merges) = 6 chunk tasks,
+// concurrency 2.
+// ---------------------------------------------------------------------------
+
+/** 16 kHz mono PCM16 WAV: 2 s lead-in silence, then N × (1 s tone burst +
+ * 6 s silence). The lead-in matters: the segmenter's noise floor is
+ * adaptive, and without calibration silence it swallows the first burst. */
+function buildMultiBurstWav(bursts: number): Buffer {
+  const leadMs = 2000;
+  const burstMs = 1000;
+  const gapMs = 6000;
+  const totalMs = leadMs + bursts * burstMs + (bursts - 1) * gapMs;
+  const totalSamples = Math.round((totalMs / 1000) * SAMPLE_RATE);
+  const data = Buffer.alloc(totalSamples * 2);
+  for (let b = 0; b < bursts; b++) {
+    const start = Math.round(
+      ((leadMs + b * (burstMs + gapMs)) / 1000) * SAMPLE_RATE,
+    );
+    const end = Math.round(
+      ((leadMs + b * (burstMs + gapMs) + burstMs) / 1000) * SAMPLE_RATE,
+    );
+    for (let i = start; i < end; i++) {
+      const s = Math.round(
+        8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
+      );
+      data.writeInt16LE(s, i * 2);
+    }
+  }
+  const h = Buffer.alloc(44);
+  h.write("RIFF", 0, "ascii");
+  h.writeUInt32LE(36 + data.length, 4);
+  h.write("WAVE", 8, "ascii");
+  h.write("fmt ", 12, "ascii");
+  h.writeUInt32LE(16, 16);
+  h.writeUInt16LE(1, 20);
+  h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(SAMPLE_RATE, 24);
+  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
+  h.writeUInt16LE(2, 32);
+  h.writeUInt16LE(16, 34);
+  h.write("data", 36, "ascii");
+  h.writeUInt32LE(data.length, 40);
+  return Buffer.concat([h, data]);
+}
+
+let cancelAudioDir: string;
+
+/** Spin microtasks until `cond` holds (bounded). The transcribe job is
+ * all-microtask under fake timers once the fake deps park on a gate, same
+ * reasoning as waitForTerminalStatusNoRealTimers. */
+async function waitForMicrotasks(cond: () => boolean): Promise<void> {
+  for (let i = 0; i < 20_000; i++) {
+    if (cond()) return;
+    await Promise.resolve();
+  }
+  throw new Error("condition never met via microtasks");
+}
+
+describe("POST /api/meetings/:id/cancel-transcribe", () => {
+  beforeAll(() => {
+    cancelAudioDir = mkdtempSync(join(tmpdir(), "meeting-cancel-"));
+    const wav = buildMultiBurstWav(3);
+    writeFileSync(join(cancelAudioDir, "mic.wav"), wav);
+    writeFileSync(join(cancelAudioDir, "system.wav"), wav);
+    writeFileSync(
+      join(cancelAudioDir, "sync.json"),
+      JSON.stringify({
+        meetingId: "m1",
+        sampleRate: SAMPLE_RATE,
+        micT0: 1000,
+        systemT0: 1000,
+        syncMarkers: [],
+        epochs: [],
+      }),
+    );
+  });
+
+  afterAll(() => {
+    rmSync(cancelAudioDir, { recursive: true, force: true });
+  });
+
+  it("404s for an unknown meeting", async () => {
+    const res = await app.request("/api/meetings/nope/cancel-transcribe", {
+      method: "POST",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("409s when no job is running for the meeting", async () => {
+    insertMeeting("m1", "recorded");
+    const res = await app.request("/api/meetings/m1/cancel-transcribe", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("No transcription job");
+  });
+
+  it("409s when the active job is a diarize pass (slot held, not cancellable)", async () => {
+    insertMeeting("m1", "transcribed", cancelAudioDir);
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    __setMeetingsTestOverrides({
+      diarizeDeps: {
+        resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+        resolveModelsDirPath: () => "/fake/resources/models",
+        execFile: async (_file, args) => {
+          if (args[0] === "--probe") return { stdout: "READY", stderr: "" };
+          await gate;
+          return { stdout: "[]", stderr: "" };
+        },
+      },
+    });
+
+    const diarizePromise = app.request("/api/meetings/m1/diarize", {
+      method: "POST",
+    });
+    // Let the diarize handler claim the slot under fake timers (same
+    // reasoning as the enhance 409 test above).
+    await vi.advanceTimersByTimeAsync(20);
+
+    const res = await app.request("/api/meetings/m1/cancel-transcribe", {
+      method: "POST",
+    });
+    expect(res.status).toBe(409);
+
+    release();
+    await diarizePromise;
+  });
+
+  it("cancels mid-job: in-flight chunks finish and persist, unstarted chunks never run, status → failed, segments kept, slot freed", async () => {
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        // Capture the call number *before* parking: both workers increment
+        // before either gate resolves.
+        const n = ++calls;
+        // Park the first two chunks (both workers) so the cancel lands
+        // with 2 of 6 tasks in flight and 4 unstarted.
+        if (n <= 2) await gate;
+        return { text: `chunk number ${n}` };
+      }),
+    });
+    insertMeeting("m1", "recorded", cancelAudioDir);
+
+    const start = await app.request("/api/meetings/m1/transcribe", {
+      method: "POST",
+    });
+    expect(start.status).toBe(202);
+    await waitForMicrotasks(() => calls >= 2);
+
+    // Release the gate no matter what any assertion below does — a failed
+    // expect mid-test must not park the job (and its activeJobs slot)
+    // forever for every test after this one.
+    try {
+      // Fixture sanity: 3 bursts × 2 channels = 6 chunk tasks, so the
+      // cancel below really leaves 4 unstarted (a 2-task fixture would
+      // pass the later assertions vacuously).
+      const mid = await getMeeting("m1");
+      expect(mid.job).toMatchObject({ done: 0, total: 6 });
+
+      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
+        method: "POST",
+      });
+      expect(cancel.status).toBe(202);
+
+      // Idempotent while winding down: the slot is still held, the second
+      // cancel is an acknowledged no-op (documented semantics).
+      const cancelAgain = await app.request(
+        "/api/meetings/m1/cancel-transcribe",
+        { method: "POST" },
+      );
+      expect(cancelAgain.status).toBe(202);
+    } finally {
+      release();
+    }
+
+    const done = await waitForTerminalStatusNoRealTimers("m1");
+    expect(done.status).toBe("failed");
+    expect(done.error).toBe("Cancelled by user");
+    expect(done.job).toBeNull();
+
+    // The two in-flight chunks were allowed to finish and their segments
+    // survive; the four unstarted chunks never ran (calls stays at 2).
+    expect(calls).toBe(2);
+    const counts = done.segment_counts as { total: number; failed: number };
+    expect(counts.total).toBe(2);
+    expect(counts.failed).toBe(0);
+
+    const tRes = await app.request("/api/meetings/m1/transcript");
+    const { segments } = (await tRes.json()) as {
+      segments: Array<{ text: string }>;
+    };
+    expect(segments.map((s) => s.text).sort()).toEqual([
+      "chunk number 1",
+      "chunk number 2",
+    ]);
+
+    // Slot freed — a third cancel is a plain 409.
+    const after = await app.request("/api/meetings/m1/cancel-transcribe", {
+      method: "POST",
+    });
+    expect(after.status).toBe(409);
+  });
+});
+
+describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () => {
+  beforeAll(() => {
+    cancelAudioDir = mkdtempSync(join(tmpdir(), "meeting-cancel-retry-"));
+    const wav = buildMultiBurstWav(3);
+    writeFileSync(join(cancelAudioDir, "mic.wav"), wav);
+    writeFileSync(join(cancelAudioDir, "system.wav"), wav);
+    writeFileSync(
+      join(cancelAudioDir, "sync.json"),
+      JSON.stringify({ sampleRate: SAMPLE_RATE, syncMarkers: [], epochs: [] }),
+    );
+  });
+
+  afterAll(() => {
+    rmSync(cancelAudioDir, { recursive: true, force: true });
+  });
+
+  it("cancels a retry-failed pass: retried chunks keep their new text, the rest stay failed, meeting status untouched, slot freed", async () => {
+    insertMeeting("m1", "transcribed", cancelAudioDir);
+    // 4 failed system segments on disk-backed times.
+    for (let i = 0; i < 4; i++) {
+      getDb()
+        .prepare(
+          `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+           VALUES (?, 'm1', 'system', ?, ?, ?, NULL, 'failed')`,
+        )
+        .run(`m1:system:${i}`, i, i * 7000, i * 7000 + 1000);
+    }
+    getDb()
+      .prepare("UPDATE meetings SET error = '4 chunks failed' WHERE id = 'm1'")
+      .run();
+
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        calls++;
+        if (calls <= 2) await gate;
+        return { text: `recovered ${calls}` };
+      }),
+    });
+
+    const retryPromise = app.request("/api/meetings/m1/retry-failed", {
+      method: "POST",
+    });
+    await waitForMicrotasks(() => calls >= 2);
+
+    try {
+      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
+        method: "POST",
+      });
+      expect(cancel.status).toBe(202);
+    } finally {
+      release();
+    }
+
+    const res = await retryPromise;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, cancelled: true, retried: 2 });
+
+    const rows = getDb()
+      .prepare(
+        "SELECT text, status FROM meeting_segments WHERE meeting_id = 'm1' ORDER BY idx",
+      )
+      .all() as { text: string | null; status: string }[];
+    expect(rows.filter((r) => r.status === "ok")).toHaveLength(2);
+    expect(rows.filter((r) => r.status === "failed")).toHaveLength(2);
+    expect(
+      rows.filter((r) => r.status === "ok").map((r) => r.text?.slice(0, 9)),
+    ).toEqual(["recovered", "recovered"]);
+
+    // retry-failed never owns meetings.status — cancelled or not.
+    const after = await getMeeting("m1");
+    expect(after.status).toBe("transcribed");
+    expect(after.job).toBeNull();
+
+    const cancelAgain = await app.request(
+      "/api/meetings/m1/cancel-transcribe",
+      { method: "POST" },
+    );
+    expect(cancelAgain.status).toBe(409);
+  });
+});
+
+describe("boot sweep — quit-mid-transcription recovery (T1-1a)", () => {
+  it("GET /orphans returns both 'recording' and 'transcribing' rows with their status", async () => {
+    insertMeeting("rec1", "recording");
+    insertMeeting("tra1", "transcribing");
+    insertMeeting("done1", "transcribed");
+    const res = await app.request("/api/meetings/orphans");
+    expect(res.status).toBe(200);
+    const { items } = (await res.json()) as {
+      items: Array<{ id: string; status: string }>;
+    };
+    const ids = items.map((i) => i.id).sort();
+    expect(ids).toEqual(["rec1", "tra1"]);
+    const byId = new Map(items.map((i) => [i.id, i.status]));
+    expect(byId.get("rec1")).toBe("recording");
+    expect(byId.get("tra1")).toBe("transcribing");
+  });
+
+  it("the boot path (orphans → /transcribe-interrupted) resets a 'transcribing' row to failed with the exact error", async () => {
+    insertMeeting("m1", "transcribing");
+    // Whatever the job managed to persist before the quit survives.
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+
+    const orphans = await app.request("/api/meetings/orphans");
+    const { items } = (await orphans.json()) as { items: { id: string }[] };
+    expect(items.some((i) => i.id === "m1")).toBe(true);
+
+    const res = await app.request("/api/meetings/m1/transcribe-interrupted", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+
+    const after = await getMeeting("m1");
+    expect(after.status).toBe("failed");
+    expect(after.error).toBe("Interrupted — app quit during transcription");
+    const counts = after.segment_counts as { total: number };
+    expect(counts.total).toBe(1);
+  });
+
+  it("POST /:id/transcribe-interrupted is strict: 404 from any other status", async () => {
+    insertMeeting("m1", "recorded");
+    const fromRecorded = await app.request(
+      "/api/meetings/m1/transcribe-interrupted",
+      { method: "POST" },
+    );
+    expect(fromRecorded.status).toBe(404);
+
+    // 'recording' orphans belong to the recorder's endpoint, not this one.
+    insertMeeting("m2", "recording");
+    const fromRecording = await app.request(
+      "/api/meetings/m2/transcribe-interrupted",
+      { method: "POST" },
+    );
+    expect(fromRecording.status).toBe(404);
+
+    const unknown = await app.request(
+      "/api/meetings/nope/transcribe-interrupted",
+      { method: "POST" },
+    );
+    expect(unknown.status).toBe(404);
+
+    // And a second sweep pass over an already-failed row is a 404 no-op.
+    insertMeeting("m3", "transcribing");
+    await app.request("/api/meetings/m3/transcribe-interrupted", {
+      method: "POST",
+    });
+    const again = await app.request("/api/meetings/m3/transcribe-interrupted", {
+      method: "POST",
+    });
+    expect(again.status).toBe(404);
+  });
+
+  it("the recording branch of the boot path still works: /interrupted from 'recording' only", async () => {
+    insertMeeting("m1", "recording");
+    const res = await app.request("/api/meetings/m1/interrupted", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ duration_ms: 12345 }),
+    });
+    expect(res.status).toBe(200);
+    const after = await getMeeting("m1");
+    expect(after.status).toBe("interrupted");
+    expect(after.duration_ms).toBe(12345);
+
+    // Strict from anywhere else.
+    insertMeeting("m2", "transcribing");
+    const wrongState = await app.request("/api/meetings/m2/interrupted", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(wrongState.status).toBe(404);
+  });
+});
+
 describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
   afterEach(() => {
     getDb().exec("DELETE FROM vocabulary");

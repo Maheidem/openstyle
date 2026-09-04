@@ -2841,7 +2841,8 @@ app.whenReady().then(async () => {
 
   // Meeting Mode boot tasks, deferred until the in-process server is up:
   // cache the feature flag for the tray and sweep meetings a crash left in
-  // 'recording' (finalize WAV headers, mark 'interrupted').
+  // 'recording' (finalize WAV headers, mark 'interrupted') or 'transcribing'
+  // (job died with the process — mark 'failed', partial transcript kept).
   setTimeout(() => {
     refreshMeetingsFlag();
     void meetingRecorder?.sweepOrphans();
