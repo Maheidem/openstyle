@@ -207,6 +207,15 @@ jobs:
       - name: Verify electron build output
         run: test -f apps/electron/out/main/index.js
 
+      # The app ships without node_modules (electron-builder.yml
+      # !node_modules/**), so every require() in the built bundles must
+      # resolve to Electron, a Node builtin, a relative chunk, or an
+      # allowlisted external — anything else would be dead in the packaged
+      # app. See apps/electron/scripts/check-bundled-requires.mjs.
+      - name: Guard bundled require() surface
+        working-directory: apps/electron
+        run: node scripts/check-bundled-requires.mjs
+
       - name: Run Electron E2E tests
         timeout-minutes: 5
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @openstyle/electron run test:e2e
