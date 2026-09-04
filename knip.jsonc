@@ -25,13 +25,10 @@
     "apps/electron/src/renderer/src/components/ui/bar-visualizer.tsx",
     "apps/electron/src/renderer/src/components/ui/card.tsx",
     "apps/electron/src/renderer/src/env.d.ts",
-    "plugins/*/ui/vite-env.d.ts",
     "plugins/audio-transcription/ui/src/styles.css",
     // Templates are standalone starter projects downloaded by create-openstyle-plugin,
     // not workspace code. They are never imported or built within the monorepo.
-    "templates/**",
-    // Docs site is a standalone Mintlify project, not a pnpm workspace member.
-    "apps/docs/**"
+    "templates/**"
   ],
   "workspaces": {
     "apps/electron": {
@@ -97,11 +94,7 @@
     },
     "plugins/*": {
       "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "ui/src/**/*.{ts,tsx,css}",
-        "ui/vite-env.d.ts"
-      ]
+      "project": ["src/**/*.{ts,tsx}", "ui/src/**/*.{ts,tsx,css}"]
     }
   }
 }
