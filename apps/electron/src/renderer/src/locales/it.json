@@ -217,7 +217,12 @@
       "history": "Cronologia delle trascrizioni",
       "historyDesc": "Elimina permanentemente tutte le sessioni salvate.",
       "clearHistory": "Cancella cronologia",
-      "clearHistoryConfirm": "Cancellare tutta la cronologia? Questo eliminerà definitivamente ogni sessione."
+      "clearHistoryConfirm": "Cancellare tutta la cronologia? Questo eliminerà definitivamente ogni sessione.",
+      "diskUsage": "Utilizzo del disco",
+      "diskUsageDesc": "Quanto spazio occupano l'audio delle riunioni e i modelli locali su questo dispositivo.",
+      "diskUsageLine": "Audio riunioni: {{meetings}} · Modelli locali: {{models}}",
+      "diskUsageLoading": "Misurazione dell'audio delle riunioni e dei modelli locali…",
+      "manage": "Gestisci…"
     },
     "remix": {
       "hotkey": "Scorciatoia Remix",

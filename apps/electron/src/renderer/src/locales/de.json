@@ -217,7 +217,12 @@
       "history": "Transkriptionsverlauf",
       "historyDesc": "Alle gespeicherten Sitzungen dauerhaft löschen — dies kann nicht rückgängig gemacht werden.",
       "clearHistory": "Verlauf löschen",
-      "clearHistoryConfirm": "Gesamten Transkriptionsverlauf löschen? Alle gespeicherten Sitzungen werden dauerhaft gelöscht."
+      "clearHistoryConfirm": "Gesamten Transkriptionsverlauf löschen? Alle gespeicherten Sitzungen werden dauerhaft gelöscht.",
+      "diskUsage": "Speicherplatz",
+      "diskUsageDesc": "Wie viel Platz Ihre Besprechungsaudioaufnahmen und lokalen Modelle auf diesem Gerät belegen.",
+      "diskUsageLine": "Besprechungsaudio: {{meetings}} · Lokale Modelle: {{models}}",
+      "diskUsageLoading": "Besprechungsaudio und lokale Modelle werden gemessen…",
+      "manage": "Verwalten…"
     },
     "remix": {
       "hotkey": "Remix-Tastenkombination",

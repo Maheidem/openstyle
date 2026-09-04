@@ -93,6 +93,7 @@ import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { registerJobAbortIpc } from "./abortable-jobs";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
+import { registerDiskUsageIpc } from "./disk-usage";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import {
   diffLanguageHotkeys,
@@ -2383,6 +2384,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("audio:restore", async () => {
     await audioPlaybackController.restore();
   });
+
+  // Settings → Data: aggregate disk usage (UX-08) — async walk in the main
+  // process, so the settings window never touches the filesystem.
+  registerDiskUsageIpc();
 
   // --- Import screen ---------------------------------------------------------
   registerJobAbortIpc();

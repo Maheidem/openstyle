@@ -212,6 +212,12 @@ const api = {
   // Reveal the diagnostic logs folder (openstyle.log) in the OS file manager.
   openLogsFolder: (): Promise<boolean> =>
     ipcRenderer.invoke("logs:open-folder"),
+  // Settings → Data: aggregate meetings/models disk usage (async main-side
+  // walk — the renderer never touches the filesystem).
+  getDiskUsage: (): Promise<{
+    meetingsBytes: number;
+    modelsBytes: number;
+  }> => ipcRenderer.invoke("data:get-disk-usage"),
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke("open:external", url),
   onHotkeyDown: (

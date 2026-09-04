@@ -33,6 +33,8 @@ export const queryKeys = {
 
   /** Experimental feature flags (`GET /api/config`). */
   config: ["config"] as const,
+  /** Settings → Data: aggregate meetings/models disk usage (main-side IPC). */
+  diskUsage: ["disk-usage"] as const,
   /** Device-local dismissed-notification keys. */
   dismissedNotifications: ["dismissed-notifications"] as const,
 

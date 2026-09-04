@@ -24,3 +24,10 @@ export const MODEL_CACHE_DIR_NAME = "freestyle";
 export function modelCacheDir(...segments: string[]): string {
   return join(homedir(), ".cache", MODEL_CACHE_DIR_NAME, ...segments);
 }
+
+/*
+ * Below this point: see local-model-dirs.ts for the aggregate "everywhere
+ * local models live on disk" helper (Settings disk usage). Kept in a separate
+ * module because it must import the mlx-asr constants, which import this
+ * file — colocating it here would create an import cycle.
+ */

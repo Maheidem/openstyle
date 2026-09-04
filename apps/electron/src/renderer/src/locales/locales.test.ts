@@ -104,6 +104,26 @@ describe("locale files", () => {
     });
   }
 
+  // Keys introduced by the Settings → Data disk-usage line (UX-08).
+  const DISK_USAGE_KEYS = [
+    "settings.data.diskUsage",
+    "settings.data.diskUsageDesc",
+    "settings.data.diskUsageLine",
+    "settings.data.diskUsageLoading",
+    "settings.data.manage",
+  ];
+
+  for (const file of ["template.json", ...localeFiles]) {
+    it(`${file}: carries the disk-usage keys with intact placeholders`, () => {
+      const flat = flatten(load(file));
+      const en = flatten(load("en.json"));
+      for (const key of DISK_USAGE_KEYS) {
+        expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+        expect(placeholders(flat[key])).toEqual(placeholders(en[key]));
+      }
+    });
+  }
+
   // Guardrail for the section this change touched: any meetings.* key a
   // locale carries must preserve en.json's placeholders for that key. (This
   // is intentionally scoped to meetings.* — other sections have pre-existing

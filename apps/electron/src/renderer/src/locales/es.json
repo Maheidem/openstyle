@@ -217,7 +217,12 @@
       "history": "Historial de transcripciones",
       "historyDesc": "Elimina permanentemente todas las sesiones guardadas — esto no se puede deshacer.",
       "clearHistory": "Borrar historial",
-      "clearHistoryConfirm": "¿Borrar todo el historial de transcripciones? Esto elimina permanentemente todas las sesiones guardadas."
+      "clearHistoryConfirm": "¿Borrar todo el historial de transcripciones? Esto elimina permanentemente todas las sesiones guardadas.",
+      "diskUsage": "Uso del disco",
+      "diskUsageDesc": "Cuánto espacio ocupan el audio de las reuniones y los modelos locales en este dispositivo.",
+      "diskUsageLine": "Audio de reuniones: {{meetings}} · Modelos locales: {{models}}",
+      "diskUsageLoading": "Midiendo el audio de las reuniones y los modelos locales…",
+      "manage": "Administrar…"
     },
     "remix": {
       "hotkey": "Atajo de Remix",

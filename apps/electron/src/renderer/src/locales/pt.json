@@ -217,7 +217,12 @@
       "history": "Histórico de transcrição",
       "historyDesc": "Excluir permanentemente todas as sessões salvas.",
       "clearHistory": "Limpar histórico",
-      "clearHistoryConfirm": "Limpar todo o histórico de transcrições? Isso apagará todas as sessões salvas."
+      "clearHistoryConfirm": "Limpar todo o histórico de transcrições? Isso apagará todas as sessões salvas.",
+      "diskUsage": "Uso do disco",
+      "diskUsageDesc": "Quanto espaço o áudio das reuniões e os modelos locais ocupam neste dispositivo.",
+      "diskUsageLine": "Áudio de reuniões: {{meetings}} · Modelos locais: {{models}}",
+      "diskUsageLoading": "Medindo o áudio das reuniões e os modelos locais…",
+      "manage": "Gerenciar…"
     },
     "remix": {
       "hotkey": "Atalho do Remix",

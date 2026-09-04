@@ -217,7 +217,12 @@
       "history": "Historique des transcriptions",
       "historyDesc": "Supprime définitivement toutes les sessions enregistrées — cette action est irréversible.",
       "clearHistory": "Effacer l'historique",
-      "clearHistoryConfirm": "Effacer tout l'historique des transcriptions ? Cela supprime définitivement toutes les sessions enregistrées."
+      "clearHistoryConfirm": "Effacer tout l'historique des transcriptions ? Cela supprime définitivement toutes les sessions enregistrées.",
+      "diskUsage": "Utilisation du disque",
+      "diskUsageDesc": "Espace occupé par l'audio de vos réunions et les modèles locaux sur cet appareil.",
+      "diskUsageLine": "Audio des réunions : {{meetings}} · Modèles locaux : {{models}}",
+      "diskUsageLoading": "Mesure de l'audio des réunions et des modèles locaux…",
+      "manage": "Gérer…"
     },
     "remix": {
       "hotkey": "Raccourci Remix",

@@ -151,6 +151,11 @@ declare global {
       setServerToken: (token: string) => Promise<string>;
       onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
+      // Settings → Data: aggregate meetings/models disk usage.
+      getDiskUsage: () => Promise<{
+        meetingsBytes: number;
+        modelsBytes: number;
+      }>;
       openExternal: (url: string) => Promise<boolean>;
       onHotkeyDown: (
         callback: (payload?: { language?: string }) => void,
