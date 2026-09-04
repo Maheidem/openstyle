@@ -37,6 +37,13 @@ vi.mock("../src/lib/mlx-asr/server.js", async (importOriginal) => {
     await importOriginal<typeof import("../src/lib/mlx-asr/server.js")>();
   return {
     ...actual,
+    // canRunMlxAsr is platform-gated in reality (Apple Silicon only), and
+    // getDefaultModels() runs reconcileUnsupportedMlxVoiceDefault() — with
+    // the real gate, a Linux CI runner rewrites the local-mlx default to
+    // local-whisper *before* the route reads it, and this contract test
+    // fails as warming: "whisper". The gate is incidental to what this
+    // file asserts; pin it open like every other MLX seam here.
+    canRunMlxAsr: () => true,
     isMlxServerRunning: () => false,
     startMlxInBackground: (
       ...args: Parameters<typeof actual.startMlxInBackground>

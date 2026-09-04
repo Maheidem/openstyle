@@ -171,6 +171,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Run server tests
+        # --expose-gc: the import memory-shape tests drive GC via
+        # globalThis.gc() to separate "held" from "not yet collected" —
+        # without it, CI runners' lazier V8 external-memory accounting
+        # fails the assertions on garbage nothing references.
+        env:
+          NODE_OPTIONS: "--expose-gc"
         run: pnpm --filter @openstyle/server run test
 
   test-electron:

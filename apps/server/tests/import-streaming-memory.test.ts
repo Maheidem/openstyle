@@ -152,10 +152,12 @@ suite("import streaming memory shape", () => {
 
   async function settle(): Promise<void> {
     await new Promise((r) => setTimeout(r, 50));
+    // CI runs vitest with NODE_OPTIONS=--expose-gc (see
+    // .github/workflows/build.yml) so this gc() is a real full collection;
+    // without the flag the pressure loop below is the fallback that nudges
+    // V8's external-memory accounting past a GC threshold so the streaming
+    // garbage from the request is collectable before sampling.
     (globalThis as { gc?: () => void }).gc?.();
-    // Without --expose-gc, drive V8's external-memory accounting past a GC
-    // threshold with transient buffers so the streaming garbage from the
-    // request is collectable before sampling.
     for (let i = 0; i < 6; i++) {
       const pressure = Buffer.alloc(32 * 1024 * 1024);
       pressure[0] = i;
@@ -307,6 +309,15 @@ suite("import streaming memory shape", () => {
   it("dictation import holds ≈1× at the provider call (pass-through, chunked)", async () => {
     let sampledAtProvider = 0;
     mocks.transcribe.mockImplementation(async () => {
+      // Settle before sampling: the metric is *reachable* memory at the
+      // pipeline's peak (the read-back WAV), not streamed-request garbage
+      // V8 hasn't bothered to collect mid-request. On some runners
+      // (ubuntu CI, different V8) the upload's chunk buffers sit
+      // uncollected in arrayBuffers for the whole request — sampling raw
+      // there reads ~2× and fails even though nothing references them.
+      // The read-back WAV is still referenced by the caller and survives
+      // any settle, which is exactly what this bound asserts.
+      await settle();
       sampledAtProvider = allocMB();
       return { text: "raw import text" };
     });
@@ -329,6 +340,8 @@ suite("import streaming memory shape", () => {
   it("dictation import with a small decode stays flat", async () => {
     let sampledAtProvider = 0;
     mocks.transcribe.mockImplementation(async () => {
+      // Same settle-before-sample as above: reachable memory only.
+      await settle();
       sampledAtProvider = allocMB();
       return { text: "raw import text" };
     });
