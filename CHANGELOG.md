@@ -1,4 +1,10 @@
 # Changelog
+## 2.7.0
+
+### New Features ✨
+
+- Lean wins — 4× smaller downloads, cancellable jobs, streaming imports by @Maheidem in [#13](https://github.com/Maheidem/openstyle/pull/13)
+
 ## 2.6.0
 
 ### New Features ✨
