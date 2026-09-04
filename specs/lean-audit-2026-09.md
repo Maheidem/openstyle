@@ -240,3 +240,76 @@ Measured per-release asset sizes via `gh api` (Stage 1):
 **The regression, precisely:** 2.1.1's only change is `ba3f4a6f` ("fix(ci): require fluidaudio-diarize binary and select Swift 6 toolchain"). Once CI actually built the SwiftPM package before electron-builder ran, the build's `.build` directory (~871 MB on disk, 665 MiB in the asar after its own internal packing) landed inside the package — a **+415 MiB dmg jump in one release**, and ~87 % of every macOS download since (≈72 % SwiftPM build garbage + ≈15 % unused node_modules, as compressed share of the dmg). Windows/Linux jobs never build Swift, so their sizes stayed proportionate (201.9 / 217.0 MiB) — which is also why A3 (`node_modules`) is their only big cut, and why the `.build` fix (A2) is macOS-only.
 
 Tier 0 expected landing, restated: dmg ≈ 139–159 MiB (most likely **~145** — a **−73–78 %** cut from 597.8; cross-check: 2.1.0's 177.2 MiB *with* node_modules *without* the 22 MB model ⇒ ~125–140 MiB), update zip in the same band, installed app 1243 MiB (1.24 GB) → ~325 MiB (−74 %), Windows setup.exe → ~125–155 MiB est., AppImage → ~140–170 MiB est. If a measured Tier 0 build lands above ~180 MiB, something else leaked — re-run the walker (§8).
+
+---
+
+## Implementation status (2026-09-04)
+
+Branch `feat/lean-wins` (17 commits, → 2.7.0). Every gate green: server
+tests, electron vitest, e2e 70 passed on the packaged build, knip, biome,
+both typechecks, `check-bundled-requires`, `verify-native-binaries`
+(source + packaged). The estimates above held.
+
+### Landed, with measured outcomes
+
+| Item | Commit | Measured outcome |
+|---|---|---|
+| T0-1..T0-3 packaging (`!native/**`, preload-bundled `!node_modules/**`, dev-file excludes) | `1f093b9` | **asar 928 → 8.98 MiB**; installed app 1243 → **311 MiB** (predicted ~325) |
+| T0-4 dep hygiene (shadcn CLI, react-icons out of prod deps) | `0cdca55` | lockfile-only; size subsumed by T0-2 |
+| T0-5 knip truthfulness | `e8db3bb` | knip green as a CI gate |
+| CI guard for the lean package | `69d7ea8` | `check-bundled-requires.mjs` fails the build on any non-bundled `require()` |
+| T1-8 README plugin claims | `76201ac` | false promise gone two releases after it became false |
+| T1-1/UX-03 meeting cancel + quit-mid-job recovery | `1993cef`, `7386804` | `POST /:id/cancel-transcribe` (segments survive, row → `failed`), boot sweep recovers `transcribing` rows (live-job-filtered), ghost Cancel in the progress card; `retry-failed` now claims the slot |
+| T1-2/UX-04+A3 import progress, cancel, notification | `b6f3a06` | progress-card family + `job:abort` seam (`main/abortable-jobs.ts`) + completion notification + pre-upload weight expectation |
+| T1-3/UX-01 pill warming status | `0c7dcc0` | status-slot "Warming up local model…" (pre-warm `cold` latch, 3 s gate, never a PillNotice) |
+| T1-4/UX-02 batch dictation bound | `0c7dcc0` | client-side `AbortSignal.timeout(360_000)` with named failure copy |
+| T1-5/UX-08 disk usage line | `c250288` | Settings → Data: lazy async "Meetings audio / Local models" line |
+| T1-6 preload channel-drift guard | `3bf18da` | vitest parse of `preload/index.ts` channels vs `index.d.ts` |
+| T1-7 dictionary hot path | `ed3a6a4` | rewrites compiled once per dictionary version; usage UPDATEs batched in one transaction |
+| UX-12 rider: mic-listener removal | `2b9c048` | boot block, spawner, preload channel and `.d.ts` twin deleted; follow-on below |
+| D6/T2-1 streaming imports | `0e01d20` (spec `eddfda1`) | **meetings-import RSS delta 0 MB @ 160 MB upload**; dictation peak ≈ 1× decoded WAV (was 2–3× upload); all error envelopes byte-identical |
+| e2e isolation hardening | `bcd7fdd` | `OPENSTYLE_E2E_SERVER_URL` escape hatch + foreign-4649 skip guards (`import-screen`, `app`) |
+
+**Release-asset gate (measured on the packaged build):** dmg 597.8 → **135.8 MiB**
+(−77 %), arm64 zip 589.2 → **131.9 MiB** — inside §8's 139–159 estimate band
+and well under the 180 MiB "something leaked" ceiling.
+
+**UX-12 follow-on (this bundle):** `resources/bin` mic-listener binaries no
+longer ship — `electron-builder.yml` filters them from `extraResources` and
+`verify-native-binaries.mjs` no longer expects them. The Swift/C sources and
+their `compile-native.js` wiring are deliberately kept one more release
+(`2b9c048` commit message); source deletion is the remaining follow-on.
+
+### Deferred, with reasons (unchanged owners)
+
+- **G1-native (T2-3):** unmeasured user benefit vs. core-input-path risk —
+  the keystroke IPC is the hotkey path; needs manual QA on hardware.
+  Engineering backlog.
+- **C1 (T2-2):** retiring the plugin scaffolding is an irreversible
+  npm-public-surface decision (`packages/sdk` has `publishConfig.access:
+  public` and a publish workflow). Maintainer.
+- **A6 (T2-4):** vetoed per §3 — policy-only; only the sanctioned prefetch
+  shapes if ever revisited. Product.
+- **UX-05 (T2-5):** partial-transcript visibility needs its own UX spec;
+  additive feature, not leanness. UX spec, then engineering.
+- **Notarization (T2-6):** blocked on an external Apple Developer account
+  ($99/yr + helper-signing program). Maintainer; roadmap item.
+
+### Manual QA owed before/after 2.7.0 (verifier's list — not coverable headlessly)
+
+1. **GitHub glyph parity** — the react-icons → lucide swap in help/settings
+   (T0-4): identical marks, alignment, stroke weight.
+2. **Pill warming mark** — appears only for a genuinely cold local model,
+   only after 3 s, never for cloud or a warm server, and never as a
+   PillNotice (T1-3).
+3. **Settings → Data row** — "Disk usage" line renders, lazy-loads, no
+   settings jank with a multi-GB meetings dir (T1-5).
+4. **Meeting cancel UI** — ghost Cancel inside the transcribe progress
+   card; post-cancel copy names the kept partial transcript (T1-1).
+5. **Import progress card + completion notification** — spinner/elapsed/
+   Cancel during a real upload; notification fires on completion, click
+   routes to the transcript (T1-2).
+
+**Communication gate (§7 trap 6), executed at release time:** the 2.7.0
+changelog must say downloads shrank ~4×; it must *not* imply the 3–4 TCC
+re-prompts after update are fixed — those persist until notarization.
