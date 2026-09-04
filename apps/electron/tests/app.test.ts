@@ -50,6 +50,22 @@ async function waitForDashboardWindow(
 }
 
 test.beforeAll(async () => {
+  // Skip (rather than silently reusing) a foreign server on the default port
+  // — the app's boot probe would find it and this suite's embedded-server
+  // assertions would read (and PUT into) that real instance's DB. Same guard
+  // as tests/meeting-cancel-transcribe.test.ts.
+  try {
+    const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
+      signal: AbortSignal.timeout(1_500),
+    });
+    test.skip(
+      res.ok,
+      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or run this suite against an isolated server.`,
+    );
+  } catch {
+    // nothing listening — clean environment, proceed with the embedded server
+  }
+
   const userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-"));
   const dbPath = join(userDataDir, "freestyle.db");
 
@@ -60,6 +76,11 @@ test.beforeAll(async () => {
         ...process.env,
         NODE_ENV: "development",
         OPENSTYLE_DB_PATH: dbPath,
+        // main/index.ts rewrites OPENSTYLE_DB_PATH from userData, so actual
+        // isolation depends on OPENSTYLE_USER_DATA (see the audit note in
+        // tests/import-screen.test.ts) — without it this suite would run
+        // against the developer's real profile whenever 4649 is free.
+        OPENSTYLE_USER_DATA: userDataDir,
         OPENSTYLE_E2E: "1",
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
       },

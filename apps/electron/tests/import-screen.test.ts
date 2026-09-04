@@ -1,11 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import {
-  createServer,
-  type Server,
-  type ServerResponse,
-  type Socket,
-} from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -18,7 +14,20 @@ import { _electron as electron } from "playwright";
 
 // ---------------------------------------------------------------------------
 // Helpers (self-contained, mirrors tests/app.test.ts)
+//
+// Isolation: with no OPENSTYLE_E2E_SERVER_URL the suite boots the app's
+// embedded server against a throwaway userData dir and SKIPS if a foreign
+// Openstyle already owns port 4649 (the app would reuse it and touch its
+// DB). Point OPENSTYLE_E2E_SERVER_URL (+ _TOKEN) at a standalone isolated
+// server to run against that instead — same escape hatch as
+// tests/meeting-cancel-transcribe.test.ts.
 // ---------------------------------------------------------------------------
+
+const EXTERNAL_SERVER_URL = process.env.OPENSTYLE_E2E_SERVER_URL?.replace(
+  /\/+$/,
+  "",
+);
+const EXTERNAL_SERVER_TOKEN = process.env.OPENSTYLE_E2E_SERVER_TOKEN ?? "";
 
 let app: ElectronApplication | undefined;
 let dashboardPage: Page;
@@ -26,6 +35,16 @@ let serverPort: number;
 let userDataDir: string;
 
 const DEFAULT_PORT = 4649;
+
+function apiBase(): string {
+  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${serverPort}`;
+}
+
+function apiHeaders(): Record<string, string> {
+  return EXTERNAL_SERVER_TOKEN
+    ? { Authorization: `Bearer ${EXTERNAL_SERVER_TOKEN}` }
+    : {};
+}
 
 /**
  * Wait for a window whose URL is neither the pill nor the remix bar —
@@ -123,15 +142,19 @@ function writeSpeechWav(path: string): boolean {
   }
 }
 
-async function getHistoryCount(port: number): Promise<number> {
-  const res = await fetch(`http://127.0.0.1:${port}/api/history?limit=1`);
+async function getHistoryCount(): Promise<number> {
+  const res = await fetch(`${apiBase()}/api/history?limit=1`, {
+    headers: apiHeaders(),
+  });
   expect(res.ok).toBe(true);
   const json = (await res.json()) as { total: number };
   return json.total;
 }
 
-async function hasDefaultVoiceModel(port: number): Promise<boolean> {
-  const res = await fetch(`http://127.0.0.1:${port}/api/models/configured`);
+async function hasDefaultVoiceModel(): Promise<boolean> {
+  const res = await fetch(`${apiBase()}/api/models/configured`, {
+    headers: apiHeaders(),
+  });
   expect(res.ok).toBe(true);
   const rows = (await res.json()) as {
     type: string;
@@ -146,7 +169,7 @@ async function hasDefaultVoiceModel(port: number): Promise<boolean> {
   // configured oMLX base URL's /v1/models the same way settings.ts and
   // models.ts do, with a short timeout so an unreachable server fails fast
   // instead of hanging the test.
-  return isOmlxReachable(port);
+  return isOmlxReachable();
 }
 
 /**
@@ -177,11 +200,11 @@ async function probeOmlxReachable(defaultBaseUrl: string): Promise<boolean> {
   }
 }
 
-async function isOmlxReachable(port: number): Promise<boolean> {
+async function isOmlxReachable(): Promise<boolean> {
   try {
-    const settingsRes = await fetch(
-      `http://127.0.0.1:${port}/api/settings/omlx_base_url`,
-    );
+    const settingsRes = await fetch(`${apiBase()}/api/settings/omlx_base_url`, {
+      headers: apiHeaders(),
+    });
     if (!settingsRes.ok) return false;
     const { value } = (await settingsRes.json()) as { value?: string };
     if (!value) return false;
@@ -223,16 +246,18 @@ test.beforeAll(async () => {
   // port — the app's boot probe would find it, route test traffic at that
   // real instance, and touch its DB. Mirrors
   // tests/meeting-cancel-transcribe.test.ts.
-  try {
-    const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
-      signal: AbortSignal.timeout(1_500),
-    });
-    test.skip(
-      res.ok,
-      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
-    );
-  } catch {
-    // nothing listening — clean environment, proceed with the embedded server
+  if (!EXTERNAL_SERVER_URL) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
+        signal: AbortSignal.timeout(1_500),
+      });
+      test.skip(
+        res.ok,
+        `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
+      );
+    } catch {
+      // nothing listening — clean environment, proceed with the embedded server
+    }
   }
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-import-"));
@@ -243,9 +268,17 @@ test.beforeAll(async () => {
   // /onboarding instead of the app shell this suite navigates. Pre-seed
   // settings.json so the app opens straight to the dashboard, matching the
   // "already onboarded real user" scenario these tests exercise.
+  const seededSettings: Record<string, unknown> = {
+    onboardingComplete: true,
+  };
+  if (EXTERNAL_SERVER_URL) {
+    seededSettings.serverUrl = EXTERNAL_SERVER_URL;
+    if (EXTERNAL_SERVER_TOKEN)
+      seededSettings.serverToken = EXTERNAL_SERVER_TOKEN;
+  }
   writeFileSync(
     join(userDataDir, "settings.json"),
-    JSON.stringify({ onboardingComplete: true }),
+    JSON.stringify(seededSettings),
   );
 
   try {
@@ -306,34 +339,28 @@ test.beforeAll(async () => {
         "import-screen beforeAll: oMLX reachable — seeding default voice model (success branch)",
       );
       try {
-        const urlRes = await fetch(
-          `http://127.0.0.1:${serverPort}/api/settings/omlx_base_url`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ value: omlxBaseUrl }),
-          },
-        );
+        const urlRes = await fetch(`${apiBase()}/api/settings/omlx_base_url`, {
+          method: "PUT",
+          headers: { ...apiHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({ value: omlxBaseUrl }),
+        });
         if (!urlRes.ok) {
           console.warn(
             `import-screen: oMLX base URL seeding failed (status ${urlRes.status}) — tests will exercise the no-model branch`,
           );
         }
 
-        const res = await fetch(
-          `http://127.0.0.1:${serverPort}/api/models/configured`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              provider: "omlx",
-              model_id: "omlx/Qwen3-ASR",
-              model_name: "Qwen3-ASR",
-              type: "voice",
-              is_default: true,
-            }),
-          },
-        );
+        const res = await fetch(`${apiBase()}/api/models/configured`, {
+          method: "POST",
+          headers: { ...apiHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: "omlx",
+            model_id: "omlx/Qwen3-ASR",
+            model_name: "Qwen3-ASR",
+            type: "voice",
+            is_default: true,
+          }),
+        });
         if (!res.ok) {
           console.warn(
             `import-screen: voice model seeding failed (status ${res.status}) — tests will exercise the no-model branch`,
@@ -382,7 +409,7 @@ test("rejects a .txt drop before any upload (ts_9e6ec1de)", async () => {
   test.setTimeout(30_000);
   await navigateToImport(dashboardPage);
 
-  const countBefore = await getHistoryCount(serverPort);
+  const countBefore = await getHistoryCount();
   const callsBefore = await app.evaluate(() => {
     const g = globalThis as { __openstyleE2E?: { importCalls: number } };
     return g.__openstyleE2E?.importCalls ?? 0;
@@ -409,7 +436,7 @@ test("rejects a .txt drop before any upload (ts_9e6ec1de)", async () => {
   expect(alertText).toContain("Unsupported format");
   expect(alertText).toContain(".txt");
 
-  const countAfter = await getHistoryCount(serverPort);
+  const countAfter = await getHistoryCount();
   expect(countAfter).toBe(countBefore);
 
   const callsAfter = await app.evaluate(() => {
@@ -433,9 +460,9 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
     writeSilentWav(wavPath);
   }
 
-  voiceModelConfigured = await hasDefaultVoiceModel(serverPort);
+  voiceModelConfigured = await hasDefaultVoiceModel();
 
-  const countBefore = await getHistoryCount(serverPort);
+  const countBefore = await getHistoryCount();
 
   await app.evaluate((_electron, path) => {
     process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
@@ -450,18 +477,11 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
   await expect(dashboardPage.getByTestId("import-review-weight")).toBeVisible();
   await startButton.click();
 
-  if (voiceModelConfigured) {
-    // The transcription round trip to a real oMLX server takes long enough
-    // that the transient "uploading" status is reliably observable.
-    await expect(dashboardPage.getByTestId("import-status")).toBeVisible({
-      timeout: 5_000,
-    });
-  } else {
-    // The no-model-configured error is a fast local rejection (same
-    // rationale as the corrupt-file test below) — it can resolve before
-    // the next Playwright poll observes the transient "uploading" status,
-    // so assert the terminal error state directly instead of racing it.
-  }
+  // No progress-card-visible assertion here: with a reachable oMLX on this
+  // machine the whole round trip (upload + STT of a ~1 s clip) can finish
+  // before Playwright's first poll observes the transient uploading state —
+  // same rationale as the corrupt-file test below. The cancel test below
+  // asserts the progress card deterministically against a park server.
 
   if (voiceModelConfigured) {
     console.log(
@@ -487,7 +507,7 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
       .textContent();
     expect(clipboardText).toBe(transcriptText);
 
-    const countAfter = await getHistoryCount(serverPort);
+    const countAfter = await getHistoryCount();
     expect(countAfter).toBe(countBefore + 1);
 
     await dashboardPage.getByTestId("import-reset").click();
@@ -507,7 +527,7 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
     // than a substring guess.
     expect(alertText).toContain(IMPORT_ERROR_CONFIG_TEXT);
 
-    const countAfter = await getHistoryCount(serverPort);
+    const countAfter = await getHistoryCount();
     expect(countAfter).toBe(countBefore);
 
     await dashboardPage.getByTestId("import-error").getByRole("button").click();
@@ -533,7 +553,7 @@ test("corrupt file reports a decode error (ts_307c89e8)", async () => {
     junk[i] = Math.floor(Math.random() * 256);
   writeFileSync(junkPath, junk);
 
-  const countBefore = await getHistoryCount(serverPort);
+  const countBefore = await getHistoryCount();
 
   await app.evaluate((_electron, path) => {
     process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
@@ -550,7 +570,7 @@ test("corrupt file reports a decode error (ts_307c89e8)", async () => {
   const alertText = (await alert.textContent()) ?? "";
   expect(alertText).toContain("Could not decode this file");
 
-  const countAfter = await getHistoryCount(serverPort);
+  const countAfter = await getHistoryCount();
   expect(countAfter).toBe(countBefore);
 
   await app.evaluate(() => {
@@ -611,30 +631,24 @@ async function pointDefaultVoiceModelAt(
   base: string,
   seedModel: boolean,
 ): Promise<void> {
-  const putBase = await fetch(
-    `http://127.0.0.1:${serverPort}/api/settings/omlx_base_url`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: base }),
-    },
-  );
+  const putBase = await fetch(`${apiBase()}/api/settings/omlx_base_url`, {
+    method: "PUT",
+    headers: { ...apiHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ value: base }),
+  });
   expect(putBase.ok, `PUT omlx_base_url -> ${putBase.status}`).toBe(true);
   if (!seedModel) return;
-  const res = await fetch(
-    `http://127.0.0.1:${serverPort}/api/models/configured`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: "omlx",
-        model_id: "omlx/owned-test-model",
-        model_name: "oMLX owned-test model",
-        type: "voice",
-        is_default: true,
-      }),
-    },
-  );
+  const res = await fetch(`${apiBase()}/api/models/configured`, {
+    method: "POST",
+    headers: { ...apiHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: "omlx",
+      model_id: "omlx/owned-test-model",
+      model_name: "oMLX owned-test model",
+      type: "voice",
+      is_default: true,
+    }),
+  });
   expect(res.ok, `POST models/configured -> ${res.status}`).toBe(true);
 }
 
@@ -656,7 +670,7 @@ test("cancelling an in-flight import returns to the dropzone (UX-04)", async () 
 
     const wavPath = join(userDataDir, "cancel-import.wav");
     writeSilentWav(wavPath);
-    const countBefore = await getHistoryCount(serverPort);
+    const countBefore = await getHistoryCount();
 
     await app.evaluate((_electron, path) => {
       process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
@@ -682,7 +696,7 @@ test("cancelling an in-flight import returns to the dropzone (UX-04)", async () 
     });
     await expect(progress).toHaveCount(0);
     await expect(dashboardPage.getByTestId("import-error")).toHaveCount(0);
-    const countAfter = await getHistoryCount(serverPort);
+    const countAfter = await getHistoryCount();
     expect(countAfter).toBe(countBefore);
   } finally {
     await app.evaluate(() => {
@@ -713,7 +727,7 @@ test("a completed import raises the completion notification (UX-04)", async () =
 
     const wavPath = join(userDataDir, "notify-import.wav");
     writeSilentWav(wavPath);
-    const countBefore = await getHistoryCount(serverPort);
+    const countBefore = await getHistoryCount();
     const notesBefore = await app.evaluate(() => {
       const g = globalThis as {
         __openstyleE2E?: { importNotifications?: number };
@@ -743,7 +757,7 @@ test("a completed import raises the completion notification (UX-04)", async () =
     });
     expect(notesAfter).toBe(notesBefore + 1);
 
-    const countAfter = await getHistoryCount(serverPort);
+    const countAfter = await getHistoryCount();
     expect(countAfter).toBe(countBefore + 1);
 
     await dashboardPage.getByTestId("import-reset").click();
