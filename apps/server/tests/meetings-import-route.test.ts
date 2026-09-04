@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -9,7 +10,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { getDb } from "../src/lib/db.js";
 
 // ---------------------------------------------------------------------------
@@ -25,7 +35,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../src/lib/audio/decode.js", async (importOriginal) => {
   const real =
     await importOriginal<typeof import("../src/lib/audio/decode.js")>();
-  return { ...real, decodeToWav16kMono: mocks.decode };
+  return { ...real, decodeFileToWav16kMono: mocks.decode };
 });
 
 const { AudioDecodeError } = await import("../src/lib/audio/decode.js");
@@ -108,15 +118,46 @@ function meetingRow(id: string): Record<string, unknown> | undefined {
     | undefined;
 }
 
+/** No route temp dirs may survive any request (success or failure). */
+function expectNoImportTempDirs(): void {
+  const leftovers = readdirSync(scanDir).filter((n) =>
+    n.startsWith("openstyle-import-"),
+  );
+  expect(leftovers).toEqual([]);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
+// Route temp dirs land in a private TMPDIR so leftover assertions can't be
+// polluted by other test files running in parallel forks.
+let scanDir: string;
+let originalTmpDir: string | undefined;
+
+beforeAll(() => {
+  originalTmpDir = process.env.TMPDIR;
+  scanDir = mkdtempSync(join(tmpdir(), "import-route-tests-"));
+  process.env.TMPDIR = scanDir;
+});
+
+afterAll(() => {
+  if (originalTmpDir === undefined) delete process.env.TMPDIR;
+  else process.env.TMPDIR = originalTmpDir;
+  rmSync(scanDir, { recursive: true, force: true });
+});
+
 describe("POST /api/meetings/import", () => {
   beforeEach(() => {
-    // Real timers: the route awaits real async I/O (formData, arrayBuffer).
+    // Real timers: the route awaits real async I/O (streaming, decode).
     vi.useRealTimers();
     vi.clearAllMocks();
+    // Default decode seam: write a small canonical WAV to the output path.
+    mocks.decode.mockImplementation(async (_input: string, output: string) => {
+      const decoded = buildWav(1600);
+      writeFileSync(output, decoded);
+      return { bytes: decoded.length };
+    });
     getDb().exec("DELETE FROM meetings");
   });
 
@@ -463,13 +504,20 @@ describe("POST /api/meetings/import", () => {
     expect(meetingRow(id)).toBeUndefined();
   });
 
-  it("201 for a decodable container: decode called with original bytes, duration from the decoded WAV", async () => {
+  it("201 for a decodable container: decode called with the streamed upload, duration from the decoded WAV", async () => {
     const id = "ffff6fff-6fff-4fff-8fff-6fff6fff6fff";
     const dir = meetingDir(id);
     const input = new Uint8Array(512);
     for (let i = 0; i < input.length; i++) input[i] = (i * 31) & 0xff;
     const decoded = buildWav(8000); // 0.5 s
-    mocks.decode.mockResolvedValue(decoded);
+    let seenInput: Buffer | null = null;
+    mocks.decode.mockImplementation(
+      async (inputPath: string, output: string) => {
+        seenInput = readFileSync(inputPath); // before the route cleans up
+        writeFileSync(output, decoded);
+        return { bytes: decoded.length };
+      },
+    );
 
     const res = await postImport(
       importForm({ name: "memo.m4a", bytes: input, id, audioDir: dir }),
@@ -481,14 +529,11 @@ describe("POST /api/meetings/import", () => {
     expect(body.ended_at).toBe(body.started_at + 500);
 
     expect(mocks.decode).toHaveBeenCalledTimes(1);
-    expect(
-      Buffer.from(mocks.decode.mock.calls[0][0] as Uint8Array).equals(
-        Buffer.from(input),
-      ),
-    ).toBe(true);
-    // The decoded (canonical) bytes are what lands on disk.
+    expect(seenInput!.equals(Buffer.from(input))).toBe(true);
+    // The decoded (canonical) bytes are what lands on disk — via rename.
     expect(readFileSync(join(dir, "system.wav")).equals(decoded)).toBe(true);
     expect(meetingRow(id)).toMatchObject({ title: "memo", duration_ms: 500 });
+    expectNoImportTempDirs();
   });
 
   it("422 with a fixed detail (no ffmpeg stderr) when decoding fails, and persists nothing", async () => {
@@ -500,7 +545,6 @@ describe("POST /api/meetings/import", () => {
         "decode_failed",
       ),
     );
-
     const res = await postImport(
       importForm({
         name: "song.mp3",
@@ -519,6 +563,83 @@ describe("POST /api/meetings/import", () => {
     });
     expect(meetingRow(id)).toBeUndefined();
     expect(existsSync(dir)).toBe(false);
+    expectNoImportTempDirs();
+  });
+
+  it("413 mid-stream for a chunked body over the limit", async () => {
+    const mini = new Hono().route(
+      "/api/meetings",
+      createMeetingsImportRoute({ maxBytes: 1024 }),
+    );
+    const id = "ab12cd34-ef56-4a78-9b01-234567890abc";
+    const form = importForm({
+      name: "big.wav",
+      bytes: buildWav(2048), // 4 KiB — well over a 1 KiB limit
+      id,
+      audioDir: meetingDir(id),
+    });
+    const res = await postImport(form, {}, mini);
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({
+      error: "File too large",
+      detail: "Maximum upload size is 1 KiB",
+      code: "PAYLOAD_TOO_LARGE",
+    });
+    expect(meetingRow(id)).toBeUndefined();
+    expectNoImportTempDirs();
+  });
+
+  it("400 Empty audio data for a zero-byte file part", async () => {
+    const id = "cd34ef56-ab78-4b90-8c12-34567890abcd";
+    const dir = meetingDir(id);
+    const res = await postImport(
+      importForm({
+        name: "clip.wav",
+        bytes: new Uint8Array(0),
+        id,
+        audioDir: dir,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Empty audio data" });
+    expect(meetingRow(id)).toBeUndefined();
+    expect(existsSync(dir)).toBe(false);
+    expectNoImportTempDirs();
+  });
+
+  it("400 when title or started_at arrive as file parts (type checks preserved)", async () => {
+    const id = "ef56ab78-cd90-4b12-9d34-567890abcdef";
+    const dir = meetingDir(id);
+
+    const titleFile = importForm({
+      name: "clip.wav",
+      bytes: buildWav(1600),
+      id,
+      audioDir: dir,
+    });
+    titleFile.append("title", new File([buildWav(100)], "title.bin"));
+    const titleRes = await postImport(titleFile);
+    expect(titleRes.status).toBe(400);
+    expect(await titleRes.json()).toEqual({ error: "title must be a string" });
+
+    const startedFile = importForm({
+      name: "clip.wav",
+      bytes: buildWav(1600),
+      id,
+      audioDir: dir,
+    });
+    startedFile.append("started_at", new File([buildWav(100)], "t.bin"));
+    const startedRes = await postImport(startedFile);
+    expect(startedRes.status).toBe(400);
+    expect(await startedRes.json()).toEqual({
+      error: "started_at must be an integer (ms since epoch)",
+    });
+
+    expect(meetingRow(id)).toBeUndefined();
+    expect(existsSync(dir)).toBe(false);
+    expectNoImportTempDirs();
   });
 
   it("500 with the created dir cleaned up when the INSERT fails after the write", async () => {

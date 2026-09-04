@@ -341,11 +341,19 @@ test("picker import from the empty state creates and selects a meeting", async (
     dashboardPage.getByText("imported-meeting", { exact: true }).first(),
   ).toBeVisible({ timeout: 15_000 });
 
-  // Detail pane opened on the imported meeting: the Transcribe action only
-  // exists in the detail view (visible-but-disabled while transcribing).
-  await expect(
-    dashboardPage.getByRole("button", { name: "Transcribe", exact: true }),
-  ).toBeVisible({ timeout: 10_000 });
+  // Detail pane opened on the imported meeting. Which action is live depends
+  // on the auto-fired transcribe job: when a *configured, reachable* voice
+  // model exists (the import-screen suite seeds one into the shared external
+  // server whenever a local oMLX answers on 127.0.0.1:8123), the silent
+  // clip transcribes in milliseconds and the row is already `transcribed` —
+  // the button then reads "Re-transcribe". With no model (CI) the job fails
+  // or stays pending and the button reads "Transcribe". Either terminal
+  // posture proves the detail view's action bar rendered; never assert on
+  // `status` itself (same rationale as the title check above).
+  const transcribeAction = dashboardPage
+    .getByRole("button", { name: "Transcribe", exact: true })
+    .or(dashboardPage.getByRole("button", { name: "Re-transcribe" }));
+  await expect(transcribeAction.first()).toBeVisible({ timeout: 10_000 });
 
   // Server-side row exists in the same shape a recording produces.
   const meetings = await listMeetings();
