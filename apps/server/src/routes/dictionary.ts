@@ -8,6 +8,7 @@ import {
 } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { markDictionaryChanged } from "../lib/dictionary-replacements.js";
 
 interface DictionaryRow {
   id: number;
@@ -97,6 +98,9 @@ const dictionary = new Hono()
       const result = db
         .prepare(`INSERT INTO dictionary (key, value) VALUES (?, ?)`)
         .run(body.key.trim().toLowerCase(), body.value.trim());
+      // Compiled replacement snapshots are cached per dictionary version —
+      // every write path must bump it (T1-7).
+      markDictionaryChanged();
 
       return c.json(
         {
@@ -130,6 +134,7 @@ const dictionary = new Hono()
       db.prepare(
         `UPDATE dictionary SET key = ?, value = ?, updated_at = datetime('now') WHERE id = ?`,
       ).run(newKey, newValue, id);
+      markDictionaryChanged();
 
       return c.json({ id, key: newKey, value: newValue });
     } catch {
@@ -143,6 +148,7 @@ const dictionary = new Hono()
     const db = getDb();
     const id = Number(c.req.param("id"));
     db.prepare("DELETE FROM dictionary WHERE id = ?").run(id);
+    markDictionaryChanged();
     return c.json({ ok: true });
   })
   .post("/export", zValidator("json", exportSchema), (c) => {
@@ -181,6 +187,7 @@ const dictionary = new Hono()
         skipped++;
       }
     }
+    if (imported > 0) markDictionaryChanged();
 
     return c.json({ imported, skipped });
   });

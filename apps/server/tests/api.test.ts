@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
+import { flushPendingDictionaryUsage } from "../src/lib/dictionary-replacements.js";
 import {
   getHistoryRetentionDays,
   HISTORY_PAUSED_SETTING_KEY,
@@ -858,5 +859,67 @@ describe("History retention", () => {
       );
       expect(res.status, `value: ${value}`).toBe(400);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T1-7 (specs/lean-audit-2026-09.md §3): the dictionary rewrite snapshot is
+// compiled once per dictionary version, invalidated by every write route.
+// These tests drive the *real* delivery path (POST /api/post-process →
+// applyFinalRewrites) against the *real* write routes, so a forgotten
+// markDictionaryChanged() in any of them reads as a stale replacement.
+// ---------------------------------------------------------------------------
+
+describe("Dictionary rewrite cache invalidation on the delivery path (T1-7)", () => {
+  const deliver = (text: string) =>
+    json("/api/post-process", { text, appContext: null }).then(
+      (r) => r.json() as Promise<{ cleaned: string }>,
+    );
+
+  it("create, edit, delete and import all invalidate the compiled snapshot", async () => {
+    // Create → the replacement applies on the next delivery.
+    await json("/api/dictionary", { key: "zqx probe", value: "PROBE" });
+    expect((await deliver("hello zqx probe there")).cleaned).toBe(
+      "hello PROBE there",
+    );
+
+    // Edit (PUT) → the next delivery sees the new value, not the snapshot
+    // compiled before the edit.
+    const list = await req("/api/dictionary?search=zqx%20probe");
+    const { items } = (await list.json()) as { items: { id: number }[] };
+    await json(`/api/dictionary/${items[0].id}`, { value: "PROBED" }, "PUT");
+    expect((await deliver("hello zqx probe there")).cleaned).toBe(
+      "hello PROBED there",
+    );
+
+    // Delete → the next delivery replaces nothing.
+    await req(`/api/dictionary/${items[0].id}`, { method: "DELETE" });
+    expect((await deliver("hello zqx probe there")).cleaned).toBe(
+      "hello zqx probe there",
+    );
+
+    // Import → imported entries apply on the next delivery.
+    await json("/api/dictionary/import", [
+      { key: "zqx imported", value: "IMPORTED" },
+    ]);
+    expect((await deliver("a zqx imported word")).cleaned).toBe(
+      "a IMPORTED word",
+    );
+  });
+
+  it("delivery output is unchanged by the deferred usage-count accounting (C1-safe)", async () => {
+    await json("/api/dictionary", { key: "zqx count", value: "COUNT" });
+    // Two deliveries — the deferred flush (setImmediate in production,
+    // explicit under fake timers) must never change delivered text or the
+    // per-delivery counting semantics.
+    expect((await deliver("say zqx count")).cleaned).toBe("say COUNT");
+    flushPendingDictionaryUsage();
+    expect((await deliver("say zqx count")).cleaned).toBe("say COUNT");
+    flushPendingDictionaryUsage();
+
+    const row = getDb()
+      .prepare("SELECT usage_count FROM dictionary WHERE key = 'zqx count'")
+      .get() as { usage_count: number };
+    expect(row.usage_count).toBe(2); // +1 per delivery, as in the inline era
   });
 });
