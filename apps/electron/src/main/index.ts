@@ -106,7 +106,6 @@ import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { registerMeetingImportIpc } from "./meeting-import";
 import { MeetingRecorder } from "./meeting-recorder";
-import { MicListener } from "./mic-listener";
 import { migrateLegacyUserData } from "./migrate-user-data";
 import { getNativeBinaryPath } from "./native-binary";
 import {
@@ -389,7 +388,6 @@ let accessibilityConfirmed = false;
 let hotkeyPressed = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
-let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
 /** Own listener process — native binaries only take one accelerator each. */
 let remixKeyListener: NativeKeyListener | null = null;
@@ -1837,10 +1835,6 @@ async function factoryReset(): Promise<void> {
       keyListener.stop();
       keyListener = null;
     }
-    if (micListener) {
-      micListener.stop();
-      micListener = null;
-    }
     if (process.platform === "win32") {
       globalShortcut.unregisterAll();
     }
@@ -3236,16 +3230,6 @@ app.whenReady().then(async () => {
     applyRemixSettings(settings);
     applyLanguageHotkeySettings(settings);
   });
-
-  // Start microphone activity monitoring
-  micListener = new MicListener({
-    excludePid: process.pid,
-    onStateChange: (state) => {
-      mainWindow?.webContents.send("mic:activity-changed", state);
-      settingsWindow?.webContents.send("mic:activity-changed", state);
-    },
-  });
-  micListener.start();
 
   // Listen for hotkey changes from the settings UI
   ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
@@ -4881,10 +4865,6 @@ app.on("will-quit", () => {
     clearInterval(remixBarFollowTimer);
     remixBarFollowTimer = null;
   }
-  if (micListener) {
-    micListener.stop();
-    micListener = null;
-  }
   globalShortcut.unregisterAll();
 });
 
@@ -4919,10 +4899,6 @@ function cleanupBeforeQuit(): void {
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
-  }
-  if (micListener) {
-    micListener.stop();
-    micListener = null;
   }
   stopHotkeyRecorderProcess();
   globalShortcut.unregisterAll();
