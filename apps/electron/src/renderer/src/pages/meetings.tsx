@@ -60,6 +60,7 @@ import {
   AudioLines,
   Check,
   ChevronLeft,
+  CircleSlash,
   Copy,
   FolderOpen,
   Info,
@@ -1312,6 +1313,16 @@ function MeetingDetailView({
   // either mode via `seg.enhancedText ?? seg.text`.
   const [showEnhanced, setShowEnhanced] = useState(true);
 
+  // T1-1 / UX-03 (specs/lean-audit-2026-09.md §3): cancelling a running
+  // transcribe job. `cancelRequested` rides the wind-down window between the
+  // POST (202, immediate) and the status flip to 'failed' once in-flight
+  // chunks finish. The planned chunk total is latched at click time because
+  // once the job frees its slot GET /:id reports job: null, and the durable
+  // counts (segment_counts) only cover segments actually written — early
+  // cancels would otherwise read "N of N" instead of "N of M".
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const plannedTotalRef = useRef<number | null>(null);
+
   const { data: meeting } = useQuery({
     queryKey: queryKeys.meetings.detail(id),
     queryFn: async (): Promise<MeetingDetail | null> => {
@@ -1421,6 +1432,9 @@ function MeetingDetailView({
     // useQuery comment above). Removing the cache entry up front means
     // there is nothing stale for that race to serve.
     queryClient.removeQueries({ queryKey: queryKeys.meetings.transcript(id) });
+    // A fresh job invalidates any previous cancel's wind-down/note state.
+    setCancelRequested(false);
+    plannedTotalRef.current = null;
     return runAction("transcribe", () =>
       getClient().api.meetings[":id"].transcribe.$post({ param: { id } }),
     );
@@ -1441,6 +1455,32 @@ function MeetingDetailView({
       ),
     [id, runAction],
   );
+  const cancelTranscribe = useCallback(async () => {
+    if (meeting?.status !== "transcribing" || cancelRequested) return;
+    setCancelRequested(true);
+    try {
+      const res = await getClient().api.meetings[":id"][
+        "cancel-transcribe"
+      ].$post({ param: { id } });
+      if (res.ok || res.status === 409) {
+        // 409 = no transcription job holds the slot any more (it just
+        // finished on its own, or the slot is a non-cancellable diarize
+        // pass) — the poll shows whatever terminal state the job reached,
+        // which is all the user asked for. Latch the plan for the note only
+        // on an acknowledged cancel.
+        if (res.ok) plannedTotalRef.current = meeting.job?.total ?? null;
+        return;
+      }
+      throw new Error(`cancel-transcribe -> ${res.status}`);
+    } catch {
+      // Leave the wind-down state only on a real failure; the action error
+      // surface below carries the message.
+      setCancelRequested(false);
+      setActionError(t("meetings.actionFailed"));
+    } finally {
+      invalidate();
+    }
+  }, [id, meeting, cancelRequested, invalidate, t]);
   const identifySpeakers = useCallback(async () => {
     const result = await runAction("diarize", () =>
       getClient().api.meetings[":id"].diarize.$post({ param: { id } }),
@@ -1499,6 +1539,16 @@ function MeetingDetailView({
   const canTranscribe =
     !transcribing && meeting.status !== "recording" && busy === null;
   const failedCount = meeting.segment_counts.failed;
+  // T1-1: the server's canonical cancel error (routes/meetings.ts
+  // POST /:id/cancel-transcribe) — mapped to the localized kept-transcript
+  // note below instead of rendering the raw string. Mapping survives remounts
+  // and navigation (the counts degrade to segment_counts when the latched
+  // plan is gone), so the note is honest even for a row reopened later.
+  const cancelledByUser = !actionError && meeting.error === "Cancelled by user";
+  const keptSegments =
+    meeting.segment_counts.total - meeting.segment_counts.failed;
+  const plannedSegments =
+    plannedTotalRef.current ?? meeting.segment_counts.total;
   const hasEnhanced = (transcript ?? []).some(
     (s) => s.enhancedText !== undefined,
   );
@@ -1668,7 +1718,9 @@ function MeetingDetailView({
             <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
             <div className="flex-1">
               <div className="text-foreground text-[12.5px]">
-                {t("meetings.transcribing")}
+                {cancelRequested
+                  ? t("meetings.cancellingTranscription")
+                  : t("meetings.transcribing")}
               </div>
               {meeting.job && meeting.job.total > 0 && (
                 <Progress
@@ -1682,11 +1734,44 @@ function MeetingDetailView({
                 {meeting.job.done}/{meeting.job.total}
               </span>
             )}
+            {/* T1-1 (UX-03): the non-destructive exit from a mis-started job —
+                inside the progress card, not the toolbar, so it reads as an
+                attribute of this run. Ghost: it must not compete with the
+                primary actions. Disabled (not hidden) while the acknowledged
+                cancel winds down: in-flight chunks (≤2, or 1 for
+                whisper-local) still finish and persist. */}
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="meetings-cancel-transcribe"
+              onClick={() => void cancelTranscribe()}
+              disabled={cancelRequested}
+            >
+              {t("meetings.cancelTranscription")}
+            </Button>
           </div>
         </Card>
       )}
 
-      {(meeting.error || actionError) && (
+      {/* Post-cancel (T1-1): a cancelled job is not an error — every written
+          segment survived and Retry failed / Re-transcribe are live — so it
+          gets the neutral note treatment (same family as the diarize/enhance
+          result notes), NOT the destructive error card. The copy must say the
+          partial transcript was kept, or the ungated Delete starts looking
+          like the only exit (audit U4). */}
+      {cancelledByUser && (
+        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
+          <CircleSlash className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            {t("meetings.cancelledKeptTranscript", {
+              n: keptSegments,
+              total: plannedSegments,
+            })}
+          </span>
+        </div>
+      )}
+
+      {(meeting.error || actionError) && !cancelledByUser && (
         <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{actionError ?? meeting.error}</span>

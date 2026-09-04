@@ -633,7 +633,17 @@ const meetings = new Hono()
         "SELECT * FROM meetings WHERE status IN ('recording', 'transcribing')",
       )
       .all() as unknown as MeetingRow[];
-    return c.json({ items: rows });
+    // A meeting whose job is alive in *this* server process is not an
+    // orphan, whatever its status column reads: the Electron boot sweep
+    // (3s after launch) must not kill a live — or cancelling/winding-down —
+    // job just because a client was still booting when the job started
+    // (found by the renderer e2e: import → auto-transcribe raced the sweep
+    // and the row flipped to "Interrupted" seconds before "Cancelled by
+    // user" landed, stranding the renderer's poll on the wrong terminal
+    // state). After a real quit/crash the job's process is gone, its
+    // activeJobs entry went with it, and the row sweeps exactly as before.
+    const items = rows.filter((row) => !activeJobs.has(row.id));
+    return c.json({ items });
   })
   // Diarization model readiness (spec §8) — global, not per-meeting.
   // Registered before "/:id" for the same reason as "/orphans" above: a

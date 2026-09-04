@@ -764,6 +764,46 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
     });
     expect(after.status).toBe(409);
   });
+
+  it("GET /orphans excludes meetings with a live job (boot sweep must not kill a running/winding-down transcription)", async () => {
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        calls++;
+        await gate;
+        return { text: `chunk ${calls}` };
+      }),
+    });
+    insertMeeting("m1", "recorded", cancelAudioDir);
+    // A second stuck row with NO live job — this one *is* an orphan.
+    insertMeeting("m2", "transcribing", cancelAudioDir);
+
+    const start = await app.request("/api/meetings/m1/transcribe", {
+      method: "POST",
+    });
+    expect(start.status).toBe(202);
+    await waitForMicrotasks(() => calls >= 1);
+
+    try {
+      const res = await app.request("/api/meetings/orphans");
+      expect(res.status).toBe(200);
+      const { items } = (await res.json()) as {
+        items: Array<{ id: string }>;
+      };
+      const ids = items.map((o) => o.id);
+      // The live job's row is excluded even mid-wind-down; the jobless
+      // 'transcribing' row still sweeps.
+      expect(ids).toContain("m2");
+      expect(ids).not.toContain("m1");
+    } finally {
+      release();
+    }
+    await waitForTerminalStatusNoRealTimers("m1");
+  });
 });
 
 describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () => {
