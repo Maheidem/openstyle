@@ -59,6 +59,9 @@ type ImportedMeeting = {
   audio_dir: string | null;
   context: string | null;
   job: { done: number; total: number; failed: number } | null;
+  /** Last background-job failure for this meeting (GET /:id shape). Always
+   * null on a fresh import — nothing has run yet. */
+  job_error: string | null;
   segment_counts: { total: number; failed: number };
   summary: {
     markdown: string | null;

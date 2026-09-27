@@ -13,6 +13,11 @@ import {
   type UIMessage,
 } from "ai";
 import { buildRemixAgentSystem } from "./editor/remix-prompts.js";
+import {
+  acquireLlmLane,
+  llmLaneKeyForProvider,
+  releaseLeaseOnResponseBodyEnd,
+} from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
 import { resolveTaskCall } from "./llm/task-profiles.js";
 import { createChatModel } from "./providers.js";
@@ -86,6 +91,20 @@ export async function runRemixAgentLocally(
     ),
   );
 
+  // `interactive` (§5.4). This is the coarse lease spec §5.2 calls out: the
+  // SDK owns the tool loop here, so ONE acquisition spans up to
+  // `REMIX_MAX_STEPS` model round-trips. Accepted because Remix is the class
+  // that WINS the queue — the coarseness costs background work its slot,
+  // never the dictation cleanup. The lease is released by the body wrapper
+  // below, so a client that hangs up mid-stream cannot leak the slot.
+  const lane = await llmLaneKeyForProvider(resolved.provider);
+  const lease = await acquireLlmLane({
+    lane,
+    cls: "interactive",
+    taskId: "remix",
+    ...(abortSignal ? { signal: abortSignal } : {}),
+  });
+
   const result = streamText({
     model: await createChatModel(resolved.provider, resolved.modelId, {
       task: "remix",
@@ -104,12 +123,15 @@ export async function runRemixAgentLocally(
     },
   });
 
-  return result.toUIMessageStreamResponse({
-    onError: (error) => {
-      log.error(
-        `Remix agent (BYOK) failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return "Remix failed.";
-    },
-  });
+  return releaseLeaseOnResponseBodyEnd(
+    result.toUIMessageStreamResponse({
+      onError: (error) => {
+        log.error(
+          `Remix agent (BYOK) failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return "Remix failed.";
+      },
+    }),
+    lease,
+  );
 }

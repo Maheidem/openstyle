@@ -13,6 +13,11 @@
 import type { PostProcessParams } from "@openstyle/stt";
 import { postProcess } from "@openstyle/stt";
 import type { LlmTaskId } from "@openstyle/validations";
+import {
+  acquireLlmLane,
+  type LaneLease,
+  llmLaneKeyForProvider,
+} from "../llm/lane.js";
 
 /**
  * Rough token estimate (~4 chars/token), mirroring `@openstyle/stt`
@@ -32,6 +37,11 @@ export interface ChatCallRequest {
    *  through — Summarize and Enhance are the only two meeting features that
    *  share this helper. */
   taskId: Extract<LlmTaskId, "meetingSummarize" | "meetingEnhance">;
+  /** Cancel seam threaded from the meeting job (`activeJobCancellations`).
+   *  A call cancelled while QUEUED never fires (spec §5.7). */
+  shouldStop?: () => boolean;
+  /** Queued-progress seam, threaded to the job blob for the UI. */
+  onQueued?: (info: { waitedMs: number; ahead: number }) => void;
 }
 
 /** What a chat call returns. Token fields are 0 when unknown. */
@@ -77,20 +87,49 @@ export async function resolveDefaultChatCall(
   ) as PostProcessParams["providerOptions"];
 
   let callError: unknown = null;
-  const result = await postProcess({
-    model,
-    text: request.prompt,
-    system: request.system,
-    prompt: request.prompt,
-    temperature: resolved.temperature,
-    maxOutputTokens: resolved.maxOutputTokens,
-    skipEmptyText: false,
-    ...(providerOptions ? { providerOptions } : {}),
-    signal: AbortSignal.timeout(resolved.timeoutMs),
-    onError: (err) => {
-      callError = err;
-    },
+  // Per-CALL lane (§5.2/§5.4): Summarize and Enhance are `background`, so a
+  // map/reduce run of N chunks takes and frees N separate slots and an
+  // interactive dictation cleanup gets every gap between them. Held across
+  // `postProcess` only — never across the meeting, the chunk loop, or the
+  // job. The lease is acquired before the model is even resolved, because the
+  // resolution is what names the endpoint (§5.1: the lane IS the endpoint).
+  const lane = await llmLaneKeyForProvider(resolved.provider);
+  const lease: LaneLease = await acquireLlmLane({
+    lane,
+    cls: "background",
+    taskId: request.taskId,
+    ...(request.shouldStop ? { shouldStop: request.shouldStop } : {}),
+    ...(request.onQueued ? { onQueued: request.onQueued } : {}),
   });
+  let result: Awaited<ReturnType<typeof postProcess>>;
+  try {
+    result = await postProcess({
+      model,
+      text: request.prompt,
+      system: request.system,
+      prompt: request.prompt,
+      temperature: resolved.temperature,
+      maxOutputTokens: resolved.maxOutputTokens,
+      skipEmptyText: false,
+      ...(providerOptions ? { providerOptions } : {}),
+      // Non-streaming call, so this window has to cover the entire generation.
+      // For `meetingSummarize` it is the user-settable
+      // `meeting_summary_timeout_seconds` (default 600 s), resolved fresh in
+      // `task-profiles.ts` -> `taskTimeoutMs()`; `meetingEnhance` keeps its
+      // user-settable `meeting_enhance_timeout_seconds` (default 600 s) for
+      // the same reason — a non-streaming generation on one local worker slot
+      // cannot be bounded by a 60 s guess. Seconds -> ms happens there, once.
+      signal: AbortSignal.timeout(resolved.timeoutMs),
+      onError: (err) => {
+        callError = err;
+      },
+    });
+  } finally {
+    // Released before the `result.model === null` check below, so a failed
+    // call never leaves the lane occupied — that is the difference between a
+    // dead engine stalling one call and a dead engine stalling every call.
+    lease.release();
+  }
   if (result.model === null) {
     throw callError instanceof Error
       ? callError

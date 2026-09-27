@@ -16,8 +16,11 @@ import type {
 } from "@openstyle/validations";
 import {
   BUILTIN_LLM_PRESETS,
+  DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   LLM_PRESET_DENYLIST_KEYS,
   llmParameterPresetsSettingSchema,
+  MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
+  meetingSummaryTimeoutMs,
   parseCleanupSampling,
   parseLlmTaskAssignments,
   SAFE_SUBSET_KEYS,
@@ -48,7 +51,11 @@ export interface LlmTaskProfile {
  * Built-in defaults, per task nature (§3.2). This is a code constant, not a
  * settings row — task *identity* and its *nature* are an engineering
  * decision, not something a preset assignment should be able to silently
- * redefine.
+ * redefine. One exception, by explicit product decision: `meetingSummarize`'s
+ * `timeoutMs` is the *default* behind the user-facing
+ * `meeting_summary_timeout_seconds` setting and is overridden per call by
+ * `taskTimeoutMs()` below — a local inference engine has to be able to widen
+ * the window without a rebuild.
  *
  * `meetingSummarize.maxOutputTokens` is `4096` — the same number as
  * `DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS` (`meetings/summarize.ts:60`), kept as a
@@ -82,7 +89,15 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
     reasoningEnabled: false,
     temperature: 0,
     maxOutputTokens: 4096,
-    timeoutMs: 60_000,
+    /**
+     * Was 60_000, which a local engine cannot meet: the summary call is
+     * non-streaming with a 4096-token output budget (`llm-call.ts`), so 60 s
+     * only covers 600 tokens at 10 tok/s or 2400 at 40 tok/s — i.e. every
+     * real summary timed out. Now the shared default behind the user-facing
+     * `meeting_summary_timeout_seconds` setting; `taskTimeoutMs()` below reads
+     * that setting fresh per call, and this constant is only what "unset" means.
+     */
+    timeoutMs: DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS * 1000,
   },
   meetingEnhance: {
     id: "meetingEnhance",
@@ -92,6 +107,32 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
     timeoutMs: 60_000,
   },
 };
+
+/**
+ * Timeout for one call of `taskId`, read fresh (specs/llm-task-profiles.md
+ * §8.3 — nothing here is cached across requests).
+ *
+ * `meetingSummarize` is the one task a user can bound: a local engine hosted
+ * outside openstyle (llama.cpp / oMLX) needs minutes, not seconds, for a
+ * 4096-token non-streaming generation, so the profile value is a *default*
+ * and `meeting_summary_timeout_seconds` overrides it — read here, on the same
+ * per-call `readSetting` path as every other setting this resolver touches.
+ * Seconds on disk, milliseconds on the wire: `meetingSummaryTimeoutMs()`
+ * (`packages/validations/src/settings.ts`) is the single conversion site, and
+ * folds out-of-bounds or unset values back to the default defensively.
+ *
+ * The other three tasks deliberately keep their code-defined timeouts — scope
+ * of this knob is summarization only. Known asymmetry, deliberately unchanged:
+ * `meetingEnhance` is the same shape of call (non-streaming, per chunk) and
+ * still sits at 60 s, so a slow local engine can time out Enhance while
+ * Summarize succeeds. See the handoff note; not changed here.
+ */
+function taskTimeoutMs(taskId: LlmTaskId, profileTimeoutMs: number): number {
+  if (taskId !== "meetingSummarize") return profileTimeoutMs;
+  return meetingSummaryTimeoutMs(
+    readSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY),
+  );
+}
 
 export interface ResolvedTaskCall {
   provider: string;
@@ -351,7 +392,7 @@ export async function resolveTaskCall(
     maxOutputTokens: Math.max(taskBudget, presetFloor), // §6.2
     reasoningEnabled: profile.reasoningEnabled,
     samplingParams: isLocal ? samplingParams : {},
-    timeoutMs: profile.timeoutMs,
+    timeoutMs: taskTimeoutMs(taskId, profile.timeoutMs),
     cloudPartial,
   };
 }

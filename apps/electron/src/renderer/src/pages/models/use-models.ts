@@ -26,6 +26,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
+import {
+  checkPresetWrite,
+  duplicatePreset,
+  makePresetId,
+  removePresetAndReassign,
+  upsertPreset,
+} from "./preset-ops";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import type {
   EndpointConnectConfig,
@@ -133,7 +140,22 @@ export interface UseModels {
     assignment: LlmTaskAssignment,
   ) => void;
   resetTaskAssignment: (taskId: LlmTaskId) => void;
-  saveUserPreset: (preset: LlmParameterPreset) => void;
+  /** Create or overwrite one preset. Resolves `false` when the write was
+   *  refused (a client-side §4.3 pre-check, or a failed PUT) — local state
+   *  then reflects the pre-mutation array, never the refused one. */
+  saveUserPreset: (preset: LlmParameterPreset) => Promise<boolean>;
+  /** Copy a preset (built-in or the user's own) into a new `user_*` preset.
+   *  Resolves the copy, or `null` when the write was refused. Does NOT change
+   *  any task's assignment — see `duplicateUserPreset`'s comment for why. */
+  duplicateUserPreset: (
+    source: LlmParameterPreset,
+    copyName: string,
+  ) => Promise<LlmParameterPreset | null>;
+  /** Delete one preset and re-point every task that used it at `auto`.
+   *  Assignments are written FIRST, so a dangling `presetId` is structurally
+   *  impossible (§11); a failed assignments PUT aborts the delete. Resolves
+   *  `false` (state unchanged) on any failure. */
+  deleteUserPreset: (presetId: string) => Promise<boolean>;
   deleteProvider: (provider: string) => Promise<void>;
   reload: () => Promise<void>;
 }
@@ -168,6 +190,31 @@ const OMLX_CONFIG: EndpointConnectConfig = {
   clearUrlWhenEmpty: true,
   probe: (client, body) => client.api.settings.omlx.test.$post({ json: body }),
 };
+
+/**
+ * One low-level settings PUT, resolved to a boolean (never rejected).
+ * The preset/assignment write path in `useModels` needs to know whether the
+ * server took the blob — the shape it replaced fired from inside a state
+ * updater and only `console.error`'d on failure, which is how a refused write
+ * came to look like a saved one. `PUT /api/settings/:key` is the ONLY write
+ * surface used here: the DELETE route drops the whole key (§4.3).
+ */
+async function putSettingValue(key: string, value: string): Promise<boolean> {
+  try {
+    const res = await getClient().api.settings[":key"].$put({
+      param: { key },
+      json: { value },
+    });
+    if (!res.ok) {
+      console.warn(`Failed to save setting "${key}": HTTP ${res.status}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`Failed to save setting "${key}":`, err);
+    return false;
+  }
+}
 
 export function useModels(): UseModels {
   const queryClient = useQueryClient();
@@ -255,6 +302,30 @@ export function useModels(): UseModels {
     {},
   );
   const [userPresets, setUserPresets] = useState<LlmParameterPreset[]>([]);
+
+  // Mirror refs of the two settings blobs the preset actions rewrite. The
+  // write path below must read the CURRENT list and then await, so a closure
+  // over render-time state would be a frame stale by the time the PUT
+  // resolves — and `deleteUserPreset` derives both the new presets array and
+  // the rollback array from what it reads.
+  const presetsRef = useRef<LlmParameterPreset[]>(userPresets);
+  const assignmentsRef = useRef<LlmTaskAssignments>(taskAssignments);
+  useEffect(() => {
+    presetsRef.current = userPresets;
+  }, [userPresets]);
+  useEffect(() => {
+    assignmentsRef.current = taskAssignments;
+  }, [taskAssignments]);
+
+  // Keep the settings query honest after a write. The seed effect is one-shot,
+  // so a later remount of this page seeds local state from whatever this cache
+  // holds — leave a stale blob in it and a deleted preset reappears as live
+  // UI while the server no longer has it. Invalidating AFTER the PUT resolves
+  // means the refetch returns what the server actually stored; the one-shot
+  // guard still protects in-flight edits from being re-seeded away.
+  const refreshSettingsCache = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: MODELS_KEYS.settings });
+  }, [queryClient]);
 
   // In-flight deletes — drive spinners on the delete buttons since deletion has
   // no server-reported status the way downloads do.
@@ -642,21 +713,36 @@ export function useModels(): UseModels {
   // Persist one task's sampling assignment. The whole `llm_task_assignments`
   // blob is stored under one setting key (§5.1), so every write rewrites the
   // full map — mirrors `cleanup_sampling`'s old one-blob-per-PUT shape.
-  const putTaskAssignments = useCallback((next: LlmTaskAssignments) => {
-    setTaskAssignments(next);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.llmTaskAssignments },
-        json: { value: JSON.stringify(next) },
-      })
-      .catch((err) => console.error("Failed to save task assignments:", err));
-  }, []);
+  // Optimistic, with a revert if the PUT is refused.
+  const putTaskAssignments = useCallback(
+    (next: LlmTaskAssignments): Promise<boolean> => {
+      const prev = assignmentsRef.current;
+      setTaskAssignments(next);
+      return putSettingValue(
+        SETTINGS_KEYS.llmTaskAssignments,
+        JSON.stringify(next),
+      ).then((ok) => {
+        if (!ok) setTaskAssignments(prev);
+        else refreshSettingsCache();
+        return ok;
+      });
+    },
+    [refreshSettingsCache],
+  );
 
+  // Built from `assignmentsRef.current`, not render-time state: `writePreset`
+  // chains a preset PUT and this assignment PUT across an `await`, so a
+  // closure over `taskAssignments` could rewrite the blob from a snapshot
+  // taken before a concurrent edit to a DIFFERENT task — same discipline as
+  // `deleteUserPreset`'s use of the refs above.
   const saveTaskAssignment = useCallback(
     (taskId: LlmTaskId, assignment: LlmTaskAssignment) => {
-      putTaskAssignments({ ...taskAssignments, [taskId]: assignment });
+      void putTaskAssignments({
+        ...assignmentsRef.current,
+        [taskId]: assignment,
+      });
     },
-    [putTaskAssignments, taskAssignments],
+    [putTaskAssignments],
   );
 
   // Reset clears the task's assignment entirely (back to `{ mode: "auto" }`)
@@ -668,20 +754,145 @@ export function useModels(): UseModels {
     [saveTaskAssignment],
   );
 
+  // -------------------------------------------------------------------------
+  // Parameter preset persistence (§4, §9.3)
+  //
+  // `persistPresets` is the single low-level write: the PUT happens OUTSIDE
+  // any React state updater (the shape it replaced fired the PUT from inside
+  // `setUserPresets(prev => …)`, where StrictMode can run the updater twice,
+  // and swallowed the failure with a `console.error` that left the UI
+  // advertising a preset that was never stored), it awaits, and it resolves
+  // `false` rather than rejecting. Every caller owns its own revert.
+  //
+  // There is deliberately no `DELETE` call: `DELETE /api/settings/:key`
+  // drops the WHOLE key, so removing one preset is a PUT of the array minus
+  // that entry through the same route (§4.3). No server change, no new
+  // surface.
+  // -------------------------------------------------------------------------
+
+  const persistPresets = useCallback(
+    async (next: LlmParameterPreset[]): Promise<boolean> => {
+      // Client mirror of the route's §4.3 rules (id/name/count/params-bytes)
+      // so a refused write shows an inline message instead of a bare 400.
+      if (checkPresetWrite(next)) return false;
+      const ok = await putSettingValue(
+        SETTINGS_KEYS.llmParameterPresets,
+        JSON.stringify({ presets: next }),
+      );
+      if (ok) refreshSettingsCache();
+      return ok;
+    },
+    [refreshSettingsCache],
+  );
+
   // Save (create or overwrite) one named user preset. Built-ins are never
-  // written here (§4.2) — the id regex (`/^user_/`) is enforced server-side.
-  const saveUserPreset = useCallback((preset: LlmParameterPreset) => {
-    setUserPresets((prev) => {
-      const next = [...prev.filter((p) => p.id !== preset.id), preset];
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.llmParameterPresets },
-          json: { value: JSON.stringify({ presets: next }) },
-        })
-        .catch((err) => console.error("Failed to save parameter preset:", err));
-      return next;
-    });
-  }, []);
+  // written here (§4.2) — the id regex (`/^user_/`) is enforced server-side,
+  // and `checkPresetWrite` refuses the same shape before we ever send it.
+  // `updatedAt` is stamped HERE because the server persists the blob verbatim
+  // and never writes that field: a write path that omits it silently lies.
+  // An existing preset's `createdAt` survives an edit.
+  const saveUserPreset = useCallback(
+    async (preset: LlmParameterPreset): Promise<boolean> => {
+      const prev = presetsRef.current;
+      const now = new Date().toISOString();
+      const existing = prev.find((p) => p.id === preset.id);
+      const stamped: LlmParameterPreset = {
+        ...preset,
+        createdAt: existing?.createdAt ?? preset.createdAt ?? now,
+        updatedAt: now,
+      };
+      const next = upsertPreset(prev, stamped);
+      setUserPresets(next);
+      const ok = await persistPresets(next);
+      // Revert to the pre-mutation snapshot on failure. The ref makes `prev`
+      // the list this call started from; preset editors in this panel are
+      // serialised (one open at a time), so there is no concurrent write to
+      // clobber.
+      if (!ok) setUserPresets(prev);
+      return ok;
+    },
+    [persistPresets],
+  );
+
+  // Copy a preset into a new `user_*` preset the user then owns. Deliberately
+  // does NOT re-point any task assignment: a duplicate's params are identical
+  // to its source's, so re-pointing would silently swap which row a task is
+  // pinned to for no behavioural gain — and `NewPresetEditor`'s re-point
+  // (§9.3) is a different case, there the new preset is the draft the user
+  // just typed and leaving it unselected would make their edit invisible.
+  // The user selects the copy in the Params track when they want it live.
+  const duplicateUserPreset = useCallback(
+    async (
+      source: LlmParameterPreset,
+      copyName: string,
+    ): Promise<LlmParameterPreset | null> => {
+      const prev = presetsRef.current;
+      const { presets: next, copy } = duplicatePreset(
+        prev,
+        source,
+        makePresetId(crypto.randomUUID()),
+        { now: new Date().toISOString(), copyName },
+      );
+      setUserPresets(next);
+      const ok = await persistPresets(next);
+      if (!ok) {
+        setUserPresets(prev);
+        return null;
+      }
+      return copy;
+    },
+    [persistPresets],
+  );
+
+  // Delete one preset (§9.3, decision: confirm first, then the affected tasks
+  // fall back to Auto). ORDERING IS THE POINT: `llm_task_assignments` is
+  // written FIRST and only then the presets array, so at no instant does a
+  // stored assignment name a preset that isn't stored — the dangling id the
+  // server tolerates with a warn + auto fallback (§11, §8.3) never exists to
+  // begin with. If the assignments PUT fails we abort and the preset stays.
+  // If the presets PUT fails after the assignments one succeeded, the
+  // assignments rollback restores the tasks; if THAT fails too the residue is
+  // tasks-on-auto pointing at nothing — unused, not dangling.
+  //
+  // `setUserPresets` is load-bearing here, not a nicety: the Params track's
+  // options ARE `userPresets` (`task-profiles-section.tsx` builds
+  // `segmentedOptions` from `[...BUILTIN_LLM_PRESETS, ...userPresets]`), and
+  // the settings seed effect is one-shot (`settingsSeeded`, above), so
+  // `refreshSettingsCache()`'s invalidation repopulates the react-query cache
+  // but NEVER re-seeds this state. A delete that wrote both blobs and skipped
+  // this call therefore kept the dead preset as a permanently deselectable
+  // option for the life of the mount (the v2.7.0 evidence run, step 09).
+  // Same optimistic-set-and-revert shape as `saveUserPreset` /
+  // `duplicateUserPreset`, in the same ORDER as the writes: the task leaves
+  // the preset first, the option disappears second, so the track is never
+  // left with a value that resolves to nothing.
+  const deleteUserPreset = useCallback(
+    async (presetId: string): Promise<boolean> => {
+      const prevPresets = presetsRef.current;
+      const prevAssignments = assignmentsRef.current;
+      const plan = removePresetAndReassign(
+        prevPresets,
+        prevAssignments,
+        presetId,
+      );
+      if (plan.presets.length === prevPresets.length) return false;
+
+      if (!(await putTaskAssignments(plan.assignments))) return false;
+
+      setUserPresets(plan.presets);
+
+      if (!(await persistPresets(plan.presets))) {
+        // Roll back in the reverse order: the option goes back BEFORE the
+        // tasks are re-pointed at it, so no render ever shows an assignment
+        // whose option is missing (the dangling badge flicker).
+        setUserPresets(prevPresets);
+        await putTaskAssignments(prevAssignments);
+        return false;
+      }
+      return true;
+    },
+    [persistPresets, putTaskAssignments],
+  );
 
   const deleteProvider = useCallback(
     async (provider: string) => {
@@ -748,6 +959,8 @@ export function useModels(): UseModels {
     saveTaskAssignment,
     resetTaskAssignment,
     saveUserPreset,
+    duplicateUserPreset,
+    deleteUserPreset,
     deleteProvider,
     reload: loadData,
   };

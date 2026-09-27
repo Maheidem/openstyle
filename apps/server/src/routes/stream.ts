@@ -2,6 +2,7 @@ import { upgradeWebSocket } from "@hono/node-server";
 import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
+import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import {
   getLanguagesSetting,
@@ -277,114 +278,145 @@ const stream = new Hono().get(
           },
           onFinal: async (rawText) => {
             if (upstream !== session) return;
-            rawText = sanitizeTranscriptText(rawText);
+            // Dictation-activity lease for the streaming path (Defect C,
+            // specs/meeting-llm-queue.md §2.6). `beginDictation()` had exactly two
+            // callers in the repo before this (`routes/transcribe.ts`,
+            // `routes/transcribe-file.ts`), so a live dictation on this socket —
+            // including MLX ASR, which is served over exactly this path
+            // (`streaming/providers/mlx-local.ts`) — was invisible to the repo's
+            // only cross-feature arbitration primitive: the meeting transcriber's
+            // whisper-local yield and `diarize.ts`'s ANE yield both read "idle"
+            // while the user was still dictating.
 
-            // Same vocabulary-prompt-echo guard as the REST /api/transcribe
-            // path (specs/meeting-transcription-quality.md Phase A, extended
-            // to dictation). Compare against the terms actually sent for
-            // *this* session's bias.
-            const strippedRawText = stripVocabLeak(
-              rawText,
-              vocabularyBiasTerms(config.bias),
-            );
-            if (strippedRawText !== rawText) {
-              log.info(
-                strippedRawText.trim()
-                  ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
-                  : "dropped dictation output — entirely a vocabulary-prompt echo",
+            // Scoped to finalize + cleanup, never to the connection (spec §6
+            // constraint 6): the WS session lives for the whole recording, and
+            // `waitForDictationIdle` refreshes `lastActiveAt` on every poll that
+            // sees activity — a session-length lease would starve meeting
+            // transcription and diarization for that entire window. The lease is
+            // handed to the cleanup promise chain below (the long pole); every
+            // other exit — the empty-transcript early return, a synchronous throw,
+            // the stale-session return above — releases it in the finally.
+            beginDictation();
+            let leaseHandedToCleanup = false;
+            try {
+              rawText = sanitizeTranscriptText(rawText);
+
+              // Same vocabulary-prompt-echo guard as the REST /api/transcribe
+              // path (specs/meeting-transcription-quality.md Phase A, extended
+              // to dictation). Compare against the terms actually sent for
+              // *this* session's bias.
+              const strippedRawText = stripVocabLeak(
+                rawText,
+                vocabularyBiasTerms(config.bias),
               );
-              rawText = strippedRawText;
-            }
+              if (strippedRawText !== rawText) {
+                log.info(
+                  strippedRawText.trim()
+                    ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
+                    : "dropped dictation output — entirely a vocabulary-prompt echo",
+                );
+                rawText = strippedRawText;
+              }
 
-            // Use commitTime (when the user stopped speaking) to measure only
-            // finalization + cleanup latency, not the entire recording session.
-            const durationMs =
-              commitTime > 0
-                ? Date.now() - commitTime
-                : Date.now() - sessionStartTime;
-            if (!shouldKeepStreamingUpstreamAlive(voice.provider)) {
-              closeUpstreamSession(session);
-            }
+              // Use commitTime (when the user stopped speaking) to measure only
+              // finalization + cleanup latency, not the entire recording session.
+              const durationMs =
+                commitTime > 0
+                  ? Date.now() - commitTime
+                  : Date.now() - sessionStartTime;
+              if (!shouldKeepStreamingUpstreamAlive(voice.provider)) {
+                closeUpstreamSession(session);
+              }
 
-            if (!rawText?.trim()) {
-              ws.send(JSON.stringify({ type: "final", text: "" }));
-              return;
-            }
+              if (!rawText?.trim()) {
+                ws.send(JSON.stringify({ type: "final", text: "" }));
+                return;
+              }
 
-            const useFastHandoff =
-              canStream && voiceDefaults!.provider === "soniox";
-            const sttAfterCommitMs =
-              commitTime > 0 ? Date.now() - commitTime : durationMs;
+              const useFastHandoff =
+                canStream && voiceDefaults!.provider === "soniox";
+              const sttAfterCommitMs =
+                commitTime > 0 ? Date.now() - commitTime : durationMs;
 
-            const cleanup = postProcess(rawText, effectiveAppContext(), {
-              languages: config.languages,
-              source: useFastHandoff
-                ? "streaming_handoff"
-                : canStream
-                  ? "streaming"
-                  : "batch",
-              ...(useFastHandoff ? { includeTimings: true } : {}),
-            });
+              const cleanup = postProcess(rawText, effectiveAppContext(), {
+                languages: config.languages,
+                source: useFastHandoff
+                  ? "streaming_handoff"
+                  : canStream
+                    ? "streaming"
+                    : "batch",
+                ...(useFastHandoff ? { includeTimings: true } : {}),
+              });
 
-            cleanup
-              .then((pp) => {
-                // STT and post-processing run on separate models here, so the
-                // user-perceived latency is commit → cleaned text, not just the
-                // raw transcript. Measure after cleanup resolves. (The Openstyle
-                // Cloud streaming path above already includes cleanup because
-                // the DO returns cleaned text in a single response.)
-                const totalDurationMs =
-                  commitTime > 0 ? Date.now() - commitTime : durationMs;
-                if (LOG_PIPELINE_LATENCY) {
-                  const handoffTimings = pp.timings;
-                  if (handoffTimings) {
-                    const { handoffMs, llmMs } = handoffTimings;
-                    const e2eMs = sttAfterCommitMs + handoffMs + llmMs;
-                    log.info(
-                      `[pipeline] stt=${sttAfterCommitMs}ms handoff=${handoffMs}ms llm=${llmMs}ms e2e=${e2eMs}ms | ${voiceDefaults!.provider}/${voiceDefaults!.model_id} → ${pp.llmModel ?? "—"}`,
-                    );
-                  } else {
-                    log.info(
-                      `[pipeline] session=${totalDurationMs}ms stt_after_commit=${sttAfterCommitMs}ms | ${voiceDefaults!.provider}/${voiceDefaults!.model_id}`,
+              cleanup
+                .then((pp) => {
+                  // STT and post-processing run on separate models here, so the
+                  // user-perceived latency is commit → cleaned text, not just the
+                  // raw transcript. Measure after cleanup resolves. (The Openstyle
+                  // Cloud streaming path above already includes cleanup because
+                  // the DO returns cleaned text in a single response.)
+                  const totalDurationMs =
+                    commitTime > 0 ? Date.now() - commitTime : durationMs;
+                  if (LOG_PIPELINE_LATENCY) {
+                    const handoffTimings = pp.timings;
+                    if (handoffTimings) {
+                      const { handoffMs, llmMs } = handoffTimings;
+                      const e2eMs = sttAfterCommitMs + handoffMs + llmMs;
+                      log.info(
+                        `[pipeline] stt=${sttAfterCommitMs}ms handoff=${handoffMs}ms llm=${llmMs}ms e2e=${e2eMs}ms | ${voiceDefaults!.provider}/${voiceDefaults!.model_id} → ${pp.llmModel ?? "—"}`,
+                      );
+                    } else {
+                      log.info(
+                        `[pipeline] session=${totalDurationMs}ms stt_after_commit=${sttAfterCommitMs}ms | ${voiceDefaults!.provider}/${voiceDefaults!.model_id}`,
+                      );
+                    }
+                  }
+                  if (!closed) {
+                    ws.send(
+                      JSON.stringify({ type: "final", text: pp.cleaned }),
                     );
                   }
-                }
-                if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: pp.cleaned }));
-                }
-                try {
-                  saveProcessedHistory({
-                    rawText,
-                    cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
-                    voiceProvider: voiceDefaults!.provider,
-                    voiceModel: voiceDefaults!.model_id,
-                    llmProvider: pp.llmProvider,
-                    llmModel: pp.llmModel,
-                    durationMs: totalDurationMs,
-                    audioDurationMs,
-                    inputTokens: pp.inputTokens,
-                    outputTokens: pp.outputTokens,
-                    costUsd: pp.costUsd,
-                  });
-                } catch (err) {
-                  log.error(`Failed to save history: ${err}`);
-                }
-              })
-              .catch(() => {
-                if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: rawText }));
-                }
-                try {
-                  saveRawHistory({
-                    rawText,
-                    voiceProvider: voiceDefaults!.provider,
-                    voiceModel: voiceDefaults!.model_id,
-                    durationMs:
-                      commitTime > 0 ? Date.now() - commitTime : durationMs,
-                    audioDurationMs,
-                  });
-                } catch {}
-              });
+                  try {
+                    saveProcessedHistory({
+                      rawText,
+                      cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
+                      voiceProvider: voiceDefaults!.provider,
+                      voiceModel: voiceDefaults!.model_id,
+                      llmProvider: pp.llmProvider,
+                      llmModel: pp.llmModel,
+                      durationMs: totalDurationMs,
+                      audioDurationMs,
+                      inputTokens: pp.inputTokens,
+                      outputTokens: pp.outputTokens,
+                      costUsd: pp.costUsd,
+                    });
+                  } catch (err) {
+                    log.error(`Failed to save history: ${err}`);
+                  }
+                })
+                .catch(() => {
+                  if (!closed) {
+                    ws.send(JSON.stringify({ type: "final", text: rawText }));
+                  }
+                  try {
+                    saveRawHistory({
+                      rawText,
+                      voiceProvider: voiceDefaults!.provider,
+                      voiceModel: voiceDefaults!.model_id,
+                      durationMs:
+                        commitTime > 0 ? Date.now() - commitTime : durationMs,
+                      audioDurationMs,
+                    });
+                  } catch {}
+                })
+                // The cleanup chain owns the lease from here: `.finally` runs whether
+                // cleanup resolved, rejected, or its `.catch` itself threw, so the
+                // counter falls exactly once per raised session.
+                .finally(() => endDictation());
+              leaseHandedToCleanup = true;
+            } finally {
+              if (!leaseHandedToCleanup) endDictation();
+            }
           },
           onError: (message, code) => {
             if (upstream !== session) return;

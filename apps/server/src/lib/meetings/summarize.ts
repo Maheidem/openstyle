@@ -16,6 +16,13 @@
  * off input length, which is wrong for summaries.
  */
 
+import { createAppLogger } from "@openstyle/utils";
+import {
+  DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+  MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
+  meetingSummaryTimeoutMs,
+} from "@openstyle/validations";
+import { readSetting } from "../db.js";
 import { estimateTokens, resolveDefaultChatCall } from "./llm-call.js";
 import type { MergedSegment } from "./merge.js";
 import {
@@ -28,6 +35,8 @@ import {
   withMeetingContext,
   withSummaryInstructions,
 } from "./summary-prompt.js";
+
+const log = createAppLogger("meeting-summarize");
 
 /** Conservative default transcript-context budget (tokens). */
 export const DEFAULT_SUMMARY_CONTEXT_BUDGET_TOKENS = 8000;
@@ -67,6 +76,144 @@ export const DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS = 4096;
 const OVERLAP_FRACTION = 0.1;
 const OVERLAP_MAX_TOKENS = 400;
 
+/**
+ * Hard ceiling on the number of LLM calls one Summarize run may issue
+ * (specs/meeting-llm-queue.md §5.8). Derived, not asserted:
+ *
+ *   fresh transcript per chunk <= budget - overlap = 8,000 - 400 = 7,600 tok
+ *   tokens/hour of speech ~= 12,000  (** an ESTIMATE, ~200 tok/min ** — the
+ *     repo measures no such figure; its only nearby measurement is the
+ *     ~300-400 hidden reasoning tokens per call noted above)
+ *   default  4 h meeting ->  48,000 tok -> ceil(48000/7600)  = 7 map -> 8 calls
+ *   max     24 h meeting -> 144,000 tok -> ceil(144000/7600) = 19 map -> 20 calls
+ *
+ * 24 = 20 rounded up with headroom. It is a BOUND, not a target — the
+ * typical run is 1 call, occasionally 8. Because the token/hour input above is
+ * unverified, exceeding this number must `warn` loudly and fail, never
+ * silently truncate: a silent truncation would turn "your 26-chunk meeting did
+ * not all get summarized" into a summary that quietly omits content.
+ *
+ * The route uses the same constant for its job-level deadline
+ * (`summarizeJobDeadlineMs` below), which is where this bound buys its real
+ * protection: without it, one queued map/reduce run can hold the single local
+ * worker slot for `calls x meeting_summary_timeout_seconds`.
+ */
+export const MAX_SUMMARIZE_CALLS = 24;
+
+/**
+ * How many LLM calls a transcript of `transcriptTokens` will cost at
+ * `budgetTokens` per chunk: 1 for a single pass, else N map chunks + 1
+ * reduce, clamped to {@link MAX_SUMMARIZE_CALLS}. Exported so the route's
+ * job-level ceiling and this guard can never disagree about the count.
+ */
+export function plannedSummarizeCalls(
+  transcriptTokens: number,
+  budgetTokens: number,
+): number {
+  if (transcriptTokens <= budgetTokens) return 1;
+  const freshPerChunk = Math.max(1, budgetTokens - overlapTokens(budgetTokens));
+  const mapChunks = Math.ceil(transcriptTokens / freshPerChunk);
+  return Math.min(mapChunks + 1, MAX_SUMMARIZE_CALLS);
+}
+
+/**
+ * Job-level ceiling for one Summarize run (§5.8), derived in the open:
+ *
+ *   plannedCalls = min(N + 1, MAX_SUMMARIZE_CALLS)   // N map + 1 reduce; 1 single-pass
+ *   deadline     = clamp(perCallMs x plannedCalls x slack,
+ *                        2 x perCallMs, 4 h)
+ *
+ * `slack` defaults to 1. The `2 x perCallMs` FLOOR exists so a single call
+ * that merely *hits* its own timeout does not kill the job on first attempt —
+ * same posture as `transcriber.ts:267`'s `maxAttempts ?? 3`. Worked example
+ * with the shipped defaults (per-call 600 s):
+ *
+ *   single pass, default      planned 1  -> 1200 s            (floor wins)
+ *   4 h meeting, default      planned 8  -> 4800 s  (80 min)
+ *   worst legal, default      planned 24 -> 14400 s = 4 h    (the clamp)
+ *   worst legal, min timeout  planned 24 @ 30 s -> 720 s
+ *
+ * The 4 h clamp numerically coincides with `DEFAULT_MEETING_MAX_DURATION_HOURS
+ * = 4`. That is a coincidence — do not read a derivation link into it and do
+ * not couple them.
+ */
+export function summarizeJobDeadlineMs(
+  perCallMs: number,
+  plannedCalls: number,
+  slack = 1,
+): number {
+  const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+  const raw = perCallMs * Math.max(1, plannedCalls) * slack;
+  return Math.min(Math.max(raw, 2 * perCallMs), FOUR_HOURS_MS);
+}
+
+/**
+ * Per-call timeout the job's calls will actually use, read fresh from the
+ * same setting `taskTimeoutMs()` (`llm/task-profiles.ts`) reads for the call
+ * itself — the ceiling and the calls it bounds must not disagree. Falls back
+ * to the profile default when the setting is unset/out of bounds, which
+ * `meetingSummaryTimeoutMs()` already folds in defensively.
+ */
+function summarizePerCallTimeoutMs(): number {
+  try {
+    return meetingSummaryTimeoutMs(
+      readSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY),
+    );
+  } catch {
+    return DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS * 1000;
+  }
+}
+
+/** What one Summarize run is budgeted for (§5.8). */
+export interface SummarizeJobPlan {
+  /** Transcript size after blank-text drops, in estimated tokens. */
+  transcriptTokens: number;
+  /** Context budget per call, from settings. */
+  contextBudgetTokens: number;
+  /** Per-call timeout in force on the wire right now. */
+  perCallMs: number;
+  /** §5.8 `plannedCalls` — 1 single-pass, else min(N + 1, 24). */
+  plannedCalls: number;
+  /** §5.8 job ceiling in ms, derived from `plannedCalls` and `perCallMs`. */
+  deadlineMs: number;
+}
+
+/**
+ * Derive the job-level ceiling for one Summarize run from the transcript it
+ * is about to send. Exported for the route (`runSummarizeJob`); the actual
+ * call count still comes from `chunkTranscript`, and
+ * `summarizeMeeting`'s own `MAX_SUMMARIZE_CALLS` guard is what fails a
+ * transcript that exceeds the bound — this derives the wait, it does not
+ * truncate anything.
+ */
+export async function summarizeJobPlan(
+  segments: readonly MergedSegment[],
+): Promise<SummarizeJobPlan> {
+  const contextBudgetTokens = await resolveContextBudget();
+  const perCallMs = summarizePerCallTimeoutMs();
+  const transcriptTokens = estimateTokens(renderTranscript(segments));
+  const plannedCalls = plannedSummarizeCalls(
+    transcriptTokens,
+    contextBudgetTokens,
+  );
+  return {
+    transcriptTokens,
+    contextBudgetTokens,
+    perCallMs,
+    plannedCalls,
+    deadlineMs: summarizeJobDeadlineMs(perCallMs, plannedCalls),
+  };
+}
+
+/** Overlap budget for one chunk — shared by the chunker and the call-count
+ *  math above so the two cannot drift apart. */
+function overlapTokens(budgetTokens: number): number {
+  return Math.min(
+    OVERLAP_MAX_TOKENS,
+    Math.floor(budgetTokens * OVERLAP_FRACTION),
+  );
+}
+
 /** One LLM request issued by the summarizer. */
 export interface SummaryLlmRequest {
   system: string;
@@ -104,6 +251,21 @@ export interface SummarizeMeetingOptions {
   maxOutputTokens?: number;
   /** Override the LLM call (tests, alternate backends). */
   llmCall?: SummaryLlmCall;
+  /** Cancel seam (§5.7): polled before each map/reduce call goes on the wire,
+   *  so a cancelled summarize stops between chunks without touching the row. */
+  shouldStop?: () => boolean;
+  /** Queue-progress seam (§5.5): fired when a call has to wait for the LLM
+   *  lane, so the job blob can surface "queued" to the renderer. */
+  onQueued?: (info: { waitedMs: number; ahead: number }) => void;
+  /** Call-progress seam: fired after each completed call with the running
+   *  plan, so the async job behind POST /:id/summarize can render
+   *  `done`/`total` in the polled job blob (the transcribe job gets this
+   *  from `TranscriberDeps.onProgress`; the summarizer had no equivalent).
+   *  `total` is the real call count for THIS transcript (1 single-pass, or
+   *  N map + 1 reduce), which is not necessarily the ceiling the job
+   *  derived up front (`plannedSummarizeCalls` clamps to
+   *  {@link MAX_SUMMARIZE_CALLS}). */
+  onProgress?: (p: { done: number; total: number }) => void;
   /**
    * User-authored instructions appended to the summary system prompt.
    * Defaults to the persisted `meeting_summary_instructions` setting when
@@ -138,6 +300,20 @@ export interface SummarizeMeetingResult {
  * resolution site (§4); a "Them" segment with no `speakerLabel` at all
  * renders "Unidentified" — never bare "Them", which would read as a real,
  * still-unnamed participant. */
+/**
+ * Render a transcript the way every caller of this module measures and sends
+ * it: blank-text segments dropped, one `Label: text` line per segment.
+ * Extracted so `summarizeMeeting` and the route's job-level ceiling
+ * (`summarizeJobPlan` below) count the SAME string — two approximations of
+ * "how big is this transcript" is exactly how a bound stops being a bound.
+ */
+function renderTranscript(segments: readonly MergedSegment[]): string {
+  return segments
+    .filter((s) => s.text.trim().length > 0)
+    .map(formatSegment)
+    .join("\n");
+}
+
 function formatSegment(segment: MergedSegment): string {
   const label =
     segment.speaker === "Them"
@@ -160,10 +336,7 @@ export function chunkTranscript(
 ): string[] {
   const lines = segments.map(formatSegment);
   const lineTokens = lines.map((l) => estimateTokens(l) + 1); // +1 for the newline
-  const overlapBudget = Math.min(
-    OVERLAP_MAX_TOKENS,
-    Math.floor(budgetTokens * OVERLAP_FRACTION),
-  );
+  const overlapBudget = overlapTokens(budgetTokens);
 
   const chunks: string[] = [];
   let index = 0;
@@ -202,8 +375,18 @@ export function chunkTranscript(
  * `resolveDefaultChatCall` directly as `SummaryLlmCall`) so injecting
  * `llmCall` (tests) never touches the database or provider SDKs.
  */
-const defaultLlmCall: SummaryLlmCall = (request) =>
-  resolveDefaultChatCall({ ...request, taskId: "meetingSummarize" });
+const defaultLlmCallFor =
+  (options: SummarizeMeetingOptions): SummaryLlmCall =>
+  (request) =>
+    resolveDefaultChatCall({
+      ...request,
+      taskId: "meetingSummarize",
+      // Cancel + queue-progress seams (§5.5/§5.7), threaded from the job so a
+      // cancel landing while a map/reduce call is still QUEUED stops it before
+      // the request ever goes out.
+      ...(options.shouldStop ? { shouldStop: options.shouldStop } : {}),
+      ...(options.onQueued ? { onQueued: options.onQueued } : {}),
+    });
 
 /** Resolve the context budget from settings when no option is given. */
 async function resolveContextBudget(): Promise<number> {
@@ -250,7 +433,7 @@ export async function summarizeMeeting(
   segments: readonly MergedSegment[],
   options: SummarizeMeetingOptions = {},
 ): Promise<SummarizeMeetingResult> {
-  const llmCall = options.llmCall ?? defaultLlmCall;
+  const llmCall = options.llmCall ?? defaultLlmCallFor(options);
   const maxOutputTokens =
     options.maxOutputTokens ?? DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS;
 
@@ -281,6 +464,12 @@ export async function summarizeMeeting(
   let llmModel: string | null = null;
   let pricing: { input: number; output: number } | null = null;
 
+  // Running call count for the polled job blob (see SummarizeMeetingOptions
+  // .onProgress). `totalCalls` is 1 until the map/reduce branch knows the
+  // real chunk count; a single-pass run never changes it.
+  let callsDone = 0;
+  let totalCalls = 1;
+
   const call = async (request: SummaryLlmRequest): Promise<string> => {
     const response = await llmCall(request);
     inputTokens += response.inputTokens;
@@ -288,10 +477,11 @@ export async function summarizeMeeting(
     llmProvider = response.provider ?? llmProvider;
     llmModel = response.model ?? llmModel;
     pricing = response.pricing ?? pricing;
+    options.onProgress?.({ done: ++callsDone, total: totalCalls });
     return response.text;
   };
 
-  const transcript = withText.map(formatSegment).join("\n");
+  const transcript = renderTranscript(withText);
   let markdown: string;
 
   if (estimateTokens(transcript) <= contextBudgetTokens) {
@@ -309,8 +499,30 @@ export async function summarizeMeeting(
     });
   } else {
     const chunks = chunkTranscript(withText, contextBudgetTokens);
+    // The bound fires LOUDLY rather than truncating (§5.8/§7): the
+    // token-per-hour figure behind MAX_SUMMARIZE_CALLS is an estimate, so a
+    // transcript that exceeds it is a thing the user must be told about, not
+    // a thing quietly omitted from their summary. Failing here also means no
+    // partial summary is written — fail-closed, never a summary that looks
+    // complete and is not.
+    if (chunks.length + 1 > MAX_SUMMARIZE_CALLS) {
+      log.warn(
+        `transcript exceeds the bounded summarize budget: ${chunks.length} map chunks + 1 reduce > ${MAX_SUMMARIZE_CALLS} calls`,
+      );
+      throw new Error(
+        `transcript exceeds the bounded summarize budget (${chunks.length} map chunks + 1 reduce > ${MAX_SUMMARIZE_CALLS} calls)`,
+      );
+    }
     const partials: string[] = [];
+    totalCalls = chunks.length + 1;
     for (let i = 0; i < chunks.length; i++) {
+      // Cancel between map chunks (§5.7). Only the LLM call site checks the
+      // seam today — `shouldStop` reaches `acquireLlmLane`, where a call
+      // still QUEUED is dropped before it goes on the wire — so the
+      // summarizer's own loop stops as soon as a lane wait is cancelled.
+      if (options.shouldStop?.()) {
+        throw new Error("Summarize cancelled before the next chunk");
+      }
       partials.push(
         await call({
           system: withMeetingContext(

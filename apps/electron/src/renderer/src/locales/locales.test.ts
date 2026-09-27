@@ -124,6 +124,123 @@ describe("locale files", () => {
     });
   }
 
+  // Keys introduced by preset management on the Models page (edit params /
+  // rename / duplicate / delete, specs/llm-task-profiles.md §9.3). Every
+  // locale carries them — they render on the only surface where a preset can
+  // be destroyed, so a missing translation is a missing warning.
+  const PRESET_ACTION_KEYS = [
+    "models.taskProfiles.editParams",
+    "models.taskProfiles.rename",
+    "models.taskProfiles.duplicate",
+    "models.taskProfiles.deletePreset",
+    "models.taskProfiles.deletePresetAria",
+    "models.taskProfiles.deletePresetTitle",
+    "models.taskProfiles.deletePresetMsg",
+    "models.taskProfiles.deletePresetNoTasksMsg",
+    "models.taskProfiles.presetBuiltin",
+    "models.taskProfiles.presetYours",
+    "models.taskProfiles.builtinAutoCopyNote",
+    "models.taskProfiles.renameBuiltinNote",
+    "models.taskProfiles.saveCopy",
+    "models.taskProfiles.presetCopyName",
+    "models.taskProfiles.presetMissingBadge",
+    "models.taskProfiles.presetMissingNote",
+    "models.taskProfiles.presetCountMax",
+    "models.taskProfiles.presetSaveFailed",
+    "models.taskProfiles.presetDeleteFailed",
+  ];
+
+  for (const file of ["template.json", ...localeFiles]) {
+    it(`${file}: carries the preset-management keys with intact placeholders`, () => {
+      const flat = flatten(load(file));
+      const en = flatten(load("en.json"));
+      for (const key of PRESET_ACTION_KEYS) {
+        expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+        expect(
+          placeholders(flat[key]),
+          `${file} "${key}" placeholders differ from en.json`,
+        ).toEqual(placeholders(en[key]));
+      }
+    });
+  }
+
+  // Keys introduced by the `meeting_summary_timeout_seconds` setting — the one
+  // knob that decides whether a local inference engine gets to finish a
+  // summary at all. Settings → Data, so every locale carries them, and the
+  // range/invalid copy interpolates {{min}}/{{max}} from the shared bounds.
+  const SUMMARY_TIMEOUT_KEYS = [
+    "settings.data.summaryTimeout",
+    "settings.data.summaryTimeoutDesc",
+    "settings.data.summaryTimeoutSeconds",
+    "settings.data.summaryTimeoutRange",
+    "settings.data.summaryTimeoutInvalid",
+  ];
+
+  for (const file of ["template.json", ...localeFiles]) {
+    it(`${file}: carries the meeting-summary-timeout keys with intact placeholders`, () => {
+      const flat = flatten(load(file));
+      const en = flatten(load("en.json"));
+      for (const key of SUMMARY_TIMEOUT_KEYS) {
+        expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+        expect(
+          placeholders(flat[key]),
+          `${file} "${key}" placeholders differ from en.json`,
+        ).toEqual(placeholders(en[key]));
+      }
+    });
+  }
+
+  // Keys introduced by the fix for that control's runtime defects — commit on
+  // blur (not per keystroke), an explicit Reset to default, an honest hint for
+  // stripped input, and a visible failed-write state. Same rule as above:
+  // Settings → Data is a primary surface, so every locale carries them.
+  const SUMMARY_TIMEOUT_COMMIT_KEYS = [
+    "settings.data.summaryTimeoutReset",
+    "settings.data.summaryTimeoutSaveFailed",
+    "settings.data.summaryTimeoutStripped",
+  ];
+
+  for (const file of ["template.json", ...localeFiles]) {
+    it(`${file}: carries the summary-timeout commit keys with intact placeholders`, () => {
+      const flat = flatten(load(file));
+      const en = flatten(load("en.json"));
+      for (const key of SUMMARY_TIMEOUT_COMMIT_KEYS) {
+        expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+        expect(
+          placeholders(flat[key]),
+          `${file} "${key}" placeholders differ from en.json`,
+        ).toEqual(placeholders(en[key]));
+      }
+    });
+  }
+
+  // Keys introduced by async Summarize (specs/meeting-llm-queue.md §5.6–§5.7):
+  // the queued/running/cancelled states of the background summarize job. The
+  // progress card is a primary surface — a summarize that looks frozen on a
+  // saturated local engine is indistinguishable from a hang without them — so
+  // every locale carries them.
+  const SUMMARIZE_JOB_KEYS = [
+    "meetings.summarizeQueued",
+    "meetings.summarizeQueuedAhead",
+    "meetings.cancelSummarize",
+    "meetings.cancellingSummarize",
+    "meetings.summarizeCancelled",
+  ];
+
+  for (const file of ["template.json", ...localeFiles]) {
+    it(`${file}: carries the async-summarize job keys with intact placeholders`, () => {
+      const flat = flatten(load(file));
+      const en = flatten(load("en.json"));
+      for (const key of SUMMARIZE_JOB_KEYS) {
+        expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+        expect(
+          placeholders(flat[key]),
+          `${file} "${key}" placeholders differ from en.json`,
+        ).toEqual(placeholders(en[key]));
+      }
+    });
+  }
+
   // Guardrail for the section this change touched: any meetings.* key a
   // locale carries must preserve en.json's placeholders for that key. (This
   // is intentionally scoped to meetings.* — other sections have pre-existing

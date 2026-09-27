@@ -14,7 +14,9 @@ import {
   llmParameterPresetsSettingSchema,
   llmTaskAssignmentSchema,
   localLlmConfigSchema,
+  MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
   meetingSummaryInstructionsSchema,
+  meetingSummaryTimeoutSecondsSettingSchema,
   normalizeOmlxRoot,
   omlxBaseUrlSchema,
   omlxConfigSchema,
@@ -294,6 +296,23 @@ const settings = new Hono()
           {
             error:
               parsed.error.issues[0]?.message ?? "Invalid history retention",
+          },
+          400,
+        );
+      }
+    } else if (key === MEETING_SUMMARY_TIMEOUT_SETTING_KEY) {
+      // Stored in seconds, bounded 30-3600 — the arithmetic lives in
+      // `packages/validations/src/settings.ts`. Empty is valid and means
+      // "no preference" (the resolver uses its default); anything else out of
+      // bounds is a 400 rather than a row that is stored and silently ignored,
+      // so the UI can name the bound instead of lying about saving.
+      const parsed = meetingSummaryTimeoutSecondsSettingSchema.safeParse(
+        body.value,
+      );
+      if (!parsed.success) {
+        return c.json(
+          {
+            error: parsed.error.issues[0]?.message ?? "Invalid summary timeout",
           },
           400,
         );

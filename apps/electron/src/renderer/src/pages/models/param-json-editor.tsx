@@ -1,3 +1,4 @@
+import { LLM_PRESET_NAME_MAX } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Textarea } from "@renderer/components/ui/textarea";
@@ -18,8 +19,8 @@ export function ParamJsonEditor({
   value,
   onChange,
   onClose,
-  readOnly,
-  onDuplicate,
+  saveLabel,
+  saving,
 }: {
   /** `undefined` when editing a task's inline Custom JSON (no name field). */
   name?: string;
@@ -28,9 +29,15 @@ export function ParamJsonEditor({
   /** Called only with valid, parsed JSON — never with a malformed draft. */
   onChange: (next: Record<string, unknown>) => void;
   onClose: () => void;
-  /** True for a `builtin:*` preset (§4.2) — shows "Duplicate to edit" instead of Save. */
-  readOnly?: boolean;
-  onDuplicate?: () => void;
+  /** Overrides the Save label. Used when saving does not overwrite what the
+   *  user was looking at — "Save as copy" for a `builtin:*` preset (§4.2). */
+  saveLabel?: string;
+  /** In-flight write from the caller. Built-ins are auto-copied by the
+   *  caller (§4.2, §9.3), so this editor is ALWAYS editable — there is no
+   *  read-only variant. Default `false` keeps non-writing callers (a task's
+   *  inline Custom JSON) inert; while `true` both buttons are disabled, so
+   *  neither a second Save nor a dismiss can land mid-write. */
+  saving?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const [draft, setDraft] = useState(() => JSON.stringify(value, null, 2));
@@ -68,6 +75,9 @@ export function ParamJsonEditor({
     validate(raw);
   };
 
+  // `saving` guards the write: the caller's save is optimistic with a revert
+  // from a ref snapshot that mirrors state one commit late, so a double-click
+  // or a mid-write dismiss can clobber the rollback (§9.3).
   const onSave = (): void => {
     const parsed = validate(draft);
     if (parsed) onChange(parsed);
@@ -83,8 +93,7 @@ export function ParamJsonEditor({
           <Input
             value={name}
             onChange={(e) => onNameChange?.(e.target.value)}
-            disabled={readOnly}
-            maxLength={60}
+            maxLength={LLM_PRESET_NAME_MAX}
           />
         </div>
       )}
@@ -93,7 +102,6 @@ export function ParamJsonEditor({
         className="mono min-h-40 text-[12.5px]"
         value={draft}
         onChange={(e) => onDraftChange(e.target.value)}
-        readOnly={readOnly}
         aria-invalid={error ? true : undefined}
         spellCheck={false}
       />
@@ -102,18 +110,17 @@ export function ParamJsonEditor({
       )}
 
       <div className="flex items-center justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
           {t("common.cancel")}
         </Button>
-        {readOnly ? (
-          <Button variant="ink" size="sm" onClick={onDuplicate}>
-            {t("models.taskProfiles.duplicateToEdit")}
-          </Button>
-        ) : (
-          <Button variant="ink" size="sm" onClick={onSave} disabled={!!error}>
-            {t("common.save")}
-          </Button>
-        )}
+        <Button
+          variant="ink"
+          size="sm"
+          onClick={onSave}
+          disabled={!!error || saving}
+        >
+          {saveLabel ?? t("common.save")}
+        </Button>
       </div>
     </div>
   );

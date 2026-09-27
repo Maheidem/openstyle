@@ -1,6 +1,7 @@
 import {
   BUILTIN_LLM_PRESETS,
   cleanupSamplingSchema,
+  DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   type LlmTaskAssignments,
 } from "@openstyle/validations";
 import { generateText } from "ai";
@@ -101,7 +102,11 @@ describe("LLM_TASK_PROFILES (§3.2)", () => {
       reasoningEnabled: false,
       temperature: 0,
       maxOutputTokens: 4096,
-      timeoutMs: 60_000,
+      // Was 60_000. A non-streaming call with a 4096-token output budget needs
+      // ~102-819 s at realistic local decode speeds, so 60 s timed out every
+      // real summary. This is now the *default* behind the user-settable
+      // `meeting_summary_timeout_seconds` — see `taskTimeoutMs()`.
+      timeoutMs: DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS * 1000,
     });
     expect(LLM_TASK_PROFILES.meetingEnhance).toEqual({
       id: "meetingEnhance",

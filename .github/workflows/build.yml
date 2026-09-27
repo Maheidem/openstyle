@@ -222,6 +222,16 @@ jobs:
         working-directory: apps/electron
         run: node scripts/check-bundled-requires.mjs
 
+      # Emitted renderer HTML must reference assets root-absolute (/assets/…).
+      # electron-vite clobbers renderer base to './' in production; the
+      # enforce:'post' rendererRootBaseUrl plugin in electron.vite.config.ts is
+      # what restores '/' — if an upgrade defeats it, deep routes go blank with
+      # no error and no failing test. See
+      # apps/electron/scripts/check-renderer-asset-urls.mjs.
+      - name: Guard root-absolute renderer asset URLs
+        working-directory: apps/electron
+        run: node scripts/check-renderer-asset-urls.mjs
+
       - name: Run Electron E2E tests
         timeout-minutes: 5
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @openstyle/electron run test:e2e

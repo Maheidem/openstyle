@@ -36,7 +36,10 @@ import {
 } from "../lib/meetings/merge.js";
 import { mergeSegmentsToward, segmentPcm } from "../lib/meetings/segmenter.js";
 import { resolveSpeakerNames } from "../lib/meetings/speaker-names.js";
-import { summarizeMeeting } from "../lib/meetings/summarize.js";
+import {
+  summarizeJobPlan,
+  summarizeMeeting,
+} from "../lib/meetings/summarize.js";
 import {
   type ChunkResult,
   createDefaultTranscriberDeps,
@@ -80,16 +83,38 @@ export interface MeetingJobProgress {
   done: number;
   total: number;
   failed: number;
+  /** Set while one of the job's LLM calls is waiting for its lane
+   * (specs/meeting-llm-queue.md §5.5). Only ever written by the summarize
+   * job, which owns its blob outright — a transcribe job's blob is replaced
+   * wholesale by `TranscriberDeps.onProgress`, so it never carries this. */
+  queued?: { ahead: number; sinceMs: number } | null;
 }
+
+/** Which kind of job last failed for a meeting, and why. Lives beside
+ * `activeJobs` because the job blob is deleted in the job's `finally` — a
+ * renderer polling at 1 s cannot reliably catch a terminal `job.error` in the
+ * gap between the last running poll and the deletion, and
+ * `meetings.error` is off-limits for these failures (spec §6 constraint 3:
+ * it is the *chunk-failure* banner). Survives until the next claim of the
+ * same slot (or a successful run clears it), so a re-summarize never shows a
+ * stale failure. Bounded by the number of meetings that failed to summarize
+ * in this process — nothing durable, dies with the app like the queue. */
+const jobFailures = new Map<string, string>();
 
 const activeJobs = new Map<string, MeetingJobProgress>();
 
-/** What kind of job holds a meeting's activeJobs slot. Only transcription
- * jobs (a full re-transcribe or a retry-failed pass) are cancellable via
- * POST /:id/cancel-transcribe; the diarize pass claims the same concurrency
- * slot (shared-ANE-resource exclusion) but is a bounded, in-request
- * local-model run that ignores the cancellation flag. */
-type MeetingJobKind = "transcribe" | "retry-failed" | "diarize";
+/** What kind of job holds a meeting's activeJobs slot. Transcription jobs (a
+ * full re-transcribe or a retry-failed pass) and the async Summarize job are
+ * cancellable via POST /:id/cancel-transcribe; the diarize pass claims the
+ * same concurrency slot (shared-ANE-resource exclusion) but is a bounded,
+ * in-request local-model run that ignores the cancellation flag, and Enhance
+ * is an in-request pass with no stop seam of its own. */
+type MeetingJobKind =
+  | "transcribe"
+  | "retry-failed"
+  | "diarize"
+  | "summarize"
+  | "enhance";
 
 /** Kind of the job holding each activeJobs slot (set/cleared alongside it). */
 const activeJobKinds = new Map<string, MeetingJobKind>();
@@ -113,9 +138,9 @@ interface MeetingsTestOverrides {
    * exercises the route's pre-flight check, the real run, and the
    * follow-up count query together. */
   diarizeDeps?: DiarizeDeps;
-  /** Phase C (specs/meeting-transcription-quality.md §6): injected LLM-call
-   * dependency for POST /:id/enhance and the auto-run call site inside
-   * runTranscribeJob, so route tests never touch a real LLM provider. */
+  /** Injected LLM-call dependency for POST /:id/enhance and the auto-run call
+   * site inside runTranscribeJob, so route tests never touch a real LLM
+   * provider. */
   enhance?: typeof enhanceMeetingTranscript;
 }
 let testOverrides: MeetingsTestOverrides = {};
@@ -535,6 +560,122 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
   }
 }
 
+/**
+ * The background Summarize job for one meeting (specs/meeting-llm-queue.md
+ * §5.6). Modelled directly on `runTranscribeJob` above — same shape: never
+ * throws, owns its `activeJobs` blob, releases the slot (and its kind and its
+ * cancellation flag) in a `finally`.
+ *
+ * Failures go to `job.error` and the out-of-band `jobFailures` map, NEVER to
+ * `meetings.error` (spec §6 constraint 3): that column is the chunk-failure /
+ * cancel banner the renderer renders as a transcript-integrity warning, and a
+ * summarize failure would overwrite it. The `INSERT OR REPLACE` below stays
+ * after the calls succeed, so a failed or cancelled run writes no summary and
+ * leaves the transcript and every already-persisted segment untouched — there
+ * is no partial/echo summary to fail open into (`llm-call.ts` keeps
+ * `result.model === null -> throw`).
+ */
+async function runSummarizeJob(
+  id: string,
+  merged: MergedSegment[],
+  meetingContext?: string,
+): Promise<void> {
+  const db = getDb();
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    // §5.8 ceiling, derived before the first call so the bound is in force
+    // for the whole run:
+    //   plannedCalls = min(N + 1, MAX_SUMMARIZE_CALLS)   // N map + 1 reduce
+    //   deadlineMs   = clamp(perCallMs x plannedCalls x slack(1),
+    //                        2 x perCallMs, 4 h)
+    // with perCallMs the `meeting_summary_timeout_seconds` value the calls
+    // themselves will use (default 600 s -> 1,200 s single-pass floor, 14,400
+    // s = the 4 h clamp at the 24-call worst case). Per-call timeouts bound
+    // one generation; nothing else here bounds a run.
+    const plan = await summarizeJobPlan(merged);
+    activeJobs.set(id, { done: 0, total: plan.plannedCalls, failed: 0 });
+
+    const summarize = testOverrides.summarize ?? summarizeMeeting;
+    // Race the run against its own ceiling rather than threading a signal
+    // through the summarizer: the summarizer's per-call timeouts do the
+    // aborting, this only guarantees the job cannot outlive its budget and
+    // hold the lane's slot (and the UI's hope) forever.
+    const summary = await Promise.race([
+      summarize(merged, {
+        ...(meetingContext !== undefined ? { meetingContext } : {}),
+        // §5.7: polled between map chunks, and honoured inside
+        // `acquireLlmLane` — a call still QUEUED when the user cancels never
+        // goes on the wire.
+        shouldStop: () => activeJobCancellations.has(id),
+        onQueued: (info) => {
+          const cur = activeJobs.get(id);
+          if (!cur) return;
+          activeJobs.set(id, {
+            ...cur,
+            queued: { ahead: info.ahead, sinceMs: info.waitedMs },
+          });
+        },
+        onProgress: (p) => {
+          const cur = activeJobs.get(id);
+          if (!cur) return;
+          activeJobs.set(id, { ...cur, done: p.done, total: p.total });
+        },
+      }),
+      new Promise<never>((_, reject) => {
+        deadlineTimer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Summarize exceeded its ${Math.round(plan.deadlineMs / 1000)}s job ceiling`,
+              ),
+            ),
+          plan.deadlineMs,
+        );
+      }),
+    ]);
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+
+    db.prepare(
+      `INSERT OR REPLACE INTO meeting_summaries
+         (meeting_id, markdown, llm_provider, llm_model, input_tokens,
+          output_tokens, cost_usd, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      summary.markdown,
+      summary.llmProvider,
+      summary.llmModel,
+      summary.inputTokens,
+      summary.outputTokens,
+      summary.costUsd,
+      Date.now(),
+    );
+    db.prepare("UPDATE meetings SET status = 'summarized' WHERE id = ?").run(
+      id,
+    );
+    jobFailures.delete(id);
+    log.info(
+      `meeting ${id}: summarized (${summary.llmProvider ?? "?"}/${summary.llmModel ?? "?"}, ${summary.inputTokens} in / ${summary.outputTokens} out)`,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // A cancel that landed mid-run reads as a cancellation, not a failure of
+    // the model — same canonical wording as the transcribe job's.
+    const text = activeJobCancellations.has(id) ? "Cancelled by user" : message;
+    jobFailures.set(id, text);
+    if (activeJobCancellations.has(id)) {
+      log.info(`meeting ${id}: summarize cancelled by user`);
+    } else {
+      log.error(`meeting ${id}: summarize failed: ${text}`);
+    }
+  } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+    activeJobs.delete(id);
+    activeJobKinds.delete(id);
+    activeJobCancellations.delete(id);
+  }
+}
+
 export interface MeetingRow {
   id: string;
   title: string | null;
@@ -784,6 +925,10 @@ const meetings = new Hono()
     db.prepare("DELETE FROM meeting_speakers WHERE meeting_id = ?").run(id);
     activeJobs.set(id, { done: 0, total: 0, failed: 0 });
     activeJobKinds.set(id, "transcribe");
+    // A full re-transcribe supersedes any earlier background-job failure —
+    // without this, a stale "Summary failed" note would keep rendering next to
+    // a brand-new transcription run.
+    jobFailures.delete(id);
     void runTranscribeJob(id, row.audio_dir);
     return c.json({ ok: true, id }, 202);
   })
@@ -802,9 +947,15 @@ const meetings = new Hono()
     const row = db.prepare("SELECT id FROM meetings WHERE id = ?").get(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     // A diarize pass holds the slot without being cancellable — it's a
-    // bounded in-request local-model run, not a chunked STT job.
+    // bounded in-request local-model run, not a chunked STT job. Same for an
+    // in-request /enhance (no stop seam of its own). The async summarize job
+    // IS cancellable: its `shouldStop` seam is the same flag (§5.7).
     const kind = activeJobKinds.get(id);
-    if (kind !== "transcribe" && kind !== "retry-failed") {
+    if (
+      kind !== "transcribe" &&
+      kind !== "retry-failed" &&
+      kind !== "summarize"
+    ) {
       return c.json({ error: "No transcription job is running" }, 409);
     }
     activeJobCancellations.add(id);
@@ -1244,10 +1395,13 @@ const meetings = new Hono()
       return c.json({ ok: true });
     },
   )
-  // Summarize the merged transcript and persist it. Runs in-request: the
-  // renderer awaits the call (retries are cheap and progress is one LLM call
-  // for typical meetings).
-  .post("/:id/summarize", async (c) => {
+  // Summarize the merged transcript. 202 + background job + poll (spec
+  // §5.6): the call used to run in-request, which held an HTTP connection —
+  // and the renderer's whole click — open for up to `calls x 600 s` of local
+  // inference. Same contract as POST /:id/transcribe: claim the shared
+  // concurrency slot before the first await, kick the job, poll GET /:id for
+  // `job` (progress/queued) and for the persisted `summary`.
+  .post("/:id/summarize", (c) => {
     const id = c.req.param("id");
     const db = getDb();
     const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
@@ -1257,39 +1411,27 @@ const meetings = new Hono()
     if (row.status !== "transcribed" && row.status !== "summarized") {
       return c.json({ error: "Meeting has no transcript to summarize" }, 409);
     }
+    // Same shared concurrency map /transcribe, /retry-failed, /diarize and
+    // /enhance check — and the guard that closes spec §2.4: this route used to
+    // check nothing, so two double-clicks ran two map/reduce runs and the
+    // second one's INSERT OR REPLACE clobbered the first.
+    if (activeJobs.has(id)) {
+      return c.json({ error: "A job is already running" }, 409);
+    }
     const merged = loadMergedTranscript(id, row.audio_dir);
     if (merged.length === 0) {
       return c.json({ error: "Transcript is empty" }, 409);
     }
-    try {
-      const summarize = testOverrides.summarize ?? summarizeMeeting;
-      const result = await summarize(merged, {
-        meetingContext: row.context ?? undefined,
-      });
-      db.prepare(
-        `INSERT OR REPLACE INTO meeting_summaries
-           (meeting_id, markdown, llm_provider, llm_model, input_tokens,
-            output_tokens, cost_usd, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        id,
-        result.markdown,
-        result.llmProvider,
-        result.llmModel,
-        result.inputTokens,
-        result.outputTokens,
-        result.costUsd,
-        Date.now(),
-      );
-      db.prepare("UPDATE meetings SET status = 'summarized' WHERE id = ?").run(
-        id,
-      );
-      return c.json({ ok: true, ...result });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error(`meeting ${id}: summarize failed: ${message}`);
-      return c.json({ error: message }, 500);
-    }
+    // Claim before the first await (the diarize rationale at the same spot in
+    // POST /:id/diarize applies verbatim): `loadMergedTranscript` and every
+    // guard above are synchronous, so nothing can slip between the check above
+    // and this set. Everything the job does afterwards is inside its own
+    // try/finally.
+    activeJobs.set(id, { done: 0, total: 0, failed: 0 });
+    activeJobKinds.set(id, "summarize");
+    jobFailures.delete(id);
+    void runSummarizeJob(id, merged, row.context ?? undefined);
+    return c.json({ ok: true, id }, 202);
   })
   // Phase C (specs/meeting-transcription-quality.md §6.4): LLM cleanup pass
   // over the merged transcript, in-request like /summarize and /diarize —
@@ -1316,6 +1458,14 @@ const meetings = new Hono()
     if (merged.length === 0) {
       return c.json({ error: "Transcript is empty" }, 409);
     }
+    // Claim the shared concurrency slot before the first await, exactly like
+    // /diarize above (the claim-before-await discipline documented there is
+    // what makes the `activeJobs.has(id)` check real): without it, spec §2.3,
+    // two concurrent POST /:id/enhance both passed the check and both wrote
+    // enhanced_text — and an Enhance reading meeting_segments while a
+    // /transcribe job is mid-write sees a half-written transcript.
+    activeJobs.set(id, { done: 0, total: 0, failed: 0 });
+    activeJobKinds.set(id, "enhance");
     try {
       const enhance = testOverrides.enhance ?? enhanceMeetingTranscript;
       const result = await enhance(
@@ -1336,6 +1486,12 @@ const meetings = new Hono()
       const message = err instanceof Error ? err.message : String(err);
       log.error(`meeting ${id}: enhance failed: ${message}`);
       return c.json({ error: message }, 500);
+    } finally {
+      // Every exit path — success, throw, and any early return added hereafter
+      // — releases the slot. A leaked slot means this meeting can never
+      // transcribe, diarize, summarize or enhance again until the app quits.
+      activeJobs.delete(id);
+      activeJobKinds.delete(id);
     }
   })
   // Merged, speaker-labeled ("Me"/"Them") transcript.
@@ -1378,8 +1534,16 @@ const meetings = new Hono()
       | undefined;
     return c.json({
       ...row,
-      /** Live transcription progress, or null when no job is running. */
-      job: activeJobs.get(id) ?? null,
+      /** Live job progress, or null when no job is running. `kind` names the
+       * holder so the renderer can tell a cancellable summarize job from a
+       * non-cancellable diarize/enhance pass without a second round-trip. */
+      job: activeJobs.has(id)
+        ? { ...activeJobs.get(id), kind: activeJobKinds.get(id) ?? null }
+        : null,
+      /** Canonical failure of the last background job whose slot this meeting
+       * had (currently only Summarize), or null. Kept out of `meetings.error`
+       * on purpose — see `jobFailures`. */
+      job_error: jobFailures.get(id) ?? null,
       segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
       summary: summary ?? null,
     });
@@ -1405,6 +1569,7 @@ const meetings = new Hono()
       }
     }
     db.prepare("DELETE FROM meetings WHERE id = ?").run(id);
+    jobFailures.delete(id);
     return c.json({ ok: true });
   });
 

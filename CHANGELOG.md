@@ -1,5 +1,22 @@
 # Changelog
-## 2.7.0
+## 2.8.0
+
+### New Features ✨
+
+- Manage LLM parameter presets — edit params, rename, duplicate and delete; deleting a preset reverts the tasks using it to Auto
+- Configurable meeting summarization timeout (Settings → Data, 30–3600 s, default raised 60 s → 600 s) to cover slow local models
+- Separate configurable timeout for meeting enhance
+- Resource-aware LLM lane — one worker slot per endpoint, interactive dictation cleanup never queues behind a background summary
+- Meetings summarize is now a cancellable background job with queued/running progress in the app
+
+### Bug Fixes 🐛
+
+- Fix blank window after a hard reload of a deep route (`/settings/models` and friends) — renderer assets are now root-absolute, with a CI guard to keep them that way
+- Fix streaming dictation being invisible to the job arbitration lease, letting meeting jobs collide with live dictation
+- Fix `/enhance` checking the meeting job slot without claiming it, which allowed two concurrent enhances of the same meeting
+- Fix a parameter preset's `timeout` key being silently inert — it reached the provider request body but never the client-side abort
+- Fix the timeout settings field persisting every intermediate keystroke, so a summarize started mid-edit inherited a partial value
+
 
 ### New Features ✨
 

@@ -30,6 +30,7 @@ export const SETTINGS_KEYS = {
   meetingRetentionDays: "meeting_retention_days",
   meetingSummaryContextBudget: "meeting_summary_context_budget",
   meetingSummaryInstructions: "meeting_summary_instructions",
+  meetingSummaryTimeoutSeconds: "meeting_summary_timeout_seconds",
   micDeviceId: "mic_device_id",
   mlxAsrKeepAliveMinutes: "mlx_asr_keep_alive_minutes",
   networkCaCertPath: "network_ca_cert_path",

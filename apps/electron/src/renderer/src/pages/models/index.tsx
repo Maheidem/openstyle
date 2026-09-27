@@ -21,6 +21,7 @@ import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
+import { tasksUsingPreset } from "./preset-ops";
 import { TaskProfilesSection } from "./task-profiles-section";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
@@ -49,6 +50,16 @@ export default function ModelsPage(): React.JSX.Element {
   const [pendingProviderDelete, setPendingProviderDelete] = useState<
     string | null
   >(null);
+  // Preset deletes confirm here, in the page that owns the dialog (§9.3) —
+  // the same shape as `pendingProviderDelete` above. `tasks` is resolved at
+  // request time so the dialog can NAME the tasks that revert to Auto, which
+  // is the whole point of asking.
+  const [pendingPresetDelete, setPendingPresetDelete] = useState<{
+    id: string;
+    name: string;
+    tasks: LlmTaskId[];
+  } | null>(null);
+  const [presetDeleteFailed, setPresetDeleteFailed] = useState(false);
   const [warmingOpen, setWarmingOpen] = useState(false);
   // Which task profile row is expanded — lifted here (rather than owned by
   // TaskProfilesSection) so the cleanup PairSide's "Sampling parameters"
@@ -259,7 +270,20 @@ export default function ModelsPage(): React.JSX.Element {
               onSaveAssignment={m.saveTaskAssignment}
               onResetAssignment={m.resetTaskAssignment}
               onSavePreset={m.saveUserPreset}
+              onDuplicatePreset={m.duplicateUserPreset}
+              onRequestDeletePreset={(preset) =>
+                setPendingPresetDelete({
+                  id: preset.id,
+                  name: preset.name,
+                  tasks: tasksUsingPreset(m.taskAssignments, preset.id),
+                })
+              }
             />
+            {presetDeleteFailed && (
+              <p className="text-destructive mt-2 text-[11.5px] leading-snug">
+                {t("models.taskProfiles.presetDeleteFailed")}
+              </p>
+            )}
           </div>
         )}
 
@@ -323,6 +347,44 @@ export default function ModelsPage(): React.JSX.Element {
             const { defId, engine } = pendingLocalDelete;
             setPendingLocalDelete(null);
             void m.deleteLocal(defId, engine);
+          }}
+        />
+      )}
+
+      {pendingPresetDelete && (
+        <ConfirmDialog
+          title={t("models.taskProfiles.deletePresetTitle")}
+          message={
+            pendingPresetDelete.tasks.length > 0 ? (
+              <Trans
+                i18nKey="models.taskProfiles.deletePresetMsg"
+                values={{
+                  name: pendingPresetDelete.name,
+                  tasks: pendingPresetDelete.tasks
+                    .map((taskId) => t(`models.taskProfiles.${taskId}.name`))
+                    .join(", "),
+                }}
+                components={{
+                  b: <span className="text-foreground/80 font-medium" />,
+                }}
+              />
+            ) : (
+              <Trans
+                i18nKey="models.taskProfiles.deletePresetNoTasksMsg"
+                values={{ name: pendingPresetDelete.name }}
+                components={{
+                  b: <span className="text-foreground/80 font-medium" />,
+                }}
+              />
+            )
+          }
+          onCancel={() => setPendingPresetDelete(null)}
+          onConfirm={() => {
+            const id = pendingPresetDelete.id;
+            setPendingPresetDelete(null);
+            void m.deleteUserPreset(id).then((ok) => {
+              setPresetDeleteFailed(!ok);
+            });
           }}
         />
       )}

@@ -116,7 +116,28 @@ interface MeetingDetail extends MeetingListItem {
    * editable anytime. Feeds both the naming prompt and the summarize
    * prompt. NULL means unset. */
   context: string | null;
-  job: { done: number; total: number; failed: number } | null;
+  job: {
+    done: number;
+    total: number;
+    failed: number;
+    /** Which job holds the slot (server `activeJobKinds`). "summarize" is the
+     * async Summarize job (specs/meeting-llm-queue.md §5.6) — the meeting's
+     * `status` stays `transcribed` while it runs, so this is the only signal
+     * the UI has that a summarize is in flight. */
+    kind?:
+      | "transcribe"
+      | "retry-failed"
+      | "diarize"
+      | "summarize"
+      | "enhance"
+      | null;
+    /** Set while one of the job's LLM calls waits for its lane (§5.5). */
+    queued?: { ahead: number; sinceMs: number } | null;
+  } | null;
+  /** Canonical failure text of the last background job (Summarize) for this
+   * meeting, or null. Deliberately not `error` — that column is the
+   * transcript-integrity banner (§6 constraint 3). */
+  job_error: string | null;
   segment_counts: { total: number; failed: number };
   summary: {
     markdown: string | null;
@@ -1333,9 +1354,14 @@ function MeetingDetailView({
       return (await res.json()) as unknown as MeetingDetail;
     },
     // Poll while the transcription job runs so progress and the final status
-    // arrive without user interaction.
+    // arrive without user interaction. Summarize is a background job too
+    // (specs/meeting-llm-queue.md §5.6) and never changes `status` until it
+    // succeeds, so its slot — `job.kind` — is what the predicate watches.
     refetchInterval: (query) =>
-      query.state.data?.status === "transcribing" ? 1000 : false,
+      query.state.data?.status === "transcribing" ||
+      query.state.data?.job?.kind === "summarize"
+        ? 1000
+        : false,
   });
 
   const hasTranscript =
@@ -1439,13 +1465,14 @@ function MeetingDetailView({
       getClient().api.meetings[":id"].transcribe.$post({ param: { id } }),
     );
   }, [id, runAction, queryClient]);
-  const summarize = useCallback(
-    () =>
-      runAction("summarize", () =>
-        getClient().api.meetings[":id"].summarize.$post({ param: { id } }),
-      ),
-    [id, runAction],
-  );
+  const summarize = useCallback(() => {
+    // A fresh job invalidates any previous cancel's wind-down state (this
+    // latch is shared by both cancellable job kinds).
+    setCancelRequested(false);
+    return runAction("summarize", () =>
+      getClient().api.meetings[":id"].summarize.$post({ param: { id } }),
+    );
+  }, [id, runAction]);
   const retryFailed = useCallback(
     () =>
       runAction("retry", () =>
@@ -1475,6 +1502,29 @@ function MeetingDetailView({
     } catch {
       // Leave the wind-down state only on a real failure; the action error
       // surface below carries the message.
+      setCancelRequested(false);
+      setActionError(t("meetings.actionFailed"));
+    } finally {
+      invalidate();
+    }
+  }, [id, meeting, cancelRequested, invalidate, t]);
+  // Cancel a running Summarize job (§5.7): the same server seam as
+  // cancelTranscribe — `activeJobCancellations`, polled between map chunks,
+  // so a call still QUEUED on the LLM lane never goes on the wire. Nothing is
+  // destroyed: the transcript and every persisted segment survive, no summary
+  // is written, and the failure lands in `job_error` (not `meetings.error`).
+  const cancelSummarize = useCallback(async () => {
+    if (meeting?.job?.kind !== "summarize" || cancelRequested) return;
+    setCancelRequested(true);
+    try {
+      const res = await getClient().api.meetings[":id"][
+        "cancel-transcribe"
+      ].$post({ param: { id } });
+      // 409 = the slot already moved on (the job finished in this instant) —
+      // the poll shows whatever terminal state it reached either way.
+      if (res.ok || res.status === 409) return;
+      throw new Error(`cancel-transcribe -> ${res.status}`);
+    } catch {
       setCancelRequested(false);
       setActionError(t("meetings.actionFailed"));
     } finally {
@@ -1536,6 +1586,19 @@ function MeetingDetailView({
   }
 
   const transcribing = meeting.status === "transcribing";
+  // Summarize is a background job now (specs/meeting-llm-queue.md §5.6):
+  // POST returns 202 and `status` stays `transcribed` until the job writes the
+  // summary, so the polled job blob — not the status — is what the UI reads
+  // for "a summarize is happening on this meeting".
+  const summarizing = meeting.job?.kind === "summarize";
+  const summarizeQueueAhead = meeting.job?.queued?.ahead ?? 0;
+  const summarizeQueued = summarizing && meeting.job?.queued != null;
+  // A failed/cancelled Summarize lands in `job_error`, never in `meeting.error`
+  // (§6 constraint 3 — that one is the chunk-failure banner), so it needs its
+  // own surface once the slot is free.
+  const summarizeFailure =
+    !actionError && !summarizing ? (meeting.job_error ?? null) : null;
+  const summarizeCancelled = summarizeFailure === "Cancelled by user";
   const canTranscribe =
     !transcribing && meeting.status !== "recording" && busy === null;
   const failedCount = meeting.segment_counts.failed;
@@ -1668,10 +1731,10 @@ function MeetingDetailView({
           variant="outline"
           size="sm"
           onClick={() => void summarize()}
-          disabled={!hasTranscript || busy !== null}
+          disabled={!hasTranscript || busy !== null || summarizing}
         >
           <Sparkles data-icon="inline-start" />
-          {busy === "summarize"
+          {busy === "summarize" || summarizing
             ? t("meetings.summarizing")
             : meeting.summary
               ? t("meetings.resummarize")
@@ -1751,6 +1814,70 @@ function MeetingDetailView({
             </Button>
           </div>
         </Card>
+      )}
+
+      {/* Async Summarize (§5.6): same card treatment as the transcribe job —
+          it is the same contract (202 + poll), so it gets the same face. The
+          coral spinner is the only sanctioned live accent, the queued slot says
+          *why* nothing is moving yet (the LLM lane is busy, §5.5), and cancel
+          is the existing cancellable-job seam (§5.7). */}
+      {summarizing && (
+        <Card className="mb-5 p-4">
+          <div className="flex items-center gap-3">
+            <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
+            <div className="flex-1">
+              <div className="text-foreground text-[12.5px]">
+                {cancelRequested
+                  ? t("meetings.cancellingSummarize")
+                  : summarizeQueued && summarizeQueueAhead > 0
+                    ? t("meetings.summarizeQueuedAhead", {
+                        n: summarizeQueueAhead,
+                      })
+                    : summarizeQueued
+                      ? t("meetings.summarizeQueued")
+                      : t("meetings.summarizing")}
+              </div>
+              {meeting.job && meeting.job.total > 0 && (
+                <Progress
+                  value={(meeting.job.done / meeting.job.total) * 100}
+                  className="mt-2 h-1"
+                />
+              )}
+            </div>
+            {meeting.job && meeting.job.total > 0 && (
+              <span className="mono text-muted-foreground text-[10px] tabular-nums">
+                {meeting.job.done}/{meeting.job.total}
+              </span>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="meetings-cancel-summarize"
+              onClick={() => void cancelSummarize()}
+              disabled={cancelRequested}
+            >
+              {t("meetings.cancelSummarize")}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* A cancelled Summarize is not an error either — the transcript is
+          untouched and no partial summary was written, so it reads as the same
+          neutral note family as the transcribe cancel. A real failure keeps the
+          server's own message (it names the provider/model problem), rendered
+          like every other action failure on this page. */}
+      {summarizeCancelled && (
+        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
+          <CircleSlash className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{t("meetings.summarizeCancelled")}</span>
+        </div>
+      )}
+      {summarizeFailure && !summarizeCancelled && (
+        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{summarizeFailure}</span>
+        </div>
       )}
 
       {/* Post-cancel (T1-1): a cancelled job is not an error — every written

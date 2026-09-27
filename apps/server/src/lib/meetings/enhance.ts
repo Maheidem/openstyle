@@ -70,6 +70,10 @@ export interface EnhanceMeetingOptions {
   contextBudgetTokens?: number;
   /** Override the LLM call (tests, alternate backends). */
   llmCall?: EnhanceLlmCall;
+  /** Cancel seam (§5.7): polled before each chunk's call goes on the wire. */
+  shouldStop?: () => boolean;
+  /** Queue-progress seam (§5.5) for the same reason as Summarize's. */
+  onQueued?: (info: { waitedMs: number; ahead: number }) => void;
 }
 
 export interface EnhanceMeetingResult {
@@ -266,8 +270,15 @@ function checkEvidenceProvenance(
 }
 
 /** Thin wrapper around the shared default chat call (`llm-call.ts`). */
-const defaultLlmCall: EnhanceLlmCall = (request) =>
-  resolveDefaultChatCall({ ...request, taskId: "meetingEnhance" });
+const defaultLlmCallFor =
+  (options: EnhanceMeetingOptions): EnhanceLlmCall =>
+  (request) =>
+    resolveDefaultChatCall({
+      ...request,
+      taskId: "meetingEnhance",
+      ...(options.shouldStop ? { shouldStop: options.shouldStop } : {}),
+      ...(options.onQueued ? { onQueued: options.onQueued } : {}),
+    });
 
 /**
  * Run the Enhance pass over a meeting's merged transcript and persist
@@ -284,7 +295,7 @@ export async function enhanceMeetingTranscript(
   meetingContext: string | undefined,
   options: EnhanceMeetingOptions = {},
 ): Promise<EnhanceMeetingResult> {
-  const llmCall = options.llmCall ?? defaultLlmCall;
+  const llmCall = options.llmCall ?? defaultLlmCallFor(options);
   const contextBudgetTokens =
     options.contextBudgetTokens ?? DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS;
 
@@ -355,6 +366,16 @@ export async function enhanceMeetingTranscript(
   >();
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    // Cancel between chunks (§5.7): nothing this pass does is destructive and
+    // every earlier chunk's corrections are already persisted, so stopping
+    // here leaves a coherent, partially-enhanced transcript — never a
+    // half-written one.
+    if (options.shouldStop?.()) {
+      log.info(
+        `meeting ${meetingId}: enhance stopped by user after ${chunkIndex} of ${chunks.length} chunks`,
+      );
+      break;
+    }
     const chunk = chunks[chunkIndex];
     const chunkTokens = chunk.reduce((sum, s) => sum + lineTokensOf(s), 0);
     // Worst case, correcting every segment in the chunk echoes back roughly

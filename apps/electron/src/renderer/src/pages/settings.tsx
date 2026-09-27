@@ -1,9 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   HISTORY_RETENTION_DAYS_MAX,
+  MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+  MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
   type NetworkSettingsForm,
   networkSettingsFormSchema,
   normalizeLanguageList,
+  parseMeetingSummaryTimeoutSeconds,
   parseRetentionDays,
   parseStoredLanguageList,
   serverUrlSchema,
@@ -91,10 +95,26 @@ import {
 } from "../../../shared/pill-cancel";
 import { getDefaultRemixHotkey } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import {
+  type CommitTrigger,
+  displayValueFor,
+  inspectNumericDraft,
+  resolveCommitIntent,
+  sanitizeDigits,
+} from "./settings-numeric-commit";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
+
+/**
+ * 4, because the bound is 3600. Applied both here and as the input's
+ * `maxLength` so a 5th digit is refused by the browser rather than dropped by
+ * the renderer after the fact (defect D-3).
+ */
+const SUMMARY_TIMEOUT_MAX_DIGITS = String(
+  MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+).length;
 
 const themeOptions = [
   { value: "light", label: "Light", icon: Sun },
@@ -189,6 +209,31 @@ export default function SettingsPage(): React.JSX.Element {
     "never" | "7" | "30" | "custom"
   >("never");
   const [customRetentionDays, setCustomRetentionDays] = useState("90");
+  /**
+   * Meeting-summary timeout, in seconds. `summaryTimeoutSeconds` mirrors what
+   * the server holds — an unset setting means the default, so the field shows
+   * the default too. `summaryTimeoutDraft` is the local-only text being
+   * typed: it renders in the field and writes NOTHING. The PUT fires on an
+   * explicit commit (blur or Enter), never mid-keystroke — a field that wrote
+   * `36` while the user was still typing `3600` handed the summarize lane a
+   * 36-second budget mid-edit, which is the exact failure this setting was
+   * added to remove (defects D-1/D-2, `openstyle-evidence/summary-timeout/`).
+   * An invalid draft on blur reverts to the saved value, never to a
+   * truncated in-range prefix of what was typed. `summaryTimeoutStripped`
+   * holds the characters the renderer dropped so the hint can name them
+   * (D-3/D-4), and `summaryTimeoutSaveError` holds the server's real value
+   * after a rejected write so a failure cannot look like a success (D-6).
+   */
+  const [summaryTimeoutSeconds, setSummaryTimeoutSeconds] = useState(
+    String(DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS),
+  );
+  const [summaryTimeoutDraft, setSummaryTimeoutDraft] = useState<null | string>(
+    null,
+  );
+  const [summaryTimeoutStripped, setSummaryTimeoutStripped] = useState("");
+  const [summaryTimeoutSaveError, setSummaryTimeoutSaveError] = useState<
+    null | string
+  >(null);
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [autoUpdate, setAutoUpdate] = useState(true);
@@ -521,6 +566,15 @@ export default function SettingsPage(): React.JSX.Element {
       }
     }
 
+    // Unset (or a legacy out-of-bounds row) → show the default, which is
+    // exactly what the resolver uses.
+    const summaryTimeout = parseMeetingSummaryTimeoutSeconds(
+      s[SETTINGS_KEYS.meetingSummaryTimeoutSeconds],
+    );
+    if (summaryTimeout !== null) {
+      setSummaryTimeoutSeconds(String(summaryTimeout));
+    }
+
     // Audio playback mode with legacy fallback chain (new key → paused → duck).
     if (s.audio_playback_mode) {
       setAudioPlaybackMode(normalizeAudioPlaybackMode(s.audio_playback_mode));
@@ -820,6 +874,165 @@ export default function SettingsPage(): React.JSX.Element {
     },
     [saveHistoryRetention],
   );
+
+  /**
+   * Read what the server ACTUALLY holds for this key. Used after a failed
+   * write, so the field shows the budget the summarize lane will really get
+   * rather than the number the user just typed. A failed read falls back to
+   * the default — the same value `meetingSummaryTimeoutMs()` would use, so
+   * even a double failure cannot put a fantasy number on screen.
+   */
+  const readSummaryTimeoutFromServer =
+    useCallback(async (): Promise<string> => {
+      const fallback = displayValueFor(
+        null,
+        DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+        parseMeetingSummaryTimeoutSeconds,
+      );
+      try {
+        const res = await getClient().api.settings[":key"].$get({
+          param: { key: SETTINGS_KEYS.meetingSummaryTimeoutSeconds },
+        });
+        if (!res.ok) return fallback;
+        const body = (await res.json()) as { value?: string | null };
+        return displayValueFor(
+          body.value ?? null,
+          DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+          parseMeetingSummaryTimeoutSeconds,
+        );
+      } catch {
+        return fallback;
+      }
+    }, []);
+
+  /**
+   * The control's ONE write path, reachable only from blur, Enter and Reset —
+   * never from `onChange`. `resolveCommitIntent` decides: in-bounds changed
+   * draft → one PUT; unchanged or invalid draft → nothing, field reverts;
+   * Reset → PUT `""`, which the resolver reads as the default (D-5 — clearing
+   * the field cannot express this, an empty draft is invalid and invalid never
+   * writes). A rejected write re-reads the key and shows the server's value
+   * in the destructive hint, so a failure is never mistaken for a save.
+   */
+  const commitSummaryTimeout = useCallback(
+    async (draft: string | null, trigger: CommitTrigger): Promise<void> => {
+      const intent = resolveCommitIntent({
+        trigger,
+        draft,
+        saved: summaryTimeoutSeconds,
+        parse: parseMeetingSummaryTimeoutSeconds,
+      });
+      setSummaryTimeoutDraft(null);
+      setSummaryTimeoutStripped("");
+      setSummaryTimeoutSaveError(null);
+      if (intent.kind !== "write" && intent.kind !== "reset") return;
+      const value = intent.kind === "reset" ? "" : intent.value;
+      const res = await getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.meetingSummaryTimeoutSeconds },
+          json: { value },
+        })
+        .catch(() => null);
+      if (res?.ok) {
+        setSummaryTimeoutSeconds(
+          displayValueFor(
+            value,
+            DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+            parseMeetingSummaryTimeoutSeconds,
+          ),
+        );
+        // Keep the shared settings cache honest — other readers of this key
+        // must not see a value that was never committed.
+        queryClient.setQueryData<Record<string, string>>(
+          queryKeys.settings,
+          (prev) => ({
+            ...(prev ?? {}),
+            [SETTINGS_KEYS.meetingSummaryTimeoutSeconds]: value,
+          }),
+        );
+        return;
+      }
+      const held = await readSummaryTimeoutFromServer();
+      setSummaryTimeoutSeconds(held);
+      setSummaryTimeoutSaveError(held);
+    },
+    [queryClient, readSummaryTimeoutFromServer, summaryTimeoutSeconds],
+  );
+
+  /** Typing updates the LOCAL DRAFT only. This handler never writes. */
+  const handleSummaryTimeoutChange = useCallback((raw: string) => {
+    const draft = sanitizeDigits(raw, SUMMARY_TIMEOUT_MAX_DIGITS);
+    setSummaryTimeoutDraft(draft);
+    setSummaryTimeoutStripped(
+      inspectNumericDraft(raw, SUMMARY_TIMEOUT_MAX_DIGITS).stripped,
+    );
+    setSummaryTimeoutSaveError(null);
+  }, []);
+
+  const handleSummaryTimeoutBlur = useCallback(
+    (raw: string) => {
+      void commitSummaryTimeout(
+        sanitizeDigits(raw, SUMMARY_TIMEOUT_MAX_DIGITS),
+        "blur",
+      );
+    },
+    [commitSummaryTimeout],
+  );
+
+  const handleSummaryTimeoutKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void commitSummaryTimeout(event.currentTarget.value, "enter");
+      }
+    },
+    [commitSummaryTimeout],
+  );
+
+  /** Mid-typing only: the persisted value is always in bounds. */
+  const summaryTimeoutInvalid =
+    summaryTimeoutDraft !== null &&
+    parseMeetingSummaryTimeoutSeconds(summaryTimeoutDraft) === null;
+
+  /**
+   * Hint precedence: a failed save (names what the server holds) beats an
+   * out-of-bounds draft (names the bound), which beats a stripped entry
+   * (names what the user typed vs what the field now holds — the renderer
+   * turns `-45.7` into `457` where the server would answer 400, so it says
+   * so instead of reinterpreting input in silence), which falls back to the
+   * neutral range line.
+   */
+  const summaryTimeoutHint: { destructive: boolean; text: string } =
+    summaryTimeoutSaveError !== null
+      ? {
+          destructive: true,
+          text: t("settings.data.summaryTimeoutSaveFailed", {
+            value: summaryTimeoutSaveError,
+          }),
+        }
+      : summaryTimeoutInvalid
+        ? {
+            destructive: true,
+            text: t("settings.data.summaryTimeoutInvalid", {
+              min: MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
+              max: MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+            }),
+          }
+        : summaryTimeoutStripped !== ""
+          ? {
+              destructive: true,
+              text: t("settings.data.summaryTimeoutStripped", {
+                dropped: summaryTimeoutStripped,
+                value: summaryTimeoutDraft ?? "",
+              }),
+            }
+          : {
+              destructive: false,
+              text: t("settings.data.summaryTimeoutRange", {
+                min: MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
+                max: MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+              }),
+            };
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
     const mode = normalizeAudioPlaybackMode(value);
@@ -1475,6 +1688,59 @@ export default function SettingsPage(): React.JSX.Element {
                       </span>
                     </>
                   )}
+                </div>
+              </Row>
+              <Row
+                label={t("settings.data.summaryTimeout")}
+                desc={t("settings.data.summaryTimeoutDesc")}
+              >
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Input
+                      inputMode="numeric"
+                      value={summaryTimeoutDraft ?? summaryTimeoutSeconds}
+                      onChange={(e) =>
+                        handleSummaryTimeoutChange(e.target.value)
+                      }
+                      onBlur={(e) => handleSummaryTimeoutBlur(e.target.value)}
+                      onKeyDown={handleSummaryTimeoutKeyDown}
+                      maxLength={SUMMARY_TIMEOUT_MAX_DIGITS}
+                      className="w-20 text-center"
+                      aria-label={t("settings.data.summaryTimeout")}
+                      aria-invalid={summaryTimeoutInvalid}
+                      data-testid="settings-summary-timeout"
+                    />
+                    <span className="text-muted-foreground text-xs">
+                      {t("settings.data.summaryTimeoutSeconds")}
+                    </span>
+                    {/* D-5: 'reset to default' has to be an explicit act. Clearing
+                        the field cannot express it — an empty draft is out of
+                        bounds, and an out-of-bounds draft never writes. PUT `""`
+                        is what the resolver reads as 600. */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void commitSummaryTimeout(summaryTimeoutDraft, "reset")
+                      }
+                      data-testid="settings-summary-timeout-reset"
+                    >
+                      {t("settings.data.summaryTimeoutReset", {
+                        seconds: DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+                      })}
+                    </Button>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-[11.5px]",
+                      summaryTimeoutHint.destructive
+                        ? "text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                    data-testid="settings-summary-timeout-hint"
+                  >
+                    {summaryTimeoutHint.text}
+                  </span>
                 </div>
               </Row>
               <Row

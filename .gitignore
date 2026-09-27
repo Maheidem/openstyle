@@ -74,3 +74,8 @@ test-results/
 
 # Claude Code orchestrator-mode session/tool state (local-only, not project code)
 .orchestrator-mode.*
+
+# pi agent artifacts (local-only mesh/session state and exported session
+# transcripts; root-anchored so no source path can match)
+/.pi/
+/pi-session-*.html

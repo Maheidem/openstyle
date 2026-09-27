@@ -274,6 +274,187 @@ export function parseMeetingSummaryContextBudget(
   );
 }
 
+// --- Meeting summary timeout -----------------------------------------------
+
+/**
+ * Settings key for the meeting-summary LLM timeout. Stored in **seconds**,
+ * because that is the unit a user can reason about; `meetingSummaryTimeoutMs()`
+ * is the single place it becomes milliseconds (read site:
+ * `apps/server/src/lib/llm/task-profiles.ts` → `taskTimeoutMs()`). Counterpart
+ * in the renderer: `SETTINGS_KEYS.meetingSummaryTimeoutSeconds`
+ * (`apps/electron/src/shared/settings-keys.ts`).
+ */
+export const MEETING_SUMMARY_TIMEOUT_SETTING_KEY =
+  "meeting_summary_timeout_seconds";
+
+/**
+ * Bounds, with the arithmetic (see also the token-budget note at
+ * `apps/server/src/lib/meetings/summarize.ts:40-61`).
+ *
+ * Every summarize call — single, map, or reduce — asks for
+ * `DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS` = 4096 tokens and is *non-streaming*
+ * (`llm-call.ts` → `postProcess` → `generateText`), so the whole generation,
+ * plus prompt prefill, has to land inside this window. Decode throughput for
+ * the local engines this app targets (llama.cpp / oMLX-class on Apple
+ * Silicon) runs roughly 5-40 tok/s depending on model size and quant; the
+ * repo's own measurement of a reasoning local model is ~300-400 hidden
+ * chain-of-thought tokens burned *before* the visible summary starts.
+ *
+ *   window               tokens deliverable @ 40 / 20 / 10 / 5 tok/s
+ *     60 s (old)            2400 /  1200 /   600 /  300  → fails any
+ *                                                            full-budget call
+ *    300 s                 12000 /  6000 /  3000 / 1500   → 3000 < 4096
+ *    600 s (default)      24000 / 12000 /  6000 / 3000
+ *   3600 s (max)         144000 / 72000 / 36000 / 18000
+ *
+ * - **default 600 s** covers a full 4096-token generation down to
+ *   4096 / 600 = **6.8 tok/s**. At the slow end of the realistic band
+ *   (10 tok/s) such a call needs 410 s, so 600 s carries ~190 s — 46 % — of
+ *   slack; at 20 tok/s it needs 205 s. 300 s, the obvious "5 minutes", only
+ *   reaches 3000 tokens at 10 tok/s, so the reported failure would have
+ *   survived it. The cost of 600 s is worst-case patience, and this bounds
+ *   one call, not the meeting (that is what the UI's helper copy says).
+ * - **min 30 s** still writes 300 tokens at 10 tok/s — roughly the shortest
+ *   summary worth keeping, and enough to cover the ~300-400 reasoning tokens
+ *   this repo measured before a visible token appears. It exists to reject
+ *   nonsense entries (1, 5, 0) that would reproduce the very timeout this knob
+ *   is here to remove.
+ * - **max 3600 s** covers 4096 tokens down to 1.1 tok/s. Slower than that an
+ *   engine is not generating, it is hung — a longer ceiling only delays the
+ *   error the user needs. Note this is per call: map-reduce makes one call
+ *   per chunk plus a reduce, so total wall clock is calls × this value.
+ */
+export const MEETING_SUMMARY_TIMEOUT_SECONDS_MIN = 30;
+export const MEETING_SUMMARY_TIMEOUT_SECONDS_MAX = 3600;
+export const DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS = 600;
+
+/**
+ * Strict parse of a persisted timeout value: a whole number of seconds inside
+ * [{@link MEETING_SUMMARY_TIMEOUT_SECONDS_MIN},
+ *  {@link MEETING_SUMMARY_TIMEOUT_SECONDS_MAX}], else `null` — the shape
+ * `parseRetentionDays` uses, so the settings route can answer 400 with the
+ * bound in the message instead of silently storing a value that is ignored.
+ */
+export function parseMeetingSummaryTimeoutSeconds(
+  value: string | null | undefined,
+): number | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const seconds = Number(trimmed);
+  if (
+    seconds < MEETING_SUMMARY_TIMEOUT_SECONDS_MIN ||
+    seconds > MEETING_SUMMARY_TIMEOUT_SECONDS_MAX
+  ) {
+    return null;
+  }
+  return seconds;
+}
+
+/**
+ * Milliseconds for one summarize call. The one and only seconds→ms site.
+ * Unset, blank, non-numeric or out-of-bounds falls back to the default
+ * rather than clamping — same posture as `parseMeetingRetentionDays` — so a
+ * value written behind this API (direct DB write, downgraded build) degrades
+ * to a known-good 10 minutes instead of an unbounded wait.
+ */
+export function meetingSummaryTimeoutMs(
+  value: string | null | undefined,
+): number {
+  const seconds = parseMeetingSummaryTimeoutSeconds(value);
+  return (seconds ?? DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS) * 1000;
+}
+
+/**
+ * Route-level validator for `PUT /api/settings/meeting_summary_timeout_seconds`.
+ * Empty string is accepted and means "no preference" — the resolver then uses
+ * {@link DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS}.
+ */
+export const meetingSummaryTimeoutSecondsSettingSchema = z
+  .string()
+  .refine(
+    (value) =>
+      value.trim() === "" || parseMeetingSummaryTimeoutSeconds(value) !== null,
+    {
+      message: `Timeout must be a whole number of seconds between ${MEETING_SUMMARY_TIMEOUT_SECONDS_MIN} and ${MEETING_SUMMARY_TIMEOUT_SECONDS_MAX} (or empty for ${DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS})`,
+    },
+  );
+
+// --- Meeting enhance timeout ----------------------------------------------
+
+/**
+ * Settings key for the meeting-**Enhance** LLM timeout. The exact sibling of
+ * `meeting_summary_timeout_seconds` above, and it exists because that knob did
+ * not cover this task: Enhance is the same shape of call — non-streaming,
+ * per chunk, through the same `resolveDefaultChatCall` → `postProcess` →
+ * `generateText` path (`meetings/enhance.ts` → `meetings/llm-call.ts`) — and
+ * was still pinned at a code-defined 60 s while Summarize moved to 600 s.
+ * The asymmetry was recorded in-code (`llm/task-profiles.ts`, "Known
+ * asymmetry, deliberately unchanged") and is the bug this knob closes: on one
+ * local worker slot, a slow engine times Enhance out while Summarize
+ * succeeds, which reads to the user as "half the meeting features work".
+ *
+ * Stored in **seconds**; `meetingEnhanceTimeoutMs()` is the single place it
+ * becomes milliseconds (read site: `apps/server/src/lib/llm/task-profiles.ts`
+ * → `taskTimeoutMs()`). Counterpart in the renderer:
+ * `SETTINGS_KEYS.meetingEnhanceTimeoutSeconds`.
+ */
+export const MEETING_ENHANCE_TIMEOUT_SETTING_KEY =
+  "meeting_enhance_timeout_seconds";
+
+/**
+ * Same bounds and same default as the summarize knob, deliberately:
+ * Enhance's per-call output budget is computed off the chunk's actual token
+ * count (`chunkTokens * 1.3 + 200 + 60 * labels`, `enhance.ts`) so it can
+ * legitimately be LARGER than a summary's flat 4096 — a 8,000-token chunk asks
+ * for ~10,800 output tokens. If anything this task needs the wide window more
+ * than Summarize does, which is why the default is 600 s and not the old
+ * 60 s. See {@link MEETING_SUMMARY_TIMEOUT_SECONDS_MAX}'s tok/s table; the
+ * arithmetic is identical, only the numerator changes.
+ */
+export const MEETING_ENHANCE_TIMEOUT_SECONDS_MIN = 30;
+export const MEETING_ENHANCE_TIMEOUT_SECONDS_MAX = 3600;
+export const DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS = 600;
+
+/** Strict parse — whole number of seconds inside the bounds, else `null`.
+ *  Mirrors {@link parseMeetingSummaryTimeoutSeconds} exactly. */
+export function parseMeetingEnhanceTimeoutSeconds(
+  value: string | null | undefined,
+): number | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const seconds = Number(trimmed);
+  if (
+    seconds < MEETING_ENHANCE_TIMEOUT_SECONDS_MIN ||
+    seconds > MEETING_ENHANCE_TIMEOUT_SECONDS_MAX
+  ) {
+    return null;
+  }
+  return seconds;
+}
+
+/** Milliseconds for one Enhance call. The one and only seconds→ms site —
+ *  unset / blank / non-numeric / out-of-bounds falls back to the default
+ *  rather than clamping, same posture as {@link meetingSummaryTimeoutMs}. */
+export function meetingEnhanceTimeoutMs(
+  value: string | null | undefined,
+): number {
+  const seconds = parseMeetingEnhanceTimeoutSeconds(value);
+  return (seconds ?? DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS) * 1000;
+}
+
+/** Route-level validator for `PUT /api/settings/meeting_enhance_timeout_seconds`. */
+export const meetingEnhanceTimeoutSecondsSettingSchema = z
+  .string()
+  .refine(
+    (value) =>
+      value.trim() === "" || parseMeetingEnhanceTimeoutSeconds(value) !== null,
+    {
+      message: `Timeout must be a whole number of seconds between ${MEETING_ENHANCE_TIMEOUT_SECONDS_MIN} and ${MEETING_ENHANCE_TIMEOUT_SECONDS_MAX} (or empty for ${DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS})`,
+    },
+  );
+
 /**
  * Combined shape for the Network settings form. The renderer drives a
  * react-hook-form with this schema so its inline validation matches exactly

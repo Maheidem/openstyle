@@ -1633,7 +1633,25 @@ describe("POST /api/meetings/:id/summarize", () => {
     expect(res.status).toBe(409);
   });
 
-  it("summarizes the merged transcript and upserts the summary", async () => {
+  /**
+   * Poll GET /:id until the background Summarize job has released its slot
+   * (`job: null`). Yields by advancing vitest's fake timers (setup.ts:
+   * `shouldAdvanceTime: false`) so the job's own awaits — and, in the ceiling
+   * test, its deadline — can fire; a plain `Promise.resolve()` loop cannot
+   * advance a `setTimeout`.
+   */
+  async function waitForSummarizeToSettle(
+    id: string,
+  ): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 2000; i++) {
+      const body = await getMeeting(id);
+      if (body.job === null) return body;
+      await vi.advanceTimersByTimeAsync(1);
+    }
+    throw new Error("summarize job never released its slot");
+  }
+
+  it("returns 202 immediately, then persists the summary the poll delivers", async () => {
     insertMeeting("m1", "transcribed");
     getDb()
       .prepare(
@@ -1641,10 +1659,26 @@ describe("POST /api/meetings/:id/summarize", () => {
          VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'we should ship on friday', 'ok')`,
       )
       .run();
+    let started!: () => void;
+    const startedGate = new Promise<void>((r) => {
+      started = r;
+    });
+    let resume!: () => void;
+    const parked = new Promise<void>((r) => {
+      resume = r;
+    });
     __setMeetingsTestOverrides({
-      summarize: async (segments) => {
+      summarize: async (segments, options) => {
         expect(segments).toHaveLength(1);
         expect(segments[0].speaker).toBe("Me");
+        // The job's progress seam must reach the polled blob (this is what
+        // the renderer's progress card reads).
+        options.onProgress?.({ done: 1, total: 1 });
+        started();
+        // Park until the test has read the running blob — nothing here runs on
+        // real timers (setup.ts), so the job otherwise races ahead of the
+        // mid-run poll and finishes before it is observed.
+        await parked;
         return {
           markdown: "## Overview\nShip on Friday.",
           llmProvider: "fake-llm",
@@ -1659,12 +1693,32 @@ describe("POST /api/meetings/:id/summarize", () => {
     const res = await app.request("/api/meetings/m1/summarize", {
       method: "POST",
     });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { markdown: string };
-    expect(body.markdown).toContain("Ship on Friday");
+    // 202 before the LLM call even starts — no markdown in the body, the
+    // markdown is polled. This is the whole point of the change: a local
+    // engine can take 10 minutes and the HTTP call used to stay open.
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { ok: boolean; id: string };
+    expect(body).toEqual({ ok: true, id: "m1" });
 
-    const after = await getMeeting("m1");
+    try {
+      await startedGate;
+      // The slot is held while the job runs, names itself, and carries the
+      // summarizer's call progress.
+      const mid = await getMeeting("m1");
+      expect(mid.job).toMatchObject({
+        kind: "summarize",
+        done: 1,
+        total: 1,
+      });
+    } finally {
+      // Never park the job (and its slot) on a failed assertion above.
+      resume();
+    }
+
+    const after = await waitForSummarizeToSettle("m1");
     expect(after.status).toBe("summarized");
+    expect(after.job).toBeNull();
+    expect(after.job_error).toBeNull();
     const summary = after.summary as { markdown: string; llm_provider: string };
     expect(summary.markdown).toContain("Ship on Friday");
     expect(summary.llm_provider).toBe("fake-llm");
@@ -1672,6 +1726,8 @@ describe("POST /api/meetings/:id/summarize", () => {
 
   // specs/meeting-speaker-naming.md §9.3: threading check — the route must
   // actually read meetings.context and pass it through, not just store it.
+  // Converted to the 202 + poll contract without dropping the assertion: the
+  // captured options are read after the job settles.
   it("passes row.context through to summarize as meetingContext", async () => {
     insertMeeting("m1", "transcribed");
     getDb()
@@ -1703,8 +1759,277 @@ describe("POST /api/meetings/:id/summarize", () => {
     const res = await app.request("/api/meetings/m1/summarize", {
       method: "POST",
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
+    const after = await waitForSummarizeToSettle("m1");
     expect(capturedOptions?.meetingContext).toBe("Call with Ana from Acme");
+    expect((after.summary as { markdown: string }).markdown).toContain(
+      "## Overview",
+    );
+  });
+
+  it("409s a second summarize while one is running, and frees the slot afterwards", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let calls = 0;
+    __setMeetingsTestOverrides({
+      summarize: async () => {
+        calls++;
+        await gate;
+        return {
+          markdown: "## Done",
+          llmProvider: null,
+          llmModel: null,
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: null,
+        };
+      },
+    });
+
+    const first = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(first.status).toBe(202);
+    await vi.advanceTimersByTimeAsync(1);
+
+    // specs/meeting-llm-queue.md §2.4 (Defect B, previously unchecked): the
+    // double submit used to be legal and the second run's INSERT OR REPLACE
+    // clobbered the first.
+    try {
+      const second = await app.request("/api/meetings/m1/summarize", {
+        method: "POST",
+      });
+      expect(second.status).toBe(409);
+      // The other slot-holders are excluded the same way, in both directions.
+      const diarize = await app.request("/api/meetings/m1/diarize", {
+        method: "POST",
+      });
+      expect(diarize.status).toBe(409);
+      const enhance = await app.request("/api/meetings/m1/enhance", {
+        method: "POST",
+      });
+      expect(enhance.status).toBe(409);
+    } finally {
+      // Never park the job (and its slot) on a failed assertion above.
+      release();
+    }
+    const after = await waitForSummarizeToSettle("m1");
+    expect(after.status).toBe("summarized");
+    expect(calls).toBe(1);
+
+    // Slot freed — a follow-up summarize is accepted again.
+    const third = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(third.status).toBe(202);
+    await waitForSummarizeToSettle("m1");
+    expect(calls).toBe(2);
+  });
+
+  it("records the failure in job_error and leaves meetings.error untouched", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
+    // §6 constraint 3: meetings.error is the chunk-failure banner. A summarize
+    // failure must not overwrite the transcript-integrity warning.
+    getDb()
+      .prepare(
+        "UPDATE meetings SET error = '2 of 5 chunks failed' WHERE id = ?",
+      )
+      .run("m1");
+    __setMeetingsTestOverrides({
+      summarize: async () => {
+        throw new Error("No AI model is set up yet.");
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    const after = await waitForSummarizeToSettle("m1");
+    expect(after.job_error).toBe("No AI model is set up yet.");
+    expect(after.error).toBe("2 of 5 chunks failed");
+    expect(after.status).toBe("transcribed");
+    expect(after.summary).toBeNull();
+    const segments = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS c FROM meeting_segments WHERE meeting_id = ?",
+      )
+      .get("m1") as { c: number };
+    expect(segments.c).toBe(1);
+
+    // A successful re-run clears the stale failure note.
+    __setMeetingsTestOverrides({
+      summarize: async () => ({
+        markdown: "## OK",
+        llmProvider: null,
+        llmModel: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: null,
+      }),
+    });
+    const again = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(again.status).toBe(202);
+    const done = await waitForSummarizeToSettle("m1");
+    expect(done.job_error).toBeNull();
+    expect(done.status).toBe("summarized");
+  });
+
+  it("is cancellable: no summary is written, the transcript survives, slot frees", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
+    let reached!: () => void;
+    const reachedGate = new Promise<void>((r) => {
+      reached = r;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    __setMeetingsTestOverrides({
+      summarize: async (_segments, options) => {
+        reached();
+        await gate;
+        // Honour the seam the way `summarizeMeeting` does: a cancel landing
+        // between chunks throws, it never returns an echo summary.
+        if (options.shouldStop?.()) {
+          throw new Error("Summarize cancelled before the next chunk");
+        }
+        return {
+          markdown: "SHOULD NOT BE WRITTEN",
+          llmProvider: null,
+          llmModel: null,
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: null,
+        };
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    try {
+      await reachedGate;
+      // §5.7: a summarize job is cancellable through the existing seam.
+      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
+        method: "POST",
+      });
+      expect(cancel.status).toBe(202);
+    } finally {
+      // Never park the job (and its slot) on a failed assertion above.
+      release();
+    }
+    const after = await waitForSummarizeToSettle("m1");
+    expect(after.job_error).toBe("Cancelled by user");
+    expect(after.summary).toBeNull();
+    expect(after.status).toBe("transcribed");
+    expect(after.error).toBeNull();
+    const tRes = await app.request("/api/meetings/m1/transcript");
+    const body = (await tRes.json()) as { segments: { text: string }[] };
+    expect(body.segments.map((s) => s.text)).toEqual(["hello"]);
+
+    // Cancellation flag cleared with the slot: a fresh summarize is accepted
+    // and is NOT born cancelled.
+    let sawStop = true;
+    __setMeetingsTestOverrides({
+      summarize: async (_segments, options) => {
+        sawStop = options.shouldStop?.() ?? false;
+        return {
+          markdown: "## Second run",
+          llmProvider: null,
+          llmModel: null,
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: null,
+        };
+      },
+    });
+    const retry = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(retry.status).toBe(202);
+    const done = await waitForSummarizeToSettle("m1");
+    expect(sawStop).toBe(false);
+    expect((done.summary as { markdown: string }).markdown).toContain(
+      "Second run",
+    );
+  });
+
+  it("fails the job at the §5.8 ceiling instead of running unbounded", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
+    __setMeetingsTestOverrides({
+      // Parks forever (nothing on the wire ever answers) but honours the
+      // cancel seam, so the test's `finally` can always release the slot —
+      // a leaked job here poisons every later test in the file.
+      summarize: (_segments, options) =>
+        new Promise<never>((_resolve, reject) => {
+          const poll = setInterval(() => {
+            if (options.shouldStop?.()) {
+              clearInterval(poll);
+              reject(new Error("Summarize cancelled before the next chunk"));
+            }
+          }, 10);
+        }),
+    });
+
+    const res = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    // Let the job reach its deadline timer (the clock does not move on its
+    // own under fake timers, so a tick-0 flush drains the awaits that set it).
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await getMeeting("m1")).job).toMatchObject({ kind: "summarize" });
+
+    // Default per-call timeout is 600 s and a single-pass transcript plans 1
+    // call, so the ceiling is the 2 x perCall floor: 1,200 s (§5.8 table).
+    // Still running one second short of it…
+    await vi.advanceTimersByTimeAsync(1_199_000);
+    expect((await getMeeting("m1")).job).toMatchObject({ kind: "summarize" });
+
+    // …and failed past it.
+    await vi.advanceTimersByTimeAsync(1_000);
+    let after: Record<string, unknown>;
+    try {
+      after = await waitForSummarizeToSettle("m1");
+    } finally {
+      // Belt and braces: if the ceiling somehow did not fire, cancel out of
+      // the parked job rather than leaking its slot into later tests.
+      await app.request("/api/meetings/m1/cancel-transcribe", {
+        method: "POST",
+      });
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    expect(after.job_error).toMatch(/exceeded its 1200s job ceiling/);
+    expect(after.summary).toBeNull();
+    expect(after.status).toBe("transcribed");
+
+    // The ceiling releases the slot, so the meeting is usable again.
+    __setMeetingsTestOverrides({
+      summarize: async () => ({
+        markdown: "## After the ceiling",
+        llmProvider: null,
+        llmModel: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: null,
+      }),
+    });
+    const next = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(next.status).toBe(202);
+    await waitForSummarizeToSettle("m1");
   });
 });
 
@@ -1773,6 +2098,78 @@ describe("POST /api/meetings/:id/enhance", () => {
 
     release();
     await diarizePromise;
+  });
+
+  // specs/meeting-llm-queue.md §2.3 (Defect A): the route used to CHECK
+  // activeJobs.has(id) and never CLAIM it, so two concurrent enhances were
+  // both legal and raced on enhanced_text. This pins the claim, the mutual
+  // exclusion in both directions, and — the part that matters most — that the
+  // slot is released on every exit path, success and throw alike. A leaked
+  // slot means that meeting can never transcribe/diarize/summarize/enhance
+  // again until the app quits.
+  it("409s a second concurrent enhance, then frees the slot on success and on throw", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    __setMeetingsTestOverrides({
+      enhance: async () => {
+        await gate;
+        return { correctedCount: 1 };
+      },
+    });
+
+    const first = app.request("/api/meetings/m1/enhance", { method: "POST" });
+    await vi.advanceTimersByTimeAsync(20);
+
+    try {
+      const second = await app.request("/api/meetings/m1/enhance", {
+        method: "POST",
+      });
+      expect(second.status).toBe(409);
+      // The other two writers are locked out for the same window.
+      const summarize = await app.request("/api/meetings/m1/summarize", {
+        method: "POST",
+      });
+      expect(summarize.status).toBe(409);
+      const transcribe = await app.request("/api/meetings/m1/transcribe", {
+        method: "POST",
+      });
+      expect(transcribe.status).toBe(409);
+      // Held, and named: the renderer reads this to decide what it is looking
+      // at.
+      expect((await getMeeting("m1")).job).toMatchObject({ kind: "enhance" });
+    } finally {
+      // Never park the first pass (and its slot) on a failed assertion above.
+      release();
+    }
+
+    const firstRes = await first;
+    expect(firstRes.status).toBe(200);
+    expect((await getMeeting("m1")).job).toBeNull();
+
+    // Slot released after success — and after a throw too.
+    const again = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(again.status).toBe(200);
+
+    __setMeetingsTestOverrides({
+      enhance: async () => {
+        throw new Error("boom");
+      },
+    });
+    const thrown = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(thrown.status).toBe(500);
+    expect((await getMeeting("m1")).job).toBeNull();
+    const afterThrow = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(afterThrow.status).toBe(500);
   });
 
   it("enhances the merged transcript and persists enhanced_text", async () => {

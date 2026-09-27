@@ -29,6 +29,7 @@ import { getDb, readSetting, readSettings } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
+import { acquireLlmLane, llmLaneKeyForProvider } from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
 import { resolveTaskCall } from "./llm/task-profiles.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
@@ -236,28 +237,46 @@ export async function postProcess(
         { task: "cleanup", sampling: resolved.samplingParams },
       );
       let cleanupError: unknown;
-      const result = await cleanupWithModel({
-        model: chatModel,
-        text: normalizedRawText,
-        system,
-        prompt,
-        temperature: resolved.temperature,
-        maxOutputTokens: resolved.maxOutputTokens,
-        // The empty/filler-only case is already handled above for the whole
-        // function (both the cloud and local-model branches), so this call
-        // is guaranteed non-empty text — disable the package's own internal
-        // check rather than relying on two independently-maintained filler
-        // regexes staying in sync.
-        skipEmptyText: false,
-        providerOptions: getLlmProvider(resolved.provider)?.providerOptions?.(
-          resolved.modelId,
-          resolved.reasoningEnabled,
-        ),
-        signal: AbortSignal.timeout(resolved.timeoutMs),
-        onError: (err) => {
-          cleanupError = err;
-        },
+      // Dictation cleanup is the `interactive` class (§5.4) — the single most
+      // latency-sensitive LLM call in the app, and the reason the lane
+      // exists. Acquired per call around the one `generateText` inside
+      // `cleanupWithModel`; released in the `finally` below, before the
+      // `result.model` bookkeeping, so a failed cleanup never leaves the
+      // lane occupied. Spec §6 constraint 5: if this ever measurably adds
+      // time to the commit -> delivered-text path, the lane is wrong.
+      const lane = await llmLaneKeyForProvider(resolved.provider);
+      const lease = await acquireLlmLane({
+        lane,
+        cls: "interactive",
+        taskId: "cleanup",
       });
+      let result: Awaited<ReturnType<typeof cleanupWithModel>>;
+      try {
+        result = await cleanupWithModel({
+          model: chatModel,
+          text: normalizedRawText,
+          system,
+          prompt,
+          temperature: resolved.temperature,
+          maxOutputTokens: resolved.maxOutputTokens,
+          // The empty/filler-only case is already handled above for the whole
+          // function (both the cloud and local-model branches), so this call
+          // is guaranteed non-empty text — disable the package's own internal
+          // check rather than relying on two independently-maintained filler
+          // regexes staying in sync.
+          skipEmptyText: false,
+          providerOptions: getLlmProvider(resolved.provider)?.providerOptions?.(
+            resolved.modelId,
+            resolved.reasoningEnabled,
+          ),
+          signal: AbortSignal.timeout(resolved.timeoutMs),
+          onError: (err) => {
+            cleanupError = err;
+          },
+        });
+      } finally {
+        lease.release();
+      }
 
       if (result.model) {
         inputTokens = result.inputTokens;

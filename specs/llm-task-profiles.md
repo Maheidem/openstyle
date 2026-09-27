@@ -11,6 +11,15 @@ USER-APPROVED DESIGN, 2026-08-27. This is the full spec for that approval —
 registry shape, storage schema, precedence, provider mapping, UI, migration,
 failure modes, i18n, tests.
 
+AMENDED 2026-09-26 (preset management shipped). Supersedes §4.2's read-only
+built-ins, §9.3's undecided entry point, §9.4's `readOnly` editor and half of
+§11's dangling-`presetId` row; resolves §12 item 5, records §12 item 7 as
+applied; adds §4.3's persistence rules, §13.4, §14's 19 new keys, §15's
+inventory delta and §12 item 8's known gaps. Presets are now edited, renamed, duplicated and deleted from an inline
+action row. Superseded statements keep their original text with a dated
+amendment note beside it: the notes say what the code does now, the originals
+say why the old shape was chosen. Read both.
+
 ---
 
 ## 1. Goal
@@ -343,6 +352,54 @@ also means a rename can never orphan a `builtin:` assignment (§4.1's
 "presets are stored by id, not name" — the id is a fixed literal for
 built-ins, so it can't be renamed away at all).
 
+**Amendment, 2026-09-26 (supersedes the read-only half of the paragraph
+above; the never-stored half stands unchanged):** a built-in is editable in
+the UI now and it is still not writable in the settings row. Those are two
+different claims and only the first one died.
+
+- **Still true.** `BUILTIN_LLM_PRESETS`
+  (`packages/validations/src/llm-task-profiles.ts:89-128`) stays a code
+  constant merged *ahead of* the stored array at read time on both sides of
+  the bridge (`apps/server/src/lib/llm/task-profiles.ts:118-129`,
+  `apps/electron/src/renderer/src/pages/models/task-profiles-section.tsx:139`).
+  Nothing writes a `builtin:*` id into `llm_parameter_presets`: the `/^user_/`
+  regex (`packages/validations/src/llm-task-profiles.ts:58-63`), the route's
+  400 (`apps/server/src/routes/settings.ts:215-218`), the client pre-flight
+  (`pages/models/preset-ops.ts:210-239`) and the test that pins it
+  (`pages/models/preset-ops.test.ts:389`) all still refuse it. Built-ins get
+  **no Delete button** (`task-profiles-section.tsx:765-778`) — there is
+  nothing to delete, which is the same reason the row was never stored.
+- **Dead: "opens built-ins read-only."** `PresetActionRow`
+  (`task-profiles-section.tsx:693-788`) renders Edit params / Rename /
+  Duplicate for every preset, built-in included (`:733-764`), and
+  `ParamJsonEditor` has no `readOnly` prop any more (§9.4). Edit and Rename on
+  a `builtin:*` preset **silently fork**: the write lands under a fresh
+  `user_<uuid>` id (`task-profiles-section.tsx:385-402` for params,
+  `:404-426` for a rename) and this task's assignment is re-pointed at that id
+  in the same action with `modelOverride` carried over (`:367-374`). The only
+  honesty device is naming — the button reads `duplicateToEdit`, "Duplicate to
+  edit" (`:713-716`) and not `editParams`; the Save button reads `saveCopy`,
+  "Save as copy" (`:816`, `param-json-editor.tsx:31-33,121`); and
+  `builtinAutoCopyNote` states the consequence under the row (`:781-785`).
+
+**Forking is permanent from the UI's side. A task that forks a built-in stops
+receiving every future change to that built-in's payload — its assignment names
+a frozen `user_*` copy, and a release that revises `builtin:qwen-fast` cannot
+reach it. There is no un-fork affordance: no "revert to built-in", no reset on
+the copy. The only way back is re-selecting the built-in in the Params track
+(`task-profiles-section.tsx:309-315`), which re-points the assignment at the
+code constant and leaves the forked copy behind as an unreferenced row the user
+has to delete by hand (§9.3).** The fork's two writes are sequential and not
+atomic — presets array first, assignment second (`:362-374`) — so a failed
+assignment PUT leaves an owned preset stored and the task still on the
+built-in: an unused preset, never a dangling reference (§11's amendment).
+
+The paragraph's other claim survives, on new legs: a rename still cannot orphan
+a `builtin:*` assignment, because the built-in's id and name remain fixed
+literals (`packages/validations/src/llm-task-profiles.ts:91,112`). What
+changed is that a *task* may now deliberately move off that id, one task at a
+time — and that move is the fork above.
+
 ### 4.3 Save-time validation (client + server, both — never trust the client alone)
 
 1. Must parse as JSON (`JSON.parse` succeeds).
@@ -362,6 +419,31 @@ The renderer's `Textarea` (`components/ui/textarea.tsx`) already supports
 failure and blocks Save, mirroring the existing pattern in
 `NumberRow.onChange` (`sampling-dialog.tsx:363-375`, being deleted, §10) of
 never persisting a value the server would 400 on.
+
+**Amendment, 2026-09-26 — the persistence rules the server does *not*
+enforce.** The five rules above remain the whole of save-time validation.
+Preset CRUD added three facts no schema expresses and no route checks, so they
+are recorded here as the client's contract:
+
+- **`updatedAt` is stamped client-side, on every write.** The zod field is a
+  bare `z.string()` (`packages/validations/src/llm-task-profiles.ts:66-67`)
+  and `routes/settings.ts` stores the blob verbatim (§5.2), so nothing
+  server-side ever writes that value. `saveUserPreset` stamps it
+  (`apps/electron/src/renderer/src/pages/models/use-models.ts:797-803`); a
+  write path that omits it silently lies about the row's age.
+- **`createdAt` is preserved across edits** and is fresh only for a genuinely
+  new id — `use-models.ts:801` (`existing?.createdAt ?? preset.createdAt ??
+  now`). A duplicate or a fork stamps both timestamps to `now`
+  (`preset-ops.ts:92-98`, `task-profiles-section.tsx:397-398`).
+- **Both caps run twice, deliberately.** The 8192-byte per-preset cap lives in
+  the route's own loop (`apps/server/src/routes/settings.ts:219-225`), the
+  50-preset cap in zod (`packages/validations/src/llm-task-profiles.ts:70-72`);
+  `checkPresetWrite` (`preset-ops.ts:210-239`) re-runs both, in the route's
+  order, over the array the write *would* produce, before any network call
+  (`task-profiles-section.tsx:355-359`, `use-models.ts:777`). The mirror
+  exists so a refusal is an inline message instead of a bare 400 — it reuses
+  `llmParameterPresetsSettingSchema` rather than restating the bounds, and it
+  does not replace the route's check, which stays the authority (§11).
 
 ---
 
@@ -1082,6 +1164,23 @@ Expanded row (per task, on click):
   task's assignment to it never touches the preset itself or any other
   task's assignment to that same preset).
 
+**Amendment, 2026-09-26 (two additions to the expanded panel; nothing above
+this note changes):**
+
+- A `mode: "preset"` whose `presetId` matches nothing renders a
+  `Badge variant="outline"` reading `presetMissingBadge`, "Preset no longer
+  available" (`task-profiles-section.tsx:461-466`) — **not** the raw
+  `user_<uuid>` the first pass printed there. The track normalises the same
+  state to `auto` so it is never rendered with nothing selected
+  (`:274-285`, `segmentedValue`), and the panel says it in a sentence
+  (`presetMissingNote`, `:530-534`). The server half of this state is
+  untouched (§8.3, §11's row 3); only the presentation moved.
+- A per-preset action row sits **below** the Params track, never inside it:
+  `ToggleGroupItem` renders a `<button>`, so nesting an action in the track is
+  invalid DOM that bubbles a selection change (`:500-528`). Always visible,
+  not hover-revealed — this is a settings panel with no reliable hover state.
+  It is the entry point §9.3 left open.
+
 ### 9.3 Preset management — separate from per-task assignment
 
 A `Custom…` selection anywhere is scoped to that one task. **Naming and
@@ -1103,6 +1202,68 @@ enough. Editing a preset that multiple tasks are assigned to changes it for
 all of them at once — this is the expected, documented behavior of a named,
 shared preset (not a per-task copy), same as any shared-config object
 elsewhere in this app.
+
+**Amendment, 2026-09-26 (resolves both options above: neither alone).** The
+entry point is `PresetActionRow`
+(`apps/electron/src/renderer/src/pages/models/task-profiles-section.tsx:693-788`),
+rendered beneath the Params track of the expanded panel of the task currently
+assigned to that preset (`:506-528`). No dropdown, no context menu, no
+management modal, nothing hover-revealed. It shows a `Built-in`/`Yours` badge
+(`:721-725`), the preset name, and four text buttons — Edit params, Rename,
+Duplicate, and, for `user_*` presets only, Delete (`:733-778`). Its data half
+is `pages/models/preset-ops.ts`, a pure module (no React, no network, no
+i18n, `:1-239`): the dangling-reference rewrite and the route's caps are the
+sharp edges of this feature, so they are the part testable without jsdom
+(§13.4, `preset-ops.test.ts`).
+
+Per action, as shipped:
+
+| Action | `user_*` preset | `builtin:*` preset |
+|---|---|---|
+| Edit params (`task-profiles-section.tsx:385-402`) | overwrites in place; id and `createdAt` unchanged | **forks** — new `user_<uuid>`, this task re-pointed at it (§4.2) |
+| Rename (`:404-426`) | overwrites in place | **forks** (`:415-425`) |
+| Duplicate (`:428-434` → `use-models.ts:824-845`) | copy-and-append; **no** re-point | copy-and-append; no re-point |
+| Delete (`index.tsx:354-390` → `use-models.ts:856-876`) | confirm dialog naming the affected tasks, then they revert to `Auto` | no button rendered (`:765-778`) |
+
+- **"+ New preset" stays the track's trailing option**
+  (`task-profiles-section.tsx:269-272`; `CUSTOM_VALUE`/`NEW_PRESET_VALUE` at
+  `:66-67`) and it saves-and-selects: the new preset *is* the draft the user
+  just typed, so leaving the task on its old assignment would make the edit
+  invisible (`:561-567`). Duplicate is the opposite case — its params are
+  byte-identical to its source's, so re-pointing would silently swap which row
+  a task is pinned to for no behavioural gain, and it deliberately does not
+  (`use-models.ts:817-823`). The `savePreset` key ("Save as preset…", §14)
+  was removed from all 8 locale files on 2026-09-26 — no code ever referenced
+  it (`grep -rn savePreset apps/electron/src`: zero hits).
+- **Every awaited write in the row funnels through one function**,
+  `writePreset` (`task-profiles-section.tsx:351-383`): §4.3 pre-flight over
+  the array this write would produce, then the PUT, then the optional
+  re-point — with `saving` held across the `await` (`:237`, `:360`, `:378-382`)
+  and a refusal surfaced inline (`:536-540`) instead of `console.error`'d. The
+  shape it replaced fired the PUT from inside `setUserPresets(prev => …)` —
+  twice under StrictMode — and advertised a preset it had never stored
+  (`use-models.ts:757-771`'s own note). Assignment blobs are rebuilt from
+  `assignmentsRef.current`, never render-time state, because the preset PUT
+  and the assignment PUT are chained across an `await` (`use-models.ts:306-318,
+  733-746`).
+- **Delete ordering is load-bearing** (`use-models.ts:847-876`):
+  `llm_task_assignments` — every affected task → `{ mode: "auto" }`, each
+  `modelOverride` preserved and `presetId` dropped with it
+  (`preset-ops.ts:145-151`) — is PUT **first**, and only then the
+  `llm_parameter_presets` array minus the preset (`use-models.ts:867-869`). A
+  failed assignments PUT aborts the delete (`:867`); a failed presets PUT after
+  it rolls the assignments back (`:869-872`). The invariant that buys:
+  **at no instant does a stored assignment name a preset that is not stored**.
+  The dangling id §11 spends a row on is made structurally impossible on this
+  path, not merely survived (`preset-ops.test.ts:315`). The confirm dialog is
+  what makes the blast radius visible before any of it happens: it names the
+  affected tasks by display name and says they revert to Auto
+  (`index.tsx:354-390`, `deletePresetMsg`/`deletePresetNoTasksMsg`,
+  `en.json:756-757`), the set resolved at click time by `tasksUsingPreset`
+  (`index.tsx:278`, `preset-ops.ts:105-116`). Editing a preset several tasks
+  share still changes it for all of them at once — the original paragraph's
+  point, intact: in-place Edit on a `user_*` preset keeps its id
+  (`task-profiles-section.tsx:387-389`), so every assignment to it follows.
 
 ### 9.4 The raw JSON editor — replaces `CleanupSamplingDialog` entirely
 
@@ -1146,6 +1307,23 @@ export function ParamJsonEditor({
   under the textarea — same visual slot `RowShell`'s hint text used
   (`sampling-dialog.tsx:275-302`, not ported as a component, but the
   "label / control / one-line hint" rhythm is kept for this one control).
+
+**Amendment, 2026-09-26 (the signature above is superseded; the "no structured
+controls" rule is not).** `readOnly` and `onDuplicate` are gone — there is no
+read-only variant, because there is no longer a preset the editor refuses to
+edit (`apps/electron/src/renderer/src/pages/models/param-json-editor.tsx:15-40`).
+In their place: `saving?: boolean` (`:39`), the caller's in-flight guard,
+disabling **both** Save and Cancel so neither a second write nor a mid-write
+dismiss can clobber the optimistic rollback (`:112`, `:119`); and
+`saveLabel?: string` (`:31-33`), used when saving does not overwrite what the
+user was looking at — "Save as copy" on a `builtin:*` preset (§4.2), passed at
+`task-profiles-section.tsx:816`. The `viewBuiltin` editor state and the
+`duplicateToEdit` LINK button that consumed those props are deleted;
+`EditorState` is now `newPreset | editPreset | rename`
+(`task-profiles-section.tsx:96-99`). Everything else in this section stands:
+one mono `Textarea`, no sliders or per-field inputs, `aria-invalid` plus
+Save-disabled on any parse failure or non-object body (§4.3), disabled and not
+hidden.
 
 ### 9.5 The floating cleanup-card link — repointed, not relocated
 
@@ -1251,6 +1429,24 @@ with no shape check) rather than being specially accepted.
 | Every task assignment missing/corrupt (fresh install, or a `llm_task_assignments` row that fails to parse) | `parseLlmTaskAssignments` returns `{}` (§5.1) — every task resolves as `mode: "auto"`, i.e. exactly today's pre-feature behavior. Never a crash, never a blocked dictation/remix/meeting pipeline. |
 | Migration (§10) runs twice (race between two windows, or a bug in the sentinel check) | Idempotent by construction as written *if* the sentinel write (step 3) and the assignment write (step 2) aren't atomic — flagged in §12 as needing either a single settings-transaction write or a documented "last write wins, harmless either way since step 2's input (`cleanup_sampling`) is never mutated by this migration" acceptance. |
 | **A user with existing `cleanup_sampling` overrides upgrades and dictates without ever opening Settings > Models** (missing from earlier drafts of this spec — genuine gap, not covered by any row above) | §8.1 deletes the server-side `cleanup_sampling` read inside `registry.ts`'s `local-llm.createModel` outright; the *only* thing that restores those params into a live request is §10's client-side migration, gated on a load of the Models page. Today, by contrast, `local-llm.createModel` re-reads `cleanup_sampling` from the DB on every call (`registry.ts:236-239`), regardless of which UI screens were ever opened. So for any user who upgrades and starts dictating before visiting Settings > Models — plausible for anyone who set sampling params once, months ago, and never revisits that page — every `cleanup`/`local-llm` call silently loses its tuned sampling params (falls back to the task profile's bare defaults) for as long as that page stays unvisited: an unbounded regression window, not a bounded one. This is exactly the "breaks current behavior for users who never touch the feature" class of risk and needs either the migration to run somewhere unconditional (a server-side one-time check, run on boot or on first post-upgrade settings read, rather than gated behind one specific renderer page mounting) or the read-time-fallback redesign in §12 open question 6, which removes the gap by construction. |
+| A task forks a built-in — Edit or Rename on a `builtin:*` preset (§4.2's amendment) | Two sequential PUTs, deliberately not atomic: the copy is written, then this task's assignment is re-pointed (`task-profiles-section.tsx:362-374`). If the second PUT fails, the copy exists and the task still resolves the built-in — an unused preset plus an inline `presetSaveFailed`, never a dangling id. If the first fails, nothing moved and the editor stays open. |
+| Delete: assignments PUT succeeds, presets PUT then fails (§9.3's ordering) | Assignments roll back to the pre-delete snapshot (`use-models.ts:869-872`). If that rollback itself fails, the residue is tasks on `mode: "auto"` pointing at nothing — inert, not dangling. The preset survives in every branch; `presetDeleteFailed` says so out loud (`index.tsx:282-286`). |
+
+**Amendment, 2026-09-26 — row 3 ("A preset referencing a `presetId` that no
+longer exists") is half superseded.** The server half stands exactly as
+written: `resolveModeParams` warns and resolves `{}` for that call, never
+throws (`apps/server/src/lib/llm/task-profiles.ts:154-173`, warn at
+`:164-169`), and nothing auto-repairs the stored blob. Two things changed.
+(1) On the normal path that state is now **never created** — delete writes
+assignments first (§9.3), so the stored assignment is already on `auto` before
+the preset disappears; pinned by test at `preset-ops.test.ts:315`.
+(2) When the state *is* reached — a hand-edited settings row, a downgrade, an
+install predating the guarantee — the renderer no longer prints the raw id
+where a name belongs: `presetMissingBadge` on the collapsed row, the track
+normalised to Auto, and a sentence saying the task runs on Auto defaults in the
+panel (`task-profiles-section.tsx:461-466`, `:274-285`, `:530-534`), detected
+by `isDanglingAssignment`/`findMissingPresetIds` (`preset-ops.ts:165-180,
+186-190`).
 
 ---
 
@@ -1286,6 +1482,14 @@ with no shape check) rather than being specially accepted.
    `meeting-diarization.md` left some UI wiring (e.g. exact popover
    placement) to its own screen pass. Needs a decision before
    implementation, not before this spec's approval.
+
+   **RESOLVED, 2026-09-26:** both affordances, neither alone. "+ New preset"
+   stays a trailing option in the Params track; the four per-preset actions
+   live in an inline `PresetActionRow` beneath that track, scoped to the task
+   currently assigned to the preset. There is no standalone "Manage presets"
+   surface — a preset is managed where it is used, which is also what makes the
+   built-in fork (§4.2) legible: the user sees the task it applies to while
+   they destroy the thing. See §9.3's amendment.
 6. **`repeat_penalty` (§4.2's built-in presets) vs. `repetition_penalty`
    (every other spelling of this knob in this codebase — the existing
    `cleanupSamplingSchema` field, `packages/validations/src/settings.ts:63`;
@@ -1344,6 +1548,42 @@ with no shape check) rather than being specially accepted.
    so it's listed here rather than applied — but §10 as currently written
    should not ship without an explicit answer to the gap in §11's new row,
    whichever fix is chosen.
+
+   **APPLIED, recorded 2026-09-26 (pre-existing drift, noted here for
+   accuracy — not part of the preset-management amendment above):** the
+   read-time fallback was the shipped choice. `resolveCleanupLegacyFallback()`
+   resolves `cleanup` from `cleanup_sampling` whenever no
+   `llm_task_assignments.cleanup` row exists
+   (`apps/server/src/lib/llm/task-profiles.ts:144-148`, used at `:274-276`),
+   so §10's steps 1–3 (client-side one-time write + sentinel) never shipped
+   and §11's long final row no longer describes a live gap. §10 stands as the
+   decision trail; the sentinel and the migration write do not exist in code.
+8. **Known gaps accepted at the 2026-09-26 ship (preset management).** Small,
+   deliberate, recorded rather than fixed:
+   - `removePresetAndReassign` carries each touched task's `modelOverride` by
+     **reference** into the rewritten assignment
+     (`apps/electron/src/renderer/src/pages/models/preset-ops.ts:147-149`),
+     and `writePreset` does the same on a fork and on every mode change
+     (`task-profiles-section.tsx:373`, `:310-313`). Safe only for as long as
+     nothing mutates what it was handed — every producer today builds a fresh
+     `{provider, model_id}` (`task-profiles-section.tsx:318-325`). If a
+     future UI ever edits an override in place, two tasks share one object and
+     a write through one silently corrupts the other. Clone at the moment a
+     mutable override UI appears.
+   - `ParamJsonEditor`'s Save is guarded by the caller's `saving` flag
+     (`param-json-editor.tsx:119`, `task-profiles-section.tsx:874`). That
+     closes a human double-click and a mid-write dismiss; it does not close a
+     programmatic same-frame double dispatch, since two `onChange` calls before
+     React commits both see `saving === false`. No request-side dedupe exists.
+   - `param-json-editor.tsx:95` hardcodes the Name input's `maxLength={60}`
+     while `RenamePresetEditor` uses the shared constant
+     (`task-profiles-section.tsx:854`, `LLM_PRESET_NAME_MAX`). The §4.1 bound
+     now has to be changed in two places.
+   - The §4.3 byte cap measures `JSON.stringify(params).length` — UTF-16 code
+     units, not bytes — on both sides (`preset-ops.ts:229`,
+     `apps/server/src/routes/settings.ts:219-225`). They cannot disagree with
+     each other, but a non-ASCII preset is refused slightly later than the
+     constant's name promises.
 
 ---
 
@@ -1440,6 +1680,29 @@ Against the user's actual running oMLX server and a real local model:
       editor, and confirm `remix`/`meetingSummarize`/`meetingEnhance` all
       show `Auto` (not migrated).
 
+### 13.4 Unit — preset ops (`apps/electron/src/renderer/src/pages/models/preset-ops.test.ts`, added 2026-09-26)
+
+The pure half of §9.3, jsdom-free and network-free by construction
+(`preset-ops.ts` imports nothing React). Beyond per-function coverage of
+`upsertPreset`'s order preservation, the deep copy, the name clamp and the
+delete rewrite, the assertions that matter as regression pins:
+
+- no produced assignment ever names a `presetId` absent from the same result —
+  §11's invariant, made a test (`preset-ops.test.ts:315`);
+- `modelOverride` survives the delete rewrite and nothing else does
+  (`:234`), and untouched assignments keep **object identity** (`:266`) —
+  `Object.is`, not deep equality, so a rewrite that touched a task it shouldn't
+  have fails the suite;
+- `checkPresetWrite` refuses what the route refuses, in the route's order:
+  a `builtin:*` id in a stored list (§4.2's still-live invariant, `:389`), an
+  id the storage schema refuses (`:422`), a params blob over the cap (`:407`).
+
+Plus the locale guardrail for §14's new keys:
+`apps/electron/src/renderer/src/locales/locales.test.ts:131-151` enumerates
+the 19 preset-management keys, `:153-165` asserts all 8 locale files carry them
+with `en.json`'s placeholders intact — these strings render on the only surface
+where a preset can be destroyed, so a missing translation is a missing warning.
+
 ---
 
 ## 14. i18n keys
@@ -1480,6 +1743,36 @@ grep in §research):
 
 `models.pair.configureSampling` (existing key, `en.json`) is kept unchanged
 — still "Sampling parameters" (§9.5).
+
+**Amendment, 2026-09-26 — 19 keys added under the same `models.taskProfiles`
+namespace** (`en.json:739-757`, plus `template.json` and the other 6 locales
+— the same 8-file set the block above names; `savePreset` above was removed
+from all 8 locale files on 2026-09-26, with no code references). English
+source as shipped:
+`editParams` "Edit params", `rename` "Rename", `duplicate` "Duplicate",
+`deletePreset` "Delete", `deletePresetAria` "Delete preset {{name}}",
+`presetBuiltin` "Built-in", `presetYours` "Yours", `builtinAutoCopyNote`
+"Editing or renaming saves a copy you own and switches this task to it —
+future updates to this built-in won't apply.", `renameBuiltinNote` "Renaming
+saves a copy you own and switches this task to it.", `saveCopy` "Save as
+copy", `presetCopyName` "{{name}} copy", `presetMissingBadge` "Preset no
+longer available", `presetMissingNote` "This preset no longer exists, so this
+task runs on Auto defaults. Pick another preset or set Custom.",
+`presetCountMax` "You can keep up to {{max}} presets.", `presetSaveFailed`
+"Couldn't save this preset. Try again.", `presetDeleteFailed` "Couldn't
+delete this preset. Try again.", `deletePresetTitle` "Delete preset?",
+`deletePresetMsg` "<b>{{name}}</b> is used by {{tasks}}. Deleting it switches
+those tasks back to Auto.", `deletePresetNoTasksMsg` "<b>{{name}}</b> isn't
+used by any task right now. Deleting it removes it for good."
+`duplicateToEdit` (§9.4's original) is reused, not replaced — it is now the
+built-in's **Edit** button label (§4.2's amendment). The 2026-08-27 block
+above stands, including `assignmentCustomized` (the `passive` chip, §9.2) and
+`migratedNote` (the `cleanup` row's legacy-fallback note, rendered when no
+`llm_task_assignments.cleanup` row exists and `cleanup_sampling` does —
+`task-profiles-section.tsx:141-157,482-486`; that fallback is §12 item 7's
+recommendation as actually applied, server-side at
+`apps/server/src/lib/llm/task-profiles.ts:144-148` used at `:274-276`, not
+§10's sentinel write — see item 7's note).
 
 ---
 
@@ -1555,3 +1848,30 @@ Deleted files:
   are **not** deleted (§8.1's `local-llm` entry still calls
   `createSamplingFetch`, just with resolver-provided params) — so this is a
   rename/split of the test file's contents, not a coverage loss.
+
+**Amendment, 2026-09-26 — inventory delta for preset management.** Nothing
+above is retracted.
+
+New files:
+- `apps/electron/src/renderer/src/pages/models/preset-ops.ts` — the pure data
+  half of §9.3: ids, clone, upsert, delete-and-reassign, dangling detection,
+  the §4.3 write pre-flight.
+- `apps/electron/src/renderer/src/pages/models/preset-ops.test.ts` (§13.4).
+
+Modified files, adding to the list above:
+- `apps/electron/src/renderer/src/pages/models/task-profiles-section.tsx` —
+  gains `PresetActionRow`, `PresetParamsEditor`, `RenamePresetEditor`;
+  `EditorState` loses `viewBuiltin`, gains `editPreset`/`rename` (§9.2, §9.3,
+  §9.4).
+- `apps/electron/src/renderer/src/pages/models/use-models.ts` — gains
+  `putSettingValue` (a settings PUT that resolves a boolean instead of
+  swallowing the failure, `:194-217`), `persistPresets` (`:773-786`),
+  `saveUserPreset`/`duplicateUserPreset`/`deleteUserPreset` (`:794-876`), and
+  rebuilds `saveTaskAssignment` on `assignmentsRef` (§4.3, §9.3).
+- `apps/electron/src/renderer/src/pages/models/index.tsx` — owns the preset
+  delete `ConfirmDialog` and its failure line (§9.3).
+- `apps/electron/src/renderer/src/pages/models/param-json-editor.tsx` —
+  `readOnly`/`onDuplicate` out, `saving`/`saveLabel` in (§9.4).
+- `apps/electron/src/renderer/src/locales/*.json` (7 locales +
+  `template.json`) — §14's 19 added keys; `locales/locales.test.ts` gains the
+  guardrail over them (§13.4).
