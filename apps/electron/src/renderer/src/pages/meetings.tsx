@@ -169,6 +169,20 @@ interface TranscriptSegment {
   speakerName?: string;
 }
 
+/**
+ * The 200 body of `POST /api/meetings/:id/enhance`, as the note card reads it
+ * (specs/meeting-transcription-quality.md §6). `partial` is the honest middle
+ * state — some chunks corrected, some failed and left as raw text. A wholly
+ * failed pass is NOT here: that's a 502 with a `reason`, handled by the
+ * `enhanceFailure` state.
+ */
+interface EnhanceNote {
+  correctedCount: number;
+  partial?: boolean;
+  chunksAttempted?: number;
+  chunksFailed?: number;
+}
+
 interface SpeakerRow {
   label: string;
   segmentCount: number;
@@ -1323,9 +1337,18 @@ function MeetingDetailView({
     labeledCount: number;
     speakerCount: number;
   } | null>(null);
-  const [enhanceResult, setEnhanceResult] = useState<{
-    correctedCount: number;
-  } | null>(null);
+  const [enhanceResult, setEnhanceResult] = useState<EnhanceNote | null>(null);
+  /**
+   * Enhance's third state — the one that used to be missing. When every chunk
+   * fails the route answers 502 with a `reason`, and that reason lands here so
+   * the note reads "Enhance timed out…", NOT "No segments needed correction."
+   * (meeting 9243bea0: three `TimeoutError` chunks, reported as a clean
+   * transcript). Cleared by `runAction` like `enhanceResult`, so it can never
+   * survive into an unrelated action.
+   */
+  const [enhanceFailure, setEnhanceFailure] = useState<null | {
+    reason: "parse" | "provider" | "timeout";
+  }>(null);
   const [speakersOpen, setSpeakersOpen] = useState(false);
   const [rediarizeConfirmOpen, setRediarizeConfirmOpen] = useState(false);
   // Per-session viewing preference (Phase C, specs/meeting-transcription-
@@ -1427,6 +1450,7 @@ function MeetingDetailView({
       // linger through an unrelated re-transcribe/summarize click.
       setDiarizeResult(null);
       setEnhanceResult(null);
+      setEnhanceFailure(null);
       let result: unknown;
       try {
         const res = await request();
@@ -1558,11 +1582,36 @@ function MeetingDetailView({
     else void identifySpeakers();
   }, [hasConfirmedSpeakerState, identifySpeakers]);
   const enhance = useCallback(async () => {
-    const result = await runAction("enhance", () =>
-      getClient().api.meetings[":id"].enhance.$post({ param: { id } }),
-    );
+    // A wholly-failed pass is a non-2xx with a machine-readable `reason`, and
+    // `runAction` owns (and consumes) the Response body — so the failure shape
+    // is captured from a clone inside the request callback. `current` rather
+    // than a bare `let` so the assignment across that closure stays visible to
+    // both the compiler and the reader.
+    const failure = { current: null as null | { reason?: unknown } };
+    const result = await runAction("enhance", async () => {
+      const res = await getClient().api.meetings[":id"].enhance.$post({
+        param: { id },
+      });
+      if (!res.ok) {
+        failure.current = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as null | { reason?: unknown };
+      }
+      return res;
+    });
     if (result) {
-      setEnhanceResult(result as { correctedCount: number });
+      setEnhanceResult(result as EnhanceNote);
+    } else if (failure.current) {
+      const raw = failure.current.reason;
+      // Anything the route didn't classify reads as a provider failure — the
+      // honest default, never "nothing needed correction".
+      setEnhanceFailure({
+        reason:
+          raw === "parse" || raw === "timeout" || raw === "provider"
+            ? raw
+            : "provider",
+      });
     }
     // The route only UPDATEs enhanced_text on existing rows — the merged
     // transcript needs a re-fetch to pick the corrections up, same as
@@ -1898,12 +1947,14 @@ function MeetingDetailView({
         </div>
       )}
 
-      {(meeting.error || actionError) && !cancelledByUser && (
-        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>{actionError ?? meeting.error}</span>
-        </div>
-      )}
+      {(meeting.error || actionError) &&
+        !cancelledByUser &&
+        !enhanceFailure && (
+          <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{actionError ?? meeting.error}</span>
+          </div>
+        )}
 
       {diarizeResult && !actionError && (
         <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
@@ -1927,6 +1978,44 @@ function MeetingDetailView({
               : t("meetings.enhanceResult", {
                   n: enhanceResult.correctedCount,
                 })}
+            {/* A partial pass says so — "corrected 4 segments" on its own
+                hides that the rest of the meeting was never looked at. */}
+            {enhanceResult.partial
+              ? ` ${t("meetings.enhancePartial", {
+                  failed: enhanceResult.chunksFailed ?? 0,
+                  attempted: enhanceResult.chunksAttempted ?? 0,
+                })}`
+              : ""}
+          </span>
+        </div>
+      )}
+
+      {/* State three: the pass failed. Destructive card, names the cause, and
+          offers the retry the old no-op message made unnecessary. Nothing was
+          written — a failed chunk never reaches the UPDATE — so the copy says
+          "nothing was changed" rather than hedging. */}
+      {enhanceFailure && (
+        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="flex min-w-0 flex-col gap-2">
+            <span>
+              {enhanceFailure.reason === "timeout"
+                ? t("meetings.enhanceFailedTimeout")
+                : enhanceFailure.reason === "parse"
+                  ? t("meetings.enhanceFailedParse")
+                  : t("meetings.enhanceFailedProvider")}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => void enhance()}
+              disabled={busy !== null}
+              data-testid="meetings-enhance-retry"
+            >
+              <WandSparkles data-icon="inline-start" />
+              {t("meetings.retryEnhance")}
+            </Button>
           </span>
         </div>
       )}

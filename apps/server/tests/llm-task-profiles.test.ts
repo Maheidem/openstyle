@@ -1,6 +1,7 @@
 import {
   BUILTIN_LLM_PRESETS,
   cleanupSamplingSchema,
+  DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   type LlmTaskAssignments,
 } from "@openstyle/validations";
@@ -113,7 +114,11 @@ describe("LLM_TASK_PROFILES (§3.2)", () => {
       reasoningEnabled: false,
       temperature: 0,
       maxOutputTokens: "auto",
-      timeoutMs: 60_000,
+      // Was a hard-coded 60_000 with no setting behind it — every chunk of a
+      // real enhance pass on a slow local engine timed out at 60 s while
+      // Summarize succeeded. Now the *default* behind the user-settable
+      // `meeting_enhance_timeout_seconds`, read by `taskTimeoutMs()`.
+      timeoutMs: DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS * 1000,
     });
   });
 

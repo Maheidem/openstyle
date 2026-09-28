@@ -16,10 +16,13 @@ import type {
 } from "@openstyle/validations";
 import {
   BUILTIN_LLM_PRESETS,
+  DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   LLM_PRESET_DENYLIST_KEYS,
   llmParameterPresetsSettingSchema,
+  MEETING_ENHANCE_TIMEOUT_SETTING_KEY,
   MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
+  meetingEnhanceTimeoutMs,
   meetingSummaryTimeoutMs,
   parseCleanupSampling,
   parseLlmTaskAssignments,
@@ -51,11 +54,15 @@ export interface LlmTaskProfile {
  * Built-in defaults, per task nature (§3.2). This is a code constant, not a
  * settings row — task *identity* and its *nature* are an engineering
  * decision, not something a preset assignment should be able to silently
- * redefine. One exception, by explicit product decision: `meetingSummarize`'s
- * `timeoutMs` is the *default* behind the user-facing
- * `meeting_summary_timeout_seconds` setting and is overridden per call by
- * `taskTimeoutMs()` below — a local inference engine has to be able to widen
- * the window without a rebuild.
+ * redefine. Two exceptions, by explicit product decision: the two meeting
+ * tasks' `timeoutMs` are the *defaults* behind the user-facing
+ * `meeting_summary_timeout_seconds` and `meeting_enhance_timeout_seconds`
+ * settings and are overridden per call by `taskTimeoutMs()` below — a local
+ * inference engine has to be able to widen the window without a rebuild.
+ * Enhance's default was 60_000 for the same reason Summarize's moved off it:
+ * a non-streaming, per-chunk generation on one worker slot cannot be bounded by
+ * a 60 s guess (real-world symptom: every enhance chunk timing out 60 s apart
+ * while Summarize succeeded on the same engine).
  *
  * `meetingSummarize.maxOutputTokens` is `4096` — the same number as
  * `DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS` (`meetings/summarize.ts:60`), kept as a
@@ -104,7 +111,16 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
     reasoningEnabled: false,
     temperature: 0,
     maxOutputTokens: "auto",
-    timeoutMs: 60_000,
+    /**
+     * Same shape as `meetingSummarize` above, and the same history: this was
+     * a hard-coded 60_000 while its sibling moved to 600 s, and the setting
+     * that was supposed to widen it (`meeting_enhance_timeout_seconds`) was
+     * never read here — so on a slow local engine every chunk timed out and
+     * the route reported "No segments needed correction". Now the constant is
+     * only what "unset" means; `taskTimeoutMs()` below reads
+     * `meeting_enhance_timeout_seconds` fresh per call.
+     */
+    timeoutMs: DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS * 1000,
   },
 };
 
@@ -112,22 +128,33 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
  * Timeout for one call of `taskId`, read fresh (specs/llm-task-profiles.md
  * §8.3 — nothing here is cached across requests).
  *
- * `meetingSummarize` is the one task a user can bound: a local engine hosted
+ * The two meeting tasks are the tasks a user can bound: a local engine hosted
  * outside openstyle (llama.cpp / oMLX) needs minutes, not seconds, for a
- * 4096-token non-streaming generation, so the profile value is a *default*
- * and `meeting_summary_timeout_seconds` overrides it — read here, on the same
- * per-call `readSetting` path as every other setting this resolver touches.
- * Seconds on disk, milliseconds on the wire: `meetingSummaryTimeoutMs()`
- * (`packages/validations/src/settings.ts`) is the single conversion site, and
- * folds out-of-bounds or unset values back to the default defensively.
+ * non-streaming generation, so each profile value is a *default* and
+ * `meeting_summary_timeout_seconds` / `meeting_enhance_timeout_seconds`
+ * override it — read here, on the same per-call `readSetting` path as every
+ * other setting this resolver touches. Seconds on disk, milliseconds on the
+ * wire: `meetingSummaryTimeoutMs()` / `meetingEnhanceTimeoutMs()`
+ * (`packages/validations/src/settings.ts`) are the single conversion sites for
+ * their own task, and fold out-of-bounds or unset values back to the default
+ * defensively.
  *
- * The other three tasks deliberately keep their code-defined timeouts — scope
- * of this knob is summarization only. Known asymmetry, deliberately unchanged:
- * `meetingEnhance` is the same shape of call (non-streaming, per chunk) and
- * still sits at 60 s, so a slow local engine can time out Enhance while
- * Summarize succeeds. See the handoff note; not changed here.
+ * `cleanup` and `remix` deliberately keep their code-defined timeouts: they are
+ * interactive (dictation cleanup, Remix edits), where a long window is a worse
+ * failure than a fast error.
+ *
+ * Adding a third meeting task? It needs a branch here AND its key in
+ * `apps/electron/src/shared/settings-keys.ts` AND a route branch in
+ * `routes/settings.ts` — the enhance knob shipped as a phantom precisely
+ * because the validator existed and this function did not read it. Pinned by
+ * `apps/server/tests/meeting-enhance-timeout.test.ts`.
  */
 function taskTimeoutMs(taskId: LlmTaskId, profileTimeoutMs: number): number {
+  if (taskId === "meetingEnhance") {
+    return meetingEnhanceTimeoutMs(
+      readSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY),
+    );
+  }
   if (taskId !== "meetingSummarize") return profileTimeoutMs;
   return meetingSummaryTimeoutMs(
     readSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY),

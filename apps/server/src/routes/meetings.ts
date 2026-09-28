@@ -526,9 +526,25 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
         vocabTerms,
         meetingRow?.title ?? undefined,
         meetingRow?.context ?? undefined,
-      ).catch((err) => {
-        log.warn(`meeting ${id}: enhance auto-run failed: ${String(err)}`);
-      });
+      )
+        .then((autoResult) => {
+          // There is no route response here, so a wholly-failed auto-run is
+          // reported in the log only — deliberately NOT in `meetings.error`,
+          // which is the transcription chunk-failure banner and must keep
+          // naming chunks, not an enhance pass.
+          if (
+            autoResult.chunksAttempted > 0 &&
+            autoResult.chunksSucceeded === 0 &&
+            !autoResult.stoppedEarly
+          ) {
+            log.warn(
+              `meeting ${id}: enhance auto-run corrected nothing — all ${autoResult.chunksAttempted} chunks failed (${autoResult.firstFailure?.reason ?? "provider"}: ${autoResult.firstFailure?.detail ?? ""})`,
+            );
+          }
+        })
+        .catch((err) => {
+          log.warn(`meeting ${id}: enhance auto-run failed: ${String(err)}`);
+        });
     }
 
     const failed = results.filter((r) => r.status === "failed").length;
@@ -1476,11 +1492,54 @@ const meetings = new Hono()
         row.title ?? undefined,
         row.context ?? undefined,
       );
+      // A pass in which EVERY chunk failed is not a success. Fail-closed per
+      // chunk stays (one bad chunk must never kill a meeting), but until now
+      // its only visible output was `correctedCount: 0` — which the renderer
+      // reads as "No segments needed correction." On the user's machine that
+      // meant a slow local engine that timed out all three chunks was reported
+      // as a clean transcript. Non-2xx with a machine-readable `reason` is the
+      // honest answer; nothing is written, so there is no partial/echo
+      // `enhanced_text` to undo (a failed chunk never reaches the UPDATE).
+      if (
+        result.chunksAttempted > 0 &&
+        result.chunksSucceeded === 0 &&
+        !result.stoppedEarly
+      ) {
+        const reason = result.firstFailure?.reason ?? "provider";
+        const detail =
+          result.firstFailure?.detail ?? "no chunk produced a usable response";
+        log.error(
+          `meeting ${id}: enhance failed — all ${result.chunksAttempted} chunks failed (${reason}: ${detail})`,
+        );
+        return c.json(
+          {
+            ok: false,
+            error: `Enhance failed: ${reason}`,
+            reason,
+            detail,
+            correctedCount: 0,
+            chunksAttempted: result.chunksAttempted,
+            chunksSucceeded: 0,
+            chunksFailed: result.chunksFailed,
+            partial: false,
+          },
+          502,
+        );
+      }
       if (row.audio_dir) writeTranscriptMarkdown(id, row.audio_dir);
+      // `partial` is the second honest state: some chunks corrected, some did
+      // not. The pass is a success but must not read as a complete one.
+      // `stopped_early` distinguishes "the user cancelled it" from "chunks
+      // failed on their own" — the renderer must not call a cancel a failure.
       return c.json({
         ok: true,
         correctedCount: result.correctedCount,
         speakerSuggestions: result.speakerSuggestions,
+        chunksAttempted: result.chunksAttempted,
+        chunksSucceeded: result.chunksSucceeded,
+        chunksFailed: result.chunksFailed,
+        partial: result.chunksFailed > 0,
+        stopped_early: result.stoppedEarly,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -241,6 +241,64 @@ describe("locale files", () => {
     });
   }
 
+  // Keys introduced by the `meeting_enhance_timeout_seconds` setting — the
+  // phantom knob that shipped in 2.8.0 with a validator and no read site.
+  // Settings → Data, same rule as its summarize twin: every locale carries
+  // them, and the range/invalid/reset copy interpolates from the shared bounds.
+  const ENHANCE_TIMEOUT_KEYS = [
+    "settings.data.enhanceTimeout",
+    "settings.data.enhanceTimeoutDesc",
+    "settings.data.enhanceTimeoutSeconds",
+    "settings.data.enhanceTimeoutRange",
+    "settings.data.enhanceTimeoutInvalid",
+    "settings.data.enhanceTimeoutReset",
+    "settings.data.enhanceTimeoutSaveFailed",
+    "settings.data.enhanceTimeoutStripped",
+  ];
+
+  for (const file of ["template.json", ...localeFiles]) {
+    it(`${file}: carries the meeting-enhance-timeout keys with intact placeholders`, () => {
+      const flat = flatten(load(file));
+      const en = flatten(load("en.json"));
+      for (const key of ENHANCE_TIMEOUT_KEYS) {
+        expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+        expect(
+          placeholders(flat[key]),
+          `${file} "${key}" placeholders differ from en.json`,
+        ).toEqual(placeholders(en[key]));
+      }
+    });
+  }
+
+  // The three states of an Enhance pass. "No segments needed correction" must
+  // never be the only zero-correction message — every locale carries the
+  // partial pass and the three named failure states, or a dead engine goes
+  // back to reading as a clean transcript in that language.
+  const ENHANCE_HONESTY_KEYS = [
+    "meetings.enhancePartial",
+    "meetings.enhanceFailedTimeout",
+    "meetings.enhanceFailedParse",
+    "meetings.enhanceFailedProvider",
+    "meetings.retryEnhance",
+  ];
+
+  for (const file of ["template.json", ...localeFiles]) {
+    it(`${file}: carries the Enhance partial/failure reporting keys with intact placeholders`, () => {
+      const flat = flatten(load(file));
+      const en = flatten(load("en.json"));
+      for (const key of ENHANCE_HONESTY_KEYS) {
+        expect(flat[key], `${file} is missing "${key}"`).toBeTruthy();
+        expect(
+          placeholders(flat[key]),
+          `${file} "${key}" placeholders differ from en.json`,
+        ).toEqual(placeholders(en[key]));
+      }
+      // The no-op message must still exist — it is now only the state it is
+      // honest about (a completed pass that found nothing), not the default.
+      expect(flat["meetings.enhanceNoneCorrected"]).toBeTruthy();
+    });
+  }
+
   // Guardrail for the section this change touched: any meetings.* key a
   // locale carries must preserve en.json's placeholders for that key. (This
   // is intentionally scoped to meetings.* — other sections have pre-existing

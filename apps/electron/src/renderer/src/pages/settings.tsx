@@ -1,12 +1,16 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   HISTORY_RETENTION_DAYS_MAX,
+  MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
+  MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
   MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
   MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
   type NetworkSettingsForm,
   networkSettingsFormSchema,
   normalizeLanguageList,
+  parseMeetingEnhanceTimeoutSeconds,
   parseMeetingSummaryTimeoutSeconds,
   parseRetentionDays,
   parseStoredLanguageList,
@@ -114,6 +118,15 @@ import {
  */
 const SUMMARY_TIMEOUT_MAX_DIGITS = String(
   MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+).length;
+
+/**
+ * The Enhance twin — same bound (3600), same rule: 4 digits, applied here AND
+ * as the input's `maxLength` so a 5th digit is refused by the browser rather
+ * than dropped by the renderer after the fact.
+ */
+const ENHANCE_TIMEOUT_MAX_DIGITS = String(
+  MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
 ).length;
 
 const themeOptions = [
@@ -232,6 +245,26 @@ export default function SettingsPage(): React.JSX.Element {
   );
   const [summaryTimeoutStripped, setSummaryTimeoutStripped] = useState("");
   const [summaryTimeoutSaveError, setSummaryTimeoutSaveError] = useState<
+    null | string
+  >(null);
+  /**
+   * Meeting-**Enhance** timeout, in seconds — the exact twin of the block
+   * above, and it exists because Enhance is the same shape of call (one
+   * non-streaming generation per chunk) while its window was a hard-coded
+   * 60 s nothing could widen. Same contract: the field shows what the server
+   * holds, typing edits a LOCAL draft that writes nothing, the PUT fires on
+   * blur / Enter / Reset only, an invalid draft reverts, and a failed write
+   * shows the value the server actually kept. Bounds ONE call per chunk, not
+   * the whole pass — which is what the helper copy says.
+   */
+  const [enhanceTimeoutSeconds, setEnhanceTimeoutSeconds] = useState(
+    String(DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS),
+  );
+  const [enhanceTimeoutDraft, setEnhanceTimeoutDraft] = useState<null | string>(
+    null,
+  );
+  const [enhanceTimeoutStripped, setEnhanceTimeoutStripped] = useState("");
+  const [enhanceTimeoutSaveError, setEnhanceTimeoutSaveError] = useState<
     null | string
   >(null);
   const [audioPlaybackMode, setAudioPlaybackMode] =
@@ -573,6 +606,15 @@ export default function SettingsPage(): React.JSX.Element {
     );
     if (summaryTimeout !== null) {
       setSummaryTimeoutSeconds(String(summaryTimeout));
+    }
+
+    // Same posture for the Enhance twin: unset or a legacy out-of-bounds row
+    // shows the default, which is exactly what the resolver uses.
+    const enhanceTimeout = parseMeetingEnhanceTimeoutSeconds(
+      s[SETTINGS_KEYS.meetingEnhanceTimeoutSeconds],
+    );
+    if (enhanceTimeout !== null) {
+      setEnhanceTimeoutSeconds(String(enhanceTimeout));
     }
 
     // Audio playback mode with legacy fallback chain (new key → paused → duck).
@@ -989,10 +1031,118 @@ export default function SettingsPage(): React.JSX.Element {
     [commitSummaryTimeout],
   );
 
+  /**
+   * Enhance twin of `readSummaryTimeoutFromServer` — read what the server
+   * ACTUALLY holds, so after a failed write the field shows the window the
+   * Enhance lane will really get. A failed read falls back to the default, the
+   * same value `meetingEnhanceTimeoutMs()` would use.
+   */
+  const readEnhanceTimeoutFromServer =
+    useCallback(async (): Promise<string> => {
+      const fallback = displayValueFor(
+        null,
+        DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
+        parseMeetingEnhanceTimeoutSeconds,
+      );
+      try {
+        const res = await getClient().api.settings[":key"].$get({
+          param: { key: SETTINGS_KEYS.meetingEnhanceTimeoutSeconds },
+        });
+        if (!res.ok) return fallback;
+        const body = (await res.json()) as { value?: string | null };
+        return displayValueFor(
+          body.value ?? null,
+          DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
+          parseMeetingEnhanceTimeoutSeconds,
+        );
+      } catch {
+        return fallback;
+      }
+    }, []);
+
+  /** The Enhance control's ONE write path — blur, Enter, Reset only, never
+   *  `onChange`. Same decision table as the summarize control's. */
+  const commitEnhanceTimeout = useCallback(
+    async (draft: string | null, trigger: CommitTrigger): Promise<void> => {
+      const intent = resolveCommitIntent({
+        trigger,
+        draft,
+        saved: enhanceTimeoutSeconds,
+        parse: parseMeetingEnhanceTimeoutSeconds,
+      });
+      setEnhanceTimeoutDraft(null);
+      setEnhanceTimeoutStripped("");
+      setEnhanceTimeoutSaveError(null);
+      if (intent.kind !== "write" && intent.kind !== "reset") return;
+      const value = intent.kind === "reset" ? "" : intent.value;
+      const res = await getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.meetingEnhanceTimeoutSeconds },
+          json: { value },
+        })
+        .catch(() => null);
+      if (res?.ok) {
+        setEnhanceTimeoutSeconds(
+          displayValueFor(
+            value,
+            DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
+            parseMeetingEnhanceTimeoutSeconds,
+          ),
+        );
+        queryClient.setQueryData<Record<string, string>>(
+          queryKeys.settings,
+          (prev) => ({
+            ...(prev ?? {}),
+            [SETTINGS_KEYS.meetingEnhanceTimeoutSeconds]: value,
+          }),
+        );
+        return;
+      }
+      const held = await readEnhanceTimeoutFromServer();
+      setEnhanceTimeoutSeconds(held);
+      setEnhanceTimeoutSaveError(held);
+    },
+    [queryClient, readEnhanceTimeoutFromServer, enhanceTimeoutSeconds],
+  );
+
+  /** Typing updates the LOCAL DRAFT only. This handler never writes. */
+  const handleEnhanceTimeoutChange = useCallback((raw: string) => {
+    const draft = sanitizeDigits(raw, ENHANCE_TIMEOUT_MAX_DIGITS);
+    setEnhanceTimeoutDraft(draft);
+    setEnhanceTimeoutStripped(
+      inspectNumericDraft(raw, ENHANCE_TIMEOUT_MAX_DIGITS).stripped,
+    );
+    setEnhanceTimeoutSaveError(null);
+  }, []);
+
+  const handleEnhanceTimeoutBlur = useCallback(
+    (raw: string) => {
+      void commitEnhanceTimeout(
+        sanitizeDigits(raw, ENHANCE_TIMEOUT_MAX_DIGITS),
+        "blur",
+      );
+    },
+    [commitEnhanceTimeout],
+  );
+
+  const handleEnhanceTimeoutKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void commitEnhanceTimeout(event.currentTarget.value, "enter");
+      }
+    },
+    [commitEnhanceTimeout],
+  );
+
   /** Mid-typing only: the persisted value is always in bounds. */
   const summaryTimeoutInvalid =
     summaryTimeoutDraft !== null &&
     parseMeetingSummaryTimeoutSeconds(summaryTimeoutDraft) === null;
+
+  const enhanceTimeoutInvalid =
+    enhanceTimeoutDraft !== null &&
+    parseMeetingEnhanceTimeoutSeconds(enhanceTimeoutDraft) === null;
 
   /**
    * Hint precedence: a failed save (names what the server holds) beats an
@@ -1031,6 +1181,39 @@ export default function SettingsPage(): React.JSX.Element {
               text: t("settings.data.summaryTimeoutRange", {
                 min: MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
                 max: MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+              }),
+            };
+
+  /** Same precedence for the Enhance control. */
+  const enhanceTimeoutHint: { destructive: boolean; text: string } =
+    enhanceTimeoutSaveError !== null
+      ? {
+          destructive: true,
+          text: t("settings.data.enhanceTimeoutSaveFailed", {
+            value: enhanceTimeoutSaveError,
+          }),
+        }
+      : enhanceTimeoutInvalid
+        ? {
+            destructive: true,
+            text: t("settings.data.enhanceTimeoutInvalid", {
+              min: MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
+              max: MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
+            }),
+          }
+        : enhanceTimeoutStripped !== ""
+          ? {
+              destructive: true,
+              text: t("settings.data.enhanceTimeoutStripped", {
+                dropped: enhanceTimeoutStripped,
+                value: enhanceTimeoutDraft ?? "",
+              }),
+            }
+          : {
+              destructive: false,
+              text: t("settings.data.enhanceTimeoutRange", {
+                min: MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
+                max: MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
               }),
             };
 
@@ -1740,6 +1923,61 @@ export default function SettingsPage(): React.JSX.Element {
                     data-testid="settings-summary-timeout-hint"
                   >
                     {summaryTimeoutHint.text}
+                  </span>
+                </div>
+              </Row>
+              {/* The Enhance twin, directly beside it: two non-streaming LLM
+                  tasks, two independent windows, one lane. Bound one CALL per
+                  chunk — the helper copy says so, because the whole pass is
+                  chunks × this number. */}
+              <Row
+                label={t("settings.data.enhanceTimeout")}
+                desc={t("settings.data.enhanceTimeoutDesc")}
+              >
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Input
+                      inputMode="numeric"
+                      value={enhanceTimeoutDraft ?? enhanceTimeoutSeconds}
+                      onChange={(e) =>
+                        handleEnhanceTimeoutChange(e.target.value)
+                      }
+                      onBlur={(e) => handleEnhanceTimeoutBlur(e.target.value)}
+                      onKeyDown={handleEnhanceTimeoutKeyDown}
+                      maxLength={ENHANCE_TIMEOUT_MAX_DIGITS}
+                      className="w-20 text-center"
+                      aria-label={t("settings.data.enhanceTimeout")}
+                      aria-invalid={enhanceTimeoutInvalid}
+                      data-testid="settings-enhance-timeout"
+                    />
+                    <span className="text-muted-foreground text-xs">
+                      {t("settings.data.enhanceTimeoutSeconds")}
+                    </span>
+                    {/* 'Reset to default' is an explicit act here too — an empty
+                        draft is out of bounds, and out of bounds never writes. */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void commitEnhanceTimeout(enhanceTimeoutDraft, "reset")
+                      }
+                      data-testid="settings-enhance-timeout-reset"
+                    >
+                      {t("settings.data.enhanceTimeoutReset", {
+                        seconds: DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
+                      })}
+                    </Button>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-[11.5px]",
+                      enhanceTimeoutHint.destructive
+                        ? "text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                    data-testid="settings-enhance-timeout-hint"
+                  >
+                    {enhanceTimeoutHint.text}
                   </span>
                 </div>
               </Row>

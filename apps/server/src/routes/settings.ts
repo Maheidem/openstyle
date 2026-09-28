@@ -14,7 +14,9 @@ import {
   llmParameterPresetsSettingSchema,
   llmTaskAssignmentSchema,
   localLlmConfigSchema,
+  MEETING_ENHANCE_TIMEOUT_SETTING_KEY,
   MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
+  meetingEnhanceTimeoutSecondsSettingSchema,
   meetingSummaryInstructionsSchema,
   meetingSummaryTimeoutSecondsSettingSchema,
   normalizeOmlxRoot,
@@ -313,6 +315,26 @@ const settings = new Hono()
         return c.json(
           {
             error: parsed.error.issues[0]?.message ?? "Invalid summary timeout",
+          },
+          400,
+        );
+      }
+    } else if (key === MEETING_ENHANCE_TIMEOUT_SETTING_KEY) {
+      // The exact sibling of the branch above, same bounds (30-3600 s) and the
+      // same reason to exist: Enhance is a non-streaming per-chunk generation
+      // through the same path, and this knob is what makes the window
+      // user-settable instead of a hard-coded 60 s. Until this branch existed
+      // the key had a validator and no route branch, so it could never be set
+      // from the UI at all. Empty is valid and means "no preference" (the
+      // resolver uses 600 s); anything else out of bounds is a 400 rather than
+      // a row that is stored and silently ignored.
+      const parsed = meetingEnhanceTimeoutSecondsSettingSchema.safeParse(
+        body.value,
+      );
+      if (!parsed.success) {
+        return c.json(
+          {
+            error: parsed.error.issues[0]?.message ?? "Invalid enhance timeout",
           },
           400,
         );

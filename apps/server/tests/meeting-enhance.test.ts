@@ -1057,3 +1057,252 @@ describe("enhanceMeetingTranscript speaker/context prompt wiring (specs/meeting-
     );
   });
 });
+
+/**
+ * Pass accounting — the fix for "every chunk timed out and the user was told
+ * nothing needed correcting" (real log, meeting 9243bea0: three `TimeoutError`
+ * chunks 60 s apart → `200 { correctedCount: 0 }` → "No segments needed
+ * correction."). Fail-closed per chunk is deliberately UNCHANGED — one bad
+ * chunk must never kill a meeting. What changed is that the pass now reports
+ * how many chunks it attempted, how many succeeded, how many failed, and why
+ * the first one did, so the route can refuse to call a wholly-failed pass a
+ * success (`routes/meetings.ts`).
+ */
+describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a success)", () => {
+  /** An `llmCall` that records requests and fails every one. */
+  function failingLlm(err: () => unknown) {
+    const requests: EnhanceLlmRequest[] = [];
+    return {
+      requests,
+      call: async (request: EnhanceLlmRequest): Promise<EnhanceLlmResponse> => {
+        requests.push(request);
+        throw err();
+      },
+    };
+  }
+
+  /** The exact shape `AbortSignal.timeout()` rejects with (DOMException,
+   *  name "TimeoutError") — what the user's log actually shows. */
+  const timeoutError = () =>
+    Object.assign(new Error("The operation was aborted due to timeout"), {
+      name: "TimeoutError",
+    });
+
+  const twoSegments = [
+    seg("m1:mic:0", "Me", "a".repeat(200)),
+    seg("m1:mic:1", "Them", "b".repeat(200), 1000, 2000, "1"),
+  ];
+
+  it("reports every chunk failed, reason 'timeout', when the engine times out", async () => {
+    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
+    const llm = failingLlm(timeoutError);
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      twoSegments,
+      undefined,
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call, contextBudgetTokens: 20 },
+    );
+
+    // The tiny budget forces each oversized segment into its own chunk, so
+    // this is the multi-chunk shape of the real failure.
+    expect(llm.requests.length).toBe(2);
+    expect(result).toMatchObject({
+      correctedCount: 0,
+      speakerSuggestions: 0,
+      chunksAttempted: 2,
+      chunksSucceeded: 0,
+      chunksFailed: 2,
+      stoppedEarly: false,
+    });
+    expect(result.firstFailure?.reason).toBe("timeout");
+    expect(result.firstFailure?.detail).toMatch(
+      /TimeoutError: The operation was aborted due to timeout/,
+    );
+  });
+
+  it("writes NO enhanced_text when every chunk failed — a failed pass never persists partial or echoed text", async () => {
+    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
+    const llm = failingLlm(timeoutError);
+
+    await enhanceMeetingTranscript(
+      "m1",
+      twoSegments,
+      undefined,
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call, contextBudgetTokens: 20 },
+    );
+
+    const rows = getDb()
+      .prepare(
+        "SELECT id, enhanced_text FROM meeting_segments WHERE meeting_id = 'm1'",
+      )
+      .all() as { id: string; enhanced_text: string | null }[];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.enhanced_text, row.id).toBeNull();
+    }
+    // And no speaker-suggestion rows either: nothing was parsed.
+    const speakers = getDb()
+      .prepare("SELECT COUNT(*) AS n FROM meeting_speakers")
+      .get() as { n: number };
+    expect(speakers.n).toBe(0);
+  });
+
+  it("classifies a non-timeout call failure as 'provider' and names the cause in detail", async () => {
+    insertMeetingAndSegments("m1", ["m1:mic:0"]);
+    const llm = failingLlm(
+      () => new Error("503 Service Unavailable: no worker on :4321"),
+    );
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      [seg("m1:mic:0", "Me", "hello")],
+      undefined,
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result).toMatchObject({
+      correctedCount: 0,
+      chunksAttempted: 1,
+      chunksSucceeded: 0,
+      chunksFailed: 1,
+    });
+    expect(result.firstFailure?.reason).toBe("provider");
+    expect(result.firstFailure?.detail).toMatch(/503 Service Unavailable/);
+  });
+
+  it('accepts a timeout-shaped message from a non-DOMException Error as "timeout" too', async () => {
+    insertMeetingAndSegments("m1", ["m1:mic:0"]);
+    const llm = failingLlm(() => new Error("upstream request timed out"));
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      [seg("m1:mic:0", "Me", "hello")],
+      undefined,
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result.firstFailure?.reason).toBe("timeout");
+  });
+
+  it("reports a chunk whose response carries no JSON as reason 'parse', with the other chunks still counted", async () => {
+    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
+    const llm = fakeLlm((_request, index) =>
+      index === 0
+        ? { text: "I cannot help with that." }
+        : { text: JSON.stringify({ "m1:mic:1": "fixed b" }) },
+    );
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      twoSegments,
+      undefined,
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call, contextBudgetTokens: 20 },
+    );
+
+    expect(result).toMatchObject({
+      correctedCount: 1,
+      chunksAttempted: 2,
+      chunksSucceeded: 1,
+      chunksFailed: 1,
+      stoppedEarly: false,
+    });
+    expect(result.firstFailure).toEqual({
+      reason: "parse",
+      detail: "model response contained no JSON object",
+    });
+  });
+
+  it("reports a successful pass honestly: zero failures, no firstFailure, and no failure when there was no work at all", async () => {
+    insertMeetingAndSegments("m1", ["m1:mic:0"]);
+    const llm = fakeLlm(() => ({
+      text: JSON.stringify({ "m1:mic:0": "hello there" }),
+    }));
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      [seg("m1:mic:0", "Me", "hello")],
+      undefined,
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+
+    expect(result).toEqual({
+      correctedCount: 1,
+      speakerSuggestions: 0,
+      chunksAttempted: 1,
+      chunksSucceeded: 1,
+      chunksFailed: 0,
+      stoppedEarly: false,
+    });
+    expect(result.firstFailure).toBeUndefined();
+
+    // A pass with nothing to do attempts nothing — which is NOT a failure,
+    // and the route must not read `chunksAttempted: 0` as one.
+    const empty = await enhanceMeetingTranscript(
+      "m1",
+      [],
+      undefined,
+      [],
+      undefined,
+      undefined,
+      { llmCall: llm.call },
+    );
+    expect(empty).toEqual({
+      correctedCount: 0,
+      speakerSuggestions: 0,
+      chunksAttempted: 0,
+      chunksSucceeded: 0,
+      chunksFailed: 0,
+      stoppedEarly: false,
+    });
+  });
+
+  it("flags stoppedEarly when shouldStop ends the pass before the last chunk (§5.7)", async () => {
+    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
+    let calls = 0;
+    const llm = fakeLlm((_request, index) => {
+      calls = index + 1;
+      return { text: "{}" };
+    });
+
+    const result = await enhanceMeetingTranscript(
+      "m1",
+      twoSegments,
+      undefined,
+      [],
+      undefined,
+      undefined,
+      {
+        llmCall: llm.call,
+        contextBudgetTokens: 20,
+        // Stop once the first chunk has come back: the second never goes out.
+        shouldStop: () => calls >= 1,
+      },
+    );
+
+    expect(result).toMatchObject({
+      chunksAttempted: 1,
+      chunksSucceeded: 1,
+      chunksFailed: 0,
+      stoppedEarly: true,
+    });
+  });
+});

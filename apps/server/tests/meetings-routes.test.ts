@@ -2034,6 +2034,20 @@ describe("POST /api/meetings/:id/summarize", () => {
 });
 
 describe("POST /api/meetings/:id/enhance", () => {
+  /**
+   * Honest chunk accounting for a mock that ran one chunk and succeeded.
+   * Spelled out on every override because `EnhanceMeetingResult` now carries
+   * the counts the route uses to refuse to call a wholly-failed pass a
+   * success — a bare `{ correctedCount }` mock would silently mean
+   * "attempted nothing".
+   */
+  const ONE_CHUNK_OK = {
+    chunksAttempted: 1,
+    chunksSucceeded: 1,
+    chunksFailed: 0,
+    stoppedEarly: false,
+  };
+
   it("404s for an unknown meeting", async () => {
     const res = await app.request("/api/meetings/nope/enhance", {
       method: "POST",
@@ -2117,7 +2131,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     __setMeetingsTestOverrides({
       enhance: async () => {
         await gate;
-        return { correctedCount: 1 };
+        return { correctedCount: 1, ...ONE_CHUNK_OK };
       },
     });
 
@@ -2188,7 +2202,7 @@ describe("POST /api/meetings/:id/enhance", () => {
         getDb()
           .prepare("UPDATE meeting_segments SET enhanced_text = ? WHERE id = ?")
           .run("garbled text here", "m1:mic:0");
-        return { correctedCount: 1 };
+        return { correctedCount: 1, ...ONE_CHUNK_OK };
       },
     });
 
@@ -2238,7 +2252,11 @@ describe("POST /api/meetings/:id/enhance", () => {
         context,
       ) => {
         capturedArgs = [title, context];
-        return { correctedCount: 0, speakerSuggestions: 2 };
+        return {
+          correctedCount: 0,
+          speakerSuggestions: 2,
+          ...ONE_CHUNK_OK,
+        };
       },
     });
 
@@ -2270,7 +2288,7 @@ describe("POST /api/meetings/:id/enhance", () => {
         getDb()
           .prepare("UPDATE meeting_segments SET enhanced_text = ? WHERE id = ?")
           .run("garbled text here", "m1:mic:0");
-        return { correctedCount: 1 };
+        return { correctedCount: 1, ...ONE_CHUNK_OK };
       },
     });
 
@@ -2310,6 +2328,228 @@ describe("POST /api/meetings/:id/enhance", () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("No AI model is set up yet.");
+  });
+
+  // A wholly-failed pass is NOT "no segments needed correction". On the user's
+  // machine every chunk timed out (60 s apart, TimeoutError) and the route
+  // answered `200 { correctedCount: 0 }` — indistinguishable from a clean
+  // transcript. The route now answers 502 with a machine-readable `reason`, and
+  // still writes nothing.
+  it("502s with reason 'timeout' when every chunk failed, and never reports correctedCount 0 as a success", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
+      )
+      .run();
+    __setMeetingsTestOverrides({
+      enhance: async () => ({
+        correctedCount: 0,
+        speakerSuggestions: 0,
+        chunksAttempted: 3,
+        chunksSucceeded: 0,
+        chunksFailed: 3,
+        stoppedEarly: false,
+        firstFailure: {
+          reason: "timeout" as const,
+          detail: "TimeoutError: The operation was aborted due to timeout",
+        },
+      }),
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.ok).toBe(false);
+    expect(body.reason).toBe("timeout");
+    expect(body.correctedCount).toBe(0);
+    expect(body.chunksAttempted).toBe(3);
+    expect(body.chunksFailed).toBe(3);
+    expect(body.partial).toBe(false);
+    expect(String(body.error)).toMatch(/[Ee]nhance failed/);
+
+    // Nothing was persisted: no enhanced_text, and `meetings.error` stays NULL
+    // (that column is the transcription chunk-failure banner, not this one).
+    const seg = getDb()
+      .prepare(
+        "SELECT enhanced_text FROM meeting_segments WHERE id = 'm1:mic:0'",
+      )
+      .get() as { enhanced_text: string | null };
+    expect(seg.enhanced_text).toBeNull();
+    expect((await getMeeting("m1")).error).toBeNull();
+    // And the concurrency slot was released by the failure path too.
+    expect((await getMeeting("m1")).job).toBeNull();
+  });
+
+  it("classifies the failure the pass reported: parse and provider both reach the body", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
+      )
+      .run();
+
+    for (const [reason, detail] of [
+      ["parse", "model response contained no JSON object"],
+      ["provider", "Error: 503 Service Unavailable"],
+    ] as const) {
+      __setMeetingsTestOverrides({
+        enhance: async () => ({
+          correctedCount: 0,
+          speakerSuggestions: 0,
+          chunksAttempted: 1,
+          chunksSucceeded: 0,
+          chunksFailed: 1,
+          stoppedEarly: false,
+          firstFailure: { reason, detail },
+        }),
+      });
+
+      const res = await app.request("/api/meetings/m1/enhance", {
+        method: "POST",
+      });
+      expect(res.status, reason).toBe(502);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.reason, reason).toBe(reason);
+      expect(body.detail, reason).toBe(detail);
+    }
+  });
+
+  it("falls back to reason 'provider' when a wholly-failed pass reported no firstFailure", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
+      )
+      .run();
+    __setMeetingsTestOverrides({
+      enhance: async () => ({
+        correctedCount: 0,
+        speakerSuggestions: 0,
+        chunksAttempted: 2,
+        chunksSucceeded: 0,
+        chunksFailed: 2,
+        stoppedEarly: false,
+      }),
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { reason: string };
+    expect(body.reason).toBe("provider");
+  });
+
+  it("marks a partial pass partial in the 200 body instead of hiding the failed chunks", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
+      )
+      .run();
+    __setMeetingsTestOverrides({
+      enhance: async () => {
+        getDb()
+          .prepare("UPDATE meeting_segments SET enhanced_text = ? WHERE id = ?")
+          .run("garbled text here", "m1:mic:0");
+        return {
+          correctedCount: 1,
+          speakerSuggestions: 0,
+          chunksAttempted: 3,
+          chunksSucceeded: 2,
+          chunksFailed: 1,
+          stoppedEarly: false,
+          firstFailure: { reason: "timeout" as const, detail: "TimeoutError" },
+        };
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      ok: true,
+      correctedCount: 1,
+      chunksAttempted: 3,
+      chunksSucceeded: 2,
+      chunksFailed: 1,
+      partial: true,
+    });
+    // A partial pass still refreshes the on-disk transcript it did correct.
+    expect((await getMeeting("m1")).error).toBeNull();
+  });
+
+  it("reports a clean pass as neither partial nor failed (the honest baseline for the 3rd UI state)", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'clean text', 'ok')`,
+      )
+      .run();
+    __setMeetingsTestOverrides({
+      enhance: async () => ({
+        correctedCount: 0,
+        speakerSuggestions: 0,
+        chunksAttempted: 2,
+        chunksSucceeded: 2,
+        chunksFailed: 0,
+        stoppedEarly: false,
+      }),
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      ok: true,
+      correctedCount: 0,
+      chunksAttempted: 2,
+      chunksSucceeded: 2,
+      chunksFailed: 0,
+      partial: false,
+    });
+    expect(body.reason).toBeUndefined();
+  });
+
+  it("treats a pass cancelled before any chunk succeeded as stopped, not failed (§5.7)", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
+         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
+      )
+      .run();
+    __setMeetingsTestOverrides({
+      enhance: async () => ({
+        correctedCount: 0,
+        speakerSuggestions: 0,
+        chunksAttempted: 1,
+        chunksSucceeded: 0,
+        chunksFailed: 1,
+        stoppedEarly: true,
+        firstFailure: { reason: "timeout" as const, detail: "TimeoutError" },
+      }),
+    });
+
+    const res = await app.request("/api/meetings/m1/enhance", {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.partial).toBe(true);
+    expect(body.ok).toBe(true);
   });
 });
 

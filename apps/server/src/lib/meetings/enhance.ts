@@ -13,6 +13,14 @@
  * failure, on one chunk is logged and skipped — never fatal to the rest;
  * every segment the pass couldn't safely correct keeps its raw `text` as
  * authoritative.
+ *
+ * A failed chunk is never fatal — but a pass in which EVERY chunk failed is
+ * not a success either: the pass reports `chunksAttempted` /
+ * `chunksSucceeded` / `chunksFailed` plus the first failure reason, so the
+ * route can answer non-2xx instead of `correctedCount: 0`, which the UI used
+ * to render as "No segments needed correction" while every chunk had in fact
+ * timed out (real log, meeting 9243bea0: three `TimeoutError` chunks, 60 s
+ * apart, reported to the user as a clean transcript).
  */
 
 import { createAppLogger } from "@openstyle/utils";
@@ -81,6 +89,62 @@ export interface EnhanceMeetingResult {
   /** Distinct labels for which a name suggestion was persisted this run
    *  (specs/meeting-speaker-naming.md §5.3). */
   speakerSuggestions: number;
+  // --- Honest pass accounting -------------------------------------------------
+  // The fix for "a dead engine reports a clean transcript": correctedCount was
+  // the only signal the route had, so a pass in which EVERY chunk timed out
+  // answered `200 { correctedCount: 0 }` and the UI said "No segments needed
+  // correction." These counts are what lets the route tell "nothing needed
+  // correcting" apart from "nothing worked" — see `routes/meetings.ts`.
+  /** Chunks the pass put on the wire (one non-streaming LLM call each). */
+  chunksAttempted: number;
+  /** Chunks whose call succeeded AND whose response parsed. */
+  chunksSucceeded: number;
+  /** `chunksAttempted - chunksSucceeded`; a failed chunk keeps its raw text. */
+  chunksFailed: number;
+  /** True when `shouldStop` ended the pass before its last chunk (§5.7). */
+  stoppedEarly: boolean;
+  /** First failure of the pass, present whenever `chunksFailed > 0`. Kept
+   *  deliberately short — it names the cause in the log and the route's body,
+   *  it is not a stack trace. */
+  firstFailure?: EnhancePassFailure;
+}
+
+/**
+ * Why one chunk produced nothing. `timeout` is split out because it is the
+ * failure users can actually fix themselves — Settings → Data → Enhance
+ * timeout — and "the model took too long" reads very differently from "the
+ * model answered nonsense".
+ */
+export type EnhanceFailureReason = "timeout" | "parse" | "provider";
+
+/** The first failed chunk of a pass, as it reaches the route's JSON body. */
+export interface EnhancePassFailure {
+  reason: EnhanceFailureReason;
+  /** The cause as the provider layer reported it, truncated to one line. */
+  detail: string;
+}
+
+/**
+ * Classify a chunk-call failure. `AbortSignal.timeout()` rejects with a
+ * `DOMException` named `TimeoutError` (the exact shape in the real app log:
+ * "TimeoutError: The operation was aborted due to timeout"), so the name is
+ * checked first and the message second — a provider that throws its own
+ * timeout-shaped Error still classifies as `timeout`.
+ */
+function enhanceFailureReasonFor(err: unknown): EnhanceFailureReason {
+  const name = err instanceof Error ? err.name : "";
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (name === "TimeoutError") return "timeout";
+  return /timeout|timed out|aborted due to timeout/i.test(message)
+    ? "timeout"
+    : "provider";
+}
+
+/** One-line cause text for a failure, bounded so it can ride a JSON body. */
+function failureDetail(err: unknown): string {
+  const message =
+    err instanceof Error ? `${err.name}: ${err.message}` : String(err ?? "");
+  return message.slice(0, 200);
 }
 
 interface EnhanceSegment {
@@ -322,7 +386,15 @@ export async function enhanceMeetingTranscript(
         ? { speakerLabel: s.speakerLabel }
         : {}),
     }));
-  if (withIds.length === 0) return { correctedCount: 0, speakerSuggestions: 0 };
+  if (withIds.length === 0)
+    return {
+      correctedCount: 0,
+      speakerSuggestions: 0,
+      chunksAttempted: 0,
+      chunksSucceeded: 0,
+      chunksFailed: 0,
+      stoppedEarly: false,
+    };
 
   // Real label set for the naming prompt/parse (§5.3): derived from the
   // structured `speakerLabel` field, never by re-parsing `withIds[].speaker`
@@ -349,6 +421,13 @@ export async function enhanceMeetingTranscript(
     meetingContext,
   );
   const chunks = chunkForEnhance(withIds, contextBudgetTokens);
+  // Pass accounting (see EnhanceMeetingResult): fail-closed per chunk stays,
+  // but "fail-closed" must not mean "report success". `firstFailure` is the
+  // first reason only — the log carries every chunk, the body carries one.
+  let chunksAttempted = 0;
+  let chunksSucceeded = 0;
+  let stoppedEarly = false;
+  let firstFailure: EnhancePassFailure | undefined;
   const corrections = new Map<string, string>();
   const nameProposals = new Map<
     string,
@@ -371,6 +450,7 @@ export async function enhanceMeetingTranscript(
     // here leaves a coherent, partially-enhanced transcript — never a
     // half-written one.
     if (options.shouldStop?.()) {
+      stoppedEarly = true;
       log.info(
         `meeting ${meetingId}: enhance stopped by user after ${chunkIndex} of ${chunks.length} chunks`,
       );
@@ -393,6 +473,7 @@ export async function enhanceMeetingTranscript(
       Math.ceil(chunkTokens * 1.3) + 200 + 60 * speakerLabelsInChunk;
 
     let raw: string;
+    chunksAttempted++;
     try {
       raw = (
         await llmCall({
@@ -402,17 +483,27 @@ export async function enhanceMeetingTranscript(
         })
       ).text;
     } catch (err) {
+      const reason = enhanceFailureReasonFor(err);
+      const detail = failureDetail(err);
+      firstFailure ??= { reason, detail };
       log.warn(
-        `meeting ${meetingId}: enhance chunk call failed, skipping: ${String(err)}`,
+        `meeting ${meetingId}: enhance chunk ${chunkIndex}/${chunks.length} call failed (${reason}), skipping: ${detail}`,
       );
       continue;
     }
 
     const parsed = extractJsonObject(raw);
     if (parsed === null) {
-      log.warn(`meeting ${meetingId}: enhance chunk parse failed, skipping`);
+      firstFailure ??= {
+        reason: "parse",
+        detail: "model response contained no JSON object",
+      };
+      log.warn(
+        `meeting ${meetingId}: enhance chunk ${chunkIndex}/${chunks.length} parse failed, skipping`,
+      );
       continue;
     }
+    chunksSucceeded++;
     const originalById = new Map(chunk.map((s) => [s.id, s]));
     for (const [id, text] of Object.entries(parsed)) {
       const original = originalById.get(id);
@@ -562,8 +653,22 @@ export async function enhanceMeetingTranscript(
     }
   }
 
+  const chunksFailed = chunksAttempted - chunksSucceeded;
+  if (chunksFailed > 0) {
+    // Loud in the log even when the pass returns 200 with some corrections:
+    // a partial pass must be traceable chunk by chunk.
+    log.warn(
+      `meeting ${meetingId}: enhance pass incomplete — ${chunksFailed} of ${chunksAttempted} chunks failed (first: ${firstFailure?.reason ?? "unknown"} — ${firstFailure?.detail ?? ""})`,
+    );
+  }
+
   return {
     correctedCount: corrections.size,
     speakerSuggestions: nameProposals.size,
+    chunksAttempted,
+    chunksSucceeded,
+    chunksFailed,
+    stoppedEarly,
+    ...(firstFailure ? { firstFailure } : {}),
   };
 }

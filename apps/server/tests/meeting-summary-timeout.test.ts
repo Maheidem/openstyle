@@ -15,9 +15,11 @@
 
 import {
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+  MEETING_ENHANCE_TIMEOUT_SETTING_KEY,
   MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
   MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
   MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
+  meetingEnhanceTimeoutMs,
   meetingSummaryTimeoutMs,
   parseMeetingSummaryTimeoutSeconds,
 } from "@openstyle/validations";
@@ -106,6 +108,8 @@ beforeEach(() => {
 
 afterEach(() => {
   deleteSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY);
+  // The sibling knob, touched by the cross-task isolation cases below.
+  deleteSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY);
   vi.restoreAllMocks();
 });
 
@@ -185,10 +189,15 @@ describe("meeting_summary_timeout_seconds — bounds and seconds→ms", () => {
       DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS <
         MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
     ).toBe(true);
-    // Scope: summarization only.
+    // Scope: only cleanup/remix stay code-defined. Both meeting tasks are
+    // user-bounded now — Enhance used to be the phantom (validator, no read
+    // site, so it could never be set).
     expect(LLM_TASK_PROFILES.cleanup.timeoutMs).toBe(20_000);
     expect(LLM_TASK_PROFILES.remix.timeoutMs).toBe(30_000);
-    expect(LLM_TASK_PROFILES.meetingEnhance.timeoutMs).toBe(60_000);
+    expect(LLM_TASK_PROFILES.meetingEnhance.timeoutMs).toBe(
+      meetingEnhanceTimeoutMs(undefined),
+    );
+    expect(LLM_TASK_PROFILES.meetingEnhance.timeoutMs).toBe(600_000);
   });
 });
 
@@ -273,7 +282,7 @@ describe("resolveTaskCall honours the setting, read fresh on every call", () => 
     expect((await resolveTaskCall("meetingSummarize")).timeoutMs).toBe(600_000);
   });
 
-  it("leaves cleanup/remix/meetingEnhance on their code-defined timeouts", async () => {
+  it("leaves cleanup/remix on their code-defined timeouts and gives enhance its own", async () => {
     setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1800");
     // cleanup/remix carry an "auto" output budget, so they need the caller's
     // number — irrelevant here, only timeoutMs is under test.
@@ -284,10 +293,21 @@ describe("resolveTaskCall honours the setting, read fresh on every call", () => 
     expect(
       (await resolveTaskCall("remix", { autoMaxOutputTokens: 512 })).timeoutMs,
     ).toBe(30_000);
+    // Enhance ignores the SUMMARY knob — it has its own. Unset here, so its
+    // 600 s default: not the old hard-coded 60 s, not summarize's 1800 s.
     expect(
       (await resolveTaskCall("meetingEnhance", { autoMaxOutputTokens: 512 }))
         .timeoutMs,
-    ).toBe(60_000);
+    ).toBe(600_000);
+    // And its own knob moves it while summarize keeps 1800 s.
+    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "90");
+    expect(
+      (await resolveTaskCall("meetingEnhance", { autoMaxOutputTokens: 512 }))
+        .timeoutMs,
+    ).toBe(90_000);
+    expect((await resolveTaskCall("meetingSummarize")).timeoutMs).toBe(
+      1_800_000,
+    );
   });
 });
 
@@ -320,16 +340,23 @@ describe("the resolved timeout is the number that reaches AbortSignal.timeout()"
     expect(call?.maxOutputTokens).toBe(4096);
   });
 
-  it("uses the 600 s default when nothing is configured, and still leaves enhance alone", async () => {
+  it("uses the 600 s default when nothing is configured, and does not borrow summarize's window", async () => {
     deleteSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY);
     const spy = vi.spyOn(AbortSignal, "timeout");
 
     await callSummarize("meetingSummarize");
     expect(spy).toHaveBeenLastCalledWith(600_000);
 
+    // Enhance has its OWN knob now: raising only summarize's leaves enhance on
+    // its own 600 s default (it used to sit at a hard-coded 60 s — the defect
+    // `meeting-enhance-timeout.test.ts` pins the fix for).
     setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1200");
     await callSummarize("meetingEnhance");
-    expect(spy).toHaveBeenLastCalledWith(60_000);
+    expect(spy).toHaveBeenLastCalledWith(600_000);
+
+    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "150");
+    await callSummarize("meetingEnhance");
+    expect(spy).toHaveBeenLastCalledWith(150_000);
   });
 });
 

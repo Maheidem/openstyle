@@ -5,7 +5,7 @@
 
 - Manage LLM parameter presets — edit params, rename, duplicate and delete; deleting a preset reverts the tasks using it to Auto
 - Configurable meeting summarization timeout (Settings → Data, 30–3600 s, default raised 60 s → 600 s) to cover slow local models
-- Separate configurable timeout for meeting enhance
+- Separate configurable timeout for meeting enhance — **landed unwired; it was not user-configurable in this release**, see Bug Fixes
 - Resource-aware LLM lane — one worker slot per endpoint, interactive dictation cleanup never queues behind a background summary
 - Meetings summarize is now a cancellable background job with queued/running progress in the app
 
@@ -16,6 +16,8 @@
 - Fix `/enhance` checking the meeting job slot without claiming it, which allowed two concurrent enhances of the same meeting
 - Fix a parameter preset's `timeout` key being silently inert — it reached the provider request body but never the client-side abort
 - Fix the timeout settings field persisting every intermediate keystroke, so a summarize started mid-edit inherited a partial value
+- Fix the meeting enhance timeout being a phantom setting: `meeting_enhance_timeout_seconds` shipped with a validator, bounds and default (600 s) but nothing read it — no settings key, no route branch, no Settings row, and the resolver kept returning a hard-coded 60 s. Every enhance chunk of a slow local model timed out 60 s apart. It is now wired end to end (Settings → Data row beside the summarize timeout, same 30–3600 s bounds) and reaches the abort window of each call
+- Fix Enhance reporting a wholly failed pass as "No segments needed correction": a pass where every chunk failed now fails loudly with the cause (timeout / unreadable reply / model unreachable) and a retry, a partial pass says it is partial, and nothing is written in either case
 
 
 ### New Features ✨
