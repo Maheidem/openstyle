@@ -1,4 +1,10 @@
 # Changelog
+## 2.8.1
+
+### Bug Fixes 🐛
+
+- Wire the meeting enhance timeout and report failed enhance passes honestly by @Maheidem in [2aed8668](https://github.com/Maheidem/openstyle/commit/2aed86681ae78d63a99470393902dd9f79568113)
+
 ## 2.8.0
 
 ### New Features ✨
