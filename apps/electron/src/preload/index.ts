@@ -107,11 +107,7 @@ const api = {
     ipcRenderer.invoke("copy:text", text),
   prepareSystemAudio: (mode: ActiveAudioPlaybackMode): Promise<void> =>
     ipcRenderer.invoke("audio:prepare", mode),
-  duckSystemAudio: (): Promise<void> => ipcRenderer.invoke("audio:duck"),
   restoreSystemAudio: (): Promise<void> => ipcRenderer.invoke("audio:restore"),
-  updateHotkey: (hotkey: string): void =>
-    ipcRenderer.send("hotkey:update", hotkey),
-  reloadHotkey: (): void => ipcRenderer.send("hotkey:reload"),
   setHotkeyMode: (mode: "hold" | "toggle"): void =>
     ipcRenderer.send("hotkey:set-mode", mode),
   hidePill: (): void => ipcRenderer.send("pill:hide"),
@@ -212,8 +208,6 @@ const api = {
   onHotkeyDown: listen<[payload?: { language?: string }]>("hotkey:down"),
   updateLanguageHotkeys: (map: Record<string, string>): void =>
     ipcRenderer.send("language-hotkeys:update", map),
-  reloadLanguageHotkeys: (): void =>
-    ipcRenderer.send("language-hotkeys:reload"),
   onHotkeyUp: listen("hotkey:up"),
   // --- Remix ---
   reloadRemixHotkey: (): void => ipcRenderer.send("remix-hotkey:reload"),
@@ -319,13 +313,9 @@ const api = {
     ipcRenderer.send("permissions:open-accessibility"),
   openMicSettings: (): void =>
     ipcRenderer.send("permissions:open-mic-settings"),
-  getOnboardingComplete: (): Promise<boolean> =>
-    ipcRenderer.invoke("onboarding:complete"),
   setOnboardingComplete: (): void =>
     ipcRenderer.send("onboarding:set-complete"),
   startHotkeyRecording: (): void => ipcRenderer.send("hotkey-record:start"),
-  pauseHotkeyRecording: (): void =>
-    ipcRenderer.send("hotkey-record:pause-recorder"),
   stopHotkeyRecording: (hotkey?: string): void =>
     ipcRenderer.send("hotkey-record:stop", hotkey),
   onHotkeyRecordModifiers: listen<[modifiers: string[]]>(
@@ -399,11 +389,6 @@ const api = {
     return () =>
       ipcRenderer.removeListener("settings:pill-cancel-mode-changed", handler);
   },
-  sendAudioDuckingChanged: (enabled: boolean): void =>
-    ipcRenderer.send("settings:audio-ducking-changed", enabled),
-  onAudioDuckingChanged: listen<[enabled: boolean]>(
-    "settings:audio-ducking-changed",
-  ),
   sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode): void =>
     ipcRenderer.send("settings:audio-playback-mode-changed", mode),
   onAudioPlaybackModeChanged: listen<[mode: AudioPlaybackMode]>(

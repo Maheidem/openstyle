@@ -94,6 +94,7 @@ import { useNavigate } from "react-router";
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
+  resolveAudioPlaybackMode,
 } from "../../../shared/audio-playback";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import {
@@ -618,13 +619,7 @@ export default function SettingsPage(): React.JSX.Element {
     }
 
     // Audio playback mode with legacy fallback chain (new key → paused → duck).
-    if (s.audio_playback_mode) {
-      setAudioPlaybackMode(normalizeAudioPlaybackMode(s.audio_playback_mode));
-    } else if (s.pause_playback_while_recording === "true") {
-      setAudioPlaybackMode("pause");
-    } else if (s.audio_ducking_enabled === "true") {
-      setAudioPlaybackMode("duck");
-    }
+    setAudioPlaybackMode(resolveAudioPlaybackMode(s));
   }, [settingsQuery.data]);
 
   // Load available audio input devices

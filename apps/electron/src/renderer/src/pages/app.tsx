@@ -30,6 +30,7 @@ import {
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
+  resolveAudioPlaybackMode,
 } from "../../../shared/audio-playback";
 import {
   normalizePillCancelMode,
@@ -2302,15 +2303,7 @@ export default function AppPage(): React.JSX.Element {
 
         _soundEnabled = settings[SETTINGS_KEYS.soundEnabled] !== "false";
 
-        const mode = settings.audio_playback_mode;
-        if (mode) {
-          _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
-        } else if (settings.pause_playback_while_recording === "true") {
-          _audioPlaybackMode = "pause";
-        } else {
-          _audioPlaybackMode =
-            settings.audio_ducking_enabled === "true" ? "duck" : "off";
-        }
+        _audioPlaybackMode = resolveAudioPlaybackMode(settings);
 
         const outputMode = settings[SETTINGS_KEYS.outputMode];
         if (outputMode) _outputMode = outputMode;
@@ -2346,9 +2339,6 @@ export default function AppPage(): React.JSX.Element {
     const removeCancelMode = window.api?.onPillCancelModeChanged((mode) => {
       setCancelMode(normalizePillCancelMode(mode));
     });
-    const removeAudioDucking = window.api?.onAudioDuckingChanged((enabled) => {
-      _audioPlaybackMode = enabled ? "duck" : "off";
-    });
     const removeAudioPlaybackMode = window.api?.onAudioPlaybackModeChanged(
       (mode) => {
         _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
@@ -2378,7 +2368,6 @@ export default function AppPage(): React.JSX.Element {
       removeOutputMode?.();
       removeSoundEnabled?.();
       removeCancelMode?.();
-      removeAudioDucking?.();
       removeAudioPlaybackMode?.();
       removeCleanupContext?.();
       removeServerChanged?.();
