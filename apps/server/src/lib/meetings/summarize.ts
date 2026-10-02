@@ -23,7 +23,12 @@ import {
   meetingSummaryTimeoutMs,
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
-import { estimateTokens, resolveDefaultChatCall } from "./llm-call.js";
+import {
+  type ChatCallInput,
+  type ChatCallResponse,
+  defaultChatCallFor,
+  estimateTokens,
+} from "./llm-call.js";
 import { type MergedSegment, speakerDisplayLabel } from "./merge.js";
 import {
   buildMeetingSummaryMapPrompt,
@@ -214,25 +219,13 @@ function overlapTokens(budgetTokens: number): number {
 }
 
 /** One LLM request issued by the summarizer. */
-export interface SummaryLlmRequest {
-  system: string;
-  prompt: string;
-  maxOutputTokens: number;
+export type SummaryLlmRequest = ChatCallInput & {
   /** Which phase of the pipeline this call belongs to. */
   kind: "single" | "map" | "reduce";
-}
+};
 
 /** What a summary LLM call must return. Token fields are 0 when unknown. */
-export interface SummaryLlmResponse {
-  text: string;
-  inputTokens: number;
-  outputTokens: number;
-  /** Provider/model that actually served the call, when known. */
-  provider?: string | null;
-  model?: string | null;
-  /** Per-token USD pricing, when the callable can resolve it. */
-  pricing?: { input: number; output: number } | null;
-}
+export type SummaryLlmResponse = ChatCallResponse;
 
 /** Injectable LLM dependency; the default resolves the app's default model. */
 export type SummaryLlmCall = (
@@ -356,26 +349,6 @@ export function chunkTranscript(
   return chunks;
 }
 
-/**
- * Default LLM call: thin wrapper around the shared `resolveDefaultChatCall`
- * helper (`llm-call.ts`) — `kind` is summary-specific bookkeeping the shared
- * helper doesn't need. Kept as its own binding (rather than passing
- * `resolveDefaultChatCall` directly as `SummaryLlmCall`) so injecting
- * `llmCall` (tests) never touches the database or provider SDKs.
- */
-const defaultLlmCallFor =
-  (options: SummarizeMeetingOptions): SummaryLlmCall =>
-  (request) =>
-    resolveDefaultChatCall({
-      ...request,
-      taskId: "meetingSummarize",
-      // Cancel + queue-progress seams (§5.5/§5.7), threaded from the job so a
-      // cancel landing while a map/reduce call is still QUEUED stops it before
-      // the request ever goes out.
-      ...(options.shouldStop ? { shouldStop: options.shouldStop } : {}),
-      ...(options.onQueued ? { onQueued: options.onQueued } : {}),
-    });
-
 /** Resolve the context budget from settings when no option is given. */
 async function resolveContextBudget(): Promise<number> {
   try {
@@ -421,7 +394,9 @@ export async function summarizeMeeting(
   segments: readonly MergedSegment[],
   options: SummarizeMeetingOptions = {},
 ): Promise<SummarizeMeetingResult> {
-  const llmCall = options.llmCall ?? defaultLlmCallFor(options);
+  const llmCall =
+    options.llmCall ??
+    defaultChatCallFor<SummaryLlmRequest>("meetingSummarize", options);
   const maxOutputTokens =
     options.maxOutputTokens ?? DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS;
 
