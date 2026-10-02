@@ -568,7 +568,6 @@
     "apiKeys": "API キー",
     "noApiKeys": "API キーがまだありません — 上記でクラウドモデルを選択すると、キーの入力を求められます。",
     "onDevice": "オンデバイス（ローカル）",
-    "keyInvalid": "キーが無効です — 更新または削除してください",
     "keyStored": "キーチェーンにキーを保存しました",
     "keyStoredWithHint": "キー {{hint}} をキーチェーンに保存しました",
     "modelSingular": "モデル",

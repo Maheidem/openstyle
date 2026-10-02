@@ -567,7 +567,6 @@
     "apiKeys": "Chiavi API",
     "noApiKeys": "Nessuna chiave API inserita.",
     "onDevice": "Sul dispositivo",
-    "keyInvalid": "Chiave non valida",
     "keyStored": "Chiave salvata nel portachiavi",
     "keyStoredWithHint": "Chiave {{hint}} salvata",
     "modelSingular": "modello",

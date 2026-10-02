@@ -28,7 +28,6 @@ import {
   isServerFailed,
   isServerRunning,
   startInBackground,
-  stopServer,
 } from "../lib/whisper/server.js";
 
 const whisper = new Hono()
@@ -104,10 +103,6 @@ const whisper = new Hono()
     }
 
     startInBackground(modelId);
-    return c.json({ ok: true });
-  })
-  .post("/server/stop", async (c) => {
-    await stopServer();
     return c.json({ ok: true });
   });
 

@@ -5,15 +5,7 @@ import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
-import {
-  CheckCircle,
-  Info,
-  Key,
-  Loader2,
-  Pencil,
-  Trash2,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle, Info, Key, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -577,7 +569,6 @@ function KeyRow({
   onDelete: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const invalid = entry.status === "invalid";
   return (
     <div
       className={cn(
@@ -594,18 +585,11 @@ function KeyRow({
           {entry.status === "valid" && (
             <CheckCircle className="text-primary h-3.5 w-3.5 shrink-0" />
           )}
-          {invalid && (
-            <XCircle className="text-destructive h-3.5 w-3.5 shrink-0" />
-          )}
         </div>
         <div className="mono text-muted-foreground mt-0.5 text-[11px]">
-          {invalid ? (
-            <span className="text-destructive">{t("models.keyInvalid")}</span>
-          ) : entry.hint ? (
-            t("models.keyStoredWithHint", { hint: entry.hint })
-          ) : (
-            t("models.keyStored")
-          )}
+          {entry.hint
+            ? t("models.keyStoredWithHint", { hint: entry.hint })
+            : t("models.keyStored")}
         </div>
       </div>
       <span className="text-muted-foreground text-[11.5px]">
