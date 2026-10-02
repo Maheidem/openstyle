@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 /**
  * User dictionary word replacements (longest keys first) for the dictation
- * delivery path (`applyFinalRewrites` → `postProcess`).
+ * delivery path (`postProcess`).
  *
  * Perf shape (specs/lean-audit-2026-09.md T1-7):
  * - The compiled replacement list (rows + per-key RegExps) is cached **per
