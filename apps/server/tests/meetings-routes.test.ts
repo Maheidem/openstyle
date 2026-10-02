@@ -1508,6 +1508,29 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
     expect(row.c).toBe(0);
   });
 
+  it("400s when the target already merged into this label, changing no row", async () => {
+    insertMeeting("m1", "transcribed");
+    for (const [id, idx, label] of [
+      ["m1:system:0", 0, "1"],
+      ["m1:system:1", 1, "2"],
+    ] as const) {
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000);
+      getDb()
+        .prepare("UPDATE meeting_segments SET speaker_label = ? WHERE id = ?")
+        .run(label, id);
+    }
+    // "2" is already merged into "1". Merging "1" into "2" would loop.
+    insertSpeaker("m1", "2", { mergedInto: "1" });
+    const res = await patchSpeaker("m1", "1", { mergedInto: "2" });
+    expect(res.status).toBe(400);
+    const rows = getDb()
+      .prepare(
+        "SELECT speaker_label, merged_into FROM meeting_speakers WHERE meeting_id = 'm1' ORDER BY speaker_label",
+      )
+      .all() as { speaker_label: string; merged_into: string | null }[];
+    expect(rows).toEqual([{ speaker_label: "2", merged_into: "1" }]);
+  });
+
   it("404s when mergedInto targets a nonexistent label", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
@@ -2030,6 +2053,33 @@ describe("POST /api/meetings/:id/summarize", () => {
     });
     expect(next.status).toBe(202);
     await waitForSummarizeToSettle("m1");
+  });
+
+  it("makes shouldStop() true after the ceiling, so the summarizer stops", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
+    let stop: (() => boolean) | undefined;
+    __setMeetingsTestOverrides({
+      // Never answers. The test only reads the stop signal.
+      summarize: (_segments, options) => {
+        stop = options.shouldStop;
+        return new Promise<never>(() => {});
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stop?.()).toBe(false);
+
+    // One planned call: the ceiling is the 2 x 600 s floor.
+    await vi.advanceTimersByTimeAsync(1_200_000);
+    const after = await waitForSummarizeToSettle("m1");
+    expect(after.job_error).toMatch(/exceeded its 1200s job ceiling/);
+    // The job cleared the shared cancel flag. The stop signal stays true.
+    expect(stop?.()).toBe(true);
   });
 });
 
