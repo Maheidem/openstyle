@@ -43,6 +43,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { setTimeout as wait } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { OutputMode } from "@openstyle/sdk";
@@ -67,6 +68,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  type MenuItemConstructorOptions,
   Notification,
   nativeImage,
   net,
@@ -351,7 +353,6 @@ function serverClient() {
   return hc<AppType>(getServerBaseUrl(), { headers: getServerAuthHeaders() });
 }
 
-/** Relay a main-process pipeline event to the current server target with auth. */
 /**
  * Base URL the app uses to reach the Openstyle server: the configured remote
  * URL, or the locally-run server on the resolved port. The DB lives behind the
@@ -1249,10 +1250,10 @@ function execAsync(
 
 function getOpenstyleAppExclusions(): Set<string> {
   return new Set(
-    // "Openstyle" stays alongside "Openstyle": a user upgrading from the old
-    // build may still have the previously-named app installed or a stale window
-    // open, and it must keep being excluded from remix targeting.
-    [app.getName(), app.name, "Openstyle", "Freestyle", "Electron"]
+    // "Freestyle" is the old app name. A user upgrading from the old build may
+    // still have it installed or a stale window open, and it must keep being
+    // excluded from remix targeting.
+    [app.name, "Freestyle", "Electron"]
       .map((name) => name?.trim().toLowerCase())
       .filter((name): name is string => Boolean(name)),
   );
@@ -1619,10 +1620,6 @@ function hidePill(): void {
   try {
     globalShortcut.unregister("Escape");
   } catch {}
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -2074,12 +2071,10 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     showMoveToApplicationsDialog();
     return;
   }
-  // updateDownloadState can't reach "downloaded" while autoDownload is forced
-  // off (see the update-available handler below) — always run a fresh check.
+  // autoDownload is always false (see the update setup below), so this check
+  // never starts a download. Always run a fresh check.
   try {
     const result = await autoUpdater.checkForUpdates();
-    // Swallow the auto-download rejection (see runUpdateCheck).
-    void result?.downloadPromise?.catch(() => {});
     const latest = result?.updateInfo?.version;
     if (latest && latest !== app.getVersion()) {
       const { response } = await dialog.showMessageBox({
@@ -2122,6 +2117,26 @@ function buildUpdateMenuItem(): { label: string; click: () => void } {
     : { label: "Check for Updates...", click: () => checkForUpdatesFromMenu() };
 }
 
+// Dev-only menu items, shared by the tray menu and the application menu.
+function devMenuItems(): MenuItemConstructorOptions[] {
+  return [
+    { type: "separator" },
+    { label: "Reset Onboarding", click: resetOnboarding },
+    {
+      label: "Reset Tone Configuration",
+      click: () => {
+        void resetToneConfiguration();
+      },
+    },
+    {
+      label: "Hard Reset",
+      click: () => {
+        void factoryReset();
+      },
+    },
+  ];
+}
+
 function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
@@ -2161,27 +2176,7 @@ function buildTrayContextMenu(): Menu {
               },
         ]
       : []),
-    ...(is.dev
-      ? [
-          { type: "separator" as const },
-          {
-            label: "Reset Onboarding",
-            click: resetOnboarding,
-          },
-          {
-            label: "Reset Tone Configuration",
-            click: () => {
-              void resetToneConfiguration();
-            },
-          },
-          {
-            label: "Hard Reset",
-            click: () => {
-              void factoryReset();
-            },
-          },
-        ]
-      : []),
+    ...(is.dev ? devMenuItems() : []),
     { type: "separator" },
     {
       label: "Quit",
@@ -2237,27 +2232,7 @@ function rebuildMenus(): void {
               },
               { type: "separator" as const },
               buildUpdateMenuItem(),
-              ...(is.dev
-                ? [
-                    { type: "separator" as const },
-                    {
-                      label: "Reset Onboarding",
-                      click: resetOnboarding,
-                    },
-                    {
-                      label: "Reset Tone Configuration",
-                      click: () => {
-                        void resetToneConfiguration();
-                      },
-                    },
-                    {
-                      label: "Hard Reset",
-                      click: () => {
-                        void factoryReset();
-                      },
-                    },
-                  ]
-                : []),
+              ...(is.dev ? devMenuItems() : []),
               { type: "separator" as const },
               { role: "hide" as const },
               { role: "hideOthers" as const },
@@ -2735,8 +2710,6 @@ app.whenReady().then(async () => {
     if (!target) return;
 
     hotkeyRecorder = new HotkeyRecorder({
-      onModifiers: () => {},
-      onCaptured: () => {},
       onCancel: () => {
         stopHotkeyRecorderProcess();
         scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
@@ -2761,18 +2734,14 @@ app.whenReady().then(async () => {
     );
   });
 
-  // Set database path for the server before any API calls. Also seeded under
-  // the legacy FREESTYLE_ name (every in-repo reader checks OPENSTYLE_ first
-  // and falls back to it, so this is redundant for them) purely so
-  // third-party plugin code that still reads process.env.FREESTYLE_DB_PATH
-  // directly keeps working without an update.
+  // Set database path for the server before any API calls. Server code reads
+  // the OPENSTYLE_ name first and falls back to the old FREESTYLE_ name, so
+  // only the OPENSTYLE_ name is set here.
   const dbPath = join(app.getPath("userData"), "freestyle.db");
   process.env.OPENSTYLE_DB_PATH = dbPath;
-  process.env.FREESTYLE_DB_PATH = dbPath;
 
   if (!is.dev) {
     process.env.OPENSTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
-    process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }
 
   // Run non-critical server startup tasks now that the DB path is set. This is
@@ -2888,26 +2857,17 @@ app.whenReady().then(async () => {
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
-  // With autoDownload on, checkForUpdates() also starts the asset download and
-  // exposes it as result.downloadPromise. Swallow that rejection so a transient
-  // download failure (e.g. an expired 403 from the release CDN) is handled by
-  // the "error" event rather than leaking as an unhandled rejection / false
-  // crash report. We avoid checkForUpdatesAndNotify(): it drops the same
-  // rejection internally in a way callers can't intercept, and our own
-  // "update-downloaded" handler already shows the completion notification.
+  // autoDownload is always false, so checkForUpdates() only checks the feed
+  // and never starts a download. The selfUpdater "downloaded" handler shows
+  // the completion notification.
   function runUpdateCheck(): void {
-    autoUpdater
-      .checkForUpdates()
-      .then((result) => {
-        void result?.downloadPromise?.catch(() => {});
-      })
-      .catch((err) => {
-        log.warn(
-          `Update check failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
+    autoUpdater.checkForUpdates().catch((err) => {
+      log.warn(
+        `Update check failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    });
   }
 
   function startUpdateCheckInterval(): void {
@@ -2929,10 +2889,9 @@ app.whenReady().then(async () => {
     // downloading them ("Code signature ... did not pass validation"), so we
     // still use electron-updater only to *check* the release feed. On
     // macOS, downloading and installing goes through selfUpdater (see
-    // self-updater.ts) instead of Squirrel.Mac; other platforms keep the
-    // stock electron-updater install flow. autoDownload stays false here so
-    // electron-updater never itself downloads the (Squirrel-incompatible)
-    // update artifact.
+    // self-updater.ts) instead of Squirrel.Mac; other platforms open the
+    // releases page. autoDownload is always false, so electron-updater never
+    // itself downloads the (Squirrel-incompatible) update artifact.
     autoUpdater.autoDownload = false;
     // Honour the same preference on quit. Upstream hardcoded this to true, so a
     // single manual "Check for Updates" could stage a release that then
@@ -2982,39 +2941,6 @@ app.whenReady().then(async () => {
         note.on("click", () => showSettingsWindow("/settings"));
         note.show();
       }
-      if (updateCheckTimer) {
-        clearInterval(updateCheckTimer);
-        updateCheckTimer = null;
-      }
-      rebuildMenus();
-      void prefetchManagedMlxRuntimeForAppRelease(info.version).catch((err) => {
-        log.warn(
-          `Failed to stage MLX runtime for ${info.version}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
-    });
-
-    autoUpdater.on("update-downloaded", (info) => {
-      updateDownloadState = "downloaded";
-      settingsWindow?.webContents.send("updater:downloaded", {
-        version: info.version,
-      });
-      // Only show a native notification once per version
-      if (
-        Notification.isSupported() &&
-        notifiedDownloadedVersion !== info.version
-      ) {
-        notifiedDownloadedVersion = info.version;
-        const note = new Notification({
-          title: "Update Ready to Install",
-          body: `Version ${info.version} has been downloaded. Restart to update.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
-      }
-      // No need to keep polling once the update is downloaded
       if (updateCheckTimer) {
         clearInterval(updateCheckTimer);
         updateCheckTimer = null;
@@ -3102,8 +3028,6 @@ app.whenReady().then(async () => {
     if (is.dev) return null;
     try {
       const result = await autoUpdater.checkForUpdates();
-      // Swallow the auto-download rejection (see runUpdateCheck).
-      void result?.downloadPromise?.catch(() => {});
       const latest = result?.updateInfo?.version;
       if (!latest) return null;
       // Only report an update when the remote version is actually newer
@@ -3859,7 +3783,6 @@ async function focusAnchorForInjection(): Promise<boolean> {
   return front.appName === anchor.appName;
 }
 
-/** Keyboard-tier selection via the app's Find (canvas editors). */
 const REMIX_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
 const REMIX_IMAGE_TIMEOUT_MS = 15_000;
 
@@ -4843,10 +4766,33 @@ function applyLanguageHotkeySettings(settings: Record<string, string>): void {
   scheduleLanguageHotkeysRegistration(map);
 }
 
-// Clean up key listener and mic listener on quit
-app.on("will-quit", () => {
+// Keep app running in background when windows are closed (tray stays active)
+app.on("window-all-closed", () => {
+  // Stay alive for the tray. Quit only through the tray menu.
+});
+
+// Re-open the dashboard when the app is activated (e.g. clicking the dock
+// icon or relaunching) and no dashboard window is currently open.
+app.on("activate", () => {
+  showSettingsWindow();
+});
+
+let isUpdaterQuitting = false;
+let isQuitting = false;
+
+let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
+
+// Stop every native child process and timer. The before-quit handler runs
+// this on a normal quit and on an updater quit. A normal quit then calls
+// app.exit(0), which skips will-quit.
+function cleanupBeforeQuit(): void {
+  // Finalize any in-flight meeting recording's WAV headers before the process
+  // exits; the boot-time orphan sweep settles the DB row next launch.
+  meetingRecorder?.stopSync();
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
+  stopWhisperServer().catch(() => {});
+  stopMlxServer().catch(() => {});
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
@@ -4864,41 +4810,6 @@ app.on("will-quit", () => {
     clearInterval(remixBarFollowTimer);
     remixBarFollowTimer = null;
   }
-  globalShortcut.unregisterAll();
-});
-
-// Keep app running in background when windows are closed (tray stays active)
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    // On non-macOS, keep the app alive for the tray
-    // Only quit explicitly via tray menu
-  }
-});
-
-// Re-open the dashboard when the app is activated (e.g. clicking the dock
-// icon or relaunching) and no dashboard window is currently open.
-app.on("activate", () => {
-  showSettingsWindow();
-});
-
-// Gracefully shut down the HTTP server and flush Sentry before quitting
-let isUpdaterQuitting = false;
-let isQuitting = false;
-
-let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
-
-function cleanupBeforeQuit(): void {
-  // Finalize any in-flight meeting recording's WAV headers before the process
-  // exits; the boot-time orphan sweep settles the DB row next launch.
-  meetingRecorder?.stopSync();
-  audioPlaybackController.restoreSync();
-  stopLinuxPasteHelper();
-  stopWhisperServer().catch(() => {});
-  stopMlxServer().catch(() => {});
-  if (keyListener) {
-    keyListener.stop();
-    keyListener = null;
-  }
   stopHotkeyRecorderProcess();
   globalShortcut.unregisterAll();
   if (httpServer) {
@@ -4906,6 +4817,12 @@ function cleanupBeforeQuit(): void {
     httpServer = null;
   }
 }
+
+// A signal ends the process with no "exit" event unless a handler runs.
+// Quit through Electron so the exit hooks that stop the whisper and MLX child
+// servers run. The before-quit handler always ends with app.exit(0).
+process.on("SIGINT", () => app.quit());
+process.on("SIGTERM", () => app.quit());
 
 app.on("before-quit", (event) => {
   if (isUpdaterQuitting) {

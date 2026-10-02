@@ -9,14 +9,8 @@ import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
 import { authMiddleware, generateAuthToken, setAuthToken } from "./lib/auth.js";
 import { formatError } from "./lib/format-error.js";
-import {
-  startHistoryRetentionSweep,
-  stopHistoryRetentionSweep,
-} from "./lib/history-store.js";
-import {
-  startMeetingRetentionSweep,
-  stopMeetingRetentionSweep,
-} from "./lib/meetings/retention.js";
+import { startHistoryRetentionSweep } from "./lib/history-store.js";
+import { startMeetingRetentionSweep } from "./lib/meetings/retention.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -47,14 +41,6 @@ const TIMEOUT_PREFIXES = [
   "/api/remix/thread",
   "/api/remix/runs",
 ];
-
-async function shutdownServer(): Promise<void> {
-  stopHistoryRetentionSweep();
-  stopMeetingRetentionSweep();
-}
-
-process.on("SIGINT", () => shutdownServer().finally(() => process.exit(0)));
-process.on("SIGTERM", () => shutdownServer().finally(() => process.exit(0)));
 
 /** Build the Hono app. */
 function createApp() {

@@ -19,8 +19,8 @@ export interface HotkeyCombo {
 }
 
 export interface HotkeyRecorderCallbacks {
-  onModifiers: (modifiers: string[]) => void;
-  onCaptured: (combo: HotkeyCombo) => void;
+  onModifiers?: (modifiers: string[]) => void;
+  onCaptured?: (combo: HotkeyCombo) => void;
   onCancel: () => void;
   onError?: (message: string) => void;
 }
@@ -141,12 +141,12 @@ export class HotkeyRecorder {
   private sendModifiers(modifiers: string[]): void {
     this.pendingModifiers = modifiers;
     this.target?.send("hotkey-record:modifiers", modifiers);
-    this.callbacks.onModifiers(modifiers);
+    this.callbacks.onModifiers?.(modifiers);
   }
 
   private sendCaptured(combo: HotkeyCombo): void {
     this.target?.send("hotkey-record:captured", combo);
-    this.callbacks.onCaptured(combo);
+    this.callbacks.onCaptured?.(combo);
   }
 
   private sendReleased(): void {
