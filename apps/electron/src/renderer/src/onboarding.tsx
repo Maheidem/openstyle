@@ -21,7 +21,6 @@ import {
 import { getClient } from "@renderer/lib/api";
 import { defaultLanguage } from "@renderer/lib/languages";
 import {
-  type AvailableModel,
   buildVoiceItems,
   type MlxAsrStatus,
   type VoiceItem,
@@ -97,11 +96,11 @@ export default function OnboardingPage(): React.JSX.Element {
   const [linuxSetup, setLinuxSetup] = useState<LinuxSetup | null>(null);
 
   // Voice model state
-  const [available, setAvailable] = useState<AvailableModel[]>([]);
-  const [selectedWhisperDefId, setSelectedWhisperDefId] = useState<
-    string | null
-  >(null);
-  const [selectedMlxDefId, setSelectedMlxDefId] = useState<string | null>(null);
+  // The on-device model the user picked (auto-picked at first).
+  const [picked, setPicked] = useState<{
+    defId: string;
+    engine: "whisper" | "mlx";
+  } | null>(null);
   const [languages, setLanguages] = useState<string[]>(() => {
     // Seed from the OS language when it's a real code; "auto" starts empty.
     const guess = defaultLanguage();
@@ -109,12 +108,6 @@ export default function OnboardingPage(): React.JSX.Element {
   });
   const autoPicked = useRef(false);
   const warmed = useRef(false);
-  // Tracks the most recent explicit local pick, so briefly selecting a
-  // different on-device model still downloads the right one.
-  const lastLocalSetupRef = useRef<{
-    defId: string;
-    engine: "whisper" | "mlx";
-  } | null>(null);
 
   // Hotkey recorder state (draft step); the remix hotkey lives here too so
   // each step can refuse a combo already taken by the other.
@@ -174,15 +167,6 @@ export default function OnboardingPage(): React.JSX.Element {
     const remixValue = settingsData?.[SETTINGS_KEYS.remixHotkey];
     if (remixValue) setRemixHotkey(remixValue);
   }, [settingsData]);
-
-  // Load models
-  useEffect(() => {
-    getClient()
-      .api.models.available.$get()
-      .then((r) => (r.ok ? r.json() : []))
-      .then((models: AvailableModel[]) => setAvailable(models))
-      .catch(() => {});
-  }, []);
 
   // Whisper / MLX status via React Query. refetchInterval replaces the manual
   // 500ms setInterval polling: it polls only while a download/verify is active
@@ -259,80 +243,17 @@ export default function OnboardingPage(): React.JSX.Element {
     setTimeout(() => clearInterval(interval), 30000);
   }, []);
 
-  const selectLocalModel = useCallback(
-    (
-      defId: string,
-      name: string,
-      engine?: "whisper" | "mlx",
-      makeDefault = true,
-    ) => {
-      if (makeDefault) {
-        if (engine === "mlx") {
-          setSelectedMlxDefId(defId);
-          setSelectedWhisperDefId(null);
-        } else if (engine === "whisper") {
-          setSelectedWhisperDefId(defId);
-          setSelectedMlxDefId(null);
-        }
-        if (engine) {
-          lastLocalSetupRef.current = { defId, engine };
-        }
-      }
-      const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
-      getClient()
-        .api.models.configured.$post({
-          json: {
-            provider,
-            model_id: `${provider}/${defId}`,
-            model_name: name,
-            type: "voice",
-            is_default: makeDefault,
-          },
-        })
-        .catch(() => {});
-    },
-    [],
-  );
-
-  const downloadWhisperModel = useCallback(
-    async (modelId: string) => {
-      await getClient().api.whisper.models[":model"].download.$post({
-        param: { model: modelId },
-      });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.whisperStatus });
-    },
-    [queryClient],
-  );
-
-  const downloadMlxModel = useCallback(
-    async (modelId: string) => {
-      await getClient().api["mlx-asr"].models[":model"].download.$post({
-        param: { model: modelId },
-      });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.mlxStatus });
-    },
-    [queryClient],
-  );
-
-  const downloadLocalModel = useCallback(
-    (modelId: string, engine?: "whisper" | "mlx") => {
-      if (engine === "mlx") {
-        void downloadMlxModel(modelId);
-        return;
-      }
-      void downloadWhisperModel(modelId);
-    },
-    [downloadMlxModel, downloadWhisperModel],
-  );
-
-  const allVoiceItems = buildVoiceItems(available, whisperStatus, mlxStatus, {
-    selectedProvider: selectedWhisperDefId
-      ? "local-whisper"
-      : selectedMlxDefId
+  // Onboarding shows on-device models only, so there are no cloud rows.
+  const allVoiceItems = buildVoiceItems([], whisperStatus, mlxStatus, {
+    selectedProvider:
+      picked?.engine === "mlx"
         ? "local-mlx"
-        : undefined,
-    selectedWhisperModelId: selectedWhisperDefId ?? undefined,
-    selectedMlxModelId: selectedMlxDefId ?? undefined,
+        : picked
+          ? "local-whisper"
+          : undefined,
+    selectedWhisperModelId:
+      picked?.engine === "whisper" ? picked.defId : undefined,
+    selectedMlxModelId: picked?.engine === "mlx" ? picked.defId : undefined,
     keyProviders: new Set(),
   });
 
@@ -359,45 +280,50 @@ export default function OnboardingPage(): React.JSX.Element {
     )
       return;
     autoPicked.current = true;
-    lastLocalSetupRef.current = {
-      defId: recommended.defId,
-      engine: recommended.localEngine,
-    };
-    selectLocalModel(
-      recommended.defId,
-      recommended.name,
-      recommended.localEngine,
-    );
-  }, [recommended, selectLocalModel, mlxResolved]);
+    const { defId, localEngine } = recommended;
+    setPicked({ defId, engine: localEngine });
+    const provider = localEngine === "mlx" ? "local-mlx" : "local-whisper";
+    getClient()
+      .api.models.configured.$post({
+        json: {
+          provider,
+          model_id: `${provider}/${defId}`,
+          model_name: recommended.name,
+          type: "voice",
+          is_default: true,
+        },
+      })
+      .catch(() => {});
+  }, [recommended, mlxResolved]);
+
+  // The model the setup panel shows: the pick, falling back to the
+  // recommendation before the auto-pick runs.
+  const localSetupModel = allVoiceItems.find((v) => v.selected) ?? recommended;
 
   // Pre-warm the local engine the moment its download lands, so the first
   // dictation in the tutorial is fast.
-  const warmTarget = allVoiceItems.find((v) => v.selected) ?? recommended;
   useEffect(() => {
     if (
       warmed.current ||
-      warmTarget?.kind !== "local" ||
-      warmTarget.status !== "ready" ||
-      !warmTarget.defId
+      localSetupModel?.status !== "ready" ||
+      !localSetupModel.defId
     )
       return;
     warmed.current = true;
-    if (warmTarget.localEngine === "mlx") {
+    if (localSetupModel.localEngine === "mlx") {
       getClient()
         .api["mlx-asr"].server.start.$post({
-          json: { modelId: warmTarget.defId },
+          json: { modelId: localSetupModel.defId },
         })
         .catch(() => {});
     } else {
       getClient()
-        .api.whisper.server.start.$post({ json: { modelId: warmTarget.defId } })
+        .api.whisper.server.start.$post({
+          json: { modelId: localSetupModel.defId },
+        })
         .catch(() => {});
     }
-  }, [warmTarget]);
-
-  // The model the card reflects: whatever is currently selected, falling
-  // back to the recommendation before the user has touched anything.
-  const chosen = allVoiceItems.find((v) => v.selected) ?? recommended;
+  }, [localSetupModel]);
 
   // Persist the language list (the transcribe path reads it per request).
   const persistLanguages = useCallback((next: string[]) => {
@@ -432,38 +358,27 @@ export default function OnboardingPage(): React.JSX.Element {
     navigate("/today", { replace: true });
   }, [navigate]);
 
-  // Whether the chosen voice model is ready to use (downloaded / has a key).
-  const chosenReady =
-    !!chosen &&
-    (chosen.kind === "cloud" ? !!chosen.hasKey : chosen.status === "ready");
-
-  const localSetupModel = ((): VoiceItem | undefined => {
-    if (chosen?.kind === "local") return chosen;
-    if (lastLocalSetupRef.current) {
-      const { defId, engine } = lastLocalSetupRef.current;
-      return allVoiceItems.find(
-        (v) =>
-          v.kind === "local" && v.defId === defId && v.localEngine === engine,
-      );
-    }
-    return recommended;
-  })();
-  const mustHaveLocalReady = chosen?.kind === "local" && !chosenReady;
+  const mustHaveLocalReady =
+    !!localSetupModel && localSetupModel.status !== "ready";
   const localSetupActive =
-    localSetupModel?.kind === "local" &&
-    (localSetupModel.status === "downloading" ||
-      localSetupModel.status === "verifying" ||
-      localSetupModel.state?.phase === "building_binary");
+    localSetupModel?.status === "downloading" ||
+    localSetupModel?.status === "verifying" ||
+    localSetupModel?.state?.phase === "building_binary";
 
-  const startLocalDownload = useCallback(() => {
+  const downloadPicked = useCallback(async () => {
     if (!localSetupModel?.defId || window.api?.isE2E) return;
-    downloadLocalModel(localSetupModel.defId, localSetupModel.localEngine);
-  }, [localSetupModel, downloadLocalModel]);
-
-  const retryLocalDownload = useCallback(() => {
-    if (!localSetupModel?.defId || window.api?.isE2E) return;
-    downloadLocalModel(localSetupModel.defId, localSetupModel.localEngine);
-  }, [localSetupModel, downloadLocalModel]);
+    if (localSetupModel.localEngine === "mlx") {
+      await getClient().api["mlx-asr"].models[":model"].download.$post({
+        param: { model: localSetupModel.defId },
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.mlxStatus });
+    } else {
+      await getClient().api.whisper.models[":model"].download.$post({
+        param: { model: localSetupModel.defId },
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.whisperStatus });
+    }
+  }, [localSetupModel, queryClient]);
 
   return (
     <div className="glass-window-shell glass-content flex h-screen flex-col">
@@ -497,8 +412,8 @@ export default function OnboardingPage(): React.JSX.Element {
             onToggle={toggleLanguage}
             onClear={clearLanguages}
             localModel={localSetupModel}
-            onDownloadLocal={startLocalDownload}
-            onRetryLocal={retryLocalDownload}
+            onDownloadLocal={downloadPicked}
+            onRetryLocal={downloadPicked}
             onBack={() => {
               setStep("permissions");
             }}
@@ -516,8 +431,8 @@ export default function OnboardingPage(): React.JSX.Element {
             remixHotkey={remixHotkey}
             onHotkeyRecorded={handleHotkeyRecorded}
             localModel={localSetupModel}
-            onDownloadLocal={startLocalDownload}
-            onRetryLocal={retryLocalDownload}
+            onDownloadLocal={downloadPicked}
+            onRetryLocal={downloadPicked}
             canContinue={!mustHaveLocalReady || !!window.api?.isE2E}
             continueBlockedReason={
               mustHaveLocalReady
