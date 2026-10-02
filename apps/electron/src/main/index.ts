@@ -4818,6 +4818,12 @@ function cleanupBeforeQuit(): void {
   }
 }
 
+// A signal ends the process with no "exit" event unless a handler runs.
+// Quit through Electron so the exit hooks that stop the whisper and MLX child
+// servers run. The before-quit handler always ends with app.exit(0).
+process.on("SIGINT", () => app.quit());
+process.on("SIGTERM", () => app.quit());
+
 app.on("before-quit", (event) => {
   if (isUpdaterQuitting) {
     try {
