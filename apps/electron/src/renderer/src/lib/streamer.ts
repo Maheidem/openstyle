@@ -27,14 +27,12 @@ export type StreamerConnectionState =
 export interface StreamerCallbacks {
   onFinal: (text: string) => void;
   onError: (message: string, code?: string) => void;
-  onReady: () => void;
+  onReady?: () => void;
   /** Live partial transcript. Only the remix card consumes this today. */
   onPartial?: (text: string) => void;
   onConnectionState?: (state: StreamerConnectionState) => void;
   onConfig: (config: {
-    streaming: boolean;
     sessionTransport: boolean;
-    model: string;
     providerCategory?: string;
   }) => void;
 }
@@ -43,7 +41,6 @@ export class Streamer {
   private ws: WebSocket | null = null;
   private pendingChunks: ArrayBuffer[] = [];
   private destroyed = false;
-  private streamingSupported = false;
   private sessionTransportSupported = false;
   private configReceived = false;
   private readonly callbacks: StreamerCallbacks;
@@ -354,7 +351,6 @@ export class Streamer {
         text?: string;
         message?: string;
         code?: string;
-        model?: string;
         streaming?: boolean;
         sessionTransport?: boolean;
         providerCategory?: string;
@@ -366,9 +362,8 @@ export class Streamer {
       }
       switch (msg.type) {
         case "config":
-          this.streamingSupported = msg.streaming ?? false;
           this.sessionTransportSupported =
-            msg.sessionTransport ?? this.streamingSupported;
+            msg.sessionTransport ?? msg.streaming ?? false;
           this.configReceived = true;
           this.reconnectAttempts = 0;
           this.setConnectionState("connected");
@@ -376,9 +371,7 @@ export class Streamer {
             this.pendingChunks = [];
           }
           this.callbacks.onConfig({
-            streaming: this.streamingSupported,
             sessionTransport: this.sessionTransportSupported,
-            model: msg.model ?? "",
             providerCategory: msg.providerCategory,
           });
           this.startPendingSession();
@@ -386,7 +379,7 @@ export class Streamer {
         case "session.ready":
           this.flushPendingChunks();
           this.sessionReady = true;
-          this.callbacks.onReady();
+          this.callbacks.onReady?.();
           break;
         case "partial":
           this.callbacks.onPartial?.(msg.text ?? "");

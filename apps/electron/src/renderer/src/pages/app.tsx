@@ -1864,7 +1864,6 @@ export default function AppPage(): React.JSX.Element {
         onConfig: (config) => {
           remixTransportRef.current = config.sessionTransport;
         },
-        onReady: () => {},
         onPartial: (text) => {
           if (remixRef.current && text) patchRemix({ transcript: text });
         },
