@@ -133,9 +133,9 @@ const ENHANCE_TIMEOUT_MAX_DIGITS = String(
 ).length;
 
 const themeOptions = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
+  { value: "light", icon: Sun },
+  { value: "dark", icon: Moon },
+  { value: "system", icon: Monitor },
 ] as const;
 
 const audioPlaybackOptions = [
@@ -333,12 +333,9 @@ export default function SettingsPage(): React.JSX.Element {
   const accessibilityPollRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
-  const isMac = IS_MAC;
-  const isLinux = IS_LINUX;
-  const isWindows = IS_WINDOWS;
-  const supportsBackgroundAudio = isMac || isLinux || isWindows;
+  const supportsBackgroundAudio = IS_MAC || IS_LINUX || IS_WINDOWS;
   // macOS and Windows can deep-link to the OS mic privacy settings.
-  const canOpenMicSettings = isMac || isWindows;
+  const canOpenMicSettings = IS_MAC || IS_WINDOWS;
 
   // System audio permission (meeting mode). Meeting-scoped: dictation-only
   // users must never see this row — same reasoning as the
@@ -908,7 +905,7 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleCustomRetentionDaysChange = useCallback(
     (raw: string) => {
-      const digits = raw.replace(/\D/g, "").slice(0, 4);
+      const digits = sanitizeDigits(raw, 4);
       const clamped =
         digits === ""
           ? ""
@@ -1617,7 +1614,7 @@ export default function SettingsPage(): React.JSX.Element {
                 <Row
                   label="Background audio"
                   desc={
-                    isLinux
+                    IS_LINUX
                       ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
                       : "Duck lowers volume. Pause pauses current media and lowers volume."
                   }
@@ -1781,7 +1778,7 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.permissions.accessibility")}
                 desc={
-                  isMac
+                  IS_MAC
                     ? t("settings.permissions.accessibilityDescMac")
                     : t("settings.permissions.accessibilityDescOther")
                 }
@@ -1793,15 +1790,15 @@ export default function SettingsPage(): React.JSX.Element {
                   actionLabel={
                     accessibilityStatus === true
                       ? null
-                      : isMac
+                      : IS_MAC
                         ? t("common.openSettings")
                         : null
                   }
-                  external={isMac}
+                  external={IS_MAC}
                   onAction={openAccessibility}
-                  onManage={isMac ? openAccessibility : undefined}
+                  onManage={IS_MAC ? openAccessibility : undefined}
                   note={
-                    !isMac && accessibilityStatus !== true
+                    !IS_MAC && accessibilityStatus !== true
                       ? t("settings.permissions.autoGranted")
                       : undefined
                   }
