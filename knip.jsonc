@@ -21,8 +21,7 @@
   ],
   "ignoreFiles": [
     "apps/electron/src/preload/*.d.ts",
-    // Existing unused shadcn-style components kept as design-system inventory.
-    "apps/electron/src/renderer/src/components/ui/bar-visualizer.tsx",
+    // Kept on purpose: specs/lean-audit-2026-09.md T0-5 keeps this entry.
     "apps/electron/src/renderer/src/components/ui/card.tsx",
     "apps/electron/src/renderer/src/env.d.ts"
   ],
