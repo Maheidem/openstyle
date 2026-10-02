@@ -219,13 +219,25 @@ const stream = new Hono().get(
       };
     }
 
-    async function connectUpstream(
+    /** Tell the client that connecting upstream failed. Never throws. */
+    function reportConnectError(
+      ws: { send: (data: string) => void },
+      err: unknown,
+    ): void {
+      if (closed) return;
+      const message = err instanceof Error ? err.message : String(err);
+      try {
+        ws.send(JSON.stringify({ type: "error", message }));
+      } catch {}
+    }
+
+    function connectUpstream(
       ws: {
         send: (data: string) => void;
         close: () => void;
       },
       announced?: AnnouncedStreamConfig,
-    ): Promise<void> {
+    ): void {
       const resolved = announced ?? announceConfig(ws);
       if (!resolved) return;
 
@@ -453,7 +465,9 @@ const stream = new Hono().get(
               reconnectAttempts++;
               try {
                 connectUpstream(ws);
-              } catch {}
+              } catch (err) {
+                reportConnectError(ws, err);
+              }
             }
           },
         },
@@ -600,7 +614,9 @@ const stream = new Hono().get(
             }
             try {
               connectUpstream(ws);
-            } catch {}
+            } catch (err) {
+              reportConnectError(ws, err);
+            }
             break;
           }
           case "commit":
