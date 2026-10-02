@@ -409,15 +409,12 @@ export class MeetingRecorder {
     this.journal.systemSamples += Math.floor(chunk.length / BYTES_PER_SAMPLE);
   }
 
-  /** Stop the recording and finalize files + DB row. */
-  async stop(
-    status: "recorded" | "failed" = "recorded",
-    error?: string,
-  ): Promise<void> {
-    if (this._status !== "recording") return;
-    const meetingId = this.meetingId;
-    this.setStatus("finalizing");
-
+  /**
+   * Stop the timers and capture sources, then finalize the WAV files. It is
+   * synchronous and does not change the status. Returns the finalize error,
+   * or null.
+   */
+  private teardown(): unknown {
     if (this.flushTimer) clearInterval(this.flushTimer);
     this.flushTimer = null;
     if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
@@ -434,16 +431,33 @@ export class MeetingRecorder {
     }
     this.captureWindow = null;
 
+    let finalizeError: unknown = null;
     try {
       this.micWav?.finalize();
       this.systemWav?.finalize();
     } catch (err) {
-      log.error(`WAV finalize failed: ${String(err)}`);
-      status = "failed";
-      error = error ?? `wav finalize failed: ${String(err)}`;
+      finalizeError = err;
     }
     this.micWav = null;
     this.systemWav = null;
+    return finalizeError;
+  }
+
+  /** Stop the recording and finalize files + DB row. */
+  async stop(
+    status: "recorded" | "failed" = "recorded",
+    error?: string,
+  ): Promise<void> {
+    if (this._status !== "recording") return;
+    const meetingId = this.meetingId;
+    this.setStatus("finalizing");
+
+    const finalizeError = this.teardown();
+    if (finalizeError) {
+      log.error(`WAV finalize failed: ${String(finalizeError)}`);
+      status = "failed";
+      error = error ?? `wav finalize failed: ${String(finalizeError)}`;
+    }
 
     await this.writeJournal();
 
@@ -480,28 +494,10 @@ export class MeetingRecorder {
   stopSync(): void {
     if (this._status !== "recording") return;
     this._status = "finalizing";
-    if (this.flushTimer) clearInterval(this.flushTimer);
-    this.flushTimer = null;
-    if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
-    this.maxDurationTimer = null;
-    if (this.resumeListener) {
-      powerMonitor.removeListener("resume", this.resumeListener);
-      this.resumeListener = null;
+    const finalizeError = this.teardown();
+    if (finalizeError) {
+      log.error(`WAV finalize failed during quit: ${String(finalizeError)}`);
     }
-    this.systemCapture?.stop();
-    this.systemCapture = null;
-    if (this.captureWindow && !this.captureWindow.isDestroyed()) {
-      this.captureWindow.destroy();
-    }
-    this.captureWindow = null;
-    try {
-      this.micWav?.finalize();
-      this.systemWav?.finalize();
-    } catch (err) {
-      log.error(`WAV finalize failed during quit: ${String(err)}`);
-    }
-    this.micWav = null;
-    this.systemWav = null;
     this._status = "idle";
   }
 
