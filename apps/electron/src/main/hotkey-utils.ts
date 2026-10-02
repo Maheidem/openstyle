@@ -40,7 +40,6 @@ export function normalizeAccelerator(accel: string): string {
       if (lower === "mousebutton5" || lower === "mouse5") return "MouseButton5";
       if (/^f\d+$/i.test(p)) return p.toUpperCase();
       if (p.length === 1) return p.toUpperCase();
-      if (p === "Up" || p === "Down" || p === "Left" || p === "Right") return p;
       return p.charAt(0).toUpperCase() + p.slice(1);
     })
     .join("+");

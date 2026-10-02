@@ -294,3 +294,37 @@ test("nextRightModifierLatch does not latch when a right token arrives after a l
   );
   expect(latch).toBeNull();
 });
+
+test("hotkey recorder maps FLAGS tokens, skips unknown ones and sends empty for none", () => {
+  const modifiers: string[][] = [];
+  const recorder = new HotkeyRecorder({
+    onModifiers: (nextModifiers) => modifiers.push(nextModifiers),
+    onCaptured: () => {},
+    onCancel: () => {},
+  }) as unknown as LineHandler;
+
+  recorder.handleLine("FLAGS:command, Option,bogus");
+  recorder.handleLine("FLAGS:");
+
+  expect(modifiers).toEqual([["Command", "Alt"], []]);
+});
+
+test("hotkey recorder captures RECORD_KEY and MOUSE_BUTTON_DOWN with pending modifiers", () => {
+  const captured: Array<{ modifiers: string[]; key: string }> = [];
+  const recorder = new HotkeyRecorder({
+    onModifiers: () => {},
+    onCaptured: (combo) => captured.push(combo),
+    onCancel: () => {},
+  }) as unknown as LineHandler;
+
+  recorder.handleLine("RECORD_MODIFIERS:Control,Shift");
+  recorder.handleLine("RECORD_KEY:K");
+  recorder.handleLine("RECORD_KEY:");
+  recorder.handleLine("MOUSE_BUTTON_DOWN:MouseButton4");
+  recorder.handleLine("MOUSE_BUTTON_DOWN:");
+
+  expect(captured).toEqual([
+    { modifiers: ["Control", "Shift"], key: "K" },
+    { modifiers: ["Control", "Shift"], key: "MouseButton4" },
+  ]);
+});
