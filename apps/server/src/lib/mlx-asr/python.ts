@@ -212,41 +212,45 @@ function mlxAsrWorkerOverride(): string | undefined {
   );
 }
 
+/** Drop empty entries and repeats. Each path keeps the place of its first use. */
+function uniquePaths(paths: Iterable<string | undefined>): string[] {
+  return [...new Set(paths)].filter((path): path is string => Boolean(path));
+}
+
+/** `start` and its parent directories, up to `maxDepth` entries. */
+function* ancestors(start: string, maxDepth: number): Generator<string> {
+  let dir = start;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    yield dir;
+    const parent = dirname(dir);
+    if (parent === dir) return;
+    dir = parent;
+  }
+}
+
 function mlxAsrWorkerCandidates(): string[] {
-  const candidates: string[] = [];
-
-  const add = (path: string | undefined) => {
-    if (!path || candidates.includes(path)) return;
-    candidates.push(path);
-  };
-
-  // TRUSTED-OPERATOR-ONLY escape hatch: bypasses the managed,
-  // integrity-verified worker download in mlx-asr/runtime.ts entirely and
-  // spawns whatever binary this points at directly (mlx-asr/server.ts,
-  // spawnWorkerProcess). There's nothing to checksum here — the operator IS
-  // the trust boundary for a path they set themselves. getMlxAsrWorkerPath()
-  // below logs a warning whenever this candidate is the one actually used.
-  // Never set this from untrusted input. The legacy FREESTYLE_MLX_ASR_WORKER
-  // name is still read as a fallback.
-  add(mlxAsrWorkerOverride());
-  add(getManagedMlxWorkerPath());
-
   const electronProcess = process as NodeJS.Process & {
     resourcesPath?: string;
   };
-  if (electronProcess.resourcesPath) {
-    add(
-      join(
-        electronProcess.resourcesPath,
-        "mlx-asr",
-        "mlx_asr_worker",
-        "mlx_asr_worker",
-      ),
-    );
-    add(join(electronProcess.resourcesPath, "mlx-asr", "mlx_asr_worker"));
-  }
+  const resourcesPath = electronProcess.resourcesPath;
 
-  add(
+  return uniquePaths([
+    // TRUSTED-OPERATOR-ONLY escape hatch: bypasses the managed,
+    // integrity-verified worker download in mlx-asr/runtime.ts entirely and
+    // spawns whatever binary this points at directly (mlx-asr/server.ts,
+    // spawnWorkerProcess). There's nothing to checksum here — the operator IS
+    // the trust boundary for a path they set themselves. getMlxAsrWorkerPath()
+    // below logs a warning whenever this candidate is the one actually used.
+    // Never set this from untrusted input. The legacy FREESTYLE_MLX_ASR_WORKER
+    // name is still read as a fallback.
+    mlxAsrWorkerOverride(),
+    getManagedMlxWorkerPath(),
+    ...(resourcesPath
+      ? [
+          join(resourcesPath, "mlx-asr", "mlx_asr_worker", "mlx_asr_worker"),
+          join(resourcesPath, "mlx-asr", "mlx_asr_worker"),
+        ]
+      : []),
     join(
       process.cwd(),
       "resources",
@@ -254,24 +258,17 @@ function mlxAsrWorkerCandidates(): string[] {
       "mlx_asr_worker",
       "mlx_asr_worker",
     ),
-  );
-  add(join(process.cwd(), "resources", "mlx-asr", "mlx_asr_worker"));
-  add(join(process.cwd(), "dist", "mlx_asr_worker", "mlx_asr_worker"));
-  add(join(process.cwd(), "dist", "mlx-asr", "mlx_asr_worker"));
-  add(join(process.cwd(), "scripts", "dist", "mlx_asr_worker"));
-  add(join(process.cwd(), "../../dist/mlx_asr_worker/mlx_asr_worker"));
-  add(join(process.cwd(), "../../dist/mlx-asr/mlx_asr_worker"));
-
-  let dir = __dirname;
-  for (let depth = 0; depth < 12; depth++) {
-    add(join(dir, "dist", "mlx_asr_worker", "mlx_asr_worker"));
-    add(join(dir, "dist", "mlx-asr", "mlx_asr_worker"));
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  return candidates;
+    join(process.cwd(), "resources", "mlx-asr", "mlx_asr_worker"),
+    join(process.cwd(), "dist", "mlx_asr_worker", "mlx_asr_worker"),
+    join(process.cwd(), "dist", "mlx-asr", "mlx_asr_worker"),
+    join(process.cwd(), "scripts", "dist", "mlx_asr_worker"),
+    join(process.cwd(), "../../dist/mlx_asr_worker/mlx_asr_worker"),
+    join(process.cwd(), "../../dist/mlx-asr/mlx_asr_worker"),
+    ...[...ancestors(__dirname, 12)].flatMap((dir) => [
+      join(dir, "dist", "mlx_asr_worker", "mlx_asr_worker"),
+      join(dir, "dist", "mlx-asr", "mlx_asr_worker"),
+    ]),
+  ]);
 }
 
 /** Resolved path to a frozen standalone MLX ASR worker executable, when bundled. */
@@ -304,42 +301,30 @@ function mlxAsrScriptOverride(): string | undefined {
 }
 
 function mlxAsrScriptCandidates(): string[] {
-  const candidates: string[] = [];
-
-  const add = (path: string | undefined) => {
-    if (!path || candidates.includes(path)) return;
-    candidates.push(path);
-  };
-
-  // TRUSTED-OPERATOR-ONLY escape hatch, same class as OPENSTYLE_MLX_ASR_WORKER
-  // above: points the script executed by the resolved Python interpreter
-  // (mlx-asr/server.ts, spawnWorkerProcess) at an arbitrary local file.
-  // getMlxAsrServerScriptPath() below logs a warning whenever this candidate
-  // is the one actually used. Never set this from untrusted input.
-  add(mlxAsrScriptOverride());
-
   const electronProcess = process as NodeJS.Process & {
     resourcesPath?: string;
   };
-  if (electronProcess.resourcesPath) {
-    add(join(electronProcess.resourcesPath, "mlx-asr", "mlx_asr_server.py"));
-  }
+  const resourcesPath = electronProcess.resourcesPath;
 
-  add(join(process.cwd(), "resources", "mlx-asr", "mlx_asr_server.py"));
-  add(join(process.cwd(), "scripts", "mlx_asr_server.py"));
-  add(join(process.cwd(), "../../scripts", "mlx_asr_server.py"));
-  add(join(__dirname, "../../../../scripts", "mlx_asr_server.py"));
-  add(join(__dirname, "../../../../../scripts", "mlx_asr_server.py"));
-
-  let dir = __dirname;
-  for (let depth = 0; depth < 12; depth++) {
-    add(join(dir, "scripts", "mlx_asr_server.py"));
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  return candidates;
+  return uniquePaths([
+    // TRUSTED-OPERATOR-ONLY escape hatch, same class as OPENSTYLE_MLX_ASR_WORKER
+    // above: points the script executed by the resolved Python interpreter
+    // (mlx-asr/server.ts, spawnWorkerProcess) at an arbitrary local file.
+    // getMlxAsrServerScriptPath() below logs a warning whenever this candidate
+    // is the one actually used. Never set this from untrusted input.
+    mlxAsrScriptOverride(),
+    ...(resourcesPath
+      ? [join(resourcesPath, "mlx-asr", "mlx_asr_server.py")]
+      : []),
+    join(process.cwd(), "resources", "mlx-asr", "mlx_asr_server.py"),
+    join(process.cwd(), "scripts", "mlx_asr_server.py"),
+    join(process.cwd(), "../../scripts", "mlx_asr_server.py"),
+    join(__dirname, "../../../../scripts", "mlx_asr_server.py"),
+    join(__dirname, "../../../../../scripts", "mlx_asr_server.py"),
+    ...[...ancestors(__dirname, 12)].map((dir) =>
+      join(dir, "scripts", "mlx_asr_server.py"),
+    ),
+  ]);
 }
 
 /** Resolved path to scripts/mlx_asr_server.py (bundled in Electron or monorepo). */
