@@ -175,7 +175,8 @@ function getDateGroup(iso: string): string {
 }
 
 const PAGE_SIZE = 20;
-const DEV_HISTORY_SEED_ENABLED = import.meta.env.DEV;
+// Stable empty list, so the memoized StatsPanel does not re-render.
+const EMPTY_DAYS: DayActivity[] = [];
 const STATS_WIDTH_MIN = 260;
 const STATS_WIDTH_MAX = 480;
 
@@ -319,8 +320,6 @@ export default function HistoryPage(): React.JSX.Element {
     [setFilters],
   );
 
-  const todayStr = getLocalDateString(new Date());
-
   // Presets are gone: the only date filter is an explicit custom range.
   // Legacy persisted presets (today/weekly/monthly) are treated as all-time.
   const hasCustomRange =
@@ -396,51 +395,9 @@ export default function HistoryPage(): React.JSX.Element {
     placeholderData: keepPreviousData,
   });
 
-  const apiEntries = historyData?.items ?? [];
-  const devSeedEntry = useMemo<HistoryEntry | null>(() => {
-    if (!DEV_HISTORY_SEED_ENABLED) return null;
-    if (search && !"inline filter panel visual test".includes(search)) {
-      return null;
-    }
-    if (startDate && todayStr < startDate) return null;
-    if (endDate && todayStr > endDate) return null;
-
-    return {
-      id: -419,
-      raw_text: "Inline filter panel visual test.",
-      cleaned_text:
-        "Inline filter panel visual test entry for reviewing the History layout.",
-      voice_provider: "dev-seed",
-      voice_model: "dev-seed/local",
-      llm_provider: "dev-seed",
-      llm_model: "dev-seed/cleanup",
-      duration_ms: 640,
-      audio_duration_ms: 3200,
-      input_tokens: 18,
-      output_tokens: 12,
-      cost_usd: 0,
-      created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
-    };
-  }, [endDate, search, startDate, todayStr]);
-  const hasDevSeedEntry = apiEntries.length === 0 && devSeedEntry !== null;
-  const entries = hasDevSeedEntry ? [devSeedEntry] : apiEntries;
-  const total = hasDevSeedEntry ? 1 : (historyData?.total ?? 0);
-  const stats = hasDevSeedEntry
-    ? {
-        total_sessions: 1,
-        total_duration_ms: 640,
-        total_input_tokens: 18,
-        total_output_tokens: 12,
-        total_cost_usd: 0,
-        avg_duration_ms: 640,
-        total_audio_ms: 3200,
-        total_fixes: 3,
-        total_words: 12,
-        today_sessions: 1,
-        today_cost: 0,
-        unfiltered_total_sessions: 1,
-      }
-    : (historyData?.stats ?? null);
+  const entries = historyData?.items ?? [];
+  const total = historyData?.total ?? 0;
+  const stats = historyData?.stats ?? null;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // `history_paused` lives in the shared settings map — read it from the same
@@ -526,25 +483,7 @@ export default function HistoryPage(): React.JSX.Element {
       ? Math.round(stats.total_words / (stats.total_audio_ms / 60000))
       : 0;
 
-  // Heatmap series. With the dev seed active there's no real history, so
-  // synthesize a deterministic few months to make the heatmap reviewable.
-  const daily = useMemo<DayActivity[]>(() => {
-    if (!hasDevSeedEntry) return dailyData ?? [];
-    const out: DayActivity[] = [];
-    const d = new Date();
-    for (let i = 0; i < 112; i++) {
-      const words = (i * 37) % 7 === 0 ? 0 : 40 + ((i * 53) % 360);
-      if (words > 0) {
-        out.push({
-          day: getLocalDateString(d),
-          words,
-          sessions: 1 + (i % 3),
-        });
-      }
-      d.setDate(d.getDate() - 1);
-    }
-    return out;
-  }, [dailyData, hasDevSeedEntry]);
+  const daily = dailyData ?? EMPTY_DAYS;
 
   if (loading) {
     // Keep the real page frame (DragSpacer + scroll column) and show placeholder
