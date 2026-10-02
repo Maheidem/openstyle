@@ -153,17 +153,29 @@ export const proxyUrlSettingSchema = z
 /** Filesystem path to a custom CA certificate bundle. Empty string clears it. */
 export const caCertPathSettingSchema = z.string().max(4096);
 
+/**
+ * Strict parse of a whole number inside [min, max]. Returns `null` when the
+ * value is missing, not a whole number, or out of bounds.
+ */
+function parseBoundedIntStrict(
+  value: string | null | undefined,
+  min: number,
+  max: number,
+): number | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  if (n < min || n > max) return null;
+  return n;
+}
+
 export const HISTORY_RETENTION_DAYS_MAX = 3650;
 
 export function parseRetentionDays(
   value: string | null | undefined,
 ): number | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  const days = Number(trimmed);
-  if (days < 1 || days > HISTORY_RETENTION_DAYS_MAX) return null;
-  return days;
+  return parseBoundedIntStrict(value, 1, HISTORY_RETENTION_DAYS_MAX);
 }
 
 export const historyRetentionDaysSettingSchema = z
@@ -221,12 +233,7 @@ function parseBoundedInt(
   max: number,
   fallback: number,
 ): number {
-  if (value == null) return fallback;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return fallback;
-  const n = Number(trimmed);
-  if (n < min || n > max) return fallback;
-  return n;
+  return parseBoundedIntStrict(value, min, max) ?? fallback;
 }
 
 /**
@@ -338,17 +345,11 @@ export const DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS = 600;
 export function parseMeetingSummaryTimeoutSeconds(
   value: string | null | undefined,
 ): number | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  const seconds = Number(trimmed);
-  if (
-    seconds < MEETING_SUMMARY_TIMEOUT_SECONDS_MIN ||
-    seconds > MEETING_SUMMARY_TIMEOUT_SECONDS_MAX
-  ) {
-    return null;
-  }
-  return seconds;
+  return parseBoundedIntStrict(
+    value,
+    MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
+    MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+  );
 }
 
 /**
@@ -421,17 +422,11 @@ export const DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS = 600;
 export function parseMeetingEnhanceTimeoutSeconds(
   value: string | null | undefined,
 ): number | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  const seconds = Number(trimmed);
-  if (
-    seconds < MEETING_ENHANCE_TIMEOUT_SECONDS_MIN ||
-    seconds > MEETING_ENHANCE_TIMEOUT_SECONDS_MAX
-  ) {
-    return null;
-  }
-  return seconds;
+  return parseBoundedIntStrict(
+    value,
+    MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
+    MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
+  );
 }
 
 /** Milliseconds for one Enhance call. The one and only seconds→ms site —
