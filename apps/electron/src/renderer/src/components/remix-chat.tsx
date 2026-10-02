@@ -1,7 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import { REMIX_PRESETS, type RemixPreset } from "@openstyle/validations";
 import { AgentActivity } from "@renderer/components/agents/agent-activity";
-import type { AgentActivityItem } from "@renderer/components/agents/agent-activity/types";
+import type { AgentActivityStep } from "@renderer/components/agents/agent-activity/types";
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
@@ -1123,7 +1123,7 @@ function ToolActivity({
   parts: Array<ToolUIPart | DynamicToolUIPart>;
   busy: boolean;
 }): React.JSX.Element {
-  const items: AgentActivityItem[] = parts.map((part) => {
+  const items: AgentActivityStep[] = parts.map((part) => {
     const name = getToolOrDynamicToolName(part);
     const labels = TOOL_LABELS[name] ?? {
       doing: `Running ${name}…`,
@@ -1168,7 +1168,6 @@ function ToolActivity({
     <AgentActivity
       className="remix-chat-activity"
       items={items}
-      contentType="step"
       maxHeight={280}
       summary={summary}
       activeLabel={activeLabel}
