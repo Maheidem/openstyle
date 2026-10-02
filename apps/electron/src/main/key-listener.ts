@@ -12,7 +12,10 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { createAppLogger } from "@openstyle/utils";
-import { getNativeBinaryPath } from "./native-binary";
+import {
+  getNativeBinaryPath,
+  KEY_LISTENER_BINARY_NAMES,
+} from "./native-binary";
 
 const log = createAppLogger("key-listener");
 
@@ -27,12 +30,6 @@ interface KeyListenerOptions {
   onReady?: () => void;
   onPermanentFailure?: () => void;
 }
-
-const BINARY_NAMES: Record<string, string> = {
-  darwin: "macos-key-listener",
-  win32: "windows-key-listener",
-  linux: "linux-key-listener",
-};
 
 const MAC_SOLO_FN_CHORD_GRACE_MS = 50;
 
@@ -154,7 +151,7 @@ export class NativeKeyListener {
   start(): Promise<boolean> {
     if (this.destroyed) return Promise.resolve(false);
 
-    const binaryName = BINARY_NAMES[process.platform];
+    const binaryName = KEY_LISTENER_BINARY_NAMES[process.platform];
     if (!binaryName) {
       this.options.onError?.(`Unsupported platform: ${process.platform}`);
       return Promise.resolve(false);

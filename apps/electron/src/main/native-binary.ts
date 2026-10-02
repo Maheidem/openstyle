@@ -44,3 +44,10 @@ export function getNativeBinaryPath(name: string): string | null {
 export function hasNativeBinary(name: string): boolean {
   return getNativeBinaryPath(name) !== null;
 }
+
+/** Key listener binary name for each supported platform. */
+export const KEY_LISTENER_BINARY_NAMES: Record<string, string> = {
+  darwin: "macos-key-listener",
+  win32: "windows-key-listener",
+  linux: "linux-key-listener",
+};
