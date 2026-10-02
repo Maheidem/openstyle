@@ -56,6 +56,34 @@ export interface ChatCallResponse {
   pricing?: { input: number; output: number } | null;
 }
 
+/** The part of a chat request a meeting feature builds itself. */
+export type ChatCallInput = Omit<
+  ChatCallRequest,
+  "taskId" | "shouldStop" | "onQueued"
+>;
+
+/**
+ * Build the default call function for one task id. Summarize and Enhance
+ * both use it, so they share one place that threads the cancel and queue
+ * seams. Callers that inject their own `llmCall` (tests) never reach it,
+ * so they never touch the database or provider SDKs.
+ */
+export function defaultChatCallFor<TInput extends ChatCallInput>(
+  taskId: ChatCallRequest["taskId"],
+  seams: Pick<ChatCallRequest, "shouldStop" | "onQueued">,
+): (request: TInput) => Promise<ChatCallResponse> {
+  return (request) =>
+    resolveDefaultChatCall({
+      ...request,
+      taskId,
+      // Cancel + queue-progress seams (§5.5/§5.7), threaded from the job so a
+      // cancel landing while a call is still QUEUED stops it before the
+      // request ever goes out.
+      ...(seams.shouldStop ? { shouldStop: seams.shouldStop } : {}),
+      ...(seams.onQueued ? { onQueued: seams.onQueued } : {}),
+    });
+}
+
 /**
  * Resolve the app's default chat model and run one prompt through it. The
  * `@openstyle/stt` wrapper never throws on its own — it falls back to

@@ -114,7 +114,7 @@ export function textSimilarity(a: string, b: string): number {
 }
 
 /** Fraction of the text's distinct words that are vocabulary words. */
-export const VOCAB_LEAK_OVERLAP_THRESHOLD = 0.6;
+const VOCAB_LEAK_OVERLAP_THRESHOLD = 0.6;
 
 /**
  * True when a chunk of ASR output looks like the model echoed the

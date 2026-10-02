@@ -15,7 +15,6 @@ export {
   stripVocabLeak,
   stripWrappingQuotes,
   textSimilarity,
-  VOCAB_LEAK_OVERLAP_THRESHOLD,
 } from "./text.js";
 export { maxOutputTokensForCleanup } from "./tokens.js";
 export type {

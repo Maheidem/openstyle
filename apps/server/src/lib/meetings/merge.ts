@@ -8,22 +8,9 @@
  *
  * No I/O and no dependencies of its own — deterministic on its inputs.
  * `normalizeText`/`textSimilarity`/`isVocabLeak` live in `@openstyle/stt`
- * (shared with the dictation leak filter, packages/stt/src/text.ts) and are
- * re-exported here so existing importers of this module don't need to change.
+ * (shared with the dictation leak filter, packages/stt/src/text.ts).
  */
-import {
-  isVocabLeak,
-  normalizeText,
-  textSimilarity,
-  VOCAB_LEAK_OVERLAP_THRESHOLD,
-} from "@openstyle/stt";
-
-export {
-  isVocabLeak,
-  normalizeText,
-  textSimilarity,
-  VOCAB_LEAK_OVERLAP_THRESHOLD,
-};
+import { isVocabLeak, normalizeText, textSimilarity } from "@openstyle/stt";
 
 export type Speaker = "Me" | "Them";
 
@@ -52,30 +39,17 @@ export interface TranscriptSegment {
   /** LLM-corrected text for this segment, Phase C. `undefined` means the
    * segment was never enhanced, or Enhance ran and left it unchanged. */
   enhancedText?: string;
-  /** Confirmed display name for this segment's resolved speaker identity
-   *  (specs/meeting-speaker-naming.md), following any merge. Undefined when
-   *  unnamed — renderer falls back to "Them {{speakerLabel}}" exactly as
-   *  before. Never populated from a suggestion — ground rule: suggestions
-   *  are never auto-applied. Interface symmetry with `MergedSegment` only —
-   *  nothing ever sets this field here; `resolveSpeakerNames` runs after
-   *  `mergeTranscript`, only ever touching `MergedSegment`s. */
-  speakerName?: string;
 }
 
-export interface MergedSegment {
+/**
+ * A `TranscriptSegment` with its channel attached. `mergeTranscript` builds
+ * these as `{ speaker, ...segment }`, so the carried fields (`id`,
+ * `enhancedText`) pass through unchanged. `resolveSpeakerNames` may remap
+ * `speakerLabel` in place (specs/meeting-speaker-naming.md §4) to collapse a
+ * merged label onto its merge target.
+ */
+export type MergedSegment = TranscriptSegment & {
   speaker: Speaker;
-  startMs: number;
-  endMs: number;
-  text: string;
-  /** Carried through unchanged from the matching `TranscriptSegment`, then
-   * possibly remapped in place by `resolveSpeakerNames`
-   * (specs/meeting-speaker-naming.md §4) to collapse a merged label onto its
-   * merge target. */
-  speakerLabel?: string;
-  /** Carried through unchanged from the matching `TranscriptSegment`. */
-  id?: string;
-  /** Carried through unchanged from the matching `TranscriptSegment`. */
-  enhancedText?: string;
   /** Confirmed display name for this segment's resolved speaker identity
    *  (specs/meeting-speaker-naming.md), following any merge. Undefined when
    *  unnamed — renderer falls back to "Them {{speakerLabel}}". Never
@@ -83,7 +57,7 @@ export interface MergedSegment {
    *  auto-applied) — only `resolveSpeakerNames` sets this, from a
    *  `meeting_speakers.display_name` value. */
   speakerName?: string;
-}
+};
 
 /**
  * Drift-correction inputs. Each channel's recorder emits periodic sync
@@ -341,6 +315,28 @@ function formatClockMs(ms: number): string {
 }
 
 /**
+ * Display label for one merged segment. English-only regardless of app
+ * locale, like `speaker` itself (already the unlocalized "Me"/"Them"): the
+ * export and the LLM prompts are plain text, independent of the UI locale
+ * (specs/meeting-diarization.md §9). specs/meeting-speaker-naming.md §4:
+ * prefer a confirmed `speakerName` (following any merge) over the numbered
+ * "Them N" fallback. A "Them" segment with no `speakerLabel` at all
+ * (diarization never ran, or the diarizer could not attribute the line)
+ * gets `unlabeled`. Display callers pass "Unidentified" (§3.3 amendment),
+ * never bare "Them", which would read as a real, still-unnamed participant.
+ */
+export function speakerDisplayLabel(
+  seg: Pick<MergedSegment, "speaker" | "speakerName" | "speakerLabel">,
+  unlabeled: string,
+): string {
+  if (seg.speaker !== "Them") return seg.speaker;
+  return (
+    seg.speakerName ??
+    (seg.speakerLabel ? `Them ${seg.speakerLabel}` : unlabeled)
+  );
+}
+
+/**
  * Render a merged, speaker-labeled transcript as a standalone markdown
  * document — `[timestamp] Speaker: text` per segment — so a meeting's audio
  * directory is self-contained without requiring the app or DB.
@@ -357,21 +353,7 @@ export function formatTranscriptMarkdown(
   useEnhanced = false,
 ): string {
   const lines = segments.map((s) => {
-    // Diarization label, English-only regardless of app locale — consistent
-    // with `s.speaker` itself, which is already the unlocalized literal
-    // "Me"/"Them" and never run through `t()`: the export is a plain-text
-    // artifact independent of the UI's locale (specs/meeting-diarization.md
-    // §9). specs/meeting-speaker-naming.md §4: prefer a confirmed
-    // `speakerName` (following any merge) over the numbered fallback; a
-    // "Them" segment with no `speakerLabel` at all (diarization never ran,
-    // or the diarizer couldn't attribute this line to anyone) renders the
-    // literal "Unidentified" — never bare "Them", which would read as a
-    // real, still-unnamed participant (§3.3 amendment).
-    const label =
-      s.speaker === "Them"
-        ? (s.speakerName ??
-          (s.speakerLabel ? `Them ${s.speakerLabel}` : "Unidentified"))
-        : s.speaker;
+    const label = speakerDisplayLabel(s, "Unidentified");
     const text = useEnhanced ? (s.enhancedText ?? s.text) : s.text;
     return `**[${formatClockMs(s.startMs)}] ${label}:** ${text}`;
   });

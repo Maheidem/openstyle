@@ -30,8 +30,13 @@ import {
   buildEnhanceUserPrompt,
   formatEnhanceLine,
 } from "./enhance-prompt.js";
-import { estimateTokens, resolveDefaultChatCall } from "./llm-call.js";
-import type { MergedSegment } from "./merge.js";
+import {
+  type ChatCallInput,
+  type ChatCallResponse,
+  defaultChatCallFor,
+  estimateTokens,
+} from "./llm-call.js";
+import { type MergedSegment, speakerDisplayLabel } from "./merge.js";
 
 const log = createAppLogger("meeting-enhance");
 
@@ -55,18 +60,10 @@ export function getMeetingEnhanceAutoRunSetting(): boolean {
 export const DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS = 6000;
 
 /** One LLM request issued by the enhancer. */
-export interface EnhanceLlmRequest {
-  system: string;
-  prompt: string;
-  maxOutputTokens: number;
-}
+export type EnhanceLlmRequest = ChatCallInput;
 
 /** What an enhance LLM call must return. */
-export interface EnhanceLlmResponse {
-  text: string;
-  inputTokens: number;
-  outputTokens: number;
-}
+export type EnhanceLlmResponse = ChatCallResponse;
 
 /** Injectable LLM dependency; the default resolves the app's default model. */
 export type EnhanceLlmCall = (
@@ -333,17 +330,6 @@ function checkEvidenceProvenance(
   return "evidence is from the label's own turn but doesn't read as self-identifying (e.g. addressing someone else by name, not naming itself)";
 }
 
-/** Thin wrapper around the shared default chat call (`llm-call.ts`). */
-const defaultLlmCallFor =
-  (options: EnhanceMeetingOptions): EnhanceLlmCall =>
-  (request) =>
-    resolveDefaultChatCall({
-      ...request,
-      taskId: "meetingEnhance",
-      ...(options.shouldStop ? { shouldStop: options.shouldStop } : {}),
-      ...(options.onQueued ? { onQueued: options.onQueued } : {}),
-    });
-
 /**
  * Run the Enhance pass over a meeting's merged transcript and persist
  * corrections to `meeting_segments.enhanced_text`. Only ever `UPDATE`s
@@ -359,28 +345,26 @@ export async function enhanceMeetingTranscript(
   meetingContext: string | undefined,
   options: EnhanceMeetingOptions = {},
 ): Promise<EnhanceMeetingResult> {
-  const llmCall = options.llmCall ?? defaultLlmCallFor(options);
+  const llmCall =
+    options.llmCall ??
+    defaultChatCallFor<EnhanceLlmRequest>("meetingEnhance", options);
   const contextBudgetTokens =
     options.contextBudgetTokens ?? DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS;
 
   // Prerequisite fix (specs/meeting-speaker-naming.md §5.1): the transcript
   // the model actually sees must distinguish `Them 1` from `Them 2` — bare
   // `s.speaker` ("Me"/"Them") gives it no way to tell speakers apart at
-  // all. Prefer a confirmed `speakerName` over the numbered fallback (free
-  // improvement to correction quality for already-named meetings, not just
-  // an enabler for naming); a "Them" segment with no `speakerLabel` at all
-  // stays plain "Them" here — the "Unidentified" rendering fallback is a
-  // *display* concept (§3.3/§4), not something the LLM's own transcript
-  // view needs.
+  // all. `speakerDisplayLabel` prefers a confirmed `speakerName` over the
+  // numbered fallback (free improvement to correction quality for
+  // already-named meetings, not just an enabler for naming). A "Them"
+  // segment with no `speakerLabel` at all stays plain "Them" here — the
+  // "Unidentified" rendering fallback is a *display* concept (§3.3/§4), not
+  // something the LLM's own transcript view needs.
   const withIds: EnhanceSegment[] = segments
     .filter((s) => Boolean(s.id) && s.text.trim().length > 0)
     .map((s) => ({
       id: s.id as string,
-      speaker:
-        s.speaker === "Them"
-          ? (s.speakerName ??
-            (s.speakerLabel ? `Them ${s.speakerLabel}` : "Them"))
-          : s.speaker,
+      speaker: speakerDisplayLabel(s, "Them"),
       text: s.text,
       ...(s.speaker === "Them" && s.speakerLabel
         ? { speakerLabel: s.speakerLabel }
