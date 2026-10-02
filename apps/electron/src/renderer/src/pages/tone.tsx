@@ -31,6 +31,10 @@ import { TextMessagePreview } from "@renderer/components/tone-previews/text-mess
 import { WorkChatPreview } from "@renderer/components/tone-previews/work-chat-preview";
 import { Button } from "@renderer/components/ui/button";
 import {
+  RadioCard,
+  RadioCardGroup,
+} from "@renderer/components/ui/radio-card-group";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -40,7 +44,6 @@ import { Textarea } from "@renderer/components/ui/textarea";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
-import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -547,42 +550,6 @@ function CleanupTonePanel({
 }): React.JSX.Element {
   const { t } = useTranslation();
 
-  const handleOptionKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-      if (
-        ![
-          "ArrowRight",
-          "ArrowDown",
-          "ArrowLeft",
-          "ArrowUp",
-          "Home",
-          "End",
-        ].includes(event.key)
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-
-      if (event.key === "Home") {
-        onChange(CLEANUP_OPTIONS[0]!.value);
-        return;
-      }
-
-      if (event.key === "End") {
-        onChange(CLEANUP_OPTIONS.at(-1)!.value);
-        return;
-      }
-
-      const delta =
-        event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-      const nextIndex =
-        (index + delta + CLEANUP_OPTIONS.length) % CLEANUP_OPTIONS.length;
-      onChange(CLEANUP_OPTIONS[nextIndex]!.value);
-    },
-    [onChange],
-  );
-
   const activeOption =
     CLEANUP_OPTIONS.find((option) => option.value === value) ??
     CLEANUP_OPTIONS[0]!;
@@ -599,55 +566,36 @@ function CleanupTonePanel({
       </section>
 
       <div className="space-y-5">
-        <div
-          role="radiogroup"
+        <RadioCardGroup
+          value={value}
+          onValueChange={(next) => onChange(next as CleanupCardValue)}
           aria-label={t("tone.cleanup.title")}
           className="grid grid-cols-2 gap-2.5 min-[560px]:grid-cols-3 min-[1000px]:grid-cols-5"
         >
-          {CLEANUP_OPTIONS.map((option, index) => {
-            const selected = option.value === value;
-            return (
-              // biome-ignore lint/a11y/useSemanticElements: roving-tabindex radiogroup on styled buttons; <input type="radio"> would need a full restyle of the card layout.
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => onChange(option.value)}
-                onKeyDown={(event) => handleOptionKeyDown(event, index)}
-                className={cn(
-                  "group border-border bg-card relative flex flex-col gap-1.5 overflow-hidden rounded-lg border p-3.5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
-                  "hover:border-foreground/20 hover:bg-card/90",
-                  selected && "border-primary/40 bg-accent/45",
-                )}
-              >
-                <div className="flex items-center justify-between gap-1.5">
-                  <p className="display text-foreground text-[21px] leading-none tracking-[-0.03em]">
-                    {t(option.titleKey)}
-                  </p>
-                  <span
-                    className={cn(
-                      "flex size-[18px] shrink-0 items-center justify-center rounded-full border transition-colors duration-150",
-                      selected
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border/70 bg-transparent text-transparent group-hover:border-foreground/25",
-                    )}
-                  >
-                    <Check
-                      className="size-2.5"
-                      strokeWidth={3}
-                      aria-hidden="true"
-                    />
-                  </span>
-                </div>
-                <p className="text-muted-foreground text-[11.5px] leading-[1.4]">
-                  {t(option.descKey)}
+          {CLEANUP_OPTIONS.map((option) => (
+            <RadioCard
+              key={option.value}
+              value={option.value}
+              className="flex flex-col gap-1.5 p-3.5"
+            >
+              <div className="flex items-center justify-between gap-1.5">
+                <p className="display text-foreground text-[21px] leading-none tracking-[-0.03em]">
+                  {t(option.titleKey)}
                 </p>
-              </button>
-            );
-          })}
-        </div>
+                <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full border border-border/70 bg-transparent text-transparent transition-colors duration-150 group-hover:border-foreground/25 group-data-[state=checked]:border-primary group-data-[state=checked]:bg-primary group-data-[state=checked]:text-primary-foreground">
+                  <Check
+                    className="size-2.5"
+                    strokeWidth={3}
+                    aria-hidden="true"
+                  />
+                </span>
+              </div>
+              <p className="text-muted-foreground text-[11.5px] leading-[1.4]">
+                {t(option.descKey)}
+              </p>
+            </RadioCard>
+          ))}
+        </RadioCardGroup>
 
         {value === "custom" ? (
           <div className="border-border bg-card rounded-lg border p-5">
@@ -762,41 +710,6 @@ function SubsetTonePanel<T extends string>({
     />
   ) : null;
 
-  const handleOptionKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-      if (
-        ![
-          "ArrowRight",
-          "ArrowDown",
-          "ArrowLeft",
-          "ArrowUp",
-          "Home",
-          "End",
-        ].includes(event.key)
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-
-      if (event.key === "Home") {
-        onChange(options[0]!.value);
-        return;
-      }
-
-      if (event.key === "End") {
-        onChange(options.at(-1)!.value);
-        return;
-      }
-
-      const delta =
-        event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-      const nextIndex = (index + delta + options.length) % options.length;
-      onChange(options[nextIndex]!.value);
-    },
-    [onChange, options],
-  );
-
   const renderPreview = (sample: string): React.JSX.Element => {
     if (destination === "personal") {
       return <TextMessagePreview sample={sample} />;
@@ -863,64 +776,36 @@ function SubsetTonePanel<T extends string>({
       </section>
 
       <div className="grid gap-4 min-[820px]:grid-cols-[minmax(0,300px)_minmax(0,1fr)] min-[820px]:items-start">
-        <div
-          role="radiogroup"
+        <RadioCardGroup
+          value={value}
+          onValueChange={(next) => onChange(next as T)}
           aria-label={title}
           className="flex flex-col gap-2.5"
         >
-          {options.map((option, index) => {
-            const selected = option.value === value;
-            return (
-              // biome-ignore lint/a11y/useSemanticElements: roving-tabindex radiogroup on styled buttons; <input type="radio"> would need a full restyle of the card layout.
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => onChange(option.value)}
-                onKeyDown={(event) => handleOptionKeyDown(event, index)}
-                className={cn(
-                  "group border-border bg-card relative flex items-center gap-3 overflow-hidden rounded-lg border py-4 pr-4 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
-                  "hover:border-foreground/20 hover:bg-card/90",
-                  selected && "border-primary/40 bg-accent/45",
-                )}
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r-full transition-all duration-150",
-                    selected
-                      ? "bg-primary h-9"
-                      : "bg-foreground/15 h-0 group-hover:h-5",
-                  )}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="display text-foreground text-[24px] leading-none tracking-[-0.03em]">
-                    {t(option.titleKey)}
-                  </p>
-                  <p className="text-muted-foreground mt-2 text-[12.5px] leading-[1.45]">
-                    {t(option.descKey)}
-                  </p>
-                </div>
-                <span
-                  className={cn(
-                    "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors duration-150",
-                    selected
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border/70 bg-transparent text-transparent group-hover:border-foreground/25",
-                  )}
-                >
-                  <Check
-                    className="size-3"
-                    strokeWidth={3}
-                    aria-hidden="true"
-                  />
-                </span>
-              </button>
-            );
-          })}
-        </div>
+          {options.map((option) => (
+            <RadioCard
+              key={option.value}
+              value={option.value}
+              className="flex items-center gap-3 py-4 pr-4 pl-5"
+            >
+              <span
+                aria-hidden="true"
+                className="absolute left-0 top-1/2 h-0 w-1 -translate-y-1/2 rounded-r-full bg-foreground/15 transition-all duration-150 group-hover:h-5 group-data-[state=checked]:h-9 group-data-[state=checked]:bg-primary"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="display text-foreground text-[24px] leading-none tracking-[-0.03em]">
+                  {t(option.titleKey)}
+                </p>
+                <p className="text-muted-foreground mt-2 text-[12.5px] leading-[1.45]">
+                  {t(option.descKey)}
+                </p>
+              </div>
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border/70 bg-transparent text-transparent transition-colors duration-150 group-hover:border-foreground/25 group-data-[state=checked]:border-primary group-data-[state=checked]:bg-primary group-data-[state=checked]:text-primary-foreground">
+                <Check className="size-3" strokeWidth={3} aria-hidden="true" />
+              </span>
+            </RadioCard>
+          ))}
+        </RadioCardGroup>
 
         <div>
           <div className="mb-2.5 flex items-center justify-between gap-2">
