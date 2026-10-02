@@ -1,9 +1,4 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  apiKeySchema,
-  MAX_LANGUAGES,
-  normalizeLanguageList,
-} from "@openstyle/validations";
+import { MAX_LANGUAGES, normalizeLanguageList } from "@openstyle/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import {
   LanguageMultiPickerDialog,
@@ -17,19 +12,6 @@ import {
 import { EmailDraft } from "@renderer/components/onboarding/email-draft";
 import { Button } from "@renderer/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@renderer/components/ui/dialog";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@renderer/components/ui/input-group";
-import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { SegmentedControl } from "@renderer/components/ui/segmented-control";
-import { VoiceRow } from "@renderer/components/voice-row";
-import {
   acceleratorsEqual,
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -42,31 +24,24 @@ import {
   type AvailableModel,
   buildVoiceItems,
   type MlxAsrStatus,
-  PROVIDER_DISPLAY_NAMES,
-  PROVIDER_KEY_URLS,
   type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
-import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
+import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Check,
-  ChevronLeft,
   ClipboardPaste,
-  HardDrive,
-  Key,
   Keyboard,
   Loader2,
   Mic,
   Shield,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
@@ -123,14 +98,10 @@ export default function OnboardingPage(): React.JSX.Element {
 
   // Voice model state
   const [available, setAvailable] = useState<AvailableModel[]>([]);
-  const [selectedModel, setSelectedModel] = useState<AvailableModel | null>(
-    null,
-  );
   const [selectedWhisperDefId, setSelectedWhisperDefId] = useState<
     string | null
   >(null);
   const [selectedMlxDefId, setSelectedMlxDefId] = useState<string | null>(null);
-  const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
   const [languages, setLanguages] = useState<string[]>(() => {
     // Seed from the OS language when it's a real code; "auto" starts empty.
     const guess = defaultLanguage();
@@ -144,16 +115,6 @@ export default function OnboardingPage(): React.JSX.Element {
     defId: string;
     engine: "whisper" | "mlx";
   } | null>(null);
-  // Full model selector overlay (cloud + everything else)
-  const [showSelector, setShowSelector] = useState(false);
-  const [selectorSource, setSelectorSource] = useState<"cloud" | "local">(
-    "local",
-  );
-  const apiKeyForm = useForm<{ provider: string; key: string }>({
-    resolver: zodResolver(apiKeySchema),
-    defaultValues: { provider: "", key: "" },
-  });
-  const [showKey, setShowKey] = useState(false);
 
   // Hotkey recorder state (draft step); the remix hotkey lives here too so
   // each step can refuse a combo already taken by the other.
@@ -214,20 +175,12 @@ export default function OnboardingPage(): React.JSX.Element {
     if (remixValue) setRemixHotkey(remixValue);
   }, [settingsData]);
 
-  // Load models + keys
+  // Load models
   useEffect(() => {
-    const client = getClient();
-    client.api.models.available
-      .$get()
+    getClient()
+      .api.models.available.$get()
       .then((r) => (r.ok ? r.json() : []))
       .then((models: AvailableModel[]) => setAvailable(models))
-      .catch(() => {});
-    client.api.keys
-      .$get()
-      .then((r) => (r.ok ? r.json() : []))
-      .then((keys: { provider: string }[]) =>
-        setApiKeys(new Set(keys.map((k) => k.provider))),
-      )
       .catch(() => {});
   }, []);
 
@@ -306,38 +259,6 @@ export default function OnboardingPage(): React.JSX.Element {
     setTimeout(() => clearInterval(interval), 30000);
   }, []);
 
-  // Commit a model as the default. Selection in this flow IS commitment —
-  // there is no separate "save" step anymore.
-  const commitCloudModel = useCallback((model: AvailableModel) => {
-    getClient()
-      .api.models.configured.$post({
-        json: {
-          provider: model.provider_id,
-          model_id: model.model_id,
-          model_name: model.model_name,
-          type: "voice",
-          is_default: true,
-        },
-      })
-      .catch(() => {});
-  }, []);
-
-  const selectCloudModel = useCallback(
-    (model: AvailableModel) => {
-      setSelectedModel(model);
-      setSelectedWhisperDefId(null);
-      setSelectedMlxDefId(null);
-      if (apiKeys.has(model.provider_id)) {
-        commitCloudModel(model);
-      } else {
-        // Reset the key form so the key-entry view opens empty for a
-        // provider we don't have a key for yet; commit happens on key save.
-        apiKeyForm.reset({ provider: model.provider_id, key: "" });
-      }
-    },
-    [apiKeys, apiKeyForm, commitCloudModel],
-  );
-
   const selectLocalModel = useCallback(
     (
       defId: string,
@@ -356,7 +277,6 @@ export default function OnboardingPage(): React.JSX.Element {
         if (engine) {
           lastLocalSetupRef.current = { defId, engine };
         }
-        setSelectedModel(null);
       }
       const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
       getClient()
@@ -406,17 +326,14 @@ export default function OnboardingPage(): React.JSX.Element {
   );
 
   const allVoiceItems = buildVoiceItems(available, whisperStatus, mlxStatus, {
-    selectedModelId: selectedModel?.model_id,
-    selectedProvider:
-      selectedModel?.provider_id ??
-      (selectedWhisperDefId
-        ? "local-whisper"
-        : selectedMlxDefId
-          ? "local-mlx"
-          : undefined),
+    selectedProvider: selectedWhisperDefId
+      ? "local-whisper"
+      : selectedMlxDefId
+        ? "local-mlx"
+        : undefined,
     selectedWhisperModelId: selectedWhisperDefId ?? undefined,
     selectedMlxModelId: selectedMlxDefId ?? undefined,
-    keyProviders: apiKeys,
+    keyProviders: new Set(),
   });
 
   // Resolve the opinionated recommendation: Qwen3 on-device when MLX can run,
@@ -509,21 +426,6 @@ export default function OnboardingPage(): React.JSX.Element {
     setLanguages([]);
     persistLanguages([]);
   }, [persistLanguages]);
-
-  // Validate + persist a freshly entered cloud key. Returns true when stored
-  // so the selector can commit and close.
-  const saveCloudKey = useCallback(async () => {
-    const valid = await apiKeyForm.trigger();
-    if (!valid) return false;
-    const { provider, key } = apiKeyForm.getValues();
-    if (!key.trim()) return false;
-    await getClient()
-      .api.keys.$post({ json: { provider, key: key.trim() } })
-      .catch(() => {});
-    setApiKeys((prev) => new Set([...prev, provider]));
-    if (selectedModel) commitCloudModel(selectedModel);
-    return true;
-  }, [apiKeyForm, selectedModel, commitCloudModel]);
 
   const finishSetup = useCallback(() => {
     window.api?.setOnboardingComplete();
@@ -645,43 +547,6 @@ export default function OnboardingPage(): React.JSX.Element {
           />
         )}
       </div>
-
-      {showSelector && (
-        <ModelSelectorOverlay
-          source={selectorSource}
-          onSourceChange={(s) => {
-            setSelectorSource(s);
-          }}
-          voiceItems={allVoiceItems}
-          keyProviders={apiKeys}
-          selectedCloud={selectedModel}
-          apiKeyForm={apiKeyForm}
-          showKey={showKey}
-          onToggleShowKey={() => setShowKey((v) => !v)}
-          onSelectCloud={selectCloudModel}
-          onSelectLocal={selectLocalModel}
-          onDownload={downloadLocalModel}
-          onRetryLocal={(defId, engine) => {
-            if (engine === "mlx") {
-              // Force a fresh MLX capability probe, prime the cache, then
-              // download only if the machine can actually run it.
-              void (async () => {
-                const res = await getClient()
-                  .api["mlx-asr"].status.$get({ query: { refresh: "1" } })
-                  .catch(() => null);
-                if (!res?.ok) return;
-                const data = (await res.json()) as MlxAsrStatus;
-                queryClient.setQueryData(queryKeys.mlxStatus, data);
-                if (data.canRun) void downloadMlxModel(defId);
-              })();
-            } else {
-              downloadWhisperModel(defId);
-            }
-          }}
-          onClose={() => setShowSelector(false)}
-          onSaveKey={saveCloudKey}
-        />
-      )}
     </div>
   );
 }
@@ -1014,295 +879,6 @@ function LanguageStep({
         </Button>
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Full model selector — opened from the model step as an option. Two views:
-//   "list" — browse cloud / on-device models, pick one
-//   "key"  — a focused, full-width API-key entry for a cloud pick that needs
-//            one (no more burying the input at the bottom of a scroll area)
-// ---------------------------------------------------------------------------
-function ModelSelectorOverlay({
-  source,
-  onSourceChange,
-  voiceItems,
-  keyProviders,
-  selectedCloud,
-  apiKeyForm,
-  showKey,
-  onToggleShowKey,
-  onSelectCloud,
-  onSelectLocal,
-  onDownload,
-  onRetryLocal,
-  onClose,
-  onSaveKey,
-}: {
-  source: "cloud" | "local";
-  onSourceChange: (s: "cloud" | "local") => void;
-  voiceItems: VoiceItem[];
-  keyProviders: Set<string>;
-  selectedCloud: AvailableModel | null;
-  apiKeyForm: ReturnType<typeof useForm<{ provider: string; key: string }>>;
-  showKey: boolean;
-  onToggleShowKey: () => void;
-  onSelectCloud: (m: AvailableModel) => void;
-  onSelectLocal: (
-    defId: string,
-    name: string,
-    engine?: "whisper" | "mlx",
-  ) => void;
-  onDownload: (defId: string, engine?: "whisper" | "mlx") => void;
-  onRetryLocal: (defId: string, engine: "whisper" | "mlx") => void;
-  onClose: () => void;
-  onSaveKey: () => Promise<boolean>;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  const [view, setView] = useState<"list" | "key">("list");
-  const [savingKey, setSavingKey] = useState(false);
-
-  const items = voiceItems.filter((v) =>
-    source === "local" ? v.kind === "local" : v.kind === "cloud",
-  );
-
-  // Pick a cloud model: commit immediately when its key is already stored,
-  // otherwise move into the focused key-entry view.
-  const handleSelectCloud = (model: AvailableModel) => {
-    onSelectCloud(model);
-    if (keyProviders.has(model.provider_id)) {
-      onClose();
-    } else {
-      setView("key");
-    }
-  };
-
-  // Picking a ready on-device model commits straight away.
-  const handleSelectLocal = (
-    defId: string,
-    name: string,
-    engine?: "whisper" | "mlx",
-  ) => {
-    onSelectLocal(defId, name, engine);
-    onClose();
-  };
-
-  const handleSaveKey = async () => {
-    setSavingKey(true);
-    try {
-      const ok = await onSaveKey();
-      if (ok) onClose();
-    } finally {
-      setSavingKey(false);
-    }
-  };
-
-  const providerName = selectedCloud
-    ? (PROVIDER_DISPLAY_NAMES[selectedCloud.provider_id] ??
-      selectedCloud.provider_id)
-    : "";
-  const keyValue = apiKeyForm.watch("key") ?? "";
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        showCloseButton={false}
-        onEscapeKeyDown={(e) => {
-          // Esc steps back from key entry to the list before closing.
-          if (view === "key") {
-            e.preventDefault();
-            setView("list");
-          }
-        }}
-        className="flex max-h-[calc(100vh-5rem)] w-full max-w-[600px] flex-col gap-0 overflow-hidden rounded-[14px] border-border bg-background p-0 sm:max-w-[600px]"
-      >
-        <DialogTitle className="sr-only">Choose a voice model</DialogTitle>
-        {view === "list" ? (
-          <>
-            {/* Header */}
-            <div className="border-border/60 flex shrink-0 items-center justify-between border-b px-[22px] py-[18px]">
-              <div>
-                <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
-                  {t("onboarding.modelSelector.chooseModel")}
-                </div>
-                <div className="display text-foreground mt-0.5 text-[26px] leading-[1.05]">
-                  {t("onboarding.modelSelector.allVoiceModels")}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onClose}
-                aria-label="Close"
-              >
-                <X />
-              </Button>
-            </div>
-
-            {/* Source toggle */}
-            <div className="flex shrink-0 justify-center pt-4">
-              <SegmentedControl
-                size="sm"
-                value={source}
-                onValueChange={(v) => onSourceChange(v as "cloud" | "local")}
-                options={[
-                  {
-                    value: "cloud",
-                    label: t("onboarding.modelSelector.cloudApi"),
-                  },
-                  {
-                    value: "local",
-                    label: t("onboarding.modelSelector.onDevice"),
-                    icon: HardDrive,
-                  },
-                ]}
-              />
-            </div>
-
-            {/* List */}
-            <div className="overflow-y-auto px-[22px] py-4 [scrollbar-gutter:stable]">
-              <div className="border-border overflow-hidden rounded-[14px] border">
-                {items.length === 0 && (
-                  <div className="flex items-center gap-2 px-5 py-6">
-                    <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                    <span className="text-muted-foreground text-sm">
-                      {t("onboarding.modelSelector.loading")}
-                    </span>
-                  </div>
-                )}
-                {items.map((item, i) => (
-                  <VoiceRow
-                    key={item.key}
-                    item={item}
-                    first={i === 0}
-                    onSelectCloud={handleSelectCloud}
-                    onSelectLocal={handleSelectLocal}
-                    onDownload={onDownload}
-                    onRetryLocal={onRetryLocal}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="border-border/60 flex shrink-0 items-center justify-between border-t px-[22px] py-4">
-              <span className="text-muted-foreground text-[11.5px]">
-                {source === "cloud"
-                  ? t("onboarding.modelSelector.cloudNote")
-                  : t("onboarding.modelSelector.onDeviceNote", {
-                      phrase: ON_DEVICE_PHRASE,
-                    })}
-              </span>
-              <Button variant="outline" onClick={onClose}>
-                {t("common.cancel")}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Key-entry header */}
-            <div className="border-border/60 flex shrink-0 items-center gap-3 border-b px-[22px] py-[18px]">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setView("list")}
-                aria-label={t("onboarding.modelSelector.backToModels")}
-              >
-                <ChevronLeft />
-              </Button>
-              <div>
-                <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
-                  {t("onboarding.modelSelector.connect", {
-                    provider: providerName,
-                  })}
-                </div>
-                <div className="display text-foreground mt-0.5 text-[26px] leading-[1.05]">
-                  {t("onboarding.modelSelector.addKey", {
-                    provider: providerName,
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Key-entry body — the input is the whole view */}
-            <div className="px-[22px] py-7">
-              {selectedCloud && (
-                <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
-                  {t("onboarding.modelSelector.requiredFor", {
-                    model: selectedCloud.model_name,
-                  })}
-                </p>
-              )}
-
-              <InputGroup className="h-10">
-                <InputGroupInput
-                  autoFocus
-                  type={showKey ? "text" : "password"}
-                  {...apiKeyForm.register("key")}
-                  placeholder={t("onboarding.modelSelector.keyPlaceholder")}
-                  aria-invalid={!!apiKeyForm.formState.errors.key}
-                  className="font-mono text-[14px]"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && keyValue.trim()) handleSaveKey();
-                  }}
-                />
-                <InputGroupAddon>
-                  <Key />
-                </InputGroupAddon>
-                <RevealToggle
-                  revealed={showKey}
-                  onToggle={onToggleShowKey}
-                  label="key"
-                />
-              </InputGroup>
-              {apiKeyForm.formState.errors.key && (
-                <p className="text-destructive mt-2 text-[12px]">
-                  {apiKeyForm.formState.errors.key.message}
-                </p>
-              )}
-              {selectedCloud &&
-                PROVIDER_KEY_URLS[selectedCloud.provider_id] && (
-                  <p className="mt-3 text-[12.5px]">
-                    <a
-                      href={PROVIDER_KEY_URLS[selectedCloud.provider_id]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary underline underline-offset-2"
-                    >
-                      {t("onboarding.modelSelector.getKey", {
-                        provider: providerName,
-                      })}
-                    </a>
-                  </p>
-                )}
-            </div>
-
-            {/* Key-entry footer */}
-            <div className="border-border/60 flex shrink-0 items-center justify-between border-t px-[22px] py-4">
-              <Button variant="outline" onClick={() => setView("list")}>
-                {t("common.back")}
-              </Button>
-              <Button
-                variant="ink"
-                onClick={handleSaveKey}
-                disabled={!keyValue.trim() || savingKey}
-              >
-                {savingKey ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <Check data-icon="inline-start" />
-                )}
-                {savingKey
-                  ? t("common.saving")
-                  : t("onboarding.modelSelector.saveKey", {
-                      provider: providerName,
-                    })}
-              </Button>
-            </div>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
 
