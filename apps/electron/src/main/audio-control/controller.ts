@@ -40,10 +40,6 @@ export class AudioPlaybackController {
     this.ducked = this.ducked || (await duckPromise);
   }
 
-  async duck(): Promise<void> {
-    await this.prepare("duck");
-  }
-
   private async duckSafely(): Promise<boolean> {
     try {
       return await volumeDucker.duckVolume();

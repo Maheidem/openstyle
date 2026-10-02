@@ -2346,9 +2346,6 @@ export default function AppPage(): React.JSX.Element {
     const removeCancelMode = window.api?.onPillCancelModeChanged((mode) => {
       setCancelMode(normalizePillCancelMode(mode));
     });
-    const removeAudioDucking = window.api?.onAudioDuckingChanged((enabled) => {
-      _audioPlaybackMode = enabled ? "duck" : "off";
-    });
     const removeAudioPlaybackMode = window.api?.onAudioPlaybackModeChanged(
       (mode) => {
         _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
@@ -2378,7 +2375,6 @@ export default function AppPage(): React.JSX.Element {
       removeOutputMode?.();
       removeSoundEnabled?.();
       removeCancelMode?.();
-      removeAudioDucking?.();
       removeAudioPlaybackMode?.();
       removeCleanupContext?.();
       removeServerChanged?.();

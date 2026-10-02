@@ -2337,10 +2337,6 @@ app.whenReady().then(async () => {
     await audioPlaybackController.prepare(mode);
   });
 
-  ipcMain.handle("audio:duck", async () => {
-    await audioPlaybackController.duck();
-  });
-
   ipcMain.handle("audio:restore", async () => {
     await audioPlaybackController.restore();
   });
@@ -2487,10 +2483,6 @@ app.whenReady().then(async () => {
       "settings:pill-cancel-mode-changed",
       normalizePillCancelMode(mode),
     );
-  });
-
-  ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {
-    mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
   });
 
   ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {
@@ -2678,10 +2670,6 @@ app.whenReady().then(async () => {
     return checkLinuxSetup();
   });
 
-  ipcMain.handle("onboarding:complete", () => {
-    return readSettings().onboardingComplete === true;
-  });
-
   ipcMain.on("onboarding:set-complete", () => {
     writeSettings({ onboardingComplete: true });
     remixPracticeTarget = false;
@@ -2719,10 +2707,6 @@ app.whenReady().then(async () => {
       },
     });
     hotkeyRecorder.start(target);
-  });
-
-  ipcMain.on("hotkey-record:pause-recorder", () => {
-    stopHotkeyRecorderProcess();
   });
 
   ipcMain.on("hotkey-record:stop", (_event, hotkey?: string) => {
@@ -3154,23 +3138,6 @@ app.whenReady().then(async () => {
     applyLanguageHotkeySettings(settings);
   });
 
-  // Listen for hotkey changes from the settings UI
-  ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
-    scheduleHotkeyRegistration(newHotkey);
-  });
-
-  ipcMain.on("hotkey:reload", () => {
-    void getServerSettings().then((settings) => {
-      // Server unreachable — keep last-known-good mode/hotkey rather than
-      // silently reverting to defaults on a transient blip.
-      if (!settings) return;
-      hotkeyActivationMode = hotkeyModeFromSettings(settings);
-      scheduleHotkeyRegistration(
-        hotkeyFromSettings(settings) ?? currentHotkeyAccel ?? undefined,
-      );
-    });
-  });
-
   ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
     hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
     hotkeyPressed = false;
@@ -3194,13 +3161,6 @@ app.whenReady().then(async () => {
       scheduleLanguageHotkeysRegistration(map);
     },
   );
-
-  ipcMain.on("language-hotkeys:reload", () => {
-    void getServerSettings().then((settings) => {
-      if (!settings) return;
-      applyLanguageHotkeySettings(settings);
-    });
-  });
 
   // Paste over selection — not deliverOutput (no trailing space).
   ipcMain.handle("remix:paste", async (_event, text: string) => {

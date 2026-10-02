@@ -87,10 +87,7 @@ declare global {
       pasteText: (text: string) => Promise<void>;
       copyText: (text: string) => Promise<void>;
       prepareSystemAudio: (mode: ActiveAudioPlaybackMode) => Promise<void>;
-      duckSystemAudio: () => Promise<void>;
       restoreSystemAudio: () => Promise<void>;
-      updateHotkey: (hotkey: string) => void;
-      reloadHotkey: () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;
       hidePill: () => void;
       setPillExpanded: (
@@ -166,7 +163,6 @@ declare global {
       onHotkeyUp: (callback: () => void) => () => void;
       onPillCancel: (callback: () => void) => () => void;
       updateLanguageHotkeys: (map: Record<string, string>) => void;
-      reloadLanguageHotkeys: () => void;
       reloadRemixHotkey: () => void;
       pasteRemixResult: (text: string) => Promise<boolean>;
       onRemixDown: (callback: () => void) => () => void;
@@ -215,10 +211,8 @@ declare global {
       } | null>;
       openAccessibilitySettings: () => void;
       openMicSettings: () => void;
-      getOnboardingComplete: () => Promise<boolean>;
       setOnboardingComplete: () => void;
       startHotkeyRecording: () => void;
-      pauseHotkeyRecording: () => void;
       stopHotkeyRecording: (hotkey?: string) => void;
       onHotkeyRecordModifiers: (
         callback: (modifiers: string[]) => void,
@@ -281,10 +275,6 @@ declare global {
       sendPillCancelModeChanged: (mode: PillCancelMode) => void;
       onPillCancelModeChanged: (
         callback: (mode: PillCancelMode) => void,
-      ) => () => void;
-      sendAudioDuckingChanged: (enabled: boolean) => void;
-      onAudioDuckingChanged: (
-        callback: (enabled: boolean) => void,
       ) => () => void;
       sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode) => void;
       onAudioPlaybackModeChanged: (
