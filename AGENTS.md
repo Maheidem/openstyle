@@ -14,7 +14,7 @@ Openstyle is a local-first dictation **and meeting-notes** app — a fork of `fr
 - `packages/stt` — provider-agnostic STT + text/cleanup utilities on the Vercel AI SDK; used only by `apps/server`.
 - `packages/utils` — shared utils incl. the logger (`src/logger.ts`).
 - `packages/validations` — shared Zod schemas; gives the Hono RPC client type safety with no codegen.
-- `packages/sdk` — **half vestigial**: the plugin contract (`Plugin`/hooks/registry/loader, see "Plugin system: removed" below) is dead code nothing loads any more, but both apps still import small shared bits from it — `OutputMode` (`apps/electron/src/main/index.ts`) and `parseAppContext`/`AppContextPayload` (`apps/server/src/lib/streaming/transcribe-bias.ts`, `lib/editor/app-context.ts`). Do not delete it without relocating those.
+- `packages/sdk` — small shared package. It exports only `OutputMode` (`apps/electron/src/main/index.ts`), `parseAppContext`, `AppContextPayload` and the `AppContext` type (`apps/server/src/lib/streaming/transcribe-bias.ts`, `lib/editor/app-context.ts`). The plugin contract (`Plugin`, hooks, registry, loader) is deleted. Do not delete the package without relocating those exports.
 - `plugins/`, `templates/`, `packages/create-openstyle-plugin` and the `build-plugins` CI job are deleted.
 
 **Dictation pipeline** (hotkey → delivered text):
@@ -51,7 +51,7 @@ Both tiers sit behind the same trust boundary server-side: `trustedOriginMiddlew
 
 **Local model management**: two child-process HTTP servers on loopback ports, neither in-process. whisper.cpp — models/binaries cached at `~/.cache/freestyle/whisper-{models,bin}` (`MODEL_CACHE_DIR_NAME = "freestyle"` in `apps/server/src/lib/model-cache.ts`; the path still says "freestyle" post-rename, deliberately, to avoid re-downloading multi-GB files); managed by `apps/server/src/lib/whisper/{models,server}.ts`. MLX ASR worker (Apple Silicon only) — PyInstaller binary built from `scripts/mlx_asr_server.py`, downloaded per-release from GitHub Releases and sha256-verified, managed by `apps/server/src/lib/mlx-asr/{runtime,server}.ts`.
 
-**Plugin system: removed** — commit `6211514` (`refactor(electron)!`, v2.0.0) deleted it end to end: main-process plugin host, `plugin-bridge`, renderer plugin pages/API, server plugin routes, and the plugin stage of the pipeline. There are **no `beforeTranscribe`/`afterTranscribe`/`beforeCleanup`/`afterCleanup`/`beforeOutput` hooks anywhere** — that logic now lives inline in `routes/transcribe.ts`, `routes/stream.ts`, and `lib/post-process.ts`. `packages/sdk` survives as a small shared package (see the monorepo list). `plugins/`, `templates/` and `packages/create-openstyle-plugin` are deleted. README's false plugin claims were corrected in `76201ac` (T1-8) — nothing advertises the plugin system any more.
+**Plugin system: removed** — commit `6211514` (`refactor(electron)!`, v2.0.0) deleted it end to end: main-process plugin host, `plugin-bridge`, renderer plugin pages/API, server plugin routes, and the plugin stage of the pipeline. There are **no `beforeTranscribe`/`afterTranscribe`/`beforeCleanup`/`afterCleanup`/`beforeOutput` hooks anywhere** — that logic now lives inline in `routes/transcribe.ts`, `routes/stream.ts`, and `lib/post-process.ts`. `packages/sdk` keeps only the small shared exports in the monorepo list. `plugins/`, `templates/` and `packages/create-openstyle-plugin` are deleted. README's false plugin claims were corrected in `76201ac` (T1-8) — nothing advertises the plugin system any more.
 
 ## Development commands
 
