@@ -672,9 +672,9 @@ different destinations depending on provider (§7.3):
   `chat_template_kwargs` isn't a Groq concept at all.
 - Every other cloud provider: no reasoning knob exists in the AI SDK's
   common surface today, so `reasoningEnabled` is a no-op there — documented
-  in §7.2's table, not silently dropped without a trace (`cloudPartial`
-  flag, §7.5, still fires if a preset also tried to set a reasoning-shaped
-  key that got denylisted).
+  in §7.2's table, not silently dropped without a trace (the UI's
+  `cloudPartial` note, §7.5, still shows if a preset also tried to set a
+  reasoning-shaped key that got denylisted).
 
 ---
 
@@ -706,7 +706,7 @@ the existing shape, now named explicitly instead of accidental.
 | `temperature` | `generateText`/`streamText`'s `temperature` | every mapped-subset provider |
 | `max_tokens` | `maxOutputTokens` (after the floor, §6.2) | every mapped-subset provider |
 | `top_p` | `topP` | every mapped-subset provider |
-| everything else (`top_k`, `min_p`, `presence_penalty`, `repetition_penalty`, `chat_template_kwargs`, `stream`, arbitrary custom keys) | dropped, `log.debug`, `cloudPartial: true` | every mapped-subset provider |
+| everything else (`top_k`, `min_p`, `presence_penalty`, `repetition_penalty`, `chat_template_kwargs`, `stream`, arbitrary custom keys) | dropped; the UI shows the `cloudPartial` note (§7.5) | every mapped-subset provider |
 
 `presence_penalty` is deliberately **not** mapped even though
 `generateText` accepts a `presencePenalty` argument — the two starter
@@ -792,7 +792,7 @@ export const LLM_PRESET_DENYLIST_KEYS = new Set([
 
 // §7.2's mapped-subset table, as a lookup — lives here rather than in
 // `apps/server/src/lib/llm/task-profiles.ts` (where `resolveTaskCall`/
-// `pickSafeSubset` are defined, §8.3) specifically so the renderer's
+// are defined, §8.3) specifically so the renderer's
 // client-side `cloudPartial` computation (§7.5) can import the exact same
 // set the server resolver uses. `apps/electron/src/renderer` cannot import
 // from `apps/server`; `packages/validations` is already a shared dependency
@@ -823,7 +823,7 @@ risk, not solved here).
 
 ### 7.5 `cloudPartial` and the UI note
 
-`ResolvedTaskCall.cloudPartial` (§8.3's return shape) is `true` when: the
+The renderer computes the `cloudPartial` flag. The server does not return it. The flag is `true` when: the
 resolved provider is mapped-subset tier (§7.1) **and** the resolved sampling
 params (mode `preset` or `custom` only — `auto` never sets this, there's
 nothing to drop) contain at least one key outside `SAFE_SUBSET_KEYS`
@@ -927,7 +927,6 @@ export interface ResolvedTaskCall {
   reasoningEnabled: boolean;
   samplingParams: Record<string, unknown>; // {} in "auto" mode
   timeoutMs: number;
-  cloudPartial: boolean; // §7.5
 }
 
 export async function resolveTaskCall(
@@ -980,10 +979,11 @@ export async function resolveTaskCall(
       }
     : {}; // mapped-subset providers never get the verbatim object at all
 
-  const safeSubset = isLocal ? {} : pickSafeSubset(strippedParams); // §7.2
-  const cloudPartial =
-    !isLocal &&
-    Object.keys(strippedParams).some((k) => !SAFE_SUBSET_KEYS.has(k));
+  // §7.2 — only `temperature` reaches a mapped-subset provider from the preset.
+  const presetTemperature =
+    !isLocal && typeof strippedParams.temperature === "number"
+      ? strippedParams.temperature
+      : undefined;
 
   // profile.maxOutputTokens === "auto" requires the caller to supply
   // `opts.autoMaxOutputTokens` (every §8.5 call site for an "auto"-profiled
@@ -1006,21 +1006,17 @@ export async function resolveTaskCall(
   return {
     provider,
     modelId,
-    temperature:
-      typeof safeSubset.temperature === "number"
-        ? safeSubset.temperature
-        : profile.temperature,
+    temperature: presetTemperature ?? profile.temperature,
     maxOutputTokens: Math.max(taskBudget, presetFloor), // §6.2
     reasoningEnabled: profile.reasoningEnabled,
-    samplingParams: isLocal ? samplingParams : {},
+    samplingParams,
     timeoutMs: profile.timeoutMs,
-    cloudPartial,
   };
 }
 ```
 
-(`resolveEffectiveModel`, `resolveModeParams`, `stripDenylistedKeys`,
-`pickSafeSubset` are straightforward helpers implied by §6/§7 above —
+(`resolveEffectiveModel`, `resolveModeParams` and `stripDenylistedKeys`
+are straightforward helpers implied by §6/§7 above —
 omitted here for length, spec'd fully in code review, not duplicated in
 prose. `SAFE_SUBSET_KEYS` is **not** one of those — it is defined in
 `packages/validations/src/llm-task-profiles.ts` alongside
@@ -1604,7 +1600,7 @@ by `isDanglingAssignment`/`findMissingPresetIds` (`preset-ops.ts:165-180,
   rule) — assert the final merged `chat_template_kwargs` object exactly.
 - Same preset on a mapped-subset provider (e.g. `openai`) → resolved
   `temperature: 1.0`, `maxOutputTokens` reflects the floor (§6.2) against
-  the task's own budget, every other key absent, `cloudPartial: true`.
+  the task's own budget, every other key absent.
 - `max_tokens` floor (§6.2): a preset with `max_tokens: 512` never lowers
   `meetingSummarize`'s resolved budget below `4096`; a preset with
   `max_tokens: 8000` raises it above `4096`.

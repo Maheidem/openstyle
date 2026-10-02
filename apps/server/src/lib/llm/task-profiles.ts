@@ -26,7 +26,6 @@ import {
   meetingSummaryTimeoutMs,
   parseCleanupSampling,
   parseLlmTaskAssignments,
-  SAFE_SUBSET_KEYS,
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
 import { getApiKeyForProvider } from "../streaming-stt.js";
@@ -169,7 +168,6 @@ export interface ResolvedTaskCall {
   reasoningEnabled: boolean;
   samplingParams: Record<string, unknown>; // {} in "auto" mode
   timeoutMs: number;
-  cloudPartial: boolean; // §7.5
 }
 
 export interface ResolveTaskCallOptions {
@@ -256,28 +254,6 @@ function stripDenylistedKeys(
   }
   if (dropped.length > 0) {
     log.debug(`dropped denylisted preset keys: ${dropped.join(", ")}`);
-  }
-  return out;
-}
-
-/** §7.2 — pull out only the universally-safe keys for a mapped-subset-tier
- *  provider. */
-function pickSafeSubset(
-  params: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  const dropped: string[] = [];
-  for (const [key, value] of Object.entries(params)) {
-    if (SAFE_SUBSET_KEYS.has(key)) {
-      out[key] = value;
-    } else {
-      dropped.push(key);
-    }
-  }
-  if (dropped.length > 0) {
-    log.debug(
-      `mapped-subset provider drops non-safe preset keys: ${dropped.join(", ")}`,
-    );
   }
   return out;
 }
@@ -386,10 +362,11 @@ export async function resolveTaskCall(
       }
     : {}; // mapped-subset providers never get the verbatim object at all
 
-  const safeSubset = isLocal ? {} : pickSafeSubset(strippedParams); // §7.2
-  const cloudPartial =
-    !isLocal &&
-    Object.keys(strippedParams).some((k) => !SAFE_SUBSET_KEYS.has(k));
+  // §7.2 — only `temperature` reaches a mapped-subset provider from the preset.
+  const presetTemperature =
+    !isLocal && typeof strippedParams.temperature === "number"
+      ? strippedParams.temperature
+      : undefined;
 
   // profile.maxOutputTokens === "auto" requires the caller to supply
   // opts.autoMaxOutputTokens (every §8.5 call site for an "auto"-profiled
@@ -412,14 +389,10 @@ export async function resolveTaskCall(
   return {
     provider,
     modelId,
-    temperature:
-      typeof safeSubset.temperature === "number"
-        ? safeSubset.temperature
-        : profile.temperature,
+    temperature: presetTemperature ?? profile.temperature,
     maxOutputTokens: Math.max(taskBudget, presetFloor), // §6.2
     reasoningEnabled: profile.reasoningEnabled,
-    samplingParams: isLocal ? samplingParams : {},
+    samplingParams,
     timeoutMs: taskTimeoutMs(taskId, profile.timeoutMs),
-    cloudPartial,
   };
 }
