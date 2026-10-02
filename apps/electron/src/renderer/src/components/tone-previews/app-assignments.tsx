@@ -21,6 +21,7 @@ import { Globe, Loader2, Plus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { OpenAppCandidate } from "../../../../shared/open-apps";
+import { normalizeRouteIconHost } from "../../../../shared/route-icons";
 
 // ---------------------------------------------------------------------------
 // App assignments — manages custom routes for a tone. Open apps are chosen from
@@ -29,7 +30,7 @@ import type { OpenAppCandidate } from "../../../../shared/open-apps";
 
 function hostFromUrl(raw: string): string | null {
   try {
-    const host = new URL(raw).hostname.replace(/^www\./, "").toLowerCase();
+    const host = normalizeRouteIconHost(new URL(raw).hostname);
     return host || null;
   } catch {
     return null;
@@ -50,10 +51,7 @@ function inputToSiteAssignment(
   }
 
   if (/^[^\s]+\.[^\s]+$/.test(trimmed)) {
-    const host = trimmed
-      .split("/")[0]!
-      .replace(/^www\./, "")
-      .toLowerCase();
+    const host = normalizeRouteIconHost(trimmed.split("/")[0]!);
     return { match: host, label: host, kind: "site", destination };
   }
 
