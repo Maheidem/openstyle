@@ -1,10 +1,4 @@
-import {
-  copyFileSync,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  writeFileSync,
-} from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
 import { app } from "electron";
@@ -32,9 +26,6 @@ const DB_FILE = "freestyle.db";
  * the ordering matters.
  */
 const PRE_DB_FILES = [`${DB_FILE}-wal`, `${DB_FILE}-shm`, "settings.json"];
-
-/** Copied wholesale. */
-const PRE_DB_DIRS: string[] = [];
 
 /**
  * Written once the migration has fully succeeded, and the real "already done"
@@ -96,13 +87,6 @@ export function migrateLegacyUserData(): void {
       if (!existsSync(from)) continue;
       copyFileSync(from, join(newDir, name));
       log.info(`Migrated ${name}`);
-    }
-
-    for (const name of PRE_DB_DIRS) {
-      const from = join(legacyDir, name);
-      if (!existsSync(from)) continue;
-      cpSync(from, join(newDir, name), { recursive: true });
-      log.info(`Migrated ${name}/`);
     }
 
     // Last on purpose. The database's presence is this function's "done" flag,
