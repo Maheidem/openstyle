@@ -39,30 +39,17 @@ export interface TranscriptSegment {
   /** LLM-corrected text for this segment, Phase C. `undefined` means the
    * segment was never enhanced, or Enhance ran and left it unchanged. */
   enhancedText?: string;
-  /** Confirmed display name for this segment's resolved speaker identity
-   *  (specs/meeting-speaker-naming.md), following any merge. Undefined when
-   *  unnamed — renderer falls back to "Them {{speakerLabel}}" exactly as
-   *  before. Never populated from a suggestion — ground rule: suggestions
-   *  are never auto-applied. Interface symmetry with `MergedSegment` only —
-   *  nothing ever sets this field here; `resolveSpeakerNames` runs after
-   *  `mergeTranscript`, only ever touching `MergedSegment`s. */
-  speakerName?: string;
 }
 
-export interface MergedSegment {
+/**
+ * A `TranscriptSegment` with its channel attached. `mergeTranscript` builds
+ * these as `{ speaker, ...segment }`, so the carried fields (`id`,
+ * `enhancedText`) pass through unchanged. `resolveSpeakerNames` may remap
+ * `speakerLabel` in place (specs/meeting-speaker-naming.md §4) to collapse a
+ * merged label onto its merge target.
+ */
+export type MergedSegment = TranscriptSegment & {
   speaker: Speaker;
-  startMs: number;
-  endMs: number;
-  text: string;
-  /** Carried through unchanged from the matching `TranscriptSegment`, then
-   * possibly remapped in place by `resolveSpeakerNames`
-   * (specs/meeting-speaker-naming.md §4) to collapse a merged label onto its
-   * merge target. */
-  speakerLabel?: string;
-  /** Carried through unchanged from the matching `TranscriptSegment`. */
-  id?: string;
-  /** Carried through unchanged from the matching `TranscriptSegment`. */
-  enhancedText?: string;
   /** Confirmed display name for this segment's resolved speaker identity
    *  (specs/meeting-speaker-naming.md), following any merge. Undefined when
    *  unnamed — renderer falls back to "Them {{speakerLabel}}". Never
@@ -70,7 +57,7 @@ export interface MergedSegment {
    *  auto-applied) — only `resolveSpeakerNames` sets this, from a
    *  `meeting_speakers.display_name` value. */
   speakerName?: string;
-}
+};
 
 /**
  * Drift-correction inputs. Each channel's recorder emits periodic sync
