@@ -1,5 +1,6 @@
 /** Prompt assembly for remix (an AI edit run over a text selection). */
 
+import type { RemixContext } from "@openstyle/validations";
 import { buildLanguageBlock } from "./prompts.js";
 
 /**
@@ -97,20 +98,6 @@ export function buildRemixPrompt(
 // ---------------------------------------------------------------------------
 
 /**
- * Context for one agent turn, matching `remixContextSchema` in validations.
- * Everything here was captured on the user's machine at hotkey time.
- */
-export interface RemixAgentContext {
-  selection: string | null;
-  appName: string | null;
-  windowTitle: string | null;
-  languages?: string[];
-  clipboard?: string | null;
-  clipboardLength?: number;
-  capturedAt: number;
-}
-
-/**
  * The agent's standing brief.
  *
  * The same two load-bearing rules as the transform prompt apply: the
@@ -204,8 +191,11 @@ function describeAge(capturedAt: number): string {
   return `${Math.round(ageMs / 60_000)}m ago`;
 }
 
-/** Assemble the agent system prompt: standing brief + captured context. */
-export function buildRemixAgentSystem(context: RemixAgentContext): string {
+/**
+ * Assemble the agent system prompt: standing brief + captured context. The
+ * desktop captured the context on the user's machine at hotkey time.
+ */
+export function buildRemixAgentSystem(context: RemixContext): string {
   const where = [
     context.appName
       ? `Application: <app_name>${sanitizeEmbeddedContent(context.appName)}</app_name>`

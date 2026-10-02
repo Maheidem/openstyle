@@ -44,14 +44,6 @@ export const REMIX_HOLD_THRESHOLD_MS = 250;
  */
 export const REMIX_IDLE_MS = 12_000;
 
-/**
- * How long the chat card keeps an idle thread on screen. Much longer than the
- * preset card's idle window — a conversation is something the user comes back
- * to — and matched by the server's thread-decay window, so the card and the
- * stored thread age out together.
- */
-export const REMIX_CHAT_IDLE_MS = 15 * 60 * 1000;
-
 /** What one hotkey press captured: the selection plus its anchor. */
 export interface RemixSelectionPayload {
   text: string | null;
