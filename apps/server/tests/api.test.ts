@@ -866,7 +866,7 @@ describe("History retention", () => {
 // T1-7 (specs/lean-audit-2026-09.md §3): the dictionary rewrite snapshot is
 // compiled once per dictionary version, invalidated by every write route.
 // These tests drive the *real* delivery path (POST /api/post-process →
-// applyFinalRewrites) against the *real* write routes, so a forgotten
+// postProcess) against the *real* write routes, so a forgotten
 // markDictionaryChanged() in any of them reads as a stale replacement.
 // ---------------------------------------------------------------------------
 

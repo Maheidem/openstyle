@@ -49,8 +49,6 @@ export interface PostProcessResult {
   outputTokens: number;
   costUsd: number;
   timings?: PostProcessTimings;
-  /** The resolved tone routing destination. */
-  destination?: string;
 }
 
 export type PostProcessSource =
@@ -130,25 +128,6 @@ export function prewarmPostProcess(): void {
 }
 
 /**
- * Final text-rewrite stage that must run on every dictation regardless of
- * whether cleanup ran. Applies the user's dictionary replacements.
- *
- * Kept separate from {@link postProcess} so callers can apply it to text that
- * is already cleaned. Dictionary replacement is skipped for empty text
- * (nothing to replace).
- */
-export async function applyFinalRewrites(
-  text: string,
-  _appContext: string | null,
-): Promise<string> {
-  let out = text;
-  if (out.trim()) {
-    out = applyDictionaryReplacements(out, getDb());
-  }
-  return out;
-}
-
-/**
  * Run LLM cleanup and dictionary replacements on transcribed text.
  * Returns the cleaned text plus metadata for history tracking.
  */
@@ -165,12 +144,9 @@ export async function postProcess(
   let llmProvider: string | null = null;
   let llmModel: string | null = null;
   let costUsd = 0;
-  // Resolve tone-routing destination once here so every branch (local-LLM,
-  // no-cleanup) can report it.
-  const { destination: resolvedDestination } = getRewritePromptContext(
-    effectiveAppContext,
-    getCleanupAppAssignments(),
-  );
+  // Resolve the tone-routing destination once for the whole call.
+  const { destination: resolvedDestination, personalSurface } =
+    getRewritePromptContext(effectiveAppContext, getCleanupAppAssignments());
 
   const stripped = normalizedRawText
     .replace(/\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|you know|i mean)\b/gi, "")
@@ -208,11 +184,6 @@ export async function postProcess(
         `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,
       );
     } else {
-      const { personalSurface } = getRewritePromptContext(
-        effectiveAppContext,
-        getCleanupAppAssignments(),
-      );
-
       const { system, prompt } = buildRewritePrompt(normalizedRawText, {
         languages: options.languages,
         intensity,
@@ -288,18 +259,20 @@ export async function postProcess(
         // the persisted history label stays consistent with pre-migration
         // rows.
         llmModel = resolved.modelId;
-        cleanedText = result.cleaned;
       } else {
         log.error(`LLM cleanup failed: ${cleanupError}`);
-        cleanedText = result.cleaned;
       }
+      cleanedText = result.cleaned;
     }
   }
 
   const llmMs = Date.now() - llmStart;
   // Dictionary replacement. Runs on the full raw -> final transformation for
-  // this dictation.
-  cleanedText = await applyFinalRewrites(cleanedText, appContext);
+  // this dictation, whether or not cleanup ran. Empty text has nothing to
+  // replace.
+  if (cleanedText.trim()) {
+    cleanedText = applyDictionaryReplacements(cleanedText, getDb());
+  }
 
   if (inputTokens > 0 || outputTokens > 0) {
     if (llmProvider && llmModel) {
@@ -321,6 +294,5 @@ export async function postProcess(
     outputTokens,
     costUsd,
     ...(options.includeTimings ? { timings: { handoffMs, llmMs } } : {}),
-    destination: resolvedDestination,
   };
 }

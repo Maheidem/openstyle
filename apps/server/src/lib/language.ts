@@ -1,5 +1,5 @@
 import { parseStoredLanguageList } from "@openstyle/validations";
-import { getDb } from "./db.js";
+import { readSetting, readSettings } from "./db.js";
 
 export const ISO_LANGUAGE_NAMES: Record<string, string> = {
   ar: "Arabic",
@@ -42,18 +42,15 @@ export const ISO_LANGUAGE_NAMES: Record<string, string> = {
  * capped list; an empty array means auto-detect.
  */
 export function getLanguagesSetting(): string[] {
-  const db = getDb();
-  const row = db
-    .prepare("SELECT value FROM settings WHERE key = 'languages'")
-    .get() as { value: string } | undefined;
-  const legacy = db
-    .prepare("SELECT value FROM settings WHERE key = 'language'")
-    .get() as { value: string } | undefined;
+  const stored = readSettings(["languages", "language"]);
 
   // The `languages` row is authoritative once present (including an explicit
   // empty array = auto-detect); only an absent row falls back to the legacy
   // singular `language` key, so a pre-migration choice is honored exactly once.
-  return parseStoredLanguageList(row?.value, legacy?.value);
+  return parseStoredLanguageList(
+    stored.get("languages"),
+    stored.get("language"),
+  );
 }
 
 /**
@@ -62,7 +59,8 @@ export function getLanguagesSetting(): string[] {
  * configured `languages`. Falls back to the unmodified list on a stale
  * binding (a language removed from settings after the hotkey was pressed),
  * a malformed/hand-crafted value, or when no override was given — same
- * fail-closed posture throughout, no error surfaced to the caller.
+ * fail-closed posture throughout, no error surfaced to the caller. The
+ * override is trimmed and lower-cased here, so callers pass the raw value.
  *
  * Shared by both dictation-language-hotkey call sites: the REST transcribe
  * route's `x-dictation-language` header (`routes/transcribe.ts`) and the
@@ -73,18 +71,19 @@ export function resolveLanguageOverride(
   override: string | null | undefined,
   languages: string[],
 ): string[] {
-  return override && languages.includes(override) ? [override] : languages;
+  const pin = override?.trim().toLowerCase();
+  return pin && languages.includes(pin) ? [pin] : languages;
 }
 
 /**
  * Whether translate mode is enabled. Translate mode only applies when exactly
  * one language is resolved (the cloud enforces the same rule); with zero or
  * multiple languages there is no single target to enforce, so translate is off.
+ * Pass `languages` when the caller already read the stored list.
  */
-export function getTranslateModeSetting(): boolean {
-  if (getLanguagesSetting().length !== 1) return false;
-  const row = getDb()
-    .prepare("SELECT value FROM settings WHERE key = 'translate_mode'")
-    .get() as { value: string } | undefined;
-  return row?.value === "true";
+export function getTranslateModeSetting(
+  languages: string[] = getLanguagesSetting(),
+): boolean {
+  if (languages.length !== 1) return false;
+  return readSetting("translate_mode") === "true";
 }
