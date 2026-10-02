@@ -1,3 +1,4 @@
+import { buildAsrBiasPrompt } from "@openstyle/stt";
 import { stripProviderPrefix } from "./streaming/types.js";
 import {
   buildVocabularyNoteText,
@@ -39,20 +40,7 @@ function capTerms(terms: string[], max: number): string[] {
 }
 
 function buildPromptText(terms: string[]): string | null {
-  if (terms.length === 0) return null;
-  let list = terms.join(", ");
-  const budget = PROMPT_CHAR_BUDGET - "Terms: ".length;
-  if (list.length > budget) {
-    const trimmed: string[] = [];
-    for (const t of terms) {
-      const next = trimmed.length === 0 ? t : `${trimmed.join(", ")}, ${t}`;
-      if (next.length > budget) break;
-      trimmed.push(t);
-    }
-    list = trimmed.join(", ");
-  }
-  if (!list) return null;
-  return `Terms: ${list}.`.slice(0, PROMPT_CHAR_BUDGET);
+  return buildAsrBiasPrompt({ terms }) ?? null;
 }
 
 function expandNova2Keywords(terms: string[]): string[] {
