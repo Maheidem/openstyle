@@ -1,20 +1,18 @@
 /**
  * Searchable transcription-language picker.
  *
- * Sources its options from the cloud `suggestedLanguages` (the full
- * Soniox-supported set, pre-sorted for the user's region) and falls back to the
- * small bundled list when offline / signed out. Two presentations share the same
- * searchable list body:
+ * The options come from the bundled local list. The exports are:
  *
- *   - {@link LanguageCombobox} — a Select-like trigger + popover, for settings.
- *   - {@link LanguagePickerDialog} — a modal "See all" list, for onboarding.
+ *   - {@link useLanguageOptions} - the ordered option list, with "auto" first.
+ *   - {@link LanguageList} - the searchable list body shared by all pickers.
+ *   - {@link LanguageMultiPickerDialog} - a modal "See all" list, for onboarding.
+ *   - {@link LanguageMultiSelect} - a multi-select trigger + popover, for settings.
  */
 
 import {
   filterLanguageOptions,
   type LanguageChoice,
   MAX_LANGUAGES,
-  resolveLanguageOptions,
 } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -35,7 +33,7 @@ import { Check, Languages, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-/** Local fallback options (used when the cloud config is unavailable). */
+/** The language options from the bundled local list. */
 function useLocalFallback(): LanguageChoice[] {
   const { t } = useTranslation();
   return useMemo(
@@ -57,8 +55,7 @@ function useLocalFallback(): LanguageChoice[] {
 
 /** The ordered language option list, from the bundled local set. */
 export function useLanguageOptions(): LanguageChoice[] {
-  const fallback = useLocalFallback();
-  return useMemo(() => resolveLanguageOptions(undefined, fallback), [fallback]);
+  return useLocalFallback();
 }
 
 /**
