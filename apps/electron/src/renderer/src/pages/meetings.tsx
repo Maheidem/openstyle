@@ -2591,14 +2591,16 @@ export default function MeetingsPage(): React.JSX.Element {
   // recording lands at index 0 (server orders by created_at DESC). Re-deriving
   // live would silently swap the detail pane out from under a user who never
   // explicitly picked a meeting. `selectedId` (explicit, user-driven) always
-  // wins over this default, and once set here it never changes again.
+  // wins over this default. The default changes only when its meeting leaves
+  // the list, for example after a delete.
   const [defaultId, setDefaultId] = useState<string | null>(null);
   useEffect(() => {
-    if (defaultId === null && meetings.length > 0) {
+    if (meetings.length > 0 && !meetings.some((m) => m.id === defaultId)) {
       setDefaultId(meetings[0].id);
     }
   }, [meetings, defaultId]);
-  const activeId = selectedId ?? defaultId;
+  const activeId =
+    selectedId ?? (meetings.some((m) => m.id === defaultId) ? defaultId : null);
 
   // Only probe ahead of the FIRST recording: list loaded, empty, recorder
   // supported and idle.
