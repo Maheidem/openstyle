@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   diffLanguageHotkeys,
   isLanguageHotkeyTaken,
+  normalizeAccelerator,
 } from "../src/main/hotkey-utils";
 
 // Covers the pure diff/conflict logic `registerLanguageHotkeys` (index.ts)
@@ -133,4 +134,72 @@ test("registration loop shape: two entries sharing the same accelerator — firs
 
   expect(registered).toEqual(["pt"]);
   expect(skipped).toEqual(["en"]);
+});
+
+test("normalizeAccelerator: pins the output for every alias and fallback case", () => {
+  const cases: Array<[string, string]> = [
+    ["fn", "Fn"],
+    ["Globe", "Fn"],
+    ["control", "Control"],
+    ["CTRL", "Control"],
+    ["command", "Command"],
+    ["cmd", "Command"],
+    ["Meta", "Command"],
+    ["alt", "Alt"],
+    ["Option", "Alt"],
+    ["shift", "Shift"],
+    ["commandorcontrol", "CommandOrControl"],
+    ["CmdOrCtrl", "CommandOrControl"],
+    ["space", "Space"],
+    ["return", "Return"],
+    ["ENTER", "Return"],
+    ["escape", "Escape"],
+    ["esc", "Escape"],
+    ["backspace", "Backspace"],
+    ["delete", "Delete"],
+    ["del", "Delete"],
+    ["tab", "Tab"],
+    ["rightalt", "RightAlt"],
+    ["RightOption", "RightAlt"],
+    ["rightcontrol", "RightControl"],
+    ["rightctrl", "RightControl"],
+    ["rightshift", "RightShift"],
+    ["rightcommand", "RightCommand"],
+    ["rightcmd", "RightCommand"],
+    ["rightsuper", "RightSuper"],
+    ["rightwin", "RightSuper"],
+    ["rightmeta", "RightSuper"],
+    ["mousebutton4", "MouseButton4"],
+    ["mouse4", "MouseButton4"],
+    ["mousebutton5", "MouseButton5"],
+    ["Mouse5", "MouseButton5"],
+    // F-keys
+    ["f1", "F1"],
+    ["f12", "F12"],
+    ["F24", "F24"],
+    // Single characters
+    ["k", "K"],
+    ["7", "7"],
+    // Arrows and the capitalise fallback
+    ["Up", "Up"],
+    ["Down", "Down"],
+    ["Left", "Left"],
+    ["Right", "Right"],
+    ["up", "Up"],
+    ["pageup", "Pageup"],
+    ["Home", "Home"],
+    ["constructor", "Constructor"],
+    // Blank parts stay blank
+    ["", ""],
+  ];
+  for (const [input, expected] of cases) {
+    expect(normalizeAccelerator(input), input).toBe(expected);
+  }
+});
+
+test("normalizeAccelerator: normalizes each part and trims spaces", () => {
+  expect(normalizeAccelerator("ctrl + shift+ k")).toBe("Control+Shift+K");
+  expect(normalizeAccelerator("cmd+Up")).toBe("Command+Up");
+  expect(normalizeAccelerator("globe+f5")).toBe("Fn+F5");
+  expect(normalizeAccelerator("alt++")).toBe("Alt++");
 });
