@@ -168,30 +168,14 @@ static const char* MouseButtonToRecordKeyName(DWORD button) {
 }
 
 DWORD ParseKeyCode(const char* keyName) {
-    if (_stricmp(keyName, "F1") == 0) return VK_F1;
-    if (_stricmp(keyName, "F2") == 0) return VK_F2;
-    if (_stricmp(keyName, "F3") == 0) return VK_F3;
-    if (_stricmp(keyName, "F4") == 0) return VK_F4;
-    if (_stricmp(keyName, "F5") == 0) return VK_F5;
-    if (_stricmp(keyName, "F6") == 0) return VK_F6;
-    if (_stricmp(keyName, "F7") == 0) return VK_F7;
-    if (_stricmp(keyName, "F8") == 0) return VK_F8;
-    if (_stricmp(keyName, "F9") == 0) return VK_F9;
-    if (_stricmp(keyName, "F10") == 0) return VK_F10;
-    if (_stricmp(keyName, "F11") == 0) return VK_F11;
-    if (_stricmp(keyName, "F12") == 0) return VK_F12;
-    if (_stricmp(keyName, "F13") == 0) return VK_F13;
-    if (_stricmp(keyName, "F14") == 0) return VK_F14;
-    if (_stricmp(keyName, "F15") == 0) return VK_F15;
-    if (_stricmp(keyName, "F16") == 0) return VK_F16;
-    if (_stricmp(keyName, "F17") == 0) return VK_F17;
-    if (_stricmp(keyName, "F18") == 0) return VK_F18;
-    if (_stricmp(keyName, "F19") == 0) return VK_F19;
-    if (_stricmp(keyName, "F20") == 0) return VK_F20;
-    if (_stricmp(keyName, "F21") == 0) return VK_F21;
-    if (_stricmp(keyName, "F22") == 0) return VK_F22;
-    if (_stricmp(keyName, "F23") == 0) return VK_F23;
-    if (_stricmp(keyName, "F24") == 0) return VK_F24;
+    /* F1 to F24. The name must be F and a number from 1 to 24, with no sign,
+     * no space and no leading zero. VK_F1 to VK_F24 are in a row. */
+    if ((keyName[0] == 'F' || keyName[0] == 'f') &&
+        keyName[1] >= '1' && keyName[1] <= '9') {
+        char* end;
+        long n = strtol(keyName + 1, &end, 10);
+        if (*end == '\0' && n >= 1 && n <= 24) return VK_F1 + (DWORD)(n - 1);
+    }
     if (_stricmp(keyName, "Pause") == 0) return VK_PAUSE;
     if (_stricmp(keyName, "ScrollLock") == 0) return VK_SCROLL;
     if (_stricmp(keyName, "Insert") == 0) return VK_INSERT;
