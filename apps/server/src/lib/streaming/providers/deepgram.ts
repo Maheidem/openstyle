@@ -158,6 +158,20 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       callbacks.onClose();
     });
 
+    // Deepgram is kept warm across recordings, so a cancel must NOT send
+    // CloseStream — that closes the socket server-side and makes the route
+    // reconnect. Just drop the in-flight transcript and leave the socket
+    // open for the next recording. close() is used for real teardown.
+    function clearRecording(): void {
+      pending.clear();
+      clearCommitTimeout();
+      accumulatedText = "";
+      partialText = "";
+      commitRequested = false;
+      finalizeSent = false;
+      finalDelivered = false;
+    }
+
     return {
       sendAudio(chunk: ArrayBuffer): void {
         if (ws.readyState === WebSocket.CONNECTING) {
@@ -167,15 +181,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(chunk);
       },
-      reset(): void {
-        pending.clear();
-        clearCommitTimeout();
-        accumulatedText = "";
-        partialText = "";
-        commitRequested = false;
-        finalizeSent = false;
-        finalDelivered = false;
-      },
+      reset: clearRecording,
       commit(): void {
         commitRequested = true;
         clearCommitTimeout();
@@ -189,19 +195,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         }
         sendFinalize();
       },
-      cancel(): void {
-        // Deepgram is kept warm across recordings, so a cancel must NOT send
-        // CloseStream — that closes the socket server-side and makes the route
-        // reconnect. Just drop the in-flight transcript and leave the socket
-        // open for the next recording. close() is used for real teardown.
-        pending.clear();
-        clearCommitTimeout();
-        accumulatedText = "";
-        partialText = "";
-        commitRequested = false;
-        finalizeSent = false;
-        finalDelivered = false;
-      },
+      cancel: clearRecording,
       close(): void {
         clearCommitTimeout();
         stopKeepAlive();
