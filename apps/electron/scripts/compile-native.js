@@ -98,11 +98,6 @@ function compileMacOS() {
       frameworks: ["Cocoa", "Carbon"],
     },
     {
-      name: "macos-mic-listener",
-      src: "macos-mic-listener.swift",
-      frameworks: ["CoreAudio", "Foundation"],
-    },
-    {
       name: "macos-output-volume",
       src: "macos-output-volume.swift",
       frameworks: ["CoreAudio", "Foundation"],
@@ -338,11 +333,6 @@ function compileWindows() {
       name: "windows-fast-paste.exe",
       src: "windows-fast-paste.c",
       libs: ["user32.lib"],
-    },
-    {
-      name: "windows-mic-listener.exe",
-      src: "windows-mic-listener.c",
-      libs: ["ole32.lib", "oleaut32.lib"],
     },
     {
       name: "windows-output-volume.exe",

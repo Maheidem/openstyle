@@ -11,8 +11,7 @@
  *   ERR_UNSUPPORTED_OS / ERR_TAP_CREATE / ERR_AGG_CREATE / ERR_START <code>
  *
  * Requires macOS >= 14.4 (Core Audio process taps). Modeled on the removed
- * always-on mic-listener (see git history; the native helper sources are kept
- * under native/).
+ * always-on mic-listener (see git history; its sources are deleted).
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
