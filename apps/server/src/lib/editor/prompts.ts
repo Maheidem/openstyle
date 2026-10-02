@@ -1,6 +1,7 @@
 /** Transcript cleanup prompt assembly (intensity preset + dynamic blocks). */
 
 import {
+  CLEANUP_PRESET_PROMPTS,
   type CleanupEmailTone,
   type CleanupIntensity,
   type CleanupOverallTone,
@@ -13,18 +14,23 @@ import {
   DEFAULT_CLEANUP_PERSONAL_TONE,
   DEFAULT_CLEANUP_WORK_TONE,
 } from "@openstyle/validations";
-import { getCleanupPromptConfig } from "./prompt-config.js";
+import {
+  AUTO_LANGUAGE_CONSTRAINT,
+  CLEANUP_TONE_BLOCKS,
+  CLEANUP_USER_PROMPT_BLOCKS,
+  DESTINATION_PRIORITY_BLOCK,
+  LANGUAGE_LABELS,
+  TRANSCRIPT_EDIT_USER_PROMPT,
+} from "./prompt-config.js";
 
 function normalizeLanguageCode(language: string): string {
   return language.trim().toLowerCase().replace(/_/g, "-");
 }
 
 function languageDescriptor(language: string): string {
-  const config = getCleanupPromptConfig();
   const normalized = normalizeLanguageCode(language);
   const baseCode = normalized.split("-")[0] ?? normalized;
-  const label =
-    config.languageLabels[normalized] ?? config.languageLabels[baseCode];
+  const label = LANGUAGE_LABELS[normalized] ?? LANGUAGE_LABELS[baseCode];
   return label ? label : `language code "${language}"`;
 }
 
@@ -39,12 +45,11 @@ function languageDescriptor(language: string): string {
 export function buildLanguageBlock(
   languages: readonly string[] | undefined,
 ): string {
-  const config = getCleanupPromptConfig();
   const codes = (languages ?? [])
     .map((l) => l.trim())
     .filter((l) => l && normalizeLanguageCode(l) !== "auto");
 
-  if (codes.length === 0) return config.autoLanguageConstraint;
+  if (codes.length === 0) return AUTO_LANGUAGE_CONSTRAINT;
 
   const descriptors = codes.map(languageDescriptor);
   const punctuationHint = codes.some((c) =>
@@ -69,9 +74,8 @@ function buildDestinationToneBlock(options: {
   emailTone?: CleanupEmailTone;
   overallTone?: CleanupOverallTone;
 }): string {
-  const config = getCleanupPromptConfig();
-  const priority = config.destinationPriorityBlock;
-  const toneBlocks = config.toneBlocks;
+  const priority = DESTINATION_PRIORITY_BLOCK;
+  const toneBlocks = CLEANUP_TONE_BLOCKS;
 
   // A sector tone of "off" means styling is turned off for that destination:
   // skip the priority block, the tone block, and (for email) the structure
@@ -112,7 +116,7 @@ function buildDestinationUserPromptBlock(options: {
   personalSurface?: "discord" | null;
   emailTone?: CleanupEmailTone;
 }): string {
-  const userPromptBlocks = getCleanupPromptConfig().userPromptBlocks;
+  const userPromptBlocks = CLEANUP_USER_PROMPT_BLOCKS;
   switch (options.destination) {
     case "personal":
       switch (options.personalTone ?? DEFAULT_CLEANUP_PERSONAL_TONE) {
@@ -143,7 +147,7 @@ export function resolveBaseCleanupPrompt(
   intensity: CleanupIntensity,
   customPrompt?: string,
 ): string {
-  const presets = getCleanupPromptConfig().presets;
+  const presets = CLEANUP_PRESET_PROMPTS;
   if (intensity === "custom") {
     const trimmed = customPrompt?.trim();
     return trimmed ? trimmed : presets.low;
@@ -187,6 +191,6 @@ export function buildRewritePrompt(
 
   return {
     system: baseSystem + destinationBlock + languageBlock,
-    prompt: `${getCleanupPromptConfig().transcriptEditUserPrompt}${destinationUserPromptBlock}\n\n<transcript>\n${inputText}\n</transcript>`,
+    prompt: `${TRANSCRIPT_EDIT_USER_PROMPT}${destinationUserPromptBlock}\n\n<transcript>\n${inputText}\n</transcript>`,
   };
 }
