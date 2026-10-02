@@ -598,6 +598,9 @@ async function runSummarizeJob(
 ): Promise<void> {
   const db = getDb();
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  // Set when the ceiling fires. The `finally` clears the shared cancel flag,
+  // so the summarizer needs its own flag to see that it must stop.
+  let deadlineHit = false;
   try {
     // §5.8 ceiling, derived before the first call so the bound is in force
     // for the whole run:
@@ -622,7 +625,7 @@ async function runSummarizeJob(
         // §5.7: polled between map chunks, and honoured inside
         // `acquireLlmLane` — a call still QUEUED when the user cancels never
         // goes on the wire.
-        shouldStop: () => activeJobCancellations.has(id),
+        shouldStop: () => deadlineHit || activeJobCancellations.has(id),
         onQueued: (info) => {
           const cur = activeJobs.get(id);
           if (!cur) return;
@@ -638,15 +641,14 @@ async function runSummarizeJob(
         },
       }),
       new Promise<never>((_, reject) => {
-        deadlineTimer = setTimeout(
-          () =>
-            reject(
-              new Error(
-                `Summarize exceeded its ${Math.round(plan.deadlineMs / 1000)}s job ceiling`,
-              ),
+        deadlineTimer = setTimeout(() => {
+          deadlineHit = true;
+          reject(
+            new Error(
+              `Summarize exceeded its ${Math.round(plan.deadlineMs / 1000)}s job ceiling`,
             ),
-          plan.deadlineMs,
-        );
+          );
+        }, plan.deadlineMs);
       }),
     ]);
     if (deadlineTimer) clearTimeout(deadlineTimer);

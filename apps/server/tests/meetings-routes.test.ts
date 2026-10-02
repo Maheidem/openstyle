@@ -2031,6 +2031,33 @@ describe("POST /api/meetings/:id/summarize", () => {
     expect(next.status).toBe(202);
     await waitForSummarizeToSettle("m1");
   });
+
+  it("makes shouldStop() true after the ceiling, so the summarizer stops", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
+    let stop: (() => boolean) | undefined;
+    __setMeetingsTestOverrides({
+      // Never answers. The test only reads the stop signal.
+      summarize: (_segments, options) => {
+        stop = options.shouldStop;
+        return new Promise<never>(() => {});
+      },
+    });
+
+    const res = await app.request("/api/meetings/m1/summarize", {
+      method: "POST",
+    });
+    expect(res.status).toBe(202);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stop?.()).toBe(false);
+
+    // One planned call: the ceiling is the 2 x 600 s floor.
+    await vi.advanceTimersByTimeAsync(1_200_000);
+    const after = await waitForSummarizeToSettle("m1");
+    expect(after.job_error).toMatch(/exceeded its 1200s job ceiling/);
+    // The job cleared the shared cancel flag. The stop signal stays true.
+    expect(stop?.()).toBe(true);
+  });
 });
 
 describe("POST /api/meetings/:id/enhance", () => {
