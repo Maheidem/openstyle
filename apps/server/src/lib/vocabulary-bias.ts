@@ -95,18 +95,6 @@ function capElevenLabsTerms(
   );
 }
 
-function isNova3Model(model: string): boolean {
-  return model.includes("nova-3");
-}
-
-function isNova2Model(model: string): boolean {
-  return model.includes("nova-2");
-}
-
-function supportsElevenLabsKeyterms(model: string): boolean {
-  return model.includes("scribe_v2");
-}
-
 /**
  * Build provider-specific ASR bias from vocabulary terms.
  * Returns null when there is nothing to send or the model does not support bias.
@@ -132,19 +120,16 @@ export function buildAsrVocabularyBias(
       return text ? { kind: "prompt", text } : null;
     }
     case "deepgram": {
-      if (isNova3Model(short)) {
-        const max = streaming
-          ? DEEPGRAM_STREAMING_KEYTERM_MAX
-          : DEEPGRAM_KEYTERM_MAX;
+      const max = streaming
+        ? DEEPGRAM_STREAMING_KEYTERM_MAX
+        : DEEPGRAM_KEYTERM_MAX;
+      if (short.includes("nova-3")) {
         const keyterms = capTerms(capped, max);
         return keyterms.length > 0
           ? { kind: "deepgram-keyterms", terms: keyterms }
           : null;
       }
-      if (isNova2Model(short)) {
-        const max = streaming
-          ? DEEPGRAM_STREAMING_KEYTERM_MAX
-          : DEEPGRAM_KEYTERM_MAX;
+      if (short.includes("nova-2")) {
         const keywords = expandNova2Keywords(capTerms(capped, max));
         return keywords.length > 0
           ? { kind: "deepgram-keywords", terms: keywords }
@@ -153,7 +138,7 @@ export function buildAsrVocabularyBias(
       return null;
     }
     case "elevenlabs": {
-      if (!supportsElevenLabsKeyterms(short)) return null;
+      if (!short.includes("scribe_v2")) return null;
       const max = streaming
         ? ELEVENLABS_REALTIME_KEYTERM_MAX
         : ELEVENLABS_BATCH_KEYTERM_MAX;
@@ -181,7 +166,7 @@ export function buildAsrVocabularyBias(
         0,
         PROMPT_CHAR_BUDGET,
       );
-      return text ? { kind: "prompt", text } : null;
+      return { kind: "prompt", text };
     }
     default:
       return null;
