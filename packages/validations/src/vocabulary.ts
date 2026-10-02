@@ -66,6 +66,3 @@ export const vocabularyActionSchema = z.discriminatedUnion("action", [
 ]);
 
 export type CreateVocabularyInput = z.infer<typeof createVocabularySchema>;
-export type UpdateVocabularyInput = z.infer<typeof updateVocabularySchema>;
-export type ImportVocabularyInput = z.infer<typeof importVocabularySchema>;
-export type VocabularyActionInput = z.infer<typeof vocabularyActionSchema>;

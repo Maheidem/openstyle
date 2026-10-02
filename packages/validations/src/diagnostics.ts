@@ -8,5 +8,3 @@ export const clientErrorSchema = z.object({
   source: z.string().optional(),
   context: z.record(z.unknown()).optional(),
 });
-
-export type ClientErrorInput = z.infer<typeof clientErrorSchema>;

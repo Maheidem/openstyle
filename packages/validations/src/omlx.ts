@@ -1,4 +1,5 @@
 import { z } from "zod/v3";
+import { httpUrlOrEmpty } from "./http-url-or-empty.js";
 
 /** Body for `POST /api/settings/omlx/test`. */
 export const omlxConfigSchema = z.object({
@@ -8,24 +9,10 @@ export const omlxConfigSchema = z.object({
 
 export type OmlxConfigInput = z.infer<typeof omlxConfigSchema>;
 
-export const omlxBaseUrlSchema = z
-  .string()
-  .max(2048)
-  .refine(
-    (value) => {
-      if (value.trim() === "") return true;
-      try {
-        const url = new URL(value.trim());
-        return url.protocol === "http:" || url.protocol === "https:";
-      } catch {
-        return false;
-      }
-    },
-    {
-      message:
-        "oMLX server URL must be a valid http:// or https:// URL (or empty to disable)",
-    },
-  );
+export const omlxBaseUrlSchema = httpUrlOrEmpty(
+  ["http:", "https:"],
+  "oMLX server URL must be a valid http:// or https:// URL (or empty to disable)",
+);
 
 /**
  * The single normalizer for the oMLX server URL — reduce whatever the user
