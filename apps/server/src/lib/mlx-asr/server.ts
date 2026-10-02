@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
 import { getDb } from "../db.js";
-import { getMlxAsrModel, isAppleSiliconMac } from "./constants.js";
+import { getMlxAsrModel } from "./constants.js";
 import {
   describeMlxSetupBlocker,
   findPythonExecutable,
@@ -83,14 +83,7 @@ export function isMlxServerFailed(): boolean {
   return workerFailed;
 }
 
-export function canRunMlxAsr(): boolean {
-  if (!isAppleSiliconMac()) return false;
-  if (existsSync(getMlxAsrWorkerPath())) return true;
-  const python = findPythonExecutable();
-  if (!python) return false;
-  if (!existsSync(getMlxAsrServerScriptPath())) return false;
-  return isMlxAudioInstalled(python);
-}
+export { canRunMlxAsr } from "./python.js";
 
 export function getMlxAsrKeepAliveMinutes(): number {
   try {

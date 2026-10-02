@@ -17,7 +17,11 @@ import {
   MLX_ASR_PROVIDER_ID,
   type MlxAsrModelDef,
 } from "./constants.js";
-import { describeMlxSetupBlocker, resetPythonProbe } from "./python.js";
+import {
+  describeMlxSetupBlocker,
+  mlxSetupBlocker,
+  resetPythonProbe,
+} from "./python.js";
 import {
   cancelMlxRuntimeDownload,
   ensureMlxRuntimeDownloaded,
@@ -153,13 +157,11 @@ export function getMlxModelStatus(
     };
   }
 
-  const blocker = describeMlxSetupBlocker();
+  const blocker = mlxSetupBlocker();
   if (blocker) {
     const canDownloadRuntime =
       isMlxRuntimeInstallable() &&
-      /worker or Python 3 not found|Python dependencies are not installed/i.test(
-        blocker,
-      );
+      (blocker.code === "no-runtime" || blocker.code === "deps-missing");
     if (canDownloadRuntime) {
       return { ...baseModelState(modelId, model), status: "not_downloaded" };
     }
@@ -167,7 +169,7 @@ export function getMlxModelStatus(
     return {
       ...baseModelState(modelId, model),
       status: "error",
-      error: blocker,
+      error: blocker.message,
     };
   }
 

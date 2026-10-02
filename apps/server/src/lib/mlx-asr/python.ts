@@ -152,22 +152,57 @@ export function isMlxAudioInstalled(python = findPythonExecutable()): boolean {
   return cachedMlxAudio;
 }
 
-export function describeMlxSetupBlocker(): string | null {
-  if (!isAppleSiliconMac()) return MLX_UNSUPPORTED_PLATFORM_REASON;
+export type MlxSetupBlockerCode =
+  | "unsupported-platform"
+  | "no-runtime"
+  | "script-missing"
+  | "deps-missing";
+
+export interface MlxSetupBlocker {
+  code: MlxSetupBlockerCode;
+  message: string;
+}
+
+/** Why MLX ASR cannot run now, or null when it can. */
+export function mlxSetupBlocker(): MlxSetupBlocker | null {
+  if (!isAppleSiliconMac()) {
+    return {
+      code: "unsupported-platform",
+      message: MLX_UNSUPPORTED_PLATFORM_REASON,
+    };
+  }
   const workerPath = getMlxAsrWorkerPath();
   if (workerPath && existsSync(workerPath)) return null;
 
   const python = findPythonExecutable();
   if (!python) {
-    return "Bundled MLX ASR worker or Python 3 not found. Set OPENSTYLE_MLX_ASR_WORKER or OPENSTYLE_PYTHON.";
+    return {
+      code: "no-runtime",
+      message:
+        "Bundled MLX ASR worker or Python 3 not found. Set OPENSTYLE_MLX_ASR_WORKER or OPENSTYLE_PYTHON.",
+    };
   }
   if (!existsSync(getMlxAsrServerScriptPath())) {
-    return "MLX ASR server script missing from this install.";
+    return {
+      code: "script-missing",
+      message: "MLX ASR server script missing from this install.",
+    };
   }
   if (!isMlxAudioInstalled(python)) {
-    return `MLX ASR Python dependencies are not installed for ${python}. Run: ${python} -m pip install mlx-audio`;
+    return {
+      code: "deps-missing",
+      message: `MLX ASR Python dependencies are not installed for ${python}. Run: ${python} -m pip install mlx-audio`,
+    };
   }
   return null;
+}
+
+export function describeMlxSetupBlocker(): string | null {
+  return mlxSetupBlocker()?.message ?? null;
+}
+
+export function canRunMlxAsr(): boolean {
+  return mlxSetupBlocker() === null;
 }
 
 /** The OPENSTYLE_MLX_ASR_WORKER override, or its legacy FREESTYLE_ name. */
