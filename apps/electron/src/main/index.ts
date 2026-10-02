@@ -2761,18 +2761,14 @@ app.whenReady().then(async () => {
     );
   });
 
-  // Set database path for the server before any API calls. Also seeded under
-  // the legacy FREESTYLE_ name (every in-repo reader checks OPENSTYLE_ first
-  // and falls back to it, so this is redundant for them) purely so
-  // third-party plugin code that still reads process.env.FREESTYLE_DB_PATH
-  // directly keeps working without an update.
+  // Set database path for the server before any API calls. Server code reads
+  // the OPENSTYLE_ name first and falls back to the old FREESTYLE_ name, so
+  // only the OPENSTYLE_ name is set here.
   const dbPath = join(app.getPath("userData"), "freestyle.db");
   process.env.OPENSTYLE_DB_PATH = dbPath;
-  process.env.FREESTYLE_DB_PATH = dbPath;
 
   if (!is.dev) {
     process.env.OPENSTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
-    process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }
 
   // Run non-critical server startup tasks now that the DB path is set. This is
