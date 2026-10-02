@@ -9,7 +9,10 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createAppLogger } from "@openstyle/utils";
 import type { WebContents } from "electron";
-import { getNativeBinaryPath } from "./native-binary";
+import {
+  getNativeBinaryPath,
+  KEY_LISTENER_BINARY_NAMES,
+} from "./native-binary";
 
 const log = createAppLogger("hotkey-recorder");
 
@@ -24,12 +27,6 @@ export interface HotkeyRecorderCallbacks {
   onCancel: () => void;
   onError?: (message: string) => void;
 }
-
-const BINARY_NAMES: Record<string, string> = {
-  darwin: "macos-key-listener",
-  win32: "windows-key-listener",
-  linux: "linux-key-listener",
-};
 
 const MAC_RIGHT_MOD_KEYS: Record<string, string> = {
   rightoption: "RightOption",
@@ -69,7 +66,7 @@ export class HotkeyRecorder {
     this.target = target;
     this.pendingModifiers = [];
 
-    const binaryName = BINARY_NAMES[process.platform];
+    const binaryName = KEY_LISTENER_BINARY_NAMES[process.platform];
     if (!binaryName) {
       this.callbacks.onError?.(`Unsupported platform: ${process.platform}`);
       return false;

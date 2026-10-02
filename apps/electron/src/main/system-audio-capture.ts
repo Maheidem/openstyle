@@ -20,8 +20,6 @@ import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("system-audio");
 
-export const SYSTEM_AUDIO_SAMPLE_RATE = 16000;
-
 /** Grace period between SIGTERM and SIGKILL when stopping the helper. */
 const KILL_GRACE_MS = 3000;
 
@@ -62,10 +60,6 @@ export class SystemAudioCapture {
 
   constructor(options: SystemAudioCaptureOptions) {
     this.options = options;
-  }
-
-  get running(): boolean {
-    return this.process !== null;
   }
 
   /**

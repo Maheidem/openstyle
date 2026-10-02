@@ -107,14 +107,12 @@ export async function fetchLatestManifest(
   return parseLatestManifest(text);
 }
 
-/** Pick the .zip entry for the running arch, excluding blockmaps. */
+/** Pick the .zip entry for the running arch. Blockmap files do not end in .zip. */
 export function selectZipEntry(
   manifest: ParsedManifest,
   arch: string,
 ): ManifestFileEntry {
-  const candidates = manifest.files.filter(
-    (f) => f.url.endsWith(".zip") && !f.url.endsWith(".blockmap"),
-  );
+  const candidates = manifest.files.filter((f) => f.url.endsWith(".zip"));
   const archMatch = candidates.find(
     (f) => f.url.includes(`-${arch}.`) || f.url.includes(`-${arch}-`),
   );
@@ -273,10 +271,6 @@ export function sanityCheckBundle(
   }
 }
 
-export interface SwapResult {
-  oldBundleBackupPath: string;
-}
-
 /**
  * Atomically-as-possible swap `currentAppPath` for `newAppPath` (both must be
  * on the same filesystem, i.e. `newAppPath` should be staged as a sibling of
@@ -285,10 +279,7 @@ export interface SwapResult {
  *   2. rename new -> current's original path
  * On failure of step 2, step 1 is rolled back (old renamed back into place).
  */
-export function swapBundle(
-  currentAppPath: string,
-  newAppPath: string,
-): SwapResult {
+export function swapBundle(currentAppPath: string, newAppPath: string): void {
   const parent = dirname(currentAppPath);
   const name = currentAppPath.split("/").pop() ?? "App.app";
   const backupPath = join(parent, `.${name}.old-${Date.now()}`);
@@ -318,7 +309,6 @@ export function swapBundle(
       }`,
     );
   }
-  return { oldBundleBackupPath: backupPath };
 }
 
 /** Best-effort quarantine removal; failures are logged by the caller, not thrown. */
