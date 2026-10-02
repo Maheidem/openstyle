@@ -73,26 +73,6 @@ export function stopHistoryRetentionSweep(): void {
   }
 }
 
-export function saveRawHistory(entry: RawHistoryEntry): boolean {
-  if (isHistoryPaused()) return false;
-
-  getDb()
-    .prepare(
-      `INSERT INTO transcription_history
-         (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
-         VALUES (?, ?, ?, ?, ?)`,
-    )
-    .run(
-      entry.rawText,
-      entry.voiceProvider,
-      entry.voiceModel,
-      entry.durationMs,
-      entry.audioDurationMs,
-    );
-
-  return true;
-}
-
 export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
   if (isHistoryPaused()) return false;
 
@@ -118,4 +98,15 @@ export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
     );
 
   return true;
+}
+
+// A raw entry is a processed entry with no cleanup, no tokens and no cost.
+export function saveRawHistory(entry: RawHistoryEntry): boolean {
+  return saveProcessedHistory({
+    ...entry,
+    cleanedText: null,
+    inputTokens: 0,
+    outputTokens: 0,
+    costUsd: 0,
+  });
 }
