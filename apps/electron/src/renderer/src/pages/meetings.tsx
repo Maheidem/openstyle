@@ -55,6 +55,7 @@ import {
 import { configQueryOptions, queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import {
   AlertTriangle,
   AudioLines,
@@ -167,6 +168,19 @@ interface TranscriptSegment {
    * (specs/meeting-speaker-naming.md §4), following any merge. Undefined
    * when unnamed — renderer falls back to "Them {{speakerLabel}}". */
   speakerName?: string;
+}
+
+// specs/meeting-speaker-naming.md §4: prefer a confirmed speakerName over the
+// numbered fallback; a "Them" segment with no speakerLabel at all renders
+// "Unidentified" (§3.3 amendment), never bare "Them".
+function segmentSpeakerLabel(seg: TranscriptSegment, t: TFunction): string {
+  if (seg.speaker === "Me") return t("meetings.me");
+  return (
+    seg.speakerName ??
+    (seg.speakerLabel
+      ? t("meetings.themNumbered", { n: seg.speakerLabel })
+      : t("meetings.speakerUnidentified"))
+  );
 }
 
 /**
@@ -1661,16 +1675,7 @@ function MeetingDetailView({
   );
   const transcriptText = (transcript ?? [])
     .map((s) => {
-      // specs/meeting-speaker-naming.md §4: prefer a confirmed speakerName
-      // over the numbered fallback; a "Them" segment with no speakerLabel
-      // at all renders "Unidentified" (§3.3 amendment), never bare "Them".
-      const label =
-        s.speaker === "Me"
-          ? t("meetings.me")
-          : (s.speakerName ??
-            (s.speakerLabel
-              ? t("meetings.themNumbered", { n: s.speakerLabel })
-              : t("meetings.speakerUnidentified")));
+      const label = segmentSpeakerLabel(s, t);
       const text = showEnhanced ? (s.enhancedText ?? s.text) : s.text;
       return `${label}: ${text}`;
     })
@@ -2049,15 +2054,7 @@ function MeetingDetailView({
                   row's label column shares one width and stays aligned. */}
               <div className="grid grid-cols-[minmax(64px,max-content)_minmax(0,1fr)_max-content] gap-x-3 gap-y-3.5">
                 {transcript.map((seg) => {
-                  const label =
-                    seg.speaker === "Me"
-                      ? t("meetings.me")
-                      : (seg.speakerName ??
-                        (seg.speakerLabel
-                          ? t("meetings.themNumbered", {
-                              n: seg.speakerLabel,
-                            })
-                          : t("meetings.speakerUnidentified")));
+                  const label = segmentSpeakerLabel(seg, t);
                   return (
                     <Fragment
                       key={`${seg.speaker}-${seg.startMs}-${seg.endMs}`}
