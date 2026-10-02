@@ -1023,10 +1023,7 @@ function StatsTab({
     <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-auto pt-4 pr-1">
       {/* Headline numbers — cards in a 2-up grid */}
       <div className="grid grid-cols-2 gap-2.5">
-        <StatCard
-          span2
-          inline
-          accent
+        <HeadlineStat
           n={formatNumber(avgWpm)}
           l={t("today.wpmLabel")}
           sub={timeLabel}
@@ -1058,66 +1055,44 @@ function RailLabel({
   return <div className="text-muted-foreground text-[10px]">{children}</div>;
 }
 
-/** A bordered stat card matching the filter panel's card styling. */
-function StatCard({
+/** The wide headline card: number and label on one row, then the time range. */
+function HeadlineStat({
   n,
   l,
   sub,
-  accent,
-  span2,
-  inline,
 }: {
   n: string;
   l: string;
-  // Optional secondary label rendered below (e.g. the time range).
+  // Secondary label rendered below (the time range).
   sub?: string;
-  accent?: boolean;
-  // Span both grid columns.
-  span2?: boolean;
-  // Render the primary label inline (small text) next to the number.
-  inline?: boolean;
 }): React.JSX.Element {
   return (
-    <div
-      className={cn(
-        "border-border bg-card rounded-lg border px-3.5 py-3",
-        span2 && "col-span-2",
+    <div className="border-border bg-card col-span-2 rounded-lg border px-3.5 py-3">
+      <div className="flex items-baseline gap-2">
+        <span className="display text-primary text-[24px] leading-none">
+          {n}
+        </span>
+        <span className="text-muted-foreground text-[11px]">{l}</span>
+      </div>
+      {sub && (
+        <div className="text-muted-foreground/70 mt-1.5 text-[9.5px]">
+          {sub}
+        </div>
       )}
-    >
-      {inline ? (
-        <>
-          <div className="flex items-baseline gap-2">
-            <span
-              className={cn(
-                "display text-[24px] leading-none",
-                accent ? "text-primary" : "text-foreground",
-              )}
-            >
-              {n}
-            </span>
-            <span className="text-muted-foreground text-[11px]">{l}</span>
-          </div>
-          {sub && (
-            <div className="text-muted-foreground/70 mt-1.5 text-[9.5px]">
-              {sub}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div
-            className={cn(
-              "display text-[24px] leading-none",
-              accent ? "text-primary" : "text-foreground",
-            )}
-          >
-            {n}
-          </div>
-          <div className="text-muted-foreground mt-2 text-[11px] leading-tight">
-            {l}
-          </div>
-        </>
-      )}
+    </div>
+  );
+}
+
+/** A bordered stat card matching the filter panel's card styling. */
+function StatCard({ n, l }: { n: string; l: string }): React.JSX.Element {
+  return (
+    <div className="border-border bg-card rounded-lg border px-3.5 py-3">
+      <div className="display text-foreground text-[24px] leading-none">
+        {n}
+      </div>
+      <div className="text-muted-foreground mt-2 text-[11px] leading-tight">
+        {l}
+      </div>
     </div>
   );
 }
