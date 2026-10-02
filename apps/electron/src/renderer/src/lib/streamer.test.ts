@@ -133,6 +133,8 @@ describe("Streamer reconnects an active capture", () => {
       JSON.stringify({ type: "start", context: null, language: null }),
     );
 
+    firstSocket.message({ type: "session.ready" });
+
     const pcm = new Int16Array([12, -24, 48]).buffer;
     FakeAudioWorkletNode.instances[0].port.onmessage?.({ data: pcm });
     expect(firstSocket.sent).toContain(pcm);
@@ -165,6 +167,51 @@ describe("Streamer reconnects an active capture", () => {
       new Int16Array([12, -24, 48]),
     );
     expect(streamer.isConnected()).toBe(true);
+  });
+
+  it("keeps queued audio ahead of live audio until the session is ready", async () => {
+    streamer = new Streamer("http://localhost:3000", "", {
+      onConfig: vi.fn(),
+      onReady: vi.fn(),
+      onFinal: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+
+    await streamer.startCapture({} as MediaStream);
+    const port = FakeAudioWorkletNode.instances[0].port;
+
+    // Chunk A is captured before the config message arrives.
+    const chunkA = new Int16Array([1, 2, 3]).buffer;
+    port.onmessage?.({ data: chunkA });
+
+    socket.message({
+      type: "config",
+      streaming: true,
+      sessionTransport: true,
+      providerCategory: "byok",
+    });
+
+    // Chunk B is captured after config but before session.ready.
+    const chunkB = new Int16Array([4, 5, 6]).buffer;
+    port.onmessage?.({ data: chunkB });
+    expect(socket.sent.some((m) => m instanceof ArrayBuffer)).toBe(false);
+
+    socket.message({ type: "session.ready" });
+    const audio = socket.sent.filter((m) => m instanceof ArrayBuffer);
+    expect(
+      audio.map((m) => Array.from(new Int16Array(m as ArrayBuffer))),
+    ).toEqual([
+      [1, 2, 3],
+      [4, 5, 6],
+    ]);
+
+    // After session.ready, live audio goes out at once.
+    const chunkC = new Int16Array([7, 8, 9]).buffer;
+    port.onmessage?.({ data: chunkC });
+    expect(socket.sent.at(-1)).toBe(chunkC);
   });
 
   it("threads a per-recording language pin into the start message", async () => {
