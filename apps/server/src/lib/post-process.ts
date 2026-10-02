@@ -258,6 +258,7 @@ export async function postProcess(
           system,
           prompt,
           temperature: resolved.temperature,
+          topP: resolved.topP,
           maxOutputTokens: resolved.maxOutputTokens,
           // The empty/filler-only case is already handled above for the whole
           // function (both the cloud and local-model branches), so this call

@@ -26,11 +26,14 @@ import {
   meetingSummaryTimeoutMs,
   parseCleanupSampling,
   parseLlmTaskAssignments,
-  SAFE_SUBSET_KEYS,
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
 import { getApiKeyForProvider } from "../streaming-stt.js";
-import { getLlmProvider } from "./registry.js";
+import {
+  getLlmProvider,
+  isLocalProvider,
+  LOCAL_LLM_URL_SETTING,
+} from "./registry.js";
 
 const log = createAppLogger("llm-task-profiles");
 
@@ -165,11 +168,11 @@ export interface ResolvedTaskCall {
   provider: string;
   modelId: string;
   temperature: number;
+  topP?: number; // preset `top_p`; mapped-subset providers only
   maxOutputTokens: number;
   reasoningEnabled: boolean;
   samplingParams: Record<string, unknown>; // {} in "auto" mode
   timeoutMs: number;
-  cloudPartial: boolean; // §7.5
 }
 
 export interface ResolveTaskCallOptions {
@@ -260,28 +263,6 @@ function stripDenylistedKeys(
   return out;
 }
 
-/** §7.2 — pull out only the universally-safe keys for a mapped-subset-tier
- *  provider. */
-function pickSafeSubset(
-  params: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  const dropped: string[] = [];
-  for (const [key, value] of Object.entries(params)) {
-    if (SAFE_SUBSET_KEYS.has(key)) {
-      out[key] = value;
-    } else {
-      dropped.push(key);
-    }
-  }
-  if (dropped.length > 0) {
-    log.debug(
-      `mapped-subset provider drops non-safe preset keys: ${dropped.join(", ")}`,
-    );
-  }
-  return out;
-}
-
 /** §6.3 — resolve the effective provider/model for a task, validating a
  *  model override and falling back to the app-wide default (with a `warn`
  *  log) when the override is no longer servable. */
@@ -303,9 +284,8 @@ function resolveEffectiveModel(
     return { provider: fallback.provider, modelId: fallback.model_id };
   }
 
-  const isLocal = provider.local ?? override.provider === "local-llm";
-  if (isLocal) {
-    if (!readSetting("local_llm_url")) {
+  if (isLocalProvider(override.provider)) {
+    if (!readSetting(LOCAL_LLM_URL_SETTING)) {
       log.warn(
         `resolveTaskCall("${taskId}"): model override's local endpoint is no longer configured, falling back to the app default`,
       );
@@ -362,7 +342,7 @@ export async function resolveTaskCall(
   const rawParams = resolveModeParams(taskId, assignment); // §6.1 — {} for "auto"
   const strippedParams = stripDenylistedKeys(rawParams); // §7.4, logs drops
 
-  const isLocal = getLlmProvider(provider)?.local ?? provider === "local-llm";
+  const isLocal = isLocalProvider(provider);
   // §6.4 — the reasoning seed and a mode-selected `chat_template_kwargs` are
   // merged key-by-key, not swapped wholesale: a plain `...strippedParams`
   // spread after the seed would let a preset/custom object that touches
@@ -386,10 +366,16 @@ export async function resolveTaskCall(
       }
     : {}; // mapped-subset providers never get the verbatim object at all
 
-  const safeSubset = isLocal ? {} : pickSafeSubset(strippedParams); // §7.2
-  const cloudPartial =
-    !isLocal &&
-    Object.keys(strippedParams).some((k) => !SAFE_SUBSET_KEYS.has(k));
+  // §7.2 — only `temperature`, `top_p` and `max_tokens` reach a mapped-subset
+  // provider from the preset. Local providers get them in `samplingParams`.
+  const presetTemperature =
+    !isLocal && typeof strippedParams.temperature === "number"
+      ? strippedParams.temperature
+      : undefined;
+  const presetTopP =
+    !isLocal && typeof strippedParams.top_p === "number"
+      ? strippedParams.top_p
+      : undefined;
 
   // profile.maxOutputTokens === "auto" requires the caller to supply
   // opts.autoMaxOutputTokens (every §8.5 call site for an "auto"-profiled
@@ -412,14 +398,11 @@ export async function resolveTaskCall(
   return {
     provider,
     modelId,
-    temperature:
-      typeof safeSubset.temperature === "number"
-        ? safeSubset.temperature
-        : profile.temperature,
+    temperature: presetTemperature ?? profile.temperature,
+    ...(presetTopP !== undefined ? { topP: presetTopP } : {}),
     maxOutputTokens: Math.max(taskBudget, presetFloor), // §6.2
     reasoningEnabled: profile.reasoningEnabled,
-    samplingParams: isLocal ? samplingParams : {},
+    samplingParams,
     timeoutMs: taskTimeoutMs(taskId, profile.timeoutMs),
-    cloudPartial,
   };
 }

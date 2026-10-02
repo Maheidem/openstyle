@@ -154,7 +154,6 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
     });
     expect(resolved.temperature).toBe(0);
     expect(resolved.reasoningEnabled).toBe(false);
-    expect(resolved.cloudPartial).toBe(false);
   });
 
   it("a mapped-subset provider gets an empty sampling object", async () => {
@@ -166,7 +165,6 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
       autoMaxOutputTokens: 512,
     });
     expect(resolved.samplingParams).toEqual({});
-    expect(resolved.cloudPartial).toBe(false);
   });
 
   it("throws when the profile is auto and no autoMaxOutputTokens is supplied", async () => {
@@ -202,9 +200,11 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
         .enable_thinking,
     ).toBe(true);
     expect(resolved.samplingParams).not.toHaveProperty("stream");
+    // Local providers get top_p inside samplingParams, never as `topP`.
+    expect(resolved.topP).toBeUndefined();
   });
 
-  it("on a mapped-subset provider: only the safe subset survives, floor applies, cloudPartial is set", async () => {
+  it("on a mapped-subset provider: only the safe subset survives, floor applies", async () => {
     seedDefaultLlm("openai", "gpt-4o-mini");
     getDb()
       .prepare("INSERT INTO api_keys (provider, key) VALUES ('openai', 'k')")
@@ -213,10 +213,10 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
       autoMaxOutputTokens: 100,
     });
     expect(resolved.temperature).toBe(1.0);
+    expect(resolved.topP).toBe(0.95);
     // Preset's max_tokens (512) beats the small auto budget (100).
     expect(resolved.maxOutputTokens).toBe(512);
     expect(resolved.samplingParams).toEqual({});
-    expect(resolved.cloudPartial).toBe(true);
   });
 });
 

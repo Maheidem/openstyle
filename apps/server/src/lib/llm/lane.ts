@@ -101,9 +101,6 @@ export interface AcquireLlmLaneArgs {
 export const LLM_LANE_CONCURRENCY_LOCAL = 1;
 export const LLM_LANE_CONCURRENCY_CLOUD = 2;
 
-/** The settings key holding the local engine's base URL (`llm/registry.ts`). */
-const LOCAL_LLM_URL_SETTING = "local_llm_url";
-
 /** Known cloud endpoints, so a cloud lane key is still a normalized
  *  `host:port` under the same identity rule as a local one. */
 const CLOUD_HOSTS: Record<string, string> = {
@@ -177,8 +174,10 @@ export async function llmLaneKeyForProvider(
   providerId: string,
 ): Promise<string> {
   try {
-    const { getLlmProvider } = await import("./registry.js");
-    if (getLlmProvider(providerId)?.local) {
+    const { isLocalProvider, LOCAL_LLM_URL_SETTING } = await import(
+      "./registry.js"
+    );
+    if (isLocalProvider(providerId)) {
       const { readSetting } = await import("../db.js");
       return llmLaneKey(readSetting(LOCAL_LLM_URL_SETTING));
     }

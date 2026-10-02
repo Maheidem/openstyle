@@ -115,6 +115,7 @@ export async function runRemixAgentLocally(
     tools: remixClientTools(),
     stopWhen: stepCountIs(REMIX_MAX_STEPS),
     temperature: resolved.temperature,
+    topP: resolved.topP,
     maxOutputTokens: resolved.maxOutputTokens,
     abortSignal: combinedSignal,
     ...(providerOptions ? { providerOptions } : {}),
