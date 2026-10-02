@@ -2,8 +2,11 @@ import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
-import { getDb } from "../db.js";
+import { readSettings } from "../db.js";
 import { traceLlmFetch } from "../trace.js";
+
+/** The settings key holding the local engine's base URL. */
+export const LOCAL_LLM_URL_SETTING = "local_llm_url";
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
@@ -245,21 +248,19 @@ const PROVIDERS: LlmProvider[] = [
     local: true,
     createModel: async (modelId, _apiKey, taskContext) => {
       const { createOpenAI } = await import("@ai-sdk/openai");
-      const db = getDb();
-      const urlRow = db
-        .prepare("SELECT value FROM settings WHERE key = 'local_llm_url'")
-        .get() as { value: string } | undefined;
-      if (!urlRow?.value) {
+      const settings = readSettings([
+        LOCAL_LLM_URL_SETTING,
+        "local_llm_api_key",
+      ]);
+      const url = settings.get(LOCAL_LLM_URL_SETTING);
+      if (!url) {
         throw new Error(
           "Local LLM endpoint URL not configured. Go to Settings > Models to set it up.",
         );
       }
-      const keyRow = db
-        .prepare("SELECT value FROM settings WHERE key = 'local_llm_api_key'")
-        .get() as { value: string } | undefined;
 
-      const baseURL = urlRow.value.replace(/\/v1\/?$/, "");
-      const apiKey = keyRow?.value || "local";
+      const baseURL = url.replace(/\/v1\/?$/, "");
+      const apiKey = settings.get("local_llm_api_key") || "local";
 
       // No more direct `cleanup_sampling` read here — the caller already
       // resolved this task's sampling params (`resolveTaskCall`,
@@ -293,4 +294,9 @@ export function getLlmProvider(providerId: string): LlmProvider | null {
     if (providerId.startsWith(provider.providerId)) return provider;
   }
   return null;
+}
+
+/** True when the provider id names a local engine that needs no API key. */
+export function isLocalProvider(providerId: string): boolean {
+  return getLlmProvider(providerId)?.local === true;
 }

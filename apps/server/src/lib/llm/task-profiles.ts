@@ -29,7 +29,11 @@ import {
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
 import { getApiKeyForProvider } from "../streaming-stt.js";
-import { getLlmProvider } from "./registry.js";
+import {
+  getLlmProvider,
+  isLocalProvider,
+  LOCAL_LLM_URL_SETTING,
+} from "./registry.js";
 
 const log = createAppLogger("llm-task-profiles");
 
@@ -280,9 +284,8 @@ function resolveEffectiveModel(
     return { provider: fallback.provider, modelId: fallback.model_id };
   }
 
-  const isLocal = provider.local ?? override.provider === "local-llm";
-  if (isLocal) {
-    if (!readSetting("local_llm_url")) {
+  if (isLocalProvider(override.provider)) {
+    if (!readSetting(LOCAL_LLM_URL_SETTING)) {
       log.warn(
         `resolveTaskCall("${taskId}"): model override's local endpoint is no longer configured, falling back to the app default`,
       );
@@ -339,7 +342,7 @@ export async function resolveTaskCall(
   const rawParams = resolveModeParams(taskId, assignment); // §6.1 — {} for "auto"
   const strippedParams = stripDenylistedKeys(rawParams); // §7.4, logs drops
 
-  const isLocal = getLlmProvider(provider)?.local ?? provider === "local-llm";
+  const isLocal = isLocalProvider(provider);
   // §6.4 — the reasoning seed and a mode-selected `chat_template_kwargs` are
   // merged key-by-key, not swapped wholesale: a plain `...strippedParams`
   // spread after the seed would let a preset/custom object that touches

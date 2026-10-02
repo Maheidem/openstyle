@@ -1,11 +1,10 @@
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
 import type { LlmTaskContext } from "./llm/registry.js";
-import { getLlmProvider } from "./llm/registry.js";
+import { getLlmProvider, isLocalProvider } from "./llm/registry.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
-const LOCAL_PROVIDERS = new Set(["local-llm"]);
 const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "openai",
   "anthropic",
@@ -63,7 +62,7 @@ export async function createChatModel(
   const provider = getLlmProvider(providerId);
   if (!provider) throw new Error(`Unsupported provider: ${providerId}`);
 
-  const isLocal = provider.local ?? LOCAL_PROVIDERS.has(providerId);
+  const isLocal = isLocalProvider(providerId);
   const apiKey = isLocal ? "local" : getApiKeyForProvider(providerId);
   if (!apiKey)
     throw new Error(`No API key configured for provider: ${providerId}`);
