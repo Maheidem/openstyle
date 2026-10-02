@@ -74,31 +74,6 @@ describe("POST /api/vocabulary/actions", () => {
     });
   });
 
-  describe("import", () => {
-    it("inserts new terms and skips duplicates", async () => {
-      insert("Existing");
-
-      const res = await post({
-        action: "import",
-        entries: [{ term: "Existing" }, { term: "Fresh", notes: "n" }],
-      });
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ imported: 1, skipped: 1 });
-    });
-  });
-
-  describe("export", () => {
-    it("returns all terms sorted by term ascending", async () => {
-      insert("Zeta");
-      insert("Alpha");
-
-      const res = await post({ action: "export", type: "json" });
-      expect(res.status).toBe(200);
-      const rows = (await res.json()) as { term: string }[];
-      expect(rows.map((r) => r.term)).toEqual(["Alpha", "Zeta"]);
-    });
-  });
-
   it("rejects an unknown action with 400", async () => {
     const res = await post({ action: "nope", ids: [1] });
     expect(res.status).toBe(400);

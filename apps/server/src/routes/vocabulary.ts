@@ -162,23 +162,8 @@ const vocabulary = new Hono()
     return c.json({ imported, skipped });
   })
   .post("/actions", zValidator("json", vocabularyActionSchema), (c) => {
-    const body = c.req.valid("json");
-
-    switch (body.action) {
-      case "bulk-delete": {
-        const deleted = deleteVocabularyByIds(body.ids);
-        return c.json({ deleted });
-      }
-
-      case "import": {
-        const { imported, skipped } = importVocabularyEntries(body.entries);
-        return c.json({ imported, skipped });
-      }
-
-      case "export":
-        // Only "json" is supported today (the schema enum enforces this).
-        return c.json(exportVocabularyEntries());
-    }
+    const { ids } = c.req.valid("json");
+    return c.json({ deleted: deleteVocabularyByIds(ids) });
   });
 
 export default vocabulary;
