@@ -4,7 +4,6 @@ import { cn } from "@renderer/lib/utils";
 import { useReducedMotion } from "motion/react";
 import {
   type ComponentPropsWithRef,
-  type Ref,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -18,7 +17,6 @@ export interface MessageScrollerProps extends ComponentPropsWithRef<"div"> {
   label?: string;
   busy?: boolean;
   contentClassName?: string;
-  viewportRef?: Ref<HTMLElement>;
 }
 
 export function MessageScroller({
@@ -28,7 +26,6 @@ export function MessageScroller({
   label = "Conversation",
   busy,
   contentClassName,
-  viewportRef: externalViewportRef,
   className,
   children,
   ...props
@@ -40,18 +37,6 @@ export function MessageScroller({
   const programmaticScrollRef = useRef(false);
   const scrollTimerRef = useRef<number | undefined>(undefined);
   const frameRef = useRef<number | undefined>(undefined);
-
-  const setViewportRef = useCallback(
-    (node: HTMLElement | null) => {
-      viewportRef.current = node;
-      if (typeof externalViewportRef === "function") {
-        externalViewportRef(node);
-      } else if (externalViewportRef) {
-        externalViewportRef.current = node;
-      }
-    },
-    [externalViewportRef],
-  );
 
   const scrollToEnd = useCallback((behavior: ScrollBehavior) => {
     const viewport = viewportRef.current;
@@ -123,7 +108,7 @@ export function MessageScroller({
       {...props}
     >
       <section
-        ref={setViewportRef}
+        ref={viewportRef}
         aria-label={label}
         onScroll={handleScroll}
         onWheel={leaveLiveEdge}
