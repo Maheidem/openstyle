@@ -1,5 +1,5 @@
 import { Button } from "@renderer/components/ui/button";
-import { Toggle } from "@renderer/components/voice-row";
+import { Switch } from "@renderer/components/ui/switch";
 import { cn } from "@renderer/lib/utils";
 import { useTranslation } from "react-i18next";
 
@@ -132,9 +132,9 @@ function PairSide({
       <div className="flex items-center justify-between gap-3">
         <Eyebrow text={kicker} />
         {onToggle !== undefined && (
-          <Toggle
-            on={!!toggle}
-            onChange={(v) => onToggle(v)}
+          <Switch
+            checked={!!toggle}
+            onCheckedChange={onToggle}
             disabled={toggleDisabled}
           />
         )}

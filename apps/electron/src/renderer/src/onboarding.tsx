@@ -1,9 +1,4 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  apiKeySchema,
-  MAX_LANGUAGES,
-  normalizeLanguageList,
-} from "@openstyle/validations";
+import { MAX_LANGUAGES, normalizeLanguageList } from "@openstyle/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import {
   LanguageMultiPickerDialog,
@@ -17,19 +12,6 @@ import {
 import { EmailDraft } from "@renderer/components/onboarding/email-draft";
 import { Button } from "@renderer/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@renderer/components/ui/dialog";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@renderer/components/ui/input-group";
-import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { SegmentedControl } from "@renderer/components/ui/segmented-control";
-import { VoiceRow } from "@renderer/components/voice-row";
-import {
   acceleratorsEqual,
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -39,34 +21,26 @@ import {
 import { getClient } from "@renderer/lib/api";
 import { defaultLanguage } from "@renderer/lib/languages";
 import {
-  type AvailableModel,
   buildVoiceItems,
   type MlxAsrStatus,
-  PROVIDER_DISPLAY_NAMES,
-  PROVIDER_KEY_URLS,
   type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
-import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
+import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Check,
-  ChevronLeft,
   ClipboardPaste,
-  HardDrive,
-  Key,
   Keyboard,
   Loader2,
   Mic,
   Shield,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
@@ -122,15 +96,11 @@ export default function OnboardingPage(): React.JSX.Element {
   const [linuxSetup, setLinuxSetup] = useState<LinuxSetup | null>(null);
 
   // Voice model state
-  const [available, setAvailable] = useState<AvailableModel[]>([]);
-  const [selectedModel, setSelectedModel] = useState<AvailableModel | null>(
-    null,
-  );
-  const [selectedWhisperDefId, setSelectedWhisperDefId] = useState<
-    string | null
-  >(null);
-  const [selectedMlxDefId, setSelectedMlxDefId] = useState<string | null>(null);
-  const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
+  // The on-device model the user picked (auto-picked at first).
+  const [picked, setPicked] = useState<{
+    defId: string;
+    engine: "whisper" | "mlx";
+  } | null>(null);
   const [languages, setLanguages] = useState<string[]>(() => {
     // Seed from the OS language when it's a real code; "auto" starts empty.
     const guess = defaultLanguage();
@@ -138,22 +108,6 @@ export default function OnboardingPage(): React.JSX.Element {
   });
   const autoPicked = useRef(false);
   const warmed = useRef(false);
-  // Tracks the most recent explicit local pick, so briefly selecting a
-  // different on-device model still downloads the right one.
-  const lastLocalSetupRef = useRef<{
-    defId: string;
-    engine: "whisper" | "mlx";
-  } | null>(null);
-  // Full model selector overlay (cloud + everything else)
-  const [showSelector, setShowSelector] = useState(false);
-  const [selectorSource, setSelectorSource] = useState<"cloud" | "local">(
-    "local",
-  );
-  const apiKeyForm = useForm<{ provider: string; key: string }>({
-    resolver: zodResolver(apiKeySchema),
-    defaultValues: { provider: "", key: "" },
-  });
-  const [showKey, setShowKey] = useState(false);
 
   // Hotkey recorder state (draft step); the remix hotkey lives here too so
   // each step can refuse a combo already taken by the other.
@@ -213,23 +167,6 @@ export default function OnboardingPage(): React.JSX.Element {
     const remixValue = settingsData?.[SETTINGS_KEYS.remixHotkey];
     if (remixValue) setRemixHotkey(remixValue);
   }, [settingsData]);
-
-  // Load models + keys
-  useEffect(() => {
-    const client = getClient();
-    client.api.models.available
-      .$get()
-      .then((r) => (r.ok ? r.json() : []))
-      .then((models: AvailableModel[]) => setAvailable(models))
-      .catch(() => {});
-    client.api.keys
-      .$get()
-      .then((r) => (r.ok ? r.json() : []))
-      .then((keys: { provider: string }[]) =>
-        setApiKeys(new Set(keys.map((k) => k.provider))),
-      )
-      .catch(() => {});
-  }, []);
 
   // Whisper / MLX status via React Query. refetchInterval replaces the manual
   // 500ms setInterval polling: it polls only while a download/verify is active
@@ -306,117 +243,18 @@ export default function OnboardingPage(): React.JSX.Element {
     setTimeout(() => clearInterval(interval), 30000);
   }, []);
 
-  // Commit a model as the default. Selection in this flow IS commitment —
-  // there is no separate "save" step anymore.
-  const commitCloudModel = useCallback((model: AvailableModel) => {
-    getClient()
-      .api.models.configured.$post({
-        json: {
-          provider: model.provider_id,
-          model_id: model.model_id,
-          model_name: model.model_name,
-          type: "voice",
-          is_default: true,
-        },
-      })
-      .catch(() => {});
-  }, []);
-
-  const selectCloudModel = useCallback(
-    (model: AvailableModel) => {
-      setSelectedModel(model);
-      setSelectedWhisperDefId(null);
-      setSelectedMlxDefId(null);
-      if (apiKeys.has(model.provider_id)) {
-        commitCloudModel(model);
-      } else {
-        // Reset the key form so the key-entry view opens empty for a
-        // provider we don't have a key for yet; commit happens on key save.
-        apiKeyForm.reset({ provider: model.provider_id, key: "" });
-      }
-    },
-    [apiKeys, apiKeyForm, commitCloudModel],
-  );
-
-  const selectLocalModel = useCallback(
-    (
-      defId: string,
-      name: string,
-      engine?: "whisper" | "mlx",
-      makeDefault = true,
-    ) => {
-      if (makeDefault) {
-        if (engine === "mlx") {
-          setSelectedMlxDefId(defId);
-          setSelectedWhisperDefId(null);
-        } else if (engine === "whisper") {
-          setSelectedWhisperDefId(defId);
-          setSelectedMlxDefId(null);
-        }
-        if (engine) {
-          lastLocalSetupRef.current = { defId, engine };
-        }
-        setSelectedModel(null);
-      }
-      const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
-      getClient()
-        .api.models.configured.$post({
-          json: {
-            provider,
-            model_id: `${provider}/${defId}`,
-            model_name: name,
-            type: "voice",
-            is_default: makeDefault,
-          },
-        })
-        .catch(() => {});
-    },
-    [],
-  );
-
-  const downloadWhisperModel = useCallback(
-    async (modelId: string) => {
-      await getClient().api.whisper.models[":model"].download.$post({
-        param: { model: modelId },
-      });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.whisperStatus });
-    },
-    [queryClient],
-  );
-
-  const downloadMlxModel = useCallback(
-    async (modelId: string) => {
-      await getClient().api["mlx-asr"].models[":model"].download.$post({
-        param: { model: modelId },
-      });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.mlxStatus });
-    },
-    [queryClient],
-  );
-
-  const downloadLocalModel = useCallback(
-    (modelId: string, engine?: "whisper" | "mlx") => {
-      if (engine === "mlx") {
-        void downloadMlxModel(modelId);
-        return;
-      }
-      void downloadWhisperModel(modelId);
-    },
-    [downloadMlxModel, downloadWhisperModel],
-  );
-
-  const allVoiceItems = buildVoiceItems(available, whisperStatus, mlxStatus, {
-    selectedModelId: selectedModel?.model_id,
+  // Onboarding shows on-device models only, so there are no cloud rows.
+  const allVoiceItems = buildVoiceItems([], whisperStatus, mlxStatus, {
     selectedProvider:
-      selectedModel?.provider_id ??
-      (selectedWhisperDefId
-        ? "local-whisper"
-        : selectedMlxDefId
-          ? "local-mlx"
-          : undefined),
-    selectedWhisperModelId: selectedWhisperDefId ?? undefined,
-    selectedMlxModelId: selectedMlxDefId ?? undefined,
-    keyProviders: apiKeys,
+      picked?.engine === "mlx"
+        ? "local-mlx"
+        : picked
+          ? "local-whisper"
+          : undefined,
+    selectedWhisperModelId:
+      picked?.engine === "whisper" ? picked.defId : undefined,
+    selectedMlxModelId: picked?.engine === "mlx" ? picked.defId : undefined,
+    keyProviders: new Set(),
   });
 
   // Resolve the opinionated recommendation: Qwen3 on-device when MLX can run,
@@ -442,45 +280,50 @@ export default function OnboardingPage(): React.JSX.Element {
     )
       return;
     autoPicked.current = true;
-    lastLocalSetupRef.current = {
-      defId: recommended.defId,
-      engine: recommended.localEngine,
-    };
-    selectLocalModel(
-      recommended.defId,
-      recommended.name,
-      recommended.localEngine,
-    );
-  }, [recommended, selectLocalModel, mlxResolved]);
+    const { defId, localEngine } = recommended;
+    setPicked({ defId, engine: localEngine });
+    const provider = localEngine === "mlx" ? "local-mlx" : "local-whisper";
+    getClient()
+      .api.models.configured.$post({
+        json: {
+          provider,
+          model_id: `${provider}/${defId}`,
+          model_name: recommended.name,
+          type: "voice",
+          is_default: true,
+        },
+      })
+      .catch(() => {});
+  }, [recommended, mlxResolved]);
+
+  // The model the setup panel shows: the pick, falling back to the
+  // recommendation before the auto-pick runs.
+  const localSetupModel = allVoiceItems.find((v) => v.selected) ?? recommended;
 
   // Pre-warm the local engine the moment its download lands, so the first
   // dictation in the tutorial is fast.
-  const warmTarget = allVoiceItems.find((v) => v.selected) ?? recommended;
   useEffect(() => {
     if (
       warmed.current ||
-      warmTarget?.kind !== "local" ||
-      warmTarget.status !== "ready" ||
-      !warmTarget.defId
+      localSetupModel?.status !== "ready" ||
+      !localSetupModel.defId
     )
       return;
     warmed.current = true;
-    if (warmTarget.localEngine === "mlx") {
+    if (localSetupModel.localEngine === "mlx") {
       getClient()
         .api["mlx-asr"].server.start.$post({
-          json: { modelId: warmTarget.defId },
+          json: { modelId: localSetupModel.defId },
         })
         .catch(() => {});
     } else {
       getClient()
-        .api.whisper.server.start.$post({ json: { modelId: warmTarget.defId } })
+        .api.whisper.server.start.$post({
+          json: { modelId: localSetupModel.defId },
+        })
         .catch(() => {});
     }
-  }, [warmTarget]);
-
-  // The model the card reflects: whatever is currently selected, falling
-  // back to the recommendation before the user has touched anything.
-  const chosen = allVoiceItems.find((v) => v.selected) ?? recommended;
+  }, [localSetupModel]);
 
   // Persist the language list (the transcribe path reads it per request).
   const persistLanguages = useCallback((next: string[]) => {
@@ -510,58 +353,32 @@ export default function OnboardingPage(): React.JSX.Element {
     persistLanguages([]);
   }, [persistLanguages]);
 
-  // Validate + persist a freshly entered cloud key. Returns true when stored
-  // so the selector can commit and close.
-  const saveCloudKey = useCallback(async () => {
-    const valid = await apiKeyForm.trigger();
-    if (!valid) return false;
-    const { provider, key } = apiKeyForm.getValues();
-    if (!key.trim()) return false;
-    await getClient()
-      .api.keys.$post({ json: { provider, key: key.trim() } })
-      .catch(() => {});
-    setApiKeys((prev) => new Set([...prev, provider]));
-    if (selectedModel) commitCloudModel(selectedModel);
-    return true;
-  }, [apiKeyForm, selectedModel, commitCloudModel]);
-
   const finishSetup = useCallback(() => {
     window.api?.setOnboardingComplete();
     navigate("/today", { replace: true });
   }, [navigate]);
 
-  // Whether the chosen voice model is ready to use (downloaded / has a key).
-  const chosenReady =
-    !!chosen &&
-    (chosen.kind === "cloud" ? !!chosen.hasKey : chosen.status === "ready");
-
-  const localSetupModel = ((): VoiceItem | undefined => {
-    if (chosen?.kind === "local") return chosen;
-    if (lastLocalSetupRef.current) {
-      const { defId, engine } = lastLocalSetupRef.current;
-      return allVoiceItems.find(
-        (v) =>
-          v.kind === "local" && v.defId === defId && v.localEngine === engine,
-      );
-    }
-    return recommended;
-  })();
-  const mustHaveLocalReady = chosen?.kind === "local" && !chosenReady;
+  const mustHaveLocalReady =
+    !!localSetupModel && localSetupModel.status !== "ready";
   const localSetupActive =
-    localSetupModel?.kind === "local" &&
-    (localSetupModel.status === "downloading" ||
-      localSetupModel.status === "verifying" ||
-      localSetupModel.state?.phase === "building_binary");
+    localSetupModel?.status === "downloading" ||
+    localSetupModel?.status === "verifying" ||
+    localSetupModel?.state?.phase === "building_binary";
 
-  const startLocalDownload = useCallback(() => {
+  const downloadPicked = useCallback(async () => {
     if (!localSetupModel?.defId || window.api?.isE2E) return;
-    downloadLocalModel(localSetupModel.defId, localSetupModel.localEngine);
-  }, [localSetupModel, downloadLocalModel]);
-
-  const retryLocalDownload = useCallback(() => {
-    if (!localSetupModel?.defId || window.api?.isE2E) return;
-    downloadLocalModel(localSetupModel.defId, localSetupModel.localEngine);
-  }, [localSetupModel, downloadLocalModel]);
+    if (localSetupModel.localEngine === "mlx") {
+      await getClient().api["mlx-asr"].models[":model"].download.$post({
+        param: { model: localSetupModel.defId },
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.mlxStatus });
+    } else {
+      await getClient().api.whisper.models[":model"].download.$post({
+        param: { model: localSetupModel.defId },
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.whisperStatus });
+    }
+  }, [localSetupModel, queryClient]);
 
   return (
     <div className="glass-window-shell glass-content flex h-screen flex-col">
@@ -595,8 +412,8 @@ export default function OnboardingPage(): React.JSX.Element {
             onToggle={toggleLanguage}
             onClear={clearLanguages}
             localModel={localSetupModel}
-            onDownloadLocal={startLocalDownload}
-            onRetryLocal={retryLocalDownload}
+            onDownloadLocal={downloadPicked}
+            onRetryLocal={downloadPicked}
             onBack={() => {
               setStep("permissions");
             }}
@@ -614,8 +431,8 @@ export default function OnboardingPage(): React.JSX.Element {
             remixHotkey={remixHotkey}
             onHotkeyRecorded={handleHotkeyRecorded}
             localModel={localSetupModel}
-            onDownloadLocal={startLocalDownload}
-            onRetryLocal={retryLocalDownload}
+            onDownloadLocal={downloadPicked}
+            onRetryLocal={downloadPicked}
             canContinue={!mustHaveLocalReady || !!window.api?.isE2E}
             continueBlockedReason={
               mustHaveLocalReady
@@ -645,43 +462,6 @@ export default function OnboardingPage(): React.JSX.Element {
           />
         )}
       </div>
-
-      {showSelector && (
-        <ModelSelectorOverlay
-          source={selectorSource}
-          onSourceChange={(s) => {
-            setSelectorSource(s);
-          }}
-          voiceItems={allVoiceItems}
-          keyProviders={apiKeys}
-          selectedCloud={selectedModel}
-          apiKeyForm={apiKeyForm}
-          showKey={showKey}
-          onToggleShowKey={() => setShowKey((v) => !v)}
-          onSelectCloud={selectCloudModel}
-          onSelectLocal={selectLocalModel}
-          onDownload={downloadLocalModel}
-          onRetryLocal={(defId, engine) => {
-            if (engine === "mlx") {
-              // Force a fresh MLX capability probe, prime the cache, then
-              // download only if the machine can actually run it.
-              void (async () => {
-                const res = await getClient()
-                  .api["mlx-asr"].status.$get({ query: { refresh: "1" } })
-                  .catch(() => null);
-                if (!res?.ok) return;
-                const data = (await res.json()) as MlxAsrStatus;
-                queryClient.setQueryData(queryKeys.mlxStatus, data);
-                if (data.canRun) void downloadMlxModel(defId);
-              })();
-            } else {
-              downloadWhisperModel(defId);
-            }
-          }}
-          onClose={() => setShowSelector(false)}
-          onSaveKey={saveCloudKey}
-        />
-      )}
     </div>
   );
 }
@@ -1017,295 +797,6 @@ function LanguageStep({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Full model selector — opened from the model step as an option. Two views:
-//   "list" — browse cloud / on-device models, pick one
-//   "key"  — a focused, full-width API-key entry for a cloud pick that needs
-//            one (no more burying the input at the bottom of a scroll area)
-// ---------------------------------------------------------------------------
-function ModelSelectorOverlay({
-  source,
-  onSourceChange,
-  voiceItems,
-  keyProviders,
-  selectedCloud,
-  apiKeyForm,
-  showKey,
-  onToggleShowKey,
-  onSelectCloud,
-  onSelectLocal,
-  onDownload,
-  onRetryLocal,
-  onClose,
-  onSaveKey,
-}: {
-  source: "cloud" | "local";
-  onSourceChange: (s: "cloud" | "local") => void;
-  voiceItems: VoiceItem[];
-  keyProviders: Set<string>;
-  selectedCloud: AvailableModel | null;
-  apiKeyForm: ReturnType<typeof useForm<{ provider: string; key: string }>>;
-  showKey: boolean;
-  onToggleShowKey: () => void;
-  onSelectCloud: (m: AvailableModel) => void;
-  onSelectLocal: (
-    defId: string,
-    name: string,
-    engine?: "whisper" | "mlx",
-  ) => void;
-  onDownload: (defId: string, engine?: "whisper" | "mlx") => void;
-  onRetryLocal: (defId: string, engine: "whisper" | "mlx") => void;
-  onClose: () => void;
-  onSaveKey: () => Promise<boolean>;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  const [view, setView] = useState<"list" | "key">("list");
-  const [savingKey, setSavingKey] = useState(false);
-
-  const items = voiceItems.filter((v) =>
-    source === "local" ? v.kind === "local" : v.kind === "cloud",
-  );
-
-  // Pick a cloud model: commit immediately when its key is already stored,
-  // otherwise move into the focused key-entry view.
-  const handleSelectCloud = (model: AvailableModel) => {
-    onSelectCloud(model);
-    if (keyProviders.has(model.provider_id)) {
-      onClose();
-    } else {
-      setView("key");
-    }
-  };
-
-  // Picking a ready on-device model commits straight away.
-  const handleSelectLocal = (
-    defId: string,
-    name: string,
-    engine?: "whisper" | "mlx",
-  ) => {
-    onSelectLocal(defId, name, engine);
-    onClose();
-  };
-
-  const handleSaveKey = async () => {
-    setSavingKey(true);
-    try {
-      const ok = await onSaveKey();
-      if (ok) onClose();
-    } finally {
-      setSavingKey(false);
-    }
-  };
-
-  const providerName = selectedCloud
-    ? (PROVIDER_DISPLAY_NAMES[selectedCloud.provider_id] ??
-      selectedCloud.provider_id)
-    : "";
-  const keyValue = apiKeyForm.watch("key") ?? "";
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        showCloseButton={false}
-        onEscapeKeyDown={(e) => {
-          // Esc steps back from key entry to the list before closing.
-          if (view === "key") {
-            e.preventDefault();
-            setView("list");
-          }
-        }}
-        className="flex max-h-[calc(100vh-5rem)] w-full max-w-[600px] flex-col gap-0 overflow-hidden rounded-[14px] border-border bg-background p-0 sm:max-w-[600px]"
-      >
-        <DialogTitle className="sr-only">Choose a voice model</DialogTitle>
-        {view === "list" ? (
-          <>
-            {/* Header */}
-            <div className="border-border/60 flex shrink-0 items-center justify-between border-b px-[22px] py-[18px]">
-              <div>
-                <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
-                  {t("onboarding.modelSelector.chooseModel")}
-                </div>
-                <div className="display text-foreground mt-0.5 text-[26px] leading-[1.05]">
-                  {t("onboarding.modelSelector.allVoiceModels")}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onClose}
-                aria-label="Close"
-              >
-                <X />
-              </Button>
-            </div>
-
-            {/* Source toggle */}
-            <div className="flex shrink-0 justify-center pt-4">
-              <SegmentedControl
-                size="sm"
-                value={source}
-                onValueChange={(v) => onSourceChange(v as "cloud" | "local")}
-                options={[
-                  {
-                    value: "cloud",
-                    label: t("onboarding.modelSelector.cloudApi"),
-                  },
-                  {
-                    value: "local",
-                    label: t("onboarding.modelSelector.onDevice"),
-                    icon: HardDrive,
-                  },
-                ]}
-              />
-            </div>
-
-            {/* List */}
-            <div className="overflow-y-auto px-[22px] py-4 [scrollbar-gutter:stable]">
-              <div className="border-border overflow-hidden rounded-[14px] border">
-                {items.length === 0 && (
-                  <div className="flex items-center gap-2 px-5 py-6">
-                    <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                    <span className="text-muted-foreground text-sm">
-                      {t("onboarding.modelSelector.loading")}
-                    </span>
-                  </div>
-                )}
-                {items.map((item, i) => (
-                  <VoiceRow
-                    key={item.key}
-                    item={item}
-                    first={i === 0}
-                    onSelectCloud={handleSelectCloud}
-                    onSelectLocal={handleSelectLocal}
-                    onDownload={onDownload}
-                    onRetryLocal={onRetryLocal}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="border-border/60 flex shrink-0 items-center justify-between border-t px-[22px] py-4">
-              <span className="text-muted-foreground text-[11.5px]">
-                {source === "cloud"
-                  ? t("onboarding.modelSelector.cloudNote")
-                  : t("onboarding.modelSelector.onDeviceNote", {
-                      phrase: ON_DEVICE_PHRASE,
-                    })}
-              </span>
-              <Button variant="outline" onClick={onClose}>
-                {t("common.cancel")}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Key-entry header */}
-            <div className="border-border/60 flex shrink-0 items-center gap-3 border-b px-[22px] py-[18px]">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setView("list")}
-                aria-label={t("onboarding.modelSelector.backToModels")}
-              >
-                <ChevronLeft />
-              </Button>
-              <div>
-                <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
-                  {t("onboarding.modelSelector.connect", {
-                    provider: providerName,
-                  })}
-                </div>
-                <div className="display text-foreground mt-0.5 text-[26px] leading-[1.05]">
-                  {t("onboarding.modelSelector.addKey", {
-                    provider: providerName,
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Key-entry body — the input is the whole view */}
-            <div className="px-[22px] py-7">
-              {selectedCloud && (
-                <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
-                  {t("onboarding.modelSelector.requiredFor", {
-                    model: selectedCloud.model_name,
-                  })}
-                </p>
-              )}
-
-              <InputGroup className="h-10">
-                <InputGroupInput
-                  autoFocus
-                  type={showKey ? "text" : "password"}
-                  {...apiKeyForm.register("key")}
-                  placeholder={t("onboarding.modelSelector.keyPlaceholder")}
-                  aria-invalid={!!apiKeyForm.formState.errors.key}
-                  className="font-mono text-[14px]"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && keyValue.trim()) handleSaveKey();
-                  }}
-                />
-                <InputGroupAddon>
-                  <Key />
-                </InputGroupAddon>
-                <RevealToggle
-                  revealed={showKey}
-                  onToggle={onToggleShowKey}
-                  label="key"
-                />
-              </InputGroup>
-              {apiKeyForm.formState.errors.key && (
-                <p className="text-destructive mt-2 text-[12px]">
-                  {apiKeyForm.formState.errors.key.message}
-                </p>
-              )}
-              {selectedCloud &&
-                PROVIDER_KEY_URLS[selectedCloud.provider_id] && (
-                  <p className="mt-3 text-[12.5px]">
-                    <a
-                      href={PROVIDER_KEY_URLS[selectedCloud.provider_id]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary underline underline-offset-2"
-                    >
-                      {t("onboarding.modelSelector.getKey", {
-                        provider: providerName,
-                      })}
-                    </a>
-                  </p>
-                )}
-            </div>
-
-            {/* Key-entry footer */}
-            <div className="border-border/60 flex shrink-0 items-center justify-between border-t px-[22px] py-4">
-              <Button variant="outline" onClick={() => setView("list")}>
-                {t("common.back")}
-              </Button>
-              <Button
-                variant="ink"
-                onClick={handleSaveKey}
-                disabled={!keyValue.trim() || savingKey}
-              >
-                {savingKey ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <Check data-icon="inline-start" />
-                )}
-                {savingKey
-                  ? t("common.saving")
-                  : t("onboarding.modelSelector.saveKey", {
-                      provider: providerName,
-                    })}
-              </Button>
-            </div>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function StepHeading({ title }: { title: string }): React.JSX.Element {
   return (
     <h1 className="display text-foreground m-0 mb-6 text-[30px] leading-[1.1] font-medium">
@@ -1569,7 +1060,6 @@ function RemixStep({
   const [remixed, setRemixed] = useState(false);
   const [working, setWorking] = useState(false);
   const [deliveredCount, setDeliveredCount] = useState(0);
-  const remixedRef = useRef(false);
   const inFlightUntilRef = useRef(0);
   const lastDeliveredAtRef = useRef(0);
   const workingTimerRef = useRef<number | null>(null);
@@ -1595,10 +1085,7 @@ function RemixStep({
       window.clearTimeout(workingTimerRef.current);
       workingTimerRef.current = null;
     }
-    if (!remixedRef.current) {
-      remixedRef.current = true;
-      setRemixed(true);
-    }
+    setRemixed(true);
   }, []);
   const handleDeliveredRef = useRef(handleDelivered);
   handleDeliveredRef.current = handleDelivered;
@@ -1633,10 +1120,6 @@ function RemixStep({
     if (!interactive || !body.trim()) return;
     if (Date.now() <= inFlightUntilRef.current) handleDeliveredRef.current();
   }, [body, interactive]);
-
-  const handleFinish = useCallback(() => {
-    onFinish();
-  }, [onFinish]);
 
   // Scripted fallback: an automated remix pass over the user's actual text.
   const [scriptPhase, setScriptPhase] = useState<"idle" | "pressed" | "result">(
@@ -1673,12 +1156,16 @@ function RemixStep({
       : scriptedBase
     : null;
 
+  // The strip follows real key presses when interactive, else the script.
+  const stripPhase = interactive ? phase : scriptPhase;
+  const stripWorking = interactive && working;
+  const stripRemixed = interactive ? remixed : scriptPhase === "result";
   const statusLabel =
-    phase === "pressed"
+    stripPhase === "pressed"
       ? t("onboarding.remix.statusListening")
-      : working
+      : stripWorking
         ? t("onboarding.remix.statusWorking")
-        : remixed
+        : stripRemixed
           ? t("onboarding.remix.statusRemixed")
           : t("onboarding.remix.statusReady");
 
@@ -1694,42 +1181,31 @@ function RemixStep({
             <div className="flex justify-start">
               <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
             </div>
-          ) : interactive ? (
+          ) : (
             <CoachStrip
               keys={keys}
-              phase={phase}
+              phase={stripPhase}
               lead={
-                !remixed
-                  ? t("onboarding.remix.highlightNote")
-                  : t("onboarding.remix.doneNote")
+                interactive
+                  ? remixed
+                    ? t("onboarding.remix.doneNote")
+                    : t("onboarding.remix.highlightNote")
+                  : undefined
               }
               instructionPrefix={t("onboarding.remix.instructionPrefix")}
               instructionSuffix={t("onboarding.remix.instructionSuffix")}
               sayText={t("onboarding.remix.sayText", { name: signoffName })}
               statusLabel={statusLabel}
-              statusEmphasis={phase === "pressed" || working || remixed}
-              getLiveLevel={getLiveLevel}
-            />
-          ) : (
-            <CoachStrip
-              keys={keys}
-              phase={scriptPhase}
-              instructionPrefix={t("onboarding.remix.instructionPrefix")}
-              instructionSuffix={t("onboarding.remix.instructionSuffix")}
-              sayText={t("onboarding.remix.sayText", { name: signoffName })}
-              statusLabel={
-                scriptPhase === "pressed"
-                  ? t("onboarding.remix.statusListening")
-                  : scriptPhase === "result"
-                    ? t("onboarding.remix.statusRemixed")
-                    : t("onboarding.remix.statusReady")
+              statusEmphasis={
+                stripPhase === "pressed" || stripWorking || stripRemixed
               }
-              statusEmphasis={scriptPhase !== "idle"}
-              getLiveLevel={() => null}
+              getLiveLevel={interactive ? getLiveLevel : () => null}
             >
-              <p className="text-muted-foreground text-[14px] leading-relaxed">
-                {t("onboarding.remix.fallbackNote")}
-              </p>
+              {!interactive && (
+                <p className="text-muted-foreground text-[14px] leading-relaxed">
+                  {t("onboarding.remix.fallbackNote")}
+                </p>
+              )}
             </CoachStrip>
           )}
         </div>
@@ -1758,7 +1234,7 @@ function RemixStep({
         <Button variant="outline" onClick={onBack}>
           {t("common.back")}
         </Button>
-        <Button variant="ink" onClick={handleFinish}>
+        <Button variant="ink" onClick={onFinish}>
           {t("onboarding.tutorial.finish")}
           <ArrowRight data-icon="inline-end" />
         </Button>
