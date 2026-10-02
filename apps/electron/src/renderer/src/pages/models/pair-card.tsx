@@ -35,7 +35,6 @@ export function PairCard({
   onConfigureSampling?: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const cleanupOn = llmCleanup;
 
   return (
     <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-lg border p-6 min-[820px]:grid-cols-2">
@@ -59,16 +58,16 @@ export function PairCard({
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
         <PairSide
           kicker={t("models.pair.cleanupKicker")}
-          modelName={cleanupOn ? llm?.model_name : undefined}
+          modelName={llmCleanup ? llm?.model_name : undefined}
           providerName={
-            cleanupOn && llm ? displayProviderName(llm.provider) : undefined
+            llmCleanup && llm ? displayProviderName(llm.provider) : undefined
           }
           cta={llm ? t("models.pair.change") : t("models.pair.pickModel")}
           noneLabel={t("models.pair.noneSelected")}
-          toggle={cleanupOn}
+          toggle={llmCleanup}
           onToggle={onToggleCleanup}
           onChange={onChangeLlm}
-          dimmed={!cleanupOn}
+          dimmed={!llmCleanup}
           paramsAction={
             onConfigureSampling
               ? {
@@ -91,12 +90,9 @@ function PairSide({
   ctaAriaLabel,
   noneLabel,
   toggle,
-  toggleDisabled,
   onToggle,
   onChange,
-  changeDisabled,
   dimmed,
-  providerIsIncluded,
   warmingAction,
   paramsAction,
 }: {
@@ -107,12 +103,9 @@ function PairSide({
   ctaAriaLabel?: string;
   noneLabel: string;
   toggle?: boolean;
-  toggleDisabled?: boolean;
   onToggle?: (next: boolean) => void;
   onChange: () => void;
-  changeDisabled?: boolean;
   dimmed?: boolean;
-  providerIsIncluded?: boolean;
   /** Voice side only: "Configure model warming". */
   warmingAction?: { label: string; onClick: () => void };
   /** Cleanup side only: jumps to this task's row in TaskProfilesSection
@@ -132,11 +125,7 @@ function PairSide({
       <div className="flex items-center justify-between gap-3">
         <Eyebrow text={kicker} />
         {onToggle !== undefined && (
-          <Switch
-            checked={!!toggle}
-            onCheckedChange={onToggle}
-            disabled={toggleDisabled}
-          />
+          <Switch checked={!!toggle} onCheckedChange={onToggle} />
         )}
       </div>
       <div>
@@ -156,24 +145,11 @@ function PairSide({
           </div>
         )}
         {providerName && (
-          <div
-            className={cn(
-              "mt-1.5 text-[13px]",
-              providerIsIncluded
-                ? "text-muted-foreground"
-                : "text-muted-foreground",
-            )}
-          >
-            {providerIsIncluded ? (
-              providerName
-            ) : (
-              <>
-                {t("models.pair.via")}{" "}
-                <span className="text-foreground/80 font-medium">
-                  {providerName}
-                </span>
-              </>
-            )}
+          <div className="text-muted-foreground mt-1.5 text-[13px]">
+            {t("models.pair.via")}{" "}
+            <span className="text-foreground/80 font-medium">
+              {providerName}
+            </span>
           </div>
         )}
       </div>
@@ -182,7 +158,6 @@ function PairSide({
           variant="outline"
           size="sm"
           onClick={onChange}
-          disabled={changeDisabled}
           aria-label={ctaAriaLabel}
         >
           {cta}
