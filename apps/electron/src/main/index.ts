@@ -67,6 +67,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  type MenuItemConstructorOptions,
   Notification,
   nativeImage,
   net,
@@ -2120,6 +2121,26 @@ function buildUpdateMenuItem(): { label: string; click: () => void } {
     : { label: "Check for Updates...", click: () => checkForUpdatesFromMenu() };
 }
 
+// Dev-only menu items, shared by the tray menu and the application menu.
+function devMenuItems(): MenuItemConstructorOptions[] {
+  return [
+    { type: "separator" },
+    { label: "Reset Onboarding", click: resetOnboarding },
+    {
+      label: "Reset Tone Configuration",
+      click: () => {
+        void resetToneConfiguration();
+      },
+    },
+    {
+      label: "Hard Reset",
+      click: () => {
+        void factoryReset();
+      },
+    },
+  ];
+}
+
 function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
@@ -2159,27 +2180,7 @@ function buildTrayContextMenu(): Menu {
               },
         ]
       : []),
-    ...(is.dev
-      ? [
-          { type: "separator" as const },
-          {
-            label: "Reset Onboarding",
-            click: resetOnboarding,
-          },
-          {
-            label: "Reset Tone Configuration",
-            click: () => {
-              void resetToneConfiguration();
-            },
-          },
-          {
-            label: "Hard Reset",
-            click: () => {
-              void factoryReset();
-            },
-          },
-        ]
-      : []),
+    ...(is.dev ? devMenuItems() : []),
     { type: "separator" },
     {
       label: "Quit",
@@ -2235,27 +2236,7 @@ function rebuildMenus(): void {
               },
               { type: "separator" as const },
               buildUpdateMenuItem(),
-              ...(is.dev
-                ? [
-                    { type: "separator" as const },
-                    {
-                      label: "Reset Onboarding",
-                      click: resetOnboarding,
-                    },
-                    {
-                      label: "Reset Tone Configuration",
-                      click: () => {
-                        void resetToneConfiguration();
-                      },
-                    },
-                    {
-                      label: "Hard Reset",
-                      click: () => {
-                        void factoryReset();
-                      },
-                    },
-                  ]
-                : []),
+              ...(is.dev ? devMenuItems() : []),
               { type: "separator" as const },
               { role: "hide" as const },
               { role: "hideOthers" as const },
