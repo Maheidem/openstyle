@@ -22,16 +22,6 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
-    },
-    "./logger": {
-      "import": {
-        "types": "./dist/logger.d.ts",
-        "default": "./dist/logger.js"
-      },
-      "require": {
-        "types": "./dist/logger.d.cts",
-        "default": "./dist/logger.cjs"
-      }
     }
   },
   "peerDependencies": {
