@@ -30,7 +30,10 @@ import {
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { SegmentedControl } from "@renderer/components/ui/segmented-control";
+import {
+  SegmentedControl,
+  type SegmentedOption,
+} from "@renderer/components/ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -130,15 +133,15 @@ const ENHANCE_TIMEOUT_MAX_DIGITS = String(
 ).length;
 
 const themeOptions = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
+  { value: "light", icon: Sun },
+  { value: "dark", icon: Moon },
+  { value: "system", icon: Monitor },
 ] as const;
 
 const audioPlaybackOptions = [
-  { id: "off", label: "Off", icon: VolumeOff },
-  { id: "duck", label: "Duck", icon: Volume2 },
-  { id: "pause", label: "Pause", icon: Pause },
+  { value: "off", label: "Off", icon: VolumeOff },
+  { value: "duck", label: "Duck", icon: Volume2 },
+  { value: "pause", label: "Pause", icon: Pause },
 ] as const;
 
 const settingsSectionIds = [
@@ -330,12 +333,9 @@ export default function SettingsPage(): React.JSX.Element {
   const accessibilityPollRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
-  const isMac = IS_MAC;
-  const isLinux = IS_LINUX;
-  const isWindows = IS_WINDOWS;
-  const supportsBackgroundAudio = isMac || isLinux || isWindows;
+  const supportsBackgroundAudio = IS_MAC || IS_LINUX || IS_WINDOWS;
   // macOS and Windows can deep-link to the OS mic privacy settings.
-  const canOpenMicSettings = isMac || isWindows;
+  const canOpenMicSettings = IS_MAC || IS_WINDOWS;
 
   // System audio permission (meeting mode). Meeting-scoped: dictation-only
   // users must never see this row — same reasoning as the
@@ -905,7 +905,7 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleCustomRetentionDaysChange = useCallback(
     (raw: string) => {
-      const digits = raw.replace(/\D/g, "").slice(0, 4);
+      const digits = sanitizeDigits(raw, 4);
       const clamped =
         digits === ""
           ? ""
@@ -1256,25 +1256,31 @@ export default function SettingsPage(): React.JSX.Element {
 
   const activeSectionLabel = t(`settings.sections.${activeSection}`);
 
-  const positionOptions = useMemo<SegmentOption[]>(() => {
-    const opts: SegmentOption[] = [
-      { id: "top-center", label: t("settings.display.positionTopCenter") },
-      { id: "top-right", label: t("settings.display.positionTopRight") },
+  const positionOptions = useMemo<SegmentedOption[]>(() => {
+    const opts: SegmentedOption[] = [
+      { value: "top-center", label: t("settings.display.positionTopCenter") },
+      { value: "top-right", label: t("settings.display.positionTopRight") },
       {
-        id: "bottom-center",
+        value: "bottom-center",
         label: t("settings.display.positionBottomCenter"),
       },
-      { id: "bottom-right", label: t("settings.display.positionBottomRight") },
+      {
+        value: "bottom-right",
+        label: t("settings.display.positionBottomRight"),
+      },
     ];
     if (pillPosition === "custom")
-      opts.push({ id: "custom", label: t("settings.display.positionCustom") });
+      opts.push({
+        value: "custom",
+        label: t("settings.display.positionCustom"),
+      });
     return opts;
   }, [pillPosition, t]);
 
-  const cancelButtonOptions = useMemo<SegmentOption[]>(
+  const cancelButtonOptions = useMemo<SegmentedOption[]>(
     () => [
-      { id: "hover", label: t("settings.display.cancelButtonHover") },
-      { id: "always", label: t("settings.display.cancelButtonAlways") },
+      { value: "hover", label: t("settings.display.cancelButtonHover") },
+      { value: "always", label: t("settings.display.cancelButtonAlways") },
     ],
     [t],
   );
@@ -1569,20 +1575,20 @@ export default function SettingsPage(): React.JSX.Element {
                 label={t("settings.recording.outputMode")}
                 desc={t("settings.recording.outputModeDesc")}
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   options={[
                     {
-                      id: "paste",
+                      value: "paste",
                       label: t("settings.recording.outputModePaste"),
                     },
                     {
-                      id: "clipboard",
+                      value: "clipboard",
                       label: t("settings.recording.outputModeClipboard"),
                     },
                   ]}
-                  active={outputMode}
-                  onSelect={handleOutputModeChange}
+                  value={outputMode}
+                  onValueChange={handleOutputModeChange}
                 />
               </Row>
 
@@ -1608,17 +1614,17 @@ export default function SettingsPage(): React.JSX.Element {
                 <Row
                   label="Background audio"
                   desc={
-                    isLinux
+                    IS_LINUX
                       ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
                       : "Duck lowers volume. Pause pauses current media and lowers volume."
                   }
                   last
                 >
-                  <Segment
-                    compact
+                  <SegmentedControl
+                    size="sm"
                     options={audioPlaybackOptions}
-                    active={audioPlaybackMode}
-                    onSelect={handleAudioPlaybackModeChange}
+                    value={audioPlaybackMode}
+                    onValueChange={handleAudioPlaybackModeChange}
                   />
                 </Row>
               ) : null}
@@ -1705,28 +1711,28 @@ export default function SettingsPage(): React.JSX.Element {
                 label={t("settings.display.theme")}
                 desc={t("settings.display.themeDesc")}
               >
-                <Segment
+                <SegmentedControl
                   options={themeOptions.map((o) => ({
-                    id: o.value,
+                    value: o.value,
                     label: t(
                       `settings.display.theme${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`,
                     ),
                     icon: o.icon,
                   }))}
-                  active={theme ?? "system"}
-                  onSelect={handleThemeChange}
+                  value={theme ?? "system"}
+                  onValueChange={handleThemeChange}
                 />
               </Row>
               <Row
                 label={t("settings.display.widgetPosition")}
                 desc={t("settings.display.widgetPositionDesc")}
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   wrap
                   options={positionOptions}
-                  active={pillPosition}
-                  onSelect={handlePillPositionChange}
+                  value={pillPosition}
+                  onValueChange={handlePillPositionChange}
                 />
               </Row>
               <Row
@@ -1734,11 +1740,11 @@ export default function SettingsPage(): React.JSX.Element {
                 desc={t("settings.display.cancelButtonDesc")}
                 last
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   options={cancelButtonOptions}
-                  active={pillCancel}
-                  onSelect={handlePillCancelChange}
+                  value={pillCancel}
+                  onValueChange={handlePillCancelChange}
                 />
               </Row>
             </SettingsPanel>
@@ -1772,7 +1778,7 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.permissions.accessibility")}
                 desc={
-                  isMac
+                  IS_MAC
                     ? t("settings.permissions.accessibilityDescMac")
                     : t("settings.permissions.accessibilityDescOther")
                 }
@@ -1784,15 +1790,15 @@ export default function SettingsPage(): React.JSX.Element {
                   actionLabel={
                     accessibilityStatus === true
                       ? null
-                      : isMac
+                      : IS_MAC
                         ? t("common.openSettings")
                         : null
                   }
-                  external={isMac}
+                  external={IS_MAC}
                   onAction={openAccessibility}
-                  onManage={isMac ? openAccessibility : undefined}
+                  onManage={IS_MAC ? openAccessibility : undefined}
                   note={
-                    !isMac && accessibilityStatus !== true
+                    !IS_MAC && accessibilityStatus !== true
                       ? t("settings.permissions.autoGranted")
                       : undefined
                   }
@@ -2721,40 +2727,6 @@ function ServerConnection(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 // Reusable controls
 // ---------------------------------------------------------------------------
-
-type SegmentOption = {
-  id: string;
-  label: string;
-  icon?: typeof Mic;
-};
-
-function Segment({
-  options,
-  active,
-  onSelect,
-  compact,
-  wrap,
-}: {
-  options: readonly SegmentOption[];
-  active: string;
-  onSelect: (id: string) => void;
-  compact?: boolean;
-  wrap?: boolean;
-}) {
-  return (
-    <SegmentedControl
-      options={options.map((o) => ({
-        value: o.id,
-        label: o.label,
-        icon: o.icon,
-      }))}
-      value={active}
-      onValueChange={onSelect}
-      size={compact ? "sm" : "default"}
-      wrap={wrap}
-    />
-  );
-}
 
 function PermissionControl({
   granted,
