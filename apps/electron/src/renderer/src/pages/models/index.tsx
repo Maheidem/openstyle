@@ -84,29 +84,6 @@ export default function ModelsPage(): React.JSX.Element {
     setSaving(false);
   };
 
-  const configureVoice = (
-    model: AvailableModel,
-    { closeAfter = false }: { closeAfter?: boolean } = {},
-  ): void => {
-    const needsKey =
-      model.provider_id !== "local-llm" &&
-      !m.keyProviders.has(model.provider_id);
-    if (needsKey) {
-      setKeyError(null);
-      setModal({
-        kind: "key",
-        type: "voice",
-        provider: model.provider_id,
-        modelName: model.model_name,
-        pendingModel: model,
-      });
-      return;
-    }
-    void m.configureModel(model, "voice").then(() => {
-      if (closeAfter) closeModal();
-    });
-  };
-
   const openVoice = (): void => setModal({ kind: "list", type: "voice" });
 
   const openLlm = (): void => {
@@ -128,11 +105,6 @@ export default function ModelsPage(): React.JSX.Element {
   const onPickCloud = (model: AvailableModel): void => {
     if (modal?.kind !== "list") return;
     const type = modal.type;
-
-    if (type === "voice") {
-      configureVoice(model, { closeAfter: true });
-      return;
-    }
 
     const needsKey =
       model.provider_id !== "local-llm" &&
