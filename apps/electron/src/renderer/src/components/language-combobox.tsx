@@ -1,13 +1,12 @@
 /**
  * Searchable transcription-language picker.
  *
- * Sources its options from the cloud `suggestedLanguages` (the full
- * Soniox-supported set, pre-sorted for the user's region) and falls back to the
- * small bundled list when offline / signed out. Two presentations share the same
- * searchable list body:
+ * The options come from the bundled local list. The exports are:
  *
- *   - {@link LanguageCombobox} — a Select-like trigger + popover, for settings.
- *   - {@link LanguagePickerDialog} — a modal "See all" list, for onboarding.
+ *   - {@link useLanguageOptions} - the ordered option list, with "auto" first.
+ *   - {@link LanguageList} - the searchable list body shared by all pickers.
+ *   - {@link LanguageMultiPickerDialog} - a modal "See all" list, for onboarding.
+ *   - {@link LanguageMultiSelect} - a multi-select trigger + popover, for settings.
  */
 
 import {

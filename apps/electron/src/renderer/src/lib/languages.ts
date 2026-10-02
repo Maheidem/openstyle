@@ -1,4 +1,4 @@
-export interface LanguageOption {
+interface LanguageOption {
   id: string;
   label: string;
   nativeLabel: string;
@@ -28,7 +28,7 @@ export const LANGUAGES: LanguageOption[] = [
   { id: "uk", label: "Ukrainian", nativeLabel: "Українська" },
 ];
 
-export const ONBOARDING_LANGUAGES: LanguageOption[] = LANGUAGES.filter(
+const ONBOARDING_LANGUAGES: LanguageOption[] = LANGUAGES.filter(
   (l) => l.onboarding,
 );
 
