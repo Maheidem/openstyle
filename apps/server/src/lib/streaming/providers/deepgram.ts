@@ -1,10 +1,8 @@
+import { Buffer } from "node:buffer";
 import WebSocket from "ws";
 import { createPendingAudio } from "../pending-audio.js";
 import { mergeFinalSegment, previewText } from "../segments.js";
-import {
-  appendDeepgramBiasToParams,
-  transcribeDeepgramListen,
-} from "../transcribe-bias.js";
+import { appendDeepgramBiasToParams } from "../transcribe-bias.js";
 import type {
   StreamingSessionOptions,
   StreamSession,
@@ -12,7 +10,7 @@ import type {
   TranscribeResult,
   TranscriptionProvider,
 } from "../types.js";
-import { stripProviderPrefix } from "../types.js";
+import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "../types.js";
 
 const DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen";
 const COMMIT_TIMEOUT_MS = 12_000;
@@ -20,16 +18,58 @@ const COMMIT_TIMEOUT_MS = 12_000;
 // KeepAlive holds the connection open between recordings.
 const KEEPALIVE_INTERVAL_MS = 5_000;
 
+/** Pre-recorded Deepgram /v1/listen (client sends WAV from the electron app). */
+async function transcribeDeepgramListen(
+  opts: TranscribeOptions,
+): Promise<TranscribeResult> {
+  const short = stripProviderPrefix(opts.model);
+  const params = new URLSearchParams({
+    model: short,
+    punctuate: "true",
+    smart_format: "true",
+  });
+  params.set("language", opts.language ?? "multi");
+
+  appendDeepgramBiasToParams(params, opts.bias);
+
+  const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${opts.apiKey}`,
+      "Content-Type": "audio/wav",
+    },
+    body: Buffer.from(opts.audio),
+    signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(detail || `Deepgram transcription failed (${res.status})`);
+  }
+
+  const data = (await res.json()) as {
+    results?: {
+      channels?: Array<{
+        alternatives?: Array<{ transcript?: string }>;
+      }>;
+    };
+    metadata?: { duration?: number };
+  };
+
+  const text =
+    data.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? "";
+
+  return {
+    text,
+    durationInSeconds: data.metadata?.duration,
+  };
+}
+
 export class DeepgramTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "deepgram";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    const bias =
-      opts.bias?.kind === "deepgram-keyterms" ||
-      opts.bias?.kind === "deepgram-keywords"
-        ? opts.bias
-        : null;
-    return transcribeDeepgramListen(opts, bias);
+    return transcribeDeepgramListen(opts);
   }
 
   supportsStreaming(_modelId: string): boolean {

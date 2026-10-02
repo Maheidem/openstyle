@@ -1,12 +1,10 @@
 import { Buffer } from "node:buffer";
 import { createElevenLabs } from "@ai-sdk/elevenlabs";
 import WebSocket from "ws";
+import type { AsrVocabularyBias } from "../../vocabulary-bias.js";
 import { createPendingAudio } from "../pending-audio.js";
 import { mergeFinalSegment } from "../segments.js";
-import {
-  appendElevenLabsBiasToParams,
-  transcribeElevenLabsWithBias,
-} from "../transcribe-bias.js";
+import { appendElevenLabsBiasToParams } from "../transcribe-bias.js";
 import type {
   StreamingSessionOptions,
   StreamSession,
@@ -14,7 +12,7 @@ import type {
   TranscribeResult,
   TranscriptionProvider,
 } from "../types.js";
-import { stripProviderPrefix } from "../types.js";
+import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "../types.js";
 import { transcribeWithAiSdk } from "../utils.js";
 
 const ELEVENLABS_STT_URL = "wss://api.elevenlabs.io/v1/speech-to-text/realtime";
@@ -71,6 +69,43 @@ const SEGMENT_OVERLAP_DEDUP_WORDS = 5;
 
 /** Errors that mean the session cannot recover; always surface these. */
 const TERMINAL_ERRORS = new Set(["auth_error", "quota_exceeded"]);
+
+async function transcribeElevenLabsWithBias(
+  opts: TranscribeOptions,
+  bias: Extract<AsrVocabularyBias, { kind: "elevenlabs-keyterms" }>,
+): Promise<TranscribeResult> {
+  const short = stripProviderPrefix(opts.model);
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([Buffer.from(opts.audio)], { type: "application/octet-stream" }),
+    "audio.wav",
+  );
+  form.append("model_id", short);
+  for (const term of bias.terms) {
+    form.append("keyterms", term);
+  }
+  if (opts.language) {
+    form.append("language_code", opts.language);
+  }
+
+  const res = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+    method: "POST",
+    headers: { "xi-api-key": opts.apiKey },
+    body: form,
+    signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      detail || `ElevenLabs transcription failed (${res.status})`,
+    );
+  }
+
+  const data = (await res.json()) as { text?: string };
+  return { text: data.text?.trim() ?? "" };
+}
 
 export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "elevenlabs";
