@@ -497,6 +497,17 @@ const api = {
     return () =>
       ipcRenderer.removeListener("settings:output-mode-changed", handler);
   },
+  // Sound setting
+  sendSoundEnabledChanged: (enabled: boolean): void =>
+    ipcRenderer.send("settings:sound-enabled-changed", enabled),
+  onSoundEnabledChanged: (
+    callback: (enabled: boolean) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, enabled: boolean): void => callback(enabled);
+    ipcRenderer.on("settings:sound-enabled-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:sound-enabled-changed", handler);
+  },
   // Pill cancel button
   sendPillCancelModeChanged: (mode: PillCancelMode): void =>
     ipcRenderer.send("settings:pill-cancel-mode-changed", mode),

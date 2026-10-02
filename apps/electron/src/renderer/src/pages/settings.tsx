@@ -858,6 +858,7 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);
+    window.api?.sendSoundEnabledChanged(enabled);
     getClient()
       .api.settings[":key"].$put({
         param: { key: SETTINGS_KEYS.soundEnabled },

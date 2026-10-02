@@ -2509,6 +2509,14 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send("settings:output-mode-changed", mode);
   });
 
+  // IPC: broadcast the sound setting to the pill window
+  ipcMain.on("settings:sound-enabled-changed", (_event, enabled: unknown) => {
+    mainWindow?.webContents.send(
+      "settings:sound-enabled-changed",
+      enabled === true,
+    );
+  });
+
   ipcMain.on("settings:pill-cancel-mode-changed", (_event, mode: unknown) => {
     mainWindow?.webContents.send(
       "settings:pill-cancel-mode-changed",
