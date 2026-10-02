@@ -43,28 +43,15 @@ export interface WhisperModelDownloadState {
 }
 
 export interface WhisperStatus {
-  archSupported?: boolean;
-  archUnsupportedReason?: string | null;
-  binaryAvailable: boolean;
   binaryDownloading: boolean;
-  serverBinaryAvailable: boolean;
-  serverRunning: boolean;
-  serverFailed: boolean;
-  modelsDir: string;
   models: WhisperModelDownloadState[];
   modelDefinitions: WhisperModelDef[];
 }
 
 export interface MlxAsrStatus {
   platformSupported: boolean;
-  pythonAvailable: boolean;
-  pythonPath: string | null;
-  workerPath: string | null;
-  mlxAudioInstalled: boolean;
   canRun: boolean;
   blockedReason: string | null;
-  serverRunning: boolean;
-  serverFailed: boolean;
   keepAliveMinutes: number;
   runtime?: {
     available: boolean;

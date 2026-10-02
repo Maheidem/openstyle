@@ -3,17 +3,7 @@ import { serverStartSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
-import {
-  isBinaryAvailable,
-  isServerBinaryAvailable,
-} from "../lib/whisper/binary.js";
-
-import {
-  getModelsDir,
-  isSupportedWhisperArch,
-  unsupportedArchMessage,
-  WHISPER_PROVIDER_ID,
-} from "../lib/whisper/constants.js";
+import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import {
   cancelDownload,
   clearDownloadError,
@@ -24,25 +14,12 @@ import {
   getModelStatus,
   isBinaryDownloading,
 } from "../lib/whisper/models.js";
-import {
-  isServerFailed,
-  isServerRunning,
-  startInBackground,
-} from "../lib/whisper/server.js";
+import { startInBackground } from "../lib/whisper/server.js";
 
 const whisper = new Hono()
   .get("/status", (c) => {
     return c.json({
-      archSupported: isSupportedWhisperArch(),
-      archUnsupportedReason: isSupportedWhisperArch()
-        ? null
-        : unsupportedArchMessage(),
-      binaryAvailable: isBinaryAvailable(),
       binaryDownloading: isBinaryDownloading(),
-      serverBinaryAvailable: isServerBinaryAvailable(),
-      serverRunning: isServerRunning(),
-      serverFailed: isServerFailed(),
-      modelsDir: getModelsDir(),
       models: getAllModelStatuses(),
       modelDefinitions: getCatalogModels().map((m) => ({
         id: m.id,

@@ -26,7 +26,6 @@ let startPromise: Promise<void> | null = null;
 let autoRestart = false;
 let restartCount = 0;
 let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
-let serverFailed = false;
 let activePort = WHISPER_SERVER_PORT;
 let activeUses = 0;
 let unloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -45,10 +44,6 @@ process.once("exit", stopServerOnExit);
 
 export function isServerRunning(): boolean {
   return serverProcess !== null && serverReady;
-}
-
-export function isServerFailed(): boolean {
-  return serverFailed;
 }
 
 export function getServerPort(): number {
@@ -122,7 +117,6 @@ export function startInBackground(modelId: string): void {
   if (serverProcess && currentModelId === modelId && serverReady) return;
   if (startPromise && currentModelId === modelId) return;
 
-  serverFailed = false;
   restartCount = 0;
   autoRestart = true;
 
@@ -135,31 +129,22 @@ export function startInBackground(modelId: string): void {
     });
 }
 
-function isPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.unref();
-    probe.once("error", () => resolve(false));
-    probe.listen({ port, host: "127.0.0.1" }, () => {
-      probe.close(() => resolve(true));
+// Probe the preferred port. If another process holds it, take a free port.
+// The probe closes before this returns, so the server can bind the port.
+function reservePort(preferred: number): Promise<number> {
+  const listen = (port: number) =>
+    new Promise<number>((resolve, reject) => {
+      const probe = createServer();
+      probe.unref();
+      probe.once("error", reject);
+      probe.listen({ port, host: "127.0.0.1" }, () => {
+        const address = probe.address();
+        const bound =
+          typeof address === "object" && address ? address.port : preferred;
+        probe.close(() => resolve(bound));
+      });
     });
-  });
-}
-
-function findFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.unref();
-    probe.once("error", reject);
-    probe.listen({ port: 0, host: "127.0.0.1" }, () => {
-      const address = probe.address();
-      const port =
-        typeof address === "object" && address
-          ? address.port
-          : WHISPER_SERVER_PORT;
-      probe.close(() => resolve(port));
-    });
-  });
+  return listen(preferred).catch(() => listen(0));
 }
 
 export async function ensureServerRunning(modelId: string): Promise<void> {
@@ -173,7 +158,6 @@ export async function ensureServerRunning(modelId: string): Promise<void> {
 
   await stopServer();
   autoRestart = true;
-  serverFailed = false;
 
   const promise = doStart(modelId);
   startPromise = promise;
@@ -200,10 +184,8 @@ async function doStart(modelId: string): Promise<void> {
   currentModelId = modelId;
   serverReady = false;
 
-  if (await isPortFree(WHISPER_SERVER_PORT)) {
-    activePort = WHISPER_SERVER_PORT;
-  } else {
-    activePort = await findFreePort();
+  activePort = await reservePort(WHISPER_SERVER_PORT);
+  if (activePort !== WHISPER_SERVER_PORT) {
     log.warn(
       `Port ${WHISPER_SERVER_PORT} is in use by another process, using ${activePort}`,
     );
@@ -327,7 +309,6 @@ function scheduleRestart(modelId: string): void {
   restartCount++;
   if (restartCount > MAX_RESTARTS) {
     log.error(`Server crashed ${MAX_RESTARTS} times, not restarting`);
-    serverFailed = true;
     autoRestart = false;
     currentModelId = null;
     return;

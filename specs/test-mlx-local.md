@@ -47,7 +47,7 @@ Optional status check (port is in Electron logs):
 curl "http://127.0.0.1:<PORT>/api/mlx-asr/status?refresh=1"
 ```
 
-Expect `canRun: true` and `mlxAudioInstalled: true` when the Python path is working.
+Expect `canRun: true` when the Python path is working.
 
 ## Test on-demand worker download (like production)
 
