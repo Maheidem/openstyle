@@ -1,7 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import { REMIX_PRESETS, type RemixPreset } from "@openstyle/validations";
 import { AgentActivity } from "@renderer/components/agents/agent-activity";
-import type { AgentActivityItem } from "@renderer/components/agents/agent-activity/types";
+import type { AgentActivityStep } from "@renderer/components/agents/agent-activity/types";
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
@@ -47,12 +47,6 @@ const INK_FAINT = "rgba(245, 241, 228, 0.52)";
 // (not theme-aware, see INK above), so it uses the literal dark-mode value
 // (#5B8DEF) rather than a CSS var.
 const ACCENT = "#5B8DEF";
-
-export {
-  REMIX_CHAT_STRIP,
-  REMIX_CHAT_SURFACE,
-  type RemixChatAnchor,
-} from "./remix-chat-surface";
 
 function anchoredLayerStyle(
   anchor: RemixChatAnchor,
@@ -112,11 +106,7 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
           if (!cancelled) setThread(data as ThreadState);
           return;
         }
-        const created = await apiFetch("/api/remix/thread/new", {
-          method: "POST",
-        });
-        if (!created.ok) throw new Error(`thread new ${created.status}`);
-        const fresh = (await created.json()) as ThreadState;
+        const fresh = await createThread();
         if (!cancelled) setThread(fresh);
       })
       .catch(() => {
@@ -143,11 +133,8 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
     setInitialInstruction(null);
     setThread(null);
     setLoadFailed(false);
-    apiFetch("/api/remix/thread/new", { method: "POST" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`thread new ${res.status}`);
-        setThread((await res.json()) as ThreadState);
-      })
+    createThread()
+      .then(setThread)
       .catch(() => setLoadFailed(true));
   }, []);
 
@@ -257,8 +244,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     contextRef.current = props.context;
     setLiveContext(props.context);
   }, [props.context]);
-  const lastInstructionRef = useRef<string>("");
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const transport = useMemo(
@@ -269,10 +254,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         fetch: (async (_input: unknown, init?: RequestInit) => {
           const res = await apiFetch("/api/remix/agent", init ?? {});
           if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as {
-              detail?: string;
-            } | null;
-            throw new Error(body?.detail || `Remix failed (${res.status}).`);
+            throw await errorFromResponse(res);
           }
           return res;
         }) as typeof fetch,
@@ -424,10 +406,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         (message) =>
           message.role === "assistant" &&
           message.parts.some(
-            (part) =>
-              isToolOrDynamicToolUIPart(part) &&
-              part.state !== "output-available" &&
-              part.state !== "output-error",
+            (part) => isToolOrDynamicToolUIPart(part) && !isToolFinished(part),
           ),
       ),
     [messages],
@@ -459,32 +438,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     const instruction = props.initialInstruction?.trim();
     if (!instruction) return;
     sentInitialRef.current = true;
-    lastInstructionRef.current = instruction;
     void sendMessage({ text: instruction });
   }, [props.initialInstruction, sendMessage]);
-
-  // Seed from restored thread so reloaded history never recounts tools.
-  const seenToolCallsRef = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    let seen = seenToolCallsRef.current;
-    if (!seen) {
-      seen = new Set<string>();
-      for (const message of thread.messages) {
-        for (const part of message.parts) {
-          if (isToolOrDynamicToolUIPart(part)) seen.add(part.toolCallId);
-        }
-      }
-      seenToolCallsRef.current = seen;
-    }
-    for (const message of messages) {
-      if (message.role !== "assistant") continue;
-      for (const part of message.parts) {
-        if (!isToolOrDynamicToolUIPart(part)) continue;
-        if (seen.has(part.toolCallId)) continue;
-        seen.add(part.toolCallId);
-      }
-    }
-  }, [messages, thread.messages]);
 
   // Document-level mouseout: element leave is lost when rows reflow under the
   // cursor. Grace timer distinguishes leave from edge graze; a draft pins open.
@@ -616,7 +571,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     (text: string) => {
       setNotice(null);
       clearError();
-      lastInstructionRef.current = text;
       void sendMessage({ text });
     },
     [clearError, sendMessage],
@@ -655,10 +609,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          detail?: string;
-        } | null;
-        throw new Error(body?.detail || `Remix failed (${res.status}).`);
+        throw await errorFromResponse(res);
       }
       const data = (await res.json()) as { text?: string };
       const edited = (data.text ?? "").trim();
@@ -802,7 +753,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
           <MessageScroller
             className="remix-chat-scroll"
-            viewportRef={scrollRef}
             busy={busy}
             label="Remix conversation"
             contentClassName="remix-chat-thread"
@@ -929,6 +879,23 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   );
 }
 
+async function errorFromResponse(res: Response): Promise<Error> {
+  const body = (await res.json().catch(() => null)) as {
+    detail?: string;
+  } | null;
+  return new Error(body?.detail || `Remix failed (${res.status}).`);
+}
+
+async function createThread(): Promise<ThreadState> {
+  const res = await apiFetch("/api/remix/thread/new", { method: "POST" });
+  if (!res.ok) throw new Error(`thread new ${res.status}`);
+  return (await res.json()) as ThreadState;
+}
+
+function isToolFinished(part: ToolUIPart | DynamicToolUIPart): boolean {
+  return part.state === "output-available" || part.state === "output-error";
+}
+
 const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
   get_context: {
     doing: "Looking at your screen…",
@@ -968,6 +935,12 @@ const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
   image_search: { doing: "Searching images…", done: "Searched images" },
 };
 
+function toolLabels(name: string): { doing: string; done: string } {
+  return (
+    TOOL_LABELS[name] ?? { doing: `Running ${name}…`, done: `Ran ${name}` }
+  );
+}
+
 function latestActivity(messages: UIMessage[], busy: boolean): string {
   for (let m = messages.length - 1; m >= 0; m--) {
     const message = messages[m];
@@ -975,13 +948,8 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
       const part = message.parts[i];
       if (isToolOrDynamicToolUIPart(part)) {
         const name = getToolOrDynamicToolName(part);
-        const labels = TOOL_LABELS[name] ?? {
-          doing: `Running ${name}…`,
-          done: `Ran ${name}`,
-        };
-        const finished =
-          part.state === "output-available" || part.state === "output-error";
-        return finished && !busy ? labels.done : labels.doing;
+        const labels = toolLabels(name);
+        return isToolFinished(part) && !busy ? labels.done : labels.doing;
       }
       if (isTextUIPart(part) && part.text.trim()) {
         const line = part.text.trim().split("\n")[0] ?? "";
@@ -1066,8 +1034,7 @@ function ToolStepLabel({
   label: string;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const finished =
-    part.state === "output-available" || part.state === "output-error";
+  const finished = isToolFinished(part);
   return (
     <span className="remix-chat-step">
       <button
@@ -1123,14 +1090,10 @@ function ToolActivity({
   parts: Array<ToolUIPart | DynamicToolUIPart>;
   busy: boolean;
 }): React.JSX.Element {
-  const items: AgentActivityItem[] = parts.map((part) => {
+  const items: AgentActivityStep[] = parts.map((part) => {
     const name = getToolOrDynamicToolName(part);
-    const labels = TOOL_LABELS[name] ?? {
-      doing: `Running ${name}…`,
-      done: `Ran ${name}`,
-    };
-    const finished =
-      part.state === "output-available" || part.state === "output-error";
+    const labels = toolLabels(name);
+    const finished = isToolFinished(part);
     const output =
       part.state === "output-available" &&
       typeof part.output === "object" &&
@@ -1152,23 +1115,18 @@ function ToolActivity({
     };
   });
 
-  const inFlight = parts.find(
-    (part) =>
-      part.state !== "output-available" && part.state !== "output-error",
-  );
+  const inFlight = parts.find((part) => !isToolFinished(part));
 
   // Override step summary ("Thought for Ns") — these are document tools.
   const summary = `Ran ${parts.length} ${parts.length === 1 ? "tool" : "tools"}`;
   const activeLabel = inFlight
-    ? (TOOL_LABELS[getToolOrDynamicToolName(inFlight)]?.doing ??
-      `Running ${getToolOrDynamicToolName(inFlight)}…`)
+    ? toolLabels(getToolOrDynamicToolName(inFlight)).doing
     : undefined;
 
   return (
     <AgentActivity
       className="remix-chat-activity"
       items={items}
-      contentType="step"
       maxHeight={280}
       summary={summary}
       activeLabel={activeLabel}

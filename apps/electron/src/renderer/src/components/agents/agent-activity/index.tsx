@@ -6,121 +6,13 @@ import { EASE_OUT, SPRING_LAYOUT, SPRING_SWAP } from "@renderer/lib/ease";
 import { cn } from "@renderer/lib/utils";
 import { ChevronDown } from "lucide-react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import { ActivityRow } from "./activity-row";
-import type {
-  AgentActivityContentType,
-  AgentActivityItem,
-  AgentActivityProps,
-} from "./types";
-
-export type {
-  AgentActivityContentType,
-  AgentActivityItem,
-  AgentActivityProps,
-  AgentActivitySearch,
-  AgentActivityStatus,
-  AgentActivityStep,
-  AgentActivityText,
-  AgentActivityTool,
-  AgentActivityTrace,
-  AgentSearchResult,
-  AgentStepStatus,
-  AgentTraceKind,
-} from "./types";
-
-function formatDuration(duration: number) {
-  const seconds = Math.max(0, Math.round(duration));
-  if (seconds < 60) return `${seconds}s`;
-
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
-}
-
-function useControllableOpen({
-  open,
-  defaultOpen,
-  onOpenChange,
-}: {
-  open?: boolean;
-  defaultOpen: boolean;
-  onOpenChange?: (open: boolean) => void;
-}) {
-  const [internalOpen, setInternalOpen] = useState(defaultOpen);
-  const controlled = open !== undefined;
-  const currentOpen = open ?? internalOpen;
-
-  const setOpen = useCallback(
-    (next: boolean) => {
-      if (!controlled) setInternalOpen(next);
-      onOpenChange?.(next);
-    },
-    [controlled, onOpenChange],
-  );
-
-  return [currentOpen, setOpen] as const;
-}
-
-function getContentType(items: AgentActivityItem[]): AgentActivityContentType {
-  const first = items[0]?.type;
-  return first && items.every((item) => item.type === first) ? first : "mixed";
-}
-
-function getActiveLabel(type: AgentActivityContentType) {
-  if (type === "search") return "Searching the web…";
-  if (type === "tool") return "Running tools…";
-  if (type === "trace") return "Working through the run…";
-  if (type === "mixed") return "Working through it…";
-  return "Thinking…";
-}
-
-function getSummary(
-  type: AgentActivityContentType,
-  items: AgentActivityItem[],
-  duration: number,
-): ReactNode {
-  if (type === "step" || type === "text") {
-    return (
-      <>
-        Thought for{" "}
-        <span className="tabular-nums">{formatDuration(duration)}</span>
-      </>
-    );
-  }
-  if (type === "search") return "Searched the web";
-  if (type === "tool") {
-    return `Ran ${items.length} ${items.length === 1 ? "tool" : "tools"}`;
-  }
-  if (type === "trace") {
-    const messages = items.filter(
-      (item) =>
-        item.type === "trace" &&
-        (item.kind === "thinking" || item.kind === "message"),
-    ).length;
-    const tools = items.length - messages;
-    return `${tools} ${tools === 1 ? "tool call" : "tool calls"}, ${messages} ${messages === 1 ? "message" : "messages"}`;
-  }
-  return `Completed ${items.length} ${items.length === 1 ? "step" : "steps"}`;
-}
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { StepRow } from "./activity-row";
+import type { AgentActivityProps } from "./types";
 
 export function AgentActivity({
   items,
-  contentType: initialContentType,
   status = "working",
-  duration = 0,
-  open,
-  defaultOpen = false,
-  onOpenChange,
-  collapseOnComplete = true,
   activeLabel,
   summary,
   maxHeight = 208,
@@ -135,16 +27,9 @@ export function AgentActivity({
   const viewportRef = useRef<HTMLDivElement>(null);
   const previousStatus = useRef(status);
   const [contentHeight, setContentHeight] = useState(0);
-  const [currentOpen, setOpen] = useControllableOpen({
-    open,
-    defaultOpen,
-    onOpenChange,
-  });
+  const [currentOpen, setOpen] = useState(false);
   const working = status === "working";
   const expanded = working || currentOpen;
-  const contentType = items.length
-    ? getContentType(items)
-    : (initialContentType ?? "mixed");
   const cappedHeight = Math.min(contentHeight, Math.max(0, maxHeight));
   const viewportHeight = working ? Math.max(0, maxHeight) : cappedHeight;
   const capped = contentHeight > maxHeight;
@@ -167,10 +52,10 @@ export function AgentActivity({
 
   useEffect(() => {
     if (previousStatus.current === "working" && status === "complete") {
-      setOpen(!collapseOnComplete);
+      setOpen(false);
     }
     previousStatus.current = status;
-  }, [collapseOnComplete, setOpen, status]);
+  }, [status]);
 
   const toggle = () => {
     const next = !currentOpen;
@@ -179,8 +64,6 @@ export function AgentActivity({
       requestAnimationFrame(() => viewportRef.current?.scrollTo({ top: 0 }));
   };
 
-  const liveLabel = activeLabel ?? getActiveLabel(contentType);
-  const completedSummary = summary ?? getSummary(contentType, items, duration);
   const maskImage = capped
     ? working
       ? "linear-gradient(to bottom, transparent, black 12px)"
@@ -190,7 +73,6 @@ export function AgentActivity({
   return (
     <div
       data-state={working ? "working" : expanded ? "open" : "closed"}
-      data-content={contentType}
       aria-busy={working}
       className={cn("w-full text-sm", className)}
     >
@@ -200,7 +82,7 @@ export function AgentActivity({
           role="status"
           className="flex h-7 min-w-0 items-center text-muted-foreground"
         >
-          <ThinkingShimmer>{liveLabel}</ThinkingShimmer>
+          <ThinkingShimmer>{activeLabel ?? "Thinking…"}</ThinkingShimmer>
         </div>
       ) : (
         <button
@@ -211,7 +93,7 @@ export function AgentActivity({
           onClick={toggle}
           className="group flex h-7 min-w-0 items-center gap-1.5 rounded-md text-left font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          <span className="truncate">{completedSummary}</span>
+          <span className="truncate">{summary}</span>
           <m.span
             aria-hidden="true"
             animate={{ rotate: expanded ? 180 : 0 }}
@@ -271,7 +153,7 @@ export function AgentActivity({
                         }
                   }
                 >
-                  <ActivityRow item={item} />
+                  <StepRow item={item} />
                 </m.div>
               ))}
             </AnimatePresence>
