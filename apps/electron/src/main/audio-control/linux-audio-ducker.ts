@@ -133,10 +133,6 @@ export class LinuxVolumeDucker implements VolumeDucker {
   private snapshot: SinkVolumeSnapshot | null = null;
   private active = false;
 
-  isActive(): boolean {
-    return this.active;
-  }
-
   async duck(): Promise<boolean> {
     if (process.platform !== "linux") return false;
     if (this.active) return true;

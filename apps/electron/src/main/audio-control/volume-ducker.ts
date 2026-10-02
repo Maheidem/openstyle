@@ -4,15 +4,24 @@ import { createAppLogger } from "@openstyle/utils";
 import { app } from "electron";
 import type { VolumeDucker } from "./interfaces/volume-ducker.interface";
 import { LinuxVolumeDucker } from "./linux-audio-ducker";
-import { MacosVolumeDucker } from "./macos-audio-ducker";
-import { WindowsVolumeDucker } from "./windows-audio-ducker";
+import {
+  isNumberDeviceId,
+  isStringDeviceId,
+  NativeVolumeDucker,
+} from "./native-volume-ducker";
 
 const log = createAppLogger("volume-ducker");
 
 const duckers: Partial<Record<NodeJS.Platform, VolumeDucker>> = {
-  darwin: new MacosVolumeDucker(),
+  darwin: new NativeVolumeDucker({
+    binaryName: "macos-output-volume",
+    isDeviceId: isNumberDeviceId,
+  }),
   linux: new LinuxVolumeDucker(),
-  win32: new WindowsVolumeDucker(),
+  win32: new NativeVolumeDucker({
+    binaryName: "windows-output-volume",
+    isDeviceId: isStringDeviceId,
+  }),
 };
 
 function currentDucker(): VolumeDucker | null {

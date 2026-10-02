@@ -21,33 +21,53 @@ function execFileTextSync(path: string, args: string[]): string {
   return execFileSync(path, args, { encoding: "utf8" }).trim();
 }
 
-function parseSnapshot(stdout: string): DeviceVolumeSnapshot<number> {
-  const data = JSON.parse(stdout) as {
-    deviceId?: unknown;
-    volume?: unknown;
-  };
-  if (typeof data.deviceId !== "number" || typeof data.volume !== "number") {
-    throw new Error("Invalid macOS output-volume response");
-  }
-  return { deviceId: data.deviceId, previousVolume: data.volume };
+interface NativeVolumeDuckerOptions<DeviceId extends string | number> {
+  /** Name of the native binary that gets and sets the output volume. */
+  binaryName: string;
+  /** Returns true when a value has the device id type of this platform. */
+  isDeviceId: (value: unknown) => value is DeviceId;
 }
 
-export class MacosVolumeDucker implements VolumeDucker {
-  private snapshot: DeviceVolumeSnapshot<number> | null = null;
-  private active = false;
+export const isNumberDeviceId = (value: unknown): value is number =>
+  typeof value === "number";
 
-  isActive(): boolean {
-    return this.active;
+export const isStringDeviceId = (value: unknown): value is string =>
+  typeof value === "string";
+
+/** Ducks the output volume with a native binary (macOS and Windows). */
+export class NativeVolumeDucker<DeviceId extends string | number>
+  implements VolumeDucker
+{
+  private snapshot: DeviceVolumeSnapshot<DeviceId> | null = null;
+  private active = false;
+  private readonly binaryName: string;
+  private readonly isDeviceId: (value: unknown) => value is DeviceId;
+
+  constructor(options: NativeVolumeDuckerOptions<DeviceId>) {
+    this.binaryName = options.binaryName;
+    this.isDeviceId = options.isDeviceId;
+  }
+
+  private parseSnapshot(stdout: string): DeviceVolumeSnapshot<DeviceId> {
+    const data = JSON.parse(stdout) as {
+      deviceId?: unknown;
+      volume?: unknown;
+    };
+    if (!this.isDeviceId(data.deviceId) || typeof data.volume !== "number") {
+      throw new Error(`Invalid ${this.binaryName} response`);
+    }
+    return { deviceId: data.deviceId, previousVolume: data.volume };
   }
 
   async duck(): Promise<boolean> {
-    if (process.platform !== "darwin") return false;
     if (this.active) return true;
 
-    const binaryPath = getNativeBinaryPath("macos-output-volume");
+    const binaryPath = getNativeBinaryPath(this.binaryName);
     if (!binaryPath) return false;
 
-    const snapshot = parseSnapshot(await execFileText(binaryPath, ["get"]));
+    const snapshot = this.parseSnapshot(
+      await execFileText(binaryPath, ["get"]),
+    );
     if (snapshot.previousVolume > DUCKED_VOLUME) {
       await execFileText(binaryPath, [
         "set",
@@ -62,7 +82,6 @@ export class MacosVolumeDucker implements VolumeDucker {
   }
 
   async restore(): Promise<void> {
-    if (process.platform !== "darwin") return;
     if (!this.active) return;
 
     const snapshot = this.snapshot;
@@ -71,9 +90,9 @@ export class MacosVolumeDucker implements VolumeDucker {
       return;
     }
 
-    const binaryPath = getNativeBinaryPath("macos-output-volume");
+    const binaryPath = getNativeBinaryPath(this.binaryName);
     if (!binaryPath) {
-      throw new Error("macos-output-volume binary is unavailable");
+      throw new Error(`${this.binaryName} binary is unavailable`);
     }
 
     try {
@@ -95,20 +114,19 @@ export class MacosVolumeDucker implements VolumeDucker {
   }
 
   async recoverFromSnapshot(raw: unknown): Promise<boolean> {
-    if (process.platform !== "darwin") return false;
-    const snapshot = raw as Partial<DeviceVolumeSnapshot<number>> | null;
+    const snapshot = raw as Partial<DeviceVolumeSnapshot<DeviceId>> | null;
     if (
       typeof snapshot?.previousVolume !== "number" ||
-      typeof snapshot.deviceId !== "number" ||
+      !this.isDeviceId(snapshot.deviceId) ||
       snapshot.previousVolume <= DUCKED_VOLUME
     ) {
       return false;
     }
 
-    const binaryPath = getNativeBinaryPath("macos-output-volume");
+    const binaryPath = getNativeBinaryPath(this.binaryName);
     if (!binaryPath) return false;
 
-    const current = parseSnapshot(await execFileText(binaryPath, ["get"]));
+    const current = this.parseSnapshot(await execFileText(binaryPath, ["get"]));
     if (current.previousVolume > DUCKED_VOLUME + 0.05) return false;
 
     try {
@@ -124,7 +142,6 @@ export class MacosVolumeDucker implements VolumeDucker {
   }
 
   restoreSync(): boolean {
-    if (process.platform !== "darwin") return true;
     if (!this.active) return true;
 
     const snapshot = this.snapshot;
@@ -133,7 +150,7 @@ export class MacosVolumeDucker implements VolumeDucker {
       return true;
     }
 
-    const binaryPath = getNativeBinaryPath("macos-output-volume");
+    const binaryPath = getNativeBinaryPath(this.binaryName);
     if (!binaryPath) return false;
 
     let restored = false;
