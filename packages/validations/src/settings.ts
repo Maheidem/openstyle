@@ -5,8 +5,6 @@ export const settingValueSchema = z.object({
   value: z.string(),
 });
 
-export type SettingValueInput = z.infer<typeof settingValueSchema>;
-
 /** Post-processing (AI cleanup) intensity levels. */
 export const cleanupIntensitySchema = z.enum([
   "low",
@@ -105,7 +103,7 @@ export const cleanupSamplingSchema = z.object({
 export type CleanupSampling = z.infer<typeof cleanupSamplingSchema>;
 
 /** No overrides — the request body stays exactly as the AI SDK built it. */
-export const DEFAULT_CLEANUP_SAMPLING: CleanupSampling = {};
+const DEFAULT_CLEANUP_SAMPLING: CleanupSampling = {};
 
 /**
  * Coerce an arbitrary persisted value into a valid {@link CleanupSampling},
@@ -455,8 +453,6 @@ export const historyPresetSchema = z.enum([
   "all-time",
   "custom",
 ]);
-
-export type HistoryPreset = z.infer<typeof historyPresetSchema>;
 
 /**
  * Persisted History-page filter + view state, stored as a single JSON blob in

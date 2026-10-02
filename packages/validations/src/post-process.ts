@@ -10,5 +10,3 @@ export const postProcessSchema = z.object({
   // Optional per-request language override; falls back to the saved setting.
   languages: languageListSchema.optional(),
 });
-
-export type PostProcessInput = z.infer<typeof postProcessSchema>;

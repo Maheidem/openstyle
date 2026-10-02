@@ -47,10 +47,6 @@ export interface LlmParameterPreset {
   updatedAt: string; // ISO
 }
 
-export interface LlmParameterPresetsSetting {
-  presets: LlmParameterPreset[];
-}
-
 // `id` is required to match `/^user_/` at the validation boundary — this is
 // what stops a client from writing a preset that collides with (or spoofs) a
 // `builtin:` id, since built-ins are never stored, only merged in at read
