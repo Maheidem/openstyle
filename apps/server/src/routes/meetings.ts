@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { zValidator } from "@hono/zod-validator";
+import { isVocabLeak } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -28,7 +29,6 @@ import {
 import { resolveMeetingLanguage } from "../lib/meetings/language.js";
 import {
   formatTranscriptMarkdown,
-  isVocabLeak,
   type MergedSegment,
   mergeTranscript,
   type SyncData,

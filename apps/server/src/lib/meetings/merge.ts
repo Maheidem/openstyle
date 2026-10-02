@@ -8,22 +8,9 @@
  *
  * No I/O and no dependencies of its own — deterministic on its inputs.
  * `normalizeText`/`textSimilarity`/`isVocabLeak` live in `@openstyle/stt`
- * (shared with the dictation leak filter, packages/stt/src/text.ts) and are
- * re-exported here so existing importers of this module don't need to change.
+ * (shared with the dictation leak filter, packages/stt/src/text.ts).
  */
-import {
-  isVocabLeak,
-  normalizeText,
-  textSimilarity,
-  VOCAB_LEAK_OVERLAP_THRESHOLD,
-} from "@openstyle/stt";
-
-export {
-  isVocabLeak,
-  normalizeText,
-  textSimilarity,
-  VOCAB_LEAK_OVERLAP_THRESHOLD,
-};
+import { isVocabLeak, normalizeText, textSimilarity } from "@openstyle/stt";
 
 export type Speaker = "Me" | "Them";
 

@@ -1,13 +1,12 @@
+import { isVocabLeak, textSimilarity } from "@openstyle/stt";
 import { describe, expect, it } from "vitest";
 import {
   filterConsecutiveRepeats,
   formatTranscriptMarkdown,
   isHallucination,
-  isVocabLeak,
   mergeTranscript,
   type SyncData,
   type TranscriptSegment,
-  textSimilarity,
 } from "../src/lib/meetings/merge.js";
 
 function seg(
