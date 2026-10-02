@@ -55,10 +55,7 @@ export function readMeetingLanguage(meetingId: string): string | undefined {
 }
 
 /** Persist the resolved (or user-set) language for a meeting. */
-export function persistMeetingLanguage(
-  meetingId: string,
-  language: string,
-): void {
+function persistMeetingLanguage(meetingId: string, language: string): void {
   getDb()
     .prepare("UPDATE meetings SET language = ? WHERE id = ?")
     .run(language, meetingId);

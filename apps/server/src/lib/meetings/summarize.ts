@@ -120,10 +120,10 @@ export function plannedSummarizeCalls(
  * Job-level ceiling for one Summarize run (§5.8), derived in the open:
  *
  *   plannedCalls = min(N + 1, MAX_SUMMARIZE_CALLS)   // N map + 1 reduce; 1 single-pass
- *   deadline     = clamp(perCallMs x plannedCalls x slack,
+ *   deadline     = clamp(perCallMs x plannedCalls,
  *                        2 x perCallMs, 4 h)
  *
- * `slack` defaults to 1. The `2 x perCallMs` FLOOR exists so a single call
+ * The `2 x perCallMs` FLOOR exists so a single call
  * that merely *hits* its own timeout does not kill the job on first attempt —
  * same posture as `transcriber.ts:267`'s `maxAttempts ?? 3`. Worked example
  * with the shipped defaults (per-call 600 s):
@@ -140,10 +140,9 @@ export function plannedSummarizeCalls(
 export function summarizeJobDeadlineMs(
   perCallMs: number,
   plannedCalls: number,
-  slack = 1,
 ): number {
   const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
-  const raw = perCallMs * Math.max(1, plannedCalls) * slack;
+  const raw = perCallMs * Math.max(1, plannedCalls);
   return Math.min(Math.max(raw, 2 * perCallMs), FOUR_HOURS_MS);
 }
 
@@ -294,12 +293,6 @@ export interface SummarizeMeetingResult {
   costUsd: number | null;
 }
 
-/** Format one merged segment as a labeled transcript line. specs/meeting-
- * speaker-naming.md §9.1: prefer a confirmed `speakerName` (following any
- * merge) over the numbered fallback, same expression used at every other
- * resolution site (§4); a "Them" segment with no `speakerLabel` at all
- * renders "Unidentified" — never bare "Them", which would read as a real,
- * still-unnamed participant. */
 /**
  * Render a transcript the way every caller of this module measures and sends
  * it: blank-text segments dropped, one `Label: text` line per segment.
@@ -314,6 +307,12 @@ function renderTranscript(segments: readonly MergedSegment[]): string {
     .join("\n");
 }
 
+/** Format one merged segment as a labeled transcript line. specs/meeting-
+ * speaker-naming.md §9.1: prefer a confirmed `speakerName` (following any
+ * merge) over the numbered fallback, same expression used at every other
+ * resolution site (§4); a "Them" segment with no `speakerLabel` at all
+ * renders "Unidentified" — never bare "Them", which would read as a real,
+ * still-unnamed participant. */
 function formatSegment(segment: MergedSegment): string {
   const label =
     segment.speaker === "Them"
