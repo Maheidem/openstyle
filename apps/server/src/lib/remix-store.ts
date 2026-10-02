@@ -199,17 +199,6 @@ export function listRemixRuns(limit: number, offset: number): RemixRunRow[] {
     .all(limit, offset) as unknown as RemixRunRow[];
 }
 
-export function getRemixRun(id: number): RemixRunRow | null {
-  const row = getDb()
-    .prepare("SELECT * FROM remix_runs WHERE id = ?")
-    .get(id) as RemixRunRow | undefined;
-  return row ?? null;
-}
-
-export function deleteRemixRun(id: number): void {
-  getDb().prepare("DELETE FROM remix_runs WHERE id = ?").run(id);
-}
-
 export function purgeExpiredRemixData(retentionDays: number): number {
   const db = getDb();
   const cutoff = `-${retentionDays} days`;

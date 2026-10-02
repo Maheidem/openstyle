@@ -558,29 +558,6 @@ const models = new Hono()
 
     return c.json({ id: result.lastInsertRowid, ...body }, 201);
   })
-  .put("/configured/:id/default", (c) => {
-    const db = getDb();
-    const id = Number(c.req.param("id"));
-
-    const row = db
-      .prepare(
-        "SELECT type, provider, model_id FROM model_configs WHERE id = ?",
-      )
-      .get(id) as
-      | { type: string; provider: string; model_id: string }
-      | undefined;
-    if (!row) {
-      return c.json({ error: "Model config not found" }, 404);
-    }
-
-    // Unset existing default for this type, then set new one
-    db.prepare("UPDATE model_configs SET is_default = 0 WHERE type = ?").run(
-      row.type,
-    );
-    db.prepare("UPDATE model_configs SET is_default = 1 WHERE id = ?").run(id);
-
-    return c.json({ ok: true });
-  })
   .delete("/configured/:id", (c) => {
     const db = getDb();
     const id = Number(c.req.param("id"));

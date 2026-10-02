@@ -568,7 +568,6 @@
     "apiKeys": "Claves API",
     "noApiKeys": "Sin claves API aún — elige un modelo en la nube arriba y se te pedirá una clave.",
     "onDevice": "En dispositivo",
-    "keyInvalid": "Clave inválida — actualizar o eliminar",
     "keyStored": "Clave guardada en el llavero",
     "keyStoredWithHint": "Clave {{hint}} guardada en el llavero",
     "modelSingular": "Modelo",
