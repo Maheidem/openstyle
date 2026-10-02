@@ -52,13 +52,7 @@
         "@openstyle/server": ["../server/src/index.ts"],
         "@openstyle/utils": ["../../packages/utils/src/index.ts"],
         "@openstyle/validations": ["../../packages/validations/src/index.ts"]
-      },
-      "ignoreDependencies": [
-        "@hono/node-server",
-        "@types/ws",
-        "react-hotkeys-hook",
-        "ws"
-      ]
+      }
     },
     "apps/server": {
       "entry": [
