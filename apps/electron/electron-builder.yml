@@ -6,7 +6,7 @@ files:
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   # Build inputs and dev tooling, never loaded at runtime:
@@ -35,13 +35,12 @@ extraResources:
     to: "bin"
     filter:
       - "**/*"
+  - from: "resources/whisper/${platform}-${arch}"
+    to: "whisper/${platform}-${arch}"
+    filter:
+      - "**/*"
 win:
   executableName: Openstyle
-  extraResources:
-    - from: "resources/whisper/win32-x64"
-      to: "whisper/win32-x64"
-      filter:
-        - "**/*"
 nsis:
   artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -57,10 +56,6 @@ mac:
     NSAudioCaptureUsageDescription: Openstyle records system audio during meetings you choose to record.
   notarize: true
   extraResources:
-    - from: "resources/whisper/darwin-${arch}"
-      to: "whisper/darwin-${arch}"
-      filter:
-        - "**/*"
     - from: "../../scripts/mlx_asr_server.py"
       to: "mlx-asr/mlx_asr_server.py"
     # Pre-bundled offline diarization models (specs/meeting-diarization.md
@@ -83,11 +78,6 @@ linux:
     - deb
   maintainer: Maheidem
   category: Utility
-  extraResources:
-    - from: "resources/whisper/linux-x64"
-      to: "whisper/linux-x64"
-      filter:
-        - "**/*"
 appImage:
   artifactName: ${productName}-${version}.${ext}
 deb:
