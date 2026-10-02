@@ -52,9 +52,14 @@ import {
   importExtensionOf,
   isImportableFile,
 } from "@renderer/lib/import-audio";
-import { configQueryOptions, queryKeys } from "@renderer/lib/query";
+import {
+  configQueryOptions,
+  queryKeys,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import {
   AlertTriangle,
   AudioLines,
@@ -167,6 +172,19 @@ interface TranscriptSegment {
    * (specs/meeting-speaker-naming.md §4), following any merge. Undefined
    * when unnamed — renderer falls back to "Them {{speakerLabel}}". */
   speakerName?: string;
+}
+
+// specs/meeting-speaker-naming.md §4: prefer a confirmed speakerName over the
+// numbered fallback; a "Them" segment with no speakerLabel at all renders
+// "Unidentified" (§3.3 amendment), never bare "Them".
+function segmentSpeakerLabel(seg: TranscriptSegment, t: TFunction): string {
+  if (seg.speaker === "Me") return t("meetings.me");
+  return (
+    seg.speakerName ??
+    (seg.speakerLabel
+      ? t("meetings.themNumbered", { n: seg.speakerLabel })
+      : t("meetings.speakerUnidentified"))
+  );
 }
 
 /**
@@ -839,51 +857,42 @@ function MeetingLanguageChip({
 
 function SummaryInstructionsPopover(): React.JSX.Element {
   const { t } = useTranslation();
-  const [value, setValue] = useState("");
-  const [saved, setSaved] = useState("");
+  const queryClient = useQueryClient();
+  const { data: settings } = useQuery(settingsQueryOptions());
+  const saved = settings?.[SETTINGS_KEYS.meetingSummaryInstructions] ?? "";
+  // null = the user has not edited the text since the popover opened.
+  const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void getClient()
-      .api.settings[":key"].$get({
-        param: { key: SETTINGS_KEYS.meetingSummaryInstructions },
-      })
-      .then(async (res) => {
-        if (cancelled) return;
-        if (res.ok) {
-          const body = (await res.json()) as { value: string };
-          setValue(body.value);
-          setSaved(body.value);
-        } else {
-          setValue("");
-          setSaved("");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+  const value = draft ?? saved;
+  const dirty = draft !== null && draft !== saved;
 
   const save = useCallback(async () => {
+    if (draft === null) return;
     setSaving(true);
     try {
       const res = await getClient().api.settings[":key"].$put({
         param: { key: SETTINGS_KEYS.meetingSummaryInstructions },
-        json: { value },
+        json: { value: draft },
       });
-      if (res.ok) setSaved(value);
+      if (res.ok) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+        setDraft(null);
+      }
     } finally {
       setSaving(false);
     }
-  }, [value]);
-
-  const dirty = value !== saved;
+  }, [draft, queryClient]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setDraft(null);
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -913,7 +922,7 @@ function SummaryInstructionsPopover(): React.JSX.Element {
         <Textarea
           value={value}
           maxLength={4000}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
           className="mono min-h-[120px] resize-y text-[11.5px] leading-[1.5]"
           aria-label={t("meetings.summaryInstructionsLabel")}
@@ -1438,11 +1447,14 @@ function MeetingDetailView({
     void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
   }, [queryClient]);
 
+  // Returns the parsed JSON body with the `ok` flag. `body` is null when the
+  // request throws or the body is not JSON. On `!ok`, `body` holds the error
+  // shape instead of `T`, so callers read it with care.
   const runAction = useCallback(
-    async (
+    async <T,>(
       name: string,
       request: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>,
-    ): Promise<unknown> => {
+    ): Promise<{ ok: boolean; body: T | null }> => {
       setBusy(name);
       setActionError(null);
       // Cleared on every action, not just the diarize/enhance ones, so a
@@ -1451,17 +1463,16 @@ function MeetingDetailView({
       setDiarizeResult(null);
       setEnhanceResult(null);
       setEnhanceFailure(null);
-      let result: unknown;
+      let result: { ok: boolean; body: T | null } = { ok: false, body: null };
       try {
         const res = await request();
-        const body = await res.json();
+        const body = (await res.json()) as T;
         if (!res.ok) {
           setActionError(
             (body as { error?: string }).error ?? t("meetings.actionFailed"),
           );
-        } else {
-          result = body;
         }
+        result = { ok: res.ok, body };
       } catch {
         setActionError(t("meetings.actionFailed"));
       } finally {
@@ -1506,64 +1517,61 @@ function MeetingDetailView({
       ),
     [id, runAction],
   );
-  const cancelTranscribe = useCallback(async () => {
-    if (meeting?.status !== "transcribing" || cancelRequested) return;
-    setCancelRequested(true);
-    try {
-      const res = await getClient().api.meetings[":id"][
-        "cancel-transcribe"
-      ].$post({ param: { id } });
-      if (res.ok || res.status === 409) {
-        // 409 = no transcription job holds the slot any more (it just
-        // finished on its own, or the slot is a non-cancellable diarize
-        // pass) — the poll shows whatever terminal state the job reached,
-        // which is all the user asked for. Latch the plan for the note only
-        // on an acknowledged cancel.
-        if (res.ok) plannedTotalRef.current = meeting.job?.total ?? null;
-        return;
+  // Shared cancel call for the Transcribe and Summarize buttons. Both jobs use
+  // one server seam (`activeJobCancellations`, polled between chunks), so a
+  // call still QUEUED on the LLM lane never goes on the wire. `onAcked` runs
+  // only when the server acknowledges the cancel.
+  const cancelJob = useCallback(
+    async (onAcked?: () => void) => {
+      if (cancelRequested) return;
+      setCancelRequested(true);
+      try {
+        const res = await getClient().api.meetings[":id"][
+          "cancel-transcribe"
+        ].$post({ param: { id } });
+        if (res.ok || res.status === 409) {
+          // 409 = no job holds the slot any more (it just finished on its
+          // own, or the slot is a non-cancellable diarize pass). The poll
+          // shows whatever terminal state the job reached, which is all the
+          // user asked for. Run `onAcked` only on an acknowledged cancel.
+          if (res.ok) onAcked?.();
+          return;
+        }
+        throw new Error(`cancel-transcribe -> ${res.status}`);
+      } catch {
+        // Leave the wind-down state only on a real failure; the action error
+        // surface below carries the message.
+        setCancelRequested(false);
+        setActionError(t("meetings.actionFailed"));
+      } finally {
+        invalidate();
       }
-      throw new Error(`cancel-transcribe -> ${res.status}`);
-    } catch {
-      // Leave the wind-down state only on a real failure; the action error
-      // surface below carries the message.
-      setCancelRequested(false);
-      setActionError(t("meetings.actionFailed"));
-    } finally {
-      invalidate();
-    }
-  }, [id, meeting, cancelRequested, invalidate, t]);
-  // Cancel a running Summarize job (§5.7): the same server seam as
-  // cancelTranscribe — `activeJobCancellations`, polled between map chunks,
-  // so a call still QUEUED on the LLM lane never goes on the wire. Nothing is
-  // destroyed: the transcript and every persisted segment survive, no summary
-  // is written, and the failure lands in `job_error` (not `meetings.error`).
+    },
+    [id, cancelRequested, invalidate, t],
+  );
+  const cancelTranscribe = useCallback(async () => {
+    if (meeting?.status !== "transcribing") return;
+    // Latch the plan for the note only on an acknowledged cancel.
+    const total = meeting.job?.total ?? null;
+    await cancelJob(() => {
+      plannedTotalRef.current = total;
+    });
+  }, [meeting, cancelJob]);
+  // Cancel a running Summarize job (§5.7). Nothing is destroyed: the
+  // transcript and every persisted segment survive, no summary is written,
+  // and the failure lands in `job_error` (not `meetings.error`).
   const cancelSummarize = useCallback(async () => {
-    if (meeting?.job?.kind !== "summarize" || cancelRequested) return;
-    setCancelRequested(true);
-    try {
-      const res = await getClient().api.meetings[":id"][
-        "cancel-transcribe"
-      ].$post({ param: { id } });
-      // 409 = the slot already moved on (the job finished in this instant) —
-      // the poll shows whatever terminal state it reached either way.
-      if (res.ok || res.status === 409) return;
-      throw new Error(`cancel-transcribe -> ${res.status}`);
-    } catch {
-      setCancelRequested(false);
-      setActionError(t("meetings.actionFailed"));
-    } finally {
-      invalidate();
-    }
-  }, [id, meeting, cancelRequested, invalidate, t]);
+    if (meeting?.job?.kind !== "summarize") return;
+    await cancelJob();
+  }, [meeting, cancelJob]);
   const identifySpeakers = useCallback(async () => {
-    const result = await runAction("diarize", () =>
+    const { ok, body } = await runAction<{
+      labeledCount: number;
+      speakerCount: number;
+    }>("diarize", () =>
       getClient().api.meetings[":id"].diarize.$post({ param: { id } }),
     );
-    if (result) {
-      setDiarizeResult(
-        result as { labeledCount: number; speakerCount: number },
-      );
-    }
+    if (ok && body) setDiarizeResult(body);
     // The route only UPDATEs speaker_label on existing rows — the merged
     // transcript needs a re-fetch to pick the new labels up, same as every
     // other action's invalidate() call inside runAction, called out here
@@ -1582,28 +1590,14 @@ function MeetingDetailView({
     else void identifySpeakers();
   }, [hasConfirmedSpeakerState, identifySpeakers]);
   const enhance = useCallback(async () => {
-    // A wholly-failed pass is a non-2xx with a machine-readable `reason`, and
-    // `runAction` owns (and consumes) the Response body — so the failure shape
-    // is captured from a clone inside the request callback. `current` rather
-    // than a bare `let` so the assignment across that closure stays visible to
-    // both the compiler and the reader.
-    const failure = { current: null as null | { reason?: unknown } };
-    const result = await runAction("enhance", async () => {
-      const res = await getClient().api.meetings[":id"].enhance.$post({
-        param: { id },
-      });
-      if (!res.ok) {
-        failure.current = (await res
-          .clone()
-          .json()
-          .catch(() => null)) as null | { reason?: unknown };
-      }
-      return res;
-    });
-    if (result) {
-      setEnhanceResult(result as EnhanceNote);
-    } else if (failure.current) {
-      const raw = failure.current.reason;
+    const { ok, body } = await runAction<EnhanceNote>("enhance", () =>
+      getClient().api.meetings[":id"].enhance.$post({ param: { id } }),
+    );
+    if (ok && body) {
+      setEnhanceResult(body);
+    } else if (!ok && body) {
+      // A wholly-failed pass is a non-2xx with a machine-readable `reason`.
+      const raw = (body as { reason?: unknown }).reason;
       // Anything the route didn't classify reads as a provider failure — the
       // honest default, never "nothing needed correction".
       setEnhanceFailure({
@@ -1676,16 +1670,7 @@ function MeetingDetailView({
   );
   const transcriptText = (transcript ?? [])
     .map((s) => {
-      // specs/meeting-speaker-naming.md §4: prefer a confirmed speakerName
-      // over the numbered fallback; a "Them" segment with no speakerLabel
-      // at all renders "Unidentified" (§3.3 amendment), never bare "Them".
-      const label =
-        s.speaker === "Me"
-          ? t("meetings.me")
-          : (s.speakerName ??
-            (s.speakerLabel
-              ? t("meetings.themNumbered", { n: s.speakerLabel })
-              : t("meetings.speakerUnidentified")));
+      const label = segmentSpeakerLabel(s, t);
       const text = showEnhanced ? (s.enhancedText ?? s.text) : s.text;
       return `${label}: ${text}`;
     })
@@ -2064,15 +2049,7 @@ function MeetingDetailView({
                   row's label column shares one width and stays aligned. */}
               <div className="grid grid-cols-[minmax(64px,max-content)_minmax(0,1fr)_max-content] gap-x-3 gap-y-3.5">
                 {transcript.map((seg) => {
-                  const label =
-                    seg.speaker === "Me"
-                      ? t("meetings.me")
-                      : (seg.speakerName ??
-                        (seg.speakerLabel
-                          ? t("meetings.themNumbered", {
-                              n: seg.speakerLabel,
-                            })
-                          : t("meetings.speakerUnidentified")));
+                  const label = segmentSpeakerLabel(seg, t);
                   return (
                     <Fragment
                       key={`${seg.speaker}-${seg.startMs}-${seg.endMs}`}
@@ -2591,14 +2568,16 @@ export default function MeetingsPage(): React.JSX.Element {
   // recording lands at index 0 (server orders by created_at DESC). Re-deriving
   // live would silently swap the detail pane out from under a user who never
   // explicitly picked a meeting. `selectedId` (explicit, user-driven) always
-  // wins over this default, and once set here it never changes again.
+  // wins over this default. The default changes only when its meeting leaves
+  // the list, for example after a delete.
   const [defaultId, setDefaultId] = useState<string | null>(null);
   useEffect(() => {
-    if (defaultId === null && meetings.length > 0) {
+    if (meetings.length > 0 && !meetings.some((m) => m.id === defaultId)) {
       setDefaultId(meetings[0].id);
     }
   }, [meetings, defaultId]);
-  const activeId = selectedId ?? defaultId;
+  const activeId =
+    selectedId ?? (meetings.some((m) => m.id === defaultId) ? defaultId : null);
 
   // Only probe ahead of the FIRST recording: list loaded, empty, recorder
   // supported and idle.
