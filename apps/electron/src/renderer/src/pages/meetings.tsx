@@ -52,7 +52,11 @@ import {
   importExtensionOf,
   isImportableFile,
 } from "@renderer/lib/import-audio";
-import { configQueryOptions, queryKeys } from "@renderer/lib/query";
+import {
+  configQueryOptions,
+  queryKeys,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
@@ -853,51 +857,42 @@ function MeetingLanguageChip({
 
 function SummaryInstructionsPopover(): React.JSX.Element {
   const { t } = useTranslation();
-  const [value, setValue] = useState("");
-  const [saved, setSaved] = useState("");
+  const queryClient = useQueryClient();
+  const { data: settings } = useQuery(settingsQueryOptions());
+  const saved = settings?.[SETTINGS_KEYS.meetingSummaryInstructions] ?? "";
+  // null = the user has not edited the text since the popover opened.
+  const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void getClient()
-      .api.settings[":key"].$get({
-        param: { key: SETTINGS_KEYS.meetingSummaryInstructions },
-      })
-      .then(async (res) => {
-        if (cancelled) return;
-        if (res.ok) {
-          const body = (await res.json()) as { value: string };
-          setValue(body.value);
-          setSaved(body.value);
-        } else {
-          setValue("");
-          setSaved("");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+  const value = draft ?? saved;
+  const dirty = draft !== null && draft !== saved;
 
   const save = useCallback(async () => {
+    if (draft === null) return;
     setSaving(true);
     try {
       const res = await getClient().api.settings[":key"].$put({
         param: { key: SETTINGS_KEYS.meetingSummaryInstructions },
-        json: { value },
+        json: { value: draft },
       });
-      if (res.ok) setSaved(value);
+      if (res.ok) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+        setDraft(null);
+      }
     } finally {
       setSaving(false);
     }
-  }, [value]);
-
-  const dirty = value !== saved;
+  }, [draft, queryClient]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setDraft(null);
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -927,7 +922,7 @@ function SummaryInstructionsPopover(): React.JSX.Element {
         <Textarea
           value={value}
           maxLength={4000}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
           className="mono min-h-[120px] resize-y text-[11.5px] leading-[1.5]"
           aria-label={t("meetings.summaryInstructionsLabel")}
