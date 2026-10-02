@@ -84,8 +84,8 @@ declare global {
       isE2E: boolean;
       defaultHotkey: string;
       defaultRemixHotkey: string;
-      pasteText: (text: string, appContext?: string | null) => Promise<void>;
-      copyText: (text: string, appContext?: string | null) => Promise<void>;
+      pasteText: (text: string) => Promise<void>;
+      copyText: (text: string) => Promise<void>;
       prepareSystemAudio: (mode: ActiveAudioPlaybackMode) => Promise<void>;
       duckSystemAudio: () => Promise<void>;
       restoreSystemAudio: () => Promise<void>;

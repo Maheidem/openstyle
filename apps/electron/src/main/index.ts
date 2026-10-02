@@ -2347,25 +2347,15 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window);
   });
 
-  // IPC: paste text at cursor. `appContext` is accepted for backward
-  // compatibility with the preload signature but is unused here — the plugin
-  // system that once consumed it server-side (beforeOutput /
-  // POST /api/output/deliver) was removed in v2.0.0 (6211514); cleanup
-  // routing is now resolved upstream in the transcription pipeline.
-  ipcMain.handle(
-    "paste:text",
-    async (_event, text: string, _appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Paste);
-    },
-  );
+  // IPC: paste text at cursor.
+  ipcMain.handle("paste:text", async (_event, text: string) => {
+    await deliverOutput(text, OutputMode.Paste);
+  });
 
-  // IPC: copy text to clipboard. See `paste:text` above re: `appContext`.
-  ipcMain.handle(
-    "copy:text",
-    async (_event, text: string, _appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Clipboard);
-    },
-  );
+  // IPC: copy text to clipboard.
+  ipcMain.handle("copy:text", async (_event, text: string) => {
+    await deliverOutput(text, OutputMode.Clipboard);
+  });
 
   ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
     if (!isActiveAudioPlaybackMode(mode)) return;

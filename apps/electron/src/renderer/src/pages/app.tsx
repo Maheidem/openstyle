@@ -399,6 +399,24 @@ function encodeAppContext(context: string): string {
   return encodeURIComponent(context);
 }
 
+/** Build the request headers for POST /api/transcribe. */
+function buildTranscribeHeaders(opts: {
+  durationMs: number;
+  language: string | null;
+  appContext: string | null;
+  skipPostProcess: boolean;
+}): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "audio/wav",
+    "x-audio-duration-ms": String(opts.durationMs),
+  };
+  if (opts.language) headers["x-dictation-language"] = opts.language;
+  if (opts.appContext)
+    headers["x-app-context"] = encodeAppContext(opts.appContext);
+  if (opts.skipPostProcess) headers["x-skip-post-process"] = "true";
+  return headers;
+}
+
 interface QueueEntry {
   promise: Promise<TranscribeResult>;
 }
@@ -746,8 +764,8 @@ export default function AppPage(): React.JSX.Element {
         if (finalText.trim()) {
           const delivery =
             _outputMode === "clipboard"
-              ? window.api.copyText(finalText, appContextRef.current)
-              : window.api.pasteText(finalText, appContextRef.current);
+              ? window.api.copyText(finalText)
+              : window.api.pasteText(finalText);
 
           // Start the exit when delivery is dispatched; pasteText resolves later.
           delivered = true;
@@ -792,15 +810,12 @@ export default function AppPage(): React.JSX.Element {
     ): Promise<TranscribeResult> | null => {
       const wavBlob = streamerRef.current?.getWavBlob() ?? null;
       if (!wavBlob) return null;
-      const headers: Record<string, string> = {
-        "Content-Type": "audio/wav",
-        "x-audio-duration-ms": String(lastRecordingDurationRef.current),
-      };
-      if (language) headers["x-dictation-language"] = language;
-      if (appContextRef.current)
-        headers["x-app-context"] = encodeAppContext(appContextRef.current);
-      if (queueRef.current.length > 0 || drainingRef.current)
-        headers["x-skip-post-process"] = "true";
+      const headers = buildTranscribeHeaders({
+        durationMs: lastRecordingDurationRef.current,
+        language,
+        appContext: appContextRef.current,
+        skipPostProcess: queueRef.current.length > 0 || drainingRef.current,
+      });
       return apiFetch("/api/transcribe", {
         method: "POST",
         body: wavBlob,
@@ -1718,14 +1733,12 @@ export default function AppPage(): React.JSX.Element {
     }
 
     const isSubsequent = queueRef.current.length > 0 || drainingRef.current;
-    const headers: Record<string, string> = {
-      "Content-Type": "audio/wav",
-      "x-audio-duration-ms": String(recordingDuration),
-    };
-    if (dictationLanguage) headers["x-dictation-language"] = dictationLanguage;
-    if (appContextRef.current)
-      headers["x-app-context"] = encodeAppContext(appContextRef.current);
-    if (isSubsequent) headers["x-skip-post-process"] = "true";
+    const headers = buildTranscribeHeaders({
+      durationMs: recordingDuration,
+      language: dictationLanguage,
+      appContext: appContextRef.current,
+      skipPostProcess: isSubsequent,
+    });
 
     const serverOk = await refreshApiBase();
     if (!serverOk) {
@@ -1834,6 +1847,15 @@ export default function AppPage(): React.JSX.Element {
     }
   }, []);
 
+  /** Stop the remix mic capture and release its stream, if one is open. */
+  const releaseRemixMic = useCallback(() => {
+    if (remixMicGenRef.current !== null) {
+      recorderRef.current.cancel(remixMicGenRef.current);
+      recorderRef.current.releaseStream(remixMicGenRef.current);
+      remixMicGenRef.current = null;
+    }
+  }, []);
+
   /** Tear the session down. `hide` is false only when an error card stays up. */
   // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
   const getRemixStreamer = useCallback((): Streamer => {
@@ -1874,18 +1896,14 @@ export default function AppPage(): React.JSX.Element {
       remixFinalRef.current?.resolve("");
       remixFinalRef.current = null;
       remixContextRef.current = null;
-      if (remixMicGenRef.current !== null) {
-        recorderRef.current.cancel(remixMicGenRef.current);
-        recorderRef.current.releaseStream(remixMicGenRef.current);
-        remixMicGenRef.current = null;
-      }
+      releaseRemixMic();
       remixStreamerRef.current?.cancel();
       window.api?.setRemixRouteKeys(false);
       setRemix(null);
       stopVisualization();
       if (options.hide !== false) window.api?.hidePill();
     },
-    [clearRemixHoldTimer, setRemix, stopVisualization],
+    [clearRemixHoldTimer, setRemix, stopVisualization, releaseRemixMic],
   );
 
   const closeRemix = useCallback(() => endRemix(), [endRemix]);
@@ -1910,11 +1928,7 @@ export default function AppPage(): React.JSX.Element {
     (title: string, body: string) => {
       clearRemixHoldTimer();
       remixRunningRef.current = false;
-      if (remixMicGenRef.current !== null) {
-        recorderRef.current.cancel(remixMicGenRef.current);
-        recorderRef.current.releaseStream(remixMicGenRef.current);
-        remixMicGenRef.current = null;
-      }
+      releaseRemixMic();
       remixStreamerRef.current?.cancel();
       window.api?.setRemixRouteKeys(false);
       stopVisualization();
@@ -1926,7 +1940,7 @@ export default function AppPage(): React.JSX.Element {
         body,
       });
     },
-    [clearRemixHoldTimer, setRemix, stopVisualization],
+    [clearRemixHoldTimer, setRemix, stopVisualization, releaseRemixMic],
   );
 
   /**
@@ -2062,11 +2076,7 @@ export default function AppPage(): React.JSX.Element {
     (instruction: string | null, options: { minimized?: boolean } = {}) => {
       clearRemixHoldTimer();
       remixRunningRef.current = false;
-      if (remixMicGenRef.current !== null) {
-        recorderRef.current.cancel(remixMicGenRef.current);
-        recorderRef.current.releaseStream(remixMicGenRef.current);
-        remixMicGenRef.current = null;
-      }
+      releaseRemixMic();
       stopVisualization();
       window.api?.setRemixRouteKeys(false);
       patchRemix({
@@ -2075,7 +2085,7 @@ export default function AppPage(): React.JSX.Element {
         minimized: options.minimized === true,
       });
     },
-    [clearRemixHoldTimer, patchRemix, stopVisualization],
+    [clearRemixHoldTimer, patchRemix, stopVisualization, releaseRemixMic],
   );
 
   /**
@@ -2494,11 +2504,7 @@ export default function AppPage(): React.JSX.Element {
       ) {
         return;
       }
-      if (remixMicGenRef.current !== null) {
-        recorderRef.current.cancel(remixMicGenRef.current);
-        recorderRef.current.releaseStream(remixMicGenRef.current);
-        remixMicGenRef.current = null;
-      }
+      releaseRemixMic();
       void runRemix({ remixId: preset.id, label: preset.label });
     });
 
@@ -2545,6 +2551,7 @@ export default function AppPage(): React.JSX.Element {
     restoreSystemAudioSafely,
     runRemix,
     setRemix,
+    releaseRemixMic,
   ]);
 
   // ---- Warnings see themselves out ----
