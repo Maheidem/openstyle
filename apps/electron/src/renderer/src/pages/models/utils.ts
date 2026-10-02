@@ -1,12 +1,8 @@
 import {
   type AvailableModel,
-  buildVoiceItems,
   displayProviderName,
   LLM_PROVIDERS,
-  type MlxAsrStatus,
   VOICE_PROVIDERS,
-  type VoiceItem,
-  type WhisperStatus,
 } from "@renderer/lib/models";
 
 import {
@@ -14,11 +10,6 @@ import {
   MAX_MLX_KEEP_ALIVE_MINUTES,
   MLX_KEEP_ALIVE_ALWAYS,
 } from "./constants";
-import type { ConfiguredModel } from "./types";
-
-export function displayName(providerId: string, fallback?: string): string {
-  return displayProviderName(providerId, fallback);
-}
 
 export function clampMlxKeepAliveMinutes(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_MLX_KEEP_ALIVE_MINUTES;
@@ -46,7 +37,7 @@ export function groupByProvider(
     let entry = map.get(m.provider_id);
     if (!entry) {
       entry = {
-        providerName: displayName(m.provider_id, m.provider_name),
+        providerName: displayProviderName(m.provider_id, m.provider_name),
         models: [],
       };
       map.set(m.provider_id, entry);
@@ -54,20 +45,4 @@ export function groupByProvider(
     entry.models.push(m);
   }
   return map;
-}
-
-export function buildSettingsVoiceItems(
-  available: AvailableModel[],
-  whisperStatus: WhisperStatus | null,
-  mlxStatus: MlxAsrStatus | null,
-  ctx: {
-    defaultVoice: ConfiguredModel | undefined;
-    keyProviders: Set<string>;
-  },
-): VoiceItem[] {
-  return buildVoiceItems(available, whisperStatus, mlxStatus, {
-    selectedModelId: ctx.defaultVoice?.model_id,
-    selectedProvider: ctx.defaultVoice?.provider,
-    keyProviders: ctx.keyProviders,
-  });
 }

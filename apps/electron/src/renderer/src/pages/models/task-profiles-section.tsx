@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
+import { displayProviderName } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -42,7 +43,6 @@ import {
   upsertPreset,
 } from "./preset-ops";
 import type { ConfiguredModel } from "./types";
-import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // TaskProfilesSection — "Where your models work" (specs/llm-task-profiles.md
@@ -605,7 +605,7 @@ function TaskRow({
                     key={`${m.provider}/${m.model_id}`}
                     value={`${m.provider}/${m.model_id}`}
                   >
-                    {m.model_name} · {displayName(m.provider)}
+                    {m.model_name} · {displayProviderName(m.provider)}
                   </SelectItem>
                 ))}
               </SelectContent>

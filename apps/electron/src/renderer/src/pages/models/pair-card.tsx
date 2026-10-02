@@ -1,11 +1,11 @@
 import { Button } from "@renderer/components/ui/button";
 import { Switch } from "@renderer/components/ui/switch";
+import { displayProviderName } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { useTranslation } from "react-i18next";
 
 import { Eyebrow } from "./page-chrome";
 import type { ConfiguredModel } from "./types";
-import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // PairCard — the current model pair: Voice (required) + cleanup model.
@@ -42,7 +42,7 @@ export function PairCard({
       <PairSide
         kicker={t("models.pair.transcriptionKicker")}
         modelName={voice?.model_name}
-        providerName={voice ? displayName(voice.provider) : undefined}
+        providerName={voice ? displayProviderName(voice.provider) : undefined}
         cta={t("models.pair.changeVoiceShort")}
         ctaAriaLabel={t("models.pair.changeVoice")}
         noneLabel={t("models.pair.noneSelected")}
@@ -61,7 +61,7 @@ export function PairCard({
           kicker={t("models.pair.cleanupKicker")}
           modelName={cleanupOn ? llm?.model_name : undefined}
           providerName={
-            cleanupOn && llm ? displayName(llm.provider) : undefined
+            cleanupOn && llm ? displayProviderName(llm.provider) : undefined
           }
           cta={llm ? t("models.pair.change") : t("models.pair.pickModel")}
           noneLabel={t("models.pair.noneSelected")}

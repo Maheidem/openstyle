@@ -10,11 +10,12 @@ import {
   parseLlmTaskAssignments,
 } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
-import type {
-  AvailableModel,
-  MlxAsrStatus,
-  VoiceItem,
-  WhisperStatus,
+import {
+  type AvailableModel,
+  buildVoiceItems,
+  type MlxAsrStatus,
+  type VoiceItem,
+  type WhisperStatus,
 } from "@renderer/lib/models";
 import { IS_MAC } from "@renderer/lib/platform";
 import {
@@ -39,11 +40,7 @@ import type {
   EndpointConnectState,
 } from "./use-endpoint-connect";
 import { useEndpointConnect } from "./use-endpoint-connect";
-import {
-  buildSettingsVoiceItems,
-  clampMlxKeepAliveMinutes,
-  groupByProvider,
-} from "./utils";
+import { clampMlxKeepAliveMinutes, groupByProvider } from "./utils";
 
 export type { EndpointConnectState } from "./use-endpoint-connect";
 
@@ -477,8 +474,9 @@ export function useModels(): UseModels {
   );
   const voiceItems = useMemo(
     () =>
-      buildSettingsVoiceItems(available, whisperStatus, mlxStatus, {
-        defaultVoice,
+      buildVoiceItems(available, whisperStatus, mlxStatus, {
+        selectedModelId: defaultVoice?.model_id,
+        selectedProvider: defaultVoice?.provider,
         keyProviders,
       }),
     [available, whisperStatus, mlxStatus, defaultVoice, keyProviders],
