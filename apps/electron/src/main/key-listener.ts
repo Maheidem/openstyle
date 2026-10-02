@@ -522,8 +522,4 @@ export class NativeKeyListener {
       this.process = null;
     }
   }
-
-  get isRunning(): boolean {
-    return this.process !== null;
-  }
 }

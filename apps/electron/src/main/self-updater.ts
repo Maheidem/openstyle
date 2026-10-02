@@ -127,7 +127,7 @@ class SelfUpdater extends EventEmitter {
       throw err;
     }
 
-    // oldBundleBackupPath is deliberately left in place here rather than
+    // The old bundle backup is deliberately left in place here rather than
     // deleted immediately: this process may still be executing out of it
     // (mapped dylibs/resources not yet paged in), and app.quit() is seconds
     // away. sweepSelfUpdaterBackups() clears it on the next launch instead.

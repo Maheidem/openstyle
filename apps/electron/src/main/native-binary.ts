@@ -38,13 +38,6 @@ export function getNativeBinaryPath(name: string): string | null {
   return null;
 }
 
-/**
- * Check if a native binary is available.
- */
-export function hasNativeBinary(name: string): boolean {
-  return getNativeBinaryPath(name) !== null;
-}
-
 /** Key listener binary name for each supported platform. */
 export const KEY_LISTENER_BINARY_NAMES: Record<string, string> = {
   darwin: "macos-key-listener",
