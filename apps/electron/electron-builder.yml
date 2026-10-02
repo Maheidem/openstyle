@@ -9,6 +9,9 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # A stray main bundle can appear at the app root (see .gitignore). Anchor the
+  # pattern to the root: '!**/index.js' would also remove out/*/index.js.
+  - '!index.js'
   # Build inputs and dev tooling, never loaded at runtime:
   #
   # - `native/**` — SwiftPM sources + the ~665 MiB `.build` directory of
