@@ -47,7 +47,6 @@ interface PendingRequest {
 let workerProcess: ChildProcess | null = null;
 let currentModelId: string | null = null;
 let workerReady = false;
-let workerFailed = false;
 let startPromise: Promise<void> | null = null;
 let stdoutBuffer = "";
 let nextRequestId = 1;
@@ -79,10 +78,6 @@ export function isMlxServerRunning(): boolean {
   return workerProcess !== null && workerReady;
 }
 
-export function isMlxServerFailed(): boolean {
-  return workerFailed;
-}
-
 export { canRunMlxAsr } from "./python.js";
 
 export function getMlxAsrKeepAliveMinutes(): number {
@@ -109,7 +104,6 @@ export function startMlxInBackground(modelId: string): void {
   if (workerProcess && currentModelId === modelId && workerReady) return;
   if (startPromise && currentModelId === modelId) return;
 
-  workerFailed = false;
   ensureMlxServerRunning(modelId)
     .then(() => {
       log.info("Worker ready");
@@ -143,7 +137,6 @@ async function ensureMlxServerRunningLocked(modelId: string): Promise<void> {
   }
 
   await stopMlxServer();
-  workerFailed = false;
   currentModelId = modelId;
 
   const promise = startWorker(modelId);
@@ -320,7 +313,6 @@ async function startWorker(modelId: string): Promise<void> {
   let lastError: Error | null = null;
 
   for (const candidate of candidates) {
-    workerFailed = false;
     try {
       await spawnWorkerProcess(candidate.command, candidate.spawnArgs);
       const releaseTag = mlxAsrReleaseTagOverride();
@@ -336,7 +328,6 @@ async function startWorker(modelId: string): Promise<void> {
     }
   }
 
-  workerFailed = true;
   throw (
     lastError ??
     new Error("MLX ASR worker failed to start with every launch method.")
@@ -438,7 +429,6 @@ function failWorker(err: Error): void {
   currentModelId = null;
   workerReady = false;
   startPromise = null;
-  workerFailed = true;
 }
 
 function clearUnloadTimer(): void {
@@ -485,7 +475,6 @@ export async function stopMlxServer(): Promise<void> {
   currentModelId = null;
   workerReady = false;
   startPromise = null;
-  workerFailed = false;
 
   readyReject?.(new Error("mlx-asr worker stopped"));
   readyResolve = null;

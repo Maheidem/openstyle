@@ -26,7 +26,6 @@ let startPromise: Promise<void> | null = null;
 let autoRestart = false;
 let restartCount = 0;
 let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
-let serverFailed = false;
 let activePort = WHISPER_SERVER_PORT;
 let activeUses = 0;
 let unloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -45,10 +44,6 @@ process.once("exit", stopServerOnExit);
 
 export function isServerRunning(): boolean {
   return serverProcess !== null && serverReady;
-}
-
-export function isServerFailed(): boolean {
-  return serverFailed;
 }
 
 export function getServerPort(): number {
@@ -122,7 +117,6 @@ export function startInBackground(modelId: string): void {
   if (serverProcess && currentModelId === modelId && serverReady) return;
   if (startPromise && currentModelId === modelId) return;
 
-  serverFailed = false;
   restartCount = 0;
   autoRestart = true;
 
@@ -173,7 +167,6 @@ export async function ensureServerRunning(modelId: string): Promise<void> {
 
   await stopServer();
   autoRestart = true;
-  serverFailed = false;
 
   const promise = doStart(modelId);
   startPromise = promise;
@@ -327,7 +320,6 @@ function scheduleRestart(modelId: string): void {
   restartCount++;
   if (restartCount > MAX_RESTARTS) {
     log.error(`Server crashed ${MAX_RESTARTS} times, not restarting`);
-    serverFailed = true;
     autoRestart = false;
     currentModelId = null;
     return;

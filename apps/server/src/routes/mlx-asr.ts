@@ -18,10 +18,6 @@ import {
 } from "../lib/mlx-asr/models.js";
 import {
   describeMlxSetupBlocker,
-  findPythonExecutable,
-  getMlxAsrServerScriptPath,
-  getMlxAsrWorkerPath,
-  isMlxAudioInstalled,
   resetPythonProbe,
 } from "../lib/mlx-asr/python.js";
 import {
@@ -31,8 +27,6 @@ import {
 import {
   canRunMlxAsr,
   getMlxAsrKeepAliveMinutes,
-  isMlxServerFailed,
-  isMlxServerRunning,
   startMlxInBackground,
   stopMlxServer,
 } from "../lib/mlx-asr/server.js";
@@ -46,23 +40,12 @@ const mlxAsr = new Hono()
     }
 
     const platformSupported = isAppleSiliconMac();
-    const python = findPythonExecutable();
-    const scriptPath = getMlxAsrServerScriptPath() || null;
-    const workerPath = getMlxAsrWorkerPath() || null;
-    const mlxAudio = python ? isMlxAudioInstalled(python) : false;
     const blockedReason = describeMlxSetupBlocker();
 
     return c.json({
       platformSupported,
-      pythonAvailable: Boolean(python),
-      pythonPath: python,
-      scriptPath,
-      workerPath,
-      mlxAudioInstalled: mlxAudio,
       canRun: canRunMlxAsr(),
       blockedReason,
-      serverRunning: isMlxServerRunning(),
-      serverFailed: isMlxServerFailed(),
       keepAliveMinutes: getMlxAsrKeepAliveMinutes(),
       runtime: getMlxRuntimeDownloadStatus(),
       models: platformSupported ? getAllMlxModelStatuses() : [],
