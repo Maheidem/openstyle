@@ -7,26 +7,22 @@ import {
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
-  LEGACY_MLX_ASR_MODELS,
-  MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
   MLX_ASR_PROVIDER_NAME,
 } from "../lib/mlx-asr/constants.js";
-import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
+import {
+  getMlxCatalogModels,
+  getMlxModelStatus,
+} from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
-import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
 import {
   OMLX_API_KEY_SETTING,
   OMLX_BASE_URL_SETTING,
   OMLX_PROVIDER_ID,
   OMLX_PROVIDER_NAME,
 } from "../lib/streaming/providers/omlx.js";
-import {
-  LEGACY_WHISPER_MODELS,
-  WHISPER_MODELS,
-  WHISPER_PROVIDER_ID,
-} from "../lib/whisper/constants.js";
-import { getModelStatus } from "../lib/whisper/models.js";
+import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
+import { getCatalogModels, getModelStatus } from "../lib/whisper/models.js";
 
 interface AvailableModel {
   provider_id: string;
@@ -139,36 +135,25 @@ async function fetchOmlxModels(): Promise<AvailableModel[]> {
   }));
 }
 
-// Local voice models (curated + legacy that's still downloaded — the
-// /available handler filters to ready models, so legacy entries only
-// surface for installs that already have them on disk).
-const LOCAL_WHISPER_VOICE_MODELS: AvailableModel[] = [
-  ...WHISPER_MODELS,
-  ...LEGACY_WHISPER_MODELS,
-].map((m) => ({
-  provider_id: WHISPER_PROVIDER_ID,
-  provider_name: "Local Whisper",
-  model_id: `${WHISPER_PROVIDER_ID}/${m.id}`,
-  model_name: m.displayName,
-  family: "whisper-local",
-  type: "voice" as const,
-  cost_input: 0,
-  cost_output: 0,
-}));
-
-const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = [
-  ...MLX_ASR_MODELS,
-  ...LEGACY_MLX_ASR_MODELS,
-].map((m) => ({
-  provider_id: MLX_ASR_PROVIDER_ID,
-  provider_name: MLX_ASR_PROVIDER_NAME,
-  model_id: `${MLX_ASR_PROVIDER_ID}/${m.id}`,
-  model_name: m.displayName,
-  family: m.family,
-  type: "voice" as const,
-  cost_input: 0,
-  cost_output: 0,
-}));
+/** Build the /available entry for a local voice model. */
+function toVoiceModel(
+  def: { id: string; displayName: string },
+  providerId: string,
+  providerName: string,
+  family: string,
+): AvailableModel {
+  return {
+    provider_id: providerId,
+    provider_name: providerName,
+    model_id: `${providerId}/${def.id}`,
+    model_name: def.displayName,
+    family,
+    type: "voice",
+    cost_input: 0,
+    cost_output: 0,
+    curated: true,
+  };
+}
 
 // Curated voice catalog: one flagship per provider. The models.dev
 // registry is deliberately NOT merged for voice — untested model noise.
@@ -468,22 +453,30 @@ const models = new Hono()
         ...BUILTIN_VOICE_MODELS.map((m) => ({ ...m, curated: true })),
       );
 
-      // Add local whisper voice models (only those that are downloaded)
-      for (const whisperModel of LOCAL_WHISPER_VOICE_MODELS) {
-        const modelId = whisperModel.model_id.split("/")[1];
-        const status = getModelStatus(modelId);
-        if (status?.status === "ready") {
-          available.push({ ...whisperModel, curated: true });
+      // Local voice models. The catalog helpers list the curated models and
+      // the legacy models on disk. Only ready models are shown.
+      for (const m of getCatalogModels()) {
+        if (getModelStatus(m.id)?.status === "ready") {
+          available.push(
+            toVoiceModel(
+              m,
+              WHISPER_PROVIDER_ID,
+              "Local Whisper",
+              "whisper-local",
+            ),
+          );
         }
       }
-
-      if (canRunMlxAsr()) {
-        for (const mlxModel of LOCAL_MLX_VOICE_MODELS) {
-          const modelId = mlxModel.model_id.split("/")[1];
-          const status = getMlxModelStatus(modelId);
-          if (status?.status === "ready") {
-            available.push({ ...mlxModel, curated: true });
-          }
+      for (const m of getMlxCatalogModels()) {
+        if (getMlxModelStatus(m.id)?.status === "ready") {
+          available.push(
+            toVoiceModel(
+              m,
+              MLX_ASR_PROVIDER_ID,
+              MLX_ASR_PROVIDER_NAME,
+              m.family,
+            ),
+          );
         }
       }
 
