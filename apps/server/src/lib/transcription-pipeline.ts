@@ -108,12 +108,10 @@ export async function runTranscriptionPipeline(
   const voiceModel = defaults.voice.model_id;
 
   // A language-hotkey dictation pins the request to one language, overriding
-  // languages[0] and auto-detect alike. `languages` is already normalized
-  // lowercase (normalizeLanguageList, cloud-config.ts), so match case here
-  // rather than assuming the header arrives pre-normalized.
-  const languageOverride = input.languageOverride?.trim().toLowerCase();
+  // languages[0] and auto-detect alike. `resolveLanguageOverride` normalizes
+  // the raw header value.
   const effectiveLanguages = resolveLanguageOverride(
-    languageOverride,
+    input.languageOverride,
     languages,
   );
   const primaryLanguage = effectiveLanguages[0];
@@ -140,7 +138,7 @@ export async function runTranscriptionPipeline(
     const bias = resolveAsrVocabularyBias(voiceProvider, voiceModel);
     log.debug(`bias=${JSON.stringify(bias)}`);
     log.debug(
-      `languages=${JSON.stringify(languages)} override=${languageOverride ?? "none"} effective=${JSON.stringify(effectiveLanguages)}`,
+      `languages=${JSON.stringify(languages)} override=${input.languageOverride ?? "none"} effective=${JSON.stringify(effectiveLanguages)}`,
     );
     const t0 = Date.now();
     const result = await provider.transcribe({

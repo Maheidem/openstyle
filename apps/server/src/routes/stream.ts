@@ -58,7 +58,7 @@ const stream = new Hono().get(
     let upstreamConfigKey: string | null = null;
     let appContext: string | null = null;
     // Per-recording language pin from a language hotkey (the "start" message's
-    // `language` field), normalized (trimmed, lowercased). Reset to null only
+    // `language` field), raw (`resolveLanguageOverride` normalizes it). Reset to null only
     // by a fresh "start" — a mid-recording reconnect (onClose → connectUpstream)
     // does not send a new "start", so the pin survives that reconnect, which is
     // correct: nothing should change the pinned language mid-recording.
@@ -95,11 +95,12 @@ const stream = new Hono().get(
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
+      const storedLanguages = getLanguagesSetting();
       const languages = resolveLanguageOverride(
         languageOverride,
-        getLanguagesSetting(),
+        storedLanguages,
       );
-      const translate = getTranslateModeSetting();
+      const translate = getTranslateModeSetting(storedLanguages);
       const bias = resolveAsrVocabularyBias(
         voice.provider,
         voice.model_id,
@@ -553,9 +554,7 @@ const stream = new Hono().get(
             commitTime = 0;
             appContext = msg.context ?? null;
             languageOverride =
-              typeof msg.language === "string" && msg.language.trim()
-                ? msg.language.trim().toLowerCase()
-                : null;
+              typeof msg.language === "string" ? msg.language : null;
             pendingAudioChunks = [];
             pendingChunksDropped = false;
             pendingCommit = false;
