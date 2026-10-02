@@ -14,7 +14,6 @@ import {
   filterLanguageOptions,
   type LanguageChoice,
   MAX_LANGUAGES,
-  resolveLanguageOptions,
 } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -35,7 +34,7 @@ import { Check, Languages, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-/** Local fallback options (used when the cloud config is unavailable). */
+/** The language options from the bundled local list. */
 function useLocalFallback(): LanguageChoice[] {
   const { t } = useTranslation();
   return useMemo(
@@ -57,8 +56,7 @@ function useLocalFallback(): LanguageChoice[] {
 
 /** The ordered language option list, from the bundled local set. */
 export function useLanguageOptions(): LanguageChoice[] {
-  const fallback = useLocalFallback();
-  return useMemo(() => resolveLanguageOptions(undefined, fallback), [fallback]);
+  return useLocalFallback();
 }
 
 /**
