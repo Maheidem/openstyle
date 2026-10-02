@@ -49,7 +49,6 @@ const execFile = promisify(execFileCallback);
 export type DownloadStatus =
   | "not_downloaded"
   | "downloading"
-  | "verifying"
   | "ready"
   | "error";
 
@@ -79,7 +78,6 @@ interface ActiveDownload {
   bytesDownloaded: number;
   bytesTotal: number;
   speedBps: number;
-  startedAt: number;
   lastUpdate: number;
   lastBytes: number;
   error?: string;
@@ -193,7 +191,6 @@ export async function downloadModel(modelId: string): Promise<void> {
     bytesDownloaded: 0,
     bytesTotal: needsBinary ? 0 : model.sizeBytes,
     speedBps: 0,
-    startedAt: Date.now(),
     lastUpdate: Date.now(),
     lastBytes: 0,
   };

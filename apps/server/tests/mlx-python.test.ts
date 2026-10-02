@@ -129,3 +129,97 @@ describe("MLX ASR worker/script path env overrides", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 });
+
+describe("mlxSetupBlocker", () => {
+  const FAKE_PYTHON = "/fake/bin/python3";
+
+  interface Scenario {
+    appleSilicon: boolean;
+    workerExists: boolean;
+    pythonFound: boolean;
+    scriptExists: boolean;
+    depsInstalled: boolean;
+  }
+
+  const READY: Scenario = {
+    appleSilicon: true,
+    workerExists: false,
+    pythonFound: true,
+    scriptExists: true,
+    depsInstalled: true,
+  };
+
+  // Loads python.ts with the platform, file system and Python probes faked.
+  async function blockerFor(scenario: Scenario) {
+    const { existsSync: realExists } =
+      await vi.importActual<typeof import("node:fs")>("node:fs");
+    vi.doMock("../src/lib/mlx-asr/constants.js", async (importOriginal) => ({
+      ...(await importOriginal<
+        typeof import("../src/lib/mlx-asr/constants.js")
+      >()),
+      isAppleSiliconMac: () => scenario.appleSilicon,
+    }));
+    vi.doMock("node:fs", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("node:fs")>()),
+      existsSync: (path: string) => {
+        const name = String(path);
+        if (name === FAKE_PYTHON) return scenario.pythonFound;
+        if (name.endsWith("mlx_asr_server.py")) return scenario.scriptExists;
+        if (name.endsWith("mlx_asr_worker")) return scenario.workerExists;
+        return realExists(path);
+      },
+    }));
+    vi.doMock("node:child_process", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("node:child_process")>()),
+      execFileSync: (cmd: string, args: string[]) => {
+        if (cmd !== FAKE_PYTHON) throw new Error("no such command");
+        if (args[0] === "--version") return "Python 3.12.0";
+        if (!scenario.depsInstalled) throw new Error("no mlx_audio");
+        return "";
+      },
+    }));
+    process.env.OPENSTYLE_PYTHON = FAKE_PYTHON;
+    const { python } = await importPython();
+    return python;
+  }
+
+  afterEach(() => {
+    vi.doUnmock("../src/lib/mlx-asr/constants.js");
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+  });
+
+  it.each([
+    ["unsupported-platform", { ...READY, appleSilicon: false }],
+    ["no-runtime", { ...READY, pythonFound: false }],
+    ["script-missing", { ...READY, scriptExists: false }],
+    ["deps-missing", { ...READY, depsInstalled: false }],
+  ] as const)("returns the %s code", async (code, scenario) => {
+    const python = await blockerFor(scenario);
+
+    const blocker = python.mlxSetupBlocker();
+
+    expect(blocker?.code).toBe(code);
+    expect(python.describeMlxSetupBlocker()).toBe(blocker?.message);
+    expect(python.canRunMlxAsr()).toBe(false);
+  });
+
+  it("returns null when the Python runtime is complete", async () => {
+    const python = await blockerFor(READY);
+
+    expect(python.mlxSetupBlocker()).toBeNull();
+    expect(python.describeMlxSetupBlocker()).toBeNull();
+    expect(python.canRunMlxAsr()).toBe(true);
+  });
+
+  it("returns null when a worker binary exists", async () => {
+    const python = await blockerFor({
+      ...READY,
+      workerExists: true,
+      pythonFound: false,
+    });
+
+    expect(python.mlxSetupBlocker()).toBeNull();
+    expect(python.canRunMlxAsr()).toBe(true);
+  });
+});

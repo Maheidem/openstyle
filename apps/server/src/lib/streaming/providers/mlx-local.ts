@@ -8,7 +8,6 @@ import {
   applyMlxAsrRetentionPolicy,
   canRunMlxAsr,
   ensureMlxServerRunning,
-  transcribePcmWithMlxAsr,
   transcribeWithMlxAsr,
 } from "../../mlx-asr/server.js";
 import type {
@@ -185,10 +184,10 @@ class MlxLocalSessionTransport implements StreamSession {
           return;
         }
 
-        return transcribePcmWithMlxAsr({
+        return transcribeWithMlxAsr({
           modelId: this.opts.modelId,
-          pcm: new Uint8Array(audio),
-          sampleRate: STREAM_SAMPLE_RATE,
+          audio: new Uint8Array(audio),
+          pcmSampleRate: STREAM_SAMPLE_RATE,
           language: this.opts.language,
           context: this.opts.context,
           deferUnload: true,

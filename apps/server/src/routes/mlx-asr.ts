@@ -50,9 +50,7 @@ const mlxAsr = new Hono()
     const scriptPath = getMlxAsrServerScriptPath() || null;
     const workerPath = getMlxAsrWorkerPath() || null;
     const mlxAudio = python ? isMlxAudioInstalled(python) : false;
-    const blockedReason = platformSupported
-      ? describeMlxSetupBlocker()
-      : MLX_UNSUPPORTED_PLATFORM_REASON;
+    const blockedReason = describeMlxSetupBlocker();
 
     return c.json({
       platformSupported,

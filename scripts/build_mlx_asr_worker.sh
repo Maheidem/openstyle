@@ -17,6 +17,7 @@ HUGGINGFACE_HUB_VERSION="${HUGGINGFACE_HUB_VERSION:-1.17.0}"
 # Refs: freestyle-voice/freestyle#403, ml-explore/mlx-lm#1458.
 # Any dependency change here must also update MLX_WORKER_BUILD_SPEC in
 # apps/server/src/lib/mlx-asr/runtime.ts, or installed workers never re-download.
+# A test in apps/server/tests/mlx-runtime.test.ts checks that the two match.
 TRANSFORMERS_SPEC="${TRANSFORMERS_SPEC:->=5.7,<5.13}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then

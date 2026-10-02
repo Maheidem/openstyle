@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
 import { getDb } from "../db.js";
-import { getMlxAsrModel, isAppleSiliconMac } from "./constants.js";
+import { getMlxAsrModel } from "./constants.js";
 import {
   describeMlxSetupBlocker,
   findPythonExecutable,
@@ -83,14 +83,7 @@ export function isMlxServerFailed(): boolean {
   return workerFailed;
 }
 
-export function canRunMlxAsr(): boolean {
-  if (!isAppleSiliconMac()) return false;
-  if (existsSync(getMlxAsrWorkerPath())) return true;
-  const python = findPythonExecutable();
-  if (!python) return false;
-  if (!existsSync(getMlxAsrServerScriptPath())) return false;
-  return isMlxAudioInstalled(python);
-}
+export { canRunMlxAsr } from "./python.js";
 
 export function getMlxAsrKeepAliveMinutes(): number {
   try {
@@ -167,49 +160,26 @@ async function ensureMlxServerRunningLocked(modelId: string): Promise<void> {
 export async function transcribeWithMlxAsr(opts: {
   modelId: string;
   audio: Uint8Array;
+  /** Set for raw 16-bit PCM audio. Leave unset for a WAV file. */
+  pcmSampleRate?: number;
   language?: string;
   context?: string;
   deferUnload?: boolean;
 }): Promise<string> {
   await ensureMlxServerRunning(opts.modelId);
 
+  const isPcm = opts.pcmSampleRate !== undefined;
   const dir = join(tmpdir(), "openstyle-mlx-asr");
   await mkdir(dir, { recursive: true });
-  const audioPath = join(dir, `${randomUUID()}.wav`);
+  const audioPath = join(dir, `${randomUUID()}.${isPcm ? "pcm" : "wav"}`);
   await writeFile(audioPath, opts.audio);
 
   try {
     return await sendTranscribeRequest({
       audioPath,
-      language: opts.language,
-      context: opts.context,
-    });
-  } finally {
-    await unlink(audioPath).catch(() => undefined);
-    if (!opts.deferUnload) scheduleUnload();
-  }
-}
-
-export async function transcribePcmWithMlxAsr(opts: {
-  modelId: string;
-  pcm: Uint8Array;
-  sampleRate: number;
-  language?: string;
-  context?: string;
-  deferUnload?: boolean;
-}): Promise<string> {
-  await ensureMlxServerRunning(opts.modelId);
-
-  const dir = join(tmpdir(), "openstyle-mlx-asr");
-  await mkdir(dir, { recursive: true });
-  const audioPath = join(dir, `${randomUUID()}.pcm`);
-  await writeFile(audioPath, opts.pcm);
-
-  try {
-    return await sendTranscribeRequest({
-      audioPath,
-      audioFormat: "pcm_s16le",
-      sampleRate: opts.sampleRate,
+      ...(isPcm
+        ? { audioFormat: "pcm_s16le", sampleRate: opts.pcmSampleRate }
+        : {}),
       language: opts.language,
       context: opts.context,
     });
