@@ -1438,11 +1438,14 @@ function MeetingDetailView({
     void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
   }, [queryClient]);
 
+  // Returns the parsed JSON body with the `ok` flag. `body` is null when the
+  // request throws or the body is not JSON. On `!ok`, `body` holds the error
+  // shape instead of `T`, so callers read it with care.
   const runAction = useCallback(
-    async (
+    async <T,>(
       name: string,
       request: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>,
-    ): Promise<unknown> => {
+    ): Promise<{ ok: boolean; body: T | null }> => {
       setBusy(name);
       setActionError(null);
       // Cleared on every action, not just the diarize/enhance ones, so a
@@ -1451,17 +1454,16 @@ function MeetingDetailView({
       setDiarizeResult(null);
       setEnhanceResult(null);
       setEnhanceFailure(null);
-      let result: unknown;
+      let result: { ok: boolean; body: T | null } = { ok: false, body: null };
       try {
         const res = await request();
-        const body = await res.json();
+        const body = (await res.json()) as T;
         if (!res.ok) {
           setActionError(
             (body as { error?: string }).error ?? t("meetings.actionFailed"),
           );
-        } else {
-          result = body;
         }
+        result = { ok: res.ok, body };
       } catch {
         setActionError(t("meetings.actionFailed"));
       } finally {
@@ -1554,14 +1556,13 @@ function MeetingDetailView({
     await cancelJob();
   }, [meeting, cancelJob]);
   const identifySpeakers = useCallback(async () => {
-    const result = await runAction("diarize", () =>
+    const { ok, body } = await runAction<{
+      labeledCount: number;
+      speakerCount: number;
+    }>("diarize", () =>
       getClient().api.meetings[":id"].diarize.$post({ param: { id } }),
     );
-    if (result) {
-      setDiarizeResult(
-        result as { labeledCount: number; speakerCount: number },
-      );
-    }
+    if (ok && body) setDiarizeResult(body);
     // The route only UPDATEs speaker_label on existing rows — the merged
     // transcript needs a re-fetch to pick the new labels up, same as every
     // other action's invalidate() call inside runAction, called out here
@@ -1580,28 +1581,14 @@ function MeetingDetailView({
     else void identifySpeakers();
   }, [hasConfirmedSpeakerState, identifySpeakers]);
   const enhance = useCallback(async () => {
-    // A wholly-failed pass is a non-2xx with a machine-readable `reason`, and
-    // `runAction` owns (and consumes) the Response body — so the failure shape
-    // is captured from a clone inside the request callback. `current` rather
-    // than a bare `let` so the assignment across that closure stays visible to
-    // both the compiler and the reader.
-    const failure = { current: null as null | { reason?: unknown } };
-    const result = await runAction("enhance", async () => {
-      const res = await getClient().api.meetings[":id"].enhance.$post({
-        param: { id },
-      });
-      if (!res.ok) {
-        failure.current = (await res
-          .clone()
-          .json()
-          .catch(() => null)) as null | { reason?: unknown };
-      }
-      return res;
-    });
-    if (result) {
-      setEnhanceResult(result as EnhanceNote);
-    } else if (failure.current) {
-      const raw = failure.current.reason;
+    const { ok, body } = await runAction<EnhanceNote>("enhance", () =>
+      getClient().api.meetings[":id"].enhance.$post({ param: { id } }),
+    );
+    if (ok && body) {
+      setEnhanceResult(body);
+    } else if (!ok && body) {
+      // A wholly-failed pass is a non-2xx with a machine-readable `reason`.
+      const raw = (body as { reason?: unknown }).reason;
       // Anything the route didn't classify reads as a provider failure — the
       // honest default, never "nothing needed correction".
       setEnhanceFailure({
