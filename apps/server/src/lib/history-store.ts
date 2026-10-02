@@ -1,12 +1,11 @@
 import { parseRetentionDays } from "@openstyle/validations";
+import { createDailySweep } from "./daily-sweep.js";
 import { getDb, readSetting } from "./db.js";
 import { countFixes } from "./fixes.js";
 import { purgeExpiredRemixData } from "./remix-store.js";
 
 export const HISTORY_PAUSED_SETTING_KEY = "history_paused";
 export const HISTORY_RETENTION_SETTING_KEY = "history_retention_days";
-
-const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export interface RawHistoryEntry {
   rawText: string;
@@ -46,32 +45,14 @@ export function purgeExpiredHistory(): number {
   return Number(result.changes);
 }
 
-let retentionSweepTimer: NodeJS.Timeout | null = null;
+const historySweep = createDailySweep(() => {
+  purgeExpiredHistory();
+  const days = getHistoryRetentionDays();
+  if (days !== null) purgeExpiredRemixData(days);
+});
 
-export function startHistoryRetentionSweep(): void {
-  if (retentionSweepTimer) return;
-
-  const sweep = (): void => {
-    try {
-      purgeExpiredHistory();
-      const days = getHistoryRetentionDays();
-      if (days !== null) purgeExpiredRemixData(days);
-    } catch {
-      // Never let a sweep failure kill the periodic timer.
-    }
-  };
-
-  sweep();
-  retentionSweepTimer = setInterval(sweep, RETENTION_SWEEP_INTERVAL_MS);
-  retentionSweepTimer.unref();
-}
-
-export function stopHistoryRetentionSweep(): void {
-  if (retentionSweepTimer) {
-    clearInterval(retentionSweepTimer);
-    retentionSweepTimer = null;
-  }
-}
+export const startHistoryRetentionSweep = historySweep.start;
+export const stopHistoryRetentionSweep = historySweep.stop;
 
 export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
   if (isHistoryPaused()) return false;
