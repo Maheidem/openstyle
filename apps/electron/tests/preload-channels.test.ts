@@ -16,7 +16,8 @@ import { describe, expect, it } from "vitest";
 // This test parses both files with the TypeScript compiler API and asserts:
 //
 //   1. every `api` property in index.ts that subscribes via
-//      `ipcRenderer.on("<channel>")` is declared in index.d.ts;
+//      `ipcRenderer.on("<channel>")` or `listen("<channel>")` is declared in
+//      index.d.ts;
 //   2. every `on*` member declared in index.d.ts's `api` has a matching
 //      subscription in index.ts (no declarations for dead channels);
 //   3. every `webContents.send("<channel>")` (or WebContents-shaped
@@ -44,19 +45,26 @@ function parse(file: string): ts.SourceFile {
   );
 }
 
-/** All `ipcRenderer.on("<channel>")` string literals under a node. */
+/**
+ * All channel string literals under a node. A channel comes from either
+ * `ipcRenderer.on("<channel>")` or `listen("<channel>")` (the helper in
+ * preload/index.ts, with or without type arguments).
+ */
 function ipcOnChannels(source: ts.SourceFile, root: ts.Node): string[] {
   const channels: string[] = [];
   (function walk(node: ts.Node): void {
     if (
       ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === "on" &&
-      node.expression.expression.getText(source) === "ipcRenderer" &&
       node.arguments.length > 0 &&
       ts.isStringLiteralLike(node.arguments[0])
     ) {
-      channels.push(node.arguments[0].text);
+      const callee = node.expression;
+      const isOn =
+        ts.isPropertyAccessExpression(callee) &&
+        callee.name.text === "on" &&
+        callee.expression.getText(source) === "ipcRenderer";
+      const isListen = ts.isIdentifier(callee) && callee.text === "listen";
+      if (isOn || isListen) channels.push(node.arguments[0].text);
     }
     ts.forEachChild(node, walk);
   })(root);
