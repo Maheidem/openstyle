@@ -22,7 +22,6 @@ jobs:
       run_quality: ${{ steps.paths.outputs.run_quality }}
       run_electron: ${{ steps.paths.outputs.run_electron }}
       run_server_image: ${{ steps.paths.outputs.run_server_image }}
-      run_plugins: ${{ steps.paths.outputs.run_plugins }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,7 +38,6 @@ jobs:
               echo "run_quality=true"
               echo "run_electron=true"
               echo "run_server_image=true"
-              echo "run_plugins=true"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -50,7 +48,6 @@ jobs:
           run_quality=false
           run_electron=false
           run_server_image=false
-          run_plugins=false
 
           echo "Changed files:"
           while IFS= read -r file; do
@@ -76,19 +73,12 @@ jobs:
                 ;;
             esac
 
-            case "$file" in
-              plugins/*|packages/sdk/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
-                run_plugins=true
-                ;;
-            esac
-
           done < changed-files.txt
 
           {
             echo "run_quality=$run_quality"
             echo "run_electron=$run_electron"
             echo "run_server_image=$run_server_image"
-            echo "run_plugins=$run_plugins"
           } >> "$GITHUB_OUTPUT"
 
   lint:
@@ -235,26 +225,6 @@ jobs:
       - name: Run Electron E2E tests
         timeout-minutes: 5
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @openstyle/electron run test:e2e
-
-  build-plugins:
-    name: Build plugins
-    needs: [changes, lint]
-    if: needs.changes.outputs.run_plugins == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Build plugin packages
-        run: pnpm turbo build --filter=@openstyle/plugin-audio-transcription --filter=@openstyle/profanity-filter --filter=@openstyle/plugin-emoji
 
   build-linux:
     name: Build (Linux)
@@ -507,7 +477,6 @@ jobs:
       - typecheck
       - test-server
       - test-electron
-      - build-plugins
       - build-linux
       - build-mac
       - build-windows
