@@ -1060,7 +1060,6 @@ function RemixStep({
   const [remixed, setRemixed] = useState(false);
   const [working, setWorking] = useState(false);
   const [deliveredCount, setDeliveredCount] = useState(0);
-  const remixedRef = useRef(false);
   const inFlightUntilRef = useRef(0);
   const lastDeliveredAtRef = useRef(0);
   const workingTimerRef = useRef<number | null>(null);
@@ -1086,10 +1085,7 @@ function RemixStep({
       window.clearTimeout(workingTimerRef.current);
       workingTimerRef.current = null;
     }
-    if (!remixedRef.current) {
-      remixedRef.current = true;
-      setRemixed(true);
-    }
+    setRemixed(true);
   }, []);
   const handleDeliveredRef = useRef(handleDelivered);
   handleDeliveredRef.current = handleDelivered;
@@ -1124,10 +1120,6 @@ function RemixStep({
     if (!interactive || !body.trim()) return;
     if (Date.now() <= inFlightUntilRef.current) handleDeliveredRef.current();
   }, [body, interactive]);
-
-  const handleFinish = useCallback(() => {
-    onFinish();
-  }, [onFinish]);
 
   // Scripted fallback: an automated remix pass over the user's actual text.
   const [scriptPhase, setScriptPhase] = useState<"idle" | "pressed" | "result">(
@@ -1164,12 +1156,16 @@ function RemixStep({
       : scriptedBase
     : null;
 
+  // The strip follows real key presses when interactive, else the script.
+  const stripPhase = interactive ? phase : scriptPhase;
+  const stripWorking = interactive && working;
+  const stripRemixed = interactive ? remixed : scriptPhase === "result";
   const statusLabel =
-    phase === "pressed"
+    stripPhase === "pressed"
       ? t("onboarding.remix.statusListening")
-      : working
+      : stripWorking
         ? t("onboarding.remix.statusWorking")
-        : remixed
+        : stripRemixed
           ? t("onboarding.remix.statusRemixed")
           : t("onboarding.remix.statusReady");
 
@@ -1185,42 +1181,31 @@ function RemixStep({
             <div className="flex justify-start">
               <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
             </div>
-          ) : interactive ? (
+          ) : (
             <CoachStrip
               keys={keys}
-              phase={phase}
+              phase={stripPhase}
               lead={
-                !remixed
-                  ? t("onboarding.remix.highlightNote")
-                  : t("onboarding.remix.doneNote")
+                interactive
+                  ? remixed
+                    ? t("onboarding.remix.doneNote")
+                    : t("onboarding.remix.highlightNote")
+                  : undefined
               }
               instructionPrefix={t("onboarding.remix.instructionPrefix")}
               instructionSuffix={t("onboarding.remix.instructionSuffix")}
               sayText={t("onboarding.remix.sayText", { name: signoffName })}
               statusLabel={statusLabel}
-              statusEmphasis={phase === "pressed" || working || remixed}
-              getLiveLevel={getLiveLevel}
-            />
-          ) : (
-            <CoachStrip
-              keys={keys}
-              phase={scriptPhase}
-              instructionPrefix={t("onboarding.remix.instructionPrefix")}
-              instructionSuffix={t("onboarding.remix.instructionSuffix")}
-              sayText={t("onboarding.remix.sayText", { name: signoffName })}
-              statusLabel={
-                scriptPhase === "pressed"
-                  ? t("onboarding.remix.statusListening")
-                  : scriptPhase === "result"
-                    ? t("onboarding.remix.statusRemixed")
-                    : t("onboarding.remix.statusReady")
+              statusEmphasis={
+                stripPhase === "pressed" || stripWorking || stripRemixed
               }
-              statusEmphasis={scriptPhase !== "idle"}
-              getLiveLevel={() => null}
+              getLiveLevel={interactive ? getLiveLevel : () => null}
             >
-              <p className="text-muted-foreground text-[14px] leading-relaxed">
-                {t("onboarding.remix.fallbackNote")}
-              </p>
+              {!interactive && (
+                <p className="text-muted-foreground text-[14px] leading-relaxed">
+                  {t("onboarding.remix.fallbackNote")}
+                </p>
+              )}
             </CoachStrip>
           )}
         </div>
@@ -1249,7 +1234,7 @@ function RemixStep({
         <Button variant="outline" onClick={onBack}>
           {t("common.back")}
         </Button>
-        <Button variant="ink" onClick={handleFinish}>
+        <Button variant="ink" onClick={onFinish}>
           {t("onboarding.tutorial.finish")}
           <ArrowRight data-icon="inline-end" />
         </Button>
