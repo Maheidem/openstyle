@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { historyQuerySchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { dateRangeWhere, queryPage } from "../lib/list-query.js";
 
 interface HistoryRow {
   id: number;
@@ -41,7 +42,6 @@ const ALLOWED_ORDER_COLUMNS = new Set([
 
 const history = new Hono()
   .get("/", zValidator("query", historyQuerySchema), (c) => {
-    const db = getDb();
     const {
       limit,
       offset,
@@ -51,59 +51,25 @@ const history = new Hono()
       end_date = null,
     } = c.req.valid("query");
     const search = rawSearch?.trim() || "";
+    const pattern = `%${search}%`;
 
-    const orderColumn =
-      orderBy && ALLOWED_ORDER_COLUMNS.has(orderBy.column)
-        ? orderBy.column
-        : "created_at";
-    // Default ordering (no orderBy param) is newest-first.
-    const orderDir = orderBy
-      ? orderBy.order === "desc"
-        ? "DESC"
-        : "ASC"
-      : "DESC";
-
-    // Dynamically build WHERE conditions
-    const conditions: string[] = [];
-    const params: (string | number)[] = [];
-
-    if (search) {
-      const pattern = `%${search}%`;
-      conditions.push(
-        "(raw_text LIKE ? OR cleaned_text LIKE ? OR voice_model LIKE ?)",
-      );
-      params.push(pattern, pattern, pattern);
-    }
-
-    if (start_date) {
-      conditions.push("date(created_at,'localtime') >= ? ");
-      params.push(start_date);
-    }
-
-    if (end_date) {
-      conditions.push("date(created_at,'localtime') <= ? ");
-      params.push(end_date);
-    }
-
-    const whereClause =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-    // Query rows
-    const rowsQuery = `SELECT * FROM transcription_history ${whereClause} ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`;
-    const rows = db
-      .prepare(rowsQuery)
-      .all(...params, limit, offset) as unknown as HistoryRow[];
-
-    // Query total count
-    const countQuery = `SELECT COUNT(*) as count FROM transcription_history ${whereClause}`;
-    const countRow = db.prepare(countQuery).get(...params) as { count: number };
-
-    return c.json({
-      items: rows,
-      total: countRow.count,
+    const dates = dateRangeWhere(start_date, end_date);
+    const { items, total } = queryPage<HistoryRow>(getDb(), {
+      table: "transcription_history",
+      where: [
+        ...(search
+          ? ["(raw_text LIKE ? OR cleaned_text LIKE ? OR voice_model LIKE ?)"]
+          : []),
+        ...dates.where,
+      ],
+      params: [...(search ? [pattern, pattern, pattern] : []), ...dates.params],
+      orderColumns: ALLOWED_ORDER_COLUMNS,
+      orderBy,
       limit,
       offset,
     });
+
+    return c.json({ items, total, limit, offset });
   })
   .get("/stats", zValidator("query", historyQuerySchema), (c) => {
     const db = getDb();
@@ -111,20 +77,8 @@ const history = new Hono()
     const { start_date: startDate = null, end_date: endDate = null } =
       c.req.valid("query");
 
-    const conditions: string[] = [];
-    const params: string[] = [];
-
-    if (startDate) {
-      conditions.push("date(created_at, 'localtime') >= ?");
-      params.push(startDate);
-    }
-    if (endDate) {
-      conditions.push("date(created_at, 'localtime') <= ?");
-      params.push(endDate);
-    }
-
-    const whereClause =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const { where, params } = dateRangeWhere(startDate, endDate);
+    const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
 
     const statsQuery = `
         SELECT
