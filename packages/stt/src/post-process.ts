@@ -47,6 +47,8 @@ export interface PostProcessParams {
   maxOutputTokens?: number;
   /** Defaults to 0 (deterministic). */
   temperature?: number;
+  /** Nucleus sampling cutoff. Not sent when omitted. */
+  topP?: number;
   /**
    * Additional provider-specific options, passed straight through to the AI
    * SDK's `generateText` (e.g. Groq's `{ groq: { reasoningFormat: "hidden" } }`).
@@ -125,6 +127,7 @@ export async function postProcess(
       system: params.system,
       prompt,
       temperature: params.temperature ?? 0,
+      ...(params.topP !== undefined ? { topP: params.topP } : {}),
       maxOutputTokens:
         params.maxOutputTokens ?? maxOutputTokensForCleanup(normalizedRawText),
       ...(params.providerOptions

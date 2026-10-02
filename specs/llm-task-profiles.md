@@ -923,6 +923,7 @@ export interface ResolvedTaskCall {
   provider: string;
   modelId: string;
   temperature: number;
+  topP?: number; // preset `top_p`; mapped-subset providers only
   maxOutputTokens: number;
   reasoningEnabled: boolean;
   samplingParams: Record<string, unknown>; // {} in "auto" mode
@@ -979,10 +980,15 @@ export async function resolveTaskCall(
       }
     : {}; // mapped-subset providers never get the verbatim object at all
 
-  // §7.2 — only `temperature` reaches a mapped-subset provider from the preset.
+  // §7.2 — only `temperature`, `top_p` and `max_tokens` reach a mapped-subset
+  // provider from the preset. Local providers get them in `samplingParams`.
   const presetTemperature =
     !isLocal && typeof strippedParams.temperature === "number"
       ? strippedParams.temperature
+      : undefined;
+  const presetTopP =
+    !isLocal && typeof strippedParams.top_p === "number"
+      ? strippedParams.top_p
       : undefined;
 
   // profile.maxOutputTokens === "auto" requires the caller to supply
@@ -1007,6 +1013,7 @@ export async function resolveTaskCall(
     provider,
     modelId,
     temperature: presetTemperature ?? profile.temperature,
+    ...(presetTopP !== undefined ? { topP: presetTopP } : {}),
     maxOutputTokens: Math.max(taskBudget, presetFloor), // §6.2
     reasoningEnabled: profile.reasoningEnabled,
     samplingParams,

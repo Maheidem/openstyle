@@ -109,6 +109,7 @@ export async function resolveDefaultChatCall(
       system: request.system,
       prompt: request.prompt,
       temperature: resolved.temperature,
+      topP: resolved.topP,
       maxOutputTokens: resolved.maxOutputTokens,
       skipEmptyText: false,
       ...(providerOptions ? { providerOptions } : {}),

@@ -121,6 +121,7 @@ export async function runRemixTransform(
       system,
       prompt,
       temperature: resolved.temperature,
+      topP: resolved.topP,
       maxOutputTokens: resolved.maxOutputTokens,
       ...(providerOptions ? { providerOptions } : {}),
       abortSignal: AbortSignal.timeout(resolved.timeoutMs),
