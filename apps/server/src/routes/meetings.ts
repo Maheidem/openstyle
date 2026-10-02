@@ -1361,6 +1361,11 @@ const meetings = new Hono()
             )
             .get(id, mergedInto) as { merged_into: string | null } | undefined;
           const resolved = targetRow?.merged_into ?? mergedInto;
+          // The target can already point back at this label (2 into 1, then
+          // 1 into 2). That resolves to a self-merge, so reject it.
+          if (resolved === label) {
+            return c.json({ error: "A speaker cannot merge into itself" }, 400);
+          }
           newMergedInto = resolved;
           cascadeTarget = resolved;
         }
