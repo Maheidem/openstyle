@@ -386,13 +386,6 @@ interface TranscribeResult {
   cleaned: string;
   error?: string;
   providerCategory?: string;
-  /**
-   * Terminal pipeline disposition from the server. A plugin that called
-   * `api.control.consume()`/`abort()` in a server hook resolves to
-   * `"suppressed"`/`"aborted"` here, and the dictation is dropped without
-   * delivery. Defaults to `"deliver"` for older server responses.
-   */
-  disposition?: "deliver" | "suppressed" | "aborted";
 }
 
 /**
@@ -404,6 +397,24 @@ interface TranscribeResult {
  */
 function encodeAppContext(context: string): string {
   return encodeURIComponent(context);
+}
+
+/** Build the request headers for POST /api/transcribe. */
+function buildTranscribeHeaders(opts: {
+  durationMs: number;
+  language: string | null;
+  appContext: string | null;
+  skipPostProcess: boolean;
+}): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "audio/wav",
+    "x-audio-duration-ms": String(opts.durationMs),
+  };
+  if (opts.language) headers["x-dictation-language"] = opts.language;
+  if (opts.appContext)
+    headers["x-app-context"] = encodeAppContext(opts.appContext);
+  if (opts.skipPostProcess) headers["x-skip-post-process"] = "true";
+  return headers;
 }
 
 interface QueueEntry {
@@ -675,12 +686,8 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      // A dictation is deliverable only when it has text AND the server
-      // didn't mark it suppressed/aborted (a plugin calling
-      // `api.control.consume()`/`abort()` in a server hook). Absent
-      // disposition (older responses) is treated as "deliver".
-      const isDeliverable = (r: TranscribeResult): boolean =>
-        !!r.raw.trim() && (r.disposition ?? "deliver") === "deliver";
+      // A dictation is deliverable only when it has text.
+      const isDeliverable = (r: TranscribeResult): boolean => !!r.raw.trim();
 
       if (
         recordingActiveRef.current ||
@@ -754,17 +761,11 @@ export default function AppPage(): React.JSX.Element {
       let delivered = false;
 
       try {
-        const requestedMode =
-          _outputMode === "clipboard" ? "clipboard" : "paste";
-        const deliverText = finalText;
-        const deliverMode: "paste" | "clipboard" = requestedMode;
-        const shouldDeliver = true;
-
-        if (shouldDeliver && deliverText.trim()) {
+        if (finalText.trim()) {
           const delivery =
-            deliverMode === "clipboard"
-              ? window.api.copyText(deliverText, appContextRef.current)
-              : window.api.pasteText(deliverText, appContextRef.current);
+            _outputMode === "clipboard"
+              ? window.api.copyText(finalText)
+              : window.api.pasteText(finalText);
 
           // Start the exit when delivery is dispatched; pasteText resolves later.
           delivered = true;
@@ -809,15 +810,12 @@ export default function AppPage(): React.JSX.Element {
     ): Promise<TranscribeResult> | null => {
       const wavBlob = streamerRef.current?.getWavBlob() ?? null;
       if (!wavBlob) return null;
-      const headers: Record<string, string> = {
-        "Content-Type": "audio/wav",
-        "x-audio-duration-ms": String(lastRecordingDurationRef.current),
-      };
-      if (language) headers["x-dictation-language"] = language;
-      if (appContextRef.current)
-        headers["x-app-context"] = encodeAppContext(appContextRef.current);
-      if (queueRef.current.length > 0 || drainingRef.current)
-        headers["x-skip-post-process"] = "true";
+      const headers = buildTranscribeHeaders({
+        durationMs: lastRecordingDurationRef.current,
+        language,
+        appContext: appContextRef.current,
+        skipPostProcess: queueRef.current.length > 0 || drainingRef.current,
+      });
       return apiFetch("/api/transcribe", {
         method: "POST",
         body: wavBlob,
@@ -1735,14 +1733,12 @@ export default function AppPage(): React.JSX.Element {
     }
 
     const isSubsequent = queueRef.current.length > 0 || drainingRef.current;
-    const headers: Record<string, string> = {
-      "Content-Type": "audio/wav",
-      "x-audio-duration-ms": String(recordingDuration),
-    };
-    if (dictationLanguage) headers["x-dictation-language"] = dictationLanguage;
-    if (appContextRef.current)
-      headers["x-app-context"] = encodeAppContext(appContextRef.current);
-    if (isSubsequent) headers["x-skip-post-process"] = "true";
+    const headers = buildTranscribeHeaders({
+      durationMs: recordingDuration,
+      language: dictationLanguage,
+      appContext: appContextRef.current,
+      skipPostProcess: isSubsequent,
+    });
 
     const serverOk = await refreshApiBase();
     if (!serverOk) {
@@ -1786,13 +1782,11 @@ export default function AppPage(): React.JSX.Element {
           raw?: string;
           cleaned?: string;
           provider_category?: string;
-          disposition?: "deliver" | "suppressed" | "aborted";
         };
         return {
           raw: (data.raw || "").trim(),
           cleaned: (data.cleaned || data.raw || "").trim(),
           providerCategory: data.provider_category,
-          disposition: data.disposition,
         };
       })
       .catch((err) => {
@@ -1842,14 +1836,23 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Remix ----
   // A remix is not a dictation: it never enters the transcription queue,
-  // never reaches the plugin output pipeline, and its result replaces a
-  // selection rather than being inserted at a cursor. What it does share is the
+  // and its result replaces a selection rather than being inserted at a
+  // cursor. What it does share is the
   // pill — the surface, the waveform, and the mic behind it.
 
   const clearRemixHoldTimer = useCallback(() => {
     if (remixHoldTimerRef.current) {
       clearTimeout(remixHoldTimerRef.current);
       remixHoldTimerRef.current = null;
+    }
+  }, []);
+
+  /** Stop the remix mic capture and release its stream, if one is open. */
+  const releaseRemixMic = useCallback(() => {
+    if (remixMicGenRef.current !== null) {
+      recorderRef.current.cancel(remixMicGenRef.current);
+      recorderRef.current.releaseStream(remixMicGenRef.current);
+      remixMicGenRef.current = null;
     }
   }, []);
 
@@ -1861,7 +1864,6 @@ export default function AppPage(): React.JSX.Element {
         onConfig: (config) => {
           remixTransportRef.current = config.sessionTransport;
         },
-        onReady: () => {},
         onPartial: (text) => {
           if (remixRef.current && text) patchRemix({ transcript: text });
         },
@@ -1881,6 +1883,13 @@ export default function AppPage(): React.JSX.Element {
     return remixStreamerRef.current;
   }, []);
 
+  /** Destroy the remix streamer. The next remix creates a new one. */
+  const destroyRemixStreamer = useCallback(() => {
+    remixStreamerRef.current?.destroy();
+    remixStreamerRef.current = null;
+    remixTransportRef.current = false;
+  }, []);
+
   const endRemix = useCallback(
     (options: { hide?: boolean } = {}) => {
       if (!remixRef.current) return;
@@ -1893,18 +1902,14 @@ export default function AppPage(): React.JSX.Element {
       remixFinalRef.current?.resolve("");
       remixFinalRef.current = null;
       remixContextRef.current = null;
-      if (remixMicGenRef.current !== null) {
-        recorderRef.current.cancel(remixMicGenRef.current);
-        recorderRef.current.releaseStream(remixMicGenRef.current);
-        remixMicGenRef.current = null;
-      }
+      releaseRemixMic();
       remixStreamerRef.current?.cancel();
       window.api?.setRemixRouteKeys(false);
       setRemix(null);
       stopVisualization();
       if (options.hide !== false) window.api?.hidePill();
     },
-    [clearRemixHoldTimer, setRemix, stopVisualization],
+    [clearRemixHoldTimer, setRemix, stopVisualization, releaseRemixMic],
   );
 
   const closeRemix = useCallback(() => endRemix(), [endRemix]);
@@ -1929,11 +1934,7 @@ export default function AppPage(): React.JSX.Element {
     (title: string, body: string) => {
       clearRemixHoldTimer();
       remixRunningRef.current = false;
-      if (remixMicGenRef.current !== null) {
-        recorderRef.current.cancel(remixMicGenRef.current);
-        recorderRef.current.releaseStream(remixMicGenRef.current);
-        remixMicGenRef.current = null;
-      }
+      releaseRemixMic();
       remixStreamerRef.current?.cancel();
       window.api?.setRemixRouteKeys(false);
       stopVisualization();
@@ -1945,7 +1946,7 @@ export default function AppPage(): React.JSX.Element {
         body,
       });
     },
-    [clearRemixHoldTimer, setRemix, stopVisualization],
+    [clearRemixHoldTimer, setRemix, stopVisualization, releaseRemixMic],
   );
 
   /**
@@ -2081,11 +2082,7 @@ export default function AppPage(): React.JSX.Element {
     (instruction: string | null, options: { minimized?: boolean } = {}) => {
       clearRemixHoldTimer();
       remixRunningRef.current = false;
-      if (remixMicGenRef.current !== null) {
-        recorderRef.current.cancel(remixMicGenRef.current);
-        recorderRef.current.releaseStream(remixMicGenRef.current);
-        remixMicGenRef.current = null;
-      }
+      releaseRemixMic();
       stopVisualization();
       window.api?.setRemixRouteKeys(false);
       patchRemix({
@@ -2094,7 +2091,7 @@ export default function AppPage(): React.JSX.Element {
         minimized: options.minimized === true,
       });
     },
-    [clearRemixHoldTimer, patchRemix, stopVisualization],
+    [clearRemixHoldTimer, patchRemix, stopVisualization, releaseRemixMic],
   );
 
   /**
@@ -2373,9 +2370,7 @@ export default function AppPage(): React.JSX.Element {
         streamerRef.current = null;
         supportsSessionTransportRef.current = false;
         getStreamer();
-        remixStreamerRef.current?.destroy();
-        remixStreamerRef.current = null;
-        remixTransportRef.current = false;
+        destroyRemixStreamer();
       });
     });
     return () => {
@@ -2388,7 +2383,7 @@ export default function AppPage(): React.JSX.Element {
       removeCleanupContext?.();
       removeServerChanged?.();
     };
-  }, [applyPillPosition, getStreamer]);
+  }, [applyPillPosition, getStreamer, destroyRemixStreamer]);
 
   // "always" pins the button open; "hover" lets the pointer drive it.
   useEffect(() => {
@@ -2513,11 +2508,7 @@ export default function AppPage(): React.JSX.Element {
       ) {
         return;
       }
-      if (remixMicGenRef.current !== null) {
-        recorderRef.current.cancel(remixMicGenRef.current);
-        recorderRef.current.releaseStream(remixMicGenRef.current);
-        remixMicGenRef.current = null;
-      }
+      releaseRemixMic();
       void runRemix({ remixId: preset.id, label: preset.label });
     });
 
@@ -2564,6 +2555,7 @@ export default function AppPage(): React.JSX.Element {
     restoreSystemAudioSafely,
     runRemix,
     setRemix,
+    releaseRemixMic,
   ]);
 
   // ---- Warnings see themselves out ----
@@ -2596,13 +2588,12 @@ export default function AppPage(): React.JSX.Element {
           recorderRef.current.destroy();
           streamerRef.current?.destroy();
           streamerRef.current = null;
-          remixStreamerRef.current?.destroy();
-          remixStreamerRef.current = null;
+          destroyRemixStreamer();
         }
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cancelRecording]);
+  }, [cancelRecording, destroyRemixStreamer]);
 
   // ---- Render ----
   // Two surfaces share one anchor: the capsule, which is the whole UI on the

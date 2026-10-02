@@ -98,10 +98,6 @@ export class Recorder {
     return stream;
   }
 
-  getStream(): MediaStream | null {
-    return this.stream;
-  }
-
   isRecording(): boolean {
     return this.mediaRecorder?.state === "recording";
   }

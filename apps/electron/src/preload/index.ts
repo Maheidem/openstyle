@@ -90,10 +90,10 @@ const api = {
   isE2E: (process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1",
   defaultHotkey: getDefaultHotkey(),
   defaultRemixHotkey: getDefaultRemixHotkey(),
-  pasteText: (text: string, appContext?: string | null): Promise<void> =>
-    ipcRenderer.invoke("paste:text", text, appContext ?? null),
-  copyText: (text: string, appContext?: string | null): Promise<void> =>
-    ipcRenderer.invoke("copy:text", text, appContext ?? null),
+  pasteText: (text: string): Promise<void> =>
+    ipcRenderer.invoke("paste:text", text),
+  copyText: (text: string): Promise<void> =>
+    ipcRenderer.invoke("copy:text", text),
   prepareSystemAudio: (mode: ActiveAudioPlaybackMode): Promise<void> =>
     ipcRenderer.invoke("audio:prepare", mode),
   duckSystemAudio: (): Promise<void> => ipcRenderer.invoke("audio:duck"),
