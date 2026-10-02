@@ -1,4 +1,4 @@
-# Independent release pipeline for publishable packages (SDK + plugins).
+# Independent release pipeline for publishable packages (SDK and STT).
 #
 # Separate from the app release (release.yml). It runs `craft prepare` with its
 # working directory pointed at the chosen package, so Craft uses that package's
@@ -10,8 +10,8 @@
 # subdirectory is what publish-package.yml uses to route the publish back to the
 # right package — no labels required.
 #
-# To add a new plugin: drop a .craft.yml in its dir and add it to the `package`
-# choices + the `case` in the "Resolve package path" step below. Nothing else.
+# To add a new package: put a .craft.yml in its directory. Then add it to the
+# `package` choices and to the `case` in the "Resolve package path" step below.
 
 name: Release Package
 on:
@@ -24,7 +24,6 @@ on:
         options:
           - sdk
           - stt
-          - create-openstyle-plugin
       version:
         description: 'Explicit version to release (e.g. 1.2.0)'
         required: true
@@ -73,9 +72,8 @@ jobs:
           PKG: ${{ github.event.inputs.package }}
         run: |
           case "$PKG" in
-            sdk)                     echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
-            stt)                     echo "path=packages/stt" >> "$GITHUB_OUTPUT" ;;
-            create-openstyle-plugin) echo "path=packages/create-openstyle-plugin" >> "$GITHUB_OUTPUT" ;;
+            sdk) echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
+            stt) echo "path=packages/stt" >> "$GITHUB_OUTPUT" ;;
             *) echo "::error::Unknown package: $PKG"; exit 1 ;;
           esac
 

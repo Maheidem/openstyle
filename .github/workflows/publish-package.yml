@@ -1,4 +1,4 @@
-# Publish pipeline for packages (SDK + plugins).
+# Publish pipeline for packages (SDK and STT).
 #
 # Mirrors publish.yml (the app pipeline) but for npm packages. Triggered when
 # the "accepted" label is added to a Craft publish-request issue.
@@ -10,7 +10,7 @@
 #   1. only run when the title contains a subdirectory (-> it's a package), and
 #   2. parse the package path + version straight from the title, then read that
 #      package's release-branch prefix from its own .craft.yml.
-# Adding a new plugin therefore requires NO changes to this file.
+# Adding a new package therefore requires NO changes to this file.
 #
 # Auth: npm Trusted Publishing via OIDC (no NPM_TOKEN). Requires
 # `id-token: write` and npm >= 11.5.1 (Node 24 ships a new-enough npm; we also
@@ -157,7 +157,7 @@ jobs:
           # automatically by trusted publishing; we don't force NPM_CONFIG_PROVENANCE
           # (forcing it can hard-fail depending on repo visibility).
 
-      # Package/plugin tags (e.g. openstyle-sdk@0.4.0) are semver-parsed by
+      # Package tags (e.g. openstyle-sdk@0.4.0) are semver-parsed by
       # GitHub's default `make_latest: legacy` rule, so a package version that
       # numerically exceeds the app version steals the "Latest" release badge.
       # electron-updater's GitHubProvider resolves updates via /releases/latest,
