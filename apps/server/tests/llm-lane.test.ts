@@ -16,6 +16,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { writeSetting } from "../src/lib/db.js";
 import { __resetDictationIdleStateForTests } from "../src/lib/dictation-activity.js";
 import {
   __resetLlmLanesForTests,
@@ -26,6 +27,7 @@ import {
   LLM_LANE_CONCURRENCY_LOCAL,
   LlmLaneCancelledError,
   llmLaneKey,
+  llmLaneKeyForProvider,
   llmLaneSnapshot,
 } from "../src/lib/llm/lane.js";
 
@@ -136,6 +138,54 @@ describe("llmLaneKey — the lane is the ENDPOINT, not the config key", () => {
     expect(isLocalLaneHost("172.32.0.9")).toBe(false);
     expect(isLocalLaneHost("api.openai.com")).toBe(false);
     expect(llmLaneSnapshot(CLOUD).limit).toBe(LLM_LANE_CONCURRENCY_CLOUD);
+  });
+});
+
+describe("llmLaneKeyForProvider — the limit follows the provider local flag", () => {
+  it("gives a local provider on a non-private host a limit of 1", async () => {
+    // 100.64.0.0/10 (Tailscale) is not a private range for `isLocalLaneHost`.
+    writeSetting("local_llm_url", "http://100.64.0.5:8123/v1");
+    const lane = await llmLaneKeyForProvider("local-llm");
+    expect(lane).toEqual({
+      key: "100.64.0.5:8123",
+      limit: LLM_LANE_CONCURRENCY_LOCAL,
+    });
+    // The host guess alone would give this lane the cloud limit.
+    expect(isLocalLaneHost("100.64.0.5")).toBe(false);
+
+    const c = idleCtx();
+    const first = await acquireLlmLane({
+      ...c,
+      lane: lane.key,
+      limit: lane.limit,
+      cls: "interactive",
+      taskId: "cleanup",
+    });
+    expect(llmLaneSnapshot(lane.key).limit).toBe(LLM_LANE_CONCURRENCY_LOCAL);
+    let second = false;
+    const pending = acquireLlmLane({
+      ...c,
+      lane: lane.key,
+      limit: lane.limit,
+      cls: "interactive",
+      taskId: "cleanup",
+    }).then((l) => {
+      second = true;
+      return l;
+    });
+    await c.clock.flush();
+    expect(second).toBe(false);
+    first.release();
+    await c.clock.flush();
+    (await pending).release();
+    expect(second).toBe(true);
+  });
+
+  it("gives a cloud provider a limit of 2", async () => {
+    expect(await llmLaneKeyForProvider("openai")).toEqual({
+      key: CLOUD,
+      limit: LLM_LANE_CONCURRENCY_CLOUD,
+    });
   });
 });
 

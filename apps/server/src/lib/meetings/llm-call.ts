@@ -121,9 +121,10 @@ export async function resolveDefaultChatCall(
   // `postProcess` only — never across the meeting, the chunk loop, or the
   // job. The lease is acquired before the model is even resolved, because the
   // resolution is what names the endpoint (§5.1: the lane IS the endpoint).
-  const lane = await llmLaneKeyForProvider(resolved.provider);
+  const { key: lane, limit } = await llmLaneKeyForProvider(resolved.provider);
   const lease: LaneLease = await acquireLlmLane({
     lane,
+    limit,
     cls: "background",
     taskId: request.taskId,
     ...(request.shouldStop ? { shouldStop: request.shouldStop } : {}),

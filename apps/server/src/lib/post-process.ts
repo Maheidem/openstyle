@@ -215,9 +215,12 @@ export async function postProcess(
       // `result.model` bookkeeping, so a failed cleanup never leaves the
       // lane occupied. Spec §6 constraint 5: if this ever measurably adds
       // time to the commit -> delivered-text path, the lane is wrong.
-      const lane = await llmLaneKeyForProvider(resolved.provider);
+      const { key: lane, limit } = await llmLaneKeyForProvider(
+        resolved.provider,
+      );
       const lease = await acquireLlmLane({
         lane,
+        limit,
         cls: "interactive",
         taskId: "cleanup",
       });
