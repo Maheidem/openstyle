@@ -31,7 +31,7 @@ import {
   formatEnhanceLine,
 } from "./enhance-prompt.js";
 import { estimateTokens, resolveDefaultChatCall } from "./llm-call.js";
-import type { MergedSegment } from "./merge.js";
+import { type MergedSegment, speakerDisplayLabel } from "./merge.js";
 
 const log = createAppLogger("meeting-enhance");
 
@@ -366,21 +366,17 @@ export async function enhanceMeetingTranscript(
   // Prerequisite fix (specs/meeting-speaker-naming.md §5.1): the transcript
   // the model actually sees must distinguish `Them 1` from `Them 2` — bare
   // `s.speaker` ("Me"/"Them") gives it no way to tell speakers apart at
-  // all. Prefer a confirmed `speakerName` over the numbered fallback (free
-  // improvement to correction quality for already-named meetings, not just
-  // an enabler for naming); a "Them" segment with no `speakerLabel` at all
-  // stays plain "Them" here — the "Unidentified" rendering fallback is a
-  // *display* concept (§3.3/§4), not something the LLM's own transcript
-  // view needs.
+  // all. `speakerDisplayLabel` prefers a confirmed `speakerName` over the
+  // numbered fallback (free improvement to correction quality for
+  // already-named meetings, not just an enabler for naming). A "Them"
+  // segment with no `speakerLabel` at all stays plain "Them" here — the
+  // "Unidentified" rendering fallback is a *display* concept (§3.3/§4), not
+  // something the LLM's own transcript view needs.
   const withIds: EnhanceSegment[] = segments
     .filter((s) => Boolean(s.id) && s.text.trim().length > 0)
     .map((s) => ({
       id: s.id as string,
-      speaker:
-        s.speaker === "Them"
-          ? (s.speakerName ??
-            (s.speakerLabel ? `Them ${s.speakerLabel}` : "Them"))
-          : s.speaker,
+      speaker: speakerDisplayLabel(s, "Them"),
       text: s.text,
       ...(s.speaker === "Them" && s.speakerLabel
         ? { speakerLabel: s.speakerLabel }

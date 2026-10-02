@@ -24,7 +24,7 @@ import {
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
 import { estimateTokens, resolveDefaultChatCall } from "./llm-call.js";
-import type { MergedSegment } from "./merge.js";
+import { type MergedSegment, speakerDisplayLabel } from "./merge.js";
 import {
   buildMeetingSummaryMapPrompt,
   buildMeetingSummaryReducePrompt,
@@ -307,21 +307,10 @@ function renderTranscript(segments: readonly MergedSegment[]): string {
     .join("\n");
 }
 
-/** Format one merged segment as a labeled transcript line. specs/meeting-
- * speaker-naming.md §9.1: prefer a confirmed `speakerName` (following any
- * merge) over the numbered fallback, same expression used at every other
- * resolution site (§4); a "Them" segment with no `speakerLabel` at all
- * renders "Unidentified" — never bare "Them", which would read as a real,
- * still-unnamed participant. */
+/** Format one merged segment as a labeled transcript line. The label rule
+ * (named, numbered, or "Unidentified") lives in `speakerDisplayLabel`. */
 function formatSegment(segment: MergedSegment): string {
-  const label =
-    segment.speaker === "Them"
-      ? (segment.speakerName ??
-        (segment.speakerLabel
-          ? `Them ${segment.speakerLabel}`
-          : "Unidentified"))
-      : segment.speaker;
-  return `${label}: ${segment.text}`;
+  return `${speakerDisplayLabel(segment, "Unidentified")}: ${segment.text}`;
 }
 
 /**

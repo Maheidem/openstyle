@@ -328,6 +328,28 @@ function formatClockMs(ms: number): string {
 }
 
 /**
+ * Display label for one merged segment. English-only regardless of app
+ * locale, like `speaker` itself (already the unlocalized "Me"/"Them"): the
+ * export and the LLM prompts are plain text, independent of the UI locale
+ * (specs/meeting-diarization.md §9). specs/meeting-speaker-naming.md §4:
+ * prefer a confirmed `speakerName` (following any merge) over the numbered
+ * "Them N" fallback. A "Them" segment with no `speakerLabel` at all
+ * (diarization never ran, or the diarizer could not attribute the line)
+ * gets `unlabeled`. Display callers pass "Unidentified" (§3.3 amendment),
+ * never bare "Them", which would read as a real, still-unnamed participant.
+ */
+export function speakerDisplayLabel(
+  seg: Pick<MergedSegment, "speaker" | "speakerName" | "speakerLabel">,
+  unlabeled: string,
+): string {
+  if (seg.speaker !== "Them") return seg.speaker;
+  return (
+    seg.speakerName ??
+    (seg.speakerLabel ? `Them ${seg.speakerLabel}` : unlabeled)
+  );
+}
+
+/**
  * Render a merged, speaker-labeled transcript as a standalone markdown
  * document — `[timestamp] Speaker: text` per segment — so a meeting's audio
  * directory is self-contained without requiring the app or DB.
@@ -344,21 +366,7 @@ export function formatTranscriptMarkdown(
   useEnhanced = false,
 ): string {
   const lines = segments.map((s) => {
-    // Diarization label, English-only regardless of app locale — consistent
-    // with `s.speaker` itself, which is already the unlocalized literal
-    // "Me"/"Them" and never run through `t()`: the export is a plain-text
-    // artifact independent of the UI's locale (specs/meeting-diarization.md
-    // §9). specs/meeting-speaker-naming.md §4: prefer a confirmed
-    // `speakerName` (following any merge) over the numbered fallback; a
-    // "Them" segment with no `speakerLabel` at all (diarization never ran,
-    // or the diarizer couldn't attribute this line to anyone) renders the
-    // literal "Unidentified" — never bare "Them", which would read as a
-    // real, still-unnamed participant (§3.3 amendment).
-    const label =
-      s.speaker === "Them"
-        ? (s.speakerName ??
-          (s.speakerLabel ? `Them ${s.speakerLabel}` : "Unidentified"))
-        : s.speaker;
+    const label = speakerDisplayLabel(s, "Unidentified");
     const text = useEnhanced ? (s.enhancedText ?? s.text) : s.text;
     return `**[${formatClockMs(s.startMs)}] ${label}:** ${text}`;
   });
