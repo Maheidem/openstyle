@@ -1506,55 +1506,53 @@ function MeetingDetailView({
       ),
     [id, runAction],
   );
-  const cancelTranscribe = useCallback(async () => {
-    if (meeting?.status !== "transcribing" || cancelRequested) return;
-    setCancelRequested(true);
-    try {
-      const res = await getClient().api.meetings[":id"][
-        "cancel-transcribe"
-      ].$post({ param: { id } });
-      if (res.ok || res.status === 409) {
-        // 409 = no transcription job holds the slot any more (it just
-        // finished on its own, or the slot is a non-cancellable diarize
-        // pass) — the poll shows whatever terminal state the job reached,
-        // which is all the user asked for. Latch the plan for the note only
-        // on an acknowledged cancel.
-        if (res.ok) plannedTotalRef.current = meeting.job?.total ?? null;
-        return;
+  // Shared cancel call for the Transcribe and Summarize buttons. Both jobs use
+  // one server seam (`activeJobCancellations`, polled between chunks), so a
+  // call still QUEUED on the LLM lane never goes on the wire. `onAcked` runs
+  // only when the server acknowledges the cancel.
+  const cancelJob = useCallback(
+    async (onAcked?: () => void) => {
+      if (cancelRequested) return;
+      setCancelRequested(true);
+      try {
+        const res = await getClient().api.meetings[":id"][
+          "cancel-transcribe"
+        ].$post({ param: { id } });
+        if (res.ok || res.status === 409) {
+          // 409 = no job holds the slot any more (it just finished on its
+          // own, or the slot is a non-cancellable diarize pass). The poll
+          // shows whatever terminal state the job reached, which is all the
+          // user asked for. Run `onAcked` only on an acknowledged cancel.
+          if (res.ok) onAcked?.();
+          return;
+        }
+        throw new Error(`cancel-transcribe -> ${res.status}`);
+      } catch {
+        // Leave the wind-down state only on a real failure; the action error
+        // surface below carries the message.
+        setCancelRequested(false);
+        setActionError(t("meetings.actionFailed"));
+      } finally {
+        invalidate();
       }
-      throw new Error(`cancel-transcribe -> ${res.status}`);
-    } catch {
-      // Leave the wind-down state only on a real failure; the action error
-      // surface below carries the message.
-      setCancelRequested(false);
-      setActionError(t("meetings.actionFailed"));
-    } finally {
-      invalidate();
-    }
-  }, [id, meeting, cancelRequested, invalidate, t]);
-  // Cancel a running Summarize job (§5.7): the same server seam as
-  // cancelTranscribe — `activeJobCancellations`, polled between map chunks,
-  // so a call still QUEUED on the LLM lane never goes on the wire. Nothing is
-  // destroyed: the transcript and every persisted segment survive, no summary
-  // is written, and the failure lands in `job_error` (not `meetings.error`).
+    },
+    [id, cancelRequested, invalidate, t],
+  );
+  const cancelTranscribe = useCallback(async () => {
+    if (meeting?.status !== "transcribing") return;
+    // Latch the plan for the note only on an acknowledged cancel.
+    const total = meeting.job?.total ?? null;
+    await cancelJob(() => {
+      plannedTotalRef.current = total;
+    });
+  }, [meeting, cancelJob]);
+  // Cancel a running Summarize job (§5.7). Nothing is destroyed: the
+  // transcript and every persisted segment survive, no summary is written,
+  // and the failure lands in `job_error` (not `meetings.error`).
   const cancelSummarize = useCallback(async () => {
-    if (meeting?.job?.kind !== "summarize" || cancelRequested) return;
-    setCancelRequested(true);
-    try {
-      const res = await getClient().api.meetings[":id"][
-        "cancel-transcribe"
-      ].$post({ param: { id } });
-      // 409 = the slot already moved on (the job finished in this instant) —
-      // the poll shows whatever terminal state it reached either way.
-      if (res.ok || res.status === 409) return;
-      throw new Error(`cancel-transcribe -> ${res.status}`);
-    } catch {
-      setCancelRequested(false);
-      setActionError(t("meetings.actionFailed"));
-    } finally {
-      invalidate();
-    }
-  }, [id, meeting, cancelRequested, invalidate, t]);
+    if (meeting?.job?.kind !== "summarize") return;
+    await cancelJob();
+  }, [meeting, cancelJob]);
   const identifySpeakers = useCallback(async () => {
     const result = await runAction("diarize", () =>
       getClient().api.meetings[":id"].diarize.$post({ param: { id } }),
