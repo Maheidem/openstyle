@@ -2074,12 +2074,10 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     showMoveToApplicationsDialog();
     return;
   }
-  // updateDownloadState can't reach "downloaded" while autoDownload is forced
-  // off (see the update-available handler below) — always run a fresh check.
+  // autoDownload is always false (see the update setup below), so this check
+  // never starts a download. Always run a fresh check.
   try {
     const result = await autoUpdater.checkForUpdates();
-    // Swallow the auto-download rejection (see runUpdateCheck).
-    void result?.downloadPromise?.catch(() => {});
     const latest = result?.updateInfo?.version;
     if (latest && latest !== app.getVersion()) {
       const { response } = await dialog.showMessageBox({
@@ -2884,26 +2882,17 @@ app.whenReady().then(async () => {
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
-  // With autoDownload on, checkForUpdates() also starts the asset download and
-  // exposes it as result.downloadPromise. Swallow that rejection so a transient
-  // download failure (e.g. an expired 403 from the release CDN) is handled by
-  // the "error" event rather than leaking as an unhandled rejection / false
-  // crash report. We avoid checkForUpdatesAndNotify(): it drops the same
-  // rejection internally in a way callers can't intercept, and our own
-  // "update-downloaded" handler already shows the completion notification.
+  // autoDownload is always false, so checkForUpdates() only checks the feed
+  // and never starts a download. The selfUpdater "downloaded" handler shows
+  // the completion notification.
   function runUpdateCheck(): void {
-    autoUpdater
-      .checkForUpdates()
-      .then((result) => {
-        void result?.downloadPromise?.catch(() => {});
-      })
-      .catch((err) => {
-        log.warn(
-          `Update check failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
+    autoUpdater.checkForUpdates().catch((err) => {
+      log.warn(
+        `Update check failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    });
   }
 
   function startUpdateCheckInterval(): void {
@@ -2925,10 +2914,9 @@ app.whenReady().then(async () => {
     // downloading them ("Code signature ... did not pass validation"), so we
     // still use electron-updater only to *check* the release feed. On
     // macOS, downloading and installing goes through selfUpdater (see
-    // self-updater.ts) instead of Squirrel.Mac; other platforms keep the
-    // stock electron-updater install flow. autoDownload stays false here so
-    // electron-updater never itself downloads the (Squirrel-incompatible)
-    // update artifact.
+    // self-updater.ts) instead of Squirrel.Mac; other platforms open the
+    // releases page. autoDownload is always false, so electron-updater never
+    // itself downloads the (Squirrel-incompatible) update artifact.
     autoUpdater.autoDownload = false;
     // Honour the same preference on quit. Upstream hardcoded this to true, so a
     // single manual "Check for Updates" could stage a release that then
@@ -2978,39 +2966,6 @@ app.whenReady().then(async () => {
         note.on("click", () => showSettingsWindow("/settings"));
         note.show();
       }
-      if (updateCheckTimer) {
-        clearInterval(updateCheckTimer);
-        updateCheckTimer = null;
-      }
-      rebuildMenus();
-      void prefetchManagedMlxRuntimeForAppRelease(info.version).catch((err) => {
-        log.warn(
-          `Failed to stage MLX runtime for ${info.version}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
-    });
-
-    autoUpdater.on("update-downloaded", (info) => {
-      updateDownloadState = "downloaded";
-      settingsWindow?.webContents.send("updater:downloaded", {
-        version: info.version,
-      });
-      // Only show a native notification once per version
-      if (
-        Notification.isSupported() &&
-        notifiedDownloadedVersion !== info.version
-      ) {
-        notifiedDownloadedVersion = info.version;
-        const note = new Notification({
-          title: "Update Ready to Install",
-          body: `Version ${info.version} has been downloaded. Restart to update.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
-      }
-      // No need to keep polling once the update is downloaded
       if (updateCheckTimer) {
         clearInterval(updateCheckTimer);
         updateCheckTimer = null;
@@ -3098,8 +3053,6 @@ app.whenReady().then(async () => {
     if (is.dev) return null;
     try {
       const result = await autoUpdater.checkForUpdates();
-      // Swallow the auto-download rejection (see runUpdateCheck).
-      void result?.downloadPromise?.catch(() => {});
       const latest = result?.updateInfo?.version;
       if (!latest) return null;
       // Only report an update when the remote version is actually newer
