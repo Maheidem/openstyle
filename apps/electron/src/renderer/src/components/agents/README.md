@@ -31,3 +31,7 @@ update or add one, four traps are waiting:
 shiki for syntax highlighting, and Remix's disclosure shows JSON, not source.
 </content>
 </invoke>
+
+`message-scroller` has no message rail. The rail (`PreviewRail` and
+`useHoverCapable`) was removed because no caller used it. If you re-run the CLI
+for `message-scroller`, the rail code comes back. Re-apply the trim.
