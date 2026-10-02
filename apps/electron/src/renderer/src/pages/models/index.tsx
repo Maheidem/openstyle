@@ -107,12 +107,11 @@ export default function ModelsPage(): React.JSX.Element {
     });
   };
 
-  const openVoice = (): void =>
-    setModal({ kind: "list", type: "voice", voiceView: "tiers" });
+  const openVoice = (): void => setModal({ kind: "list", type: "voice" });
 
   const openLlm = (): void => {
     m.setCleanup(true);
-    setModal({ kind: "list", type: "llm", llmView: "tiers" });
+    setModal({ kind: "list", type: "llm" });
   };
 
   const onToggleCleanup = (next: boolean): void => {
@@ -175,9 +174,9 @@ export default function ModelsPage(): React.JSX.Element {
   const onBack = (): void => {
     if (modal?.kind !== "key") return;
     if (modal.type === "voice") {
-      setModal({ kind: "list", type: "voice", voiceView: "tiers" });
+      setModal({ kind: "list", type: "voice" });
     } else if (modal.type === "llm") {
-      setModal({ kind: "list", type: "llm", llmView: "tiers" });
+      setModal({ kind: "list", type: "llm" });
     } else {
       closeModal();
     }
