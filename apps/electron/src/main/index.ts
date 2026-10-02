@@ -43,6 +43,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { setTimeout as wait } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { OutputMode } from "@openstyle/sdk";
@@ -352,7 +353,6 @@ function serverClient() {
   return hc<AppType>(getServerBaseUrl(), { headers: getServerAuthHeaders() });
 }
 
-/** Relay a main-process pipeline event to the current server target with auth. */
 /**
  * Base URL the app uses to reach the Openstyle server: the configured remote
  * URL, or the locally-run server on the resolved port. The DB lives behind the
@@ -1250,10 +1250,10 @@ function execAsync(
 
 function getOpenstyleAppExclusions(): Set<string> {
   return new Set(
-    // "Openstyle" stays alongside "Openstyle": a user upgrading from the old
-    // build may still have the previously-named app installed or a stale window
-    // open, and it must keep being excluded from remix targeting.
-    [app.getName(), app.name, "Openstyle", "Freestyle", "Electron"]
+    // "Freestyle" is the old app name. A user upgrading from the old build may
+    // still have it installed or a stale window open, and it must keep being
+    // excluded from remix targeting.
+    [app.name, "Freestyle", "Electron"]
       .map((name) => name?.trim().toLowerCase())
       .filter((name): name is string => Boolean(name)),
   );
@@ -1620,10 +1620,6 @@ function hidePill(): void {
   try {
     globalShortcut.unregister("Escape");
   } catch {}
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -2714,8 +2710,6 @@ app.whenReady().then(async () => {
     if (!target) return;
 
     hotkeyRecorder = new HotkeyRecorder({
-      onModifiers: () => {},
-      onCaptured: () => {},
       onCancel: () => {
         stopHotkeyRecorderProcess();
         scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
@@ -3789,7 +3783,6 @@ async function focusAnchorForInjection(): Promise<boolean> {
   return front.appName === anchor.appName;
 }
 
-/** Keyboard-tier selection via the app's Find (canvas editors). */
 const REMIX_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
 const REMIX_IMAGE_TIMEOUT_MS = 15_000;
 
@@ -4799,10 +4792,7 @@ app.on("will-quit", () => {
 
 // Keep app running in background when windows are closed (tray stays active)
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    // On non-macOS, keep the app alive for the tray
-    // Only quit explicitly via tray menu
-  }
+  // Stay alive for the tray. Quit only through the tray menu.
 });
 
 // Re-open the dashboard when the app is activated (e.g. clicking the dock
@@ -4811,7 +4801,6 @@ app.on("activate", () => {
   showSettingsWindow();
 });
 
-// Gracefully shut down the HTTP server and flush Sentry before quitting
 let isUpdaterQuitting = false;
 let isQuitting = false;
 
