@@ -40,15 +40,18 @@ export function ParamJsonEditor({
   saving?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState(() => JSON.stringify(value, null, 2));
+  const seed = JSON.stringify(value, null, 2);
+  const [draft, setDraft] = useState(seed);
   const [error, setError] = useState<string | null>(null);
 
-  // Re-seed the draft whenever the caller hands us a different value (e.g.
-  // switching which task/preset this instance is editing).
+  // Re-seed the draft when the caller hands us a different value (e.g.
+  // switching which task/preset this instance is editing). The effect keys
+  // on the serialized text, not the object. A caller that passes a new `{}`
+  // on each render must not erase what the user typed.
   useEffect(() => {
-    setDraft(JSON.stringify(value, null, 2));
+    setDraft(seed);
     setError(null);
-  }, [value]);
+  }, [seed]);
 
   const validate = (raw: string): Record<string, unknown> | null => {
     let parsed: unknown;
