@@ -65,6 +65,10 @@ export interface AcquireLlmLaneArgs {
   /** Normalized `host:port` — see {@link llmLaneKey}. Two config keys pointed
    *  at one box MUST produce the same value or the queue is decorative. */
   lane: string;
+  /** Concurrency for a new lane. Set it from the provider local flag (see
+   *  {@link llmLaneKeyForProvider}). When omitted, the host name decides. An
+   *  existing lane keeps its first limit. */
+  limit?: number;
   cls: LlmLaneClass;
   taskId: LlmTaskId;
   /** Polled on every queue tick — the existing cancel seam
@@ -166,20 +170,27 @@ export function llmLaneKey(input: string | null | undefined): string {
 }
 
 /**
- * Lane key for a provider id. Local providers resolve through `local_llm_url`
- * — that IS the point: the endpoint, never the setting name. Known cloud
- * providers use {@link CLOUD_HOSTS}; anything else gets a lane of its own.
+ * Lane key and concurrency for a provider id. Local providers resolve through
+ * `local_llm_url` — that IS the point: the endpoint, never the setting name.
+ * Known cloud providers use {@link CLOUD_HOSTS}; anything else gets a lane of
+ * its own. The limit comes from the provider `local` flag, not from the host
+ * name: a local engine on a VPN or MagicDNS host still has one slot.
  */
 export async function llmLaneKeyForProvider(
   providerId: string,
-): Promise<string> {
+): Promise<{ key: string; limit: number }> {
+  let local = false;
   try {
     const { isLocalProvider, LOCAL_LLM_URL_SETTING } = await import(
       "./registry.js"
     );
-    if (isLocalProvider(providerId)) {
+    local = isLocalProvider(providerId);
+    if (local) {
       const { readSetting } = await import("../db.js");
-      return llmLaneKey(readSetting(LOCAL_LLM_URL_SETTING));
+      return {
+        key: llmLaneKey(readSetting(LOCAL_LLM_URL_SETTING)),
+        limit: LLM_LANE_CONCURRENCY_LOCAL,
+      };
     }
   } catch {
     // DB/registry unavailable: fall through to a provider-identity lane. The
@@ -187,7 +198,10 @@ export async function llmLaneKeyForProvider(
     // serialises is the safe direction.
   }
   const known = CLOUD_HOSTS[providerId];
-  return known ? llmLaneKey(known) : `lane:${providerId}`;
+  return {
+    key: known ? llmLaneKey(known) : `lane:${providerId}`,
+    limit: local ? LLM_LANE_CONCURRENCY_LOCAL : LLM_LANE_CONCURRENCY_CLOUD,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -219,15 +233,17 @@ interface Lane {
 
 const lanes = new Map<string, Lane>();
 
-function laneFor(key: string): Lane {
+function laneFor(key: string, limit?: number): Lane {
   const existing = lanes.get(key);
   if (existing) return existing;
   const host = key.split(":")[0] ?? "";
   const lane: Lane = {
     key,
-    limit: isLocalLaneHost(host)
-      ? LLM_LANE_CONCURRENCY_LOCAL
-      : LLM_LANE_CONCURRENCY_CLOUD,
+    limit:
+      limit ??
+      (isLocalLaneHost(host)
+        ? LLM_LANE_CONCURRENCY_LOCAL
+        : LLM_LANE_CONCURRENCY_CLOUD),
     inFlight: 0,
     interactive: [],
     background: [],
@@ -376,7 +392,7 @@ async function gateBackground(
 export async function acquireLlmLane(
   a: AcquireLlmLaneArgs,
 ): Promise<LaneLease> {
-  const lane = laneFor(a.lane);
+  const lane = laneFor(a.lane, a.limit);
   const now = a.now ?? Date.now;
   const sleep = a.sleep ?? defaultSleep;
   const isActive = a.isDictationActive ?? isDictationActiveDefault;
@@ -542,7 +558,10 @@ export function __resetLlmLanesForTests(): void {
 
 /** Diagnostic snapshot of one lane — used by the runtime evidence capture to
  *  quote real occupancy, and by tests to prove exactly-once release. */
-export function llmLaneSnapshot(lane: string): {
+export function llmLaneSnapshot(
+  lane: string,
+  limit?: number,
+): {
   inFlight: number;
   limit: number;
   interactive: number;
@@ -550,7 +569,7 @@ export function llmLaneSnapshot(lane: string): {
 } {
   // `laneFor` creates on read, so a never-used lane still reports the limit it
   // WOULD have — the number a caller needs to know before it enqueues.
-  const l = laneFor(lane);
+  const l = laneFor(lane, limit);
   return {
     inFlight: l.inFlight,
     limit: l.limit,

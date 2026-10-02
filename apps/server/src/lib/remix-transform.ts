@@ -105,9 +105,10 @@ export async function runRemixTransform(
   );
   // Remix quick edit is `interactive` (§5.4): a one-shot rewrite the user is
   // staring at. Per call, released in the finally below.
-  const lane = await llmLaneKeyForProvider(resolved.provider);
+  const { key: lane, limit } = await llmLaneKeyForProvider(resolved.provider);
   const lease = await acquireLlmLane({
     lane,
+    limit,
     cls: "interactive",
     taskId: "remix",
   });
