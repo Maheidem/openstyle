@@ -137,14 +137,21 @@ func emit(_ message: String) {
     fflush(stdout)
 }
 
-func emitFlags(_ flags: NSEvent.ModifierFlags) {
+/// Comma-separated modifier names in a fixed order.
+func modifierNames(control: Bool, option: Bool, shift: Bool, command: Bool) -> String {
     var parts: [String] = []
+    if control { parts.append("control") }
+    if option { parts.append("option") }
+    if shift { parts.append("shift") }
+    if command { parts.append("command") }
+    return parts.joined(separator: ",")
+}
+
+func emitFlags(_ flags: NSEvent.ModifierFlags) {
     let mods = flags.intersection(modifierMask)
-    if mods.contains(.control) { parts.append("control") }
-    if mods.contains(.option) { parts.append("option") }
-    if mods.contains(.shift) { parts.append("shift") }
-    if mods.contains(.command) { parts.append("command") }
-    emit("FLAGS:" + parts.joined(separator: ","))
+    emit("FLAGS:" + modifierNames(
+        control: mods.contains(.control), option: mods.contains(.option),
+        shift: mods.contains(.shift), command: mods.contains(.command)))
 }
 
 /// US ANSI keyboard keycodes (kVK_ANSI_* / kVK_Space, etc.)
@@ -262,12 +269,9 @@ func nameToKeyCode(_ name: String) -> UInt16? {
 }
 
 func emitFlagsFromCGEvent(_ flags: CGEventFlags) {
-    var parts: [String] = []
-    if flags.contains(.maskControl) { parts.append("control") }
-    if flags.contains(.maskAlternate) { parts.append("option") }
-    if flags.contains(.maskShift) { parts.append("shift") }
-    if flags.contains(.maskCommand) { parts.append("command") }
-    emit("FLAGS:" + parts.joined(separator: ","))
+    emit("FLAGS:" + modifierNames(
+        control: flags.contains(.maskControl), option: flags.contains(.maskAlternate),
+        shift: flags.contains(.maskShift), command: flags.contains(.maskCommand)))
 }
 
 func mouseButtonName(_ buttonNumber: Int) -> String? {
@@ -338,12 +342,9 @@ guard let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, h
         if otherMods.isEmpty {
             emit("FN_DOWN")
         } else {
-            var parts: [String] = []
-            if otherMods.contains(.control) { parts.append("control") }
-            if otherMods.contains(.option) { parts.append("option") }
-            if otherMods.contains(.shift) { parts.append("shift") }
-            if otherMods.contains(.command) { parts.append("command") }
-            emit("FN_DOWN:" + parts.joined(separator: ","))
+            emit("FN_DOWN:" + modifierNames(
+                control: otherMods.contains(.control), option: otherMods.contains(.option),
+                shift: otherMods.contains(.shift), command: otherMods.contains(.command)))
         }
     } else if !containsFn && fnIsDown {
         fnIsDown = false
