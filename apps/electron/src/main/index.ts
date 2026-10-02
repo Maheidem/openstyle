@@ -4766,30 +4766,6 @@ function applyLanguageHotkeySettings(settings: Record<string, string>): void {
   scheduleLanguageHotkeysRegistration(map);
 }
 
-// Clean up key listener and mic listener on quit
-app.on("will-quit", () => {
-  audioPlaybackController.restoreSync();
-  stopLinuxPasteHelper();
-  if (keyListener) {
-    keyListener.stop();
-    keyListener = null;
-  }
-  if (remixKeyListener) {
-    remixKeyListener.stop();
-    remixKeyListener = null;
-  }
-  for (const listener of languageKeyListeners.values()) {
-    listener.stop();
-  }
-  languageKeyListeners.clear();
-  languageHotkeyAccels.clear();
-  if (remixBarFollowTimer) {
-    clearInterval(remixBarFollowTimer);
-    remixBarFollowTimer = null;
-  }
-  globalShortcut.unregisterAll();
-});
-
 // Keep app running in background when windows are closed (tray stays active)
 app.on("window-all-closed", () => {
   // Stay alive for the tray. Quit only through the tray menu.
@@ -4806,6 +4782,9 @@ let isQuitting = false;
 
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
+// Stop every native child process and timer. The before-quit handler runs
+// this on a normal quit and on an updater quit. A normal quit then calls
+// app.exit(0), which skips will-quit.
 function cleanupBeforeQuit(): void {
   // Finalize any in-flight meeting recording's WAV headers before the process
   // exits; the boot-time orphan sweep settles the DB row next launch.
@@ -4817,6 +4796,19 @@ function cleanupBeforeQuit(): void {
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
+  }
+  if (remixKeyListener) {
+    remixKeyListener.stop();
+    remixKeyListener = null;
+  }
+  for (const listener of languageKeyListeners.values()) {
+    listener.stop();
+  }
+  languageKeyListeners.clear();
+  languageHotkeyAccels.clear();
+  if (remixBarFollowTimer) {
+    clearInterval(remixBarFollowTimer);
+    remixBarFollowTimer = null;
   }
   stopHotkeyRecorderProcess();
   globalShortcut.unregisterAll();
