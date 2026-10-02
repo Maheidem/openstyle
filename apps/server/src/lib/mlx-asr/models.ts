@@ -34,7 +34,6 @@ import { stopMlxServer } from "./server.js";
 export type MlxDownloadStatus =
   | "not_downloaded"
   | "downloading"
-  | "verifying"
   | "ready"
   | "error";
 

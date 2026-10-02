@@ -388,7 +388,7 @@ export function isManagedMlxRuntimeAvailable(): boolean {
   return existsSync(getManagedMlxWorkerPath());
 }
 
-export function getInstalledMlxRuntimeVersion(): string | null {
+function getInstalledMlxRuntimeVersion(): string | null {
   return readInstalledRuntimeMetadata()?.workerVersion ?? null;
 }
 

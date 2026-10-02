@@ -362,6 +362,6 @@ export function getMlxAsrServerScriptPath(): string {
   return mlxAsrScriptCandidates()[0] ?? "";
 }
 
-export function resetMlxAsrScriptPathCache(): void {
+function resetMlxAsrScriptPathCache(): void {
   cachedScriptPath = undefined;
 }
