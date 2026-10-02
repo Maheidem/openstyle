@@ -7,6 +7,7 @@ import type {
 import {
   BUILTIN_LLM_PRESETS,
   LLM_PRESET_NAME_MAX,
+  LLM_TASK_IDS,
   SAFE_SUBSET_KEYS,
 } from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
@@ -48,13 +49,6 @@ import { displayName } from "./utils";
 // §9). One row per task; each row assigns Auto / a preset / Custom JSON, and
 // optionally overrides which model this task uses.
 // ---------------------------------------------------------------------------
-
-const TASK_IDS: readonly LlmTaskId[] = [
-  "cleanup",
-  "remix",
-  "meetingSummarize",
-  "meetingEnhance",
-];
 
 // Only `local-llm` is the verbatim transport tier (§7.1) — every other
 // provider is mapped-subset. Mirrors `apps/server/src/lib/llm/registry.ts`'s
@@ -146,7 +140,7 @@ export function TaskProfilesSection({
         <Eyebrow text={t("models.taskProfiles.eyebrow")} />
       </div>
       <div className="border-border bg-card overflow-hidden rounded-lg border">
-        {TASK_IDS.map((taskId, i) => {
+        {LLM_TASK_IDS.map((taskId, i) => {
           const migratedFromLegacy =
             taskId === "cleanup" &&
             !taskAssignments.cleanup &&

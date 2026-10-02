@@ -157,32 +157,11 @@ export function removePresetAndReassign(
   };
 }
 
-/** Ids assigned by some task that no longer resolve in the merged
- *  built-ins + user list (§4.2's merge). Normally empty — `removePresetAndReassign`
- *  keeps it that way; a non-empty result means the row predates that
- *  guarantee (hand-edited settings, a downgrade, a half-completed write),
- *  which is the state the UI must label instead of printing a raw uuid. */
-export function findMissingPresetIds(
-  assignments: LlmTaskAssignments,
-  mergedPresets: readonly LlmParameterPreset[],
-): string[] {
-  const known = new Set(mergedPresets.map((p) => p.id));
-  const missing: string[] = [];
-  for (const taskId of LLM_TASK_IDS) {
-    const assignment = assignments[taskId];
-    if (assignment?.mode !== "preset" || !assignment.presetId) continue;
-    if (
-      !known.has(assignment.presetId) &&
-      !missing.includes(assignment.presetId)
-    ) {
-      missing.push(assignment.presetId);
-    }
-  }
-  return missing;
-}
-
-/** Per-task form of the same check, used by `TaskRow` to decide between the
- *  preset chip and the explicit "no longer available" state. */
+/** True when a preset assignment names an id that no longer resolves in the
+ *  merged built-ins + user list (§4.2's merge). `removePresetAndReassign`
+ *  keeps this false; true means the row predates that guarantee (hand-edited
+ *  settings, a downgrade, a half-completed write). `TaskRow` uses it to pick
+ *  between the preset chip and the explicit "no longer available" state. */
 export function isDanglingAssignment(
   assignment: LlmTaskAssignment,
   mergedPresets: readonly LlmParameterPreset[],

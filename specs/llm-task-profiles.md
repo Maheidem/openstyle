@@ -1448,8 +1448,7 @@ install predating the guarantee — the renderer no longer prints the raw id
 where a name belongs: `presetMissingBadge` on the collapsed row, the track
 normalised to Auto, and a sentence saying the task runs on Auto defaults in the
 panel (`task-profiles-section.tsx:461-466`, `:274-285`, `:530-534`), detected
-by `isDanglingAssignment`/`findMissingPresetIds` (`preset-ops.ts:165-180,
-186-190`).
+by `isDanglingAssignment` (`preset-ops.ts:165`).
 
 ---
 
