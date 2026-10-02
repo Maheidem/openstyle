@@ -181,6 +181,18 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
       callbacks.onClose();
     });
 
+    function clearRecording(): void {
+      pending.clear();
+      clearCommitTimeout();
+      partialText = "";
+      commitRequested = false;
+      commitSent = false;
+      finalDelivered = false;
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+      }
+    }
+
     return {
       sendAudio(chunk: ArrayBuffer): void {
         if (ws.readyState === WebSocket.CONNECTING || !configured) {
@@ -206,27 +218,8 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         if (!configured) return;
         sendCommit();
       },
-      reset(): void {
-        pending.clear();
-        clearCommitTimeout();
-        partialText = "";
-        commitRequested = false;
-        commitSent = false;
-        finalDelivered = false;
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
-        }
-      },
-      cancel(): void {
-        pending.clear();
-        clearCommitTimeout();
-        partialText = "";
-        commitRequested = false;
-        commitSent = false;
-        finalDelivered = false;
-        if (ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
-      },
+      reset: clearRecording,
+      cancel: clearRecording,
       close(): void {
         clearCommitTimeout();
         if (ws.readyState <= WebSocket.OPEN) ws.close();
