@@ -1883,6 +1883,13 @@ export default function AppPage(): React.JSX.Element {
     return remixStreamerRef.current;
   }, []);
 
+  /** Destroy the remix streamer. The next remix creates a new one. */
+  const destroyRemixStreamer = useCallback(() => {
+    remixStreamerRef.current?.destroy();
+    remixStreamerRef.current = null;
+    remixTransportRef.current = false;
+  }, []);
+
   const endRemix = useCallback(
     (options: { hide?: boolean } = {}) => {
       if (!remixRef.current) return;
@@ -2363,9 +2370,7 @@ export default function AppPage(): React.JSX.Element {
         streamerRef.current = null;
         supportsSessionTransportRef.current = false;
         getStreamer();
-        remixStreamerRef.current?.destroy();
-        remixStreamerRef.current = null;
-        remixTransportRef.current = false;
+        destroyRemixStreamer();
       });
     });
     return () => {
@@ -2378,7 +2383,7 @@ export default function AppPage(): React.JSX.Element {
       removeCleanupContext?.();
       removeServerChanged?.();
     };
-  }, [applyPillPosition, getStreamer]);
+  }, [applyPillPosition, getStreamer, destroyRemixStreamer]);
 
   // "always" pins the button open; "hover" lets the pointer drive it.
   useEffect(() => {
@@ -2583,13 +2588,12 @@ export default function AppPage(): React.JSX.Element {
           recorderRef.current.destroy();
           streamerRef.current?.destroy();
           streamerRef.current = null;
-          remixStreamerRef.current?.destroy();
-          remixStreamerRef.current = null;
+          destroyRemixStreamer();
         }
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cancelRecording]);
+  }, [cancelRecording, destroyRemixStreamer]);
 
   // ---- Render ----
   // Two surfaces share one anchor: the capsule, which is the whole UI on the
