@@ -618,3 +618,33 @@ describe("MLX runtime integrity verification", () => {
     ).toBe(false);
   });
 });
+
+describe("MLX worker build spec", () => {
+  it("matches the pins in scripts/build_mlx_asr_worker.sh", async () => {
+    const script = readFileSync(
+      join(TEST_DIR, "..", "..", "..", "scripts", "build_mlx_asr_worker.sh"),
+      "utf8",
+    );
+    const pin = (name: string): string => {
+      const match = script.match(
+        new RegExp(`^${name}="\\$\\{${name}:-(.*)\\}"$`, "m"),
+      );
+      if (!match) throw new Error(`${name} default not found in build script`);
+      return match[1];
+    };
+    // The spec string names the one-folder bundle, so the script must build one.
+    expect(script).toMatch(/--onedir/);
+
+    const spec = [
+      `pyinstaller=${pin("PYINSTALLER_VERSION")}`,
+      `mlx-audio=${pin("MLX_AUDIO_VERSION")}`,
+      `huggingface_hub=${pin("HUGGINGFACE_HUB_VERSION")}`,
+      `transformers${pin("TRANSFORMERS_SPEC")}`,
+      "bundle=onedir",
+    ].join(";");
+
+    const { runtime } = await importRuntime();
+
+    expect(runtime.MLX_WORKER_BUILD_SPEC).toBe(spec);
+  });
+});

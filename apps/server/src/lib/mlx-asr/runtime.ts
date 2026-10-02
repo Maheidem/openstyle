@@ -42,7 +42,8 @@ const MLX_WORKER_REPO = "Maheidem/openstyle";
 const DEFAULT_MLX_WORKER_LATEST_URL = `https://github.com/${MLX_WORKER_REPO}/releases/latest/download/${MLX_WORKER_ASSET_NAME}`;
 // Keep this in sync with scripts/build_mlx_asr_worker.sh so unchanged worker
 // builds don't force users to redownload identical archives on every app release.
-const MLX_WORKER_BUILD_SPEC =
+// A test in tests/mlx-runtime.test.ts fails when the two drift apart.
+export const MLX_WORKER_BUILD_SPEC =
   "pyinstaller=6.20.0;mlx-audio=0.4.3;huggingface_hub=1.17.0;transformers>=5.7,<5.13;bundle=onedir";
 
 // --- Integrity verification -------------------------------------------------
