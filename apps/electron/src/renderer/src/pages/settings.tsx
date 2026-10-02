@@ -30,7 +30,10 @@ import {
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { SegmentedControl } from "@renderer/components/ui/segmented-control";
+import {
+  SegmentedControl,
+  type SegmentedOption,
+} from "@renderer/components/ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -136,9 +139,9 @@ const themeOptions = [
 ] as const;
 
 const audioPlaybackOptions = [
-  { id: "off", label: "Off", icon: VolumeOff },
-  { id: "duck", label: "Duck", icon: Volume2 },
-  { id: "pause", label: "Pause", icon: Pause },
+  { value: "off", label: "Off", icon: VolumeOff },
+  { value: "duck", label: "Duck", icon: Volume2 },
+  { value: "pause", label: "Pause", icon: Pause },
 ] as const;
 
 const settingsSectionIds = [
@@ -1256,25 +1259,31 @@ export default function SettingsPage(): React.JSX.Element {
 
   const activeSectionLabel = t(`settings.sections.${activeSection}`);
 
-  const positionOptions = useMemo<SegmentOption[]>(() => {
-    const opts: SegmentOption[] = [
-      { id: "top-center", label: t("settings.display.positionTopCenter") },
-      { id: "top-right", label: t("settings.display.positionTopRight") },
+  const positionOptions = useMemo<SegmentedOption[]>(() => {
+    const opts: SegmentedOption[] = [
+      { value: "top-center", label: t("settings.display.positionTopCenter") },
+      { value: "top-right", label: t("settings.display.positionTopRight") },
       {
-        id: "bottom-center",
+        value: "bottom-center",
         label: t("settings.display.positionBottomCenter"),
       },
-      { id: "bottom-right", label: t("settings.display.positionBottomRight") },
+      {
+        value: "bottom-right",
+        label: t("settings.display.positionBottomRight"),
+      },
     ];
     if (pillPosition === "custom")
-      opts.push({ id: "custom", label: t("settings.display.positionCustom") });
+      opts.push({
+        value: "custom",
+        label: t("settings.display.positionCustom"),
+      });
     return opts;
   }, [pillPosition, t]);
 
-  const cancelButtonOptions = useMemo<SegmentOption[]>(
+  const cancelButtonOptions = useMemo<SegmentedOption[]>(
     () => [
-      { id: "hover", label: t("settings.display.cancelButtonHover") },
-      { id: "always", label: t("settings.display.cancelButtonAlways") },
+      { value: "hover", label: t("settings.display.cancelButtonHover") },
+      { value: "always", label: t("settings.display.cancelButtonAlways") },
     ],
     [t],
   );
@@ -1569,20 +1578,20 @@ export default function SettingsPage(): React.JSX.Element {
                 label={t("settings.recording.outputMode")}
                 desc={t("settings.recording.outputModeDesc")}
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   options={[
                     {
-                      id: "paste",
+                      value: "paste",
                       label: t("settings.recording.outputModePaste"),
                     },
                     {
-                      id: "clipboard",
+                      value: "clipboard",
                       label: t("settings.recording.outputModeClipboard"),
                     },
                   ]}
-                  active={outputMode}
-                  onSelect={handleOutputModeChange}
+                  value={outputMode}
+                  onValueChange={handleOutputModeChange}
                 />
               </Row>
 
@@ -1614,11 +1623,11 @@ export default function SettingsPage(): React.JSX.Element {
                   }
                   last
                 >
-                  <Segment
-                    compact
+                  <SegmentedControl
+                    size="sm"
                     options={audioPlaybackOptions}
-                    active={audioPlaybackMode}
-                    onSelect={handleAudioPlaybackModeChange}
+                    value={audioPlaybackMode}
+                    onValueChange={handleAudioPlaybackModeChange}
                   />
                 </Row>
               ) : null}
@@ -1705,28 +1714,28 @@ export default function SettingsPage(): React.JSX.Element {
                 label={t("settings.display.theme")}
                 desc={t("settings.display.themeDesc")}
               >
-                <Segment
+                <SegmentedControl
                   options={themeOptions.map((o) => ({
-                    id: o.value,
+                    value: o.value,
                     label: t(
                       `settings.display.theme${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`,
                     ),
                     icon: o.icon,
                   }))}
-                  active={theme ?? "system"}
-                  onSelect={handleThemeChange}
+                  value={theme ?? "system"}
+                  onValueChange={handleThemeChange}
                 />
               </Row>
               <Row
                 label={t("settings.display.widgetPosition")}
                 desc={t("settings.display.widgetPositionDesc")}
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   wrap
                   options={positionOptions}
-                  active={pillPosition}
-                  onSelect={handlePillPositionChange}
+                  value={pillPosition}
+                  onValueChange={handlePillPositionChange}
                 />
               </Row>
               <Row
@@ -1734,11 +1743,11 @@ export default function SettingsPage(): React.JSX.Element {
                 desc={t("settings.display.cancelButtonDesc")}
                 last
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   options={cancelButtonOptions}
-                  active={pillCancel}
-                  onSelect={handlePillCancelChange}
+                  value={pillCancel}
+                  onValueChange={handlePillCancelChange}
                 />
               </Row>
             </SettingsPanel>
@@ -2721,40 +2730,6 @@ function ServerConnection(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 // Reusable controls
 // ---------------------------------------------------------------------------
-
-type SegmentOption = {
-  id: string;
-  label: string;
-  icon?: typeof Mic;
-};
-
-function Segment({
-  options,
-  active,
-  onSelect,
-  compact,
-  wrap,
-}: {
-  options: readonly SegmentOption[];
-  active: string;
-  onSelect: (id: string) => void;
-  compact?: boolean;
-  wrap?: boolean;
-}) {
-  return (
-    <SegmentedControl
-      options={options.map((o) => ({
-        value: o.id,
-        label: o.label,
-        icon: o.icon,
-      }))}
-      value={active}
-      onValueChange={onSelect}
-      size={compact ? "sm" : "default"}
-      wrap={wrap}
-    />
-  );
-}
 
 function PermissionControl({
   granted,
