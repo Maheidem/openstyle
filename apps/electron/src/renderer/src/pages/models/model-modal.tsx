@@ -20,13 +20,16 @@ import {
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { type AvailableModel, PROVIDER_KEY_URLS } from "@renderer/lib/models";
+import {
+  type AvailableModel,
+  displayProviderName,
+  PROVIDER_KEY_URLS,
+} from "@renderer/lib/models";
 import { AlertTriangle, Key, Loader2, X } from "lucide-react";
 import { useState } from "react";
 
 import { ModelList } from "./model-list";
 import type { UseModels } from "./use-models";
-import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Modal state — owned by the page; the modal renders from it.
@@ -170,7 +173,7 @@ function KeyStep({
 }): React.JSX.Element {
   const [value, setValue] = useState("");
   const [show, setShow] = useState(false);
-  const providerLabel = displayName(provider);
+  const providerLabel = displayProviderName(provider);
 
   return (
     <div className="p-7">

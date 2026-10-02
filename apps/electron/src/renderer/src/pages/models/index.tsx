@@ -1,6 +1,7 @@
 import type { LlmTaskId } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import type { AvailableModel } from "@renderer/lib/models";
+import { displayProviderName } from "@renderer/lib/models";
 import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
@@ -17,7 +18,6 @@ import { tasksUsingPreset } from "./preset-ops";
 import { TaskProfilesSection } from "./task-profiles-section";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
-import { displayName } from "./utils";
 
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -388,7 +388,9 @@ export default function ModelsPage(): React.JSX.Element {
             <>
               <Trans
                 i18nKey="models.deleteProviderMsgBase"
-                values={{ provider: displayName(pendingProviderDelete) }}
+                values={{
+                  provider: displayProviderName(pendingProviderDelete),
+                }}
                 components={{
                   b: <span className="text-foreground/80 font-medium" />,
                 }}
@@ -580,7 +582,7 @@ function KeyRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="text-foreground text-[13.5px] font-semibold">
-            {displayName(entry.provider)}
+            {displayProviderName(entry.provider)}
           </span>
           {entry.status === "valid" && (
             <CheckCircle className="text-primary h-3.5 w-3.5 shrink-0" />

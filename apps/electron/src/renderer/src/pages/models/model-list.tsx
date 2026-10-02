@@ -19,7 +19,11 @@ import type {
   AvailableModel,
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
-import { formatBytes, formatSpeed } from "@renderer/lib/models";
+import {
+  displayProviderName,
+  formatBytes,
+  formatSpeed,
+} from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   ArrowLeft,
@@ -50,7 +54,6 @@ import {
 } from "./transcription-picker";
 import type { ConfiguredModel } from "./types";
 import type { EndpointConnectState, UseModels } from "./use-models";
-import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Normalized row — one shape for cloud + local, voice + LLM.
@@ -147,7 +150,7 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
       name: it.name,
       source: "cloud",
       provider: providerId,
-      meta: `${displayName(providerId, it.provider)}${note}${cost}`,
+      meta: `${displayProviderName(providerId, it.provider)}${note}${cost}`,
       selected: it.selected,
       hasKey: it.hasKey,
       onSelect: it.available
@@ -940,7 +943,7 @@ function CleanupTierPicker({
       : t("models.picker.ollamaHint");
 
   const byokLabel = byokActive
-    ? (m.defaultLlm?.model_name ?? displayName(m.defaultLlm!.provider))
+    ? (m.defaultLlm?.model_name ?? displayProviderName(m.defaultLlm!.provider))
     : byokCount > 0
       ? t("models.picker.cloudModelCount", { count: byokCount })
       : t("models.picker.byokProviders");

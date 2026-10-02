@@ -7,6 +7,7 @@ import type {
 import {
   BUILTIN_LLM_PRESETS,
   LLM_PRESET_NAME_MAX,
+  LLM_TASK_IDS,
   SAFE_SUBSET_KEYS,
 } from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
@@ -23,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
+import { displayProviderName } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -41,20 +43,12 @@ import {
   upsertPreset,
 } from "./preset-ops";
 import type { ConfiguredModel } from "./types";
-import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // TaskProfilesSection — "Where your models work" (specs/llm-task-profiles.md
 // §9). One row per task; each row assigns Auto / a preset / Custom JSON, and
 // optionally overrides which model this task uses.
 // ---------------------------------------------------------------------------
-
-const TASK_IDS: readonly LlmTaskId[] = [
-  "cleanup",
-  "remix",
-  "meetingSummarize",
-  "meetingEnhance",
-];
 
 // Only `local-llm` is the verbatim transport tier (§7.1) — every other
 // provider is mapped-subset. Mirrors `apps/server/src/lib/llm/registry.ts`'s
@@ -146,7 +140,7 @@ export function TaskProfilesSection({
         <Eyebrow text={t("models.taskProfiles.eyebrow")} />
       </div>
       <div className="border-border bg-card overflow-hidden rounded-lg border">
-        {TASK_IDS.map((taskId, i) => {
+        {LLM_TASK_IDS.map((taskId, i) => {
           const migratedFromLegacy =
             taskId === "cleanup" &&
             !taskAssignments.cleanup &&
@@ -611,7 +605,7 @@ function TaskRow({
                     key={`${m.provider}/${m.model_id}`}
                     value={`${m.provider}/${m.model_id}`}
                   >
-                    {m.model_name} · {displayName(m.provider)}
+                    {m.model_name} · {displayProviderName(m.provider)}
                   </SelectItem>
                 ))}
               </SelectContent>

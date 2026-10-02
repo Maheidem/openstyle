@@ -1181,7 +1181,7 @@ test("09 confirming deletes it everywhere and the task falls back to Auto", asyn
   // (`use-models.ts`) wrote both blobs and updated `taskAssignments` (via
   // `putTaskAssignments`) but never called `setUserPresets(plan.presets)`,
   // while the settings seed effect is one-shot
-  // (`if (!s || settingsSeeded) return`) — so `refreshSettingsCache()`'s
+  // (`if (!s || settingsSeededRef.current) return`) — so `refreshSettingsCache()`'s
   // invalidation refetched the query but never re-seeded the state, and the
   // deleted preset stayed in `userPresets` → `mergedPresets` →
   // `segmentedOptions` for the life of the mount.

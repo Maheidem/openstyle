@@ -10,11 +10,12 @@ import {
   parseLlmTaskAssignments,
 } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
-import type {
-  AvailableModel,
-  MlxAsrStatus,
-  VoiceItem,
-  WhisperStatus,
+import {
+  type AvailableModel,
+  buildVoiceItems,
+  type MlxAsrStatus,
+  type VoiceItem,
+  type WhisperStatus,
 } from "@renderer/lib/models";
 import { IS_MAC } from "@renderer/lib/platform";
 import {
@@ -39,11 +40,7 @@ import type {
   EndpointConnectState,
 } from "./use-endpoint-connect";
 import { useEndpointConnect } from "./use-endpoint-connect";
-import {
-  buildSettingsVoiceItems,
-  clampMlxKeepAliveMinutes,
-  groupByProvider,
-} from "./utils";
+import { clampMlxKeepAliveMinutes, groupByProvider } from "./utils";
 
 export type { EndpointConnectState } from "./use-endpoint-connect";
 
@@ -84,7 +81,6 @@ export interface UseModels {
   mlxStatus: MlxAsrStatus | null;
   llmCleanup: boolean;
   /** True once the editable form state has been seeded from persisted settings. */
-  settingsSeeded: boolean;
   mlxKeepAliveMinutes: number;
   /** The retired global sampling blob (`cleanup_sampling`) — read-only here,
    *  kept only so `TaskProfilesSection` can show the "migrated from your old
@@ -157,7 +153,6 @@ export interface UseModels {
    *  `false` (state unchanged) on any failure. */
   deleteUserPreset: (presetId: string) => Promise<boolean>;
   deleteProvider: (provider: string) => Promise<void>;
-  reload: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,15 +333,12 @@ export function useModels(): UseModels {
   // first resolves. Mutations update this local state directly, so we don't
   // re-seed on later invalidations (which would clobber in-progress edits).
   // keepAlive falls back to the MLX status report when the setting is unset.
-  // `settingsSeeded` is state (not a ref) so consumers can wait for the seed
-  // before acting on `llmCleanup` — reading it too early sees the initial
-  // `false` and can trigger spurious re-configuration.
-  const [settingsSeeded, setSettingsSeeded] = useState(false);
-  const seededRef = useRef({ keepAlive: false });
+  const settingsSeededRef = useRef(false);
+  const keepAliveSeededRef = useRef(false);
   useEffect(() => {
     const s = settingsQuery.data;
-    if (!s || settingsSeeded) return;
-    setSettingsSeeded(true);
+    if (!s || settingsSeededRef.current) return;
+    settingsSeededRef.current = true;
     const cleanup = s[SETTINGS_KEYS.llmCleanup];
     if (cleanup) setLlmCleanup(cleanup === "true");
     setCleanupSampling(parseCleanupSampling(s[SETTINGS_KEYS.cleanupSampling]));
@@ -366,16 +358,16 @@ export function useModels(): UseModels {
     if (rawMinutes) {
       const minutes = Number(rawMinutes);
       if (Number.isFinite(minutes)) {
-        seededRef.current.keepAlive = true;
+        keepAliveSeededRef.current = true;
         setMlxKeepAliveMinutes(clampMlxKeepAliveMinutes(minutes));
       }
     }
-  }, [settingsQuery.data, settingsSeeded]);
+  }, [settingsQuery.data]);
 
   useEffect(() => {
     const d = mlxQuery.data;
-    if (!d || seededRef.current.keepAlive) return;
-    seededRef.current.keepAlive = true;
+    if (!d || keepAliveSeededRef.current) return;
+    keepAliveSeededRef.current = true;
     if (Number.isFinite(d.keepAliveMinutes)) {
       setMlxKeepAliveMinutes(clampMlxKeepAliveMinutes(d.keepAliveMinutes));
     }
@@ -386,14 +378,13 @@ export function useModels(): UseModels {
   // refetchInterval on the whisper/mlx queries above)
   // -------------------------------------------------------------------------
 
-  const reload = useCallback(async () => {
+  const loadData = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.all }),
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.keys }),
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.settings }),
     ]);
   }, [queryClient]);
-  const loadData = reload;
 
   // -------------------------------------------------------------------------
   // Endpoint connections (local LLM + custom STT)
@@ -483,8 +474,9 @@ export function useModels(): UseModels {
   );
   const voiceItems = useMemo(
     () =>
-      buildSettingsVoiceItems(available, whisperStatus, mlxStatus, {
-        defaultVoice,
+      buildVoiceItems(available, whisperStatus, mlxStatus, {
+        selectedModelId: defaultVoice?.model_id,
+        selectedProvider: defaultVoice?.provider,
         keyProviders,
       }),
     [available, whisperStatus, mlxStatus, defaultVoice, keyProviders],
@@ -857,7 +849,7 @@ export function useModels(): UseModels {
   // `setUserPresets` is load-bearing here, not a nicety: the Params track's
   // options ARE `userPresets` (`task-profiles-section.tsx` builds
   // `segmentedOptions` from `[...BUILTIN_LLM_PRESETS, ...userPresets]`), and
-  // the settings seed effect is one-shot (`settingsSeeded`, above), so
+  // the settings seed effect is one-shot (`settingsSeededRef`, above), so
   // `refreshSettingsCache()`'s invalidation repopulates the react-query cache
   // but NEVER re-seeds this state. A delete that wrote both blobs and skipped
   // this call therefore kept the dead preset as a permanently deselectable
@@ -930,7 +922,6 @@ export function useModels(): UseModels {
     whisperStatus,
     mlxStatus,
     llmCleanup,
-    settingsSeeded,
     mlxKeepAliveMinutes,
     deletingKeys,
     deletingProviders,
@@ -962,6 +953,5 @@ export function useModels(): UseModels {
     duplicateUserPreset,
     deleteUserPreset,
     deleteProvider,
-    reload: loadData,
   };
 }
