@@ -3,7 +3,7 @@ import type {
   CleanupToneDestination,
 } from "@openstyle/validations";
 import { parseAppContextPayload } from "./app-context.js";
-import { getCleanupPromptConfig } from "./prompt-config.js";
+import { CLEANUP_ROUTING } from "./prompt-config.js";
 
 export interface RewritePromptContext {
   destination: CleanupToneDestination;
@@ -66,7 +66,7 @@ export function getRewritePromptContext(
     return { destination: "overall", personalSurface: null };
   }
 
-  const routing = getCleanupPromptConfig().routing;
+  const routing = CLEANUP_ROUTING;
   const ctx = parseAppContextPayload(rawContext);
   const appName = normalizeAppName(ctx?.app);
   const matchText = buildMatchContext(rawContext).toLowerCase();

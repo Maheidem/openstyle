@@ -1,19 +1,17 @@
 /**
- * Cleanup-prompt configuration: the *content* of the cleanup prompts (intensity
- * preset bodies, destination tone blocks, language constraints, and app/site
- * routing tables).
+ * Cleanup-prompt configuration: the *content* of the cleanup prompts
+ * (destination tone blocks, language constraints, and app/site routing
+ * tables). The intensity preset bodies live in `@openstyle/validations`.
  *
  * Prompt *assembly* stays in `prompts.ts`/`rewrite-context.ts` — this module
  * only holds the data they read.
  */
 
-import {
-  CLEANUP_PRESET_PROMPTS,
-  type CleanupEmailTone,
-  type CleanupOverallTone,
-  type CleanupPersonalTone,
-  type CleanupToneDestination,
-  type CleanupWorkTone,
+import type {
+  CleanupEmailTone,
+  CleanupOverallTone,
+  CleanupPersonalTone,
+  CleanupWorkTone,
 } from "@openstyle/validations";
 
 /** Language display names used to build the language constraint block. */
@@ -218,47 +216,3 @@ export const CLEANUP_USER_PROMPT_BLOCKS: CleanupUserPromptBlocks = {
   email:
     "\n\nOutput target for this transcript: when the transcript starts with a greeting word (hi, hey, hello, dear, good morning, good afternoon, greetings) or uses email-style phrasing (i'm writing to, i hope this finds you well, i wanted to follow up, attaching, reaching out regarding, please find attached, let's stay in touch), treat it as a dictated email and return a properly formatted email body. Put the greeting on its own line followed by a blank line — this is required even for short greetings like 'hi' or 'good morning'. Break the body into one to three short paragraphs separated by blank lines. Put a spoken sign-off on its own line. If the transcript does not look like an email, return normal cleaned prose with no email layout. Never invent a subject line, greeting, sign-off, or paragraph the speaker did not say.",
 };
-
-/** The full cleanup-prompt configuration prompt assembly reads from. */
-export interface CleanupPromptConfig {
-  /** Intensity preset bodies (low/medium/high). */
-  presets: Record<"low" | "medium" | "high", string>;
-  /** Language display names for the language constraint block. */
-  languageLabels: Record<string, string>;
-  /** Language constraint used when the language is unknown/auto. */
-  autoLanguageConstraint: string;
-  /** Transcript-editing user-prompt preamble. */
-  transcriptEditUserPrompt: string;
-  /** Destination-priority preamble prepended to non-off tone blocks. */
-  destinationPriorityBlock: string;
-  /** Destination tone blocks (system-prompt side). */
-  toneBlocks: CleanupToneBlocks;
-  /** Destination-specific user-prompt tail blocks. */
-  userPromptBlocks: CleanupUserPromptBlocks;
-  /** App/site destination routing tables. */
-  routing: CleanupRoutingConfig;
-}
-
-/** The cleanup-prompt configuration used for every dictation. */
-export const BUNDLED_CLEANUP_PROMPT_CONFIG: CleanupPromptConfig = {
-  presets: {
-    low: CLEANUP_PRESET_PROMPTS.low,
-    medium: CLEANUP_PRESET_PROMPTS.medium,
-    high: CLEANUP_PRESET_PROMPTS.high,
-  },
-  languageLabels: LANGUAGE_LABELS,
-  autoLanguageConstraint: AUTO_LANGUAGE_CONSTRAINT,
-  transcriptEditUserPrompt: TRANSCRIPT_EDIT_USER_PROMPT,
-  destinationPriorityBlock: DESTINATION_PRIORITY_BLOCK,
-  toneBlocks: CLEANUP_TONE_BLOCKS,
-  userPromptBlocks: CLEANUP_USER_PROMPT_BLOCKS,
-  routing: CLEANUP_ROUTING,
-};
-
-/** The active cleanup-prompt config. Synchronous and never throws. */
-export function getCleanupPromptConfig(): CleanupPromptConfig {
-  return BUNDLED_CLEANUP_PROMPT_CONFIG;
-}
-
-/** Destination values, re-exported for consumers that assemble locally. */
-export type { CleanupToneDestination };
