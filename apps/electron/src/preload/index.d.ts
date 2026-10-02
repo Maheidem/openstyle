@@ -272,6 +272,11 @@ declare global {
       // Output mode
       sendOutputModeChanged: (mode: string) => void;
       onOutputModeChanged: (callback: (mode: string) => void) => () => void;
+      // Sound setting
+      sendSoundEnabledChanged: (enabled: boolean) => void;
+      onSoundEnabledChanged: (
+        callback: (enabled: boolean) => void,
+      ) => () => void;
       // Pill cancel button
       sendPillCancelModeChanged: (mode: PillCancelMode) => void;
       onPillCancelModeChanged: (

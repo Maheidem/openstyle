@@ -2303,9 +2303,7 @@ export default function AppPage(): React.JSX.Element {
       .then((settings) => {
         if (!settings) return;
 
-        if (settings[SETTINGS_KEYS.soundEnabled] === "false") {
-          _soundEnabled = false;
-        }
+        _soundEnabled = settings[SETTINGS_KEYS.soundEnabled] !== "false";
 
         const mode = settings.audio_playback_mode;
         if (mode) {
@@ -2345,6 +2343,9 @@ export default function AppPage(): React.JSX.Element {
     const removeOutputMode = window.api?.onOutputModeChanged((mode) => {
       _outputMode = mode;
     });
+    const removeSoundEnabled = window.api?.onSoundEnabledChanged((enabled) => {
+      _soundEnabled = enabled;
+    });
     const removeCancelMode = window.api?.onPillCancelModeChanged((mode) => {
       setCancelMode(normalizePillCancelMode(mode));
     });
@@ -2380,6 +2381,7 @@ export default function AppPage(): React.JSX.Element {
     return () => {
       removePillPos?.();
       removeOutputMode?.();
+      removeSoundEnabled?.();
       removeCancelMode?.();
       removeAudioDucking?.();
       removeAudioPlaybackMode?.();

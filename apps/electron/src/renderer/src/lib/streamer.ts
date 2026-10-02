@@ -64,6 +64,12 @@ export class Streamer {
    * first recording after a disconnect cannot silently stream into no session.
    */
   private sessionStartPending = false;
+  /**
+   * True only after the server sent `session.ready` for the current session.
+   * Live audio goes straight to the socket only when this is true. Before
+   * that, it joins `pendingChunks`, so older queued audio keeps its order.
+   */
+  private sessionReady = false;
 
   // Capture pipeline — reused across sessions when possible
   private ctx: AudioContext | null = null;
@@ -113,6 +119,7 @@ export class Streamer {
     language?: string | null,
   ): Promise<void> {
     this.capturing = true;
+    this.sessionReady = false;
     this.pendingChunks = [];
     this.pcmChunks = [];
     this.pcmSampleCount = 0;
@@ -172,6 +179,7 @@ export class Streamer {
   cancel(): void {
     this.stopCapture();
     this.sessionStartPending = false;
+    this.sessionReady = false;
     this.sendJSON({ type: "cancel" });
   }
 
@@ -186,6 +194,7 @@ export class Streamer {
   destroy(): void {
     this.destroyed = true;
     this.sessionStartPending = false;
+    this.sessionReady = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -218,7 +227,8 @@ export class Streamer {
     if (
       this.ws?.readyState === WebSocket.OPEN &&
       this.configReceived &&
-      this.sessionTransportSupported
+      this.sessionTransportSupported &&
+      this.sessionReady
     ) {
       this.ws.send(chunk);
       return;
@@ -335,6 +345,7 @@ export class Streamer {
     ws.binaryType = "arraybuffer";
     this.ws = ws;
     this.configReceived = false;
+    this.sessionReady = false;
 
     ws.addEventListener("message", (e) => {
       if (typeof e.data !== "string") return;
@@ -374,6 +385,7 @@ export class Streamer {
           break;
         case "session.ready":
           this.flushPendingChunks();
+          this.sessionReady = true;
           this.callbacks.onReady();
           break;
         case "partial":
@@ -394,6 +406,7 @@ export class Streamer {
       if (this.ws !== ws) return;
       this.ws = null;
       this.configReceived = false;
+      this.sessionReady = false;
       if (this.capturing) {
         this.sessionStartPending = true;
         this.stageCapturedAudioForReplay();
