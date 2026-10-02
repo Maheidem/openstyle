@@ -24,11 +24,7 @@
     // Existing unused shadcn-style components kept as design-system inventory.
     "apps/electron/src/renderer/src/components/ui/bar-visualizer.tsx",
     "apps/electron/src/renderer/src/components/ui/card.tsx",
-    "apps/electron/src/renderer/src/env.d.ts",
-    "plugins/audio-transcription/ui/src/styles.css",
-    // Templates are standalone starter projects downloaded by create-openstyle-plugin,
-    // not workspace code. They are never imported or built within the monorepo.
-    "templates/**"
+    "apps/electron/src/renderer/src/env.d.ts"
   ],
   "workspaces": {
     "apps/electron": {
@@ -87,14 +83,6 @@
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]
       },
       "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
-    },
-    "packages/create-openstyle-plugin": {
-      "entry": ["src/index.ts"],
-      "project": ["src/**/*.ts"]
-    },
-    "plugins/*": {
-      "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],
-      "project": ["src/**/*.{ts,tsx}", "ui/src/**/*.{ts,tsx,css}"]
     }
   }
 }

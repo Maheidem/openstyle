@@ -5,10 +5,9 @@
 # the commit SHA, per Craft's GitHub artifact provider) and runs `npm publish`
 # on it during the publish step.
 #
-# IMPORTANT: we use `pnpm pack` (not `npm pack`) so the plugin's
-# `@openstyle/sdk: workspace:*` dependency is rewritten to a real version
-# range in the published tarball. Plain `npm pack` does not understand the
-# workspace: protocol.
+# IMPORTANT: we use `pnpm pack` (not `npm pack`) so a `workspace:*`
+# dependency is rewritten to a real version range in the published tarball.
+# Plain `npm pack` does not understand the workspace: protocol.
 
 name: Package Artifacts
 on:
@@ -16,7 +15,6 @@ on:
     branches:
       - "release-sdk/**"
       - "release-stt/**"
-      - "release-create-openstyle-plugin/**"
 
 concurrency:
   group: package-artifacts-${{ github.ref_name }}
@@ -54,10 +52,6 @@ jobs:
             release-stt/*)
               echo "path=packages/stt" >> "$GITHUB_OUTPUT"
               echo "name=@openstyle/stt" >> "$GITHUB_OUTPUT"
-              ;;
-            release-create-openstyle-plugin/*)
-              echo "path=packages/create-openstyle-plugin" >> "$GITHUB_OUTPUT"
-              echo "name=create-openstyle-plugin" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "::error::No package mapping for branch $BRANCH"
