@@ -386,13 +386,6 @@ interface TranscribeResult {
   cleaned: string;
   error?: string;
   providerCategory?: string;
-  /**
-   * Terminal pipeline disposition from the server. A plugin that called
-   * `api.control.consume()`/`abort()` in a server hook resolves to
-   * `"suppressed"`/`"aborted"` here, and the dictation is dropped without
-   * delivery. Defaults to `"deliver"` for older server responses.
-   */
-  disposition?: "deliver" | "suppressed" | "aborted";
 }
 
 /**
@@ -675,12 +668,8 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      // A dictation is deliverable only when it has text AND the server
-      // didn't mark it suppressed/aborted (a plugin calling
-      // `api.control.consume()`/`abort()` in a server hook). Absent
-      // disposition (older responses) is treated as "deliver".
-      const isDeliverable = (r: TranscribeResult): boolean =>
-        !!r.raw.trim() && (r.disposition ?? "deliver") === "deliver";
+      // A dictation is deliverable only when it has text.
+      const isDeliverable = (r: TranscribeResult): boolean => !!r.raw.trim();
 
       if (
         recordingActiveRef.current ||
@@ -754,17 +743,11 @@ export default function AppPage(): React.JSX.Element {
       let delivered = false;
 
       try {
-        const requestedMode =
-          _outputMode === "clipboard" ? "clipboard" : "paste";
-        const deliverText = finalText;
-        const deliverMode: "paste" | "clipboard" = requestedMode;
-        const shouldDeliver = true;
-
-        if (shouldDeliver && deliverText.trim()) {
+        if (finalText.trim()) {
           const delivery =
-            deliverMode === "clipboard"
-              ? window.api.copyText(deliverText, appContextRef.current)
-              : window.api.pasteText(deliverText, appContextRef.current);
+            _outputMode === "clipboard"
+              ? window.api.copyText(finalText, appContextRef.current)
+              : window.api.pasteText(finalText, appContextRef.current);
 
           // Start the exit when delivery is dispatched; pasteText resolves later.
           delivered = true;
@@ -1786,13 +1769,11 @@ export default function AppPage(): React.JSX.Element {
           raw?: string;
           cleaned?: string;
           provider_category?: string;
-          disposition?: "deliver" | "suppressed" | "aborted";
         };
         return {
           raw: (data.raw || "").trim(),
           cleaned: (data.cleaned || data.raw || "").trim(),
           providerCategory: data.provider_category,
-          disposition: data.disposition,
         };
       })
       .catch((err) => {
@@ -1842,8 +1823,8 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Remix ----
   // A remix is not a dictation: it never enters the transcription queue,
-  // never reaches the plugin output pipeline, and its result replaces a
-  // selection rather than being inserted at a cursor. What it does share is the
+  // and its result replaces a selection rather than being inserted at a
+  // cursor. What it does share is the
   // pill — the surface, the waveform, and the mic behind it.
 
   const clearRemixHoldTimer = useCallback(() => {
