@@ -84,35 +84,11 @@ export default function ModelsPage(): React.JSX.Element {
     setSaving(false);
   };
 
-  const configureVoice = (
-    model: AvailableModel,
-    { closeAfter = false }: { closeAfter?: boolean } = {},
-  ): void => {
-    const needsKey =
-      model.provider_id !== "local-llm" &&
-      !m.keyProviders.has(model.provider_id);
-    if (needsKey) {
-      setKeyError(null);
-      setModal({
-        kind: "key",
-        type: "voice",
-        provider: model.provider_id,
-        modelName: model.model_name,
-        pendingModel: model,
-      });
-      return;
-    }
-    void m.configureModel(model, "voice").then(() => {
-      if (closeAfter) closeModal();
-    });
-  };
-
-  const openVoice = (): void =>
-    setModal({ kind: "list", type: "voice", voiceView: "tiers" });
+  const openVoice = (): void => setModal({ kind: "list", type: "voice" });
 
   const openLlm = (): void => {
     m.setCleanup(true);
-    setModal({ kind: "list", type: "llm", llmView: "tiers" });
+    setModal({ kind: "list", type: "llm" });
   };
 
   const onToggleCleanup = (next: boolean): void => {
@@ -129,11 +105,6 @@ export default function ModelsPage(): React.JSX.Element {
   const onPickCloud = (model: AvailableModel): void => {
     if (modal?.kind !== "list") return;
     const type = modal.type;
-
-    if (type === "voice") {
-      configureVoice(model, { closeAfter: true });
-      return;
-    }
 
     const needsKey =
       model.provider_id !== "local-llm" &&
@@ -175,9 +146,9 @@ export default function ModelsPage(): React.JSX.Element {
   const onBack = (): void => {
     if (modal?.kind !== "key") return;
     if (modal.type === "voice") {
-      setModal({ kind: "list", type: "voice", voiceView: "tiers" });
+      setModal({ kind: "list", type: "voice" });
     } else if (modal.type === "llm") {
-      setModal({ kind: "list", type: "llm", llmView: "tiers" });
+      setModal({ kind: "list", type: "llm" });
     } else {
       closeModal();
     }

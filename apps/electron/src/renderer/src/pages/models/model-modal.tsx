@@ -36,12 +36,7 @@ import type { UseModels } from "./use-models";
 // ---------------------------------------------------------------------------
 
 export type ModalState =
-  | {
-      kind: "list";
-      type: "voice" | "llm";
-      voiceView?: "tiers" | "all" | "local" | "cloud";
-      llmView?: "tiers" | "all" | "local" | "cloud";
-    }
+  | { kind: "list"; type: "voice" | "llm" }
   | {
       kind: "key";
       /** Slot to return to on Back; null = standalone key edit. */
@@ -136,8 +131,6 @@ export function ModelModal({
     >
       <ModelList
         type={modal.type}
-        voiceView={modal.type === "voice" ? modal.voiceView : undefined}
-        llmView={modal.type === "llm" ? modal.llmView : undefined}
         m={m}
         onClose={onClose}
         onPickCloud={onPickCloud}
