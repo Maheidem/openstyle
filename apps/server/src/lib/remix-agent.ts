@@ -64,9 +64,8 @@ export interface ByokModelChoice {
 }
 
 /**
- * The agent loop on the user's own model. Identical shape to the cloud run —
- * same system prompt, same client tools — minus the server tools (web search
- * is a cloud capability) and minus metering.
+ * The agent loop on the user's own model. The model gets the client tools
+ * only. There are no server tools and no metering.
  */
 export async function runRemixAgentLocally(
   request: RemixAgentRequest,
@@ -110,7 +109,7 @@ export async function runRemixAgentLocally(
       task: "remix",
       sampling: resolved.samplingParams,
     }),
-    system: buildRemixAgentSystem(request.context, { hasWebSearch: false }),
+    system: buildRemixAgentSystem(request.context),
     messages: await convertToModelMessages(request.messages as UIMessage[]),
     tools: remixClientTools(),
     stopWhen: stepCountIs(REMIX_MAX_STEPS),
