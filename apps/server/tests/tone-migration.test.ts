@@ -1,6 +1,7 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { initSchema } from "../src/lib/schema.js";
+import { createVersionedDb } from "./helpers/schema-db.js";
 
 let db: DatabaseSync | null = null;
 
@@ -11,20 +12,9 @@ afterEach(() => {
 
 describe("tone migration", () => {
   it("backs up custom format rules and drops the legacy table", () => {
-    db = new DatabaseSync(":memory:");
-    db.exec(`
-      CREATE TABLE schema_version (
-        id INTEGER PRIMARY KEY CHECK(id = 1),
-        version INTEGER NOT NULL
-      );
-      INSERT INTO schema_version (id, version) VALUES (1, 10);
-
-      CREATE TABLE settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-
+    db = createVersionedDb(
+      10,
+      `
       CREATE TABLE format_rules (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         app_pattern TEXT NOT NULL,
@@ -50,7 +40,8 @@ describe("tone migration", () => {
         cost_usd REAL NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
-    `);
+    `,
+    );
 
     db.prepare(
       `INSERT INTO format_rules

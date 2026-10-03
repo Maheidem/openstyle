@@ -1,6 +1,7 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { initSchema } from "../src/lib/schema.js";
+import { createVersionedDb } from "./helpers/schema-db.js";
 
 let db: DatabaseSync | null = null;
 
@@ -10,20 +11,9 @@ afterEach(() => {
 });
 
 function createV13Db(startVersion = 13): DatabaseSync {
-  const instance = new DatabaseSync(":memory:");
-  instance.exec(`
-    CREATE TABLE schema_version (
-      id INTEGER PRIMARY KEY CHECK(id = 1),
-      version INTEGER NOT NULL
-    );
-    INSERT INTO schema_version (id, version) VALUES (1, ${startVersion});
-
-    CREATE TABLE settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
+  return createVersionedDb(
+    startVersion,
+    `
     CREATE TABLE model_configs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       provider TEXT NOT NULL,
@@ -50,8 +40,8 @@ function createV13Db(startVersion = 13): DatabaseSync {
       cost_usd REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-  `);
-  return instance;
+  `,
+  );
 }
 
 function insertModel(

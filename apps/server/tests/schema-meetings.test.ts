@@ -1,6 +1,92 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { initSchema } from "../src/lib/schema.js";
+import { createVersionedDb } from "./helpers/schema-db.js";
+
+// The current schema head. Raise it when you add a migration.
+const EXPECTED_SCHEMA_VERSION = 34;
+
+// Old table shapes, as they existed before each migration.
+const MEETINGS_V29 = `
+  CREATE TABLE meetings (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    started_at INTEGER,
+    ended_at INTEGER,
+    duration_ms INTEGER,
+    status TEXT NOT NULL CHECK(status IN (
+      'recording','interrupted','recorded','transcribing',
+      'transcribed','summarized','failed'
+    )),
+    audio_dir TEXT,
+    stt_provider TEXT,
+    stt_model TEXT,
+    error TEXT,
+    created_at INTEGER
+  );
+`;
+
+const MEETINGS_V31 = `
+  CREATE TABLE meetings (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    started_at INTEGER,
+    ended_at INTEGER,
+    duration_ms INTEGER,
+    status TEXT NOT NULL CHECK(status IN (
+      'recording','interrupted','recorded','transcribing',
+      'transcribed','summarized','failed'
+    )),
+    audio_dir TEXT,
+    stt_provider TEXT,
+    stt_model TEXT,
+    error TEXT,
+    language TEXT,
+    created_at INTEGER
+  );
+`;
+
+const SEGMENTS_V29 = `
+  CREATE TABLE meeting_segments (
+    id TEXT PRIMARY KEY,
+    meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    source TEXT NOT NULL CHECK(source IN ('mic','system')),
+    idx INTEGER,
+    start_ms INTEGER,
+    end_ms INTEGER,
+    text TEXT,
+    status TEXT
+  );
+`;
+
+const SEGMENTS_V30 = `
+  CREATE TABLE meeting_segments (
+    id TEXT PRIMARY KEY,
+    meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    source TEXT NOT NULL CHECK(source IN ('mic','system')),
+    idx INTEGER,
+    start_ms INTEGER,
+    end_ms INTEGER,
+    text TEXT,
+    status TEXT,
+    speaker_label TEXT
+  );
+`;
+
+const SEGMENTS_V32 = `
+  CREATE TABLE meeting_segments (
+    id TEXT PRIMARY KEY,
+    meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    source TEXT NOT NULL CHECK(source IN ('mic','system')),
+    idx INTEGER,
+    start_ms INTEGER,
+    end_ms INTEGER,
+    text TEXT,
+    status TEXT,
+    speaker_label TEXT,
+    enhanced_text TEXT
+  );
+`;
 
 function tableNames(db: DatabaseSync): string[] {
   return (
@@ -23,7 +109,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(34);
+    expect(version.version).toBe(EXPECTED_SCHEMA_VERSION);
 
     const columns = (
       db.prepare("PRAGMA table_info(meeting_segments)").all() as {
@@ -44,15 +130,7 @@ describe("schema v29 (meetings)", () => {
   });
 
   it("migrates a database stamped at v28 (the pre-meetings version)", () => {
-    const db = new DatabaseSync(":memory:");
-    // Simulate an existing installation stamped just below the new version.
-    db.exec(`
-      CREATE TABLE schema_version (
-        id INTEGER PRIMARY KEY CHECK(id = 1),
-        version INTEGER NOT NULL
-      )
-    `);
-    db.exec("INSERT INTO schema_version (id, version) VALUES (1, 28)");
+    const db = createVersionedDb(28, "", { settings: false });
 
     initSchema(db);
 
@@ -60,48 +138,13 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(34);
+    expect(version.version).toBe(EXPECTED_SCHEMA_VERSION);
   });
 
   it("migrates a v29 database (with existing segment rows) to v30 with a nullable speaker_label", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec(`
-      CREATE TABLE schema_version (
-        id INTEGER PRIMARY KEY CHECK(id = 1),
-        version INTEGER NOT NULL
-      )
-    `);
-    db.exec("INSERT INTO schema_version (id, version) VALUES (1, 29)");
-    db.exec(`
-      CREATE TABLE meetings (
-        id TEXT PRIMARY KEY,
-        title TEXT,
-        started_at INTEGER,
-        ended_at INTEGER,
-        duration_ms INTEGER,
-        status TEXT NOT NULL CHECK(status IN (
-          'recording','interrupted','recorded','transcribing',
-          'transcribed','summarized','failed'
-        )),
-        audio_dir TEXT,
-        stt_provider TEXT,
-        stt_model TEXT,
-        error TEXT,
-        created_at INTEGER
-      )
-    `);
-    db.exec(`
-      CREATE TABLE meeting_segments (
-        id TEXT PRIMARY KEY,
-        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
-        source TEXT NOT NULL CHECK(source IN ('mic','system')),
-        idx INTEGER,
-        start_ms INTEGER,
-        end_ms INTEGER,
-        text TEXT,
-        status TEXT
-      )
-    `);
+    const db = createVersionedDb(29, `${MEETINGS_V29}${SEGMENTS_V29}`, {
+      settings: false,
+    });
     db.prepare(
       "INSERT INTO meetings (id, status, created_at) VALUES ('m1', 'transcribed', ?)",
     ).run(Date.now());
@@ -115,7 +158,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(34);
+    expect(version.version).toBe(EXPECTED_SCHEMA_VERSION);
 
     const row = db
       .prepare("SELECT speaker_label FROM meeting_segments WHERE id = 's1'")
@@ -124,45 +167,9 @@ describe("schema v29 (meetings)", () => {
   });
 
   it("migrates a v30 database (with existing meeting rows) to v31 with a nullable language column", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec(`
-      CREATE TABLE schema_version (
-        id INTEGER PRIMARY KEY CHECK(id = 1),
-        version INTEGER NOT NULL
-      )
-    `);
-    db.exec("INSERT INTO schema_version (id, version) VALUES (1, 30)");
-    db.exec(`
-      CREATE TABLE meetings (
-        id TEXT PRIMARY KEY,
-        title TEXT,
-        started_at INTEGER,
-        ended_at INTEGER,
-        duration_ms INTEGER,
-        status TEXT NOT NULL CHECK(status IN (
-          'recording','interrupted','recorded','transcribing',
-          'transcribed','summarized','failed'
-        )),
-        audio_dir TEXT,
-        stt_provider TEXT,
-        stt_model TEXT,
-        error TEXT,
-        created_at INTEGER
-      )
-    `);
-    db.exec(`
-      CREATE TABLE meeting_segments (
-        id TEXT PRIMARY KEY,
-        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
-        source TEXT NOT NULL CHECK(source IN ('mic','system')),
-        idx INTEGER,
-        start_ms INTEGER,
-        end_ms INTEGER,
-        text TEXT,
-        status TEXT,
-        speaker_label TEXT
-      )
-    `);
+    const db = createVersionedDb(30, `${MEETINGS_V29}${SEGMENTS_V30}`, {
+      settings: false,
+    });
     db.prepare(
       "INSERT INTO meetings (id, status, created_at) VALUES ('m1', 'transcribed', ?)",
     ).run(Date.now());
@@ -172,7 +179,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(34);
+    expect(version.version).toBe(EXPECTED_SCHEMA_VERSION);
 
     const columns = (
       db.prepare("PRAGMA table_info(meetings)").all() as {
@@ -190,46 +197,9 @@ describe("schema v29 (meetings)", () => {
   });
 
   it("migrates a v31 database (with existing segment rows) to v32 with a nullable enhanced_text column", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec(`
-      CREATE TABLE schema_version (
-        id INTEGER PRIMARY KEY CHECK(id = 1),
-        version INTEGER NOT NULL
-      )
-    `);
-    db.exec("INSERT INTO schema_version (id, version) VALUES (1, 31)");
-    db.exec(`
-      CREATE TABLE meetings (
-        id TEXT PRIMARY KEY,
-        title TEXT,
-        started_at INTEGER,
-        ended_at INTEGER,
-        duration_ms INTEGER,
-        status TEXT NOT NULL CHECK(status IN (
-          'recording','interrupted','recorded','transcribing',
-          'transcribed','summarized','failed'
-        )),
-        audio_dir TEXT,
-        stt_provider TEXT,
-        stt_model TEXT,
-        error TEXT,
-        language TEXT,
-        created_at INTEGER
-      )
-    `);
-    db.exec(`
-      CREATE TABLE meeting_segments (
-        id TEXT PRIMARY KEY,
-        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
-        source TEXT NOT NULL CHECK(source IN ('mic','system')),
-        idx INTEGER,
-        start_ms INTEGER,
-        end_ms INTEGER,
-        text TEXT,
-        status TEXT,
-        speaker_label TEXT
-      )
-    `);
+    const db = createVersionedDb(31, `${MEETINGS_V31}${SEGMENTS_V30}`, {
+      settings: false,
+    });
     db.prepare(
       "INSERT INTO meetings (id, status, created_at) VALUES ('m1', 'transcribed', ?)",
     ).run(Date.now());
@@ -243,7 +213,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(34);
+    expect(version.version).toBe(EXPECTED_SCHEMA_VERSION);
 
     const columns = (
       db.prepare("PRAGMA table_info(meeting_segments)").all() as {
@@ -329,47 +299,9 @@ describe("schema v29 (meetings)", () => {
   });
 
   it("migrates a v32 database (with existing meeting rows) to v33 with no data loss, meeting_speakers created, and meetings.context NULL", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec(`
-      CREATE TABLE schema_version (
-        id INTEGER PRIMARY KEY CHECK(id = 1),
-        version INTEGER NOT NULL
-      )
-    `);
-    db.exec("INSERT INTO schema_version (id, version) VALUES (1, 32)");
-    db.exec(`
-      CREATE TABLE meetings (
-        id TEXT PRIMARY KEY,
-        title TEXT,
-        started_at INTEGER,
-        ended_at INTEGER,
-        duration_ms INTEGER,
-        status TEXT NOT NULL CHECK(status IN (
-          'recording','interrupted','recorded','transcribing',
-          'transcribed','summarized','failed'
-        )),
-        audio_dir TEXT,
-        stt_provider TEXT,
-        stt_model TEXT,
-        error TEXT,
-        language TEXT,
-        created_at INTEGER
-      )
-    `);
-    db.exec(`
-      CREATE TABLE meeting_segments (
-        id TEXT PRIMARY KEY,
-        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
-        source TEXT NOT NULL CHECK(source IN ('mic','system')),
-        idx INTEGER,
-        start_ms INTEGER,
-        end_ms INTEGER,
-        text TEXT,
-        status TEXT,
-        speaker_label TEXT,
-        enhanced_text TEXT
-      )
-    `);
+    const db = createVersionedDb(32, `${MEETINGS_V31}${SEGMENTS_V32}`, {
+      settings: false,
+    });
     db.prepare(
       "INSERT INTO meetings (id, title, status, created_at) VALUES ('m1', 'Existing meeting', 'transcribed', ?)",
     ).run(Date.now());
@@ -383,7 +315,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(34);
+    expect(version.version).toBe(EXPECTED_SCHEMA_VERSION);
 
     expect(tableNames(db)).toContain("meeting_speakers");
 
@@ -404,15 +336,9 @@ describe("schema v29 (meetings)", () => {
   });
 
   it("migrates a v33 database (with an existing meeting_speakers row) to v34 with nullable suggested_kind/confirmed_at and no data loss", () => {
-    const db = new DatabaseSync(":memory:");
-    db.exec(`
-      CREATE TABLE schema_version (
-        id INTEGER PRIMARY KEY CHECK(id = 1),
-        version INTEGER NOT NULL
-      )
-    `);
-    db.exec("INSERT INTO schema_version (id, version) VALUES (1, 33)");
-    db.exec(`
+    const db = createVersionedDb(
+      33,
+      `
       CREATE TABLE meetings (
         id TEXT PRIMARY KEY,
         title TEXT,
@@ -422,9 +348,7 @@ describe("schema v29 (meetings)", () => {
         )),
         created_at INTEGER,
         context TEXT
-      )
-    `);
-    db.exec(`
+      );
       CREATE TABLE meeting_speakers (
         meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
         speaker_label TEXT NOT NULL,
@@ -434,8 +358,10 @@ describe("schema v29 (meetings)", () => {
         merged_into TEXT,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (meeting_id, speaker_label)
-      )
-    `);
+      );
+    `,
+      { settings: false },
+    );
     db.prepare(
       "INSERT INTO meetings (id, status, created_at) VALUES ('m1', 'transcribed', ?)",
     ).run(Date.now());
@@ -449,7 +375,7 @@ describe("schema v29 (meetings)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(34);
+    expect(version.version).toBe(EXPECTED_SCHEMA_VERSION);
 
     const cols = (
       db.prepare("PRAGMA table_info(meeting_speakers)").all() as {
