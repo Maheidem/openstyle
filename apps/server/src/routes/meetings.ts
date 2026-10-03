@@ -1,12 +1,4 @@
-import {
-  closeSync,
-  existsSync,
-  openSync,
-  readFileSync,
-  readSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { zValidator } from "@hono/zod-validator";
 import { isVocabLeak } from "@openstyle/stt";
@@ -34,7 +26,7 @@ import {
   type SyncData,
   type TranscriptSegment,
 } from "../lib/meetings/merge.js";
-import { mergeSegmentsToward, segmentPcm } from "../lib/meetings/segmenter.js";
+import { segmentWavFile } from "../lib/meetings/segmenter.js";
 import { resolveSpeakerNames } from "../lib/meetings/speaker-names.js";
 import {
   summarizeJobPlan,
@@ -44,7 +36,6 @@ import {
   type ChunkResult,
   createDefaultTranscriberDeps,
   MeetingTranscriber,
-  parseWavHeader,
   type TranscriberDeps,
 } from "../lib/meetings/transcriber.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
@@ -153,40 +144,6 @@ export function __setMeetingsTestOverrides(
 // ---------------------------------------------------------------------------
 // Audio + sync helpers
 // ---------------------------------------------------------------------------
-
-/** Read a whole WAV channel into PCM16 samples. Returns null when missing. */
-function readWavChannel(
-  path: string,
-): { pcm: Int16Array; sampleRate: number } | null {
-  let fd: number;
-  try {
-    fd = openSync(path, "r");
-  } catch {
-    return null;
-  }
-  try {
-    const info = parseWavHeader(fd);
-    const data = Buffer.alloc(info.dataLength);
-    let read = 0;
-    while (read < info.dataLength) {
-      const n = readSync(
-        fd,
-        data,
-        read,
-        Math.min(1024 * 1024, info.dataLength - read),
-        info.dataOffset + read,
-      );
-      if (n <= 0) break;
-      read += n;
-    }
-    return {
-      pcm: new Int16Array(data.buffer, data.byteOffset, Math.floor(read / 2)),
-      sampleRate: info.sampleRate,
-    };
-  } finally {
-    closeSync(fd);
-  }
-}
 
 /**
  * Map the recorder's `sync.json` journal (meeting-recorder.ts SyncJournal)
@@ -397,21 +354,17 @@ async function buildTranscriberDeps(
 async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
   const db = getDb();
   try {
-    const mic = readWavChannel(join(audioDir, "mic.wav"));
-    const system = readWavChannel(join(audioDir, "system.wav"));
-    if (!mic && !system) {
+    const micFound = segmentWavFile(join(audioDir, "mic.wav"));
+    const systemFound = segmentWavFile(join(audioDir, "system.wav"));
+    if (!micFound && !systemFound) {
       throw new Error(`No audio files found in ${audioDir}`);
     }
     // Phase B (specs/meeting-transcription-quality.md §5): merge VAD output
     // toward a ~20-25s target per channel before transcription — pure
     // post-processing over segmentPcm's already-detected boundaries, mic
     // and system merged independently (never bridged across channels).
-    const micSegments = mic
-      ? mergeSegmentsToward(segmentPcm(mic.pcm, mic.sampleRate))
-      : [];
-    const systemSegments = system
-      ? mergeSegmentsToward(segmentPcm(system.pcm, system.sampleRate))
-      : [];
+    const micSegments = micFound ?? [];
+    const systemSegments = systemFound ?? [];
     const total = micSegments.length + systemSegments.length;
     activeJobs.set(id, { done: 0, total, failed: 0 });
 

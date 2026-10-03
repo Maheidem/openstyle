@@ -4,9 +4,8 @@
  * `routes/meetings-import.ts`). Dependency-free, same layer as
  * `lib/audio/wav.ts` — no Hono, no DB, no electron.
  *
- * Extracted verbatim from `routes/transcribe-file.ts` (which re-exports them
- * so its public surface is unchanged); both routes answer 413/415 with
- * byte-identical payloads built from these values.
+ * Extracted verbatim from `routes/transcribe-file.ts`. Both routes answer
+ * 413/415 with byte-identical payloads built from these values.
  */
 
 /** 1 GiB (1,073,741,824 B) upload ceiling (`tr_e4522000`). */

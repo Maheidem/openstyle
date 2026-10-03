@@ -50,7 +50,7 @@ import {
   requestBodyTooLarge,
   streamMultipartForm,
 } from "../lib/audio/multipart-stream.js";
-import { parseWavHeader, wavDurationMs } from "../lib/audio/wav.js";
+import { readWavInfo, wavDurationMs } from "../lib/audio/wav.js";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import {
   decodeAppContext,
@@ -59,32 +59,12 @@ import {
 
 const log = createAppLogger("transcribe-file");
 
-// Upload limits live in `lib/audio/import-limits.ts` (shared with
-// `routes/meetings-import.ts`); re-exported here so this module's public
-// surface is unchanged.
-export {
-  ACCEPTED_IMPORT_EXTENSIONS,
-  formatLimit,
-  importFileExtension,
-  MAX_IMPORT_BYTES,
-} from "../lib/audio/import-limits.js";
-
 function tooLargeBody(maxBytes: number) {
   return {
     error: "File too large",
     detail: `Maximum upload size is ${formatLimit(maxBytes)}`,
     code: "PAYLOAD_TOO_LARGE",
   } as const;
-}
-
-/** Header info of an on-disk WAV (`parseWavHeader` accepts an open fd). */
-function wavInfoAt(path: string) {
-  const fd = openSync(path, "r");
-  try {
-    return parseWavHeader(fd);
-  } finally {
-    closeSync(fd);
-  }
 }
 
 export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
@@ -210,7 +190,9 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
 
           // Duration from the post-transcode WAV (`fr_f86c5c0f`), rounded to an
           // integer like the dictation route's `(len-44)/32`.
-          const audioDurationMs = Math.round(wavDurationMs(wavInfoAt(wavPath)));
+          const audioDurationMs = Math.round(
+            wavDurationMs(readWavInfo(wavPath)),
+          );
 
           // The one full-size allocation on this path: the pipeline consumes
           // the decoded WAV exactly once. (`readFile` returns a Buffer,

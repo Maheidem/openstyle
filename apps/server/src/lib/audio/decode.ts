@@ -36,6 +36,7 @@ import { type FileHandle, open, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   parseWavHeader,
+  readWavInfo,
   type WavInfo,
   wavDurationMs,
   wavHeader,
@@ -192,43 +193,34 @@ export function buildFfmpegArgs(
   ];
 }
 
-/**
- * True unless `buffer` already is a plain PCM (format tag 1) 16 kHz mono
- * 16-bit WAV that is conforming AND canonical (44-byte header, `data` chunk
- * spanning exactly the rest of the file), so downstream `(len-44)/32` math
- * and whisper see a clean file. Extra chunks, streamed 0xFFFFFFFF sizes or
- * trailing garbage → true. Anything unparseable (mp3, m4a, truncated,
- * empty) → true.
- */
-export function needsDecode(buffer: Uint8Array): boolean {
-  try {
-    const info = parseWavHeader(buffer);
-    if (
-      info.formatTag !== 1 ||
-      info.sampleRate !== TARGET_SAMPLE_RATE ||
-      info.channels !== TARGET_CHANNELS ||
-      info.bitsPerSample !== TARGET_BITS_PER_SAMPLE ||
-      info.dataOffset !== 44
-    ) {
-      return true;
-    }
-    // parseWavHeader clamps dataLength to the bytes present, so read the
-    // declared `data` size ourselves: a streamed 0xFFFFFFFF is not canonical.
-    const declared = Buffer.from(
-      buffer.buffer,
-      buffer.byteOffset,
-      buffer.byteLength,
-    ).readUInt32LE(40);
-    return declared !== buffer.byteLength - 44;
-  } catch {
-    return true;
-  }
+/** Declared byte size of the `data` chunk of a canonical header (offset 40). */
+function readDeclaredDataBytes(fd: number): number {
+  const b = Buffer.alloc(4);
+  readSync(fd, b, 0, 4, 40);
+  return b.readUInt32LE(0);
 }
 
 /**
- * `needsDecode` for an on-disk file (same semantics, same verdicts): open the
- * path, parse the header off the fd, and compare the declared `data` size
- * against the real file size.
+ * True when the header is the canonical 44-byte layout and the `data` chunk
+ * spans exactly the rest of the file. `parseWavHeader` clamps `dataLength` to
+ * the bytes present, so the caller passes the declared size: a streamed
+ * 0xFFFFFFFF is not canonical.
+ */
+function isCanonicalLayout(
+  info: WavInfo,
+  declaredDataBytes: number,
+  fileBytes: number,
+): boolean {
+  return info.dataOffset === 44 && declaredDataBytes === fileBytes - 44;
+}
+
+/**
+ * True unless the file at `path` already is a plain PCM (format tag 1)
+ * 16 kHz mono 16-bit WAV that is conforming AND canonical (44-byte header,
+ * `data` chunk spanning exactly the rest of the file), so downstream
+ * `(len-44)/32` math and whisper see a clean file. Extra chunks, streamed
+ * 0xFFFFFFFF sizes or trailing garbage → true. Anything unparseable (mp3,
+ * m4a, truncated, empty, missing) → true.
  */
 export function needsDecodeFile(path: string): boolean {
   let fd: number | undefined;
@@ -240,14 +232,11 @@ export function needsDecodeFile(path: string): boolean {
       info.formatTag !== 1 ||
       info.sampleRate !== TARGET_SAMPLE_RATE ||
       info.channels !== TARGET_CHANNELS ||
-      info.bitsPerSample !== TARGET_BITS_PER_SAMPLE ||
-      info.dataOffset !== 44
+      info.bitsPerSample !== TARGET_BITS_PER_SAMPLE
     ) {
       return true;
     }
-    const declared = Buffer.alloc(4);
-    readSync(fd, declared, 0, 4, 40);
-    return declared.readUInt32LE(0) !== size - 44;
+    return !isCanonicalLayout(info, readDeclaredDataBytes(fd), size);
   } catch {
     return true;
   } finally {
@@ -294,26 +283,22 @@ export async function decodeFileToWav16kMono(
     throw new AudioDecodeError(
       `decoded audio exceeds ${deps.maxOutputBytes} bytes`,
       "decode_failed",
-      { stderrTail: tail(redactTempDir(stderr, dirname(outputPath))) },
+      { stderrTail: tail(stderr) },
     );
   }
 
   let info: WavInfo;
-  let fd: number | undefined;
   try {
-    fd = openSync(outputPath, "r");
-    info = parseWavHeader(fd);
+    info = readWavInfo(outputPath);
   } catch (err) {
     throw new AudioDecodeError(
       `ffmpeg produced an unreadable WAV: ${(err as Error).message}`,
       "decode_failed",
       {
         exitCode: 0,
-        stderrTail: tail(redactTempDir(stderr, dirname(outputPath))),
+        stderrTail: tail(stderr),
       },
     );
-  } finally {
-    if (fd !== undefined) closeSync(fd);
   }
   if (info.dataLength === 0 || wavDurationMs(info) === 0) {
     throw new AudioDecodeError(
@@ -321,7 +306,7 @@ export async function decodeFileToWav16kMono(
       "empty_output",
       {
         exitCode: 0,
-        stderrTail: tail(redactTempDir(stderr, dirname(outputPath))),
+        stderrTail: tail(stderr),
       },
     );
   }
@@ -457,13 +442,11 @@ async function ensureCanonicalWavFile(
   const fd = openSync(path, "r");
   let declared: number;
   try {
-    const b = Buffer.alloc(4);
-    readSync(fd, b, 0, 4, 40);
-    declared = b.readUInt32LE(0);
+    declared = readDeclaredDataBytes(fd);
   } finally {
     closeSync(fd);
   }
-  if (info.dataOffset === 44 && declared === size - 44) return;
+  if (isCanonicalLayout(info, declared, size)) return;
 
   const tmp = `${path}.canonical`;
   const src = await open(path, "r");

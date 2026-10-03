@@ -34,12 +34,10 @@
  */
 
 import {
-  closeSync,
   copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -69,7 +67,7 @@ import {
   type StreamedFilePart,
   streamMultipartForm,
 } from "../lib/audio/multipart-stream.js";
-import { parseWavHeader, wavDurationMs } from "../lib/audio/wav.js";
+import { readWavInfo, wavDurationMs } from "../lib/audio/wav.js";
 import { getDb } from "../lib/db.js";
 
 const log = createAppLogger("meetings-import");
@@ -90,16 +88,6 @@ function tooLargeBody(maxBytes: number) {
     detail: `Maximum upload size is ${formatLimit(maxBytes)}`,
     code: "PAYLOAD_TOO_LARGE",
   } as const;
-}
-
-/** Header info of an on-disk WAV (`parseWavHeader` accepts an open fd). */
-function wavInfoAt(path: string) {
-  const fd = openSync(path, "r");
-  try {
-    return parseWavHeader(fd);
-  } finally {
-    closeSync(fd);
-  }
 }
 
 /**
@@ -289,7 +277,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       // finds no segments).
       let durationMs: number;
       try {
-        durationMs = Math.round(wavDurationMs(wavInfoAt(wavPath)));
+        durationMs = Math.round(wavDurationMs(readWavInfo(wavPath)));
       } catch (err) {
         log.error(`meeting ${id}: WAV not parseable: ${String(err)}`);
         return c.json(
