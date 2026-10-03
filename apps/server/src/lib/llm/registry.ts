@@ -4,6 +4,7 @@ import type { CleanupSampling } from "@openstyle/validations";
 import { SETTINGS_KEYS } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
 import { readSettings } from "../db.js";
+import { stripModelPrefix } from "../model-id.js";
 import { traceLlmFetch } from "../trace.js";
 
 /** The settings key holding the local engine's base URL. */
@@ -55,10 +56,6 @@ export interface LlmProvider {
   prewarm?(modelId: string): void;
 }
 
-function stripGroqPrefix(modelId: string): string {
-  return modelId.startsWith("groq/") ? modelId.slice("groq/".length) : modelId;
-}
-
 /**
  * Reasoning-mode flags for Groq models that would otherwise emit visible
  * chain-of-thought or spend latency on reasoning we don't want during cleanup.
@@ -79,7 +76,7 @@ export function groqCleanupProviderOptions(
   modelId: string,
   reasoningEnabled: boolean,
 ): { groq: GroqLanguageModelOptions } | undefined {
-  const shortId = stripGroqPrefix(modelId);
+  const shortId = stripModelPrefix("groq", modelId);
 
   switch (shortId) {
     case "qwen/qwen3-32b":
@@ -193,7 +190,7 @@ const PROVIDERS: LlmProvider[] = [
       groqCleanupProviderOptions(modelId, reasoningEnabled),
     prewarm: (modelId) => {
       void import("../groq-http.js").then(({ prewarmGroqConnection }) =>
-        prewarmGroqConnection(stripGroqPrefix(modelId)),
+        prewarmGroqConnection(stripModelPrefix("groq", modelId)),
       );
     },
   },
