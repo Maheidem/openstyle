@@ -3,7 +3,7 @@ import {
   DEFAULT_SERVER_PORT,
   isOpenstyleHealthBody,
 } from "@openstyle/validations";
-import { hc } from "hono/client";
+import { hc, type InferResponseType } from "hono/client";
 import { bearerAuthHeaders } from "../../../shared/server-auth";
 
 const HEALTH_TIMEOUT_MS = 3000;
@@ -157,3 +157,13 @@ export function getClient() {
   }
   return _client;
 }
+
+/** The typed Hono client that {@link getClient} returns. */
+export type ApiClient = ReturnType<typeof getClient>;
+
+/**
+ * The 200 body of one typed-client endpoint, for example
+ * `ApiRes<ApiClient["api"]["history"]["stats"]["$get"]>`. Use it in place of
+ * a hand-written copy of the server type, so a route change breaks the build.
+ */
+export type ApiRes<T> = InferResponseType<T, 200>;

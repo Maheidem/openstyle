@@ -1145,8 +1145,12 @@ const meetings = new Hono()
         suggestedEvidence: row?.suggested_evidence ?? null,
         // NULL (pre-hardening row, or the LLM omitted the field) reads as
         // "name" — the pre-hardening contract's only kind
-        // (specs/meeting-speaker-naming.md §5.2/§5.3).
-        suggestedKind: row?.suggested_kind === "role" ? "role" : "name",
+        // (specs/meeting-speaker-naming.md §5.2/§5.3). `as const` keeps the
+        // literal union in the client's inferred response type.
+        suggestedKind:
+          row?.suggested_kind === "role"
+            ? ("role" as const)
+            : ("name" as const),
         mergedInto: row?.merged_into ?? null,
       };
     });

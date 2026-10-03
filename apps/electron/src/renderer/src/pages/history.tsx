@@ -28,7 +28,7 @@ import {
 import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
 import { usePersistentJsonState } from "@renderer/hooks/use-persistent-state";
 import { useSearchShortcut } from "@renderer/hooks/use-search-shortcut";
-import { getClient } from "@renderer/lib/api";
+import { type ApiClient, type ApiRes, getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
@@ -77,43 +77,11 @@ import {
 } from "./history/use-stats-panel";
 import { useTutorialHero } from "./history/use-tutorial-hero";
 
-interface HistoryEntry {
-  id: number;
-  raw_text: string;
-  cleaned_text: string | null;
-  voice_provider: string;
-  voice_model: string;
-  llm_provider: string | null;
-  llm_model: string | null;
-  duration_ms: number;
-  audio_duration_ms: number;
-  input_tokens: number;
-  output_tokens: number;
-  cost_usd: number;
-  created_at: string;
-}
-
-interface Stats {
-  total_sessions: number;
-  total_duration_ms: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_cost_usd: number;
-  avg_duration_ms: number;
-  total_audio_ms: number;
-  total_fixes: number;
-  total_words: number;
-  today_sessions: number;
-  today_cost: number;
-  unfiltered_total_sessions: number;
-}
-
+type HistoryClient = ApiClient["api"]["history"];
+type HistoryEntry = ApiRes<HistoryClient["$get"]>["items"][number];
+type Stats = ApiRes<HistoryClient["stats"]["$get"]>;
 /** One local day of usage from GET /api/history/daily, feeding the heatmap. */
-interface DayActivity {
-  day: string;
-  words: number;
-  sessions: number;
-}
+type DayActivity = ApiRes<HistoryClient["daily"]["$get"]>["days"][number];
 
 const PAGE_SIZE = 20;
 // Stable empty list, so the memoized StatsPanel does not re-render.
@@ -225,7 +193,7 @@ export default function HistoryPage(): React.JSX.Element {
 
       const res = await getClient().api.history.$get({ query: q });
       return res.ok
-        ? ((await res.json()) as { items: HistoryEntry[]; total: number })
+        ? await res.json()
         : { items: [] as HistoryEntry[], total: 0 };
     },
     placeholderData: keepPreviousData,
@@ -239,7 +207,7 @@ export default function HistoryPage(): React.JSX.Element {
       if (endDate) statsQ.end_date = endDate;
 
       const res = await getClient().api.history.stats.$get({ query: statsQ });
-      return res.ok ? ((await res.json()) as Stats) : null;
+      return res.ok ? await res.json() : null;
     },
     placeholderData: keepPreviousData,
   });
@@ -264,7 +232,7 @@ export default function HistoryPage(): React.JSX.Element {
     queryFn: async () => {
       const res = await getClient().api.history.daily.$get();
       if (!res.ok) return [] as DayActivity[];
-      const data = (await res.json()) as { days: DayActivity[] };
+      const data = await res.json();
       return data.days;
     },
   });

@@ -133,7 +133,7 @@ export function MeetingDetailView({
         param: { id },
       });
       if (!res.ok) return [];
-      const body = (await res.json()) as { segments: TranscriptSegment[] };
+      const body = await res.json();
       return body.segments;
     },
     enabled: hasTranscript,
@@ -162,7 +162,7 @@ export function MeetingDetailView({
       if (!res.ok) {
         return { speakers: [], unlabeledCount: 0, latestSpeakerUpdate: null };
       }
-      return (await res.json()) as unknown as SpeakersResponse;
+      return await res.json();
     },
     enabled: hasTranscript,
   });

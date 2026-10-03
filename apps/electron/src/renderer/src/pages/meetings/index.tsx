@@ -51,7 +51,7 @@ export default function MeetingsPage(): React.JSX.Element {
     queryFn: async (): Promise<MeetingListItem[]> => {
       const res = await getClient().api.meetings.$get();
       if (!res.ok) return [];
-      const body = (await res.json()) as { items: MeetingListItem[] };
+      const body = await res.json();
       return body.items;
     },
     enabled,
