@@ -245,7 +245,8 @@ export function MeetingDetailView({
     [id, runAction],
   );
   // Shared cancel call for the Transcribe and Summarize buttons. Both jobs use
-  // one server seam (`activeJobCancellations`, polled between chunks), so a
+  // one server seam (`requestCancel`, read with `isCancelRequested` between
+  // chunks), so a
   // call still QUEUED on the LLM lane never goes on the wire. `onAcked` runs
   // only when the server acknowledges the cancel.
   const cancelJob = useCallback(

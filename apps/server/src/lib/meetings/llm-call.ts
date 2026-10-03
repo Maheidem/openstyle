@@ -34,7 +34,8 @@ export interface ChatCallRequest {
    *  through — Summarize and Enhance are the only two meeting features that
    *  share this helper. */
   taskId: Extract<LlmTaskId, "meetingSummarize" | "meetingEnhance">;
-  /** Cancel seam threaded from the meeting job (`activeJobCancellations`).
+  /** Cancel seam threaded from the meeting job (`requestCancel` and
+   *  `isCancelRequested` in the job registry).
    *  A call cancelled while QUEUED never fires (spec §5.7). */
   shouldStop?: () => boolean;
   /** Queued-progress seam, threaded to the job blob for the UI. */
