@@ -493,6 +493,28 @@ function safeActive(isActive: () => boolean): boolean {
 }
 
 /**
+ * Run `fn` while it holds one lane slot for `provider`.
+ *
+ * This resolves the lane key, acquires the lease, runs `fn` and releases the
+ * lease in `finally`. A throw from `fn` still frees the slot. Use it for calls
+ * that finish inside `fn`. A call whose result is a stream that outlives `fn`
+ * must use {@link acquireLlmLane} with {@link releaseLeaseOnResponseBodyEnd}.
+ */
+export async function withLlmLane<T>(
+  provider: string,
+  opts: Pick<AcquireLlmLaneArgs, "cls" | "taskId" | "shouldStop" | "onQueued">,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const { key: lane, limit } = await llmLaneKeyForProvider(provider);
+  const lease = await acquireLlmLane({ lane, limit, ...opts });
+  try {
+    return await fn();
+  } finally {
+    lease.release();
+  }
+}
+
+/**
  * Release `lease` exactly when `response`'s body is done — consumed, errored,
  * or cancelled — and hand back an otherwise identical Response.
  *

@@ -4,7 +4,7 @@ import { findRemixPreset } from "@openstyle/validations";
 import { generateText } from "ai";
 import { isCleanupModelSupported } from "../routes/models.js";
 import { buildRemixPrompt } from "./editor/remix-prompts.js";
-import { acquireLlmLane, llmLaneKeyForProvider } from "./llm/lane.js";
+import { withLlmLane } from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
 import { resolveTaskCall } from "./llm/task-profiles.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
@@ -104,32 +104,25 @@ export async function runRemixTransform(
     resolved.reasoningEnabled,
   );
   // Remix quick edit is `interactive` (§5.4): a one-shot rewrite the user is
-  // staring at. Per call, released in the finally below.
-  const { key: lane, limit } = await llmLaneKeyForProvider(resolved.provider);
-  const lease = await acquireLlmLane({
-    lane,
-    limit,
-    cls: "interactive",
-    taskId: "remix",
-  });
-  let result: Awaited<ReturnType<typeof generateText>>;
-  try {
-    result = await generateText({
-      model: await createChatModel(resolved.provider, resolved.modelId, {
-        task: "remix",
-        sampling: resolved.samplingParams,
+  // staring at. Per call, released by `withLlmLane` when the call ends.
+  const result = await withLlmLane(
+    resolved.provider,
+    { cls: "interactive", taskId: "remix" },
+    async () =>
+      generateText({
+        model: await createChatModel(resolved.provider, resolved.modelId, {
+          task: "remix",
+          sampling: resolved.samplingParams,
+        }),
+        system,
+        prompt,
+        temperature: resolved.temperature,
+        topP: resolved.topP,
+        maxOutputTokens: resolved.maxOutputTokens,
+        ...(providerOptions ? { providerOptions } : {}),
+        abortSignal: AbortSignal.timeout(resolved.timeoutMs),
       }),
-      system,
-      prompt,
-      temperature: resolved.temperature,
-      topP: resolved.topP,
-      maxOutputTokens: resolved.maxOutputTokens,
-      ...(providerOptions ? { providerOptions } : {}),
-      abortSignal: AbortSignal.timeout(resolved.timeoutMs),
-    });
-  } finally {
-    lease.release();
-  }
+  );
   const usage: RemixTransformResult["usage"] = {
     inputTokens: result.usage.inputTokens,
     outputTokens: result.usage.outputTokens,
