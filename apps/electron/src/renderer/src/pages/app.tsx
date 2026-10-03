@@ -1,4 +1,5 @@
 import { REMIX_PRESETS } from "@openstyle/validations";
+import { AlertCardBody } from "@renderer/components/alert-card-body";
 import { OpenstyleMark } from "@renderer/components/openstyle-mark";
 import {
   REMIX_CHAT_STRIP,
@@ -19,6 +20,10 @@ import {
 } from "@renderer/lib/cleanup-app-context";
 import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
 import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
+import {
+  BATCH_TRANSCRIBE_TIMEOUT_MS,
+  postTranscribe,
+} from "@renderer/lib/transcribe-client";
 import {
   lazy,
   Suspense,
@@ -216,14 +221,6 @@ const WARMING_AFTER_MS = 3_000;
  * not rendered as visible capsule text. */
 const WARMING_LABEL = "Warming up local model…";
 
-/**
- * T1-4 / UX-02: client-side bound on the batch dictation wait, so a wedged
- * local ASR server turns into a named failure instead of an infinite sweep.
- * Never lower than this (audit trap 5): whisper spawn waits up to 90 s and a
- * legitimate MLX transcription can run to 300 s — a false "failed" on a real
- * long local dictation is worse than the rare hang this cures.
- */
-const BATCH_TRANSCRIBE_TIMEOUT_MS = 360_000;
 /** Names the cause instead of surfacing a raw TimeoutError (UX-A5: this is
  * the one error string this change adds — the rest of the batch error copy
  * stays as is). */
@@ -387,39 +384,6 @@ interface TranscribeResult {
   cleaned: string;
   error?: string;
   providerCategory?: string;
-}
-
-/**
- * The app context (process name + window title) can contain characters
- * outside ISO-8859-1 — e.g. a Cyrillic file path in the Notepad++ title
- * bar. HTTP header values only allow Latin-1, so passing the raw JSON
- * makes fetch() throw "Failed to execute 'fetch'". Percent-encode it so
- * the header is always byte-safe; the server decodes it back.
- */
-function encodeAppContext(context: string): string {
-  return encodeURIComponent(context);
-}
-
-/** Build the request headers for POST /api/transcribe. */
-function buildTranscribeHeaders(opts: {
-  durationMs: number;
-  language: string | null;
-  appContext: string | null;
-  skipPostProcess: boolean;
-}): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Content-Type": "audio/wav",
-    "x-audio-duration-ms": String(opts.durationMs),
-  };
-  if (opts.language) headers["x-dictation-language"] = opts.language;
-  if (opts.appContext)
-    headers["x-app-context"] = encodeAppContext(opts.appContext);
-  if (opts.skipPostProcess) headers["x-skip-post-process"] = "true";
-  return headers;
-}
-
-interface QueueEntry {
-  promise: Promise<TranscribeResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -640,7 +604,7 @@ export default function AppPage(): React.JSX.Element {
    */
   const voiceBandRef = useRef({ startBin: 0, endBin: 0, levelDivisor: 1 });
 
-  const queueRef = useRef<QueueEntry[]>([]);
+  const queueRef = useRef<Promise<TranscribeResult>[]>([]);
   const drainingRef = useRef(false);
   const streamResolverRef = useRef<((r: TranscribeResult) => void) | null>(
     null,
@@ -681,7 +645,7 @@ export default function AppPage(): React.JSX.Element {
       const batch = [...queueRef.current];
       queueRef.current = [];
 
-      const results = await Promise.all(batch.map((e) => e.promise));
+      const results = await Promise.all(batch);
 
       if (!pillActiveRef.current) {
         return;
@@ -697,7 +661,7 @@ export default function AppPage(): React.JSX.Element {
       ) {
         const resolved = results
           .filter(isDeliverable)
-          .map((r) => ({ promise: Promise.resolve(r) }));
+          .map((r) => Promise.resolve(r));
         queueRef.current = [...resolved, ...queueRef.current];
         return;
       }
@@ -753,7 +717,7 @@ export default function AppPage(): React.JSX.Element {
 
       if (recordingActiveRef.current || queueRef.current.length > 0) {
         queueRef.current = [
-          { promise: Promise.resolve({ raw: finalText, cleaned: finalText }) },
+          Promise.resolve({ raw: finalText, cleaned: finalText }),
           ...queueRef.current,
         ];
         return;
@@ -803,6 +767,23 @@ export default function AppPage(): React.JSX.Element {
     }
   }, []);
 
+  // Queue one transcription and start the drain. The caller increments
+  // pendingCount before it builds `p`. The decrement runs in finally, so it
+  // runs on every path (lore: streaming commit trap). `after` runs once `p`
+  // has settled.
+  const enqueue = useCallback(
+    (p: Promise<TranscribeResult>, after?: () => void): void => {
+      queueRef.current.push(
+        p.finally(() => {
+          setPendingCount((count) => Math.max(0, count - 1));
+          after?.();
+        }),
+      );
+      void drainQueue();
+    },
+    [drainQueue],
+  );
+
   // ---- REST fallback (full recorded WAV kept by the streamer) ----
   const restFallbackTranscribe = useCallback(
     (
@@ -811,20 +792,15 @@ export default function AppPage(): React.JSX.Element {
     ): Promise<TranscribeResult> | null => {
       const wavBlob = streamerRef.current?.getWavBlob() ?? null;
       if (!wavBlob) return null;
-      const headers = buildTranscribeHeaders({
+      return postTranscribe(wavBlob, {
         durationMs: lastRecordingDurationRef.current,
         language,
         appContext: appContextRef.current,
         skipPostProcess: queueRef.current.length > 0 || drainingRef.current,
-      });
-      return apiFetch("/api/transcribe", {
-        method: "POST",
-        body: wavBlob,
-        headers,
         // Same 360s bound as the batch path in commitRecording — this is
         // also what the failure card's Retry re-posts through, so a wedged
         // local server can't turn Retry back into an infinite sweep.
-        signal: AbortSignal.timeout(BATCH_TRANSCRIBE_TIMEOUT_MS),
+        timeoutMs: BATCH_TRANSCRIBE_TIMEOUT_MS,
       })
         .then(async (res) => {
           if (!res.ok) {
@@ -1250,14 +1226,9 @@ export default function AppPage(): React.JSX.Element {
     // the capsule needs its sweep started again rather than resumed.
     startBarAnimation("speaking");
     setPendingCount((count) => count + 1);
-    queueRef.current.push({
-      promise: retry.finally(() => {
-        setPendingCount((count) => Math.max(0, count - 1));
-      }),
-    });
-    void drainQueue();
+    enqueue(retry);
   }, [
-    drainQueue,
+    enqueue,
     restFallbackTranscribe,
     setPillNotice,
     setPillState,
@@ -1515,8 +1486,7 @@ export default function AppPage(): React.JSX.Element {
         const stream = await acquirePromise;
 
         if (!wantsMicRef.current) {
-          rec.cancel(micGen);
-          rec.releaseStream(micGen);
+          rec.discard(micGen);
           void restoreSystemAudioSafely();
           streamerRef.current?.cancel();
           if (forReRecord) {
@@ -1527,8 +1497,7 @@ export default function AppPage(): React.JSX.Element {
         if (pendingCommitRef.current) {
           pendingCommitRef.current = false;
           wantsMicRef.current = false;
-          rec.cancel(micGen);
-          rec.releaseStream(micGen);
+          rec.discard(micGen);
           void restoreSystemAudioSafely();
           streamerRef.current?.cancel();
           if (forReRecord) {
@@ -1575,6 +1544,15 @@ export default function AppPage(): React.JSX.Element {
     ],
   );
 
+  // Replay a re-record press that arrived while a commit was finalizing (see
+  // the hotkey-down handler). Only when nothing else has already taken the mic.
+  const replayPendingReRecord = useCallback((): void => {
+    if (pendingReRecordRef.current && !wantsMicRef.current) {
+      pendingReRecordRef.current = false;
+      void startRecording(true);
+    }
+  }, [startRecording]);
+
   // ---- Commit recording ----
   const commitRecording = useCallback(async () => {
     // Read once, here, into a local that travels with every request this
@@ -1612,8 +1590,7 @@ export default function AppPage(): React.JSX.Element {
     const recordingDuration = Date.now() - startTimeRef.current;
     lastRecordingDurationRef.current = recordingDuration;
     if (recordingDuration < 250) {
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      recorderRef.current.discard();
       streamerRef.current?.cancel();
       resumeTranscribingOrHide();
       return;
@@ -1625,8 +1602,7 @@ export default function AppPage(): React.JSX.Element {
     // Streaming session transport path: the streamer already has the audio —
     // commit it over the WebSocket and wait for the server's final message.
     if (recordingSessionUsesTransportRef.current && streamerRef.current) {
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      recorderRef.current.discard();
 
       const streamError = streamSessionErrorRef.current;
       streamSessionErrorRef.current = null;
@@ -1647,16 +1623,7 @@ export default function AppPage(): React.JSX.Element {
             cleaned: "",
             error: transportFailure,
           });
-        queueRef.current.push({
-          promise: fallback.finally(() => {
-            setPendingCount((count) => Math.max(0, count - 1));
-            if (pendingReRecordRef.current && !wantsMicRef.current) {
-              pendingReRecordRef.current = false;
-              void startRecording(true);
-            }
-          }),
-        });
-        void drainQueue();
+        enqueue(fallback, replayPendingReRecord);
         return;
       }
 
@@ -1691,19 +1658,7 @@ export default function AppPage(): React.JSX.Element {
         }, 15_000);
       });
       streamerRef.current.commit();
-      queueRef.current.push({
-        promise: transcribePromise.finally(() => {
-          setPendingCount((c) => Math.max(0, c - 1));
-          // Replay a re-record press that arrived while this commit was
-          // finalizing (see the hotkey-down handler). Only when nothing else
-          // has already taken the mic.
-          if (pendingReRecordRef.current && !wantsMicRef.current) {
-            pendingReRecordRef.current = false;
-            void startRecording(true);
-          }
-        }),
-      });
-      void drainQueue();
+      enqueue(transcribePromise, replayPendingReRecord);
       return;
     }
 
@@ -1734,12 +1689,9 @@ export default function AppPage(): React.JSX.Element {
     }
 
     const isSubsequent = queueRef.current.length > 0 || drainingRef.current;
-    const headers = buildTranscribeHeaders({
-      durationMs: recordingDuration,
-      language: dictationLanguage,
-      appContext: appContextRef.current,
-      skipPostProcess: isSubsequent,
-    });
+    // Read before the await below: the app context can change while
+    // the server check runs.
+    const appContext = appContextRef.current;
 
     const serverOk = await refreshApiBase();
     if (!serverOk) {
@@ -1753,18 +1705,19 @@ export default function AppPage(): React.JSX.Element {
     }
 
     setPendingCount((c) => c + 1);
-    const transcribePromise: Promise<TranscribeResult> = apiFetch(
-      "/api/transcribe",
+    const transcribePromise: Promise<TranscribeResult> = postTranscribe(
+      wavBlob,
       {
-        method: "POST",
-        body: wavBlob,
-        headers,
+        durationMs: recordingDuration,
+        language: dictationLanguage,
+        appContext,
+        skipPostProcess: isSubsequent,
         // T1-4 / UX-02: bound the batch wait so a wedged local ASR server
         // can't keep the sweep up forever. Transcription is deliberately
         // outside the server's TIMEOUT_PREFIXES, so without this nothing
         // ever fails the request client-side. 360s minimum — see
         // BATCH_TRANSCRIBE_TIMEOUT_MS.
-        signal: AbortSignal.timeout(BATCH_TRANSCRIBE_TIMEOUT_MS),
+        timeoutMs: BATCH_TRANSCRIBE_TIMEOUT_MS,
       },
     )
       .then(async (res) => {
@@ -1806,30 +1759,25 @@ export default function AppPage(): React.JSX.Element {
               : ` (${getApiBase()} unreachable — quit and reopen the app)`
             : "";
         return { raw: "", cleaned: "", error: `${msg}${hint}` };
-      })
-      .finally(() => {
-        setPendingCount((c) => Math.max(0, c - 1));
       });
 
-    queueRef.current.push({ promise: transcribePromise });
-    drainQueue();
+    enqueue(transcribePromise);
   }, [
     hidePill,
-    drainQueue,
+    enqueue,
     startHandover,
     setPillState,
     resumeTranscribingOrHide,
     isTranscriptionIdle,
     restoreSystemAudioSafely,
     restFallbackTranscribe,
-    startRecording,
+    replayPendingReRecord,
     setPillNotice,
   ]);
 
   // ---- Cancel ----
   const cancelRecording = useCallback(() => {
-    recorderRef.current.cancel();
-    recorderRef.current.releaseStream();
+    recorderRef.current.discard();
     void restoreSystemAudioSafely();
     streamerRef.current?.cancel();
     dismissPill("cancelled");
@@ -1851,8 +1799,7 @@ export default function AppPage(): React.JSX.Element {
   /** Stop the remix mic capture and release its stream, if one is open. */
   const releaseRemixMic = useCallback(() => {
     if (remixMicGenRef.current !== null) {
-      recorderRef.current.cancel(remixMicGenRef.current);
-      recorderRef.current.releaseStream(remixMicGenRef.current);
+      recorderRef.current.discard(remixMicGenRef.current);
       remixMicGenRef.current = null;
     }
   }, []);
@@ -2158,14 +2105,9 @@ export default function AppPage(): React.JSX.Element {
 
     if (!instruction && wav) {
       try {
-        const res = await apiFetch("/api/transcribe", {
-          method: "POST",
-          body: wav,
-          headers: {
-            "Content-Type": "audio/wav",
-            "x-audio-duration-ms": String(durationMs),
-            "x-skip-post-process": "true",
-          },
+        const res = await postTranscribe(wav, {
+          durationMs,
+          skipPostProcess: true,
         });
         if (remixRef.current?.id !== session.id) return;
         if (res.ok) {
@@ -2239,8 +2181,7 @@ export default function AppPage(): React.JSX.Element {
           remixMicGenRef.current === micGen &&
           micGen === rec.generation();
         if (!owned) {
-          rec.cancel(micGen);
-          rec.releaseStream(micGen);
+          rec.discard(micGen);
           if (remixMicGenRef.current === micGen) remixMicGenRef.current = null;
           return;
         }
@@ -2522,8 +2463,7 @@ export default function AppPage(): React.JSX.Element {
     // A dictation began on the shared home key and this chord is taking over.
     const removeSupersede = window.api.onRemixSupersede(() => {
       if (stateRef.current === "idle" && !pillActiveRef.current) return;
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      recorderRef.current.discard();
       void restoreSystemAudioSafely();
       streamerRef.current?.cancel();
       resetDictation();
@@ -3627,90 +3567,15 @@ export default function AppPage(): React.JSX.Element {
                 ...(errorCardOpen ? { WebkitAppRegion: "drag" } : {}),
               }}
             >
-              <div className="flex items-start" style={{ gap: 10 }}>
-                <span
-                  className="inline-flex items-center justify-center"
-                  style={{
-                    width: 20,
-                    height: 20,
-                    marginTop: 1,
-                    borderRadius: "50%",
-                    background: "rgba(248, 113, 113, 0.16)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 12 12"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M6 3.1v3.3"
-                      stroke={ALERT}
-                      strokeWidth={1.6}
-                      strokeLinecap="round"
-                    />
-                    <circle cx="6" cy="8.7" r="0.85" fill={ALERT} />
-                  </svg>
-                </span>
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      lineHeight: 1.2,
-                      color: INK,
-                    }}
-                  >
-                    {card.title}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 3,
-                      fontSize: 11.5,
-                      lineHeight: 1.35,
-                      color: "rgba(245, 241, 228, 0.58)",
-                      // Two lines is enough for any message worth reading at
-                      // this size; the rest is in the logs.
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {card.body}
-                  </div>
-                </div>
-              </div>
-
-              <div
-                className="flex items-center justify-end"
-                style={
-                  {
-                    gap: 6,
-                    marginTop: 11,
-                    WebkitAppRegion: "no-drag",
-                  } as React.CSSProperties
-                }
-              >
-                <button
-                  type="button"
-                  className="pill-action pill-action-ghost"
-                  onClick={() => dismissPill("cancelled")}
-                >
-                  Dismiss
-                </button>
-                {card.canRetry && (
-                  <button
-                    type="button"
-                    className="pill-action pill-action-primary"
-                    onClick={retryFailedTranscription}
-                  >
-                    Retry
-                  </button>
-                )}
-              </div>
+              <AlertCardBody
+                title={card.title}
+                body={card.body}
+                lineClamp={2}
+                onDismiss={() => dismissPill("cancelled")}
+                onRetry={card.canRetry ? retryFailedTranscription : undefined}
+                ink={INK}
+                alert={ALERT}
+              />
             </div>
           </div>
 
@@ -3746,79 +3611,14 @@ export default function AppPage(): React.JSX.Element {
               }}
             >
               {cardView?.phase === "error" ? (
-                <>
-                  <div className="flex items-start" style={{ gap: 10 }}>
-                    <span
-                      className="inline-flex items-center justify-center"
-                      style={{
-                        width: 20,
-                        height: 20,
-                        marginTop: 1,
-                        borderRadius: "50%",
-                        background: "rgba(248, 113, 113, 0.16)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 12 12"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M6 3.1v3.3"
-                          stroke={ALERT}
-                          strokeWidth={1.6}
-                          strokeLinecap="round"
-                        />
-                        <circle cx="6" cy="8.7" r="0.85" fill={ALERT} />
-                      </svg>
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 12.5,
-                          fontWeight: 600,
-                          lineHeight: 1.2,
-                          color: INK,
-                        }}
-                      >
-                        {cardView.title}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 3,
-                          fontSize: 11.5,
-                          lineHeight: 1.35,
-                          color: "rgba(245, 241, 228, 0.58)",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 3,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {cardView.body}
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    className="flex items-center justify-end"
-                    style={
-                      {
-                        marginTop: 11,
-                        WebkitAppRegion: "no-drag",
-                      } as React.CSSProperties
-                    }
-                  >
-                    <button
-                      type="button"
-                      className="pill-action pill-action-ghost"
-                      onClick={() => endRemix()}
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </>
+                <AlertCardBody
+                  title={cardView.title}
+                  body={cardView.body}
+                  lineClamp={3}
+                  onDismiss={() => endRemix()}
+                  ink={INK}
+                  alert={ALERT}
+                />
               ) : (
                 <div className="pill-remix-body" data-anchor={pillAlign}>
                   <div
