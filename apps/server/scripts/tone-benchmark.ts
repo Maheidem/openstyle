@@ -370,7 +370,7 @@ async function runCase(
     prompt,
     temperature: 0,
     maxOutputTokens: maxOutputTokensForCleanup(testCase.input),
-    providerOptions: groqCleanupProviderOptions(MODEL_ID),
+    providerOptions: groqCleanupProviderOptions(MODEL_ID, false),
   });
   const output = sanitizeTranscriptText(result.text);
   const { ok, errors } = checkStructural(mode, tone, output);

@@ -167,7 +167,7 @@ function buildBenchmarkPrompt(
 ): { system: string; prompt: string } {
   const base = buildRewritePrompt(input);
   if (variant === "baseline") return base;
-  return buildRewritePrompt(input, { language });
+  return buildRewritePrompt(input, { languages: [language] });
 }
 
 async function runCase(
@@ -188,7 +188,7 @@ async function runCase(
     prompt,
     temperature: 0,
     maxOutputTokens: maxOutputTokensForCleanup(testCase.input),
-    providerOptions: groqCleanupProviderOptions(modelId),
+    providerOptions: groqCleanupProviderOptions(modelId, false),
   });
 
   const actual = sanitizeTranscriptText(result.text);
