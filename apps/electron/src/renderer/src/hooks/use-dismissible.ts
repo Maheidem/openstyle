@@ -79,86 +79,54 @@ export function useDismissible(key: string): DismissibleNotificationState {
   // their UI hidden until a successful fetch (or a prior cache) exists.
   const ready = data !== undefined;
 
-  const dismiss = useCallback(() => {
-    const parsed = notificationKeySchema.safeParse(key);
-    if (!parsed.success) return;
+  // Shared path for dismiss (next = true) and reset (next = false).
+  const apply = useCallback(
+    (next: boolean) => {
+      const parsed = notificationKeySchema.safeParse(key);
+      if (!parsed.success) return;
+      const id = parsed.data;
 
-    const generation = beginWrite(parsed.data);
-    // Cancellation is initiated before the synchronous optimistic patch, so
-    // the initial GET cannot overwrite it. `revert: false` keeps our patch
-    // when cancellation settles.
-    void queryClient.cancelQueries(
-      { queryKey: queryKeys.dismissedNotifications },
-      { revert: false },
-    );
-    const previous = queryClient.getQueryData<string[]>(
-      queryKeys.dismissedNotifications,
-    );
-    const wasDismissed = previous?.includes(parsed.data) ?? false;
-    queryClient.setQueryData<string[]>(
-      queryKeys.dismissedNotifications,
-      (current) =>
-        current?.includes(parsed.data)
-          ? current
-          : [...(current ?? []), parsed.data],
-    );
-
-    enqueueWrite(
-      parsed.data,
-      generation,
-      () =>
-        getClient().api["dismissed-notifications"][":key"].$put({
-          param: { key: parsed.data },
-        }),
-      () => {
-        if (!wasDismissed) {
-          queryClient.setQueryData<string[]>(
-            queryKeys.dismissedNotifications,
-            (current) => (current ?? []).filter((item) => item !== parsed.data),
-          );
-        }
-      },
-    );
-  }, [key, queryClient]);
-
-  const reset = useCallback(() => {
-    const parsed = notificationKeySchema.safeParse(key);
-    if (!parsed.success) return;
-
-    const generation = beginWrite(parsed.data);
-    void queryClient.cancelQueries(
-      { queryKey: queryKeys.dismissedNotifications },
-      { revert: false },
-    );
-    const previous = queryClient.getQueryData<string[]>(
-      queryKeys.dismissedNotifications,
-    );
-    const wasDismissed = previous?.includes(parsed.data) ?? false;
-    queryClient.setQueryData<string[]>(
-      queryKeys.dismissedNotifications,
-      (current) => (current ?? []).filter((item) => item !== parsed.data),
-    );
-
-    enqueueWrite(
-      parsed.data,
-      generation,
-      () =>
-        getClient().api["dismissed-notifications"][":key"].$delete({
-          param: { key: parsed.data },
-        }),
-      () => {
-        if (wasDismissed) {
-          queryClient.setQueryData<string[]>(
-            queryKeys.dismissedNotifications,
-            (current) =>
-              current?.includes(parsed.data)
+      const generation = beginWrite(id);
+      // Cancellation is initiated before the synchronous optimistic patch, so
+      // the initial GET cannot overwrite it. `revert: false` keeps our patch
+      // when cancellation settles.
+      void queryClient.cancelQueries(
+        { queryKey: queryKeys.dismissedNotifications },
+        { revert: false },
+      );
+      const previous = queryClient.getQueryData<string[]>(
+        queryKeys.dismissedNotifications,
+      );
+      const wasDismissed = previous?.includes(id) ?? false;
+      const setMember = (present: boolean) =>
+        queryClient.setQueryData<string[]>(
+          queryKeys.dismissedNotifications,
+          (current) =>
+            present
+              ? current?.includes(id)
                 ? current
-                : [...(current ?? []), parsed.data],
-          );
-        }
-      },
-    );
-  }, [key, queryClient]);
+                : [...(current ?? []), id]
+              : (current ?? []).filter((item) => item !== id),
+        );
+      setMember(next);
+
+      enqueueWrite(
+        id,
+        generation,
+        () => {
+          const route = getClient().api["dismissed-notifications"][":key"];
+          return next
+            ? route.$put({ param: { key: id } })
+            : route.$delete({ param: { key: id } });
+        },
+        () => setMember(wasDismissed),
+      );
+    },
+    [key, queryClient],
+  );
+
+  const dismiss = useCallback(() => apply(true), [apply]);
+  const reset = useCallback(() => apply(false), [apply]);
 
   return { ready, dismissed, dismiss, reset };
 }
