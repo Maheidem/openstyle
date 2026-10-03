@@ -19,6 +19,15 @@ import {
   maxOutputTokensForCleanup,
   sanitizeTranscriptText,
 } from "@openstyle/stt";
+import {
+  type CleanupEmailTone,
+  type CleanupPersonalTone,
+  type CleanupToneDestination,
+  type CleanupWorkTone,
+  cleanupEmailToneSchema,
+  cleanupPersonalToneSchema,
+  cleanupWorkToneSchema,
+} from "@openstyle/validations";
 import { generateText } from "ai";
 import { buildRewritePrompt } from "../src/lib/editor/prompts.ts";
 import { getGroqChatModel } from "../src/lib/groq-http.ts";
@@ -27,24 +36,16 @@ import { groqCleanupProviderOptions } from "../src/lib/llm/registry.ts";
 const MODEL_ID = "openai/gpt-oss-20b";
 const INTENSITY = "low" as const;
 
-type Tone = "polished" | "casual" | "very_casual";
-type WorkTone = "direct" | "friendly" | "formal";
-type EmailTone = "casual" | "warm" | "formal";
+type BenchMode = Exclude<CleanupToneDestination, "overall">;
 
-export interface ToneCase {
+interface ToneCase {
   id: string;
   label: string;
   input: string;
   expected: string;
-  /** Optional structural check: lines that must appear in the output. */
-  mustInclude?: RegExp[];
-  /** Optional structural check: patterns that must NOT appear. */
-  mustExclude?: RegExp[];
-  /** Optional tone-specific assertion. */
-  toneAssert?: (output: string) => string | null;
 }
 
-export const PERSONAL_CASES: ToneCase[] = [
+const PERSONAL_CASES: ToneCase[] = [
   {
     id: "personal-01",
     label: "Quick errand",
@@ -109,7 +110,7 @@ export const PERSONAL_CASES: ToneCase[] = [
   },
 ];
 
-export const WORK_CASES: ToneCase[] = [
+const WORK_CASES: ToneCase[] = [
   {
     id: "work-01",
     label: "PR review ask",
@@ -172,7 +173,7 @@ export const WORK_CASES: ToneCase[] = [
   },
 ];
 
-export const EMAIL_CASES: ToneCase[] = [
+const EMAIL_CASES: ToneCase[] = [
   {
     id: "email-01",
     label: "Touch base",
@@ -253,17 +254,25 @@ export const EMAIL_CASES: ToneCase[] = [
   },
 ];
 
-const ALL_CASES: Record<string, ToneCase[]> = {
+const ALL_CASES: Record<BenchMode, ToneCase[]> = {
   personal: PERSONAL_CASES,
   work: WORK_CASES,
   email: EMAIL_CASES,
 };
 
-const TONE_OPTIONS: Record<string, readonly string[]> = {
-  personal: ["polished", "casual", "very_casual"],
-  work: ["direct", "friendly", "formal"],
-  email: ["casual", "warm", "formal"],
+// "off" means no tone block, so the benchmark skips it.
+const withoutOff = (tones: readonly string[]) =>
+  tones.filter((tone) => tone !== "off");
+
+const TONE_OPTIONS: Record<BenchMode, readonly string[]> = {
+  personal: withoutOff(cleanupPersonalToneSchema.options),
+  work: withoutOff(cleanupWorkToneSchema.options),
+  email: withoutOff(cleanupEmailToneSchema.options),
 };
+
+function isBenchMode(value: string): value is BenchMode {
+  return Object.hasOwn(ALL_CASES, value);
+}
 
 interface RunResult {
   id: string;
@@ -351,17 +360,18 @@ function checkStructural(
 }
 
 async function runCase(
-  mode: string,
+  mode: BenchMode,
   tone: string,
   testCase: ToneCase,
 ): Promise<RunResult> {
   const started = Date.now();
   const { system, prompt } = buildRewritePrompt(testCase.input, {
     intensity: INTENSITY,
-    destination: mode as "personal" | "work" | "email",
-    personalTone: mode === "personal" ? (tone as Tone) : undefined,
-    workTone: mode === "work" ? (tone as WorkTone) : undefined,
-    emailTone: mode === "email" ? (tone as EmailTone) : undefined,
+    destination: mode,
+    personalTone:
+      mode === "personal" ? (tone as CleanupPersonalTone) : undefined,
+    workTone: mode === "work" ? (tone as CleanupWorkTone) : undefined,
+    emailTone: mode === "email" ? (tone as CleanupEmailTone) : undefined,
   });
   const model = getGroqChatModel(MODEL_ID);
   const result = await generateText({
@@ -370,7 +380,7 @@ async function runCase(
     prompt,
     temperature: 0,
     maxOutputTokens: maxOutputTokensForCleanup(testCase.input),
-    providerOptions: groqCleanupProviderOptions(MODEL_ID),
+    providerOptions: groqCleanupProviderOptions(MODEL_ID, false),
   });
   const output = sanitizeTranscriptText(result.text);
   const { ok, errors } = checkStructural(mode, tone, output);
@@ -395,7 +405,11 @@ function parseArgs(argv: string[]): { mode: string } {
 
 async function main() {
   const { mode } = parseArgs(process.argv.slice(2));
-  const modes = mode === "all" ? ["personal", "work", "email"] : [mode];
+  if (mode !== "all" && !isBenchMode(mode)) {
+    throw new Error(`Unsupported mode: ${mode}`);
+  }
+  const modes =
+    mode === "all" ? (Object.keys(ALL_CASES) as BenchMode[]) : [mode];
   const runDir = resolve(
     "/tmp/openstyle-tone-bench/runs",
     new Date().toISOString().replace(/[:.]/g, "-"),
@@ -408,8 +422,8 @@ async function main() {
   > = {};
 
   for (const currentMode of modes) {
-    const cases = ALL_CASES[currentMode]!;
-    const tones = TONE_OPTIONS[currentMode]!;
+    const cases = ALL_CASES[currentMode];
+    const tones = TONE_OPTIONS[currentMode];
     const results: RunResult[] = [];
     for (const tone of tones) {
       console.log(`\n=== ${currentMode} / ${tone} ===`);
@@ -459,9 +473,10 @@ async function main() {
   }
 
   console.log("\n--- Summary ---");
-  for (const [m, s] of Object.entries(summary)) {
+  for (const m of modes) {
+    const s = summary[m]!;
     console.log(
-      `${m}: ${s.structuralOk}/${s.total} structural-pass (across ${TONE_OPTIONS[m]!.length} tones)`,
+      `${m}: ${s.structuralOk}/${s.total} structural-pass (across ${TONE_OPTIONS[m].length} tones)`,
     );
   }
   console.log(`\nRun dir: ${runDir}`);
