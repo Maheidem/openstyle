@@ -28,7 +28,7 @@
     "winston": "^3.17.0"
   },
   "devDependencies": {
-    "pkgroll": "^2.27.0",
-    "typescript": "^5.8.3"
+    "pkgroll": "catalog:",
+    "typescript": "catalog:"
   }
 }
