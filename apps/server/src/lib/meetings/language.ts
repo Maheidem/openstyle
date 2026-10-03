@@ -16,6 +16,7 @@
 import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
+import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
 import { getDb } from "../db.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
 import { getLanguagesSetting } from "../language.js";
@@ -102,10 +103,7 @@ export function sliceProbeAudio(
   audioDir: string,
   probe: ProbeSegment,
 ): Uint8Array {
-  const path = join(
-    audioDir,
-    probe.source === "mic" ? "mic.wav" : "system.wav",
-  );
+  const path = join(audioDir, probe.source === "mic" ? MIC_WAV : SYSTEM_WAV);
   const fd = openSync(path, "r");
   try {
     const info = parseWavHeader(fd);

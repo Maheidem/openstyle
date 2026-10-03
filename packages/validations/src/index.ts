@@ -8,6 +8,7 @@ export * from "./export.js";
 export * from "./import-limits.js";
 export * from "./llm-task-profiles.js";
 export * from "./local-llm.js";
+export * from "./meeting-files.js";
 export * from "./mlx-keep-alive.js";
 export * from "./models.js";
 export * from "./notifications.js";

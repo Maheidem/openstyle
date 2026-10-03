@@ -25,7 +25,11 @@ import { join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   DEFAULT_MEETING_MAX_DURATION_HOURS,
+  MEETINGS_DIR_NAME,
+  MIC_WAV,
   parseMeetingMaxDurationHours,
+  SYNC_JSON,
+  SYSTEM_WAV,
 } from "@openstyle/validations";
 import { app, type BrowserWindow, powerMonitor } from "electron";
 import type { ServerFetch } from "../shared/server-auth";
@@ -259,7 +263,7 @@ export class MeetingRecorder {
     }
 
     const id = randomUUID();
-    const dir = join(userData, "meetings", id);
+    const dir = join(userData, MEETINGS_DIR_NAME, id);
     await mkdir(dir, { recursive: true });
 
     const startedAt = Date.now();
@@ -275,8 +279,8 @@ export class MeetingRecorder {
     this.meetingDir = dir;
     this.startedAt = startedAt;
     this.lastError = null;
-    this.micWav = new WavWriter(join(dir, "mic.wav"));
-    this.systemWav = new WavWriter(join(dir, "system.wav"));
+    this.micWav = new WavWriter(join(dir, MIC_WAV));
+    this.systemWav = new WavWriter(join(dir, SYSTEM_WAV));
     this.journal = {
       meetingId: id,
       sampleRate: SAMPLE_RATE,
@@ -499,12 +503,12 @@ export class MeetingRecorder {
     if (!this.journal || !this.meetingDir) return;
     try {
       await writeFile(
-        join(this.meetingDir, "sync.json"),
+        join(this.meetingDir, SYNC_JSON),
         `${JSON.stringify(this.journal, null, 2)}\n`,
         "utf-8",
       );
     } catch (err) {
-      log.warn(`Failed to write sync.json: ${String(err)}`);
+      log.warn(`Failed to write ${SYNC_JSON}: ${String(err)}`);
     }
   }
 

@@ -67,6 +67,7 @@ import { createAppLogger, enableFileLogging } from "@openstyle/utils";
 import {
   DEFAULT_SERVER_PORT,
   isOpenstyleHealthBody,
+  MEETINGS_DIR_NAME,
   REMIX_CLIPBOARD_LIMIT,
   serverUrlSchema,
 } from "@openstyle/validations";
@@ -2389,7 +2390,7 @@ app.whenReady().then(async () => {
       const row = (await res.json()) as { audio_dir: string | null };
       if (!row.audio_dir) return false;
       const dir = resolve(row.audio_dir);
-      const root = resolve(join(app.getPath("userData"), "meetings"));
+      const root = resolve(join(app.getPath("userData"), MEETINGS_DIR_NAME));
       if (!dir.startsWith(root + sep)) return false;
       if (!existsSync(dir)) return false;
       shell.showItemInFolder(dir);

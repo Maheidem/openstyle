@@ -8,7 +8,7 @@
  * here, and client-side extension/size checks fail fast before any upload.
  *
  * The `audio_dir` is computed with the same root `meeting-recorder.ts` uses
- * (`join(app.getPath("userData"), "meetings", id)`) — that's what makes
+ * (`join(app.getPath("userData"), MEETINGS_DIR_NAME, id)`) — that's what makes
  * server-side DELETE containment and the retention sweep treat an imported
  * meeting exactly like a recorded one.
  *
@@ -21,7 +21,11 @@ import { openAsBlob } from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
-import { IMPORT_EXTENSIONS, MAX_IMPORT_BYTES } from "@openstyle/validations";
+import {
+  IMPORT_EXTENSIONS,
+  MAX_IMPORT_BYTES,
+  MEETINGS_DIR_NAME,
+} from "@openstyle/validations";
 import { app, type BrowserWindow, dialog, ipcMain } from "electron";
 import type {
   ImportedMeeting,
@@ -128,7 +132,7 @@ export function registerMeetingImportIpc({
       // `basename(audio_dir) === id`, and DELETE/retention only treat dirs
       // under `<userData>/meetings` as meeting-owned audio.
       const id = randomUUID();
-      const audioDir = join(app.getPath("userData"), "meetings", id);
+      const audioDir = join(app.getPath("userData"), MEETINGS_DIR_NAME, id);
 
       try {
         const blob = await openAsBlob(path);
