@@ -38,20 +38,14 @@ const INTENSITY = "low" as const;
 
 type BenchMode = Exclude<CleanupToneDestination, "overall">;
 
-export interface ToneCase {
+interface ToneCase {
   id: string;
   label: string;
   input: string;
   expected: string;
-  /** Optional structural check: lines that must appear in the output. */
-  mustInclude?: RegExp[];
-  /** Optional structural check: patterns that must NOT appear. */
-  mustExclude?: RegExp[];
-  /** Optional tone-specific assertion. */
-  toneAssert?: (output: string) => string | null;
 }
 
-export const PERSONAL_CASES: ToneCase[] = [
+const PERSONAL_CASES: ToneCase[] = [
   {
     id: "personal-01",
     label: "Quick errand",
@@ -116,7 +110,7 @@ export const PERSONAL_CASES: ToneCase[] = [
   },
 ];
 
-export const WORK_CASES: ToneCase[] = [
+const WORK_CASES: ToneCase[] = [
   {
     id: "work-01",
     label: "PR review ask",
@@ -179,7 +173,7 @@ export const WORK_CASES: ToneCase[] = [
   },
 ];
 
-export const EMAIL_CASES: ToneCase[] = [
+const EMAIL_CASES: ToneCase[] = [
   {
     id: "email-01",
     label: "Touch base",
