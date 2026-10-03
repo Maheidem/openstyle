@@ -21,6 +21,8 @@ import {
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
   meetingSummaryTimeoutMs,
+  parseMeetingSummaryContextBudget,
+  parseMeetingSummaryInstructions,
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
 import {
@@ -193,7 +195,7 @@ export interface SummarizeJobPlan {
 export async function summarizeJobPlan(
   segments: readonly MergedSegment[],
 ): Promise<SummarizeJobPlan> {
-  const contextBudgetTokens = await resolveContextBudget();
+  const contextBudgetTokens = resolveContextBudget();
   const perCallMs = summarizePerCallTimeoutMs();
   const transcriptTokens = estimateTokens(renderTranscript(segments));
   const plannedCalls = plannedSummarizeCalls(
@@ -349,39 +351,21 @@ export function chunkTranscript(
   return chunks;
 }
 
-/** Resolve the context budget from settings when no option is given. */
-async function resolveContextBudget(): Promise<number> {
-  try {
-    const [{ getDb }, { parseMeetingSummaryContextBudget }] = await Promise.all(
-      [import("../db.js"), import("@openstyle/validations")],
-    );
-    const row = getDb()
-      .prepare(
-        "SELECT value FROM settings WHERE key = 'meeting_summary_context_budget'",
-      )
-      .get() as { value: string } | undefined;
-    return parseMeetingSummaryContextBudget(row?.value);
-  } catch {
-    return DEFAULT_SUMMARY_CONTEXT_BUDGET_TOKENS;
-  }
+/**
+ * Resolve the context budget from settings when no option is given.
+ * `readSetting` returns undefined on a DB error, so the default applies.
+ */
+function resolveContextBudget(): number {
+  return parseMeetingSummaryContextBudget(
+    readSetting("meeting_summary_context_budget"),
+  );
 }
 
 /** Resolve the summary-instructions profile from settings when no option is given. */
-async function resolveSummaryInstructions(): Promise<string> {
-  try {
-    const [{ getDb }, { parseMeetingSummaryInstructions }] = await Promise.all([
-      import("../db.js"),
-      import("@openstyle/validations"),
-    ]);
-    const row = getDb()
-      .prepare(
-        "SELECT value FROM settings WHERE key = 'meeting_summary_instructions'",
-      )
-      .get() as { value: string } | undefined;
-    return parseMeetingSummaryInstructions(row?.value);
-  } catch {
-    return "";
-  }
+function resolveSummaryInstructions(): string {
+  return parseMeetingSummaryInstructions(
+    readSetting("meeting_summary_instructions"),
+  );
 }
 
 /**
@@ -413,9 +397,9 @@ export async function summarizeMeeting(
   }
 
   const contextBudgetTokens =
-    options.contextBudgetTokens ?? (await resolveContextBudget());
+    options.contextBudgetTokens ?? resolveContextBudget();
   const summaryInstructions =
-    options.summaryInstructions ?? (await resolveSummaryInstructions());
+    options.summaryInstructions ?? resolveSummaryInstructions();
   // specs/meeting-speaker-naming.md §9.3: no DB fallback here (unlike
   // summaryInstructions) — the caller always supplies the meeting's own
   // `context` column; omitted means "" (no-op).

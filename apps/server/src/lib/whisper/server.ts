@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { createAppLogger } from "@openstyle/utils";
 import { SETTINGS_KEYS } from "@openstyle/validations";
-import { getDb } from "../db.js";
+import { readSetting } from "../db.js";
 import {
   findWhisperServer,
   WIN_DLL_NOT_FOUND_EXIT,
@@ -53,14 +53,9 @@ export function getServerPort(): number {
 
 export function getWhisperKeepAliveMinutes(): number {
   try {
-    const db = getDb();
-    const row = db
-      .prepare("SELECT value FROM settings WHERE key = ?")
-      .get(SETTINGS_KEYS.whisperKeepAliveMinutes) as
-      | { value: string }
-      | undefined;
-    if (!row) return DEFAULT_KEEP_ALIVE_MINUTES;
-    const minutes = Number(row.value);
+    const value = readSetting(SETTINGS_KEYS.whisperKeepAliveMinutes);
+    if (value === undefined) return DEFAULT_KEEP_ALIVE_MINUTES;
+    const minutes = Number(value);
     if (!Number.isFinite(minutes)) return DEFAULT_KEEP_ALIVE_MINUTES;
     return Math.min(Math.max(Math.round(minutes), 0), MAX_KEEP_ALIVE_MINUTES);
   } catch {

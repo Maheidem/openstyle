@@ -10,7 +10,7 @@ import {
   MLX_KEEP_ALIVE_ALWAYS,
   MLX_KEEP_ALIVE_DEFAULT_MINUTES,
 } from "@openstyle/validations";
-import { getDb } from "../db.js";
+import { readSetting } from "../db.js";
 import { getMlxAsrModel } from "./constants.js";
 import {
   describeMlxSetupBlocker,
@@ -82,14 +82,9 @@ export { canRunMlxAsr } from "./python.js";
 
 export function getMlxAsrKeepAliveMinutes(): number {
   try {
-    const db = getDb();
-    const row = db
-      .prepare(
-        "SELECT value FROM settings WHERE key = 'mlx_asr_keep_alive_minutes'",
-      )
-      .get() as { value: string } | undefined;
-    if (!row) return MLX_KEEP_ALIVE_DEFAULT_MINUTES;
-    return clampMlxKeepAliveMinutes(Number(row.value));
+    const value = readSetting("mlx_asr_keep_alive_minutes");
+    if (value === undefined) return MLX_KEEP_ALIVE_DEFAULT_MINUTES;
+    return clampMlxKeepAliveMinutes(Number(value));
   } catch {
     return MLX_KEEP_ALIVE_DEFAULT_MINUTES;
   }
