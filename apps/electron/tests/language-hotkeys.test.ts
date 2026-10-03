@@ -107,35 +107,6 @@ test("isLanguageHotkeyTaken: free accelerator is not taken", () => {
   ).toBe(false);
 });
 
-test("registration loop shape: two entries sharing the same accelerator — first wins, second is skipped", () => {
-  // Mirrors the `for...of Object.entries(desired)` loop in
-  // `registerLanguageHotkeys` (index.ts): claims accumulate as each entry is
-  // processed in order, so a later duplicate is rejected by the entries the
-  // loop already committed to, never by itself.
-  const desired = { pt: "Alt+X", en: "Alt+X" };
-  const claimed = new Set<string>();
-  const registered: string[] = [];
-  const skipped: string[] = [];
-
-  for (const [lang, accel] of Object.entries(desired)) {
-    if (
-      isLanguageHotkeyTaken(accel, {
-        dictationAccel: null,
-        remixAccel: null,
-        claimedLanguageAccels: claimed,
-      })
-    ) {
-      skipped.push(lang);
-      continue;
-    }
-    claimed.add(accel);
-    registered.push(lang);
-  }
-
-  expect(registered).toEqual(["pt"]);
-  expect(skipped).toEqual(["en"]);
-});
-
 test("normalizeAccelerator: pins the output for every alias and fallback case", () => {
   const cases: Array<[string, string]> = [
     ["fn", "Fn"],

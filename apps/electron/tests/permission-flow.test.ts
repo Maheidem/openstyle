@@ -121,7 +121,7 @@ async function launchPermissionApp(
       OPENSTYLE_E2E_DIALOG_RESPONSE: String(options.dialogResponse ?? 1),
       OPENSTYLE_E2E_ONBOARDING_COMPLETE: String(options.onboardingComplete),
       OPENSTYLE_E2E_PERMISSION_EVENTS: eventsPath,
-      OPENSTYLE_E2E_USER_DATA_DIR: userDataDir,
+      OPENSTYLE_USER_DATA: userDataDir,
       ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
     },
     timeout: 30_000,

@@ -1,13 +1,7 @@
-const { appendFileSync, mkdirSync } = require("node:fs");
+const { appendFileSync } = require("node:fs");
 const electron = require("electron");
 
 const eventsPath = process.env.OPENSTYLE_E2E_PERMISSION_EVENTS;
-const userDataDir = process.env.OPENSTYLE_E2E_USER_DATA_DIR;
-
-if (userDataDir) {
-  mkdirSync(userDataDir, { recursive: true });
-  electron.app.setPath("userData", userDataDir);
-}
 
 function record(event) {
   if (!eventsPath) return;
