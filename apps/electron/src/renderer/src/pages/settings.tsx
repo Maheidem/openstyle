@@ -1219,13 +1219,13 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.sendAudioPlaybackModeChanged(mode);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "audio_playback_mode" },
+        param: { key: SETTINGS_KEYS.audioPlaybackMode },
         json: { value: mode },
       })
       .catch(() => {});
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "audio_ducking_enabled" },
+        param: { key: SETTINGS_KEYS.audioDuckingEnabled },
         json: { value: String(mode === "duck") },
       })
       .catch(() => {});

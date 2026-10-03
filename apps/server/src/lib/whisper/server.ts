@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { createAppLogger } from "@openstyle/utils";
+import { SETTINGS_KEYS } from "@openstyle/validations";
 import { getDb } from "../db.js";
 import {
   findWhisperServer,
@@ -54,10 +55,10 @@ export function getWhisperKeepAliveMinutes(): number {
   try {
     const db = getDb();
     const row = db
-      .prepare(
-        "SELECT value FROM settings WHERE key = 'whisper_keep_alive_minutes'",
-      )
-      .get() as { value: string } | undefined;
+      .prepare("SELECT value FROM settings WHERE key = ?")
+      .get(SETTINGS_KEYS.whisperKeepAliveMinutes) as
+      | { value: string }
+      | undefined;
     if (!row) return DEFAULT_KEEP_ALIVE_MINUTES;
     const minutes = Number(row.value);
     if (!Number.isFinite(minutes)) return DEFAULT_KEEP_ALIVE_MINUTES;

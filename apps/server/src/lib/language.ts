@@ -1,4 +1,4 @@
-import { parseStoredLanguageList } from "@openstyle/validations";
+import { parseStoredLanguageList, SETTINGS_KEYS } from "@openstyle/validations";
 import { readSetting, readSettings } from "./db.js";
 
 export const ISO_LANGUAGE_NAMES: Record<string, string> = {
@@ -42,14 +42,17 @@ export const ISO_LANGUAGE_NAMES: Record<string, string> = {
  * capped list; an empty array means auto-detect.
  */
 export function getLanguagesSetting(): string[] {
-  const stored = readSettings(["languages", "language"]);
+  const stored = readSettings([
+    SETTINGS_KEYS.languages,
+    SETTINGS_KEYS.language,
+  ]);
 
   // The `languages` row is authoritative once present (including an explicit
   // empty array = auto-detect); only an absent row falls back to the legacy
   // singular `language` key, so a pre-migration choice is honored exactly once.
   return parseStoredLanguageList(
-    stored.get("languages"),
-    stored.get("language"),
+    stored.get(SETTINGS_KEYS.languages),
+    stored.get(SETTINGS_KEYS.language),
   );
 }
 

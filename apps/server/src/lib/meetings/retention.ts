@@ -1,6 +1,9 @@
 import { unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { parseMeetingRetentionDays } from "@openstyle/validations";
+import {
+  parseMeetingRetentionDays,
+  SETTINGS_KEYS,
+} from "@openstyle/validations";
 import { createDailySweep } from "../daily-sweep.js";
 import { getDb, readSetting } from "../db.js";
 
@@ -14,7 +17,7 @@ import { getDb, readSetting } from "../db.js";
  * Uses the same daily sweep as lib/history-store.ts.
  */
 
-export const MEETING_RETENTION_SETTING_KEY = "meeting_retention_days";
+export const MEETING_RETENTION_SETTING_KEY = SETTINGS_KEYS.meetingRetentionDays;
 
 interface ExpiredMeetingRow {
   id: string;

@@ -1,5 +1,6 @@
 import { z } from "zod/v3";
 import { httpUrlOrEmpty } from "./http-url-or-empty.js";
+import { SETTINGS_KEYS } from "./settings-keys.js";
 
 export const settingValueSchema = z.object({
   value: z.string(),
@@ -275,7 +276,7 @@ export function parseMeetingSummaryContextBudget(
  * (`apps/electron/src/shared/settings-keys.ts`).
  */
 export const MEETING_SUMMARY_TIMEOUT_SETTING_KEY =
-  "meeting_summary_timeout_seconds";
+  SETTINGS_KEYS.meetingSummaryTimeoutSeconds;
 
 /**
  * Bounds, with the arithmetic (see also the token-budget note at
@@ -384,7 +385,7 @@ export const meetingSummaryTimeoutSecondsSettingSchema = z
  * `SETTINGS_KEYS.meetingEnhanceTimeoutSeconds`.
  */
 export const MEETING_ENHANCE_TIMEOUT_SETTING_KEY =
-  "meeting_enhance_timeout_seconds";
+  SETTINGS_KEYS.meetingEnhanceTimeoutSeconds;
 
 /**
  * Same bounds and same default as the summarize knob, deliberately:

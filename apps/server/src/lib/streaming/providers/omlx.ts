@@ -1,6 +1,10 @@
 import { collapseAsrLineBreaks } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
-import { normalizeOmlxRoot, omlxTranscribeUrl } from "@openstyle/validations";
+import {
+  normalizeOmlxRoot,
+  omlxTranscribeUrl,
+  SETTINGS_KEYS,
+} from "@openstyle/validations";
 import { readSetting } from "../../db.js";
 import { redactHeaders, trace } from "../../trace.js";
 import type {
@@ -12,8 +16,8 @@ import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "../types.js";
 
 export const OMLX_PROVIDER_ID = "omlx";
 export const OMLX_PROVIDER_NAME = "oMLX";
-export const OMLX_BASE_URL_SETTING = "omlx_base_url";
-export const OMLX_API_KEY_SETTING = "omlx_api_key";
+export const OMLX_BASE_URL_SETTING = SETTINGS_KEYS.omlxBaseUrl;
+export const OMLX_API_KEY_SETTING = SETTINGS_KEYS.omlxApiKey;
 
 const log = createAppLogger("omlx");
 

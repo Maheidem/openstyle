@@ -1,3 +1,5 @@
+import { SETTINGS_KEYS } from "./settings-keys";
+
 export type AudioPlaybackMode = "off" | "duck" | "pause";
 export type ActiveAudioPlaybackMode = Exclude<AudioPlaybackMode, "off">;
 
@@ -12,11 +14,14 @@ export function normalizeAudioPlaybackMode(
 export function resolveAudioPlaybackMode(
   settings: Record<string, string | undefined>,
 ): AudioPlaybackMode {
-  if (settings.audio_playback_mode) {
-    return normalizeAudioPlaybackMode(settings.audio_playback_mode);
+  const mode = settings[SETTINGS_KEYS.audioPlaybackMode];
+  if (mode) return normalizeAudioPlaybackMode(mode);
+  if (settings[SETTINGS_KEYS.pausePlaybackWhileRecording] === "true") {
+    return "pause";
   }
-  if (settings.pause_playback_while_recording === "true") return "pause";
-  return settings.audio_ducking_enabled === "true" ? "duck" : "off";
+  return settings[SETTINGS_KEYS.audioDuckingEnabled] === "true"
+    ? "duck"
+    : "off";
 }
 
 export function isActiveAudioPlaybackMode(

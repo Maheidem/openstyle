@@ -6,6 +6,7 @@ import {
   omlxModelsUrl,
   omlxTranscribeUrl,
   openaiSttConfigSchema,
+  SETTINGS_KEYS,
   settingValueSchema,
 } from "@openstyle/validations";
 import { Hono } from "hono";
@@ -104,8 +105,8 @@ function resolveTestApiKey(
 
 /** Run after a successful PUT of the key. */
 const SETTING_SIDE_EFFECTS: ReadonlyMap<string, () => void> = new Map([
-  ["mlx_asr_keep_alive_minutes", applyMlxAsrRetentionPolicy],
-  ["whisper_keep_alive_minutes", applyWhisperRetentionPolicy],
+  [SETTINGS_KEYS.mlxAsrKeepAliveMinutes, applyMlxAsrRetentionPolicy],
+  [SETTINGS_KEYS.whisperKeepAliveMinutes, applyWhisperRetentionPolicy],
   [HISTORY_RETENTION_SETTING_KEY, purgeExpiredHistory],
 ]);
 
@@ -196,7 +197,10 @@ const settings = new Hono()
     async (c) => {
       const body = c.req.valid("json");
       const url = normalizeOpenaiBaseUrl(body.url);
-      const apiKey = resolveTestApiKey("local_llm_api_key", body.api_key);
+      const apiKey = resolveTestApiKey(
+        SETTINGS_KEYS.localLlmApiKey,
+        body.api_key,
+      );
 
       try {
         const res = await fetch(`${url}/v1/models`, {
@@ -236,7 +240,10 @@ const settings = new Hono()
     async (c) => {
       const body = c.req.valid("json");
       const url = normalizeOpenaiBaseUrl(body.url);
-      const apiKey = resolveTestApiKey("openai_stt_api_key", body.api_key);
+      const apiKey = resolveTestApiKey(
+        SETTINGS_KEYS.openaiSttApiKey,
+        body.api_key,
+      );
 
       try {
         const res = await fetch(`${url}/v1/models`, {
@@ -276,7 +283,7 @@ const settings = new Hono()
     // transcription request then 404s on.
     const root = normalizeOmlxRoot(body.url);
     const transcribeUrl = omlxTranscribeUrl(root);
-    const apiKey = resolveTestApiKey("omlx_api_key", body.api_key);
+    const apiKey = resolveTestApiKey(SETTINGS_KEYS.omlxApiKey, body.api_key);
     const auth: Record<string, string> = apiKey
       ? { Authorization: `Bearer ${apiKey}` }
       : {};
