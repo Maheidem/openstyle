@@ -93,7 +93,6 @@ export interface UseModels {
   whisperStatus: WhisperStatus | null;
   mlxStatus: MlxAsrStatus | null;
   llmCleanup: boolean;
-  /** True once the editable form state has been seeded from persisted settings. */
   mlxKeepAliveMinutes: number;
   /** The retired global sampling blob (`cleanup_sampling`) — read-only here,
    *  kept only so `TaskProfilesSection` can show the "migrated from your old
