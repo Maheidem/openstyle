@@ -20,7 +20,7 @@ export class MacosMediaPlayback {
     }
   }
 
-  async restore(): Promise<void> {
+  async resumePlayback(): Promise<void> {
     if (process.platform !== "darwin") return;
     if (!this.active) return;
 
@@ -35,7 +35,7 @@ export class MacosMediaPlayback {
     }
   }
 
-  restoreSync(): void {
+  resumePlaybackSync(): void {
     if (process.platform !== "darwin") return;
     if (!this.active) return;
 
