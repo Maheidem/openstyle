@@ -148,6 +148,9 @@ jobs:
       - name: Run stt package tests
         run: pnpm --filter @openstyle/stt run test
 
+      - name: Run validations package tests
+        run: pnpm --filter @openstyle/validations run test
+
   test-electron:
     name: Test (Electron E2E)
     needs: [changes, test-server]
