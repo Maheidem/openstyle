@@ -5,7 +5,7 @@
  * `lib/audio/wav.ts` — no Hono, no DB, no electron.
  *
  * Extracted verbatim from `routes/transcribe-file.ts`. Both routes answer
- * 413/415 with byte-identical payloads built from these values.
+ * 413/415/422 with byte-identical payloads built from these values.
  */
 
 /** 1 GiB (1,073,741,824 B) upload ceiling (`tr_e4522000`). */
@@ -40,4 +40,35 @@ export function formatLimit(bytes: number): string {
   if (bytes % gib === 0) return `${bytes / gib} GiB`;
   if (bytes % kib === 0) return `${bytes / kib} KiB`;
   return `${bytes} bytes`;
+}
+
+/** Body of the 413 answer. Both import routes send it unchanged. */
+export function tooLargeBody(maxBytes: number) {
+  return {
+    error: "File too large",
+    detail: `Maximum upload size is ${formatLimit(maxBytes)}`,
+    code: "PAYLOAD_TOO_LARGE",
+  } as const;
+}
+
+/** Body of the 415 answer for a missing or unaccepted file extension. */
+export function unsupportedTypeBody() {
+  return {
+    error: "Unsupported file type",
+    detail: ACCEPTED_EXTENSIONS_DETAIL,
+    code: "UNSUPPORTED_MEDIA_TYPE",
+  } as const;
+}
+
+/**
+ * Body of the 422 answer when the audio cannot be decoded. The detail is a
+ * fixed string, so no server-side text reaches the client.
+ */
+export function decodeFailedBody(code: string, reason: string) {
+  return {
+    error: "Audio decode failed",
+    detail: "ffmpeg could not decode the file",
+    code,
+    reason,
+  } as const;
 }

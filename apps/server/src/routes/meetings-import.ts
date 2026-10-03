@@ -54,11 +54,12 @@ import {
   needsDecodeFile,
 } from "../lib/audio/decode.js";
 import {
-  ACCEPTED_EXTENSIONS_DETAIL,
   ACCEPTED_IMPORT_EXTENSIONS,
-  formatLimit,
+  decodeFailedBody,
   importFileExtension,
   MAX_IMPORT_BYTES,
+  tooLargeBody,
+  unsupportedTypeBody,
 } from "../lib/audio/import-limits.js";
 import {
   extractBoundary,
@@ -81,14 +82,6 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_TITLE_CHARS = 512; // mirrors startSchema's z.string().max(512)
-
-function tooLargeBody(maxBytes: number) {
-  return {
-    error: "File too large",
-    detail: `Maximum upload size is ${formatLimit(maxBytes)}`,
-    code: "PAYLOAD_TOO_LARGE",
-  } as const;
-}
 
 /**
  * Move `src` to `dst` without ever holding it in memory: rename when the two
@@ -207,14 +200,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
 
       const ext = importFileExtension(audio.filename);
       if (!ext || !ACCEPTED_IMPORT_EXTENSIONS.has(ext)) {
-        return c.json(
-          {
-            error: "Unsupported file type",
-            detail: ACCEPTED_EXTENSIONS_DETAIL,
-            code: "UNSUPPORTED_MEDIA_TYPE",
-          },
-          415,
-        );
+        return c.json(unsupportedTypeBody(), 415);
       }
 
       const db = getDb();
@@ -257,15 +243,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
           log.error(
             `meeting ${id}: decode failed (${err.reason}): ${err.message}`,
           );
-          return c.json(
-            {
-              error: "Audio decode failed",
-              detail: "ffmpeg could not decode the file",
-              code: err.code,
-              reason: err.reason,
-            },
-            422,
-          );
+          return c.json(decodeFailedBody(err.code, err.reason), 422);
         }
         throw err;
       }
@@ -281,12 +259,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       } catch (err) {
         log.error(`meeting ${id}: WAV not parseable: ${String(err)}`);
         return c.json(
-          {
-            error: "Audio decode failed",
-            detail: "ffmpeg could not decode the file",
-            code: "AUDIO_DECODE_FAILED",
-            reason: "decode_failed",
-          },
+          decodeFailedBody("AUDIO_DECODE_FAILED", "decode_failed"),
           422,
         );
       }
