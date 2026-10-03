@@ -9,7 +9,7 @@
 import { openAsBlob } from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { type BrowserWindow, dialog, ipcMain } from "electron";
 import { claimAbortableJob, releaseAbortableJob } from "./abortable-jobs";
 
@@ -128,7 +128,7 @@ export function registerImportIpc({
       } catch (err) {
         log.debug("import:transcribe-file stat failed", {
           ext,
-          message: err instanceof Error ? err.message : String(err),
+          message: errorMessage(err),
         });
         return {
           ok: false,
@@ -199,7 +199,7 @@ export function registerImportIpc({
             error: "Cancelled by user",
           };
         }
-        const message = err instanceof Error ? err.message : String(err);
+        const message = errorMessage(err);
         log.debug("import:transcribe-file fetch failed", {
           ext,
           bytes: size,

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { getDb } from "../db.js";
 import { getMlxAsrModel } from "./constants.js";
 import {
@@ -296,9 +296,9 @@ async function startWorker(modelId: string): Promise<void> {
 
   await updateManagedMlxRuntimeIfNeeded().catch((err) => {
     log.warn(
-      `Failed to refresh managed runtime before worker start: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `Failed to refresh managed runtime before worker start: ${errorMessage(
+        err,
+      )}`,
     );
   });
 

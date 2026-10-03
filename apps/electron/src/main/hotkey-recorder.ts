@@ -7,7 +7,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import type { WebContents } from "electron";
 import {
   getNativeBinaryPath,
@@ -93,7 +93,7 @@ export class HotkeyRecorder {
       });
     } catch (err) {
       this.callbacks.onError?.(
-        `Failed to spawn hotkey recorder: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to spawn hotkey recorder: ${errorMessage(err)}`,
       );
       return false;
     }

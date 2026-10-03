@@ -1,6 +1,6 @@
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { app } from "electron";
 import type { VolumeDucker } from "./interfaces/volume-ducker.interface";
 import { LinuxVolumeDucker } from "./linux-audio-ducker";
@@ -41,7 +41,7 @@ function persistRecoverySnapshot(snapshot: unknown): void {
       "utf8",
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Failed to persist duck recovery snapshot: ${message}`);
   }
 }
@@ -90,7 +90,7 @@ export async function recoverDuckedVolumeFromCrash(): Promise<void> {
       log.info("Restored system volume left ducked by a previous session");
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Duck recovery failed: ${message}`);
   }
 }

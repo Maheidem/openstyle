@@ -22,7 +22,7 @@ import { randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, openSync, writeSync } from "node:fs";
 import { mkdir, readdir, stat, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   DEFAULT_MEETING_MAX_DURATION_HOURS,
   parseMeetingMaxDurationHours,
@@ -332,9 +332,7 @@ export class MeetingRecorder {
         this.captureWindow = null;
       });
     } catch (err) {
-      log.error(
-        `Failed to create mic capture window: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      log.error(`Failed to create mic capture window: ${errorMessage(err)}`);
       this.lastError = this.lastError ?? "mic: capture window failed";
     }
 

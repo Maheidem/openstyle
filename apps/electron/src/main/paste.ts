@@ -6,7 +6,7 @@ import {
 } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { app, clipboard } from "electron";
 import { isLinuxTerminalFocused } from "./linux-terminal-focus";
 import { getNativeBinaryPath } from "./native-binary";
@@ -42,7 +42,7 @@ async function tryExecAsync(cmd: string, label: string): Promise<boolean> {
     await execAsync(cmd);
     return true;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`${label} failed: ${message}`);
     return false;
   }
@@ -316,7 +316,7 @@ function savePortalToken(token: string): void {
   try {
     writeFileSync(portalTokenPath(), token, "utf8");
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Failed to persist portal restore token: ${message}`);
   }
 }
@@ -348,7 +348,7 @@ async function pasteLinuxPortal(isTerminal: boolean): Promise<boolean> {
     log.warn(`Portal paste failed (exit ${code})`);
     return false;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Portal paste error: ${message}`);
     return false;
   }
@@ -511,7 +511,7 @@ function snapshotClipboard(): ClipboardSnapshot {
       image: hasImage ? clipboard.readImage() : undefined,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Failed to snapshot clipboard: ${message}`);
     return { restorable: false };
   }
@@ -535,7 +535,7 @@ function restoreClipboard(
     }
     clipboard.write(data);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Failed to restore clipboard: ${message}`);
   }
 }

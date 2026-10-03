@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createOpenAI } from "@ai-sdk/openai";
+import { errorMessage } from "@openstyle/utils";
 import { sanitizeSttBaseUrl } from "@openstyle/validations";
 import WebSocket from "ws";
 import { readSetting } from "../../db.js";
@@ -174,7 +175,7 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
     });
 
     ws.on("error", (err) => {
-      callbacks.onError(err instanceof Error ? err.message : String(err));
+      callbacks.onError(errorMessage(err));
     });
 
     ws.on("close", () => {

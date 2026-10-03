@@ -1,5 +1,5 @@
 import { collapseAsrLineBreaks } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { isServerBinaryAvailable } from "../../whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../../whisper/constants.js";
 import { ensureBinariesDownloaded } from "../../whisper/models.js";
@@ -34,7 +34,7 @@ export class WhisperLocalTranscriptionProvider
         await ensureBinariesDownloaded();
       } catch (err) {
         throw new Error(
-          `whisper-server binary not found and automatic setup failed: ${err instanceof Error ? err.message : String(err)}`,
+          `whisper-server binary not found and automatic setup failed: ${errorMessage(err)}`,
         );
       }
     }
@@ -48,9 +48,7 @@ export class WhisperLocalTranscriptionProvider
         return await transcribeViaServer(opts);
       } catch (err) {
         // The server may have crashed mid-request; restart it and retry once.
-        log.warn(
-          `inference failed, restarting server: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        log.warn(`inference failed, restarting server: ${errorMessage(err)}`);
         await ensureServerRunning(modelId);
         return await transcribeViaServer(opts);
       } finally {

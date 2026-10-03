@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createElevenLabs } from "@ai-sdk/elevenlabs";
+import { errorMessage } from "@openstyle/utils";
 import WebSocket from "ws";
 import type { AsrVocabularyBias } from "../../vocabulary-bias.js";
 import { createPendingAudio } from "../pending-audio.js";
@@ -287,7 +288,7 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
           if (userCommitPending) {
             deliverUserFinal();
           } else {
-            callbacks.onError(err instanceof Error ? err.message : String(err));
+            callbacks.onError(errorMessage(err));
           }
         });
 
@@ -302,7 +303,7 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         });
       })
       .catch((err) => {
-        callbacks.onError(err instanceof Error ? err.message : String(err));
+        callbacks.onError(errorMessage(err));
         callbacks.onClose();
       });
 

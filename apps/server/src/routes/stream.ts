@@ -1,6 +1,6 @@
 import { upgradeWebSocket } from "@hono/node-server";
 import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { Hono } from "hono";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
@@ -230,7 +230,7 @@ const stream = new Hono().get(
     /** Tell the client that connecting upstream failed. Never throws. */
     function reportConnectError(ws: Pick<Socket, "send">, err: unknown): void {
       if (closed) return;
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       try {
         sendJson(ws, { type: "error", message });
       } catch {}
@@ -489,7 +489,7 @@ const stream = new Hono().get(
           }
           connectUpstream(ws, announced);
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+          const message = errorMessage(err);
           sendJson(ws, { type: "error", message });
           ws.close();
         }

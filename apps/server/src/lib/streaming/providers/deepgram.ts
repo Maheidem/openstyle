@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { errorMessage } from "@openstyle/utils";
 import WebSocket from "ws";
 import { createPendingAudio } from "../pending-audio.js";
 import { mergeFinalSegment, previewText } from "../segments.js";
@@ -190,7 +191,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
 
     ws.on("error", (err) => {
       stopKeepAlive();
-      callbacks.onError(err instanceof Error ? err.message : String(err));
+      callbacks.onError(errorMessage(err));
     });
 
     ws.on("close", () => {

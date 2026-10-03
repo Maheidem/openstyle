@@ -16,7 +16,7 @@
  */
 
 import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { formatError } from "./format-error.js";
 import { saveProcessedHistory, saveRawHistory } from "./history-store.js";
 import { getLanguagesSetting, resolveLanguageOverride } from "./language.js";
@@ -178,7 +178,7 @@ export async function runTranscriptionPipeline(
       status: 500,
       body: {
         error: "Transcription failed",
-        detail: err instanceof Error ? err.message : String(err),
+        detail: errorMessage(err),
       },
     };
   }

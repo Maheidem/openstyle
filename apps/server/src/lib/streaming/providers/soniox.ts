@@ -1,3 +1,4 @@
+import { errorMessage } from "@openstyle/utils";
 import { normalizeLanguageList } from "@openstyle/validations";
 import WebSocket from "ws";
 import { createPendingAudio } from "../pending-audio.js";
@@ -306,7 +307,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
 
     ws.on("error", (err) => {
       stopKeepAlive();
-      callbacks.onError(err instanceof Error ? err.message : String(err));
+      callbacks.onError(errorMessage(err));
     });
 
     ws.on("close", () => {
