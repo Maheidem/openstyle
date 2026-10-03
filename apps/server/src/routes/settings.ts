@@ -10,7 +10,7 @@ import {
   settingValueSchema,
 } from "@openstyle/validations";
 import { Hono } from "hono";
-import { getDb } from "../lib/db.js";
+import { getDb, writeSetting } from "../lib/db.js";
 import {
   HISTORY_RETENTION_SETTING_KEY,
   purgeExpiredHistory,
@@ -143,7 +143,6 @@ const settings = new Hono()
     return c.json({ key, value: row.value });
   })
   .put("/:key", zValidator("json", settingValueSchema), async (c) => {
-    const db = getDb();
     const key = c.req.param("key");
     const body = c.req.valid("json");
 
@@ -162,10 +161,7 @@ const settings = new Hono()
       return c.json({ error: validationError }, 400);
     }
 
-    db.prepare(
-      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-    ).run(key, String(body.value));
+    writeSetting(key, String(body.value));
 
     SETTING_SIDE_EFFECTS.get(key)?.();
     // Re-install the global dispatcher so proxy/CA changes take effect for the
