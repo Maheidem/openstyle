@@ -25,7 +25,12 @@ import {
 } from "@openstyle/validations";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
-import { getDb, readSetting } from "../src/lib/db.js";
+import {
+  deleteSetting,
+  getDb,
+  readSetting,
+  writeSetting,
+} from "../src/lib/db.js";
 import {
   LLM_TASK_PROFILES,
   resolveTaskCall,
@@ -67,19 +72,6 @@ function capturedCalls(): CapturedCall[] {
   return captured.calls;
 }
 
-function setSetting(key: string, value: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-    )
-    .run(key, value);
-}
-
-function deleteSetting(key: string): void {
-  getDb().prepare("DELETE FROM settings WHERE key = ?").run(key);
-}
-
 function putSetting(value: string): Promise<Response> {
   return createApp().request(
     `/api/settings/${MEETING_SUMMARY_TIMEOUT_SETTING_KEY}`,
@@ -102,7 +94,7 @@ beforeEach(() => {
     `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
      VALUES ('local-llm', 'local-llm/mock-summary-model', 'mock-summary-model', 'llm', 1)`,
   ).run();
-  setSetting("local_llm_url", "http://127.0.0.1:4321/v1");
+  writeSetting("local_llm_url", "http://127.0.0.1:4321/v1");
   captured.calls.length = 0;
 });
 
@@ -261,11 +253,11 @@ describe("resolveTaskCall honours the setting, read fresh on every call", () => 
   it("picks up a raised value on the next call with no restart and no re-import of the module", async () => {
     expect((await resolveTaskCall("meetingSummarize")).timeoutMs).toBe(600_000);
     // Same module instance, same process — only the DB row changed.
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1800");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1800");
     expect((await resolveTaskCall("meetingSummarize")).timeoutMs).toBe(
       1_800_000,
     );
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "45");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "45");
     expect((await resolveTaskCall("meetingSummarize")).timeoutMs).toBe(45_000);
     // Deleting the row falls straight back to the default.
     deleteSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY);
@@ -274,16 +266,16 @@ describe("resolveTaskCall honours the setting, read fresh on every call", () => 
 
   it("clamps defensively server-side: a junk row never reaches the wire", async () => {
     // Written straight to the DB, i.e. behind the route's 400 guard.
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "999999");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "999999");
     expect((await resolveTaskCall("meetingSummarize")).timeoutMs).toBe(600_000);
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "seven");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "seven");
     expect((await resolveTaskCall("meetingSummarize")).timeoutMs).toBe(600_000);
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "0");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "0");
     expect((await resolveTaskCall("meetingSummarize")).timeoutMs).toBe(600_000);
   });
 
   it("leaves cleanup/remix on their code-defined timeouts and gives enhance its own", async () => {
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1800");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1800");
     // cleanup/remix carry an "auto" output budget, so they need the caller's
     // number — irrelevant here, only timeoutMs is under test.
     expect(
@@ -300,7 +292,7 @@ describe("resolveTaskCall honours the setting, read fresh on every call", () => 
         .timeoutMs,
     ).toBe(600_000);
     // And its own knob moves it while summarize keeps 1800 s.
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "90");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "90");
     expect(
       (await resolveTaskCall("meetingEnhance", { autoMaxOutputTokens: 512 }))
         .timeoutMs,
@@ -324,7 +316,7 @@ describe("the resolved timeout is the number that reaches AbortSignal.timeout()"
   }
 
   it("passes the user's raised window to the abort signal of the summary call", async () => {
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1200");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1200");
     const spy = vi.spyOn(AbortSignal, "timeout");
 
     await callSummarize("meetingSummarize");
@@ -350,11 +342,11 @@ describe("the resolved timeout is the number that reaches AbortSignal.timeout()"
     // Enhance has its OWN knob now: raising only summarize's leaves enhance on
     // its own 600 s default (it used to sit at a hard-coded 60 s — the defect
     // `meeting-enhance-timeout.test.ts` pins the fix for).
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1200");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1200");
     await callSummarize("meetingEnhance");
     expect(spy).toHaveBeenLastCalledWith(600_000);
 
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "150");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "150");
     await callSummarize("meetingEnhance");
     expect(spy).toHaveBeenLastCalledWith(150_000);
   });
@@ -390,7 +382,7 @@ describe("summarizeJobPlan — the §5.8 ceiling the summarize job enforces", ()
   });
 
   it("reads a raised per-call timeout fresh, and scales the ceiling by it", async () => {
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1200");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1200");
     const plan = await summarizeJobPlan([seg("hello")]);
     expect(plan.perCallMs).toBe(1_200_000);
     expect(plan.deadlineMs).toBe(2_400_000);
@@ -400,8 +392,8 @@ describe("summarizeJobPlan — the §5.8 ceiling the summarize job enforces", ()
     // Budget 1,000 tok -> overlap min(400, 10%) = 100 -> 900 fresh tokens per
     // chunk. 40 lines of 400 chars ≈ 102 tok each ≈ 4,080 tok -> 5 map
     // chunks -> 6 calls; at the 45 s minimum-ish timeout that is 270 s.
-    setSetting(CONTEXT_BUDGET_KEY, "1000");
-    setSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "45");
+    writeSetting(CONTEXT_BUDGET_KEY, "1000");
+    writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "45");
     const segments = Array.from({ length: 40 }, () => seg("x".repeat(400)));
 
     const plan = await summarizeJobPlan(segments);

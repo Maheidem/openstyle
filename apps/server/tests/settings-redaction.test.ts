@@ -1,20 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import { jsonRequest } from "./helpers/http.js";
 
 const app = createApp();
 
 const REDACTED = "••••••••";
-
-function setSetting(key: string, value: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO settings (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .run(key, value);
-}
 
 function getStoredSetting(key: string): string | undefined {
   const row = getDb()
@@ -28,9 +19,8 @@ function put(path: string, body: unknown) {
 }
 
 function clearSettings(...keys: string[]): void {
-  const db = getDb();
   for (const key of keys) {
-    db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+    deleteSetting(key);
   }
 }
 
@@ -45,7 +35,7 @@ describe("GET /api/settings redacts credential-shaped values", () => {
   });
 
   it("masks a credential-shaped key's value in the bulk listing", async () => {
-    setSetting("omlx_api_key", "sk-real-secret-value");
+    writeSetting("omlx_api_key", "sk-real-secret-value");
 
     const res = await app.request("/api/settings");
     const data = (await res.json()) as Record<string, string>;
@@ -54,8 +44,8 @@ describe("GET /api/settings redacts credential-shaped values", () => {
   });
 
   it("masks every known BYOK credential key", async () => {
-    setSetting("local_llm_api_key", "sk-local-llm-secret");
-    setSetting("openai_stt_api_key", "sk-openai-stt-secret");
+    writeSetting("local_llm_api_key", "sk-local-llm-secret");
+    writeSetting("openai_stt_api_key", "sk-openai-stt-secret");
 
     const res = await app.request("/api/settings");
     const data = (await res.json()) as Record<string, string>;
@@ -65,7 +55,7 @@ describe("GET /api/settings redacts credential-shaped values", () => {
   });
 
   it("does not mask hotkey — 'key' is a substring there, not a delimited segment", async () => {
-    setSetting("hotkey", "F13");
+    writeSetting("hotkey", "F13");
 
     const res = await app.request("/api/settings");
     const data = (await res.json()) as Record<string, string>;
@@ -74,7 +64,7 @@ describe("GET /api/settings redacts credential-shaped values", () => {
   });
 
   it("leaves GET /api/settings/:key (the deliberate reveal path) unredacted", async () => {
-    setSetting("local_llm_api_key", "sk-another-real-secret");
+    writeSetting("local_llm_api_key", "sk-another-real-secret");
 
     const res = await app.request("/api/settings/local_llm_api_key");
     const data = (await res.json()) as { key: string; value: string };
@@ -100,7 +90,7 @@ describe("PUT /api/settings/:key sentinel guard on credential keys", () => {
   });
 
   it("treats a re-submitted placeholder as a no-op, preserving the real stored value", async () => {
-    setSetting("omlx_api_key", "sk-original-value");
+    writeSetting("omlx_api_key", "sk-original-value");
 
     const res = await put("/api/settings/omlx_api_key", { value: REDACTED });
     const body = (await res.json()) as { key: string; value: string };
@@ -133,7 +123,7 @@ describe("POST /api/settings/omlx/test resolves a re-submitted placeholder to th
   }
 
   it("sends the real stored key, not the literal placeholder, when the field was untouched", async () => {
-    setSetting("omlx_api_key", "sk-stored-real-key");
+    writeSetting("omlx_api_key", "sk-stored-real-key");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(okResponse());
@@ -151,7 +141,7 @@ describe("POST /api/settings/omlx/test resolves a re-submitted placeholder to th
   });
 
   it("sends a freshly typed key as-is rather than the stored one", async () => {
-    setSetting("omlx_api_key", "sk-stored-real-key");
+    writeSetting("omlx_api_key", "sk-stored-real-key");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(okResponse());

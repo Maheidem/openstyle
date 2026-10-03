@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import {
   type DetectAllFn,
   pickDeclaredLanguage,
@@ -48,12 +48,7 @@ function makeAudioDir(): string {
 }
 
 function setDeclaredLanguages(codes: string[]): void {
-  getDb()
-    .prepare(
-      `INSERT INTO settings (key, value) VALUES ('languages', ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .run(JSON.stringify(codes));
+  writeSetting("languages", JSON.stringify(codes));
 }
 
 function insertMeeting(id: string): void {
@@ -100,7 +95,7 @@ function run(
 
 afterEach(() => {
   resetMeetingTables();
-  getDb().exec("DELETE FROM settings WHERE key = 'languages'");
+  deleteSetting("languages");
 });
 
 describe("pickProbeSegment", () => {

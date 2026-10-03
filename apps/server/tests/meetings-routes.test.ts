@@ -18,7 +18,7 @@ import {
   vi,
 } from "vitest";
 import createApp from "../src/index.js";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import type { DiarizeDeps } from "../src/lib/meetings/diarize.js";
 import {
   MEETING_RETENTION_SETTING_KEY,
@@ -2323,13 +2323,11 @@ async function waitForTerminalStatusFast(
 
 describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", () => {
   afterEach(() => {
-    getDb().exec("DELETE FROM settings WHERE key = 'languages'");
+    deleteSetting("languages");
   });
 
   it("resolves and persists meetings.language once; a second run (re-transcribe) does not re-probe", async () => {
-    getDb()
-      .prepare("INSERT INTO settings (key, value) VALUES ('languages', ?)")
-      .run(JSON.stringify(["en", "pt"]));
+    writeSetting("languages", JSON.stringify(["en", "pt"]));
 
     let calls = 0;
     __setMeetingsTestOverrides({
@@ -2365,9 +2363,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", (
   });
 
   it("with a single declared language, pins immediately with no probe call", async () => {
-    getDb()
-      .prepare("INSERT INTO settings (key, value) VALUES ('languages', ?)")
-      .run(JSON.stringify(["pt"]));
+    writeSetting("languages", JSON.stringify(["pt"]));
     let calls = 0;
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
@@ -2403,9 +2399,7 @@ describe("meeting audio retention sweep", () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   afterEach(() => {
-    getDb()
-      .prepare("DELETE FROM settings WHERE key = ?")
-      .run(MEETING_RETENTION_SETTING_KEY);
+    deleteSetting(MEETING_RETENTION_SETTING_KEY);
     rmSync(meetingsRoot(), { recursive: true, force: true });
   });
 
@@ -2429,12 +2423,7 @@ describe("meeting audio retention sweep", () => {
   });
 
   it("skips meetings still recording, honors the retention setting", () => {
-    getDb()
-      .prepare(
-        `INSERT INTO settings (key, value, updated_at)
-         VALUES (?, '7', datetime('now'))`,
-      )
-      .run(MEETING_RETENTION_SETTING_KEY);
+    writeSetting(MEETING_RETENTION_SETTING_KEY, "7");
     const liveDir = makeMeetingDir("live");
     const doneDir = makeMeetingDir("done");
     insertMeeting("live", "recording", liveDir, Date.now() - 10 * DAY_MS);

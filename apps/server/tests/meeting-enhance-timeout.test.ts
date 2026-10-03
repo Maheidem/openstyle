@@ -29,7 +29,12 @@ import {
 } from "@openstyle/validations";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
-import { getDb, readSetting } from "../src/lib/db.js";
+import {
+  deleteSetting,
+  getDb,
+  readSetting,
+  writeSetting,
+} from "../src/lib/db.js";
 import {
   LLM_TASK_PROFILES,
   resolveTaskCall,
@@ -76,19 +81,6 @@ function capturedCalls(): CapturedCall[] {
   return captured.calls;
 }
 
-function setSetting(key: string, value: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-    )
-    .run(key, value);
-}
-
-function deleteSetting(key: string): void {
-  getDb().prepare("DELETE FROM settings WHERE key = ?").run(key);
-}
-
 function putSetting(value: string): Promise<Response> {
   return createApp().request(
     `/api/settings/${MEETING_ENHANCE_TIMEOUT_SETTING_KEY}`,
@@ -122,7 +114,7 @@ beforeEach(() => {
     `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
      VALUES ('local-llm', 'local-llm/mock-enhance-model', 'mock-enhance-model', 'llm', 1)`,
   ).run();
-  setSetting("local_llm_url", "http://127.0.0.1:4321/v1");
+  writeSetting("local_llm_url", "http://127.0.0.1:4321/v1");
   captured.calls.length = 0;
 });
 
@@ -276,11 +268,11 @@ describe("resolveTaskCall honours the enhance setting, read fresh on every call"
     expect(
       (await resolveTaskCall("meetingEnhance", ENHANCE_BUDGET)).timeoutMs,
     ).toBe(600_000);
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "1800");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "1800");
     expect(
       (await resolveTaskCall("meetingEnhance", ENHANCE_BUDGET)).timeoutMs,
     ).toBe(1_800_000);
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "45");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "45");
     expect(
       (await resolveTaskCall("meetingEnhance", ENHANCE_BUDGET)).timeoutMs,
     ).toBe(45_000);
@@ -291,15 +283,15 @@ describe("resolveTaskCall honours the enhance setting, read fresh on every call"
   });
 
   it("clamps defensively server-side: a junk row never reaches the wire", async () => {
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "999999");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "999999");
     expect(
       (await resolveTaskCall("meetingEnhance", ENHANCE_BUDGET)).timeoutMs,
     ).toBe(600_000);
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "seven");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "seven");
     expect(
       (await resolveTaskCall("meetingEnhance", ENHANCE_BUDGET)).timeoutMs,
     ).toBe(600_000);
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "0");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "0");
     expect(
       (await resolveTaskCall("meetingEnhance", ENHANCE_BUDGET)).timeoutMs,
     ).toBe(600_000);
@@ -313,7 +305,7 @@ describe("resolveTaskCall honours the enhance setting, read fresh on every call"
  */
 describe("the resolved enhance timeout is the number that reaches AbortSignal.timeout()", () => {
   it("passes the user's raised window to the abort signal of the enhance call", async () => {
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "1200");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "1200");
     const spy = vi.spyOn(AbortSignal, "timeout");
 
     await callEnhance();
@@ -355,7 +347,7 @@ describe("the resolved enhance timeout is the number that reaches AbortSignal.ti
   it("leaves the summarize window alone — the two knobs are independent", async () => {
     const spy = vi.spyOn(AbortSignal, "timeout");
 
-    setSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "120");
+    writeSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY, "120");
     await resolveDefaultChatCall({
       system: "You summarize meetings.",
       prompt: "Speaker 1: hello",

@@ -7,7 +7,7 @@ import {
 } from "@openstyle/validations";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import {
   createSamplingFetch,
   groqCleanupProviderOptions,
@@ -29,19 +29,14 @@ function seedDefaultLlm(provider: string, modelId: string): void {
 }
 
 function setAssignments(assignments: LlmTaskAssignments): void {
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO settings (key, value, updated_at) VALUES ('llm_task_assignments', ?, datetime('now'))
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-  ).run(JSON.stringify(assignments));
+  writeSetting("llm_task_assignments", JSON.stringify(assignments));
 }
 
 function clearSettings(): void {
-  const db = getDb();
-  db.prepare("DELETE FROM settings WHERE key = 'llm_task_assignments'").run();
-  db.prepare("DELETE FROM settings WHERE key = 'llm_parameter_presets'").run();
-  db.prepare("DELETE FROM settings WHERE key = 'cleanup_sampling'").run();
-  db.prepare("DELETE FROM api_keys").run();
+  deleteSetting("llm_task_assignments");
+  deleteSetting("llm_parameter_presets");
+  deleteSetting("cleanup_sampling");
+  getDb().prepare("DELETE FROM api_keys").run();
 }
 
 /** Captures anything written to stdout while `fn` runs. Winston's Console
@@ -69,12 +64,7 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
 beforeEach(() => {
   clearSettings();
   seedDefaultLlm("local-llm", "local-llm/Qwen3.8-27B");
-  getDb()
-    .prepare(
-      `INSERT INTO settings (key, value, updated_at) VALUES ('local_llm_url', ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .run("http://127.0.0.1:8123");
+  writeSetting("local_llm_url", "http://127.0.0.1:8123");
 });
 
 afterEach(() => {

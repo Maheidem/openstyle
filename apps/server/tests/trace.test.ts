@@ -245,16 +245,11 @@ describe("traceLlmFetch response cloning", () => {
 
 describe("oMLX STT boundary", () => {
   it("traces every multipart field but only the audio's byte length", async () => {
-    const { getDb } = await import("../src/lib/db.js");
+    const { writeSetting } = await import("../src/lib/db.js");
     const { OmlxTranscriptionProvider } = await import(
       "../src/lib/streaming/providers/omlx.js"
     );
-    getDb()
-      .prepare(
-        `INSERT INTO settings (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      )
-      .run("omlx_base_url", "http://127.0.0.1:8123");
+    writeSetting("omlx_base_url", "http://127.0.0.1:8123");
 
     await withFetch(
       async () =>
@@ -309,15 +304,10 @@ describe("createSamplingFetch tracing", () => {
   // fetch, and the clone tees the body. Drive a real `streamText` through the
   // real provider wiring and assert the SDK still assembles the whole stream.
   it("does not break the SDK's consumption of a streamed response", async () => {
-    const { getDb } = await import("../src/lib/db.js");
+    const { writeSetting } = await import("../src/lib/db.js");
     const { createChatModel } = await import("../src/lib/providers.js");
     const { streamText } = await import("ai");
-    getDb()
-      .prepare(
-        `INSERT INTO settings (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      )
-      .run("local_llm_url", "http://127.0.0.1:8123");
+    writeSetting("local_llm_url", "http://127.0.0.1:8123");
 
     const frames = ["Hel", "lo ", "there."].map(
       (delta) =>
