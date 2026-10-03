@@ -12,6 +12,7 @@ import {
   parseLlmTaskAssignments,
 } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
+import type { ApiKeyEntry, ConfiguredModel } from "@renderer/lib/models";
 import {
   type AvailableModel,
   buildVoiceItems,
@@ -38,7 +39,6 @@ import {
   removePresetAndReassign,
   upsertPreset,
 } from "./preset-ops";
-import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import type {
   EndpointConnectConfig,
   EndpointConnectState,

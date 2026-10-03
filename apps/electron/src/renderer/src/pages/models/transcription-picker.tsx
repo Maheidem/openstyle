@@ -1,4 +1,5 @@
 import { Button } from "@renderer/components/ui/button";
+import type { ConfiguredModel } from "@renderer/lib/models";
 import { displayProviderName } from "@renderer/lib/models";
 import { ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { ExternalLink, Key, Laptop, Mic } from "lucide-react";
@@ -8,7 +9,6 @@ import {
   PickerModalHeader,
   PickerOption,
 } from "./picker-option";
-import type { ConfiguredModel } from "./types";
 import type { UseModels } from "./use-models";
 
 // Engines that run on the user's own machine — the bundled workers plus a

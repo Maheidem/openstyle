@@ -17,6 +17,7 @@ import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import type {
   AvailableModel,
+  ConfiguredModel,
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
 import {
@@ -52,7 +53,6 @@ import {
   recommendedVoiceKey,
   TranscriptionPicker,
 } from "./transcription-picker";
-import type { ConfiguredModel } from "./types";
 import type { EndpointConnectState, UseModels } from "./use-models";
 
 // ---------------------------------------------------------------------------

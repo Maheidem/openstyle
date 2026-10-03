@@ -18,6 +18,7 @@ import {
 } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
 import { defaultLanguage } from "@renderer/lib/languages";
+import type { ConfiguredModel } from "@renderer/lib/models";
 import { buildVoiceItems, type VoiceItem } from "@renderer/lib/models";
 import {
   pollUntil,
@@ -49,7 +50,6 @@ import { useNavigate } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import { getDefaultRemixHotkey } from "../../shared/remix";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
-import type { ConfiguredModel } from "./pages/models/types";
 
 type Step = "permissions" | "language" | "draft" | "remix";
 
