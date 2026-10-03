@@ -25,12 +25,10 @@ import {
   IMPORT_EXTENSIONS,
   MAX_IMPORT_BYTES,
   MEETINGS_DIR_NAME,
+  type MeetingDetail,
+  type MeetingImportResult,
 } from "@openstyle/validations";
 import { app, type BrowserWindow, dialog, ipcMain } from "electron";
-import type {
-  ImportedMeeting,
-  MeetingImportResult,
-} from "../shared/import-types";
 import type { ServerFetch } from "../shared/server-auth";
 
 const log = createAppLogger("meeting-import");
@@ -165,7 +163,7 @@ export function registerMeetingImportIpc({
         if (response.ok) {
           return {
             ok: true,
-            meeting: json as unknown as ImportedMeeting,
+            meeting: json as unknown as MeetingDetail,
           };
         }
         // Surface the server's message verbatim (localized-enough: these are

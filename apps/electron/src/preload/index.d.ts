@@ -1,12 +1,9 @@
 import type { ElectronAPI } from "@electron-toolkit/preload";
-import type {
-  ImportAudioResult,
-  ImportedMeeting,
-  MeetingImportResult,
-} from "../shared/import-types";
+import type { MeetingImportResult } from "@openstyle/validations";
+import type { ImportAudioResult } from "../shared/import-types";
 import type { OpenstyleApi } from "./index";
 
-export type { ImportAudioResult, ImportedMeeting, MeetingImportResult };
+export type { ImportAudioResult, MeetingImportResult };
 
 declare global {
   interface Window {

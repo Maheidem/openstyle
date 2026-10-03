@@ -1,14 +1,12 @@
 import { electronAPI } from "@electron-toolkit/preload";
+import type { MeetingImportResult } from "@openstyle/validations";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
-import type {
-  ImportAudioResult,
-  MeetingImportResult,
-} from "../shared/import-types";
+import type { ImportAudioResult } from "../shared/import-types";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import {
   normalizePillCancelMode,
