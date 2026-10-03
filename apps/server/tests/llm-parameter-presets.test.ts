@@ -177,6 +177,13 @@ describe("PUT /api/settings/llm_parameter_presets", () => {
     expect((await put(JSON.stringify({ presets: "nope" }))).status).toBe(400);
   });
 
+  it("400s a preset id that spoofs the builtin: namespace", async () => {
+    const value = JSON.stringify({
+      presets: [preset({ id: "builtin:qwen-thinking", params: {} })],
+    });
+    expect((await put(value)).status).toBe(400);
+  });
+
   it("400s a preset whose serialized params exceed the byte cap", async () => {
     const value = JSON.stringify({
       presets: [preset({ params: { blob: "x".repeat(9000) } })],
@@ -202,6 +209,21 @@ describe("PUT /api/settings/llm_task_assignments", () => {
       key: "llm_task_assignments",
       value,
     });
+  });
+
+  it("accepts a preset-mode assignment", async () => {
+    const value = JSON.stringify({
+      cleanup: { mode: "preset", presetId: "user_abc" },
+    });
+    expect((await put(value)).status).toBe(200);
+  });
+
+  it("drops an unknown task id on write and still returns 200", async () => {
+    const value = JSON.stringify({
+      cleanup: { mode: "auto" },
+      someFutureTask: { mode: "auto" },
+    });
+    expect((await put(value)).status).toBe(200);
   });
 
   it("rejects malformed JSON, a non-object body, and an out-of-enum mode", async () => {
