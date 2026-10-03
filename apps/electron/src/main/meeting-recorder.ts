@@ -28,6 +28,7 @@ import {
   parseMeetingMaxDurationHours,
 } from "@openstyle/validations";
 import { app, type BrowserWindow, powerMonitor } from "electron";
+import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import {
   isSystemAudioCaptureSupported,
@@ -142,9 +143,8 @@ function buildWavHeader(dataBytes: number): Buffer {
 }
 
 export interface MeetingRecorderDeps {
-  /** Base URL + auth for the in-process/configured Openstyle server. */
-  getServerBaseUrl: () => string;
-  getServerAuthHeaders: () => Record<string, string>;
+  /** Fetch bound to the in-process/configured Openstyle server (adds auth). */
+  serverFetch: ServerFetch;
   /**
    * Create the hidden mic-capture BrowserWindow (show:false) loading
    * meeting-capture.html. Owned (and closed) by the recorder.
@@ -205,15 +205,11 @@ export class MeetingRecorder {
     path: string,
     init: { method?: string; body?: unknown } = {},
   ): Promise<Response> {
-    const res = await fetch(`${this.deps.getServerBaseUrl()}/api${path}`, {
+    return this.deps.serverFetch(path, {
       method: init.method ?? "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...this.deps.getServerAuthHeaders(),
-      },
+      headers: { "Content-Type": "application/json" },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
-    return res;
   }
 
   /** Max duration from settings (hours), falling back to the default. */

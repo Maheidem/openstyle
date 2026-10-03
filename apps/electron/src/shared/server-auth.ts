@@ -7,3 +7,13 @@
 export function bearerAuthHeaders(token: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+/**
+ * Fetch against the configured Openstyle server. `path` starts after `/api`
+ * (for example `/settings/key`). The implementation adds the auth headers
+ * and keeps the headers of the caller.
+ */
+export type ServerFetch = (
+  path: string,
+  init?: RequestInit,
+) => Promise<Response>;

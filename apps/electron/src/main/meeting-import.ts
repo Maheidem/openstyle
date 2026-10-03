@@ -22,6 +22,7 @@ import { stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { app, type BrowserWindow, dialog, ipcMain } from "electron";
+import type { ServerFetch } from "../shared/server-auth";
 
 const log = createAppLogger("meeting-import");
 
@@ -84,14 +85,12 @@ export type MeetingImportResult =
     };
 
 interface RegisterMeetingImportIpcOptions {
-  getServerBaseUrl: () => string;
-  getServerAuthHeaders: () => Record<string, string>;
+  serverFetch: ServerFetch;
   getParentWindow: () => BrowserWindow | null;
 }
 
 export function registerMeetingImportIpc({
-  getServerBaseUrl,
-  getServerAuthHeaders,
+  serverFetch,
   getParentWindow,
 }: RegisterMeetingImportIpcOptions): void {
   ipcMain.handle(
@@ -188,14 +187,10 @@ export function registerMeetingImportIpc({
         if (title) form.append("title", title);
         form.append("started_at", String(startedAt));
 
-        const response = await fetch(
-          `${getServerBaseUrl()}/api/meetings/import`,
-          {
-            method: "POST",
-            headers: getServerAuthHeaders(),
-            body: form,
-          },
-        );
+        const response = await serverFetch("/meetings/import", {
+          method: "POST",
+          body: form,
+        });
 
         const json = (await response.json().catch(() => ({}))) as Record<
           string,

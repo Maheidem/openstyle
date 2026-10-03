@@ -11,6 +11,7 @@ import { stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { type BrowserWindow, dialog, ipcMain } from "electron";
+import type { ServerFetch } from "../shared/server-auth";
 import { claimAbortableJob, releaseAbortableJob } from "./abortable-jobs";
 
 const log = createAppLogger("import");
@@ -51,8 +52,7 @@ export interface PickedImportFile {
 }
 
 interface RegisterImportIpcOptions {
-  getServerBaseUrl: () => string;
-  getServerAuthHeaders: () => Record<string, string>;
+  serverFetch: ServerFetch;
   getParentWindow: () => BrowserWindow | null;
   /**
    * Fired when an upload finishes with a transcript (UX-04/UX-A4): the
@@ -62,8 +62,7 @@ interface RegisterImportIpcOptions {
 }
 
 export function registerImportIpc({
-  getServerBaseUrl,
-  getServerAuthHeaders,
+  serverFetch,
   getParentWindow,
   onTranscribed,
 }: RegisterImportIpcOptions): void {
@@ -160,15 +159,11 @@ export function registerImportIpc({
         const form = new FormData();
         form.append("audio", blob, basename(path));
 
-        const response = await fetch(
-          `${getServerBaseUrl()}/api/transcribe/file`,
-          {
-            method: "POST",
-            headers: getServerAuthHeaders(),
-            body: form,
-            signal: controller.signal,
-          },
-        );
+        const response = await serverFetch("/transcribe/file", {
+          method: "POST",
+          body: form,
+          signal: controller.signal,
+        });
 
         const json = (await response.json().catch(() => ({}))) as Record<
           string,
