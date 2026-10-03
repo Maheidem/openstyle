@@ -359,6 +359,9 @@ const api = {
   onFullscreenChanged: listen<[isFullscreen: boolean]>("fullscreen:changed"),
 };
 
+// The renderer types read `Window.api` from this type (see index.d.ts).
+export type OpenstyleApi = typeof api;
+
 // The renderer gets the named `api` members only. The raw `electronAPI`
 // (generic ipcRenderer) is for the E2E tests, so only E2E runs expose it.
 try {
