@@ -18,7 +18,7 @@ import {
   serverUrlSchema,
 } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
-import { KeyComboDisplay } from "@renderer/components/key-combo";
+import { HotkeyRecorderControl } from "@renderer/components/hotkey-recorder-control";
 import {
   LanguageMultiSelect,
   useLanguageOptions,
@@ -43,13 +43,7 @@ import {
   SelectValue,
 } from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
-import {
-  acceleratorsEqual,
-  comboDisplayKeys,
-  formatAcceleratorKeys,
-  keyDisplayLabel,
-  useHotkeyRecorder,
-} from "@renderer/hooks/use-hotkey-recorder";
+import { acceleratorsEqual } from "@renderer/hooks/use-hotkey-recorder";
 import {
   checkServerAuth,
   checkServerHealth,
@@ -77,7 +71,6 @@ import {
   ExternalLink,
   FolderOpen,
   Info,
-  Keyboard,
   Loader2,
   Mic,
   Monitor,
@@ -436,38 +429,6 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const {
-    state: recorderState,
-    liveModifiers,
-    capturedCombo,
-    canSaveRecording,
-    needsModifierOrMouseButton,
-    invalidReleaseNotice,
-    blockedNotice,
-    startRecording: startHotkeyRecording,
-    cancelRecording: cancelHotkeyRecording,
-  } = useHotkeyRecorder(handleHotkeyRecorded, {
-    isBlocked: (accel) =>
-      acceleratorsEqual(accel, remixHotkey) ||
-      Object.values(languageHotkeys).some((a) => acceleratorsEqual(accel, a)),
-  });
-
-  const {
-    state: remixRecorderState,
-    liveModifiers: remixLiveModifiers,
-    capturedCombo: remixCapturedCombo,
-    canSaveRecording: remixCanSave,
-    needsModifierOrMouseButton: remixNeedsModifier,
-    blockedNotice: remixBlockedNotice,
-    startRecording: startRemixHotkeyRecording,
-    cancelRecording: cancelRemixHotkeyRecording,
-  } = useHotkeyRecorder(handleRemixHotkeyRecorded, {
-    target: "remix",
-    isBlocked: (accel) =>
-      acceleratorsEqual(accel, hotkey) ||
-      Object.values(languageHotkeys).some((a) => acceleratorsEqual(accel, a)),
-  });
-
   const queryClient = useQueryClient();
 
   // All persisted settings in one request (replaces ~10 individual GETs).
@@ -768,24 +729,6 @@ export default function SettingsPage(): React.JSX.Element {
     void putSetting(SETTINGS_KEYS.audioDuckingEnabled, String(mode === "duck"));
   }, []);
 
-  // Build display keys for current recorder state
-  const liveKeys = liveModifiers.map(keyDisplayLabel);
-  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
-  const remixLiveKeys = remixLiveModifiers.map(keyDisplayLabel);
-  const remixDraftKeys = remixCapturedCombo
-    ? comboDisplayKeys(remixCapturedCombo)
-    : remixLiveKeys;
-  const remixCaptureHint = remixNeedsModifier
-    ? "Add a modifier or side mouse button · Esc to cancel"
-    : remixCanSave
-      ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button... · Esc to cancel";
-  const captureHint = needsModifierOrMouseButton
-    ? "Add a modifier or side mouse button · Esc to cancel"
-    : canSaveRecording
-      ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button... · Esc to cancel";
-
   const activeSectionLabel = t(`settings.sections.${activeSection}`);
 
   const positionOptions = useMemo<SegmentedOption[]>(() => {
@@ -925,62 +868,24 @@ export default function SettingsPage(): React.JSX.Element {
                     : t("settings.recording.hotkeyDescHold")
                 }
               >
-                {recorderState === "idle" ? (
-                  <div className="relative inline-flex">
-                    <Button
-                      variant="outline"
-                      onClick={startHotkeyRecording}
-                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                    >
-                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                      <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {t("common.change")}
-                      </span>
-                    </Button>
-                    {(invalidReleaseNotice || blockedNotice) && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {blockedNotice
-                          ? // isBlocked now covers remix AND every bound language
-                            // hotkey (§7/§8 closed the reverse direction too), so
-                            // this can no longer name one specific binding —
-                            // generic copy, same reasoning as the language row's
-                            // own conflict message.
-                            t("settings.recording.languageHotkeyConflict")
-                          : t("settings.recording.needsModifier")}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
-                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                    {draftKeys.length > 0 ? (
-                      <>
-                        <KeyComboDisplay keys={draftKeys} variant="dim" />
-                        <span className="text-muted-foreground text-xs">
-                          {captureHint}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground animate-pulse text-sm">
-                        {captureHint}
-                      </span>
-                    )}
-                    {invalidReleaseNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {t("settings.recording.needsModifier")}
-                      </div>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={cancelHotkeyRecording}
-                      className="ml-1"
-                    >
-                      {t("common.cancel")}
-                    </Button>
-                  </div>
-                )}
+                <HotkeyRecorderControl
+                  accelerator={hotkey}
+                  isBlocked={(accel) =>
+                    acceleratorsEqual(accel, remixHotkey) ||
+                    Object.values(languageHotkeys).some((a) =>
+                      acceleratorsEqual(accel, a),
+                    )
+                  }
+                  onRecorded={handleHotkeyRecorded}
+                  // isBlocked covers remix AND every bound language hotkey
+                  // (§7/§8 closed the reverse direction too), so the notice
+                  // can no longer name one specific binding: generic copy,
+                  // same reasoning as the language row's own conflict message.
+                  conflictNotice={t(
+                    "settings.recording.languageHotkeyConflict",
+                  )}
+                  needsModifierNotice={t("settings.recording.needsModifier")}
+                />
               </Row>
 
               <Row
@@ -1173,55 +1078,22 @@ export default function SettingsPage(): React.JSX.Element {
                     : t("settings.remix.hotkeyDesc")
                 }
               >
-                {remixRecorderState === "idle" ? (
-                  <div className="relative inline-flex">
-                    <Button
-                      variant="outline"
-                      onClick={startRemixHotkeyRecording}
-                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                    >
-                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                      <KeyComboDisplay
-                        keys={formatAcceleratorKeys(remixHotkey)}
-                      />
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {t("common.change")}
-                      </span>
-                    </Button>
-                    {remixBlockedNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {/* isBlocked now covers dictation AND every bound
-                            language hotkey, so this can no longer name one
-                            specific binding — generic copy. */}
-                        {t("settings.recording.languageHotkeyConflict")}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
-                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                    {remixDraftKeys.length > 0 ? (
-                      <>
-                        <KeyComboDisplay keys={remixDraftKeys} variant="dim" />
-                        <span className="text-muted-foreground text-xs">
-                          {remixCaptureHint}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground animate-pulse text-sm">
-                        {remixCaptureHint}
-                      </span>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={cancelRemixHotkeyRecording}
-                      className="ml-1"
-                    >
-                      {t("common.cancel")}
-                    </Button>
-                  </div>
-                )}
+                <HotkeyRecorderControl
+                  accelerator={remixHotkey}
+                  target="remix"
+                  isBlocked={(accel) =>
+                    acceleratorsEqual(accel, hotkey) ||
+                    Object.values(languageHotkeys).some((a) =>
+                      acceleratorsEqual(accel, a),
+                    )
+                  }
+                  onRecorded={handleRemixHotkeyRecorded}
+                  // isBlocked covers dictation AND every bound language
+                  // hotkey, so the notice is generic copy.
+                  conflictNotice={t(
+                    "settings.recording.languageHotkeyConflict",
+                  )}
+                />
               </Row>
 
               <Row
@@ -1688,93 +1560,21 @@ function LanguageHotkeyRow({
     (accelerator: string) => onRecorded(code, accelerator),
     [code, onRecorded],
   );
-  const {
-    state: recorderState,
-    liveModifiers,
-    capturedCombo,
-    canSaveRecording,
-    needsModifierOrMouseButton,
-    blockedNotice,
-    startRecording: startLanguageHotkeyRecording,
-    cancelRecording: cancelLanguageHotkeyRecording,
-  } = useHotkeyRecorder(handleRecorded, { target: "language", isBlocked });
-
-  const liveKeys = liveModifiers.map(keyDisplayLabel);
-  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
-  const captureHint = needsModifierOrMouseButton
-    ? "Add a modifier or side mouse button · Esc to cancel"
-    : canSaveRecording
-      ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button... · Esc to cancel";
-
   return (
     <Row
       last={last}
       label={t("settings.recording.languageHotkey", { language: label })}
       desc={t("settings.recording.languageHotkeyDesc", { language: label })}
     >
-      {recorderState === "idle" ? (
-        <div className="relative inline-flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={startLanguageHotkeyRecording}
-            className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-          >
-            <Keyboard className="text-muted-foreground size-4 shrink-0" />
-            {value ? (
-              <>
-                <KeyComboDisplay keys={formatAcceleratorKeys(value)} />
-                <span className="text-muted-foreground ml-1 text-xs">
-                  {t("common.change")}
-                </span>
-              </>
-            ) : (
-              <span className="text-muted-foreground text-sm">
-                {t("common.change")}
-              </span>
-            )}
-          </Button>
-          {value && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onClear(code)}
-              className="text-muted-foreground"
-            >
-              {t("common.clear")}
-            </Button>
-          )}
-          {blockedNotice && (
-            <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] left-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-              {t("settings.recording.languageHotkeyConflict")}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
-          <Keyboard className="text-primary h-4 w-4 shrink-0" />
-          {draftKeys.length > 0 ? (
-            <>
-              <KeyComboDisplay keys={draftKeys} variant="dim" />
-              <span className="text-muted-foreground text-xs">
-                {captureHint}
-              </span>
-            </>
-          ) : (
-            <span className="text-muted-foreground animate-pulse text-sm">
-              {captureHint}
-            </span>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={cancelLanguageHotkeyRecording}
-            className="ml-1"
-          >
-            {t("common.cancel")}
-          </Button>
-        </div>
-      )}
+      <HotkeyRecorderControl
+        accelerator={value}
+        target="language"
+        isBlocked={isBlocked}
+        onRecorded={handleRecorded}
+        onClear={() => onClear(code)}
+        conflictNotice={t("settings.recording.languageHotkeyConflict")}
+        noticeSide="left"
+      />
     </Row>
   );
 }
