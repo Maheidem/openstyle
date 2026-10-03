@@ -3,6 +3,12 @@ import { dirname, join, resolve, sep } from "node:path";
 import { zValidator } from "@hono/zod-validator";
 import { isVocabLeak } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
+import {
+  MEETINGS_DIR_NAME,
+  MIC_WAV,
+  SYNC_JSON,
+  SYSTEM_WAV,
+} from "@openstyle/validations";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb, withTransaction } from "../lib/db.js";
@@ -72,7 +78,7 @@ const log = createAppLogger("meetings");
 function meetingsRootDir(): string | null {
   const dbPath = process.env.OPENSTYLE_DB_PATH ?? process.env.FREESTYLE_DB_PATH;
   if (!dbPath) return null;
-  return resolve(join(dirname(dbPath), "meetings"));
+  return resolve(join(dirname(dbPath), MEETINGS_DIR_NAME));
 }
 
 /**
@@ -111,7 +117,7 @@ export function __setMeetingsTestOverrides(
  */
 function loadSyncData(audioDir: string): SyncData | undefined {
   try {
-    const j = JSON.parse(readFileSync(join(audioDir, "sync.json"), "utf8")) as {
+    const j = JSON.parse(readFileSync(join(audioDir, SYNC_JSON), "utf8")) as {
       sampleRate?: number;
       micT0?: number | null;
       systemT0?: number | null;
@@ -313,8 +319,8 @@ async function buildTranscriberDeps(
 async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
   const db = getDb();
   try {
-    const micFound = segmentWavFile(join(audioDir, "mic.wav"));
-    const systemFound = segmentWavFile(join(audioDir, "system.wav"));
+    const micFound = segmentWavFile(join(audioDir, MIC_WAV));
+    const systemFound = segmentWavFile(join(audioDir, SYSTEM_WAV));
     if (!micFound && !systemFound) {
       throw new Error(`No audio files found in ${audioDir}`);
     }
@@ -986,7 +992,7 @@ const meetings = new Hono()
     if (!row.audio_dir) {
       return c.json({ error: "Meeting has no audio directory" }, 409);
     }
-    const wavPath = join(row.audio_dir, "system.wav");
+    const wavPath = join(row.audio_dir, SYSTEM_WAV);
     if (!existsSync(wavPath)) {
       return c.json({ error: "System audio is no longer on disk" }, 409);
     }

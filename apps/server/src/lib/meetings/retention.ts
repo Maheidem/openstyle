@@ -1,8 +1,10 @@
 import { unlinkSync } from "node:fs";
 import { join } from "node:path";
 import {
+  MIC_WAV,
   parseMeetingRetentionDays,
   SETTINGS_KEYS,
+  SYSTEM_WAV,
 } from "@openstyle/validations";
 import { createDailySweep } from "../daily-sweep.js";
 import { getDb, readSetting } from "../db.js";
@@ -47,7 +49,7 @@ export function purgeExpiredMeetingAudio(): number {
 
   let purged = 0;
   for (const row of rows) {
-    for (const name of ["mic.wav", "system.wav"]) {
+    for (const name of [MIC_WAV, SYSTEM_WAV]) {
       try {
         unlinkSync(join(row.audio_dir, name));
       } catch {

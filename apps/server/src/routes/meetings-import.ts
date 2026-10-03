@@ -47,6 +47,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
+import { SYSTEM_WAV } from "@openstyle/validations";
 import { Hono } from "hono";
 import {
   AudioDecodeError,
@@ -271,7 +272,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       // retry isn't 409-blocked (it was empty or ours; nothing to lose).
       try {
         mkdirSync(audioDir, { recursive: true });
-        placeWavFile(wavPath, join(audioDir, "system.wav"));
+        placeWavFile(wavPath, join(audioDir, SYSTEM_WAV));
         db.prepare(
           `INSERT INTO meetings (id, title, started_at, ended_at, duration_ms,
                                 status, audio_dir, created_at)
@@ -298,7 +299,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       const row = getMeetingRow(id);
       log.info(
         `meeting ${id}: imported ${audio.bytes} -> ${
-          statSync(join(audioDir, "system.wav")).size
+          statSync(join(audioDir, SYSTEM_WAV)).size
         } bytes, ${durationMs} ms`,
       );
       // Fresh-import response in the exact GET /:id shape so the renderer

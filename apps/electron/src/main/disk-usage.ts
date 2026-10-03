@@ -13,6 +13,7 @@ import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { getLocalModelCacheDirs } from "@openstyle/server";
+import { MEETINGS_DIR_NAME } from "@openstyle/validations";
 import { app, ipcMain } from "electron";
 
 export interface DiskUsageResult {
@@ -48,7 +49,7 @@ async function dirSize(path: string): Promise<number> {
 
 export function registerDiskUsageIpc(): void {
   ipcMain.handle("data:get-disk-usage", async (): Promise<DiskUsageResult> => {
-    const meetingsRoot = join(app.getPath("userData"), "meetings");
+    const meetingsRoot = join(app.getPath("userData"), MEETINGS_DIR_NAME);
     const [meetingsBytes, ...modelSizes] = await Promise.all([
       dirSize(meetingsRoot),
       ...getLocalModelCacheDirs().map((dir) => dirSize(dir)),

@@ -16,6 +16,7 @@
 import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
+import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
 import { parseWavHeader, sliceWav, type WavInfo } from "../audio/wav.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
 import type {
@@ -182,8 +183,8 @@ export class MeetingTranscriber {
       name: string;
       segments: Segment[];
     }> = [
-      { source: "mic", name: "mic.wav", segments: input.micSegments },
-      { source: "system", name: "system.wav", segments: input.systemSegments },
+      { source: "mic", name: MIC_WAV, segments: input.micSegments },
+      { source: "system", name: SYSTEM_WAV, segments: input.systemSegments },
     ];
 
     const opened: number[] = [];
