@@ -26,6 +26,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@renderer/components/ui/tooltip";
+import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
 import { useDismissible } from "@renderer/hooks/use-dismissible";
 import {
   usePersistentJsonState,
@@ -1306,7 +1307,7 @@ const FeedItem = memo(function FeedItem({
   nerdMode: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const hasAiEdit =
     !!entry.cleaned_text && entry.cleaned_text.trim() !== entry.raw_text.trim();
   const showDiff = diffMode && hasAiEdit;
@@ -1347,11 +1348,7 @@ const FeedItem = memo(function FeedItem({
       : null;
   const hasTokens = entry.input_tokens > 0 || entry.output_tokens > 0;
 
-  const copyText = useCallback(async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [text]);
+  const copyText = useCallback(() => copy(text), [copy, text]);
 
   return (
     <div className="group px-1.5 py-3.5">

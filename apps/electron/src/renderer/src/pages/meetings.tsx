@@ -47,7 +47,10 @@ import {
   TabsTrigger,
 } from "@renderer/components/ui/tabs";
 import { Textarea } from "@renderer/components/ui/textarea";
+import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
+import { useFileDrop } from "@renderer/hooks/use-file-drop";
 import { getClient } from "@renderer/lib/api";
+import { formatClockDuration } from "@renderer/lib/format";
 import {
   importExtensionOf,
   isImportableFile,
@@ -297,17 +300,6 @@ function SystemAudioHint(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
-
-function formatDuration(ms: number | null): string {
-  if (!ms || ms <= 0) return "0:00";
-  const s = Math.round(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
-    : `${m}:${String(sec).padStart(2, "0")}`;
-}
 
 function formatTimestamp(ms: number | null): string {
   if (!ms) return "";
@@ -609,17 +601,9 @@ function CopyButton({
   text: string;
   label: string;
 }): React.JSX.Element {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => {
-        void navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-    >
+    <Button variant="outline" size="sm" onClick={() => void copy(text)}>
       {copied ? (
         <Check data-icon="inline-start" className="text-primary" />
       ) : (
@@ -1694,7 +1678,7 @@ function MeetingDetailView({
           <EditableTitle id={id} title={meeting.title} onRenamed={invalidate} />
           <div className="text-muted-foreground text-[11px]">
             {formatTimestamp(meeting.started_at)} ·{" "}
-            {formatDuration(meeting.duration_ms)}
+            {formatClockDuration(meeting.duration_ms)}
           </div>
           <MeetingContextField
             id={id}
@@ -2210,40 +2194,6 @@ type MeetingImportState =
   | { status: "importing" }
   | { status: "error"; message: string; detail?: string };
 
-/** Drag-over/drop handlers for a single-file drop target. */
-function useFileDrop(
-  onFile: (file: File) => void,
-  disabled: boolean,
-): {
-  dragActive: boolean;
-  handlers: {
-    onDragOver: (e: React.DragEvent) => void;
-    onDragLeave: () => void;
-    onDrop: (e: React.DragEvent) => void;
-  };
-} {
-  const [dragActive, setDragActive] = useState(false);
-  const onDragOver = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      if (!disabled) setDragActive(true);
-    },
-    [disabled],
-  );
-  const onDragLeave = useCallback(() => setDragActive(false), []);
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragActive(false);
-      if (disabled) return;
-      const file = e.dataTransfer.files?.[0];
-      if (file) onFile(file);
-    },
-    [disabled, onFile],
-  );
-  return { dragActive, handlers: { onDragOver, onDragLeave, onDrop } };
-}
-
 function useMeetingImport(onImported: (id: string) => void): {
   state: MeetingImportState;
   importing: boolean;
@@ -2701,7 +2651,7 @@ export default function MeetingsPage(): React.JSX.Element {
                     <span className="flex min-w-0 items-center justify-between gap-2">
                       <span className="mono text-muted-foreground/70 min-w-0 truncate text-[10px]">
                         {formatTimestamp(m.started_at)} ·{" "}
-                        {formatDuration(m.duration_ms)}
+                        {formatClockDuration(m.duration_ms)}
                       </span>
                       <StatusBadge status={m.status} />
                     </span>

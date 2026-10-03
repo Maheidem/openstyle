@@ -1,6 +1,9 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
 import { Card } from "@renderer/components/ui/card";
+import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
+import { useFileDrop } from "@renderer/hooks/use-file-drop";
+import { formatClockDuration } from "@renderer/lib/format";
 import {
   classifyImportError,
   type ImportErrorKind,
@@ -48,18 +51,6 @@ type ImportState =
 /** UX-A3 threshold: past this weight the review card warns about the wait. */
 const SLOW_IMPORT_DURATION_MS = 30 * 60_000;
 const SLOW_IMPORT_BYTES = 300_000_000;
-
-/** Locale-neutral clock format (h:)mm:ss, like the meetings page. */
-function formatDuration(ms: number | null): string {
-  if (!ms || ms <= 0) return "0:00";
-  const s = Math.round(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
-    : `${m}:${String(sec).padStart(2, "0")}`;
-}
 
 /**
  * Cheap client-side duration probe for a dropped File: an Audio element over
@@ -113,8 +104,7 @@ export default function ImportPage(): React.JSX.Element {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [state, setState] = useState<ImportState>({ status: "idle" });
-  const [dragActive, setDragActive] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const [cancelRequested, setCancelRequested] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   // Guards the async duration probe: a slow metadata read must not patch a
@@ -247,15 +237,9 @@ export default function ImportPage(): React.JSX.Element {
     [rejectUnsupported, stageSelected, t],
   );
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      setDragActive(false);
-      if (uploading) return;
-      const file = e.dataTransfer.files?.[0];
-      if (file) handleFile(file);
-    },
-    [handleFile, uploading],
+  const { dragActive, handlers: dropHandlers } = useFileDrop(
+    handleFile,
+    uploading,
   );
 
   const handleChoose = useCallback(async () => {
@@ -291,16 +275,14 @@ export default function ImportPage(): React.JSX.Element {
 
   const copyTranscript = useCallback(async () => {
     if (state.status !== "done") return;
-    await navigator.clipboard.writeText(state.result.cleaned);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [state]);
+    await copy(state.result.cleaned);
+  }, [state, copy]);
 
   const weightLine = useCallback(
     (file: { size: number; durationMs: number | null }): string => {
       if (file.durationMs !== null) {
         return t("import.review.weightWithDuration", {
-          duration: formatDuration(file.durationMs),
+          duration: formatClockDuration(file.durationMs),
           size: formatBytes(file.size),
         });
       }
@@ -334,12 +316,7 @@ export default function ImportPage(): React.JSX.Element {
           {(state.status === "idle" || state.status === "error") && (
             <Card
               data-testid="import-dropzone"
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragActive(true);
-              }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={handleDrop}
+              {...dropHandlers}
               className={cn(
                 "flex flex-col items-center gap-3 border-2 border-dashed py-10 text-center transition-colors",
                 dragActive ? "border-primary bg-primary/5" : "border-border",
