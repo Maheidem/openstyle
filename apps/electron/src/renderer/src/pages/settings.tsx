@@ -58,7 +58,11 @@ import {
   refreshApiBase,
 } from "@renderer/lib/api";
 import { formatBytes } from "@renderer/lib/models";
-import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
+import {
+  pollUntil,
+  requestMicAccess,
+  resolveMicStatus,
+} from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import {
   configQueryOptions,
@@ -284,10 +288,8 @@ export default function SettingsPage(): React.JSX.Element {
   const [accessibilityStatus, setAccessibilityStatus] = useState<
     boolean | null
   >(null);
-  const micPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const accessibilityPollRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
+  const cancelMicPollRef = useRef<(() => void) | null>(null);
+  const cancelAccessibilityPollRef = useRef<(() => void) | null>(null);
   const supportsBackgroundAudio = IS_MAC || IS_LINUX || IS_WINDOWS;
   // macOS and Windows can deep-link to the OS mic privacy settings.
   const canOpenMicSettings = IS_MAC || IS_WINDOWS;
@@ -357,42 +359,20 @@ export default function SettingsPage(): React.JSX.Element {
 
   const openMicSettings = useCallback(() => {
     window.api?.openMicSettings();
-    if (micPollRef.current) clearInterval(micPollRef.current);
-    micPollRef.current = setInterval(async () => {
-      const mic = await window.api?.checkMicPermission();
-      if (mic === "granted") {
-        setMicStatus("granted");
-        if (micPollRef.current) clearInterval(micPollRef.current);
-        micPollRef.current = null;
-      }
-    }, 1000);
-    setTimeout(() => {
-      if (micPollRef.current) {
-        clearInterval(micPollRef.current);
-        micPollRef.current = null;
-      }
-    }, 30000);
+    cancelMicPollRef.current?.();
+    cancelMicPollRef.current = pollUntil(
+      async () => (await window.api?.checkMicPermission()) === "granted",
+      () => setMicStatus("granted"),
+    );
   }, []);
 
   const openAccessibility = useCallback(() => {
     window.api?.openAccessibilitySettings();
-    if (accessibilityPollRef.current)
-      clearInterval(accessibilityPollRef.current);
-    accessibilityPollRef.current = setInterval(async () => {
-      const ok = await window.api?.checkAccessibilityPermission();
-      if (ok) {
-        setAccessibilityStatus(true);
-        if (accessibilityPollRef.current)
-          clearInterval(accessibilityPollRef.current);
-        accessibilityPollRef.current = null;
-      }
-    }, 1000);
-    setTimeout(() => {
-      if (accessibilityPollRef.current) {
-        clearInterval(accessibilityPollRef.current);
-        accessibilityPollRef.current = null;
-      }
-    }, 30000);
+    cancelAccessibilityPollRef.current?.();
+    cancelAccessibilityPollRef.current = pollUntil(
+      async () => !!(await window.api?.checkAccessibilityPermission()),
+      () => setAccessibilityStatus(true),
+    );
   }, []);
 
   // No preflight/query API exists for this permission (see
@@ -601,9 +581,8 @@ export default function SettingsPage(): React.JSX.Element {
 
     return () => {
       removePillPos?.();
-      if (micPollRef.current) clearInterval(micPollRef.current);
-      if (accessibilityPollRef.current)
-        clearInterval(accessibilityPollRef.current);
+      cancelMicPollRef.current?.();
+      cancelAccessibilityPollRef.current?.();
     };
   }, [checkPermissions]);
 

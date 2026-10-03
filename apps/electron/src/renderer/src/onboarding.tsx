@@ -21,7 +21,11 @@ import {
 import { getClient } from "@renderer/lib/api";
 import { defaultLanguage } from "@renderer/lib/languages";
 import { buildVoiceItems, type VoiceItem } from "@renderer/lib/models";
-import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
+import {
+  pollUntil,
+  requestMicAccess,
+  resolveMicStatus,
+} from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import {
   mlxStatusQueryOptions,
@@ -61,13 +65,9 @@ const DEFAULT_REMIX_HOTKEY =
 
 // Linux system-setup state reported by the main process (input-group access
 // for the hotkey listener, xdotool/wtype for the paste fallback).
-type LinuxSetup = {
-  wayland: boolean;
-  inputAccess: boolean;
-  uinputAccess: boolean;
-  pasteToolRequired: string;
-  pasteTool: string | null;
-};
+type LinuxSetup = NonNullable<
+  Awaited<ReturnType<Window["api"]["checkLinuxSetup"]>>
+>;
 
 // The opinionated on-device pick, in order of preference. Qwen3 ASR (MLX)
 // is the hero when the machine can run it; whisper.cpp's Balanced model is
@@ -86,6 +86,8 @@ export default function OnboardingPage(): React.JSX.Element {
   const [micStatus, setMicStatus] = useState<string>("unknown");
   const [accessibilityStatus, setAccessibilityStatus] = useState(false);
   const [linuxSetup, setLinuxSetup] = useState<LinuxSetup | null>(null);
+  const cancelMicPollRef = useRef<(() => void) | null>(null);
+  const cancelAccessibilityPollRef = useRef<(() => void) | null>(null);
 
   // Voice model state
   // The on-device model the user picked (auto-picked at first).
@@ -176,27 +178,30 @@ export default function OnboardingPage(): React.JSX.Element {
 
   const openMicSettings = useCallback(() => {
     window.api?.openMicSettings();
-    const interval = setInterval(async () => {
-      const mic = await window.api?.checkMicPermission();
-      if (mic === "granted") {
-        setMicStatus("granted");
-        clearInterval(interval);
-      }
-    }, 1000);
-    setTimeout(() => clearInterval(interval), 30000);
+    cancelMicPollRef.current?.();
+    cancelMicPollRef.current = pollUntil(
+      async () => (await window.api?.checkMicPermission()) === "granted",
+      () => setMicStatus("granted"),
+    );
   }, []);
 
   const openAccessibility = useCallback(() => {
     window.api?.openAccessibilitySettings();
-    const interval = setInterval(async () => {
-      const ok = await window.api?.checkAccessibilityPermission();
-      if (ok) {
-        setAccessibilityStatus(true);
-        clearInterval(interval);
-      }
-    }, 1000);
-    setTimeout(() => clearInterval(interval), 30000);
+    cancelAccessibilityPollRef.current?.();
+    cancelAccessibilityPollRef.current = pollUntil(
+      async () => !!(await window.api?.checkAccessibilityPermission()),
+      () => setAccessibilityStatus(true),
+    );
   }, []);
+
+  // Stop any permission poll when the page unmounts.
+  useEffect(
+    () => () => {
+      cancelMicPollRef.current?.();
+      cancelAccessibilityPollRef.current?.();
+    },
+    [],
+  );
 
   // Onboarding shows on-device models only, so there are no cloud rows.
   const allVoiceItems = buildVoiceItems([], whisperStatus, mlxStatus, {
