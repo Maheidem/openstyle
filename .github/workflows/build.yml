@@ -62,13 +62,13 @@ jobs:
             esac
 
             case "$file" in
-              apps/electron/*|apps/server/*|packages/*|scripts/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+              apps/electron/*|apps/server/*|packages/*|scripts/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.node-version|.github/actions/*|.github/workflows/build.yml)
                 run_electron=true
                 ;;
             esac
 
             case "$file" in
-              apps/server/*|packages/sdk/*|packages/stt/*|packages/utils/*|packages/validations/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+              apps/server/*|packages/sdk/*|packages/stt/*|packages/utils/*|packages/validations/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.node-version|.github/actions/*|.github/workflows/build.yml)
                 run_server_image=true
                 ;;
             esac
@@ -89,14 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Biome check
         run: pnpm biome check .
@@ -107,14 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Check unused files and dependencies
         run: pnpm run knip
@@ -127,14 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Build server (generates type declarations)
         run: pnpm turbo build --filter=@openstyle/server
@@ -151,14 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Run server tests
         # --expose-gc: the import memory-shape tests drive GC via
@@ -169,6 +141,9 @@ jobs:
           NODE_OPTIONS: "--expose-gc"
         run: pnpm --filter @openstyle/server run test
 
+      - name: Run stt package tests
+        run: pnpm --filter @openstyle/stt run test
+
   test-electron:
     name: Test (Electron E2E)
     needs: [changes, test-server]
@@ -177,14 +152,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Install system dependencies
         # The apt step wedges on the runners often enough to matter, and with no
@@ -195,6 +163,11 @@ jobs:
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
+
+      # The renderer tests import @openstyle/validations through its dist,
+      # so they must run after the build step above.
+      - name: Run Electron unit tests
+        run: pnpm --filter @openstyle/electron run test
 
       - name: Build electron app
         working-directory: apps/electron
@@ -234,14 +207,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
@@ -289,18 +255,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup
         with:
           python-version: "3.12"
-
-      - run: pnpm install --frozen-lockfile
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
@@ -381,14 +338,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server

@@ -8,13 +8,15 @@
 # IMPORTANT: we use `pnpm pack` (not `npm pack`) so a `workspace:*`
 # dependency is rewritten to a real version range in the published tarball.
 # Plain `npm pack` does not understand the workspace: protocol.
+#
+# The release branch is release-<directory name>/<version>. The directory name
+# picks packages/<directory name>. A branch with no .craft.yml there fails fast.
 
 name: Package Artifacts
 on:
   push:
     branches:
-      - "release-sdk/**"
-      - "release-stt/**"
+      - "release-*/**"
 
 concurrency:
   group: package-artifacts-${{ github.ref_name }}
@@ -29,14 +31,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Resolve package from branch
         id: pkg
@@ -44,20 +39,15 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          case "$BRANCH" in
-            release-sdk/*)
-              echo "path=packages/sdk" >> "$GITHUB_OUTPUT"
-              echo "name=@openstyle/sdk" >> "$GITHUB_OUTPUT"
-              ;;
-            release-stt/*)
-              echo "path=packages/stt" >> "$GITHUB_OUTPUT"
-              echo "name=@openstyle/stt" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "::error::No package mapping for branch $BRANCH"
-              exit 1
-              ;;
-          esac
+          dir="${BRANCH#release-}"
+          dir="${dir%%/*}"
+          path="packages/$dir"
+          if [[ ! -f "$path/.craft.yml" ]]; then
+            echo "::error::No package mapping for branch $BRANCH"
+            exit 1
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          echo "name=$(jq -r .name "$path/package.json")" >> "$GITHUB_OUTPUT"
 
       - name: Build package (and its workspace deps)
         run: pnpm turbo build --filter ${{ steps.pkg.outputs.name }}

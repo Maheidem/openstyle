@@ -13,12 +13,12 @@
   ],
   "tasks": {
     "compile:native": {
-      "inputs": ["native/**"],
-      "outputs": ["resources/bin/**"]
+      "inputs": ["native/**", "scripts/compile-native.js"],
+      "outputs": ["resources/bin/**", "resources/models/**"]
     },
     "build": {
       "dependsOn": ["^build", "compile:native"],
-      "outputs": ["dist/**", "build/**"]
+      "outputs": ["dist/**", "out/**"]
     },
     "dev": {
       "dependsOn": ["^build", "compile:native"],
