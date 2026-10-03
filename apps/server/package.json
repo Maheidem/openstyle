@@ -4,6 +4,7 @@
   "scripts": {
     "build": "tsc --emitDeclarationOnly && pkgroll --minify --clean-dist",
     "start": "node dist/startup.js",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },

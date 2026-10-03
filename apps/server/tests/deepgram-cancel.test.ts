@@ -40,13 +40,14 @@ function openSession() {
   return provider.openStreamingSession({
     apiKey: "test-key",
     model: "nova-3",
-    language: "en",
+    languages: ["en"],
     bias: null,
     callbacks: {
       onReady: vi.fn(),
       onPartial: vi.fn(),
       onFinal: vi.fn(),
       onError: vi.fn(),
+      onClose: vi.fn(),
     },
   });
 }
@@ -79,7 +80,7 @@ describe("DeepgramTranscriptionProvider.cancel", () => {
 
 describe("DeepgramTranscriptionProvider.transcribe", () => {
   it("puts the vocabulary bias in the /v1/listen query", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (..._args: unknown[]) =>
       Response.json({
         results: { channels: [{ alternatives: [{ transcript: " hi " }] }] },
         metadata: { duration: 1 },

@@ -77,7 +77,7 @@ const app = createApp();
 // ---------------------------------------------------------------------------
 
 /** Build an in-memory WAV whose payload ramps (`i % 1000` at each even byte). */
-function buildWav(opts: WavOptions = {}): Buffer {
+function buildWav(opts: WavOptions = {}): Buffer<ArrayBuffer> {
   return buildBaseWav({
     ...opts,
     fill: (data) => {
@@ -88,13 +88,17 @@ function buildWav(opts: WavOptions = {}): Buffer {
   });
 }
 
-function formWith(name: string, bytes: Uint8Array, field = "audio"): FormData {
+function formWith(
+  name: string,
+  bytes: Uint8Array<ArrayBuffer>,
+  field = "audio",
+): FormData {
   const form = new FormData();
   form.append(field, new File([bytes], name));
   return form;
 }
 
-function postFile(
+async function postFile(
   form: FormData | BodyInit,
   headers: Record<string, string> = {},
   target: { request: typeof app.request } = app,
@@ -114,9 +118,9 @@ function expectNoImportTempDirs(): void {
   expect(leftovers).toEqual([]);
 }
 
-function postDictation(
+async function postDictation(
   headers: Record<string, string> = {},
-  body: Uint8Array = new Uint8Array([1, 2, 3, 4]),
+  body: Uint8Array<ArrayBuffer> = new Uint8Array([1, 2, 3, 4]),
 ): Promise<Response> {
   return app.request("/api/transcribe", {
     method: "POST",

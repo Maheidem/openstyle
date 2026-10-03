@@ -49,13 +49,14 @@ async function openReadySession() {
   const session = provider.openStreamingSession({
     apiKey: "test-key",
     model: "scribe_v2",
-    language: "en",
+    languages: ["en"],
     bias: null,
     callbacks: {
       onReady: vi.fn(),
       onPartial: vi.fn(),
       onFinal: vi.fn(),
       onError: vi.fn(),
+      onClose: vi.fn(),
     },
   });
 

@@ -93,7 +93,7 @@ async function parse(
   opts: { boundary?: string | null; maxTotalBytes?: number } = {},
 ): Promise<StreamedForm> {
   return streamMultipartForm(
-    body instanceof Buffer ? chunked(body) : body,
+    Buffer.isBuffer(body) ? chunked(body) : body,
     opts.boundary === undefined ? BOUNDARY : opts.boundary,
     {
       maxTotalBytes: opts.maxTotalBytes ?? 1024 * 1024 * 1024,
@@ -388,7 +388,7 @@ describe("streamMultipartForm failures", () => {
         `Content-Disposition: form-data; name="audio"; filename="a.wav"\n\n` +
         `${wav().toString("binary")}\n--${BOUNDARY}--\n`,
     );
-    const form = await parse(Buffer.from(body, "binary"));
+    const form = await parse(body);
     expect(form.files.size).toBe(0);
     expect(form.fields.size).toBe(0);
   });
