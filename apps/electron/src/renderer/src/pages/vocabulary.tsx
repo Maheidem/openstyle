@@ -3,10 +3,16 @@ import {
   type CreateVocabularyInput,
   createVocabularySchema,
 } from "@openstyle/validations";
+import { FormField } from "@renderer/components/crud-list/form-field";
+import { NoSearchResults } from "@renderer/components/crud-list/no-search-results";
+import { PageHeader } from "@renderer/components/crud-list/page-header";
+import { ToolbarButton } from "@renderer/components/crud-list/toolbar-button";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
+import { useSearchShortcut } from "@renderer/hooks/use-search-shortcut";
 import { getClient } from "@renderer/lib/api";
+import { downloadJson } from "@renderer/lib/download-json";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
@@ -223,24 +229,8 @@ export default function VocabularyPage(): React.JSX.Element {
   );
 
   const importRef = useRef<HTMLInputElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const searchShortcutEnabled = !(total === 0 && !search && !showForm);
-
-  useEffect(() => {
-    if (!searchShortcutEnabled) return;
-
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
-      e.preventDefault();
-      const input = searchInputRef.current;
-      if (!input) return;
-      input.focus();
-      input.select();
-    };
-
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [searchShortcutEnabled]);
+  const searchInputRef = useSearchShortcut(searchShortcutEnabled);
 
   const exportJson = useCallback(async () => {
     try {
@@ -249,15 +239,7 @@ export default function VocabularyPage(): React.JSX.Element {
       });
       if (!res.ok) return;
       const data = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "vocabulary.json";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadJson("vocabulary.json", data);
     } catch {
       // ignore
     }
@@ -458,7 +440,13 @@ export default function VocabularyPage(): React.JSX.Element {
             )}
 
             {entries.length === 0 ? (
-              <NoSearchResults search={search} />
+              <NoSearchResults
+                message={
+                  search
+                    ? t("vocabulary.noResults", { search })
+                    : t("vocabulary.noTerms")
+                }
+              />
             ) : (
               <>
                 {selecting && (
@@ -551,69 +539,6 @@ export default function VocabularyPage(): React.JSX.Element {
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-function PageHeader({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle?: string;
-}): React.JSX.Element {
-  return (
-    <div className="mb-7">
-      <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
-        {title}
-      </h1>
-      {subtitle && (
-        <p className="text-muted-foreground mt-1 max-w-[480px] text-[13px] leading-[1.5]">
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function ToolbarButton({
-  onClick,
-  title,
-  children,
-}: {
-  onClick: () => void;
-  title: string;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={onClick}
-      title={title}
-      className="shrink-0"
-    >
-      {children}
-    </Button>
-  );
-}
-
-function FormField({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <div>
-      <div className="mono text-muted-foreground mb-1.5 text-[10px] uppercase tracking-[0.16em]">
-        {label}
-      </div>
-      {children}
-      {error && <p className="text-destructive mt-1 text-xs">{error}</p>}
     </div>
   );
 }
@@ -715,19 +640,6 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
         <Plus data-icon="inline-start" />
         {t("vocabulary.addFirstTerm")}
       </Button>
-    </div>
-  );
-}
-
-function NoSearchResults({ search }: { search: string }): React.JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <div className="text-muted-foreground py-10 text-center">
-      <span className="display text-[20px]">
-        {search
-          ? t("vocabulary.noResults", { search })
-          : t("vocabulary.noTerms")}
-      </span>
     </div>
   );
 }

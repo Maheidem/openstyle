@@ -32,6 +32,7 @@ import {
   usePersistentJsonState,
   usePersistentState,
 } from "@renderer/hooks/use-persistent-state";
+import { useSearchShortcut } from "@renderer/hooks/use-search-shortcut";
 import { getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
@@ -428,24 +429,8 @@ export default function HistoryPage(): React.JSX.Element {
     return () => remove?.();
   }, [queryClient]);
 
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const searchShortcutEnabled = total > 0 || !!search;
-
-  useEffect(() => {
-    if (!searchShortcutEnabled) return;
-
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
-      e.preventDefault();
-      const input = searchInputRef.current;
-      if (!input) return;
-      input.focus();
-      input.select();
-    };
-
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [searchShortcutEnabled]);
+  const searchInputRef = useSearchShortcut(searchShortcutEnabled);
 
   const invalidate = useCallback(
     () => queryClient.invalidateQueries({ queryKey: queryKeys.history.all }),
