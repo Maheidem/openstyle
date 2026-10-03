@@ -1,4 +1,5 @@
 import { REMIX_PRESETS } from "@openstyle/validations";
+import { AlertCardBody } from "@renderer/components/alert-card-body";
 import { OpenstyleMark } from "@renderer/components/openstyle-mark";
 import {
   REMIX_CHAT_STRIP,
@@ -3566,90 +3567,15 @@ export default function AppPage(): React.JSX.Element {
                 ...(errorCardOpen ? { WebkitAppRegion: "drag" } : {}),
               }}
             >
-              <div className="flex items-start" style={{ gap: 10 }}>
-                <span
-                  className="inline-flex items-center justify-center"
-                  style={{
-                    width: 20,
-                    height: 20,
-                    marginTop: 1,
-                    borderRadius: "50%",
-                    background: "rgba(248, 113, 113, 0.16)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 12 12"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M6 3.1v3.3"
-                      stroke={ALERT}
-                      strokeWidth={1.6}
-                      strokeLinecap="round"
-                    />
-                    <circle cx="6" cy="8.7" r="0.85" fill={ALERT} />
-                  </svg>
-                </span>
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      lineHeight: 1.2,
-                      color: INK,
-                    }}
-                  >
-                    {card.title}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 3,
-                      fontSize: 11.5,
-                      lineHeight: 1.35,
-                      color: "rgba(245, 241, 228, 0.58)",
-                      // Two lines is enough for any message worth reading at
-                      // this size; the rest is in the logs.
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {card.body}
-                  </div>
-                </div>
-              </div>
-
-              <div
-                className="flex items-center justify-end"
-                style={
-                  {
-                    gap: 6,
-                    marginTop: 11,
-                    WebkitAppRegion: "no-drag",
-                  } as React.CSSProperties
-                }
-              >
-                <button
-                  type="button"
-                  className="pill-action pill-action-ghost"
-                  onClick={() => dismissPill("cancelled")}
-                >
-                  Dismiss
-                </button>
-                {card.canRetry && (
-                  <button
-                    type="button"
-                    className="pill-action pill-action-primary"
-                    onClick={retryFailedTranscription}
-                  >
-                    Retry
-                  </button>
-                )}
-              </div>
+              <AlertCardBody
+                title={card.title}
+                body={card.body}
+                lineClamp={2}
+                onDismiss={() => dismissPill("cancelled")}
+                onRetry={card.canRetry ? retryFailedTranscription : undefined}
+                ink={INK}
+                alert={ALERT}
+              />
             </div>
           </div>
 
@@ -3685,79 +3611,14 @@ export default function AppPage(): React.JSX.Element {
               }}
             >
               {cardView?.phase === "error" ? (
-                <>
-                  <div className="flex items-start" style={{ gap: 10 }}>
-                    <span
-                      className="inline-flex items-center justify-center"
-                      style={{
-                        width: 20,
-                        height: 20,
-                        marginTop: 1,
-                        borderRadius: "50%",
-                        background: "rgba(248, 113, 113, 0.16)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 12 12"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M6 3.1v3.3"
-                          stroke={ALERT}
-                          strokeWidth={1.6}
-                          strokeLinecap="round"
-                        />
-                        <circle cx="6" cy="8.7" r="0.85" fill={ALERT} />
-                      </svg>
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 12.5,
-                          fontWeight: 600,
-                          lineHeight: 1.2,
-                          color: INK,
-                        }}
-                      >
-                        {cardView.title}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 3,
-                          fontSize: 11.5,
-                          lineHeight: 1.35,
-                          color: "rgba(245, 241, 228, 0.58)",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 3,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {cardView.body}
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    className="flex items-center justify-end"
-                    style={
-                      {
-                        marginTop: 11,
-                        WebkitAppRegion: "no-drag",
-                      } as React.CSSProperties
-                    }
-                  >
-                    <button
-                      type="button"
-                      className="pill-action pill-action-ghost"
-                      onClick={() => endRemix()}
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </>
+                <AlertCardBody
+                  title={cardView.title}
+                  body={cardView.body}
+                  lineClamp={3}
+                  onDismiss={() => endRemix()}
+                  ink={INK}
+                  alert={ALERT}
+                />
               ) : (
                 <div className="pill-remix-body" data-anchor={pillAlign}>
                   <div
