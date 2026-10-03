@@ -5,8 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
-import { Keycap, StepWord, Wave } from "./onboarding/coach-strip";
-import { Textarea } from "./ui/textarea";
+import { Keycap, StepWord, Wave } from "./hotkey-demo";
 
 // ---------------------------------------------------------------------------
 // Tutorial — animated 3-phase loop:
@@ -14,10 +13,7 @@ import { Textarea } from "./ui/textarea";
 // On real hotkey-down/up, the auto-loop is suspended and the demo follows
 // the user's actual press.
 //
-// Shared between the Today page and onboarding's "how to use" step. Pass
-// `hotkey` (an Electron accelerator like "Alt+Space") to drive the keycaps
-// from caller state — e.g. while the user is rebinding it live in
-// onboarding. When omitted, the demo loads the configured hotkey itself.
+// The demo loads the configured hotkey itself.
 // ---------------------------------------------------------------------------
 
 type DemoPhase = "idle" | "pressed" | "result";
@@ -33,24 +29,10 @@ const SAMPLE_TRANSCRIPT = "Pushing the meeting to tomorrow at ten.";
 // Platform-aware default, mirrored from the main process via the preload.
 const DEFAULT_HOTKEY = window.api?.defaultHotkey ?? getDefaultHotkey();
 
-export function TutorialDemo({
-  hotkey,
-  interactive = false,
-  onDictation,
-}: {
-  hotkey?: string;
-  // When true, the result line becomes a real editable textarea the user can
-  // dictate into (the transcription pastes in like any other app), and the
-  // scripted idle→pressed→result loop is disabled so the box stays calm until
-  // a real hotkey press.
-  interactive?: boolean;
-  // Fired on each real hotkey press while interactive (used by onboarding to
-  // log that the user actually tried dictation).
-  onDictation?: () => void;
-}): React.JSX.Element {
+export function TutorialDemo(): React.JSX.Element {
   const [phase, setPhase] = useState<DemoPhase>("idle");
   const [hotkeyTokens, setHotkeyTokens] = useState<string[]>(() =>
-    formatAcceleratorKeys(hotkey ?? DEFAULT_HOTKEY),
+    formatAcceleratorKeys(DEFAULT_HOTKEY),
   );
   const stepRef = useRef(0);
   const timeoutRef = useRef<number | null>(null);
@@ -62,10 +44,6 @@ export function TutorialDemo({
   // True while the real hotkey is held — switches Wave from scripted
   // amplitude to live amplitude.
   const livePressRef = useRef(false);
-  // Keep the latest onDictation callback without re-subscribing the hotkey
-  // listeners every render (the parent passes a fresh closure each time).
-  const onDictationRef = useRef(onDictation);
-  onDictationRef.current = onDictation;
 
   const clearLoop = useCallback(() => {
     if (timeoutRef.current !== null) {
@@ -85,28 +63,20 @@ export function TutorialDemo({
   }, []);
 
   useEffect(() => {
-    // In interactive mode the demo only reacts to real hotkey presses, so the
-    // scripted loop never starts.
-    if (interactive) return;
     tick();
     return clearLoop;
-  }, [tick, clearLoop, interactive]);
+  }, [tick, clearLoop]);
 
   // Read the configured hotkey from the shared settings cache (deduped with
-  // every other settings consumer); skipped when the caller drives it.
-  const { data: settingsData } = useQuery({
-    ...settingsQueryOptions(),
-    enabled: hotkey === undefined,
-  });
+  // every other settings consumer).
+  const { data: settingsData } = useQuery(settingsQueryOptions());
 
-  // Resolve the hotkey: prefer the caller-provided accelerator, otherwise fall
-  // back to the configured one (default while it loads).
+  // Resolve the hotkey: use the configured one (default while it loads).
   useEffect(() => {
-    const val =
-      hotkey ?? settingsData?.[SETTINGS_KEYS.hotkey] ?? DEFAULT_HOTKEY;
+    const val = settingsData?.[SETTINGS_KEYS.hotkey] ?? DEFAULT_HOTKEY;
     const tokens = formatAcceleratorKeys(val);
     if (tokens.length > 0) setHotkeyTokens(tokens);
-  }, [hotkey, settingsData]);
+  }, [settingsData]);
 
   // Real hotkey events override the loop while held.
   useEffect(() => {
@@ -118,18 +88,12 @@ export function TutorialDemo({
       audioLevelRef.current = 0;
       clearLoop();
       setPhase("pressed");
-      if (interactive) onDictationRef.current?.();
     });
     const removeUp = window.api?.onHotkeyUp(() => {
       livePressRef.current = false;
       setPhase("result");
       clearLoop();
       timeoutRef.current = window.setTimeout(() => {
-        if (interactive) {
-          // Settle back to idle — no scripted loop to resume.
-          setPhase("idle");
-          return;
-        }
         // Resume auto-loop on the next phase after a result hold.
         suspendedRef.current = false;
         stepRef.current = 0;
@@ -140,7 +104,7 @@ export function TutorialDemo({
       removeDown?.();
       removeUp?.();
     };
-  }, [tick, clearLoop, interactive]);
+  }, [tick, clearLoop]);
 
   // Subscribe to live audio levels broadcast by the pill. Writing to a ref
   // (rather than state) avoids 60Hz re-renders.
@@ -219,42 +183,25 @@ export function TutorialDemo({
               ? "Ready"
               : pressed
                 ? "Listening…"
-                : interactive
-                  ? "Pasted below"
-                  : "Pasted to your app"}
+                : "Pasted to your app"}
           </span>
         </div>
 
         <Wave pressed={pressed} getLiveLevel={getLiveLevel} />
 
-        {interactive ? (
-          // Real practice area — focus it, hold the hotkey, and the
-          // transcription pastes in just like in any other app.
-          <Textarea
-            autoFocus
-            rows={3}
-            aria-label="Practice dictation area"
-            placeholder="Click here, hold your hotkey, and speak — your words land right here."
-            className="placeholder:text-muted-foreground/70 text-foreground mt-2 block min-h-0 w-full resize-none border-none bg-transparent px-0 py-0 text-[17px] leading-[1.5] shadow-none outline-none focus-visible:border-none focus-visible:ring-0 dark:bg-transparent"
-          />
-        ) : (
-          // Result transcript
-          <div
-            className="mt-1 min-h-[24px] transition-all duration-300"
-            style={{
-              opacity: showResult ? 1 : 0,
-              transform: showResult ? "translateY(0)" : "translateY(4px)",
-            }}
-          >
-            <span className="display text-foreground text-[17px] leading-[1.4]">
-              "{SAMPLE_TRANSCRIPT}"
-            </span>
-          </div>
-        )}
+        {/* Result transcript */}
+        <div
+          className="mt-1 min-h-[24px] transition-all duration-300"
+          style={{
+            opacity: showResult ? 1 : 0,
+            transform: showResult ? "translateY(0)" : "translateY(4px)",
+          }}
+        >
+          <span className="display text-foreground text-[17px] leading-[1.4]">
+            "{SAMPLE_TRANSCRIPT}"
+          </span>
+        </div>
       </div>
-
-      {/* CSS for the pulsing status dot */}
-      <style>{`@keyframes tdot { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.4); opacity: 0.5 } }`}</style>
     </div>
   );
 }

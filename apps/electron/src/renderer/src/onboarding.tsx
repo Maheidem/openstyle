@@ -1,14 +1,12 @@
 import { MAX_LANGUAGES, normalizeLanguageList } from "@openstyle/validations";
+import { useCoachPress } from "@renderer/components/hotkey-demo";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import {
   LanguageMultiPickerDialog,
   useLanguageOptions,
 } from "@renderer/components/language-combobox";
 import { ModelSetupPanel } from "@renderer/components/model-setup-panel";
-import {
-  CoachStrip,
-  useCoachPress,
-} from "@renderer/components/onboarding/coach-strip";
+import { CoachStrip } from "@renderer/components/onboarding/coach-strip";
 import { EmailDraft } from "@renderer/components/onboarding/email-draft";
 import { Button } from "@renderer/components/ui/button";
 import {

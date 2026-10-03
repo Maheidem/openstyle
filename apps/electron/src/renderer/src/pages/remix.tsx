@@ -1,10 +1,6 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { Keycap, StepWord, Wave } from "@renderer/components/hotkey-demo";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
-import {
-  Keycap,
-  StepWord,
-  Wave,
-} from "@renderer/components/onboarding/coach-strip";
 import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
