@@ -18,6 +18,19 @@ import {
   enhanceMeetingTranscript,
   getMeetingEnhanceAutoRunSetting,
 } from "../lib/meetings/enhance.js";
+import {
+  claimJob,
+  clearJobFailure,
+  getJob,
+  getJobFailure,
+  hasJob,
+  isCancelRequested,
+  releaseJob,
+  requestCancel,
+  setJobFailure,
+  setProgress,
+  updateProgress,
+} from "../lib/meetings/job-registry.js";
 import { resolveMeetingLanguage } from "../lib/meetings/language.js";
 import {
   formatTranscriptMarkdown,
@@ -60,61 +73,6 @@ function meetingsRootDir(): string | null {
   if (!dbPath) return null;
   return resolve(join(dirname(dbPath), "meetings"));
 }
-
-// ---------------------------------------------------------------------------
-// Async transcription jobs
-//
-// Same shape as the whisper model-download precedent
-// (lib/whisper/models.ts `activeDownloads`): an in-memory map keyed by
-// meeting id, the job kicked fire-and-forget from the route, progress polled
-// via GET /:id. One job per meeting at a time.
-// ---------------------------------------------------------------------------
-
-export interface MeetingJobProgress {
-  done: number;
-  total: number;
-  failed: number;
-  /** Set while one of the job's LLM calls is waiting for its lane
-   * (specs/meeting-llm-queue.md §5.5). Only ever written by the summarize
-   * job, which owns its blob outright — a transcribe job's blob is replaced
-   * wholesale by `TranscriberDeps.onProgress`, so it never carries this. */
-  queued?: { ahead: number; sinceMs: number } | null;
-}
-
-/** Which kind of job last failed for a meeting, and why. Lives beside
- * `activeJobs` because the job blob is deleted in the job's `finally` — a
- * renderer polling at 1 s cannot reliably catch a terminal `job.error` in the
- * gap between the last running poll and the deletion, and
- * `meetings.error` is off-limits for these failures (spec §6 constraint 3:
- * it is the *chunk-failure* banner). Survives until the next claim of the
- * same slot (or a successful run clears it), so a re-summarize never shows a
- * stale failure. Bounded by the number of meetings that failed to summarize
- * in this process — nothing durable, dies with the app like the queue. */
-const jobFailures = new Map<string, string>();
-
-const activeJobs = new Map<string, MeetingJobProgress>();
-
-/** What kind of job holds a meeting's activeJobs slot. Transcription jobs (a
- * full re-transcribe or a retry-failed pass) and the async Summarize job are
- * cancellable via POST /:id/cancel-transcribe; the diarize pass claims the
- * same concurrency slot (shared-ANE-resource exclusion) but is a bounded,
- * in-request local-model run that ignores the cancellation flag, and Enhance
- * is an in-request pass with no stop seam of its own. */
-type MeetingJobKind =
-  | "transcribe"
-  | "retry-failed"
-  | "diarize"
-  | "summarize"
-  | "enhance";
-
-/** Kind of the job holding each activeJobs slot (set/cleared alongside it). */
-const activeJobKinds = new Map<string, MeetingJobKind>();
-
-/** Meetings whose running transcription job was asked to stop via
- * POST /:id/cancel-transcribe. Polled between chunk tasks via the
- * transcriber's shouldStop seam (in-flight chunks are allowed to finish);
- * cleared together with the slot in each job's finally. */
-const activeJobCancellations = new Set<string>();
 
 /**
  * Test seam: the transcriber's dependency factory and the summarizer are
@@ -366,7 +324,7 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     const micSegments = micFound ?? [];
     const systemSegments = systemFound ?? [];
     const total = micSegments.length + systemSegments.length;
-    activeJobs.set(id, { done: 0, total, failed: 0 });
+    setProgress(id, { done: 0, total, failed: 0 });
 
     // Loaded once per job, not per chunk — vocabulary rarely changes
     // mid-meeting and loadVocabularyTerms() hits the DB.
@@ -374,8 +332,8 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     const deps = await buildTranscriberDeps({
       isDictationActive,
       onChunk: (chunk) => persistChunk(id, chunk, vocabTerms),
-      onProgress: (p) => activeJobs.set(id, p),
-      shouldStop: () => activeJobCancellations.has(id),
+      onProgress: (p) => setProgress(id, p),
+      shouldStop: () => isCancelRequested(id),
     });
     // Resolve once up front: stamps provider/model on the row and fails fast
     // (before any STT call) when no voice model or key is configured.
@@ -430,7 +388,7 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // a cancel landing after the last chunk finished still takes this
     // branch — every chunk persisted, status reads 'failed'/"Cancelled by
     // user", which matches what the user asked for.
-    if (activeJobCancellations.has(id)) {
+    if (isCancelRequested(id)) {
       const completed = results.filter((r) => r !== undefined).length;
       db.prepare("UPDATE meetings SET status = ?, error = ? WHERE id = ?").run(
         "failed",
@@ -523,19 +481,17 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       // DB unavailable — nothing left to record the failure on.
     }
   } finally {
-    activeJobs.delete(id);
-    activeJobKinds.delete(id);
-    activeJobCancellations.delete(id);
+    releaseJob(id);
   }
 }
 
 /**
  * The background Summarize job for one meeting (specs/meeting-llm-queue.md
  * §5.6). Modelled directly on `runTranscribeJob` above — same shape: never
- * throws, owns its `activeJobs` blob, releases the slot (and its kind and its
+ * throws, owns its job-registry blob, releases the slot (and its kind and its
  * cancellation flag) in a `finally`.
  *
- * Failures go to `job.error` and the out-of-band `jobFailures` map, NEVER to
+ * Failures go to `job.error` and the out-of-band job failure store, NEVER to
  * `meetings.error` (spec §6 constraint 3): that column is the chunk-failure /
  * cancel banner the renderer renders as a transcript-integrity warning, and a
  * summarize failure would overwrite it. The `INSERT OR REPLACE` below stays
@@ -565,7 +521,7 @@ async function runSummarizeJob(
     // s = the 4 h clamp at the 24-call worst case). Per-call timeouts bound
     // one generation; nothing else here bounds a run.
     const plan = await summarizeJobPlan(merged);
-    activeJobs.set(id, { done: 0, total: plan.plannedCalls, failed: 0 });
+    setProgress(id, { done: 0, total: plan.plannedCalls, failed: 0 });
 
     const summarize = testOverrides.summarize ?? summarizeMeeting;
     // Race the run against its own ceiling rather than threading a signal
@@ -578,20 +534,12 @@ async function runSummarizeJob(
         // §5.7: polled between map chunks, and honoured inside
         // `acquireLlmLane` — a call still QUEUED when the user cancels never
         // goes on the wire.
-        shouldStop: () => deadlineHit || activeJobCancellations.has(id),
-        onQueued: (info) => {
-          const cur = activeJobs.get(id);
-          if (!cur) return;
-          activeJobs.set(id, {
-            ...cur,
+        shouldStop: () => deadlineHit || isCancelRequested(id),
+        onQueued: (info) =>
+          updateProgress(id, {
             queued: { ahead: info.ahead, sinceMs: info.waitedMs },
-          });
-        },
-        onProgress: (p) => {
-          const cur = activeJobs.get(id);
-          if (!cur) return;
-          activeJobs.set(id, { ...cur, done: p.done, total: p.total });
-        },
+          }),
+        onProgress: (p) => updateProgress(id, { done: p.done, total: p.total }),
       }),
       new Promise<never>((_, reject) => {
         deadlineTimer = setTimeout(() => {
@@ -624,7 +572,7 @@ async function runSummarizeJob(
     db.prepare("UPDATE meetings SET status = 'summarized' WHERE id = ?").run(
       id,
     );
-    jobFailures.delete(id);
+    clearJobFailure(id);
     log.info(
       `meeting ${id}: summarized (${summary.llmProvider ?? "?"}/${summary.llmModel ?? "?"}, ${summary.inputTokens} in / ${summary.outputTokens} out)`,
     );
@@ -632,18 +580,16 @@ async function runSummarizeJob(
     const message = errorMessage(err);
     // A cancel that landed mid-run reads as a cancellation, not a failure of
     // the model — same canonical wording as the transcribe job's.
-    const text = activeJobCancellations.has(id) ? "Cancelled by user" : message;
-    jobFailures.set(id, text);
-    if (activeJobCancellations.has(id)) {
+    const text = isCancelRequested(id) ? "Cancelled by user" : message;
+    setJobFailure(id, text);
+    if (isCancelRequested(id)) {
       log.info(`meeting ${id}: summarize cancelled by user`);
     } else {
       log.error(`meeting ${id}: summarize failed: ${text}`);
     }
   } finally {
     if (deadlineTimer) clearTimeout(deadlineTimer);
-    activeJobs.delete(id);
-    activeJobKinds.delete(id);
-    activeJobCancellations.delete(id);
+    releaseJob(id);
   }
 }
 
@@ -753,8 +699,8 @@ const meetings = new Hono()
     // and the row flipped to "Interrupted" seconds before "Cancelled by
     // user" landed, stranding the renderer's poll on the wrong terminal
     // state). After a real quit/crash the job's process is gone, its
-    // activeJobs entry went with it, and the row sweeps exactly as before.
-    const items = rows.filter((row) => !activeJobs.has(row.id));
+    // job-registry entry went with it, and the row sweeps exactly as before.
+    const items = rows.filter((row) => !hasJob(row.id));
     return c.json({ items });
   })
   // Diarization model readiness (spec §8) — global, not per-meeting.
@@ -877,7 +823,7 @@ const meetings = new Hono()
     if (row.status === "recording") {
       return c.json({ error: "Meeting is still recording" }, 409);
     }
-    if (activeJobs.has(id)) {
+    if (hasJob(id)) {
       return c.json({ error: "Transcription already running" }, 409);
     }
     if (!row.audio_dir) {
@@ -894,12 +840,11 @@ const meetings = new Hono()
     // — a stale name/merge mapping would silently misattribute a confirmed
     // name to a different, unrelated voice.
     db.prepare("DELETE FROM meeting_speakers WHERE meeting_id = ?").run(id);
-    activeJobs.set(id, { done: 0, total: 0, failed: 0 });
-    activeJobKinds.set(id, "transcribe");
+    claimJob(id, "transcribe", { done: 0, total: 0, failed: 0 });
     // A full re-transcribe supersedes any earlier background-job failure —
     // without this, a stale "Summary failed" note would keep rendering next to
     // a brand-new transcription run.
-    jobFailures.delete(id);
+    clearJobFailure(id);
     void runTranscribeJob(id, row.audio_dir);
     return c.json({ ok: true, id }, 202);
   })
@@ -921,15 +866,9 @@ const meetings = new Hono()
     // bounded in-request local-model run, not a chunked STT job. Same for an
     // in-request /enhance (no stop seam of its own). The async summarize job
     // IS cancellable: its `shouldStop` seam is the same flag (§5.7).
-    const kind = activeJobKinds.get(id);
-    if (
-      kind !== "transcribe" &&
-      kind !== "retry-failed" &&
-      kind !== "summarize"
-    ) {
+    if (!requestCancel(id)) {
       return c.json({ error: "No transcription job is running" }, 409);
     }
-    activeJobCancellations.add(id);
     return c.json({ ok: true, id }, 202);
   })
   // Re-transcribe only the chunks a previous run marked failed.
@@ -940,7 +879,7 @@ const meetings = new Hono()
       | MeetingRow
       | undefined;
     if (!row) return c.json({ error: "Not found" }, 404);
-    if (activeJobs.has(id)) {
+    if (hasJob(id)) {
       return c.json({ error: "Transcription already running" }, 409);
     }
     if (!row.audio_dir) {
@@ -969,12 +908,15 @@ const meetings = new Hono()
     // and so POST /:id/cancel-transcribe can cancel it. Same claim-before-
     // await reasoning as /diarize below: every early return and the catch
     // are covered by the try/finally.
-    activeJobs.set(id, { done: 0, total: failedRows.length, failed: 0 });
-    activeJobKinds.set(id, "retry-failed");
+    claimJob(id, "retry-failed", {
+      done: 0,
+      total: failedRows.length,
+      failed: 0,
+    });
     try {
       const baseDeps = await buildTranscriberDeps({
         isDictationActive,
-        shouldStop: () => activeJobCancellations.has(id),
+        shouldStop: () => isCancelRequested(id),
         // Chunk idx here is positional within the retry batch, so key the
         // update on (source, start, end) — stable across runs. Phase A1
         // leak check applies here too, via the same shared helper
@@ -991,7 +933,7 @@ const meetings = new Hono()
             chunk.endMs,
           );
         },
-        onProgress: (p) => activeJobs.set(id, p),
+        onProgress: (p) => setProgress(id, p),
       });
       // Phase A2: reuse the meeting's already-resolved language with no
       // re-probe — retrying a handful of failed chunks doesn't warrant a
@@ -1015,7 +957,7 @@ const meetings = new Hono()
       // the meeting row itself is untouched (retry-failed never owns
       // meetings.status; it stays whatever it was, typically 'transcribed'
       // with the previous run's error still readable).
-      if (activeJobCancellations.has(id)) {
+      if (isCancelRequested(id)) {
         const completed = results.filter((r) => r !== undefined).length;
         log.info(
           `meeting ${id}: retry-failed cancelled by user after ${completed} of ${results.length} chunks`,
@@ -1037,9 +979,7 @@ const meetings = new Hono()
       const message = errorMessage(err);
       return c.json({ error: message }, 500);
     } finally {
-      activeJobs.delete(id);
-      activeJobKinds.delete(id);
-      activeJobCancellations.delete(id);
+      releaseJob(id);
     }
   })
   // Standalone speaker-identification action: re-runs only the diarization
@@ -1062,13 +1002,13 @@ const meetings = new Hono()
     // Reuse the transcription-job guard (spec §11's concurrency reasoning
     // extends here: the diarizer targets the same on-device ANE resource a
     // running transcribe job's whisper-local pass may also be using) —
-    // same map /transcribe and /retry-failed already check. Redundant with
+    // same registry /transcribe and /retry-failed already check. Redundant with
     // but cheap alongside the status check above: a meeting can only reach
-    // 'transcribing' status while activeJobs already holds its id (set by
-    // /transcribe before the status flip), so this map check is the one
+    // 'transcribing' status while the job registry already holds its id (set by
+    // /transcribe before the status flip), so this registry check is the one
     // guard that actually fires; status is filtered to
     // transcribed/summarized above regardless.
-    if (activeJobs.has(id)) {
+    if (hasJob(id)) {
       return c.json({ error: "Transcription already running" }, 409);
     }
     if (!row.audio_dir) {
@@ -1085,14 +1025,13 @@ const meetings = new Hono()
     // Claim the concurrency slot *before* the pre-flight probe, not after:
     // probeDiarizationModels awaits a real spawn (up to PROBE_TIMEOUT_MS),
     // and a /transcribe or a second /diarize landing in that window would
-    // otherwise see activeJobs.has(id) === false and race this pass — the
+    // otherwise see hasJob(id) === false and race this pass — the
     // second one's runDiarizationPass BEGINs a transaction on the same
     // shared db connection this one already holds open, and its ROLLBACK
     // on failure would discard labels this pass just committed. Every
     // early return below is inside the try/finally so the slot is always
     // released, including on the not-ready path.
-    activeJobs.set(id, { done: 0, total: 0, failed: 0 });
-    activeJobKinds.set(id, "diarize");
+    claimJob(id, "diarize", { done: 0, total: 0, failed: 0 });
     try {
       // Pre-flight probe (spec §4/§8's existing cheap, local, no-network
       // check): a build with no diarize binary or a missing/corrupt model
@@ -1165,8 +1104,7 @@ const meetings = new Hono()
       log.error(`meeting ${id}: identify speakers failed: ${message}`);
       return c.json({ error: message }, 500);
     } finally {
-      activeJobs.delete(id);
-      activeJobKinds.delete(id);
+      releaseJob(id);
     }
   })
   // Meeting speaker naming (specs/meeting-speaker-naming.md §6.1): one call
@@ -1387,11 +1325,11 @@ const meetings = new Hono()
     if (row.status !== "transcribed" && row.status !== "summarized") {
       return c.json({ error: "Meeting has no transcript to summarize" }, 409);
     }
-    // Same shared concurrency map /transcribe, /retry-failed, /diarize and
+    // Same shared job registry /transcribe, /retry-failed, /diarize and
     // /enhance check — and the guard that closes spec §2.4: this route used to
     // check nothing, so two double-clicks ran two map/reduce runs and the
     // second one's INSERT OR REPLACE clobbered the first.
-    if (activeJobs.has(id)) {
+    if (hasJob(id)) {
       return c.json({ error: "A job is already running" }, 409);
     }
     const merged = loadMergedTranscript(id, row.audio_dir);
@@ -1403,9 +1341,8 @@ const meetings = new Hono()
     // guard above are synchronous, so nothing can slip between the check above
     // and this set. Everything the job does afterwards is inside its own
     // try/finally.
-    activeJobs.set(id, { done: 0, total: 0, failed: 0 });
-    activeJobKinds.set(id, "summarize");
-    jobFailures.delete(id);
+    claimJob(id, "summarize", { done: 0, total: 0, failed: 0 });
+    clearJobFailure(id);
     void runSummarizeJob(id, merged, row.context ?? undefined);
     return c.json({ ok: true, id }, 202);
   })
@@ -1424,10 +1361,10 @@ const meetings = new Hono()
     if (row.status !== "transcribed" && row.status !== "summarized") {
       return c.json({ error: "Meeting has no transcript to enhance" }, 409);
     }
-    // Same shared concurrency map /transcribe, /retry-failed and /diarize
+    // Same shared job registry /transcribe, /retry-failed and /diarize
     // already check — an enhance pass reading meeting_segments mid-write
     // from a running transcribe job would see a half-written transcript.
-    if (activeJobs.has(id)) {
+    if (hasJob(id)) {
       return c.json({ error: "Transcription already running" }, 409);
     }
     const merged = loadMergedTranscript(id, row.audio_dir);
@@ -1436,12 +1373,11 @@ const meetings = new Hono()
     }
     // Claim the shared concurrency slot before the first await, exactly like
     // /diarize above (the claim-before-await discipline documented there is
-    // what makes the `activeJobs.has(id)` check real): without it, spec §2.3,
+    // what makes the `hasJob(id)` check real): without it, spec §2.3,
     // two concurrent POST /:id/enhance both passed the check and both wrote
     // enhanced_text — and an Enhance reading meeting_segments while a
     // /transcribe job is mid-write sees a half-written transcript.
-    activeJobs.set(id, { done: 0, total: 0, failed: 0 });
-    activeJobKinds.set(id, "enhance");
+    claimJob(id, "enhance", { done: 0, total: 0, failed: 0 });
     try {
       const enhance = testOverrides.enhance ?? enhanceMeetingTranscript;
       const result = await enhance(
@@ -1509,8 +1445,7 @@ const meetings = new Hono()
       // Every exit path — success, throw, and any early return added hereafter
       // — releases the slot. A leaked slot means this meeting can never
       // transcribe, diarize, summarize or enhance again until the app quits.
-      activeJobs.delete(id);
-      activeJobKinds.delete(id);
+      releaseJob(id);
     }
   })
   // Merged, speaker-labeled ("Me"/"Them") transcript.
@@ -1556,13 +1491,11 @@ const meetings = new Hono()
       /** Live job progress, or null when no job is running. `kind` names the
        * holder so the renderer can tell a cancellable summarize job from a
        * non-cancellable diarize/enhance pass without a second round-trip. */
-      job: activeJobs.has(id)
-        ? { ...activeJobs.get(id), kind: activeJobKinds.get(id) ?? null }
-        : null,
+      job: getJob(id),
       /** Canonical failure of the last background job whose slot this meeting
        * had (currently only Summarize), or null. Kept out of `meetings.error`
-       * on purpose — see `jobFailures`. */
-      job_error: jobFailures.get(id) ?? null,
+       * on purpose — see `job-registry.ts`. */
+      job_error: getJobFailure(id) ?? null,
       segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
       summary: summary ?? null,
     });
@@ -1588,7 +1521,7 @@ const meetings = new Hono()
       }
     }
     db.prepare("DELETE FROM meetings WHERE id = ?").run(id);
-    jobFailures.delete(id);
+    clearJobFailure(id);
     return c.json({ ok: true });
   });
 
