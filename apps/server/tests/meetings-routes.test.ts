@@ -263,10 +263,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     // already deleted — when this test reads it back. That's the real race
     // window; without the gate the fake job (no real I/O) can finish before
     // the test gets a chance to observe the mid-job state at all.
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         await gate;
@@ -591,10 +588,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
   it("409s when the active job is a diarize pass (slot held, not cancellable)", async () => {
     insertMeeting("m1", "transcribed", cancelAudioDir);
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       diarizeDeps: {
         resolveBinaryPath: () => "/fake/fluidaudio-diarize",
@@ -621,10 +615,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
 
   it("cancels mid-job: in-flight chunks finish and persist, unstarted chunks never run, status → failed, segments kept, slot freed", async () => {
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         // Capture the call number *before* parking: both workers increment
@@ -694,10 +685,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
 
   it("GET /orphans excludes meetings with a live job (boot sweep must not kill a running/winding-down transcription)", async () => {
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         calls++;
@@ -766,10 +754,7 @@ describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () 
       .run();
 
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         calls++;
@@ -1457,14 +1442,9 @@ describe("POST /api/meetings/:id/summarize", () => {
       endMs: 2000,
       text: "we should ship on friday",
     });
-    let started!: () => void;
-    const startedGate = new Promise<void>((r) => {
-      started = r;
-    });
-    let resume!: () => void;
-    const parked = new Promise<void>((r) => {
-      resume = r;
-    });
+    const { promise: startedGate, resolve: started } =
+      Promise.withResolvers<void>();
+    const { promise: parked, resolve: resume } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       summarize: async (segments, options) => {
         expect(segments).toHaveLength(1);
@@ -1567,10 +1547,7 @@ describe("POST /api/meetings/:id/summarize", () => {
   it("409s a second summarize while one is running, and frees the slot afterwards", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let calls = 0;
     __setMeetingsTestOverrides({
       summarize: async () => {
@@ -1668,14 +1645,9 @@ describe("POST /api/meetings/:id/summarize", () => {
   it("is cancellable: no summary is written, the transcript survives, slot frees", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let reached!: () => void;
-    const reachedGate = new Promise<void>((r) => {
-      reached = r;
-    });
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: reachedGate, resolve: reached } =
+      Promise.withResolvers<void>();
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       summarize: async (_segments, options) => {
         reached();
@@ -1869,10 +1841,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     // Diarize claims the concurrency slot before its (fake) execFile call
     // resolves — a real interaction the route guards against, since diarize
     // never touches meetings.status.
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       diarizeDeps: {
         resolveBinaryPath: () => "/fake/fluidaudio-diarize",
@@ -1910,10 +1879,7 @@ describe("POST /api/meetings/:id/enhance", () => {
   it("409s a second concurrent enhance, then frees the slot on success and on throw", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       enhance: async () => {
         await gate;

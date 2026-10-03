@@ -233,10 +233,7 @@ describe("MeetingTranscriber", () => {
 
   it("caps concurrency at 2 for cloud providers", async () => {
     const dir = makeMeetingDir({ mic: 10_000, system: 100 });
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let started = 0;
     const { provider, maxInFlight } = makeFakeProvider({
       onCall: async () => {
@@ -260,10 +257,7 @@ describe("MeetingTranscriber", () => {
 
   it("shouldStop checked between chunk tasks: in-flight chunks finish, unstarted chunks never run (holes in results)", async () => {
     const dir = makeMeetingDir({ mic: 10_000, system: 100 });
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let started = 0;
     const { provider, calls } = makeFakeProvider({
       onCall: async () => {
