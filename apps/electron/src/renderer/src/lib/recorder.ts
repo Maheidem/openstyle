@@ -1,3 +1,4 @@
+import { openMicStream } from "./mic-stream";
 import { encodeWavFromFloat32 } from "./wav";
 
 const TARGET_RATE = 16000;
@@ -46,31 +47,7 @@ export class Recorder {
 
     if (this.hasLiveStream()) return this.stream!;
 
-    const processing = {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-    };
-    let acquired: MediaStream;
-    try {
-      acquired = await navigator.mediaDevices.getUserMedia({
-        audio: deviceId
-          ? { deviceId: { exact: deviceId }, ...processing }
-          : processing,
-      });
-    } catch (e) {
-      const name = e instanceof Error ? e.name : "";
-      if (
-        deviceId &&
-        (name === "OverconstrainedError" || name === "NotFoundError")
-      ) {
-        acquired = await navigator.mediaDevices.getUserMedia({
-          audio: processing,
-        });
-      } else {
-        throw e;
-      }
-    }
+    const acquired = await openMicStream(deviceId);
     if (this.gen !== gen) {
       if (acquired !== this.stream) {
         for (const t of acquired.getTracks()) t.stop();

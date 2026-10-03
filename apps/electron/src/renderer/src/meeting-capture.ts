@@ -12,37 +12,13 @@
  * needs no settings round-trip.
  */
 
+import { openMicStream } from "./lib/mic-stream";
 import { getPCMProcessorUrl } from "./lib/pcm-processor";
 
 async function startCapture(): Promise<void> {
   const deviceId = new URLSearchParams(window.location.search).get("device");
 
-  const processing = {
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-  };
-
-  let stream: MediaStream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: deviceId
-        ? { deviceId: { exact: deviceId }, ...processing }
-        : processing,
-    });
-  } catch (e) {
-    // A stale configured device id must not kill the recording — retry with
-    // the default mic (same fallback as the dictation Recorder).
-    const name = e instanceof Error ? e.name : "";
-    if (
-      deviceId &&
-      (name === "OverconstrainedError" || name === "NotFoundError")
-    ) {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: processing });
-    } else {
-      throw e;
-    }
-  }
+  const stream = await openMicStream(deviceId);
 
   const audioContext = new AudioContext();
   await audioContext.audioWorklet.addModule(getPCMProcessorUrl());
