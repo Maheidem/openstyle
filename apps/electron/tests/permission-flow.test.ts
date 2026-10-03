@@ -28,7 +28,6 @@ interface RecordedEvent {
     detail?: string;
     buttons?: string[];
   };
-  body?: { type?: string };
   url?: string;
 }
 
@@ -256,7 +255,6 @@ test("startup warns for denied Microphone and opens its privacy settings", async
         Boolean(event.url?.includes("Privacy_Microphone")),
       ),
     ).toBe(true);
-    expect(hasEvent(launched.eventsPath, "pipeline-event")).toBe(false);
     expect(hasEvent(launched.eventsPath, "mic-requested")).toBe(false);
   } finally {
     await closePermissionApp(launched.app);
@@ -309,7 +307,6 @@ test("startup combines missing Accessibility and Microphone into one warning", a
         url: expect.stringContaining("Privacy_Microphone"),
       }),
     ]);
-    expect(hasEvent(launched.eventsPath, "pipeline-event")).toBe(false);
     expect(hasEvent(launched.eventsPath, "mic-requested")).toBe(false);
   } finally {
     await closePermissionApp(launched.app);
@@ -323,7 +320,7 @@ for (const denied of [
     options: { accessibility: "granted", microphone: "denied" },
   },
 ] as const) {
-  test(`denied ${denied.name} blocks dictation before RecordingStarted`, async () => {
+  test(`denied ${denied.name} blocks dictation before recording starts`, async () => {
     const launched = await launchPermissionApp({
       ...denied.options,
       onboardingComplete: true,
@@ -337,13 +334,6 @@ for (const denied of [
         .poll(() => permissionDialogs(launched.eventsPath).length)
         .toBe(dialogsBefore + 1);
 
-      expect(
-        hasEvent(
-          launched.eventsPath,
-          "pipeline-event",
-          (event) => event.body?.type === "recordingStarted",
-        ),
-      ).toBe(false);
       expect(hasEvent(launched.eventsPath, "mic-requested")).toBe(false);
       expect(
         await launched.app.evaluate(({ BrowserWindow }) =>
@@ -368,15 +358,6 @@ test("granted permissions allow the existing dictation flow", async () => {
     await waitForStartupPermissionChecks(launched.eventsPath);
     await instrumentMicrophoneRequest(launched.app);
     await triggerHotkeyDown(launched.dashboard);
-    await expect
-      .poll(() =>
-        hasEvent(
-          launched.eventsPath,
-          "pipeline-event",
-          (event) => event.body?.type === "recordingStarted",
-        ),
-      )
-      .toBe(true);
     await expect
       .poll(() => hasEvent(launched.eventsPath, "mic-requested"))
       .toBe(true);

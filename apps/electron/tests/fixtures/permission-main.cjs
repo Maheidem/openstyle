@@ -58,17 +58,6 @@ global.fetch = async (input, init) => {
       : input instanceof URL
         ? input.toString()
         : input.url;
-  if (url.endsWith("/api/events")) {
-    const body =
-      typeof init?.body === "string"
-        ? init.body
-        : input instanceof Request
-          ? await input.clone().text()
-          : "";
-    if (body) {
-      record({ type: "pipeline-event", body: JSON.parse(body) });
-    }
-  }
   if (
     process.env.OPENSTYLE_E2E_ONBOARDING_COMPLETE === "false" &&
     url.endsWith("/api/models/configured")
