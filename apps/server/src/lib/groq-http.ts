@@ -61,10 +61,3 @@ export function prewarmGroqConnection(
 
   return prewarmPromise;
 }
-
-export function resetGroqClientCache(): void {
-  cachedGroqKey = null;
-  cachedChatModel = null;
-  cachedModelId = null;
-  prewarmPromise = null;
-}

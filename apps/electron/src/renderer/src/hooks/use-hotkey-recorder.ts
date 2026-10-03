@@ -308,10 +308,6 @@ export function formatAcceleratorKeys(accel: string): string[] {
   return comboDisplayKeys(acceleratorToCombo(accel));
 }
 
-export function formatAccelerator(accel: string): string {
-  return formatAcceleratorKeys(accel).join(" ");
-}
-
 /** Compare two accelerators after normalizing aliases and modifier order. */
 export function acceleratorsEqual(a: string, b: string): boolean {
   const norm = (accel: string): string =>

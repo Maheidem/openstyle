@@ -78,7 +78,7 @@ behavior:
 Mapping (code identifiers and files; SQL setting keys get a v17 migration):
 
 - `shared/commands.ts` → `shared/remix.ts` (`getDefaultRemixHotkey`,
-  `REMIX_HOLD_THRESHOLD_MS`, `REMIX_IDLE_MS`)
+  `REMIX_HOLD_THRESHOLD_MS`)
 - `packages/validations/src/commands.ts` → `remix.ts` (`REMIX_PRESETS`,
   `remixTransformSchema`)
 - `routes/command.ts` → `routes/remix.ts`; `lib/commands.ts` → `lib/remix.ts`;
