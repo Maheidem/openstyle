@@ -151,7 +151,7 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
  * `apps/electron/src/shared/settings-keys.ts` AND a route branch in
  * `routes/settings.ts` — the enhance knob shipped as a phantom precisely
  * because the validator existed and this function did not read it. Pinned by
- * `apps/server/tests/meeting-enhance-timeout.test.ts`.
+ * `apps/server/tests/meeting-llm-timeouts.test.ts`.
  */
 function taskTimeoutMs(taskId: LlmTaskId, profileTimeoutMs: number): number {
   if (taskId === "meetingEnhance") {

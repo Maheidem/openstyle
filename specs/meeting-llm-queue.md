@@ -264,7 +264,7 @@ Already in the tree (uncommitted at citation time):
 | Profile default behind the setting | `apps/server/src/lib/llm/task-profiles.ts:100` |
 | `taskTimeoutMs()` reads the row fresh per call | `task-profiles.ts:130-135`, used `:395` |
 | Reaches the wire | `meetings/llm-call.ts:94` (`AbortSignal.timeout`) |
-| Pinned by tests | `apps/server/tests/meeting-summary-timeout.test.ts` (new) |
+| Pinned by tests | `apps/server/tests/meeting-llm-timeouts.test.ts` (new) |
 
 It fixed *one call being too short*. It did not add arbitration: with 600 s
 now permissive, a map/reduce run happily occupies the single worker for
@@ -651,7 +651,7 @@ without the four call sites wrapped — a half-wrapped lane makes throughput
   that the connection lifetime does *not* hold it (§2.6).
 - **Ceiling** — `plannedCalls` / `clamp` arithmetic pinned at the §5.8 table's
   four rows, in the style of
-  `apps/server/tests/meeting-summary-timeout.test.ts` (capture at the
+  `apps/server/tests/meeting-llm-timeouts.test.ts` (capture at the
   `postProcess` boundary, no real LLM).
 - **e2e** — extend `apps/electron/tests/meeting-import.test.ts`'s sibling
   coverage for the 202 + poll contract; runs against an isolated
