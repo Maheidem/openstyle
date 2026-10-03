@@ -20,7 +20,6 @@ import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
-  createWriteStream,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -30,9 +29,8 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { fetchToFile } from "./lib/fetch.mjs";
 import { getWhisperCmakeArgs } from "./whisper-cmake-args.mjs";
 
 const VERSION = "1.8.5";
@@ -47,33 +45,10 @@ const RESOURCES_DIR = join(
   `${process.platform}-${process.arch}`,
 );
 
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+
 function getOutputDir() {
   return process.argv.includes("--resources") ? RESOURCES_DIR : CACHE_DIR;
-}
-
-async function fetchToFile(url, dest) {
-  const res = await fetch(url, {
-    redirect: "follow",
-    signal: AbortSignal.timeout(120_000),
-  });
-  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} for ${url}`);
-  const fileStream = createWriteStream(dest);
-  const reader = res.body.getReader();
-  const nodeStream = new Readable({
-    async read() {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          this.push(null);
-          return;
-        }
-        this.push(Buffer.from(value));
-      } catch (err) {
-        this.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    },
-  });
-  await pipeline(nodeStream, fileStream);
 }
 
 async function buildFromSource(outDir) {
@@ -85,7 +60,7 @@ async function buildFromSource(outDir) {
   const tarballUrl = `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${VERSION}.tar.gz`;
 
   console.log("Downloading whisper.cpp source...");
-  await fetchToFile(tarballUrl, tarPath);
+  await fetchToFile(tarballUrl, tarPath, { timeoutMs: DOWNLOAD_TIMEOUT_MS });
 
   console.log("Extracting...");
   if (existsSync(srcDir)) rmSync(srcDir, { recursive: true, force: true });
@@ -154,7 +129,7 @@ async function downloadWindows(outDir) {
   const tmpZip = join(outDir, "whisper-bin.zip");
 
   console.log("Downloading pre-built Windows binaries...");
-  await fetchToFile(url, tmpZip);
+  await fetchToFile(url, tmpZip, { timeoutMs: DOWNLOAD_TIMEOUT_MS });
 
   execFileSync(
     "powershell",
