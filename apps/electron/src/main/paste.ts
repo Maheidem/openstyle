@@ -8,6 +8,7 @@ import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { app, clipboard } from "electron";
+import { isWaylandSession } from "./linux-session";
 import { isLinuxTerminalFocused } from "./linux-terminal-focus";
 import { getNativeBinaryPath } from "./native-binary";
 
@@ -81,13 +82,6 @@ async function execFileAsync(
 ): Promise<number> {
   const { code } = await execFileWithOutput(path, args);
   return code;
-}
-
-export function isWaylandSession(): boolean {
-  return (
-    process.env.XDG_SESSION_TYPE?.toLowerCase() === "wayland" ||
-    Boolean(process.env.WAYLAND_DISPLAY)
-  );
 }
 
 async function pasteMac(): Promise<"native" | "legacy"> {

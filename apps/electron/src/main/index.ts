@@ -110,6 +110,7 @@ import {
 import { registerImportIpc } from "./import-audio";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
+import { isWaylandSession } from "./linux-session";
 import { registerMeetingImportIpc } from "./meeting-import";
 import { registerMeetingIpc } from "./meeting-ipc";
 import { MeetingRecorder } from "./meeting-recorder";
@@ -117,7 +118,6 @@ import { migrateLegacyUserData } from "./migrate-user-data";
 import { getNativeBinaryPath } from "./native-binary";
 import {
   copySelectionFromFocusedApp,
-  isWaylandSession,
   pasteClipboardIntoFocusedApp,
   pasteIntoFocusedApp,
   startLinuxPasteHelper,

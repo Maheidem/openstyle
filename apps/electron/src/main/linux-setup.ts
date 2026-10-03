@@ -9,7 +9,7 @@
  */
 import { exec } from "node:child_process";
 import { accessSync, constants, readdirSync } from "node:fs";
-import { isWaylandSession } from "./paste";
+import { isWaylandSession } from "./linux-session";
 
 export interface LinuxSetupStatus {
   wayland: boolean;
