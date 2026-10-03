@@ -36,6 +36,7 @@ import { type FileHandle, open, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   parseWavHeader,
+  readWavInfo,
   type WavInfo,
   wavDurationMs,
   wavHeader,
@@ -299,10 +300,8 @@ export async function decodeFileToWav16kMono(
   }
 
   let info: WavInfo;
-  let fd: number | undefined;
   try {
-    fd = openSync(outputPath, "r");
-    info = parseWavHeader(fd);
+    info = readWavInfo(outputPath);
   } catch (err) {
     throw new AudioDecodeError(
       `ffmpeg produced an unreadable WAV: ${(err as Error).message}`,
@@ -312,8 +311,6 @@ export async function decodeFileToWav16kMono(
         stderrTail: tail(redactTempDir(stderr, dirname(outputPath))),
       },
     );
-  } finally {
-    if (fd !== undefined) closeSync(fd);
   }
   if (info.dataLength === 0 || wavDurationMs(info) === 0) {
     throw new AudioDecodeError(

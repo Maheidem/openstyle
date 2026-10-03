@@ -7,7 +7,7 @@
  * `lib/audio/decode.ts` never pulls in the meeting-worker imports.
  */
 
-import { fstatSync, readSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 
 export interface WavInfo {
   /** `fmt ` format tag: 1 = PCM, 3 = IEEE float, 0xFFFE = extensible. */
@@ -114,6 +114,16 @@ export function parseWavHeader(src: number | Uint8Array): WavInfo {
     offset += 8 + size + (size % 2);
   }
   throw new Error("WAV data chunk not found");
+}
+
+/** Header info of an on-disk WAV. Throws when the file cannot be opened or parsed. */
+export function readWavInfo(path: string): WavInfo {
+  const fd = openSync(path, "r");
+  try {
+    return parseWavHeader(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Duration of the data chunk in milliseconds; 0 when the byte rate is 0. */
