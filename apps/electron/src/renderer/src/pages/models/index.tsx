@@ -1,6 +1,15 @@
 import type { LlmTaskId } from "@openstyle/validations";
+import {
+  Eyebrow,
+  PageHeader,
+  PageShell,
+} from "@renderer/components/page-chrome";
 import { Button } from "@renderer/components/ui/button";
-import type { AvailableModel } from "@renderer/lib/models";
+import type {
+  ApiKeyEntry,
+  AvailableModel,
+  ConfiguredModel,
+} from "@renderer/lib/models";
 import { displayProviderName } from "@renderer/lib/models";
 import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
@@ -12,11 +21,9 @@ import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
-import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
 import { tasksUsingPreset } from "./preset-ops";
 import { TaskProfilesSection } from "./task-profiles-section";
-import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
 
 export default function ModelsPage(): React.JSX.Element {

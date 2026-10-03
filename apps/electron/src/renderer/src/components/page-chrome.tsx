@@ -2,7 +2,7 @@ import { DragSpacer } from "@renderer/components/drag-spacer";
 import { cn } from "@renderer/lib/utils";
 
 // ---------------------------------------------------------------------------
-// PageShell — draggable topbar + padded scroll area, matches history/dictionary/tone
+// PageShell — draggable topbar + padded scroll area, used by the tone, help and models pages
 // ---------------------------------------------------------------------------
 
 export function PageShell({
@@ -27,23 +27,15 @@ export function PageShell({
 export function PageHeader({
   title,
   subtitle,
-  badge,
 }: {
   title: string;
   subtitle?: string;
-  /** Optional small pill rendered next to the title (e.g. "Beta"). */
-  badge?: string;
 }): React.JSX.Element {
   return (
     <div className="mb-7 flex items-end justify-between gap-4">
       <div>
         <h1 className="display text-foreground m-0 flex items-baseline gap-3 text-[32px] font-medium leading-tight tracking-[-0.02em]">
           <span>{title}</span>
-          {badge ? (
-            <span className="bg-primary/12 text-primary mono relative -top-[6px] rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em]">
-              {badge}
-            </span>
-          ) : null}
         </h1>
         {subtitle && (
           <p className="text-muted-foreground mt-1 max-w-[480px] text-[13px] leading-[1.5]">

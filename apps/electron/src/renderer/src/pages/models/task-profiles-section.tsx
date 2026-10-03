@@ -10,6 +10,7 @@ import {
   LLM_TASK_IDS,
   SAFE_SUBSET_KEYS,
 } from "@openstyle/validations";
+import { Eyebrow } from "@renderer/components/page-chrome";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
@@ -24,13 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
+import type { ConfiguredModel } from "@renderer/lib/models";
 import { displayProviderName } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { Eyebrow } from "./page-chrome";
 import { ParamJsonEditor } from "./param-json-editor";
 import type { PresetWriteIssue } from "./preset-ops";
 import {
@@ -42,7 +42,6 @@ import {
   makePresetId,
   upsertPreset,
 } from "./preset-ops";
-import type { ConfiguredModel } from "./types";
 
 // ---------------------------------------------------------------------------
 // TaskProfilesSection — "Where your models work" (specs/llm-task-profiles.md

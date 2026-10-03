@@ -15,6 +15,11 @@ import {
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
 } from "@openstyle/validations";
+import {
+  Eyebrow,
+  PageHeader,
+  PageShell,
+} from "@renderer/components/page-chrome";
 import { AppAssignments } from "@renderer/components/tone-previews/app-assignments";
 import {
   type AppMarkId,
@@ -43,6 +48,7 @@ import {
 import { Textarea } from "@renderer/components/ui/textarea";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
+import type { ConfiguredModel } from "@renderer/lib/models";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
 import { useQuery } from "@tanstack/react-query";
@@ -57,8 +63,6 @@ import {
   DEFAULT_CLEANUP_WORK_TONE,
 } from "../../../shared/cleanup-tone-settings";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
-import { Eyebrow, PageHeader, PageShell } from "./models/page-chrome";
-import type { ConfiguredModel } from "./models/types";
 
 // Settings that change whether the pill needs to capture the frontmost app for
 // cleanup destination routing. Saving any of these notifies the pill to refresh

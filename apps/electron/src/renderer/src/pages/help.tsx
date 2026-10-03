@@ -1,5 +1,10 @@
 import { KeyBadge, KeyComboDisplay } from "@renderer/components/key-combo";
 import {
+  Eyebrow,
+  PageHeader,
+  PageShell,
+} from "@renderer/components/page-chrome";
+import {
   formatAcceleratorKeys,
   keyDisplayLabel,
 } from "@renderer/hooks/use-hotkey-recorder";
@@ -7,11 +12,6 @@ import { LINKS } from "@renderer/lib/links";
 import { IS_MAC } from "@renderer/lib/platform";
 import { configQueryOptions, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import {
-  Eyebrow,
-  PageHeader,
-  PageShell,
-} from "@renderer/pages/models/page-chrome";
 import { getDefaultHotkey } from "@shared/hotkey-defaults";
 import { getDefaultRemixHotkey } from "@shared/remix";
 import { SETTINGS_KEYS } from "@shared/settings-keys";

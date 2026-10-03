@@ -1,11 +1,10 @@
+import { Eyebrow } from "@renderer/components/page-chrome";
 import { Button } from "@renderer/components/ui/button";
 import { Switch } from "@renderer/components/ui/switch";
+import type { ConfiguredModel } from "@renderer/lib/models";
 import { displayProviderName } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { useTranslation } from "react-i18next";
-
-import { Eyebrow } from "./page-chrome";
-import type { ConfiguredModel } from "./types";
 
 // ---------------------------------------------------------------------------
 // PairCard — the current model pair: Voice (required) + cleanup model.
