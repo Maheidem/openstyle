@@ -11,6 +11,10 @@
  * rather than rebuilding the whole client pipeline.
  */
 
+import type {
+  StreamClientMessage,
+  StreamServerMessage,
+} from "@openstyle/validations";
 import { getPCMProcessorUrl } from "./pcm-processor";
 import { encodeWavFromInt16 } from "./wav";
 
@@ -238,7 +242,7 @@ export class Streamer {
     }
   }
 
-  private sendJSON(obj: Record<string, unknown>): void {
+  private sendJSON(obj: StreamClientMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(obj));
     }
@@ -274,13 +278,11 @@ export class Streamer {
     ) {
       return;
     }
-    this.ws.send(
-      JSON.stringify({
-        type: "start",
-        context: this.currentContext,
-        language: this.pendingLanguage,
-      }),
-    );
+    this.sendJSON({
+      type: "start",
+      context: this.currentContext,
+      language: this.pendingLanguage,
+    });
     this.sessionStartPending = false;
   }
 
@@ -346,15 +348,7 @@ export class Streamer {
 
     ws.addEventListener("message", (e) => {
       if (typeof e.data !== "string") return;
-      let msg: {
-        type: string;
-        text?: string;
-        message?: string;
-        code?: string;
-        streaming?: boolean;
-        sessionTransport?: boolean;
-        providerCategory?: string;
-      };
+      let msg: StreamServerMessage;
       try {
         msg = JSON.parse(e.data);
       } catch {
