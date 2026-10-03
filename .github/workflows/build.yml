@@ -93,7 +93,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: "package.json"
+          node-version-file: ".node-version"
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -111,7 +111,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: "package.json"
+          node-version-file: ".node-version"
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -131,7 +131,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: "package.json"
+          node-version-file: ".node-version"
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -155,7 +155,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: "package.json"
+          node-version-file: ".node-version"
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -184,7 +184,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: "package.json"
+          node-version-file: ".node-version"
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -246,7 +246,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: "package.json"
+          node-version-file: ".node-version"
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -301,7 +301,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: "package.json"
+          node-version-file: ".node-version"
           cache: "pnpm"
 
       - uses: actions/setup-python@v6
@@ -393,7 +393,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: "package.json"
+          node-version-file: ".node-version"
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
