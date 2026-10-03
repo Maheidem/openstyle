@@ -41,6 +41,7 @@ import {
 } from "../lib/meetings/merge.js";
 import { segmentWavFile } from "../lib/meetings/segmenter.js";
 import { resolveSpeakerNames } from "../lib/meetings/speaker-names.js";
+import { getMeetingRow, type MeetingRow } from "../lib/meetings/store.js";
 import {
   summarizeJobPlan,
   summarizeMeeting,
@@ -427,9 +428,7 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // same fail-closed .catch that never fails the job.
     if (getMeetingEnhanceAutoRunSetting()) {
       const enhance = testOverrides.enhance ?? enhanceMeetingTranscript;
-      const meetingRow = db
-        .prepare("SELECT * FROM meetings WHERE id = ?")
-        .get(id) as MeetingRow | undefined;
+      const meetingRow = getMeetingRow(id);
       await enhance(
         id,
         loadMergedTranscript(id, audioDir),
@@ -593,28 +592,7 @@ async function runSummarizeJob(
   }
 }
 
-export interface MeetingRow {
-  id: string;
-  title: string | null;
-  started_at: number | null;
-  ended_at: number | null;
-  duration_ms: number | null;
-  status: string;
-  audio_dir: string | null;
-  stt_provider: string | null;
-  stt_model: string | null;
-  /** Resolved (or user-set) transcription language, Phase A2. NULL means
-   * "not yet resolved" — falls back to per-chunk auto or triggers
-   * resolution on the next transcribe run. */
-  language: string | null;
-  /** Free-text per-meeting context (specs/meeting-speaker-naming.md §3.4),
-   * editable anytime. Feeds both the naming prompt (§5.2) and the summarize
-   * prompt (§9.3). NULL means unset — the common case, and every meeting
-   * created before this migration. */
-  context: string | null;
-  error: string | null;
-  created_at: number | null;
-}
+export type { MeetingRow };
 
 const startSchema = z.object({
   id: z.string().min(1).max(128),
@@ -816,9 +794,7 @@ const meetings = new Hono()
   .post("/:id/transcribe", (c) => {
     const id = c.req.param("id");
     const db = getDb();
-    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
-      | MeetingRow
-      | undefined;
+    const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     if (row.status === "recording") {
       return c.json({ error: "Meeting is still recording" }, 409);
@@ -875,9 +851,7 @@ const meetings = new Hono()
   .post("/:id/retry-failed", async (c) => {
     const id = c.req.param("id");
     const db = getDb();
-    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
-      | MeetingRow
-      | undefined;
+    const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     if (hasJob(id)) {
       return c.json({ error: "Transcription already running" }, 409);
@@ -992,9 +966,7 @@ const meetings = new Hono()
   .post("/:id/diarize", async (c) => {
     const id = c.req.param("id");
     const db = getDb();
-    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
-      | MeetingRow
-      | undefined;
+    const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     if (row.status !== "transcribed" && row.status !== "summarized") {
       return c.json({ error: "Meeting has no transcript to diarize" }, 409);
@@ -1317,10 +1289,7 @@ const meetings = new Hono()
   // `job` (progress/queued) and for the persisted `summary`.
   .post("/:id/summarize", (c) => {
     const id = c.req.param("id");
-    const db = getDb();
-    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
-      | MeetingRow
-      | undefined;
+    const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     if (row.status !== "transcribed" && row.status !== "summarized") {
       return c.json({ error: "Meeting has no transcript to summarize" }, 409);
@@ -1353,10 +1322,7 @@ const meetings = new Hono()
   // ever UPDATEs meeting_segments.enhanced_text on existing rows.
   .post("/:id/enhance", async (c) => {
     const id = c.req.param("id");
-    const db = getDb();
-    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
-      | MeetingRow
-      | undefined;
+    const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     if (row.status !== "transcribed" && row.status !== "summarized") {
       return c.json({ error: "Meeting has no transcript to enhance" }, 409);
@@ -1451,19 +1417,14 @@ const meetings = new Hono()
   // Merged, speaker-labeled ("Me"/"Them") transcript.
   .get("/:id/transcript", (c) => {
     const id = c.req.param("id");
-    const db = getDb();
-    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
-      | MeetingRow
-      | undefined;
+    const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     return c.json({ segments: loadMergedTranscript(id, row.audio_dir) });
   })
   .get("/:id", (c) => {
     const db = getDb();
     const id = c.req.param("id");
-    const row = db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as
-      | MeetingRow
-      | undefined;
+    const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     const counts = db
       .prepare(
