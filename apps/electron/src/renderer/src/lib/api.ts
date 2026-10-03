@@ -1,10 +1,13 @@
 import type { AppType } from "@openstyle/server";
+import {
+  DEFAULT_SERVER_PORT,
+  isOpenstyleHealthBody,
+} from "@openstyle/validations";
 import { hc } from "hono/client";
 import { bearerAuthHeaders } from "../../../shared/server-auth";
 
-const DEFAULT_PORT = 4649;
 const HEALTH_TIMEOUT_MS = 3000;
-let resolvedPort: number = DEFAULT_PORT;
+let resolvedPort: number = DEFAULT_SERVER_PORT;
 // Configured external server URL ("" = use the local server).
 let serverUrl = "";
 // Optional bearer token for a configured server ("" = none).
@@ -90,13 +93,7 @@ export async function checkServerHealth(
     );
     if (!res.ok) return false;
     const data = await res.json();
-    // Accepts the legacy "freestyle" identity too so a not-yet-updated
-    // standalone/remote server (auto-update is on by default, but a
-    // separately-deployed apps/server may lag) is still recognized.
-    return (
-      data.status === "ok" &&
-      (data.name === "openstyle" || data.name === "freestyle")
-    );
+    return isOpenstyleHealthBody(data);
   } catch {
     return false;
   }
@@ -141,7 +138,7 @@ export async function refreshApiBase(): Promise<boolean> {
     try {
       resolvedPort = await window.api.getServerPort();
     } catch {
-      resolvedPort = DEFAULT_PORT;
+      resolvedPort = DEFAULT_SERVER_PORT;
     }
   }
   return checkServerHealth(getApiBase(), HEALTH_TIMEOUT_MS);
