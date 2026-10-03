@@ -169,6 +169,9 @@ jobs:
           NODE_OPTIONS: "--expose-gc"
         run: pnpm --filter @openstyle/server run test
 
+      - name: Run stt package tests
+        run: pnpm --filter @openstyle/stt run test
+
   test-electron:
     name: Test (Electron E2E)
     needs: [changes, test-server]
@@ -195,6 +198,11 @@ jobs:
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
+
+      # The renderer tests import @openstyle/validations through its dist,
+      # so they must run after the build step above.
+      - name: Run Electron unit tests
+        run: pnpm --filter @openstyle/electron run test
 
       - name: Build electron app
         working-directory: apps/electron
