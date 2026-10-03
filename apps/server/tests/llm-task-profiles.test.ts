@@ -417,20 +417,15 @@ describe("mergeSamplingIntoBody / createSamplingFetch (moved, unchanged)", () =>
 
   it("rewrites the request body via the installed fetch", async () => {
     const seen: unknown[] = [];
-    const original = globalThis.fetch;
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      seen.push(JSON.parse(String(init.body)));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      seen.push(JSON.parse(String(init?.body)));
       return new Response("{}", { status: 200 });
-    }) as typeof globalThis.fetch;
-    try {
-      const wrapped = createSamplingFetch({ temperature: 0.7, top_k: 40 });
-      await wrapped("https://example.test/v1/chat/completions", {
-        method: "POST",
-        body: JSON.stringify({ model: "m", temperature: 0 }),
-      });
-    } finally {
-      globalThis.fetch = original;
-    }
+    });
+    const wrapped = createSamplingFetch({ temperature: 0.7, top_k: 40 });
+    await wrapped("https://example.test/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "m", temperature: 0 }),
+    });
     expect(seen).toEqual([{ model: "m", temperature: 0.7, top_k: 40 }]);
   });
 });
@@ -444,10 +439,9 @@ describe("local-llm provider wiring — taskContext, not a direct DB read (§8.1
     task: string;
     sampling: Record<string, unknown>;
   }): Promise<string> {
-    const original = globalThis.fetch;
     let sent = "";
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      sent = String(init.body);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      sent = String(init?.body);
       return new Response(
         JSON.stringify({
           id: "1",
@@ -465,17 +459,13 @@ describe("local-llm provider wiring — taskContext, not a direct DB read (§8.1
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
-    }) as typeof globalThis.fetch;
-    try {
-      const model = await createChatModel(
-        "local-llm",
-        "local-llm/Qwen3.8-27B",
-        taskContext,
-      );
-      await generateText({ model, prompt: "hi", temperature: 0 });
-    } finally {
-      globalThis.fetch = original;
-    }
+    });
+    const model = await createChatModel(
+      "local-llm",
+      "local-llm/Qwen3.8-27B",
+      taskContext,
+    );
+    await generateText({ model, prompt: "hi", temperature: 0 });
     return sent;
   }
 

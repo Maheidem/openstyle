@@ -62,20 +62,6 @@ async function waitForTrace(label: string): Promise<string> {
   throw new Error(`no trace entry containing ${label} after 2s`);
 }
 
-/** Swap in a stub `fetch` for the duration of `fn`. */
-async function withFetch<T>(
-  impl: (url: unknown, init: RequestInit | undefined) => Promise<Response>,
-  fn: () => Promise<T>,
-): Promise<T> {
-  const original = globalThis.fetch;
-  globalThis.fetch = impl as typeof globalThis.fetch;
-  try {
-    return await fn();
-  } finally {
-    globalThis.fetch = original;
-  }
-}
-
 const COMPLETION = {
   id: "chatcmpl-1",
   object: "chat.completion",
@@ -179,24 +165,26 @@ describe("correlation id", () => {
 
 describe("traceLlmFetch response cloning", () => {
   it("hands the caller an intact, unread body while tracing it in full", async () => {
-    const res = await withFetch(
+    vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
         new Response(JSON.stringify(COMPLETION), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
-      () =>
-        traceLlmFetch("http://127.0.0.1:8123/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer sk-secret",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "Qwen3.8-27B",
-            messages: [{ role: "user", content: "hi" }],
-          }),
+    );
+    const res = await traceLlmFetch(
+      "http://127.0.0.1:8123/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer sk-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "Qwen3.8-27B",
+          messages: [{ role: "user", content: "hi" }],
         }),
+      },
     );
 
     // The caller's own body must be untouched: not disturbed, fully readable.
@@ -219,24 +207,27 @@ describe("traceLlmFetch response cloning", () => {
   });
 
   it("still returns a readable body when the response is not JSON", async () => {
-    const res = await withFetch(
+    vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
         new Response("data: {}\n\n", {
           status: 200,
           headers: { "content-type": "text/event-stream" },
         }),
-      () => traceLlmFetch("http://127.0.0.1:8123/v1/chat/completions", {}),
+    );
+    const res = await traceLlmFetch(
+      "http://127.0.0.1:8123/v1/chat/completions",
+      {},
     );
     expect(await res.text()).toBe("data: {}\n\n");
   });
 
   it("returns the rejection to the caller and traces the failure", async () => {
     const boom = new Error("connect ECONNREFUSED");
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.reject(boom),
+    );
     await expect(
-      withFetch(
-        () => Promise.reject(boom),
-        () => traceLlmFetch("http://127.0.0.1:9/v1/chat/completions", {}),
-      ),
+      traceLlmFetch("http://127.0.0.1:9/v1/chat/completions", {}),
     ).rejects.toThrow("connect ECONNREFUSED");
     const trace = await waitForTrace("llm.error");
     expect(trace).toContain("connect ECONNREFUSED");
@@ -251,21 +242,20 @@ describe("oMLX STT boundary", () => {
     );
     writeSetting("omlx_base_url", "http://127.0.0.1:8123");
 
-    await withFetch(
+    vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
         new Response(
           JSON.stringify({ text: "hi", language: "English", duration: 1.1 }),
           { status: 200, headers: { "content-type": "application/json" } },
         ),
-      () =>
-        new OmlxTranscriptionProvider().transcribe({
-          audio: new Uint8Array(2048),
-          model: "omlx/mlx-community--Qwen3-ASR-1.7B-8bit",
-          apiKey: "local",
-          language: "en",
-          bias: { kind: "prompt", text: "Openstyle, oMLX" },
-        }),
     );
+    await new OmlxTranscriptionProvider().transcribe({
+      audio: new Uint8Array(2048),
+      model: "omlx/mlx-community--Qwen3-ASR-1.7B-8bit",
+      apiKey: "local",
+      language: "en",
+      bias: { kind: "prompt", text: "Openstyle, oMLX" },
+    });
 
     const trace = await waitForTrace("omlx.stt.response");
     expect(trace).toContain("omlx.stt.request POST");
@@ -282,18 +272,17 @@ describe("oMLX STT boundary", () => {
 describe("createSamplingFetch tracing", () => {
   it("traces the post-merge body and leaves the caller's response intact", async () => {
     const wrapped = createSamplingFetch({ top_k: 40, min_p: 0.05 });
-    const res = await withFetch(
+    vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
         new Response(JSON.stringify(COMPLETION), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
-      () =>
-        wrapped("http://127.0.0.1:8123/v1/chat/completions", {
-          method: "POST",
-          body: JSON.stringify({ model: "Qwen3.8-27B", temperature: 0 }),
-        }),
     );
+    const res = await wrapped("http://127.0.0.1:8123/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "Qwen3.8-27B", temperature: 0 }),
+    });
 
     expect(await res.json()).toEqual(COMPLETION);
     const trace = await waitForTrace('"top_k": 40');
@@ -320,23 +309,17 @@ describe("createSamplingFetch tracing", () => {
         })}\n\n`,
     );
 
-    const text = await withFetch(
+    vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
         new Response(`${frames.join("")}data: [DONE]\n\n`, {
           status: 200,
           headers: { "content-type": "text/event-stream" },
         }),
-      async () => {
-        const model = await createChatModel(
-          "local-llm",
-          "local-llm/Qwen3.8-27B",
-        );
-        const result = streamText({ model, prompt: "hi" });
-        let out = "";
-        for await (const chunk of result.textStream) out += chunk;
-        return out;
-      },
     );
+    const model = await createChatModel("local-llm", "local-llm/Qwen3.8-27B");
+    const result = streamText({ model, prompt: "hi" });
+    let text = "";
+    for await (const chunk of result.textStream) text += chunk;
 
     expect(text).toBe("Hello there.");
     // ...and the trace still captured the raw frames it could not parse as JSON.
