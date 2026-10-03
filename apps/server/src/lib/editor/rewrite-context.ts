@@ -2,7 +2,10 @@ import type {
   CleanupAppAssignment,
   CleanupToneDestination,
 } from "@openstyle/validations";
-import { parseAppContextPayload } from "./app-context.js";
+import {
+  type AppContextPayload,
+  parseAppContextPayload,
+} from "./app-context.js";
 import { CLEANUP_ROUTING } from "./prompt-config.js";
 
 export interface RewritePromptContext {
@@ -10,10 +13,11 @@ export interface RewritePromptContext {
   personalSurface: "discord" | null;
 }
 
-export function buildMatchContext(rawContext: string | null): string {
-  if (!rawContext) return "";
-
-  const ctx = parseAppContextPayload(rawContext);
+// Text that the pattern rules search. An unparsed payload is searched as is.
+function matchTextOf(
+  rawContext: string,
+  ctx: AppContextPayload | null,
+): string {
   if (!ctx) return rawContext;
 
   const parts: string[] = [];
@@ -69,7 +73,7 @@ export function getRewritePromptContext(
   const routing = CLEANUP_ROUTING;
   const ctx = parseAppContextPayload(rawContext);
   const appName = normalizeAppName(ctx?.app);
-  const matchText = buildMatchContext(rawContext).toLowerCase();
+  const matchText = matchTextOf(rawContext, ctx).toLowerCase();
   const personalSurface =
     matchesAny(appName, routing.discordPatterns) ||
     matchesAny(matchText, routing.discordPatterns)
