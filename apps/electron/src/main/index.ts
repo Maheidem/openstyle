@@ -40,7 +40,13 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { rm } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
@@ -290,9 +296,7 @@ function readSettings(): Record<string, unknown> {
   if (settingsCache) return settingsCache;
   try {
     const settingsPath = join(app.getPath("userData"), "settings.json");
-    settingsCache = JSON.parse(
-      require("node:fs").readFileSync(settingsPath, "utf-8"),
-    );
+    settingsCache = JSON.parse(readFileSync(settingsPath, "utf-8"));
     return settingsCache!;
   } catch {
     settingsCache = {};
@@ -304,10 +308,7 @@ function writeSettings(patch: Record<string, unknown>): void {
   try {
     const settingsPath = join(app.getPath("userData"), "settings.json");
     const data = { ...readSettings(), ...patch };
-    require("node:fs").writeFileSync(
-      settingsPath,
-      JSON.stringify(data, null, 2),
-    );
+    writeFileSync(settingsPath, JSON.stringify(data, null, 2));
     settingsCache = data;
   } catch {
     // ignore
@@ -363,12 +364,20 @@ function getServerBaseUrl(): string {
 }
 
 /**
+ * Send one IPC message to the pill window and the settings window. The
+ * channel must be a string literal, so the preload drift test can find it.
+ */
+function broadcastToWindows(channel: string, ...args: unknown[]): void {
+  mainWindow?.webContents.send(channel, ...args);
+  settingsWindow?.webContents.send(channel, ...args);
+}
+
+/**
  * Broadcast a server target change (URL/token) to all renderer windows so they
  * re-point their API clients and refetch, without an app restart.
  */
 function broadcastServerChanged(): void {
-  mainWindow?.webContents.send("server:changed");
-  settingsWindow?.webContents.send("server:changed");
+  broadcastToWindows("server:changed");
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -981,11 +990,7 @@ function createAppWindow(): void {
         },
       });
       const alignment = getPillAlignmentForCustom();
-      mainWindow.webContents.send("settings:pill-position-changed", alignment);
-      settingsWindow?.webContents.send(
-        "settings:pill-position-changed",
-        alignment,
-      );
+      broadcastToWindows("settings:pill-position-changed", alignment);
     }, 200);
   });
 
@@ -2002,7 +2007,6 @@ function isRunningFromReadOnlyLocation(): boolean {
     return true;
   }
   try {
-    const { accessSync, constants } = require("node:fs");
     accessSync(dirname(exePath), constants.W_OK);
     return false;
   } catch {
@@ -2369,12 +2373,10 @@ app.whenReady().then(async () => {
     getServerAuthHeaders,
     createCaptureWindow: createMeetingCaptureWindow,
     broadcastLevel: (event) => {
-      settingsWindow?.webContents.send("meeting:level", event);
-      mainWindow?.webContents.send("meeting:level", event);
+      broadcastToWindows("meeting:level", event);
     },
     broadcastStatus: (status) => {
-      settingsWindow?.webContents.send("meeting:status-changed", status);
-      mainWindow?.webContents.send("meeting:status-changed", status);
+      broadcastToWindows("meeting:status-changed", status);
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         tray?.setContextMenu(buildTrayContextMenu());
@@ -2826,8 +2828,7 @@ app.whenReady().then(async () => {
     setProgrammaticPosition(mainWindow, x, y);
     const after = (readSettings().pillPosition as string) ?? "bottom-center";
     if (before !== after) {
-      mainWindow.webContents.send("settings:pill-position-changed", after);
-      settingsWindow?.webContents.send("settings:pill-position-changed", after);
+      broadcastToWindows("settings:pill-position-changed", after);
     }
   };
   screen.on("display-removed", repositionPillForDisplayChange);
@@ -2890,17 +2891,13 @@ app.whenReady().then(async () => {
       // electron-updater never auto-downloads (autoDownload is always false
       // — see above); the in-app banner/notification drives the actual
       // download via updater:download.
-      if (
-        Notification.isSupported() &&
-        notifiedAvailableVersion !== info.version
-      ) {
+      if (notifiedAvailableVersion !== info.version) {
         notifiedAvailableVersion = info.version;
-        const note = new Notification({
-          title: "Openstyle Update Available",
-          body: `Version ${info.version} is available.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
+        notify(
+          "Openstyle Update Available",
+          `Version ${info.version} is available.`,
+          "/settings",
+        );
       }
     });
 
@@ -2913,17 +2910,13 @@ app.whenReady().then(async () => {
       settingsWindow?.webContents.send("updater:downloaded", {
         version: info.version,
       });
-      if (
-        Notification.isSupported() &&
-        notifiedDownloadedVersion !== info.version
-      ) {
+      if (notifiedDownloadedVersion !== info.version) {
         notifiedDownloadedVersion = info.version;
-        const note = new Notification({
-          title: "Update Ready to Install",
-          body: `Version ${info.version} has been downloaded. Restart to update.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
+        notify(
+          "Update Ready to Install",
+          `Version ${info.version} has been downloaded. Restart to update.`,
+          "/settings",
+        );
       }
       if (updateCheckTimer) {
         clearInterval(updateCheckTimer);
@@ -2956,14 +2949,11 @@ app.whenReady().then(async () => {
     });
 
     if (isRunningFromReadOnlyLocation()) {
-      if (Notification.isSupported()) {
-        const note = new Notification({
-          title: "Move Openstyle to Applications",
-          body: "Openstyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
-      }
+      notify(
+        "Move Openstyle to Applications",
+        "Openstyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
+        "/settings",
+      );
     } else if (autoUpdateEnabled) {
       // Only poll when auto-update is actually on. Upstream polled every 5
       // minutes regardless of the setting, so turning auto-update off still
@@ -3108,11 +3098,7 @@ app.whenReady().then(async () => {
     // For custom, resolve the live alignment; for presets, send as-is.
     const broadcast =
       position === "custom" ? getPillAlignmentForCustom() : position;
-    mainWindow?.webContents.send("settings:pill-position-changed", broadcast);
-    settingsWindow?.webContents.send(
-      "settings:pill-position-changed",
-      broadcast,
-    );
+    broadcastToWindows("settings:pill-position-changed", broadcast);
   });
 
   // Register the hold-to-record hotkey immediately with the default accelerator
@@ -4076,26 +4062,22 @@ function sendHotkeyDown(language?: string | null): void {
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
-      mainWindow?.webContents.send("hotkey:down", payload);
-      settingsWindow?.webContents.send("hotkey:down", payload);
+      broadcastToWindows("hotkey:down", payload);
     });
     return;
   }
-  mainWindow?.webContents.send("hotkey:down", payload);
-  settingsWindow?.webContents.send("hotkey:down", payload);
+  broadcastToWindows("hotkey:down", payload);
 }
 
 function sendHotkeyUp(): void {
   if (pillReadyPromise) {
     // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
     void pillReadyPromise.then(() => {
-      mainWindow?.webContents.send("hotkey:up");
-      settingsWindow?.webContents.send("hotkey:up");
+      broadcastToWindows("hotkey:up");
     });
     return;
   }
-  mainWindow?.webContents.send("hotkey:up");
-  settingsWindow?.webContents.send("hotkey:up");
+  broadcastToWindows("hotkey:up");
 }
 
 /** Send to the pill, deferring until it exists so bursty IPC stays ordered. */
@@ -4389,9 +4371,16 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
   }
   const body = `Hold-to-talk isn't available, so "${accel}" now toggles recording on and off.${fix}`;
   hotkeyLog.warn(body);
-  if (Notification.isSupported()) {
-    new Notification({ title: "Openstyle is in toggle mode", body }).show();
-  }
+  notify("Openstyle is in toggle mode", body);
+}
+
+// Shows one native notification. A click opens the settings window on
+// `route`. Without a route, a click does nothing.
+function notify(title: string, body: string, route?: string): void {
+  if (!Notification.isSupported()) return;
+  const note = new Notification({ title, body });
+  if (route) note.on("click", () => showSettingsWindow(route));
+  note.show();
 }
 
 // Import completion (UX-04 / UX-A4, specs/lean-audit-2026-09.md §4): the
@@ -4411,13 +4400,7 @@ function notifyImportComplete(fileName: string): void {
     g.__openstyleE2E.importNotifications =
       (g.__openstyleE2E.importNotifications ?? 0) + 1;
   }
-  if (!Notification.isSupported()) return;
-  const note = new Notification({
-    title: "Transcript ready",
-    body: `“${fileName}” has been transcribed.`,
-  });
-  note.on("click", () => showSettingsWindow("/today"));
-  note.show();
+  notify("Transcript ready", `“${fileName}” has been transcribed.`, "/today");
 }
 
 // Rate-limited so a broken paste backend doesn't fire a notification per
@@ -4441,12 +4424,10 @@ function notifyPasteFailed(): void {
         " Installing xdotool may fix this (e.g. sudo apt install xdotool).";
     }
   }
-  if (Notification.isSupported()) {
-    new Notification({
-      title: "Openstyle couldn't paste",
-      body: `Your transcript is on the clipboard — press ${shortcut} to paste it.${hint}`,
-    }).show();
-  }
+  notify(
+    "Openstyle couldn't paste",
+    `Your transcript is on the clipboard — press ${shortcut} to paste it.${hint}`,
+  );
 }
 
 /** Electron globalShortcut rejects some combos (e.g. Alt+Super on Linux). */
@@ -4552,8 +4533,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
           const errorPayload = {
             message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Openstyle or pick a different combination in Settings.`,
           };
-          mainWindow?.webContents.send("hotkey:error", errorPayload);
-          settingsWindow?.webContents.send("hotkey:error", errorPayload);
+          broadcastToWindows("hotkey:error", errorPayload);
         }
       },
     });
@@ -4601,8 +4581,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
           message = `Hotkey "${accel}" requires access to input devices. Run: sudo usermod -aG input $USER — then log out and back in.`;
         }
         const errorPayload = { message };
-        mainWindow?.webContents.send("hotkey:error", errorPayload);
-        settingsWindow?.webContents.send("hotkey:error", errorPayload);
+        broadcastToWindows("hotkey:error", errorPayload);
       }
     }
   } catch (err) {

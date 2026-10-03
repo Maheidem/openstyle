@@ -145,9 +145,10 @@ function declaredApiMembers(source: ts.SourceFile): string[] {
 }
 
 /**
- * Every `.send("<channel>", ...)` call site in src/main, keyed by channel
- * with file provenance. Receivers are WebContents-shaped
- * (`win.webContents.send`, `event.sender.send`, a stored `target.send`) —
+ * Every `.send("<channel>", ...)` and `broadcastToWindows("<channel>", ...)`
+ * call site in src/main, keyed by channel with file provenance. Receivers
+ * are WebContents-shaped (`win.webContents.send`, `event.sender.send`, a
+ * stored `target.send`) —
  * if a future non-IPC `.send` with a string first argument appears here as
  * a false positive, add it to IGNORED_MAIN_SENDS with a justification.
  */
@@ -159,8 +160,10 @@ function mainSendChannels(): Map<string, string[]> {
     (function walk(node: ts.Node): void {
       if (
         ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === "send" &&
+        ((ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === "send") ||
+          (ts.isIdentifier(node.expression) &&
+            node.expression.text === "broadcastToWindows")) &&
         node.arguments.length > 0 &&
         ts.isStringLiteralLike(node.arguments[0])
       ) {
