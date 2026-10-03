@@ -40,15 +40,9 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 import { execFile } from "node:child_process";
-import {
-  accessSync,
-  constants,
-  existsSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { accessSync, constants, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
@@ -67,7 +61,6 @@ import { createAppLogger, enableFileLogging } from "@openstyle/utils";
 import {
   DEFAULT_SERVER_PORT,
   isOpenstyleHealthBody,
-  MEETINGS_DIR_NAME,
   REMIX_CLIPBOARD_LIMIT,
   serverUrlSchema,
 } from "@openstyle/validations";
@@ -104,6 +97,7 @@ import {
 import { bearerAuthHeaders, type ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { registerJobAbortIpc } from "./abortable-jobs";
+import { registerAppSettingsIpc } from "./app-settings-ipc";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { registerDiskUsageIpc } from "./disk-usage";
@@ -116,8 +110,8 @@ import {
 import { registerImportIpc } from "./import-audio";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
-import { checkLinuxSetup } from "./linux-setup";
 import { registerMeetingImportIpc } from "./meeting-import";
+import { registerMeetingIpc } from "./meeting-ipc";
 import { MeetingRecorder } from "./meeting-recorder";
 import { migrateLegacyUserData } from "./migrate-user-data";
 import { getNativeBinaryPath } from "./native-binary";
@@ -136,6 +130,7 @@ import {
   type StartupPermissionWarning,
   startupPermissionWarning,
 } from "./permission-checks";
+import { registerPermissionsIpc } from "./permissions-ipc";
 import {
   APP_HEIGHT,
   APP_WIDTH,
@@ -145,10 +140,6 @@ import {
 import { isRemixTargetAllowed } from "./remix-target";
 import { selfUpdater, sweepSelfUpdaterBackups } from "./self-updater";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
-import {
-  openAudioCaptureSettings,
-  probeSystemAudio,
-} from "./system-audio-probe";
 
 // Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
 // share the real "Electron" userData (settings.json included) with a running
@@ -2318,87 +2309,9 @@ app.whenReady().then(async () => {
     },
   });
 
-  ipcMain.handle("meeting:start", async () => {
-    try {
-      const id = await meetingRecorder!.start();
-      return { ok: true, id };
-    } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  });
-
-  ipcMain.handle("meeting:stop", async () => {
-    await meetingRecorder?.stop();
-    return { ok: true };
-  });
-
-  ipcMain.handle("meeting:status", () => ({
-    status: meetingRecorder?.status ?? "idle",
-    meetingId: meetingRecorder?.currentMeetingId ?? null,
-    supported: isSystemAudioCaptureSupported(),
-  }));
-
-  // Mic PCM16 chunks from the hidden capture window. Only that window's
-  // webContents may feed the recorder — chunks from any other renderer
-  // (main window, settings) are dropped.
-  ipcMain.on("meeting:mic-chunk", (event, chunk: unknown) => {
-    if (event.sender.id !== meetingRecorder?.captureWebContentsId) return;
-    if (chunk instanceof ArrayBuffer) {
-      meetingRecorder.handleMicChunk(Buffer.from(chunk));
-    } else if (ArrayBuffer.isView(chunk)) {
-      meetingRecorder.handleMicChunk(
-        Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength),
-      );
-    }
-  });
-
-  ipcMain.on("meeting:capture-error", (event, message: unknown) => {
-    if (event.sender.id !== meetingRecorder?.captureWebContentsId) return;
-    log.error(`Meeting mic capture error: ${String(message)}`);
-  });
-
-  // TCC probe: run the real system-audio pipeline briefly to detect the
-  // silent-denial mode (denied taps deliver zero-filled buffers with success
-  // codes — there is no preflight API). Meeting-scoped and lazy by design:
-  // dictation-only users must never see this (startupPermissionWarning in
-  // permission-checks.ts intentionally knows nothing about meetings).
-  ipcMain.handle("meeting:probe-system-audio", async () => {
-    // A running recording already proves the pipeline; don't spawn a second
-    // helper under it.
-    if (meetingRecorder?.status !== "idle") return "ok";
-    return probeSystemAudio();
-  });
-
-  ipcMain.on("meeting:open-audio-capture-settings", () => {
-    openAudioCaptureSettings();
-  });
-
-  // Reveal a meeting's audio directory in Finder. The audio_dir path comes
-  // from the server-owned DB row, so mirror the same containment check the
-  // server's DELETE route applies before it removes a meeting's audio dir —
-  // never call shell.showItemInFolder on a path outside <userData>/meetings/.
-  ipcMain.handle("meeting:reveal-in-finder", async (_event, id: unknown) => {
-    if (typeof id !== "string" || !id) return false;
-    try {
-      const res = await serverClient().api.meetings[":id"].$get({
-        param: { id },
-      });
-      if (!res.ok) return false;
-      const row = (await res.json()) as { audio_dir: string | null };
-      if (!row.audio_dir) return false;
-      const dir = resolve(row.audio_dir);
-      const root = resolve(join(app.getPath("userData"), MEETINGS_DIR_NAME));
-      if (!dir.startsWith(root + sep)) return false;
-      if (!existsSync(dir)) return false;
-      shell.showItemInFolder(dir);
-      return true;
-    } catch (err) {
-      log.error(`Failed to reveal meeting ${id} in Finder: ${String(err)}`);
-      return false;
-    }
+  registerMeetingIpc({
+    getMeetingRecorder: () => meetingRecorder,
+    serverClient,
   });
 
   // IPC: broadcast output mode changes to pill window
@@ -2481,137 +2394,32 @@ app.whenReady().then(async () => {
     settingsWindow?.webContents.send("transcription:done");
   });
 
-  // IPC: expose the server port to the renderer
-  ipcMain.handle("server:port", () => serverPort);
-
-  // IPC: read the configured server URL ("" = use the local server).
-  ipcMain.handle("server:url", () => getServerUrl());
-
-  // IPC: persist the server URL. The local server keeps running regardless, so
-  // switching between local and a configured URL takes effect immediately —
-  // renderers re-point their clients on the "server:changed" broadcast and on
-  // the next transcription's refreshApiBase(). Invalid values are ignored.
-  ipcMain.handle("server:set-url", (_event, url: unknown) => {
-    const parsed = serverUrlSchema.safeParse(url);
-    if (parsed.success) {
-      writeSettings({ serverUrl: parsed.data });
-      broadcastServerChanged();
-    }
-    return getServerUrl();
+  registerAppSettingsIpc({
+    getServerPort: () => serverPort,
+    getServerUrl,
+    getServerToken,
+    readSettings,
+    writeSettings,
+    broadcastServerChanged,
+    logsDir,
   });
 
-  // IPC: read/persist the optional bearer token for a configured server.
-  ipcMain.handle("server:token", () => getServerToken());
-  ipcMain.handle("server:set-token", (_event, token: unknown) => {
-    writeSettings({
-      serverToken: typeof token === "string" ? token.trim() : "",
-    });
-    broadcastServerChanged();
-    return getServerToken();
-  });
-
-  // IPC: reveal the diagnostic log folder so users can share openstyle.log.
-  ipcMain.handle("logs:open-folder", async () => {
-    if (!logsDir) return false;
-    try {
-      const result = await shell.openPath(logsDir);
-      if (result) {
-        log.error(`Failed to open logs folder: ${result}`);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      log.error(`Failed to open logs folder: ${String(err)}`);
-      return false;
-    }
-  });
-
-  ipcMain.handle("open:external", async (_event, url: unknown) => {
-    if (typeof url !== "string") return false;
-    try {
-      const parsed = new URL(url);
-      // mailto: is allowed for support links; everything else must be http(s).
-      if (
-        parsed.protocol !== "https:" &&
-        parsed.protocol !== "http:" &&
-        parsed.protocol !== "mailto:"
-      ) {
-        return false;
-      }
-      await shell.openExternal(parsed.toString());
-      return true;
-    } catch {
-      return false;
-    }
-  });
-
-  ipcMain.handle(
-    "dialog:show-error",
-    async (_event, title: string, detail: string) => {
-      await dialog.showMessageBox({
-        type: "error",
-        title,
-        message: title,
-        detail,
-        buttons: ["OK"],
-      });
+  registerPermissionsIpc({
+    hasAccessibilityPermission: hasCurrentAccessibilityPermission,
+    openAccessibilitySettings,
+    openMicrophoneSettings,
+    completeOnboarding: () => {
+      writeSettings({ onboardingComplete: true });
+      remixPracticeTarget = false;
+      remixBarHeldForOnboarding = false;
+      updateRemixBar();
     },
-  );
-
-  // IPC: permission checks
-  ipcMain.handle("permissions:check-mic", async () => {
-    if (process.platform === "linux") {
-      // Linux has no OS-level mic permission API; the renderer resolves the
-      // real state with a getUserMedia probe (see lib/permissions.ts).
-      return "unknown";
-    }
-    // macOS and Windows both report the real privacy-settings state here.
-    return systemPreferences.getMediaAccessStatus("microphone");
-  });
-
-  ipcMain.handle("permissions:request-mic", async () => {
-    if (process.platform === "darwin") {
-      const granted = await systemPreferences.askForMediaAccess("microphone");
-      return granted ? "granted" : "denied";
-    }
-    if (process.platform === "win32") {
-      // Windows has no programmatic prompt; report the privacy-settings
-      // state so the UI can send the user to Settings when it's denied.
-      return systemPreferences.getMediaAccessStatus("microphone");
-    }
-    return "unknown"; // Linux: renderer probes getUserMedia instead
-  });
-
-  ipcMain.handle("permissions:check-accessibility", async () => {
-    return hasCurrentAccessibilityPermission();
-  });
-
-  ipcMain.on("permissions:open-accessibility", () => {
-    openAccessibilitySettings();
-  });
-
-  ipcMain.on("permissions:open-mic-settings", () => {
-    openMicrophoneSettings();
   });
 
   if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
     ipcMain.on("e2e:trigger-hotkey-down", () => handleDictationHotkeyDown());
     ipcMain.on("e2e:trigger-hotkey-up", () => handleDictationHotkeyUp());
   }
-
-  // IPC: Linux system setup (input-group access for the hotkey listener and
-  // the xdotool/wtype paste fallback). Returns null on other platforms.
-  ipcMain.handle("permissions:check-linux-setup", async () => {
-    if (process.platform !== "linux") return null;
-    return checkLinuxSetup();
-  });
-
-  ipcMain.on("onboarding:set-complete", () => {
-    writeSettings({ onboardingComplete: true });
-    remixPracticeTarget = false;
-    remixBarHeldForOnboarding = false;
-    updateRemixBar();
-  });
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
   ipcMain.on("hotkey-record:start", () => {
@@ -2947,43 +2755,6 @@ app.whenReady().then(async () => {
       return null;
     }
   });
-
-  // -- Auto-update setting IPC --
-  ipcMain.handle("settings:auto-update", () => {
-    return readSettings().autoUpdate !== false;
-  });
-
-  ipcMain.on("settings:set-auto-update", (_event, enabled: boolean) => {
-    // autoDownload stays false regardless (see setup above) — this setting
-    // now only gates whether periodic update checks run at all.
-    writeSettings({ autoUpdate: enabled });
-  });
-
-  // -- Launch at startup setting IPC --
-  ipcMain.handle("settings:launch-at-startup", () => {
-    if (process.platform === "linux") return linuxAutostart.isEnabled();
-    return app.getLoginItemSettings().openAtLogin;
-  });
-
-  ipcMain.on("settings:set-launch-at-startup", (_event, enabled: boolean) => {
-    if (process.platform === "linux") {
-      linuxAutostart.setEnabled(enabled);
-      return;
-    }
-    app.setLoginItemSettings({ openAtLogin: enabled });
-  });
-
-  // -- Show dashboard on launch setting IPC --
-  ipcMain.handle("settings:show-dashboard-on-launch", () => {
-    return readSettings().showDashboardOnLaunch !== false;
-  });
-
-  ipcMain.on(
-    "settings:set-show-dashboard-on-launch",
-    (_event, enabled: boolean) => {
-      writeSettings({ showDashboardOnLaunch: enabled });
-    },
-  );
 
   // -- Context-aware dictation: get frontmost app + browser context --
   ipcMain.handle("system:frontmost-app", async () => {
