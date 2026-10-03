@@ -5,6 +5,7 @@ import {
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
 } from "@renderer/components/remix-chat-surface";
+import { useLatchedValue } from "@renderer/hooks/use-latched-value";
 import {
   apiFetch,
   getApiBase,
@@ -33,7 +34,6 @@ import {
   useState,
 } from "react";
 import {
-  type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
   resolveAudioPlaybackMode,
 } from "../../../shared/audio-playback";
@@ -57,6 +57,21 @@ import {
   SVG_HEIGHT,
 } from "./pill-motion";
 import { PILL_STYLES } from "./pill-styles";
+import {
+  getAudioPlaybackMode,
+  getOutputMode,
+  playTone,
+  setAudioPlaybackMode,
+  setOutputMode,
+  setSoundEnabled,
+} from "./pill-tones";
+import {
+  BAR_NOISE_FLOOR,
+  type BarJitter,
+  barHeightFor,
+  easeBars,
+  nextJitter,
+} from "./pill-waveform";
 
 // Lazy: keep Motion/agent chat out of the dictation entry chunk.
 const RemixChat = lazy(() =>
@@ -108,65 +123,6 @@ const LEVEL_FALL = 0.78;
  * which would put raw bin noise straight into the bars.
  */
 const ANALYSER_SMOOTHING = 0.15;
-
-/**
- * Response curve for the recording waveform, applied to the raw voice level.
- *
- * `getByteFrequencyData` is already dB-scaled, and the old mapping (a linear
- * gain with a hard clamp) ran straight into its ceiling: anything above a
- * soft voice pinned every bar to full height, which both looked cramped
- * against the capsule and threw away all the dynamics.
- *
- * These drive a saturating exponential instead — steep at the bottom so a
- * whisper already reaches roughly half height, then flattening toward
- * BAR_CEILING, which no amount of volume quite reaches.
- *
- * BAR_NOISE_FLOOR is subtracted first so room tone still renders as the
- * resting dots rather than a permanent low ripple. It and BAR_GAIN are the
- * two worth re-tuning against a real mic.
- */
-const BAR_NOISE_FLOOR = 0.05;
-const BAR_GAIN = 8;
-const BAR_CEILING = 0.82;
-
-/**
- * Random spread that gives the waveform texture instead of a flat plateau
- * while you talk. Two components, because one alone doesn't cover the range:
- *
- * `scale` multiplies the level *before* the response curve. An upward kick is
- * compressed by the saturation rather than clipping flat against the ceiling,
- * and the effect scales with loudness for free — a jittered room tone still
- * lands under the resting-dot threshold, so silence stays still. But the same
- * saturation flattens it out again once you're loud.
- *
- * `trim` then takes a downward-only bite out of the height *after* the curve,
- * which is what keeps the peaks alive where the curve has gone flat. Only ever
- * subtracting means the ceiling still holds.
- *
- * Both are drawn once per sample rather than per frame, so the values freeze
- * into the row and travel left with it. Re-rolling every frame would read as
- * flicker rather than as waveform texture.
- */
-const BAR_JITTER = 0.35;
-const BAR_TRIM = 0.14;
-
-interface BarJitter {
-  scale: number;
-  trim: number;
-}
-
-function nextJitter(): BarJitter {
-  return {
-    scale: 1 + (Math.random() * 2 - 1) * BAR_JITTER,
-    trim: Math.random() * BAR_TRIM,
-  };
-}
-
-/** Maps one sampled voice level, plus that sample's jitter, to a bar height. */
-function barHeightFor(voiceLevel: number, jitter: BarJitter): number {
-  const excess = Math.max(0, voiceLevel * jitter.scale - BAR_NOISE_FLOOR);
-  return BAR_CEILING * (1 - Math.exp(-BAR_GAIN * excess)) * (1 - jitter.trim);
-}
 
 type PillState =
   | "idle"
@@ -225,68 +181,8 @@ const WARMING_LABEL = "Warming up local model…";
 const LOCAL_MODEL_TIMEOUT_MSG =
   "Local model didn't respond — it may still be starting. Try again.";
 
-// ---------------------------------------------------------------------------
-// Sound
-// ---------------------------------------------------------------------------
-
-let _soundEnabled = true;
-let _outputMode = "paste";
-let _audioPlaybackMode: AudioPlaybackMode = "off";
-let _toneCtx: AudioContext | null = null;
-
-function getToneCtx(): AudioContext {
-  if (!_toneCtx || _toneCtx.state === "closed") _toneCtx = new AudioContext();
-  return _toneCtx;
-}
-
-type TonePreset = "start" | "stop";
-const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
-  start: { freq: 347, ms: 125 }, // F4
-  stop: { freq: 255, ms: 125 }, // C4
-};
-
-async function playTone(preset: TonePreset, volume = 0.16): Promise<void> {
-  if (!_soundEnabled) return;
-  const { freq, ms } = TONE_PRESETS[preset];
-  try {
-    const ctx = getToneCtx();
-    if (ctx.state === "suspended") await ctx.resume();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = freq;
-    const now = ctx.currentTime;
-    const dur = ms / 1000;
-    const attack = Math.min(0.02, dur * 0.25);
-    const g = gain.gain;
-    g.setValueAtTime(0.0001, now);
-    g.linearRampToValueAtTime(volume, now + attack);
-    g.exponentialRampToValueAtTime(0.001, now + dur);
-    g.linearRampToValueAtTime(0, now + dur + 0.012);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + dur + 0.02);
-  } catch {}
-}
-
-/**
- * Advances `bars` one frame toward `targets`, in place — this runs at 60fps,
- * so it deliberately doesn't allocate. Separate rise and fall rates let a
- * waveform snap up to a peak and settle back more gently; pass the same value
- * for both to ease symmetrically.
- */
-function easeBars(
-  bars: number[],
-  targets: number[],
-  rise: number,
-  fall: number,
-): void {
-  for (let i = 0; i < bars.length; i++) {
-    const target = targets[i] ?? 0;
-    bars[i] += (target - bars[i]) * (target > bars[i] ? rise : fall);
-  }
-}
+/** How long a closing card keeps its last content, in ms. */
+const VIEW_LATCH_MS = 320;
 
 const PILL_HEIGHT = 30;
 /**
@@ -710,7 +606,7 @@ export default function AppPage(): React.JSX.Element {
       try {
         if (finalText.trim()) {
           const delivery =
-            _outputMode === "clipboard"
+            getOutputMode() === "clipboard"
               ? window.api.copyText(finalText)
               : window.api.pasteText(finalText);
 
@@ -1448,9 +1344,10 @@ export default function AppPage(): React.JSX.Element {
       // getUserMedia is what made the "initializing" state drag on. Restores
       // go through restoreSystemAudioSafely(), which waits on this promise so a
       // cancel can't race the duck.
+      const playbackMode = getAudioPlaybackMode();
       duckingPromiseRef.current =
-        _audioPlaybackMode !== "off"
-          ? window.api?.prepareSystemAudio(_audioPlaybackMode).catch(() => {})
+        playbackMode !== "off"
+          ? window.api?.prepareSystemAudio(playbackMode).catch(() => {})
           : undefined;
 
       try {
@@ -2224,12 +2121,12 @@ export default function AppPage(): React.JSX.Element {
       .then((settings) => {
         if (!settings) return;
 
-        _soundEnabled = settings[SETTINGS_KEYS.soundEnabled] !== "false";
+        setSoundEnabled(settings[SETTINGS_KEYS.soundEnabled] !== "false");
 
-        _audioPlaybackMode = resolveAudioPlaybackMode(settings);
+        setAudioPlaybackMode(resolveAudioPlaybackMode(settings));
 
         const outputMode = settings[SETTINGS_KEYS.outputMode];
-        if (outputMode) _outputMode = outputMode;
+        if (outputMode) setOutputMode(outputMode);
 
         setCancelMode(
           normalizePillCancelMode(settings[SETTINGS_KEYS.pillCancelButton]),
@@ -2254,17 +2151,17 @@ export default function AppPage(): React.JSX.Element {
     // Listen for live changes from the settings UI
     const removePillPos = window.api?.onPillPositionChanged(applyPillPosition);
     const removeOutputMode = window.api?.onOutputModeChanged((mode) => {
-      _outputMode = mode;
+      setOutputMode(mode);
     });
     const removeSoundEnabled = window.api?.onSoundEnabledChanged((enabled) => {
-      _soundEnabled = enabled;
+      setSoundEnabled(enabled);
     });
     const removeCancelMode = window.api?.onPillCancelModeChanged((mode) => {
       setCancelMode(normalizePillCancelMode(mode));
     });
     const removeAudioPlaybackMode = window.api?.onAudioPlaybackModeChanged(
       (mode) => {
-        _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
+        setAudioPlaybackMode(normalizeAudioPlaybackMode(mode));
       },
     );
     // A cleanup-relevant setting (llm_cleanup / a cleanup tone) changed in the
@@ -2847,13 +2744,7 @@ export default function AppPage(): React.JSX.Element {
   // Latched for the same reason the failure card's is: the session is cleared
   // the instant a remix lands, and re-rendering an empty card would blank it
   // a beat before it has finished animating away.
-  const [remixView, setRemixView] = useState<RemixSession | null>(null);
-  if (remix && remix !== remixView) setRemixView(remix);
-  useEffect(() => {
-    if (remix || !remixView) return;
-    const timer = setTimeout(() => setRemixView(null), 320);
-    return () => clearTimeout(timer);
-  }, [remix, remixView]);
+  const remixView = useLatchedValue(remix, VIEW_LATCH_MS);
   const remixOpen = showRemixCard && roomReady;
 
   const viewIsChat = remixView?.phase === "chat";
@@ -2862,24 +2753,12 @@ export default function AppPage(): React.JSX.Element {
   // latching the last content it showed: a phase flip animates the old
   // surface out underneath the new one rising — a handover, never an
   // instant restyle of one box.
-  const [cardView, setCardView] = useState<RemixSession | null>(null);
   const liveCardView =
     remixView && remixView.phase !== "chat" ? remixView : null;
-  if (liveCardView && liveCardView !== cardView) setCardView(liveCardView);
-  useEffect(() => {
-    if (liveCardView || !cardView) return;
-    const timer = setTimeout(() => setCardView(null), 320);
-    return () => clearTimeout(timer);
-  }, [liveCardView, cardView]);
+  const cardView = useLatchedValue(liveCardView, VIEW_LATCH_MS);
 
-  const [chatView, setChatView] = useState<RemixSession | null>(null);
   const liveChatView = remixView?.phase === "chat" ? remixView : null;
-  if (liveChatView && liveChatView !== chatView) setChatView(liveChatView);
-  useEffect(() => {
-    if (liveChatView || !chatView) return;
-    const timer = setTimeout(() => setChatView(null), 320);
-    return () => clearTimeout(timer);
-  }, [liveChatView, chatView]);
+  const chatView = useLatchedValue(liveChatView, VIEW_LATCH_MS);
 
   const [chatMiniVisual, setChatMiniVisual] = useState(true);
   const chatWasLiveRef = useRef(false);
