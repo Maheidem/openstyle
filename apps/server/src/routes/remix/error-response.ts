@@ -6,7 +6,12 @@ import { RemixTransformError } from "../../lib/remix-transform.js";
  * is the user's to fix and gets 400. A failure is ours and gets 502. The
  * pill's card shows the message as it is.
  */
-export function remixErrorResponse(c: Context, err: unknown) {
+export function remixErrorResponse(
+  c: Context,
+  err: unknown,
+  // The text for an error that is not an Error. Each lane keeps its own text.
+  fallbackDetail: string,
+) {
   if (err instanceof RemixTransformError) {
     return c.json(
       { error: err.kind, detail: err.message },
@@ -16,7 +21,7 @@ export function remixErrorResponse(c: Context, err: unknown) {
   return c.json(
     {
       error: "failed" as const,
-      detail: err instanceof Error ? err.message : "Remix failed.",
+      detail: err instanceof Error ? err.message : fallbackDetail,
     },
     502,
   );

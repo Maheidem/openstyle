@@ -62,6 +62,9 @@ function resolveInstruction(options: RunRemixTransformOptions): string | null {
  */
 export async function resolveRemixCall(
   opts: ResolveTaskCallOptions,
+  // The error text keeps the wording that each lane showed before. The
+  // agent lane writes "Remix" and the transform lane writes "remix".
+  remixWord: "Remix" | "remix",
 ): Promise<ResolvedTaskCall> {
   // resolveTaskCall throws a plain Error when no default model exists. The
   // pill needs the typed "no-model" error, so check first.
@@ -74,7 +77,7 @@ export async function resolveRemixCall(
   const resolved = await resolveTaskCall("remix", opts);
   if (!(await isCleanupModelSupported(resolved.provider, resolved.modelId))) {
     throw new RemixTransformError(
-      `${resolved.modelId} can't run remix. Pick a different model in Settings > Models.`,
+      `${resolved.modelId} can't run ${remixWord}. Pick a different model in Settings > Models.`,
       "unsupported-model",
     );
   }
@@ -106,12 +109,15 @@ export async function runRemixTransform(
   // paragraph, in particular) which would quietly eat a repeated line from a
   // legitimately list-shaped result, and it swallows model errors into a
   // raw-text fallback this path must not take.
-  const resolved = await resolveRemixCall({
-    // The budget is sized off the input, which is the right shape here too —
-    // an edit is roughly as long as what it edits. "Expand" is the exception,
-    // and the helper already leaves generous headroom.
-    autoMaxOutputTokens: maxOutputTokensForCleanup(options.text),
-  });
+  const resolved = await resolveRemixCall(
+    {
+      // The budget is sized off the input, which is the right shape here too —
+      // an edit is roughly as long as what it edits. "Expand" is the exception,
+      // and the helper already leaves generous headroom.
+      autoMaxOutputTokens: maxOutputTokensForCleanup(options.text),
+    },
+    "remix",
+  );
   const providerOptions = getLlmProvider(resolved.provider)?.providerOptions?.(
     resolved.modelId,
     resolved.reasoningEnabled,

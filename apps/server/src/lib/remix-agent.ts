@@ -68,9 +68,10 @@ export async function runRemixAgentLocally(
 ): Promise<Response> {
   // Throws RemixTransformError before any stream starts, so the route can
   // still return a plain 400.
-  const resolved = await resolveRemixCall({
-    autoMaxOutputTokens: REMIX_AGENT_AUTO_MAX_OUTPUT_TOKENS,
-  });
+  const resolved = await resolveRemixCall(
+    { autoMaxOutputTokens: REMIX_AGENT_AUTO_MAX_OUTPUT_TOKENS },
+    "Remix",
+  );
   const providerOptions = getLlmProvider(resolved.provider)?.providerOptions?.(
     resolved.modelId,
     resolved.reasoningEnabled,

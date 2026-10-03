@@ -48,7 +48,7 @@ const remixRoute = new Hono().post(
       return c.json({ text: result.text, runId });
     } catch (err) {
       log.error(`Remix failed: ${err}`);
-      return remixErrorResponse(c, err);
+      return remixErrorResponse(c, err, "Remix failed");
     }
   },
 );

@@ -17,7 +17,7 @@ const agentRoute = new Hono().post(
       return await runRemixAgentLocally(body, c.req.raw.signal);
     } catch (err) {
       log.error(`Remix agent failed: ${err}`);
-      return remixErrorResponse(c, err);
+      return remixErrorResponse(c, err, "Remix failed.");
     }
   },
 );

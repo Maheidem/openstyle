@@ -38,6 +38,7 @@ const lanes = [
     name: "transform",
     app: transformRoute,
     body: { text: "hello", instruction: "make it formal" },
+    remixWord: "remix",
   },
   {
     name: "agent",
@@ -51,6 +52,7 @@ const lanes = [
         capturedAt: 0,
       },
     },
+    remixWord: "Remix",
   },
 ] as const;
 
@@ -90,7 +92,7 @@ describe.each(lanes)("remix model pre-flight ($name lane)", (lane) => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({
       error: "unsupported-model",
-      detail: expect.stringContaining("bad-model"),
+      detail: `bad-model can't run ${lane.remixWord}. Pick a different model in Settings > Models.`,
     });
     expect(mocks.createChatModel).not.toHaveBeenCalled();
   });
