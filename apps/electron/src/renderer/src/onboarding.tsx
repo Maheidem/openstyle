@@ -386,9 +386,8 @@ export default function OnboardingPage(): React.JSX.Element {
             localModel={localSetupModel}
             onDownloadLocal={downloadPicked}
             onRetryLocal={downloadPicked}
-            canContinue={!mustHaveLocalReady || !!window.api?.isE2E}
-            continueBlockedReason={
-              mustHaveLocalReady
+            blockedReason={
+              mustHaveLocalReady && !window.api?.isE2E
                 ? localSetupActive
                   ? "downloading"
                   : "notReady"
@@ -861,8 +860,7 @@ function DraftStep({
   localModel,
   onDownloadLocal,
   onRetryLocal,
-  canContinue,
-  continueBlockedReason,
+  blockedReason,
   body,
   onBodyChange,
   onBack,
@@ -874,8 +872,8 @@ function DraftStep({
   localModel: VoiceItem | undefined;
   onDownloadLocal: () => void;
   onRetryLocal: () => void;
-  canContinue: boolean;
-  continueBlockedReason: "downloading" | "notReady" | null;
+  // Why Continue is disabled. null means the user can continue.
+  blockedReason: "downloading" | "notReady" | null;
   body: string;
   onBodyChange: (text: string) => void;
   onBack: () => void;
@@ -933,9 +931,9 @@ function DraftStep({
           {t("common.back")}
         </Button>
         <div className="flex flex-col items-end gap-1.5">
-          {!canContinue && continueBlockedReason && (
+          {blockedReason && (
             <p className="text-muted-foreground text-[11px]">
-              {continueBlockedReason === "downloading"
+              {blockedReason === "downloading"
                 ? t("onboarding.modelSetup.waitingWhileDownloading")
                 : t("onboarding.modelSetup.waitingToFinish")}
             </p>
@@ -945,7 +943,7 @@ function DraftStep({
               variant="ghost"
               size="sm"
               onClick={onContinue}
-              disabled={!canContinue}
+              disabled={!!blockedReason}
               className="text-muted-foreground h-auto px-2 py-1 text-[12px]"
             >
               {t("onboarding.draft.skip")}
@@ -953,7 +951,7 @@ function DraftStep({
             <Button
               variant="ink"
               onClick={onContinue}
-              disabled={!canContinue || !body.trim()}
+              disabled={!!blockedReason || !body.trim()}
             >
               {t("common.continue")}
               <ArrowRight data-icon="inline-end" />
