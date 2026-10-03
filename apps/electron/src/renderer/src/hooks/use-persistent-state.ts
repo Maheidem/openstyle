@@ -82,3 +82,23 @@ export function usePersistentJsonState<T>(
 
   return [state, set];
 }
+
+/**
+ * Boolean variant of {@link usePersistentState}. The value is stored as the
+ * string "1" or "0". Any other stored value falls back to `fallback`.
+ */
+export function usePersistentBool(
+  key: string,
+  fallback: boolean,
+): [boolean, (value: boolean) => void] {
+  const [raw, setRaw] = usePersistentState<"0" | "1">(
+    key,
+    fallback ? "1" : "0",
+    (value): value is "0" | "1" => value === "0" || value === "1",
+  );
+  const set = useCallback(
+    (value: boolean) => setRaw(value ? "1" : "0"),
+    [setRaw],
+  );
+  return [raw === "1", set];
+}
