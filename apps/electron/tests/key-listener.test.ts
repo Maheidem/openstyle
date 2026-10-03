@@ -326,7 +326,7 @@ test("hotkey recorder maps FLAGS tokens, skips unknown ones and sends empty for 
 });
 
 test("hotkey recorder captures RECORD_KEY and MOUSE_BUTTON_DOWN with pending modifiers", () => {
-  const captured: Array<{ modifiers: string[]; key: string }> = [];
+  const captured: Array<{ modifiers: string[]; key: string | null }> = [];
   const recorder = new HotkeyRecorder({
     onModifiers: () => {},
     onCaptured: (combo) => captured.push(combo),

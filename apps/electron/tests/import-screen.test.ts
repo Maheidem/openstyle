@@ -304,7 +304,7 @@ test("rejects a .txt drop before any upload (ts_9e6ec1de)", async () => {
   await navigateToImport(dashboardPage);
 
   const countBefore = await getHistoryCount();
-  const callsBefore = await e2eCounter(app, "importCalls");
+  const callsBefore = await e2eCounter(app!, "importCalls");
 
   await dropFile(dashboardPage, "import-dropzone", "note.txt", "text/plain");
 
@@ -317,7 +317,7 @@ test("rejects a .txt drop before any upload (ts_9e6ec1de)", async () => {
   const countAfter = await getHistoryCount();
   expect(countAfter).toBe(countBefore);
 
-  const callsAfter = await e2eCounter(app, "importCalls");
+  const callsAfter = await e2eCounter(app!, "importCalls");
   expect(callsAfter).toBe(callsBefore);
 
   // reset for the next test
@@ -339,7 +339,7 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
 
   const countBefore = await getHistoryCount();
 
-  await withPickerFile(app, "OPENSTYLE_E2E_IMPORT_FILE", wavPath, async () => {
+  await withPickerFile(app!, "OPENSTYLE_E2E_IMPORT_FILE", wavPath, async () => {
     await dashboardPage.getByTestId("import-choose-file").click();
 
     // UX-A3 review step: the picker landing shows the staged file and its
@@ -372,7 +372,7 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
       await expect(copyButton.locator("svg.lucide-check")).toBeVisible({
         timeout: 5_000,
       });
-      const clipboardText = await app.evaluate(({ clipboard }) =>
+      const clipboardText = await app!.evaluate(({ clipboard }) =>
         clipboard.readText(),
       );
       const transcriptText = await dashboardPage
@@ -429,21 +429,26 @@ test("corrupt file reports a decode error (ts_307c89e8)", async () => {
 
   const countBefore = await getHistoryCount();
 
-  await withPickerFile(app, "OPENSTYLE_E2E_IMPORT_FILE", junkPath, async () => {
-    await dashboardPage.getByTestId("import-choose-file").click();
-    await dashboardPage.getByTestId("import-start").click();
-    // No status-visible assertion here: unlike the network round trip in the
-    // picker test above, local decode failure can resolve before the next
-    // Playwright poll observes the transient "uploading" status — go straight
-    // to the terminal error state.
-    const alert = dashboardPage.getByTestId("import-error");
-    await expect(alert).toBeVisible({ timeout: 15_000 });
-    const alertText = (await alert.textContent()) ?? "";
-    expect(alertText).toContain("Could not decode this file");
+  await withPickerFile(
+    app!,
+    "OPENSTYLE_E2E_IMPORT_FILE",
+    junkPath,
+    async () => {
+      await dashboardPage.getByTestId("import-choose-file").click();
+      await dashboardPage.getByTestId("import-start").click();
+      // No status-visible assertion here: unlike the network round trip in the
+      // picker test above, local decode failure can resolve before the next
+      // Playwright poll observes the transient "uploading" status — go straight
+      // to the terminal error state.
+      const alert = dashboardPage.getByTestId("import-error");
+      await expect(alert).toBeVisible({ timeout: 15_000 });
+      const alertText = (await alert.textContent()) ?? "";
+      expect(alertText).toContain("Could not decode this file");
 
-    const countAfter = await getHistoryCount();
-    expect(countAfter).toBe(countBefore);
-  });
+      const countAfter = await getHistoryCount();
+      expect(countAfter).toBe(countBefore);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -541,7 +546,7 @@ test("cancelling an in-flight import returns to the dropzone (UX-04)", async () 
     const countBefore = await getHistoryCount();
 
     await withPickerFile(
-      app,
+      app!,
       "OPENSTYLE_E2E_IMPORT_FILE",
       wavPath,
       async () => {
@@ -596,10 +601,10 @@ test("a completed import raises the completion notification (UX-04)", async () =
     const wavPath = join(userDataDir, "notify-import.wav");
     writeSilentWav(wavPath);
     const countBefore = await getHistoryCount();
-    const notesBefore = await e2eCounter(app, "importNotifications");
+    const notesBefore = await e2eCounter(app!, "importNotifications");
 
     await withPickerFile(
-      app,
+      app!,
       "OPENSTYLE_E2E_IMPORT_FILE",
       wavPath,
       async () => {
@@ -615,7 +620,7 @@ test("a completed import raises the completion notification (UX-04)", async () =
         // The main process raised exactly one "Transcript ready" notification
         // (counted before the OS-support guard so this asserts deterministically
         // even where notifications are suppressed).
-        const notesAfter = await e2eCounter(app, "importNotifications");
+        const notesAfter = await e2eCounter(app!, "importNotifications");
         expect(notesAfter).toBe(notesBefore + 1);
 
         const countAfter = await getHistoryCount();

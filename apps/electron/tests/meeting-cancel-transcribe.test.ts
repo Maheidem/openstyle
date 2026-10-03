@@ -1,5 +1,6 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
-import { createServer, type Server, type Socket } from "node:http";
+import { createServer, type Server } from "node:http";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -293,7 +294,7 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
   const wavPath = join(userDataDir, "cancel-test.wav");
   writeTwoBurstWav(wavPath);
   await withPickerFile(
-    app,
+    app!,
     "OPENSTYLE_E2E_MEETING_IMPORT_FILE",
     wavPath,
     async () => {
@@ -318,7 +319,7 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       };
       const meeting = list.items.find((m) => m.title === "cancel-test");
       expect(meeting?.status).toBe("transcribing");
-      const detail = await getMeeting(meeting.id);
+      const detail = await getMeeting(meeting!.id);
       expect(detail.job?.total).toBe(2);
       expect(detail.job?.done).toBe(0);
 
@@ -362,7 +363,7 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
 
       // Server-side truth: failed with the canonical cancel error, both segments
       // kept (one ok, one failed).
-      const final = await getMeeting(meeting.id);
+      const final = await getMeeting(meeting!.id);
       expect(final.status).toBe("failed");
       expect(final.error).toBe("Cancelled by user");
       expect(final.segment_counts).toEqual({ total: 2, failed: 1 });
@@ -370,7 +371,7 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       // kept in meeting_segments — segment_counts above — but render empty);
       // the kept partial text is exactly what survived the cancel.
       const transcriptRes = await fetch(
-        `${apiBase()}/api/meetings/${meeting.id}/transcript`,
+        `${apiBase()}/api/meetings/${meeting!.id}/transcript`,
         { headers: apiHeaders() },
       );
       const transcript = (await transcriptRes.json()) as {
