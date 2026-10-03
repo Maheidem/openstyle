@@ -358,9 +358,9 @@ async function resizeDashboard(width: number, height: number): Promise<void> {
     ({ BrowserWindow }, [w, h]) => {
       const win = BrowserWindow.getAllWindows().find(
         (x) =>
-          x.getURL().includes("app://renderer") &&
-          !x.getURL().includes("pill") &&
-          !x.getURL().includes("bar.html"),
+          x.webContents.getURL().includes("app://renderer") &&
+          !x.webContents.getURL().includes("pill") &&
+          !x.webContents.getURL().includes("bar.html"),
       );
       win?.setContentSize(w, h);
     },

@@ -69,8 +69,8 @@ Toolchain: pnpm 10+ (pinned `10.32.1` via root `packageManager`), Node 22+. Inst
 | Lint | `pnpm biome check .` |
 | Format | `pnpm format` |
 | Unused files/deps/exports check | `pnpm run knip` |
-| Typecheck (CI-matching, safe on a fresh clone) | `pnpm turbo build --filter=@openstyle/server && pnpm --filter @openstyle/electron typecheck:web` |
-| Typecheck (full: main+preload and renderer) | `pnpm --filter @openstyle/electron typecheck` |
+| Typecheck (CI-matching, safe on a fresh clone) | `pnpm turbo build --filter=@openstyle/server && pnpm --filter @openstyle/electron typecheck:web && pnpm --filter @openstyle/electron typecheck:tests` |
+| Typecheck (full: main+preload, renderer and tests) | `pnpm --filter @openstyle/electron typecheck` |
 | Run all tests | `pnpm test` |
 | Run server tests | `pnpm --filter @openstyle/server test` |
 | Run a single test file | `pnpm --filter @openstyle/server test tests/config-route.test.ts` |

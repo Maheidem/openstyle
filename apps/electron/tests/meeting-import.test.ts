@@ -181,7 +181,7 @@ test("rejects a .txt drop before any upload", async () => {
 
   const meetingsBefore = await listMeetings();
   expect(meetingsBefore.length).toBe(0);
-  const callsBefore = await e2eCounter(app, "meetingImportCalls");
+  const callsBefore = await e2eCounter(app!, "meetingImportCalls");
 
   // Synthetic drop of a non-audio file — rejected client-side before any
   // IPC upload (same shape as import-screen's .txt test; a real drag isn't
@@ -203,7 +203,7 @@ test("rejects a .txt drop before any upload", async () => {
 
   const meetingsAfter = await listMeetings();
   expect(meetingsAfter.length).toBe(0);
-  expect(await e2eCounter(app, "meetingImportCalls")).toBe(callsBefore);
+  expect(await e2eCounter(app!, "meetingImportCalls")).toBe(callsBefore);
 });
 
 test("picker import from the empty state creates and selects a meeting", async () => {
@@ -215,7 +215,7 @@ test("picker import from the empty state creates and selects a meeting", async (
   expect(existsSync(wavPath)).toBe(true);
 
   await withPickerFile(
-    app,
+    app!,
     "OPENSTYLE_E2E_MEETING_IMPORT_FILE",
     wavPath,
     async () => {
@@ -255,7 +255,7 @@ test("picker import from the empty state creates and selects a meeting", async (
           meetings[0].status === "failed",
       ).toBe(true);
 
-      expect(await e2eCounter(app, "meetingImportCalls")).toBe(1);
+      expect(await e2eCounter(app!, "meetingImportCalls")).toBe(1);
     },
   );
 });
@@ -273,7 +273,7 @@ test("picker import from the master-detail rail adds another meeting", async () 
   writeSilentWav(wavPath);
 
   await withPickerFile(
-    app,
+    app!,
     "OPENSTYLE_E2E_MEETING_IMPORT_FILE",
     wavPath,
     async () => {
@@ -287,7 +287,7 @@ test("picker import from the master-detail rail adds another meeting", async () 
       expect(meetings.length).toBe(2);
       expect(meetings.some((m) => m.title === "second-meeting")).toBe(true);
 
-      expect(await e2eCounter(app, "meetingImportCalls")).toBe(2);
+      expect(await e2eCounter(app!, "meetingImportCalls")).toBe(2);
     },
   );
 });

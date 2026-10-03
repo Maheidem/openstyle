@@ -75,22 +75,22 @@ test.afterAll(async () => {
 // ---------------------------------------------------------------------------
 
 test("app launches and creates windows", async () => {
-  const windows = app.windows();
+  const windows = app!.windows();
   expect(windows.length).toBeGreaterThanOrEqual(1);
 });
 
 test("main process is responsive", async () => {
-  const isPackaged = await app.evaluate(({ app }) => app.isPackaged);
+  const isPackaged = await app!.evaluate(({ app }) => app.isPackaged);
   expect(isPackaged).toBe(false);
 });
 
 test("app name is Openstyle", async () => {
-  const appName = await app.evaluate(({ app }) => app.getName());
+  const appName = await app!.evaluate(({ app }) => app.getName());
   expect(appName).toBe("Openstyle");
 });
 
 test("app version is defined", async () => {
-  const version = await app.evaluate(({ app }) => app.getVersion());
+  const version = await app!.evaluate(({ app }) => app.getVersion());
   expect(version).toBeTruthy();
   expect(version).toMatch(/^\d+\.\d+/);
 });
@@ -109,7 +109,7 @@ test("dashboard window has a reasonable viewport", async () => {
 });
 
 test("embedded server is running", async () => {
-  const health = await app.evaluate(async (_electron, port) => {
+  const health = await app!.evaluate(async (_electron, port) => {
     const res = await fetch(`http://127.0.0.1:${port}/api/health`);
     return res.json() as Promise<{ status: string; name: string }>;
   }, DEFAULT_PORT);
@@ -117,7 +117,7 @@ test("embedded server is running", async () => {
 });
 
 test("settings API works via embedded server", async () => {
-  await app.evaluate(async (_electron, port) => {
+  await app!.evaluate(async (_electron, port) => {
     await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -125,7 +125,7 @@ test("settings API works via embedded server", async () => {
     });
   }, DEFAULT_PORT);
 
-  const result = await app.evaluate(async (_electron, port) => {
+  const result = await app!.evaluate(async (_electron, port) => {
     const res = await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`);
     return res.json() as Promise<{ key: string; value: string }>;
   }, DEFAULT_PORT);
