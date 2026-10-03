@@ -385,10 +385,6 @@ interface TranscribeResult {
   providerCategory?: string;
 }
 
-interface QueueEntry {
-  promise: Promise<TranscribeResult>;
-}
-
 // ---------------------------------------------------------------------------
 // Remix
 // ---------------------------------------------------------------------------
@@ -607,7 +603,7 @@ export default function AppPage(): React.JSX.Element {
    */
   const voiceBandRef = useRef({ startBin: 0, endBin: 0, levelDivisor: 1 });
 
-  const queueRef = useRef<QueueEntry[]>([]);
+  const queueRef = useRef<Promise<TranscribeResult>[]>([]);
   const drainingRef = useRef(false);
   const streamResolverRef = useRef<((r: TranscribeResult) => void) | null>(
     null,
@@ -648,7 +644,7 @@ export default function AppPage(): React.JSX.Element {
       const batch = [...queueRef.current];
       queueRef.current = [];
 
-      const results = await Promise.all(batch.map((e) => e.promise));
+      const results = await Promise.all(batch);
 
       if (!pillActiveRef.current) {
         return;
@@ -664,7 +660,7 @@ export default function AppPage(): React.JSX.Element {
       ) {
         const resolved = results
           .filter(isDeliverable)
-          .map((r) => ({ promise: Promise.resolve(r) }));
+          .map((r) => Promise.resolve(r));
         queueRef.current = [...resolved, ...queueRef.current];
         return;
       }
@@ -720,7 +716,7 @@ export default function AppPage(): React.JSX.Element {
 
       if (recordingActiveRef.current || queueRef.current.length > 0) {
         queueRef.current = [
-          { promise: Promise.resolve({ raw: finalText, cleaned: finalText }) },
+          Promise.resolve({ raw: finalText, cleaned: finalText }),
           ...queueRef.current,
         ];
         return;
@@ -769,6 +765,23 @@ export default function AppPage(): React.JSX.Element {
       }
     }
   }, []);
+
+  // Queue one transcription and start the drain. The caller increments
+  // pendingCount before it builds `p`. The decrement runs in finally, so it
+  // runs on every path (lore: streaming commit trap). `after` runs once `p`
+  // has settled.
+  const enqueue = useCallback(
+    (p: Promise<TranscribeResult>, after?: () => void): void => {
+      queueRef.current.push(
+        p.finally(() => {
+          setPendingCount((count) => Math.max(0, count - 1));
+          after?.();
+        }),
+      );
+      void drainQueue();
+    },
+    [drainQueue],
+  );
 
   // ---- REST fallback (full recorded WAV kept by the streamer) ----
   const restFallbackTranscribe = useCallback(
@@ -1212,14 +1225,9 @@ export default function AppPage(): React.JSX.Element {
     // the capsule needs its sweep started again rather than resumed.
     startBarAnimation("speaking");
     setPendingCount((count) => count + 1);
-    queueRef.current.push({
-      promise: retry.finally(() => {
-        setPendingCount((count) => Math.max(0, count - 1));
-      }),
-    });
-    void drainQueue();
+    enqueue(retry);
   }, [
-    drainQueue,
+    enqueue,
     restFallbackTranscribe,
     setPillNotice,
     setPillState,
@@ -1537,6 +1545,15 @@ export default function AppPage(): React.JSX.Element {
     ],
   );
 
+  // Replay a re-record press that arrived while a commit was finalizing (see
+  // the hotkey-down handler). Only when nothing else has already taken the mic.
+  const replayPendingReRecord = useCallback((): void => {
+    if (pendingReRecordRef.current && !wantsMicRef.current) {
+      pendingReRecordRef.current = false;
+      void startRecording(true);
+    }
+  }, [startRecording]);
+
   // ---- Commit recording ----
   const commitRecording = useCallback(async () => {
     // Read once, here, into a local that travels with every request this
@@ -1609,16 +1626,7 @@ export default function AppPage(): React.JSX.Element {
             cleaned: "",
             error: transportFailure,
           });
-        queueRef.current.push({
-          promise: fallback.finally(() => {
-            setPendingCount((count) => Math.max(0, count - 1));
-            if (pendingReRecordRef.current && !wantsMicRef.current) {
-              pendingReRecordRef.current = false;
-              void startRecording(true);
-            }
-          }),
-        });
-        void drainQueue();
+        enqueue(fallback, replayPendingReRecord);
         return;
       }
 
@@ -1653,19 +1661,7 @@ export default function AppPage(): React.JSX.Element {
         }, 15_000);
       });
       streamerRef.current.commit();
-      queueRef.current.push({
-        promise: transcribePromise.finally(() => {
-          setPendingCount((c) => Math.max(0, c - 1));
-          // Replay a re-record press that arrived while this commit was
-          // finalizing (see the hotkey-down handler). Only when nothing else
-          // has already taken the mic.
-          if (pendingReRecordRef.current && !wantsMicRef.current) {
-            pendingReRecordRef.current = false;
-            void startRecording(true);
-          }
-        }),
-      });
-      void drainQueue();
+      enqueue(transcribePromise, replayPendingReRecord);
       return;
     }
 
@@ -1766,23 +1762,19 @@ export default function AppPage(): React.JSX.Element {
               : ` (${getApiBase()} unreachable — quit and reopen the app)`
             : "";
         return { raw: "", cleaned: "", error: `${msg}${hint}` };
-      })
-      .finally(() => {
-        setPendingCount((c) => Math.max(0, c - 1));
       });
 
-    queueRef.current.push({ promise: transcribePromise });
-    drainQueue();
+    enqueue(transcribePromise);
   }, [
     hidePill,
-    drainQueue,
+    enqueue,
     startHandover,
     setPillState,
     resumeTranscribingOrHide,
     isTranscriptionIdle,
     restoreSystemAudioSafely,
     restFallbackTranscribe,
-    startRecording,
+    replayPendingReRecord,
     setPillNotice,
   ]);
 
