@@ -359,19 +359,14 @@ const api = {
   onFullscreenChanged: listen<[isFullscreen: boolean]>("fullscreen:changed"),
 };
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld("electron", electronAPI);
-    contextBridge.exposeInMainWorld("api", api);
-  } catch (error) {
-    console.error(error);
-  }
-} else {
-  // @ts-expect-error (define in dts)
-  window.electron = electronAPI;
-  // @ts-expect-error (define in dts)
-  window.api = api;
+// The renderer types read `Window.api` from this type (see index.d.ts).
+export type OpenstyleApi = typeof api;
+
+// The renderer gets the named `api` members only. The raw `electronAPI`
+// (generic ipcRenderer) is for the E2E tests, so only E2E runs expose it.
+try {
+  contextBridge.exposeInMainWorld("api", api);
+  if (api.isE2E) contextBridge.exposeInMainWorld("electron", electronAPI);
+} catch (error) {
+  console.error(error);
 }

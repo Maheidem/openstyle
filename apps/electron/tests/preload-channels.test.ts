@@ -7,22 +7,19 @@ import { describe, expect, it } from "vitest";
 // ---------------------------------------------------------------------------
 // Preload channel-drift guard (C3′, specs/lean-audit-2026-09.md §3 T1-6).
 //
-// `src/preload/index.ts` (the runtime bridge) and `src/preload/index.d.ts`
-// (the hand-written renderer-facing declaration) must be kept in sync by
-// hand — a manual sync that has already drifted once (the removed mic
-// listener's channel lived on in both long past its last consumer, and a
-// stale main/index.ts comment referenced the deleted `beforeOutput` hook).
+// The renderer type `Window.api` comes from the `api` object in
+// `src/preload/index.ts` (see `OpenstyleApi`). The type checker keeps the two
+// in sync. This guard covers the part that types cannot see: the IPC channel
+// names. A removed mic listener once stayed in the preload long after its
+// last consumer, and a stale comment in main/index.ts named a deleted hook.
 //
-// This test parses both files with the TypeScript compiler API and asserts:
+// This test parses the source files with the TypeScript compiler API and
+// asserts:
 //
-//   1. every `api` property in index.ts that subscribes via
-//      `ipcRenderer.on("<channel>")` or `listen("<channel>")` is declared in
-//      index.d.ts;
-//   2. every `on*` member declared in index.d.ts's `api` has a matching
-//      subscription in index.ts (no declarations for dead channels);
-//   3. every `webContents.send("<channel>")` (or WebContents-shaped
+//   1. every `api` member that subscribes forwards exactly one channel;
+//   2. every `webContents.send("<channel>")` (or WebContents-shaped
 //      `.send(...)`) anywhere in src/main has a preload subscription
-//      forwarding it — the exact class of drift the mic-listener removal
+//      forwarding it. This is the class of drift the mic-listener removal
 //      exercised.
 //
 // This is a vitest file that lives beside the Playwright e2e suites but must
@@ -32,7 +29,6 @@ import { describe, expect, it } from "vitest";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 const PRELOAD_TS = join(TESTS_DIR, "../src/preload/index.ts");
-const PRELOAD_DTS = join(TESTS_DIR, "../src/preload/index.d.ts");
 const MAIN_DIR = join(TESTS_DIR, "../src/main");
 
 function parse(file: string): ts.SourceFile {
@@ -110,40 +106,6 @@ function preloadSubscriptions(): Subscription[] {
   return subs;
 }
 
-/** The `api: { ... }` member's type literal from the Window interface. */
-function declaredApiMembers(source: ts.SourceFile): string[] {
-  const members: string[] = [];
-  (function walk(node: ts.Node): void {
-    if (ts.isInterfaceDeclaration(node) && node.name.text === "Window") {
-      for (const member of node.members) {
-        if (
-          ts.isPropertySignature(member) &&
-          ts.isIdentifier(member.name) &&
-          member.name.text === "api" &&
-          member.type &&
-          ts.isTypeLiteralNode(member.type)
-        ) {
-          for (const m of member.type.members) {
-            if (
-              (ts.isPropertySignature(m) || ts.isMethodSignature(m)) &&
-              ts.isIdentifier(m.name)
-            ) {
-              members.push(m.name.text);
-            }
-          }
-        }
-      }
-    }
-    ts.forEachChild(node, walk);
-  })(source);
-  if (members.length === 0) {
-    throw new Error(
-      "Window.api member not found in src/preload/index.d.ts — did the declaration shape change?",
-    );
-  }
-  return members;
-}
-
 /**
  * Every `.send("<channel>", ...)` and `broadcastToWindows("<channel>", ...)`
  * call site in src/main, keyed by channel with file provenance. Receivers
@@ -182,30 +144,7 @@ function mainSendChannels(): Map<string, string[]> {
 
 describe("preload channel drift guard", () => {
   const subscriptions = preloadSubscriptions();
-  const subscribedNames = new Set(subscriptions.map((s) => s.apiName));
   const subscribedChannels = new Set(subscriptions.flatMap((s) => s.channels));
-  const declared = declaredApiMembers(parse(PRELOAD_DTS));
-  const declaredOnNames = new Set(declared.filter((n) => n.startsWith("on")));
-
-  it("every preload subscription is declared in index.d.ts", () => {
-    const undeclared = subscriptions
-      .map((s) => s.apiName)
-      .filter((name) => !declared.includes(name));
-    expect(
-      undeclared,
-      "api members in preload/index.ts that subscribe but have no declaration in preload/index.d.ts",
-    ).toEqual([]);
-  });
-
-  it("every declared on* member has a live subscription in index.ts", () => {
-    const dead = [...declaredOnNames].filter(
-      (name) => !subscribedNames.has(name),
-    );
-    expect(
-      dead,
-      "on* members declared in preload/index.d.ts with no ipcRenderer.on subscription in preload/index.ts",
-    ).toEqual([]);
-  });
 
   it("every subscription forwards exactly one channel", () => {
     const multi = subscriptions.filter((s) => s.channels.length !== 1);
