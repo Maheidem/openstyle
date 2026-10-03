@@ -26,6 +26,7 @@ import {
 } from "../src/lib/meetings/retention.js";
 import type { TranscriberDeps } from "../src/lib/meetings/transcriber.js";
 import { __setMeetingsTestOverrides } from "../src/routes/meetings.js";
+import { jsonRequest, postEmpty } from "./helpers/http.js";
 
 const app = createApp();
 
@@ -206,17 +207,13 @@ async function waitForTerminalStatusNoRealTimers(
 
 describe("POST /api/meetings/:id/transcribe", () => {
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/nope/transcribe");
     expect(res.status).toBe(404);
   });
 
   it("409s while the meeting is still recording", async () => {
     insertMeeting("m1", "recording");
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(409);
   });
 
@@ -228,9 +225,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     });
     insertMeeting("m1");
 
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
 
     const done = await waitForTerminalStatus("m1");
@@ -296,9 +291,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     const preBody = (await preTranscript.json()) as { segments: unknown[] };
     expect(preBody.segments.length).toBeGreaterThan(0);
 
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
 
     // The job is parked on `gate` inside its first transcribe call — the
@@ -324,9 +317,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
       },
     });
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
     const done = await waitForTerminalStatus("m1");
     expect(done.status).toBe("failed");
@@ -350,9 +341,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
       )
       .run(Date.now());
 
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
     await waitForTerminalStatusNoRealTimers("m1");
 
@@ -368,10 +357,8 @@ describe("POST /api/meetings/:id/transcribe", () => {
 describe("PATCH /api/meetings/:id", () => {
   it("renames a meeting", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "  New title  " }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      title: "  New title  ",
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; title: string };
@@ -381,40 +368,32 @@ describe("PATCH /api/meetings/:id", () => {
   });
 
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "New title" }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/nope", {
+      title: "New title",
     });
     expect(res.status).toBe(404);
   });
 
   it("rejects an empty or whitespace-only title", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "   " }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      title: "   ",
     });
     expect(res.status).toBe(400);
   });
 
   it("rejects a title over the length cap", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "x".repeat(513) }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      title: "x".repeat(513),
     });
     expect(res.status).toBe(400);
   });
 
   it("sets the meeting's language (Phase A2 chip edit)", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language: "pt" }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      language: "pt",
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -426,10 +405,8 @@ describe("PATCH /api/meetings/:id", () => {
     getDb()
       .prepare("UPDATE meetings SET language = 'en' WHERE id = 'm1'")
       .run();
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language: null }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      language: null,
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -438,21 +415,15 @@ describe("PATCH /api/meetings/:id", () => {
 
   it("rejects a PATCH body with neither title nor language", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {});
     expect(res.status).toBe(400);
   });
 
   // specs/meeting-speaker-naming.md §3.4/§6.4
   it("sets the meeting's context and returns it on the next GET", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: "Call with Ana from Acme" }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      context: "Call with Ana from Acme",
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -464,10 +435,8 @@ describe("PATCH /api/meetings/:id", () => {
     getDb()
       .prepare("UPDATE meetings SET context = 'old context' WHERE id = 'm1'")
       .run();
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: null }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      context: null,
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -476,30 +445,22 @@ describe("PATCH /api/meetings/:id", () => {
 
   it("accepts a body with only context (no title/language) — the refine no longer rejects it", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: "just context" }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      context: "just context",
     });
     expect(res.status).toBe(200);
   });
 
   it("rejects a body with none of title/language/context", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {});
     expect(res.status).toBe(400);
   });
 
   it("rejects context over the 2000-char cap", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: "x".repeat(2001) }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      context: "x".repeat(2001),
     });
     expect(res.status).toBe(400);
   });
@@ -514,7 +475,7 @@ describe("POST /api/meetings/:id/retry-failed", () => {
       }),
     });
     insertMeeting("m1");
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     const afterFirst = await waitForTerminalStatus("m1");
     expect(afterFirst.status).toBe("transcribed");
     const firstCounts = afterFirst.segment_counts as { failed: number };
@@ -524,9 +485,7 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => ({ text: "recovered" })),
     });
-    const res = await app.request("/api/meetings/m1/retry-failed", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { retried: number; failed: number };
     expect(body.retried).toBe(firstCounts.failed);
@@ -539,9 +498,7 @@ describe("POST /api/meetings/:id/retry-failed", () => {
 
   it("no-ops when there are no failed chunks", async () => {
     insertMeeting("m1", "transcribed");
-    const res = await app.request("/api/meetings/m1/retry-failed", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, retried: 0 });
   });
@@ -635,17 +592,13 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
   });
 
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope/cancel-transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/nope/cancel-transcribe");
     expect(res.status).toBe(404);
   });
 
   it("409s when no job is running for the meeting", async () => {
     insertMeeting("m1", "recorded");
-    const res = await app.request("/api/meetings/m1/cancel-transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("No transcription job");
@@ -670,16 +623,12 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
       },
     });
 
-    const diarizePromise = app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const diarizePromise = postEmpty(app, "/api/meetings/m1/diarize");
     // Let the diarize handler claim the slot under fake timers (same
     // reasoning as the enhance 409 test above).
     await vi.advanceTimersByTimeAsync(20);
 
-    const res = await app.request("/api/meetings/m1/cancel-transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
     expect(res.status).toBe(409);
 
     release();
@@ -705,9 +654,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
     });
     insertMeeting("m1", "recorded", cancelAudioDir);
 
-    const start = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(start.status).toBe(202);
     await waitForMicrotasks(() => calls >= 2);
 
@@ -721,16 +668,14 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
       const mid = await getMeeting("m1");
       expect(mid.job).toMatchObject({ done: 0, total: 6 });
 
-      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
-        method: "POST",
-      });
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
       expect(cancel.status).toBe(202);
 
       // Idempotent while winding down: the slot is still held, the second
       // cancel is an acknowledged no-op (documented semantics).
-      const cancelAgain = await app.request(
+      const cancelAgain = await postEmpty(
+        app,
         "/api/meetings/m1/cancel-transcribe",
-        { method: "POST" },
       );
       expect(cancelAgain.status).toBe(202);
     } finally {
@@ -759,9 +704,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
     ]);
 
     // Slot freed — a third cancel is a plain 409.
-    const after = await app.request("/api/meetings/m1/cancel-transcribe", {
-      method: "POST",
-    });
+    const after = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
     expect(after.status).toBe(409);
   });
 
@@ -782,9 +725,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
     // A second stuck row with NO live job — this one *is* an orphan.
     insertMeeting("m2", "transcribing", cancelAudioDir);
 
-    const start = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(start.status).toBe(202);
     await waitForMicrotasks(() => calls >= 1);
 
@@ -850,15 +791,11 @@ describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () 
       }),
     });
 
-    const retryPromise = app.request("/api/meetings/m1/retry-failed", {
-      method: "POST",
-    });
+    const retryPromise = postEmpty(app, "/api/meetings/m1/retry-failed");
     await waitForMicrotasks(() => calls >= 2);
 
     try {
-      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
-        method: "POST",
-      });
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
       expect(cancel.status).toBe(202);
     } finally {
       release();
@@ -884,9 +821,9 @@ describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () 
     expect(after.status).toBe("transcribed");
     expect(after.job).toBeNull();
 
-    const cancelAgain = await app.request(
+    const cancelAgain = await postEmpty(
+      app,
       "/api/meetings/m1/cancel-transcribe",
-      { method: "POST" },
     );
     expect(cancelAgain.status).toBe(409);
   });
@@ -918,9 +855,7 @@ describe("boot sweep — quit-mid-transcription recovery (T1-1a)", () => {
     const { items } = (await orphans.json()) as { items: { id: string }[] };
     expect(items.some((i) => i.id === "m1")).toBe(true);
 
-    const res = await app.request("/api/meetings/m1/transcribe-interrupted", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe-interrupted");
     expect(res.status).toBe(200);
 
     const after = await getMeeting("m1");
@@ -932,43 +867,40 @@ describe("boot sweep — quit-mid-transcription recovery (T1-1a)", () => {
 
   it("POST /:id/transcribe-interrupted is strict: 404 from any other status", async () => {
     insertMeeting("m1", "recorded");
-    const fromRecorded = await app.request(
+    const fromRecorded = await postEmpty(
+      app,
       "/api/meetings/m1/transcribe-interrupted",
-      { method: "POST" },
     );
     expect(fromRecorded.status).toBe(404);
 
     // 'recording' orphans belong to the recorder's endpoint, not this one.
     insertMeeting("m2", "recording");
-    const fromRecording = await app.request(
+    const fromRecording = await postEmpty(
+      app,
       "/api/meetings/m2/transcribe-interrupted",
-      { method: "POST" },
     );
     expect(fromRecording.status).toBe(404);
 
-    const unknown = await app.request(
+    const unknown = await postEmpty(
+      app,
       "/api/meetings/nope/transcribe-interrupted",
-      { method: "POST" },
     );
     expect(unknown.status).toBe(404);
 
     // And a second sweep pass over an already-failed row is a 404 no-op.
     insertMeeting("m3", "transcribing");
-    await app.request("/api/meetings/m3/transcribe-interrupted", {
-      method: "POST",
-    });
-    const again = await app.request("/api/meetings/m3/transcribe-interrupted", {
-      method: "POST",
-    });
+    await postEmpty(app, "/api/meetings/m3/transcribe-interrupted");
+    const again = await postEmpty(
+      app,
+      "/api/meetings/m3/transcribe-interrupted",
+    );
     expect(again.status).toBe(404);
   });
 
   it("the recording branch of the boot path still works: /interrupted from 'recording' only", async () => {
     insertMeeting("m1", "recording");
-    const res = await app.request("/api/meetings/m1/interrupted", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ duration_ms: 12345 }),
+    const res = await jsonRequest(app, "POST", "/api/meetings/m1/interrupted", {
+      duration_ms: 12345,
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -977,11 +909,12 @@ describe("boot sweep — quit-mid-transcription recovery (T1-1a)", () => {
 
     // Strict from anywhere else.
     insertMeeting("m2", "transcribing");
-    const wrongState = await app.request("/api/meetings/m2/interrupted", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    const wrongState = await jsonRequest(
+      app,
+      "POST",
+      "/api/meetings/m2/interrupted",
+      {},
+    );
     expect(wrongState.status).toBe(404);
   });
 });
@@ -1003,7 +936,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
     });
     insertMeeting("m1");
 
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     const done = await waitForTerminalStatus("m1");
     expect(done.status).toBe("transcribed");
 
@@ -1027,33 +960,25 @@ describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
 
 describe("POST /api/meetings/:id/diarize", () => {
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/nope/diarize");
     expect(res.status).toBe(404);
   });
 
   it("409s when the meeting has no transcript yet", async () => {
     insertMeeting("m1", "recorded");
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(409);
   });
 
   it("409s while the meeting is still transcribing", async () => {
     insertMeeting("m1", "transcribing");
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(409);
   });
 
   it("409s when the meeting has no audio directory", async () => {
     insertMeeting("m1", "transcribed", null);
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(409);
   });
 
@@ -1061,9 +986,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     const emptyDir = mkdtempSync(join(tmpdir(), "meeting-diarize-nowav-"));
     try {
       insertMeeting("m1", "transcribed", emptyDir);
-      const res = await app.request("/api/meetings/m1/diarize", {
-        method: "POST",
-      });
+      const res = await postEmpty(app, "/api/meetings/m1/diarize");
       expect(res.status).toBe(409);
     } finally {
       rmSync(emptyDir, { recursive: true, force: true });
@@ -1075,9 +998,7 @@ describe("POST /api/meetings/:id/diarize", () => {
       diarizeDeps: fakeDiarizeDeps({ probeStdout: "NOT_READY" }),
     });
     insertMeeting("m1", "transcribed");
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(409);
   });
 
@@ -1096,9 +1017,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
     insertSystemSegment("m1:system:1", "m1", 1, 2000, 3000);
 
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok: boolean;
@@ -1132,9 +1051,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
 
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       ok: true,
@@ -1165,9 +1082,7 @@ describe("POST /api/meetings/:id/diarize", () => {
       )
       .run(Date.now());
 
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { mappingReset: boolean };
     expect(body.mappingReset).toBe(true);
@@ -1201,9 +1116,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     const transcriptPath = join(audioDir, "transcript.md");
     writeFileSync(transcriptPath, "STALE-PLACEHOLDER-CONTENT", "utf8");
 
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
 
     const after = readFileSync(transcriptPath, "utf8");
@@ -1397,11 +1310,12 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
     label: string,
     body: Record<string, unknown>,
   ): Promise<Response> {
-    return app.request(`/api/meetings/${meetingId}/speakers/${label}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    return jsonRequest(
+      app,
+      "PATCH",
+      `/api/meetings/${meetingId}/speakers/${label}`,
+      body,
+    );
   }
 
   it("404s when the meeting doesn't exist", async () => {
@@ -1650,9 +1564,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 describe("POST /api/meetings/:id/summarize", () => {
   it("409s when the meeting has no transcript", async () => {
     insertMeeting("m1", "recorded");
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(409);
   });
 
@@ -1713,9 +1625,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     // 202 before the LLM call even starts — no markdown in the body, the
     // markdown is polled. This is the whole point of the change: a local
     // engine can take 10 minutes and the HTTP call used to stay open.
@@ -1779,9 +1689,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     const after = await waitForSummarizeToSettle("m1");
     expect(capturedOptions?.meetingContext).toBe("Call with Ana from Acme");
@@ -1813,9 +1721,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const first = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const first = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(first.status).toBe(202);
     await vi.advanceTimersByTimeAsync(1);
 
@@ -1823,18 +1729,12 @@ describe("POST /api/meetings/:id/summarize", () => {
     // double submit used to be legal and the second run's INSERT OR REPLACE
     // clobbered the first.
     try {
-      const second = await app.request("/api/meetings/m1/summarize", {
-        method: "POST",
-      });
+      const second = await postEmpty(app, "/api/meetings/m1/summarize");
       expect(second.status).toBe(409);
       // The other slot-holders are excluded the same way, in both directions.
-      const diarize = await app.request("/api/meetings/m1/diarize", {
-        method: "POST",
-      });
+      const diarize = await postEmpty(app, "/api/meetings/m1/diarize");
       expect(diarize.status).toBe(409);
-      const enhance = await app.request("/api/meetings/m1/enhance", {
-        method: "POST",
-      });
+      const enhance = await postEmpty(app, "/api/meetings/m1/enhance");
       expect(enhance.status).toBe(409);
     } finally {
       // Never park the job (and its slot) on a failed assertion above.
@@ -1845,9 +1745,7 @@ describe("POST /api/meetings/:id/summarize", () => {
     expect(calls).toBe(1);
 
     // Slot freed — a follow-up summarize is accepted again.
-    const third = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const third = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(third.status).toBe(202);
     await waitForSummarizeToSettle("m1");
     expect(calls).toBe(2);
@@ -1869,9 +1767,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     const after = await waitForSummarizeToSettle("m1");
     expect(after.job_error).toBe("No AI model is set up yet.");
@@ -1896,9 +1792,7 @@ describe("POST /api/meetings/:id/summarize", () => {
         costUsd: null,
       }),
     });
-    const again = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const again = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(again.status).toBe(202);
     const done = await waitForSummarizeToSettle("m1");
     expect(done.job_error).toBeNull();
@@ -1936,16 +1830,12 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     try {
       await reachedGate;
       // §5.7: a summarize job is cancellable through the existing seam.
-      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
-        method: "POST",
-      });
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
       expect(cancel.status).toBe(202);
     } finally {
       // Never park the job (and its slot) on a failed assertion above.
@@ -1976,9 +1866,7 @@ describe("POST /api/meetings/:id/summarize", () => {
         };
       },
     });
-    const retry = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const retry = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(retry.status).toBe(202);
     const done = await waitForSummarizeToSettle("m1");
     expect(sawStop).toBe(false);
@@ -2005,9 +1893,7 @@ describe("POST /api/meetings/:id/summarize", () => {
         }),
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     // Let the job reach its deadline timer (the clock does not move on its
     // own under fake timers, so a tick-0 flush drains the awaits that set it).
@@ -2028,9 +1914,7 @@ describe("POST /api/meetings/:id/summarize", () => {
     } finally {
       // Belt and braces: if the ceiling somehow did not fire, cancel out of
       // the parked job rather than leaking its slot into later tests.
-      await app.request("/api/meetings/m1/cancel-transcribe", {
-        method: "POST",
-      });
+      await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
       await vi.advanceTimersByTimeAsync(50);
     }
     expect(after.job_error).toMatch(/exceeded its 1200s job ceiling/);
@@ -2048,9 +1932,7 @@ describe("POST /api/meetings/:id/summarize", () => {
         costUsd: null,
       }),
     });
-    const next = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const next = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(next.status).toBe(202);
     await waitForSummarizeToSettle("m1");
   });
@@ -2067,9 +1949,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     await vi.advanceTimersByTimeAsync(0);
     expect(stop?.()).toBe(false);
@@ -2099,25 +1979,19 @@ describe("POST /api/meetings/:id/enhance", () => {
   };
 
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/nope/enhance");
     expect(res.status).toBe(404);
   });
 
   it("409s when the meeting has no transcript", async () => {
     insertMeeting("m1", "recorded");
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(409);
   });
 
   it("409s when the merged transcript is empty", async () => {
     insertMeeting("m1", "transcribed");
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Transcript is empty");
@@ -2145,9 +2019,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const diarizePromise = app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const diarizePromise = postEmpty(app, "/api/meetings/m1/diarize");
     // Yield to the pending diarize handler under fake timers (setup.ts:
     // shouldAdvanceTime: false) — advanceTimersByTimeAsync flushes
     // microtasks between ticks, unlike a real setTimeout, which would never
@@ -2155,9 +2027,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     // above).
     await vi.advanceTimersByTimeAsync(20);
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(409);
 
     release();
@@ -2185,22 +2055,16 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const first = app.request("/api/meetings/m1/enhance", { method: "POST" });
+    const first = postEmpty(app, "/api/meetings/m1/enhance");
     await vi.advanceTimersByTimeAsync(20);
 
     try {
-      const second = await app.request("/api/meetings/m1/enhance", {
-        method: "POST",
-      });
+      const second = await postEmpty(app, "/api/meetings/m1/enhance");
       expect(second.status).toBe(409);
       // The other two writers are locked out for the same window.
-      const summarize = await app.request("/api/meetings/m1/summarize", {
-        method: "POST",
-      });
+      const summarize = await postEmpty(app, "/api/meetings/m1/summarize");
       expect(summarize.status).toBe(409);
-      const transcribe = await app.request("/api/meetings/m1/transcribe", {
-        method: "POST",
-      });
+      const transcribe = await postEmpty(app, "/api/meetings/m1/transcribe");
       expect(transcribe.status).toBe(409);
       // Held, and named: the renderer reads this to decide what it is looking
       // at.
@@ -2215,9 +2079,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     expect((await getMeeting("m1")).job).toBeNull();
 
     // Slot released after success — and after a throw too.
-    const again = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const again = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(again.status).toBe(200);
 
     __setMeetingsTestOverrides({
@@ -2225,14 +2087,10 @@ describe("POST /api/meetings/:id/enhance", () => {
         throw new Error("boom");
       },
     });
-    const thrown = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const thrown = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(thrown.status).toBe(500);
     expect((await getMeeting("m1")).job).toBeNull();
-    const afterThrow = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const afterThrow = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(afterThrow.status).toBe(500);
   });
 
@@ -2256,9 +2114,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; correctedCount: number };
     expect(body.ok).toBe(true);
@@ -2310,9 +2166,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       correctedCount: number;
@@ -2342,9 +2196,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
 
     const raw = readFileSync(join(audioDir, "transcript.md"), "utf8");
@@ -2372,9 +2224,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("No AI model is set up yet.");
@@ -2408,9 +2258,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       }),
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(502);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.ok).toBe(false);
@@ -2459,9 +2307,7 @@ describe("POST /api/meetings/:id/enhance", () => {
         }),
       });
 
-      const res = await app.request("/api/meetings/m1/enhance", {
-        method: "POST",
-      });
+      const res = await postEmpty(app, "/api/meetings/m1/enhance");
       expect(res.status, reason).toBe(502);
       const body = (await res.json()) as Record<string, unknown>;
       expect(body.reason, reason).toBe(reason);
@@ -2488,9 +2334,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       }),
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(502);
     const body = (await res.json()) as { reason: string };
     expect(body.reason).toBe("provider");
@@ -2521,9 +2365,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toMatchObject({
@@ -2557,9 +2399,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       }),
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toMatchObject({
@@ -2593,9 +2433,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       }),
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.partial).toBe(true);
@@ -2646,7 +2484,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", (
     });
     insertMeeting("m1");
 
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     await waitForTerminalStatusFast("m1");
     const after1 = await getMeeting("m1");
     expect(after1.language).toBe("pt");
@@ -2655,7 +2493,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", (
 
     // Re-transcribe: meetings.language is already set, so no new probe call
     // — only chunk-transcription calls should be added.
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     await waitForTerminalStatusFast("m1");
     const after2 = await getMeeting("m1");
     expect(after2.language).toBe("pt");
@@ -2676,7 +2514,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", (
       }),
     });
     insertMeeting("m1");
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     await waitForTerminalStatusFast("m1");
     const after = await getMeeting("m1");
     expect(after.language).toBe("pt");

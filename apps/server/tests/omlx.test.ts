@@ -4,6 +4,7 @@ import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
 import { OmlxTranscriptionProvider } from "../src/lib/streaming/providers/omlx.js";
 import { getApiKeyForProvider } from "../src/lib/streaming-stt.js";
+import { jsonRequest } from "./helpers/http.js";
 
 const MODELS_URL = "http://127.0.0.1:8123/v1/models";
 const TRANSCRIBE_URL = "http://127.0.0.1:8123/v1/audio/transcriptions";
@@ -217,11 +218,7 @@ describe("POST /api/settings/omlx/test", () => {
   }
 
   function post(body: unknown) {
-    return app.request("/api/settings/omlx/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    return jsonRequest(app, "POST", "/api/settings/omlx/test", body);
   }
 
   it("lists every model id and reports the transcription URL", async () => {
@@ -326,11 +323,7 @@ describe("PUT /api/settings/omlx_base_url", () => {
   const app = createApp();
 
   function put(value: string) {
-    return app.request("/api/settings/omlx_base_url", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
-    });
+    return jsonRequest(app, "PUT", "/api/settings/omlx_base_url", { value });
   }
 
   it("accepts an http URL", async () => {

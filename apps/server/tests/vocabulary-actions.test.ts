@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
+import { jsonRequest } from "./helpers/http.js";
 
 const app = createApp();
 
@@ -24,11 +25,7 @@ function ids(): number[] {
 }
 
 function post(body: unknown) {
-  return app.request("/api/vocabulary/actions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return jsonRequest(app, "POST", "/api/vocabulary/actions", body);
 }
 
 afterEach(() => {

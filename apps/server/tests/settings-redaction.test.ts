@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
+import { jsonRequest } from "./helpers/http.js";
 
 const app = createApp();
 
@@ -23,11 +24,7 @@ function getStoredSetting(key: string): string | undefined {
 }
 
 function put(path: string, body: unknown) {
-  return app.request(path, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return jsonRequest(app, "PUT", path, body);
 }
 
 function clearSettings(...keys: string[]): void {
@@ -141,10 +138,9 @@ describe("POST /api/settings/omlx/test resolves a re-submitted placeholder to th
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(okResponse());
 
-    const res = await app.request("/api/settings/omlx/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: "http://127.0.0.1:8123", api_key: REDACTED }),
+    const res = await jsonRequest(app, "POST", "/api/settings/omlx/test", {
+      url: "http://127.0.0.1:8123",
+      api_key: REDACTED,
     });
 
     expect(res.status).toBe(200);
@@ -160,13 +156,9 @@ describe("POST /api/settings/omlx/test resolves a re-submitted placeholder to th
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(okResponse());
 
-    await app.request("/api/settings/omlx/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: "http://127.0.0.1:8123",
-        api_key: "sk-freshly-typed",
-      }),
+    await jsonRequest(app, "POST", "/api/settings/omlx/test", {
+      url: "http://127.0.0.1:8123",
+      api_key: "sk-freshly-typed",
     });
 
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
