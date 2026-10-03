@@ -24,6 +24,7 @@ export type { ImportAudioResult, ImportedMeeting, MeetingImportResult };
 
 declare global {
   interface Window {
+    /** Raw IPC bridge. It exists only when `api.isE2E` is true. */
     electron: ElectronAPI;
     api: {
       platform: string;
