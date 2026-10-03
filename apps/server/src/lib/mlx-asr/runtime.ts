@@ -17,6 +17,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createAppLogger } from "@openstyle/utils";
 import { assertEnoughDiskSpace, describeDownloadError } from "../disk.js";
+import { progressFetch } from "../hf/progress.js";
 import {
   getManagedMlxWorkerPath,
   getMlxCacheDir,
@@ -628,10 +629,7 @@ async function downloadRuntimeToDir(
   mkdirSync(destDir, { recursive: true });
 
   try {
-    const res = await fetch(url, {
-      signal: active.controller.signal,
-      redirect: "follow",
-    });
+    const res = await progressFetch(active, active.controller.signal)(url);
     if (!res.ok || !res.body) {
       throw runtimeDownloadHttpError(url, res.status);
     }
@@ -661,7 +659,7 @@ async function downloadRuntimeToDir(
     });
 
     await pipeline(
-      webBodyToReadable(res.body, active),
+      Readable.fromWeb(res.body as never),
       hashThrough,
       createWriteStream(archivePath),
     );
@@ -713,34 +711,4 @@ async function downloadRuntimeToDir(
     active.error = describeDownloadError(err);
     throw err;
   }
-}
-
-function webBodyToReadable(
-  body: ReadableStream<Uint8Array>,
-  progress: ActiveRuntimeDownload,
-): Readable {
-  const reader = body.getReader();
-  return new Readable({
-    async read() {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          this.push(null);
-          return;
-        }
-        progress.bytesDownloaded += value.byteLength;
-        const now = Date.now();
-        const elapsed = now - progress.lastUpdate;
-        if (elapsed >= 500) {
-          const delta = progress.bytesDownloaded - progress.lastBytes;
-          progress.speedBps = Math.round((delta / elapsed) * 1000);
-          progress.lastUpdate = now;
-          progress.lastBytes = progress.bytesDownloaded;
-        }
-        this.push(Buffer.from(value));
-      } catch (err) {
-        this.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    },
-  });
 }

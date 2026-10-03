@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -251,7 +250,7 @@ export async function downloadModel(modelId: string): Promise<void> {
       },
     });
     await pipeline(
-      webBodyToReadable(res.body),
+      Readable.fromWeb(res.body as never),
       hashThrough,
       createWriteStream(tempPath),
     );
@@ -415,7 +414,7 @@ async function buildFromSource(): Promise<void> {
   }
 
   const fileStream = createWriteStream(tarPath);
-  await pipeline(webBodyToReadable(res.body), fileStream);
+  await pipeline(Readable.fromWeb(res.body as never), fileStream);
 
   log.info("Extracting source...");
 
@@ -535,7 +534,7 @@ async function downloadWindowsBinaries(): Promise<void> {
   }
 
   const fileStream = createWriteStream(tmpZip);
-  await pipeline(webBodyToReadable(res.body), fileStream);
+  await pipeline(Readable.fromWeb(res.body as never), fileStream);
 
   const psQuote = (p: string): string => `'${p.replace(/'/g, "''")}'`;
   try {
@@ -569,26 +568,4 @@ async function downloadWindowsBinaries(): Promise<void> {
   }
 
   log.info("Windows binaries downloaded");
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function webBodyToReadable(body: ReadableStream<Uint8Array>): Readable {
-  const reader = body.getReader();
-  return new Readable({
-    async read() {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          this.push(null);
-          return;
-        }
-        this.push(Buffer.from(value));
-      } catch (err) {
-        this.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    },
-  });
 }
