@@ -21,6 +21,7 @@ import {
   vi,
 } from "vitest";
 import { getDb } from "../src/lib/db.js";
+import { resetMeetingTables } from "./helpers/meetings-db.js";
 
 // ---------------------------------------------------------------------------
 // Mocks (hoisted so the route module sees it at import time). Only the
@@ -158,7 +159,7 @@ describe("POST /api/meetings/import", () => {
       writeFileSync(output, decoded);
       return { bytes: decoded.length };
     });
-    getDb().exec("DELETE FROM meetings");
+    resetMeetingTables();
   });
 
   afterEach(() => {

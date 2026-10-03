@@ -9,6 +9,7 @@ import {
 } from "../src/lib/meetings/enhance.js";
 import { buildEnhanceSystemPrompt } from "../src/lib/meetings/enhance-prompt.js";
 import type { MergedSegment } from "../src/lib/meetings/merge.js";
+import { insertSegment, resetMeetingTables } from "./helpers/meetings-db.js";
 
 function seg(
   id: string,
@@ -38,11 +39,17 @@ function insertMeetingAndSegments(meetingId: string, ids: string[]): void {
       "INSERT INTO meetings (id, status, created_at) VALUES (?, 'transcribed', ?)",
     )
     .run(meetingId, Date.now());
-  const insert = getDb().prepare(
-    `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-     VALUES (?, ?, 'mic', 0, 0, 1000, 'placeholder', 'ok')`,
-  );
-  for (const id of ids) insert.run(id, meetingId);
+  for (const id of ids) {
+    insertSegment({
+      id,
+      meetingId,
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      text: "placeholder",
+    });
+  }
 }
 
 /** A fake LLM that records every request and returns a canned response. */
@@ -69,8 +76,7 @@ function fakeLlm(
 }
 
 afterEach(() => {
-  getDb().exec("DELETE FROM meeting_segments");
-  getDb().exec("DELETE FROM meetings");
+  resetMeetingTables();
 });
 
 describe("extractJsonObject", () => {

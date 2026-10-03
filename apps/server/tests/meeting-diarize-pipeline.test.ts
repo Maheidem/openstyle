@@ -7,6 +7,10 @@ import {
   type DiarizeDeps,
   runDiarizationPass,
 } from "../src/lib/meetings/diarize.js";
+import {
+  insertSystemSegment,
+  resetMeetingTables,
+} from "./helpers/meetings-db.js";
 
 const dirs: string[] = [];
 
@@ -15,8 +19,7 @@ afterAll(() => {
 });
 
 afterEach(() => {
-  getDb().exec("DELETE FROM meeting_segments");
-  getDb().exec("DELETE FROM meetings");
+  resetMeetingTables();
 });
 
 /** A meeting dir with a real (empty PCM) system.wav — content is never
@@ -35,21 +38,6 @@ function insertMeeting(id: string, durationMs = 60_000): void {
        VALUES (?, 'Test meeting', 'transcribing', ?, ?)`,
     )
     .run(id, durationMs, Date.now());
-}
-
-function insertSystemSegment(
-  id: string,
-  meetingId: string,
-  idx: number,
-  startMs: number,
-  endMs: number,
-): void {
-  getDb()
-    .prepare(
-      `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-       VALUES (?, ?, 'system', ?, ?, ?, 'hello', 'ok')`,
-    )
-    .run(id, meetingId, idx, startMs, endMs);
 }
 
 function speakerLabels(meetingId: string): (string | null)[] {

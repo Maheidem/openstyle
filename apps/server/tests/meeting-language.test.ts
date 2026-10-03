@@ -15,6 +15,7 @@ import type {
   TranscribeResult,
   TranscriptionProvider,
 } from "../src/lib/streaming/types.js";
+import { resetMeetingTables } from "./helpers/meetings-db.js";
 
 const SAMPLE_RATE = 16_000;
 const dirs: string[] = [];
@@ -87,7 +88,7 @@ function makeProvider(
 }
 
 afterEach(() => {
-  getDb().exec("DELETE FROM meetings");
+  resetMeetingTables();
   getDb().exec("DELETE FROM settings WHERE key = 'languages'");
 });
 
