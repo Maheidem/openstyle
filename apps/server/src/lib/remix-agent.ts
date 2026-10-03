@@ -19,8 +19,8 @@ import {
   releaseLeaseOnResponseBodyEnd,
 } from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
-import { resolveTaskCall } from "./llm/task-profiles.js";
 import { createChatModel } from "./providers.js";
+import { resolveRemixCall } from "./remix-transform.js";
 
 const log = createAppLogger("remix-agent");
 
@@ -58,26 +58,17 @@ export function remixClientTools(): ToolSet {
   );
 }
 
-export interface ByokModelChoice {
-  provider: string;
-  model_id: string;
-}
-
 /**
  * The agent loop on the user's own model. The model gets the client tools
  * only. There are no server tools and no metering.
  */
 export async function runRemixAgentLocally(
   request: RemixAgentRequest,
-  // Retained for the route's own pre-flight `isCleanupModelSupported` gate
-  // (routes/remix/agent.ts) — the actual model/params used here are resolved
-  // fresh below via the "remix" task profile, which independently falls back
-  // to the same app-wide default this was built from unless a per-task model
-  // override is assigned (specs/llm-task-profiles.md §6.3).
-  _llm: ByokModelChoice,
   abortSignal: AbortSignal | undefined,
 ): Promise<Response> {
-  const resolved = await resolveTaskCall("remix", {
+  // Throws RemixTransformError before any stream starts, so the route can
+  // still return a plain 400.
+  const resolved = await resolveRemixCall({
     autoMaxOutputTokens: REMIX_AGENT_AUTO_MAX_OUTPUT_TOKENS,
   });
   const providerOptions = getLlmProvider(resolved.provider)?.providerOptions?.(
