@@ -54,7 +54,7 @@ const app = createApp();
 /** Canonical 44-byte-header 16 kHz mono PCM16 WAV of `samples` samples
  * (silence — the route never transcribes, so content is irrelevant; only
  * `needsDecodeFile` must see the canonical shape). */
-function buildWav(samples = 16000): Buffer {
+function buildWav(samples = 16000): Buffer<ArrayBuffer> {
   return buildBaseWav({ samples });
 }
 
@@ -69,7 +69,7 @@ function meetingDir(id: string): string {
 
 function importForm(opts: {
   name: string;
-  bytes: Uint8Array;
+  bytes: Uint8Array<ArrayBuffer>;
   id: string;
   audioDir: string;
   title?: string;
@@ -85,7 +85,7 @@ function importForm(opts: {
   return form;
 }
 
-function postImport(
+async function postImport(
   body: BodyInit,
   headers: Record<string, string> = {},
   target: { request: typeof app.request } = app,

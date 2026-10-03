@@ -28,7 +28,7 @@ export interface WavOptions {
  * `src/lib/audio/wav.ts`, so the parser tests do not use the code they check.
  * Without `listChunk` the result is the canonical 44-byte header plus payload.
  */
-export function buildWav(opts: WavOptions = {}): Buffer {
+export function buildWav(opts: WavOptions = {}): Buffer<ArrayBuffer> {
   const sampleRate = opts.sampleRate ?? 16_000;
   const channels = opts.channels ?? 1;
   const bits = opts.bitsPerSample ?? 16;

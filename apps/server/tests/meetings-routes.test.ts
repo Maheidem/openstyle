@@ -116,7 +116,10 @@ function insertMeeting(
 function fakeDeps(
   transcribe: () => Promise<{ text: string }>,
 ): (
-  extras: Pick<TranscriberDeps, "isDictationActive" | "onChunk" | "onProgress">,
+  extras?: Pick<
+    TranscriberDeps,
+    "isDictationActive" | "onChunk" | "onProgress"
+  >,
 ) => Promise<TranscriberDeps> {
   return async (extras) => ({
     getProvider: () => ({
@@ -1426,7 +1429,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       Promise.withResolvers<void>();
     const { promise: parked, resolve: resume } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
-      summarize: async (segments, options) => {
+      summarize: async (segments, options = {}) => {
         expect(segments).toHaveLength(1);
         expect(segments[0].speaker).toBe("Me");
         // The job's progress seam must reach the polled blob (this is what
@@ -1629,7 +1632,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       Promise.withResolvers<void>();
     const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
-      summarize: async (_segments, options) => {
+      summarize: async (_segments, options = {}) => {
         reached();
         await gate;
         // Honour the seam the way `summarizeMeeting` does: a cancel landing
@@ -1672,7 +1675,7 @@ describe("POST /api/meetings/:id/summarize", () => {
     // and is NOT born cancelled.
     let sawStop = true;
     __setMeetingsTestOverrides({
-      summarize: async (_segments, options) => {
+      summarize: async (_segments, options = {}) => {
         sawStop = options.shouldStop?.() ?? false;
         return {
           markdown: "## Second run",
@@ -1700,7 +1703,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       // Parks forever (nothing on the wire ever answers) but honours the
       // cancel seam, so the test's `finally` can always release the slot —
       // a leaked job here poisons every later test in the file.
-      summarize: (_segments, options) =>
+      summarize: (_segments, options = {}) =>
         new Promise<never>((_resolve, reject) => {
           const poll = setInterval(() => {
             if (options.shouldStop?.()) {
@@ -1761,7 +1764,7 @@ describe("POST /api/meetings/:id/summarize", () => {
     let stop: (() => boolean) | undefined;
     __setMeetingsTestOverrides({
       // Never answers. The test only reads the stop signal.
-      summarize: (_segments, options) => {
+      summarize: (_segments, options = {}) => {
         stop = options.shouldStop;
         return new Promise<never>(() => {});
       },
@@ -1794,6 +1797,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     chunksSucceeded: 1,
     chunksFailed: 0,
     stoppedEarly: false,
+    speakerSuggestions: 0,
   };
 
   it("404s for an unknown meeting", async () => {
@@ -1977,9 +1981,9 @@ describe("POST /api/meetings/:id/enhance", () => {
       ) => {
         capturedArgs = [title, context];
         return {
+          ...ONE_CHUNK_OK,
           correctedCount: 0,
           speakerSuggestions: 2,
-          ...ONE_CHUNK_OK,
         };
       },
     });

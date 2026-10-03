@@ -38,7 +38,7 @@ vi.mock("../src/lib/post-process.js", () => ({
 const { default: createApp } = await import("../src/index.js");
 const app = createApp();
 
-function transcribe(skipPostProcess = false): Promise<Response> {
+async function transcribe(skipPostProcess = false): Promise<Response> {
   return app.request("/api/transcribe", {
     method: "POST",
     headers: {

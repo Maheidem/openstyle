@@ -4,12 +4,12 @@ interface RequestableApp {
 }
 
 /** Send a request with a JSON body and the JSON content type. */
-export function jsonRequest(
+export async function jsonRequest(
   app: RequestableApp,
   method: string,
   path: string,
   body: unknown,
-) {
+): Promise<Response> {
   return app.request(path, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -18,6 +18,9 @@ export function jsonRequest(
 }
 
 /** Send a POST request with no body and no content type. */
-export function postEmpty(app: RequestableApp, path: string) {
+export async function postEmpty(
+  app: RequestableApp,
+  path: string,
+): Promise<Response> {
   return app.request(path, { method: "POST" });
 }

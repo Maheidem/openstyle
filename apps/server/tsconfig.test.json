@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "emitDeclarationOnly": false
+  },
+  "include": [
+    "tests/**/*",
+    "src/**/*",
+    "../../packages/sdk/src/**/*",
+    "../../packages/utils/src/**/*",
+    "../../packages/validations/src/**/*",
+    "../../packages/stt/src/**/*"
+  ]
+}
