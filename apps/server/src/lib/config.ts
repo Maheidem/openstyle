@@ -3,8 +3,8 @@
  * SQLite database (userData). Stores experimental feature flags and other
  * non-settings configuration that doesn't belong in the DB.
  *
- * Versioned schema — bump `CONFIG_VERSION` when the shape changes. The file
- * has one version so far, so the loader has no migration step yet.
+ * The schema has a version. Bump `CONFIG_VERSION` when the shape changes. The
+ * file has one version so far, so the loader has no migration step yet.
  *
  * Shape (v1):
  * ```json

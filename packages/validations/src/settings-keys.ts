@@ -32,11 +32,11 @@ export const SETTINGS_KEYS = {
   localLlmUrl: "local_llm_url",
   meetingDiarizationEnabled: "meeting_diarization_enabled",
   meetingEnhanceAutoRun: "meeting_enhance_auto_run",
-  // The Enhance twin of `meetingSummaryTimeoutSeconds` below: bounds ONE
-  // non-streaming LLM call per chunk, not the whole pass. Registered here, in
-  // `routes/settings.ts` (the bounds branch) and read in
-  // `task-profiles.ts` -> `taskTimeoutMs()` — all three existed separately at
-  // various points, which is how the knob shipped as a phantom in 2.8.0.
+  // The Enhance twin of `meetingSummaryTimeoutSeconds` below. It limits ONE
+  // non-streaming LLM call per chunk. It does not limit the whole pass. The
+  // key has three places: this file, `routes/settings.ts` (the bounds branch),
+  // and `task-profiles.ts` -> `taskTimeoutMs()`. In version 2.8.0 the setting
+  // shipped without effect because only some of these places existed.
   meetingEnhanceTimeoutSeconds: "meeting_enhance_timeout_seconds",
   meetingMaxDurationHours: "meeting_max_duration_hours",
   meetingRetentionDays: "meeting_retention_days",

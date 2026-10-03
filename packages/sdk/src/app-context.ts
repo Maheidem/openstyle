@@ -26,8 +26,8 @@ export interface AppContextPayload {
 /**
  * Parse the raw app-context value handed to the pipeline into the
  * {@link AppContext} shape. Tolerant of missing, malformed, or bare-string
- * input. A single canonical parser shared by every host so the interpretation
- * can't drift.
+ * input. Every host shares this one parser, so the interpretation does not
+ * change between hosts.
  */
 export function parseAppContext(
   raw: string | null | undefined,

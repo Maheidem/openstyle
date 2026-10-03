@@ -245,10 +245,10 @@ export function MeetingDetailView({
     [id, runAction],
   );
   // Shared cancel call for the Transcribe and Summarize buttons. Both jobs use
-  // one server seam (`requestCancel`, read with `isCancelRequested` between
-  // chunks), so a
-  // call still QUEUED on the LLM lane never goes on the wire. `onAcked` runs
-  // only when the server acknowledges the cancel.
+  // one server seam. The job registry sets the flag with `requestCancel`, and
+  // the job reads it with `isCancelRequested` between chunks. A call that is
+  // still QUEUED on the LLM lane never goes on the wire. `onAcked` runs only
+  // when the server acknowledges the cancel.
   const cancelJob = useCallback(
     async (onAcked?: () => void) => {
       if (cancelRequested) return;

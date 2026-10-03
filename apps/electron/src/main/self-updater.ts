@@ -127,10 +127,10 @@ class SelfUpdater extends EventEmitter {
       throw err;
     }
 
-    // The old bundle backup is deliberately left in place here rather than
-    // deleted immediately: this process may still be executing out of it
-    // (mapped dylibs/resources not yet paged in), and app.quit() is seconds
-    // away. sweepSelfUpdaterBackups() clears it on the next launch instead.
+    // Do not delete the old bundle backup here. This process can still run
+    // from it (mapped dylibs and resources are not all paged in yet), and
+    // app.quit() is only seconds away. sweepSelfUpdaterBackups() clears the
+    // backup on the next launch.
     swapBundle(currentBundle, newAppPath);
     await removeQuarantine(currentBundle);
     await cleanupBackup(stagingDir); // remove leftover extraction dir (e.g. __MACOSX)

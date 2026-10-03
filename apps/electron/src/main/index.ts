@@ -2603,7 +2603,10 @@ const REMIX_PRESSABLE_KEYS: Record<string, number> = {
   end: 119,
 };
 
-/** Run fn only if the document can take injected input; else report it is not in front. */
+/**
+ * Run `fn` when the document can take injected input. Otherwise, report that
+ * the document is not in front.
+ */
 async function withFocusedAnchor<T>(
   fn: () => Promise<T>,
 ): Promise<T | { ok: false; reason: "document-not-in-front" }> {

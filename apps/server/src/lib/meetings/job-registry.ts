@@ -51,15 +51,15 @@ const jobKinds = new Map<string, MeetingJobKind>();
  * cleared together with the slot when the job releases it. */
 const cancellations = new Set<string>();
 
-/** Which kind of job last failed for a meeting, and why. Lives beside the
- * slot because the job blob is deleted in the job's `finally` — a renderer
- * polling at 1 s cannot reliably catch a terminal `job.error` in the gap
- * between the last running poll and the deletion, and `meetings.error` is
- * off-limits for these failures (spec §6 constraint 3: it is the
- * *chunk-failure* banner). Survives until the next claim of the same slot (or
- * a successful run clears it), so a re-summarize never shows a stale
- * failure. Bounded by the number of meetings that failed to summarize in this
- * process. */
+/** Which kind of job last failed for a meeting, and why. It lives beside the
+ * slot because the job blob is deleted in the `finally` of the job. A renderer
+ * that polls every second can miss a final `job.error` in the gap between the
+ * last running poll and the deletion. The `meetings.error` column is not
+ * available for these failures (spec §6 constraint 3), because it is the
+ * *chunk-failure* banner. The entry stays until the next claim of the same
+ * slot or until a successful run clears it. Because of this, a re-summarize
+ * never shows an old failure. The map size is at most the number of meetings
+ * that failed to summarize in this process. */
 const failures = new Map<string, string>();
 
 /** True when a job holds the slot for this meeting. */

@@ -172,10 +172,10 @@ export function llmLaneKey(input: string | null | undefined): string {
 
 /**
  * Lane key and concurrency for a provider id. Local providers resolve through
- * `local_llm_url` — that IS the point: the endpoint, never the setting name.
- * Known cloud providers use {@link CLOUD_HOSTS}; anything else gets a lane of
- * its own. The limit comes from the provider `local` flag, not from the host
- * name: a local engine on a VPN or MagicDNS host still has one slot.
+ * `local_llm_url`. The key is the endpoint and never the setting name.
+ * Known cloud providers use {@link CLOUD_HOSTS}. Any other provider gets its
+ * own lane. The limit comes from the provider `local` flag and not from the
+ * host name. A local engine on a VPN or MagicDNS host still has one slot.
  */
 export async function llmLaneKeyForProvider(
   providerId: string,

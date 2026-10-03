@@ -352,14 +352,13 @@ export async function enhanceMeetingTranscript(
     options.contextBudgetTokens ?? DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS;
 
   // Prerequisite fix (specs/meeting-speaker-naming.md §5.1): the transcript
-  // the model actually sees must distinguish `Them 1` from `Them 2` — bare
-  // `s.speaker` ("Me"/"Them") gives it no way to tell speakers apart at
-  // all. `speakerDisplayLabel` prefers a confirmed `speakerName` over the
-  // numbered fallback (free improvement to correction quality for
-  // already-named meetings, not just an enabler for naming). A "Them"
-  // segment with no `speakerLabel` at all stays plain "Them" here — the
-  // "Unidentified" rendering fallback is a *display* concept (§3.3/§4), not
-  // something the LLM's own transcript view needs.
+  // that the model sees must separate `Them 1` from `Them 2`. The bare
+  // `s.speaker` ("Me" or "Them") gives the model no way to tell the speakers
+  // apart. `speakerDisplayLabel` gives a confirmed `speakerName` priority over
+  // the numbered fallback. This also improves the corrections for meetings
+  // that already have names. A "Them" segment with no `speakerLabel` stays
+  // plain "Them" here. The "Unidentified" fallback is a *display* concept
+  // (§3.3 and §4). The LLM view of the transcript does not need it.
   const withIds: EnhanceSegment[] = segments
     .filter((s) => Boolean(s.id) && s.text.trim().length > 0)
     .map((s) => ({
@@ -597,9 +596,9 @@ export async function enhanceMeetingTranscript(
     });
   }
 
-  // Persisted in a separate transaction from the corrections above —
-  // a name-suggestion write failure must never roll back already-committed
-  // text corrections or vice versa (independent failure domains).
+  // Save in a separate transaction from the corrections above. A failed
+  // name-suggestion write must not roll back text corrections that are already
+  // committed, and the reverse is also true. The two writes fail on their own.
   if (nameProposals.size > 0) {
     const db = getDb();
     const now = Date.now();

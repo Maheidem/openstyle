@@ -67,10 +67,10 @@ export function useTimeoutSetting({
   );
 
   /**
-   * Read what the server ACTUALLY holds for this key. Used after a failed
-   * write, so the field shows the budget the lane will really get. A failed
-   * read falls back to the default, so even a double failure cannot put a
-   * fantasy number on screen.
+   * Read the value that the server ACTUALLY holds for this key. The hook calls
+   * this after a failed write, so the field shows the budget that the lane
+   * will really get. A failed read falls back to the default. Because of this,
+   * two failures in a row cannot put a wrong number on screen.
    */
   const readFromServer = useCallback(async (): Promise<string> => {
     const fallback = displayValueFor(null, defaultSeconds, parse);
@@ -106,8 +106,8 @@ export function useTimeoutSetting({
       const next = intent.kind === "reset" ? "" : intent.value;
       if (await putSetting(settingsKey, next)) {
         setSeconds(displayValueFor(next, defaultSeconds, parse));
-        // Keep the shared settings cache honest. Other readers of this key
-        // must not see a value that was never committed.
+        // Keep the shared settings cache correct. Other readers of this key
+        // must not see a value that the server never stored.
         queryClient.setQueryData<Record<string, string>>(
           queryKeys.settings,
           (prev) => ({ ...(prev ?? {}), [settingsKey]: next }),
@@ -156,10 +156,12 @@ export function useTimeoutSetting({
   const invalid = draft !== null && parse(draft) === null;
 
   /**
-   * Hint precedence: a failed save (names what the server holds) beats an
-   * out-of-bounds draft (names the bound), which beats a stripped entry
-   * (names what the user typed and what the field now holds), which falls
-   * back to the neutral range line.
+   * Hint priority, highest first:
+   * 1. A failed save. The hint names the value that the server holds.
+   * 2. A draft that is out of bounds. The hint names the bound.
+   * 3. A stripped entry. The hint names what the user typed and what the
+   *    field now holds.
+   * 4. The neutral range line.
    */
   const hint: { destructive: boolean; text: string } =
     saveError !== null

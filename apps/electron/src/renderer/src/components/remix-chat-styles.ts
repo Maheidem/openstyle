@@ -89,7 +89,7 @@ export const REMIX_CHAT_CSS = `
     line-height: 1.5;
     color: ${INK_DIM};
   }
-  /* No color here — ThinkingShimmer paints via background-clip; color would hide it. */
+  /* Set no color here. ThinkingShimmer paints with background-clip, and a color would hide it. */
   .remix-mini-line {
     flex: 1;
     min-width: 0;

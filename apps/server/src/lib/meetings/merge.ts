@@ -315,15 +315,16 @@ function formatClockMs(ms: number): string {
 }
 
 /**
- * Display label for one merged segment. English-only regardless of app
- * locale, like `speaker` itself (already the unlocalized "Me"/"Them"): the
- * export and the LLM prompts are plain text, independent of the UI locale
- * (specs/meeting-diarization.md §9). specs/meeting-speaker-naming.md §4:
- * prefer a confirmed `speakerName` (following any merge) over the numbered
- * "Them N" fallback. A "Them" segment with no `speakerLabel` at all
- * (diarization never ran, or the diarizer could not attribute the line)
- * gets `unlabeled`. Display callers pass "Unidentified" (§3.3 amendment),
- * never bare "Them", which would read as a real, still-unnamed participant.
+ * Display label for one merged segment. The label is English-only in all app
+ * locales, like `speaker` itself (the unlocalized "Me" or "Them"). The export
+ * and the LLM prompts are plain text and do not depend on the UI locale
+ * (specs/meeting-diarization.md §9). Per specs/meeting-speaker-naming.md §4,
+ * a confirmed `speakerName` (after any merge) has priority over the numbered
+ * "Them N" fallback. A "Them" segment with no `speakerLabel` gets
+ * `unlabeled`. This happens when diarization never ran, or when the diarizer
+ * could not attribute the line. Display callers pass "Unidentified" (§3.3
+ * amendment). They never pass bare "Them", because the reader would take it
+ * for a real participant who has no name yet.
  */
 export function speakerDisplayLabel(
   seg: Pick<MergedSegment, "speaker" | "speakerName" | "speakerLabel">,

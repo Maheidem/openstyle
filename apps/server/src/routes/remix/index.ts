@@ -6,10 +6,10 @@ import transformRoute from "./transform.js";
 
 /**
  * Remix, mounted at /api/remix. Two lanes plus their local state:
- *   /transform — one-shot edit over a selection (preset or spoken)
- *   /agent     — the chat agent loop (the user's own model)
- *   /thread    — the pill's chat thread (local SQLite)
- *   /runs      — one row per write into the user's document; powers Revert
+ *   /transform: one-shot edit over a selection (preset or spoken)
+ *   /agent: the chat agent loop (on the model of the user)
+ *   /thread: the chat thread of the pill (local SQLite)
+ *   /runs: one row for each write into the document of the user (for Revert)
  */
 const remixRouter = new Hono()
   .route("/transform", transformRoute)

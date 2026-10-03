@@ -1001,15 +1001,15 @@ const meetings = new Hono()
     const audioDir = row.audio_dir;
     const deps = testOverrides.diarizeDeps ?? createDefaultDiarizeDeps();
 
-    // Claim the concurrency slot *before* the pre-flight probe, not after:
-    // probeDiarizationModels awaits a real spawn (up to PROBE_TIMEOUT_MS),
-    // and a /transcribe or a second /diarize landing in that window would
-    // otherwise see hasJob(id) === false and race this pass — the
-    // second one's runDiarizationPass BEGINs a transaction on the same
-    // shared db connection this one already holds open, and its ROLLBACK
-    // on failure would discard labels this pass just committed. Every
-    // early return below is inside the try/finally so the slot is always
-    // released, including on the not-ready path.
+    // Claim the concurrency slot *before* the pre-flight probe, not after.
+    // probeDiarizationModels awaits a real spawn (up to PROBE_TIMEOUT_MS).
+    // A /transcribe call or a second /diarize call can arrive in that window.
+    // Without the claim, the new call sees hasJob(id) === false and races
+    // this pass. Its runDiarizationPass then BEGINs a transaction on the
+    // shared db connection that this pass already holds open. If it fails,
+    // its ROLLBACK discards the labels that this pass just committed. Every
+    // early return below is inside the try/finally, so the code always
+    // releases the slot, also on the not-ready path.
     claimJob(id, "diarize", { done: 0, total: 0, failed: 0 });
     try {
       // Pre-flight probe (spec §4/§8's existing cheap, local, no-network
@@ -1461,7 +1461,7 @@ const meetings = new Hono()
       job: getJob(id),
       /** Canonical failure of the last background job whose slot this meeting
        * had (currently only Summarize), or null. Kept out of `meetings.error`
-       * on purpose — see `job-registry.ts`. */
+       * on purpose. See `job-registry.ts`. */
       job_error: getJobFailure(id) ?? null,
       segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
       summary: summary ?? null,

@@ -3,14 +3,14 @@
  * an audio file via the native dialog and upload it to
  * `POST /api/meetings/import`, which normalizes it to 16 kHz mono PCM16 at
  * `<userData>/meetings/<id>/system.wav` and inserts a `meetings` row in
- * `recorded` status. Mirrors `import-audio.ts` (dictation Import screen):
- * the renderer only ever sees a path string, the bytes stream from disk
- * here, and client-side extension/size checks fail fast before any upload.
+ * `recorded` status. This file mirrors `import-audio.ts` (dictation Import
+ * screen). The renderer sees only a path string. The bytes stream from disk
+ * here. Client-side extension and size checks fail fast, before any upload.
  *
- * The `audio_dir` is computed with the same root `meeting-recorder.ts` uses
- * (`join(app.getPath("userData"), MEETINGS_DIR_NAME, id)`) — that's what makes
- * server-side DELETE containment and the retention sweep treat an imported
- * meeting exactly like a recorded one.
+ * The `audio_dir` uses the same root as `meeting-recorder.ts`
+ * (`join(app.getPath("userData"), MEETINGS_DIR_NAME, id)`). Because of this,
+ * the server DELETE containment check and the retention sweep treat an
+ * imported meeting like a recorded meeting.
  *
  * `started_at` comes from the file's mtime so an imported back-catalog file
  * lands at its recorded date in the timeline (spec §7.1's preferred option).

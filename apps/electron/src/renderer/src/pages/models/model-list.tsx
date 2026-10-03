@@ -234,7 +234,7 @@ function buildLlmRows(
 }
 
 // ---------------------------------------------------------------------------
-// ModelList — header + rows
+// ModelList: header and rows
 // ---------------------------------------------------------------------------
 
 export function ModelList({

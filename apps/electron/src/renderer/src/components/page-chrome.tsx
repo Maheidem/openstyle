@@ -2,7 +2,8 @@ import { DragSpacer } from "@renderer/components/drag-spacer";
 import { cn } from "@renderer/lib/utils";
 
 // ---------------------------------------------------------------------------
-// PageShell — draggable topbar + padded scroll area, used by the tone, help and models pages
+// PageShell: a draggable topbar and a padded scroll area. The tone, help and
+// models pages use it.
 // ---------------------------------------------------------------------------
 
 export function PageShell({

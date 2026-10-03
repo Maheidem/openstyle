@@ -114,9 +114,10 @@ function preloadSubscriptions(): Subscription[] {
  * Every `.send("<channel>", ...)` and `broadcastToWindows("<channel>", ...)`
  * call site in src/main and its subfolders, keyed by channel with file
  * provenance. Receivers are WebContents-shaped (`win.webContents.send`,
- * `event.sender.send`, a stored `target.send`) —
- * if a future non-IPC `.send` with a string first argument appears here as
- * a false positive, add it to IGNORED_MAIN_SENDS with a justification.
+ * `event.sender.send`, a stored `target.send`).
+ * A future non-IPC `.send` with a string first argument can appear here as
+ * a false positive. In that case, add it to IGNORED_MAIN_SENDS and give a
+ * reason.
  */
 function mainSendChannels(): Map<string, string[]> {
   const IGNORED_MAIN_SENDS: ReadonlySet<string> = new Set([]);

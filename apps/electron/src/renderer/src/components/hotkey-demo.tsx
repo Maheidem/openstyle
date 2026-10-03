@@ -2,8 +2,8 @@ import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
-// Hotkey demo parts — the press hook, keycap, step word, and waveform shared
-// by the tutorial demo, the remix demo, and onboarding's coach strip.
+// Hotkey demo parts: the press hook, keycap, step word and waveform. The
+// tutorial demo, the remix demo and the coach strip of onboarding share them.
 // ---------------------------------------------------------------------------
 
 export type CoachPhase = "idle" | "pressed" | "result";

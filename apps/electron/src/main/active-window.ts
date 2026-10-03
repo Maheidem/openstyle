@@ -29,8 +29,8 @@ export function execAsync(
 
 export function getOpenstyleAppExclusions(): Set<string> {
   return new Set(
-    // "Freestyle" is the old app name. A user upgrading from the old build may
-    // still have it installed or a stale window open, and it must keep being
+    // "Freestyle" is the old app name. A user who upgrades from the old build
+    // can still have it installed or have a stale window open. Keep it
     // excluded from remix targeting.
     [app.name, "Freestyle", "Electron"]
       .map((name) => name?.trim().toLowerCase())

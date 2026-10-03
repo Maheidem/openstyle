@@ -116,8 +116,8 @@ export function registerAppSettingsIpc({
   });
 
   ipcMain.on("settings:set-auto-update", (_event, enabled: boolean) => {
-    // autoDownload stays false regardless (see the updater setup in index.ts)
-    // — this setting now only gates whether periodic update checks run at all.
+    // autoDownload stays false in all cases (see the updater setup in
+    // index.ts). This setting only controls whether periodic update checks run.
     writeSettings({ autoUpdate: enabled });
   });
 

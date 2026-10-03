@@ -39,7 +39,7 @@ function checkFormat(provider: string, key: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Live checks — one table entry per provider
+// Live checks: one table entry for each provider
 // ---------------------------------------------------------------------------
 
 const INVALID_KEY = "Invalid API key. Please check and try again.";

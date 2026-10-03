@@ -646,9 +646,9 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   // Queue one transcription and start the drain. The caller increments
-  // pendingCount before it builds `p`. The decrement runs in finally, so it
-  // runs on every path (lore: streaming commit trap). `after` runs once `p`
-  // has settled.
+  // pendingCount before it builds `p`. The decrement must run in `finally` so
+  // that it runs on every path. If a path skips the decrement, the badge
+  // count grows and never returns to 0. `after` runs when `p` has settled.
   const enqueue = useCallback(
     (p: Promise<TranscribeResult>, after?: () => void): void => {
       queueRef.current.push(

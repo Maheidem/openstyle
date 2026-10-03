@@ -369,8 +369,8 @@ export async function resolveTaskCall(
       }
     : {}; // mapped-subset providers never get the verbatim object at all
 
-  // §7.2 — only `temperature`, `top_p` and `max_tokens` reach a mapped-subset
-  // provider from the preset. Local providers get them in `samplingParams`.
+  // §7.2: only `temperature`, `top_p` and `max_tokens` from the preset reach a
+  // mapped-subset provider. Local providers get them in `samplingParams`.
   const presetTemperature =
     !isLocal && typeof strippedParams.temperature === "number"
       ? strippedParams.temperature

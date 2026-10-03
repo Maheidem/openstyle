@@ -4,11 +4,11 @@ import { z } from "zod/v3";
 export const DEFAULT_SERVER_PORT = 4649;
 
 /**
- * True when a `/api/health` body shows an Openstyle server (and not another
- * service that holds the port).
- * Accepts the legacy "freestyle" identity too so a not-yet-updated
- * standalone/remote server (auto-update is on by default, but a
- * separately-deployed apps/server may lag) is still recognized.
+ * True when a `/api/health` body shows an Openstyle server and not another
+ * service that holds the port. The check also accepts the old "freestyle"
+ * identity. A standalone or remote server that is not updated yet can still
+ * use it. Auto-update is on by default, but a server in a separate deployment
+ * can be late.
  */
 export function isOpenstyleHealthBody(body: {
   status?: string;
