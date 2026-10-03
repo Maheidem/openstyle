@@ -12,6 +12,7 @@ import { basename, extname } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { IMPORT_EXTENSIONS, MAX_IMPORT_BYTES } from "@openstyle/validations";
 import { type BrowserWindow, dialog, ipcMain } from "electron";
+import type { ImportAudioResult } from "../shared/import-types";
 import type { ServerFetch } from "../shared/server-auth";
 import { claimAbortableJob, releaseAbortableJob } from "./abortable-jobs";
 
@@ -24,24 +25,6 @@ function isE2E(): boolean {
 function extensionOf(path: string): string {
   return extname(path).replace(/^\./, "").toLowerCase();
 }
-
-type ImportAudioResult =
-  | {
-      ok: true;
-      raw: string;
-      cleaned: string;
-      model: string;
-      audioDurationMs?: number;
-      durationMs?: number;
-    }
-  | {
-      ok: false;
-      status?: number;
-      error: string;
-      detail?: string;
-      code?: string;
-      reason?: string;
-    };
 
 /** A picked import candidate: on-disk path plus its size in bytes. */
 export interface PickedImportFile {

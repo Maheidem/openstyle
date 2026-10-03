@@ -23,6 +23,10 @@ import { basename, extname, join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { IMPORT_EXTENSIONS, MAX_IMPORT_BYTES } from "@openstyle/validations";
 import { app, type BrowserWindow, dialog, ipcMain } from "electron";
+import type {
+  ImportedMeeting,
+  MeetingImportResult,
+} from "../shared/import-types";
 import type { ServerFetch } from "../shared/server-auth";
 
 const log = createAppLogger("meeting-import");
@@ -34,50 +38,6 @@ function isE2E(): boolean {
 function extensionOf(path: string): string {
   return extname(path).replace(/^\./, "").toLowerCase();
 }
-
-/**
- * A freshly imported meeting in the exact `GET /api/meetings/:id` response
- * shape (row + `job`/`segment_counts`/`summary`, constructed by the route).
- * Kept structural so it can be mirrored (without a runtime import) in
- * `preload/index.ts` and `preload/index.d.ts`, like `ImportAudioResult`.
- */
-export interface ImportedMeeting {
-  id: string;
-  title: string | null;
-  started_at: number | null;
-  ended_at: number | null;
-  duration_ms: number | null;
-  status: string;
-  language: string | null;
-  error: string | null;
-  created_at: number | null;
-  stt_provider: string | null;
-  stt_model: string | null;
-  audio_dir: string | null;
-  context: string | null;
-  job: { done: number; total: number; failed: number } | null;
-  /** Last background-job failure for this meeting (GET /:id shape). Always
-   * null on a fresh import — nothing has run yet. */
-  job_error: string | null;
-  segment_counts: { total: number; failed: number };
-  summary: {
-    markdown: string | null;
-    llm_provider: string | null;
-    llm_model: string | null;
-    cost_usd: number | null;
-    created_at: number | null;
-  } | null;
-}
-
-export type MeetingImportResult =
-  | { ok: true; meeting: ImportedMeeting }
-  | {
-      ok: false;
-      status?: number;
-      error: string;
-      detail?: string;
-      code?: string;
-    };
 
 interface RegisterMeetingImportIpcOptions {
   serverFetch: ServerFetch;
