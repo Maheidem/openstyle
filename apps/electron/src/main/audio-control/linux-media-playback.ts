@@ -5,38 +5,18 @@
  * 2. Optional playerctl when installed
  */
 
-import { execFile, execFileSync } from "node:child_process";
-import { promisify } from "node:util";
+import { execFileSync } from "node:child_process";
 import { createAppLogger } from "@openstyle/utils";
 import { AUDIO_CONTROL_CMD_TIMEOUT_MS } from "./audio-control-constants";
+import { commandExists, runCmd } from "./exec-util";
 
 const log = createAppLogger("linux-media-playback");
-const execFileAsync = promisify(execFile);
 
 const MPRIS_PREFIX = "org.mpris.MediaPlayer2.";
 const MPRIS_PATH = "/org/mpris/MediaPlayer2";
 const MPRIS_PLAYER = "org.mpris.MediaPlayer2.Player";
 
 let pausedMprisServices: string[] = [];
-
-async function runCmd(
-  command: string,
-  args: string[],
-): Promise<{ stdout: string; ok: boolean }> {
-  try {
-    const { stdout } = await execFileAsync(command, args, {
-      timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS,
-    });
-    return { stdout: stdout.trim(), ok: true };
-  } catch {
-    return { stdout: "", ok: false };
-  }
-}
-
-async function commandExists(command: string): Promise<boolean> {
-  const { ok } = await runCmd("sh", ["-c", `command -v ${command}`]);
-  return ok;
-}
 
 // ---------------------------------------------------------------------------
 // D-Bus MPRIS (busctl)
@@ -73,27 +53,17 @@ async function getMprisStatus(service: string): Promise<string> {
   return parseDBusString(stdout);
 }
 
+function mprisArgs(service: string, method: "Pause" | "Play"): string[] {
+  return ["--user", "call", service, MPRIS_PATH, MPRIS_PLAYER, method];
+}
+
 async function mprisPause(service: string): Promise<boolean> {
-  const { ok } = await runCmd("busctl", [
-    "--user",
-    "call",
-    service,
-    MPRIS_PATH,
-    MPRIS_PLAYER,
-    "Pause",
-  ]);
+  const { ok } = await runCmd("busctl", mprisArgs(service, "Pause"));
   return ok;
 }
 
 async function mprisPlay(service: string): Promise<boolean> {
-  const { ok } = await runCmd("busctl", [
-    "--user",
-    "call",
-    service,
-    MPRIS_PATH,
-    MPRIS_PLAYER,
-    "Play",
-  ]);
+  const { ok } = await runCmd("busctl", mprisArgs(service, "Play"));
   return ok;
 }
 
@@ -201,14 +171,7 @@ export function resumePlaybackSync(): void {
 
   for (const target of pausedMprisServices) {
     if (target.startsWith(MPRIS_PREFIX)) {
-      runCmdSync("busctl", [
-        "--user",
-        "call",
-        target,
-        MPRIS_PATH,
-        MPRIS_PLAYER,
-        "Play",
-      ]);
+      runCmdSync("busctl", mprisArgs(target, "Play"));
     } else {
       runCmdSync("playerctl", ["-p", target, "play"]);
     }

@@ -1,22 +1,5 @@
-import { execFile, execFileSync } from "node:child_process";
 import { getNativeBinaryPath } from "../native-binary";
-
-function execFileText(path: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(path, args, { encoding: "utf8" }, (err, stdout, stderr) => {
-      if (err) {
-        const detail = typeof stderr === "string" ? stderr.trim() : "";
-        reject(new Error(detail || err.message));
-        return;
-      }
-      resolve(stdout.trim());
-    });
-  });
-}
-
-function execFileTextSync(path: string, args: string[]): string {
-  return execFileSync(path, args, { encoding: "utf8" }).trim();
-}
+import { execFileText, execFileTextSync } from "./exec-util";
 
 export class MacosMediaPlayback {
   private active = false;
