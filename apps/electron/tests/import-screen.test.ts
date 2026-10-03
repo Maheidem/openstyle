@@ -122,28 +122,17 @@ async function hasDefaultVoiceModel(): Promise<boolean> {
 /**
  * Probes a raw oMLX base URL's /v1/models the same way settings.ts and
  * models.ts do, with a short timeout so an unreachable server fails fast
- * instead of hanging beforeAll.
- *
- * Honors OPENSTYLE_E2E_OMLX_URL as an override of the base URL to probe —
- * set it to an unreachable address (e.g. `http://127.0.0.1:1`) to force
- * this suite through the "oMLX unreachable" / config-error branch locally,
- * simulating what CI (no oMLX server) sees:
- *   OPENSTYLE_E2E_OMLX_URL=http://127.0.0.1:1 npx playwright test tests/import-screen.test.ts
+ * instead of hanging the caller.
  */
-async function probeOmlxReachable(defaultBaseUrl: string): Promise<boolean> {
-  const base = (process.env.OPENSTYLE_E2E_OMLX_URL || defaultBaseUrl).replace(
-    /\/+$/,
-    "",
-  );
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2_000);
+async function probeOmlxReachable(baseUrl: string): Promise<boolean> {
+  const base = baseUrl.replace(/\/+$/, "");
   try {
-    const res = await fetch(`${base}/v1/models`, { signal: controller.signal });
+    const res = await fetch(`${base}/v1/models`, {
+      signal: AbortSignal.timeout(2_000),
+    });
     return res.ok;
   } catch {
     return false;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -155,17 +144,7 @@ async function isOmlxReachable(): Promise<boolean> {
     if (!settingsRes.ok) return false;
     const { value } = (await settingsRes.json()) as { value?: string };
     if (!value) return false;
-    const base = value.replace(/\/+$/, "");
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2_000);
-    try {
-      const res = await fetch(`${base}/v1/models`, {
-        signal: controller.signal,
-      });
-      return res.ok;
-    } finally {
-      clearTimeout(timer);
-    }
+    return await probeOmlxReachable(value);
   } catch {
     return false;
   }
@@ -260,7 +239,13 @@ test.beforeAll(async () => {
     // voice model configured…" response (and the matching UI config-error
     // copy) is what actually gets exercised.
     const omlxBaseUrl = "http://127.0.0.1:8123";
-    const reachable = await probeOmlxReachable(omlxBaseUrl);
+    // Set OPENSTYLE_E2E_OMLX_URL to an unreachable address (for example
+    // `http://127.0.0.1:1`) to force the "oMLX unreachable" branch. This
+    // simulates CI, which has no oMLX server:
+    //   OPENSTYLE_E2E_OMLX_URL=http://127.0.0.1:1 npx playwright test tests/import-screen.test.ts
+    const reachable = await probeOmlxReachable(
+      process.env.OPENSTYLE_E2E_OMLX_URL || omlxBaseUrl,
+    );
 
     if (reachable) {
       console.log(
