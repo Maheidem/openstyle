@@ -40,7 +40,13 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { rm } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
@@ -290,9 +296,7 @@ function readSettings(): Record<string, unknown> {
   if (settingsCache) return settingsCache;
   try {
     const settingsPath = join(app.getPath("userData"), "settings.json");
-    settingsCache = JSON.parse(
-      require("node:fs").readFileSync(settingsPath, "utf-8"),
-    );
+    settingsCache = JSON.parse(readFileSync(settingsPath, "utf-8"));
     return settingsCache!;
   } catch {
     settingsCache = {};
@@ -304,10 +308,7 @@ function writeSettings(patch: Record<string, unknown>): void {
   try {
     const settingsPath = join(app.getPath("userData"), "settings.json");
     const data = { ...readSettings(), ...patch };
-    require("node:fs").writeFileSync(
-      settingsPath,
-      JSON.stringify(data, null, 2),
-    );
+    writeFileSync(settingsPath, JSON.stringify(data, null, 2));
     settingsCache = data;
   } catch {
     // ignore
@@ -2006,7 +2007,6 @@ function isRunningFromReadOnlyLocation(): boolean {
     return true;
   }
   try {
-    const { accessSync, constants } = require("node:fs");
     accessSync(dirname(exePath), constants.W_OK);
     return false;
   } catch {
