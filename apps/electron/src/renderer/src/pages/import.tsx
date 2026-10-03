@@ -1,6 +1,7 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
 import { Card } from "@renderer/components/ui/card";
+import { formatClockDuration } from "@renderer/lib/format";
 import {
   classifyImportError,
   type ImportErrorKind,
@@ -48,18 +49,6 @@ type ImportState =
 /** UX-A3 threshold: past this weight the review card warns about the wait. */
 const SLOW_IMPORT_DURATION_MS = 30 * 60_000;
 const SLOW_IMPORT_BYTES = 300_000_000;
-
-/** Locale-neutral clock format (h:)mm:ss, like the meetings page. */
-function formatDuration(ms: number | null): string {
-  if (!ms || ms <= 0) return "0:00";
-  const s = Math.round(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
-    : `${m}:${String(sec).padStart(2, "0")}`;
-}
 
 /**
  * Cheap client-side duration probe for a dropped File: an Audio element over
@@ -300,7 +289,7 @@ export default function ImportPage(): React.JSX.Element {
     (file: { size: number; durationMs: number | null }): string => {
       if (file.durationMs !== null) {
         return t("import.review.weightWithDuration", {
-          duration: formatDuration(file.durationMs),
+          duration: formatClockDuration(file.durationMs),
           size: formatBytes(file.size),
         });
       }

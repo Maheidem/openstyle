@@ -48,6 +48,7 @@ import {
 } from "@renderer/components/ui/tabs";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
+import { formatClockDuration } from "@renderer/lib/format";
 import {
   importExtensionOf,
   isImportableFile,
@@ -297,17 +298,6 @@ function SystemAudioHint(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
-
-function formatDuration(ms: number | null): string {
-  if (!ms || ms <= 0) return "0:00";
-  const s = Math.round(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
-    : `${m}:${String(sec).padStart(2, "0")}`;
-}
 
 function formatTimestamp(ms: number | null): string {
   if (!ms) return "";
@@ -1694,7 +1684,7 @@ function MeetingDetailView({
           <EditableTitle id={id} title={meeting.title} onRenamed={invalidate} />
           <div className="text-muted-foreground text-[11px]">
             {formatTimestamp(meeting.started_at)} ·{" "}
-            {formatDuration(meeting.duration_ms)}
+            {formatClockDuration(meeting.duration_ms)}
           </div>
           <MeetingContextField
             id={id}
@@ -2701,7 +2691,7 @@ export default function MeetingsPage(): React.JSX.Element {
                     <span className="flex min-w-0 items-center justify-between gap-2">
                       <span className="mono text-muted-foreground/70 min-w-0 truncate text-[10px]">
                         {formatTimestamp(m.started_at)} ·{" "}
-                        {formatDuration(m.duration_ms)}
+                        {formatClockDuration(m.duration_ms)}
                       </span>
                       <StatusBadge status={m.status} />
                     </span>
