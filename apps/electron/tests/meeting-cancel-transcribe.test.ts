@@ -13,6 +13,7 @@ import {
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
+import { pcm16Wav } from "./helpers/wav";
 
 // ---------------------------------------------------------------------------
 // Meeting transcribe Cancel (T1-1 renderer half, specs/lean-audit-2026-09.md
@@ -137,7 +138,7 @@ function writeTwoBurstWav(path: string): void {
   const bursts = 2;
   const totalMs = leadMs + bursts * burstMs + (bursts - 1) * gapMs;
   const totalSamples = Math.round((totalMs / 1000) * SAMPLE_RATE);
-  const data = Buffer.alloc(totalSamples * 2);
+  const samples = new Int16Array(totalSamples);
   for (let b = 0; b < bursts; b++) {
     const start = Math.round(
       ((leadMs + b * (burstMs + gapMs)) / 1000) * SAMPLE_RATE,
@@ -146,27 +147,12 @@ function writeTwoBurstWav(path: string): void {
       ((leadMs + b * (burstMs + gapMs) + burstMs) / 1000) * SAMPLE_RATE,
     );
     for (let i = start; i < end; i++) {
-      const s = Math.round(
+      samples[i] = Math.round(
         8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
       );
-      data.writeInt16LE(s, i * 2);
     }
   }
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(SAMPLE_RATE, 24);
-  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  writeFileSync(path, Buffer.concat([h, data]));
+  writeFileSync(path, pcm16Wav(samples, SAMPLE_RATE));
 }
 
 interface MeetingDetailRow {
