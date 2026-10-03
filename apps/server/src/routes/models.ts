@@ -16,6 +16,7 @@ import {
 } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
 import { stripModelPrefix } from "../lib/model-id.js";
+import { fetchModelIds } from "../lib/openai-compat.js";
 import {
   OMLX_API_KEY_SETTING,
   OMLX_BASE_URL_SETTING,
@@ -65,26 +66,17 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
     .replace(/\/+$/, "")
     .replace(/\/v1$/, "");
 
-  const res = await fetch(`${baseUrl}/v1/models`, {
-    headers: {
-      ...(settings.local_llm_api_key
-        ? { Authorization: `Bearer ${settings.local_llm_api_key}` }
-        : {}),
-    },
-    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) return [];
+  const ids = await fetchModelIds(
+    `${baseUrl}/v1/models`,
+    settings.local_llm_api_key,
+    REGISTRY_FETCH_TIMEOUT_MS,
+  );
 
-  const data = (await res.json()) as {
-    data?: { id: string }[];
-  };
-  if (!data.data || !Array.isArray(data.data)) return [];
-
-  return data.data.map((m) => ({
+  return ids.map((id) => ({
     provider_id: "local-llm",
     provider_name: "Local LLM",
-    model_id: `local-llm/${m.id}`,
-    model_name: m.id,
+    model_id: `local-llm/${id}`,
+    model_name: id,
     family: "local",
     type: "llm" as const,
     cost_input: 0,
@@ -113,22 +105,17 @@ async function fetchOmlxModels(): Promise<AvailableModel[]> {
   if (!root) return [];
 
   const apiKey = settings[OMLX_API_KEY_SETTING]?.trim();
-  const res = await fetch(omlxModelsUrl(root), {
-    headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) return [];
+  const ids = await fetchModelIds(
+    omlxModelsUrl(root),
+    apiKey,
+    REGISTRY_FETCH_TIMEOUT_MS,
+  );
 
-  const data = (await res.json()) as {
-    data?: { id: string }[];
-  };
-  if (!data.data || !Array.isArray(data.data)) return [];
-
-  return data.data.map((m) => ({
+  return ids.map((id) => ({
     provider_id: OMLX_PROVIDER_ID,
     provider_name: OMLX_PROVIDER_NAME,
-    model_id: `${OMLX_PROVIDER_ID}/${m.id}`,
-    model_name: m.id,
+    model_id: `${OMLX_PROVIDER_ID}/${id}`,
+    model_name: id,
     family: "omlx",
     type: "voice" as const,
     cost_input: 0,
