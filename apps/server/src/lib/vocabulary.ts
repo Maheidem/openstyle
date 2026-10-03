@@ -1,5 +1,5 @@
 import { createAppLogger } from "@openstyle/utils";
-import { getDb } from "./db.js";
+import { getDb, withTransaction } from "./db.js";
 
 const log = createAppLogger("vocabulary");
 
@@ -63,8 +63,7 @@ export function importVocabularyEntries(entries: VocabularyImportEntry[]): {
     "INSERT OR IGNORE INTO vocabulary (term, notes) VALUES (?, ?)",
   );
 
-  db.exec("BEGIN");
-  try {
+  withTransaction(db, () => {
     for (const entry of entries) {
       const term = entry.term.trim();
       if (!term) {
@@ -75,11 +74,7 @@ export function importVocabularyEntries(entries: VocabularyImportEntry[]): {
       if (result.changes > 0) imported++;
       else skipped++;
     }
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
+  });
 
   return { imported, skipped };
 }
@@ -102,17 +97,12 @@ export function deleteVocabularyByIds(ids: number[]): number {
   let deleted = 0;
   const remove = db.prepare("DELETE FROM vocabulary WHERE id = ?");
 
-  db.exec("BEGIN");
-  try {
+  withTransaction(db, () => {
     for (const id of unique) {
       const result = remove.run(id);
       if (result.changes > 0) deleted++;
     }
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
+  });
 
   return deleted;
 }

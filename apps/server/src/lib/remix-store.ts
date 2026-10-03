@@ -1,4 +1,4 @@
-import { getDb } from "./db.js";
+import { getDb, withTransaction } from "./db.js";
 
 /**
  * Local persistence for the Remix agent lane. One thread is "active" at a
@@ -113,8 +113,7 @@ export function saveThreadMessages(
      ON CONFLICT(thread_id, message_id)
        DO UPDATE SET ui_message = excluded.ui_message`,
   );
-  db.exec("BEGIN");
-  try {
+  withTransaction(db, () => {
     db.prepare(
       ids.length > 0
         ? `DELETE FROM remix_messages WHERE thread_id = ? AND message_id NOT IN (${ids.map(() => "?").join(", ")})`
@@ -131,11 +130,7 @@ export function saveThreadMessages(
     db.prepare(
       "UPDATE remix_threads SET last_active_at = datetime('now') WHERE id = ?",
     ).run(threadId);
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
+  });
   return true;
 }
 

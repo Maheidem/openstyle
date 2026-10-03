@@ -52,6 +52,28 @@ export function prepareCached(sql: string): StatementSync {
   return stmt;
 }
 
+/**
+ * Run `fn` inside one transaction on `db`. `node:sqlite` has no
+ * `.transaction()` helper, so this issues BEGIN, COMMIT and ROLLBACK itself.
+ * If `fn` throws, the helper rolls back and rethrows the original error. A
+ * failed ROLLBACK cannot hide that error. `fn` must be synchronous.
+ */
+export function withTransaction<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec("BEGIN");
+  try {
+    const result = fn();
+    db.exec("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // Keep the original error.
+    }
+    throw err;
+  }
+}
+
 export function closeDb(): void {
   if (db) {
     statementCache.clear();
