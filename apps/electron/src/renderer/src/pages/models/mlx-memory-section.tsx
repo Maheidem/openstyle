@@ -1,3 +1,7 @@
+import {
+  MLX_KEEP_ALIVE_ALWAYS,
+  MLX_KEEP_ALIVE_MAX_MINUTES,
+} from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import {
   Dialog,
@@ -8,8 +12,6 @@ import {
 } from "@renderer/components/ui/dialog";
 import { Slider } from "@renderer/components/ui/slider";
 import { Cpu } from "lucide-react";
-
-import { MAX_MLX_KEEP_ALIVE_MINUTES, MLX_KEEP_ALIVE_ALWAYS } from "./constants";
 
 function mlxKeepAliveDescription(minutes: number): string {
   if (minutes === MLX_KEEP_ALIVE_ALWAYS) {
@@ -40,7 +42,7 @@ export function MlxWarmingDialog({
   onClose: () => void;
 }): React.JSX.Element {
   // The slider gets one extra step past the max minutes to represent "Always on".
-  const alwaysPos = MAX_MLX_KEEP_ALIVE_MINUTES + 1;
+  const alwaysPos = MLX_KEEP_ALIVE_MAX_MINUTES + 1;
   const sliderPos =
     keepAliveMinutes === MLX_KEEP_ALIVE_ALWAYS ? alwaysPos : keepAliveMinutes;
   return (
@@ -62,7 +64,7 @@ export function MlxWarmingDialog({
             value={[sliderPos]}
             onValueChange={([v]) =>
               onChange(
-                v > MAX_MLX_KEEP_ALIVE_MINUTES ? MLX_KEEP_ALIVE_ALWAYS : v,
+                v > MLX_KEEP_ALIVE_MAX_MINUTES ? MLX_KEEP_ALIVE_ALWAYS : v,
               )
             }
             min={0}

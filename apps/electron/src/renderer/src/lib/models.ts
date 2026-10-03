@@ -65,6 +65,15 @@ export interface MlxAsrStatus {
   setupHint: string | null;
 }
 
+/** True while any local model is downloading or verifying. */
+export function hasActiveDownload(
+  models: { status: string }[] | undefined | null,
+): boolean {
+  return !!models?.some(
+    (m) => m.status === "downloading" || m.status === "verifying",
+  );
+}
+
 export const CLOUD_VOICE_PROVIDERS = [
   "openai",
   "groq",

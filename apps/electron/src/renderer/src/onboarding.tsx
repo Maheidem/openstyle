@@ -20,15 +20,15 @@ import {
 } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
 import { defaultLanguage } from "@renderer/lib/languages";
-import {
-  buildVoiceItems,
-  type MlxAsrStatus,
-  type VoiceItem,
-  type WhisperStatus,
-} from "@renderer/lib/models";
+import { buildVoiceItems, type VoiceItem } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
-import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  mlxStatusQueryOptions,
+  queryKeys,
+  settingsQueryOptions,
+  whisperStatusQueryOptions,
+} from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -76,15 +76,6 @@ type LinuxSetup = {
 // hotkey — first-time users never choose a model.
 const RECOMMENDED_MLX_DEF = "qwen3-0.6b-8bit";
 const RECOMMENDED_WHISPER_DEF = "small-q5_1";
-
-/** True while any local model is downloading or verifying. */
-function hasActiveDownload(
-  models: { status: string }[] | undefined | null,
-): boolean {
-  return !!models?.some(
-    (m) => m.status === "downloading" || m.status === "verifying",
-  );
-}
 
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -163,36 +154,8 @@ export default function OnboardingPage(): React.JSX.Element {
   // Whisper / MLX status via React Query. refetchInterval replaces the manual
   // 500ms setInterval polling: it polls only while a download/verify is active
   // and stops automatically once everything settles.
-  const whisperQuery = useQuery({
-    queryKey: queryKeys.whisperStatus,
-    queryFn: async () => {
-      const res = await getClient().api.whisper.status.$get();
-      if (!res.ok) throw new Error("Failed to load whisper status");
-      return (await res.json()) as WhisperStatus;
-    },
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d && (d.binaryDownloading || hasActiveDownload(d.models))
-        ? 500
-        : false;
-    },
-    staleTime: 0,
-  });
-
-  const mlxQuery = useQuery({
-    queryKey: queryKeys.mlxStatus,
-    enabled: IS_MAC,
-    queryFn: async () => {
-      const res = await getClient().api["mlx-asr"].status.$get();
-      if (!res.ok) throw new Error("Failed to load MLX ASR status");
-      return (await res.json()) as MlxAsrStatus;
-    },
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d && hasActiveDownload(d.models) ? 500 : false;
-    },
-    staleTime: 0,
-  });
+  const whisperQuery = useQuery(whisperStatusQueryOptions());
+  const mlxQuery = useQuery(mlxStatusQueryOptions());
 
   const whisperStatus = whisperQuery.data ?? null;
   const mlxStatus = mlxQuery.data ?? null;

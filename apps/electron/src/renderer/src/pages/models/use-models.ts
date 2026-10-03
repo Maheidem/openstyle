@@ -6,6 +6,8 @@ import type {
   LlmTaskId,
 } from "@openstyle/validations";
 import {
+  clampMlxKeepAliveMinutes,
+  MLX_KEEP_ALIVE_DEFAULT_MINUTES,
   parseCleanupSampling,
   parseLlmTaskAssignments,
 } from "@openstyle/validations";
@@ -13,21 +15,22 @@ import { getClient } from "@renderer/lib/api";
 import {
   type AvailableModel,
   buildVoiceItems,
+  hasActiveDownload,
   type MlxAsrStatus,
   type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
-import { IS_MAC } from "@renderer/lib/platform";
 import {
   availableModelsQueryOptions,
+  mlxStatusQueryOptions,
   queryKeys,
   settingsQueryOptions,
+  whisperStatusQueryOptions,
 } from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
-import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
 import {
   checkPresetWrite,
   duplicatePreset,
@@ -41,7 +44,7 @@ import type {
   EndpointConnectState,
 } from "./use-endpoint-connect";
 import { useEndpointConnect } from "./use-endpoint-connect";
-import { clampMlxKeepAliveMinutes, groupByProvider } from "./utils";
+import { groupByProvider } from "./utils";
 
 export type { EndpointConnectState } from "./use-endpoint-connect";
 
@@ -64,13 +67,22 @@ const EMPTY_AVAILABLE: AvailableModel[] = [];
 const EMPTY_CONFIGURED: ConfiguredModel[] = [];
 const EMPTY_KEYS: ApiKeyEntry[] = [];
 
-/** True while any local model is downloading or verifying. */
-function hasActiveDownload(
-  models: { status: string }[] | undefined | null,
-): boolean {
-  return !!models?.some(
-    (m) => m.status === "downloading" || m.status === "verifying",
-  );
+/** Saves a model as the default for its type. */
+function postDefaultModel(
+  provider: string,
+  modelId: string,
+  modelName: string,
+  type: "voice" | "llm",
+) {
+  return getClient().api.models.configured.$post({
+    json: {
+      provider,
+      model_id: modelId,
+      model_name: modelName,
+      type,
+      is_default: true,
+    },
+  });
 }
 
 export interface UseModels {
@@ -216,38 +228,8 @@ export function useModels(): UseModels {
 
   const settingsQuery = useQuery(settingsQueryOptions());
 
-  const whisperQuery = useQuery({
-    queryKey: MODELS_KEYS.whisper,
-    queryFn: async () => {
-      const res = await getClient().api.whisper.status.$get();
-      if (!res.ok) throw new Error("Failed to load whisper status");
-      return (await res.json()) as WhisperStatus;
-    },
-    // Poll every 500ms while a download/verify is active, then stop.
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d && (d.binaryDownloading || hasActiveDownload(d.models))
-        ? 500
-        : false;
-    },
-    // Status is volatile during downloads — always treat as stale.
-    staleTime: 0,
-  });
-
-  const mlxQuery = useQuery({
-    queryKey: MODELS_KEYS.mlx,
-    enabled: IS_MAC,
-    queryFn: async () => {
-      const res = await getClient().api["mlx-asr"].status.$get();
-      if (!res.ok) throw new Error("Failed to load MLX ASR status");
-      return (await res.json()) as MlxAsrStatus;
-    },
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d && hasActiveDownload(d.models) ? 500 : false;
-    },
-    staleTime: 0,
-  });
+  const whisperQuery = useQuery(whisperStatusQueryOptions());
+  const mlxQuery = useQuery(mlxStatusQueryOptions());
 
   const available = availableQuery.data ?? EMPTY_AVAILABLE;
   const configured = configuredQuery.data ?? EMPTY_CONFIGURED;
@@ -266,7 +248,7 @@ export function useModels(): UseModels {
 
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
-    DEFAULT_MLX_KEEP_ALIVE_MINUTES,
+    MLX_KEEP_ALIVE_DEFAULT_MINUTES,
   );
   const [cleanupSampling, setCleanupSampling] = useState<CleanupSampling>({});
   const [taskAssignments, setTaskAssignments] = useState<LlmTaskAssignments>(
@@ -464,15 +446,12 @@ export function useModels(): UseModels {
 
   const configureModel = useCallback(
     async (model: AvailableModel, type: "voice" | "llm") => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: model.provider_id,
-          model_id: model.model_id,
-          model_name: model.model_name,
-          type,
-          is_default: true,
-        },
-      });
+      await postDefaultModel(
+        model.provider_id,
+        model.model_id,
+        model.model_name,
+        type,
+      );
       await loadData();
     },
     [loadData],
@@ -509,15 +488,7 @@ export function useModels(): UseModels {
   const selectLocalVoice = useCallback(
     async (defId: string, name: string, engine?: "whisper" | "mlx") => {
       const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
-      await getClient().api.models.configured.$post({
-        json: {
-          provider,
-          model_id: `${provider}/${defId}`,
-          model_name: name,
-          type: "voice",
-          is_default: true,
-        },
-      });
+      await postDefaultModel(provider, `${provider}/${defId}`, name, "voice");
       if (engine === "mlx") {
         getClient()
           .api["mlx-asr"].server.start.$post({ json: { modelId: defId } })
@@ -616,15 +587,12 @@ export function useModels(): UseModels {
 
   const selectLocalLlmModel = useCallback(
     async (modelName: string) => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: "local-llm",
-          model_id: `local-llm/${modelName}`,
-          model_name: modelName,
-          type: "llm",
-          is_default: true,
-        },
-      });
+      await postDefaultModel(
+        "local-llm",
+        `local-llm/${modelName}`,
+        modelName,
+        "llm",
+      );
       await loadData();
     },
     [loadData],
@@ -632,15 +600,7 @@ export function useModels(): UseModels {
 
   const selectOmlxModel = useCallback(
     async (modelName: string) => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: "omlx",
-          model_id: `omlx/${modelName}`,
-          model_name: modelName,
-          type: "voice",
-          is_default: true,
-        },
-      });
+      await postDefaultModel("omlx", `omlx/${modelName}`, modelName, "voice");
       await loadData();
     },
     [loadData],
