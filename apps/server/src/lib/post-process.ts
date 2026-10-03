@@ -22,10 +22,6 @@ import {
   parseCleanupWorkTone,
   SETTINGS_KEYS,
 } from "@openstyle/validations";
-import {
-  getModelCostCached,
-  isCleanupModelSupported,
-} from "../routes/models.js";
 import { getDb, readSetting, readSettings } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
@@ -33,6 +29,10 @@ import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import { withLlmLane } from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
 import { resolveTaskCall } from "./llm/task-profiles.js";
+import {
+  getModelCostCached,
+  isCleanupModelSupported,
+} from "./model-registry.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
 const log = createAppLogger("post-process");

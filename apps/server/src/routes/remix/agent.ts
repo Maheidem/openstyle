@@ -2,9 +2,9 @@ import { zValidator } from "@hono/zod-validator";
 import { createAppLogger } from "@openstyle/utils";
 import { remixAgentRequestSchema } from "@openstyle/validations";
 import { Hono } from "hono";
+import { isCleanupModelSupported } from "../../lib/model-registry.js";
 import { getDefaultModels } from "../../lib/providers.js";
 import { runRemixAgentLocally } from "../../lib/remix-agent.js";
-import { isCleanupModelSupported } from "../models.js";
 
 const log = createAppLogger("remix-agent");
 

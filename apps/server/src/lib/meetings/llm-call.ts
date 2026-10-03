@@ -14,6 +14,7 @@ import type { PostProcessParams } from "@openstyle/stt";
 import { postProcess } from "@openstyle/stt";
 import type { LlmTaskId } from "@openstyle/validations";
 import { withLlmLane } from "../llm/lane.js";
+import { getModelCostCached } from "../model-registry.js";
 
 /**
  * Rough token estimate (~4 chars/token), mirroring `@openstyle/stt`
@@ -161,7 +162,6 @@ export async function resolveDefaultChatCall(
 
   let pricing: { input: number; output: number } | null = null;
   try {
-    const { getModelCostCached } = await import("../../routes/models.js");
     pricing = getModelCostCached(resolved.provider, resolved.modelId);
   } catch {
     // Cost is best-effort; a missing registry just reports null cost.

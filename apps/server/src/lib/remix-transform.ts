@@ -2,11 +2,11 @@ import { maxOutputTokensForCleanup, stripWrappingQuotes } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
 import { findRemixPreset } from "@openstyle/validations";
 import { generateText } from "ai";
-import { isCleanupModelSupported } from "../routes/models.js";
 import { buildRemixPrompt } from "./editor/remix-prompts.js";
 import { withLlmLane } from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
 import { resolveTaskCall } from "./llm/task-profiles.js";
+import { isCleanupModelSupported } from "./model-registry.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
 const log = createAppLogger("remix");
