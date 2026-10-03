@@ -1,5 +1,5 @@
 import { createAppLogger } from "@openstyle/utils";
-import { getDb } from "../db.js";
+import { getDb, withTransaction } from "../db.js";
 import { WHISPER_MODELS, WHISPER_PROVIDER_ID } from "../whisper/constants.js";
 import { getModelStatus as getWhisperModelStatus } from "../whisper/models.js";
 import { MLX_ASR_PROVIDER_ID } from "./constants.js";
@@ -40,8 +40,7 @@ export function reconcileUnsupportedMlxVoiceDefault(): boolean {
   const whisperDef =
     WHISPER_MODELS.find((m) => m.id === whisperId) ?? WHISPER_MODELS[0]!;
 
-  db.exec("BEGIN");
-  try {
+  withTransaction(db, () => {
     db.prepare(
       "UPDATE model_configs SET is_default = 0 WHERE type = 'voice'",
     ).run();
@@ -56,11 +55,7 @@ export function reconcileUnsupportedMlxVoiceDefault(): boolean {
       `${WHISPER_PROVIDER_ID}/${whisperId}`,
       `Whisper ${whisperDef.displayName}`,
     );
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
+  });
 
   stopMlxServer().catch(() => {});
 

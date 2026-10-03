@@ -24,7 +24,7 @@
  */
 
 import { createAppLogger } from "@openstyle/utils";
-import { getDb } from "../db.js";
+import { getDb, withTransaction } from "../db.js";
 import {
   buildEnhanceSystemPrompt,
   buildEnhanceUserPrompt,
@@ -592,20 +592,12 @@ export async function enhanceMeetingTranscript(
     const update = db.prepare(
       "UPDATE meeting_segments SET enhanced_text = ? WHERE id = ?",
     );
-    // node:sqlite's DatabaseSync has no `.transaction()` helper (see
-    // vocabulary.ts's importVocabularyEntries for the same pattern) —
-    // explicit BEGIN/COMMIT/ROLLBACK.
-    db.exec("BEGIN");
-    try {
+    withTransaction(db, () => {
       for (const [id, text] of corrections) update.run(text, id);
-      db.exec("COMMIT");
-    } catch (err) {
-      db.exec("ROLLBACK");
-      throw err;
-    }
+    });
   }
 
-  // Persisted in a separate BEGIN/COMMIT block from the corrections above —
+  // Persisted in a separate transaction from the corrections above —
   // a name-suggestion write failure must never roll back already-committed
   // text corrections or vice versa (independent failure domains).
   if (nameProposals.size > 0) {
@@ -625,16 +617,11 @@ export async function enhanceMeetingTranscript(
         suggested_kind = excluded.suggested_kind,
         updated_at = excluded.updated_at
     `);
-    db.exec("BEGIN");
-    try {
+    withTransaction(db, () => {
       for (const [label, p] of nameProposals) {
         upsert.run(meetingId, label, p.name, p.evidence, p.kind, now);
       }
-      db.exec("COMMIT");
-    } catch (err) {
-      db.exec("ROLLBACK");
-      throw err;
-    }
+    });
   }
 
   const chunksFailed = chunksAttempted - chunksSucceeded;

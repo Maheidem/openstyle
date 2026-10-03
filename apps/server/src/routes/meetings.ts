@@ -5,7 +5,7 @@ import { isVocabLeak } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { Hono } from "hono";
 import { z } from "zod";
-import { getDb } from "../lib/db.js";
+import { getDb, withTransaction } from "../lib/db.js";
 import { isDictationActive } from "../lib/dictation-activity.js";
 import {
   createDefaultDiarizeDeps,
@@ -1235,8 +1235,7 @@ const meetings = new Hono()
       }
 
       const now = Date.now();
-      db.exec("BEGIN");
-      try {
+      withTransaction(db, () => {
         if (cascadeTarget) {
           // Any row currently pointing merged_into = label (this label had
           // other labels already merged into it) cascades to point at the
@@ -1264,11 +1263,7 @@ const meetings = new Hono()
              updated_at = excluded.updated_at,
              confirmed_at = excluded.confirmed_at`,
         ).run(id, label, newDisplayName, newMergedInto, now, now);
-        db.exec("COMMIT");
-      } catch (err) {
-        db.exec("ROLLBACK");
-        throw err;
-      }
+      });
 
       const row = db
         .prepare("SELECT audio_dir FROM meetings WHERE id = ?")

@@ -29,7 +29,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createAppLogger } from "@openstyle/utils";
-import { getDb } from "../db.js";
+import { getDb, withTransaction } from "../db.js";
 import {
   isDictationActive,
   waitForDictationIdle,
@@ -467,12 +467,11 @@ export async function runDiarizationPass(
   const update = db.prepare(
     "UPDATE meeting_segments SET speaker_label = ? WHERE id = ?",
   );
-  db.exec("BEGIN");
   try {
-    for (const a of assignments) update.run(a.speakerLabel, a.id);
-    db.exec("COMMIT");
+    withTransaction(db, () => {
+      for (const a of assignments) update.run(a.speakerLabel, a.id);
+    });
   } catch (err) {
-    db.exec("ROLLBACK");
     log.warn(
       `meeting ${meetingId}: failed to persist speaker labels: ${String(err)}`,
     );
