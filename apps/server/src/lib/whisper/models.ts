@@ -27,6 +27,7 @@ import {
   downloadErrorSourceUrl,
 } from "../download-guard.js";
 import { progressFetch } from "../hf/progress.js";
+import { isServerBinaryAvailable, resetBinaryCache } from "./binary.js";
 import {
   getBinDir,
   getModelPath,
@@ -180,7 +181,6 @@ export async function downloadModel(modelId: string): Promise<void> {
 
   if (isModelDownloaded(model)) return;
 
-  const { isServerBinaryAvailable } = await import("./binary.js");
   const needsBinary = !isServerBinaryAvailable();
 
   const controller = new AbortController();
@@ -291,12 +291,6 @@ export async function deleteModel(modelId: string): Promise<boolean> {
 
   cancelDownload(modelId);
 
-  // Stop the whisper server before deleting — on Windows the server
-  // process holds the model file open, so unlinkSync would fail with
-  // EPERM/EBUSY while it's running.
-  const { stopServer } = await import("./server.js");
-  await stopServer();
-
   const path = getModelPath(model);
   try {
     if (existsSync(path)) {
@@ -369,9 +363,6 @@ export async function ensureBinariesDownloaded(): Promise<void> {
   if (!isSupportedWhisperArch()) {
     throw new Error(unsupportedArchMessage());
   }
-  const { isServerBinaryAvailable, resetBinaryCache } = await import(
-    "./binary.js"
-  );
   if (isServerBinaryAvailable()) return;
 
   if (binaryDownloadPromise) return binaryDownloadPromise;
@@ -498,9 +489,6 @@ async function buildFromSource(): Promise<void> {
     rmSync(srcDir, { recursive: true, force: true });
   } catch {}
 
-  const { isServerBinaryAvailable, resetBinaryCache } = await import(
-    "./binary.js"
-  );
   resetBinaryCache();
   if (!isServerBinaryAvailable()) {
     throw new Error(
