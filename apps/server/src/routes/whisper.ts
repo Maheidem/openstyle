@@ -14,7 +14,10 @@ import {
   getModelStatus,
   isBinaryDownloading,
 } from "../lib/whisper/models.js";
-import { startInBackground } from "../lib/whisper/server.js";
+import {
+  startInBackground,
+  stopServerIfLoaded,
+} from "../lib/whisper/server.js";
 
 const whisper = new Hono()
   .get("/status", (c) => {
@@ -61,6 +64,8 @@ const whisper = new Hono()
   })
   .delete("/models/:model", async (c) => {
     const modelId = c.req.param("model");
+    // On Windows the server holds the model file open. Stop it first.
+    await stopServerIfLoaded(modelId);
     const deleted = await deleteModel(modelId);
 
     return c.json({ ok: deleted });

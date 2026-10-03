@@ -338,6 +338,12 @@ function clearStabilityTimer(): void {
   }
 }
 
+// Stop the server only when it has this model loaded. The delete route
+// calls this: on Windows the server holds the model file open.
+export async function stopServerIfLoaded(modelId: string): Promise<void> {
+  if (currentModelId === modelId) await stopServer();
+}
+
 export async function stopServer(): Promise<void> {
   autoRestart = false;
   startPromise = null;
