@@ -168,7 +168,6 @@ export interface VoiceItem {
   state?: WhisperModelDownloadState;
   status?: WhisperModelDownloadState["status"];
   cost?: number;
-  streaming?: boolean;
   hasKey?: boolean;
   available?: AvailableModel;
 }
@@ -179,7 +178,6 @@ export const VOICE_META: Record<
     speed: number;
     quality: number;
     cost?: number;
-    streaming?: boolean;
     note?: string;
   }
 > = {
@@ -356,7 +354,6 @@ export function buildVoiceItems(
       speed: meta?.speed,
       quality: meta?.quality,
       cost: meta?.cost,
-      streaming: meta?.streaming,
       note: meta?.note,
       hasKey: ctx.keyProviders.has(m.provider_id),
       available: m,
