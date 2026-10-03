@@ -363,12 +363,20 @@ function getServerBaseUrl(): string {
 }
 
 /**
+ * Send one IPC message to the pill window and the settings window. The
+ * channel must be a string literal, so the preload drift test can find it.
+ */
+function broadcastToWindows(channel: string, ...args: unknown[]): void {
+  mainWindow?.webContents.send(channel, ...args);
+  settingsWindow?.webContents.send(channel, ...args);
+}
+
+/**
  * Broadcast a server target change (URL/token) to all renderer windows so they
  * re-point their API clients and refetch, without an app restart.
  */
 function broadcastServerChanged(): void {
-  mainWindow?.webContents.send("server:changed");
-  settingsWindow?.webContents.send("server:changed");
+  broadcastToWindows("server:changed");
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -981,11 +989,7 @@ function createAppWindow(): void {
         },
       });
       const alignment = getPillAlignmentForCustom();
-      mainWindow.webContents.send("settings:pill-position-changed", alignment);
-      settingsWindow?.webContents.send(
-        "settings:pill-position-changed",
-        alignment,
-      );
+      broadcastToWindows("settings:pill-position-changed", alignment);
     }, 200);
   });
 
@@ -2369,12 +2373,10 @@ app.whenReady().then(async () => {
     getServerAuthHeaders,
     createCaptureWindow: createMeetingCaptureWindow,
     broadcastLevel: (event) => {
-      settingsWindow?.webContents.send("meeting:level", event);
-      mainWindow?.webContents.send("meeting:level", event);
+      broadcastToWindows("meeting:level", event);
     },
     broadcastStatus: (status) => {
-      settingsWindow?.webContents.send("meeting:status-changed", status);
-      mainWindow?.webContents.send("meeting:status-changed", status);
+      broadcastToWindows("meeting:status-changed", status);
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         tray?.setContextMenu(buildTrayContextMenu());
@@ -2826,8 +2828,7 @@ app.whenReady().then(async () => {
     setProgrammaticPosition(mainWindow, x, y);
     const after = (readSettings().pillPosition as string) ?? "bottom-center";
     if (before !== after) {
-      mainWindow.webContents.send("settings:pill-position-changed", after);
-      settingsWindow?.webContents.send("settings:pill-position-changed", after);
+      broadcastToWindows("settings:pill-position-changed", after);
     }
   };
   screen.on("display-removed", repositionPillForDisplayChange);
@@ -3097,11 +3098,7 @@ app.whenReady().then(async () => {
     // For custom, resolve the live alignment; for presets, send as-is.
     const broadcast =
       position === "custom" ? getPillAlignmentForCustom() : position;
-    mainWindow?.webContents.send("settings:pill-position-changed", broadcast);
-    settingsWindow?.webContents.send(
-      "settings:pill-position-changed",
-      broadcast,
-    );
+    broadcastToWindows("settings:pill-position-changed", broadcast);
   });
 
   // Register the hold-to-record hotkey immediately with the default accelerator
@@ -4065,26 +4062,22 @@ function sendHotkeyDown(language?: string | null): void {
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
-      mainWindow?.webContents.send("hotkey:down", payload);
-      settingsWindow?.webContents.send("hotkey:down", payload);
+      broadcastToWindows("hotkey:down", payload);
     });
     return;
   }
-  mainWindow?.webContents.send("hotkey:down", payload);
-  settingsWindow?.webContents.send("hotkey:down", payload);
+  broadcastToWindows("hotkey:down", payload);
 }
 
 function sendHotkeyUp(): void {
   if (pillReadyPromise) {
     // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
     void pillReadyPromise.then(() => {
-      mainWindow?.webContents.send("hotkey:up");
-      settingsWindow?.webContents.send("hotkey:up");
+      broadcastToWindows("hotkey:up");
     });
     return;
   }
-  mainWindow?.webContents.send("hotkey:up");
-  settingsWindow?.webContents.send("hotkey:up");
+  broadcastToWindows("hotkey:up");
 }
 
 /** Send to the pill, deferring until it exists so bursty IPC stays ordered. */
@@ -4540,8 +4533,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
           const errorPayload = {
             message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Openstyle or pick a different combination in Settings.`,
           };
-          mainWindow?.webContents.send("hotkey:error", errorPayload);
-          settingsWindow?.webContents.send("hotkey:error", errorPayload);
+          broadcastToWindows("hotkey:error", errorPayload);
         }
       },
     });
@@ -4589,8 +4581,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
           message = `Hotkey "${accel}" requires access to input devices. Run: sudo usermod -aG input $USER — then log out and back in.`;
         }
         const errorPayload = { message };
-        mainWindow?.webContents.send("hotkey:error", errorPayload);
-        settingsWindow?.webContents.send("hotkey:error", errorPayload);
+        broadcastToWindows("hotkey:error", errorPayload);
       }
     }
   } catch (err) {
