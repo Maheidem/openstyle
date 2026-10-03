@@ -25,7 +25,6 @@
     "build:linux": "npm run compile:native && npm run download:ffmpeg && electron-vite build && electron-builder --linux --publish never",
     "download:ffmpeg": "node scripts/download-ffmpeg.mjs",
     "download:whisper-cpp": "node scripts/download-whisper-cpp.mjs",
-    "download:whisper-cpp:all": "node scripts/download-whisper-cpp.mjs --all",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },

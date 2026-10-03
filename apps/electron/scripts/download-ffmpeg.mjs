@@ -29,16 +29,15 @@ import {
   chmodSync,
   copyFileSync,
   createReadStream,
-  createWriteStream,
   existsSync,
   mkdirSync,
   rmSync,
 } from "node:fs";
 import { cpus, homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { fetchToFile } from "./lib/fetch.mjs";
 
 const FFMPEG_VERSION = "9.0.1";
 const FFMPEG_SOURCE_URL = `https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz`;
@@ -89,30 +88,7 @@ const OUT_BIN = join(OUT_DIR, BIN_NAME);
 
 const FORCE = process.argv.includes("--force");
 
-async function fetchToFile(url, dest) {
-  const res = await fetch(url, {
-    redirect: "follow",
-    signal: AbortSignal.timeout(600_000),
-  });
-  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} for ${url}`);
-  const fileStream = createWriteStream(dest);
-  const reader = res.body.getReader();
-  const nodeStream = new Readable({
-    async read() {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          this.push(null);
-          return;
-        }
-        this.push(Buffer.from(value));
-      } catch (err) {
-        this.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    },
-  });
-  await pipeline(nodeStream, fileStream);
-}
+const DOWNLOAD_TIMEOUT_MS = 600_000;
 
 async function sha256File(path, expected) {
   const hash = createHash("sha256");
@@ -190,7 +166,9 @@ async function downloadPrebuilt() {
   resetWorkDir();
   const archive = join(WORK_DIR, asset.file);
   console.log(`Downloading ${BTBN_BASE}/${asset.file} ...`);
-  await fetchToFile(`${BTBN_BASE}/${asset.file}`, archive);
+  await fetchToFile(`${BTBN_BASE}/${asset.file}`, archive, {
+    timeoutMs: DOWNLOAD_TIMEOUT_MS,
+  });
   await sha256File(archive, asset.sha256);
 
   const extractDir = join(WORK_DIR, "extract");
@@ -227,7 +205,9 @@ async function buildFromSource() {
   const srcDir = join(WORK_DIR, "src");
 
   console.log(`Downloading ${FFMPEG_SOURCE_URL} ...`);
-  await fetchToFile(FFMPEG_SOURCE_URL, tarPath);
+  await fetchToFile(FFMPEG_SOURCE_URL, tarPath, {
+    timeoutMs: DOWNLOAD_TIMEOUT_MS,
+  });
   await sha256File(tarPath, FFMPEG_SOURCE_SHA256);
 
   console.log("Extracting...");
