@@ -2,9 +2,12 @@
  * Pure energy-gate segmenter for meeting audio.
  *
  * Splits a PCM16 channel into utterance segments using per-frame RMS with an
- * adaptive noise floor and hysteresis. No I/O, no logging — deterministic on
- * its inputs so it is trivially unit-testable.
+ * adaptive noise floor and hysteresis. No logging. Every function is
+ * deterministic on its inputs, so it is easy to unit-test. Only
+ * `segmentWavFile` reads a file.
  */
+
+import { readWavPcm16 } from "../audio/wav.js";
 
 export interface SegmenterOptions {
   /** Analysis frame length in ms. */
@@ -308,4 +311,15 @@ export function segmentPcm(
     startMs: Math.round(s.startMs),
     endMs: Math.round(s.endMs),
   }));
+}
+
+/**
+ * Segment one on-disk WAV channel. Returns null when the file is missing. A
+ * bad header still throws. Only the segments leave this function, so the PCM
+ * can be freed before the next channel is read.
+ */
+export function segmentWavFile(path: string): Segment[] | null {
+  const channel = readWavPcm16(path);
+  if (!channel) return null;
+  return mergeSegmentsToward(segmentPcm(channel.pcm, channel.sampleRate));
 }
