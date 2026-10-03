@@ -8,6 +8,10 @@ import {
   type CleanupPersonalTone,
   type CleanupToneDestination,
   type CleanupWorkTone,
+  DEFAULT_CLEANUP_EMAIL_TONE,
+  DEFAULT_CLEANUP_OVERALL_TONE,
+  DEFAULT_CLEANUP_PERSONAL_TONE,
+  DEFAULT_CLEANUP_WORK_TONE,
   parseCleanupAppAssignments,
   parseCleanupEmailTone,
   parseCleanupIntensity,
@@ -56,12 +60,6 @@ import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import {
-  DEFAULT_CLEANUP_EMAIL_TONE,
-  DEFAULT_CLEANUP_OVERALL_TONE,
-  DEFAULT_CLEANUP_PERSONAL_TONE,
-  DEFAULT_CLEANUP_WORK_TONE,
-} from "../../../shared/cleanup-tone-settings";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 // Settings that change whether the pill needs to capture the frontmost app for

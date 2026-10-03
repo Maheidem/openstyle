@@ -13,10 +13,6 @@ import whatsappIcon from "@renderer/assets/route-icons/whatsapp.svg";
 import { cn } from "@renderer/lib/utils";
 import { Globe, Mail, MonitorSmartphone } from "lucide-react";
 import { useState } from "react";
-import {
-  type BuiltinRouteIconId,
-  normalizeRouteIconHost,
-} from "../../../../shared/route-icons";
 
 // ---------------------------------------------------------------------------
 // Route marks — larger app/site tiles used in the tone page's "Routes from"
@@ -24,7 +20,25 @@ import {
 // use generic local fallback icons so the page never depends on remote assets.
 // ---------------------------------------------------------------------------
 
-export type AppMarkId = BuiltinRouteIconId;
+export type AppMarkId =
+  | "messages"
+  | "whatsapp"
+  | "telegram"
+  | "discord"
+  | "slack"
+  | "linkedin"
+  | "work_chat"
+  | "gmail"
+  | "outlook"
+  | "apple_mail"
+  | "proton";
+
+export function normalizeRouteIconHost(raw: string): string {
+  return raw
+    .replace(/^www\./, "")
+    .trim()
+    .toLowerCase();
+}
 
 type Mark = {
   label: string;

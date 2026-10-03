@@ -21,7 +21,7 @@ import { Globe, Loader2, Plus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { OpenAppCandidate } from "../../../../shared/open-apps";
-import { normalizeRouteIconHost } from "../../../../shared/route-icons";
+import { normalizeRouteIconHost } from "./app-marks";
 
 // ---------------------------------------------------------------------------
 // App assignments — manages custom routes for a tone. Open apps are chosen from
