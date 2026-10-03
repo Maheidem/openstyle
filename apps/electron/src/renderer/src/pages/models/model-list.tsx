@@ -107,7 +107,8 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
           ? ` · ${formatBytes(it.sizeBytes)}`
           : "";
       const defId = it.defId;
-      return {
+      const engine = it.localEngine;
+      const row: Row = {
         key: it.key,
         name: it.name,
         source: "local",
@@ -116,28 +117,21 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
         selected: it.selected && status === "ready",
         status,
         state: it.state,
-        deleting: defId
-          ? m.deletingKeys.has(`${it.localEngine ?? "whisper"}:${defId}`)
-          : false,
-        onSelect: defId
-          ? () => h.onPickLocalVoice(defId, it.name, it.localEngine)
-          : undefined,
-        onDownload: defId
-          ? () => m.downloadLocal(defId, it.localEngine)
-          : undefined,
-        onCancel: defId
-          ? () => m.cancelLocal(defId, it.localEngine)
-          : undefined,
-        onDelete: defId
-          ? () => h.onRequestDeleteLocal(defId, it.localEngine)
-          : undefined,
-        onRetry: defId
-          ? () =>
-              it.localEngine === "mlx"
-                ? void m.retryLocalMlx(defId)
-                : m.downloadLocal(defId, "whisper")
-          : undefined,
+        deleting: false,
       };
+      // A row without a definition id has nothing to select, fetch or delete.
+      if (defId) {
+        row.deleting = m.deletingKeys.has(`${engine ?? "whisper"}:${defId}`);
+        row.onSelect = () => h.onPickLocalVoice(defId, it.name, engine);
+        row.onDownload = () => m.downloadLocal(defId, engine);
+        row.onCancel = () => m.cancelLocal(defId, engine);
+        row.onDelete = () => h.onRequestDeleteLocal(defId, engine);
+        row.onRetry = () =>
+          engine === "mlx"
+            ? void m.retryLocalMlx(defId)
+            : m.downloadLocal(defId, "whisper");
+      }
+      return row;
     }
 
     const providerId = it.available?.provider_id ?? "";
@@ -388,9 +382,9 @@ export function ModelList({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showLocalLlmForm && <LocalLlmConnect m={m} />}
-        {showOpenaiSttForm && <OpenaiSttConnect m={m} />}
-        {showOmlxForm && <OmlxConnect m={m} />}
+        {showLocalLlmForm && <LocalLlmConnect connect={m.localLlm} />}
+        {showOpenaiSttForm && <OpenaiSttConnect connect={m.openaiStt} />}
+        {showOmlxForm && <OmlxConnect connect={m.omlx} />}
         {visible.length === 0 ? (
           <ListEmptyState
             type={type}
@@ -625,10 +619,14 @@ function ListEmptyState({
   );
 }
 
-function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
+function LocalLlmConnect({
+  connect,
+}: {
+  connect: EndpointConnectState;
+}): React.JSX.Element {
   return (
     <EndpointConnectForm
-      connect={m.localLlm}
+      connect={connect}
       resolver={zodResolver(localLlmConnectFormSchema)}
       description="Connect to Ollama, LM Studio, or another OpenAI-compatible server running locally."
       urlPlaceholder="http://localhost:11434"
@@ -636,10 +634,14 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
   );
 }
 
-function OpenaiSttConnect({ m }: { m: UseModels }): React.JSX.Element {
+function OpenaiSttConnect({
+  connect,
+}: {
+  connect: EndpointConnectState;
+}): React.JSX.Element {
   return (
     <EndpointConnectForm
-      connect={m.openaiStt}
+      connect={connect}
       resolver={zodResolver(openaiSttConnectFormSchema)}
       description="Point OpenAI transcription at a self-hosted or OpenAI-compatible server (vLLM, LiteLLM, LM Studio). Leave the URL empty to use OpenAI."
       urlPlaceholder="https://example.com/v1"
@@ -647,10 +649,14 @@ function OpenaiSttConnect({ m }: { m: UseModels }): React.JSX.Element {
   );
 }
 
-function OmlxConnect({ m }: { m: UseModels }): React.JSX.Element {
+function OmlxConnect({
+  connect,
+}: {
+  connect: EndpointConnectState;
+}): React.JSX.Element {
   return (
     <EndpointConnectForm
-      connect={m.omlx}
+      connect={connect}
       resolver={zodResolver(omlxConnectFormSchema)}
       description="Transcribe with an oMLX server you already run. Enter the server address — every model it serves is listed; pick the ASR one. Leave the URL empty to disconnect."
       urlPlaceholder="http://127.0.0.1:8123"
