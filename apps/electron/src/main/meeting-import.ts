@@ -21,16 +21,11 @@ import { openAsBlob } from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
+import { IMPORT_EXTENSIONS, MAX_IMPORT_BYTES } from "@openstyle/validations";
 import { app, type BrowserWindow, dialog, ipcMain } from "electron";
 import type { ServerFetch } from "../shared/server-auth";
 
 const log = createAppLogger("meeting-import");
-
-// Kept local rather than imported from @openstyle/server: the server package
-// only exports its root (see apps/server/package.json `exports`), and
-// duplicating the two checks is the established precedent in import-audio.ts.
-const IMPORT_EXTENSIONS = ["wav", "mp3", "m4a", "aac", "ogg", "mp4"] as const;
-const MAX_IMPORT_BYTES = 1024 * 1024 * 1024; // 1 GiB
 
 function isE2E(): boolean {
   return (process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1";
