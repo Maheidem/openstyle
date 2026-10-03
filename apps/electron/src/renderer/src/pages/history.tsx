@@ -206,7 +206,12 @@ export default function HistoryPage(): React.JSX.Element {
 
   const queryClient = useQueryClient();
 
-  const { data: historyData, isLoading: loading } = useQuery({
+  // The list and the stats use separate queries. Stats depend only on the date
+  // range, so a search keystroke or a page change does not refetch them.
+  // `placeholderData` keeps the previous results on screen while a new
+  // filter/page/search query loads. Without it, every key change blanks the page
+  // to the loading spinner.
+  const { data: historyData, isLoading: listLoading } = useQuery({
     queryKey: queryKeys.history.list(page, search, startDate, endDate),
     queryFn: async () => {
       const q: Record<string, string> = {
@@ -218,31 +223,31 @@ export default function HistoryPage(): React.JSX.Element {
       if (startDate) q.start_date = startDate;
       if (endDate) q.end_date = endDate;
 
+      const res = await getClient().api.history.$get({ query: q });
+      return res.ok
+        ? ((await res.json()) as { items: HistoryEntry[]; total: number })
+        : { items: [] as HistoryEntry[], total: 0 };
+    },
+    placeholderData: keepPreviousData,
+  });
+
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: queryKeys.history.stats(startDate, endDate),
+    queryFn: async () => {
       const statsQ: Record<string, string> = {};
       if (startDate) statsQ.start_date = startDate;
       if (endDate) statsQ.end_date = endDate;
 
-      const client = getClient();
-      const [histRes, statsRes] = await Promise.all([
-        client.api.history.$get({ query: q }),
-        client.api.history.stats.$get({ query: statsQ }),
-      ]);
-      const items = histRes.ok
-        ? ((await histRes.json()) as { items: HistoryEntry[]; total: number })
-        : { items: [] as HistoryEntry[], total: 0 };
-      const statsData = statsRes.ok ? ((await statsRes.json()) as Stats) : null;
-      return { ...items, stats: statsData };
+      const res = await getClient().api.history.stats.$get({ query: statsQ });
+      return res.ok ? ((await res.json()) as Stats) : null;
     },
-    // Keep showing the previous results while a new filter/page/search query
-    // loads. Without this every filter change is a brand-new query key with no
-    // cache, so `isLoading` flips true and the whole page blanks to the loading
-    // spinner — the "page re-renders" flash.
     placeholderData: keepPreviousData,
   });
 
+  const loading = listLoading || statsLoading;
   const entries = historyData?.items ?? [];
   const total = historyData?.total ?? 0;
-  const stats = historyData?.stats ?? null;
+  const stats = statsData ?? null;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // `history_paused` lives in the shared settings map — read it from the same

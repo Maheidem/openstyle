@@ -62,6 +62,8 @@ export const queryKeys = {
     daily: ["history", "daily"] as const,
     list: (page: number, search: string, startDate: string, endDate: string) =>
       ["history", page, search, startDate, endDate] as const,
+    stats: (startDate: string, endDate: string) =>
+      ["history", "stats", startDate, endDate] as const,
   },
 
   dictionary: {
