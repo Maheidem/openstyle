@@ -78,9 +78,7 @@
       "waitingWhileDownloading": "Finish once the download completes"
     },
     "tutorial": {
-      "finish": "Start using Openstyle",
-      "chooseModel": "Choose a different model",
-      "usingModel": "Using {{name}} · Choose a different model"
+      "finish": "Start using Openstyle"
     },
     "modelSelector": {
       "chooseModel": "Choose a model",
@@ -184,8 +182,6 @@
       "languageAdd": "Add language",
       "languageRemove": "Remove {{language}}",
       "languageMax": "Up to {{count}} languages.",
-      "languageModeHint": "Hint",
-      "languageModeEnforced": "Enforced",
       "translateMode": "Translate mode",
       "translateModeDesc": "When translate mode is on, Language is enforced.",
       "transcriptionLanguages": {
@@ -333,8 +329,6 @@
     "heatmapWords": "{{count}} words"
   },
   "history": {
-    "title": "History",
-    "loading": "Loading history…",
     "filterTitle": "Filter History",
     "dateRangeLabel": "Date range",
     "viewLabel": "View",
@@ -346,8 +340,6 @@
     "nerdToggleDesc": "Show tokens, latency and words per minute",
     "tutorialToggle": "Tutorial card",
     "tutorialToggleDesc": "Show the press-speak-release demo at the top",
-    "tokensInStat": "tokens in",
-    "tokensOutStat": "tokens out",
     "nerdWpm": "{{n}} wpm",
     "nerdTok": "{{in}}→{{out}} tok",
     "nerdCompute": "{{label}} compute",
@@ -356,9 +348,6 @@
     "dismissHero": "Dismiss",
     "timeLabelAllTime": "All time",
     "timeLabelFiltered": "Filtered",
-    "wordsStat": "words · {{label}}",
-    "sessionsStat": "sessions · {{label}}",
-    "costStat": "cost · {{label}}",
     "sessionSingular": "session",
     "sessionPlural": "sessions",
     "searchSingular": "Search {{total}} transcript…",
@@ -421,7 +410,6 @@
     "newTerm": "New term",
     "termLabel": "Term · word or phrase",
     "notesLabel": "Notes · optional",
-    "modelCompatNote": "Multi-word phrases work on Nova 3, OpenAI, and Groq. Nova 2 boosts single words. Scribe v1 does not use vocabulary bias.",
     "cancel": "Cancel",
     "update": "Update",
     "termSingular": "term",
@@ -651,7 +639,6 @@
   },
   "models": {
     "title": "Models",
-    "loading": "Loading models…",
     "advancedModeBanner": "Advanced mode is off. Enable it in Settings › Application to keep the Models page in the sidebar.",
     "advancedModeBannerAction": "Open settings",
     "apiKeys": "API keys",
@@ -697,19 +684,7 @@
     "keyUpdate": "Update API key",
     "keyDelete": "Delete provider",
     "cleanup": {
-      "title": "Cleanup intensity",
-      "levelLow": "Low",
-      "levelMedium": "Medium",
-      "levelHigh": "High",
-      "levelCustom": "Custom",
-      "desc": {
-        "low": "Fix punctuation, capitalization, and obvious slips. Keep wording and order.",
-        "medium": "Also smooth grammar and awkward phrasing. Keep meaning and order.",
-        "high": "Can rewrite, reorder, and combine sentences for flow. Keep meaning and facts.",
-        "custom": "Uses your own cleanup instructions."
-      },
       "promptLabel": "Cleanup prompt",
-      "promptToggle": "View / edit prompt",
       "presetHint": "Editing this prompt switches to Custom so presets stay intact.",
       "customHint": "Your custom instructions are used for cleanup.",
       "resetToPresets": "Reset to presets",
