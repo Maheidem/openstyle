@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { initSchema } from "../src/lib/schema.js";
+import { createVersionedDb } from "./helpers/schema-db.js";
 
 let db: DatabaseSync | null = null;
 
@@ -10,21 +11,7 @@ afterEach(() => {
 });
 
 function createV27Db(startVersion = 27): DatabaseSync {
-  const instance = new DatabaseSync(":memory:");
-  instance.exec(`
-    CREATE TABLE schema_version (
-      id INTEGER PRIMARY KEY CHECK(id = 1),
-      version INTEGER NOT NULL
-    );
-    INSERT INTO schema_version (id, version) VALUES (1, ${startVersion});
-
-    CREATE TABLE settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-  return instance;
+  return createVersionedDb(startVersion);
 }
 
 function setSetting(instance: DatabaseSync, key: string, value: string): void {
