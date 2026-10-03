@@ -1,4 +1,5 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { InlineNotice } from "@renderer/components/inline-notice";
 import {
   LanguageList,
   useLanguageOptions,
@@ -1860,16 +1861,18 @@ function MeetingDetailView({
           server's own message (it names the provider/model problem), rendered
           like every other action failure on this page. */}
       {summarizeCancelled && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <CircleSlash className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice
+          tone="neutral"
+          icon={CircleSlash}
+          iconClassName="text-muted-foreground"
+        >
           <span>{t("meetings.summarizeCancelled")}</span>
-        </div>
+        </InlineNotice>
       )}
       {summarizeFailure && !summarizeCancelled && (
-        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice tone="destructive" icon={AlertTriangle}>
           <span>{summarizeFailure}</span>
-        </div>
+        </InlineNotice>
       )}
 
       {/* Post-cancel (T1-1): a cancelled job is not an error — every written
@@ -1879,29 +1882,30 @@ function MeetingDetailView({
           partial transcript was kept, or the ungated Delete starts looking
           like the only exit (audit U4). */}
       {cancelledByUser && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <CircleSlash className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice
+          tone="neutral"
+          icon={CircleSlash}
+          iconClassName="text-muted-foreground"
+        >
           <span>
             {t("meetings.cancelledKeptTranscript", {
               n: keptSegments,
               total: plannedSegments,
             })}
           </span>
-        </div>
+        </InlineNotice>
       )}
 
       {(meeting.error || actionError) &&
         !cancelledByUser &&
         !enhanceFailure && (
-          <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <InlineNotice tone="destructive" icon={AlertTriangle}>
             <span>{actionError ?? meeting.error}</span>
-          </div>
+          </InlineNotice>
         )}
 
       {diarizeResult && !actionError && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <Users className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice tone="neutral" icon={Users}>
           <span>
             {diarizeResult.speakerCount === 0
               ? t("meetings.diarizeNoSpeakers")
@@ -1909,12 +1913,11 @@ function MeetingDetailView({
             {diarizeResult.speakerCount === 1 &&
               ` ${t("meetings.diarizeSingleSpeakerNote")}`}
           </span>
-        </div>
+        </InlineNotice>
       )}
 
       {enhanceResult && !actionError && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <WandSparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice tone="neutral" icon={WandSparkles}>
           <span>
             {enhanceResult.correctedCount === 0
               ? t("meetings.enhanceNoneCorrected")
@@ -1930,7 +1933,7 @@ function MeetingDetailView({
                 })}`
               : ""}
           </span>
-        </div>
+        </InlineNotice>
       )}
 
       {/* State three: the pass failed. Destructive card, names the cause, and
@@ -1938,8 +1941,7 @@ function MeetingDetailView({
           written — a failed chunk never reaches the UPDATE — so the copy says
           "nothing was changed" rather than hedging. */}
       {enhanceFailure && (
-        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice tone="destructive" icon={AlertTriangle}>
           <span className="flex min-w-0 flex-col gap-2">
             <span>
               {enhanceFailure.reason === "timeout"
@@ -1960,7 +1962,7 @@ function MeetingDetailView({
               {t("meetings.retryEnhance")}
             </Button>
           </span>
-        </div>
+        </InlineNotice>
       )}
 
       <Tabs defaultValue="transcript">
@@ -2073,10 +2075,13 @@ function MeetingDetailView({
           {meeting.summary?.markdown ? (
             <>
               {summaryStaleNames && (
-                <div className="border-border bg-card/30 text-muted-foreground mb-3 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <InlineNotice
+                  tone="neutral"
+                  icon={Sparkles}
+                  className="mb-3 text-muted-foreground"
+                >
                   <span>{t("meetings.summaryStaleNames")}</span>
-                </div>
+                </InlineNotice>
               )}
               <div className="mb-3 flex justify-end">
                 <CopyButton
