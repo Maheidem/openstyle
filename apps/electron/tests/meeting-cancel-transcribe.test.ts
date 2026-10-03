@@ -1,14 +1,20 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   expect,
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import { withPickerFile } from "./e2e-helpers";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
+import { pcm16Wav } from "./helpers/wav";
 
 // ---------------------------------------------------------------------------
 // Meeting transcribe Cancel (T1-1 renderer half, specs/lean-audit-2026-09.md
@@ -64,6 +70,19 @@ const parked: Array<{ res: import("node:http").ServerResponse }> = [];
 let released = false;
 let okAnswered = 0;
 
+/** Exactly one chunk (whichever it is) succeeds and persists. This makes the
+ * post-cancel note read "(1 of 2 …)". All other chunks get a 500. */
+function answer(res: import("node:http").ServerResponse): void {
+  if (okAnswered === 0) {
+    okAnswered++;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ text: "kept partial transcript" }));
+    return;
+  }
+  res.writeHead(500, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "released by test" }));
+}
+
 function startHoldServer(): Promise<void> {
   return new Promise((resolvePromise) => {
     holdServer = createServer((_req, res) => {
@@ -71,16 +90,7 @@ function startHoldServer(): Promise<void> {
         parked.push({ res });
         return;
       }
-      if (okAnswered === 0) {
-        // Exactly one chunk — whichever it is — succeeds and persists, which
-        // is what makes the post-cancel note read "(1 of 2 …)".
-        okAnswered++;
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ text: "kept partial transcript" }));
-        return;
-      }
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "released by test" }));
+      answer(res);
     });
     holdServer.on("connection", (socket: Socket) => {
       heldSockets.add(socket);
@@ -100,14 +110,7 @@ const heldSockets = new Set<Socket>();
 function releaseHoldServer(): void {
   released = true;
   for (const { res } of parked.splice(0)) {
-    if (okAnswered === 0) {
-      okAnswered++;
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ text: "kept partial transcript" }));
-    } else {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "released by test" }));
-    }
+    answer(res);
   }
 }
 
@@ -136,7 +139,7 @@ function writeTwoBurstWav(path: string): void {
   const bursts = 2;
   const totalMs = leadMs + bursts * burstMs + (bursts - 1) * gapMs;
   const totalSamples = Math.round((totalMs / 1000) * SAMPLE_RATE);
-  const data = Buffer.alloc(totalSamples * 2);
+  const samples = new Int16Array(totalSamples);
   for (let b = 0; b < bursts; b++) {
     const start = Math.round(
       ((leadMs + b * (burstMs + gapMs)) / 1000) * SAMPLE_RATE,
@@ -145,49 +148,12 @@ function writeTwoBurstWav(path: string): void {
       ((leadMs + b * (burstMs + gapMs) + burstMs) / 1000) * SAMPLE_RATE,
     );
     for (let i = start; i < end; i++) {
-      const s = Math.round(
+      samples[i] = Math.round(
         8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
       );
-      data.writeInt16LE(s, i * 2);
     }
   }
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(SAMPLE_RATE, 24);
-  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  writeFileSync(path, Buffer.concat([h, data]));
-}
-
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 10_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return electronApp.windows()[0];
+  writeFileSync(path, pcm16Wav(samples, SAMPLE_RATE));
 }
 
 interface MeetingDetailRow {
@@ -228,7 +194,6 @@ test.beforeAll(async () => {
   await startHoldServer();
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-meeting-cancel-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   const settings: Record<string, unknown> = { onboardingComplete: true };
   if (EXTERNAL_SERVER_URL) {
@@ -260,20 +225,7 @@ test.beforeAll(async () => {
   }
 
   try {
-    app = await electron.launch({
-      args: [resolve(__dirname, "../out/main/index.js")],
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-        OPENSTYLE_DB_PATH: dbPath,
-        OPENSTYLE_USER_DATA: userDataDir,
-        OPENSTYLE_E2E: "1",
-        ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-      },
-      timeout: 30_000,
-    });
-
-    await app.firstWindow();
+    app = await launchOpenstyle({ userDataDir });
     dashboardPage = await waitForDashboardWindow(app, 15_000);
     try {
       await dashboardPage.waitForLoadState("networkidle", { timeout: 15_000 });
@@ -316,7 +268,7 @@ test.beforeAll(async () => {
       headers: { ...apiHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({
         provider: "omlx",
-        model_id: "omlsx/hold-test-model",
+        model_id: "omlx/hold-test-model",
         model_name: "oMLX hold-test model",
         type: "voice",
         is_default: true,
@@ -341,17 +293,8 @@ test.afterAll(async () => {
     await stopHoldServer();
     return;
   }
-  const proc = app.process();
-  const killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-  try {
-    await app.close();
-  } catch (error) {
-    console.warn("Error closing app:", error);
-    proc.kill("SIGKILL");
-  } finally {
-    clearTimeout(killTimer);
-    await stopHoldServer();
-  }
+  await closeApp(app);
+  await stopHoldServer();
 });
 
 test("cancelling a running transcribe job keeps the partial transcript", async () => {
@@ -361,90 +304,92 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
 
   const wavPath = join(userDataDir, "cancel-test.wav");
   writeTwoBurstWav(wavPath);
-  await app.evaluate((_electron, path) => {
-    process.env.OPENSTYLE_E2E_MEETING_IMPORT_FILE = path;
-  }, wavPath);
+  await withPickerFile(
+    app,
+    "OPENSTYLE_E2E_MEETING_IMPORT_FILE",
+    wavPath,
+    async () => {
+      await dashboardPage.getByTestId("meetings-import-choose-file").click();
 
-  await dashboardPage.getByTestId("meetings-import-choose-file").click();
+      // Import → detail view opens on the new meeting and auto-fires the
+      // transcribe job, which parks both chunks on the hold-server: the progress
+      // card is up with a 0/2 counter and the Cancel button enabled.
+      const cancelButton = dashboardPage.getByTestId(
+        "meetings-cancel-transcribe",
+      );
+      await expect(cancelButton).toBeVisible({ timeout: 20_000 });
+      await expect(cancelButton).toBeEnabled();
+      await expect(dashboardPage.getByText("Transcribing…")).toBeVisible();
 
-  // Import → detail view opens on the new meeting and auto-fires the
-  // transcribe job, which parks both chunks on the hold-server: the progress
-  // card is up with a 0/2 counter and the Cancel button enabled.
-  const cancelButton = dashboardPage.getByTestId("meetings-cancel-transcribe");
-  await expect(cancelButton).toBeVisible({ timeout: 20_000 });
-  await expect(cancelButton).toBeEnabled();
-  await expect(dashboardPage.getByText("Transcribing…")).toBeVisible();
+      // The meeting is stuck mid-job server-side: 0 of 2 done, both in flight.
+      const meetingsRes = await fetch(`${apiBase()}/api/meetings`, {
+        headers: apiHeaders(),
+      });
+      const list = (await meetingsRes.json()) as {
+        items: Array<{ id: string; title: string | null; status: string }>;
+      };
+      const meeting = list.items.find((m) => m.title === "cancel-test");
+      expect(meeting?.status).toBe("transcribing");
+      const detail = await getMeeting(meeting.id);
+      expect(detail.job?.total).toBe(2);
+      expect(detail.job?.done).toBe(0);
 
-  // The meeting is stuck mid-job server-side: 0 of 2 done, both in flight.
-  const meetingsRes = await fetch(`${apiBase()}/api/meetings`, {
-    headers: apiHeaders(),
-  });
-  const list = (await meetingsRes.json()) as {
-    items: Array<{ id: string; title: string | null; status: string }>;
-  };
-  const meeting = list.items.find((m) => m.title === "cancel-test");
-  expect(meeting?.status).toBe("transcribing");
-  const detail = await getMeeting(meeting.id);
-  expect(detail.job?.total).toBe(2);
-  expect(detail.job?.done).toBe(0);
+      // Cancel from the UI. waitForResponse gives the ordering guarantee the
+      // release below needs: by the time the 202 is back, the server has latched
+      // the cancellation flag — no race between the click and the release.
+      const cancelResponse = dashboardPage.waitForResponse(
+        (r) =>
+          r.url().includes("/cancel-transcribe") &&
+          r.request().method() === "POST",
+      );
+      await cancelButton.click();
+      expect((await cancelResponse).status()).toBe(202);
 
-  // Cancel from the UI. waitForResponse gives the ordering guarantee the
-  // release below needs: by the time the 202 is back, the server has latched
-  // the cancellation flag — no race between the click and the release.
-  const cancelResponse = dashboardPage.waitForResponse(
-    (r) =>
-      r.url().includes("/cancel-transcribe") && r.request().method() === "POST",
+      // Wind-down state: the card says cancelling and the button is spent.
+      await expect(dashboardPage.getByText("Cancelling…")).toBeVisible({
+        timeout: 5_000,
+      });
+      await expect(cancelButton).toBeDisabled();
+
+      // Release the parked chunks: exactly one succeeds (its segment persists),
+      // the other fails through its retries. The job then stops launching
+      // anything further and lands in failed/"Cancelled by user".
+      releaseHoldServer();
+
+      // The note must say the partial transcript survived, with real counts.
+      await expect(
+        dashboardPage.getByText("Cancelled — partial transcript kept"),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        dashboardPage.getByText("(1 of 2 segments transcribed)"),
+      ).toBeVisible();
+
+      // Both recovery actions are live immediately — no stale disabled state.
+      await expect(
+        dashboardPage.getByRole("button", { name: "Retry 1 failed" }),
+      ).toBeEnabled();
+      await expect(
+        dashboardPage.getByRole("button", { name: "Transcribe", exact: true }),
+      ).toBeEnabled();
+
+      // Server-side truth: failed with the canonical cancel error, both segments
+      // kept (one ok, one failed).
+      const final = await getMeeting(meeting.id);
+      expect(final.status).toBe("failed");
+      expect(final.error).toBe("Cancelled by user");
+      expect(final.segment_counts).toEqual({ total: 2, failed: 1 });
+      // The merged transcript carries only the ok segment (failed chunks are
+      // kept in meeting_segments — segment_counts above — but render empty);
+      // the kept partial text is exactly what survived the cancel.
+      const transcriptRes = await fetch(
+        `${apiBase()}/api/meetings/${meeting.id}/transcript`,
+        { headers: apiHeaders() },
+      );
+      const transcript = (await transcriptRes.json()) as {
+        segments: Array<{ text: string }>;
+      };
+      expect(transcript.segments.length).toBe(1);
+      expect(transcript.segments[0]?.text).toBe("kept partial transcript");
+    },
   );
-  await cancelButton.click();
-  expect((await cancelResponse).status()).toBe(202);
-
-  // Wind-down state: the card says cancelling and the button is spent.
-  await expect(dashboardPage.getByText("Cancelling…")).toBeVisible({
-    timeout: 5_000,
-  });
-  await expect(cancelButton).toBeDisabled();
-
-  // Release the parked chunks: exactly one succeeds (its segment persists),
-  // the other fails through its retries. The job then stops launching
-  // anything further and lands in failed/"Cancelled by user".
-  releaseHoldServer();
-
-  // The note must say the partial transcript survived, with real counts.
-  await expect(
-    dashboardPage.getByText("Cancelled — partial transcript kept"),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(
-    dashboardPage.getByText("(1 of 2 segments transcribed)"),
-  ).toBeVisible();
-
-  // Both recovery actions are live immediately — no stale disabled state.
-  await expect(
-    dashboardPage.getByRole("button", { name: "Retry 1 failed" }),
-  ).toBeEnabled();
-  await expect(
-    dashboardPage.getByRole("button", { name: "Transcribe", exact: true }),
-  ).toBeEnabled();
-
-  // Server-side truth: failed with the canonical cancel error, both segments
-  // kept (one ok, one failed).
-  const final = await getMeeting(meeting.id);
-  expect(final.status).toBe("failed");
-  expect(final.error).toBe("Cancelled by user");
-  expect(final.segment_counts).toEqual({ total: 2, failed: 1 });
-  // The merged transcript carries only the ok segment (failed chunks are
-  // kept in meeting_segments — segment_counts above — but render empty);
-  // the kept partial text is exactly what survived the cancel.
-  const transcriptRes = await fetch(
-    `${apiBase()}/api/meetings/${meeting.id}/transcript`,
-    { headers: apiHeaders() },
-  );
-  const transcript = (await transcriptRes.json()) as {
-    segments: Array<{ text: string }>;
-  };
-  expect(transcript.segments.length).toBe(1);
-  expect(transcript.segments[0]?.text).toBe("kept partial transcript");
-
-  await app.evaluate(() => {
-    delete process.env.OPENSTYLE_E2E_MEETING_IMPORT_FILE;
-  });
 });

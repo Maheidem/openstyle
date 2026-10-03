@@ -1,13 +1,19 @@
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   expect,
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import { dropFile, e2eCounter, withPickerFile } from "./e2e-helpers";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
+import { writeSilentWav } from "./helpers/wav";
 
 // ---------------------------------------------------------------------------
 // Meeting import (specs/meeting-import.md §5): mirrors tests/import-screen.test.ts
@@ -43,64 +49,6 @@ let userDataDir: string;
 
 const DEFAULT_PORT = 4649;
 
-/**
- * Wait for a window whose URL is neither the pill nor the remix bar —
- * that's the dashboard / onboarding window (mirrors import-screen.test.ts).
- */
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 10_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-
-  return electronApp.windows()[0];
-}
-
-/** Writes a minimal valid 1 s, 16 kHz mono, 16-bit PCM WAV file (silence). */
-function writeSilentWav(path: string): void {
-  const sampleRate = 16_000;
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const durationSec = 1;
-  const numSamples = sampleRate * durationSec;
-  const dataSize = numSamples * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-  const byteRate = sampleRate * blockAlign;
-
-  const buffer = Buffer.alloc(44 + dataSize);
-  buffer.write("RIFF", 0, "ascii");
-  buffer.writeUInt32LE(36 + dataSize, 4);
-  buffer.write("WAVE", 8, "ascii");
-  buffer.write("fmt ", 12, "ascii");
-  buffer.writeUInt32LE(16, 16); // fmt chunk size (PCM)
-  buffer.writeUInt16LE(1, 20); // audio format = PCM
-  buffer.writeUInt16LE(numChannels, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(byteRate, 28);
-  buffer.writeUInt16LE(blockAlign, 32);
-  buffer.writeUInt16LE(bitsPerSample, 34);
-  buffer.write("data", 36, "ascii");
-  buffer.writeUInt32LE(dataSize, 40);
-  // Data section left as zeros (silence) from Buffer.alloc.
-
-  writeFileSync(path, buffer);
-}
-
 interface MeetingListRow {
   id: string;
   title: string | null;
@@ -124,15 +72,6 @@ function apiHeaders(): Record<string, string> {
   return EXTERNAL_SERVER_TOKEN
     ? { Authorization: `Bearer ${EXTERNAL_SERVER_TOKEN}` }
     : {};
-}
-
-async function meetingImportCalls(): Promise<number> {
-  return app.evaluate(() => {
-    const g = globalThis as {
-      __openstyleE2E?: { meetingImportCalls?: number };
-    };
-    return g.__openstyleE2E?.meetingImportCalls ?? 0;
-  });
 }
 
 async function navigateToMeetings(page: Page): Promise<void> {
@@ -161,7 +100,6 @@ test.beforeAll(async () => {
   }
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-meeting-import-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   // Skip onboarding (mirrors import-screen.test.ts) …
   const settings: Record<string, unknown> = { onboardingComplete: true };
@@ -204,23 +142,7 @@ test.beforeAll(async () => {
   }
 
   try {
-    app = await electron.launch({
-      args: [resolve(__dirname, "../out/main/index.js")],
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-        OPENSTYLE_DB_PATH: dbPath,
-        // main/index.ts unconditionally rewrites OPENSTYLE_DB_PATH from
-        // app.getPath("userData") before starting the server — isolation
-        // depends on OPENSTYLE_USER_DATA (mirrors import-screen.test.ts).
-        OPENSTYLE_USER_DATA: userDataDir,
-        OPENSTYLE_E2E: "1",
-        ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-      },
-      timeout: 30_000,
-    });
-
-    await app.firstWindow();
+    app = await launchOpenstyle({ userDataDir });
 
     dashboardPage = await waitForDashboardWindow(app, 15_000);
     try {
@@ -258,16 +180,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (!app) return;
-  const proc = app.process();
-  const killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-  try {
-    await app.close();
-  } catch (error) {
-    console.warn("Error closing app:", error);
-    proc.kill("SIGKILL");
-  } finally {
-    clearTimeout(killTimer);
-  }
+  await closeApp(app);
 });
 
 // ---------------------------------------------------------------------------
@@ -285,25 +198,17 @@ test("rejects a .txt drop before any upload", async () => {
 
   const meetingsBefore = await listMeetings();
   expect(meetingsBefore.length).toBe(0);
-  const callsBefore = await meetingImportCalls();
+  const callsBefore = await e2eCounter(app, "meetingImportCalls");
 
   // Synthetic drop of a non-audio file — rejected client-side before any
   // IPC upload (same shape as import-screen's .txt test; a real drag isn't
   // needed because rejection happens before path resolution).
-  await dashboardPage.evaluate(() => {
-    const dropzone = document.querySelector(
-      '[data-testid="meetings-import-dropzone"]',
-    ) as HTMLElement;
-    const file = new File(["hi"], "note.txt", { type: "text/plain" });
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    const dropEvent = new DragEvent("drop", {
-      bubbles: true,
-      cancelable: true,
-      dataTransfer,
-    });
-    dropzone.dispatchEvent(dropEvent);
-  });
+  await dropFile(
+    dashboardPage,
+    "meetings-import-dropzone",
+    "note.txt",
+    "text/plain",
+  );
 
   const alert = dashboardPage.getByTestId("meetings-import-error");
   await expect(alert).toBeVisible({ timeout: 5_000 });
@@ -315,7 +220,7 @@ test("rejects a .txt drop before any upload", async () => {
 
   const meetingsAfter = await listMeetings();
   expect(meetingsAfter.length).toBe(0);
-  expect(await meetingImportCalls()).toBe(callsBefore);
+  expect(await e2eCounter(app, "meetingImportCalls")).toBe(callsBefore);
 });
 
 test("picker import from the empty state creates and selects a meeting", async () => {
@@ -326,51 +231,50 @@ test("picker import from the empty state creates and selects a meeting", async (
   writeSilentWav(wavPath);
   expect(existsSync(wavPath)).toBe(true);
 
-  await app.evaluate((_electron, path) => {
-    process.env.OPENSTYLE_E2E_MEETING_IMPORT_FILE = path;
-  }, wavPath);
+  await withPickerFile(
+    app,
+    "OPENSTYLE_E2E_MEETING_IMPORT_FILE",
+    wavPath,
+    async () => {
+      await dashboardPage.getByTestId("meetings-import-choose-file").click();
 
-  await dashboardPage.getByTestId("meetings-import-choose-file").click();
+      // The import is one synchronous request; on success the page flips from
+      // the first-run layout to master-detail with the new meeting selected.
+      // Assert on the title (the filename stem) — the auto-fired transcribe job
+      // makes `status` flappy between recorded/transcribing/failed depending on
+      // whether a voice model is configured, so never assert on it.
+      await expect(
+        dashboardPage.getByText("imported-meeting", { exact: true }).first(),
+      ).toBeVisible({ timeout: 15_000 });
 
-  // The import is one synchronous request; on success the page flips from
-  // the first-run layout to master-detail with the new meeting selected.
-  // Assert on the title (the filename stem) — the auto-fired transcribe job
-  // makes `status` flappy between recorded/transcribing/failed depending on
-  // whether a voice model is configured, so never assert on it.
-  await expect(
-    dashboardPage.getByText("imported-meeting", { exact: true }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+      // Detail pane opened on the imported meeting. Which action is live depends
+      // on the auto-fired transcribe job: when a *configured, reachable* voice
+      // model exists (the import-screen suite seeds one into the shared external
+      // server whenever a local oMLX answers on 127.0.0.1:8123), the silent
+      // clip transcribes in milliseconds and the row is already `transcribed` —
+      // the button then reads "Re-transcribe". With no model (CI) the job fails
+      // or stays pending and the button reads "Transcribe". Either terminal
+      // posture proves the detail view's action bar rendered; never assert on
+      // `status` itself (same rationale as the title check above).
+      const transcribeAction = dashboardPage
+        .getByRole("button", { name: "Transcribe", exact: true })
+        .or(dashboardPage.getByRole("button", { name: "Re-transcribe" }));
+      await expect(transcribeAction.first()).toBeVisible({ timeout: 10_000 });
 
-  // Detail pane opened on the imported meeting. Which action is live depends
-  // on the auto-fired transcribe job: when a *configured, reachable* voice
-  // model exists (the import-screen suite seeds one into the shared external
-  // server whenever a local oMLX answers on 127.0.0.1:8123), the silent
-  // clip transcribes in milliseconds and the row is already `transcribed` —
-  // the button then reads "Re-transcribe". With no model (CI) the job fails
-  // or stays pending and the button reads "Transcribe". Either terminal
-  // posture proves the detail view's action bar rendered; never assert on
-  // `status` itself (same rationale as the title check above).
-  const transcribeAction = dashboardPage
-    .getByRole("button", { name: "Transcribe", exact: true })
-    .or(dashboardPage.getByRole("button", { name: "Re-transcribe" }));
-  await expect(transcribeAction.first()).toBeVisible({ timeout: 10_000 });
+      // Server-side row exists in the same shape a recording produces.
+      const meetings = await listMeetings();
+      expect(meetings.length).toBe(1);
+      expect(meetings[0].title).toBe("imported-meeting");
+      expect(
+        meetings[0].status === "recorded" ||
+          meetings[0].status === "transcribing" ||
+          meetings[0].status === "transcribed" ||
+          meetings[0].status === "failed",
+      ).toBe(true);
 
-  // Server-side row exists in the same shape a recording produces.
-  const meetings = await listMeetings();
-  expect(meetings.length).toBe(1);
-  expect(meetings[0].title).toBe("imported-meeting");
-  expect(
-    meetings[0].status === "recorded" ||
-      meetings[0].status === "transcribing" ||
-      meetings[0].status === "transcribed" ||
-      meetings[0].status === "failed",
-  ).toBe(true);
-
-  expect(await meetingImportCalls()).toBe(1);
-
-  await app.evaluate(() => {
-    delete process.env.OPENSTYLE_E2E_MEETING_IMPORT_FILE;
-  });
+      expect(await e2eCounter(app, "meetingImportCalls")).toBe(1);
+    },
+  );
 });
 
 test("picker import from the master-detail rail adds another meeting", async () => {
@@ -385,23 +289,22 @@ test("picker import from the master-detail rail adds another meeting", async () 
   const wavPath = join(userDataDir, "second-meeting.wav");
   writeSilentWav(wavPath);
 
-  await app.evaluate((_electron, path) => {
-    process.env.OPENSTYLE_E2E_MEETING_IMPORT_FILE = path;
-  }, wavPath);
+  await withPickerFile(
+    app,
+    "OPENSTYLE_E2E_MEETING_IMPORT_FILE",
+    wavPath,
+    async () => {
+      await railButton.click();
 
-  await railButton.click();
+      await expect(
+        dashboardPage.getByText("second-meeting", { exact: true }).first(),
+      ).toBeVisible({ timeout: 15_000 });
 
-  await expect(
-    dashboardPage.getByText("second-meeting", { exact: true }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+      const meetings = await listMeetings();
+      expect(meetings.length).toBe(2);
+      expect(meetings.some((m) => m.title === "second-meeting")).toBe(true);
 
-  const meetings = await listMeetings();
-  expect(meetings.length).toBe(2);
-  expect(meetings.some((m) => m.title === "second-meeting")).toBe(true);
-
-  expect(await meetingImportCalls()).toBe(2);
-
-  await app.evaluate(() => {
-    delete process.env.OPENSTYLE_E2E_MEETING_IMPORT_FILE;
-  });
+      expect(await e2eCounter(app, "meetingImportCalls")).toBe(2);
+    },
+  );
 });

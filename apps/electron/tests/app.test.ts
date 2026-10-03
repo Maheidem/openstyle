@@ -1,13 +1,17 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   expect,
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -18,36 +22,6 @@ let dashboardPage: Page;
 let serverPort: number;
 
 const DEFAULT_PORT = 4649;
-
-/**
- * Wait for a window whose URL is neither the pill nor the remix bar —
- * that's the dashboard / onboarding window. The pill (pill.html) and the
- * remix bar (bar.html) are auxiliary windows and may appear first.
- */
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 10_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-
-  // Fallback: return whatever window we have
-  return electronApp.windows()[0];
-}
 
 test.beforeAll(async () => {
   // Skip (rather than silently reusing) a foreign server on the default port
@@ -67,28 +41,9 @@ test.beforeAll(async () => {
   }
 
   const userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   try {
-    app = await electron.launch({
-      args: [resolve(__dirname, "../out/main/index.js")],
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-        OPENSTYLE_DB_PATH: dbPath,
-        // main/index.ts rewrites OPENSTYLE_DB_PATH from userData, so actual
-        // isolation depends on OPENSTYLE_USER_DATA (see the audit note in
-        // tests/import-screen.test.ts) — without it this suite would run
-        // against the developer's real profile whenever 4649 is free.
-        OPENSTYLE_USER_DATA: userDataDir,
-        OPENSTYLE_E2E: "1",
-        ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-      },
-      timeout: 30_000,
-    });
-
-    // Wait for the first window so Playwright's internal state is ready.
-    await app.firstWindow();
+    app = await launchOpenstyle({ userDataDir });
 
     // Find the dashboard (non-pill) window.
     dashboardPage = await waitForDashboardWindow(app, 15_000);
@@ -125,16 +80,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (!app) return;
-  const proc = app.process();
-  const killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-  try {
-    await app.close();
-  } catch (error) {
-    console.warn("Error closing app:", error);
-    proc.kill("SIGKILL");
-  } finally {
-    clearTimeout(killTimer);
-  }
+  await closeApp(app);
 });
 
 // ---------------------------------------------------------------------------

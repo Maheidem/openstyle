@@ -1,14 +1,14 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   expect,
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import { launchOpenstyle } from "./helpers/e2e-app";
 
 let app: ElectronApplication | undefined;
 let fakeServer: Server;
@@ -85,19 +85,7 @@ test.beforeAll(async () => {
     }),
   );
 
-  app = await electron.launch({
-    args: [resolve(__dirname, "../out/main/index.js")],
-    env: {
-      ...process.env,
-      NODE_ENV: "development",
-      OPENSTYLE_USER_DATA: userDataDir,
-      OPENSTYLE_DB_PATH: join(userDataDir, "freestyle.db"),
-      OPENSTYLE_E2E: "1",
-      ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-    },
-    timeout: 30_000,
-  });
-  await app.firstWindow();
+  app = await launchOpenstyle({ userDataDir });
 });
 
 test.afterAll(async () => {
