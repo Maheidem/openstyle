@@ -384,6 +384,11 @@ describe("groqCleanupProviderOptions (§7.3) — per-family reasoningEnabled:fal
     expect(groqCleanupProviderOptions("groq/qwen/qwen3-32b", false)).toEqual({
       groq: { reasoningFormat: "hidden", reasoningEffort: "none" },
     });
+    expect(
+      groqCleanupProviderOptions("groq/openai/gpt-oss-120b", false),
+    ).toEqual({
+      groq: { reasoningFormat: "hidden", reasoningEffort: "low" },
+    });
   });
 });
 
