@@ -74,7 +74,6 @@ import {
   app,
   BrowserWindow,
   clipboard,
-  type Display,
   dialog,
   globalShortcut,
   ipcMain,
@@ -136,6 +135,12 @@ import {
   type StartupPermissionWarning,
   startupPermissionWarning,
 } from "./permission-checks";
+import {
+  APP_HEIGHT,
+  APP_WIDTH,
+  presetPositionForDisplay,
+  resolveCustomPosition,
+} from "./pill-position";
 import { isRemixTargetAllowed } from "./remix-target";
 import { selfUpdater, sweepSelfUpdaterBackups } from "./self-updater";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
@@ -212,12 +217,6 @@ process.on("unhandledRejection", (reason) => {
   );
 });
 
-/**
- * The pill's own slot: every position in this file is computed against these
- * dimensions, whatever size the window currently is. See `pillExpandOffset`.
- */
-const APP_WIDTH = 160;
-const APP_HEIGHT = 60;
 /**
  * The window is grown to this while the renderer shows its expanded status
  * card (a failure the user has to answer — see `pill:set-expanded`). The extra
@@ -697,34 +696,6 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
   return wy < midY ? "custom-top" : "custom-bottom";
 }
 
-// Computes a preset pill slot for a specific display. The pill is aligned
-// inside the window via CSS (justify-center or justify-end).
-function presetPositionForDisplay(
-  display: Display,
-  position: string,
-): { x: number; y: number } {
-  const { x: waX, y: waY, width, height } = display.workArea;
-  const bottomInset = Math.max(
-    0,
-    display.bounds.y + display.bounds.height - (waY + height),
-  );
-  const overlap = process.platform !== "darwin" && bottomInset > 0 ? 14 : -8;
-  const centerX = waX + Math.round((width - APP_WIDTH) / 2);
-  const rightX = waX + width - APP_WIDTH;
-  const bottomY = waY + height - APP_HEIGHT + overlap;
-
-  switch (position) {
-    case "top-center":
-      return { x: centerX, y: waY };
-    case "top-right":
-      return { x: rightX, y: waY };
-    case "bottom-right":
-      return { x: rightX, y: bottomY };
-    default:
-      return { x: centerX, y: bottomY };
-  }
-}
-
 /**
  * Screen bounds (top-left origin, in screen coordinates) of the currently
  * focused *external* application window, or null if it can't be determined.
@@ -817,9 +788,10 @@ async function getFocusedWindowDisplay(): Promise<Electron.Display | null> {
 
 // Preset positions follow the display under the cursor so the pill appears
 // on whichever monitor the user is working on. Custom positions can be on
-// any display — they are saved as absolute screen coordinates and
-// bounds-checked on restore.
-function getAppWindowPosition(preferredDisplay?: Electron.Display | null): {
+// any display. They are saved as absolute screen coordinates and
+// bounds-checked on restore. An off-screen custom slot resets to the default,
+// so this function writes settings in that case.
+function resolveAppWindowPosition(preferredDisplay?: Electron.Display | null): {
   x: number;
   y: number;
 } {
@@ -834,65 +806,26 @@ function getAppWindowPosition(preferredDisplay?: Electron.Display | null): {
   const position = (readSettings().pillPosition as string) || "bottom-center";
 
   if (position === "custom") {
-    const custom = readSettings().pillCustomPosition as
-      | { x: number; y: number }
-      | undefined;
-    if (
-      custom &&
-      typeof custom.x === "number" &&
-      typeof custom.y === "number"
-    ) {
-      const display = screen.getDisplayMatching({
-        x: custom.x,
-        y: custom.y,
-        width: APP_WIDTH,
-        height: APP_HEIGHT,
-      });
-      const wa = display.workArea;
-      if (
-        custom.x >= wa.x &&
-        custom.x + APP_WIDTH <= wa.x + wa.width &&
-        custom.y >= wa.y &&
-        custom.y <= wa.y + wa.height
-      ) {
-        // A custom slot is the user's *offset*, not an absolute point on one
-        // monitor: when the cursor is on a different display, carry the same
-        // fractional position over so the pill follows them there.
-        if (display.id === activeDisplay.id) return custom;
-        const activeWa = activeDisplay.workArea;
-        const fx =
-          wa.width > APP_WIDTH
-            ? (custom.x - wa.x) / (wa.width - APP_WIDTH)
-            : 0.5;
-        const fy =
-          wa.height > APP_HEIGHT
-            ? (custom.y - wa.y) / (wa.height - APP_HEIGHT)
-            : 1;
-        return {
-          x: Math.round(
-            activeWa.x +
-              Math.min(1, Math.max(0, fx)) * (activeWa.width - APP_WIDTH),
-          ),
-          y: Math.round(
-            activeWa.y +
-              Math.min(1, Math.max(0, fy)) * (activeWa.height - APP_HEIGHT),
-          ),
-        };
-      }
+    const { pos, offscreen } = resolveCustomPosition(
+      readSettings().pillCustomPosition as { x: number; y: number } | undefined,
+      activeDisplay,
+      (rect) => screen.getDisplayMatching(rect),
+    );
+    if (offscreen) {
       // Saved position is off-screen; reset to default.
       writeSettings({
         pillPosition: "bottom-center",
         pillCustomPosition: undefined,
       });
     }
-    return presetPositionForDisplay(activeDisplay, "bottom-center");
+    return pos;
   }
 
   return presetPositionForDisplay(activeDisplay, position);
 }
 
 function createAppWindow(): void {
-  const { x, y } = getAppWindowPosition();
+  const { x, y } = resolveAppWindowPosition();
 
   // Mark the initial position as programmatic so the move listener ignores it.
   markProgrammaticTarget(x, y);
@@ -1166,7 +1099,7 @@ function showPill(): void {
           resolve();
           return;
         }
-        const { x, y } = getAppWindowPosition();
+        const { x, y } = resolveAppWindowPosition();
         setProgrammaticPosition(mainWindow, x, y);
         mainWindow.showInactive();
         updateRemixBar();
@@ -1179,7 +1112,7 @@ function showPill(): void {
   }
 
   if (!mainWindow.isVisible()) {
-    const { x, y } = getAppWindowPosition();
+    const { x, y } = resolveAppWindowPosition();
     setProgrammaticPosition(mainWindow, x, y);
     mainWindow.showInactive();
     updateRemixBar();
@@ -1215,7 +1148,7 @@ function anchorPillToFocusedDisplay(): void {
     });
     if (currentDisplay.id === focusedDisplay.id) return;
 
-    const { x, y } = getAppWindowPosition(focusedDisplay);
+    const { x, y } = resolveAppWindowPosition(focusedDisplay);
     setProgrammaticPosition(mainWindow, x, y);
   });
 }
@@ -2826,7 +2759,7 @@ app.whenReady().then(async () => {
   const repositionPillForDisplayChange = (): void => {
     if (!mainWindow) return;
     const before = readSettings().pillPosition as string;
-    const { x, y } = getAppWindowPosition();
+    const { x, y } = resolveAppWindowPosition();
     setProgrammaticPosition(mainWindow, x, y);
     const after = (readSettings().pillPosition as string) ?? "bottom-center";
     if (before !== after) {
@@ -3094,7 +3027,7 @@ app.whenReady().then(async () => {
     }
     // Reposition the window and notify the renderer for CSS alignment.
     if (mainWindow) {
-      const { x, y } = getAppWindowPosition();
+      const { x, y } = resolveAppWindowPosition();
       setProgrammaticPosition(mainWindow, x, y);
     }
     // For custom, resolve the live alignment; for presets, send as-is.
