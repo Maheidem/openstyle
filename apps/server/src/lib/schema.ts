@@ -12,6 +12,145 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // from upstream. Keep this above the highest upstream version we have seen.
 const SCHEMA_VERSION = 34;
 
+// Legacy default format-rule patterns (used only by pre-v12 migrations below):
+// domain/phrase entries match as substrings of url+title+app; bare words match
+// the app name, a window-title segment ("Inbox - Gmail" -> "gmail"), or the URL
+// host. The bare words give Windows/Linux parity, where context payloads carry
+// no URL.
+const DEFAULT_FORMAT_RULES = [
+  {
+    pattern: "mail.google.com|yahoo.com|proton mail|gmail|outlook|mail",
+    label: "Email",
+    instructions:
+      "If the transcript clearly dictates an email, preserve greeting/sign-off only if spoken, keep paragraph breaks clean, and do not invent a subject line.",
+  },
+  {
+    pattern: "slack.com|slack",
+    label: "Slack",
+    instructions:
+      "Keep the wording intact. Add only light punctuation and paragraph breaks.",
+  },
+  {
+    pattern: "discord.com|discord",
+    label: "Discord",
+    instructions:
+      "Keep the wording intact. Add only light punctuation and paragraph breaks.",
+  },
+  {
+    pattern: "github.com|gitlab.com|github|gitlab",
+    label: "Code Platform",
+    instructions:
+      "Keep technical wording exact. Preserve explicit markdown, code blocks, or lists only if they were clearly dictated.",
+  },
+  {
+    pattern: "docs.google.com|notion.so|google docs|notion",
+    label: "Document",
+    instructions:
+      "Preserve paragraph breaks and headings only when they are already clearly implied by the transcript.",
+  },
+  {
+    pattern: "code|cursor|terminal|iterm",
+    label: "Code Editor",
+    instructions:
+      "Keep technical terms exact. Do not rewrite for tone or style.",
+  },
+  {
+    pattern: "web.whatsapp.com|messages|whatsapp|telegram",
+    label: "Messaging",
+    instructions: "Keep the wording intact. Add only light punctuation.",
+  },
+  {
+    pattern: "x.com|twitter.com|twitter|x",
+    label: "X/Twitter",
+    instructions:
+      "Keep the wording intact. Do not shorten or rewrite for length.",
+  },
+  {
+    pattern: "linkedin.com|linkedin",
+    label: "LinkedIn",
+    instructions:
+      "Keep the wording intact. Add only light punctuation and paragraph breaks.",
+  },
+  {
+    pattern: "chatgpt.com|claude.ai|perplexity.ai|chatgpt|claude|perplexity",
+    label: "AI Chat",
+    instructions:
+      "Keep the wording intact. Preserve explicit prompt structure only if it was clearly dictated.",
+  },
+] as const;
+
+const V11_DEFAULT_PATTERN_UPDATES = [
+  {
+    label: "Email",
+    oldPattern: "mail.google.com|outlook|yahoo.com|proton",
+  },
+  { label: "Slack", oldPattern: "slack.com|Slack" },
+  { label: "Discord", oldPattern: "discord.com|Discord" },
+  { label: "Code Platform", oldPattern: "github.com|GitLab" },
+  { label: "Document", oldPattern: "docs.google.com|notion.so|Notion" },
+  { label: "Code Editor", oldPattern: "Code|Cursor|Terminal|iTerm" },
+  { label: "Messaging", oldPattern: "Messages|WhatsApp|Telegram" },
+  { label: "X/Twitter", oldPattern: "x.com|twitter.com" },
+  { label: "LinkedIn", oldPattern: "linkedin.com" },
+  { label: "AI Chat", oldPattern: "chatgpt.com|claude.ai|perplexity" },
+] as const;
+
+const LEGACY_DEFAULT_FORMAT_RULES = [
+  {
+    pattern: "mail.google.com|outlook|yahoo.com|proton",
+    label: "Email",
+    instructions:
+      "Format as a proper email body: use greeting if dictated, clear paragraphs separated by blank lines, professional tone, sign-off if dictated. No subject line.",
+  },
+  {
+    pattern: "slack.com|Slack",
+    label: "Slack",
+    instructions: "Conversational, concise, professional. Casual punctuation.",
+  },
+  {
+    pattern: "discord.com|Discord",
+    label: "Discord",
+    instructions: "Casual and conversational tone.",
+  },
+  {
+    pattern: "github.com|GitLab",
+    label: "Code Platform",
+    instructions: "Clear, technical, well-structured with markdown.",
+  },
+  {
+    pattern: "docs.google.com|notion.so|Notion",
+    label: "Document",
+    instructions:
+      "Proper document formatting with clear paragraphs and structure.",
+  },
+  {
+    pattern: "Code|Cursor|Terminal|iTerm",
+    label: "Code Editor",
+    instructions:
+      "Clean prose for code comments, commits, or documentation. Preserve technical terms.",
+  },
+  {
+    pattern: "Messages|WhatsApp|Telegram",
+    label: "Messaging",
+    instructions: "Casual and brief, like a text message.",
+  },
+  {
+    pattern: "x.com|twitter.com",
+    label: "X/Twitter",
+    instructions: "Concise (280 chars ideal), punchy, and direct.",
+  },
+  {
+    pattern: "linkedin.com",
+    label: "LinkedIn",
+    instructions: "Professional and well-structured.",
+  },
+  {
+    pattern: "chatgpt.com|claude.ai|perplexity",
+    label: "AI Chat",
+    instructions: "Clear, well-structured prompt or message.",
+  },
+] as const;
+
 export function initSchema(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
@@ -117,34 +256,6 @@ function tableExists(db: DatabaseSync, name: string): boolean {
     .get(name) as { name: string } | undefined);
 }
 
-// Persist how many words post-processing changed per session so the stats
-// sidebar can aggregate "AI fixes" in SQL. Add the column if it is missing,
-// then backfill it from the stored raw/cleaned pair. Rows without cleanup stay
-// at 0. Both steps are safe to run again.
-function ensureFixesCount(db: DatabaseSync): void {
-  const hasColumn = (
-    db.prepare("PRAGMA table_info(transcription_history)").all() as {
-      name: string;
-    }[]
-  ).some((col) => col.name === "fixes_count");
-  if (!hasColumn) {
-    db.exec(
-      "ALTER TABLE transcription_history ADD COLUMN fixes_count INTEGER NOT NULL DEFAULT 0",
-    );
-  }
-  const rows = db
-    .prepare(
-      "SELECT id, raw_text, cleaned_text FROM transcription_history WHERE cleaned_text IS NOT NULL",
-    )
-    .all() as { id: number; raw_text: string; cleaned_text: string }[];
-  const update = db.prepare(
-    "UPDATE transcription_history SET fixes_count = ? WHERE id = ?",
-  );
-  for (const row of rows) {
-    update.run(countFixes(row.raw_text, row.cleaned_text), row.id);
-  }
-}
-
 function applyMigrations(db: DatabaseSync, currentVersion: number): void {
   if (currentVersion < 1) {
     db.exec(`
@@ -220,6 +331,33 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     }
   }
 
+  if (currentVersion < 5) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS format_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        app_pattern TEXT NOT NULL,
+        label TEXT NOT NULL,
+        instructions TEXT NOT NULL,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+
+    // Seed default format rules
+    const count = db
+      .prepare("SELECT COUNT(*) as c FROM format_rules")
+      .get() as { c: number };
+    if (count.c === 0) {
+      const stmt = db.prepare(
+        "INSERT INTO format_rules (app_pattern, label, instructions, is_default) VALUES (?, ?, ?, ?)",
+      );
+      for (const rule of DEFAULT_FORMAT_RULES) {
+        stmt.run(rule.pattern, rule.label, rule.instructions, 1);
+      }
+    }
+  }
+
   if (currentVersion < 6) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS vocabulary (
@@ -240,6 +378,23 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       );
     } catch {
       // Column may already exist
+    }
+  }
+
+  if (currentVersion < 8) {
+    const updateStmt = db.prepare(
+      "UPDATE format_rules SET instructions = ?, updated_at = datetime('now') WHERE app_pattern = ? AND label = ? AND instructions = ? AND is_default = 1",
+    );
+
+    for (let i = 0; i < LEGACY_DEFAULT_FORMAT_RULES.length; i += 1) {
+      const legacy = LEGACY_DEFAULT_FORMAT_RULES[i];
+      const next = DEFAULT_FORMAT_RULES[i];
+      updateStmt.run(
+        next.instructions,
+        legacy.pattern,
+        legacy.label,
+        legacy.instructions,
+      );
     }
   }
 
@@ -269,11 +424,21 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     );
   }
 
+  if (currentVersion < 11) {
+    // Only untouched default rules migrate; user-edited patterns are left alone.
+    const updateStmt = db.prepare(
+      "UPDATE format_rules SET app_pattern = ?, updated_at = datetime('now') WHERE app_pattern = ? AND label = ? AND is_default = 1",
+    );
+    for (const { label, oldPattern } of V11_DEFAULT_PATTERN_UPDATES) {
+      const next = DEFAULT_FORMAT_RULES.find((r) => r.label === label);
+      if (next) updateStmt.run(next.pattern, oldPattern, label);
+    }
+  }
+
   if (currentVersion < 12) {
     // The tone system replaces per-app format rules. Preserve any custom rules
     // the user created (as a settings backup) and drop the legacy table.
-    // Databases that never had the table skip this step.
-    if (tableExists(db, "format_rules")) {
+    try {
       const customRules = db
         .prepare(
           "SELECT * FROM format_rules WHERE is_default = 0 ORDER BY id ASC",
@@ -288,6 +453,8 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       }
 
       db.exec("DROP TABLE IF EXISTS format_rules");
+    } catch {
+      // Older or partially migrated databases may not have the table anymore.
     }
   }
 
@@ -329,8 +496,55 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     }
   }
 
+  if (currentVersion < 15) {
+    // Persist how many words post-processing changed per session so the stats
+    // sidebar can aggregate "AI fixes" in SQL. Backfill existing rows from the
+    // stored raw/cleaned pair; rows without cleanup stay at 0.
+    try {
+      db.exec(
+        "ALTER TABLE transcription_history ADD COLUMN fixes_count INTEGER NOT NULL DEFAULT 0",
+      );
+    } catch {
+      // Column may already exist
+    }
+    const rows = db
+      .prepare(
+        "SELECT id, raw_text, cleaned_text FROM transcription_history WHERE cleaned_text IS NOT NULL",
+      )
+      .all() as { id: number; raw_text: string; cleaned_text: string }[];
+    const update = db.prepare(
+      "UPDATE transcription_history SET fixes_count = ? WHERE id = ?",
+    );
+    for (const row of rows) {
+      update.run(countFixes(row.raw_text, row.cleaned_text), row.id);
+    }
+  }
+
   if (currentVersion < 16) {
-    ensureFixesCount(db);
+    // Repair pass for v15: a dev-server restart mid-edit could stamp the DB
+    // as v15 without the column actually existing. Re-ensure the column and
+    // recompute the backfill; both steps are idempotent.
+    const hasColumn = (
+      db.prepare("PRAGMA table_info(transcription_history)").all() as {
+        name: string;
+      }[]
+    ).some((col) => col.name === "fixes_count");
+    if (!hasColumn) {
+      db.exec(
+        "ALTER TABLE transcription_history ADD COLUMN fixes_count INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+    const rows = db
+      .prepare(
+        "SELECT id, raw_text, cleaned_text FROM transcription_history WHERE cleaned_text IS NOT NULL",
+      )
+      .all() as { id: number; raw_text: string; cleaned_text: string }[];
+    const update = db.prepare(
+      "UPDATE transcription_history SET fixes_count = ? WHERE id = ?",
+    );
+    for (const row of rows) {
+      update.run(countFixes(row.raw_text, row.cleaned_text), row.id);
+    }
   }
 
   if (currentVersion < 17) {
