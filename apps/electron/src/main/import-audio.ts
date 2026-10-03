@@ -10,14 +10,12 @@ import { openAsBlob } from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
+import { IMPORT_EXTENSIONS, MAX_IMPORT_BYTES } from "@openstyle/validations";
 import { type BrowserWindow, dialog, ipcMain } from "electron";
 import type { ServerFetch } from "../shared/server-auth";
 import { claimAbortableJob, releaseAbortableJob } from "./abortable-jobs";
 
 const log = createAppLogger("import");
-
-const IMPORT_EXTENSIONS = ["wav", "mp3", "m4a", "aac", "ogg", "mp4"] as const;
-const MAX_IMPORT_BYTES = 1024 * 1024 * 1024; // 1 GiB
 
 function isE2E(): boolean {
   return (process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1";
