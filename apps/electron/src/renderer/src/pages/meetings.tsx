@@ -1,3 +1,4 @@
+import type { MeetingDetail, MeetingListItem } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { InlineNotice } from "@renderer/components/inline-notice";
 import {
@@ -101,62 +102,8 @@ import { Navigate } from "react-router";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 // ---------------------------------------------------------------------------
-// API types (mirrors apps/server/src/routes/meetings.ts responses)
+// API types (MeetingListItem and MeetingDetail are shared with the server)
 // ---------------------------------------------------------------------------
-
-interface MeetingListItem {
-  id: string;
-  title: string | null;
-  started_at: number | null;
-  ended_at: number | null;
-  duration_ms: number | null;
-  status: string;
-  /** Resolved (or user-set) transcription language, Phase A2. NULL means
-   * "not yet resolved" — the language chip renders "Auto". */
-  language: string | null;
-  error: string | null;
-  created_at: number | null;
-}
-
-interface MeetingDetail extends MeetingListItem {
-  stt_provider: string | null;
-  stt_model: string | null;
-  audio_dir: string | null;
-  /** Free-text per-meeting context (specs/meeting-speaker-naming.md §3.4),
-   * editable anytime. Feeds both the naming prompt and the summarize
-   * prompt. NULL means unset. */
-  context: string | null;
-  job: {
-    done: number;
-    total: number;
-    failed: number;
-    /** Which job holds the slot (server `activeJobKinds`). "summarize" is the
-     * async Summarize job (specs/meeting-llm-queue.md §5.6) — the meeting's
-     * `status` stays `transcribed` while it runs, so this is the only signal
-     * the UI has that a summarize is in flight. */
-    kind?:
-      | "transcribe"
-      | "retry-failed"
-      | "diarize"
-      | "summarize"
-      | "enhance"
-      | null;
-    /** Set while one of the job's LLM calls waits for its lane (§5.5). */
-    queued?: { ahead: number; sinceMs: number } | null;
-  } | null;
-  /** Canonical failure text of the last background job (Summarize) for this
-   * meeting, or null. Deliberately not `error` — that column is the
-   * transcript-integrity banner (§6 constraint 3). */
-  job_error: string | null;
-  segment_counts: { total: number; failed: number };
-  summary: {
-    markdown: string | null;
-    llm_provider: string | null;
-    llm_model: string | null;
-    cost_usd: number | null;
-    created_at: number | null;
-  } | null;
-}
 
 interface TranscriptSegment {
   speaker: "Me" | "Them";
@@ -1365,7 +1312,7 @@ function MeetingDetailView({
         param: { id },
       });
       if (!res.ok) return null;
-      return (await res.json()) as unknown as MeetingDetail;
+      return await res.json();
     },
     // Poll while the transcription job runs so progress and the final status
     // arrive without user interaction. Summarize is a background job too

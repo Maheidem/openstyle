@@ -5,6 +5,7 @@ import { isVocabLeak } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   MEETINGS_DIR_NAME,
+  type MeetingDetail,
   MIC_WAV,
   SYNC_JSON,
   SYSTEM_WAV,
@@ -1460,7 +1461,7 @@ const meetings = new Hono()
       job_error: getJobFailure(id) ?? null,
       segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
       summary: summary ?? null,
-    });
+    } satisfies MeetingDetail);
   })
   .delete("/:id", (c) => {
     const db = getDb();
