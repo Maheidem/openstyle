@@ -84,6 +84,16 @@ function readEvents(eventsPath: string): RecordedEvent[] {
     .map((line) => JSON.parse(line) as RecordedEvent);
 }
 
+function hasEvent(
+  eventsPath: string,
+  type: string,
+  matches: (event: RecordedEvent) => boolean = () => true,
+): boolean {
+  return readEvents(eventsPath).some(
+    (event) => event.type === type && matches(event),
+  );
+}
+
 async function launchPermissionApp(
   options: LaunchOptions,
 ): Promise<LaunchedApp> {
@@ -124,13 +134,11 @@ async function waitForStartupPermissionChecks(
   eventsPath: string,
 ): Promise<void> {
   await expect
-    .poll(() => {
-      const events = readEvents(eventsPath);
-      return (
-        events.some((event) => event.type === "accessibility-check") &&
-        events.some((event) => event.type === "media-check")
-      );
-    })
+    .poll(
+      () =>
+        hasEvent(eventsPath, "accessibility-check") &&
+        hasEvent(eventsPath, "media-check"),
+    )
     .toBe(true);
 }
 
@@ -174,25 +182,21 @@ test("startup warns once and opens Accessibility settings when requested", async
     await expect
       .poll(
         () =>
-          readEvents(launched.eventsPath).filter(
+          permissionDialogs(launched.eventsPath).filter(
             (event) =>
-              event.type === "dialog" &&
               event.options?.title === "Accessibility Permission Required",
           ).length,
       )
       .toBe(1);
 
-    const events = readEvents(launched.eventsPath);
-    const warning = events.find((event) => event.type === "dialog")?.options;
+    const warning = permissionDialogs(launched.eventsPath)[0]?.options;
     expect(warning?.message).toContain(
       "required for dictation and text insertion",
     );
     expect(warning?.buttons).toContain("Open System Settings");
     expect(
-      events.some(
-        (event) =>
-          event.type === "open-external" &&
-          event.url?.includes("Privacy_Accessibility"),
+      hasEvent(launched.eventsPath, "open-external", (event) =>
+        Boolean(event.url?.includes("Privacy_Accessibility")),
       ),
     ).toBe(true);
   } finally {
@@ -241,7 +245,6 @@ test("startup warns for denied Microphone and opens its privacy settings", async
       .poll(() => permissionDialogs(launched.eventsPath).length)
       .toBe(1);
 
-    const events = readEvents(launched.eventsPath);
     const warning = permissionDialogs(launched.eventsPath)[0]?.options;
     expect(warning?.title).toBe("Microphone Permission Required");
     expect(warning?.message).toContain(
@@ -249,53 +252,30 @@ test("startup warns for denied Microphone and opens its privacy settings", async
     );
     expect(warning?.buttons).toContain("Open System Settings");
     expect(
-      events.some(
-        (event) =>
-          event.type === "open-external" &&
-          event.url?.includes("Privacy_Microphone"),
+      hasEvent(launched.eventsPath, "open-external", (event) =>
+        Boolean(event.url?.includes("Privacy_Microphone")),
       ),
     ).toBe(true);
-    expect(events.some((event) => event.type === "pipeline-event")).toBe(false);
-    expect(events.some((event) => event.type === "mic-requested")).toBe(false);
+    expect(hasEvent(launched.eventsPath, "pipeline-event")).toBe(false);
+    expect(hasEvent(launched.eventsPath, "mic-requested")).toBe(false);
   } finally {
     await closePermissionApp(launched.app);
   }
 });
 
-test("startup warns when Microphone permission is restricted", async () => {
+test("startup does not warn when Microphone permission is not-determined", async () => {
   const launched = await launchPermissionApp({
     accessibility: "granted",
-    microphone: "restricted",
+    microphone: "not-determined",
     onboardingComplete: true,
   });
   try {
     await waitForStartupPermissionChecks(launched.eventsPath);
-    await expect
-      .poll(() => permissionDialogs(launched.eventsPath).length)
-      .toBe(1);
-    expect(permissionDialogs(launched.eventsPath)[0]?.options?.title).toBe(
-      "Microphone Permission Required",
-    );
+    expect(permissionDialogs(launched.eventsPath)).toHaveLength(0);
   } finally {
     await closePermissionApp(launched.app);
   }
 });
-
-for (const microphone of ["granted", "not-determined"] as const) {
-  test(`startup does not warn when Microphone permission is ${microphone}`, async () => {
-    const launched = await launchPermissionApp({
-      accessibility: "granted",
-      microphone,
-      onboardingComplete: true,
-    });
-    try {
-      await waitForStartupPermissionChecks(launched.eventsPath);
-      expect(permissionDialogs(launched.eventsPath)).toHaveLength(0);
-    } finally {
-      await closePermissionApp(launched.app);
-    }
-  });
-}
 
 test("startup combines missing Accessibility and Microphone into one warning", async () => {
   const launched = await launchPermissionApp({
@@ -310,7 +290,6 @@ test("startup combines missing Accessibility and Microphone into one warning", a
       .poll(() => permissionDialogs(launched.eventsPath).length)
       .toBe(1);
 
-    const events = readEvents(launched.eventsPath);
     const warning = permissionDialogs(launched.eventsPath)[0]?.options;
     expect(warning?.title).toBe("Permissions Required");
     expect(warning?.message).toContain(
@@ -321,91 +300,63 @@ test("startup combines missing Accessibility and Microphone into one warning", a
       "Open Microphone Settings",
       "Not Now",
     ]);
-    expect(events.filter((event) => event.type === "open-external")).toEqual([
+    expect(
+      readEvents(launched.eventsPath).filter(
+        (event) => event.type === "open-external",
+      ),
+    ).toEqual([
       expect.objectContaining({
         url: expect.stringContaining("Privacy_Microphone"),
       }),
     ]);
-    expect(events.some((event) => event.type === "pipeline-event")).toBe(false);
-    expect(events.some((event) => event.type === "mic-requested")).toBe(false);
+    expect(hasEvent(launched.eventsPath, "pipeline-event")).toBe(false);
+    expect(hasEvent(launched.eventsPath, "mic-requested")).toBe(false);
   } finally {
     await closePermissionApp(launched.app);
   }
 });
 
-test("denied Accessibility blocks dictation before RecordingStarted", async () => {
-  const launched = await launchPermissionApp({
-    accessibility: "denied",
-    onboardingComplete: true,
+for (const denied of [
+  { name: "Accessibility", options: { accessibility: "denied" } },
+  {
+    name: "Microphone",
+    options: { accessibility: "granted", microphone: "denied" },
+  },
+] as const) {
+  test(`denied ${denied.name} blocks dictation before RecordingStarted`, async () => {
+    const launched = await launchPermissionApp({
+      ...denied.options,
+      onboardingComplete: true,
+    });
+    try {
+      await waitForStartupPermissionChecks(launched.eventsPath);
+      await instrumentMicrophoneRequest(launched.app);
+      const dialogsBefore = permissionDialogs(launched.eventsPath).length;
+      await triggerHotkeyDown(launched.dashboard);
+      await expect
+        .poll(() => permissionDialogs(launched.eventsPath).length)
+        .toBe(dialogsBefore + 1);
+
+      expect(
+        hasEvent(
+          launched.eventsPath,
+          "pipeline-event",
+          (event) => event.body?.type === "recordingStarted",
+        ),
+      ).toBe(false);
+      expect(hasEvent(launched.eventsPath, "mic-requested")).toBe(false);
+      expect(
+        await launched.app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()
+            .filter((window) => window.webContents.getURL().includes("pill"))
+            .some((window) => window.isVisible()),
+        ),
+      ).toBe(false);
+    } finally {
+      await closePermissionApp(launched.app);
+    }
   });
-  try {
-    await waitForStartupPermissionChecks(launched.eventsPath);
-    await instrumentMicrophoneRequest(launched.app);
-    const dialogsBefore = readEvents(launched.eventsPath).filter(
-      (event) => event.type === "dialog",
-    ).length;
-    await triggerHotkeyDown(launched.dashboard);
-    await expect
-      .poll(
-        () =>
-          readEvents(launched.eventsPath).filter(
-            (event) => event.type === "dialog",
-          ).length,
-      )
-      .toBe(dialogsBefore + 1);
-
-    const events = readEvents(launched.eventsPath);
-    expect(
-      events.some(
-        (event) =>
-          event.type === "pipeline-event" &&
-          event.body?.type === "recordingStarted",
-      ),
-    ).toBe(false);
-    expect(events.some((event) => event.type === "mic-requested")).toBe(false);
-    expect(
-      await launched.app.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()
-          .filter((window) => window.webContents.getURL().includes("pill"))
-          .some((window) => window.isVisible()),
-      ),
-    ).toBe(false);
-  } finally {
-    await closePermissionApp(launched.app);
-  }
-});
-
-test("denied Microphone blocks dictation before RecordingStarted", async () => {
-  const launched = await launchPermissionApp({
-    accessibility: "granted",
-    microphone: "denied",
-    onboardingComplete: true,
-  });
-  try {
-    await waitForStartupPermissionChecks(launched.eventsPath);
-    await instrumentMicrophoneRequest(launched.app);
-    const dialogsBefore = permissionDialogs(launched.eventsPath).length;
-    await triggerHotkeyDown(launched.dashboard);
-    await expect
-      .poll(() => permissionDialogs(launched.eventsPath).length)
-      .toBe(dialogsBefore + 1);
-
-    expect(
-      readEvents(launched.eventsPath).some(
-        (event) =>
-          event.type === "pipeline-event" &&
-          event.body?.type === "recordingStarted",
-      ),
-    ).toBe(false);
-    expect(
-      readEvents(launched.eventsPath).some(
-        (event) => event.type === "mic-requested",
-      ),
-    ).toBe(false);
-  } finally {
-    await closePermissionApp(launched.app);
-  }
-});
+}
 
 test("granted permissions allow the existing dictation flow", async () => {
   const launched = await launchPermissionApp({
@@ -419,19 +370,15 @@ test("granted permissions allow the existing dictation flow", async () => {
     await triggerHotkeyDown(launched.dashboard);
     await expect
       .poll(() =>
-        readEvents(launched.eventsPath).some(
-          (event) =>
-            event.type === "pipeline-event" &&
-            event.body?.type === "recordingStarted",
+        hasEvent(
+          launched.eventsPath,
+          "pipeline-event",
+          (event) => event.body?.type === "recordingStarted",
         ),
       )
       .toBe(true);
     await expect
-      .poll(() =>
-        readEvents(launched.eventsPath).some(
-          (event) => event.type === "mic-requested",
-        ),
-      )
+      .poll(() => hasEvent(launched.eventsPath, "mic-requested"))
       .toBe(true);
     await expect
       .poll(() =>

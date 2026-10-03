@@ -102,15 +102,10 @@ let app: ElectronApplication | undefined;
 let page: Page;
 const pageErrors: string[] = [];
 const consoleErrors: string[] = [];
-const defectConsoleErrors: string[] = [];
 const requestFailures: string[] = [];
 const httpLog: HttpRow[] = [];
 const shots: ShotRow[] = [];
 const assertions: AssertionRow[] = [];
-/** Requests we deliberately provoke while documenting a defect — kept out of
- *  the clean-session assertion so the defect is reported, not hidden. */
-const defectRequestFailures: string[] = [];
-let swallowingRequestFailures = false;
 const blobs: Record<
   string,
   { step: string; key: string; value: string | null }
@@ -500,16 +495,12 @@ test.beforeAll(async () => {
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
     const line = `${msg.text()} @ ${msg.location()?.url ?? "?"}`;
-    (swallowingRequestFailures ? defectConsoleErrors : consoleErrors).push(
-      line,
-    );
+    consoleErrors.push(line);
   });
   page.on("pageerror", (err) => pageErrors.push(String(err)));
   page.on("requestfailed", (req) => {
     const line = `${req.method()} ${req.url()} :: ${req.failure()?.errorText ?? "failed"}`;
-    (swallowingRequestFailures ? defectRequestFailures : requestFailures).push(
-      line,
-    );
+    requestFailures.push(line);
   });
   page.on("response", (r) => {
     const u = new URL(r.url());
@@ -583,15 +574,8 @@ test.afterAll(async () => {
     assertions,
     httpLog,
     consoleErrors,
-    defectConsoleErrors,
     pageErrors,
     requestFailures,
-    defectRequestFailures,
-    visionReview: {
-      status: "pending",
-      note: "filled in by vision-review.mjs after capture",
-    },
-    knownGaps: ["placeholder — replaced by the handoff"],
   };
 
   writeFileSync(
@@ -1237,47 +1221,28 @@ test("10 dangling assignment renders 'Preset no longer available', never a raw u
     ),
   ).toBe(200);
 
-  // DEFECT B (observed): a real reload of a deep route renders a BLANK window.
-  // `registerAppProtocol` (src/main/index.ts:453) serves index.html for
-  // extension-less paths, but the built index.html references its assets
-  // RELATIVELY (`./assets/…`) because no `base` is set on the renderer build,
-  // so from /settings/models the browser asks for
-  // /settings/models/assets/index-*.js — which has an extension, gets no SPA
-  // fallback, resolves to a nonexistent file on disk, and `net.fetch` fails
-  // with net::ERR_UNEXPECTED (observed verbatim — not a 404). React never
-  // mounts.
-  swallowingRequestFailures = true;
-  await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
-  await new Promise((r) => setTimeout(r, 2_000));
-  const blankBody = await page
-    .locator("body")
-    .innerText()
-    .catch(() => "");
-  const blankSections = await page.locator("section").count();
-  record(
-    "10d",
-    "hard reload of /settings/models must re-render the app (DEFECT B: it renders BLANK)",
-    blankBody.length > 0 && blankSections > 0,
-    `url=${page.url()}; bodyText.length=${blankBody.length}; sections=${blankSections}; failedRequests=${defectRequestFailures.length}; consoleErrors=${defectConsoleErrors.length} — root cause: built index.html uses relative './assets/…' URLs while registerAppProtocol (src/main/index.ts:453) only SPA-falls-back for extension-less paths`,
-  );
-  await capture(
-    "10d",
-    "defect-blank-after-reload",
-    "DEFECT: reload of a deep route",
-    "DEFECT EVIDENCE: the whole window after pressing reload on /settings/models — chrome only / blank, React did not mount.",
-    page,
-  );
-
-  // Workaround that stays inside the app: load the ROOT document (assets then
-  // resolve correctly) and route to Models client-side. This is a genuine
-  // fresh mount, so it also proves the dangling state survives a restart.
-  await page.goto("app://renderer/", { waitUntil: "domcontentloaded" });
-  swallowingRequestFailures = false;
+  // A real reload is a fresh mount, so it also proves the dangling state
+  // survives a restart. The renderer must re-render the deep route.
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByRole("link", { name: "Models" }).first()).toBeVisible({
     timeout: 30_000,
   });
-  await page.getByRole("link", { name: "Models" }).first().click();
-  await page.waitForURL(/\/settings\/models/, { timeout: 20_000 });
+  const reloadBody = await page.locator("body").innerText();
+  const reloadSections = await page.locator("section").count();
+  record(
+    "10d",
+    "hard reload of /settings/models re-renders the app",
+    reloadBody.length > 0 && reloadSections > 0,
+    `url=${page.url()}; bodyText.length=${reloadBody.length}; sections=${reloadSections}`,
+  );
+  await capture(
+    "10d",
+    "reload-deep-route",
+    "Reload of a deep route",
+    "The whole window after pressing reload on /settings/models: the app mounts again.",
+    page,
+  );
+
   await section().waitFor({ state: "visible", timeout: 30_000 });
   await expandCleanup();
   const p = panel();
@@ -1518,9 +1483,8 @@ test("12 no console errors, no failed requests, no 4xx/5xx anywhere", async () =
 // The capture steps deliberately `record()` rather than `expect()`, so one
 // cosmetic miss cannot stop later screenshots. This is where the ledger is
 // settled. OFF by default: this file's job is EVIDENCE, and a red suite would
-// bury the 12 good captures; flip OPENSTYLE_EVIDENCE_STRICT=1 to make the
-// suite fail on any recorded defect (that is the shape you would keep if the
-// two open bugs below were fixed).
+// bury the good captures. Set OPENSTYLE_EVIDENCE_STRICT=1 to make the suite
+// fail on any recorded defect.
 // ---------------------------------------------------------------------------
 
 test("13 defect roll-up", async () => {
@@ -1537,11 +1501,7 @@ test("13 defect roll-up", async () => {
   );
   writeFileSync(
     join(EVIDENCE_DIR, "defects.json"),
-    JSON.stringify(
-      { failed, defectRequestFailures, defectConsoleErrors },
-      null,
-      2,
-    ),
+    JSON.stringify({ failed }, null, 2),
   );
 
   if (process.env.OPENSTYLE_EVIDENCE_STRICT === "1") {
