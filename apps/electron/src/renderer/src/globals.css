@@ -396,3 +396,15 @@
     background-position: -200% 0;
   }
 }
+
+@keyframes tdot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.5;
+  }
+}
