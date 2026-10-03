@@ -5,6 +5,7 @@
  * `resources/bin/<platform>-<arch>/ffmpeg` never resolves here; point
  * `OPENSTYLE_FFMPEG_PATH` at a binary to run these.
  */
+
 import {
   existsSync,
   mkdtempSync,
@@ -31,6 +32,7 @@ import {
   getFfmpegBinaryPath,
 } from "../src/lib/audio/decode.js";
 import { parseWavHeader, wavDurationMs } from "../src/lib/audio/wav.js";
+import { buildWav } from "./helpers/wav.js";
 
 const envPath = process.env.OPENSTYLE_FFMPEG_PATH;
 const bin =
@@ -73,21 +75,7 @@ function sineWav(opts: {
       else data.writeUInt8(Math.round(128 + v * 127), at);
     }
   }
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20); // PCM
-  h.writeUInt16LE(channels, 22);
-  h.writeUInt32LE(sampleRate, 24);
-  h.writeUInt32LE(sampleRate * blockAlign, 28);
-  h.writeUInt16LE(blockAlign, 32);
-  h.writeUInt16LE(bitsPerSample, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  return Buffer.concat([h, data]);
+  return buildWav({ sampleRate, channels, bitsPerSample, data });
 }
 
 /** Await a promise that must reject with an AudioDecodeError; return it. */
