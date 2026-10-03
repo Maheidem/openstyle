@@ -10,6 +10,7 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import { dropFile, e2eCounter, withPickerFile } from "./e2e-helpers";
 import {
   closeApp,
   launchOpenstyle,
@@ -328,25 +329,9 @@ test("rejects a .txt drop before any upload (ts_9e6ec1de)", async () => {
   await navigateToImport(dashboardPage);
 
   const countBefore = await getHistoryCount();
-  const callsBefore = await app.evaluate(() => {
-    const g = globalThis as { __openstyleE2E?: { importCalls: number } };
-    return g.__openstyleE2E?.importCalls ?? 0;
-  });
+  const callsBefore = await e2eCounter(app, "importCalls");
 
-  await dashboardPage.evaluate(() => {
-    const dropzone = document.querySelector(
-      '[data-testid="import-dropzone"]',
-    ) as HTMLElement;
-    const file = new File(["hi"], "note.txt", { type: "text/plain" });
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    const dropEvent = new DragEvent("drop", {
-      bubbles: true,
-      cancelable: true,
-      dataTransfer,
-    });
-    dropzone.dispatchEvent(dropEvent);
-  });
+  await dropFile(dashboardPage, "import-dropzone", "note.txt", "text/plain");
 
   const alert = dashboardPage.getByTestId("import-error");
   await expect(alert).toBeVisible({ timeout: 5_000 });
@@ -357,10 +342,7 @@ test("rejects a .txt drop before any upload (ts_9e6ec1de)", async () => {
   const countAfter = await getHistoryCount();
   expect(countAfter).toBe(countBefore);
 
-  const callsAfter = await app.evaluate(() => {
-    const g = globalThis as { __openstyleE2E?: { importCalls: number } };
-    return g.__openstyleE2E?.importCalls ?? 0;
-  });
+  const callsAfter = await e2eCounter(app, "importCalls");
   expect(callsAfter).toBe(callsBefore);
 
   // reset for the next test
@@ -382,77 +364,76 @@ test("picker upload transcribes or reports missing voice model (ts_f1205eea / ts
 
   const countBefore = await getHistoryCount();
 
-  await app.evaluate((_electron, path) => {
-    process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
-  }, wavPath);
+  await withPickerFile(app, "OPENSTYLE_E2E_IMPORT_FILE", wavPath, async () => {
+    await dashboardPage.getByTestId("import-choose-file").click();
 
-  await dashboardPage.getByTestId("import-choose-file").click();
+    // UX-A3 review step: the picker landing shows the staged file and its
+    // expected weight before the upload begins; Transcribe file starts it.
+    const startButton = dashboardPage.getByTestId("import-start");
+    await expect(startButton).toBeVisible({ timeout: 5_000 });
+    await expect(
+      dashboardPage.getByTestId("import-review-weight"),
+    ).toBeVisible();
+    await startButton.click();
 
-  // UX-A3 review step: the picker landing shows the staged file and its
-  // expected weight before the upload begins; Transcribe file starts it.
-  const startButton = dashboardPage.getByTestId("import-start");
-  await expect(startButton).toBeVisible({ timeout: 5_000 });
-  await expect(dashboardPage.getByTestId("import-review-weight")).toBeVisible();
-  await startButton.click();
+    // No progress-card-visible assertion here: with a reachable oMLX on this
+    // machine the whole round trip (upload + STT of a ~1 s clip) can finish
+    // before Playwright's first poll observes the transient uploading state —
+    // same rationale as the corrupt-file test below. The cancel test below
+    // asserts the progress card deterministically against a park server.
 
-  // No progress-card-visible assertion here: with a reachable oMLX on this
-  // machine the whole round trip (upload + STT of a ~1 s clip) can finish
-  // before Playwright's first poll observes the transient uploading state —
-  // same rationale as the corrupt-file test below. The cancel test below
-  // asserts the progress card deterministically against a park server.
+    if (voiceModelConfigured) {
+      console.log(
+        "import-screen test 2: success branch (voice model configured)",
+      );
+      await expect(dashboardPage.getByTestId("import-transcript")).toBeVisible({
+        timeout: 15_000,
+      });
 
-  if (voiceModelConfigured) {
-    console.log(
-      "import-screen test 2: success branch (voice model configured)",
-    );
-    await expect(dashboardPage.getByTestId("import-transcript")).toBeVisible({
-      timeout: 15_000,
-    });
+      const copyButton = dashboardPage.getByTestId("import-copy");
+      await copyButton.click();
+      // Wait for the copied-state icon swap so we read the clipboard only
+      // after the async navigator.clipboard.writeText() has resolved.
+      await expect(copyButton.locator("svg.lucide-check")).toBeVisible({
+        timeout: 5_000,
+      });
+      const clipboardText = await app.evaluate(({ clipboard }) =>
+        clipboard.readText(),
+      );
+      const transcriptText = await dashboardPage
+        .getByTestId("import-transcript")
+        .locator("p.select-text")
+        .textContent();
+      expect(clipboardText).toBe(transcriptText);
 
-    const copyButton = dashboardPage.getByTestId("import-copy");
-    await copyButton.click();
-    // Wait for the copied-state icon swap so we read the clipboard only
-    // after the async navigator.clipboard.writeText() has resolved.
-    await expect(copyButton.locator("svg.lucide-check")).toBeVisible({
-      timeout: 5_000,
-    });
-    const clipboardText = await app.evaluate(({ clipboard }) =>
-      clipboard.readText(),
-    );
-    const transcriptText = await dashboardPage
-      .getByTestId("import-transcript")
-      .locator("p.select-text")
-      .textContent();
-    expect(clipboardText).toBe(transcriptText);
+      const countAfter = await getHistoryCount();
+      expect(countAfter).toBe(countBefore + 1);
 
-    const countAfter = await getHistoryCount();
-    expect(countAfter).toBe(countBefore + 1);
+      await dashboardPage.getByTestId("import-reset").click();
+    } else {
+      console.log(
+        "import-screen test 2: config-error branch (no default voice model)",
+      );
+      const alert = dashboardPage.getByTestId("import-error");
+      await expect(alert).toBeVisible({ timeout: 15_000 });
+      const alertText = (await alert.textContent()) ?? "";
+      // The renderer maps HTTP 400 to the generic "not configured" copy
+      // (import.error.config) rather than surfacing the server's literal "No
+      // voice model configured..." string — result.error is never read by
+      // pages/import.tsx, only result.detail, which the 400 response does
+      // not set. Documented as a stage limitation rather than fixed here
+      // (out of scope for U6). Assert the actual rendered i18n string rather
+      // than a substring guess.
+      expect(alertText).toContain(IMPORT_ERROR_CONFIG_TEXT);
 
-    await dashboardPage.getByTestId("import-reset").click();
-  } else {
-    console.log(
-      "import-screen test 2: config-error branch (no default voice model)",
-    );
-    const alert = dashboardPage.getByTestId("import-error");
-    await expect(alert).toBeVisible({ timeout: 15_000 });
-    const alertText = (await alert.textContent()) ?? "";
-    // The renderer maps HTTP 400 to the generic "not configured" copy
-    // (import.error.config) rather than surfacing the server's literal "No
-    // voice model configured..." string — result.error is never read by
-    // pages/import.tsx, only result.detail, which the 400 response does
-    // not set. Documented as a stage limitation rather than fixed here
-    // (out of scope for U6). Assert the actual rendered i18n string rather
-    // than a substring guess.
-    expect(alertText).toContain(IMPORT_ERROR_CONFIG_TEXT);
+      const countAfter = await getHistoryCount();
+      expect(countAfter).toBe(countBefore);
 
-    const countAfter = await getHistoryCount();
-    expect(countAfter).toBe(countBefore);
-
-    await dashboardPage.getByTestId("import-error").getByRole("button").click();
-  }
-
-  await app.evaluate(() => {
-    delete process.env.OPENSTYLE_E2E_IMPORT_FILE;
+      await dashboardPage
+        .getByTestId("import-error")
+        .getByRole("button")
+        .click();
+    }
   });
 });
 
@@ -473,26 +454,20 @@ test("corrupt file reports a decode error (ts_307c89e8)", async () => {
 
   const countBefore = await getHistoryCount();
 
-  await app.evaluate((_electron, path) => {
-    process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
-  }, junkPath);
+  await withPickerFile(app, "OPENSTYLE_E2E_IMPORT_FILE", junkPath, async () => {
+    await dashboardPage.getByTestId("import-choose-file").click();
+    await dashboardPage.getByTestId("import-start").click();
+    // No status-visible assertion here: unlike the network round trip in the
+    // picker test above, local decode failure can resolve before the next
+    // Playwright poll observes the transient "uploading" status — go straight
+    // to the terminal error state.
+    const alert = dashboardPage.getByTestId("import-error");
+    await expect(alert).toBeVisible({ timeout: 15_000 });
+    const alertText = (await alert.textContent()) ?? "";
+    expect(alertText).toContain("Could not decode this file");
 
-  await dashboardPage.getByTestId("import-choose-file").click();
-  await dashboardPage.getByTestId("import-start").click();
-  // No status-visible assertion here: unlike the network round trip in the
-  // picker test above, local decode failure can resolve before the next
-  // Playwright poll observes the transient "uploading" status — go straight
-  // to the terminal error state.
-  const alert = dashboardPage.getByTestId("import-error");
-  await expect(alert).toBeVisible({ timeout: 15_000 });
-  const alertText = (await alert.textContent()) ?? "";
-  expect(alertText).toContain("Could not decode this file");
-
-  const countAfter = await getHistoryCount();
-  expect(countAfter).toBe(countBefore);
-
-  await app.evaluate(() => {
-    delete process.env.OPENSTYLE_E2E_IMPORT_FILE;
+    const countAfter = await getHistoryCount();
+    expect(countAfter).toBe(countBefore);
   });
 });
 
@@ -590,36 +565,36 @@ test("cancelling an in-flight import returns to the dropzone (UX-04)", async () 
     writeSilentWav(wavPath);
     const countBefore = await getHistoryCount();
 
-    await app.evaluate((_electron, path) => {
-      process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
-    }, wavPath);
+    await withPickerFile(
+      app,
+      "OPENSTYLE_E2E_IMPORT_FILE",
+      wavPath,
+      async () => {
+        await dashboardPage.getByTestId("import-choose-file").click();
+        await dashboardPage.getByTestId("import-start").click();
 
-    await dashboardPage.getByTestId("import-choose-file").click();
-    await dashboardPage.getByTestId("import-start").click();
+        // The progress card is up with the elapsed readout and an enabled Cancel;
+        // the old static line (bare `import-status` outside a card) is gone.
+        const progress = dashboardPage.getByTestId("import-progress");
+        await expect(progress).toBeVisible({ timeout: 10_000 });
+        await expect(dashboardPage.getByTestId("import-elapsed")).toBeVisible();
+        const cancelButton = dashboardPage.getByTestId("import-cancel");
+        await expect(cancelButton).toBeEnabled();
 
-    // The progress card is up with the elapsed readout and an enabled Cancel;
-    // the old static line (bare `import-status` outside a card) is gone.
-    const progress = dashboardPage.getByTestId("import-progress");
-    await expect(progress).toBeVisible({ timeout: 10_000 });
-    await expect(dashboardPage.getByTestId("import-elapsed")).toBeVisible();
-    const cancelButton = dashboardPage.getByTestId("import-cancel");
-    await expect(cancelButton).toBeEnabled();
+        await cancelButton.click();
 
-    await cancelButton.click();
-
-    // A cancel is not an error: the empty dropzone comes back, no error card,
-    // and no history row was written (the parked STT request never finished).
-    await expect(dashboardPage.getByTestId("import-dropzone")).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(progress).toHaveCount(0);
-    await expect(dashboardPage.getByTestId("import-error")).toHaveCount(0);
-    const countAfter = await getHistoryCount();
-    expect(countAfter).toBe(countBefore);
+        // A cancel is not an error: the empty dropzone comes back, no error card,
+        // and no history row was written (the parked STT request never finished).
+        await expect(dashboardPage.getByTestId("import-dropzone")).toBeVisible({
+          timeout: 10_000,
+        });
+        await expect(progress).toHaveCount(0);
+        await expect(dashboardPage.getByTestId("import-error")).toHaveCount(0);
+        const countAfter = await getHistoryCount();
+        expect(countAfter).toBe(countBefore);
+      },
+    );
   } finally {
-    await app.evaluate(() => {
-      delete process.env.OPENSTYLE_E2E_IMPORT_FILE;
-    });
     await park.close();
   }
 });
@@ -646,43 +621,35 @@ test("a completed import raises the completion notification (UX-04)", async () =
     const wavPath = join(userDataDir, "notify-import.wav");
     writeSilentWav(wavPath);
     const countBefore = await getHistoryCount();
-    const notesBefore = await app.evaluate(() => {
-      const g = globalThis as {
-        __openstyleE2E?: { importNotifications?: number };
-      };
-      return g.__openstyleE2E?.importNotifications ?? 0;
-    });
+    const notesBefore = await e2eCounter(app, "importNotifications");
 
-    await app.evaluate((_electron, path) => {
-      process.env.OPENSTYLE_E2E_IMPORT_FILE = path;
-    }, wavPath);
+    await withPickerFile(
+      app,
+      "OPENSTYLE_E2E_IMPORT_FILE",
+      wavPath,
+      async () => {
+        await dashboardPage.getByTestId("import-choose-file").click();
+        await dashboardPage.getByTestId("import-start").click();
 
-    await dashboardPage.getByTestId("import-choose-file").click();
-    await dashboardPage.getByTestId("import-start").click();
+        await expect(
+          dashboardPage.getByTestId("import-transcript"),
+        ).toBeVisible({
+          timeout: 20_000,
+        });
 
-    await expect(dashboardPage.getByTestId("import-transcript")).toBeVisible({
-      timeout: 20_000,
-    });
+        // The main process raised exactly one "Transcript ready" notification
+        // (counted before the OS-support guard so this asserts deterministically
+        // even where notifications are suppressed).
+        const notesAfter = await e2eCounter(app, "importNotifications");
+        expect(notesAfter).toBe(notesBefore + 1);
 
-    // The main process raised exactly one "Transcript ready" notification
-    // (counted before the OS-support guard so this asserts deterministically
-    // even where notifications are suppressed).
-    const notesAfter = await app.evaluate(() => {
-      const g = globalThis as {
-        __openstyleE2E?: { importNotifications?: number };
-      };
-      return g.__openstyleE2E?.importNotifications ?? 0;
-    });
-    expect(notesAfter).toBe(notesBefore + 1);
+        const countAfter = await getHistoryCount();
+        expect(countAfter).toBe(countBefore + 1);
 
-    const countAfter = await getHistoryCount();
-    expect(countAfter).toBe(countBefore + 1);
-
-    await dashboardPage.getByTestId("import-reset").click();
+        await dashboardPage.getByTestId("import-reset").click();
+      },
+    );
   } finally {
-    await app.evaluate(() => {
-      delete process.env.OPENSTYLE_E2E_IMPORT_FILE;
-    });
     await mock.close();
   }
 });
