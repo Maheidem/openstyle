@@ -132,7 +132,9 @@ const stream = new Hono().get(
       pendingAudioChunks = [];
     }
 
-    function closeUpstreamSession(session: StreamSession | null): void {
+    function closeUpstreamSession(
+      session: StreamSession | null | undefined,
+    ): void {
       if (!session) return;
       if (upstream === session) {
         upstream = null;
@@ -268,7 +270,31 @@ const stream = new Hono().get(
       upstreamConfigKey = config.key;
 
       const token = ++readyToken;
-      const session = openStreamingSession({
+      // A transport can call a callback inside openStreamingSession, before
+      // `session` has a value. A `const` would throw there. Keep the error and
+      // report it after the assignment.
+      let session: StreamSession | undefined;
+      let earlyError: { message: string; code?: string } | undefined;
+      const failUpstream = (
+        failed: StreamSession,
+        message: string,
+        code?: string,
+      ): void => {
+        sessionTransportUnavailable = true;
+        sendJson(ws, {
+          type: "config",
+          streaming: false,
+          sessionTransport: false,
+          model: modelShort,
+        });
+        sendJson(ws, {
+          type: "error",
+          ...(code ? { code } : {}),
+          message,
+        });
+        closeUpstreamSession(failed);
+      };
+      session = openStreamingSession({
         providerId: voice.provider,
         apiKey,
         model: voice.model_id,
@@ -416,20 +442,12 @@ const stream = new Hono().get(
             }
           },
           onError: (message, code) => {
+            if (!session) {
+              earlyError = { message, ...(code ? { code } : {}) };
+              return;
+            }
             if (upstream !== session) return;
-            sessionTransportUnavailable = true;
-            sendJson(ws, {
-              type: "config",
-              streaming: false,
-              sessionTransport: false,
-              model: modelShort,
-            });
-            sendJson(ws, {
-              type: "error",
-              ...(code ? { code } : {}),
-              message,
-            });
-            closeUpstreamSession(session);
+            failUpstream(session, message, code);
           },
           onClose: () => {
             // Ignore close from a superseded socket (replaced on a later "start").
@@ -451,6 +469,10 @@ const stream = new Hono().get(
         },
       });
       upstream = session;
+      if (earlyError) {
+        failUpstream(session, earlyError.message, earlyError.code);
+        return;
+      }
       afterSessionReady(ws, session, modelShort, token);
     }
 

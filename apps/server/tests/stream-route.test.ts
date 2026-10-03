@@ -104,6 +104,29 @@ describe("stream route upstream errors", () => {
     });
   });
 
+  it("sends the real error when the transport fails while it opens", async () => {
+    // MlxLocalSessionTransport calls onError inside its constructor when the
+    // model is not downloaded. The route has no session object at that time.
+    const session = fakeSession();
+    mocks.openStreamingSession.mockImplementation((opts) => {
+      opts.callbacks.onError("MLX ASR model is not downloaded yet.", "E_MLX");
+      return session;
+    });
+    const { h, ws } = await connect();
+    start(h, ws);
+    expect(sent(ws).map((m) => m.type)).toEqual(["config", "config", "error"]);
+    expect(sent(ws)[1]).toMatchObject({
+      streaming: false,
+      sessionTransport: false,
+    });
+    expect(sent(ws)[2]).toEqual({
+      type: "error",
+      code: "E_MLX",
+      message: "MLX ASR model is not downloaded yet.",
+    });
+    expect(session.close).toHaveBeenCalledTimes(1);
+  });
+
   it("reports a throw from the reconnect after an upstream close", async () => {
     const first = fakeSession();
     let callbacks: { onClose: () => void } | undefined;
