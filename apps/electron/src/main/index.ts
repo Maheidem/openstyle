@@ -3215,60 +3215,56 @@ app.whenReady().then(async () => {
 
   // AX read keeps the highlight; canvas editors return unsupported.
   ipcMain.handle("remix:read-document", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    const ax = await runMacAxRead();
-    if (!ax?.text) return { ok: false, reason: "unsupported" };
-    hotkeyLog.info(
-      `remix read-document: ${ax.text.length} chars via accessibility`,
-    );
-    return {
-      ok: true,
-      text: ax.text.slice(0, 60_000),
-      truncated: ax.text.length > 60_000,
-      selStart: ax.selStart,
-      selLen: ax.selLen,
-    };
+    return withFocusedAnchor(async () => {
+      const ax = await runMacAxRead();
+      if (!ax?.text) return { ok: false, reason: "unsupported" };
+      hotkeyLog.info(
+        `remix read-document: ${ax.text.length} chars via accessibility`,
+      );
+      return {
+        ok: true,
+        text: ax.text.slice(0, 60_000),
+        truncated: ax.text.length > 60_000,
+        selStart: ax.selStart,
+        selLen: ax.selLen,
+      };
+    });
   });
 
   ipcMain.handle("remix:select-all", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendSelectAllToFocusedApp())) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
+    return withFocusedAnchor(async () => {
+      if (!(await sendSelectAllToFocusedApp())) {
+        return { ok: false, reason: "inject-failed" };
+      }
+      return { ok: true };
+    });
   });
 
   ipcMain.handle("remix:collapse-selection", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (
-      !(await runMacAxKey(124)) &&
-      !(await runKeystrokeScript(["key code 124"]))
-    ) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
+    return withFocusedAnchor(async () => {
+      if (
+        !(await runMacAxKey(124)) &&
+        !(await runKeystrokeScript(["key code 124"]))
+      ) {
+        return { ok: false, reason: "inject-failed" };
+      }
+      return { ok: true };
+    });
   });
 
   ipcMain.handle("remix:copy", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    // Whole-document copy after select_all can be slow in rich editors.
-    const text = await copySelectionFromFocusedApp({
-      timeoutsMs: [600, 2_000],
-    }).catch(() => null);
-    if (text === null) return { ok: false, reason: "nothing-copied" };
-    return {
-      ok: true,
-      text: text.slice(0, 60_000),
-      truncated: text.length > 60_000,
-    };
+    return withFocusedAnchor(async () => {
+      // Whole-document copy after select_all can be slow in rich editors.
+      const text = await copySelectionFromFocusedApp({
+        timeoutsMs: [600, 2_000],
+      }).catch(() => null);
+      if (text === null) return { ok: false, reason: "nothing-copied" };
+      return {
+        ok: true,
+        text: text.slice(0, 60_000),
+        truncated: text.length > 60_000,
+      };
+    });
   });
 
   ipcMain.handle("remix:set-clipboard", (_event, text: unknown) => {
@@ -3294,23 +3290,22 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("remix:paste-clipboard", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    // Log length only — distinguishes empty clipboard from inject failure.
-    hotkeyLog.info(
-      `remix paste: injecting (clipboard: ${clipboard.readText().length} chars)`,
-    );
-    try {
-      await pasteClipboardIntoFocusedApp();
-      if (remixPracticeTarget) {
-        settingsWindow?.webContents.send("remix:practice-delivered");
+    return withFocusedAnchor(async () => {
+      // Log length only — distinguishes empty clipboard from inject failure.
+      hotkeyLog.info(
+        `remix paste: injecting (clipboard: ${clipboard.readText().length} chars)`,
+      );
+      try {
+        await pasteClipboardIntoFocusedApp();
+        if (remixPracticeTarget) {
+          settingsWindow?.webContents.send("remix:practice-delivered");
+        }
+        return { ok: true };
+      } catch (err) {
+        hotkeyLog.error(`Remix paste failed: ${err}`);
+        return { ok: false, reason: "paste-failed" };
       }
-      return { ok: true };
-    } catch (err) {
-      hotkeyLog.error(`Remix paste failed: ${err}`);
-      return { ok: false, reason: "paste-failed" };
-    }
+    });
   });
 
   ipcMain.handle(
@@ -3325,57 +3320,54 @@ app.whenReady().then(async () => {
         occurrence >= 1
           ? occurrence
           : null;
-      if (!(await focusAnchorForInjection())) {
-        return { ok: false, reason: "document-not-in-front" };
-      }
-      const ax = await runMacAxRead();
-      if (!ax?.text || !ax.settable) {
-        return { ok: false, reason: "unsupported" };
-      }
-      // Ambiguous matches error unless occurrence is named — wrong twin corrupts text.
-      const positions: number[] = [];
-      for (
-        let at = ax.text.indexOf(text);
-        at >= 0 && positions.length <= 50;
-        at = ax.text.indexOf(text, at + 1)
-      ) {
-        positions.push(at);
-      }
-      if (positions.length === 0) return { ok: false, reason: "not-found" };
-      if (wanted === null && positions.length > 1) {
-        return { ok: false, reason: "ambiguous", matches: positions.length };
-      }
-      const index = positions[(wanted ?? 1) - 1];
-      if (index === undefined) {
-        return { ok: false, reason: "not-found", matches: positions.length };
-      }
-      if (!(await runMacAxSelect(index, text.length))) {
-        return { ok: false, reason: "failed" };
-      }
-      if (remixAnchor) remixAnchor.capturedAt = Date.now();
-      return { ok: true };
+      return withFocusedAnchor(async () => {
+        const ax = await runMacAxRead();
+        if (!ax?.text || !ax.settable) {
+          return { ok: false, reason: "unsupported" };
+        }
+        // Ambiguous matches error unless occurrence is named — wrong twin corrupts text.
+        const positions: number[] = [];
+        for (
+          let at = ax.text.indexOf(text);
+          at >= 0 && positions.length <= 50;
+          at = ax.text.indexOf(text, at + 1)
+        ) {
+          positions.push(at);
+        }
+        if (positions.length === 0) return { ok: false, reason: "not-found" };
+        if (wanted === null && positions.length > 1) {
+          return { ok: false, reason: "ambiguous", matches: positions.length };
+        }
+        const index = positions[(wanted ?? 1) - 1];
+        if (index === undefined) {
+          return { ok: false, reason: "not-found", matches: positions.length };
+        }
+        if (!(await runMacAxSelect(index, text.length))) {
+          return { ok: false, reason: "failed" };
+        }
+        if (remixAnchor) remixAnchor.capturedAt = Date.now();
+        return { ok: true };
+      });
     },
   );
 
   // Undo/redo via native chord binary (non-QWERTY-safe); osascript fallback.
   ipcMain.handle("remix:undo", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendChordToFocusedApp("z", false))) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
+    return withFocusedAnchor(async () => {
+      if (!(await sendChordToFocusedApp("z", false))) {
+        return { ok: false, reason: "inject-failed" };
+      }
+      return { ok: true };
+    });
   });
 
   ipcMain.handle("remix:redo", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendChordToFocusedApp("z", true))) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
+    return withFocusedAnchor(async () => {
+      if (!(await sendChordToFocusedApp("z", true))) {
+        return { ok: false, reason: "inject-failed" };
+      }
+      return { ok: true };
+    });
   });
 
   ipcMain.handle(
@@ -3388,19 +3380,18 @@ app.whenReady().then(async () => {
         typeof times === "number" && Number.isInteger(times)
           ? Math.min(Math.max(times, 1), 50)
           : 1;
-      if (!(await focusAnchorForInjection())) {
-        return { ok: false, reason: "document-not-in-front" };
-      }
-      for (let i = 0; i < count; i++) {
-        if (
-          !(await runMacAxKey(code)) &&
-          !(await runKeystrokeScript([`key code ${code}`]))
-        ) {
-          return { ok: false, reason: "inject-failed", pressed: i };
+      return withFocusedAnchor(async () => {
+        for (let i = 0; i < count; i++) {
+          if (
+            !(await runMacAxKey(code)) &&
+            !(await runKeystrokeScript([`key code ${code}`]))
+          ) {
+            return { ok: false, reason: "inject-failed", pressed: i };
+          }
+          if (count > 1) await wait(25);
         }
-        if (count > 1) await wait(25);
-      }
-      return { ok: true };
+        return { ok: true };
+      });
     },
   );
 
@@ -3418,19 +3409,18 @@ app.whenReady().then(async () => {
     if (typeof text !== "string" || !text.trim()) {
       return { ok: false, reason: "bad-text" };
     }
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    try {
-      await pasteIntoFocusedApp(text, undefined, { trailingSpace: false });
-      if (remixPracticeTarget) {
-        settingsWindow?.webContents.send("remix:practice-delivered");
+    return withFocusedAnchor(async () => {
+      try {
+        await pasteIntoFocusedApp(text, undefined, { trailingSpace: false });
+        if (remixPracticeTarget) {
+          settingsWindow?.webContents.send("remix:practice-delivered");
+        }
+        return { ok: true };
+      } catch (err) {
+        hotkeyLog.error(`Remix paste-text failed: ${err}`);
+        return { ok: false, reason: "paste-failed" };
       }
-      return { ok: true };
-    } catch (err) {
-      hotkeyLog.error(`Remix paste-text failed: ${err}`);
-      return { ok: false, reason: "paste-failed" };
-    }
+    });
   });
 
   // Re-read selection for typed follow-ups (document may have changed).
@@ -3572,13 +3562,27 @@ interface AxReadResult {
   settable: boolean;
 }
 
-async function runMacAxRead(): Promise<AxReadResult | null> {
+/** Run the macos-ax binary. Returns stdout, or null if it cannot run or fails. */
+async function runMacAx(
+  args: string[],
+  timeoutMs: number,
+  maxBuffer?: number,
+): Promise<string | null> {
   if (process.platform !== "darwin") return null;
   const binary = getNativeBinaryPath("macos-ax");
   if (!binary) return null;
   try {
-    // A large document's JSON easily exceeds execFile's 1MB default buffer.
-    const out = await execAsync(binary, ["read"], 3000, 16 * 1024 * 1024);
+    return await execAsync(binary, args, timeoutMs, maxBuffer);
+  } catch {
+    return null;
+  }
+}
+
+async function runMacAxRead(): Promise<AxReadResult | null> {
+  // A large document's JSON easily exceeds execFile's 1MB default buffer.
+  const out = await runMacAx(["read"], 3000, 16 * 1024 * 1024);
+  if (out === null) return null;
+  try {
     return JSON.parse(out) as AxReadResult;
   } catch {
     return null;
@@ -3586,26 +3590,18 @@ async function runMacAxRead(): Promise<AxReadResult | null> {
 }
 
 async function runMacAxSelect(start: number, len: number): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    await execAsync(binary, ["select", String(start), String(len)], 3000);
-    return true;
-  } catch {
-    return false;
-  }
+  return (
+    (await runMacAx(["select", String(start), String(len)], 3000)) !== null
+  );
 }
 
 async function runMacAxCaps(): Promise<{
   settable: boolean;
   length: number;
 } | null> {
-  if (process.platform !== "darwin") return null;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return null;
+  const out = await runMacAx(["caps"], 3000);
+  if (out === null) return null;
   try {
-    const out = await execAsync(binary, ["caps"], 3000);
     return JSON.parse(out) as { settable: boolean; length: number };
   } catch {
     return null;
@@ -3613,26 +3609,11 @@ async function runMacAxCaps(): Promise<{
 }
 
 async function isSecureInputActive(): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    return (await execAsync(binary, ["secure"], 1000)) === "1";
-  } catch {
-    return false;
-  }
+  return (await runMacAx(["secure"], 1000)) === "1";
 }
 
 async function runMacAxKey(code: number): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    await execAsync(binary, ["key", String(code)], 3000);
-    return true;
-  } catch {
-    return false;
-  }
+  return (await runMacAx(["key", String(code)], 3000)) !== null;
 }
 
 /** Cmd+A via CGEvent binary (same AX permission as paste); osascript fallback. */
@@ -3698,6 +3679,16 @@ async function runKeystrokeScript(lines: string[]): Promise<boolean> {
     hotkeyLog.warn(`Keystroke script failed: ${err}`);
     return false;
   }
+}
+
+/** Run fn only if the document can take injected input; else report it is not in front. */
+async function withFocusedAnchor<T>(
+  fn: () => Promise<T>,
+): Promise<T | { ok: false; reason: "document-not-in-front" }> {
+  if (!(await focusAnchorForInjection())) {
+    return { ok: false, reason: "document-not-in-front" };
+  }
+  return fn();
 }
 
 /** Yield key focus to the document before injecting; false if it can't. */
