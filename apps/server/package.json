@@ -35,22 +35,22 @@
     "@openstyle/stt": "workspace:*",
     "ai": "^6.0.191",
     "diff": "^8.0.4",
-    "hono": "^4.12.22",
+    "hono": "catalog:",
     "tinyld": "^1.3.4",
     "undici": "^7.16.0",
     "winston": "^3.17.0",
     "ws": "^8.18.3",
-    "zod": "^4.4.3"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@openstyle/sdk": "workspace:*",
     "@openstyle/utils": "workspace:*",
     "@openstyle/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",
-    "@types/node": "latest",
+    "@types/node": "catalog:",
     "@types/ws": "^8.18.1",
-    "pkgroll": "^2.27.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.7"
+    "pkgroll": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

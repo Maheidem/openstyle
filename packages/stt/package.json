@@ -49,10 +49,10 @@
   },
   "devDependencies": {
     "@ai-sdk/provider-utils": "^4.0.27",
-    "@types/node": "^22.19.1",
+    "@types/node": "catalog:",
     "ai": "^6.0.191",
-    "pkgroll": "^2.27.0",
-    "typescript": "^5.8.3",
-    "vitest": "^4.1.7"
+    "pkgroll": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

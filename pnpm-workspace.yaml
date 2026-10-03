@@ -13,3 +13,13 @@ packageExtensions:
   "@hookform/resolvers":
     dependencies:
       zod: "^4.4.3"
+catalog:
+  "@types/node": "^22.19.1"
+  hono: "^4.12.22"
+  pkgroll: "^2.27.0"
+  react: "^19.2.1"
+  react-dom: "^19.2.1"
+  typescript: "^5.9.3"
+  vite: "^7.2.6"
+  vitest: "^4.1.7"
+  zod: "^4.4.3"
