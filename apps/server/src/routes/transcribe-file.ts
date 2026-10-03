@@ -38,11 +38,12 @@ import {
   needsDecodeFile,
 } from "../lib/audio/decode.js";
 import {
-  ACCEPTED_EXTENSIONS_DETAIL,
   ACCEPTED_IMPORT_EXTENSIONS,
-  formatLimit,
+  decodeFailedBody,
   importFileExtension,
   MAX_IMPORT_BYTES,
+  tooLargeBody,
+  unsupportedTypeBody,
 } from "../lib/audio/import-limits.js";
 import {
   extractBoundary,
@@ -58,14 +59,6 @@ import {
 } from "../lib/transcription-pipeline.js";
 
 const log = createAppLogger("transcribe-file");
-
-function tooLargeBody(maxBytes: number) {
-  return {
-    error: "File too large",
-    detail: `Maximum upload size is ${formatLimit(maxBytes)}`,
-    code: "PAYLOAD_TOO_LARGE",
-  } as const;
-}
 
 export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
   const maxBytes = opts.maxBytes ?? MAX_IMPORT_BYTES;
@@ -140,14 +133,7 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
 
           const ext = importFileExtension(audio.filename);
           if (!ext || !ACCEPTED_IMPORT_EXTENSIONS.has(ext)) {
-            return c.json(
-              {
-                error: "Unsupported file type",
-                detail: ACCEPTED_EXTENSIONS_DETAIL,
-                code: "UNSUPPORTED_MEDIA_TYPE",
-              },
-              415,
-            );
+            return c.json(unsupportedTypeBody(), 415);
           }
 
           if (audio.bytes === 0) {
@@ -175,15 +161,7 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
               // Full message (stderr tail) goes to the log only; the client
               // gets a fixed string so no server-side detail leaks.
               log.error(`decode failed (${err.reason}): ${err.message}`);
-              return c.json(
-                {
-                  error: "Audio decode failed",
-                  detail: "ffmpeg could not decode the file",
-                  code: err.code,
-                  reason: err.reason,
-                },
-                422,
-              );
+              return c.json(decodeFailedBody(err.code, err.reason), 422);
             }
             throw err;
           }
