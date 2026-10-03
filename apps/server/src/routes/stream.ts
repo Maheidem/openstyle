@@ -1,5 +1,4 @@
 import { upgradeWebSocket } from "@hono/node-server";
-import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { Hono } from "hono";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
@@ -25,10 +24,8 @@ import {
   supportsStreaming,
   voiceProviderCategory,
 } from "../lib/streaming-stt.js";
-import {
-  resolveAsrVocabularyBias,
-  vocabularyBiasTerms,
-} from "../lib/vocabulary-bias.js";
+import { cleanAsrText } from "../lib/transcription-pipeline.js";
+import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("stream");
 const LOG_STREAM_PARTIALS =
@@ -309,24 +306,10 @@ const stream = new Hono().get(
             beginDictation();
             let leaseHandedToCleanup = false;
             try {
-              rawText = sanitizeTranscriptText(rawText);
-
-              // Same vocabulary-prompt-echo guard as the REST /api/transcribe
-              // path (specs/meeting-transcription-quality.md Phase A, extended
-              // to dictation). Compare against the terms actually sent for
-              // *this* session's bias.
-              const strippedRawText = stripVocabLeak(
-                rawText,
-                vocabularyBiasTerms(config.bias),
-              );
-              if (strippedRawText !== rawText) {
-                log.info(
-                  strippedRawText.trim()
-                    ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
-                    : "dropped dictation output — entirely a vocabulary-prompt echo",
-                );
-                rawText = strippedRawText;
-              }
+              // Same sanitize and vocabulary-prompt-echo guard as the REST
+              // /api/transcribe path. Compare against the terms actually sent
+              // for *this* session's bias.
+              rawText = cleanAsrText(rawText, config.bias);
 
               // Use commitTime (when the user stopped speaking) to measure only
               // finalization + cleanup latency, not the entire recording session.
