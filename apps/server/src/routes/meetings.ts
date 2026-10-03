@@ -2,7 +2,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { zValidator } from "@hono/zod-validator";
 import { isVocabLeak } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../lib/db.js";
@@ -511,7 +511,7 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       `meeting ${id}: transcribed ${results.length} chunks (${failed} failed)`,
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.error(`meeting ${id}: transcription failed: ${message}`);
     try {
       db.prepare("UPDATE meetings SET status = ?, error = ? WHERE id = ?").run(
@@ -629,7 +629,7 @@ async function runSummarizeJob(
       `meeting ${id}: summarized (${summary.llmProvider ?? "?"}/${summary.llmModel ?? "?"}, ${summary.inputTokens} in / ${summary.outputTokens} out)`,
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     // A cancel that landed mid-run reads as a cancellation, not a failure of
     // the model — same canonical wording as the transcribe job's.
     const text = activeJobCancellations.has(id) ? "Cancelled by user" : message;
@@ -1034,7 +1034,7 @@ const meetings = new Hono()
       writeTranscriptMarkdown(id, audioDir);
       return c.json({ ok: true, retried: results.length, failed: stillFailed });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       return c.json({ error: message }, 500);
     } finally {
       activeJobs.delete(id);
@@ -1161,7 +1161,7 @@ const meetings = new Hono()
       // Defense-in-depth, matching runTranscribeJob's call site: in normal
       // operation runDiarizationPass degrades in-function and never
       // throws.
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       log.error(`meeting ${id}: identify speakers failed: ${message}`);
       return c.json({ error: message }, 500);
     } finally {
@@ -1502,7 +1502,7 @@ const meetings = new Hono()
         stopped_early: result.stoppedEarly,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       log.error(`meeting ${id}: enhance failed: ${message}`);
       return c.json({ error: message }, 500);
     } finally {

@@ -15,7 +15,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("system-audio");
@@ -89,7 +89,7 @@ export class SystemAudioCapture {
       });
     } catch (err) {
       this.options.onError?.(
-        `Failed to spawn system audio helper: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to spawn system audio helper: ${errorMessage(err)}`,
       );
       this.process = null;
       return false;

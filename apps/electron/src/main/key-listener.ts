@@ -11,7 +11,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   getNativeBinaryPath,
   KEY_LISTENER_BINARY_NAMES,
@@ -183,7 +183,7 @@ export class NativeKeyListener {
       });
     } catch (err) {
       this.options.onError?.(
-        `Failed to spawn key listener: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to spawn key listener: ${errorMessage(err)}`,
       );
       return Promise.resolve(false);
     }

@@ -1,5 +1,5 @@
 import { collapseAsrLineBreaks } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   normalizeOmlxRoot,
   omlxTranscribeUrl,
@@ -101,10 +101,10 @@ export class OmlxTranscriptionProvider implements TranscriptionProvider {
       });
     } catch (err) {
       trace("omlx.stt.error", `elapsed_ms=${Date.now() - t0} ${url}`, {
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMessage(err),
       });
       throw new Error(
-        `oMLX server unreachable at ${url}: ${err instanceof Error ? err.message : String(err)}`,
+        `oMLX server unreachable at ${url}: ${errorMessage(err)}`,
       );
     }
 

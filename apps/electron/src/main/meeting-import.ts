@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto";
 import { openAsBlob } from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { app, type BrowserWindow, dialog, ipcMain } from "electron";
 
 const log = createAppLogger("meeting-import");
@@ -151,7 +151,7 @@ export function registerMeetingImportIpc({
       } catch (err) {
         log.debug("meeting-import:transcribe stat failed", {
           ext,
-          message: err instanceof Error ? err.message : String(err),
+          message: errorMessage(err),
         });
         return {
           ok: false,
@@ -228,7 +228,7 @@ export function registerMeetingImportIpc({
           code: typeof json.code === "string" ? json.code : undefined,
         };
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = errorMessage(err);
         log.debug("meeting-import:transcribe fetch failed", {
           ext,
           bytes: size,
