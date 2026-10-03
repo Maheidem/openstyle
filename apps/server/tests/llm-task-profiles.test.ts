@@ -19,6 +19,7 @@ import {
   resolveTaskCall,
 } from "../src/lib/llm/task-profiles.js";
 import { createChatModel } from "../src/lib/providers.js";
+import { jsonRequest } from "./helpers/http.js";
 
 function seedDefaultLlm(provider: string, modelId: string): void {
   const db = getDb();
@@ -540,21 +541,23 @@ describe("PUT /api/settings/llm_parameter_presets and llm_task_assignments", () 
         },
       ],
     });
-    const res1 = await app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: presets }),
-    });
+    const res1 = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/llm_parameter_presets",
+      { value: presets },
+    );
     expect(res1.status).toBe(200);
 
     const assignments = JSON.stringify({
       cleanup: { mode: "preset", presetId: "user_abc" },
     });
-    const res2 = await app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: assignments }),
-    });
+    const res2 = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/llm_task_assignments",
+      { value: assignments },
+    );
     expect(res2.status).toBe(200);
   });
 
@@ -570,35 +573,39 @@ describe("PUT /api/settings/llm_parameter_presets and llm_task_assignments", () 
         },
       ],
     });
-    const res1 = await app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: spoofed }),
-    });
+    const res1 = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/llm_parameter_presets",
+      { value: spoofed },
+    );
     expect(res1.status).toBe(400);
 
     const bad = JSON.stringify({ cleanup: { mode: "not-a-mode" } });
-    const res2 = await app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: bad }),
-    });
+    const res2 = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/llm_task_assignments",
+      { value: bad },
+    );
     expect(res2.status).toBe(400);
   });
 
   it("rejects malformed JSON for both keys", async () => {
-    const res1 = await app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: "{not json" }),
-    });
+    const res1 = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/llm_parameter_presets",
+      { value: "{not json" },
+    );
     expect(res1.status).toBe(400);
 
-    const res2 = await app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: "{not json" }),
-    });
+    const res2 = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/llm_task_assignments",
+      { value: "{not json" },
+    );
     expect(res2.status).toBe(400);
   });
 
@@ -614,25 +621,27 @@ describe("PUT /api/settings/llm_parameter_presets and llm_task_assignments", () 
         },
       ],
     });
-    const res = await app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: oversized }),
-    });
+    const res = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/llm_parameter_presets",
+      { value: oversized },
+    );
     expect(res.status).toBe(400);
   });
 
   it("drops an unknown task-id key on write instead of rejecting the whole assignments blob", async () => {
-    const res = await app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const res = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/llm_task_assignments",
+      {
         value: JSON.stringify({
           cleanup: { mode: "auto" },
           someFutureTask: { mode: "auto" },
         }),
-      }),
-    });
+      },
+    );
     expect(res.status).toBe(200);
   });
 });

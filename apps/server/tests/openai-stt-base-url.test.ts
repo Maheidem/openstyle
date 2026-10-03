@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_KEYS } from "../../electron/src/shared/settings-keys.js";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
+import { jsonRequest } from "./helpers/http.js";
 
 vi.mock("@ai-sdk/openai", () => ({
   createOpenAI: vi.fn(() => ({
@@ -105,11 +106,7 @@ describe("POST /api/settings/openai-stt/test", () => {
   });
 
   function post(body: unknown) {
-    return app.request("/api/settings/openai-stt/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    return jsonRequest(app, "POST", "/api/settings/openai-stt/test", body);
   }
 
   it("probes <url>/v1/models and returns discovered models", async () => {

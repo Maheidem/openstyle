@@ -12,6 +12,7 @@ import {
   startHistoryRetentionSweep,
   stopHistoryRetentionSweep,
 } from "../src/lib/history-store.js";
+import { jsonRequest } from "./helpers/http.js";
 
 const app = createApp();
 
@@ -24,11 +25,7 @@ function req(path: string, init?: RequestInit) {
 }
 
 function json(path: string, body: unknown, method = "POST") {
-  return req(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return jsonRequest(app, method, path, body);
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import {
 } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
+import { jsonRequest } from "./helpers/http.js";
 
 // ---------------------------------------------------------------------------
 // llmParameterPresetsSettingSchema (§13.2)
@@ -152,10 +153,8 @@ describe("PUT /api/settings/llm_parameter_presets", () => {
   const app = createApp();
 
   function put(value: string) {
-    return app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
+    return jsonRequest(app, "PUT", "/api/settings/llm_parameter_presets", {
+      value,
     });
   }
 
@@ -190,10 +189,8 @@ describe("PUT /api/settings/llm_task_assignments", () => {
   const app = createApp();
 
   function put(value: string) {
-    return app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
+    return jsonRequest(app, "PUT", "/api/settings/llm_task_assignments", {
+      value,
     });
   }
 
@@ -223,11 +220,12 @@ describe("PUT /api/settings/cleanup_sampling — validation branch removed (§10
   const app = createApp();
 
   it("no longer 400s malformed sampling JSON (nothing validates this key anymore)", async () => {
-    const res = await app.request("/api/settings/cleanup_sampling", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: "not even json" }),
-    });
+    const res = await jsonRequest(
+      app,
+      "PUT",
+      "/api/settings/cleanup_sampling",
+      { value: "not even json" },
+    );
     expect(res.status).toBe(200);
   });
 });
