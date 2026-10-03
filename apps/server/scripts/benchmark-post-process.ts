@@ -87,13 +87,7 @@ function evaluateCase(testCase: BenchmarkCase, actual: string): boolean {
   }
 
   if (testCase.id.startsWith("recipient-correction")) {
-    if (testCase.language === "en") {
-      return (
-        containsAll(normalized, [/legal/i]) &&
-        containsNone(normalized, [/marketing/i])
-      );
-    }
-    if (testCase.language === "es") {
+    if (testCase.language === "en" || testCase.language === "es") {
       return (
         containsAll(normalized, [/legal/i]) &&
         containsNone(normalized, [/marketing/i])
@@ -139,13 +133,7 @@ function evaluateCase(testCase: BenchmarkCase, actual: string): boolean {
   }
 
   if (testCase.id.startsWith("superseded-plan")) {
-    if (testCase.language === "en") {
-      return (
-        containsAll(normalized, [/zoom/i]) &&
-        containsNone(normalized, [/san francisco/i, /oakland/i])
-      );
-    }
-    if (testCase.language === "es") {
+    if (testCase.language === "en" || testCase.language === "es") {
       return (
         containsAll(normalized, [/zoom/i]) &&
         containsNone(normalized, [/san francisco/i, /oakland/i])
