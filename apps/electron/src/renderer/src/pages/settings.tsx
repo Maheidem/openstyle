@@ -64,6 +64,7 @@ import {
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
+import { putSetting } from "@renderer/lib/settings";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -478,31 +479,17 @@ export default function SettingsPage(): React.JSX.Element {
   const handleHotkeyModeChange = useCallback((mode: "hold" | "toggle") => {
     setHotkeyMode(mode);
     window.api?.setHotkeyMode(mode);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkeyMode },
-        json: { value: mode },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.hotkeyMode, mode);
   }, []);
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkey },
-        json: { value: accelerator },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.hotkey, accelerator);
   }, []);
 
   const handleRemixBarToggle = useCallback((enabled: boolean) => {
     setRemixBarEnabled(enabled);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.remixBarEnabled },
-        json: { value: String(enabled) },
-      })
+    putSetting(SETTINGS_KEYS.remixBarEnabled, String(enabled))
       .then(() => window.api?.reloadRemixHotkey())
       .catch(() => {});
   }, []);
@@ -511,11 +498,7 @@ export default function SettingsPage(): React.JSX.Element {
   // being handed one, so the reload has to wait for the write to land.
   const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
     setRemixHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.remixHotkey },
-        json: { value: accelerator },
-      })
+    putSetting(SETTINGS_KEYS.remixHotkey, accelerator)
       .then(() => window.api?.reloadRemixHotkey())
       .catch(() => {});
   }, []);
@@ -686,35 +669,20 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleDeviceChange = useCallback((deviceId: string) => {
     setSelectedDevice(deviceId);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.micDeviceId },
-        json: { value: deviceId },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.micDeviceId, deviceId);
   }, []);
 
   const handleThemeChange = useCallback(
     (value: string) => {
       setTheme(value);
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.theme },
-          json: { value },
-        })
-        .catch(() => {});
+      void putSetting(SETTINGS_KEYS.theme, value);
     },
     [setTheme],
   );
 
   const persistTranslateMode = useCallback((value: boolean) => {
     setTranslateMode(value);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.translateMode },
-        json: { value: String(value) },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.translateMode, String(value));
   }, []);
 
   // Pushes the map straight to the main process (no reload round-trip — this
@@ -722,12 +690,7 @@ export default function SettingsPage(): React.JSX.Element {
   // how the other Electron-only hotkey settings are wired.
   const persistLanguageHotkeys = useCallback((next: Record<string, string>) => {
     setLanguageHotkeys(next);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.languageHotkeys },
-        json: { value: JSON.stringify(next) },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.languageHotkeys, JSON.stringify(next));
     window.api?.updateLanguageHotkeys(next);
   }, []);
 
@@ -750,12 +713,7 @@ export default function SettingsPage(): React.JSX.Element {
     (next: string[]) => {
       const normalized = normalizeLanguageList(next);
       setLanguages(normalized);
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.languages },
-          json: { value: JSON.stringify(normalized) },
-        })
-        .catch(() => {});
+      void putSetting(SETTINGS_KEYS.languages, JSON.stringify(normalized));
       // Translate mode requires exactly one language; disable it otherwise.
       if (normalized.length !== 1 && translateMode) persistTranslateMode(false);
 
@@ -781,12 +739,7 @@ export default function SettingsPage(): React.JSX.Element {
   const handleOutputModeChange = useCallback((value: string) => {
     setOutputMode(value);
     window.api?.sendOutputModeChanged(value);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.outputMode },
-        json: { value },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.outputMode, value);
   }, []);
 
   const handlePillPositionChange = useCallback((value: string) => {
@@ -798,12 +751,7 @@ export default function SettingsPage(): React.JSX.Element {
     const mode = normalizePillCancelMode(value);
     setPillCancel(mode);
     window.api?.sendPillCancelModeChanged(mode);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.pillCancelButton },
-        json: { value: mode },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.pillCancelButton, mode);
   }, []);
 
   const handleAutoUpdateToggle = useCallback((enabled: boolean) => {
@@ -833,12 +781,7 @@ export default function SettingsPage(): React.JSX.Element {
           [SETTINGS_KEYS.advancedMode]: String(enabled),
         }),
       );
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.advancedMode },
-          json: { value: String(enabled) },
-        })
-        .catch(() => {});
+      void putSetting(SETTINGS_KEYS.advancedMode, String(enabled));
     },
     [queryClient],
   );
@@ -854,31 +797,16 @@ export default function SettingsPage(): React.JSX.Element {
   const handleSoundToggle = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);
     window.api?.sendSoundEnabledChanged(enabled);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.soundEnabled },
-        json: { value: String(enabled) },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.soundEnabled, String(enabled));
   }, []);
 
   const handleHistoryPausedToggle = useCallback((paused: boolean) => {
     setHistoryPaused(paused);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.historyPaused },
-        json: { value: String(paused) },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.historyPaused, String(paused));
   }, []);
 
   const saveHistoryRetention = useCallback((days: string) => {
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.historyRetentionDays },
-        json: { value: days },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.historyRetentionDays, days);
   }, []);
 
   const handleHistoryRetentionChange = useCallback(
@@ -965,13 +893,7 @@ export default function SettingsPage(): React.JSX.Element {
       setSummaryTimeoutSaveError(null);
       if (intent.kind !== "write" && intent.kind !== "reset") return;
       const value = intent.kind === "reset" ? "" : intent.value;
-      const res = await getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.meetingSummaryTimeoutSeconds },
-          json: { value },
-        })
-        .catch(() => null);
-      if (res?.ok) {
+      if (await putSetting(SETTINGS_KEYS.meetingSummaryTimeoutSeconds, value)) {
         setSummaryTimeoutSeconds(
           displayValueFor(
             value,
@@ -1071,13 +993,7 @@ export default function SettingsPage(): React.JSX.Element {
       setEnhanceTimeoutSaveError(null);
       if (intent.kind !== "write" && intent.kind !== "reset") return;
       const value = intent.kind === "reset" ? "" : intent.value;
-      const res = await getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.meetingEnhanceTimeoutSeconds },
-          json: { value },
-        })
-        .catch(() => null);
-      if (res?.ok) {
+      if (await putSetting(SETTINGS_KEYS.meetingEnhanceTimeoutSeconds, value)) {
         setEnhanceTimeoutSeconds(
           displayValueFor(
             value,
@@ -1217,18 +1133,8 @@ export default function SettingsPage(): React.JSX.Element {
     const mode = normalizeAudioPlaybackMode(value);
     setAudioPlaybackMode(mode);
     window.api?.sendAudioPlaybackModeChanged(mode);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.audioPlaybackMode },
-        json: { value: mode },
-      })
-      .catch(() => {});
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.audioDuckingEnabled },
-        json: { value: String(mode === "duck") },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.audioPlaybackMode, mode);
+    void putSetting(SETTINGS_KEYS.audioDuckingEnabled, String(mode === "duck"));
   }, []);
 
   // Build display keys for current recorder state
@@ -2348,22 +2254,15 @@ function NetworkPanel(): React.JSX.Element {
 
       const valid = await trigger(field);
       if (!valid) return;
-      try {
-        const res = await getClient().api.settings[":key"].$put({
-          param: { key },
-          json: { value },
-        });
-        if (res.ok) {
-          lastCommitted.current[field] = value;
-          // Keep the shared settings cache truthful without a refetch.
-          queryClient.setQueryData<Record<string, string>>(
-            queryKeys.settings,
-            (prev) => ({ ...(prev ?? {}), [key]: value }),
-          );
-          flashSaved(field);
-        }
-      } catch {
-        // Network/API errors surface via the field's onChange retry; swallow.
+      // Network/API errors surface via the field's onChange retry; swallow.
+      if (await putSetting(key, value)) {
+        lastCommitted.current[field] = value;
+        // Keep the shared settings cache truthful without a refetch.
+        queryClient.setQueryData<Record<string, string>>(
+          queryKeys.settings,
+          (prev) => ({ ...(prev ?? {}), [key]: value }),
+        );
+        flashSaved(field);
       }
     },
     [trigger, getValues, flashSaved, queryClient],
