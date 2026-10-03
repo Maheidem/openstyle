@@ -139,10 +139,18 @@ export class Recorder {
     this.stream = null;
   }
 
+  /**
+   * Stop the MediaRecorder and release the mic stream. Always use this pair
+   * together when a recording is thrown away. Same `gen` guard as both calls.
+   */
+  discard(gen?: number): void {
+    this.cancel(gen);
+    this.releaseStream(gen);
+  }
+
   /** Full cleanup — release the mic stream. Call on unmount only. */
   destroy(): void {
-    this.cancel();
-    this.releaseStream();
+    this.discard();
   }
 }
 

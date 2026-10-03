@@ -1485,8 +1485,7 @@ export default function AppPage(): React.JSX.Element {
         const stream = await acquirePromise;
 
         if (!wantsMicRef.current) {
-          rec.cancel(micGen);
-          rec.releaseStream(micGen);
+          rec.discard(micGen);
           void restoreSystemAudioSafely();
           streamerRef.current?.cancel();
           if (forReRecord) {
@@ -1497,8 +1496,7 @@ export default function AppPage(): React.JSX.Element {
         if (pendingCommitRef.current) {
           pendingCommitRef.current = false;
           wantsMicRef.current = false;
-          rec.cancel(micGen);
-          rec.releaseStream(micGen);
+          rec.discard(micGen);
           void restoreSystemAudioSafely();
           streamerRef.current?.cancel();
           if (forReRecord) {
@@ -1591,8 +1589,7 @@ export default function AppPage(): React.JSX.Element {
     const recordingDuration = Date.now() - startTimeRef.current;
     lastRecordingDurationRef.current = recordingDuration;
     if (recordingDuration < 250) {
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      recorderRef.current.discard();
       streamerRef.current?.cancel();
       resumeTranscribingOrHide();
       return;
@@ -1604,8 +1601,7 @@ export default function AppPage(): React.JSX.Element {
     // Streaming session transport path: the streamer already has the audio —
     // commit it over the WebSocket and wait for the server's final message.
     if (recordingSessionUsesTransportRef.current && streamerRef.current) {
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      recorderRef.current.discard();
 
       const streamError = streamSessionErrorRef.current;
       streamSessionErrorRef.current = null;
@@ -1780,8 +1776,7 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Cancel ----
   const cancelRecording = useCallback(() => {
-    recorderRef.current.cancel();
-    recorderRef.current.releaseStream();
+    recorderRef.current.discard();
     void restoreSystemAudioSafely();
     streamerRef.current?.cancel();
     dismissPill("cancelled");
@@ -1803,8 +1798,7 @@ export default function AppPage(): React.JSX.Element {
   /** Stop the remix mic capture and release its stream, if one is open. */
   const releaseRemixMic = useCallback(() => {
     if (remixMicGenRef.current !== null) {
-      recorderRef.current.cancel(remixMicGenRef.current);
-      recorderRef.current.releaseStream(remixMicGenRef.current);
+      recorderRef.current.discard(remixMicGenRef.current);
       remixMicGenRef.current = null;
     }
   }, []);
@@ -2186,8 +2180,7 @@ export default function AppPage(): React.JSX.Element {
           remixMicGenRef.current === micGen &&
           micGen === rec.generation();
         if (!owned) {
-          rec.cancel(micGen);
-          rec.releaseStream(micGen);
+          rec.discard(micGen);
           if (remixMicGenRef.current === micGen) remixMicGenRef.current = null;
           return;
         }
@@ -2469,8 +2462,7 @@ export default function AppPage(): React.JSX.Element {
     // A dictation began on the shared home key and this chord is taking over.
     const removeSupersede = window.api.onRemixSupersede(() => {
       if (stateRef.current === "idle" && !pillActiveRef.current) return;
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      recorderRef.current.discard();
       void restoreSystemAudioSafely();
       streamerRef.current?.cancel();
       resetDictation();
