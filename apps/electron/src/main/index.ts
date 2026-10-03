@@ -64,7 +64,12 @@ import {
   stopWhisperServer,
 } from "@openstyle/server";
 import { createAppLogger, enableFileLogging } from "@openstyle/utils";
-import { REMIX_CLIPBOARD_LIMIT, serverUrlSchema } from "@openstyle/validations";
+import {
+  DEFAULT_SERVER_PORT,
+  isOpenstyleHealthBody,
+  REMIX_CLIPBOARD_LIMIT,
+  serverUrlSchema,
+} from "@openstyle/validations";
 import {
   app,
   BrowserWindow,
@@ -207,7 +212,6 @@ process.on("unhandledRejection", (reason) => {
   );
 });
 
-const DEFAULT_PORT = 4649;
 /**
  * The pill's own slot: every position in this file is computed against these
  * dimensions, whatever size the window currently is. See `pillExpandOffset`.
@@ -382,7 +386,7 @@ function broadcastServerChanged(): void {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
-let serverPort = DEFAULT_PORT;
+let serverPort = DEFAULT_SERVER_PORT;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 // In-flight settings-window creation. createSettingsWindow awaits an onboarding
@@ -1746,13 +1750,7 @@ async function probeServerHealth(
     });
     if (!res.ok) return false;
     const data = (await res.json()) as { status?: string; name?: string };
-    // Accepts the legacy "freestyle" identity too so a not-yet-updated
-    // standalone/remote server (auto-update is on by default, but a
-    // separately-deployed apps/server may lag) is still recognized.
-    return (
-      data.status === "ok" &&
-      (data.name === "openstyle" || data.name === "freestyle")
-    );
+    return isOpenstyleHealthBody(data);
   } catch {
     return false;
   }
@@ -2752,8 +2750,10 @@ app.whenReady().then(async () => {
         log.info(`Server running on http://localhost:${boundPort}`);
       })
       .catch((err: NodeJS.ErrnoException) => {
-        if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
-          log.warn(`Port ${DEFAULT_PORT} in use, falling back to random port`);
+        if (err.code === "EADDRINUSE" && port === DEFAULT_SERVER_PORT) {
+          log.warn(
+            `Port ${DEFAULT_SERVER_PORT} in use, falling back to random port`,
+          );
           startServer(0);
         } else {
           log.error(`Server failed to start: ${err}`);
@@ -2766,17 +2766,17 @@ app.whenReady().then(async () => {
   // without a timeout a half-open socket on the port could hang window/tray
   // creation indefinitely.
   const existingServer = await probeServerHealth(
-    `http://127.0.0.1:${DEFAULT_PORT}`,
+    `http://127.0.0.1:${DEFAULT_SERVER_PORT}`,
     1500,
   );
 
   if (existingServer) {
-    serverPort = DEFAULT_PORT;
+    serverPort = DEFAULT_SERVER_PORT;
     log.info(
-      `Reusing existing Openstyle server on http://localhost:${DEFAULT_PORT}`,
+      `Reusing existing Openstyle server on http://localhost:${DEFAULT_SERVER_PORT}`,
     );
   } else {
-    startServer(DEFAULT_PORT);
+    startServer(DEFAULT_SERVER_PORT);
   }
 
   if (!is.dev) {

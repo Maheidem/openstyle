@@ -19,9 +19,10 @@
  *     fallback.
  */
 
+import { DEFAULT_SERVER_PORT } from "@openstyle/validations";
 import { closeDb, startServer } from "./index.js";
 
-const port = process.env.PORT ? Number(process.env.PORT) : 4649;
+const port = process.env.PORT ? Number(process.env.PORT) : DEFAULT_SERVER_PORT;
 const host = process.env.HOST ?? "0.0.0.0";
 const token =
   process.env.OPENSTYLE_AUTH_TOKEN ?? process.env.FREESTYLE_AUTH_TOKEN;

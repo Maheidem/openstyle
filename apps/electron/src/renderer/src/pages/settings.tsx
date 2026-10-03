@@ -2,6 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+  DEFAULT_SERVER_PORT,
   HISTORY_RETENTION_DAYS_MAX,
   MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
   MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
@@ -2525,7 +2526,7 @@ function ServerConnection(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") handleSaveServer();
           }}
-          placeholder="http://127.0.0.1:4649"
+          placeholder={`http://127.0.0.1:${DEFAULT_SERVER_PORT}`}
           className="min-w-0 flex-1"
         />
         <Button
