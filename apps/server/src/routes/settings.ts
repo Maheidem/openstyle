@@ -21,6 +21,7 @@ import {
   configureNetwork,
   PROXY_URL_SETTING,
 } from "../lib/network.js";
+import { fetchModelIds } from "../lib/openai-compat.js";
 import { validateSetting } from "../lib/setting-validators.js";
 import { applyWhisperRetentionPolicy } from "../lib/whisper/server.js";
 
@@ -203,28 +204,7 @@ const settings = new Hono()
       );
 
       try {
-        const res = await fetch(`${url}/v1/models`, {
-          headers: {
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          signal: AbortSignal.timeout(5000),
-        });
-
-        if (!res.ok) {
-          return c.json(
-            { error: `Server returned ${res.status}: ${res.statusText}` },
-            502,
-          );
-        }
-
-        const data = (await res.json()) as {
-          data?: { id: string }[];
-        };
-
-        let models: string[] = [];
-        if (data.data && Array.isArray(data.data)) {
-          models = data.data.map((m) => m.id);
-        }
+        const models = await fetchModelIds(`${url}/v1/models`, apiKey);
 
         return c.json({ ok: true, models });
       } catch (err) {
@@ -246,28 +226,7 @@ const settings = new Hono()
       );
 
       try {
-        const res = await fetch(`${url}/v1/models`, {
-          headers: {
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          signal: AbortSignal.timeout(5000),
-        });
-
-        if (!res.ok) {
-          return c.json(
-            { error: `Server returned ${res.status}: ${res.statusText}` },
-            502,
-          );
-        }
-
-        const data = (await res.json()) as {
-          data?: { id: string }[];
-        };
-
-        let models: string[] = [];
-        if (data.data && Array.isArray(data.data)) {
-          models = data.data.map((m) => m.id);
-        }
+        const models = await fetchModelIds(`${url}/v1/models`, apiKey);
 
         return c.json({ ok: true, models });
       } catch (err) {
@@ -289,28 +248,9 @@ const settings = new Hono()
       : {};
 
     try {
-      const res = await fetch(omlxModelsUrl(root), {
-        headers: auth,
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (!res.ok) {
-        return c.json(
-          { error: `Server returned ${res.status}: ${res.statusText}` },
-          502,
-        );
-      }
-
-      const data = (await res.json()) as {
-        data?: { id: string }[];
-      };
-
       // Every id is listed — oMLX reports no modality, and the user knows
       // which of their models is the ASR one.
-      let models: string[] = [];
-      if (data.data && Array.isArray(data.data)) {
-        models = data.data.map((m) => m.id);
-      }
+      const models = await fetchModelIds(omlxModelsUrl(root), apiKey);
 
       // Prove the transcription route exists too. A field-less POST gets a
       // validation error (oMLX answers 422) when the route is mounted, and a
