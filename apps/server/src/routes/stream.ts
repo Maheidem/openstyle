@@ -1,5 +1,9 @@
 import { upgradeWebSocket } from "@hono/node-server";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
+import type {
+  StreamClientMessage,
+  StreamServerMessage,
+} from "@openstyle/validations";
 import { Hono } from "hono";
 import { getApiKey } from "../lib/api-keys.js";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
@@ -39,7 +43,7 @@ const LOG_PIPELINE_LATENCY =
 
 type Socket = { send: (data: string) => void; close: () => void };
 
-function sendJson(ws: Pick<Socket, "send">, msg: object): void {
+function sendJson(ws: Pick<Socket, "send">, msg: StreamServerMessage): void {
   ws.send(JSON.stringify(msg));
 }
 
@@ -512,12 +516,7 @@ const stream = new Hono().get(
           return;
         }
 
-        let msg: {
-          type: string;
-          context?: string | null;
-          audioDurationMs?: number;
-          language?: string;
-        };
+        let msg: StreamClientMessage;
         try {
           msg = JSON.parse(
             typeof event.data === "string"

@@ -20,4 +20,5 @@ export * from "./remix.js";
 export * from "./server.js";
 export * from "./settings.js";
 export * from "./settings-keys.js";
+export * from "./stream-protocol.js";
 export * from "./vocabulary.js";
