@@ -5,6 +5,11 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
+import {
+  clampMlxKeepAliveMinutes,
+  MLX_KEEP_ALIVE_ALWAYS,
+  MLX_KEEP_ALIVE_DEFAULT_MINUTES,
+} from "@openstyle/validations";
 import { getDb } from "../db.js";
 import { getMlxAsrModel } from "./constants.js";
 import {
@@ -24,11 +29,6 @@ import {
 const log = createAppLogger("mlx-asr");
 const START_TIMEOUT_MS = 120_000;
 const TRANSCRIBE_TIMEOUT_MS = 300_000;
-const DEFAULT_KEEP_ALIVE_MINUTES = 10;
-const MAX_KEEP_ALIVE_MINUTES = 10;
-// Sentinel keep-alive value meaning "never unload" — the model stays resident
-// until the app quits. Stored as -1 in the settings table.
-const KEEP_ALIVE_ALWAYS = -1;
 
 interface WorkerResponse {
   id?: number;
@@ -88,14 +88,10 @@ export function getMlxAsrKeepAliveMinutes(): number {
         "SELECT value FROM settings WHERE key = 'mlx_asr_keep_alive_minutes'",
       )
       .get() as { value: string } | undefined;
-    if (!row) return DEFAULT_KEEP_ALIVE_MINUTES;
-    const minutes = Number(row.value);
-    if (!Number.isFinite(minutes)) return DEFAULT_KEEP_ALIVE_MINUTES;
-    // Any negative value is the "always on" sentinel (never unload).
-    if (Math.round(minutes) < 0) return KEEP_ALIVE_ALWAYS;
-    return Math.min(Math.max(Math.round(minutes), 0), MAX_KEEP_ALIVE_MINUTES);
+    if (!row) return MLX_KEEP_ALIVE_DEFAULT_MINUTES;
+    return clampMlxKeepAliveMinutes(Number(row.value));
   } catch {
-    return DEFAULT_KEEP_ALIVE_MINUTES;
+    return MLX_KEEP_ALIVE_DEFAULT_MINUTES;
   }
 }
 
@@ -443,7 +439,7 @@ function scheduleUnload(): void {
   if (pending.size > 0) return;
   const minutes = getMlxAsrKeepAliveMinutes();
 
-  if (minutes === KEEP_ALIVE_ALWAYS) {
+  if (minutes === MLX_KEEP_ALIVE_ALWAYS) {
     // "Always on": keep the model resident indefinitely; never schedule unload.
     return;
   }

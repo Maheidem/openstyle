@@ -5,19 +5,6 @@ import {
   VOICE_PROVIDERS,
 } from "@renderer/lib/models";
 
-import {
-  DEFAULT_MLX_KEEP_ALIVE_MINUTES,
-  MAX_MLX_KEEP_ALIVE_MINUTES,
-  MLX_KEEP_ALIVE_ALWAYS,
-} from "./constants";
-
-export function clampMlxKeepAliveMinutes(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_MLX_KEEP_ALIVE_MINUTES;
-  // Any negative value is the "always on" sentinel (never unload).
-  if (Math.round(value) < 0) return MLX_KEEP_ALIVE_ALWAYS;
-  return Math.min(Math.max(Math.round(value), 0), MAX_MLX_KEEP_ALIVE_MINUTES);
-}
-
 export function groupByProvider(
   list: AvailableModel[],
   type: "voice" | "llm",

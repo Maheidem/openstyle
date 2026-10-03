@@ -6,6 +6,8 @@ import type {
   LlmTaskId,
 } from "@openstyle/validations";
 import {
+  clampMlxKeepAliveMinutes,
+  MLX_KEEP_ALIVE_DEFAULT_MINUTES,
   parseCleanupSampling,
   parseLlmTaskAssignments,
 } from "@openstyle/validations";
@@ -29,7 +31,6 @@ import { putSetting } from "@renderer/lib/settings";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
-import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
 import {
   checkPresetWrite,
   duplicatePreset,
@@ -43,7 +44,7 @@ import type {
   EndpointConnectState,
 } from "./use-endpoint-connect";
 import { useEndpointConnect } from "./use-endpoint-connect";
-import { clampMlxKeepAliveMinutes, groupByProvider } from "./utils";
+import { groupByProvider } from "./utils";
 
 export type { EndpointConnectState } from "./use-endpoint-connect";
 
@@ -247,7 +248,7 @@ export function useModels(): UseModels {
 
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
-    DEFAULT_MLX_KEEP_ALIVE_MINUTES,
+    MLX_KEEP_ALIVE_DEFAULT_MINUTES,
   );
   const [cleanupSampling, setCleanupSampling] = useState<CleanupSampling>({});
   const [taskAssignments, setTaskAssignments] = useState<LlmTaskAssignments>(
