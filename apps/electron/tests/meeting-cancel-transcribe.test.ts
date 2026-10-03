@@ -68,6 +68,19 @@ const parked: Array<{ res: import("node:http").ServerResponse }> = [];
 let released = false;
 let okAnswered = 0;
 
+/** Exactly one chunk (whichever it is) succeeds and persists. This makes the
+ * post-cancel note read "(1 of 2 …)". All other chunks get a 500. */
+function answer(res: import("node:http").ServerResponse): void {
+  if (okAnswered === 0) {
+    okAnswered++;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ text: "kept partial transcript" }));
+    return;
+  }
+  res.writeHead(500, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "released by test" }));
+}
+
 function startHoldServer(): Promise<void> {
   return new Promise((resolvePromise) => {
     holdServer = createServer((_req, res) => {
@@ -75,16 +88,7 @@ function startHoldServer(): Promise<void> {
         parked.push({ res });
         return;
       }
-      if (okAnswered === 0) {
-        // Exactly one chunk — whichever it is — succeeds and persists, which
-        // is what makes the post-cancel note read "(1 of 2 …)".
-        okAnswered++;
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ text: "kept partial transcript" }));
-        return;
-      }
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "released by test" }));
+      answer(res);
     });
     holdServer.on("connection", (socket: Socket) => {
       heldSockets.add(socket);
@@ -104,14 +108,7 @@ const heldSockets = new Set<Socket>();
 function releaseHoldServer(): void {
   released = true;
   for (const { res } of parked.splice(0)) {
-    if (okAnswered === 0) {
-      okAnswered++;
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ text: "kept partial transcript" }));
-    } else {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "released by test" }));
-    }
+    answer(res);
   }
 }
 
@@ -284,7 +281,7 @@ test.beforeAll(async () => {
       headers: { ...apiHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({
         provider: "omlx",
-        model_id: "omlsx/hold-test-model",
+        model_id: "omlx/hold-test-model",
         model_name: "oMLX hold-test model",
         type: "voice",
         is_default: true,
