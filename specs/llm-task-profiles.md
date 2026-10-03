@@ -726,7 +726,7 @@ export function groqCleanupProviderOptions(
   modelId: string,
   reasoningEnabled: boolean,
 ): { groq: GroqLanguageModelOptions } | undefined {
-  const shortId = stripGroqPrefix(modelId);
+  const shortId = stripModelPrefix("groq", modelId);
 
   switch (shortId) {
     case "qwen/qwen3-32b":

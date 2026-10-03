@@ -15,6 +15,7 @@ import {
   getMlxModelStatus,
 } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
+import { stripModelPrefix } from "../lib/model-id.js";
 import {
   OMLX_API_KEY_SETTING,
   OMLX_BASE_URL_SETTING,
@@ -307,9 +308,7 @@ function lookupCostInRegistry(
   const provider = registry[providerId] as RegistryProvider | undefined;
   if (!provider?.models) return null;
 
-  const shortId = modelId.startsWith(`${providerId}/`)
-    ? modelId.slice(providerId.length + 1)
-    : modelId;
+  const shortId = stripModelPrefix(providerId, modelId);
   const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
   if (!model?.cost) return null;
 
@@ -353,9 +352,7 @@ export async function isCleanupModelSupported(
     const provider = registry[providerId] as RegistryProvider | undefined;
     if (!provider?.models) return false;
 
-    const shortId = modelId.startsWith(`${providerId}/`)
-      ? modelId.slice(providerId.length + 1)
-      : modelId;
+    const shortId = stripModelPrefix(providerId, modelId);
     const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
     if (!model) return false;
 

@@ -1,5 +1,6 @@
 import { createGroq } from "@ai-sdk/groq";
 import type { LanguageModel } from "ai";
+import { stripModelPrefix } from "./model-id.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
 /** Reuse TCP connections to Groq — avoids ~100–300ms TLS handshake per dictation. */
@@ -11,17 +12,13 @@ let cachedChatModel: LanguageModel | null = null;
 let cachedModelId: string | null = null;
 let prewarmPromise: Promise<void> | null = null;
 
-export function normalizeGroqModelId(modelId: string): string {
-  return modelId.startsWith("groq/") ? modelId.slice("groq/".length) : modelId;
-}
-
 export function getGroqChatModel(modelId: string): LanguageModel {
   const apiKey = getApiKeyForProvider("groq");
   if (!apiKey) {
     throw new Error("No API key configured for provider: groq");
   }
 
-  const shortId = normalizeGroqModelId(modelId);
+  const shortId = stripModelPrefix("groq", modelId);
 
   if (
     cachedChatModel &&

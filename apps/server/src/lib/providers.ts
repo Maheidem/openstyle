@@ -3,6 +3,7 @@ import { getDb } from "./db.js";
 import type { LlmTaskContext } from "./llm/registry.js";
 import { getLlmProvider, isLocalProvider } from "./llm/registry.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
+import { stripModelPrefix } from "./model-id.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
 const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
@@ -16,13 +17,9 @@ const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
 ]);
 
 function getChatModelId(providerId: string, modelId: string): string {
-  if (
-    PROVIDER_PREFIXED_CHAT_MODELS.has(providerId) &&
-    modelId.startsWith(`${providerId}/`)
-  ) {
-    return modelId.slice(providerId.length + 1);
-  }
-  return modelId;
+  return PROVIDER_PREFIXED_CHAT_MODELS.has(providerId)
+    ? stripModelPrefix(providerId, modelId)
+    : modelId;
 }
 
 interface DefaultModels {
