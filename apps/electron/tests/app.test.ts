@@ -19,7 +19,6 @@ import {
 
 let app: ElectronApplication | undefined;
 let dashboardPage: Page;
-let serverPort: number;
 
 const DEFAULT_PORT = 4649;
 
@@ -56,21 +55,6 @@ test.beforeAll(async () => {
       // Embedded server keeps connections open; networkidle may never fire.
       await dashboardPage.waitForLoadState("load", { timeout: 10_000 });
     }
-
-    // Resolve the actual server port by probing the default port from the
-    // main process. The server starts on DEFAULT_PORT and only falls back
-    // to a random port when DEFAULT_PORT is already in use.
-    const portResult = await app.evaluate(async (_electron, port) => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (res.ok) return port;
-      } catch {
-        // port not available
-      }
-      return 0;
-    }, DEFAULT_PORT);
-
-    serverPort = portResult || DEFAULT_PORT;
   } catch (error) {
     console.error("Failed to launch Electron app:", error);
     if (app) {
@@ -128,7 +112,7 @@ test("embedded server is running", async () => {
   const health = await app.evaluate(async (_electron, port) => {
     const res = await fetch(`http://127.0.0.1:${port}/api/health`);
     return res.json() as Promise<{ status: string; name: string }>;
-  }, serverPort);
+  }, DEFAULT_PORT);
   expect(health).toEqual({ status: "ok", name: "openstyle" });
 });
 
@@ -139,12 +123,12 @@ test("settings API works via embedded server", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: "hello" }),
     });
-  }, serverPort);
+  }, DEFAULT_PORT);
 
   const result = await app.evaluate(async (_electron, port) => {
     const res = await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`);
     return res.json() as Promise<{ key: string; value: string }>;
-  }, serverPort);
+  }, DEFAULT_PORT);
   expect(result).toEqual({ key: "e2e_test", value: "hello" });
 });
 

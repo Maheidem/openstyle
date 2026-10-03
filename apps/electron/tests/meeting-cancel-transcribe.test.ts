@@ -57,7 +57,6 @@ const SAMPLE_RATE = 16_000;
 
 let app: ElectronApplication | undefined;
 let dashboardPage: Page;
-let serverPort: number;
 let userDataDir: string;
 
 /** Parks every request until released; then answers exactly one pending
@@ -122,7 +121,7 @@ async function stopHoldServer(): Promise<void> {
 }
 
 function apiBase(): string {
-  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${serverPort}`;
+  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${DEFAULT_PORT}`;
 }
 
 function apiHeaders(): Record<string, string> {
@@ -232,17 +231,6 @@ test.beforeAll(async () => {
     } catch {
       await dashboardPage.waitForLoadState("load", { timeout: 10_000 });
     }
-
-    const portResult = await app.evaluate(async (_electron, port) => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (res.ok) return port;
-      } catch {
-        // port not available
-      }
-      return 0;
-    }, DEFAULT_PORT);
-    serverPort = portResult || DEFAULT_PORT;
 
     // Wait out main's one-shot boot orphan sweep (setTimeout(3000) after
     // server-up): the import below can otherwise start its transcribe job
