@@ -1,7 +1,7 @@
 import { Kbd } from "@renderer/components/ui/kbd";
 import { cn } from "@renderer/lib/utils";
 
-function KeyBadge({
+export function KeyBadge({
   label,
   variant = "default",
 }: {
