@@ -21,7 +21,6 @@ import {
   buildFfmpegArgs,
   type DecodeDeps,
   decodeFileToWav16kMono,
-  needsDecode,
   needsDecodeFile,
 } from "../src/lib/audio/decode.js";
 import { parseWavHeader, wavHeader } from "../src/lib/audio/wav.js";
@@ -180,12 +179,23 @@ function readAll(path: string): Buffer {
 }
 
 // ---------------------------------------------------------------------------
-// needsDecode / needsDecodeFile
+// needsDecodeFile
 // ---------------------------------------------------------------------------
 
-describe("needsDecode", () => {
+describe("needsDecodeFile", () => {
+  /** Write `bytes` to a temp file and return the verdict for it. */
+  function verdictFor(bytes: Uint8Array): boolean {
+    const { input, cleanup } = freshPaths();
+    try {
+      writeFileSync(input, bytes);
+      return needsDecodeFile(input);
+    } finally {
+      cleanup();
+    }
+  }
+
   it("is false for a canonical 16 kHz mono PCM16 WAV", () => {
-    expect(needsDecode(buildWav())).toBe(false);
+    expect(verdictFor(buildWav())).toBe(false);
   });
 
   it.each([
@@ -220,36 +230,13 @@ describe("needsDecode", () => {
     ["truncated header", buildWav().subarray(0, 30)],
     ["empty", new Uint8Array(0)],
   ])("is true for %s", (_name, bytes) => {
-    expect(needsDecode(bytes)).toBe(true);
+    expect(verdictFor(bytes)).toBe(true);
   });
-});
 
-describe("needsDecodeFile", () => {
-  it("agrees with needsDecode on the same bytes", async () => {
-    const { dir, input, cleanup } = freshPaths();
+  it("is true for a missing file", () => {
+    const { dir, cleanup } = freshPaths();
     try {
-      const cases = [
-        buildWav(),
-        buildWav({ listChunk: true }),
-        buildWav({ streamSizes: true }),
-        buildWav({ sampleRate: 44_100, channels: 2 }),
-        Buffer.concat([Buffer.from("ID3\x04"), Buffer.alloc(64)]),
-      ];
-      for (const bytes of cases) {
-        writeFileSync(input, bytes);
-        expect(needsDecodeFile(input)).toBe(needsDecode(bytes));
-      }
       expect(needsDecodeFile(join(dir, "missing-file"))).toBe(true);
-    } finally {
-      cleanup();
-    }
-  });
-
-  it("is true for trailing garbage after an otherwise-canonical WAV", () => {
-    const { input, cleanup } = freshPaths();
-    try {
-      writeFileSync(input, Buffer.concat([buildWav(), Buffer.alloc(7)]));
-      expect(needsDecodeFile(input)).toBe(true);
     } finally {
       cleanup();
     }

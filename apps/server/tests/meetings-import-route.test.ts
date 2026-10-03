@@ -53,7 +53,7 @@ const SAMPLE_RATE = 16000;
 
 /** Canonical 44-byte-header 16 kHz mono PCM16 WAV of `samples` samples
  * (silence — the route never transcribes, so content is irrelevant; only
- * `needsDecode` must see the canonical shape). */
+ * `needsDecodeFile` must see the canonical shape). */
 function buildWav(samples = 16000): Buffer {
   const data = Buffer.alloc(samples * 2);
   const h = Buffer.alloc(44);
