@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_KEYS } from "../../electron/src/shared/settings-keys.js";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 
 vi.mock("../src/lib/streaming/registry.js", () => ({
   getProvider: () => ({
@@ -56,9 +56,7 @@ describe("history pause transcribe integration", () => {
     const db = getDb();
     db.exec("DELETE FROM transcription_history");
     db.exec("DELETE FROM model_configs");
-    db.prepare("DELETE FROM settings WHERE key = ?").run(
-      SETTINGS_KEYS.historyPaused,
-    );
+    deleteSetting(SETTINGS_KEYS.historyPaused);
     db.prepare(
       `INSERT INTO model_configs
          (provider, model_id, model_name, type, is_default)
@@ -67,9 +65,7 @@ describe("history pause transcribe integration", () => {
   });
 
   it("does not save raw transcribe history while paused", async () => {
-    getDb()
-      .prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
-      .run(SETTINGS_KEYS.historyPaused, "true");
+    writeSetting(SETTINGS_KEYS.historyPaused, "true");
 
     const res = await transcribe(true);
 
@@ -78,9 +74,7 @@ describe("history pause transcribe integration", () => {
   });
 
   it("does not save processed transcribe history while paused", async () => {
-    getDb()
-      .prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
-      .run(SETTINGS_KEYS.historyPaused, "true");
+    writeSetting(SETTINGS_KEYS.historyPaused, "true");
 
     const res = await transcribe(false);
 
