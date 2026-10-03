@@ -23,6 +23,7 @@ import {
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
+import { putSetting } from "@renderer/lib/settings";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
@@ -185,31 +186,6 @@ const OMLX_CONFIG: EndpointConnectConfig = {
   clearUrlWhenEmpty: true,
   probe: (client, body) => client.api.settings.omlx.test.$post({ json: body }),
 };
-
-/**
- * One low-level settings PUT, resolved to a boolean (never rejected).
- * The preset/assignment write path in `useModels` needs to know whether the
- * server took the blob — the shape it replaced fired from inside a state
- * updater and only `console.error`'d on failure, which is how a refused write
- * came to look like a saved one. `PUT /api/settings/:key` is the ONLY write
- * surface used here: the DELETE route drops the whole key (§4.3).
- */
-async function putSettingValue(key: string, value: string): Promise<boolean> {
-  try {
-    const res = await getClient().api.settings[":key"].$put({
-      param: { key },
-      json: { value },
-    });
-    if (!res.ok) {
-      console.warn(`Failed to save setting "${key}": HTTP ${res.status}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn(`Failed to save setting "${key}":`, err);
-    return false;
-  }
-}
 
 export function useModels(): UseModels {
   const queryClient = useQueryClient();
@@ -672,11 +648,7 @@ export function useModels(): UseModels {
 
   const setCleanup = useCallback((next: boolean) => {
     setLlmCleanup(next);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.llmCleanup },
-        json: { value: String(next) },
-      })
+    putSetting(SETTINGS_KEYS.llmCleanup, String(next))
       .then(() => {
         // Toggling cleanup changes whether the pill needs the frontmost app for
         // routing — notify it to refresh its cached decision.
@@ -690,11 +662,7 @@ export function useModels(): UseModels {
   const saveMlxKeepAliveMinutes = useCallback((minutes: number) => {
     const next = clampMlxKeepAliveMinutes(minutes);
     setMlxKeepAliveMinutes(next);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.mlxAsrKeepAliveMinutes },
-        json: { value: String(next) },
-      })
+    putSetting(SETTINGS_KEYS.mlxAsrKeepAliveMinutes, String(next))
       .then(() => {
         if (next !== 0) return;
         return getClient().api["mlx-asr"].server.stop.$post();
@@ -710,7 +678,7 @@ export function useModels(): UseModels {
     (next: LlmTaskAssignments): Promise<boolean> => {
       const prev = assignmentsRef.current;
       setTaskAssignments(next);
-      return putSettingValue(
+      return putSetting(
         SETTINGS_KEYS.llmTaskAssignments,
         JSON.stringify(next),
       ).then((ok) => {
@@ -767,7 +735,7 @@ export function useModels(): UseModels {
       // Client mirror of the route's §4.3 rules (id/name/count/params-bytes)
       // so a refused write shows an inline message instead of a bare 400.
       if (checkPresetWrite(next)) return false;
-      const ok = await putSettingValue(
+      const ok = await putSetting(
         SETTINGS_KEYS.llmParameterPresets,
         JSON.stringify({ presets: next }),
       );

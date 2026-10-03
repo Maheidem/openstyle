@@ -44,6 +44,7 @@ import { Textarea } from "@renderer/components/ui/textarea";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
+import { putSetting } from "@renderer/lib/settings";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -231,12 +232,8 @@ export default function TonePage(): React.JSX.Element {
   const saveSetting = useCallback(async (key: string, value: string) => {
     // The Hono client does not throw on non-2xx — surface server rejections so
     // callers' .catch handlers fire (and "Saved" state isn't shown on failure).
-    const res = await getClient().api.settings[":key"].$put({
-      param: { key },
-      json: { value },
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to save setting "${key}" (${res.status})`);
+    if (!(await putSetting(key, value))) {
+      throw new Error(`Failed to save setting "${key}"`);
     }
     // Let the pill refresh its cached "needs frontmost app for routing" decision
     // when a cleanup-relevant setting changes, so it doesn't re-fetch settings

@@ -60,6 +60,7 @@ import {
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
+import { putSetting } from "@renderer/lib/settings";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
@@ -856,11 +857,7 @@ function SummaryInstructionsPopover(): React.JSX.Element {
     if (draft === null) return;
     setSaving(true);
     try {
-      const res = await getClient().api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.meetingSummaryInstructions },
-        json: { value: draft },
-      });
-      if (res.ok) {
+      if (await putSetting(SETTINGS_KEYS.meetingSummaryInstructions, draft)) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
         setDraft(null);
       }

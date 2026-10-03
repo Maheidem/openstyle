@@ -29,6 +29,7 @@ import {
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
+import { putSetting } from "@renderer/lib/settings";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -120,23 +121,14 @@ export default function OnboardingPage(): React.JSX.Element {
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkey },
-        json: { value: accelerator },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.hotkey, accelerator);
   }, []);
 
   // Like Settings: main re-reads the remix accelerator from settings, so the
   // listener reload has to wait for the write to land.
   const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
     setRemixHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.remixHotkey },
-        json: { value: accelerator },
-      })
+    putSetting(SETTINGS_KEYS.remixHotkey, accelerator)
       .then(() => window.api?.reloadRemixHotkey())
       .catch(() => {});
   }, []);
@@ -327,12 +319,7 @@ export default function OnboardingPage(): React.JSX.Element {
 
   // Persist the language list (the transcribe path reads it per request).
   const persistLanguages = useCallback((next: string[]) => {
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.languages },
-        json: { value: JSON.stringify(next) },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.languages, JSON.stringify(next));
   }, []);
 
   const toggleLanguage = useCallback(
