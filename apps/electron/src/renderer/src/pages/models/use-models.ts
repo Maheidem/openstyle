@@ -66,6 +66,24 @@ const EMPTY_AVAILABLE: AvailableModel[] = [];
 const EMPTY_CONFIGURED: ConfiguredModel[] = [];
 const EMPTY_KEYS: ApiKeyEntry[] = [];
 
+/** Saves a model as the default for its type. */
+function postDefaultModel(
+  provider: string,
+  modelId: string,
+  modelName: string,
+  type: "voice" | "llm",
+) {
+  return getClient().api.models.configured.$post({
+    json: {
+      provider,
+      model_id: modelId,
+      model_name: modelName,
+      type,
+      is_default: true,
+    },
+  });
+}
+
 export interface UseModels {
   loading: boolean;
   available: AvailableModel[];
@@ -427,15 +445,12 @@ export function useModels(): UseModels {
 
   const configureModel = useCallback(
     async (model: AvailableModel, type: "voice" | "llm") => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: model.provider_id,
-          model_id: model.model_id,
-          model_name: model.model_name,
-          type,
-          is_default: true,
-        },
-      });
+      await postDefaultModel(
+        model.provider_id,
+        model.model_id,
+        model.model_name,
+        type,
+      );
       await loadData();
     },
     [loadData],
@@ -472,15 +487,7 @@ export function useModels(): UseModels {
   const selectLocalVoice = useCallback(
     async (defId: string, name: string, engine?: "whisper" | "mlx") => {
       const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
-      await getClient().api.models.configured.$post({
-        json: {
-          provider,
-          model_id: `${provider}/${defId}`,
-          model_name: name,
-          type: "voice",
-          is_default: true,
-        },
-      });
+      await postDefaultModel(provider, `${provider}/${defId}`, name, "voice");
       if (engine === "mlx") {
         getClient()
           .api["mlx-asr"].server.start.$post({ json: { modelId: defId } })
@@ -579,15 +586,12 @@ export function useModels(): UseModels {
 
   const selectLocalLlmModel = useCallback(
     async (modelName: string) => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: "local-llm",
-          model_id: `local-llm/${modelName}`,
-          model_name: modelName,
-          type: "llm",
-          is_default: true,
-        },
-      });
+      await postDefaultModel(
+        "local-llm",
+        `local-llm/${modelName}`,
+        modelName,
+        "llm",
+      );
       await loadData();
     },
     [loadData],
@@ -595,15 +599,7 @@ export function useModels(): UseModels {
 
   const selectOmlxModel = useCallback(
     async (modelName: string) => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: "omlx",
-          model_id: `omlx/${modelName}`,
-          model_name: modelName,
-          type: "voice",
-          is_default: true,
-        },
-      });
+      await postDefaultModel("omlx", `omlx/${modelName}`, modelName, "voice");
       await loadData();
     },
     [loadData],
