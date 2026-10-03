@@ -20,7 +20,11 @@ import { describe, expect, it } from "vitest";
 //   2. every `webContents.send("<channel>")` (or WebContents-shaped
 //      `.send(...)`) anywhere in src/main has a preload subscription
 //      forwarding it. This is the class of drift the mic-listener removal
-//      exercised.
+//      exercised;
+//   3. every `ipcRenderer.invoke("<channel>")` and `ipcRenderer.send(...)`
+//      in the preload has an `ipcMain.handle`, `ipcMain.on` or
+//      `ipcMain.once` handler in src/main. A missing handler fails only at
+//      runtime, with "No handler registered".
 //
 // This is a vitest file that lives beside the Playwright e2e suites but must
 // not run under Playwright (no Electron launch); playwright.config.ts ignores
@@ -143,6 +147,32 @@ function mainSendChannels(): Map<string, string[]> {
   return sends;
 }
 
+/**
+ * String-literal first arguments of `<receiver>.<method>(...)` calls in one
+ * file, for the given method names.
+ */
+function receiverChannels(
+  source: ts.SourceFile,
+  receiver: string,
+  methods: ReadonlySet<string>,
+): string[] {
+  const channels: string[] = [];
+  (function walk(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node) &&
+      node.arguments.length > 0 &&
+      ts.isStringLiteralLike(node.arguments[0]) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      methods.has(node.expression.name.text) &&
+      node.expression.expression.getText(source) === receiver
+    ) {
+      channels.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, walk);
+  })(source);
+  return channels;
+}
+
 describe("preload channel drift guard", () => {
   const subscriptions = preloadSubscriptions();
   const subscribedChannels = new Set(subscriptions.flatMap((s) => s.channels));
@@ -162,6 +192,31 @@ describe("preload channel drift guard", () => {
     expect(
       orphaned,
       "channels sent from src/main that no preload api member forwards to the renderer",
+    ).toEqual([]);
+  });
+
+  it("every preload invoke/send channel has an ipcMain handler in src/main", () => {
+    // Add a channel here, with a justification, if main handles it outside src/main.
+    const IGNORED_PRELOAD_CHANNELS: ReadonlySet<string> = new Set([]);
+    const handled = new Set<string>();
+    const mainFiles = readdirSync(MAIN_DIR, { recursive: true }) as string[];
+    for (const file of mainFiles.filter((f) => f.endsWith(".ts"))) {
+      for (const channel of receiverChannels(
+        parse(join(MAIN_DIR, file)),
+        "ipcMain",
+        new Set(["handle", "on", "once"]),
+      )) {
+        handled.add(channel);
+      }
+    }
+    const missing = receiverChannels(
+      parse(PRELOAD_TS),
+      "ipcRenderer",
+      new Set(["invoke", "send"]),
+    ).filter((c) => !handled.has(c) && !IGNORED_PRELOAD_CHANNELS.has(c));
+    expect(
+      [...new Set(missing)],
+      "preload invoke/send channels that no ipcMain handler in src/main handles",
     ).toEqual([]);
   });
 });
