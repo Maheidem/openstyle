@@ -173,17 +173,20 @@ test.beforeAll(async () => {
   // real instance, and touch its DB. Mirrors
   // tests/meeting-cancel-transcribe.test.ts.
   if (!EXTERNAL_SERVER_URL) {
+    let foreign = false;
     try {
       const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
         signal: AbortSignal.timeout(1_500),
       });
-      test.skip(
-        res.ok,
-        `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
-      );
+      foreign = res.ok;
     } catch {
       // nothing listening — clean environment, proceed with the embedded server
     }
+    // Call the skip outside the try: the bare catch would swallow its throw.
+    test.skip(
+      foreign,
+      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
+    );
   }
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-import-"));
