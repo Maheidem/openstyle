@@ -13,15 +13,17 @@ import { getClient } from "@renderer/lib/api";
 import {
   type AvailableModel,
   buildVoiceItems,
+  hasActiveDownload,
   type MlxAsrStatus,
   type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
-import { IS_MAC } from "@renderer/lib/platform";
 import {
   availableModelsQueryOptions,
+  mlxStatusQueryOptions,
   queryKeys,
   settingsQueryOptions,
+  whisperStatusQueryOptions,
 } from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -63,15 +65,6 @@ const MODELS_KEYS = {
 const EMPTY_AVAILABLE: AvailableModel[] = [];
 const EMPTY_CONFIGURED: ConfiguredModel[] = [];
 const EMPTY_KEYS: ApiKeyEntry[] = [];
-
-/** True while any local model is downloading or verifying. */
-function hasActiveDownload(
-  models: { status: string }[] | undefined | null,
-): boolean {
-  return !!models?.some(
-    (m) => m.status === "downloading" || m.status === "verifying",
-  );
-}
 
 export interface UseModels {
   loading: boolean;
@@ -216,38 +209,8 @@ export function useModels(): UseModels {
 
   const settingsQuery = useQuery(settingsQueryOptions());
 
-  const whisperQuery = useQuery({
-    queryKey: MODELS_KEYS.whisper,
-    queryFn: async () => {
-      const res = await getClient().api.whisper.status.$get();
-      if (!res.ok) throw new Error("Failed to load whisper status");
-      return (await res.json()) as WhisperStatus;
-    },
-    // Poll every 500ms while a download/verify is active, then stop.
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d && (d.binaryDownloading || hasActiveDownload(d.models))
-        ? 500
-        : false;
-    },
-    // Status is volatile during downloads — always treat as stale.
-    staleTime: 0,
-  });
-
-  const mlxQuery = useQuery({
-    queryKey: MODELS_KEYS.mlx,
-    enabled: IS_MAC,
-    queryFn: async () => {
-      const res = await getClient().api["mlx-asr"].status.$get();
-      if (!res.ok) throw new Error("Failed to load MLX ASR status");
-      return (await res.json()) as MlxAsrStatus;
-    },
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d && hasActiveDownload(d.models) ? 500 : false;
-    },
-    staleTime: 0,
-  });
+  const whisperQuery = useQuery(whisperStatusQueryOptions());
+  const mlxQuery = useQuery(mlxStatusQueryOptions());
 
   const available = availableQuery.data ?? EMPTY_AVAILABLE;
   const configured = configuredQuery.data ?? EMPTY_CONFIGURED;
