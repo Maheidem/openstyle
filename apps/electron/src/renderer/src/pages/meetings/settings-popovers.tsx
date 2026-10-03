@@ -117,7 +117,7 @@ export function DiarizationSettingsPopover(): React.JSX.Element {
     useCallback(async (): Promise<DiarizationStatusResponse | null> => {
       const res = await getClient().api.meetings.diarization.status.$get();
       if (!res.ok) return null;
-      const body = (await res.json()) as DiarizationStatusResponse;
+      const body = await res.json();
       setState(body);
       return body;
     }, []);

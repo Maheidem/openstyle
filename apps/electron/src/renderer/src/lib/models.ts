@@ -1,18 +1,9 @@
-export interface AvailableModel {
-  provider_id: string;
-  provider_name: string;
-  model_id: string;
-  model_name: string;
-  family?: string;
-  type: "voice" | "llm";
-  /** Surfaced in the default picker; non-curated models live behind "All models". */
-  curated?: boolean;
-  /**
-   * Display name of the LLM gateway fronting this model (e.g. "OpenRouter"),
-   * shown as a small badge in the picker. Absent for first-party vendors.
-   */
-  gateway?: string;
-}
+import type { ApiClient, ApiRes } from "./api";
+
+/** One entry of GET /api/models/available. */
+export type AvailableModel = ApiRes<
+  ApiClient["api"]["models"]["available"]["$get"]
+>[number];
 
 export interface WhisperModelDef {
   id: string;

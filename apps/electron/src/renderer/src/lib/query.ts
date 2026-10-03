@@ -96,7 +96,7 @@ export function settingsQueryOptions() {
     queryFn: async (): Promise<Record<string, string>> => {
       const res = await getClient().api.settings.$get();
       if (!res.ok) throw new Error("Failed to load settings");
-      return (await res.json()) as Record<string, string>;
+      return await res.json();
     },
   };
 }
@@ -112,7 +112,7 @@ export function availableModelsQueryOptions() {
     queryFn: async (): Promise<AvailableModel[]> => {
       const res = await getClient().api.models.available.$get();
       if (!res.ok) throw new Error("Failed to load available models");
-      return (await res.json()) as AvailableModel[];
+      return await res.json();
     },
   };
 }
@@ -128,7 +128,7 @@ export function whisperStatusQueryOptions() {
     queryFn: async (): Promise<WhisperStatus> => {
       const res = await getClient().api.whisper.status.$get();
       if (!res.ok) throw new Error("Failed to load whisper status");
-      return (await res.json()) as WhisperStatus;
+      return await res.json();
     },
     refetchInterval: (query) => {
       const d = query.state.data;
@@ -148,7 +148,7 @@ export function mlxStatusQueryOptions() {
     queryFn: async (): Promise<MlxAsrStatus> => {
       const res = await getClient().api["mlx-asr"].status.$get();
       if (!res.ok) throw new Error("Failed to load MLX ASR status");
-      return (await res.json()) as MlxAsrStatus;
+      return await res.json();
     },
     refetchInterval: (query) => {
       const d = query.state.data;
@@ -175,7 +175,7 @@ export function configQueryOptions() {
     queryFn: async (): Promise<OpenstyleConfig> => {
       const res = await getClient().api.config.$get();
       if (!res.ok) throw new Error("Failed to load config");
-      return (await res.json()) as OpenstyleConfig;
+      return await res.json();
     },
   };
 }
@@ -192,7 +192,7 @@ export function dismissedNotificationsQueryOptions() {
     queryFn: async (): Promise<string[]> => {
       const res = await getClient().api["dismissed-notifications"].$get();
       if (!res.ok) throw new Error("Failed to load dismissed notifications");
-      return (await res.json()) as string[];
+      return await res.json();
     },
   };
 }
