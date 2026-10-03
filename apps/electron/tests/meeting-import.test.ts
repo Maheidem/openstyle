@@ -44,7 +44,6 @@ const EXTERNAL_SERVER_TOKEN = process.env.OPENSTYLE_E2E_SERVER_TOKEN ?? "";
 
 let app: ElectronApplication | undefined;
 let dashboardPage: Page;
-let serverPort: number;
 let userDataDir: string;
 
 const DEFAULT_PORT = 4649;
@@ -65,7 +64,7 @@ async function listMeetings(): Promise<MeetingListRow[]> {
 }
 
 function apiBase(): string {
-  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${serverPort}`;
+  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${DEFAULT_PORT}`;
 }
 
 function apiHeaders(): Record<string, string> {
@@ -152,22 +151,6 @@ test.beforeAll(async () => {
     } catch {
       await dashboardPage.waitForLoadState("load", { timeout: 10_000 });
     }
-
-    // Same port resolution as import-screen.test.ts: probe the default
-    // loopback port from inside the app, falling back to it unchanged (the
-    // e2e env never races a second instance onto 4649). Unused in external
-    // mode (all API traffic follows the configured serverUrl).
-    const portResult = await app.evaluate(async (_electron, port) => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (res.ok) return port;
-      } catch {
-        // port not available
-      }
-      return 0;
-    }, DEFAULT_PORT);
-
-    serverPort = portResult || DEFAULT_PORT;
   } catch (error) {
     console.error("Failed to launch Electron app:", error);
     if (app) {

@@ -37,13 +37,12 @@ const EXTERNAL_SERVER_TOKEN = process.env.OPENSTYLE_E2E_SERVER_TOKEN ?? "";
 
 let app: ElectronApplication | undefined;
 let dashboardPage: Page;
-let serverPort: number;
 let userDataDir: string;
 
 const DEFAULT_PORT = 4649;
 
 function apiBase(): string {
-  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${serverPort}`;
+  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${DEFAULT_PORT}`;
 }
 
 function apiHeaders(): Record<string, string> {
@@ -173,17 +172,20 @@ test.beforeAll(async () => {
   // real instance, and touch its DB. Mirrors
   // tests/meeting-cancel-transcribe.test.ts.
   if (!EXTERNAL_SERVER_URL) {
+    let foreign = false;
     try {
       const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
         signal: AbortSignal.timeout(1_500),
       });
-      test.skip(
-        res.ok,
-        `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
-      );
+      foreign = res.ok;
     } catch {
       // nothing listening — clean environment, proceed with the embedded server
     }
+    // Call the skip outside the try: the bare catch would swallow its throw.
+    test.skip(
+      foreign,
+      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
+    );
   }
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-import-"));
@@ -215,18 +217,6 @@ test.beforeAll(async () => {
     } catch {
       await dashboardPage.waitForLoadState("load", { timeout: 10_000 });
     }
-
-    const portResult = await app.evaluate(async (_electron, port) => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (res.ok) return port;
-      } catch {
-        // port not available
-      }
-      return 0;
-    }, DEFAULT_PORT);
-
-    serverPort = portResult || DEFAULT_PORT;
 
     // Probe oMLX reachability FIRST, before seeding anything. Seeding
     // omlx_base_url + a default voice model unconditionally (as this used
