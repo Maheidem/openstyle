@@ -29,7 +29,8 @@
  * The lane sits ALONGSIDE `lib/dictation-activity.ts` (it consumes that
  * module and shares its module-level `lastActiveAt` deliberately — spec §6
  * constraint 2) and ALONGSIDE `routes/meetings.ts`'s claim-before-await on
- * `activeJobs`, including the diarize rationale at `meetings.ts:963-973`.
+ * the job registry (`lib/meetings/job-registry.ts`), including the diarize
+ * rationale in `routes/meetings.ts`.
  * Neither is replaced or "simplified" by this file.
  */
 
@@ -72,7 +73,7 @@ export interface AcquireLlmLaneArgs {
   cls: LlmLaneClass;
   taskId: LlmTaskId;
   /** Polled on every queue tick — the existing cancel seam
-   *  (`routes/meetings.ts` `activeJobCancellations`). */
+   *  (`lib/meetings/job-registry.ts` cancel flag). */
   shouldStop?: () => boolean;
   /** Fired when the call actually had to wait, so the job blob can surface
    *  "queued" without inventing a second progress path. */

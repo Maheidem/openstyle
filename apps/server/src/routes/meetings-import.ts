@@ -70,6 +70,7 @@ import {
 } from "../lib/audio/multipart-stream.js";
 import { readWavInfo, wavDurationMs } from "../lib/audio/wav.js";
 import { getDb } from "../lib/db.js";
+import { getMeetingRow } from "../lib/meetings/store.js";
 
 const log = createAppLogger("meetings-import");
 
@@ -294,9 +295,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
         throw err;
       }
 
-      const row = db
-        .prepare("SELECT * FROM meetings WHERE id = ?")
-        .get(id) as Record<string, unknown>;
+      const row = getMeetingRow(id);
       log.info(
         `meeting ${id}: imported ${audio.bytes} -> ${
           statSync(join(audioDir, "system.wav")).size
