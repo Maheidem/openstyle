@@ -20,16 +20,6 @@ interface BenchmarkResult {
   passed: number;
   total: number;
   byLanguage: Record<string, { passed: number; total: number }>;
-  cases: Array<{
-    id: string;
-    language: string;
-    expected: string;
-    actual: string;
-    ok: boolean;
-    latencyMs: number;
-    inputTokens: number;
-    outputTokens: number;
-  }>;
 }
 
 const MODELS = [
@@ -153,9 +143,10 @@ function buildBenchmarkPrompt(
   language: BenchmarkCase["language"],
   variant: PromptVariant,
 ): { system: string; prompt: string } {
-  const base = buildRewritePrompt(input);
-  if (variant === "baseline") return base;
-  return buildRewritePrompt(input, { languages: [language] });
+  return buildRewritePrompt(
+    input,
+    variant === "baseline" ? undefined : { languages: [language] },
+  );
 }
 
 async function runCase(
@@ -182,7 +173,6 @@ async function runCase(
   const actual = sanitizeTranscriptText(result.text);
   return {
     actual,
-    ok: normalizeForCompare(actual) === normalizeForCompare(testCase.expected),
     latencyMs: Date.now() - started,
     inputTokens: result.usage?.inputTokens ?? 0,
     outputTokens: result.usage?.outputTokens ?? 0,
@@ -223,7 +213,6 @@ async function runBenchmarkSuite(
 
   for (const modelId of selectedModels) {
     const byLanguage: BenchmarkResult["byLanguage"] = {};
-    const cases: BenchmarkResult["cases"] = [];
     let passed = 0;
 
     for (const testCase of filteredCases) {
@@ -237,16 +226,6 @@ async function runBenchmarkSuite(
         passed += 1;
         byLanguage[testCase.language].passed += 1;
       }
-      cases.push({
-        id: testCase.id,
-        language: testCase.language,
-        expected: testCase.expected,
-        actual: outcome.actual,
-        ok,
-        latencyMs: outcome.latencyMs,
-        inputTokens: outcome.inputTokens,
-        outputTokens: outcome.outputTokens,
-      });
       console.log(
         `[${variant}/${suite}] ${modelId} :: ${testCase.id} :: ${ok ? "PASS" : "FAIL"} (${outcome.latencyMs}ms, in=${outcome.inputTokens}, out=${outcome.outputTokens})`,
       );
@@ -262,7 +241,6 @@ async function runBenchmarkSuite(
       passed,
       total: filteredCases.length,
       byLanguage,
-      cases,
     });
   }
 
