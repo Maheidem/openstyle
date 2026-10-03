@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import {
   type DetectAllFn,
@@ -18,12 +18,6 @@ import type {
 import { resetMeetingTables } from "./helpers/meetings-db.js";
 
 const SAMPLE_RATE = 16_000;
-const dirs: string[] = [];
-
-afterAll(() => {
-  for (const d of dirs) rmSync(d, { recursive: true, force: true });
-});
-
 /** Minimal 44-byte-header mono s16 WAV of the given duration, silent. */
 function writeWav(path: string, durationMs: number): void {
   const samples = Math.round((durationMs / 1000) * SAMPLE_RATE);
@@ -47,7 +41,7 @@ function writeWav(path: string, durationMs: number): void {
 
 function makeAudioDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "meeting-lang-test-"));
-  dirs.push(dir);
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   writeWav(join(dir, "mic.wav"), 5000);
   writeWav(join(dir, "system.wav"), 5000);
   return dir;

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import {
   type DiarizeDeps,
@@ -12,12 +12,6 @@ import {
   resetMeetingTables,
 } from "./helpers/meetings-db.js";
 
-const dirs: string[] = [];
-
-afterAll(() => {
-  for (const d of dirs) rmSync(d, { recursive: true, force: true });
-});
-
 afterEach(() => {
   resetMeetingTables();
 });
@@ -26,7 +20,7 @@ afterEach(() => {
  * parsed by these tests since execFile is faked. */
 function makeMeetingAudioDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "meeting-diarize-test-"));
-  dirs.push(dir);
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "system.wav"), Buffer.alloc(44));
   return dir;
 }

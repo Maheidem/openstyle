@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
   type ChunkResult,
   MeetingTranscriber,
@@ -24,12 +24,6 @@ import type {
 import { WHISPER_PROVIDER_ID } from "../src/lib/whisper/constants.js";
 
 const SAMPLE_RATE = 16_000;
-const dirs: string[] = [];
-
-afterAll(() => {
-  for (const d of dirs) rmSync(d, { recursive: true, force: true });
-});
-
 /** Write a canonical 44-byte-header mono s16 WAV whose sample values ramp. */
 function writeWav(path: string, durationMs: number, extraChunk = false): void {
   const samples = Math.round((durationMs / 1000) * SAMPLE_RATE);
@@ -73,7 +67,7 @@ function writeWav(path: string, durationMs: number, extraChunk = false): void {
 
 function makeMeetingDir(durations: { mic: number; system: number }): string {
   const dir = mkdtempSync(join(tmpdir(), "meeting-test-"));
-  dirs.push(dir);
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   writeWav(join(dir, "mic.wav"), durations.mic);
   writeWav(join(dir, "system.wav"), durations.system);
   return dir;
@@ -216,7 +210,7 @@ describe("MeetingTranscriber", () => {
 
   it("parses a WAV with an extra chunk before data", () => {
     const dir = mkdtempSync(join(tmpdir(), "meeting-test-"));
-    dirs.push(dir);
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     const path = join(dir, "extra.wav");
     writeWav(path, 100, true);
     const fd = openSync(path, "r");

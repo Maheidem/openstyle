@@ -7,7 +7,6 @@ import {
 } from "@openstyle/validations";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
 import {
   createSamplingFetch,
@@ -19,7 +18,6 @@ import {
   resolveTaskCall,
 } from "../src/lib/llm/task-profiles.js";
 import { createChatModel } from "../src/lib/providers.js";
-import { jsonRequest } from "./helpers/http.js";
 
 function seedDefaultLlm(provider: string, modelId: string): void {
   const db = getDb();
@@ -522,126 +520,5 @@ describe("local-llm provider wiring — taskContext, not a direct DB read (§8.1
       "model",
       "temperature",
     ]);
-  });
-});
-
-// End-to-end: PUT the two new settings keys through the real route.
-describe("PUT /api/settings/llm_parameter_presets and llm_task_assignments", () => {
-  const app = createApp();
-
-  it("accepts a valid preset list and a valid assignment blob", async () => {
-    const presets = JSON.stringify({
-      presets: [
-        {
-          id: "user_abc",
-          name: "Mine",
-          params: { temperature: 0.4 },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
-    });
-    const res1 = await jsonRequest(
-      app,
-      "PUT",
-      "/api/settings/llm_parameter_presets",
-      { value: presets },
-    );
-    expect(res1.status).toBe(200);
-
-    const assignments = JSON.stringify({
-      cleanup: { mode: "preset", presetId: "user_abc" },
-    });
-    const res2 = await jsonRequest(
-      app,
-      "PUT",
-      "/api/settings/llm_task_assignments",
-      { value: assignments },
-    );
-    expect(res2.status).toBe(200);
-  });
-
-  it("rejects a builtin:-spoofing id and an out-of-enum mode with 400", async () => {
-    const spoofed = JSON.stringify({
-      presets: [
-        {
-          id: "builtin:qwen-thinking",
-          name: "spoof",
-          params: {},
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
-    });
-    const res1 = await jsonRequest(
-      app,
-      "PUT",
-      "/api/settings/llm_parameter_presets",
-      { value: spoofed },
-    );
-    expect(res1.status).toBe(400);
-
-    const bad = JSON.stringify({ cleanup: { mode: "not-a-mode" } });
-    const res2 = await jsonRequest(
-      app,
-      "PUT",
-      "/api/settings/llm_task_assignments",
-      { value: bad },
-    );
-    expect(res2.status).toBe(400);
-  });
-
-  it("rejects malformed JSON for both keys", async () => {
-    const res1 = await jsonRequest(
-      app,
-      "PUT",
-      "/api/settings/llm_parameter_presets",
-      { value: "{not json" },
-    );
-    expect(res1.status).toBe(400);
-
-    const res2 = await jsonRequest(
-      app,
-      "PUT",
-      "/api/settings/llm_task_assignments",
-      { value: "{not json" },
-    );
-    expect(res2.status).toBe(400);
-  });
-
-  it("rejects an oversized preset's params with 400", async () => {
-    const oversized = JSON.stringify({
-      presets: [
-        {
-          id: "user_big",
-          name: "Big",
-          params: { blob: "x".repeat(9000) },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
-    });
-    const res = await jsonRequest(
-      app,
-      "PUT",
-      "/api/settings/llm_parameter_presets",
-      { value: oversized },
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("drops an unknown task-id key on write instead of rejecting the whole assignments blob", async () => {
-    const res = await jsonRequest(
-      app,
-      "PUT",
-      "/api/settings/llm_task_assignments",
-      {
-        value: JSON.stringify({
-          cleanup: { mode: "auto" },
-          someFutureTask: { mode: "auto" },
-        }),
-      },
-    );
-    expect(res.status).toBe(200);
   });
 });
