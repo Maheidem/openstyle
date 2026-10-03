@@ -111,13 +111,9 @@ test("app version is defined", async () => {
   expect(version).toMatch(/^\d+\.\d+/);
 });
 
-test("dashboard window loads a valid route", async () => {
-  const url = dashboardPage.url();
-  const isValidRoute =
-    url.includes("/today") ||
-    url.includes("/onboarding") ||
-    url.includes("index.html");
-  expect(isValidRoute).toBe(true);
+test("dashboard window loads the onboarding route", async () => {
+  // A fresh profile has no settings.json, so onboarding is active.
+  expect(dashboardPage.url()).toContain("/onboarding");
 });
 
 test("dashboard window has a reasonable viewport", async () => {
@@ -154,43 +150,13 @@ test("settings API works via embedded server", async () => {
 
 test("dashboard renders content", async () => {
   const body = dashboardPage.locator("body");
-
-  if (dashboardPage.url().includes("/onboarding")) {
-    await body.waitFor({ state: "visible" });
-    expect((await body.innerText()).length).toBeGreaterThan(0);
-    return;
-  }
-
-  await dashboardPage.waitForSelector("main, nav", { timeout: 10_000 });
-
   await body.waitFor({ state: "visible" });
-  const bodyText = await body.innerText();
-  expect(bodyText.length).toBeGreaterThan(0);
-});
-
-test("sidebar navigation is rendered", async () => {
-  const url = dashboardPage.url();
-  if (url.includes("/onboarding")) {
-    // On onboarding page, there's no sidebar but there is content
-    const body = await dashboardPage.locator("body").innerText();
-    expect(body.length).toBeGreaterThan(0);
-    return;
-  }
-
-  await dashboardPage.waitForSelector("nav", { timeout: 10_000 });
-  // The exact link count varies by state (advanced mode reveals Models) —
-  // assert the core set.
-  const navLinks = await dashboardPage.locator("nav a").all();
-  expect(navLinks.length).toBeGreaterThanOrEqual(6);
+  expect((await body.innerText()).length).toBeGreaterThan(0);
 });
 
 // Runs LAST among the dashboard tests: completing onboarding changes the
 // window's route, which the earlier tests must not inherit.
 test("onboarding flow reaches the draft and remix steps and completes", async () => {
-  test.skip(
-    !dashboardPage.url().includes("/onboarding"),
-    "onboarding is not active in this run",
-  );
   const page = dashboardPage;
 
   // Permissions step, now first — E2E bypasses the OS grants.
