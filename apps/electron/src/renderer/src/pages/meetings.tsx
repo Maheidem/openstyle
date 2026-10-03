@@ -1790,15 +1790,29 @@ function MeetingDetailView({
         </Button>
       </div>
 
-      {transcribing && (
+      {/* One card for both background jobs. Transcribe and Summarize use the
+          same contract (202 + poll, §5.6), so they get the same face. The
+          coral spinner is the only sanctioned live accent. The queued slot
+          says *why* nothing is moving yet (the LLM lane is busy, §5.5). */}
+      {(transcribing || summarizing) && (
         <Card className="mb-5 p-4">
           <div className="flex items-center gap-3">
             <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
             <div className="flex-1">
               <div className="text-foreground text-[12.5px]">
-                {cancelRequested
-                  ? t("meetings.cancellingTranscription")
-                  : t("meetings.transcribing")}
+                {transcribing
+                  ? cancelRequested
+                    ? t("meetings.cancellingTranscription")
+                    : t("meetings.transcribing")
+                  : cancelRequested
+                    ? t("meetings.cancellingSummarize")
+                    : summarizeQueued && summarizeQueueAhead > 0
+                      ? t("meetings.summarizeQueuedAhead", {
+                          n: summarizeQueueAhead,
+                        })
+                      : summarizeQueued
+                        ? t("meetings.summarizeQueued")
+                        : t("meetings.summarizing")}
               </div>
               {meeting.job && meeting.job.total > 0 && (
                 <Progress
@@ -1817,61 +1831,24 @@ function MeetingDetailView({
                 attribute of this run. Ghost: it must not compete with the
                 primary actions. Disabled (not hidden) while the acknowledged
                 cancel winds down: in-flight chunks (≤2, or 1 for
-                whisper-local) still finish and persist. */}
+                whisper-local) still finish and persist. Summarize cancel is
+                the existing cancellable-job seam (§5.7). */}
             <Button
               variant="ghost"
               size="sm"
-              data-testid="meetings-cancel-transcribe"
-              onClick={() => void cancelTranscribe()}
+              data-testid={
+                transcribing
+                  ? "meetings-cancel-transcribe"
+                  : "meetings-cancel-summarize"
+              }
+              onClick={() =>
+                void (transcribing ? cancelTranscribe() : cancelSummarize())
+              }
               disabled={cancelRequested}
             >
-              {t("meetings.cancelTranscription")}
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* Async Summarize (§5.6): same card treatment as the transcribe job —
-          it is the same contract (202 + poll), so it gets the same face. The
-          coral spinner is the only sanctioned live accent, the queued slot says
-          *why* nothing is moving yet (the LLM lane is busy, §5.5), and cancel
-          is the existing cancellable-job seam (§5.7). */}
-      {summarizing && (
-        <Card className="mb-5 p-4">
-          <div className="flex items-center gap-3">
-            <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
-            <div className="flex-1">
-              <div className="text-foreground text-[12.5px]">
-                {cancelRequested
-                  ? t("meetings.cancellingSummarize")
-                  : summarizeQueued && summarizeQueueAhead > 0
-                    ? t("meetings.summarizeQueuedAhead", {
-                        n: summarizeQueueAhead,
-                      })
-                    : summarizeQueued
-                      ? t("meetings.summarizeQueued")
-                      : t("meetings.summarizing")}
-              </div>
-              {meeting.job && meeting.job.total > 0 && (
-                <Progress
-                  value={(meeting.job.done / meeting.job.total) * 100}
-                  className="mt-2 h-1"
-                />
-              )}
-            </div>
-            {meeting.job && meeting.job.total > 0 && (
-              <span className="mono text-muted-foreground text-[10px] tabular-nums">
-                {meeting.job.done}/{meeting.job.total}
-              </span>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="meetings-cancel-summarize"
-              onClick={() => void cancelSummarize()}
-              disabled={cancelRequested}
-            >
-              {t("meetings.cancelSummarize")}
+              {transcribing
+                ? t("meetings.cancelTranscription")
+                : t("meetings.cancelSummarize")}
             </Button>
           </div>
         </Card>
