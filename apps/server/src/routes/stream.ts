@@ -1,6 +1,7 @@
 import { upgradeWebSocket } from "@hono/node-server";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { Hono } from "hono";
+import { getApiKey } from "../lib/api-keys.js";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import {
@@ -14,16 +15,17 @@ import {
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
 import { getDefaultModels } from "../lib/providers.js";
-import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
-import { stripProviderPrefix } from "../lib/streaming/types.js";
+import { voiceProviderCategory } from "../lib/streaming/local-providers.js";
 import {
-  getApiKeyForProvider,
   openStreamingSession,
-  type StreamSession,
   supportsSessionTransport,
   supportsStreaming,
-  voiceProviderCategory,
-} from "../lib/streaming-stt.js";
+} from "../lib/streaming/registry.js";
+import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
+import {
+  type StreamSession,
+  stripProviderPrefix,
+} from "../lib/streaming/types.js";
 import { cleanAsrText } from "../lib/transcription-pipeline.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
@@ -244,7 +246,7 @@ const stream = new Hono().get(
         resolved;
       const voice = config.voice;
 
-      const apiKey = getApiKeyForProvider(voice.provider);
+      const apiKey = getApiKey(voice.provider);
       if (!apiKey) {
         sendJson(ws, {
           type: "error",

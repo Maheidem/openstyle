@@ -24,10 +24,10 @@ import {
   type RegistryProvider,
 } from "../lib/model-registry.js";
 import { fetchModelIds } from "../lib/openai-compat.js";
+import { OMLX_PROVIDER_ID } from "../lib/streaming/local-providers.js";
 import {
   OMLX_API_KEY_SETTING,
   OMLX_BASE_URL_SETTING,
-  OMLX_PROVIDER_ID,
   OMLX_PROVIDER_NAME,
 } from "../lib/streaming/providers/omlx.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";

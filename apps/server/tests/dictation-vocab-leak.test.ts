@@ -16,8 +16,14 @@ vi.mock("../src/lib/streaming/registry.js", () => ({
   }),
 }));
 
-vi.mock("../src/lib/streaming-stt.js", () => ({
-  getApiKeyForProvider: () => "test-key",
+vi.mock("../src/lib/api-keys.js", () => ({
+  getApiKey: () => "test-key",
+}));
+
+vi.mock("../src/lib/streaming/local-providers.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/lib/streaming/local-providers.js")
+  >()),
   voiceProviderCategory: () => "local",
 }));
 

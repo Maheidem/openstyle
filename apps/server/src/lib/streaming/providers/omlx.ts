@@ -7,6 +7,7 @@ import {
 } from "@openstyle/validations";
 import { readSetting } from "../../db.js";
 import { redactHeaders, trace } from "../../trace.js";
+import { OMLX_PROVIDER_ID } from "../local-providers.js";
 import type {
   TranscribeOptions,
   TranscribeResult,
@@ -14,7 +15,6 @@ import type {
 } from "../types.js";
 import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "../types.js";
 
-export const OMLX_PROVIDER_ID = "omlx";
 export const OMLX_PROVIDER_NAME = "oMLX";
 export const OMLX_BASE_URL_SETTING = SETTINGS_KEYS.omlxBaseUrl;
 export const OMLX_API_KEY_SETTING = SETTINGS_KEYS.omlxApiKey;

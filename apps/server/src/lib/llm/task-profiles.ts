@@ -28,8 +28,8 @@ import {
   parseLlmTaskAssignments,
   SETTINGS_KEYS,
 } from "@openstyle/validations";
+import { getApiKey } from "../api-keys.js";
 import { readSetting } from "../db.js";
-import { getApiKeyForProvider } from "../streaming-stt.js";
 import {
   getLlmProvider,
   isLocalProvider,
@@ -294,7 +294,7 @@ function resolveEffectiveModel(
       );
       return { provider: fallback.provider, modelId: fallback.model_id };
     }
-  } else if (!getApiKeyForProvider(override.provider)) {
+  } else if (!getApiKey(override.provider)) {
     log.warn(
       `resolveTaskCall("${taskId}"): no stored API key for model override provider "${override.provider}", falling back to the app default`,
     );

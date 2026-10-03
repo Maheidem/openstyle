@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_KEYS } from "../../electron/src/shared/settings-keys.js";
 import createApp from "../src/index.js";
+import { getApiKey } from "../src/lib/api-keys.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import { OmlxTranscriptionProvider } from "../src/lib/streaming/providers/omlx.js";
-import { getApiKeyForProvider } from "../src/lib/streaming-stt.js";
 import { jsonRequest } from "./helpers/http.js";
 
 const MODELS_URL = "http://127.0.0.1:8123/v1/models";
@@ -40,7 +40,7 @@ describe("oMLX transcription provider", () => {
   it("needs no api_keys row — the provider is keyless", () => {
     getDb().prepare("DELETE FROM api_keys WHERE provider = ?").run("omlx");
 
-    expect(getApiKeyForProvider("omlx")).toBe("local");
+    expect(getApiKey("omlx")).toBe("local");
   });
 
   it("posts multipart file + model to the derived endpoint and reads .text", async () => {

@@ -17,16 +17,14 @@
 
 import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
+import { getApiKey } from "./api-keys.js";
 import { formatError } from "./format-error.js";
 import { saveProcessedHistory, saveRawHistory } from "./history-store.js";
 import { getLanguagesSetting, resolveLanguageOverride } from "./language.js";
 import { postProcess, resolveAppContextForCleanup } from "./post-process.js";
 import { getDefaultModels } from "./providers.js";
+import { voiceProviderCategory } from "./streaming/local-providers.js";
 import { getProvider } from "./streaming/registry.js";
-import {
-  getApiKeyForProvider,
-  voiceProviderCategory,
-} from "./streaming-stt.js";
 import {
   type AsrVocabularyBias,
   resolveAsrVocabularyBias,
@@ -151,7 +149,7 @@ export async function runTranscriptionPipeline(
     };
   }
 
-  const apiKey = getApiKeyForProvider(voiceProvider);
+  const apiKey = getApiKey(voiceProvider);
   if (!apiKey) {
     return {
       ok: false,
