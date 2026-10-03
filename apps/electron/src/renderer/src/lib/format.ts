@@ -40,3 +40,20 @@ export function formatClockDuration(ms: number | null): string {
     ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
     : `${m}:${String(sec).padStart(2, "0")}`;
 }
+
+/** Short local date and time, for example "Oct 3, 2:15 PM". Empty for no value. */
+export function formatTimestamp(ms: number | null): string {
+  if (!ms) return "";
+  return new Date(ms).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** Minutes and seconds as m:ss. Rounds down to the second. */
+export function formatClockMs(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
