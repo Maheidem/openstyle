@@ -17,7 +17,11 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
 // preset-crud-evidence — RUNTIME VISUAL EVIDENCE for preset management on
@@ -383,28 +387,6 @@ async function expandCleanup(): Promise<void> {
   });
 }
 
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 25_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return electronApp.windows()[0];
-}
-
 // ---------------------------------------------------------------------------
 // boot
 // ---------------------------------------------------------------------------
@@ -512,21 +494,8 @@ test.beforeAll(async () => {
   );
 
   // 4. launch the real app against out/main/index.js
-  app = await electron.launch({
-    args: [resolve(__dirname, "../out/main/index.js")],
-    env: {
-      ...process.env,
-      NODE_ENV: "development",
-      OPENSTYLE_USER_DATA: userDataDir,
-      OPENSTYLE_DB_PATH: dbPath,
-      OPENSTYLE_E2E: "1",
-      ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-    },
-    timeout: 60_000,
-  });
-
-  await app.firstWindow();
-  page = await waitForDashboardWindow(app);
+  app = await launchOpenstyle({ userDataDir, timeout: 60_000 });
+  page = await waitForDashboardWindow(app, 25_000);
 
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
@@ -630,17 +599,7 @@ test.afterAll(async () => {
     JSON.stringify(manifest, null, 2),
   );
 
-  if (app) {
-    const proc = app.process();
-    const kill = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-    try {
-      await app.close();
-    } catch {
-      proc.kill("SIGKILL");
-    } finally {
-      clearTimeout(kill);
-    }
-  }
+  if (app) await closeApp(app);
   server?.kill("SIGTERM");
 });
 

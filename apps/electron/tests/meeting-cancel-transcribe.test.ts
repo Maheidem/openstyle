@@ -1,14 +1,18 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   expect,
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
 // Meeting transcribe Cancel (T1-1 renderer half, specs/lean-audit-2026-09.md
@@ -168,28 +172,6 @@ function writeTwoBurstWav(path: string): void {
   writeFileSync(path, Buffer.concat([h, data]));
 }
 
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 10_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return electronApp.windows()[0];
-}
-
 interface MeetingDetailRow {
   id: string;
   status: string;
@@ -228,7 +210,6 @@ test.beforeAll(async () => {
   await startHoldServer();
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-meeting-cancel-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   const settings: Record<string, unknown> = { onboardingComplete: true };
   if (EXTERNAL_SERVER_URL) {
@@ -260,20 +241,7 @@ test.beforeAll(async () => {
   }
 
   try {
-    app = await electron.launch({
-      args: [resolve(__dirname, "../out/main/index.js")],
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-        OPENSTYLE_DB_PATH: dbPath,
-        OPENSTYLE_USER_DATA: userDataDir,
-        OPENSTYLE_E2E: "1",
-        ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-      },
-      timeout: 30_000,
-    });
-
-    await app.firstWindow();
+    app = await launchOpenstyle({ userDataDir });
     dashboardPage = await waitForDashboardWindow(app, 15_000);
     try {
       await dashboardPage.waitForLoadState("networkidle", { timeout: 15_000 });
@@ -341,17 +309,8 @@ test.afterAll(async () => {
     await stopHoldServer();
     return;
   }
-  const proc = app.process();
-  const killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-  try {
-    await app.close();
-  } catch (error) {
-    console.warn("Error closing app:", error);
-    proc.kill("SIGKILL");
-  } finally {
-    clearTimeout(killTimer);
-    await stopHoldServer();
-  }
+  await closeApp(app);
+  await stopHoldServer();
 });
 
 test("cancelling a running transcribe job keeps the partial transcript", async () => {

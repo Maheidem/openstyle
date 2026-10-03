@@ -10,7 +10,11 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
 // Helpers (self-contained, mirrors tests/app.test.ts)
@@ -44,35 +48,6 @@ function apiHeaders(): Record<string, string> {
   return EXTERNAL_SERVER_TOKEN
     ? { Authorization: `Bearer ${EXTERNAL_SERVER_TOKEN}` }
     : {};
-}
-
-/**
- * Wait for a window whose URL is neither the pill nor the remix bar —
- * that's the dashboard / onboarding window. The pill (pill.html) and the
- * remix bar (bar.html) are auxiliary windows and may appear first.
- */
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 10_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-
-  return electronApp.windows()[0];
 }
 
 /** Writes a minimal valid 1 s, 16 kHz mono, 16-bit PCM WAV file. */
@@ -261,7 +236,6 @@ test.beforeAll(async () => {
   }
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-import-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   // Fresh userData means onboarding is active by default (main/index.ts
   // isOnboardingActive), which would route the dashboard window to
@@ -282,25 +256,7 @@ test.beforeAll(async () => {
   );
 
   try {
-    app = await electron.launch({
-      args: [resolve(__dirname, "../out/main/index.js")],
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-        OPENSTYLE_DB_PATH: dbPath,
-        // main/index.ts unconditionally rewrites OPENSTYLE_DB_PATH from
-        // app.getPath("userData") before starting the server, so isolation
-        // actually depends on OPENSTYLE_USER_DATA (see main/index.ts:133-138) —
-        // without it this run would share the real installed app's userData
-        // (and its real DB/history) instead of a throwaway temp dir.
-        OPENSTYLE_USER_DATA: userDataDir,
-        OPENSTYLE_E2E: "1",
-        ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-      },
-      timeout: 30_000,
-    });
-
-    await app.firstWindow();
+    app = await launchOpenstyle({ userDataDir });
 
     dashboardPage = await waitForDashboardWindow(app, 15_000);
     try {
@@ -389,16 +345,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (!app) return;
-  const proc = app.process();
-  const killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-  try {
-    await app.close();
-  } catch (error) {
-    console.warn("Error closing app:", error);
-    proc.kill("SIGKILL");
-  } finally {
-    clearTimeout(killTimer);
-  }
+  await closeApp(app);
 });
 
 // ---------------------------------------------------------------------------

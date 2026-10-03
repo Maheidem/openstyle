@@ -1,13 +1,17 @@
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   expect,
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
 // Meeting import (specs/meeting-import.md §5): mirrors tests/import-screen.test.ts
@@ -42,34 +46,6 @@ let serverPort: number;
 let userDataDir: string;
 
 const DEFAULT_PORT = 4649;
-
-/**
- * Wait for a window whose URL is neither the pill nor the remix bar —
- * that's the dashboard / onboarding window (mirrors import-screen.test.ts).
- */
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 10_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-
-  return electronApp.windows()[0];
-}
 
 /** Writes a minimal valid 1 s, 16 kHz mono, 16-bit PCM WAV file (silence). */
 function writeSilentWav(path: string): void {
@@ -161,7 +137,6 @@ test.beforeAll(async () => {
   }
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-meeting-import-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   // Skip onboarding (mirrors import-screen.test.ts) …
   const settings: Record<string, unknown> = { onboardingComplete: true };
@@ -204,23 +179,7 @@ test.beforeAll(async () => {
   }
 
   try {
-    app = await electron.launch({
-      args: [resolve(__dirname, "../out/main/index.js")],
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-        OPENSTYLE_DB_PATH: dbPath,
-        // main/index.ts unconditionally rewrites OPENSTYLE_DB_PATH from
-        // app.getPath("userData") before starting the server — isolation
-        // depends on OPENSTYLE_USER_DATA (mirrors import-screen.test.ts).
-        OPENSTYLE_USER_DATA: userDataDir,
-        OPENSTYLE_E2E: "1",
-        ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-      },
-      timeout: 30_000,
-    });
-
-    await app.firstWindow();
+    app = await launchOpenstyle({ userDataDir });
 
     dashboardPage = await waitForDashboardWindow(app, 15_000);
     try {
@@ -258,16 +217,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (!app) return;
-  const proc = app.process();
-  const killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-  try {
-    await app.close();
-  } catch (error) {
-    console.warn("Error closing app:", error);
-    proc.kill("SIGKILL");
-  } finally {
-    clearTimeout(killTimer);
-  }
+  await closeApp(app);
 });
 
 // ---------------------------------------------------------------------------
