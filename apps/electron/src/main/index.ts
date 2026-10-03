@@ -96,7 +96,7 @@ import {
   getDefaultRemixHotkey,
   REMIX_CLIPBOARD_PREVIEW_LIMIT,
 } from "../shared/remix";
-import { bearerAuthHeaders } from "../shared/server-auth";
+import { bearerAuthHeaders, type ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { registerJobAbortIpc } from "./abortable-jobs";
 import { AudioPlaybackController } from "./audio-control/controller";
@@ -345,6 +345,16 @@ function getServerAuthHeaders(): Record<string, string> {
 }
 
 /**
+ * `fetch` bound to the current server target. `path` starts after `/api`.
+ * Auth headers go first, so a header of the caller always wins.
+ */
+const serverFetch: ServerFetch = (path, init) =>
+  fetch(`${getServerBaseUrl()}/api${path}`, {
+    ...init,
+    headers: { ...getServerAuthHeaders(), ...init?.headers },
+  });
+
+/**
  * Typed `hc` client bound to the current server target (local or configured
  * remote) with auth headers — the main-process counterpart to the renderer's
  * getClient(). Reads the target per call, so it always tracks the latest
@@ -427,9 +437,7 @@ let meetingRecorder: MeetingRecorder | null = null;
 let meetingsFlagEnabled = false;
 
 function refreshMeetingsFlag(): void {
-  void fetch(`${getServerBaseUrl()}/api/config/flags/meetings`, {
-    headers: getServerAuthHeaders(),
-  })
+  void serverFetch("/config/flags/meetings")
     .then(async (res) => {
       if (!res.ok) return;
       const body = (await res.json()) as { value?: boolean };
@@ -523,10 +531,7 @@ function createMeetingCaptureWindow(): BrowserWindow {
   void (async () => {
     let deviceParam = "";
     try {
-      const res = await fetch(
-        `${getServerBaseUrl()}/api/settings/${SETTINGS_KEYS.micDeviceId}`,
-        { headers: getServerAuthHeaders() },
-      );
+      const res = await serverFetch(`/settings/${SETTINGS_KEYS.micDeviceId}`);
       if (res.ok) {
         const { value } = (await res.json()) as { value?: string };
         if (value) deviceParam = `?device=${encodeURIComponent(value)}`;
@@ -2352,8 +2357,7 @@ app.whenReady().then(async () => {
   // --- Import screen ---------------------------------------------------------
   registerJobAbortIpc();
   registerImportIpc({
-    getServerBaseUrl,
-    getServerAuthHeaders,
+    serverFetch,
     getParentWindow: () => mainWindow,
     onTranscribed: ({ fileName }) => notifyImportComplete(fileName),
   });
@@ -2362,15 +2366,13 @@ app.whenReady().then(async () => {
   // as the dictation Import screen, but the upload lands in
   // POST /api/meetings/import as a full meeting record.
   registerMeetingImportIpc({
-    getServerBaseUrl,
-    getServerAuthHeaders,
+    serverFetch,
     getParentWindow: () => mainWindow,
   });
 
   // --- Meeting Mode ---------------------------------------------------------
   meetingRecorder = new MeetingRecorder({
-    getServerBaseUrl,
-    getServerAuthHeaders,
+    serverFetch,
     createCaptureWindow: createMeetingCaptureWindow,
     broadcastLevel: (event) => {
       broadcastToWindows("meeting:level", event);
