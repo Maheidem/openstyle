@@ -2890,17 +2890,13 @@ app.whenReady().then(async () => {
       // electron-updater never auto-downloads (autoDownload is always false
       // — see above); the in-app banner/notification drives the actual
       // download via updater:download.
-      if (
-        Notification.isSupported() &&
-        notifiedAvailableVersion !== info.version
-      ) {
+      if (notifiedAvailableVersion !== info.version) {
         notifiedAvailableVersion = info.version;
-        const note = new Notification({
-          title: "Openstyle Update Available",
-          body: `Version ${info.version} is available.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
+        notify(
+          "Openstyle Update Available",
+          `Version ${info.version} is available.`,
+          "/settings",
+        );
       }
     });
 
@@ -2913,17 +2909,13 @@ app.whenReady().then(async () => {
       settingsWindow?.webContents.send("updater:downloaded", {
         version: info.version,
       });
-      if (
-        Notification.isSupported() &&
-        notifiedDownloadedVersion !== info.version
-      ) {
+      if (notifiedDownloadedVersion !== info.version) {
         notifiedDownloadedVersion = info.version;
-        const note = new Notification({
-          title: "Update Ready to Install",
-          body: `Version ${info.version} has been downloaded. Restart to update.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
+        notify(
+          "Update Ready to Install",
+          `Version ${info.version} has been downloaded. Restart to update.`,
+          "/settings",
+        );
       }
       if (updateCheckTimer) {
         clearInterval(updateCheckTimer);
@@ -2956,14 +2948,11 @@ app.whenReady().then(async () => {
     });
 
     if (isRunningFromReadOnlyLocation()) {
-      if (Notification.isSupported()) {
-        const note = new Notification({
-          title: "Move Openstyle to Applications",
-          body: "Openstyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
-      }
+      notify(
+        "Move Openstyle to Applications",
+        "Openstyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
+        "/settings",
+      );
     } else if (autoUpdateEnabled) {
       // Only poll when auto-update is actually on. Upstream polled every 5
       // minutes regardless of the setting, so turning auto-update off still
@@ -4389,9 +4378,16 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
   }
   const body = `Hold-to-talk isn't available, so "${accel}" now toggles recording on and off.${fix}`;
   hotkeyLog.warn(body);
-  if (Notification.isSupported()) {
-    new Notification({ title: "Openstyle is in toggle mode", body }).show();
-  }
+  notify("Openstyle is in toggle mode", body);
+}
+
+// Shows one native notification. A click opens the settings window on
+// `route`. Without a route, a click does nothing.
+function notify(title: string, body: string, route?: string): void {
+  if (!Notification.isSupported()) return;
+  const note = new Notification({ title, body });
+  if (route) note.on("click", () => showSettingsWindow(route));
+  note.show();
 }
 
 // Import completion (UX-04 / UX-A4, specs/lean-audit-2026-09.md §4): the
@@ -4411,13 +4407,7 @@ function notifyImportComplete(fileName: string): void {
     g.__openstyleE2E.importNotifications =
       (g.__openstyleE2E.importNotifications ?? 0) + 1;
   }
-  if (!Notification.isSupported()) return;
-  const note = new Notification({
-    title: "Transcript ready",
-    body: `“${fileName}” has been transcribed.`,
-  });
-  note.on("click", () => showSettingsWindow("/today"));
-  note.show();
+  notify("Transcript ready", `“${fileName}” has been transcribed.`, "/today");
 }
 
 // Rate-limited so a broken paste backend doesn't fire a notification per
@@ -4441,12 +4431,10 @@ function notifyPasteFailed(): void {
         " Installing xdotool may fix this (e.g. sudo apt install xdotool).";
     }
   }
-  if (Notification.isSupported()) {
-    new Notification({
-      title: "Openstyle couldn't paste",
-      body: `Your transcript is on the clipboard — press ${shortcut} to paste it.${hint}`,
-    }).show();
-  }
+  notify(
+    "Openstyle couldn't paste",
+    `Your transcript is on the clipboard — press ${shortcut} to paste it.${hint}`,
+  );
 }
 
 /** Electron globalShortcut rejects some combos (e.g. Alt+Super on Linux). */
