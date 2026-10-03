@@ -27,6 +27,12 @@ import {
 import type { TranscriberDeps } from "../src/lib/meetings/transcriber.js";
 import { __setMeetingsTestOverrides } from "../src/routes/meetings.js";
 import { jsonRequest, postEmpty } from "./helpers/http.js";
+import {
+  insertSegment,
+  insertSpeaker,
+  insertSystemSegment,
+  resetMeetingTables,
+} from "./helpers/meetings-db.js";
 
 const app = createApp();
 
@@ -89,9 +95,7 @@ afterAll(() => {
 });
 
 afterEach(() => {
-  getDb().exec("DELETE FROM meeting_summaries");
-  getDb().exec("DELETE FROM meeting_segments");
-  getDb().exec("DELETE FROM meetings");
+  resetMeetingTables();
   __setMeetingsTestOverrides();
 });
 
@@ -151,21 +155,6 @@ function fakeDiarizeDeps(opts: {
       return { stdout: opts.runStdout ?? "[]", stderr: "" };
     },
   };
-}
-
-function insertSystemSegment(
-  segId: string,
-  meetingId: string,
-  idx: number,
-  startMs: number,
-  endMs: number,
-): void {
-  getDb()
-    .prepare(
-      `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-       VALUES (?, ?, 'system', ?, ?, ?, 'hello', 'ok')`,
-    )
-    .run(segId, meetingId, idx, startMs, endMs);
 }
 
 async function getMeeting(id: string): Promise<Record<string, unknown>> {
@@ -274,10 +263,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     // already deleted — when this test reads it back. That's the real race
     // window; without the gate the fake job (no real I/O) can finish before
     // the test gets a chance to observe the mid-job state at all.
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         await gate;
@@ -334,12 +320,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     });
     insertMeeting("m1", "transcribed");
     insertSystemSegment("s1", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, updated_at)
-         VALUES ('m1', '1', 'Ana', ?)`,
-      )
-      .run(Date.now());
+    insertSpeaker("m1", "1", { displayName: "Ana" });
 
     const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
@@ -607,10 +588,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
   it("409s when the active job is a diarize pass (slot held, not cancellable)", async () => {
     insertMeeting("m1", "transcribed", cancelAudioDir);
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       diarizeDeps: {
         resolveBinaryPath: () => "/fake/fluidaudio-diarize",
@@ -637,10 +615,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
 
   it("cancels mid-job: in-flight chunks finish and persist, unstarted chunks never run, status → failed, segments kept, slot freed", async () => {
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         // Capture the call number *before* parking: both workers increment
@@ -710,10 +685,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
 
   it("GET /orphans excludes meetings with a live job (boot sweep must not kill a running/winding-down transcription)", async () => {
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         calls++;
@@ -767,22 +739,22 @@ describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () 
     insertMeeting("m1", "transcribed", cancelAudioDir);
     // 4 failed system segments on disk-backed times.
     for (let i = 0; i < 4; i++) {
-      getDb()
-        .prepare(
-          `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-           VALUES (?, 'm1', 'system', ?, ?, ?, NULL, 'failed')`,
-        )
-        .run(`m1:system:${i}`, i, i * 7000, i * 7000 + 1000);
+      insertSegment({
+        id: `m1:system:${i}`,
+        meetingId: "m1",
+        idx: i,
+        startMs: i * 7000,
+        endMs: i * 7000 + 1000,
+        text: null,
+        status: "failed",
+      });
     }
     getDb()
       .prepare("UPDATE meetings SET error = '4 chunks failed' WHERE id = 'm1'")
       .run();
 
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         calls++;
@@ -1075,12 +1047,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     });
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, updated_at)
-         VALUES ('m1', '1', 'Ana', ?)`,
-      )
-      .run(Date.now());
+    insertSpeaker("m1", "1", { displayName: "Ana" });
 
     const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
@@ -1125,44 +1092,6 @@ describe("POST /api/meetings/:id/diarize", () => {
   });
 });
 
-/** specs/meeting-speaker-naming.md §3.1: seed a meeting_speakers row directly. */
-function insertSpeaker(
-  meetingId: string,
-  label: string,
-  opts: {
-    displayName?: string | null;
-    suggestedName?: string | null;
-    suggestedEvidence?: string | null;
-    suggestedKind?: string | null;
-    mergedInto?: string | null;
-    /** Real-E2E fix regression coverage: only a genuinely *confirmed*
-     * write (routes/meetings.ts's PATCH handler) sets this — a plain
-     * suggestion upsert (enhance.ts) never does. Tests that simulate a
-     * confirmed row must pass this explicitly; it is NOT inferred from
-     * `displayName`/`mergedInto` being set, to keep the two independent
-     * the same way the real schema does. */
-    confirmedAt?: number | null;
-  } = {},
-): void {
-  getDb()
-    .prepare(
-      `INSERT INTO meeting_speakers
-         (meeting_id, speaker_label, display_name, suggested_name, suggested_evidence, suggested_kind, merged_into, updated_at, confirmed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      meetingId,
-      label,
-      opts.displayName ?? null,
-      opts.suggestedName ?? null,
-      opts.suggestedEvidence ?? null,
-      opts.suggestedKind ?? null,
-      opts.mergedInto ?? null,
-      Date.now(),
-      opts.confirmedAt ?? null,
-    );
-}
-
 describe("GET /api/meetings/:id/speakers", () => {
   it("404s for an unknown meeting", async () => {
     const res = await app.request("/api/meetings/nope/speakers");
@@ -1171,18 +1100,8 @@ describe("GET /api/meetings/:id/speakers", () => {
 
   it("returns one row per distinct labeled speaker plus unlabeledCount; a labeled row without a meeting_speakers row shows all-null optional fields", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000, "2");
     insertSystemSegment("m1:system:2", "m1", 2, 2000, 3000); // stays NULL
     insertSpeaker("m1", "1", {
       displayName: "Ana",
@@ -1229,18 +1148,8 @@ describe("GET /api/meetings/:id/speakers", () => {
 
   it("returns suggestedKind 'role' only when the stored row explicitly says so, defaulting a NULL/unknown value to 'name'", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000, "2");
     insertSpeaker("m1", "1", {
       suggestedName: "the hiring manager",
       suggestedKind: "role",
@@ -1261,12 +1170,7 @@ describe("GET /api/meetings/:id/speakers", () => {
 
   it("reports latestSpeakerUpdate as the max confirmed_at across rows — never bumped by a suggestion-only write, or null when there are none confirmed", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
 
     const empty = await app.request("/api/meetings/m1/speakers");
     const emptyBody = (await empty.json()) as {
@@ -1325,12 +1229,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("400s on an empty body", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", {});
     expect(res.status).toBe(400);
   });
@@ -1343,12 +1242,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("saves a confirmed display name", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", { displayName: "Ana" });
     expect(res.status).toBe(200);
     const row = getDb()
@@ -1361,12 +1255,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("sets confirmed_at on a successful PATCH (real-E2E fix: this, not updated_at, drives the summary staleness hint)", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", { displayName: "Ana" });
     expect(res.status).toBe(200);
     const row = getDb()
@@ -1379,18 +1268,8 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("un-names a speaker with displayName: null without touching merged_into", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000, "2");
     insertSpeaker("m1", "1", { displayName: "Ana", mergedInto: "2" });
 
     const res = await patchSpeaker("m1", "1", { displayName: null });
@@ -1406,12 +1285,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("400s on self-merge (mergedInto === label), writing no row", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", { mergedInto: "1" });
     expect(res.status).toBe(400);
     const row = getDb()
@@ -1428,10 +1302,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
       ["m1:system:0", 0, "1"],
       ["m1:system:1", 1, "2"],
     ] as const) {
-      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000);
-      getDb()
-        .prepare("UPDATE meeting_segments SET speaker_label = ? WHERE id = ?")
-        .run(label, id);
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000, label);
     }
     // "2" is already merged into "1". Merging "1" into "2" would loop.
     insertSpeaker("m1", "2", { mergedInto: "1" });
@@ -1447,12 +1318,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("404s when mergedInto targets a nonexistent label", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", { mergedInto: "9" });
     expect(res.status).toBe(404);
   });
@@ -1464,10 +1330,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
       ["m1:system:1", 1, "2"],
       ["m1:system:2", 2, "3"],
     ] as const) {
-      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000);
-      getDb()
-        .prepare("UPDATE meeting_segments SET speaker_label = ? WHERE id = ?")
-        .run(label, id);
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000, label);
     }
     // "2" is already merged into "3" (the root).
     insertSpeaker("m1", "2", { mergedInto: "3" });
@@ -1491,10 +1354,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
       ["m1:system:2", 2, "3"],
       ["m1:system:3", 3, "4"],
     ] as const) {
-      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000);
-      getDb()
-        .prepare("UPDATE meeting_segments SET speaker_label = ? WHERE id = ?")
-        .run(label, id);
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000, label);
     }
     // "1" and "4" already point at "2". Now merge "2" into "3".
     insertSpeaker("m1", "1", { mergedInto: "2" });
@@ -1516,18 +1376,8 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("unmerges (mergedInto: null) without touching display_name", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000, "2");
     insertSpeaker("m1", "1", { displayName: "Ana", mergedInto: "2" });
 
     const res = await patchSpeaker("m1", "1", { mergedInto: null });
@@ -1543,12 +1393,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("refreshes transcript.md on disk after a successful PATCH", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const transcriptPath = join(audioDir, "transcript.md");
     writeFileSync(transcriptPath, "STALE-PLACEHOLDER-CONTENT", "utf8");
 
@@ -1588,20 +1433,18 @@ describe("POST /api/meetings/:id/summarize", () => {
 
   it("returns 202 immediately, then persists the summary the poll delivers", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'we should ship on friday', 'ok')`,
-      )
-      .run();
-    let started!: () => void;
-    const startedGate = new Promise<void>((r) => {
-      started = r;
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "we should ship on friday",
     });
-    let resume!: () => void;
-    const parked = new Promise<void>((r) => {
-      resume = r;
-    });
+    const { promise: startedGate, resolve: started } =
+      Promise.withResolvers<void>();
+    const { promise: parked, resolve: resume } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       summarize: async (segments, options) => {
         expect(segments).toHaveLength(1);
@@ -1668,12 +1511,15 @@ describe("POST /api/meetings/:id/summarize", () => {
         "UPDATE meetings SET context = 'Call with Ana from Acme' WHERE id = 'm1'",
       )
       .run();
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     let capturedOptions: { meetingContext?: string } | undefined;
     __setMeetingsTestOverrides({
       summarize: async (_segments, options) => {
@@ -1701,10 +1547,7 @@ describe("POST /api/meetings/:id/summarize", () => {
   it("409s a second summarize while one is running, and frees the slot afterwards", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let calls = 0;
     __setMeetingsTestOverrides({
       summarize: async () => {
@@ -1802,14 +1645,9 @@ describe("POST /api/meetings/:id/summarize", () => {
   it("is cancellable: no summary is written, the transcript survives, slot frees", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let reached!: () => void;
-    const reachedGate = new Promise<void>((r) => {
-      reached = r;
-    });
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: reachedGate, resolve: reached } =
+      Promise.withResolvers<void>();
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       summarize: async (_segments, options) => {
         reached();
@@ -2003,10 +1841,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     // Diarize claims the concurrency slot before its (fake) execFile call
     // resolves — a real interaction the route guards against, since diarize
     // never touches meetings.status.
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       diarizeDeps: {
         resolveBinaryPath: () => "/fake/fluidaudio-diarize",
@@ -2044,10 +1879,7 @@ describe("POST /api/meetings/:id/enhance", () => {
   it("409s a second concurrent enhance, then frees the slot on success and on throw", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       enhance: async () => {
         await gate;
@@ -2096,12 +1928,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("enhances the merged transcript and persists enhanced_text", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "garbled txt here",
+    });
     __setMeetingsTestOverrides({
       enhance: async (meetingId, segments) => {
         expect(meetingId).toBe("m1");
@@ -2141,12 +1976,15 @@ describe("POST /api/meetings/:id/enhance", () => {
         "UPDATE meetings SET title = 'Weekly sync', context = 'Ana from Acme' WHERE id = 'm1'",
       )
       .run();
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     let capturedArgs: [string | undefined, string | undefined] | undefined;
     __setMeetingsTestOverrides({
       enhance: async (
@@ -2181,12 +2019,15 @@ describe("POST /api/meetings/:id/enhance", () => {
     // touched by Enhance, regardless of which route triggers the write.
     // The enhanced rendering goes exclusively to the sibling file.
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "garbled txt here",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => {
         getDb()
@@ -2212,12 +2053,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("500s and reports the message when the enhance pass throws", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => {
         throw new Error("No AI model is set up yet.");
@@ -2237,12 +2081,15 @@ describe("POST /api/meetings/:id/enhance", () => {
   // still writes nothing.
   it("502s with reason 'timeout' when every chunk failed, and never reports correctedCount 0 as a success", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "garbled txt here",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => ({
         correctedCount: 0,
@@ -2284,12 +2131,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("classifies the failure the pass reported: parse and provider both reach the body", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
 
     for (const [reason, detail] of [
       ["parse", "model response contained no JSON object"],
@@ -2317,12 +2167,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("falls back to reason 'provider' when a wholly-failed pass reported no firstFailure", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => ({
         correctedCount: 0,
@@ -2342,12 +2195,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("marks a partial pass partial in the 200 body instead of hiding the failed chunks", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "garbled txt here",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => {
         getDb()
@@ -2382,12 +2238,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("reports a clean pass as neither partial nor failed (the honest baseline for the 3rd UI state)", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'clean text', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "clean text",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => ({
         correctedCount: 0,
@@ -2415,12 +2274,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("treats a pass cancelled before any chunk succeeded as stopped, not failed (§5.7)", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => ({
         correctedCount: 0,

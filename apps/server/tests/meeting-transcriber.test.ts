@@ -153,6 +153,17 @@ function makeDeps(
   };
 }
 
+type RunInput = Parameters<MeetingTranscriber["run"]>[0];
+
+/** Run the transcriber on `dir`. `systemSegments` is empty unless a test sets it. */
+function run(
+  t: MeetingTranscriber,
+  dir: string,
+  overrides: Pick<RunInput, "micSegments"> & Partial<RunInput>,
+): ReturnType<MeetingTranscriber["run"]> {
+  return t.run({ meetingDir: dir, systemSegments: [], ...overrides });
+}
+
 describe("MeetingTranscriber", () => {
   it("slices WAV segments at the right byte offsets and durations", async () => {
     const dir = makeMeetingDir({ mic: 8500, system: 5000 });
@@ -162,8 +173,7 @@ describe("MeetingTranscriber", () => {
     // Durations kept >= MIN_BIAS_DURATION_MS (3s, Phase A3) so this test's
     // "every call carried bias" assertion below stays meaningful — the
     // bias-withholding behavior itself is covered separately.
-    const results = await t.run({
-      meetingDir: dir,
+    const results = await run(t, dir, {
       micSegments: [
         { startMs: 1000, endMs: 4000 },
         { startMs: 4200, endMs: 8200 },
@@ -223,10 +233,7 @@ describe("MeetingTranscriber", () => {
 
   it("caps concurrency at 2 for cloud providers", async () => {
     const dir = makeMeetingDir({ mic: 10_000, system: 100 });
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let started = 0;
     const { provider, maxInFlight } = makeFakeProvider({
       onCall: async () => {
@@ -236,15 +243,13 @@ describe("MeetingTranscriber", () => {
       },
     });
     const t = new MeetingTranscriber(makeDeps(provider));
-    const results = await t.run({
-      meetingDir: dir,
+    const results = await run(t, dir, {
       micSegments: [
         { startMs: 0, endMs: 1000 },
         { startMs: 1000, endMs: 2000 },
         { startMs: 2000, endMs: 3000 },
         { startMs: 3000, endMs: 4000 },
       ],
-      systemSegments: [],
     });
     expect(results).toHaveLength(4);
     expect(maxInFlight()).toBe(2);
@@ -252,10 +257,7 @@ describe("MeetingTranscriber", () => {
 
   it("shouldStop checked between chunk tasks: in-flight chunks finish, unstarted chunks never run (holes in results)", async () => {
     const dir = makeMeetingDir({ mic: 10_000, system: 100 });
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let started = 0;
     const { provider, calls } = makeFakeProvider({
       onCall: async () => {
@@ -272,15 +274,13 @@ describe("MeetingTranscriber", () => {
         onChunk: (c) => onChunk.push(c),
       }),
     );
-    const runPromise = t.run({
-      meetingDir: dir,
+    const runPromise = run(t, dir, {
       micSegments: [
         { startMs: 0, endMs: 1000 },
         { startMs: 1000, endMs: 2000 },
         { startMs: 2000, endMs: 3000 },
         { startMs: 3000, endMs: 4000 },
       ],
-      systemSegments: [],
     });
     // Wait until both workers have a chunk in flight, then cancel.
     await gate;
@@ -303,14 +303,12 @@ describe("MeetingTranscriber", () => {
       providerId: WHISPER_PROVIDER_ID,
     });
     const t = new MeetingTranscriber(makeDeps(provider));
-    await t.run({
-      meetingDir: dir,
+    await run(t, dir, {
       micSegments: [
         { startMs: 0, endMs: 1000 },
         { startMs: 1000, endMs: 2000 },
         { startMs: 2000, endMs: 3000 },
       ],
-      systemSegments: [],
     });
     expect(maxInFlight()).toBe(1);
   });
@@ -328,10 +326,8 @@ describe("MeetingTranscriber", () => {
         backoffBaseMs: 100,
       }),
     );
-    const results = await t.run({
-      meetingDir: dir,
+    const results = await run(t, dir, {
       micSegments: [{ startMs: 0, endMs: 1000 }],
-      systemSegments: [],
     });
     expect(results[0].status).toBe("ok");
     expect(calls).toHaveLength(3);
@@ -357,10 +353,8 @@ describe("MeetingTranscriber", () => {
         backoffBaseMs: 100,
       }),
     );
-    const results = await t.run({
-      meetingDir: dir,
+    const results = await run(t, dir, {
       micSegments: [{ startMs: 0, endMs: 1000 }],
-      systemSegments: [],
     });
     expect(results[0].status).toBe("ok");
     expect(slept).toEqual([1234]);
@@ -382,13 +376,11 @@ describe("MeetingTranscriber", () => {
         maxAttempts: 3,
       }),
     );
-    const results = await t.run({
-      meetingDir: dir,
+    const results = await run(t, dir, {
       micSegments: [
         { startMs: 0, endMs: 1000 },
         { startMs: 1000, endMs: 2000 },
       ],
-      systemSegments: [],
     });
     // First chunk burns all 3 attempts and fails; second succeeds.
     expect(results[0]).toMatchObject({
@@ -424,10 +416,8 @@ describe("MeetingTranscriber", () => {
         dictationPollMs: 500,
       }),
     );
-    const results = await t.run({
-      meetingDir: dir,
+    const results = await run(t, dir, {
       micSegments: [{ startMs: 0, endMs: 1000 }],
-      systemSegments: [],
     });
     expect(results[0].status).toBe("ok");
     // Last active observation is at some t in [500, 1000); resume waits a
@@ -449,10 +439,8 @@ describe("MeetingTranscriber", () => {
         },
       }),
     );
-    const results = await t.run({
-      meetingDir: dir,
+    const results = await run(t, dir, {
       micSegments: [{ startMs: 0, endMs: 1000 }],
-      systemSegments: [],
     });
     expect(results[0].status).toBe("ok");
     expect(asked).toBe(0);
@@ -462,13 +450,11 @@ describe("MeetingTranscriber", () => {
     const dir = makeMeetingDir({ mic: 5000, system: 100 });
     const { provider, calls } = makeFakeProvider();
     const t = new MeetingTranscriber(makeDeps(provider));
-    await t.run({
-      meetingDir: dir,
+    await run(t, dir, {
       micSegments: [
         { startMs: 0, endMs: 1700 }, // 1.7s — under threshold
         { startMs: 2000, endMs: 5000 }, // 3s — at threshold, bias sent
       ],
-      systemSegments: [],
     });
     expect(calls).toHaveLength(2);
     expect(calls[0].bias).toBeNull();
@@ -485,10 +471,8 @@ describe("MeetingTranscriber", () => {
       },
     };
     const t = new MeetingTranscriber(makeDeps(provider));
-    const results = await t.run({
-      meetingDir: dir,
+    const results = await run(t, dir, {
       micSegments: [{ startMs: 0, endMs: 1000 }],
-      systemSegments: [],
     });
     expect(results[0].status).toBe("empty");
     expect(results[0].text).toBe("");
@@ -503,11 +487,7 @@ describe("MeetingTranscriber", () => {
       }),
     );
     await expect(
-      t.run({
-        meetingDir: dir,
-        micSegments: [{ startMs: 0, endMs: 500 }],
-        systemSegments: [],
-      }),
+      run(t, dir, { micSegments: [{ startMs: 0, endMs: 500 }] }),
     ).rejects.toThrow(/Unsupported transcription provider/);
   });
 });
