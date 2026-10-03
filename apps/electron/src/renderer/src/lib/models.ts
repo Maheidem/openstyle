@@ -237,12 +237,6 @@ export const LOCAL_VOICE_NOTES: Record<string, string> = {
   "parakeet-tdt-0.6b-v3": "Very fast · 25 languages · no custom vocabulary",
 };
 
-/** The single recommended model per platform (one badge, everywhere). */
-export const RECOMMENDED_LOCAL_IDS = new Set([
-  "local-mlx/qwen3-0.6b-8bit",
-  "local-whisper/small-q5_1",
-]);
-
 export function buildVoiceItems(
   available: AvailableModel[],
   whisperStatus: WhisperStatus | null,
