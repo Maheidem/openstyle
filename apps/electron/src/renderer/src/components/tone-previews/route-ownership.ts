@@ -2,9 +2,9 @@ import type {
   CleanupAppAssignment,
   CleanupToneDestination,
 } from "@openstyle/validations";
-import { normalizeRouteIconHost } from "../../../../shared/route-icons";
-import type { AppMarkId } from "./app-marks";
 import {
+  type AppMarkId,
+  normalizeRouteIconHost,
   resolveBuiltInAppMarkFromAppMatch,
   resolveBuiltInAppMarkFromSiteHost,
 } from "./app-marks";
