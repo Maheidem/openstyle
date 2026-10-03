@@ -20,6 +20,10 @@ import {
 import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
 import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
 import {
+  BATCH_TRANSCRIBE_TIMEOUT_MS,
+  postTranscribe,
+} from "@renderer/lib/transcribe-client";
+import {
   lazy,
   Suspense,
   useCallback,
@@ -216,14 +220,6 @@ const WARMING_AFTER_MS = 3_000;
  * not rendered as visible capsule text. */
 const WARMING_LABEL = "Warming up local model…";
 
-/**
- * T1-4 / UX-02: client-side bound on the batch dictation wait, so a wedged
- * local ASR server turns into a named failure instead of an infinite sweep.
- * Never lower than this (audit trap 5): whisper spawn waits up to 90 s and a
- * legitimate MLX transcription can run to 300 s — a false "failed" on a real
- * long local dictation is worse than the rare hang this cures.
- */
-const BATCH_TRANSCRIBE_TIMEOUT_MS = 360_000;
 /** Names the cause instead of surfacing a raw TimeoutError (UX-A5: this is
  * the one error string this change adds — the rest of the batch error copy
  * stays as is). */
@@ -387,35 +383,6 @@ interface TranscribeResult {
   cleaned: string;
   error?: string;
   providerCategory?: string;
-}
-
-/**
- * The app context (process name + window title) can contain characters
- * outside ISO-8859-1 — e.g. a Cyrillic file path in the Notepad++ title
- * bar. HTTP header values only allow Latin-1, so passing the raw JSON
- * makes fetch() throw "Failed to execute 'fetch'". Percent-encode it so
- * the header is always byte-safe; the server decodes it back.
- */
-function encodeAppContext(context: string): string {
-  return encodeURIComponent(context);
-}
-
-/** Build the request headers for POST /api/transcribe. */
-function buildTranscribeHeaders(opts: {
-  durationMs: number;
-  language: string | null;
-  appContext: string | null;
-  skipPostProcess: boolean;
-}): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Content-Type": "audio/wav",
-    "x-audio-duration-ms": String(opts.durationMs),
-  };
-  if (opts.language) headers["x-dictation-language"] = opts.language;
-  if (opts.appContext)
-    headers["x-app-context"] = encodeAppContext(opts.appContext);
-  if (opts.skipPostProcess) headers["x-skip-post-process"] = "true";
-  return headers;
 }
 
 interface QueueEntry {
@@ -811,20 +778,15 @@ export default function AppPage(): React.JSX.Element {
     ): Promise<TranscribeResult> | null => {
       const wavBlob = streamerRef.current?.getWavBlob() ?? null;
       if (!wavBlob) return null;
-      const headers = buildTranscribeHeaders({
+      return postTranscribe(wavBlob, {
         durationMs: lastRecordingDurationRef.current,
         language,
         appContext: appContextRef.current,
         skipPostProcess: queueRef.current.length > 0 || drainingRef.current,
-      });
-      return apiFetch("/api/transcribe", {
-        method: "POST",
-        body: wavBlob,
-        headers,
         // Same 360s bound as the batch path in commitRecording — this is
         // also what the failure card's Retry re-posts through, so a wedged
         // local server can't turn Retry back into an infinite sweep.
-        signal: AbortSignal.timeout(BATCH_TRANSCRIBE_TIMEOUT_MS),
+        timeoutMs: BATCH_TRANSCRIBE_TIMEOUT_MS,
       })
         .then(async (res) => {
           if (!res.ok) {
@@ -1734,12 +1696,9 @@ export default function AppPage(): React.JSX.Element {
     }
 
     const isSubsequent = queueRef.current.length > 0 || drainingRef.current;
-    const headers = buildTranscribeHeaders({
-      durationMs: recordingDuration,
-      language: dictationLanguage,
-      appContext: appContextRef.current,
-      skipPostProcess: isSubsequent,
-    });
+    // Read before the await below: the app context can change while
+    // the server check runs.
+    const appContext = appContextRef.current;
 
     const serverOk = await refreshApiBase();
     if (!serverOk) {
@@ -1753,18 +1712,19 @@ export default function AppPage(): React.JSX.Element {
     }
 
     setPendingCount((c) => c + 1);
-    const transcribePromise: Promise<TranscribeResult> = apiFetch(
-      "/api/transcribe",
+    const transcribePromise: Promise<TranscribeResult> = postTranscribe(
+      wavBlob,
       {
-        method: "POST",
-        body: wavBlob,
-        headers,
+        durationMs: recordingDuration,
+        language: dictationLanguage,
+        appContext,
+        skipPostProcess: isSubsequent,
         // T1-4 / UX-02: bound the batch wait so a wedged local ASR server
         // can't keep the sweep up forever. Transcription is deliberately
         // outside the server's TIMEOUT_PREFIXES, so without this nothing
         // ever fails the request client-side. 360s minimum — see
         // BATCH_TRANSCRIBE_TIMEOUT_MS.
-        signal: AbortSignal.timeout(BATCH_TRANSCRIBE_TIMEOUT_MS),
+        timeoutMs: BATCH_TRANSCRIBE_TIMEOUT_MS,
       },
     )
       .then(async (res) => {
@@ -2158,14 +2118,9 @@ export default function AppPage(): React.JSX.Element {
 
     if (!instruction && wav) {
       try {
-        const res = await apiFetch("/api/transcribe", {
-          method: "POST",
-          body: wav,
-          headers: {
-            "Content-Type": "audio/wav",
-            "x-audio-duration-ms": String(durationMs),
-            "x-skip-post-process": "true",
-          },
+        const res = await postTranscribe(wav, {
+          durationMs,
+          skipPostProcess: true,
         });
         if (remixRef.current?.id !== session.id) return;
         if (res.ok) {
