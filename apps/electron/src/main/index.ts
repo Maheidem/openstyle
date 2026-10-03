@@ -39,8 +39,7 @@ if (process.env.NODE_ENV !== "production") {
   }
 }
 
-import { execFile } from "node:child_process";
-import { accessSync, constants, readFileSync, writeFileSync } from "node:fs";
+import { accessSync, constants } from "node:fs";
 import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
@@ -48,7 +47,6 @@ import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { OutputMode } from "@openstyle/sdk";
 import {
-  type AppType,
   activateManagedMlxRuntimeForAppVersion,
   closeDb,
   prefetchManagedMlxRuntimeForAppRelease,
@@ -60,9 +58,7 @@ import {
 import { createAppLogger, enableFileLogging } from "@openstyle/utils";
 import {
   DEFAULT_SERVER_PORT,
-  isOpenstyleHealthBody,
   REMIX_CLIPBOARD_LIMIT,
-  serverUrlSchema,
 } from "@openstyle/validations";
 import {
   app,
@@ -83,20 +79,26 @@ import {
   Tray,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import { hc } from "hono/client";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
-import type { OpenAppCandidate } from "../shared/open-apps";
 import { normalizePillCancelMode } from "../shared/pill-cancel";
 import {
   getDefaultRemixHotkey,
   REMIX_CLIPBOARD_PREVIEW_LIMIT,
 } from "../shared/remix";
-import { bearerAuthHeaders, type ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { registerJobAbortIpc } from "./abortable-jobs";
+import {
+  getFocusedWindowDisplay,
+  getFrontmostContext,
+  getLinuxFrontmostApp,
+  getMacFrontmostApp,
+  getOpenAppCandidates,
+  getOpenstyleAppExclusions,
+  getWindowsFrontmostApp,
+} from "./active-window";
 import { registerAppSettingsIpc } from "./app-settings-ipc";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
@@ -105,17 +107,33 @@ import { HotkeyRecorder } from "./hotkey-recorder";
 import {
   diffLanguageHotkeys,
   isLanguageHotkeyTaken,
+  isValidAccelerator,
   normalizeAccelerator,
 } from "./hotkey-utils";
 import { registerImportIpc } from "./import-audio";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { isWaylandSession } from "./linux-session";
+import {
+  clearSettingsCache,
+  readSettings,
+  writeSettings,
+} from "./local-settings";
+import {
+  activateAnchorApp,
+  isSecureInputActive,
+  runKeystrokeScript,
+  runMacAxCaps,
+  runMacAxKey,
+  runMacAxRead,
+  runMacAxSelect,
+  sendChordToFocusedApp,
+  sendSelectAllToFocusedApp,
+} from "./mac-ax";
 import { registerMeetingImportIpc } from "./meeting-import";
 import { registerMeetingIpc } from "./meeting-ipc";
 import { MeetingRecorder } from "./meeting-recorder";
 import { migrateLegacyUserData } from "./migrate-user-data";
-import { getNativeBinaryPath } from "./native-binary";
 import {
   copySelectionFromFocusedApp,
   pasteClipboardIntoFocusedApp,
@@ -138,7 +156,26 @@ import {
   resolveCustomPosition,
 } from "./pill-position";
 import { isRemixTargetAllowed } from "./remix-target";
+import {
+  getDashboardURL,
+  getMeetingCaptureURL,
+  getPillURL,
+  getRemixBarURL,
+} from "./renderer-urls";
 import { selfUpdater, sweepSelfUpdaterBackups } from "./self-updater";
+import {
+  getConfiguredModelCount,
+  getServerPort,
+  getServerSettings,
+  getServerToken,
+  getServerUrl,
+  probeServerHealth,
+  putServerSetting,
+  serverClient,
+  serverFetch,
+  setServerPort,
+  waitForServerReady,
+} from "./server-target";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
 
 // Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
@@ -279,95 +316,6 @@ function setPillHotRect(rect: PillHotRect | null): void {
   }, 120);
 }
 
-// ---------------------------------------------------------------------------
-// settings.json helpers — single source for read/write of the lightweight
-// JSON file the main process uses for settings it needs before the server
-// is available (pillPosition, onboardingComplete, autoUpdate).
-// ---------------------------------------------------------------------------
-
-let settingsCache: Record<string, unknown> | null = null;
-
-function readSettings(): Record<string, unknown> {
-  if (settingsCache) return settingsCache;
-  try {
-    const settingsPath = join(app.getPath("userData"), "settings.json");
-    settingsCache = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    return settingsCache!;
-  } catch {
-    settingsCache = {};
-    return settingsCache;
-  }
-}
-
-function writeSettings(patch: Record<string, unknown>): void {
-  try {
-    const settingsPath = join(app.getPath("userData"), "settings.json");
-    const data = { ...readSettings(), ...patch };
-    writeFileSync(settingsPath, JSON.stringify(data, null, 2));
-    settingsCache = data;
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * The configured Openstyle server URL, if the user has set one. When present,
- * the app talks to that server (for server-owned data: settings, history,
- * transcription) instead of the locally-run one. Returns an empty
- * string when using the default local server.
- *
- * The local server is always started regardless, so switching back to local
- * (or between remotes) never requires a restart — see the startup block.
- */
-function getServerUrl(): string {
-  const parsed = serverUrlSchema.safeParse(readSettings().serverUrl);
-  return parsed.success ? parsed.data : "";
-}
-
-/** Optional bearer token sent to a configured server ("" = none). */
-function getServerToken(): string {
-  const raw = readSettings().serverToken;
-  return typeof raw === "string" ? raw.trim() : "";
-}
-
-/**
- * Authorization headers for main-process API calls to a configured server.
- * Empty when no token is set (the default local-server case), so loopback
- * requests are unaffected.
- */
-function getServerAuthHeaders(): Record<string, string> {
-  return bearerAuthHeaders(getServerToken());
-}
-
-/**
- * `fetch` bound to the current server target. `path` starts after `/api`.
- * Auth headers go first, so a header of the caller always wins.
- */
-const serverFetch: ServerFetch = (path, init) =>
-  fetch(`${getServerBaseUrl()}/api${path}`, {
-    ...init,
-    headers: { ...getServerAuthHeaders(), ...init?.headers },
-  });
-
-/**
- * Typed `hc` client bound to the current server target (local or configured
- * remote) with auth headers — the main-process counterpart to the renderer's
- * getClient(). Reads the target per call, so it always tracks the latest
- * server:changed state without a restart.
- */
-function serverClient() {
-  return hc<AppType>(getServerBaseUrl(), { headers: getServerAuthHeaders() });
-}
-
-/**
- * Base URL the app uses to reach the Openstyle server: the configured remote
- * URL, or the locally-run server on the resolved port. The DB lives behind the
- * server, so all server-owned data (settings, history) is read through it.
- */
-function getServerBaseUrl(): string {
-  return getServerUrl() || `http://127.0.0.1:${serverPort}`;
-}
-
 /**
  * Send one IPC message to the pill window and the settings window. The
  * channel must be a string literal, so the preload drift test can find it.
@@ -387,7 +335,6 @@ function broadcastServerChanged(): void {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
-let serverPort = DEFAULT_SERVER_PORT;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 // In-flight settings-window creation. createSettingsWindow awaits an onboarding
@@ -482,27 +429,6 @@ function registerAppProtocol(): void {
   });
 }
 
-function getPillURL(): string {
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    return `${process.env.ELECTRON_RENDERER_URL}/pill.html`;
-  }
-  return "app://renderer/pill.html";
-}
-
-function getRemixBarURL(): string {
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    return `${process.env.ELECTRON_RENDERER_URL}/bar.html`;
-  }
-  return "app://renderer/bar.html";
-}
-
-function getMeetingCaptureURL(): string {
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    return `${process.env.ELECTRON_RENDERER_URL}/meeting-capture.html`;
-  }
-  return "app://renderer/meeting-capture.html";
-}
-
 /**
  * Hidden mic-capture window for meeting recordings. Loads the minimal
  * meeting-capture entry (PCM AudioWorklet -> `meeting:mic-chunk` IPC). The
@@ -540,13 +466,6 @@ function createMeetingCaptureWindow(): BrowserWindow {
   })();
 
   return win;
-}
-
-function getDashboardURL(path = "/"): string {
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    return `${process.env.ELECTRON_RENDERER_URL}${path}`;
-  }
-  return `app://renderer${path}`;
 }
 
 // Tracks the exact coordinates of the last programmatic setPosition call.
@@ -686,96 +605,6 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
   });
   const midY = display.workArea.y + display.workArea.height / 2;
   return wy < midY ? "custom-top" : "custom-bottom";
-}
-
-/**
- * Screen bounds (top-left origin, in screen coordinates) of the currently
- * focused *external* application window, or null if it can't be determined.
- *
- * Used to anchor the pill to the display the user is actually typing on, which
- * the cursor's display alone can't tell us: a keyboard-driven user often leaves
- * the mouse resting on a different monitor. This is intentionally async/native
- * (AppleScript / PowerShell), so it is never awaited on the pill-show hot path —
- * the pill shows immediately on the cursor's display and re-anchors here if this
- * resolves to a different one.
- */
-async function getFocusedWindowBounds(): Promise<{
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-} | null> {
-  try {
-    if (process.platform === "darwin") {
-      // `position`/`size` of the frontmost app's front window via Accessibility.
-      const out = await execAsync(
-        "osascript",
-        [
-          "-e",
-          'tell application "System Events" to tell (first application process whose frontmost is true) to get {position, size} of front window',
-        ],
-        1500,
-      );
-      // osascript returns e.g. "12, -340, 800, 600" (x, y, w, h).
-      const nums = out
-        .split(",")
-        .map((n) => Number.parseInt(n.trim(), 10))
-        .filter((n) => Number.isFinite(n));
-      if (nums.length < 4) return null;
-      const [x, y, width, height] = nums;
-      if (width <= 0 || height <= 0) return null;
-      return { x, y, width, height };
-    }
-
-    if (process.platform === "win32") {
-      const script = `
-        Add-Type @"
-          using System;
-          using System.Runtime.InteropServices;
-          public class Win32Rect {
-            [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-            [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
-          }
-"@
-        $hwnd = [Win32Rect]::GetForegroundWindow()
-        $r = New-Object Win32Rect+RECT
-        [Win32Rect]::GetWindowRect($hwnd, [ref]$r) | Out-Null
-        "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom)"
-      `;
-      const out = await execAsync(
-        "powershell",
-        ["-NoProfile", "-Command", script],
-        2000,
-      );
-      const nums = out
-        .split(",")
-        .map((n) => Number.parseInt(n.trim(), 10))
-        .filter((n) => Number.isFinite(n));
-      if (nums.length < 4) return null;
-      const [left, top, right, bottom] = nums;
-      const width = right - left;
-      const height = bottom - top;
-      if (width <= 0 || height <= 0) return null;
-      return { x: left, y: top, width, height };
-    }
-
-    // Linux compositors vary too much for a reliable synchronous rect; the
-    // cursor's display is used as-is there.
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The Electron display the focused external window is on, or null if it can't
- * be determined. Falls back to the cursor's display at call sites.
- */
-async function getFocusedWindowDisplay(): Promise<Electron.Display | null> {
-  const bounds = await getFocusedWindowBounds();
-  if (!bounds) return null;
-  return screen.getDisplayMatching(bounds);
 }
 
 // Preset positions follow the display under the cursor so the pill appears
@@ -1163,377 +992,6 @@ function updatePillEscape(): void {
   }
 }
 
-// -- Async helper: run a command without blocking the main thread --
-function execAsync(
-  cmd: string,
-  args: string[],
-  timeoutMs: number,
-  maxBuffer?: number,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      {
-        encoding: "utf-8",
-        timeout: timeoutMs,
-        ...(maxBuffer ? { maxBuffer } : {}),
-      },
-      (err, stdout) => {
-        if (err) reject(err);
-        else resolve((stdout as string).trim());
-      },
-    );
-  });
-}
-
-function getOpenstyleAppExclusions(): Set<string> {
-  return new Set(
-    // "Freestyle" is the old app name. A user upgrading from the old build may
-    // still have it installed or a stale window open, and it must keep being
-    // excluded from remix targeting.
-    [app.name, "Freestyle", "Electron"]
-      .map((name) => name?.trim().toLowerCase())
-      .filter((name): name is string => Boolean(name)),
-  );
-}
-
-function normalizeOpenAppCandidates(
-  rawLabels: readonly string[],
-): OpenAppCandidate[] {
-  const exclusions = getOpenstyleAppExclusions();
-  const deduped = new Map<string, OpenAppCandidate>();
-
-  for (const rawLabel of rawLabels) {
-    const label = rawLabel.replace(/\s+/g, " ").trim();
-    if (!label) continue;
-
-    const match = label.toLowerCase();
-    if (exclusions.has(match)) continue;
-
-    if (!deduped.has(match)) {
-      deduped.set(match, { label, match });
-    }
-  }
-
-  return [...deduped.values()].sort((a, b) =>
-    a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
-  );
-}
-
-function parseContextAppLabel(raw: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as { app?: string };
-    return parsed.app ? [parsed.app] : [];
-  } catch {
-    return [raw];
-  }
-}
-
-// -- macOS: Get frontmost app + browser tab context via AppleScript --
-async function getMacFrontmostApp(): Promise<string | null> {
-  try {
-    const appName = await execAsync(
-      "osascript",
-      [
-        "-e",
-        'tell application "System Events" to get name of first application process whose frontmost is true',
-      ],
-      2000,
-    );
-
-    const chromiumBrowsers = [
-      "Google Chrome",
-      "Arc",
-      "Brave Browser",
-      "Microsoft Edge",
-    ];
-
-    try {
-      if (appName === "Safari") {
-        const result = await execAsync(
-          "osascript",
-          [
-            "-e",
-            'tell application "Safari" to return {URL of current tab of front window, name of current tab of front window}',
-          ],
-          2000,
-        );
-        const idx = result.indexOf(", ");
-        if (idx > 0) {
-          return JSON.stringify({
-            app: appName,
-            url: result.substring(0, idx),
-            title: result.substring(idx + 2),
-          });
-        }
-      } else if (appName === "Firefox") {
-        const title = await execAsync(
-          "osascript",
-          [
-            "-e",
-            'tell application "System Events" to get name of front window of application process "Firefox"',
-          ],
-          2000,
-        );
-        return JSON.stringify({ app: appName, windowTitle: title });
-      } else if (chromiumBrowsers.includes(appName)) {
-        const result = await execAsync(
-          "osascript",
-          [
-            "-e",
-            `tell application "${appName}" to return {URL of active tab of front window, title of active tab of front window}`,
-          ],
-          2000,
-        );
-        const idx = result.indexOf(", ");
-        if (idx > 0) {
-          return JSON.stringify({
-            app: appName,
-            url: result.substring(0, idx),
-            title: result.substring(idx + 2),
-          });
-        }
-      }
-    } catch {
-      // Browser tab access failed — fall back to app name only
-    }
-
-    return JSON.stringify({ app: appName });
-  } catch {
-    return null;
-  }
-}
-
-async function getMacOpenAppCandidates(): Promise<OpenAppCandidate[]> {
-  try {
-    const result = await execAsync(
-      "osascript",
-      [
-        "-e",
-        'tell application "System Events" to get name of every application process whose background only is false and visible is true',
-      ],
-      2000,
-    );
-
-    return normalizeOpenAppCandidates(result.split(","));
-  } catch {
-    return [];
-  }
-}
-
-// -- Windows: Get foreground window process name + title via PowerShell --
-async function getWindowsFrontmostApp(): Promise<string | null> {
-  try {
-    const script = `
-      Add-Type @"
-        using System;
-        using System.Runtime.InteropServices;
-        using System.Text;
-        public class Win32 {
-          [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-          [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-          [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-        }
-"@
-      $hwnd = [Win32]::GetForegroundWindow()
-      $sb = New-Object System.Text.StringBuilder 256
-      [Win32]::GetWindowText($hwnd, $sb, 256) | Out-Null
-      $title = $sb.ToString()
-      $pid = 0
-      [Win32]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-      $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
-      "$($proc.ProcessName)|$title"
-    `;
-    const result = await execAsync(
-      "powershell",
-      ["-NoProfile", "-Command", script],
-      3000,
-    );
-
-    const pipeIdx = result.indexOf("|");
-    if (pipeIdx > 0) {
-      const processName = result.substring(0, pipeIdx);
-      const windowTitle = result.substring(pipeIdx + 1);
-      return JSON.stringify({ app: processName, windowTitle });
-    }
-    return JSON.stringify({ app: result });
-  } catch {
-    return null;
-  }
-}
-
-async function getWindowsOpenAppCandidates(): Promise<OpenAppCandidate[]> {
-  try {
-    const script = `
-      $apps = Get-Process |
-        Where-Object { $_.MainWindowTitle -and $_.ProcessName } |
-        Select-Object -Property ProcessName |
-        Sort-Object ProcessName -Unique |
-        ConvertTo-Json -Compress
-      $apps
-    `;
-    const result = await execAsync(
-      "powershell",
-      ["-NoProfile", "-Command", script],
-      3000,
-    );
-
-    const parsed = JSON.parse(result) as
-      | { ProcessName?: string }
-      | Array<{ ProcessName?: string }>;
-    const apps = Array.isArray(parsed) ? parsed : [parsed];
-
-    return normalizeOpenAppCandidates(
-      apps
-        .map((entry) => entry.ProcessName?.trim())
-        .filter((entry): entry is string => Boolean(entry)),
-    );
-  } catch {
-    return [];
-  }
-}
-
-// -- Linux: Get active window name + title (Wayland compositors + X11) --
-async function getLinuxFrontmostApp(): Promise<string | null> {
-  if (isWaylandSession()) {
-    return (
-      (await getSwayFrontmostApp()) ??
-      (await getGnomeFrontmostApp()) ??
-      (await getLinuxX11FrontmostApp())
-    );
-  }
-  return getLinuxX11FrontmostApp();
-}
-
-interface SwayNode {
-  focused?: boolean;
-  name?: string;
-  app_id?: string | null;
-  window_properties?: { class?: string };
-  nodes?: SwayNode[];
-  floating_nodes?: SwayNode[];
-}
-
-function findFocusedSwayNode(node: SwayNode): SwayNode | null {
-  if (node.focused) return node;
-  for (const child of [...(node.nodes ?? []), ...(node.floating_nodes ?? [])]) {
-    const hit = findFocusedSwayNode(child);
-    if (hit) return hit;
-  }
-  return null;
-}
-
-async function getSwayFrontmostApp(): Promise<string | null> {
-  try {
-    const output = await execAsync("swaymsg", ["-t", "get_tree"], 2000);
-    const focused = findFocusedSwayNode(JSON.parse(output) as SwayNode);
-    if (!focused) return null;
-    return JSON.stringify({
-      app: focused.app_id ?? focused.window_properties?.class ?? "Unknown",
-      windowTitle: focused.name ?? "",
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function getGnomeFrontmostApp(): Promise<string | null> {
-  try {
-    const output = await execAsync(
-      "gdbus",
-      [
-        "call",
-        "--session",
-        "--dest",
-        "org.gnome.Shell",
-        "--object-path",
-        "/org/gnome/Shell/Introspect",
-        "--method",
-        "org.gnome.Shell.Introspect.GetWindows",
-      ],
-      2000,
-    );
-    for (const win of output.split(/uint64 \d+:/).slice(1)) {
-      if (!/'has-focus':\s*<true>/.test(win)) continue;
-      const app =
-        /'wm-class':\s*<'((?:[^'\\]|\\.)*)'>/.exec(win)?.[1] ?? "Unknown";
-      const title = /'title':\s*<'((?:[^'\\]|\\.)*)'>/.exec(win)?.[1] ?? "";
-      return JSON.stringify({ app, windowTitle: title });
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function getLinuxX11FrontmostApp(): Promise<string | null> {
-  try {
-    const windowTitle = await execAsync(
-      "xdotool",
-      ["getactivewindow", "getwindowname"],
-      2000,
-    );
-
-    let processName = "";
-    try {
-      const pid = await execAsync(
-        "xdotool",
-        ["getactivewindow", "getwindowpid"],
-        2000,
-      );
-      processName = await execAsync("cat", [`/proc/${pid}/comm`], 1000);
-    } catch {
-      // some windows don't expose PID
-    }
-
-    return JSON.stringify({
-      app: processName || "Unknown",
-      windowTitle,
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function getLinuxOpenAppCandidates(): Promise<OpenAppCandidate[]> {
-  try {
-    const result = await execAsync("wmctrl", ["-lx"], 2000);
-    const labels = result
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const parts = line.split(/\s+/);
-        const wmClass = parts[3] ?? "";
-        return wmClass.split(".").at(-1)?.replace(/[_-]+/g, " ") ?? "";
-      });
-
-    const candidates = normalizeOpenAppCandidates(labels);
-    if (candidates.length > 0) return candidates;
-  } catch {
-    // Fall back to the current app only when a visible window list is unavailable.
-  }
-
-  return normalizeOpenAppCandidates(
-    parseContextAppLabel(await getLinuxFrontmostApp()),
-  );
-}
-
-async function getOpenAppCandidates(): Promise<OpenAppCandidate[]> {
-  if (process.platform === "darwin") {
-    return getMacOpenAppCandidates();
-  }
-  if (process.platform === "win32") {
-    return getWindowsOpenAppCandidates();
-  }
-  if (process.platform === "linux") {
-    return getLinuxOpenAppCandidates();
-  }
-  return [];
-}
-
 function hidePill(): void {
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
@@ -1597,64 +1055,6 @@ function resetOnboarding(): void {
   showSettingsWindow("/onboarding");
 }
 
-// Per-request timeout for main-process API calls to the server.
-const SERVER_SETTING_TIMEOUT_MS = 5000;
-// How long boot waits for the server to answer before registering the hotkey
-// with whatever it can read (falling back to the default accelerator).
-const SERVER_READY_TIMEOUT_MS = 5000;
-
-async function putServerSetting(key: string, value: string): Promise<boolean> {
-  try {
-    const res = await serverClient().api.settings[":key"].$put(
-      { param: { key }, json: { value } },
-      { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
-    );
-    return res.ok;
-  } catch (err) {
-    log.warn(`Failed to save setting "${key}":`, err);
-    return false;
-  }
-}
-
-/**
- * Read all server-owned settings in one request. Returns `null` when the server
- * is unreachable — distinct from an empty map (server reachable, nothing
- * stored) so callers don't mistake a network blip for "unset" and clobber
- * last-known-good values (e.g. reverting the hotkey mode to its default).
- *
- * All server-owned state (settings, models, history) lives behind the
- * server — local or a configured remote — so the main process reads it through
- * the API rather than opening the SQLite file directly. This keeps a single
- * source of truth and makes a configured remote server behave identically.
- */
-async function getServerSettings(): Promise<Record<string, string> | null> {
-  try {
-    const res = await serverClient().api.settings.$get(
-      {},
-      { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
-    );
-    if (!res.ok) return null;
-    return (await res.json()) as Record<string, string>;
-  } catch {
-    return null;
-  }
-}
-
-/** Number of configured models behind the current server (0 when unreachable). */
-async function getConfiguredModelCount(): Promise<number> {
-  try {
-    const res = await serverClient().api.models.configured.$get(
-      {},
-      { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
-    );
-    if (!res.ok) return 0;
-    const data = (await res.json()) as unknown[];
-    return Array.isArray(data) ? data.length : 0;
-  } catch {
-    return 0;
-  }
-}
-
 /**
  * Matches the route decision in buildSettingsWindow. Existing users who have
  * configured models are treated as onboarded even if the lightweight setting
@@ -1663,43 +1063,6 @@ async function getConfiguredModelCount(): Promise<number> {
 async function isOnboardingActive(): Promise<boolean> {
   if (readSettings().onboardingComplete === true) return false;
   return (await getConfiguredModelCount()) === 0;
-}
-
-/**
- * Probe `/api/health` at `baseUrl` and confirm it's actually a Openstyle server
- * (not some other service that happens to hold the port). Returns false on any
- * network error or non-matching identity.
- */
-async function probeServerHealth(
-  baseUrl: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  try {
-    const res = await net.fetch(`${baseUrl}/api/health`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { status?: string; name?: string };
-    return isOpenstyleHealthBody(data);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Resolve once the current server target answers `/api/health`, or after
- * `timeoutMs`. Used at boot before the first settings read, since the local
- * server starts asynchronously (fire-and-forget) and may not be listening yet.
- */
-async function waitForServerReady(
-  timeoutMs = SERVER_READY_TIMEOUT_MS,
-): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await probeServerHealth(getServerBaseUrl(), 1000)) return true;
-    await wait(150);
-  }
-  return false;
 }
 
 // Dev-only: reset every sector tone to off and cleanup intensity to medium.
@@ -1788,7 +1151,7 @@ async function factoryReset(): Promise<void> {
       await rm(join(userData, f), { force: true });
     }
 
-    settingsCache = null;
+    clearSettingsCache();
     if (process.platform === "linux") {
       linuxAutostart.setEnabled(false);
     } else {
@@ -2395,7 +1758,7 @@ app.whenReady().then(async () => {
   });
 
   registerAppSettingsIpc({
-    getServerPort: () => serverPort,
+    getServerPort,
     getServerUrl,
     getServerToken,
     readSettings,
@@ -2490,7 +1853,7 @@ app.whenReady().then(async () => {
     startOpenstyleServer({ port, host: "127.0.0.1" })
       .then(({ server, port: boundPort }) => {
         httpServer = server;
-        serverPort = boundPort;
+        setServerPort(boundPort);
         log.info(`Server running on http://localhost:${boundPort}`);
       })
       .catch((err: NodeJS.ErrnoException) => {
@@ -2515,7 +1878,7 @@ app.whenReady().then(async () => {
   );
 
   if (existingServer) {
-    serverPort = DEFAULT_SERVER_PORT;
+    setServerPort(DEFAULT_SERVER_PORT);
     log.info(
       `Reusing existing Openstyle server on http://localhost:${DEFAULT_SERVER_PORT}`,
     );
@@ -3204,39 +2567,6 @@ app.whenReady().then(async () => {
   });
 });
 
-interface FrontmostContext {
-  appName: string | null;
-  windowTitle: string | null;
-  url: string | null;
-}
-
-async function getFrontmostContext(): Promise<FrontmostContext> {
-  try {
-    let raw: string | null = null;
-    if (process.platform === "darwin") raw = await getMacFrontmostApp();
-    else if (process.platform === "win32") raw = await getWindowsFrontmostApp();
-    else if (process.platform === "linux") raw = await getLinuxFrontmostApp();
-    if (!raw) return { appName: null, windowTitle: null, url: null };
-    try {
-      const parsed = JSON.parse(raw) as {
-        app?: string;
-        windowTitle?: string;
-        title?: string;
-        url?: string;
-      };
-      return {
-        appName: parsed.app?.trim() || null,
-        windowTitle: parsed.windowTitle?.trim() || parsed.title?.trim() || null,
-        url: parsed.url?.trim() || null,
-      };
-    } catch {
-      return { appName: raw.trim() || null, windowTitle: null, url: null };
-    }
-  } catch {
-    return { appName: null, windowTitle: null, url: null };
-  }
-}
-
 /** Clipboard preview after selection capture restores what Copy borrowed. */
 function clipboardPreviewFields(): {
   clipboard: string | null;
@@ -3258,84 +2588,6 @@ let remixAnchor: {
 
 const REMIX_ANCHOR_MAX_AGE_MS = 5 * 60 * 1000;
 
-// Remix document access: AX when available, keyboard fallback for canvas editors.
-
-interface AxReadResult {
-  text: string;
-  selStart: number;
-  selLen: number;
-  settable: boolean;
-}
-
-/** Run the macos-ax binary. Returns stdout, or null if it cannot run or fails. */
-async function runMacAx(
-  args: string[],
-  timeoutMs: number,
-  maxBuffer?: number,
-): Promise<string | null> {
-  if (process.platform !== "darwin") return null;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return null;
-  try {
-    return await execAsync(binary, args, timeoutMs, maxBuffer);
-  } catch {
-    return null;
-  }
-}
-
-async function runMacAxRead(): Promise<AxReadResult | null> {
-  // A large document's JSON easily exceeds execFile's 1MB default buffer.
-  const out = await runMacAx(["read"], 3000, 16 * 1024 * 1024);
-  if (out === null) return null;
-  try {
-    return JSON.parse(out) as AxReadResult;
-  } catch {
-    return null;
-  }
-}
-
-async function runMacAxSelect(start: number, len: number): Promise<boolean> {
-  return (
-    (await runMacAx(["select", String(start), String(len)], 3000)) !== null
-  );
-}
-
-async function runMacAxCaps(): Promise<{
-  settable: boolean;
-  length: number;
-} | null> {
-  const out = await runMacAx(["caps"], 3000);
-  if (out === null) return null;
-  try {
-    return JSON.parse(out) as { settable: boolean; length: number };
-  } catch {
-    return null;
-  }
-}
-
-async function isSecureInputActive(): Promise<boolean> {
-  return (await runMacAx(["secure"], 1000)) === "1";
-}
-
-async function runMacAxKey(code: number): Promise<boolean> {
-  return (await runMacAx(["key", String(code)], 3000)) !== null;
-}
-
-/** Cmd+A via CGEvent binary (same AX permission as paste); osascript fallback. */
-async function sendSelectAllToFocusedApp(): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-fast-paste");
-  if (binary) {
-    try {
-      await execAsync(binary, ["a"], 3000);
-      return true;
-    } catch (err) {
-      hotkeyLog.warn(`Native select-all failed, trying osascript: ${err}`);
-    }
-  }
-  return runKeystrokeScript(['keystroke "a" using {command down}']);
-}
-
 /** Whitelist of bare keycodes press_key may inject (no modifier chords). */
 const REMIX_PRESSABLE_KEYS: Record<string, number> = {
   enter: 36,
@@ -3350,41 +2602,6 @@ const REMIX_PRESSABLE_KEYS: Record<string, number> = {
   home: 115,
   end: 119,
 };
-
-async function sendChordToFocusedApp(
-  letter: string,
-  shift: boolean,
-): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-fast-paste");
-  if (binary) {
-    try {
-      await execAsync(binary, shift ? [letter, "shift"] : [letter], 3000);
-      return true;
-    } catch (err) {
-      hotkeyLog.warn(`Native chord ${letter} failed, trying osascript: ${err}`);
-    }
-  }
-  return runKeystrokeScript([
-    `keystroke "${letter}" using {command down${shift ? ", shift down" : ""}}`,
-  ]);
-}
-
-async function runKeystrokeScript(lines: string[]): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const script = [
-    'tell application "System Events"',
-    ...lines,
-    "end tell",
-  ].flatMap((line) => ["-e", line]);
-  try {
-    await execAsync("osascript", script, 8000);
-    return true;
-  } catch (err) {
-    hotkeyLog.warn(`Keystroke script failed: ${err}`);
-    return false;
-  }
-}
 
 /** Run fn only if the document can take injected input; else report it is not in front. */
 async function withFocusedAnchor<T>(
@@ -3454,21 +2671,6 @@ async function fetchRemixImage(
   } catch (err) {
     hotkeyLog.warn(`Remix image fetch failed: ${err}`);
     return null;
-  }
-}
-
-/** Bring the anchored app frontmost (macOS); settle before re-check. */
-async function activateAnchorApp(appName: string): Promise<void> {
-  if (process.platform !== "darwin") return;
-  try {
-    await execAsync(
-      "osascript",
-      ["-e", `tell application ${JSON.stringify(appName)} to activate`],
-      2000,
-    );
-    await wait(150);
-  } catch (err) {
-    hotkeyLog.warn(`Could not re-activate "${appName}": ${err}`);
   }
 }
 
@@ -3682,55 +2884,6 @@ function applyRemixSettings(settings: Record<string, string>): void {
 
 const DEFAULT_HOTKEY = getDefaultHotkey();
 const DEFAULT_REMIX_HOTKEY = getDefaultRemixHotkey();
-const HOTKEY_MODIFIER_PARTS = new Set([
-  "alt",
-  "option",
-  "control",
-  "ctrl",
-  "command",
-  "cmd",
-  "commandorcontrol",
-  "cmdorctrl",
-  "shift",
-  "super",
-  "meta",
-  "win",
-  "fn",
-  "globe",
-  "rightalt",
-  "rightoption",
-  "rightcontrol",
-  "rightctrl",
-  "rightshift",
-  "rightcommand",
-  "rightcmd",
-  "rightsuper",
-  "rightwin",
-  "rightmeta",
-]);
-const HOTKEY_MACRO_MOUSE_PARTS = new Set(["mousebutton4", "mousebutton5"]);
-
-function isValidAccelerator(accel: string): boolean {
-  if (!accel || typeof accel !== "string") return false;
-  if (!/^[\x20-\x7E]+$/.test(accel)) return false;
-  if (accel.endsWith("+")) return false;
-  const parts = accel.split("+");
-  if (parts.some((p) => !p.trim())) return false;
-  const lowered = parts.map((p) => p.trim().toLowerCase());
-  // Fn/Globe is only observable by the macOS native listener; on other
-  // platforms a hotkey containing it would silently never fire.
-  if (
-    process.platform !== "darwin" &&
-    lowered.some((p) => p === "fn" || p === "globe")
-  ) {
-    return false;
-  }
-  return lowered.some(
-    (part) =>
-      HOTKEY_MODIFIER_PARTS.has(part) || HOTKEY_MACRO_MOUSE_PARTS.has(part),
-  );
-}
-
 /** The configured hotkey accelerator from a settings map, if valid. */
 function hotkeyFromSettings(
   settings: Record<string, string>,

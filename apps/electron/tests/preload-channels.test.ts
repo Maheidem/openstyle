@@ -108,16 +108,17 @@ function preloadSubscriptions(): Subscription[] {
 
 /**
  * Every `.send("<channel>", ...)` and `broadcastToWindows("<channel>", ...)`
- * call site in src/main, keyed by channel with file provenance. Receivers
- * are WebContents-shaped (`win.webContents.send`, `event.sender.send`, a
- * stored `target.send`) —
+ * call site in src/main and its subfolders, keyed by channel with file
+ * provenance. Receivers are WebContents-shaped (`win.webContents.send`,
+ * `event.sender.send`, a stored `target.send`) —
  * if a future non-IPC `.send` with a string first argument appears here as
  * a false positive, add it to IGNORED_MAIN_SENDS with a justification.
  */
 function mainSendChannels(): Map<string, string[]> {
   const IGNORED_MAIN_SENDS: ReadonlySet<string> = new Set([]);
   const sends = new Map<string, string[]>();
-  for (const file of readdirSync(MAIN_DIR).filter((f) => f.endsWith(".ts"))) {
+  const files = readdirSync(MAIN_DIR, { recursive: true }) as string[];
+  for (const file of files.filter((f) => f.endsWith(".ts"))) {
     const source = parse(join(MAIN_DIR, file));
     (function walk(node: ts.Node): void {
       if (

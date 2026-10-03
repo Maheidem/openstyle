@@ -45,8 +45,8 @@ import {
 //     isolation `import-screen`/`meeting-import` spell
 //     `OPENSTYLE_E2E_SERVER_URL`).
 //   * The app's boot probe WILL find the foreign server on 4649 and set
-//     `serverPort = 4649` (`src/main/index.ts:2821`) — which is exactly why
-//     `serverUrl` is seeded: `getServerBaseUrl()` (`src/main/index.ts:361`)
+//     `serverPort = 4649` (in the boot probe of `src/main/index.ts`) — which is
+//     exactly why `serverUrl` is seeded: `getServerBaseUrl()` (`src/main/server-target.ts`)
 //     and the renderer's `getApiBase()` (`src/renderer/src/lib/api.ts:26`)
 //     both prefer a configured URL. Test 00 asserts the app resolved to OUR
 //     server, and the manifest records whether any renderer request ever
