@@ -1,13 +1,13 @@
 import { zValidator } from "@hono/zod-validator";
+import { createAppLogger } from "@openstyle/utils";
 import { remixTransformSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getLanguagesSetting } from "../../lib/language.js";
 import { recordRemixRun } from "../../lib/remix-store.js";
-import {
-  RemixTransformError,
-  reportRemixTransformFailure,
-  runRemixTransform,
-} from "../../lib/remix-transform.js";
+import { runRemixTransform } from "../../lib/remix-transform.js";
+import { remixErrorResponse } from "./error-response.js";
+
+const log = createAppLogger("remix");
 
 /**
  * Run an AI edit over a text selection and hand back the replacement.
@@ -47,22 +47,8 @@ const remixRoute = new Hono().post(
       }
       return c.json({ text: result.text, runId });
     } catch (err) {
-      reportRemixTransformFailure(err);
-      if (err instanceof RemixTransformError) {
-        // A setup problem is the user's to fix and says so in its message; a
-        // failure is ours. Both are shown verbatim in the pill's card.
-        return c.json(
-          { error: err.kind, detail: err.message },
-          err.kind === "failed" ? 502 : 400,
-        );
-      }
-      return c.json(
-        {
-          error: "failed",
-          detail: err instanceof Error ? err.message : "Remix failed",
-        },
-        502,
-      );
+      log.error(`Remix failed: ${err}`);
+      return remixErrorResponse(c, err);
     }
   },
 );
