@@ -1,6 +1,7 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
 import { Card } from "@renderer/components/ui/card";
+import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
 import { formatClockDuration } from "@renderer/lib/format";
 import {
   classifyImportError,
@@ -103,7 +104,7 @@ export default function ImportPage(): React.JSX.Element {
   const queryClient = useQueryClient();
   const [state, setState] = useState<ImportState>({ status: "idle" });
   const [dragActive, setDragActive] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const [cancelRequested, setCancelRequested] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   // Guards the async duration probe: a slow metadata read must not patch a
@@ -280,10 +281,8 @@ export default function ImportPage(): React.JSX.Element {
 
   const copyTranscript = useCallback(async () => {
     if (state.status !== "done") return;
-    await navigator.clipboard.writeText(state.result.cleaned);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [state]);
+    await copy(state.result.cleaned);
+  }, [state, copy]);
 
   const weightLine = useCallback(
     (file: { size: number; durationMs: number | null }): string => {

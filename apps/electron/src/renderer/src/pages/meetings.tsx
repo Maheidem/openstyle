@@ -47,6 +47,7 @@ import {
   TabsTrigger,
 } from "@renderer/components/ui/tabs";
 import { Textarea } from "@renderer/components/ui/textarea";
+import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
 import { getClient } from "@renderer/lib/api";
 import { formatClockDuration } from "@renderer/lib/format";
 import {
@@ -599,17 +600,9 @@ function CopyButton({
   text: string;
   label: string;
 }): React.JSX.Element {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => {
-        void navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-    >
+    <Button variant="outline" size="sm" onClick={() => void copy(text)}>
       {copied ? (
         <Check data-icon="inline-start" className="text-primary" />
       ) : (
