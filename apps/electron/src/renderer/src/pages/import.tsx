@@ -2,6 +2,7 @@ import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
 import { Card } from "@renderer/components/ui/card";
 import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
+import { useFileDrop } from "@renderer/hooks/use-file-drop";
 import { formatClockDuration } from "@renderer/lib/format";
 import {
   classifyImportError,
@@ -103,7 +104,6 @@ export default function ImportPage(): React.JSX.Element {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [state, setState] = useState<ImportState>({ status: "idle" });
-  const [dragActive, setDragActive] = useState(false);
   const { copied, copy } = useCopyToClipboard();
   const [cancelRequested, setCancelRequested] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -237,15 +237,9 @@ export default function ImportPage(): React.JSX.Element {
     [rejectUnsupported, stageSelected, t],
   );
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      setDragActive(false);
-      if (uploading) return;
-      const file = e.dataTransfer.files?.[0];
-      if (file) handleFile(file);
-    },
-    [handleFile, uploading],
+  const { dragActive, handlers: dropHandlers } = useFileDrop(
+    handleFile,
+    uploading,
   );
 
   const handleChoose = useCallback(async () => {
@@ -322,12 +316,7 @@ export default function ImportPage(): React.JSX.Element {
           {(state.status === "idle" || state.status === "error") && (
             <Card
               data-testid="import-dropzone"
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragActive(true);
-              }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={handleDrop}
+              {...dropHandlers}
               className={cn(
                 "flex flex-col items-center gap-3 border-2 border-dashed py-10 text-center transition-colors",
                 dragActive ? "border-primary bg-primary/5" : "border-border",
