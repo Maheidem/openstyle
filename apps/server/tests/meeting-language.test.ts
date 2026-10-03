@@ -87,6 +87,23 @@ function makeProvider(
   };
 }
 
+type ResolveArgs = Parameters<typeof resolveMeetingLanguage>[0];
+
+/** Call `resolveMeetingLanguage` for meeting "m1" with one 3 s mic segment.
+ * Each test overrides only what it needs. */
+function run(
+  overrides: Pick<ResolveArgs, "provider"> & Partial<ResolveArgs>,
+): ReturnType<typeof resolveMeetingLanguage> {
+  return resolveMeetingLanguage({
+    meetingId: "m1",
+    audioDir: makeAudioDir(),
+    config: { providerId: "fake", modelId: "m", apiKey: "k" },
+    micSegments: [{ startMs: 0, endMs: 3000 }],
+    systemSegments: [],
+    ...overrides,
+  });
+}
+
 afterEach(() => {
   resetMeetingTables();
   getDb().exec("DELETE FROM settings WHERE key = 'languages'");
@@ -147,14 +164,7 @@ describe("resolveMeetingLanguage", () => {
     setDeclaredLanguages(["pt"]);
     insertMeeting("m1");
     const { provider, calls } = makeProvider(async () => ({ text: "" }));
-    const result = await resolveMeetingLanguage({
-      meetingId: "m1",
-      audioDir: makeAudioDir(),
-      provider,
-      config: { providerId: "fake", modelId: "m", apiKey: "k" },
-      micSegments: [{ startMs: 0, endMs: 3000 }],
-      systemSegments: [],
-    });
+    const result = await run({ provider });
     expect(result).toBe("pt");
     expect(calls).toHaveLength(0);
     expect(readMeetingLanguage("m1")).toBe("pt");
@@ -164,14 +174,7 @@ describe("resolveMeetingLanguage", () => {
     setDeclaredLanguages([]);
     insertMeeting("m1");
     const { provider, calls } = makeProvider(async () => ({ text: "" }));
-    const result = await resolveMeetingLanguage({
-      meetingId: "m1",
-      audioDir: makeAudioDir(),
-      provider,
-      config: { providerId: "fake", modelId: "m", apiKey: "k" },
-      micSegments: [{ startMs: 0, endMs: 3000 }],
-      systemSegments: [],
-    });
+    const result = await run({ provider });
     expect(result).toBeUndefined();
     expect(calls).toHaveLength(0);
     expect(readMeetingLanguage("m1")).toBeUndefined();
@@ -184,14 +187,7 @@ describe("resolveMeetingLanguage", () => {
       .prepare("UPDATE meetings SET language = 'pt' WHERE id = 'm1'")
       .run();
     const { provider, calls } = makeProvider(async () => ({ text: "hello" }));
-    const result = await resolveMeetingLanguage({
-      meetingId: "m1",
-      audioDir: makeAudioDir(),
-      provider,
-      config: { providerId: "fake", modelId: "m", apiKey: "k" },
-      micSegments: [{ startMs: 0, endMs: 3000 }],
-      systemSegments: [],
-    });
+    const result = await run({ provider });
     expect(result).toBe("pt");
     expect(calls).toHaveLength(0);
   });
@@ -206,15 +202,7 @@ describe("resolveMeetingLanguage", () => {
       { lang: "pt", accuracy: 0.8 },
       { lang: "en", accuracy: 0.05 },
     ];
-    const result = await resolveMeetingLanguage({
-      meetingId: "m1",
-      audioDir: makeAudioDir(),
-      provider,
-      config: { providerId: "fake", modelId: "m", apiKey: "k" },
-      micSegments: [{ startMs: 0, endMs: 3000 }],
-      systemSegments: [],
-      detectAll,
-    });
+    const result = await run({ provider, detectAll });
     expect(result).toBe("pt");
     expect(calls).toHaveLength(1);
     // Probe never biases and never pins a language of its own.
@@ -232,15 +220,7 @@ describe("resolveMeetingLanguage", () => {
       { lang: "de", accuracy: 0.5 },
       { lang: "en", accuracy: 0.2 },
     ];
-    const result = await resolveMeetingLanguage({
-      meetingId: "m1",
-      audioDir: makeAudioDir(),
-      provider,
-      config: { providerId: "fake", modelId: "m", apiKey: "k" },
-      micSegments: [{ startMs: 0, endMs: 3000 }],
-      systemSegments: [],
-      detectAll,
-    });
+    const result = await run({ provider, detectAll });
     expect(result).toBe("en");
   });
 
@@ -250,14 +230,7 @@ describe("resolveMeetingLanguage", () => {
     const { provider } = makeProvider(async () => {
       throw new Error("provider down");
     });
-    const result = await resolveMeetingLanguage({
-      meetingId: "m1",
-      audioDir: makeAudioDir(),
-      provider,
-      config: { providerId: "fake", modelId: "m", apiKey: "k" },
-      micSegments: [{ startMs: 0, endMs: 3000 }],
-      systemSegments: [],
-    });
+    const result = await run({ provider });
     expect(result).toBe("en");
     expect(readMeetingLanguage("m1")).toBe("en");
   });
@@ -266,14 +239,7 @@ describe("resolveMeetingLanguage", () => {
     setDeclaredLanguages(["en", "pt"]);
     insertMeeting("m1");
     const { provider, calls } = makeProvider(async () => ({ text: "hi" }));
-    const result = await resolveMeetingLanguage({
-      meetingId: "m1",
-      audioDir: makeAudioDir(),
-      provider,
-      config: { providerId: "fake", modelId: "m", apiKey: "k" },
-      micSegments: [],
-      systemSegments: [],
-    });
+    const result = await run({ provider, micSegments: [] });
     expect(result).toBe("en");
     expect(calls).toHaveLength(0);
   });
@@ -282,14 +248,7 @@ describe("resolveMeetingLanguage", () => {
     setDeclaredLanguages(["en", "pt"]);
     insertMeeting("m1");
     const { provider } = makeProvider(async () => ({ text: "   " }));
-    const result = await resolveMeetingLanguage({
-      meetingId: "m1",
-      audioDir: makeAudioDir(),
-      provider,
-      config: { providerId: "fake", modelId: "m", apiKey: "k" },
-      micSegments: [{ startMs: 0, endMs: 3000 }],
-      systemSegments: [],
-    });
+    const result = await run({ provider });
     expect(result).toBe("en");
   });
 });
