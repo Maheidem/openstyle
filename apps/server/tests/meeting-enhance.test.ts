@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import {
   chunkForEnhance,
+  type EnhanceLlmCall,
   type EnhanceLlmRequest,
   type EnhanceLlmResponse,
+  type EnhanceMeetingOptions,
   enhanceMeetingTranscript,
   extractJsonObject,
 } from "../src/lib/meetings/enhance.js";
@@ -50,6 +52,50 @@ function insertMeetingAndSegments(meetingId: string, ids: string[]): void {
       text: "placeholder",
     });
   }
+}
+
+/** Seed meeting "m1" with one DB row per segment id, then run the enhance
+ * pass on it. Do not use it when a test must write rows before the seed. */
+function runEnhance(
+  segments: MergedSegment[],
+  opts: {
+    llm: { call: EnhanceLlmCall };
+    language?: string;
+    title?: string;
+    context?: string;
+    options?: Omit<EnhanceMeetingOptions, "llmCall">;
+  },
+) {
+  insertMeetingAndSegments(
+    "m1",
+    segments.flatMap((s) => (s.id ? [s.id] : [])),
+  );
+  return enhanceMeetingTranscript(
+    "m1",
+    segments,
+    opts.language,
+    [],
+    opts.title,
+    opts.context,
+    { llmCall: opts.llm.call, ...opts.options },
+  );
+}
+
+/** The `enhanced_text` of one segment row (NULL when nothing was written). */
+function enhancedText(id: string): string | null {
+  const row = getDb()
+    .prepare("SELECT enhanced_text FROM meeting_segments WHERE id = ?")
+    .get(id) as { enhanced_text: string | null };
+  return row.enhanced_text;
+}
+
+/** One `meeting_speakers` row of meeting "m1", with the given columns. */
+function speakerRow<T>(label: string, columns: string): T {
+  return getDb()
+    .prepare(
+      `SELECT ${columns} FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = ?`,
+    )
+    .get(label) as T;
 }
 
 /** A fake LLM that records every request and returns a canned response. */
@@ -135,7 +181,6 @@ describe("chunkForEnhance", () => {
 
 describe("enhanceMeetingTranscript", () => {
   it("writes enhanced_text only for corrected ids; omitted ids stay NULL", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
     const segments = [
       seg("m1:mic:0", "Me", "garbled txt"),
       seg("m1:mic:1", "Me", "already fine"),
@@ -144,17 +189,7 @@ describe("enhanceMeetingTranscript", () => {
       text: JSON.stringify({ "m1:mic:0": "corrected text" }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
-      },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.correctedCount).toBe(1);
     const rows = getDb()
@@ -169,7 +204,6 @@ describe("enhanceMeetingTranscript", () => {
   });
 
   it("skips a chunk with malformed JSON without dropping other chunks' corrections", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
     const segments = [
       seg("m1:mic:0", "Me", "a".repeat(200)),
       seg("m1:mic:1", "Me", "b".repeat(200)),
@@ -180,35 +214,19 @@ describe("enhanceMeetingTranscript", () => {
         : { text: JSON.stringify({ "m1:mic:1": "fixed" }) },
     );
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call, contextBudgetTokens: 20 },
-    );
+    const result = await runEnhance(segments, {
+      llm,
+      options: { contextBudgetTokens: 20 },
+    });
 
     // The tiny budget forces each oversized segment into its own chunk.
     expect(llm.requests.length).toBe(2);
     expect(result.correctedCount).toBe(1);
-    const row = getDb()
-      .prepare(
-        "SELECT enhanced_text FROM meeting_segments WHERE id = 'm1:mic:1'",
-      )
-      .get() as { enhanced_text: string | null };
-    expect(row.enhanced_text).toBe("fixed");
-    const untouched = getDb()
-      .prepare(
-        "SELECT enhanced_text FROM meeting_segments WHERE id = 'm1:mic:0'",
-      )
-      .get() as { enhanced_text: string | null };
-    expect(untouched.enhanced_text).toBeNull();
+    expect(enhancedText("m1:mic:1")).toBe("fixed");
+    expect(enhancedText("m1:mic:0")).toBeNull();
   });
 
   it("discards a returned id that isn't in the chunk's input segments", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0"]);
     const segments = [seg("m1:mic:0", "Me", "hello")];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({
@@ -217,23 +235,10 @@ describe("enhanceMeetingTranscript", () => {
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm });
 
     expect(result.correctedCount).toBe(1);
-    const row = getDb()
-      .prepare(
-        "SELECT enhanced_text FROM meeting_segments WHERE id = 'm1:mic:0'",
-      )
-      .get() as { enhanced_text: string };
-    expect(row.enhanced_text).toBe("fixed");
+    expect(enhancedText("m1:mic:0")).toBe("fixed");
   });
 
   it("strips a leaked '<Speaker>: ' line-format prefix from the corrected text", async () => {
@@ -242,62 +247,30 @@ describe("enhanceMeetingTranscript", () => {
     // meeting transcript (specs/meeting-transcription-quality.md real
     // E2E), where "Them" leaked into several corrections for system-
     // channel segments.
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [seg("m1:system:0", "Them", "garbled txt here")];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({ "m1:system:0": "Them: garbled text here" }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
-      },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.correctedCount).toBe(1);
-    const row = getDb()
-      .prepare(
-        "SELECT enhanced_text FROM meeting_segments WHERE id = 'm1:system:0'",
-      )
-      .get() as { enhanced_text: string };
-    expect(row.enhanced_text).toBe("garbled text here");
+    expect(enhancedText("m1:system:0")).toBe("garbled text here");
   });
 
   it("drops a correction that is only the leaked '<Speaker>: ' prefix plus the unchanged original", async () => {
     // Stripping the leaked prefix can reveal that the "correction" was a
     // no-op after all — the no-op guard must apply after stripping, not
     // before.
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [seg("m1:system:0", "Them", "already correct text")];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({ "m1:system:0": "Them: already correct text" }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
-      },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.correctedCount).toBe(0);
-    const row = getDb()
-      .prepare(
-        "SELECT enhanced_text FROM meeting_segments WHERE id = 'm1:system:0'",
-      )
-      .get() as { enhanced_text: string | null };
-    expect(row.enhanced_text).toBeNull();
+    expect(enhancedText("m1:system:0")).toBeNull();
   });
 
   it("drops a returned correction that echoes the segment's original text unchanged", async () => {
@@ -305,7 +278,6 @@ describe("enhanceMeetingTranscript", () => {
     // verified against a real meeting transcript (specs/meeting-
     // transcription-quality.md real E2E), where the model occasionally
     // echoes a segment's exact original text back as a "correction".
-    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
     const segments = [
       seg("m1:mic:0", "Me", "already correct text"),
       seg("m1:mic:1", "Me", "garbled txt"),
@@ -317,17 +289,7 @@ describe("enhanceMeetingTranscript", () => {
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
-      },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.correctedCount).toBe(1);
     const rows = getDb()
@@ -344,15 +306,7 @@ describe("enhanceMeetingTranscript", () => {
   it("makes no LLM call and returns correctedCount 0 when no segment has text", async () => {
     const llm = fakeLlm(() => ({ text: "{}" }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      [seg("m1:mic:0", "Me", "   ")],
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance([seg("m1:mic:0", "Me", "   ")], { llm });
 
     expect(result.correctedCount).toBe(0);
     expect(llm.requests).toHaveLength(0);
@@ -361,14 +315,9 @@ describe("enhanceMeetingTranscript", () => {
   it("skips segments with no id (nothing to map a correction back to)", async () => {
     const llm = fakeLlm(() => ({ text: "{}" }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
+    const result = await runEnhance(
       [{ speaker: "Me", startMs: 0, endMs: 1000, text: "hello" }],
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
+      { llm },
     );
 
     expect(result.correctedCount).toBe(0);
@@ -384,7 +333,6 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   // A `Them (\d+)` regex would silently drop this speaker from both the
   // prompt's label list and the phantom-label allowlist.
   it("keeps an already-named speaker's label in speakerLabels and the phantom-label allowlist (does not re-parse the formatted display string)", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments: MergedSegment[] = [
       {
         speaker: "Them",
@@ -402,15 +350,7 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     // The formatted transcript line shows the confirmed name, not the
     // numbered label — proves §5.1's prerequisite fix is in effect.
@@ -426,16 +366,11 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
     );
     // Not dropped as a phantom label.
     expect(result.speakerSuggestions).toBe(1);
-    const row = getDb()
-      .prepare(
-        "SELECT suggested_name FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
-      )
-      .get() as { suggested_name: string };
+    const row = speakerRow<{ suggested_name: string }>("3", "suggested_name");
     expect(row.suggested_name).toBe("Ana");
   });
 
   it("persists a well-formed speakers block for a real label without disturbing independent text corrections", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [
       seg("m1:system:0", "Them", "garbled txt, this is Ana", 0, 1000, "3"),
     ];
@@ -448,29 +383,19 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.correctedCount).toBe(1);
     expect(result.speakerSuggestions).toBe(1);
-    const row = getDb()
-      .prepare(
-        "SELECT suggested_name, suggested_evidence FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
-      )
-      .get() as { suggested_name: string; suggested_evidence: string };
+    const row = speakerRow<{
+      suggested_name: string;
+      suggested_evidence: string;
+    }>("3", "suggested_name, suggested_evidence");
     expect(row.suggested_name).toBe("Ana");
     expect(row.suggested_evidence).toBe("this is Ana");
   });
 
   it('persists an explicit kind: "role" entry as a role guess, distinct from a confirmed name (real-E2E hardening)', async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [
       seg(
         "m1:system:0",
@@ -493,29 +418,17 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
-      },
-    );
+    await runEnhance(segments, { llm, language: "en" });
 
-    const row = getDb()
-      .prepare(
-        "SELECT suggested_name, suggested_kind FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
-      )
-      .get() as { suggested_name: string; suggested_kind: string };
+    const row = speakerRow<{ suggested_name: string; suggested_kind: string }>(
+      "3",
+      "suggested_name, suggested_kind",
+    );
     expect(row.suggested_name).toBe("the hiring manager");
     expect(row.suggested_kind).toBe("role");
   });
 
   it('defaults suggested_kind to "name" when the entry omits kind (backward compatible with the pre-hardening contract) or sends an unrecognized value', async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0", "m1:system:1"]);
     const segments = [
       seg("m1:system:0", "Them", "hi, this is Ana", 0, 1000, "3"),
       seg("m1:system:1", "Them", "hi, this is Beto", 1000, 2000, "4"),
@@ -529,17 +442,7 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
-      },
-    );
+    await runEnhance(segments, { llm, language: "en" });
 
     const rows = getDb()
       .prepare(
@@ -555,7 +458,6 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   });
 
   it("never sets confirmed_at on a suggestion upsert — only a human PATCH does (real-E2E fix: prevents Enhance from falsely marking a summary stale)", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [
       seg("m1:system:0", "Them", "hi, this is Ana", 0, 1000, "3"),
     ];
@@ -565,28 +467,16 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
-      },
-    );
+    await runEnhance(segments, { llm, language: "en" });
 
-    const row = getDb()
-      .prepare(
-        "SELECT confirmed_at FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
-      )
-      .get() as { confirmed_at: number | null };
+    const row = speakerRow<{ confirmed_at: number | null }>(
+      "3",
+      "confirmed_at",
+    );
     expect(row.confirmed_at).toBeNull();
   });
 
   it('drops a suggestion whose evidence traces only to a "Me" segment, never any Them line (real-E2E regression: meeting 8e6aea86\'s "Them 5 = Aruna", cited evidence actually spoken by "Me")', async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:system:0"]);
     const segments = [
       seg("m1:mic:0", "Me", "I'm gonna work on this alongside with Aruna"),
       seg("m1:system:0", "Them", "sounds good, thanks", 0, 1000, "5"),
@@ -602,15 +492,7 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.speakerSuggestions).toBe(0);
     const row = getDb()
@@ -622,7 +504,6 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   });
 
   it('drops a "name" suggestion whose evidence is the label\'s own turn but reads as addressing someone else, not self-identifying (real-E2E regression: meeting 8e6aea86\'s "Them 3 = Marcos" from Them 3\'s own "Thank you, Marcos.")', async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [
       seg(
         "m1:system:0",
@@ -639,21 +520,12 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.speakerSuggestions).toBe(0);
   });
 
   it("accepts a \"name\" suggestion whose evidence is a DIFFERENT Them label's turn addressing this label by name (ADDRESSED-AS), even though it's not self-identifying", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0", "m1:system:1"]);
     const segments = [
       seg("m1:system:0", "Them", "Ana, can you start us off?", 0, 1000, "2"),
       seg("m1:system:1", "Them", "Sure, happy to.", 1000, 2000, "3"),
@@ -666,27 +538,14 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.speakerSuggestions).toBe(1);
-    const row = getDb()
-      .prepare(
-        "SELECT suggested_name FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
-      )
-      .get() as { suggested_name: string };
+    const row = speakerRow<{ suggested_name: string }>("3", "suggested_name");
     expect(row.suggested_name).toBe("Ana");
   });
 
   it("drops a suggestion whose cited evidence doesn't match any segment's actual text (hallucinated quote)", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [seg("m1:system:0", "Them", "hi there", 0, 1000, "3")];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({
@@ -696,21 +555,12 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.speakerSuggestions).toBe(0);
   });
 
   it("drops a suggestion whose proposed name doesn't even appear in its own cited evidence", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [
       seg("m1:system:0", "Them", "hi there, this is Ana", 0, 1000, "3"),
     ];
@@ -720,21 +570,12 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.speakerSuggestions).toBe(0);
   });
 
   it('accepts a "role" suggestion grounded in the label\'s own real text without requiring self-identify phrasing', async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [
       seg(
         "m1:system:0",
@@ -757,21 +598,12 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.speakerSuggestions).toBe(1);
   });
 
   it("drops a speakers entry naming a label not present in this meeting's speakerLabels, without throwing", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [seg("m1:system:0", "Them", "hi", 0, 1000, "3")];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({
@@ -779,15 +611,7 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.speakerSuggestions).toBe(0);
     const row = getDb()
@@ -799,7 +623,6 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   });
 
   it("drops a malformed speakers value (string/array/wrong-shaped entry); segment-text corrections in the same chunk still commit", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [seg("m1:system:0", "Them", "garbled", 0, 1000, "3")];
     const llm = fakeLlm(() => ({
       text: JSON.stringify({
@@ -808,22 +631,13 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance(segments, { llm, language: "en" });
 
     expect(result.correctedCount).toBe(1);
     expect(result.speakerSuggestions).toBe(0);
   });
 
   it("keeps the first chunk's name on a cross-chunk conflict for the same label, logging the conflict, no throw", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0", "m1:system:1"]);
     const segments = [
       seg(
         "m1:system:0",
@@ -853,28 +667,19 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call, contextBudgetTokens: 20 },
-    );
+    const result = await runEnhance(segments, {
+      llm,
+      language: "en",
+      options: { contextBudgetTokens: 20 },
+    });
 
     expect(llm.requests.length).toBe(2);
     expect(result.speakerSuggestions).toBe(1);
-    const row = getDb()
-      .prepare(
-        "SELECT suggested_name FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
-      )
-      .get() as { suggested_name: string };
+    const row = speakerRow<{ suggested_name: string }>("3", "suggested_name");
     expect(row.suggested_name).toBe("Ana");
   });
 
   it("records one row (no conflict) when two chunks propose the same name (case-insensitive) for the same label", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0", "m1:system:1"]);
     const segments = [
       seg(
         "m1:system:0",
@@ -906,15 +711,11 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call, contextBudgetTokens: 20 },
-    );
+    const result = await runEnhance(segments, {
+      llm,
+      language: "en",
+      options: { contextBudgetTokens: 20 },
+    });
 
     expect(llm.requests.length).toBe(2);
     expect(result.speakerSuggestions).toBe(1);
@@ -927,21 +728,10 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   });
 
   it("passes an empty speakerLabels array to buildEnhanceSystemPrompt for a meeting with no diarization labels, producing the exact pre-this-spec prompt", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0"]);
     const segments = [seg("m1:mic:0", "Me", "hello")];
     const llm = fakeLlm(() => ({ text: "{}" }));
 
-    await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
-      },
-    );
+    await runEnhance(segments, { llm, language: "en" });
 
     expect(llm.requests[0].system).toBe(buildEnhanceSystemPrompt("en", []));
     expect(llm.requests[0].system).toBe(
@@ -950,6 +740,8 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   });
 
   it("never overwrites a confirmed display_name when a fresh suggestion for the same label arrives (ON CONFLICT DO UPDATE only ever writes suggested_name/suggested_evidence)", async () => {
+    // The speaker row needs its parent meeting first, so this test seeds by
+    // hand and calls the function directly.
     insertMeetingAndSegments("m1", ["m1:system:0"]);
     getDb()
       .prepare(
@@ -973,16 +765,13 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
       [],
       undefined,
       undefined,
-      {
-        llmCall: llm.call,
-      },
+      { llmCall: llm.call },
     );
 
-    const row = getDb()
-      .prepare(
-        "SELECT display_name, suggested_name FROM meeting_speakers WHERE meeting_id = 'm1' AND speaker_label = '3'",
-      )
-      .get() as { display_name: string; suggested_name: string };
+    const row = speakerRow<{ display_name: string; suggested_name: string }>(
+      "3",
+      "display_name, suggested_name",
+    );
     expect(row.display_name).toBe("Ana");
     expect(row.suggested_name).toBe("Beatriz");
   });
@@ -1038,19 +827,15 @@ describe("buildEnhanceSystemPrompt speaker/context block (specs/meeting-speaker-
 
 describe("enhanceMeetingTranscript speaker/context prompt wiring (specs/meeting-speaker-naming.md §5.2/§5.4)", () => {
   it("threads meetingTitle/meetingContext through to buildEnhanceSystemPrompt unchanged", async () => {
-    insertMeetingAndSegments("m1", ["m1:system:0"]);
     const segments = [seg("m1:system:0", "Them", "hi", 0, 1000, "3")];
     const llm = fakeLlm(() => ({ text: "{}" }));
 
-    await enhanceMeetingTranscript(
-      "m1",
-      segments,
-      "en",
-      [],
-      "Weekly sync",
-      "Call with Ana from Acme",
-      { llmCall: llm.call },
-    );
+    await runEnhance(segments, {
+      llm,
+      language: "en",
+      title: "Weekly sync",
+      context: "Call with Ana from Acme",
+    });
 
     expect(llm.requests[0].system).toBe(
       buildEnhanceSystemPrompt(
@@ -1100,18 +885,12 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
   ];
 
   it("reports every chunk failed, reason 'timeout', when the engine times out", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
     const llm = failingLlm(timeoutError);
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      twoSegments,
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call, contextBudgetTokens: 20 },
-    );
+    const result = await runEnhance(twoSegments, {
+      llm,
+      options: { contextBudgetTokens: 20 },
+    });
 
     // The tiny budget forces each oversized segment into its own chunk, so
     // this is the multi-chunk shape of the real failure.
@@ -1131,18 +910,12 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
   });
 
   it("writes NO enhanced_text when every chunk failed — a failed pass never persists partial or echoed text", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
     const llm = failingLlm(timeoutError);
 
-    await enhanceMeetingTranscript(
-      "m1",
-      twoSegments,
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call, contextBudgetTokens: 20 },
-    );
+    await runEnhance(twoSegments, {
+      llm,
+      options: { contextBudgetTokens: 20 },
+    });
 
     const rows = getDb()
       .prepare(
@@ -1161,20 +934,11 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
   });
 
   it("classifies a non-timeout call failure as 'provider' and names the cause in detail", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0"]);
     const llm = failingLlm(
       () => new Error("503 Service Unavailable: no worker on :4321"),
     );
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      [seg("m1:mic:0", "Me", "hello")],
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance([seg("m1:mic:0", "Me", "hello")], { llm });
 
     expect(result).toMatchObject({
       correctedCount: 0,
@@ -1187,39 +951,24 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
   });
 
   it('accepts a timeout-shaped message from a non-DOMException Error as "timeout" too', async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0"]);
     const llm = failingLlm(() => new Error("upstream request timed out"));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      [seg("m1:mic:0", "Me", "hello")],
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance([seg("m1:mic:0", "Me", "hello")], { llm });
 
     expect(result.firstFailure?.reason).toBe("timeout");
   });
 
   it("reports a chunk whose response carries no JSON as reason 'parse', with the other chunks still counted", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
     const llm = fakeLlm((_request, index) =>
       index === 0
         ? { text: "I cannot help with that." }
         : { text: JSON.stringify({ "m1:mic:1": "fixed b" }) },
     );
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      twoSegments,
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call, contextBudgetTokens: 20 },
-    );
+    const result = await runEnhance(twoSegments, {
+      llm,
+      options: { contextBudgetTokens: 20 },
+    });
 
     expect(result).toMatchObject({
       correctedCount: 1,
@@ -1235,20 +984,11 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
   });
 
   it("reports a successful pass honestly: zero failures, no firstFailure, and no failure when there was no work at all", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0"]);
     const llm = fakeLlm(() => ({
       text: JSON.stringify({ "m1:mic:0": "hello there" }),
     }));
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      [seg("m1:mic:0", "Me", "hello")],
-      undefined,
-      [],
-      undefined,
-      undefined,
-      { llmCall: llm.call },
-    );
+    const result = await runEnhance([seg("m1:mic:0", "Me", "hello")], { llm });
 
     expect(result).toEqual({
       correctedCount: 1,
@@ -1282,27 +1022,20 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
   });
 
   it("flags stoppedEarly when shouldStop ends the pass before the last chunk (§5.7)", async () => {
-    insertMeetingAndSegments("m1", ["m1:mic:0", "m1:mic:1"]);
     let calls = 0;
     const llm = fakeLlm((_request, index) => {
       calls = index + 1;
       return { text: "{}" };
     });
 
-    const result = await enhanceMeetingTranscript(
-      "m1",
-      twoSegments,
-      undefined,
-      [],
-      undefined,
-      undefined,
-      {
-        llmCall: llm.call,
+    const result = await runEnhance(twoSegments, {
+      llm,
+      options: {
         contextBudgetTokens: 20,
         // Stop once the first chunk has come back: the second never goes out.
         shouldStop: () => calls >= 1,
       },
-    );
+    });
 
     expect(result).toMatchObject({
       chunksAttempted: 1,
