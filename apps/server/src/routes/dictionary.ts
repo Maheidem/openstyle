@@ -9,6 +9,7 @@ import {
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { markDictionaryChanged } from "../lib/dictionary-replacements.js";
+import { queryPage } from "../lib/list-query.js";
 
 interface DictionaryRow {
   id: number;
@@ -23,55 +24,21 @@ const ALLOWED_ORDER_COLUMNS = new Set(["created_at", "updated_at", "key"]);
 
 const dictionary = new Hono()
   .get("/", zValidator("query", querySchema), (c) => {
-    const db = getDb();
     const { limit, offset, search: rawSearch, orderBy } = c.req.valid("query");
     const search = rawSearch?.trim() || "";
+    const pattern = `%${search}%`;
 
-    const orderColumn =
-      orderBy && ALLOWED_ORDER_COLUMNS.has(orderBy.column)
-        ? orderBy.column
-        : "created_at";
-    // Default ordering (no orderBy param) is newest-first.
-    const orderDir = orderBy
-      ? orderBy.order === "desc"
-        ? "DESC"
-        : "ASC"
-      : "DESC";
-
-    let rows: DictionaryRow[];
-    let countRow: { count: number };
-
-    if (search) {
-      const pattern = `%${search}%`;
-      rows = db
-        .prepare(
-          `SELECT * FROM dictionary WHERE key LIKE ? OR value LIKE ? ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
-        )
-        .all(pattern, pattern, limit, offset) as unknown as DictionaryRow[];
-
-      countRow = db
-        .prepare(
-          "SELECT COUNT(*) as count FROM dictionary WHERE key LIKE ? OR value LIKE ?",
-        )
-        .get(pattern, pattern) as { count: number };
-    } else {
-      rows = db
-        .prepare(
-          `SELECT * FROM dictionary ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
-        )
-        .all(limit, offset) as unknown as DictionaryRow[];
-
-      countRow = db
-        .prepare("SELECT COUNT(*) as count FROM dictionary")
-        .get() as unknown as { count: number };
-    }
-
-    return c.json({
-      items: rows,
-      total: countRow.count,
+    const { items, total } = queryPage<DictionaryRow>(getDb(), {
+      table: "dictionary",
+      where: search ? ["(key LIKE ? OR value LIKE ?)"] : [],
+      params: search ? [pattern, pattern] : [],
+      orderColumns: ALLOWED_ORDER_COLUMNS,
+      orderBy,
       limit,
       offset,
     });
+
+    return c.json({ items, total, limit, offset });
   })
   .get("/all", (c) => {
     const db = getDb();
