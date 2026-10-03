@@ -1,4 +1,5 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { InlineNotice } from "@renderer/components/inline-notice";
 import {
   LanguageList,
   useLanguageOptions,
@@ -1790,15 +1791,29 @@ function MeetingDetailView({
         </Button>
       </div>
 
-      {transcribing && (
+      {/* One card for both background jobs. Transcribe and Summarize use the
+          same contract (202 + poll, §5.6), so they get the same face. The
+          coral spinner is the only sanctioned live accent. The queued slot
+          says *why* nothing is moving yet (the LLM lane is busy, §5.5). */}
+      {(transcribing || summarizing) && (
         <Card className="mb-5 p-4">
           <div className="flex items-center gap-3">
             <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
             <div className="flex-1">
               <div className="text-foreground text-[12.5px]">
-                {cancelRequested
-                  ? t("meetings.cancellingTranscription")
-                  : t("meetings.transcribing")}
+                {transcribing
+                  ? cancelRequested
+                    ? t("meetings.cancellingTranscription")
+                    : t("meetings.transcribing")
+                  : cancelRequested
+                    ? t("meetings.cancellingSummarize")
+                    : summarizeQueued && summarizeQueueAhead > 0
+                      ? t("meetings.summarizeQueuedAhead", {
+                          n: summarizeQueueAhead,
+                        })
+                      : summarizeQueued
+                        ? t("meetings.summarizeQueued")
+                        : t("meetings.summarizing")}
               </div>
               {meeting.job && meeting.job.total > 0 && (
                 <Progress
@@ -1817,61 +1832,24 @@ function MeetingDetailView({
                 attribute of this run. Ghost: it must not compete with the
                 primary actions. Disabled (not hidden) while the acknowledged
                 cancel winds down: in-flight chunks (≤2, or 1 for
-                whisper-local) still finish and persist. */}
+                whisper-local) still finish and persist. Summarize cancel is
+                the existing cancellable-job seam (§5.7). */}
             <Button
               variant="ghost"
               size="sm"
-              data-testid="meetings-cancel-transcribe"
-              onClick={() => void cancelTranscribe()}
+              data-testid={
+                transcribing
+                  ? "meetings-cancel-transcribe"
+                  : "meetings-cancel-summarize"
+              }
+              onClick={() =>
+                void (transcribing ? cancelTranscribe() : cancelSummarize())
+              }
               disabled={cancelRequested}
             >
-              {t("meetings.cancelTranscription")}
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* Async Summarize (§5.6): same card treatment as the transcribe job —
-          it is the same contract (202 + poll), so it gets the same face. The
-          coral spinner is the only sanctioned live accent, the queued slot says
-          *why* nothing is moving yet (the LLM lane is busy, §5.5), and cancel
-          is the existing cancellable-job seam (§5.7). */}
-      {summarizing && (
-        <Card className="mb-5 p-4">
-          <div className="flex items-center gap-3">
-            <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
-            <div className="flex-1">
-              <div className="text-foreground text-[12.5px]">
-                {cancelRequested
-                  ? t("meetings.cancellingSummarize")
-                  : summarizeQueued && summarizeQueueAhead > 0
-                    ? t("meetings.summarizeQueuedAhead", {
-                        n: summarizeQueueAhead,
-                      })
-                    : summarizeQueued
-                      ? t("meetings.summarizeQueued")
-                      : t("meetings.summarizing")}
-              </div>
-              {meeting.job && meeting.job.total > 0 && (
-                <Progress
-                  value={(meeting.job.done / meeting.job.total) * 100}
-                  className="mt-2 h-1"
-                />
-              )}
-            </div>
-            {meeting.job && meeting.job.total > 0 && (
-              <span className="mono text-muted-foreground text-[10px] tabular-nums">
-                {meeting.job.done}/{meeting.job.total}
-              </span>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="meetings-cancel-summarize"
-              onClick={() => void cancelSummarize()}
-              disabled={cancelRequested}
-            >
-              {t("meetings.cancelSummarize")}
+              {transcribing
+                ? t("meetings.cancelTranscription")
+                : t("meetings.cancelSummarize")}
             </Button>
           </div>
         </Card>
@@ -1883,16 +1861,18 @@ function MeetingDetailView({
           server's own message (it names the provider/model problem), rendered
           like every other action failure on this page. */}
       {summarizeCancelled && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <CircleSlash className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice
+          tone="neutral"
+          icon={CircleSlash}
+          iconClassName="text-muted-foreground"
+        >
           <span>{t("meetings.summarizeCancelled")}</span>
-        </div>
+        </InlineNotice>
       )}
       {summarizeFailure && !summarizeCancelled && (
-        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice tone="destructive" icon={AlertTriangle}>
           <span>{summarizeFailure}</span>
-        </div>
+        </InlineNotice>
       )}
 
       {/* Post-cancel (T1-1): a cancelled job is not an error — every written
@@ -1902,29 +1882,30 @@ function MeetingDetailView({
           partial transcript was kept, or the ungated Delete starts looking
           like the only exit (audit U4). */}
       {cancelledByUser && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <CircleSlash className="text-muted-foreground mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice
+          tone="neutral"
+          icon={CircleSlash}
+          iconClassName="text-muted-foreground"
+        >
           <span>
             {t("meetings.cancelledKeptTranscript", {
               n: keptSegments,
               total: plannedSegments,
             })}
           </span>
-        </div>
+        </InlineNotice>
       )}
 
       {(meeting.error || actionError) &&
         !cancelledByUser &&
         !enhanceFailure && (
-          <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <InlineNotice tone="destructive" icon={AlertTriangle}>
             <span>{actionError ?? meeting.error}</span>
-          </div>
+          </InlineNotice>
         )}
 
       {diarizeResult && !actionError && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <Users className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice tone="neutral" icon={Users}>
           <span>
             {diarizeResult.speakerCount === 0
               ? t("meetings.diarizeNoSpeakers")
@@ -1932,12 +1913,11 @@ function MeetingDetailView({
             {diarizeResult.speakerCount === 1 &&
               ` ${t("meetings.diarizeSingleSpeakerNote")}`}
           </span>
-        </div>
+        </InlineNotice>
       )}
 
       {enhanceResult && !actionError && (
-        <div className="border-border bg-card/30 text-foreground mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <WandSparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice tone="neutral" icon={WandSparkles}>
           <span>
             {enhanceResult.correctedCount === 0
               ? t("meetings.enhanceNoneCorrected")
@@ -1953,7 +1933,7 @@ function MeetingDetailView({
                 })}`
               : ""}
           </span>
-        </div>
+        </InlineNotice>
       )}
 
       {/* State three: the pass failed. Destructive card, names the cause, and
@@ -1961,8 +1941,7 @@ function MeetingDetailView({
           written — a failed chunk never reaches the UPDATE — so the copy says
           "nothing was changed" rather than hedging. */}
       {enhanceFailure && (
-        <div className="border-destructive/40 bg-destructive/10 text-destructive mb-5 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <InlineNotice tone="destructive" icon={AlertTriangle}>
           <span className="flex min-w-0 flex-col gap-2">
             <span>
               {enhanceFailure.reason === "timeout"
@@ -1983,7 +1962,7 @@ function MeetingDetailView({
               {t("meetings.retryEnhance")}
             </Button>
           </span>
-        </div>
+        </InlineNotice>
       )}
 
       <Tabs defaultValue="transcript">
@@ -2096,10 +2075,13 @@ function MeetingDetailView({
           {meeting.summary?.markdown ? (
             <>
               {summaryStaleNames && (
-                <div className="border-border bg-card/30 text-muted-foreground mb-3 flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[12px]">
-                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <InlineNotice
+                  tone="neutral"
+                  icon={Sparkles}
+                  className="mb-3 text-muted-foreground"
+                >
                   <span>{t("meetings.summaryStaleNames")}</span>
-                </div>
+                </InlineNotice>
               )}
               <div className="mb-3 flex justify-end">
                 <CopyButton
