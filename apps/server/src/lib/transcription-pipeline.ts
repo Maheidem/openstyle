@@ -28,6 +28,7 @@ import {
   voiceProviderCategory,
 } from "./streaming-stt.js";
 import {
+  type AsrVocabularyBias,
   resolveAsrVocabularyBias,
   vocabularyBiasTerms,
 } from "./vocabulary-bias.js";
@@ -46,6 +47,31 @@ export function decodeAppContext(raw: string | undefined): string | null {
   } catch {
     return raw;
   }
+}
+
+/**
+ * Clean raw ASR text before the LLM cleanup step. Used by the batch pipeline
+ * and the streaming route.
+ *
+ * The vocabulary bias prompt sent to the ASR can come back echoed as fake
+ * speech (specs/meeting-transcription-quality.md Phase A, extended to
+ * dictation). Compare against the terms sent for *this* bias, not a fresh DB
+ * read. The result can be empty. The caller must check for that.
+ */
+export function cleanAsrText(
+  text: string,
+  bias: AsrVocabularyBias | null,
+): string {
+  const sanitized = sanitizeTranscriptText(text);
+  const stripped = stripVocabLeak(sanitized, vocabularyBiasTerms(bias));
+  if (stripped !== sanitized) {
+    log.info(
+      stripped.trim()
+        ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
+        : "dropped dictation output — entirely a vocabulary-prompt echo",
+    );
+  }
+  return stripped;
 }
 
 export interface TranscriptionPipelineInput {
@@ -149,22 +175,7 @@ export async function runTranscriptionPipeline(
       bias,
       appContext,
     });
-    rawText = sanitizeTranscriptText(result.text);
-
-    // The same vocabulary bias prompt sent above can come back echoed as
-    // fake speech instead of a real transcription (specs/meeting-
-    // transcription-quality.md Phase A, extended here to dictation — the
-    // meeting pipeline already had this guard, dictation didn't). Compare
-    // against the terms actually sent for *this* bias, not a fresh DB read.
-    const strippedRawText = stripVocabLeak(rawText, vocabularyBiasTerms(bias));
-    if (strippedRawText !== rawText) {
-      log.info(
-        strippedRawText.trim()
-          ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
-          : "dropped dictation output — entirely a vocabulary-prompt echo",
-      );
-      rawText = strippedRawText;
-    }
+    rawText = cleanAsrText(result.text, bias);
 
     log.debug(
       `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
