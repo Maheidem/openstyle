@@ -60,9 +60,9 @@ describe("buildAsrBiasPrompt", () => {
   it("truncates long context at a word boundary instead of mid-word", () => {
     const context = "alpha beta gamma delta epsilon zeta eta theta";
     const prompt = buildAsrBiasPrompt({ context }, { maxChars: 20 });
-    // Should not end mid-word (no dangling partial token stuck to a cut).
-    expect(prompt).toMatch(/^[a-z ]+$/);
-    expect(context.startsWith(prompt!)).toBe(true);
+    // A hard cut at 20 chars gives "alpha beta gamma del". The word boundary
+    // back-off must drop the partial word.
+    expect(prompt).toBe("alpha beta gamma");
   });
 
   it("respects a custom maxChars override", () => {

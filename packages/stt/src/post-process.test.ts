@@ -1,13 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 import { postProcess } from "./post-process.js";
 
-function fakeModel(doGenerate: () => never | Promise<never>) {
+function fakeModel(doGenerate: (opts?: unknown) => unknown) {
   return {
     specificationVersion: "v3",
     provider: "test",
     modelId: "fake-model",
     doGenerate,
   } as never;
+}
+
+// Provider spec v3 result. `generateText` flattens `unified` onto the result
+// as a plain string.
+function textResult(
+  text: string,
+  finishReason = { unified: "stop", raw: "stop" },
+  usage = { inputTokens: { total: 5 }, outputTokens: { total: 7 } },
+) {
+  return {
+    content: [{ type: "text", text }],
+    finishReason,
+    usage,
+    warnings: [],
+  };
 }
 
 describe("postProcess", () => {
@@ -57,19 +72,23 @@ describe("postProcess", () => {
   });
 
   it("takes the caller's system/prompt verbatim (no built-in tone or preset logic)", async () => {
-    // We can't easily assert what was sent to generateText without a real
-    // provider double, but we can assert the function accepts an arbitrary
-    // caller-authored system prompt and a fully custom user prompt without
-    // any tone/intensity/destination options.
+    const doGenerate = vi.fn(async (_opts?: unknown) =>
+      textResult("Ahoy there"),
+    );
     const result = await postProcess({
-      model: fakeModel(async () => {
-        throw new Error("boom");
-      }),
+      model: fakeModel(doGenerate),
       system: "You are a pirate. Rewrite everything in pirate speak.",
       prompt: "Ahoy, edit this: hello there",
       text: "hello there",
     });
-    expect(result.cleaned).toBe("hello there");
+    expect(result.cleaned).toBe("Ahoy there");
+    // The model gets the caller's system and user prompts as they are.
+    expect(JSON.stringify(doGenerate.mock.calls[0]?.[0])).toContain(
+      "You are a pirate. Rewrite everything in pirate speak.",
+    );
+    expect(JSON.stringify(doGenerate.mock.calls[0]?.[0])).toContain(
+      "Ahoy, edit this: hello there",
+    );
   });
 
   it("calls onError with the raw error before falling back, without throwing", async () => {
@@ -95,24 +114,13 @@ describe("postProcess", () => {
   // the only reliable signal, so this must keep failing loudly if removed.
   it("discards truncated output and returns the raw transcript", async () => {
     const onError = vi.fn();
-    const model = {
-      specificationVersion: "v3",
-      provider: "test",
-      modelId: "fake-model",
-      doGenerate: async () => ({
-        content: [
-          {
-            type: "text",
-            text: "The user wants me to clean up a dictated transcript. I need to fix grammar, punctuation, and remove filler words. Let me identify the core message: they were thinking about whether line breaks and n",
-          },
-        ],
-        // Provider spec v3 shape — `generateText` flattens `unified` onto the
-        // result as a plain string.
-        finishReason: { unified: "length", raw: "length" },
-        usage: { inputTokens: { total: 120 }, outputTokens: { total: 60 } },
-        warnings: [],
-      }),
-    } as never;
+    const model = fakeModel(async () =>
+      textResult(
+        "The user wants me to clean up a dictated transcript. I need to fix grammar, punctuation, and remove filler words. Let me identify the core message: they were thinking about whether line breaks and n",
+        { unified: "length", raw: "length" },
+        { inputTokens: { total: 120 }, outputTokens: { total: 60 } },
+      ),
+    );
     const result = await postProcess({
       model,
       system: "irrelevant",
@@ -132,17 +140,9 @@ describe("postProcess", () => {
   });
 
   it("returns the raw transcript when output sanitizes away to nothing", async () => {
-    const model = {
-      specificationVersion: "v3",
-      provider: "test",
-      modelId: "fake-model",
-      doGenerate: async () => ({
-        content: [{ type: "text", text: "<think>only reasoning, no answer" }],
-        finishReason: { unified: "stop", raw: "stop" },
-        usage: { inputTokens: 5, outputTokens: 7 },
-        warnings: [],
-      }),
-    } as never;
+    const model = fakeModel(async () =>
+      textResult("<think>only reasoning, no answer"),
+    );
     const result = await postProcess({
       model,
       system: "irrelevant",
@@ -153,22 +153,9 @@ describe("postProcess", () => {
   });
 
   it("strips a leaked reasoning block from otherwise good output", async () => {
-    const model = {
-      specificationVersion: "v3",
-      provider: "test",
-      modelId: "fake-model",
-      doGenerate: async () => ({
-        content: [
-          {
-            type: "text",
-            text: "<think>Fix the punctuation.</think>Hello there.",
-          },
-        ],
-        finishReason: { unified: "stop", raw: "stop" },
-        usage: { inputTokens: 5, outputTokens: 7 },
-        warnings: [],
-      }),
-    } as never;
+    const model = fakeModel(async () =>
+      textResult("<think>Fix the punctuation.</think>Hello there."),
+    );
     const result = await postProcess({
       model,
       system: "irrelevant",
@@ -180,17 +167,7 @@ describe("postProcess", () => {
 
   it("never calls onError when the model call succeeds", async () => {
     const onError = vi.fn();
-    const model = {
-      specificationVersion: "v3",
-      provider: "test",
-      modelId: "fake-model",
-      doGenerate: async () => ({
-        content: [{ type: "text", text: "cleaned output" }],
-        finishReason: "stop",
-        usage: { inputTokens: 3, outputTokens: 2 },
-        warnings: [],
-      }),
-    } as never;
+    const model = fakeModel(async () => textResult("cleaned output"));
     const result = await postProcess({
       model,
       system: "irrelevant",
