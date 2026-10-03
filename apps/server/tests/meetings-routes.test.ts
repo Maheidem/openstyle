@@ -33,39 +33,38 @@ import {
   insertSystemSegment,
   resetMeetingTables,
 } from "./helpers/meetings-db.js";
+import { buildWav as buildBaseWav } from "./helpers/wav.js";
 
 const app = createApp();
 
 const SAMPLE_RATE = 16000;
+
+/** PCM16 payload of silence with a 440 Hz tone (high amplitude, so the energy
+ * gate always opens) over each `[start, end)` sample range. */
+function tonePayload(
+  totalSamples: number,
+  ranges: Array<[number, number]>,
+): Buffer {
+  const data = Buffer.alloc(totalSamples * 2);
+  for (const [start, end] of ranges) {
+    for (let i = start; i < end; i++) {
+      const s = Math.round(
+        8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
+      );
+      data.writeInt16LE(s, i * 2);
+    }
+  }
+  return data;
+}
 
 /** Mono 16 kHz PCM16 WAV: silence — loud tone burst — silence. */
 function buildWav(burstMs = 1000, padMs = 500): Buffer {
   const totalSamples = Math.round(((burstMs + 2 * padMs) / 1000) * SAMPLE_RATE);
   const burstStart = Math.round((padMs / 1000) * SAMPLE_RATE);
   const burstEnd = burstStart + Math.round((burstMs / 1000) * SAMPLE_RATE);
-  const data = Buffer.alloc(totalSamples * 2);
-  for (let i = burstStart; i < burstEnd; i++) {
-    // 440 Hz tone at high amplitude so the energy gate always opens.
-    const s = Math.round(
-      8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
-    );
-    data.writeInt16LE(s, i * 2);
-  }
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(SAMPLE_RATE, 24);
-  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  return Buffer.concat([h, data]);
+  return buildBaseWav({
+    data: tonePayload(totalSamples, [[burstStart, burstEnd]]),
+  });
 }
 
 let audioDir: string;
@@ -504,7 +503,7 @@ function buildMultiBurstWav(bursts: number): Buffer {
   const gapMs = 6000;
   const totalMs = leadMs + bursts * burstMs + (bursts - 1) * gapMs;
   const totalSamples = Math.round((totalMs / 1000) * SAMPLE_RATE);
-  const data = Buffer.alloc(totalSamples * 2);
+  const ranges: Array<[number, number]> = [];
   for (let b = 0; b < bursts; b++) {
     const start = Math.round(
       ((leadMs + b * (burstMs + gapMs)) / 1000) * SAMPLE_RATE,
@@ -512,28 +511,9 @@ function buildMultiBurstWav(bursts: number): Buffer {
     const end = Math.round(
       ((leadMs + b * (burstMs + gapMs) + burstMs) / 1000) * SAMPLE_RATE,
     );
-    for (let i = start; i < end; i++) {
-      const s = Math.round(
-        8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
-      );
-      data.writeInt16LE(s, i * 2);
-    }
+    ranges.push([start, end]);
   }
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(SAMPLE_RATE, 24);
-  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  return Buffer.concat([h, data]);
+  return buildBaseWav({ data: tonePayload(totalSamples, ranges) });
 }
 
 let cancelAudioDir: string;

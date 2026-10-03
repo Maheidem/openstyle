@@ -16,27 +16,13 @@ import type {
   TranscriptionProvider,
 } from "../src/lib/streaming/types.js";
 import { resetMeetingTables } from "./helpers/meetings-db.js";
+import { buildWav } from "./helpers/wav.js";
 
 const SAMPLE_RATE = 16_000;
 /** Minimal 44-byte-header mono s16 WAV of the given duration, silent. */
 function writeWav(path: string, durationMs: number): void {
   const samples = Math.round((durationMs / 1000) * SAMPLE_RATE);
-  const dataBytes = samples * 2;
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + dataBytes, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(SAMPLE_RATE, 24);
-  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(dataBytes, 40);
-  writeFileSync(path, Buffer.concat([h, Buffer.alloc(dataBytes)]));
+  writeFileSync(path, buildWav({ samples }));
 }
 
 function makeAudioDir(): string {

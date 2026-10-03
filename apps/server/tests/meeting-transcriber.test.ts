@@ -22,47 +22,21 @@ import type {
   TranscriptionProvider,
 } from "../src/lib/streaming/types.js";
 import { WHISPER_PROVIDER_ID } from "../src/lib/whisper/constants.js";
+import { buildWav } from "./helpers/wav.js";
 
 const SAMPLE_RATE = 16_000;
 /** Write a canonical 44-byte-header mono s16 WAV whose sample values ramp. */
 function writeWav(path: string, durationMs: number, extraChunk = false): void {
   const samples = Math.round((durationMs / 1000) * SAMPLE_RATE);
-  const dataBytes = samples * 2;
-  const chunks: Buffer[] = [];
-
-  const data = Buffer.alloc(dataBytes);
-  for (let i = 0; i < samples; i++) data.writeInt16LE(i % 32768, i * 2);
-
-  const fmt = Buffer.alloc(24);
-  fmt.write("fmt ", 0, "ascii");
-  fmt.writeUInt32LE(16, 4);
-  fmt.writeUInt16LE(1, 8);
-  fmt.writeUInt16LE(1, 10);
-  fmt.writeUInt32LE(SAMPLE_RATE, 12);
-  fmt.writeUInt32LE(SAMPLE_RATE * 2, 16);
-  fmt.writeUInt16LE(2, 20);
-  fmt.writeUInt16LE(16, 22);
-
-  const dataHeader = Buffer.alloc(8);
-  dataHeader.write("data", 0, "ascii");
-  dataHeader.writeUInt32LE(dataBytes, 4);
-
-  // Optional LIST chunk between fmt and data to exercise chunk walking.
-  let list = Buffer.alloc(0);
-  if (extraChunk) {
-    list = Buffer.alloc(12);
-    list.write("LIST", 0, "ascii");
-    list.writeUInt32LE(4, 4);
-    list.write("INFO", 8, "ascii");
-  }
-
-  const body = Buffer.concat([fmt, list, dataHeader, data]);
-  const riff = Buffer.alloc(12);
-  riff.write("RIFF", 0, "ascii");
-  riff.writeUInt32LE(4 + body.length, 4);
-  riff.write("WAVE", 8, "ascii");
-  chunks.push(riff, body);
-  writeFileSync(path, Buffer.concat(chunks));
+  const wav = buildWav({
+    samples,
+    // Optional LIST chunk between fmt and data to exercise chunk walking.
+    listChunk: extraChunk,
+    fill: (data) => {
+      for (let i = 0; i < samples; i++) data.writeInt16LE(i % 32768, i * 2);
+    },
+  });
+  writeFileSync(path, wav);
 }
 
 function makeMeetingDir(durations: { mic: number; system: number }): string {

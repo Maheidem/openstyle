@@ -6,6 +6,7 @@
  * delimiter/line boundary straddles read boundaries, which is the case that
  * breaks naive parsers.
  */
+
 import {
   mkdtempSync,
   readdirSync,
@@ -26,6 +27,7 @@ import {
   type StreamedForm,
   streamMultipartForm,
 } from "../src/lib/audio/multipart-stream.js";
+import { buildWav } from "./helpers/wav.js";
 
 const BOUNDARY = "----openstyle-test-boundary";
 
@@ -44,22 +46,7 @@ afterEach(() => {
 
 /** Build a canonical 16 kHz mono PCM16 WAV (content is irrelevant here). */
 function wav(samples = 4): Buffer {
-  const data = Buffer.alloc(samples * 2);
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(16_000, 24);
-  h.writeUInt32LE(32_000, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  return Buffer.concat([h, data]);
+  return buildWav({ samples });
 }
 
 /** Serialize parts the way undici's FormData does. */

@@ -19,6 +19,7 @@ import {
   vi,
 } from "vitest";
 import { getDb } from "../src/lib/db.js";
+import { buildWav as buildBaseWav, type WavOptions } from "./helpers/wav.js";
 
 // ---------------------------------------------------------------------------
 // Mocks (hoisted so the route modules see them at import time)
@@ -75,52 +76,16 @@ const app = createApp();
 // Helpers
 // ---------------------------------------------------------------------------
 
-interface WavOpts {
-  sampleRate?: number;
-  channels?: number;
-  bitsPerSample?: number;
-  formatTag?: number;
-  samples?: number;
-  listChunk?: boolean;
-  streamSizes?: boolean;
-}
-
-function buildWav(opts: WavOpts = {}): Buffer {
-  const sampleRate = opts.sampleRate ?? 16_000;
-  const channels = opts.channels ?? 1;
-  const bits = opts.bitsPerSample ?? 16;
-  const blockAlign = (channels * bits) / 8;
-  const samples = opts.samples ?? 160;
-  const data = Buffer.alloc(samples * blockAlign);
-  for (let i = 0; i + 1 < data.length; i += 2) data.writeInt16LE(i % 1000, i);
-
-  const fmt = Buffer.alloc(24);
-  fmt.write("fmt ", 0, "ascii");
-  fmt.writeUInt32LE(16, 4);
-  fmt.writeUInt16LE(opts.formatTag ?? 1, 8);
-  fmt.writeUInt16LE(channels, 10);
-  fmt.writeUInt32LE(sampleRate, 12);
-  fmt.writeUInt32LE(sampleRate * blockAlign, 16);
-  fmt.writeUInt16LE(blockAlign, 20);
-  fmt.writeUInt16LE(bits, 22);
-
-  let list = Buffer.alloc(0);
-  if (opts.listChunk) {
-    list = Buffer.alloc(12);
-    list.write("LIST", 0, "ascii");
-    list.writeUInt32LE(4, 4);
-    list.write("INFO", 8, "ascii");
-  }
-  const dataHeader = Buffer.alloc(8);
-  dataHeader.write("data", 0, "ascii");
-  dataHeader.writeUInt32LE(opts.streamSizes ? 0xffffffff : data.length, 4);
-
-  const body = Buffer.concat([fmt, list, dataHeader, data]);
-  const riff = Buffer.alloc(12);
-  riff.write("RIFF", 0, "ascii");
-  riff.writeUInt32LE(opts.streamSizes ? 0xffffffff : 4 + body.length, 4);
-  riff.write("WAVE", 8, "ascii");
-  return Buffer.concat([riff, body]);
+/** Build an in-memory WAV whose payload ramps (`i % 1000` at each even byte). */
+function buildWav(opts: WavOptions = {}): Buffer {
+  return buildBaseWav({
+    ...opts,
+    fill: (data) => {
+      for (let i = 0; i + 1 < data.length; i += 2) {
+        data.writeInt16LE(i % 1000, i);
+      }
+    },
+  });
 }
 
 function formWith(name: string, bytes: Uint8Array, field = "audio"): FormData {
