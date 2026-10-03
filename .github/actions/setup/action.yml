@@ -1,0 +1,26 @@
+name: Setup workspace
+description: Set up pnpm and Node, then install the locked dependencies. Run actions/checkout first.
+
+inputs:
+  python-version:
+    description: Python version to install before the dependencies. Leave empty to skip Python.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: ".node-version"
+        cache: "pnpm"
+
+    - uses: actions/setup-python@v6
+      if: inputs.python-version != ''
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - run: pnpm install --frozen-lockfile
+      shell: bash
