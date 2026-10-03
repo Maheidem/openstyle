@@ -1,12 +1,13 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
+import { SETTINGS_KEYS } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
 import { readSettings } from "../db.js";
 import { traceLlmFetch } from "../trace.js";
 
 /** The settings key holding the local engine's base URL. */
-export const LOCAL_LLM_URL_SETTING = "local_llm_url";
+export const LOCAL_LLM_URL_SETTING = SETTINGS_KEYS.localLlmUrl;
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
@@ -250,7 +251,7 @@ const PROVIDERS: LlmProvider[] = [
       const { createOpenAI } = await import("@ai-sdk/openai");
       const settings = readSettings([
         LOCAL_LLM_URL_SETTING,
-        "local_llm_api_key",
+        SETTINGS_KEYS.localLlmApiKey,
       ]);
       const url = settings.get(LOCAL_LLM_URL_SETTING);
       if (!url) {
@@ -260,7 +261,7 @@ const PROVIDERS: LlmProvider[] = [
       }
 
       const baseURL = url.replace(/\/v1\/?$/, "");
-      const apiKey = settings.get("local_llm_api_key") || "local";
+      const apiKey = settings.get(SETTINGS_KEYS.localLlmApiKey) || "local";
 
       // No more direct `cleanup_sampling` read here — the caller already
       // resolved this task's sampling params (`resolveTaskCall`,

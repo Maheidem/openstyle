@@ -20,6 +20,7 @@ import {
   parseCleanupOverallTone,
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
+  SETTINGS_KEYS,
 } from "@openstyle/validations";
 import {
   getModelCostCached,
@@ -89,20 +90,24 @@ export function getEffectiveCleanupTones(): EffectiveCleanupTones {
   // the transcription/streaming hot path (both `/api/transcribe` and the
   // streaming config-key build call it per dictation).
   const s = readSettings([
-    "cleanup_intensity",
-    "cleanup_custom_prompt",
-    "cleanup_personal_tone",
-    "cleanup_work_tone",
-    "cleanup_email_tone",
-    "cleanup_overall_tone",
+    SETTINGS_KEYS.cleanupIntensity,
+    SETTINGS_KEYS.cleanupCustomPrompt,
+    SETTINGS_KEYS.cleanupPersonalTone,
+    SETTINGS_KEYS.cleanupWorkTone,
+    SETTINGS_KEYS.cleanupEmailTone,
+    SETTINGS_KEYS.cleanupOverallTone,
   ]);
   return {
-    intensity: parseCleanupIntensity(s.get("cleanup_intensity")),
-    customPrompt: s.get("cleanup_custom_prompt"),
-    personalTone: parseCleanupPersonalTone(s.get("cleanup_personal_tone")),
-    workTone: parseCleanupWorkTone(s.get("cleanup_work_tone")),
-    emailTone: parseCleanupEmailTone(s.get("cleanup_email_tone")),
-    overallTone: parseCleanupOverallTone(s.get("cleanup_overall_tone")),
+    intensity: parseCleanupIntensity(s.get(SETTINGS_KEYS.cleanupIntensity)),
+    customPrompt: s.get(SETTINGS_KEYS.cleanupCustomPrompt),
+    personalTone: parseCleanupPersonalTone(
+      s.get(SETTINGS_KEYS.cleanupPersonalTone),
+    ),
+    workTone: parseCleanupWorkTone(s.get(SETTINGS_KEYS.cleanupWorkTone)),
+    emailTone: parseCleanupEmailTone(s.get(SETTINGS_KEYS.cleanupEmailTone)),
+    overallTone: parseCleanupOverallTone(
+      s.get(SETTINGS_KEYS.cleanupOverallTone),
+    ),
   };
 }
 

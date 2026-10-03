@@ -1,11 +1,11 @@
-import { parseRetentionDays } from "@openstyle/validations";
+import { parseRetentionDays, SETTINGS_KEYS } from "@openstyle/validations";
 import { createDailySweep } from "./daily-sweep.js";
 import { getDb, readSetting } from "./db.js";
 import { countFixes } from "./fixes.js";
 import { purgeExpiredRemixData } from "./remix-store.js";
 
-export const HISTORY_PAUSED_SETTING_KEY = "history_paused";
-export const HISTORY_RETENTION_SETTING_KEY = "history_retention_days";
+export const HISTORY_PAUSED_SETTING_KEY = SETTINGS_KEYS.historyPaused;
+export const HISTORY_RETENTION_SETTING_KEY = SETTINGS_KEYS.historyRetentionDays;
 
 export interface RawHistoryEntry {
   rawText: string;

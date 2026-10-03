@@ -16,4 +16,5 @@ export * from "./query.js";
 export * from "./remix.js";
 export * from "./server.js";
 export * from "./settings.js";
+export * from "./settings-keys.js";
 export * from "./vocabulary.js";

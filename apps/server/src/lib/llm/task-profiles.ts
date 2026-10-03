@@ -26,6 +26,7 @@ import {
   meetingSummaryTimeoutMs,
   parseCleanupSampling,
   parseLlmTaskAssignments,
+  SETTINGS_KEYS,
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
 import { getApiKeyForProvider } from "../streaming-stt.js";
@@ -188,7 +189,7 @@ export interface DefaultLlmChoice {
 
 /** Read + merge the stored user presets behind the built-ins (§4.2). */
 function resolveMergedPresets(): readonly LlmParameterPreset[] {
-  const raw = readSetting("llm_parameter_presets");
+  const raw = readSetting(SETTINGS_KEYS.llmParameterPresets);
   if (!raw) return BUILTIN_LLM_PRESETS;
   try {
     const parsed = llmParameterPresetsSettingSchema.safeParse(JSON.parse(raw));
@@ -213,7 +214,9 @@ function resolveMergedPresets(): readonly LlmParameterPreset[] {
  * every read, no flag, nothing to race.
  */
 function resolveCleanupLegacyFallback(): LlmTaskAssignment | null {
-  const legacy = parseCleanupSampling(readSetting("cleanup_sampling"));
+  const legacy = parseCleanupSampling(
+    readSetting(SETTINGS_KEYS.cleanupSampling),
+  );
   if (Object.keys(legacy).length === 0) return null;
   return { mode: "custom", params: legacy as Record<string, unknown> };
 }
@@ -316,7 +319,7 @@ export async function resolveTaskCall(
   const profile = LLM_TASK_PROFILES[taskId];
 
   const assignments = parseLlmTaskAssignments(
-    readSetting("llm_task_assignments"),
+    readSetting(SETTINGS_KEYS.llmTaskAssignments),
   );
   let assignment = assignments[taskId];
   if (!assignment && taskId === "cleanup") {
