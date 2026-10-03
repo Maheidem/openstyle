@@ -1,10 +1,10 @@
 import type { LanguageModel } from "ai";
+import { getApiKey } from "./api-keys.js";
 import { getDb } from "./db.js";
 import type { LlmTaskContext } from "./llm/registry.js";
 import { getLlmProvider, isLocalProvider } from "./llm/registry.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
 import { stripModelPrefix } from "./model-id.js";
-import { getApiKeyForProvider } from "./streaming-stt.js";
 
 const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "openai",
@@ -60,7 +60,7 @@ export async function createChatModel(
   if (!provider) throw new Error(`Unsupported provider: ${providerId}`);
 
   const isLocal = isLocalProvider(providerId);
-  const apiKey = isLocal ? "local" : getApiKeyForProvider(providerId);
+  const apiKey = isLocal ? "local" : getApiKey(providerId);
   if (!apiKey)
     throw new Error(`No API key configured for provider: ${providerId}`);
 

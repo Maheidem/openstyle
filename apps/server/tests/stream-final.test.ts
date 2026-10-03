@@ -51,11 +51,15 @@ vi.mock("../src/lib/vocabulary-bias.js", () => ({
   resolveAsrVocabularyBias: () => null,
   vocabularyBiasTerms: () => VOCAB_TERMS,
 }));
-vi.mock("../src/lib/streaming-stt.js", () => ({
-  getApiKeyForProvider: () => "key",
+vi.mock("../src/lib/api-keys.js", () => ({
+  getApiKey: () => "key",
+}));
+vi.mock("../src/lib/streaming/registry.js", () => ({
   openStreamingSession: mocks.openStreamingSession,
   supportsSessionTransport: () => true,
   supportsStreaming: () => true,
+}));
+vi.mock("../src/lib/streaming/local-providers.js", () => ({
   voiceProviderCategory: () => "cloud",
 }));
 

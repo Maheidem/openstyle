@@ -6,7 +6,11 @@ import { OmlxTranscriptionProvider } from "./providers/omlx.js";
 import { OpenAITranscriptionProvider } from "./providers/openai.js";
 import { SonioxTranscriptionProvider } from "./providers/soniox.js";
 import { WhisperLocalTranscriptionProvider } from "./providers/whisper-local.js";
-import type { TranscriptionProvider } from "./types.js";
+import type {
+  StreamingSessionOptions,
+  StreamSession,
+  TranscriptionProvider,
+} from "./types.js";
 
 const providers: TranscriptionProvider[] = [
   new OpenAITranscriptionProvider(),
@@ -46,4 +50,25 @@ export function supportsSessionTransport(
     provider.supportsSessionTransport?.(modelId) ??
     provider.supportsStreaming(modelId)
   );
+}
+
+export function openStreamingSession(
+  opts: StreamingSessionOptions & { providerId: string },
+): StreamSession {
+  const { providerId, ...sessionOpts } = opts;
+
+  const provider = getProvider(providerId);
+  if (!provider) {
+    throw new Error(`No transcription provider for: ${providerId}`);
+  }
+  if (!provider.openStreamingSession) {
+    throw new Error(`Provider ${providerId} does not support streaming`);
+  }
+  if (!supportsSessionTransport(providerId, sessionOpts.model)) {
+    throw new Error(
+      `Model ${sessionOpts.model} on provider ${providerId} does not support session audio transport`,
+    );
+  }
+
+  return provider.openStreamingSession(sessionOpts);
 }

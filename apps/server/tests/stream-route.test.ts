@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   factory: null as null | (() => unknown),
   openStreamingSession: vi.fn(),
   supportsSessionTransport: vi.fn(),
-  getApiKeyForProvider: vi.fn(),
+  getApiKey: vi.fn(),
 }));
 
 vi.mock("@hono/node-server", () => ({
@@ -39,11 +39,15 @@ vi.mock("../src/lib/vocabulary-bias.js", () => ({
   resolveAsrVocabularyBias: () => null,
   vocabularyBiasTerms: () => [],
 }));
-vi.mock("../src/lib/streaming-stt.js", () => ({
-  getApiKeyForProvider: mocks.getApiKeyForProvider,
+vi.mock("../src/lib/api-keys.js", () => ({
+  getApiKey: mocks.getApiKey,
+}));
+vi.mock("../src/lib/streaming/registry.js", () => ({
   openStreamingSession: mocks.openStreamingSession,
   supportsSessionTransport: mocks.supportsSessionTransport,
   supportsStreaming: () => true,
+}));
+vi.mock("../src/lib/streaming/local-providers.js", () => ({
   voiceProviderCategory: () => "cloud",
 }));
 
@@ -85,7 +89,7 @@ describe("stream route upstream errors", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.supportsSessionTransport.mockReturnValue(true);
-    mocks.getApiKeyForProvider.mockReturnValue("key");
+    mocks.getApiKey.mockReturnValue("key");
   });
 
   it("reports a throw from the session open on start", async () => {
@@ -142,7 +146,7 @@ describe("stream route teardown", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.supportsSessionTransport.mockReturnValue(true);
-    mocks.getApiKeyForProvider.mockReturnValue("key");
+    mocks.getApiKey.mockReturnValue("key");
   });
 
   it.each([

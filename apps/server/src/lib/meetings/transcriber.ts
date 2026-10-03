@@ -330,13 +330,13 @@ export async function createDefaultTranscriberDeps(
   const [
     { getProvider },
     { getDefaultModels },
-    { getApiKeyForProvider },
+    { getApiKey },
     { getLanguagesSetting },
     { resolveAsrVocabularyBias },
   ] = await Promise.all([
     import("../streaming/registry.js"),
     import("../providers.js"),
-    import("../streaming-stt.js"),
+    import("../api-keys.js"),
     import("../language.js"),
     import("../vocabulary-bias.js"),
   ]);
@@ -352,7 +352,7 @@ export async function createDefaultTranscriberDeps(
       }
       const providerId = defaults.voice.provider;
       const modelId = defaults.voice.model_id;
-      const apiKey = getApiKeyForProvider(providerId);
+      const apiKey = getApiKey(providerId);
       if (!apiKey) {
         throw new Error(`No API key configured for provider: ${providerId}`);
       }
