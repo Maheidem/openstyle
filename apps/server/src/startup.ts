@@ -1,8 +1,7 @@
 /**
  * Standalone entrypoint for running the Openstyle server outside of Electron.
  *
- * Used by the Docker image (see Dockerfile) to run the server inside a
- * container/VM. The Electron app calls `startServer()` directly instead.
+ * The Electron app calls `startServer()` directly instead.
  *
  * Configuration via environment variables:
  *   - OPENSTYLE_DB_PATH (required) — path to the SQLite database file. The

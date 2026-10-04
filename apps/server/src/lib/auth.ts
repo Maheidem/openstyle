@@ -43,7 +43,7 @@ export function generateAuthToken(): string {
   return randomBytes(32).toString("hex");
 }
 
-// Liveness endpoint stays open so Docker/health probes work without a token.
+// Liveness endpoint stays open so health probes work without a token.
 const EXEMPT_PATHS = new Set(["/api/health"]);
 
 /**

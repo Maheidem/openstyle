@@ -10,7 +10,7 @@ Openstyle is a local-first dictation **and meeting-notes** app — a fork of `fr
 
 **Monorepo** (pnpm workspace `apps/*`, `packages/*`; Turborepo task runner, no Nx; npm scope `@openstyle/*` — `@freestyle-voice/*` is dead):
 - `apps/electron` (`@openstyle/electron`) — Electron main + renderer, embeds the server.
-- `apps/server` (`@openstyle/server`) — Hono API server (dictation, meetings, remix, models, settings); also independently buildable and shipped as its own container image (`ghcr.io/maheidem/openstyle-server`).
+- `apps/server` (`@openstyle/server`) — Hono API server (dictation, meetings, remix, models, settings); also independently buildable as a standalone Node entrypoint (`apps/server/src/startup.ts`). The desktop app spawns it.
 - `packages/stt` — provider-agnostic STT + text/cleanup utilities on the Vercel AI SDK; used only by `apps/server`.
 - `packages/utils` — shared utils incl. the logger (`src/logger.ts`).
 - `packages/validations` — shared Zod schemas; gives the Hono RPC client type safety with no codegen.
