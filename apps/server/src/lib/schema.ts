@@ -10,7 +10,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 34;
+const SCHEMA_VERSION = 35;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -893,6 +893,27 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // summary as stale. `latestSpeakerUpdate` now reads MAX(confirmed_at).
     db.exec(`ALTER TABLE meeting_speakers ADD COLUMN suggested_kind TEXT`);
     db.exec(`ALTER TABLE meeting_speakers ADD COLUMN confirmed_at INTEGER`);
+  }
+
+  if (currentVersion < 35) {
+    // Custom local MLX speech models (specs/custom-mlx-models.md §5.1). One
+    // row per Hugging Face repo the user added. `revision` and `files_json`
+    // describe the downloaded snapshot: the completeness check (§8) compares
+    // the files on disk with them. `id` is "custom--<org>--<name>", so it
+    // never holds a "/" and never equals a curated id.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS custom_mlx_models (
+        id            TEXT PRIMARY KEY,
+        hf_id         TEXT NOT NULL UNIQUE,
+        display_name  TEXT NOT NULL,
+        family        TEXT NOT NULL,
+        model_type    TEXT,
+        total_bytes   INTEGER NOT NULL,
+        revision      TEXT NOT NULL,
+        files_json    TEXT NOT NULL,
+        added_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
   }
 
   // Upsert schema version
