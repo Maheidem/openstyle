@@ -111,7 +111,7 @@ function deriveBundledVersion(): string {
   );
   return createHash("sha256")
     .update(
-      "pyinstaller=6.20.0;mlx-audio=0.4.3;huggingface_hub=1.17.0;transformers>=5.7,<5.13;bundle=onedir",
+      "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;bundle=onedir",
     )
     .update("\0")
     .update(script)
@@ -638,6 +638,8 @@ describe("MLX worker build spec", () => {
     const spec = [
       `pyinstaller=${pin("PYINSTALLER_VERSION")}`,
       `mlx-audio=${pin("MLX_AUDIO_VERSION")}`,
+      `mlx=${pin("MLX_VERSION")}`,
+      `mlx-metal=${pin("MLX_METAL_VERSION")}`,
       `huggingface_hub=${pin("HUGGINGFACE_HUB_VERSION")}`,
       `transformers${pin("TRANSFORMERS_SPEC")}`,
       "bundle=onedir",

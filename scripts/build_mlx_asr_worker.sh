@@ -7,18 +7,21 @@ DIST_DIR="${ROOT_DIR}/dist"
 ARCHIVE_NAME="mlx_asr_worker-darwin-arm64.tar.gz"
 
 PYTHON_BIN="${PYTHON_BIN:-python3.12}"
-PYINSTALLER_VERSION="${PYINSTALLER_VERSION:-6.20.0}"
-MLX_AUDIO_VERSION="${MLX_AUDIO_VERSION:-0.4.3}"
-HUGGINGFACE_HUB_VERSION="${HUGGINGFACE_HUB_VERSION:-1.17.0}"
-# transformers 5.13.0 rewrote AutoTokenizer.register() to require a config class; mlx-lm still
-# registers with a string at import time, so any mlx-lm import raises
-# "AttributeError: 'str' object has no attribute '__module__'" and the worker exits code 1.
-# Pin below 5.13 until mlx-lm's fix ships. Working band: transformers>=5.7,<5.13.
-# Refs: freestyle-voice/freestyle#403, ml-explore/mlx-lm#1458.
+PYINSTALLER_VERSION="${PYINSTALLER_VERSION:-6.22.3}"
+MLX_AUDIO_VERSION="${MLX_AUDIO_VERSION:-0.5.7}"
+MLX_VERSION="${MLX_VERSION:-0.32.3}"
+MLX_METAL_VERSION="${MLX_METAL_VERSION:-0.32.3}"
+HUGGINGFACE_HUB_VERSION="${HUGGINGFACE_HUB_VERSION:-1.33.0}"
+# mlx-audio 0.5.x vendors the mlx-lm parts it needs, so mlx-lm is no longer installed and the
+# AutoTokenizer.register crash (ml-explore/mlx-lm#1458, fixed in mlx-lm#1465) cannot happen.
+# mlx-audio 0.5.7 requires transformers>=5.14. transformers 5.x requires huggingface_hub<2.0,
+# so huggingface_hub stays on the 1.x line (latest 1.33.0).
+# mlx-audio 0.5.7 only requires mlx>=0.31.1, so mlx and mlx-metal are pinned here. Unpinned, pip
+# keeps whatever mlx an old venv already has (0.31.2 is measurably slower than 0.32.3).
 # Any dependency change here must also update MLX_WORKER_BUILD_SPEC in
 # apps/server/src/lib/mlx-asr/runtime.ts, or installed workers never re-download.
 # A test in apps/server/tests/mlx-runtime.test.ts checks that the two match.
-TRANSFORMERS_SPEC="${TRANSFORMERS_SPEC:->=5.7,<5.13}"
+TRANSFORMERS_SPEC="${TRANSFORMERS_SPEC:->=5.14}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "Python 3.12 is required to build the MLX ASR worker." >&2
@@ -26,11 +29,16 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   exit 1
 fi
 
+# Always start from a clean venv: pip install keeps already-installed dependency versions,
+# so a reused venv silently ships stale packages.
+rm -rf "${VENV_DIR}"
 "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/python" -m pip install -U pip
 "${VENV_DIR}/bin/python" -m pip install -U \
   "pyinstaller==${PYINSTALLER_VERSION}" \
   "mlx-audio==${MLX_AUDIO_VERSION}" \
+  "mlx==${MLX_VERSION}" \
+  "mlx-metal==${MLX_METAL_VERSION}" \
   "transformers${TRANSFORMERS_SPEC}" \
   "huggingface_hub[hf_xet]==${HUGGINGFACE_HUB_VERSION}"
 

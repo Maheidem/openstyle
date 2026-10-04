@@ -45,7 +45,7 @@ const DEFAULT_MLX_WORKER_LATEST_URL = `https://github.com/${MLX_WORKER_REPO}/rel
 // builds don't force users to redownload identical archives on every app release.
 // A test in tests/mlx-runtime.test.ts fails when the two drift apart.
 export const MLX_WORKER_BUILD_SPEC =
-  "pyinstaller=6.20.0;mlx-audio=0.4.3;huggingface_hub=1.17.0;transformers>=5.7,<5.13;bundle=onedir";
+  "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;bundle=onedir";
 
 // --- Integrity verification -------------------------------------------------
 //
