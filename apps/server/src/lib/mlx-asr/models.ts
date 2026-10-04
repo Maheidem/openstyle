@@ -211,8 +211,6 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
     activeDownloads.delete(modelId);
   }
 
-  if (isMlxModelDownloaded(model)) return;
-
   const now = Date.now();
   const active: ActiveMlxDownload = {
     controller: new AbortController(),
@@ -247,6 +245,12 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       active.error = blocker;
       throw new Error(blocker);
     }
+  }
+
+  // Cached weights still need the runtime above, but no weight download.
+  if (isMlxModelDownloaded(model)) {
+    activeDownloads.delete(modelId);
+    return;
   }
 
   active.phase = "downloading_model";
