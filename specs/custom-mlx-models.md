@@ -224,7 +224,7 @@ The server answers with `{ id, downloads, pipeline_tag }` for each hit. Search d
 
 ### 6.3 Errors
 
-Routes return `{ error: string, code: string }`. Codes: `invalid_input`, `offline`, `hf_error`, `not_found`, `gated`, `no_config`, `unsupported_family`, `not_transcriber`, `remote_code`, `no_weights`, `too_large`, `no_disk`, `already_added`. The renderer maps `code` to text (section 3.3).
+Routes return `{ error: string, code: string }`, plus the values a text needs: `modelType` for `unsupported_family`, `needBytes` and `freeBytes` for `no_disk`, `id` for `already_added`. Codes: `invalid_input`, `offline`, `hf_error`, `not_found`, `gated`, `no_config`, `unsupported_family`, `not_transcriber`, `remote_code`, `no_weights`, `too_large`, `no_disk`, `already_added`. The renderer maps `code` to text (section 3.3).
 
 ### 6.4 Merge into `/status`
 
@@ -254,7 +254,7 @@ For a custom model `ramRequired` is derived: `ceil(totalBytes * 1.5)` shown as "
    Any other host, any `http:`, any userinfo and any extra path segment before `tree` fails with `invalid_input`. Parse with `new URL`, never with string splitting alone. Output `hfId = "<org>/<name>"`.
 2. **Id regex.** `hfId` must match `^[\w.-]+/[\w.-]+$`. Reject `..`, `--` and a leading `.` in either part. This keeps `hfRepoCacheDir` (`models.ts:93-95`) and the id scheme safe.
 3. **Not curated.** If `hfId` equals a curated or legacy `hfId` (compare lowercase), return `already_added` and point to the existing row.
-4. **Fetch metadata.** `GET https://huggingface.co/api/models/<hfId>?blobs=true` with a 15 s timeout. Send no token. Follow redirects only to `huggingface.co`: use `redirect: "manual"` with a loop and a limit of 3 hops (`resolve/main/config.json` answers 307 to `/api/resolve-cache/...` on the same host). 404 gives `not_found`. Network failure gives `offline`. A 401 or 403 gives `gated`. A 429 or 5xx gives `hf_error`.
+4. **Fetch metadata.** `GET https://huggingface.co/api/models/<hfId>?blobs=true` with a 15 s timeout. Send no token. Follow redirects only to `huggingface.co`: use `redirect: "manual"` with a loop and a limit of 3 hops (`resolve/main/config.json` answers 307 to `/api/resolve-cache/...` on the same host). 404 gives `not_found`. Network failure gives `offline`. A 403 gives `gated`. A 401 gives `not_found`: HF answers 401 for a repo that does not exist and for a private repo, so the two cannot be told apart (HF API, 2026-10-04). A real gated repo answers 200 with `gated` set (step 5). A 429 or 5xx gives `hf_error`.
 5. **Gated or private.** `gated !== false` or `private === true` gives `gated`. A real gated repo: `pyannote/segmentation-3.0` has `gated: "auto"` (HF API, 2026-10-04).
 6. **config.json.** `siblings` must contain `config.json`. If not, `no_config`. Fetch `https://huggingface.co/<hfId>/resolve/main/config.json` (limit 1 MB, parse JSON). The API `config` field is not enough (section 4.1).
 7. **Remote code.** Reject (`remote_code`) when any sibling ends in `.py`, or when `config.json`, `tokenizer_config.json` or `preprocessor_config.json` has a top-level `auto_map` key. Fetch the two optional files only when they are in `siblings`. See section 11.
