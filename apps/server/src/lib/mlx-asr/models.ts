@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { listFiles, snapshotDownload } from "@huggingface/hub";
@@ -17,6 +17,11 @@ import {
   MLX_ASR_PROVIDER_ID,
   type MlxAsrModelDef,
 } from "./constants.js";
+import {
+  deleteCustomModelRow,
+  listCustomMlxDefs,
+  recordCustomSnapshot,
+} from "./custom-models.js";
 import {
   describeMlxSetupBlocker,
   mlxSetupBlocker,
@@ -81,7 +86,7 @@ function baseModelState(
   };
 }
 
-function hfCacheRoot(): string {
+export function hfCacheRoot(): string {
   return (
     process.env.HUGGINGFACE_HUB_CACHE ??
     (process.env.HF_HOME
@@ -102,7 +107,28 @@ function hasSnapshotFiles(snapshotDir: string): boolean {
   }
 }
 
+/**
+ * A custom model counts as downloaded only when the snapshot of the stored
+ * revision holds every expected file at its expected size (spec section 8).
+ * Snapshot files are symlinks into blobs/. `statSync` follows them.
+ */
+function isCustomModelComplete(
+  hfId: string,
+  custom: NonNullable<MlxAsrModelDef["custom"]>,
+): boolean {
+  const snapshotDir = join(hfRepoCacheDir(hfId), "snapshots", custom.revision);
+  if (!existsSync(snapshotDir)) return false;
+  try {
+    return custom.files.every(
+      (file) => statSync(join(snapshotDir, file.path)).size === file.size,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isMlxModelDownloaded(model: MlxAsrModelDef): boolean {
+  if (model.custom) return isCustomModelComplete(model.hfId, model.custom);
   const snapshotsDir = join(hfRepoCacheDir(model.hfId), "snapshots");
   if (!existsSync(snapshotsDir)) return false;
 
@@ -181,11 +207,11 @@ export function getMlxModelStatus(
 
 /**
  * Catalog shown in pickers: the curated models, plus legacy models that
- * this install still has downloaded.
+ * this install still has downloaded, plus the custom models the user added.
  */
 export function getMlxCatalogModels(): MlxAsrModelDef[] {
   const legacy = LEGACY_MLX_ASR_MODELS.filter((m) => isMlxModelDownloaded(m));
-  return [...MLX_ASR_MODELS, ...legacy];
+  return [...MLX_ASR_MODELS, ...legacy, ...listCustomMlxDefs()];
 }
 
 export function getAllMlxModelStatuses(): MlxModelDownloadState[] {
@@ -281,11 +307,12 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       );
     }
 
-    await snapshotDownload({
+    const snapshotDir = await snapshotDownload({
       repo,
       cacheDir: hfCacheRoot(),
       fetch: progressFetch(active, active.controller.signal),
     });
+    if (model.custom) recordCustomSnapshot(modelId, snapshotDir);
     activeDownloads.delete(modelId);
   } catch (err) {
     if (active.controller.signal.aborted) {
@@ -345,5 +372,7 @@ export function deleteMlxModel(modelId: string): boolean {
     // DB may be unavailable during shutdown
   }
 
-  return existed;
+  // A custom model leaves the list. The caller adds it again through the dialog.
+  const rowRemoved = model.custom ? deleteCustomModelRow(modelId) : false;
+  return existed || rowRemoved;
 }

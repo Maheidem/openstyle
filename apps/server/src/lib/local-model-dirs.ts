@@ -13,6 +13,7 @@ import {
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
 } from "./mlx-asr/constants.js";
+import { listCustomMlxDefs } from "./mlx-asr/custom-models.js";
 import { hfRepoCacheDir } from "./mlx-asr/models.js";
 import { getBinDir, getModelsDir } from "./whisper/constants.js";
 
@@ -20,8 +21,8 @@ import { getBinDir, getModelsDir } from "./whisper/constants.js";
  * Candidate roots for "local models" storage. Missing dirs are simply absent
  * from the filesystem — the caller skips them.
  *
- * Deliberately scoped to *our* Hugging Face repo cache dirs (one per catalog
- * + legacy model) rather than sizing all of `~/.cache/huggingface`: the hub
+ * Deliberately scoped to *our* Hugging Face repo cache dirs (one per catalog,
+ * legacy and custom model) rather than sizing all of `~/.cache/huggingface`: the hub
  * cache is shared with anything else the user runs, and counting foreign
  * downloads in "Local models" would be a lie.
  */
@@ -32,9 +33,12 @@ export function getLocalModelCacheDirs(): string[] {
     getBinDir(),
     // The MLX ASR worker runtime (also under the shared app cache).
     getMlxCacheDir(),
-    // MLX model weights land in the HF hub cache; count only our repos.
-    ...[...MLX_ASR_MODELS, ...LEGACY_MLX_ASR_MODELS].map((m) =>
-      hfRepoCacheDir(m.hfId),
-    ),
+    // MLX model weights land in the HF hub cache; count only our repos
+    // (catalog, legacy and custom).
+    ...[
+      ...MLX_ASR_MODELS,
+      ...LEGACY_MLX_ASR_MODELS,
+      ...listCustomMlxDefs(),
+    ].map((m) => hfRepoCacheDir(m.hfId)),
   ];
 }

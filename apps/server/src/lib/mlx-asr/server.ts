@@ -213,10 +213,11 @@ function workerLaunchCandidates(modelHfId: string): WorkerLaunchCandidate[] {
 async function spawnWorkerProcess(
   command: string,
   spawnArgs: string[],
+  extraEnv: NodeJS.ProcessEnv,
 ): Promise<void> {
   const proc = spawn(command, spawnArgs, {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    env: { ...process.env, PYTHONUNBUFFERED: "1", ...extraEnv },
   });
 
   workerProcess = proc;
@@ -301,11 +302,19 @@ async function startWorker(modelId: string): Promise<void> {
     );
   }
 
+  // A custom model was checked at add time only. The worker must not fetch
+  // other repos for it (spec section 11), so it loads from the cache alone.
+  const extraEnv = def.custom ? { HF_HUB_OFFLINE: "1" } : {};
+
   let lastError: Error | null = null;
 
   for (const candidate of candidates) {
     try {
-      await spawnWorkerProcess(candidate.command, candidate.spawnArgs);
+      await spawnWorkerProcess(
+        candidate.command,
+        candidate.spawnArgs,
+        extraEnv,
+      );
       const releaseTag = mlxAsrReleaseTagOverride();
       if (releaseTag && isManagedMlxRuntimeAvailable()) {
         markManagedMlxRuntimeSyncedForAppVersion(releaseTag);
@@ -319,6 +328,11 @@ async function startWorker(modelId: string): Promise<void> {
     }
   }
 
+  if (def.custom && lastError) {
+    throw new Error(
+      `Could not load the custom model ${def.hfId}. Its files may be incomplete. Delete it and add it again. (${lastError.message})`,
+    );
+  }
   throw (
     lastError ??
     new Error("MLX ASR worker failed to start with every launch method.")
