@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import sys
 import threading
 from inspect import Parameter, signature
@@ -374,4 +375,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # The frozen worker starts multiprocessing helpers (for example the
+    # resource tracker) by running its own binary with extra arguments.
+    # freeze_support() must run before argparse so these helper processes
+    # do their job and do not run main() again.
+    multiprocessing.freeze_support()
     main()
