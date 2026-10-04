@@ -34,6 +34,7 @@ import {
   Laptop,
   Loader2,
   Mic,
+  Plus,
   RefreshCw,
   Search,
   Sparkles,
@@ -43,6 +44,7 @@ import {
 import { useState } from "react";
 import { Controller, type Resolver, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { AddCustomModelDialog } from "./add-custom-model-dialog";
 import {
   PICKER_MODAL_BODY,
   PickerModalHeader,
@@ -70,6 +72,8 @@ interface Row {
   /** LLM gateway display name (e.g. "OpenRouter"); rendered as a meta badge. */
   gateway?: string;
   recommended?: boolean;
+  /** An MLX model the user added from Hugging Face. */
+  custom?: boolean;
   hasKey?: boolean;
   status?: WhisperModelDownloadState["status"];
   state?: WhisperModelDownloadState;
@@ -114,6 +118,7 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
         source: "local",
         meta: `${it.note ?? "On-device"}${sizeNote}`,
         recommended: it.key === recommendedKey,
+        custom: it.custom,
         selected: it.selected && status === "ready",
         status,
         state: it.state,
@@ -259,6 +264,8 @@ export function ModelList({
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"tiers" | "local" | "cloud">("tiers");
   const [showAllLlm, setShowAllLlm] = useState(false);
+  const [addingModel, setAddingModel] = useState(false);
+  const { t } = useTranslation();
 
   if (type === "voice" && view === "tiers") {
     return (
@@ -321,6 +328,9 @@ export function ModelList({
   // An oMLX server runs on localhost, so its connect form belongs with the
   // on-device engines rather than under Cloud.
   const showOmlxForm = type === "voice" && localOnly;
+  // Same gate as the MLX rows: Apple Silicon only.
+  const showAddModel =
+    type === "voice" && localOnly && m.mlxStatus?.platformSupported === true;
 
   const scopedTitle =
     type === "voice"
@@ -348,6 +358,17 @@ export function ModelList({
           <span className="text-foreground min-w-0 flex-1 text-[13px] font-semibold">
             {scopedTitle}
           </span>
+          {showAddModel && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAddingModel(true)}
+              className="shrink-0"
+            >
+              <Plus data-icon="inline-start" />
+              {t("models.custom.addModel")}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -407,6 +428,13 @@ export function ModelList({
           </Button>
         )}
       </div>
+
+      {addingModel && (
+        <AddCustomModelDialog
+          onClose={() => setAddingModel(false)}
+          onAdd={m.addCustomModel}
+        />
+      )}
     </>
   );
 }
@@ -422,6 +450,7 @@ function ModelRow({
   row: Row;
   first: boolean;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const local = row.source === "local";
   const status = row.status ?? "not_downloaded";
   const downloading =
@@ -449,6 +478,14 @@ function ModelRow({
               className="shrink-0 text-[10px] font-semibold"
             >
               Recommended
+            </Badge>
+          )}
+          {row.custom && (
+            <Badge
+              variant="outline"
+              className="shrink-0 text-[10px] font-semibold"
+            >
+              {t("models.custom.badge")}
             </Badge>
           )}
         </div>
