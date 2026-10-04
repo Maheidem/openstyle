@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.10.0
+
+### Improvements ⚡
+
+- Upgrade the local MLX speech engine to mlx-audio 0.5.7, transformers 5.18, huggingface_hub 1.33 and pyinstaller 6.22.3. mlx stays at 0.32.3 and is now pinned. The old transformers pin below 5.13 is removed, because the upstream fix (ml-explore/mlx-lm#1465) is released.
+- Local MLX transcription is a little faster. In our test on an Apple Silicon Mac, Qwen3-ASR 0.6B was about 15% faster on a 3-minute clip (2.7 s to 2.3 s). Parakeet TDT 0.6B v3 was also faster in each paired test.
+- Qwen3-ASR made fewer errors on our Portuguese test clip. The word error rate went from 5.9% to 0.0%.
+- Qwen3-ASR uses about 6% less memory.
+- If you use a local MLX model, the app downloads the new worker one time after the update.
+
+### Bug Fixes 🐛
+
+- Fix a model download that did nothing. This happened when the model weights were already in the cache but the MLX runtime was missing. The status stayed "not downloaded". The download now installs the runtime.
+- Fix the MLX worker error "unrecognized arguments". The worker logged it at each start.
+
+### Removed 🗑️
+
+- Remove the Docker server image (`ghcr.io/maheidem/openstyle-server`) and its CI build. The desktop app still runs its local server as before.
+
+### Internal 🔧
+
+- The MLX worker build now starts from a clean environment each time, so old package versions cannot stay in the worker.
+
 ## 2.9.0
 
 ### Bug Fixes 🐛
