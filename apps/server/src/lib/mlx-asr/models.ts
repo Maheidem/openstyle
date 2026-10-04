@@ -1,5 +1,4 @@
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { listFiles, snapshotDownload } from "@huggingface/hub";
 import { getDb } from "../db.js";
@@ -12,6 +11,8 @@ import { downloadErrorSourceUrl } from "../download-guard.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getMlxAsrModel,
+  hfCacheRoot,
+  hfRepoCacheDir,
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
@@ -19,7 +20,9 @@ import {
 } from "./constants.js";
 import {
   deleteCustomModelRow,
+  hasRemoteCode,
   listCustomMlxDefs,
+  MAX_MODEL_BYTES,
   recordCustomSnapshot,
 } from "./custom-models.js";
 import {
@@ -84,19 +87,6 @@ function baseModelState(
     sizeBytes: model.sizeBytes,
     displayName: model.displayName,
   };
-}
-
-export function hfCacheRoot(): string {
-  return (
-    process.env.HUGGINGFACE_HUB_CACHE ??
-    (process.env.HF_HOME
-      ? join(process.env.HF_HOME, "hub")
-      : join(homedir(), ".cache", "huggingface", "hub"))
-  );
-}
-
-export function hfRepoCacheDir(hfId: string): string {
-  return join(hfCacheRoot(), `models--${hfId.replaceAll("/", "--")}`);
 }
 
 function hasSnapshotFiles(snapshotDir: string): boolean {
@@ -299,6 +289,13 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
   }
 
   try {
+    // The add step checked the size once. The repo can grow before a retry.
+    if (model.custom && active.bytesTotal > MAX_MODEL_BYTES) {
+      throw new Error(
+        "This model is now larger than 8 GiB. It was not downloaded.",
+      );
+    }
+
     // Fail fast if the model won't fit before streaming gigabytes from HF.
     if (active.bytesTotal > 0) {
       await assertEnoughDiskSpace(
@@ -312,11 +309,28 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       cacheDir: hfCacheRoot(),
       fetch: progressFetch(active, active.controller.signal),
     });
-    if (model.custom) recordCustomSnapshot(modelId, snapshotDir);
+    if (model.custom) {
+      // The add step checked `main` once. Check the files that were stored.
+      if (hasRemoteCode(hfRepoCacheDir(model.hfId))) {
+        rmSync(hfRepoCacheDir(model.hfId), { recursive: true, force: true });
+        throw new Error(
+          "This model now holds its own code files. It was blocked and removed.",
+        );
+      }
+      recordCustomSnapshot(modelId, snapshotDir);
+    }
     activeDownloads.delete(modelId);
   } catch (err) {
     if (active.controller.signal.aborted) {
-      activeDownloads.delete(modelId);
+      // A write that was in flight can recreate files after the cancel or the
+      // delete removed the dir. Remove them, unless a new download owns the dir.
+      if (!activeDownloads.has(modelId)) {
+        try {
+          rmSync(hfRepoCacheDir(model.hfId), { recursive: true, force: true });
+        } catch {}
+      } else if (activeDownloads.get(modelId) === active) {
+        activeDownloads.delete(modelId);
+      }
       return;
     }
     active.error = describeDownloadError(err);

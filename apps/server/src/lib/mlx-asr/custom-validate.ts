@@ -13,6 +13,7 @@ import {
 } from "../disk.js";
 import {
   type CustomMlxFile,
+  hfCacheRoot,
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
 } from "./constants.js";
@@ -20,19 +21,19 @@ import {
   findCustomModelId,
   insertCustomModel,
   isSafeHfId,
+  MAX_MODEL_BYTES,
 } from "./custom-models.js";
 import {
   isNotTranscriber,
   resolveSttFamily,
   SUPPORTED_STT_FAMILIES,
 } from "./families.js";
-import { downloadMlxModel, hfCacheRoot } from "./models.js";
+import { downloadMlxModel } from "./models.js";
 
 const HF_HOST = "huggingface.co";
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_REDIRECTS = 3;
 const MAX_JSON_BYTES = 1024 * 1024;
-const MAX_MODEL_BYTES = 8 * 1024 ** 3;
 const SEARCH_LIMIT = 20;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const BARE_HF_ID = /^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
@@ -130,7 +131,17 @@ async function readJson(
   const chunks: Uint8Array[] = [];
   let total = 0;
   while (reader) {
-    const { done, value } = await reader.read();
+    // The request timeout also covers the body. A stalled body is a timeout.
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await reader.read();
+    } catch (err) {
+      if (err instanceof Error && err.name === "TimeoutError") {
+        throw new CustomModelError("hf_error", "Hugging Face timed out");
+      }
+      throw new CustomModelError("offline", "Cannot reach Hugging Face");
+    }
+    const { done, value } = chunk;
     if (done) break;
     total += value.byteLength;
     if (total > MAX_JSON_BYTES) {
@@ -406,10 +417,14 @@ export async function validateCustomModel(
   // 10: size.
   const files: CustomMlxFile[] = [];
   for (const sibling of siblings) {
+    const path = String(sibling.rfilename);
+    if (path.startsWith("/") || path.split("/").includes("..")) {
+      throw new CustomModelError("hf_error", "Repo file list has a bad path");
+    }
     if (typeof sibling.size !== "number" || sibling.size < 0) {
       throw new CustomModelError("hf_error", "Repo file list has no sizes");
     }
-    files.push({ path: String(sibling.rfilename), size: sibling.size });
+    files.push({ path, size: sibling.size });
   }
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
   if (totalBytes > MAX_MODEL_BYTES) {

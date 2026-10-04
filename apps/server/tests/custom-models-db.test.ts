@@ -132,6 +132,10 @@ describe("custom model ids", () => {
     ["a/b/c", false],
     ["a", false],
     ["a b/c", false],
+    ["a-/b", false],
+    ["a/-b", false],
+    ["-a/b", false],
+    ["a/b-", false],
   ])("isSafeHfId(%j) is %s", (hfId, expected) => {
     expect(isSafeHfId(hfId)).toBe(expected);
   });
@@ -188,6 +192,14 @@ describe("custom model rows", () => {
     insertCustomModel(model("a/b"));
 
     expect(() => insertCustomModel(model("a/b"))).toThrow(/UNIQUE|constraint/i);
+  });
+
+  it("refuses a second row for a repo id that differs only in case", () => {
+    insertCustomModel(model("Org/Name"));
+
+    expect(() => insertCustomModel(model("org/name"))).toThrow(
+      /UNIQUE|constraint/i,
+    );
   });
 
   it("finds a row that differs only in case", () => {

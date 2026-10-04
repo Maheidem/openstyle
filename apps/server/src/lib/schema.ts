@@ -914,6 +914,11 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         added_at      TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+    // Two ids that differ only in case share one cache dir on a
+    // case-insensitive volume, so a racing add must not insert both.
+    db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_mlx_models_hf_id_lower ON custom_mlx_models(lower(hf_id))`,
+    );
   }
 
   // Upsert schema version

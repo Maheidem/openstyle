@@ -294,6 +294,32 @@ describe("validateCustomModel", () => {
       expect((await failure(HF_ID)).code).toBe("hf_error");
     });
 
+    it("maps a body that stalls to hf_error", async () => {
+      routes[API_URL] = () =>
+        new Response(
+          new ReadableStream({
+            pull() {
+              throw new DOMException("timed out", "TimeoutError");
+            },
+          }),
+        );
+
+      expect((await failure(HF_ID)).code).toBe("hf_error");
+    });
+
+    it("maps a body that breaks to offline", async () => {
+      routes[API_URL] = () =>
+        new Response(
+          new ReadableStream({
+            pull() {
+              throw new TypeError("terminated");
+            },
+          }),
+        );
+
+      expect((await failure(HF_ID)).code).toBe("offline");
+    });
+
     it("maps a response above 1 MB to hf_error", async () => {
       routes[API_URL] = () => new Response("x".repeat(1024 * 1024 + 1));
 
@@ -609,6 +635,22 @@ describe("validateCustomModel", () => {
         siblings: [
           { rfilename: "config.json" },
           { rfilename: "model.safetensors", size: 10 },
+        ],
+      });
+
+      expect((await failure(HF_ID)).code).toBe("hf_error");
+    });
+
+    it.each([
+      "../x.safetensors",
+      "a/../../x",
+      "/etc/passwd",
+    ])("fails with hf_error for the file path %s", async (rfilename) => {
+      serveRepo({
+        siblings: [
+          { rfilename: "config.json", size: 10 },
+          { rfilename: "model.safetensors", size: 10 },
+          { rfilename, size: 10 },
         ],
       });
 

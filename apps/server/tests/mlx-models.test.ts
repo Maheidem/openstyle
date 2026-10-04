@@ -21,12 +21,13 @@ const mocks = vi.hoisted(() => ({
   blocker: "runtime missing" as string | null,
   ensureRuntime: vi.fn(),
   snapshotDownload: vi.fn(),
+  listSize: 2,
 }));
 
 vi.mock("@huggingface/hub", () => ({
   // The size sum for the progress bar. One small file.
   listFiles: async function* () {
-    yield { type: "file", path: "config.json", size: 2 };
+    yield { type: "file", path: "config.json", size: mocks.listSize };
   },
   snapshotDownload: mocks.snapshotDownload,
 }));
@@ -162,6 +163,7 @@ describe("custom MLX models", () => {
     getDb().exec("DELETE FROM model_configs");
     mocks.blocker = null;
     mocks.snapshotDownload.mockReset();
+    mocks.listSize = 2;
     insertCustomModel({
       hfId: CUSTOM_HF_ID,
       family: "whisper",
@@ -315,6 +317,64 @@ describe("custom MLX models", () => {
       });
     });
 
+    it.each([
+      ["a .py file", "modeling.py", "x = 1"],
+      [
+        "an auto_map in processor_config.json",
+        "processor_config.json",
+        '{"auto_map":{}}',
+      ],
+    ])("blocks and removes a download that holds %s", async (_name, file, content) => {
+      mocks.snapshotDownload.mockImplementation(async () => {
+        const dir = writeSnapshot(cacheDir, "rev-2");
+        writeFileSync(join(dir, file), content);
+        return dir;
+      });
+      const { downloadMlxModel, getMlxModelStatus } = await import(
+        "../src/lib/mlx-asr/models.js"
+      );
+
+      await expect(downloadMlxModel(CUSTOM_ID)).rejects.toThrow(
+        /holds its own code files/,
+      );
+
+      expect(existsSync(join(cacheDir, "models--someone--whisper-tiny"))).toBe(
+        false,
+      );
+      expect(getCustomMlxDef(CUSTOM_ID)?.custom?.revision).toBe("rev-1");
+      expect(getMlxModelStatus(CUSTOM_ID)).toMatchObject({
+        status: "error",
+        error: expect.stringContaining("own code files"),
+      });
+    });
+
+    it("keeps a download whose json files have no auto_map", async () => {
+      mocks.snapshotDownload.mockImplementation(async () => {
+        const dir = writeSnapshot(cacheDir, "rev-2");
+        writeFileSync(join(dir, "tokenizer_config.json"), '{"a":1}');
+        return dir;
+      });
+      const { downloadMlxModel, getMlxModelStatus } = await import(
+        "../src/lib/mlx-asr/models.js"
+      );
+
+      await downloadMlxModel(CUSTOM_ID);
+
+      expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("ready");
+    });
+
+    it("does not download a repo that grew above 8 GiB", async () => {
+      mocks.listSize = 8 * 1024 ** 3 + 1;
+      const { downloadMlxModel, getMlxModelStatus } = await import(
+        "../src/lib/mlx-asr/models.js"
+      );
+
+      await expect(downloadMlxModel(CUSTOM_ID)).rejects.toThrow(/8 GiB/);
+
+      expect(mocks.snapshotDownload).not.toHaveBeenCalled();
+      expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("error");
+    });
+
     it("keeps the row and the stored snapshot when the download fails", async () => {
       mocks.snapshotDownload.mockRejectedValue(new Error("network down"));
       const { downloadMlxModel, getMlxModelStatus } = await import(
@@ -347,6 +407,64 @@ describe("custom MLX models", () => {
       );
       expect(getCustomMlxDef(CUSTOM_ID)).toBeDefined();
       expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("not_downloaded");
+    });
+  });
+
+  describe("a download that is aborted", () => {
+    async function startAndWait(modelId: string) {
+      const models = await import("../src/lib/mlx-asr/models.js");
+      const calls = mocks.snapshotDownload.mock.calls.length;
+      const done = models.downloadMlxModel(modelId).catch(() => {});
+      // Wait until the download reaches `snapshotDownload`.
+      await vi.waitFor(() =>
+        expect(mocks.snapshotDownload.mock.calls.length).toBeGreaterThan(calls),
+      );
+      return { models, done };
+    }
+
+    it("removes the files that a late write recreated after the delete", async () => {
+      let fail: (err: Error) => void = () => {};
+      mocks.snapshotDownload.mockReturnValue(
+        new Promise((_, reject) => {
+          fail = reject;
+        }),
+      );
+      const { models, done } = await startAndWait(CUSTOM_ID);
+
+      expect(models.deleteMlxModel(CUSTOM_ID)).toBe(true);
+      // The in-flight writer creates a partial blob after the delete.
+      writeSnapshot(cacheDir, "late");
+      fail(new Error("aborted"));
+      await done;
+
+      expect(existsSync(join(cacheDir, "models--someone--whisper-tiny"))).toBe(
+        false,
+      );
+    });
+
+    it("keeps the files of a newer download of the same repo", async () => {
+      const failers: ((err: Error) => void)[] = [];
+      mocks.snapshotDownload.mockImplementation(
+        () =>
+          new Promise((_, reject) => {
+            failers.push(reject);
+          }),
+      );
+      const { models, done } = await startAndWait(CUSTOM_ID);
+      models.cancelMlxDownload(CUSTOM_ID);
+      const second = await startAndWait(CUSTOM_ID);
+      writeSnapshot(cacheDir, "new");
+
+      failers[0]?.(new Error("aborted"));
+      await done;
+
+      expect(existsSync(join(cacheDir, "models--someone--whisper-tiny"))).toBe(
+        true,
+      );
+      expect(models.getMlxModelStatus(CUSTOM_ID)?.status).toBe("downloading");
+      second.models.cancelMlxDownload(CUSTOM_ID);
+      failers[1]?.(new Error("aborted"));
+      await second.done;
     });
   });
 

@@ -7,7 +7,7 @@
  * `getMlxAsrModel` calls for ids that are not curated.
  */
 
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getDb } from "../db.js";
 import {
@@ -17,6 +17,11 @@ import {
 } from "./constants.js";
 
 export const HF_ID_PATTERN = /^[\w.-]+\/[\w.-]+$/;
+
+export const MAX_MODEL_BYTES = 8 * 1024 ** 3;
+
+/** A top-level JSON file above this size is not read, and counts as code. */
+const MAX_JSON_SCAN_BYTES = 64 * 1024 ** 2;
 
 interface CustomMlxRow {
   id: string;
@@ -33,13 +38,22 @@ export function customModelId(hfId: string): string {
   return `custom--${hfId.replace("/", "--")}`;
 }
 
-/** True when an id is safe to join into a cache path (spec section 7, step 2). */
+/**
+ * True when an id is safe to join into a cache path (spec section 7, step 2).
+ * A part that starts or ends with "-" is refused too: `a-/b` and `a/-b` would
+ * both give the id `custom--a---b` and the same cache dir.
+ */
 export function isSafeHfId(hfId: string): boolean {
   if (!HF_ID_PATTERN.test(hfId)) return false;
   return hfId
     .split("/")
     .every(
-      (part) => !part.includes("..") && !part.includes("--") && part[0] !== ".",
+      (part) =>
+        !part.includes("..") &&
+        !part.includes("--") &&
+        part[0] !== "." &&
+        !part.startsWith("-") &&
+        !part.endsWith("-"),
     );
 }
 
@@ -165,6 +179,43 @@ export function recordCustomSnapshot(id: string, snapshotDir: string): void {
       "UPDATE custom_mlx_models SET revision = ?, files_json = ? WHERE id = ?",
     )
     .run(basename(snapshotDir), JSON.stringify(files), id);
+}
+
+/**
+ * True when a downloaded repo holds code the worker could import (spec
+ * section 11): a .py file anywhere, or a top-level .json file with an
+ * `auto_map` key. Validation reads `main` once at add time. This scan reads the
+ * files that are on disk, which are the files the worker loads.
+ */
+export function hasRemoteCode(repoDir: string): boolean {
+  const snapshotsDir = join(repoDir, "snapshots");
+  try {
+    return readdirSync(snapshotsDir).some((revision) => {
+      const dir = join(snapshotsDir, revision);
+      return (readdirSync(dir, { recursive: true }) as string[]).some(
+        (path) => {
+          const lower = path.toLowerCase();
+          if (lower.endsWith(".py")) return true;
+          if (path.includes("/") || !lower.endsWith(".json")) return false;
+          return jsonHasAutoMap(join(dir, path));
+        },
+      );
+    });
+  } catch {
+    // No snapshots dir: nothing to load.
+    return false;
+  }
+}
+
+function jsonHasAutoMap(file: string): boolean {
+  if (statSync(file).size > MAX_JSON_SCAN_BYTES) return true;
+  try {
+    const json: unknown = JSON.parse(readFileSync(file, "utf8"));
+    return !!json && typeof json === "object" && "auto_map" in json;
+  } catch {
+    // Not JSON, so `transformers` cannot read an auto_map from it either.
+    return false;
+  }
 }
 
 setCustomMlxResolver(getCustomMlxDef);

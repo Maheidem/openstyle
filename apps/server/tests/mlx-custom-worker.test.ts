@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // A fake worker process. It answers "ready" unless a test makes it exit.
@@ -107,6 +110,29 @@ describe("worker launch for a custom model", () => {
     ).rejects.toThrow(
       /Could not load the custom model someone\/whisper-tiny\. Its files may be incomplete\. Delete it and add it again\./,
     );
+  });
+
+  it("does not start when the cached repo holds a code file", async () => {
+    const cache = mkdtempSync(join(tmpdir(), "mlx-worker-"));
+    vi.stubEnv("HUGGINGFACE_HUB_CACHE", cache);
+    try {
+      const snapshot = join(
+        cache,
+        "models--someone--whisper-tiny",
+        "snapshots",
+        "r",
+      );
+      mkdirSync(snapshot, { recursive: true });
+      writeFileSync(join(snapshot, "config.json"), "{}");
+      writeFileSync(join(snapshot, "modeling.py"), "x = 1");
+
+      await expect(
+        ensureMlxServerRunning("custom--someone--whisper-tiny"),
+      ).rejects.toThrow(/holds its own code files/);
+      expect(mocks.spawn).not.toHaveBeenCalled();
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
   });
 
   it("keeps the plain error for a curated model", async () => {

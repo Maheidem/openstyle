@@ -11,7 +11,8 @@ import {
   MLX_KEEP_ALIVE_DEFAULT_MINUTES,
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
-import { getMlxAsrModel } from "./constants.js";
+import { getMlxAsrModel, hfRepoCacheDir } from "./constants.js";
+import { hasRemoteCode } from "./custom-models.js";
 import {
   describeMlxSetupBlocker,
   findPythonExecutable,
@@ -284,6 +285,14 @@ async function startWorker(modelId: string): Promise<void> {
   const def = getMlxAsrModel(modelId);
   if (!def) {
     throw new Error(`Unknown MLX ASR model: ${modelId}`);
+  }
+
+  // The files on disk are the ones the worker loads. A repo that gained code
+  // files after the add step must not start (spec section 11).
+  if (def.custom && hasRemoteCode(hfRepoCacheDir(def.hfId))) {
+    throw new Error(
+      `The custom model ${def.hfId} holds its own code files, so it will not start. Delete it.`,
+    );
   }
 
   await updateManagedMlxRuntimeIfNeeded().catch((err) => {

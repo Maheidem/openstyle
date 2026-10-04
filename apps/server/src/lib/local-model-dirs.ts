@@ -10,11 +10,11 @@
 
 import {
   getMlxCacheDir,
+  hfRepoCacheDir,
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
 } from "./mlx-asr/constants.js";
 import { listCustomMlxDefs } from "./mlx-asr/custom-models.js";
-import { hfRepoCacheDir } from "./mlx-asr/models.js";
 import { getBinDir, getModelsDir } from "./whisper/constants.js";
 
 /**
