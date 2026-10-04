@@ -455,6 +455,19 @@ function ModelRow({
   const status = row.status ?? "not_downloaded";
   const downloading =
     local && (status === "downloading" || status === "verifying");
+  const deleteButton = row.onDelete && (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={row.onDelete}
+      disabled={row.deleting}
+      className="text-muted-foreground hover:text-destructive"
+      aria-label="Remove downloaded model from disk"
+      title="Remove downloaded model from disk"
+    >
+      {row.deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+    </Button>
+  );
 
   return (
     <div
@@ -521,30 +534,18 @@ function ModelRow({
                 <Button variant="ink" size="sm" onClick={row.onSelect}>
                   Use
                 </Button>
-                {row.onDelete && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={row.onDelete}
-                    disabled={row.deleting}
-                    className="text-muted-foreground hover:text-destructive"
-                    aria-label="Remove downloaded model from disk"
-                    title="Remove downloaded model from disk"
-                  >
-                    {row.deleting ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <Trash2 />
-                    )}
-                  </Button>
-                )}
+                {deleteButton}
               </>
             )}
             {status === "not_downloaded" && (
-              <Button variant="outline" size="sm" onClick={row.onDownload}>
-                <Download data-icon="inline-start" />
-                Download
-              </Button>
+              <>
+                <Button variant="outline" size="sm" onClick={row.onDownload}>
+                  <Download data-icon="inline-start" />
+                  Download
+                </Button>
+                {/* A custom row leaves the list on delete, so a failed or cancelled add can be removed. */}
+                {row.custom && deleteButton}
+              </>
             )}
             {downloading && (
               <Button variant="outline" size="sm" onClick={row.onCancel}>
@@ -561,6 +562,7 @@ function ModelRow({
                   <RefreshCw data-icon="inline-start" />
                   Retry
                 </Button>
+                {row.custom && deleteButton}
               </>
             )}
           </>
