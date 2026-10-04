@@ -111,7 +111,7 @@ function deriveBundledVersion(): string {
   );
   return createHash("sha256")
     .update(
-      "pyinstaller=6.20.0;mlx-audio=0.4.3;huggingface_hub=1.17.0;transformers>=5.7,<5.13;bundle=onedir",
+      "pyinstaller=6.22.3;mlx-audio=0.5.7;huggingface_hub=1.33.0;transformers>=5.14;bundle=onedir",
     )
     .update("\0")
     .update(script)
