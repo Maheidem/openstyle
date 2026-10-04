@@ -26,5 +26,3 @@ export const importDictionarySchema = z
   .max(DICTIONARY_IMPORT_MAX, "Too many dictionary entries");
 
 export type DictionaryInput = z.infer<typeof dictionarySchema>;
-export type UpdateDictionaryInput = z.infer<typeof updateDictionarySchema>;
-export type ImportDictionaryInput = z.infer<typeof importDictionarySchema>;

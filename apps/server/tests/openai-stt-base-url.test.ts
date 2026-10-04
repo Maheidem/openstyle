@@ -2,7 +2,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_KEYS } from "../../electron/src/shared/settings-keys.js";
 import createApp from "../src/index.js";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, writeSetting } from "../src/lib/db.js";
+import { jsonRequest } from "./helpers/http.js";
 
 vi.mock("@ai-sdk/openai", () => ({
   createOpenAI: vi.fn(() => ({
@@ -36,17 +37,10 @@ function createOpenAICallConfig(): unknown {
   return vi.mocked(createOpenAI).mock.calls[0]?.[0];
 }
 
-function setSetting(key: string, value: string): void {
-  getDb()
-    .prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
-    .run(key, value);
-}
-
 describe("OpenAI STT custom endpoint provider", () => {
   beforeEach(() => {
-    getDb()
-      .prepare("DELETE FROM settings WHERE key IN (?, ?)")
-      .run(SETTINGS_KEYS.openaiSttBaseUrl, SETTINGS_KEYS.openaiSttApiKey);
+    deleteSetting(SETTINGS_KEYS.openaiSttBaseUrl);
+    deleteSetting(SETTINGS_KEYS.openaiSttApiKey);
   });
 
   afterEach(() => {
@@ -63,7 +57,7 @@ describe("OpenAI STT custom endpoint provider", () => {
   });
 
   it("uses the default provider config when the base URL is empty", async () => {
-    setSetting(SETTINGS_KEYS.openaiSttBaseUrl, "");
+    writeSetting(SETTINGS_KEYS.openaiSttBaseUrl, "");
     const provider = new OpenAITranscriptionProvider();
 
     await provider.transcribe(opts);
@@ -72,8 +66,8 @@ describe("OpenAI STT custom endpoint provider", () => {
   });
 
   it("forwards the verbatim base URL and STT key when configured", async () => {
-    setSetting(SETTINGS_KEYS.openaiSttBaseUrl, "https://example.com/v1");
-    setSetting(SETTINGS_KEYS.openaiSttApiKey, "stt-endpoint-key");
+    writeSetting(SETTINGS_KEYS.openaiSttBaseUrl, "https://example.com/v1");
+    writeSetting(SETTINGS_KEYS.openaiSttApiKey, "stt-endpoint-key");
     const provider = new OpenAITranscriptionProvider();
 
     await provider.transcribe(opts);
@@ -85,7 +79,7 @@ describe("OpenAI STT custom endpoint provider", () => {
   });
 
   it("trims whitespace and trailing slashes but does not append /v1", async () => {
-    setSetting(SETTINGS_KEYS.openaiSttBaseUrl, "  http://localhost:10095/  ");
+    writeSetting(SETTINGS_KEYS.openaiSttBaseUrl, "  http://localhost:10095/  ");
     const provider = new OpenAITranscriptionProvider();
 
     await provider.transcribe(opts);
@@ -105,11 +99,7 @@ describe("POST /api/settings/openai-stt/test", () => {
   });
 
   function post(body: unknown) {
-    return app.request("/api/settings/openai-stt/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    return jsonRequest(app, "POST", "/api/settings/openai-stt/test", body);
   }
 
   it("probes <url>/v1/models and returns discovered models", async () => {

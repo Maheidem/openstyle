@@ -7,7 +7,7 @@
  * `lib/audio/decode.ts` never pulls in the meeting-worker imports.
  */
 
-import { fstatSync, readSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 
 export interface WavInfo {
   /** `fmt ` format tag: 1 = PCM, 3 = IEEE float, 0xFFFE = extensible. */
@@ -114,6 +114,53 @@ export function parseWavHeader(src: number | Uint8Array): WavInfo {
     offset += 8 + size + (size % 2);
   }
   throw new Error("WAV data chunk not found");
+}
+
+/**
+ * Read the whole data chunk of an on-disk WAV as PCM16 samples. Returns null
+ * when the file cannot be opened. A bad header still throws.
+ */
+export function readWavPcm16(
+  path: string,
+): { pcm: Int16Array; sampleRate: number } | null {
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const info = parseWavHeader(fd);
+    const data = Buffer.alloc(info.dataLength);
+    let read = 0;
+    while (read < info.dataLength) {
+      const n = readSync(
+        fd,
+        data,
+        read,
+        Math.min(1024 * 1024, info.dataLength - read),
+        info.dataOffset + read,
+      );
+      if (n <= 0) break;
+      read += n;
+    }
+    return {
+      pcm: new Int16Array(data.buffer, data.byteOffset, Math.floor(read / 2)),
+      sampleRate: info.sampleRate,
+    };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Header info of an on-disk WAV. Throws when the file cannot be opened or parsed. */
+export function readWavInfo(path: string): WavInfo {
+  const fd = openSync(path, "r");
+  try {
+    return parseWavHeader(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Duration of the data chunk in milliseconds; 0 when the byte rate is 0. */

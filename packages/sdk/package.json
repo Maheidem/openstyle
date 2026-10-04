@@ -1,7 +1,7 @@
 {
   "name": "@openstyle/sdk",
   "version": "1.0.0",
-  "description": "The plugin SDK for Openstyle — write plugins that extend the local-first voice dictation pipeline.",
+  "description": "Small shared helpers for Openstyle: OutputMode and the app-context parser.",
   "license": "MIT",
   "homepage": "https://github.com/Maheidem/openstyle/tree/main/packages/sdk#readme",
   "repository": {
@@ -12,9 +12,7 @@
   "keywords": [
     "openstyle",
     "voice",
-    "dictation",
-    "plugin",
-    "sdk"
+    "dictation"
   ],
   "type": "module",
   "main": "dist/index.cjs",
@@ -27,8 +25,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pkgroll --minify --clean-dist",
-    "test": "vitest run"
+    "build": "pkgroll --minify --clean-dist"
   },
   "exports": {
     "import": {
@@ -40,19 +37,9 @@
       "default": "./dist/index.cjs"
     }
   },
-  "peerDependencies": {
-    "hono": "^4.0.0"
-  },
-  "peerDependenciesMeta": {
-    "hono": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "@types/node": "^22.19.1",
-    "hono": "^4.12.22",
-    "pkgroll": "^2.27.0",
-    "typescript": "^5.8.3",
-    "vitest": "^4.1.7"
+    "@types/node": "catalog:",
+    "pkgroll": "catalog:",
+    "typescript": "catalog:"
   }
 }

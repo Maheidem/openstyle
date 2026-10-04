@@ -1,4 +1,14 @@
-import type { AppContext } from "./events.js";
+/**
+ * Best-effort description of the application the user was dictating into,
+ * captured per recording. Every field is optional because OS introspection
+ * can fail or be unavailable.
+ */
+export interface AppContext {
+  appName?: string;
+  windowTitle?: string;
+  url?: string;
+  bundleId?: string;
+}
 
 /**
  * The raw app-context payload captured at record time: the frontmost app,
@@ -15,9 +25,9 @@ export interface AppContextPayload {
 
 /**
  * Parse the raw app-context value handed to the pipeline into the
- * {@link AppContext} shape exposed to plugin hooks. Tolerant of missing,
- * malformed, or bare-string input. A single canonical parser shared by every
- * host so the interpretation can't drift.
+ * {@link AppContext} shape. Tolerant of missing, malformed, or bare-string
+ * input. Every host shares this one parser, so the interpretation does not
+ * change between hosts.
  */
 export function parseAppContext(
   raw: string | null | undefined,

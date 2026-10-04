@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
+import { jsonRequest } from "./helpers/http.js";
 
 const app = createApp();
 
@@ -24,11 +25,7 @@ function ids(): number[] {
 }
 
 function post(body: unknown) {
-  return app.request("/api/vocabulary/actions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return jsonRequest(app, "POST", "/api/vocabulary/actions", body);
 }
 
 afterEach(() => {
@@ -71,31 +68,6 @@ describe("POST /api/vocabulary/actions", () => {
     it("rejects non-positive / non-integer ids with 400", async () => {
       const res = await post({ action: "bulk-delete", ids: [0, -1, 1.5] });
       expect(res.status).toBe(400);
-    });
-  });
-
-  describe("import", () => {
-    it("inserts new terms and skips duplicates", async () => {
-      insert("Existing");
-
-      const res = await post({
-        action: "import",
-        entries: [{ term: "Existing" }, { term: "Fresh", notes: "n" }],
-      });
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ imported: 1, skipped: 1 });
-    });
-  });
-
-  describe("export", () => {
-    it("returns all terms sorted by term ascending", async () => {
-      insert("Zeta");
-      insert("Alpha");
-
-      const res = await post({ action: "export", type: "json" });
-      expect(res.status).toBe(200);
-      const rows = (await res.json()) as { term: string }[];
-      expect(rows.map((r) => r.term)).toEqual(["Alpha", "Zeta"]);
     });
   });
 

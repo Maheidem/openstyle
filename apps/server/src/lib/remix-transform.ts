@@ -1,15 +1,16 @@
 import { maxOutputTokensForCleanup, stripWrappingQuotes } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
 import { findRemixPreset } from "@openstyle/validations";
 import { generateText } from "ai";
-import { isCleanupModelSupported } from "../routes/models.js";
 import { buildRemixPrompt } from "./editor/remix-prompts.js";
-import { acquireLlmLane, llmLaneKeyForProvider } from "./llm/lane.js";
+import { withLlmLane } from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
-import { resolveTaskCall } from "./llm/task-profiles.js";
+import {
+  type ResolvedTaskCall,
+  type ResolveTaskCallOptions,
+  resolveTaskCall,
+} from "./llm/task-profiles.js";
+import { isCleanupModelSupported } from "./model-registry.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
-
-const log = createAppLogger("remix");
 
 /** A remix run failed in a way the pill should show the user. */
 export class RemixTransformError extends Error {
@@ -55,6 +56,35 @@ function resolveInstruction(options: RunRemixTransformOptions): string | null {
 }
 
 /**
+ * Resolve the model call for a remix and check that the model can run it.
+ * Both remix lanes use this. The check covers the model that the call will
+ * use, so a per-task override is checked and the app default is not.
+ */
+export async function resolveRemixCall(
+  opts: ResolveTaskCallOptions,
+  // The error text keeps the wording that each lane showed before. The
+  // agent lane writes "Remix" and the transform lane writes "remix".
+  remixWord: "Remix" | "remix",
+): Promise<ResolvedTaskCall> {
+  // resolveTaskCall throws a plain Error when no default model exists. The
+  // pill needs the typed "no-model" error, so check first.
+  if (!getDefaultModels().llm) {
+    throw new RemixTransformError(
+      "No AI model is set up yet. Pick one in Settings > Models.",
+      "no-model",
+    );
+  }
+  const resolved = await resolveTaskCall("remix", opts);
+  if (!(await isCleanupModelSupported(resolved.provider, resolved.modelId))) {
+    throw new RemixTransformError(
+      `${resolved.modelId} can't run ${remixWord}. Pick a different model in Settings > Models.`,
+      "unsupported-model",
+    );
+  }
+  return resolved;
+}
+
+/**
  * Run one remix over a text selection and return the replacement text.
  *
  * Unlike dictation cleanup, this never falls back to returning the input
@@ -70,20 +100,6 @@ export async function runRemixTransform(
     throw new RemixTransformError("No remix was given", "failed");
   }
 
-  const llm = getDefaultModels().llm;
-  if (!llm) {
-    throw new RemixTransformError(
-      "No AI model is set up yet. Pick one in Settings > Models.",
-      "no-model",
-    );
-  }
-
-  if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
-    throw new RemixTransformError(
-      `${llm.model_id} can't run remix. Pick a different model in Settings > Models.`,
-      "unsupported-model",
-    );
-  }
   const { system, prompt } = buildRemixPrompt(options.text, {
     instruction,
     languages: options.languages,
@@ -93,41 +109,39 @@ export async function runRemixTransform(
   // paragraph, in particular) which would quietly eat a repeated line from a
   // legitimately list-shaped result, and it swallows model errors into a
   // raw-text fallback this path must not take.
-  const resolved = await resolveTaskCall("remix", {
-    // The budget is sized off the input, which is the right shape here too —
-    // an edit is roughly as long as what it edits. "Expand" is the exception,
-    // and the helper already leaves generous headroom.
-    autoMaxOutputTokens: maxOutputTokensForCleanup(options.text),
-  });
+  const resolved = await resolveRemixCall(
+    {
+      // The budget is sized off the input, which is the right shape here too —
+      // an edit is roughly as long as what it edits. "Expand" is the exception,
+      // and the helper already leaves generous headroom.
+      autoMaxOutputTokens: maxOutputTokensForCleanup(options.text),
+    },
+    "remix",
+  );
   const providerOptions = getLlmProvider(resolved.provider)?.providerOptions?.(
     resolved.modelId,
     resolved.reasoningEnabled,
   );
   // Remix quick edit is `interactive` (§5.4): a one-shot rewrite the user is
-  // staring at. Per call, released in the finally below.
-  const lane = await llmLaneKeyForProvider(resolved.provider);
-  const lease = await acquireLlmLane({
-    lane,
-    cls: "interactive",
-    taskId: "remix",
-  });
-  let result: Awaited<ReturnType<typeof generateText>>;
-  try {
-    result = await generateText({
-      model: await createChatModel(resolved.provider, resolved.modelId, {
-        task: "remix",
-        sampling: resolved.samplingParams,
+  // staring at. Per call, released by `withLlmLane` when the call ends.
+  const result = await withLlmLane(
+    resolved.provider,
+    { cls: "interactive", taskId: "remix" },
+    async () =>
+      generateText({
+        model: await createChatModel(resolved.provider, resolved.modelId, {
+          task: "remix",
+          sampling: resolved.samplingParams,
+        }),
+        system,
+        prompt,
+        temperature: resolved.temperature,
+        topP: resolved.topP,
+        maxOutputTokens: resolved.maxOutputTokens,
+        ...(providerOptions ? { providerOptions } : {}),
+        abortSignal: AbortSignal.timeout(resolved.timeoutMs),
       }),
-      system,
-      prompt,
-      temperature: resolved.temperature,
-      maxOutputTokens: resolved.maxOutputTokens,
-      ...(providerOptions ? { providerOptions } : {}),
-      abortSignal: AbortSignal.timeout(resolved.timeoutMs),
-    });
-  } finally {
-    lease.release();
-  }
+  );
   const usage: RemixTransformResult["usage"] = {
     inputTokens: result.usage.inputTokens,
     outputTokens: result.usage.outputTokens,
@@ -142,9 +156,4 @@ export async function runRemixTransform(
   }
 
   return { text, instruction, usage };
-}
-
-/** Shared failure bookkeeping for the route's catch-all. */
-export function reportRemixTransformFailure(err: unknown): void {
-  log.error(`Remix failed: ${err}`);
 }

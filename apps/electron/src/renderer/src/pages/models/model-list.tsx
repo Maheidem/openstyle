@@ -17,9 +17,14 @@ import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import type {
   AvailableModel,
+  ConfiguredModel,
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
-import { formatBytes, formatSpeed } from "@renderer/lib/models";
+import {
+  displayProviderName,
+  formatBytes,
+  formatSpeed,
+} from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   ArrowLeft,
@@ -48,9 +53,7 @@ import {
   recommendedVoiceKey,
   TranscriptionPicker,
 } from "./transcription-picker";
-import type { ConfiguredModel } from "./types";
 import type { EndpointConnectState, UseModels } from "./use-models";
-import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Normalized row — one shape for cloud + local, voice + LLM.
@@ -60,7 +63,6 @@ interface Row {
   key: string;
   name: string;
   source: "cloud" | "local";
-  provider: string; // provider_id, for the provider filter
   meta: string;
   selected: boolean;
   /** Shown by default; non-curated rows live behind "Show all models". */
@@ -105,38 +107,31 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
           ? ` · ${formatBytes(it.sizeBytes)}`
           : "";
       const defId = it.defId;
-      return {
+      const engine = it.localEngine;
+      const row: Row = {
         key: it.key,
         name: it.name,
         source: "local",
-        provider: "local",
         meta: `${it.note ?? "On-device"}${sizeNote}`,
         recommended: it.key === recommendedKey,
         selected: it.selected && status === "ready",
         status,
         state: it.state,
-        deleting: defId
-          ? m.deletingKeys.has(`${it.localEngine ?? "whisper"}:${defId}`)
-          : false,
-        onSelect: defId
-          ? () => h.onPickLocalVoice(defId, it.name, it.localEngine)
-          : undefined,
-        onDownload: defId
-          ? () => m.downloadLocal(defId, it.localEngine)
-          : undefined,
-        onCancel: defId
-          ? () => m.cancelLocal(defId, it.localEngine)
-          : undefined,
-        onDelete: defId
-          ? () => h.onRequestDeleteLocal(defId, it.localEngine)
-          : undefined,
-        onRetry: defId
-          ? () =>
-              it.localEngine === "mlx"
-                ? void m.retryLocalMlx(defId)
-                : m.downloadLocal(defId, "whisper")
-          : undefined,
+        deleting: false,
       };
+      // A row without a definition id has nothing to select, fetch or delete.
+      if (defId) {
+        row.deleting = m.deletingKeys.has(`${engine ?? "whisper"}:${defId}`);
+        row.onSelect = () => h.onPickLocalVoice(defId, it.name, engine);
+        row.onDownload = () => m.downloadLocal(defId, engine);
+        row.onCancel = () => m.cancelLocal(defId, engine);
+        row.onDelete = () => h.onRequestDeleteLocal(defId, engine);
+        row.onRetry = () =>
+          engine === "mlx"
+            ? void m.retryLocalMlx(defId)
+            : m.downloadLocal(defId, "whisper");
+      }
+      return row;
     }
 
     const providerId = it.available?.provider_id ?? "";
@@ -146,8 +141,7 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
       key: it.key,
       name: it.name,
       source: "cloud",
-      provider: providerId,
-      meta: `${displayName(providerId, it.provider)}${note}${cost}`,
+      meta: `${displayProviderName(providerId, it.provider)}${note}${cost}`,
       selected: it.selected,
       hasKey: it.hasKey,
       onSelect: it.available
@@ -172,7 +166,6 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
       key: `omlx/${name}`,
       name,
       source: "local",
-      provider: "local",
       meta: "On-device · oMLX",
       curated: true,
       selected:
@@ -205,7 +198,6 @@ function buildLlmRows(
         key: model.model_id,
         name: model.model_name,
         source: "cloud",
-        provider: providerId,
         meta,
         curated: model.curated === true,
         gateway: model.gateway,
@@ -228,7 +220,6 @@ function buildLlmRows(
       key: `local:${name}`,
       name,
       source: "local",
-      provider: "local",
       meta: "On-device",
       curated: true,
       selected:
@@ -243,13 +234,11 @@ function buildLlmRows(
 }
 
 // ---------------------------------------------------------------------------
-// ModelList — header + filter bar + rows
+// ModelList: header and rows
 // ---------------------------------------------------------------------------
 
 export function ModelList({
   type,
-  voiceView,
-  llmView,
   m,
   onClose,
   onPickCloud,
@@ -257,8 +246,6 @@ export function ModelList({
   onRequestDeleteLocal,
 }: {
   type: "voice" | "llm";
-  voiceView?: "tiers" | "all" | "local" | "cloud";
-  llmView?: "tiers" | "all" | "local" | "cloud";
   m: UseModels;
   onClose: () => void;
   onPickCloud: (model: AvailableModel) => void;
@@ -270,29 +257,7 @@ export function ModelList({
   onRequestDeleteLocal: (defId: string, engine?: "whisper" | "mlx") => void;
 }): React.JSX.Element {
   const [search, setSearch] = useState("");
-  const openedScopedDirect =
-    type === "voice"
-      ? voiceView === "cloud" || voiceView === "local"
-      : llmView === "cloud" || llmView === "local";
-  const [filter, setFilter] = useState(
-    voiceView === "cloud" || llmView === "cloud"
-      ? "cloud"
-      : voiceView === "local" || llmView === "local"
-        ? "local"
-        : "all",
-  );
-  const [view, setView] = useState<"tiers" | "all" | "local" | "cloud">(() => {
-    if (type === "voice") {
-      if (voiceView === "cloud") return "cloud";
-      if (voiceView === "local") return "local";
-      if (voiceView === "all") return "all";
-      return voiceView ?? "tiers";
-    }
-    if (llmView === "cloud") return "cloud";
-    if (llmView === "local") return "local";
-    if (llmView === "all") return "all";
-    return llmView ?? "tiers";
-  });
+  const [view, setView] = useState<"tiers" | "local" | "cloud">("tiers");
   const [showAllLlm, setShowAllLlm] = useState(false);
 
   if (type === "voice" && view === "tiers") {
@@ -319,7 +284,6 @@ export function ModelList({
 
   const cloudOnly = view === "cloud";
   const localOnly = view === "local";
-  const scopedOnly = cloudOnly || localOnly;
 
   const rows =
     type === "voice"
@@ -337,15 +301,6 @@ export function ModelList({
   const filteredRows = rows.filter((r) => {
     if (localOnly && r.source !== "local") return false;
     if (cloudOnly && r.source !== "cloud") return false;
-    if (filter === "cloud" && r.source !== "cloud") return false;
-    if (filter === "local" && r.source !== "local") return false;
-    if (
-      filter !== "all" &&
-      filter !== "cloud" &&
-      filter !== "local" &&
-      r.provider !== filter
-    )
-      return false;
     if (
       q &&
       !`${r.name} ${r.meta} ${r.gateway ?? ""}`.toLowerCase().includes(q)
@@ -371,50 +326,25 @@ export function ModelList({
     type === "voice"
       ? localOnly
         ? "On-device models"
-        : cloudOnly
-          ? "Cloud models"
-          : "All voice models"
+        : "Cloud models"
       : localOnly
         ? "On-device cleanup"
-        : cloudOnly
-          ? "Cloud cleanup models"
-          : "All cleanup models";
+        : "Cloud cleanup models";
 
   return (
     <>
       <header className="border-border shrink-0 border-b px-5 py-3.5">
         <div className="flex items-center gap-3">
-          {type === "voice" && !openedScopedDirect ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setView("tiers")}
-              className="shrink-0 gap-1.5"
-              aria-label="Back to simple view"
-            >
-              <ArrowLeft data-icon="inline-start" />
-              <Mic />
-            </Button>
-          ) : type === "llm" && !openedScopedDirect ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setView("tiers")}
-              className="shrink-0 gap-1.5"
-              aria-label="Back to simple view"
-            >
-              <ArrowLeft data-icon="inline-start" />
-              <Sparkles />
-            </Button>
-          ) : type === "voice" && localOnly ? (
-            <Laptop className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          ) : type === "voice" ? (
-            <Key className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          ) : type === "llm" && localOnly ? (
-            <Laptop className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          ) : (
-            <Key className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setView("tiers")}
+            className="shrink-0 gap-1.5"
+            aria-label="Back to simple view"
+          >
+            <ArrowLeft data-icon="inline-start" />
+            {type === "voice" ? <Mic /> : <Sparkles />}
+          </Button>
           <span className="text-foreground min-w-0 flex-1 text-[13px] font-semibold">
             {scopedTitle}
           </span>
@@ -442,8 +372,6 @@ export function ModelList({
         </InputGroup>
       </header>
 
-      {!scopedOnly && <FilterBar active={filter} onChange={setFilter} />}
-
       {type === "voice" && localOnly && m.whisperStatus?.binaryDownloading && (
         <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
           <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
@@ -454,9 +382,9 @@ export function ModelList({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showLocalLlmForm && <LocalLlmConnect m={m} />}
-        {showOpenaiSttForm && <OpenaiSttConnect m={m} />}
-        {showOmlxForm && <OmlxConnect m={m} />}
+        {showLocalLlmForm && <LocalLlmConnect connect={m.localLlm} />}
+        {showOpenaiSttForm && <OpenaiSttConnect connect={m.openaiStt} />}
+        {showOmlxForm && <OmlxConnect connect={m.omlx} />}
         {visible.length === 0 ? (
           <ListEmptyState
             type={type}
@@ -480,58 +408,6 @@ export function ModelList({
         )}
       </div>
     </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Filter bar — source filters only (provider chips add noise in advanced view)
-// ---------------------------------------------------------------------------
-
-function FilterBar({
-  active,
-  onChange,
-}: {
-  active: string;
-  onChange: (id: string) => void;
-}): React.JSX.Element {
-  const sources = [
-    { id: "all", label: "All" },
-    { id: "cloud", label: "Cloud" },
-    { id: "local", label: "On-device" },
-  ];
-
-  return (
-    <div className="border-border flex flex-wrap items-center gap-2 border-b px-5 py-2.5">
-      {sources.map((f) => (
-        <Chip
-          key={f.id}
-          label={f.label}
-          on={active === f.id}
-          onClick={() => onChange(f.id)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Chip({
-  label,
-  on,
-  onClick,
-}: {
-  label: string;
-  on: boolean;
-  onClick: () => void;
-}): React.JSX.Element {
-  return (
-    <Button
-      variant={on ? "default" : "outline"}
-      size="xs"
-      onClick={onClick}
-      className="rounded-full"
-    >
-      {label}
-    </Button>
   );
 }
 
@@ -743,10 +619,14 @@ function ListEmptyState({
   );
 }
 
-function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
+function LocalLlmConnect({
+  connect,
+}: {
+  connect: EndpointConnectState;
+}): React.JSX.Element {
   return (
     <EndpointConnectForm
-      connect={m.localLlm}
+      connect={connect}
       resolver={zodResolver(localLlmConnectFormSchema)}
       description="Connect to Ollama, LM Studio, or another OpenAI-compatible server running locally."
       urlPlaceholder="http://localhost:11434"
@@ -754,10 +634,14 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
   );
 }
 
-function OpenaiSttConnect({ m }: { m: UseModels }): React.JSX.Element {
+function OpenaiSttConnect({
+  connect,
+}: {
+  connect: EndpointConnectState;
+}): React.JSX.Element {
   return (
     <EndpointConnectForm
-      connect={m.openaiStt}
+      connect={connect}
       resolver={zodResolver(openaiSttConnectFormSchema)}
       description="Point OpenAI transcription at a self-hosted or OpenAI-compatible server (vLLM, LiteLLM, LM Studio). Leave the URL empty to use OpenAI."
       urlPlaceholder="https://example.com/v1"
@@ -765,10 +649,14 @@ function OpenaiSttConnect({ m }: { m: UseModels }): React.JSX.Element {
   );
 }
 
-function OmlxConnect({ m }: { m: UseModels }): React.JSX.Element {
+function OmlxConnect({
+  connect,
+}: {
+  connect: EndpointConnectState;
+}): React.JSX.Element {
   return (
     <EndpointConnectForm
-      connect={m.omlx}
+      connect={connect}
       resolver={zodResolver(omlxConnectFormSchema)}
       description="Transcribe with an oMLX server you already run. Enter the server address — every model it serves is listed; pick the ASR one. Leave the URL empty to disconnect."
       urlPlaceholder="http://127.0.0.1:8123"
@@ -940,7 +828,7 @@ function CleanupTierPicker({
       : t("models.picker.ollamaHint");
 
   const byokLabel = byokActive
-    ? (m.defaultLlm?.model_name ?? displayName(m.defaultLlm!.provider))
+    ? (m.defaultLlm?.model_name ?? displayProviderName(m.defaultLlm!.provider))
     : byokCount > 0
       ? t("models.picker.cloudModelCount", { count: byokCount })
       : t("models.picker.byokProviders");

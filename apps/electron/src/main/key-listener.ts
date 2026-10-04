@@ -11,8 +11,11 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createAppLogger } from "@openstyle/utils";
-import { getNativeBinaryPath } from "./native-binary";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
+import {
+  getNativeBinaryPath,
+  KEY_LISTENER_BINARY_NAMES,
+} from "./native-binary";
 
 const log = createAppLogger("key-listener");
 
@@ -28,22 +31,15 @@ interface KeyListenerOptions {
   onPermanentFailure?: () => void;
 }
 
-const BINARY_NAMES: Record<string, string> = {
-  darwin: "macos-key-listener",
-  win32: "windows-key-listener",
-  linux: "linux-key-listener",
-};
-
 const MAC_SOLO_FN_CHORD_GRACE_MS = 50;
 
-/**
- * Convert an Electron accelerator to the format expected by the native binary.
- * The native binaries accept Electron-style accelerator format directly.
- */
-function formatHotkeyForBinary(hotkey: string): string {
-  // Examples: "Alt+Space", "CommandOrControl+Shift+F11"
-  return hotkey;
-}
+const MAC_MODIFIER_CATEGORY_BY_RIGHT_KEY: Record<string, string> = {
+  rightoption: "option",
+  rightalt: "option",
+  rightcommand: "command",
+  rightcontrol: "control",
+  rightshift: "shift",
+};
 
 function normalizeMacKeyName(name: string): string {
   const aliases: Record<string, string> = {
@@ -155,7 +151,7 @@ export class NativeKeyListener {
   start(): Promise<boolean> {
     if (this.destroyed) return Promise.resolve(false);
 
-    const binaryName = BINARY_NAMES[process.platform];
+    const binaryName = KEY_LISTENER_BINARY_NAMES[process.platform];
     if (!binaryName) {
       this.options.onError?.(`Unsupported platform: ${process.platform}`);
       return Promise.resolve(false);
@@ -169,18 +165,16 @@ export class NativeKeyListener {
       return Promise.resolve(false);
     }
 
-    const args: string[] = [];
+    // The native binaries accept the Electron-style accelerator directly.
+    const args: string[] = [this.options.hotkey];
 
     // macOS reports all events and main filters; pass the hotkey so compound
     // shortcuts (e.g. Option+U) are swallowed, plus mouse buttons when needed.
     if (process.platform === "darwin") {
-      args.push(formatHotkeyForBinary(this.options.hotkey));
       const mouseArgs = macMouseSuppressionArgs(this.options.hotkey);
       if (mouseArgs.length > 0) {
         args.push(mouseArgs.join(","));
       }
-    } else {
-      args.push(formatHotkeyForBinary(this.options.hotkey));
     }
 
     try {
@@ -189,7 +183,7 @@ export class NativeKeyListener {
       });
     } catch (err) {
       this.options.onError?.(
-        `Failed to spawn key listener: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to spawn key listener: ${errorMessage(err)}`,
       );
       return Promise.resolve(false);
     }
@@ -267,12 +261,13 @@ export class NativeKeyListener {
     if (process.platform !== "darwin") return;
 
     const hotkey = this.options.hotkey.toLowerCase();
+    const isFnHotkey = hotkey === "fn" || hotkey === "globe";
 
     // Fn/Globe key — FN_DOWN is solo only; FN_DOWN:mods tracks Fn held with chords.
     if (line === "FN_DOWN" || line.startsWith("FN_DOWN:")) {
       this.macFnDown = true;
       const isSoloFn = line === "FN_DOWN";
-      if (hotkey === "fn" || hotkey === "globe") {
+      if (isFnHotkey) {
         if (isSoloFn) {
           this.scheduleMacSoloFnDown();
         }
@@ -284,7 +279,7 @@ export class NativeKeyListener {
     if (line === "FN_UP") {
       this.macFnDown = false;
       this.cancelMacSoloFnDown();
-      if (hotkey === "fn" || hotkey === "globe") {
+      if (isFnHotkey) {
         if (this.macHotkeyActive) {
           this.macHotkeyActive = false;
           this.options.onKeyUp();
@@ -360,12 +355,12 @@ export class NativeKeyListener {
     }
 
     if (line.startsWith("KEY_DOWN:")) {
-      this.handleMacKeyEvent(line.slice(9), true);
+      this.handleMacKeyEvent(line.slice("KEY_DOWN:".length), true);
       return;
     }
 
     if (line.startsWith("KEY_UP:")) {
-      this.handleMacKeyEvent(line.slice(9), false);
+      this.handleMacKeyEvent(line.slice("KEY_UP:".length), false);
       return;
     }
   }
@@ -374,12 +369,7 @@ export class NativeKeyListener {
   private checkMacCompoundRelease(): void {
     if (!this.macHotkeyActive) return;
 
-    const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
-    if (hotkeyKey) {
-      const keyLower = hotkeyKey.toLowerCase();
-      if (keyLower === "fn" || keyLower === "globe") return;
-    }
-
+    const { modifiers } = parseHotkeyParts(this.options.hotkey);
     const allModsMatch = this.areMacModifiersActive(modifiers);
     if (!allModsMatch) {
       this.macHotkeyActive = false;
@@ -462,10 +452,7 @@ export class NativeKeyListener {
     }
 
     // Compound hotkeys (Alt+Space, mouse buttons, etc.) use their own down event.
-    if (hotkeyKey) {
-      const keyLower = hotkeyKey.toLowerCase();
-      if (keyLower !== "fn" && keyLower !== "globe") return;
-    }
+    if (hotkeyKey) return;
 
     if (modifiers.size === 0) return;
 
@@ -481,16 +468,8 @@ export class NativeKeyListener {
     const activeCategories = new Set(this.macFlagState);
     if (this.macFnDown) activeCategories.add("fn");
 
-    const modCategoryMap: Record<string, string> = {
-      rightoption: "option",
-      rightalt: "option",
-      rightcommand: "command",
-      rightcontrol: "control",
-      rightshift: "shift",
-    };
-
     for (const mod of this.macModState) {
-      const category = modCategoryMap[mod];
+      const category = MAC_MODIFIER_CATEGORY_BY_RIGHT_KEY[mod];
       if (category) activeCategories.add(category);
     }
 
@@ -542,9 +521,5 @@ export class NativeKeyListener {
       }
       this.process = null;
     }
-  }
-
-  get isRunning(): boolean {
-    return this.process !== null;
   }
 }

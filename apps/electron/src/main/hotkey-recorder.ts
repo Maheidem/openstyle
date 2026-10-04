@@ -7,9 +7,12 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import type { WebContents } from "electron";
-import { getNativeBinaryPath } from "./native-binary";
+import {
+  getNativeBinaryPath,
+  KEY_LISTENER_BINARY_NAMES,
+} from "./native-binary";
 
 const log = createAppLogger("hotkey-recorder");
 
@@ -19,17 +22,11 @@ export interface HotkeyCombo {
 }
 
 export interface HotkeyRecorderCallbacks {
-  onModifiers: (modifiers: string[]) => void;
-  onCaptured: (combo: HotkeyCombo) => void;
+  onModifiers?: (modifiers: string[]) => void;
+  onCaptured?: (combo: HotkeyCombo) => void;
   onCancel: () => void;
   onError?: (message: string) => void;
 }
-
-const BINARY_NAMES: Record<string, string> = {
-  darwin: "macos-key-listener",
-  win32: "windows-key-listener",
-  linux: "linux-key-listener",
-};
 
 const MAC_RIGHT_MOD_KEYS: Record<string, string> = {
   rightoption: "RightOption",
@@ -44,6 +41,15 @@ const MAC_FLAG_MODIFIERS: Record<string, string> = {
   shift: "Shift",
   command: "Command",
 };
+
+/** Turn a comma list of macOS modifier tokens into modifier names. */
+function parseMacModifiers(raw: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((part) => MAC_FLAG_MODIFIERS[part.trim().toLowerCase()])
+    .filter((part): part is string => Boolean(part));
+}
 
 export class HotkeyRecorder {
   private process: ChildProcess | null = null;
@@ -60,7 +66,7 @@ export class HotkeyRecorder {
     this.target = target;
     this.pendingModifiers = [];
 
-    const binaryName = BINARY_NAMES[process.platform];
+    const binaryName = KEY_LISTENER_BINARY_NAMES[process.platform];
     if (!binaryName) {
       this.callbacks.onError?.(`Unsupported platform: ${process.platform}`);
       return false;
@@ -87,7 +93,7 @@ export class HotkeyRecorder {
       });
     } catch (err) {
       this.callbacks.onError?.(
-        `Failed to spawn hotkey recorder: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to spawn hotkey recorder: ${errorMessage(err)}`,
       );
       return false;
     }
@@ -141,12 +147,18 @@ export class HotkeyRecorder {
   private sendModifiers(modifiers: string[]): void {
     this.pendingModifiers = modifiers;
     this.target?.send("hotkey-record:modifiers", modifiers);
-    this.callbacks.onModifiers(modifiers);
+    this.callbacks.onModifiers?.(modifiers);
   }
 
   private sendCaptured(combo: HotkeyCombo): void {
     this.target?.send("hotkey-record:captured", combo);
-    this.callbacks.onCaptured(combo);
+    this.callbacks.onCaptured?.(combo);
+  }
+
+  private captureKey(key: string): void {
+    if (key) {
+      this.sendCaptured({ modifiers: [...this.pendingModifiers], key });
+    }
   }
 
   private sendReleased(): void {
@@ -175,10 +187,7 @@ export class HotkeyRecorder {
     }
 
     if (line.startsWith("RECORD_KEY:")) {
-      const key = line.slice("RECORD_KEY:".length);
-      if (key) {
-        this.sendCaptured({ modifiers: [...this.pendingModifiers], key });
-      }
+      this.captureKey(line.slice("RECORD_KEY:".length));
       return;
     }
 
@@ -190,27 +199,16 @@ export class HotkeyRecorder {
     if (process.platform !== "darwin") return;
 
     if (line.startsWith("FLAGS:")) {
-      const raw = line.slice("FLAGS:".length);
-      const modifiers = raw
-        ? raw
-            .split(",")
-            .map((part) => MAC_FLAG_MODIFIERS[part.trim().toLowerCase()])
-            .filter((part): part is string => Boolean(part))
-        : [];
-      this.sendModifiers(modifiers);
+      this.sendModifiers(parseMacModifiers(line.slice("FLAGS:".length)));
       return;
     }
 
     if (line === "FN_DOWN" || line.startsWith("FN_DOWN:")) {
+      // Token set is defined by macos-key-listener.swift's FN_DOWN:mods emitter.
       const chordMods =
         line === "FN_DOWN"
           ? []
-          : line
-              .slice("FN_DOWN:".length)
-              .split(",")
-              // Token set is defined by macos-key-listener.swift's FN_DOWN:mods emitter.
-              .map((part) => MAC_FLAG_MODIFIERS[part.trim().toLowerCase()])
-              .filter((part): part is string => Boolean(part));
+          : parseMacModifiers(line.slice("FN_DOWN:".length));
       this.sendModifiers([...this.pendingModifiers, ...chordMods, "Fn"]);
       return;
     }
@@ -221,10 +219,7 @@ export class HotkeyRecorder {
     }
 
     if (line.startsWith("MOUSE_BUTTON_DOWN:")) {
-      const key = line.slice("MOUSE_BUTTON_DOWN:".length);
-      if (key) {
-        this.sendCaptured({ modifiers: [...this.pendingModifiers], key });
-      }
+      this.captureKey(line.slice("MOUSE_BUTTON_DOWN:".length));
       return;
     }
 

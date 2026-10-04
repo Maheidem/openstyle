@@ -49,7 +49,6 @@ const localeBackend: BackendModule = {
 };
 
 export const SUPPORTED_LANGUAGES = supportedLanguages;
-export type SupportedLanguage = string;
 
 export async function initI18n(): Promise<void> {
   if (i18n.isInitialized) return;

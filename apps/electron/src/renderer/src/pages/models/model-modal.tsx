@@ -20,25 +20,23 @@ import {
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { type AvailableModel, PROVIDER_KEY_URLS } from "@renderer/lib/models";
+import {
+  type AvailableModel,
+  displayProviderName,
+  PROVIDER_KEY_URLS,
+} from "@renderer/lib/models";
 import { AlertTriangle, Key, Loader2, X } from "lucide-react";
 import { useState } from "react";
 
 import { ModelList } from "./model-list";
 import type { UseModels } from "./use-models";
-import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Modal state — owned by the page; the modal renders from it.
 // ---------------------------------------------------------------------------
 
 export type ModalState =
-  | {
-      kind: "list";
-      type: "voice" | "llm";
-      voiceView?: "tiers" | "all" | "local" | "cloud";
-      llmView?: "tiers" | "all" | "local" | "cloud";
-    }
+  | { kind: "list"; type: "voice" | "llm" }
   | {
       kind: "key";
       /** Slot to return to on Back; null = standalone key edit. */
@@ -133,8 +131,6 @@ export function ModelModal({
     >
       <ModelList
         type={modal.type}
-        voiceView={modal.type === "voice" ? modal.voiceView : undefined}
-        llmView={modal.type === "llm" ? modal.llmView : undefined}
         m={m}
         onClose={onClose}
         onPickCloud={onPickCloud}
@@ -170,7 +166,7 @@ function KeyStep({
 }): React.JSX.Element {
   const [value, setValue] = useState("");
   const [show, setShow] = useState(false);
-  const providerLabel = displayName(provider);
+  const providerLabel = displayProviderName(provider);
 
   return (
     <div className="p-7">

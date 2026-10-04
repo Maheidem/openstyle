@@ -39,166 +39,107 @@ function checkFormat(provider: string, key: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Live checks — one per provider
+// Live checks: one table entry for each provider
 // ---------------------------------------------------------------------------
 
-async function validateOpenAI(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch("https://api.openai.com/v1/models?limit=1", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (res.ok) return { valid: true };
-  if (res.status === 401)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  if (res.status === 403)
-    return {
-      valid: false,
-      error: "API key lacks permission. Check your OpenAI project settings.",
-    };
-  return { valid: false, error: `OpenAI returned HTTP ${res.status}.` };
+const INVALID_KEY = "Invalid API key. Please check and try again.";
+
+interface ProviderCheck {
+  label: string;
+  url: (key: string) => string;
+  headers?: (key: string) => Record<string, string>;
+  /** HTTP status → error message. Any other failed status gives a generic message. */
+  rejected: Record<number, string>;
 }
 
-async function validateGroq(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch("https://api.groq.com/openai/v1/models", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (res.ok) return { valid: true };
-  if (res.status === 401)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  return { valid: false, error: `Groq returned HTTP ${res.status}.` };
-}
+const bearer = (key: string) => ({ Authorization: `Bearer ${key}` });
 
-async function validateDeepgram(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch("https://api.deepgram.com/v1/projects", {
-    headers: { Authorization: `Token ${apiKey}` },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (res.ok) return { valid: true };
-  if (res.status === 401)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  return { valid: false, error: `Deepgram returned HTTP ${res.status}.` };
-}
-
-async function validateElevenLabs(apiKey: string): Promise<ValidationResult> {
+const PROVIDER_CHECKS: Record<string, ProviderCheck> = {
+  openai: {
+    label: "OpenAI",
+    url: () => "https://api.openai.com/v1/models?limit=1",
+    headers: bearer,
+    rejected: {
+      401: INVALID_KEY,
+      403: "API key lacks permission. Check your OpenAI project settings.",
+    },
+  },
+  groq: {
+    label: "Groq",
+    url: () => "https://api.groq.com/openai/v1/models",
+    headers: bearer,
+    rejected: { 401: INVALID_KEY },
+  },
+  deepgram: {
+    label: "Deepgram",
+    url: () => "https://api.deepgram.com/v1/projects",
+    headers: (key) => ({ Authorization: `Token ${key}` }),
+    rejected: { 401: INVALID_KEY },
+  },
   // Use /v1/models, which a Speech-to-Text-scoped key can reach. /v1/user
   // requires the user_read permission, so a valid STT-only key would 401 there
   // and be wrongly rejected.
-  const res = await fetch("https://api.elevenlabs.io/v1/models", {
-    headers: { "xi-api-key": apiKey },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (res.ok) return { valid: true };
-  if (res.status === 401)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  return { valid: false, error: `ElevenLabs returned HTTP ${res.status}.` };
-}
-
-async function validateAnthropic(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch("https://api.anthropic.com/v1/models", {
-    headers: {
-      "x-api-key": apiKey,
+  elevenlabs: {
+    label: "ElevenLabs",
+    url: () => "https://api.elevenlabs.io/v1/models",
+    headers: (key) => ({ "xi-api-key": key }),
+    rejected: { 401: INVALID_KEY },
+  },
+  anthropic: {
+    label: "Anthropic",
+    url: () => "https://api.anthropic.com/v1/models",
+    headers: (key) => ({
+      "x-api-key": key,
       "anthropic-version": "2023-06-01",
-    },
+    }),
+    rejected: { 401: INVALID_KEY, 403: "API key lacks permission." },
+  },
+  google: {
+    label: "Google",
+    url: (key) =>
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=1`,
+    rejected: { 400: INVALID_KEY, 403: INVALID_KEY },
+  },
+  mistral: {
+    label: "Mistral",
+    url: () => "https://api.mistral.ai/v1/models",
+    headers: bearer,
+    rejected: { 401: INVALID_KEY },
+  },
+  openrouter: {
+    label: "OpenRouter",
+    url: () => "https://openrouter.ai/api/v1/key",
+    headers: bearer,
+    rejected: { 401: INVALID_KEY },
+  },
+  vercel: {
+    label: "Vercel",
+    url: () => "https://ai-gateway.vercel.sh/v1/models",
+    headers: bearer,
+    rejected: { 401: INVALID_KEY, 403: INVALID_KEY },
+  },
+};
+
+async function runCheck(
+  check: ProviderCheck,
+  apiKey: string,
+): Promise<ValidationResult> {
+  const res = await fetch(check.url(apiKey), {
+    headers: check.headers?.(apiKey),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (res.ok) return { valid: true };
-  if (res.status === 401)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  if (res.status === 403)
-    return { valid: false, error: "API key lacks permission." };
-  return { valid: false, error: `Anthropic returned HTTP ${res.status}.` };
-}
-
-async function validateGoogle(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}&pageSize=1`,
-    { signal: AbortSignal.timeout(TIMEOUT_MS) },
-  );
-  if (res.ok) return { valid: true };
-  if (res.status === 400 || res.status === 403)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  return { valid: false, error: `Google returned HTTP ${res.status}.` };
-}
-
-async function validateMistral(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch("https://api.mistral.ai/v1/models", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (res.ok) return { valid: true };
-  if (res.status === 401)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  return { valid: false, error: `Mistral returned HTTP ${res.status}.` };
-}
-
-async function validateOpenRouter(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch("https://openrouter.ai/api/v1/key", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (res.ok) return { valid: true };
-  if (res.status === 401)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  return { valid: false, error: `OpenRouter returned HTTP ${res.status}.` };
-}
-
-async function validateVercel(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch("https://ai-gateway.vercel.sh/v1/models", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (res.ok) return { valid: true };
-  if (res.status === 401 || res.status === 403)
-    return {
-      valid: false,
-      error: "Invalid API key. Please check and try again.",
-    };
-  return { valid: false, error: `Vercel returned HTTP ${res.status}.` };
+  return {
+    valid: false,
+    error:
+      check.rejected[res.status] ??
+      `${check.label} returned HTTP ${res.status}.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
-
-const LIVE_VALIDATORS: Record<
-  string,
-  (apiKey: string) => Promise<ValidationResult>
-> = {
-  openai: validateOpenAI,
-  groq: validateGroq,
-  deepgram: validateDeepgram,
-  elevenlabs: validateElevenLabs,
-  anthropic: validateAnthropic,
-  google: validateGoogle,
-  mistral: validateMistral,
-  openrouter: validateOpenRouter,
-  vercel: validateVercel,
-};
 
 export async function validateApiKey(
   provider: string,
@@ -209,14 +150,14 @@ export async function validateApiKey(
   if (formatError) return { valid: false, error: formatError };
 
   // 2. Live check
-  const validator = LIVE_VALIDATORS[provider];
-  if (!validator) {
+  const check = PROVIDER_CHECKS[provider];
+  if (!check) {
     // Unknown provider — skip live check, accept the key
     return { valid: true };
   }
 
   try {
-    return await validator(key);
+    return await runCheck(check, key);
   } catch (err) {
     if (err instanceof DOMException && err.name === "TimeoutError") {
       return {

@@ -22,7 +22,6 @@ jobs:
       run_quality: ${{ steps.paths.outputs.run_quality }}
       run_electron: ${{ steps.paths.outputs.run_electron }}
       run_server_image: ${{ steps.paths.outputs.run_server_image }}
-      run_plugins: ${{ steps.paths.outputs.run_plugins }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,7 +38,6 @@ jobs:
               echo "run_quality=true"
               echo "run_electron=true"
               echo "run_server_image=true"
-              echo "run_plugins=true"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -50,7 +48,6 @@ jobs:
           run_quality=false
           run_electron=false
           run_server_image=false
-          run_plugins=false
 
           echo "Changed files:"
           while IFS= read -r file; do
@@ -65,20 +62,14 @@ jobs:
             esac
 
             case "$file" in
-              apps/electron/*|apps/server/*|packages/*|scripts/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+              apps/electron/*|apps/server/*|packages/*|scripts/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.node-version|.github/actions/*|.github/workflows/build.yml)
                 run_electron=true
                 ;;
             esac
 
             case "$file" in
-              apps/server/*|packages/sdk/*|packages/stt/*|packages/utils/*|packages/validations/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+              apps/server/*|packages/sdk/*|packages/stt/*|packages/utils/*|packages/validations/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.node-version|.github/actions/*|.github/workflows/build.yml)
                 run_server_image=true
-                ;;
-            esac
-
-            case "$file" in
-              plugins/*|packages/sdk/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
-                run_plugins=true
                 ;;
             esac
 
@@ -88,7 +79,6 @@ jobs:
             echo "run_quality=$run_quality"
             echo "run_electron=$run_electron"
             echo "run_server_image=$run_server_image"
-            echo "run_plugins=$run_plugins"
           } >> "$GITHUB_OUTPUT"
 
   lint:
@@ -99,14 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Biome check
         run: pnpm biome check .
@@ -117,14 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Check unused files and dependencies
         run: pnpm run knip
@@ -137,14 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Build server (generates type declarations)
         run: pnpm turbo build --filter=@openstyle/server
@@ -152,6 +121,10 @@ jobs:
       - name: Typecheck electron (web)
         working-directory: apps/electron
         run: pnpm run typecheck:web
+
+      - name: Typecheck electron (tests)
+        working-directory: apps/electron
+        run: pnpm run typecheck:tests
 
   test-server:
     name: Test (Server API)
@@ -161,14 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Run server tests
         # --expose-gc: the import memory-shape tests drive GC via
@@ -179,6 +145,12 @@ jobs:
           NODE_OPTIONS: "--expose-gc"
         run: pnpm --filter @openstyle/server run test
 
+      - name: Run stt package tests
+        run: pnpm --filter @openstyle/stt run test
+
+      - name: Run validations package tests
+        run: pnpm --filter @openstyle/validations run test
+
   test-electron:
     name: Test (Electron E2E)
     needs: [changes, test-server]
@@ -187,14 +159,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Install system dependencies
         # The apt step wedges on the runners often enough to matter, and with no
@@ -205,6 +170,11 @@ jobs:
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
+
+      # The renderer tests import @openstyle/validations through its dist,
+      # so they must run after the build step above.
+      - name: Run Electron unit tests
+        run: pnpm --filter @openstyle/electron run test
 
       - name: Build electron app
         working-directory: apps/electron
@@ -236,26 +206,6 @@ jobs:
         timeout-minutes: 5
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @openstyle/electron run test:e2e
 
-  build-plugins:
-    name: Build plugins
-    needs: [changes, lint]
-    if: needs.changes.outputs.run_plugins == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Build plugin packages
-        run: pnpm turbo build --filter=@openstyle/plugin-audio-transcription --filter=@openstyle/profanity-filter --filter=@openstyle/plugin-emoji
-
   build-linux:
     name: Build (Linux)
     needs: [changes, lint, typecheck, test-server]
@@ -264,14 +214,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
@@ -319,18 +262,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup
         with:
           python-version: "3.12"
-
-      - run: pnpm install --frozen-lockfile
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
@@ -411,14 +345,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
@@ -507,7 +434,6 @@ jobs:
       - typecheck
       - test-server
       - test-electron
-      - build-plugins
       - build-linux
       - build-mac
       - build-windows

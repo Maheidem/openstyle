@@ -21,6 +21,8 @@ import {
   vi,
 } from "vitest";
 import { getDb } from "../src/lib/db.js";
+import { resetMeetingTables } from "./helpers/meetings-db.js";
+import { buildWav as buildBaseWav } from "./helpers/wav.js";
 
 // ---------------------------------------------------------------------------
 // Mocks (hoisted so the route module sees it at import time). Only the
@@ -49,28 +51,11 @@ const app = createApp();
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const SAMPLE_RATE = 16000;
-
 /** Canonical 44-byte-header 16 kHz mono PCM16 WAV of `samples` samples
  * (silence — the route never transcribes, so content is irrelevant; only
- * `needsDecode` must see the canonical shape). */
-function buildWav(samples = 16000): Buffer {
-  const data = Buffer.alloc(samples * 2);
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20); // PCM
-  h.writeUInt16LE(1, 22); // mono
-  h.writeUInt32LE(SAMPLE_RATE, 24);
-  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  return Buffer.concat([h, data]);
+ * `needsDecodeFile` must see the canonical shape). */
+function buildWav(samples = 16000): Buffer<ArrayBuffer> {
+  return buildBaseWav({ samples });
 }
 
 let tempRoots: string[] = [];
@@ -84,7 +69,7 @@ function meetingDir(id: string): string {
 
 function importForm(opts: {
   name: string;
-  bytes: Uint8Array;
+  bytes: Uint8Array<ArrayBuffer>;
   id: string;
   audioDir: string;
   title?: string;
@@ -100,7 +85,7 @@ function importForm(opts: {
   return form;
 }
 
-function postImport(
+async function postImport(
   body: BodyInit,
   headers: Record<string, string> = {},
   target: { request: typeof app.request } = app,
@@ -158,7 +143,7 @@ describe("POST /api/meetings/import", () => {
       writeFileSync(output, decoded);
       return { bytes: decoded.length };
     });
-    getDb().exec("DELETE FROM meetings");
+    resetMeetingTables();
   });
 
   afterEach(() => {

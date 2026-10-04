@@ -1,9 +1,14 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
+import { SETTINGS_KEYS } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
-import { getDb } from "../db.js";
+import { readSettings } from "../db.js";
+import { stripModelPrefix } from "../model-id.js";
 import { traceLlmFetch } from "../trace.js";
+
+/** The settings key holding the local engine's base URL. */
+export const LOCAL_LLM_URL_SETTING = SETTINGS_KEYS.localLlmUrl;
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
@@ -51,10 +56,6 @@ export interface LlmProvider {
   prewarm?(modelId: string): void;
 }
 
-function stripGroqPrefix(modelId: string): string {
-  return modelId.startsWith("groq/") ? modelId.slice("groq/".length) : modelId;
-}
-
 /**
  * Reasoning-mode flags for Groq models that would otherwise emit visible
  * chain-of-thought or spend latency on reasoning we don't want during cleanup.
@@ -75,7 +76,7 @@ export function groqCleanupProviderOptions(
   modelId: string,
   reasoningEnabled: boolean,
 ): { groq: GroqLanguageModelOptions } | undefined {
-  const shortId = stripGroqPrefix(modelId);
+  const shortId = stripModelPrefix("groq", modelId);
 
   switch (shortId) {
     case "qwen/qwen3-32b":
@@ -189,7 +190,7 @@ const PROVIDERS: LlmProvider[] = [
       groqCleanupProviderOptions(modelId, reasoningEnabled),
     prewarm: (modelId) => {
       void import("../groq-http.js").then(({ prewarmGroqConnection }) =>
-        prewarmGroqConnection(stripGroqPrefix(modelId)),
+        prewarmGroqConnection(stripModelPrefix("groq", modelId)),
       );
     },
   },
@@ -245,21 +246,19 @@ const PROVIDERS: LlmProvider[] = [
     local: true,
     createModel: async (modelId, _apiKey, taskContext) => {
       const { createOpenAI } = await import("@ai-sdk/openai");
-      const db = getDb();
-      const urlRow = db
-        .prepare("SELECT value FROM settings WHERE key = 'local_llm_url'")
-        .get() as { value: string } | undefined;
-      if (!urlRow?.value) {
+      const settings = readSettings([
+        LOCAL_LLM_URL_SETTING,
+        SETTINGS_KEYS.localLlmApiKey,
+      ]);
+      const url = settings.get(LOCAL_LLM_URL_SETTING);
+      if (!url) {
         throw new Error(
           "Local LLM endpoint URL not configured. Go to Settings > Models to set it up.",
         );
       }
-      const keyRow = db
-        .prepare("SELECT value FROM settings WHERE key = 'local_llm_api_key'")
-        .get() as { value: string } | undefined;
 
-      const baseURL = urlRow.value.replace(/\/v1\/?$/, "");
-      const apiKey = keyRow?.value || "local";
+      const baseURL = url.replace(/\/v1\/?$/, "");
+      const apiKey = settings.get(SETTINGS_KEYS.localLlmApiKey) || "local";
 
       // No more direct `cleanup_sampling` read here — the caller already
       // resolved this task's sampling params (`resolveTaskCall`,
@@ -293,4 +292,9 @@ export function getLlmProvider(providerId: string): LlmProvider | null {
     if (providerId.startsWith(provider.providerId)) return provider;
   }
   return null;
+}
+
+/** True when the provider id names a local engine that needs no API key. */
+export function isLocalProvider(providerId: string): boolean {
+  return getLlmProvider(providerId)?.local === true;
 }

@@ -2,6 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+  DEFAULT_SERVER_PORT,
   HISTORY_RETENTION_DAYS_MAX,
   MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
   MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
@@ -17,7 +18,7 @@ import {
   serverUrlSchema,
 } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
-import { KeyComboDisplay } from "@renderer/components/key-combo";
+import { HotkeyRecorderControl } from "@renderer/components/hotkey-recorder-control";
 import {
   LanguageMultiSelect,
   useLanguageOptions,
@@ -30,7 +31,10 @@ import {
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { SegmentedControl } from "@renderer/components/ui/segmented-control";
+import {
+  SegmentedControl,
+  type SegmentedOption,
+} from "@renderer/components/ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -39,13 +43,7 @@ import {
   SelectValue,
 } from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
-import {
-  acceleratorsEqual,
-  comboDisplayKeys,
-  formatAcceleratorKeys,
-  keyDisplayLabel,
-  useHotkeyRecorder,
-} from "@renderer/hooks/use-hotkey-recorder";
+import { acceleratorsEqual } from "@renderer/hooks/use-hotkey-recorder";
 import {
   checkServerAuth,
   checkServerHealth,
@@ -54,13 +52,18 @@ import {
   refreshApiBase,
 } from "@renderer/lib/api";
 import { formatBytes } from "@renderer/lib/models";
-import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
+import {
+  pollUntil,
+  requestMicAccess,
+  resolveMicStatus,
+} from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import {
   configQueryOptions,
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
+import { putSetting } from "@renderer/lib/settings";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -68,7 +71,6 @@ import {
   ExternalLink,
   FolderOpen,
   Info,
-  Keyboard,
   Loader2,
   Mic,
   Monitor,
@@ -91,6 +93,7 @@ import { useNavigate } from "react-router";
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
+  resolveAudioPlaybackMode,
 } from "../../../shared/audio-playback";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import {
@@ -99,46 +102,23 @@ import {
 } from "../../../shared/pill-cancel";
 import { getDefaultRemixHotkey } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
-import {
-  type CommitTrigger,
-  displayValueFor,
-  inspectNumericDraft,
-  resolveCommitIntent,
-  sanitizeDigits,
-} from "./settings-numeric-commit";
+import { sanitizeDigits } from "./settings-numeric-commit";
+import { useTimeoutSetting } from "./use-timeout-setting";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/**
- * 4, because the bound is 3600. Applied both here and as the input's
- * `maxLength` so a 5th digit is refused by the browser rather than dropped by
- * the renderer after the fact (defect D-3).
- */
-const SUMMARY_TIMEOUT_MAX_DIGITS = String(
-  MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
-).length;
-
-/**
- * The Enhance twin — same bound (3600), same rule: 4 digits, applied here AND
- * as the input's `maxLength` so a 5th digit is refused by the browser rather
- * than dropped by the renderer after the fact.
- */
-const ENHANCE_TIMEOUT_MAX_DIGITS = String(
-  MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
-).length;
-
 const themeOptions = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
+  { value: "light", icon: Sun },
+  { value: "dark", icon: Moon },
+  { value: "system", icon: Monitor },
 ] as const;
 
 const audioPlaybackOptions = [
-  { id: "off", label: "Off", icon: VolumeOff },
-  { id: "duck", label: "Duck", icon: Volume2 },
-  { id: "pause", label: "Pause", icon: Pause },
+  { value: "off", label: "Off", icon: VolumeOff },
+  { value: "duck", label: "Duck", icon: Volume2 },
+  { value: "pause", label: "Pause", icon: Pause },
 ] as const;
 
 const settingsSectionIds = [
@@ -222,51 +202,26 @@ export default function SettingsPage(): React.JSX.Element {
     "never" | "7" | "30" | "custom"
   >("never");
   const [customRetentionDays, setCustomRetentionDays] = useState("90");
-  /**
-   * Meeting-summary timeout, in seconds. `summaryTimeoutSeconds` mirrors what
-   * the server holds — an unset setting means the default, so the field shows
-   * the default too. `summaryTimeoutDraft` is the local-only text being
-   * typed: it renders in the field and writes NOTHING. The PUT fires on an
-   * explicit commit (blur or Enter), never mid-keystroke — a field that wrote
-   * `36` while the user was still typing `3600` handed the summarize lane a
-   * 36-second budget mid-edit, which is the exact failure this setting was
-   * added to remove (defects D-1/D-2, `openstyle-evidence/summary-timeout/`).
-   * An invalid draft on blur reverts to the saved value, never to a
-   * truncated in-range prefix of what was typed. `summaryTimeoutStripped`
-   * holds the characters the renderer dropped so the hint can name them
-   * (D-3/D-4), and `summaryTimeoutSaveError` holds the server's real value
-   * after a rejected write so a failure cannot look like a success (D-6).
-   */
-  const [summaryTimeoutSeconds, setSummaryTimeoutSeconds] = useState(
-    String(DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS),
-  );
-  const [summaryTimeoutDraft, setSummaryTimeoutDraft] = useState<null | string>(
-    null,
-  );
-  const [summaryTimeoutStripped, setSummaryTimeoutStripped] = useState("");
-  const [summaryTimeoutSaveError, setSummaryTimeoutSaveError] = useState<
-    null | string
-  >(null);
-  /**
-   * Meeting-**Enhance** timeout, in seconds — the exact twin of the block
-   * above, and it exists because Enhance is the same shape of call (one
-   * non-streaming generation per chunk) while its window was a hard-coded
-   * 60 s nothing could widen. Same contract: the field shows what the server
-   * holds, typing edits a LOCAL draft that writes nothing, the PUT fires on
-   * blur / Enter / Reset only, an invalid draft reverts, and a failed write
-   * shows the value the server actually kept. Bounds ONE call per chunk, not
-   * the whole pass — which is what the helper copy says.
-   */
-  const [enhanceTimeoutSeconds, setEnhanceTimeoutSeconds] = useState(
-    String(DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS),
-  );
-  const [enhanceTimeoutDraft, setEnhanceTimeoutDraft] = useState<null | string>(
-    null,
-  );
-  const [enhanceTimeoutStripped, setEnhanceTimeoutStripped] = useState("");
-  const [enhanceTimeoutSaveError, setEnhanceTimeoutSaveError] = useState<
-    null | string
-  >(null);
+  // Meeting-summary and meeting-Enhance timeouts. Each one bounds ONE
+  // non-streaming LLM call, not the whole pass.
+  const summaryTimeout = useTimeoutSetting({
+    settingsKey: SETTINGS_KEYS.meetingSummaryTimeoutSeconds,
+    i18nPrefix: "settings.data.summaryTimeout",
+    defaultSeconds: DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+    min: MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
+    max: MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+    parse: parseMeetingSummaryTimeoutSeconds,
+  });
+  const enhanceTimeout = useTimeoutSetting({
+    settingsKey: SETTINGS_KEYS.meetingEnhanceTimeoutSeconds,
+    i18nPrefix: "settings.data.enhanceTimeout",
+    defaultSeconds: DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
+    min: MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
+    max: MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
+    parse: parseMeetingEnhanceTimeoutSeconds,
+  });
+  const { applyServerValue: applySummaryTimeout } = summaryTimeout;
+  const { applyServerValue: applyEnhanceTimeout } = enhanceTimeout;
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [autoUpdate, setAutoUpdate] = useState(true);
@@ -326,16 +281,11 @@ export default function SettingsPage(): React.JSX.Element {
   const [accessibilityStatus, setAccessibilityStatus] = useState<
     boolean | null
   >(null);
-  const micPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const accessibilityPollRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
-  const isMac = IS_MAC;
-  const isLinux = IS_LINUX;
-  const isWindows = IS_WINDOWS;
-  const supportsBackgroundAudio = isMac || isLinux || isWindows;
+  const cancelMicPollRef = useRef<(() => void) | null>(null);
+  const cancelAccessibilityPollRef = useRef<(() => void) | null>(null);
+  const supportsBackgroundAudio = IS_MAC || IS_LINUX || IS_WINDOWS;
   // macOS and Windows can deep-link to the OS mic privacy settings.
-  const canOpenMicSettings = isMac || isWindows;
+  const canOpenMicSettings = IS_MAC || IS_WINDOWS;
 
   // System audio permission (meeting mode). Meeting-scoped: dictation-only
   // users must never see this row — same reasoning as the
@@ -402,42 +352,20 @@ export default function SettingsPage(): React.JSX.Element {
 
   const openMicSettings = useCallback(() => {
     window.api?.openMicSettings();
-    if (micPollRef.current) clearInterval(micPollRef.current);
-    micPollRef.current = setInterval(async () => {
-      const mic = await window.api?.checkMicPermission();
-      if (mic === "granted") {
-        setMicStatus("granted");
-        if (micPollRef.current) clearInterval(micPollRef.current);
-        micPollRef.current = null;
-      }
-    }, 1000);
-    setTimeout(() => {
-      if (micPollRef.current) {
-        clearInterval(micPollRef.current);
-        micPollRef.current = null;
-      }
-    }, 30000);
+    cancelMicPollRef.current?.();
+    cancelMicPollRef.current = pollUntil(
+      async () => (await window.api?.checkMicPermission()) === "granted",
+      () => setMicStatus("granted"),
+    );
   }, []);
 
   const openAccessibility = useCallback(() => {
     window.api?.openAccessibilitySettings();
-    if (accessibilityPollRef.current)
-      clearInterval(accessibilityPollRef.current);
-    accessibilityPollRef.current = setInterval(async () => {
-      const ok = await window.api?.checkAccessibilityPermission();
-      if (ok) {
-        setAccessibilityStatus(true);
-        if (accessibilityPollRef.current)
-          clearInterval(accessibilityPollRef.current);
-        accessibilityPollRef.current = null;
-      }
-    }, 1000);
-    setTimeout(() => {
-      if (accessibilityPollRef.current) {
-        clearInterval(accessibilityPollRef.current);
-        accessibilityPollRef.current = null;
-      }
-    }, 30000);
+    cancelAccessibilityPollRef.current?.();
+    cancelAccessibilityPollRef.current = pollUntil(
+      async () => !!(await window.api?.checkAccessibilityPermission()),
+      () => setAccessibilityStatus(true),
+    );
   }, []);
 
   // No preflight/query API exists for this permission (see
@@ -477,31 +405,17 @@ export default function SettingsPage(): React.JSX.Element {
   const handleHotkeyModeChange = useCallback((mode: "hold" | "toggle") => {
     setHotkeyMode(mode);
     window.api?.setHotkeyMode(mode);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkeyMode },
-        json: { value: mode },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.hotkeyMode, mode);
   }, []);
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkey },
-        json: { value: accelerator },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.hotkey, accelerator);
   }, []);
 
   const handleRemixBarToggle = useCallback((enabled: boolean) => {
     setRemixBarEnabled(enabled);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.remixBarEnabled },
-        json: { value: String(enabled) },
-      })
+    putSetting(SETTINGS_KEYS.remixBarEnabled, String(enabled))
       .then(() => window.api?.reloadRemixHotkey())
       .catch(() => {});
   }, []);
@@ -510,46 +424,10 @@ export default function SettingsPage(): React.JSX.Element {
   // being handed one, so the reload has to wait for the write to land.
   const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
     setRemixHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.remixHotkey },
-        json: { value: accelerator },
-      })
+    putSetting(SETTINGS_KEYS.remixHotkey, accelerator)
       .then(() => window.api?.reloadRemixHotkey())
       .catch(() => {});
   }, []);
-
-  const {
-    state: recorderState,
-    liveModifiers,
-    capturedCombo,
-    canSaveRecording,
-    needsModifierOrMouseButton,
-    invalidReleaseNotice,
-    blockedNotice,
-    startRecording: startHotkeyRecording,
-    cancelRecording: cancelHotkeyRecording,
-  } = useHotkeyRecorder(handleHotkeyRecorded, {
-    isBlocked: (accel) =>
-      acceleratorsEqual(accel, remixHotkey) ||
-      Object.values(languageHotkeys).some((a) => acceleratorsEqual(accel, a)),
-  });
-
-  const {
-    state: remixRecorderState,
-    liveModifiers: remixLiveModifiers,
-    capturedCombo: remixCapturedCombo,
-    canSaveRecording: remixCanSave,
-    needsModifierOrMouseButton: remixNeedsModifier,
-    blockedNotice: remixBlockedNotice,
-    startRecording: startRemixHotkeyRecording,
-    cancelRecording: cancelRemixHotkeyRecording,
-  } = useHotkeyRecorder(handleRemixHotkeyRecorded, {
-    target: "remix",
-    isBlocked: (accel) =>
-      acceleratorsEqual(accel, hotkey) ||
-      Object.values(languageHotkeys).some((a) => acceleratorsEqual(accel, a)),
-  });
 
   const queryClient = useQueryClient();
 
@@ -599,33 +477,14 @@ export default function SettingsPage(): React.JSX.Element {
       }
     }
 
-    // Unset (or a legacy out-of-bounds row) → show the default, which is
+    // Unset (or a legacy out-of-bounds row) keeps the default, which is
     // exactly what the resolver uses.
-    const summaryTimeout = parseMeetingSummaryTimeoutSeconds(
-      s[SETTINGS_KEYS.meetingSummaryTimeoutSeconds],
-    );
-    if (summaryTimeout !== null) {
-      setSummaryTimeoutSeconds(String(summaryTimeout));
-    }
-
-    // Same posture for the Enhance twin: unset or a legacy out-of-bounds row
-    // shows the default, which is exactly what the resolver uses.
-    const enhanceTimeout = parseMeetingEnhanceTimeoutSeconds(
-      s[SETTINGS_KEYS.meetingEnhanceTimeoutSeconds],
-    );
-    if (enhanceTimeout !== null) {
-      setEnhanceTimeoutSeconds(String(enhanceTimeout));
-    }
+    applySummaryTimeout(s[SETTINGS_KEYS.meetingSummaryTimeoutSeconds]);
+    applyEnhanceTimeout(s[SETTINGS_KEYS.meetingEnhanceTimeoutSeconds]);
 
     // Audio playback mode with legacy fallback chain (new key → paused → duck).
-    if (s.audio_playback_mode) {
-      setAudioPlaybackMode(normalizeAudioPlaybackMode(s.audio_playback_mode));
-    } else if (s.pause_playback_while_recording === "true") {
-      setAudioPlaybackMode("pause");
-    } else if (s.audio_ducking_enabled === "true") {
-      setAudioPlaybackMode("duck");
-    }
-  }, [settingsQuery.data]);
+    setAudioPlaybackMode(resolveAudioPlaybackMode(s));
+  }, [settingsQuery.data, applySummaryTimeout, applyEnhanceTimeout]);
 
   // Load available audio input devices
   useEffect(() => {
@@ -683,43 +542,27 @@ export default function SettingsPage(): React.JSX.Element {
 
     return () => {
       removePillPos?.();
-      if (micPollRef.current) clearInterval(micPollRef.current);
-      if (accessibilityPollRef.current)
-        clearInterval(accessibilityPollRef.current);
+      cancelMicPollRef.current?.();
+      cancelAccessibilityPollRef.current?.();
     };
   }, [checkPermissions]);
 
   const handleDeviceChange = useCallback((deviceId: string) => {
     setSelectedDevice(deviceId);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.micDeviceId },
-        json: { value: deviceId },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.micDeviceId, deviceId);
   }, []);
 
   const handleThemeChange = useCallback(
     (value: string) => {
       setTheme(value);
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.theme },
-          json: { value },
-        })
-        .catch(() => {});
+      void putSetting(SETTINGS_KEYS.theme, value);
     },
     [setTheme],
   );
 
   const persistTranslateMode = useCallback((value: boolean) => {
     setTranslateMode(value);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.translateMode },
-        json: { value: String(value) },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.translateMode, String(value));
   }, []);
 
   // Pushes the map straight to the main process (no reload round-trip — this
@@ -727,12 +570,7 @@ export default function SettingsPage(): React.JSX.Element {
   // how the other Electron-only hotkey settings are wired.
   const persistLanguageHotkeys = useCallback((next: Record<string, string>) => {
     setLanguageHotkeys(next);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.languageHotkeys },
-        json: { value: JSON.stringify(next) },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.languageHotkeys, JSON.stringify(next));
     window.api?.updateLanguageHotkeys(next);
   }, []);
 
@@ -755,12 +593,7 @@ export default function SettingsPage(): React.JSX.Element {
     (next: string[]) => {
       const normalized = normalizeLanguageList(next);
       setLanguages(normalized);
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.languages },
-          json: { value: JSON.stringify(normalized) },
-        })
-        .catch(() => {});
+      void putSetting(SETTINGS_KEYS.languages, JSON.stringify(normalized));
       // Translate mode requires exactly one language; disable it otherwise.
       if (normalized.length !== 1 && translateMode) persistTranslateMode(false);
 
@@ -786,12 +619,7 @@ export default function SettingsPage(): React.JSX.Element {
   const handleOutputModeChange = useCallback((value: string) => {
     setOutputMode(value);
     window.api?.sendOutputModeChanged(value);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.outputMode },
-        json: { value },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.outputMode, value);
   }, []);
 
   const handlePillPositionChange = useCallback((value: string) => {
@@ -803,12 +631,7 @@ export default function SettingsPage(): React.JSX.Element {
     const mode = normalizePillCancelMode(value);
     setPillCancel(mode);
     window.api?.sendPillCancelModeChanged(mode);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.pillCancelButton },
-        json: { value: mode },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.pillCancelButton, mode);
   }, []);
 
   const handleAutoUpdateToggle = useCallback((enabled: boolean) => {
@@ -838,12 +661,7 @@ export default function SettingsPage(): React.JSX.Element {
           [SETTINGS_KEYS.advancedMode]: String(enabled),
         }),
       );
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.advancedMode },
-          json: { value: String(enabled) },
-        })
-        .catch(() => {});
+      void putSetting(SETTINGS_KEYS.advancedMode, String(enabled));
     },
     [queryClient],
   );
@@ -858,31 +676,17 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.soundEnabled },
-        json: { value: String(enabled) },
-      })
-      .catch(() => {});
+    window.api?.sendSoundEnabledChanged(enabled);
+    void putSetting(SETTINGS_KEYS.soundEnabled, String(enabled));
   }, []);
 
   const handleHistoryPausedToggle = useCallback((paused: boolean) => {
     setHistoryPaused(paused);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.historyPaused },
-        json: { value: String(paused) },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.historyPaused, String(paused));
   }, []);
 
   const saveHistoryRetention = useCallback((days: string) => {
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.historyRetentionDays },
-        json: { value: days },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.historyRetentionDays, days);
   }, []);
 
   const handleHistoryRetentionChange = useCallback(
@@ -904,7 +708,7 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleCustomRetentionDaysChange = useCallback(
     (raw: string) => {
-      const digits = raw.replace(/\D/g, "").slice(0, 4);
+      const digits = sanitizeDigits(raw, 4);
       const clamped =
         digits === ""
           ? ""
@@ -917,363 +721,41 @@ export default function SettingsPage(): React.JSX.Element {
     [saveHistoryRetention],
   );
 
-  /**
-   * Read what the server ACTUALLY holds for this key. Used after a failed
-   * write, so the field shows the budget the summarize lane will really get
-   * rather than the number the user just typed. A failed read falls back to
-   * the default — the same value `meetingSummaryTimeoutMs()` would use, so
-   * even a double failure cannot put a fantasy number on screen.
-   */
-  const readSummaryTimeoutFromServer =
-    useCallback(async (): Promise<string> => {
-      const fallback = displayValueFor(
-        null,
-        DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
-        parseMeetingSummaryTimeoutSeconds,
-      );
-      try {
-        const res = await getClient().api.settings[":key"].$get({
-          param: { key: SETTINGS_KEYS.meetingSummaryTimeoutSeconds },
-        });
-        if (!res.ok) return fallback;
-        const body = (await res.json()) as { value?: string | null };
-        return displayValueFor(
-          body.value ?? null,
-          DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
-          parseMeetingSummaryTimeoutSeconds,
-        );
-      } catch {
-        return fallback;
-      }
-    }, []);
-
-  /**
-   * The control's ONE write path, reachable only from blur, Enter and Reset —
-   * never from `onChange`. `resolveCommitIntent` decides: in-bounds changed
-   * draft → one PUT; unchanged or invalid draft → nothing, field reverts;
-   * Reset → PUT `""`, which the resolver reads as the default (D-5 — clearing
-   * the field cannot express this, an empty draft is invalid and invalid never
-   * writes). A rejected write re-reads the key and shows the server's value
-   * in the destructive hint, so a failure is never mistaken for a save.
-   */
-  const commitSummaryTimeout = useCallback(
-    async (draft: string | null, trigger: CommitTrigger): Promise<void> => {
-      const intent = resolveCommitIntent({
-        trigger,
-        draft,
-        saved: summaryTimeoutSeconds,
-        parse: parseMeetingSummaryTimeoutSeconds,
-      });
-      setSummaryTimeoutDraft(null);
-      setSummaryTimeoutStripped("");
-      setSummaryTimeoutSaveError(null);
-      if (intent.kind !== "write" && intent.kind !== "reset") return;
-      const value = intent.kind === "reset" ? "" : intent.value;
-      const res = await getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.meetingSummaryTimeoutSeconds },
-          json: { value },
-        })
-        .catch(() => null);
-      if (res?.ok) {
-        setSummaryTimeoutSeconds(
-          displayValueFor(
-            value,
-            DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
-            parseMeetingSummaryTimeoutSeconds,
-          ),
-        );
-        // Keep the shared settings cache honest — other readers of this key
-        // must not see a value that was never committed.
-        queryClient.setQueryData<Record<string, string>>(
-          queryKeys.settings,
-          (prev) => ({
-            ...(prev ?? {}),
-            [SETTINGS_KEYS.meetingSummaryTimeoutSeconds]: value,
-          }),
-        );
-        return;
-      }
-      const held = await readSummaryTimeoutFromServer();
-      setSummaryTimeoutSeconds(held);
-      setSummaryTimeoutSaveError(held);
-    },
-    [queryClient, readSummaryTimeoutFromServer, summaryTimeoutSeconds],
-  );
-
-  /** Typing updates the LOCAL DRAFT only. This handler never writes. */
-  const handleSummaryTimeoutChange = useCallback((raw: string) => {
-    const draft = sanitizeDigits(raw, SUMMARY_TIMEOUT_MAX_DIGITS);
-    setSummaryTimeoutDraft(draft);
-    setSummaryTimeoutStripped(
-      inspectNumericDraft(raw, SUMMARY_TIMEOUT_MAX_DIGITS).stripped,
-    );
-    setSummaryTimeoutSaveError(null);
-  }, []);
-
-  const handleSummaryTimeoutBlur = useCallback(
-    (raw: string) => {
-      void commitSummaryTimeout(
-        sanitizeDigits(raw, SUMMARY_TIMEOUT_MAX_DIGITS),
-        "blur",
-      );
-    },
-    [commitSummaryTimeout],
-  );
-
-  const handleSummaryTimeoutKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        void commitSummaryTimeout(event.currentTarget.value, "enter");
-      }
-    },
-    [commitSummaryTimeout],
-  );
-
-  /**
-   * Enhance twin of `readSummaryTimeoutFromServer` — read what the server
-   * ACTUALLY holds, so after a failed write the field shows the window the
-   * Enhance lane will really get. A failed read falls back to the default, the
-   * same value `meetingEnhanceTimeoutMs()` would use.
-   */
-  const readEnhanceTimeoutFromServer =
-    useCallback(async (): Promise<string> => {
-      const fallback = displayValueFor(
-        null,
-        DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
-        parseMeetingEnhanceTimeoutSeconds,
-      );
-      try {
-        const res = await getClient().api.settings[":key"].$get({
-          param: { key: SETTINGS_KEYS.meetingEnhanceTimeoutSeconds },
-        });
-        if (!res.ok) return fallback;
-        const body = (await res.json()) as { value?: string | null };
-        return displayValueFor(
-          body.value ?? null,
-          DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
-          parseMeetingEnhanceTimeoutSeconds,
-        );
-      } catch {
-        return fallback;
-      }
-    }, []);
-
-  /** The Enhance control's ONE write path — blur, Enter, Reset only, never
-   *  `onChange`. Same decision table as the summarize control's. */
-  const commitEnhanceTimeout = useCallback(
-    async (draft: string | null, trigger: CommitTrigger): Promise<void> => {
-      const intent = resolveCommitIntent({
-        trigger,
-        draft,
-        saved: enhanceTimeoutSeconds,
-        parse: parseMeetingEnhanceTimeoutSeconds,
-      });
-      setEnhanceTimeoutDraft(null);
-      setEnhanceTimeoutStripped("");
-      setEnhanceTimeoutSaveError(null);
-      if (intent.kind !== "write" && intent.kind !== "reset") return;
-      const value = intent.kind === "reset" ? "" : intent.value;
-      const res = await getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.meetingEnhanceTimeoutSeconds },
-          json: { value },
-        })
-        .catch(() => null);
-      if (res?.ok) {
-        setEnhanceTimeoutSeconds(
-          displayValueFor(
-            value,
-            DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
-            parseMeetingEnhanceTimeoutSeconds,
-          ),
-        );
-        queryClient.setQueryData<Record<string, string>>(
-          queryKeys.settings,
-          (prev) => ({
-            ...(prev ?? {}),
-            [SETTINGS_KEYS.meetingEnhanceTimeoutSeconds]: value,
-          }),
-        );
-        return;
-      }
-      const held = await readEnhanceTimeoutFromServer();
-      setEnhanceTimeoutSeconds(held);
-      setEnhanceTimeoutSaveError(held);
-    },
-    [queryClient, readEnhanceTimeoutFromServer, enhanceTimeoutSeconds],
-  );
-
-  /** Typing updates the LOCAL DRAFT only. This handler never writes. */
-  const handleEnhanceTimeoutChange = useCallback((raw: string) => {
-    const draft = sanitizeDigits(raw, ENHANCE_TIMEOUT_MAX_DIGITS);
-    setEnhanceTimeoutDraft(draft);
-    setEnhanceTimeoutStripped(
-      inspectNumericDraft(raw, ENHANCE_TIMEOUT_MAX_DIGITS).stripped,
-    );
-    setEnhanceTimeoutSaveError(null);
-  }, []);
-
-  const handleEnhanceTimeoutBlur = useCallback(
-    (raw: string) => {
-      void commitEnhanceTimeout(
-        sanitizeDigits(raw, ENHANCE_TIMEOUT_MAX_DIGITS),
-        "blur",
-      );
-    },
-    [commitEnhanceTimeout],
-  );
-
-  const handleEnhanceTimeoutKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        void commitEnhanceTimeout(event.currentTarget.value, "enter");
-      }
-    },
-    [commitEnhanceTimeout],
-  );
-
-  /** Mid-typing only: the persisted value is always in bounds. */
-  const summaryTimeoutInvalid =
-    summaryTimeoutDraft !== null &&
-    parseMeetingSummaryTimeoutSeconds(summaryTimeoutDraft) === null;
-
-  const enhanceTimeoutInvalid =
-    enhanceTimeoutDraft !== null &&
-    parseMeetingEnhanceTimeoutSeconds(enhanceTimeoutDraft) === null;
-
-  /**
-   * Hint precedence: a failed save (names what the server holds) beats an
-   * out-of-bounds draft (names the bound), which beats a stripped entry
-   * (names what the user typed vs what the field now holds — the renderer
-   * turns `-45.7` into `457` where the server would answer 400, so it says
-   * so instead of reinterpreting input in silence), which falls back to the
-   * neutral range line.
-   */
-  const summaryTimeoutHint: { destructive: boolean; text: string } =
-    summaryTimeoutSaveError !== null
-      ? {
-          destructive: true,
-          text: t("settings.data.summaryTimeoutSaveFailed", {
-            value: summaryTimeoutSaveError,
-          }),
-        }
-      : summaryTimeoutInvalid
-        ? {
-            destructive: true,
-            text: t("settings.data.summaryTimeoutInvalid", {
-              min: MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
-              max: MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
-            }),
-          }
-        : summaryTimeoutStripped !== ""
-          ? {
-              destructive: true,
-              text: t("settings.data.summaryTimeoutStripped", {
-                dropped: summaryTimeoutStripped,
-                value: summaryTimeoutDraft ?? "",
-              }),
-            }
-          : {
-              destructive: false,
-              text: t("settings.data.summaryTimeoutRange", {
-                min: MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
-                max: MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
-              }),
-            };
-
-  /** Same precedence for the Enhance control. */
-  const enhanceTimeoutHint: { destructive: boolean; text: string } =
-    enhanceTimeoutSaveError !== null
-      ? {
-          destructive: true,
-          text: t("settings.data.enhanceTimeoutSaveFailed", {
-            value: enhanceTimeoutSaveError,
-          }),
-        }
-      : enhanceTimeoutInvalid
-        ? {
-            destructive: true,
-            text: t("settings.data.enhanceTimeoutInvalid", {
-              min: MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
-              max: MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
-            }),
-          }
-        : enhanceTimeoutStripped !== ""
-          ? {
-              destructive: true,
-              text: t("settings.data.enhanceTimeoutStripped", {
-                dropped: enhanceTimeoutStripped,
-                value: enhanceTimeoutDraft ?? "",
-              }),
-            }
-          : {
-              destructive: false,
-              text: t("settings.data.enhanceTimeoutRange", {
-                min: MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
-                max: MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
-              }),
-            };
-
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
     const mode = normalizeAudioPlaybackMode(value);
     setAudioPlaybackMode(mode);
     window.api?.sendAudioPlaybackModeChanged(mode);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: "audio_playback_mode" },
-        json: { value: mode },
-      })
-      .catch(() => {});
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: "audio_ducking_enabled" },
-        json: { value: String(mode === "duck") },
-      })
-      .catch(() => {});
+    void putSetting(SETTINGS_KEYS.audioPlaybackMode, mode);
+    void putSetting(SETTINGS_KEYS.audioDuckingEnabled, String(mode === "duck"));
   }, []);
-
-  // Build display keys for current recorder state
-  const liveKeys = liveModifiers.map(keyDisplayLabel);
-  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
-  const remixLiveKeys = remixLiveModifiers.map(keyDisplayLabel);
-  const remixDraftKeys = remixCapturedCombo
-    ? comboDisplayKeys(remixCapturedCombo)
-    : remixLiveKeys;
-  const remixCaptureHint = remixNeedsModifier
-    ? "Add a modifier or side mouse button · Esc to cancel"
-    : remixCanSave
-      ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button... · Esc to cancel";
-  const captureHint = needsModifierOrMouseButton
-    ? "Add a modifier or side mouse button · Esc to cancel"
-    : canSaveRecording
-      ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button... · Esc to cancel";
 
   const activeSectionLabel = t(`settings.sections.${activeSection}`);
 
-  const positionOptions = useMemo<SegmentOption[]>(() => {
-    const opts: SegmentOption[] = [
-      { id: "top-center", label: t("settings.display.positionTopCenter") },
-      { id: "top-right", label: t("settings.display.positionTopRight") },
+  const positionOptions = useMemo<SegmentedOption[]>(() => {
+    const opts: SegmentedOption[] = [
+      { value: "top-center", label: t("settings.display.positionTopCenter") },
+      { value: "top-right", label: t("settings.display.positionTopRight") },
       {
-        id: "bottom-center",
+        value: "bottom-center",
         label: t("settings.display.positionBottomCenter"),
       },
-      { id: "bottom-right", label: t("settings.display.positionBottomRight") },
+      {
+        value: "bottom-right",
+        label: t("settings.display.positionBottomRight"),
+      },
     ];
     if (pillPosition === "custom")
-      opts.push({ id: "custom", label: t("settings.display.positionCustom") });
+      opts.push({
+        value: "custom",
+        label: t("settings.display.positionCustom"),
+      });
     return opts;
   }, [pillPosition, t]);
 
-  const cancelButtonOptions = useMemo<SegmentOption[]>(
+  const cancelButtonOptions = useMemo<SegmentedOption[]>(
     () => [
-      { id: "hover", label: t("settings.display.cancelButtonHover") },
-      { id: "always", label: t("settings.display.cancelButtonAlways") },
+      { value: "hover", label: t("settings.display.cancelButtonHover") },
+      { value: "always", label: t("settings.display.cancelButtonAlways") },
     ],
     [t],
   );
@@ -1386,62 +868,24 @@ export default function SettingsPage(): React.JSX.Element {
                     : t("settings.recording.hotkeyDescHold")
                 }
               >
-                {recorderState === "idle" ? (
-                  <div className="relative inline-flex">
-                    <Button
-                      variant="outline"
-                      onClick={startHotkeyRecording}
-                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                    >
-                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                      <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {t("common.change")}
-                      </span>
-                    </Button>
-                    {(invalidReleaseNotice || blockedNotice) && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {blockedNotice
-                          ? // isBlocked now covers remix AND every bound language
-                            // hotkey (§7/§8 closed the reverse direction too), so
-                            // this can no longer name one specific binding —
-                            // generic copy, same reasoning as the language row's
-                            // own conflict message.
-                            t("settings.recording.languageHotkeyConflict")
-                          : t("settings.recording.needsModifier")}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
-                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                    {draftKeys.length > 0 ? (
-                      <>
-                        <KeyComboDisplay keys={draftKeys} variant="dim" />
-                        <span className="text-muted-foreground text-xs">
-                          {captureHint}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground animate-pulse text-sm">
-                        {captureHint}
-                      </span>
-                    )}
-                    {invalidReleaseNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {t("settings.recording.needsModifier")}
-                      </div>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={cancelHotkeyRecording}
-                      className="ml-1"
-                    >
-                      {t("common.cancel")}
-                    </Button>
-                  </div>
-                )}
+                <HotkeyRecorderControl
+                  accelerator={hotkey}
+                  isBlocked={(accel) =>
+                    acceleratorsEqual(accel, remixHotkey) ||
+                    Object.values(languageHotkeys).some((a) =>
+                      acceleratorsEqual(accel, a),
+                    )
+                  }
+                  onRecorded={handleHotkeyRecorded}
+                  // isBlocked covers remix AND every bound language hotkey
+                  // (§7/§8 closed the reverse direction too), so the notice
+                  // can no longer name one specific binding: generic copy,
+                  // same reasoning as the language row's own conflict message.
+                  conflictNotice={t(
+                    "settings.recording.languageHotkeyConflict",
+                  )}
+                  needsModifierNotice={t("settings.recording.needsModifier")}
+                />
               </Row>
 
               <Row
@@ -1568,20 +1012,20 @@ export default function SettingsPage(): React.JSX.Element {
                 label={t("settings.recording.outputMode")}
                 desc={t("settings.recording.outputModeDesc")}
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   options={[
                     {
-                      id: "paste",
+                      value: "paste",
                       label: t("settings.recording.outputModePaste"),
                     },
                     {
-                      id: "clipboard",
+                      value: "clipboard",
                       label: t("settings.recording.outputModeClipboard"),
                     },
                   ]}
-                  active={outputMode}
-                  onSelect={handleOutputModeChange}
+                  value={outputMode}
+                  onValueChange={handleOutputModeChange}
                 />
               </Row>
 
@@ -1607,17 +1051,17 @@ export default function SettingsPage(): React.JSX.Element {
                 <Row
                   label="Background audio"
                   desc={
-                    isLinux
+                    IS_LINUX
                       ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
                       : "Duck lowers volume. Pause pauses current media and lowers volume."
                   }
                   last
                 >
-                  <Segment
-                    compact
+                  <SegmentedControl
+                    size="sm"
                     options={audioPlaybackOptions}
-                    active={audioPlaybackMode}
-                    onSelect={handleAudioPlaybackModeChange}
+                    value={audioPlaybackMode}
+                    onValueChange={handleAudioPlaybackModeChange}
                   />
                 </Row>
               ) : null}
@@ -1634,55 +1078,22 @@ export default function SettingsPage(): React.JSX.Element {
                     : t("settings.remix.hotkeyDesc")
                 }
               >
-                {remixRecorderState === "idle" ? (
-                  <div className="relative inline-flex">
-                    <Button
-                      variant="outline"
-                      onClick={startRemixHotkeyRecording}
-                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                    >
-                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                      <KeyComboDisplay
-                        keys={formatAcceleratorKeys(remixHotkey)}
-                      />
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {t("common.change")}
-                      </span>
-                    </Button>
-                    {remixBlockedNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {/* isBlocked now covers dictation AND every bound
-                            language hotkey, so this can no longer name one
-                            specific binding — generic copy. */}
-                        {t("settings.recording.languageHotkeyConflict")}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
-                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                    {remixDraftKeys.length > 0 ? (
-                      <>
-                        <KeyComboDisplay keys={remixDraftKeys} variant="dim" />
-                        <span className="text-muted-foreground text-xs">
-                          {remixCaptureHint}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground animate-pulse text-sm">
-                        {remixCaptureHint}
-                      </span>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={cancelRemixHotkeyRecording}
-                      className="ml-1"
-                    >
-                      {t("common.cancel")}
-                    </Button>
-                  </div>
-                )}
+                <HotkeyRecorderControl
+                  accelerator={remixHotkey}
+                  target="remix"
+                  isBlocked={(accel) =>
+                    acceleratorsEqual(accel, hotkey) ||
+                    Object.values(languageHotkeys).some((a) =>
+                      acceleratorsEqual(accel, a),
+                    )
+                  }
+                  onRecorded={handleRemixHotkeyRecorded}
+                  // isBlocked covers dictation AND every bound language
+                  // hotkey, so the notice is generic copy.
+                  conflictNotice={t(
+                    "settings.recording.languageHotkeyConflict",
+                  )}
+                />
               </Row>
 
               <Row
@@ -1704,28 +1115,28 @@ export default function SettingsPage(): React.JSX.Element {
                 label={t("settings.display.theme")}
                 desc={t("settings.display.themeDesc")}
               >
-                <Segment
+                <SegmentedControl
                   options={themeOptions.map((o) => ({
-                    id: o.value,
+                    value: o.value,
                     label: t(
                       `settings.display.theme${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`,
                     ),
                     icon: o.icon,
                   }))}
-                  active={theme ?? "system"}
-                  onSelect={handleThemeChange}
+                  value={theme ?? "system"}
+                  onValueChange={handleThemeChange}
                 />
               </Row>
               <Row
                 label={t("settings.display.widgetPosition")}
                 desc={t("settings.display.widgetPositionDesc")}
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   wrap
                   options={positionOptions}
-                  active={pillPosition}
-                  onSelect={handlePillPositionChange}
+                  value={pillPosition}
+                  onValueChange={handlePillPositionChange}
                 />
               </Row>
               <Row
@@ -1733,11 +1144,11 @@ export default function SettingsPage(): React.JSX.Element {
                 desc={t("settings.display.cancelButtonDesc")}
                 last
               >
-                <Segment
-                  compact
+                <SegmentedControl
+                  size="sm"
                   options={cancelButtonOptions}
-                  active={pillCancel}
-                  onSelect={handlePillCancelChange}
+                  value={pillCancel}
+                  onValueChange={handlePillCancelChange}
                 />
               </Row>
             </SettingsPanel>
@@ -1771,7 +1182,7 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.permissions.accessibility")}
                 desc={
-                  isMac
+                  IS_MAC
                     ? t("settings.permissions.accessibilityDescMac")
                     : t("settings.permissions.accessibilityDescOther")
                 }
@@ -1783,15 +1194,15 @@ export default function SettingsPage(): React.JSX.Element {
                   actionLabel={
                     accessibilityStatus === true
                       ? null
-                      : isMac
+                      : IS_MAC
                         ? t("common.openSettings")
                         : null
                   }
-                  external={isMac}
+                  external={IS_MAC}
                   onAction={openAccessibility}
-                  onManage={isMac ? openAccessibility : undefined}
+                  onManage={IS_MAC ? openAccessibility : undefined}
                   note={
-                    !isMac && accessibilityStatus !== true
+                    !IS_MAC && accessibilityStatus !== true
                       ? t("settings.permissions.autoGranted")
                       : undefined
                   }
@@ -1873,114 +1284,18 @@ export default function SettingsPage(): React.JSX.Element {
                   )}
                 </div>
               </Row>
-              <Row
-                label={t("settings.data.summaryTimeout")}
-                desc={t("settings.data.summaryTimeoutDesc")}
-              >
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Input
-                      inputMode="numeric"
-                      value={summaryTimeoutDraft ?? summaryTimeoutSeconds}
-                      onChange={(e) =>
-                        handleSummaryTimeoutChange(e.target.value)
-                      }
-                      onBlur={(e) => handleSummaryTimeoutBlur(e.target.value)}
-                      onKeyDown={handleSummaryTimeoutKeyDown}
-                      maxLength={SUMMARY_TIMEOUT_MAX_DIGITS}
-                      className="w-20 text-center"
-                      aria-label={t("settings.data.summaryTimeout")}
-                      aria-invalid={summaryTimeoutInvalid}
-                      data-testid="settings-summary-timeout"
-                    />
-                    <span className="text-muted-foreground text-xs">
-                      {t("settings.data.summaryTimeoutSeconds")}
-                    </span>
-                    {/* D-5: 'reset to default' has to be an explicit act. Clearing
-                        the field cannot express it — an empty draft is out of
-                        bounds, and an out-of-bounds draft never writes. PUT `""`
-                        is what the resolver reads as 600. */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        void commitSummaryTimeout(summaryTimeoutDraft, "reset")
-                      }
-                      data-testid="settings-summary-timeout-reset"
-                    >
-                      {t("settings.data.summaryTimeoutReset", {
-                        seconds: DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
-                      })}
-                    </Button>
-                  </div>
-                  <span
-                    className={cn(
-                      "text-[11.5px]",
-                      summaryTimeoutHint.destructive
-                        ? "text-destructive"
-                        : "text-muted-foreground",
-                    )}
-                    data-testid="settings-summary-timeout-hint"
-                  >
-                    {summaryTimeoutHint.text}
-                  </span>
-                </div>
-              </Row>
-              {/* The Enhance twin, directly beside it: two non-streaming LLM
-                  tasks, two independent windows, one lane. Bound one CALL per
-                  chunk — the helper copy says so, because the whole pass is
-                  chunks × this number. */}
-              <Row
-                label={t("settings.data.enhanceTimeout")}
-                desc={t("settings.data.enhanceTimeoutDesc")}
-              >
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Input
-                      inputMode="numeric"
-                      value={enhanceTimeoutDraft ?? enhanceTimeoutSeconds}
-                      onChange={(e) =>
-                        handleEnhanceTimeoutChange(e.target.value)
-                      }
-                      onBlur={(e) => handleEnhanceTimeoutBlur(e.target.value)}
-                      onKeyDown={handleEnhanceTimeoutKeyDown}
-                      maxLength={ENHANCE_TIMEOUT_MAX_DIGITS}
-                      className="w-20 text-center"
-                      aria-label={t("settings.data.enhanceTimeout")}
-                      aria-invalid={enhanceTimeoutInvalid}
-                      data-testid="settings-enhance-timeout"
-                    />
-                    <span className="text-muted-foreground text-xs">
-                      {t("settings.data.enhanceTimeoutSeconds")}
-                    </span>
-                    {/* 'Reset to default' is an explicit act here too — an empty
-                        draft is out of bounds, and out of bounds never writes. */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        void commitEnhanceTimeout(enhanceTimeoutDraft, "reset")
-                      }
-                      data-testid="settings-enhance-timeout-reset"
-                    >
-                      {t("settings.data.enhanceTimeoutReset", {
-                        seconds: DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
-                      })}
-                    </Button>
-                  </div>
-                  <span
-                    className={cn(
-                      "text-[11.5px]",
-                      enhanceTimeoutHint.destructive
-                        ? "text-destructive"
-                        : "text-muted-foreground",
-                    )}
-                    data-testid="settings-enhance-timeout-hint"
-                  >
-                    {enhanceTimeoutHint.text}
-                  </span>
-                </div>
-              </Row>
+              <TimeoutSettingRow
+                setting={summaryTimeout}
+                i18nPrefix="settings.data.summaryTimeout"
+                testId="settings-summary-timeout"
+                defaultSeconds={DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS}
+              />
+              <TimeoutSettingRow
+                setting={enhanceTimeout}
+                i18nPrefix="settings.data.enhanceTimeout"
+                testId="settings-enhance-timeout"
+                defaultSeconds={DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS}
+              />
               <Row
                 label={t("settings.data.history")}
                 desc={t("settings.data.historyDesc")}
@@ -2119,6 +1434,67 @@ function SettingsPanel({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-col">{children}</div>;
 }
 
+/**
+ * One timeout row in Settings → Data. The hook owns the state. 'Reset to
+ * default' is an explicit act: an empty draft is out of bounds, and an
+ * out-of-bounds draft never writes.
+ */
+function TimeoutSettingRow({
+  setting,
+  i18nPrefix,
+  testId,
+  defaultSeconds,
+}: {
+  setting: ReturnType<typeof useTimeoutSetting>;
+  i18nPrefix: string;
+  testId: string;
+  defaultSeconds: number;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Row label={t(i18nPrefix)} desc={t(`${i18nPrefix}Desc`)}>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <Input
+            inputMode="numeric"
+            value={setting.shown}
+            onChange={(e) => setting.onChange(e.target.value)}
+            onBlur={(e) => setting.onBlur(e.target.value)}
+            onKeyDown={setting.onKeyDown}
+            maxLength={setting.maxDigits}
+            className="w-20 text-center"
+            aria-label={t(i18nPrefix)}
+            aria-invalid={setting.invalid}
+            data-testid={testId}
+          />
+          <span className="text-muted-foreground text-xs">
+            {t(`${i18nPrefix}Seconds`)}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={setting.onReset}
+            data-testid={`${testId}-reset`}
+          >
+            {t(`${i18nPrefix}Reset`, { seconds: defaultSeconds })}
+          </Button>
+        </div>
+        <span
+          className={cn(
+            "text-[11.5px]",
+            setting.hint.destructive
+              ? "text-destructive"
+              : "text-muted-foreground",
+          )}
+          data-testid={`${testId}-hint`}
+        >
+          {setting.hint.text}
+        </span>
+      </div>
+    </Row>
+  );
+}
+
 function Row({
   label,
   desc,
@@ -2184,93 +1560,21 @@ function LanguageHotkeyRow({
     (accelerator: string) => onRecorded(code, accelerator),
     [code, onRecorded],
   );
-  const {
-    state: recorderState,
-    liveModifiers,
-    capturedCombo,
-    canSaveRecording,
-    needsModifierOrMouseButton,
-    blockedNotice,
-    startRecording: startLanguageHotkeyRecording,
-    cancelRecording: cancelLanguageHotkeyRecording,
-  } = useHotkeyRecorder(handleRecorded, { target: "language", isBlocked });
-
-  const liveKeys = liveModifiers.map(keyDisplayLabel);
-  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
-  const captureHint = needsModifierOrMouseButton
-    ? "Add a modifier or side mouse button · Esc to cancel"
-    : canSaveRecording
-      ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button... · Esc to cancel";
-
   return (
     <Row
       last={last}
       label={t("settings.recording.languageHotkey", { language: label })}
       desc={t("settings.recording.languageHotkeyDesc", { language: label })}
     >
-      {recorderState === "idle" ? (
-        <div className="relative inline-flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={startLanguageHotkeyRecording}
-            className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-          >
-            <Keyboard className="text-muted-foreground size-4 shrink-0" />
-            {value ? (
-              <>
-                <KeyComboDisplay keys={formatAcceleratorKeys(value)} />
-                <span className="text-muted-foreground ml-1 text-xs">
-                  {t("common.change")}
-                </span>
-              </>
-            ) : (
-              <span className="text-muted-foreground text-sm">
-                {t("common.change")}
-              </span>
-            )}
-          </Button>
-          {value && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onClear(code)}
-              className="text-muted-foreground"
-            >
-              {t("common.clear")}
-            </Button>
-          )}
-          {blockedNotice && (
-            <div className="bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] left-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-              {t("settings.recording.languageHotkeyConflict")}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="border-border bg-secondary relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-full border px-3.5 py-2">
-          <Keyboard className="text-primary h-4 w-4 shrink-0" />
-          {draftKeys.length > 0 ? (
-            <>
-              <KeyComboDisplay keys={draftKeys} variant="dim" />
-              <span className="text-muted-foreground text-xs">
-                {captureHint}
-              </span>
-            </>
-          ) : (
-            <span className="text-muted-foreground animate-pulse text-sm">
-              {captureHint}
-            </span>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={cancelLanguageHotkeyRecording}
-            className="ml-1"
-          >
-            {t("common.cancel")}
-          </Button>
-        </div>
-      )}
+      <HotkeyRecorderControl
+        accelerator={value}
+        target="language"
+        isBlocked={isBlocked}
+        onRecorded={handleRecorded}
+        onClear={() => onClear(code)}
+        conflictNotice={t("settings.recording.languageHotkeyConflict")}
+        noticeSide="left"
+      />
     </Row>
   );
 }
@@ -2346,22 +1650,15 @@ function NetworkPanel(): React.JSX.Element {
 
       const valid = await trigger(field);
       if (!valid) return;
-      try {
-        const res = await getClient().api.settings[":key"].$put({
-          param: { key },
-          json: { value },
-        });
-        if (res.ok) {
-          lastCommitted.current[field] = value;
-          // Keep the shared settings cache truthful without a refetch.
-          queryClient.setQueryData<Record<string, string>>(
-            queryKeys.settings,
-            (prev) => ({ ...(prev ?? {}), [key]: value }),
-          );
-          flashSaved(field);
-        }
-      } catch {
-        // Network/API errors surface via the field's onChange retry; swallow.
+      // Network/API errors surface via the field's onChange retry; swallow.
+      if (await putSetting(key, value)) {
+        lastCommitted.current[field] = value;
+        // Keep the shared settings cache truthful without a refetch.
+        queryClient.setQueryData<Record<string, string>>(
+          queryKeys.settings,
+          (prev) => ({ ...(prev ?? {}), [key]: value }),
+        );
+        flashSaved(field);
       }
     },
     [trigger, getValues, flashSaved, queryClient],
@@ -2624,7 +1921,7 @@ function ServerConnection(): React.JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") handleSaveServer();
           }}
-          placeholder="http://127.0.0.1:4649"
+          placeholder={`http://127.0.0.1:${DEFAULT_SERVER_PORT}`}
           className="min-w-0 flex-1"
         />
         <Button
@@ -2720,40 +2017,6 @@ function ServerConnection(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 // Reusable controls
 // ---------------------------------------------------------------------------
-
-type SegmentOption = {
-  id: string;
-  label: string;
-  icon?: typeof Mic;
-};
-
-function Segment({
-  options,
-  active,
-  onSelect,
-  compact,
-  wrap,
-}: {
-  options: readonly SegmentOption[];
-  active: string;
-  onSelect: (id: string) => void;
-  compact?: boolean;
-  wrap?: boolean;
-}) {
-  return (
-    <SegmentedControl
-      options={options.map((o) => ({
-        value: o.id,
-        label: o.label,
-        icon: o.icon,
-      }))}
-      value={active}
-      onValueChange={onSelect}
-      size={compact ? "sm" : "default"}
-      wrap={wrap}
-    />
-  );
-}
 
 function PermissionControl({
   granted,

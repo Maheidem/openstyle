@@ -1,29 +1,26 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import {
   type DiarizeDeps,
   runDiarizationPass,
 } from "../src/lib/meetings/diarize.js";
-
-const dirs: string[] = [];
-
-afterAll(() => {
-  for (const d of dirs) rmSync(d, { recursive: true, force: true });
-});
+import {
+  insertSystemSegment,
+  resetMeetingTables,
+} from "./helpers/meetings-db.js";
 
 afterEach(() => {
-  getDb().exec("DELETE FROM meeting_segments");
-  getDb().exec("DELETE FROM meetings");
+  resetMeetingTables();
 });
 
 /** A meeting dir with a real (empty PCM) system.wav — content is never
  * parsed by these tests since execFile is faked. */
 function makeMeetingAudioDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "meeting-diarize-test-"));
-  dirs.push(dir);
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "system.wav"), Buffer.alloc(44));
   return dir;
 }
@@ -35,21 +32,6 @@ function insertMeeting(id: string, durationMs = 60_000): void {
        VALUES (?, 'Test meeting', 'transcribing', ?, ?)`,
     )
     .run(id, durationMs, Date.now());
-}
-
-function insertSystemSegment(
-  id: string,
-  meetingId: string,
-  idx: number,
-  startMs: number,
-  endMs: number,
-): void {
-  getDb()
-    .prepare(
-      `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-       VALUES (?, ?, 'system', ?, ?, ?, 'hello', 'ok')`,
-    )
-    .run(id, meetingId, idx, startMs, endMs);
 }
 
 function speakerLabels(meetingId: string): (string | null)[] {
@@ -91,77 +73,63 @@ function baseDeps(execFile: DiarizeDeps["execFile"]): DiarizeDeps {
   };
 }
 
+/** Arrange meeting "m1" with one system segment, then run the pass with the
+ * base deps plus `overrides`. Returns the audio dir and the pass result. */
+async function run(overrides: Partial<DiarizeDeps> = {}) {
+  const dir = makeMeetingAudioDir();
+  insertMeeting("m1");
+  insertSystemSegment("s1", "m1", 0, 0, 1000);
+  const deps: DiarizeDeps = {
+    ...baseDeps(makeFakeExecFile({})),
+    ...overrides,
+  };
+  const result = await runDiarizationPass("m1", dir, deps);
+  return { dir, result };
+}
+
 describe("runDiarizationPass", () => {
   it("skips (no writes) when the binary isn't found", async () => {
-    const dir = makeMeetingAudioDir();
-    insertMeeting("m1");
-    insertSystemSegment("s1", "m1", 0, 0, 1000);
-
-    const deps: DiarizeDeps = {
-      ...baseDeps(makeFakeExecFile({})),
-      resolveBinaryPath: () => null,
-    };
-    await expect(runDiarizationPass("m1", dir, deps)).resolves.toBeUndefined();
+    const { result } = await run({ resolveBinaryPath: () => null });
+    expect(result).toBeUndefined();
     expect(speakerLabels("m1")).toEqual([null]);
   });
 
   it("skips (no writes) when the models bundle is missing", async () => {
-    const dir = makeMeetingAudioDir();
-    insertMeeting("m1");
-    insertSystemSegment("s1", "m1", 0, 0, 1000);
-
-    const deps: DiarizeDeps = {
-      ...baseDeps(makeFakeExecFile({})),
-      resolveModelsDirPath: () => null,
-    };
-    await expect(runDiarizationPass("m1", dir, deps)).resolves.toBeUndefined();
+    const { result } = await run({ resolveModelsDirPath: () => null });
+    expect(result).toBeUndefined();
     expect(speakerLabels("m1")).toEqual([null]);
   });
 
   it("skips (no writes) when the probe reports NOT_READY", async () => {
-    const dir = makeMeetingAudioDir();
-    insertMeeting("m1");
-    insertSystemSegment("s1", "m1", 0, 0, 1000);
-
-    const deps = baseDeps(makeFakeExecFile({ probeStdout: "NOT_READY" }));
-    await runDiarizationPass("m1", dir, deps);
+    await run({ execFile: makeFakeExecFile({ probeStdout: "NOT_READY" }) });
     expect(speakerLabels("m1")).toEqual([null]);
   });
 
   it("skips (no writes, no throw) when the helper returns malformed JSON", async () => {
-    const dir = makeMeetingAudioDir();
-    insertMeeting("m1");
-    insertSystemSegment("s1", "m1", 0, 0, 1000);
-
-    const deps = baseDeps(makeFakeExecFile({ runStdout: "not json" }));
-    await expect(runDiarizationPass("m1", dir, deps)).resolves.toBeUndefined();
+    const { result } = await run({
+      execFile: makeFakeExecFile({ runStdout: "not json" }),
+    });
+    expect(result).toBeUndefined();
     expect(speakerLabels("m1")).toEqual([null]);
   });
 
   it("skips (no throw) when the real run invocation rejects", async () => {
-    const dir = makeMeetingAudioDir();
-    insertMeeting("m1");
-    insertSystemSegment("s1", "m1", 0, 0, 1000);
-
-    const deps = baseDeps(
-      makeFakeExecFile({ runThrows: new Error("ETIMEDOUT") }),
-    );
-    await expect(runDiarizationPass("m1", dir, deps)).resolves.toBeUndefined();
+    const { result } = await run({
+      execFile: makeFakeExecFile({ runThrows: new Error("ETIMEDOUT") }),
+    });
+    expect(result).toBeUndefined();
     expect(speakerLabels("m1")).toEqual([null]);
   });
 
   it("passes --models-dir on both the probe and the real-run invocation", async () => {
-    const dir = makeMeetingAudioDir();
-    insertMeeting("m1");
-    insertSystemSegment("s1", "m1", 0, 0, 1000);
-
     const calls: string[][] = [];
-    const deps = baseDeps(async (_file, args) => {
-      calls.push(args);
-      if (args[0] === "--probe") return { stdout: "READY", stderr: "" };
-      return { stdout: "[]", stderr: "" };
+    const { dir } = await run({
+      execFile: async (_file, args) => {
+        calls.push(args);
+        if (args[0] === "--probe") return { stdout: "READY", stderr: "" };
+        return { stdout: "[]", stderr: "" };
+      },
     });
-    await runDiarizationPass("m1", dir, deps);
 
     expect(calls).toEqual([
       ["--probe", "--models-dir", "/fake/resources/models"],

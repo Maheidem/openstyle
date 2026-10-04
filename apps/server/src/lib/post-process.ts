@@ -20,18 +20,19 @@ import {
   parseCleanupOverallTone,
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
+  SETTINGS_KEYS,
 } from "@openstyle/validations";
-import {
-  getModelCostCached,
-  isCleanupModelSupported,
-} from "../routes/models.js";
 import { getDb, readSetting, readSettings } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
-import { acquireLlmLane, llmLaneKeyForProvider } from "./llm/lane.js";
+import { withLlmLane } from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
 import { resolveTaskCall } from "./llm/task-profiles.js";
+import {
+  getModelCostCached,
+  isCleanupModelSupported,
+} from "./model-registry.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
 const log = createAppLogger("post-process");
@@ -49,8 +50,6 @@ export interface PostProcessResult {
   outputTokens: number;
   costUsd: number;
   timings?: PostProcessTimings;
-  /** The resolved tone routing destination. */
-  destination?: string;
 }
 
 export type PostProcessSource =
@@ -91,20 +90,24 @@ export function getEffectiveCleanupTones(): EffectiveCleanupTones {
   // the transcription/streaming hot path (both `/api/transcribe` and the
   // streaming config-key build call it per dictation).
   const s = readSettings([
-    "cleanup_intensity",
-    "cleanup_custom_prompt",
-    "cleanup_personal_tone",
-    "cleanup_work_tone",
-    "cleanup_email_tone",
-    "cleanup_overall_tone",
+    SETTINGS_KEYS.cleanupIntensity,
+    SETTINGS_KEYS.cleanupCustomPrompt,
+    SETTINGS_KEYS.cleanupPersonalTone,
+    SETTINGS_KEYS.cleanupWorkTone,
+    SETTINGS_KEYS.cleanupEmailTone,
+    SETTINGS_KEYS.cleanupOverallTone,
   ]);
   return {
-    intensity: parseCleanupIntensity(s.get("cleanup_intensity")),
-    customPrompt: s.get("cleanup_custom_prompt"),
-    personalTone: parseCleanupPersonalTone(s.get("cleanup_personal_tone")),
-    workTone: parseCleanupWorkTone(s.get("cleanup_work_tone")),
-    emailTone: parseCleanupEmailTone(s.get("cleanup_email_tone")),
-    overallTone: parseCleanupOverallTone(s.get("cleanup_overall_tone")),
+    intensity: parseCleanupIntensity(s.get(SETTINGS_KEYS.cleanupIntensity)),
+    customPrompt: s.get(SETTINGS_KEYS.cleanupCustomPrompt),
+    personalTone: parseCleanupPersonalTone(
+      s.get(SETTINGS_KEYS.cleanupPersonalTone),
+    ),
+    workTone: parseCleanupWorkTone(s.get(SETTINGS_KEYS.cleanupWorkTone)),
+    emailTone: parseCleanupEmailTone(s.get(SETTINGS_KEYS.cleanupEmailTone)),
+    overallTone: parseCleanupOverallTone(
+      s.get(SETTINGS_KEYS.cleanupOverallTone),
+    ),
   };
 }
 
@@ -130,25 +133,6 @@ export function prewarmPostProcess(): void {
 }
 
 /**
- * Final text-rewrite stage that must run on every dictation regardless of
- * whether cleanup ran. Applies the user's dictionary replacements.
- *
- * Kept separate from {@link postProcess} so callers can apply it to text that
- * is already cleaned. Dictionary replacement is skipped for empty text
- * (nothing to replace).
- */
-export async function applyFinalRewrites(
-  text: string,
-  _appContext: string | null,
-): Promise<string> {
-  let out = text;
-  if (out.trim()) {
-    out = applyDictionaryReplacements(out, getDb());
-  }
-  return out;
-}
-
-/**
  * Run LLM cleanup and dictionary replacements on transcribed text.
  * Returns the cleaned text plus metadata for history tracking.
  */
@@ -165,12 +149,9 @@ export async function postProcess(
   let llmProvider: string | null = null;
   let llmModel: string | null = null;
   let costUsd = 0;
-  // Resolve tone-routing destination once here so every branch (local-LLM,
-  // no-cleanup) can report it.
-  const { destination: resolvedDestination } = getRewritePromptContext(
-    effectiveAppContext,
-    getCleanupAppAssignments(),
-  );
+  // Resolve the tone-routing destination once for the whole call.
+  const { destination: resolvedDestination, personalSurface } =
+    getRewritePromptContext(effectiveAppContext, getCleanupAppAssignments());
 
   const stripped = normalizedRawText
     .replace(/\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|you know|i mean)\b/gi, "")
@@ -208,11 +189,6 @@ export async function postProcess(
         `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,
       );
     } else {
-      const { personalSurface } = getRewritePromptContext(
-        effectiveAppContext,
-        getCleanupAppAssignments(),
-      );
-
       const { system, prompt } = buildRewritePrompt(normalizedRawText, {
         languages: options.languages,
         intensity,
@@ -240,43 +216,37 @@ export async function postProcess(
       // Dictation cleanup is the `interactive` class (§5.4) — the single most
       // latency-sensitive LLM call in the app, and the reason the lane
       // exists. Acquired per call around the one `generateText` inside
-      // `cleanupWithModel`; released in the `finally` below, before the
+      // `cleanupWithModel`; `withLlmLane` releases it before the
       // `result.model` bookkeeping, so a failed cleanup never leaves the
       // lane occupied. Spec §6 constraint 5: if this ever measurably adds
       // time to the commit -> delivered-text path, the lane is wrong.
-      const lane = await llmLaneKeyForProvider(resolved.provider);
-      const lease = await acquireLlmLane({
-        lane,
-        cls: "interactive",
-        taskId: "cleanup",
-      });
-      let result: Awaited<ReturnType<typeof cleanupWithModel>>;
-      try {
-        result = await cleanupWithModel({
-          model: chatModel,
-          text: normalizedRawText,
-          system,
-          prompt,
-          temperature: resolved.temperature,
-          maxOutputTokens: resolved.maxOutputTokens,
-          // The empty/filler-only case is already handled above for the whole
-          // function (both the cloud and local-model branches), so this call
-          // is guaranteed non-empty text — disable the package's own internal
-          // check rather than relying on two independently-maintained filler
-          // regexes staying in sync.
-          skipEmptyText: false,
-          providerOptions: getLlmProvider(resolved.provider)?.providerOptions?.(
-            resolved.modelId,
-            resolved.reasoningEnabled,
-          ),
-          signal: AbortSignal.timeout(resolved.timeoutMs),
-          onError: (err) => {
-            cleanupError = err;
-          },
-        });
-      } finally {
-        lease.release();
-      }
+      const result = await withLlmLane(
+        resolved.provider,
+        { cls: "interactive", taskId: "cleanup" },
+        () =>
+          cleanupWithModel({
+            model: chatModel,
+            text: normalizedRawText,
+            system,
+            prompt,
+            temperature: resolved.temperature,
+            topP: resolved.topP,
+            maxOutputTokens: resolved.maxOutputTokens,
+            // The empty/filler-only case is already handled above for the whole
+            // function (both the cloud and local-model branches), so this call
+            // is guaranteed non-empty text — disable the package's own internal
+            // check rather than relying on two independently-maintained filler
+            // regexes staying in sync.
+            skipEmptyText: false,
+            providerOptions: getLlmProvider(
+              resolved.provider,
+            )?.providerOptions?.(resolved.modelId, resolved.reasoningEnabled),
+            signal: AbortSignal.timeout(resolved.timeoutMs),
+            onError: (err) => {
+              cleanupError = err;
+            },
+          }),
+      );
 
       if (result.model) {
         inputTokens = result.inputTokens;
@@ -287,18 +257,20 @@ export async function postProcess(
         // the persisted history label stays consistent with pre-migration
         // rows.
         llmModel = resolved.modelId;
-        cleanedText = result.cleaned;
       } else {
         log.error(`LLM cleanup failed: ${cleanupError}`);
-        cleanedText = result.cleaned;
       }
+      cleanedText = result.cleaned;
     }
   }
 
   const llmMs = Date.now() - llmStart;
   // Dictionary replacement. Runs on the full raw -> final transformation for
-  // this dictation.
-  cleanedText = await applyFinalRewrites(cleanedText, appContext);
+  // this dictation, whether or not cleanup ran. Empty text has nothing to
+  // replace.
+  if (cleanedText.trim()) {
+    cleanedText = applyDictionaryReplacements(cleanedText, getDb());
+  }
 
   if (inputTokens > 0 || outputTokens > 0) {
     if (llmProvider && llmModel) {
@@ -320,6 +292,5 @@ export async function postProcess(
     outputTokens,
     costUsd,
     ...(options.includeTimings ? { timings: { handoffMs, llmMs } } : {}),
-    destination: resolvedDestination,
   };
 }

@@ -1,31 +1,30 @@
 import type { LlmTaskId } from "@openstyle/validations";
+import {
+  Eyebrow,
+  PageHeader,
+  PageShell,
+} from "@renderer/components/page-chrome";
 import { Button } from "@renderer/components/ui/button";
-import type { AvailableModel } from "@renderer/lib/models";
+import type {
+  ApiKeyEntry,
+  AvailableModel,
+  ConfiguredModel,
+} from "@renderer/lib/models";
+import { displayProviderName } from "@renderer/lib/models";
 import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
-import {
-  CheckCircle,
-  Info,
-  Key,
-  Loader2,
-  Pencil,
-  Trash2,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle, Info, Key, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
-import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
 import { tasksUsingPreset } from "./preset-ops";
 import { TaskProfilesSection } from "./task-profiles-section";
-import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
-import { displayName } from "./utils";
 
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -92,35 +91,11 @@ export default function ModelsPage(): React.JSX.Element {
     setSaving(false);
   };
 
-  const configureVoice = (
-    model: AvailableModel,
-    { closeAfter = false }: { closeAfter?: boolean } = {},
-  ): void => {
-    const needsKey =
-      model.provider_id !== "local-llm" &&
-      !m.keyProviders.has(model.provider_id);
-    if (needsKey) {
-      setKeyError(null);
-      setModal({
-        kind: "key",
-        type: "voice",
-        provider: model.provider_id,
-        modelName: model.model_name,
-        pendingModel: model,
-      });
-      return;
-    }
-    void m.configureModel(model, "voice").then(() => {
-      if (closeAfter) closeModal();
-    });
-  };
-
-  const openVoice = (): void =>
-    setModal({ kind: "list", type: "voice", voiceView: "tiers" });
+  const openVoice = (): void => setModal({ kind: "list", type: "voice" });
 
   const openLlm = (): void => {
     m.setCleanup(true);
-    setModal({ kind: "list", type: "llm", llmView: "tiers" });
+    setModal({ kind: "list", type: "llm" });
   };
 
   const onToggleCleanup = (next: boolean): void => {
@@ -137,11 +112,6 @@ export default function ModelsPage(): React.JSX.Element {
   const onPickCloud = (model: AvailableModel): void => {
     if (modal?.kind !== "list") return;
     const type = modal.type;
-
-    if (type === "voice") {
-      configureVoice(model, { closeAfter: true });
-      return;
-    }
 
     const needsKey =
       model.provider_id !== "local-llm" &&
@@ -183,9 +153,9 @@ export default function ModelsPage(): React.JSX.Element {
   const onBack = (): void => {
     if (modal?.kind !== "key") return;
     if (modal.type === "voice") {
-      setModal({ kind: "list", type: "voice", voiceView: "tiers" });
+      setModal({ kind: "list", type: "voice" });
     } else if (modal.type === "llm") {
-      setModal({ kind: "list", type: "llm", llmView: "tiers" });
+      setModal({ kind: "list", type: "llm" });
     } else {
       closeModal();
     }
@@ -396,7 +366,9 @@ export default function ModelsPage(): React.JSX.Element {
             <>
               <Trans
                 i18nKey="models.deleteProviderMsgBase"
-                values={{ provider: displayName(pendingProviderDelete) }}
+                values={{
+                  provider: displayProviderName(pendingProviderDelete),
+                }}
                 components={{
                   b: <span className="text-foreground/80 font-medium" />,
                 }}
@@ -577,7 +549,6 @@ function KeyRow({
   onDelete: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const invalid = entry.status === "invalid";
   return (
     <div
       className={cn(
@@ -589,23 +560,16 @@ function KeyRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="text-foreground text-[13.5px] font-semibold">
-            {displayName(entry.provider)}
+            {displayProviderName(entry.provider)}
           </span>
           {entry.status === "valid" && (
             <CheckCircle className="text-primary h-3.5 w-3.5 shrink-0" />
           )}
-          {invalid && (
-            <XCircle className="text-destructive h-3.5 w-3.5 shrink-0" />
-          )}
         </div>
         <div className="mono text-muted-foreground mt-0.5 text-[11px]">
-          {invalid ? (
-            <span className="text-destructive">{t("models.keyInvalid")}</span>
-          ) : entry.hint ? (
-            t("models.keyStoredWithHint", { hint: entry.hint })
-          ) : (
-            t("models.keyStored")
-          )}
+          {entry.hint
+            ? t("models.keyStoredWithHint", { hint: entry.hint })
+            : t("models.keyStored")}
         </div>
       </div>
       <span className="text-muted-foreground text-[11.5px]">

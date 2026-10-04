@@ -16,8 +16,14 @@ vi.mock("../src/lib/streaming/registry.js", () => ({
   }),
 }));
 
-vi.mock("../src/lib/streaming-stt.js", () => ({
-  getApiKeyForProvider: () => "test-key",
+vi.mock("../src/lib/api-keys.js", () => ({
+  getApiKey: () => "test-key",
+}));
+
+vi.mock("../src/lib/streaming/local-providers.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/lib/streaming/local-providers.js")
+  >()),
   voiceProviderCategory: () => "local",
 }));
 
@@ -45,7 +51,9 @@ const VOCAB_TERMS = Array.from({ length: 80 }, (_, i) => `Zylotrix${i + 1}`);
 const REAL_SPEECH =
   "While you wait, why don't you launch a deep research on the subject about the best practices for this?";
 
-function transcribe(headers: Record<string, string> = {}): Promise<Response> {
+async function transcribe(
+  headers: Record<string, string> = {},
+): Promise<Response> {
   return app.request("/api/transcribe", {
     method: "POST",
     headers: {

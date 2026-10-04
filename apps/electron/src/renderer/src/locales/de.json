@@ -57,9 +57,7 @@
     },
     "tutorial": {
       "almostReady": "Fast fertig — ",
-      "finish": "Openstyle verwenden",
-      "chooseModel": "Ein anderes Modell wählen",
-      "usingModel": "Verwendet {{name}} · Ein anderes Modell wählen"
+      "finish": "Openstyle verwenden"
     },
     "modelSelector": {
       "chooseModel": "Modell wählen",
@@ -264,16 +262,11 @@
     "heatmapWords": "{{count}} Wörter"
   },
   "history": {
-    "title": "Verlauf",
-    "loading": "Verlauf wird geladen…",
     "filterTitle": "Verlauf filtern",
     "done": "Fertig",
     "filtersBtn": "Filter",
     "timeLabelAllTime": "Gesamter Zeitraum",
     "timeLabelFiltered": "Gefiltert",
-    "wordsStat": "Wörter · {{label}}",
-    "sessionsStat": "Sitzungen · {{label}}",
-    "costStat": "Kosten · {{label}}",
     "sessionSingular": "Sitzung",
     "sessionPlural": "Sitzungen",
     "searchSingular": "{{total}} Transkript durchsuchen…",
@@ -338,7 +331,6 @@
     "newTerm": "Neuer Begriff",
     "termLabel": "Begriff · Wort oder Phrase",
     "notesLabel": "Notizen · optional",
-    "modelCompatNote": "Mehrwörtige Phrasen funktionieren auf Nova 3, OpenAI und Groq. Nova 2 stärkt einzelne Wörter. Scribe v1 nutzt kein Vokabular-Bias.",
     "cancel": "Abbrechen",
     "update": "Aktualisieren",
     "termSingular": "Begriff",
@@ -564,11 +556,9 @@
   },
   "models": {
     "title": "Modelle",
-    "loading": "Modelle werden geladen…",
     "apiKeys": "API-Schlüssel",
     "noApiKeys": "Noch keine API-Schlüssel — wählen Sie oben ein Cloud-Modell und Sie werden nach einem Schlüssel gefragt.",
     "onDevice": "Auf dem Gerät",
-    "keyInvalid": "Schlüssel ungültig — aktualisieren oder löschen",
     "keyStored": "Schlüssel im Schlüsselbund gespeichert",
     "keyStoredWithHint": "Schlüssel {{hint}} im Schlüsselbund gespeichert",
     "modelSingular": "Modell",

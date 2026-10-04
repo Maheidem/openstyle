@@ -1,3 +1,4 @@
+import { errorMessage } from "@openstyle/utils";
 import { normalizeLanguageList } from "@openstyle/validations";
 import WebSocket from "ws";
 import { createPendingAudio } from "../pending-audio.js";
@@ -306,7 +307,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
 
     ws.on("error", (err) => {
       stopKeepAlive();
-      callbacks.onError(err instanceof Error ? err.message : String(err));
+      callbacks.onError(errorMessage(err));
     });
 
     ws.on("close", () => {
@@ -316,6 +317,19 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       }
       callbacks.onClose();
     });
+
+    function clearRecording(): void {
+      clearCommitTimeout();
+      pending.clear();
+      finalTokens.length = 0;
+      nonFinalTokens = [];
+      sourceFinalTokens.length = 0;
+      sourceNonFinalTokens = [];
+      finSeen = false;
+      commitRequested = false;
+      finalDelivered = false;
+      finalizeSent = false;
+    }
 
     return {
       sendAudio(chunk: ArrayBuffer): void {
@@ -327,18 +341,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(Buffer.from(chunk));
       },
-      reset(): void {
-        clearCommitTimeout();
-        pending.clear();
-        finalTokens.length = 0;
-        nonFinalTokens = [];
-        sourceFinalTokens.length = 0;
-        sourceNonFinalTokens = [];
-        finSeen = false;
-        commitRequested = false;
-        finalDelivered = false;
-        finalizeSent = false;
-      },
+      reset: clearRecording,
       commit(): void {
         commitRequested = true;
         clearCommitTimeout();
@@ -353,18 +356,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         }
         sendFinalize();
       },
-      cancel(): void {
-        clearCommitTimeout();
-        pending.clear();
-        finalTokens.length = 0;
-        nonFinalTokens = [];
-        sourceFinalTokens.length = 0;
-        sourceNonFinalTokens = [];
-        finSeen = false;
-        commitRequested = false;
-        finalDelivered = false;
-        finalizeSent = false;
-      },
+      cancel: clearRecording,
       close(): void {
         clearCommitTimeout();
         stopKeepAlive();

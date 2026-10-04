@@ -31,3 +31,11 @@ update or add one, four traps are waiting:
 shiki for syntax highlighting, and Remix's disclosure shows JSON, not source.
 </content>
 </invoke>
+
+`message-scroller` has no message rail. The rail (`PreviewRail` and
+`useHoverCapable`) was removed because no caller used it. If you re-run the CLI
+for `message-scroller`, the rail code comes back. Re-apply the trim.
+
+`agent-activity` has step rows only. The text, search, tool and trace rows were
+removed because Remix uses only step rows. The open state is local. If you
+re-run the CLI for `agent-activity`, those parts come back. Re-apply the trim.

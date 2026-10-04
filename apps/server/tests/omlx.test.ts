@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_KEYS } from "../../electron/src/shared/settings-keys.js";
 import createApp from "../src/index.js";
-import { getDb } from "../src/lib/db.js";
+import { getApiKey } from "../src/lib/api-keys.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import { OmlxTranscriptionProvider } from "../src/lib/streaming/providers/omlx.js";
-import { getApiKeyForProvider } from "../src/lib/streaming-stt.js";
+import { jsonRequest } from "./helpers/http.js";
 
 const MODELS_URL = "http://127.0.0.1:8123/v1/models";
 const TRANSCRIBE_URL = "http://127.0.0.1:8123/v1/audio/transcriptions";
@@ -14,19 +15,9 @@ const opts = {
   apiKey: "local",
 };
 
-function setSetting(key: string, value: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO settings (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .run(key, value);
-}
-
 function clearOmlxSettings(): void {
-  getDb()
-    .prepare("DELETE FROM settings WHERE key IN (?, ?)")
-    .run(SETTINGS_KEYS.omlxBaseUrl, SETTINGS_KEYS.omlxApiKey);
+  deleteSetting(SETTINGS_KEYS.omlxBaseUrl);
+  deleteSetting(SETTINGS_KEYS.omlxApiKey);
 }
 
 /** Body oMLX returns for a successful transcription. */
@@ -49,11 +40,11 @@ describe("oMLX transcription provider", () => {
   it("needs no api_keys row — the provider is keyless", () => {
     getDb().prepare("DELETE FROM api_keys WHERE provider = ?").run("omlx");
 
-    expect(getApiKeyForProvider("omlx")).toBe("local");
+    expect(getApiKey("omlx")).toBe("local");
   });
 
   it("posts multipart file + model to the derived endpoint and reads .text", async () => {
-    setSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
+    writeSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(transcriptResponse("  hello there  "));
@@ -75,7 +66,7 @@ describe("oMLX transcription provider", () => {
   });
 
   it("omits the Authorization header when no key is stored", async () => {
-    setSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
+    writeSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(transcriptResponse("ok"));
@@ -87,8 +78,8 @@ describe("oMLX transcription provider", () => {
   });
 
   it("sends a bearer token when the optional key is set", async () => {
-    setSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
-    setSetting(SETTINGS_KEYS.omlxApiKey, "proxy-key");
+    writeSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
+    writeSetting(SETTINGS_KEYS.omlxApiKey, "proxy-key");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(transcriptResponse("ok"));
@@ -112,7 +103,7 @@ describe("oMLX transcription provider", () => {
       "http://127.0.0.1:8123/v1/",
       "http://127.0.0.1:8123/v1/audio/transcriptions",
     ]) {
-      setSetting(SETTINGS_KEYS.omlxBaseUrl, input);
+      writeSetting(SETTINGS_KEYS.omlxBaseUrl, input);
       await new OmlxTranscriptionProvider().transcribe(opts);
     }
 
@@ -128,7 +119,7 @@ describe("oMLX transcription provider", () => {
   });
 
   it("maps a 404 to a server-URL hint", async () => {
-    setSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
+    writeSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 }),
     );
@@ -139,7 +130,7 @@ describe("oMLX transcription provider", () => {
   });
 
   it("surfaces the upstream status for other error responses", async () => {
-    setSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
+    writeSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("model not loaded", { status: 500 }),
     );
@@ -150,7 +141,7 @@ describe("oMLX transcription provider", () => {
   });
 
   it("rejects a response with no transcript (e.g. a non-ASR model)", async () => {
-    setSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
+    writeSetting(SETTINGS_KEYS.omlxBaseUrl, "http://127.0.0.1:8123");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ error: "unsupported" }), { status: 200 }),
     );
@@ -217,11 +208,7 @@ describe("POST /api/settings/omlx/test", () => {
   }
 
   function post(body: unknown) {
-    return app.request("/api/settings/omlx/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    return jsonRequest(app, "POST", "/api/settings/omlx/test", body);
   }
 
   it("lists every model id and reports the transcription URL", async () => {
@@ -326,11 +313,7 @@ describe("PUT /api/settings/omlx_base_url", () => {
   const app = createApp();
 
   function put(value: string) {
-    return app.request("/api/settings/omlx_base_url", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
-    });
+    return jsonRequest(app, "PUT", "/api/settings/omlx_base_url", { value });
   }
 
   it("accepts an http URL", async () => {

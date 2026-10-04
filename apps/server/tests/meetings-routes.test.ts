@@ -18,7 +18,7 @@ import {
   vi,
 } from "vitest";
 import createApp from "../src/index.js";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import type { DiarizeDeps } from "../src/lib/meetings/diarize.js";
 import {
   MEETING_RETENTION_SETTING_KEY,
@@ -26,39 +26,45 @@ import {
 } from "../src/lib/meetings/retention.js";
 import type { TranscriberDeps } from "../src/lib/meetings/transcriber.js";
 import { __setMeetingsTestOverrides } from "../src/routes/meetings.js";
+import { jsonRequest, postEmpty } from "./helpers/http.js";
+import {
+  insertSegment,
+  insertSpeaker,
+  insertSystemSegment,
+  resetMeetingTables,
+} from "./helpers/meetings-db.js";
+import { buildWav as buildBaseWav } from "./helpers/wav.js";
 
 const app = createApp();
 
 const SAMPLE_RATE = 16000;
+
+/** PCM16 payload of silence with a 440 Hz tone (high amplitude, so the energy
+ * gate always opens) over each `[start, end)` sample range. */
+function tonePayload(
+  totalSamples: number,
+  ranges: Array<[number, number]>,
+): Buffer {
+  const data = Buffer.alloc(totalSamples * 2);
+  for (const [start, end] of ranges) {
+    for (let i = start; i < end; i++) {
+      const s = Math.round(
+        8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
+      );
+      data.writeInt16LE(s, i * 2);
+    }
+  }
+  return data;
+}
 
 /** Mono 16 kHz PCM16 WAV: silence — loud tone burst — silence. */
 function buildWav(burstMs = 1000, padMs = 500): Buffer {
   const totalSamples = Math.round(((burstMs + 2 * padMs) / 1000) * SAMPLE_RATE);
   const burstStart = Math.round((padMs / 1000) * SAMPLE_RATE);
   const burstEnd = burstStart + Math.round((burstMs / 1000) * SAMPLE_RATE);
-  const data = Buffer.alloc(totalSamples * 2);
-  for (let i = burstStart; i < burstEnd; i++) {
-    // 440 Hz tone at high amplitude so the energy gate always opens.
-    const s = Math.round(
-      8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
-    );
-    data.writeInt16LE(s, i * 2);
-  }
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(SAMPLE_RATE, 24);
-  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  return Buffer.concat([h, data]);
+  return buildBaseWav({
+    data: tonePayload(totalSamples, [[burstStart, burstEnd]]),
+  });
 }
 
 let audioDir: string;
@@ -88,9 +94,7 @@ afterAll(() => {
 });
 
 afterEach(() => {
-  getDb().exec("DELETE FROM meeting_summaries");
-  getDb().exec("DELETE FROM meeting_segments");
-  getDb().exec("DELETE FROM meetings");
+  resetMeetingTables();
   __setMeetingsTestOverrides();
 });
 
@@ -112,7 +116,10 @@ function insertMeeting(
 function fakeDeps(
   transcribe: () => Promise<{ text: string }>,
 ): (
-  extras: Pick<TranscriberDeps, "isDictationActive" | "onChunk" | "onProgress">,
+  extras?: Pick<
+    TranscriberDeps,
+    "isDictationActive" | "onChunk" | "onProgress"
+  >,
 ) => Promise<TranscriberDeps> {
   return async (extras) => ({
     getProvider: () => ({
@@ -150,21 +157,6 @@ function fakeDiarizeDeps(opts: {
       return { stdout: opts.runStdout ?? "[]", stderr: "" };
     },
   };
-}
-
-function insertSystemSegment(
-  segId: string,
-  meetingId: string,
-  idx: number,
-  startMs: number,
-  endMs: number,
-): void {
-  getDb()
-    .prepare(
-      `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-       VALUES (?, ?, 'system', ?, ?, ?, 'hello', 'ok')`,
-    )
-    .run(segId, meetingId, idx, startMs, endMs);
 }
 
 async function getMeeting(id: string): Promise<Record<string, unknown>> {
@@ -206,17 +198,13 @@ async function waitForTerminalStatusNoRealTimers(
 
 describe("POST /api/meetings/:id/transcribe", () => {
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/nope/transcribe");
     expect(res.status).toBe(404);
   });
 
   it("409s while the meeting is still recording", async () => {
     insertMeeting("m1", "recording");
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(409);
   });
 
@@ -228,9 +216,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     });
     insertMeeting("m1");
 
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
 
     const done = await waitForTerminalStatus("m1");
@@ -279,10 +265,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     // already deleted — when this test reads it back. That's the real race
     // window; without the gate the fake job (no real I/O) can finish before
     // the test gets a chance to observe the mid-job state at all.
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         await gate;
@@ -296,9 +279,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     const preBody = (await preTranscript.json()) as { segments: unknown[] };
     expect(preBody.segments.length).toBeGreaterThan(0);
 
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
 
     // The job is parked on `gate` inside its first transcribe call — the
@@ -324,9 +305,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
       },
     });
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
     const done = await waitForTerminalStatus("m1");
     expect(done.status).toBe("failed");
@@ -343,16 +322,9 @@ describe("POST /api/meetings/:id/transcribe", () => {
     });
     insertMeeting("m1", "transcribed");
     insertSystemSegment("s1", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, updated_at)
-         VALUES ('m1', '1', 'Ana', ?)`,
-      )
-      .run(Date.now());
+    insertSpeaker("m1", "1", { displayName: "Ana" });
 
-    const res = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(res.status).toBe(202);
     await waitForTerminalStatusNoRealTimers("m1");
 
@@ -368,10 +340,8 @@ describe("POST /api/meetings/:id/transcribe", () => {
 describe("PATCH /api/meetings/:id", () => {
   it("renames a meeting", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "  New title  " }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      title: "  New title  ",
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; title: string };
@@ -381,40 +351,32 @@ describe("PATCH /api/meetings/:id", () => {
   });
 
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "New title" }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/nope", {
+      title: "New title",
     });
     expect(res.status).toBe(404);
   });
 
   it("rejects an empty or whitespace-only title", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "   " }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      title: "   ",
     });
     expect(res.status).toBe(400);
   });
 
   it("rejects a title over the length cap", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "x".repeat(513) }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      title: "x".repeat(513),
     });
     expect(res.status).toBe(400);
   });
 
   it("sets the meeting's language (Phase A2 chip edit)", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language: "pt" }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      language: "pt",
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -426,10 +388,8 @@ describe("PATCH /api/meetings/:id", () => {
     getDb()
       .prepare("UPDATE meetings SET language = 'en' WHERE id = 'm1'")
       .run();
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language: null }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      language: null,
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -438,21 +398,15 @@ describe("PATCH /api/meetings/:id", () => {
 
   it("rejects a PATCH body with neither title nor language", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {});
     expect(res.status).toBe(400);
   });
 
   // specs/meeting-speaker-naming.md §3.4/§6.4
   it("sets the meeting's context and returns it on the next GET", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: "Call with Ana from Acme" }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      context: "Call with Ana from Acme",
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -464,10 +418,8 @@ describe("PATCH /api/meetings/:id", () => {
     getDb()
       .prepare("UPDATE meetings SET context = 'old context' WHERE id = 'm1'")
       .run();
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: null }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      context: null,
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -476,30 +428,22 @@ describe("PATCH /api/meetings/:id", () => {
 
   it("accepts a body with only context (no title/language) — the refine no longer rejects it", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: "just context" }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      context: "just context",
     });
     expect(res.status).toBe(200);
   });
 
   it("rejects a body with none of title/language/context", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {});
     expect(res.status).toBe(400);
   });
 
   it("rejects context over the 2000-char cap", async () => {
     insertMeeting("m1");
-    const res = await app.request("/api/meetings/m1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ context: "x".repeat(2001) }),
+    const res = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      context: "x".repeat(2001),
     });
     expect(res.status).toBe(400);
   });
@@ -514,7 +458,7 @@ describe("POST /api/meetings/:id/retry-failed", () => {
       }),
     });
     insertMeeting("m1");
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     const afterFirst = await waitForTerminalStatus("m1");
     expect(afterFirst.status).toBe("transcribed");
     const firstCounts = afterFirst.segment_counts as { failed: number };
@@ -524,9 +468,7 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => ({ text: "recovered" })),
     });
-    const res = await app.request("/api/meetings/m1/retry-failed", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { retried: number; failed: number };
     expect(body.retried).toBe(firstCounts.failed);
@@ -539,9 +481,7 @@ describe("POST /api/meetings/:id/retry-failed", () => {
 
   it("no-ops when there are no failed chunks", async () => {
     insertMeeting("m1", "transcribed");
-    const res = await app.request("/api/meetings/m1/retry-failed", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, retried: 0 });
   });
@@ -566,7 +506,7 @@ function buildMultiBurstWav(bursts: number): Buffer {
   const gapMs = 6000;
   const totalMs = leadMs + bursts * burstMs + (bursts - 1) * gapMs;
   const totalSamples = Math.round((totalMs / 1000) * SAMPLE_RATE);
-  const data = Buffer.alloc(totalSamples * 2);
+  const ranges: Array<[number, number]> = [];
   for (let b = 0; b < bursts; b++) {
     const start = Math.round(
       ((leadMs + b * (burstMs + gapMs)) / 1000) * SAMPLE_RATE,
@@ -574,28 +514,9 @@ function buildMultiBurstWav(bursts: number): Buffer {
     const end = Math.round(
       ((leadMs + b * (burstMs + gapMs) + burstMs) / 1000) * SAMPLE_RATE,
     );
-    for (let i = start; i < end; i++) {
-      const s = Math.round(
-        8000 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
-      );
-      data.writeInt16LE(s, i * 2);
-    }
+    ranges.push([start, end]);
   }
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(SAMPLE_RATE, 24);
-  h.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  return Buffer.concat([h, data]);
+  return buildBaseWav({ data: tonePayload(totalSamples, ranges) });
 }
 
 let cancelAudioDir: string;
@@ -635,17 +556,13 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
   });
 
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope/cancel-transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/nope/cancel-transcribe");
     expect(res.status).toBe(404);
   });
 
   it("409s when no job is running for the meeting", async () => {
     insertMeeting("m1", "recorded");
-    const res = await app.request("/api/meetings/m1/cancel-transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("No transcription job");
@@ -654,10 +571,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
   it("409s when the active job is a diarize pass (slot held, not cancellable)", async () => {
     insertMeeting("m1", "transcribed", cancelAudioDir);
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       diarizeDeps: {
         resolveBinaryPath: () => "/fake/fluidaudio-diarize",
@@ -670,16 +584,12 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
       },
     });
 
-    const diarizePromise = app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const diarizePromise = postEmpty(app, "/api/meetings/m1/diarize");
     // Let the diarize handler claim the slot under fake timers (same
     // reasoning as the enhance 409 test above).
     await vi.advanceTimersByTimeAsync(20);
 
-    const res = await app.request("/api/meetings/m1/cancel-transcribe", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
     expect(res.status).toBe(409);
 
     release();
@@ -688,10 +598,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
 
   it("cancels mid-job: in-flight chunks finish and persist, unstarted chunks never run, status → failed, segments kept, slot freed", async () => {
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         // Capture the call number *before* parking: both workers increment
@@ -705,9 +612,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
     });
     insertMeeting("m1", "recorded", cancelAudioDir);
 
-    const start = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(start.status).toBe(202);
     await waitForMicrotasks(() => calls >= 2);
 
@@ -721,16 +626,14 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
       const mid = await getMeeting("m1");
       expect(mid.job).toMatchObject({ done: 0, total: 6 });
 
-      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
-        method: "POST",
-      });
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
       expect(cancel.status).toBe(202);
 
       // Idempotent while winding down: the slot is still held, the second
       // cancel is an acknowledged no-op (documented semantics).
-      const cancelAgain = await app.request(
+      const cancelAgain = await postEmpty(
+        app,
         "/api/meetings/m1/cancel-transcribe",
-        { method: "POST" },
       );
       expect(cancelAgain.status).toBe(202);
     } finally {
@@ -759,18 +662,13 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
     ]);
 
     // Slot freed — a third cancel is a plain 409.
-    const after = await app.request("/api/meetings/m1/cancel-transcribe", {
-      method: "POST",
-    });
+    const after = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
     expect(after.status).toBe(409);
   });
 
   it("GET /orphans excludes meetings with a live job (boot sweep must not kill a running/winding-down transcription)", async () => {
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         calls++;
@@ -782,9 +680,7 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
     // A second stuck row with NO live job — this one *is* an orphan.
     insertMeeting("m2", "transcribing", cancelAudioDir);
 
-    const start = await app.request("/api/meetings/m1/transcribe", {
-      method: "POST",
-    });
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
     expect(start.status).toBe(202);
     await waitForMicrotasks(() => calls >= 1);
 
@@ -826,22 +722,22 @@ describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () 
     insertMeeting("m1", "transcribed", cancelAudioDir);
     // 4 failed system segments on disk-backed times.
     for (let i = 0; i < 4; i++) {
-      getDb()
-        .prepare(
-          `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-           VALUES (?, 'm1', 'system', ?, ?, ?, NULL, 'failed')`,
-        )
-        .run(`m1:system:${i}`, i, i * 7000, i * 7000 + 1000);
+      insertSegment({
+        id: `m1:system:${i}`,
+        meetingId: "m1",
+        idx: i,
+        startMs: i * 7000,
+        endMs: i * 7000 + 1000,
+        text: null,
+        status: "failed",
+      });
     }
     getDb()
       .prepare("UPDATE meetings SET error = '4 chunks failed' WHERE id = 'm1'")
       .run();
 
     let calls = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
         calls++;
@@ -850,15 +746,11 @@ describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () 
       }),
     });
 
-    const retryPromise = app.request("/api/meetings/m1/retry-failed", {
-      method: "POST",
-    });
+    const retryPromise = postEmpty(app, "/api/meetings/m1/retry-failed");
     await waitForMicrotasks(() => calls >= 2);
 
     try {
-      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
-        method: "POST",
-      });
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
       expect(cancel.status).toBe(202);
     } finally {
       release();
@@ -884,9 +776,9 @@ describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () 
     expect(after.status).toBe("transcribed");
     expect(after.job).toBeNull();
 
-    const cancelAgain = await app.request(
+    const cancelAgain = await postEmpty(
+      app,
       "/api/meetings/m1/cancel-transcribe",
-      { method: "POST" },
     );
     expect(cancelAgain.status).toBe(409);
   });
@@ -918,9 +810,7 @@ describe("boot sweep — quit-mid-transcription recovery (T1-1a)", () => {
     const { items } = (await orphans.json()) as { items: { id: string }[] };
     expect(items.some((i) => i.id === "m1")).toBe(true);
 
-    const res = await app.request("/api/meetings/m1/transcribe-interrupted", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe-interrupted");
     expect(res.status).toBe(200);
 
     const after = await getMeeting("m1");
@@ -932,43 +822,40 @@ describe("boot sweep — quit-mid-transcription recovery (T1-1a)", () => {
 
   it("POST /:id/transcribe-interrupted is strict: 404 from any other status", async () => {
     insertMeeting("m1", "recorded");
-    const fromRecorded = await app.request(
+    const fromRecorded = await postEmpty(
+      app,
       "/api/meetings/m1/transcribe-interrupted",
-      { method: "POST" },
     );
     expect(fromRecorded.status).toBe(404);
 
     // 'recording' orphans belong to the recorder's endpoint, not this one.
     insertMeeting("m2", "recording");
-    const fromRecording = await app.request(
+    const fromRecording = await postEmpty(
+      app,
       "/api/meetings/m2/transcribe-interrupted",
-      { method: "POST" },
     );
     expect(fromRecording.status).toBe(404);
 
-    const unknown = await app.request(
+    const unknown = await postEmpty(
+      app,
       "/api/meetings/nope/transcribe-interrupted",
-      { method: "POST" },
     );
     expect(unknown.status).toBe(404);
 
     // And a second sweep pass over an already-failed row is a 404 no-op.
     insertMeeting("m3", "transcribing");
-    await app.request("/api/meetings/m3/transcribe-interrupted", {
-      method: "POST",
-    });
-    const again = await app.request("/api/meetings/m3/transcribe-interrupted", {
-      method: "POST",
-    });
+    await postEmpty(app, "/api/meetings/m3/transcribe-interrupted");
+    const again = await postEmpty(
+      app,
+      "/api/meetings/m3/transcribe-interrupted",
+    );
     expect(again.status).toBe(404);
   });
 
   it("the recording branch of the boot path still works: /interrupted from 'recording' only", async () => {
     insertMeeting("m1", "recording");
-    const res = await app.request("/api/meetings/m1/interrupted", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ duration_ms: 12345 }),
+    const res = await jsonRequest(app, "POST", "/api/meetings/m1/interrupted", {
+      duration_ms: 12345,
     });
     expect(res.status).toBe(200);
     const after = await getMeeting("m1");
@@ -977,11 +864,12 @@ describe("boot sweep — quit-mid-transcription recovery (T1-1a)", () => {
 
     // Strict from anywhere else.
     insertMeeting("m2", "transcribing");
-    const wrongState = await app.request("/api/meetings/m2/interrupted", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    const wrongState = await jsonRequest(
+      app,
+      "POST",
+      "/api/meetings/m2/interrupted",
+      {},
+    );
     expect(wrongState.status).toBe(404);
   });
 });
@@ -1003,7 +891,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
     });
     insertMeeting("m1");
 
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     const done = await waitForTerminalStatus("m1");
     expect(done.status).toBe("transcribed");
 
@@ -1027,33 +915,25 @@ describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
 
 describe("POST /api/meetings/:id/diarize", () => {
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/nope/diarize");
     expect(res.status).toBe(404);
   });
 
   it("409s when the meeting has no transcript yet", async () => {
     insertMeeting("m1", "recorded");
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(409);
   });
 
   it("409s while the meeting is still transcribing", async () => {
     insertMeeting("m1", "transcribing");
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(409);
   });
 
   it("409s when the meeting has no audio directory", async () => {
     insertMeeting("m1", "transcribed", null);
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(409);
   });
 
@@ -1061,9 +941,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     const emptyDir = mkdtempSync(join(tmpdir(), "meeting-diarize-nowav-"));
     try {
       insertMeeting("m1", "transcribed", emptyDir);
-      const res = await app.request("/api/meetings/m1/diarize", {
-        method: "POST",
-      });
+      const res = await postEmpty(app, "/api/meetings/m1/diarize");
       expect(res.status).toBe(409);
     } finally {
       rmSync(emptyDir, { recursive: true, force: true });
@@ -1075,9 +953,7 @@ describe("POST /api/meetings/:id/diarize", () => {
       diarizeDeps: fakeDiarizeDeps({ probeStdout: "NOT_READY" }),
     });
     insertMeeting("m1", "transcribed");
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(409);
   });
 
@@ -1096,9 +972,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
     insertSystemSegment("m1:system:1", "m1", 1, 2000, 3000);
 
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok: boolean;
@@ -1132,9 +1006,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
 
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       ok: true,
@@ -1158,16 +1030,9 @@ describe("POST /api/meetings/:id/diarize", () => {
     });
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, updated_at)
-         VALUES ('m1', '1', 'Ana', ?)`,
-      )
-      .run(Date.now());
+    insertSpeaker("m1", "1", { displayName: "Ana" });
 
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { mappingReset: boolean };
     expect(body.mappingReset).toBe(true);
@@ -1201,9 +1066,7 @@ describe("POST /api/meetings/:id/diarize", () => {
     const transcriptPath = join(audioDir, "transcript.md");
     writeFileSync(transcriptPath, "STALE-PLACEHOLDER-CONTENT", "utf8");
 
-    const res = await app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/diarize");
     expect(res.status).toBe(200);
 
     const after = readFileSync(transcriptPath, "utf8");
@@ -1211,44 +1074,6 @@ describe("POST /api/meetings/:id/diarize", () => {
     expect(after).toMatch(/Them 1:/);
   });
 });
-
-/** specs/meeting-speaker-naming.md §3.1: seed a meeting_speakers row directly. */
-function insertSpeaker(
-  meetingId: string,
-  label: string,
-  opts: {
-    displayName?: string | null;
-    suggestedName?: string | null;
-    suggestedEvidence?: string | null;
-    suggestedKind?: string | null;
-    mergedInto?: string | null;
-    /** Real-E2E fix regression coverage: only a genuinely *confirmed*
-     * write (routes/meetings.ts's PATCH handler) sets this — a plain
-     * suggestion upsert (enhance.ts) never does. Tests that simulate a
-     * confirmed row must pass this explicitly; it is NOT inferred from
-     * `displayName`/`mergedInto` being set, to keep the two independent
-     * the same way the real schema does. */
-    confirmedAt?: number | null;
-  } = {},
-): void {
-  getDb()
-    .prepare(
-      `INSERT INTO meeting_speakers
-         (meeting_id, speaker_label, display_name, suggested_name, suggested_evidence, suggested_kind, merged_into, updated_at, confirmed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      meetingId,
-      label,
-      opts.displayName ?? null,
-      opts.suggestedName ?? null,
-      opts.suggestedEvidence ?? null,
-      opts.suggestedKind ?? null,
-      opts.mergedInto ?? null,
-      Date.now(),
-      opts.confirmedAt ?? null,
-    );
-}
 
 describe("GET /api/meetings/:id/speakers", () => {
   it("404s for an unknown meeting", async () => {
@@ -1258,18 +1083,8 @@ describe("GET /api/meetings/:id/speakers", () => {
 
   it("returns one row per distinct labeled speaker plus unlabeledCount; a labeled row without a meeting_speakers row shows all-null optional fields", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000, "2");
     insertSystemSegment("m1:system:2", "m1", 2, 2000, 3000); // stays NULL
     insertSpeaker("m1", "1", {
       displayName: "Ana",
@@ -1316,18 +1131,8 @@ describe("GET /api/meetings/:id/speakers", () => {
 
   it("returns suggestedKind 'role' only when the stored row explicitly says so, defaulting a NULL/unknown value to 'name'", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000, "2");
     insertSpeaker("m1", "1", {
       suggestedName: "the hiring manager",
       suggestedKind: "role",
@@ -1348,12 +1153,7 @@ describe("GET /api/meetings/:id/speakers", () => {
 
   it("reports latestSpeakerUpdate as the max confirmed_at across rows — never bumped by a suggestion-only write, or null when there are none confirmed", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
 
     const empty = await app.request("/api/meetings/m1/speakers");
     const emptyBody = (await empty.json()) as {
@@ -1397,11 +1197,12 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
     label: string,
     body: Record<string, unknown>,
   ): Promise<Response> {
-    return app.request(`/api/meetings/${meetingId}/speakers/${label}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    return jsonRequest(
+      app,
+      "PATCH",
+      `/api/meetings/${meetingId}/speakers/${label}`,
+      body,
+    );
   }
 
   it("404s when the meeting doesn't exist", async () => {
@@ -1411,12 +1212,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("400s on an empty body", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", {});
     expect(res.status).toBe(400);
   });
@@ -1429,12 +1225,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("saves a confirmed display name", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", { displayName: "Ana" });
     expect(res.status).toBe(200);
     const row = getDb()
@@ -1447,12 +1238,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("sets confirmed_at on a successful PATCH (real-E2E fix: this, not updated_at, drives the summary staleness hint)", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", { displayName: "Ana" });
     expect(res.status).toBe(200);
     const row = getDb()
@@ -1465,18 +1251,8 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("un-names a speaker with displayName: null without touching merged_into", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000, "2");
     insertSpeaker("m1", "1", { displayName: "Ana", mergedInto: "2" });
 
     const res = await patchSpeaker("m1", "1", { displayName: null });
@@ -1492,12 +1268,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("400s on self-merge (mergedInto === label), writing no row", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", { mergedInto: "1" });
     expect(res.status).toBe(400);
     const row = getDb()
@@ -1508,14 +1279,29 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
     expect(row.c).toBe(0);
   });
 
+  it("400s when the target already merged into this label, changing no row", async () => {
+    insertMeeting("m1", "transcribed");
+    for (const [id, idx, label] of [
+      ["m1:system:0", 0, "1"],
+      ["m1:system:1", 1, "2"],
+    ] as const) {
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000, label);
+    }
+    // "2" is already merged into "1". Merging "1" into "2" would loop.
+    insertSpeaker("m1", "2", { mergedInto: "1" });
+    const res = await patchSpeaker("m1", "1", { mergedInto: "2" });
+    expect(res.status).toBe(400);
+    const rows = getDb()
+      .prepare(
+        "SELECT speaker_label, merged_into FROM meeting_speakers WHERE meeting_id = 'm1' ORDER BY speaker_label",
+      )
+      .all() as { speaker_label: string; merged_into: string | null }[];
+    expect(rows).toEqual([{ speaker_label: "2", merged_into: "1" }]);
+  });
+
   it("404s when mergedInto targets a nonexistent label", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const res = await patchSpeaker("m1", "1", { mergedInto: "9" });
     expect(res.status).toBe(404);
   });
@@ -1527,10 +1313,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
       ["m1:system:1", 1, "2"],
       ["m1:system:2", 2, "3"],
     ] as const) {
-      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000);
-      getDb()
-        .prepare("UPDATE meeting_segments SET speaker_label = ? WHERE id = ?")
-        .run(label, id);
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000, label);
     }
     // "2" is already merged into "3" (the root).
     insertSpeaker("m1", "2", { mergedInto: "3" });
@@ -1554,10 +1337,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
       ["m1:system:2", 2, "3"],
       ["m1:system:3", 3, "4"],
     ] as const) {
-      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000);
-      getDb()
-        .prepare("UPDATE meeting_segments SET speaker_label = ? WHERE id = ?")
-        .run(label, id);
+      insertSystemSegment(id, "m1", idx, idx * 1000, idx * 1000 + 1000, label);
     }
     // "1" and "4" already point at "2". Now merge "2" into "3".
     insertSpeaker("m1", "1", { mergedInto: "2" });
@@ -1579,18 +1359,8 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("unmerges (mergedInto: null) without touching display_name", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '2' WHERE id = 'm1:system:1'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
+    insertSystemSegment("m1:system:1", "m1", 1, 1000, 2000, "2");
     insertSpeaker("m1", "1", { displayName: "Ana", mergedInto: "2" });
 
     const res = await patchSpeaker("m1", "1", { mergedInto: null });
@@ -1606,12 +1376,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 
   it("refreshes transcript.md on disk after a successful PATCH", async () => {
     insertMeeting("m1", "transcribed");
-    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
-    getDb()
-      .prepare(
-        "UPDATE meeting_segments SET speaker_label = '1' WHERE id = 'm1:system:0'",
-      )
-      .run();
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000, "1");
     const transcriptPath = join(audioDir, "transcript.md");
     writeFileSync(transcriptPath, "STALE-PLACEHOLDER-CONTENT", "utf8");
 
@@ -1627,9 +1392,7 @@ describe("PATCH /api/meetings/:id/speakers/:label", () => {
 describe("POST /api/meetings/:id/summarize", () => {
   it("409s when the meeting has no transcript", async () => {
     insertMeeting("m1", "recorded");
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(409);
   });
 
@@ -1653,22 +1416,20 @@ describe("POST /api/meetings/:id/summarize", () => {
 
   it("returns 202 immediately, then persists the summary the poll delivers", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'we should ship on friday', 'ok')`,
-      )
-      .run();
-    let started!: () => void;
-    const startedGate = new Promise<void>((r) => {
-      started = r;
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "we should ship on friday",
     });
-    let resume!: () => void;
-    const parked = new Promise<void>((r) => {
-      resume = r;
-    });
+    const { promise: startedGate, resolve: started } =
+      Promise.withResolvers<void>();
+    const { promise: parked, resolve: resume } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
-      summarize: async (segments, options) => {
+      summarize: async (segments, options = {}) => {
         expect(segments).toHaveLength(1);
         expect(segments[0].speaker).toBe("Me");
         // The job's progress seam must reach the polled blob (this is what
@@ -1690,9 +1451,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     // 202 before the LLM call even starts — no markdown in the body, the
     // markdown is polled. This is the whole point of the change: a local
     // engine can take 10 minutes and the HTTP call used to stay open.
@@ -1735,12 +1494,15 @@ describe("POST /api/meetings/:id/summarize", () => {
         "UPDATE meetings SET context = 'Call with Ana from Acme' WHERE id = 'm1'",
       )
       .run();
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     let capturedOptions: { meetingContext?: string } | undefined;
     __setMeetingsTestOverrides({
       summarize: async (_segments, options) => {
@@ -1756,9 +1518,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     const after = await waitForSummarizeToSettle("m1");
     expect(capturedOptions?.meetingContext).toBe("Call with Ana from Acme");
@@ -1770,10 +1530,7 @@ describe("POST /api/meetings/:id/summarize", () => {
   it("409s a second summarize while one is running, and frees the slot afterwards", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let calls = 0;
     __setMeetingsTestOverrides({
       summarize: async () => {
@@ -1790,9 +1547,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const first = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const first = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(first.status).toBe(202);
     await vi.advanceTimersByTimeAsync(1);
 
@@ -1800,18 +1555,12 @@ describe("POST /api/meetings/:id/summarize", () => {
     // double submit used to be legal and the second run's INSERT OR REPLACE
     // clobbered the first.
     try {
-      const second = await app.request("/api/meetings/m1/summarize", {
-        method: "POST",
-      });
+      const second = await postEmpty(app, "/api/meetings/m1/summarize");
       expect(second.status).toBe(409);
       // The other slot-holders are excluded the same way, in both directions.
-      const diarize = await app.request("/api/meetings/m1/diarize", {
-        method: "POST",
-      });
+      const diarize = await postEmpty(app, "/api/meetings/m1/diarize");
       expect(diarize.status).toBe(409);
-      const enhance = await app.request("/api/meetings/m1/enhance", {
-        method: "POST",
-      });
+      const enhance = await postEmpty(app, "/api/meetings/m1/enhance");
       expect(enhance.status).toBe(409);
     } finally {
       // Never park the job (and its slot) on a failed assertion above.
@@ -1822,9 +1571,7 @@ describe("POST /api/meetings/:id/summarize", () => {
     expect(calls).toBe(1);
 
     // Slot freed — a follow-up summarize is accepted again.
-    const third = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const third = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(third.status).toBe(202);
     await waitForSummarizeToSettle("m1");
     expect(calls).toBe(2);
@@ -1846,9 +1593,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     const after = await waitForSummarizeToSettle("m1");
     expect(after.job_error).toBe("No AI model is set up yet.");
@@ -1873,9 +1618,7 @@ describe("POST /api/meetings/:id/summarize", () => {
         costUsd: null,
       }),
     });
-    const again = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const again = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(again.status).toBe(202);
     const done = await waitForSummarizeToSettle("m1");
     expect(done.job_error).toBeNull();
@@ -1885,16 +1628,11 @@ describe("POST /api/meetings/:id/summarize", () => {
   it("is cancellable: no summary is written, the transcript survives, slot frees", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let reached!: () => void;
-    const reachedGate = new Promise<void>((r) => {
-      reached = r;
-    });
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: reachedGate, resolve: reached } =
+      Promise.withResolvers<void>();
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
-      summarize: async (_segments, options) => {
+      summarize: async (_segments, options = {}) => {
         reached();
         await gate;
         // Honour the seam the way `summarizeMeeting` does: a cancel landing
@@ -1913,16 +1651,12 @@ describe("POST /api/meetings/:id/summarize", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     try {
       await reachedGate;
       // §5.7: a summarize job is cancellable through the existing seam.
-      const cancel = await app.request("/api/meetings/m1/cancel-transcribe", {
-        method: "POST",
-      });
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
       expect(cancel.status).toBe(202);
     } finally {
       // Never park the job (and its slot) on a failed assertion above.
@@ -1941,7 +1675,7 @@ describe("POST /api/meetings/:id/summarize", () => {
     // and is NOT born cancelled.
     let sawStop = true;
     __setMeetingsTestOverrides({
-      summarize: async (_segments, options) => {
+      summarize: async (_segments, options = {}) => {
         sawStop = options.shouldStop?.() ?? false;
         return {
           markdown: "## Second run",
@@ -1953,9 +1687,7 @@ describe("POST /api/meetings/:id/summarize", () => {
         };
       },
     });
-    const retry = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const retry = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(retry.status).toBe(202);
     const done = await waitForSummarizeToSettle("m1");
     expect(sawStop).toBe(false);
@@ -1971,7 +1703,7 @@ describe("POST /api/meetings/:id/summarize", () => {
       // Parks forever (nothing on the wire ever answers) but honours the
       // cancel seam, so the test's `finally` can always release the slot —
       // a leaked job here poisons every later test in the file.
-      summarize: (_segments, options) =>
+      summarize: (_segments, options = {}) =>
         new Promise<never>((_resolve, reject) => {
           const poll = setInterval(() => {
             if (options.shouldStop?.()) {
@@ -1982,9 +1714,7 @@ describe("POST /api/meetings/:id/summarize", () => {
         }),
     });
 
-    const res = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(res.status).toBe(202);
     // Let the job reach its deadline timer (the clock does not move on its
     // own under fake timers, so a tick-0 flush drains the awaits that set it).
@@ -2005,9 +1735,7 @@ describe("POST /api/meetings/:id/summarize", () => {
     } finally {
       // Belt and braces: if the ceiling somehow did not fire, cancel out of
       // the parked job rather than leaking its slot into later tests.
-      await app.request("/api/meetings/m1/cancel-transcribe", {
-        method: "POST",
-      });
+      await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
       await vi.advanceTimersByTimeAsync(50);
     }
     expect(after.job_error).toMatch(/exceeded its 1200s job ceiling/);
@@ -2025,11 +1753,34 @@ describe("POST /api/meetings/:id/summarize", () => {
         costUsd: null,
       }),
     });
-    const next = await app.request("/api/meetings/m1/summarize", {
-      method: "POST",
-    });
+    const next = await postEmpty(app, "/api/meetings/m1/summarize");
     expect(next.status).toBe(202);
     await waitForSummarizeToSettle("m1");
+  });
+
+  it("makes shouldStop() true after the ceiling, so the summarizer stops", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
+    let stop: (() => boolean) | undefined;
+    __setMeetingsTestOverrides({
+      // Never answers. The test only reads the stop signal.
+      summarize: (_segments, options = {}) => {
+        stop = options.shouldStop;
+        return new Promise<never>(() => {});
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/summarize");
+    expect(res.status).toBe(202);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stop?.()).toBe(false);
+
+    // One planned call: the ceiling is the 2 x 600 s floor.
+    await vi.advanceTimersByTimeAsync(1_200_000);
+    const after = await waitForSummarizeToSettle("m1");
+    expect(after.job_error).toMatch(/exceeded its 1200s job ceiling/);
+    // The job cleared the shared cancel flag. The stop signal stays true.
+    expect(stop?.()).toBe(true);
   });
 });
 
@@ -2046,28 +1797,23 @@ describe("POST /api/meetings/:id/enhance", () => {
     chunksSucceeded: 1,
     chunksFailed: 0,
     stoppedEarly: false,
+    speakerSuggestions: 0,
   };
 
   it("404s for an unknown meeting", async () => {
-    const res = await app.request("/api/meetings/nope/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/nope/enhance");
     expect(res.status).toBe(404);
   });
 
   it("409s when the meeting has no transcript", async () => {
     insertMeeting("m1", "recorded");
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(409);
   });
 
   it("409s when the merged transcript is empty", async () => {
     insertMeeting("m1", "transcribed");
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Transcript is empty");
@@ -2079,10 +1825,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     // Diarize claims the concurrency slot before its (fake) execFile call
     // resolves — a real interaction the route guards against, since diarize
     // never touches meetings.status.
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       diarizeDeps: {
         resolveBinaryPath: () => "/fake/fluidaudio-diarize",
@@ -2095,9 +1838,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const diarizePromise = app.request("/api/meetings/m1/diarize", {
-      method: "POST",
-    });
+    const diarizePromise = postEmpty(app, "/api/meetings/m1/diarize");
     // Yield to the pending diarize handler under fake timers (setup.ts:
     // shouldAdvanceTime: false) — advanceTimersByTimeAsync flushes
     // microtasks between ticks, unlike a real setTimeout, which would never
@@ -2105,9 +1846,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     // above).
     await vi.advanceTimersByTimeAsync(20);
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(409);
 
     release();
@@ -2124,10 +1863,7 @@ describe("POST /api/meetings/:id/enhance", () => {
   it("409s a second concurrent enhance, then frees the slot on success and on throw", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
-    let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     __setMeetingsTestOverrides({
       enhance: async () => {
         await gate;
@@ -2135,22 +1871,16 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const first = app.request("/api/meetings/m1/enhance", { method: "POST" });
+    const first = postEmpty(app, "/api/meetings/m1/enhance");
     await vi.advanceTimersByTimeAsync(20);
 
     try {
-      const second = await app.request("/api/meetings/m1/enhance", {
-        method: "POST",
-      });
+      const second = await postEmpty(app, "/api/meetings/m1/enhance");
       expect(second.status).toBe(409);
       // The other two writers are locked out for the same window.
-      const summarize = await app.request("/api/meetings/m1/summarize", {
-        method: "POST",
-      });
+      const summarize = await postEmpty(app, "/api/meetings/m1/summarize");
       expect(summarize.status).toBe(409);
-      const transcribe = await app.request("/api/meetings/m1/transcribe", {
-        method: "POST",
-      });
+      const transcribe = await postEmpty(app, "/api/meetings/m1/transcribe");
       expect(transcribe.status).toBe(409);
       // Held, and named: the renderer reads this to decide what it is looking
       // at.
@@ -2165,9 +1895,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     expect((await getMeeting("m1")).job).toBeNull();
 
     // Slot released after success — and after a throw too.
-    const again = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const again = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(again.status).toBe(200);
 
     __setMeetingsTestOverrides({
@@ -2175,25 +1903,24 @@ describe("POST /api/meetings/:id/enhance", () => {
         throw new Error("boom");
       },
     });
-    const thrown = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const thrown = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(thrown.status).toBe(500);
     expect((await getMeeting("m1")).job).toBeNull();
-    const afterThrow = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const afterThrow = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(afterThrow.status).toBe(500);
   });
 
   it("enhances the merged transcript and persists enhanced_text", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "garbled txt here",
+    });
     __setMeetingsTestOverrides({
       enhance: async (meetingId, segments) => {
         expect(meetingId).toBe("m1");
@@ -2206,9 +1933,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; correctedCount: number };
     expect(body.ok).toBe(true);
@@ -2235,12 +1960,15 @@ describe("POST /api/meetings/:id/enhance", () => {
         "UPDATE meetings SET title = 'Weekly sync', context = 'Ana from Acme' WHERE id = 'm1'",
       )
       .run();
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     let capturedArgs: [string | undefined, string | undefined] | undefined;
     __setMeetingsTestOverrides({
       enhance: async (
@@ -2253,16 +1981,14 @@ describe("POST /api/meetings/:id/enhance", () => {
       ) => {
         capturedArgs = [title, context];
         return {
+          ...ONE_CHUNK_OK,
           correctedCount: 0,
           speakerSuggestions: 2,
-          ...ONE_CHUNK_OK,
         };
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       correctedCount: number;
@@ -2277,12 +2003,15 @@ describe("POST /api/meetings/:id/enhance", () => {
     // touched by Enhance, regardless of which route triggers the write.
     // The enhanced rendering goes exclusively to the sibling file.
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "garbled txt here",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => {
         getDb()
@@ -2292,9 +2021,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
 
     const raw = readFileSync(join(audioDir, "transcript.md"), "utf8");
@@ -2310,21 +2037,22 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("500s and reports the message when the enhance pass throws", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => {
         throw new Error("No AI model is set up yet.");
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("No AI model is set up yet.");
@@ -2337,12 +2065,15 @@ describe("POST /api/meetings/:id/enhance", () => {
   // still writes nothing.
   it("502s with reason 'timeout' when every chunk failed, and never reports correctedCount 0 as a success", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "garbled txt here",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => ({
         correctedCount: 0,
@@ -2358,9 +2089,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       }),
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(502);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.ok).toBe(false);
@@ -2386,12 +2115,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("classifies the failure the pass reported: parse and provider both reach the body", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
 
     for (const [reason, detail] of [
       ["parse", "model response contained no JSON object"],
@@ -2409,9 +2141,7 @@ describe("POST /api/meetings/:id/enhance", () => {
         }),
       });
 
-      const res = await app.request("/api/meetings/m1/enhance", {
-        method: "POST",
-      });
+      const res = await postEmpty(app, "/api/meetings/m1/enhance");
       expect(res.status, reason).toBe(502);
       const body = (await res.json()) as Record<string, unknown>;
       expect(body.reason, reason).toBe(reason);
@@ -2421,12 +2151,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("falls back to reason 'provider' when a wholly-failed pass reported no firstFailure", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => ({
         correctedCount: 0,
@@ -2438,9 +2171,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       }),
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(502);
     const body = (await res.json()) as { reason: string };
     expect(body.reason).toBe("provider");
@@ -2448,12 +2179,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("marks a partial pass partial in the 200 body instead of hiding the failed chunks", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'garbled txt here', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "garbled txt here",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => {
         getDb()
@@ -2471,9 +2205,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       },
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toMatchObject({
@@ -2490,12 +2222,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("reports a clean pass as neither partial nor failed (the honest baseline for the 3rd UI state)", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'clean text', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "clean text",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => ({
         correctedCount: 0,
@@ -2507,9 +2242,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       }),
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toMatchObject({
@@ -2525,12 +2258,15 @@ describe("POST /api/meetings/:id/enhance", () => {
 
   it("treats a pass cancelled before any chunk succeeded as stopped, not failed (§5.7)", async () => {
     insertMeeting("m1", "transcribed");
-    getDb()
-      .prepare(
-        `INSERT INTO meeting_segments (id, meeting_id, source, idx, start_ms, end_ms, text, status)
-         VALUES ('m1:mic:0', 'm1', 'mic', 0, 0, 2000, 'hello', 'ok')`,
-      )
-      .run();
+    insertSegment({
+      id: "m1:mic:0",
+      meetingId: "m1",
+      source: "mic",
+      idx: 0,
+      startMs: 0,
+      endMs: 2000,
+      text: "hello",
+    });
     __setMeetingsTestOverrides({
       enhance: async () => ({
         correctedCount: 0,
@@ -2543,9 +2279,7 @@ describe("POST /api/meetings/:id/enhance", () => {
       }),
     });
 
-    const res = await app.request("/api/meetings/m1/enhance", {
-      method: "POST",
-    });
+    const res = await postEmpty(app, "/api/meetings/m1/enhance");
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.partial).toBe(true);
@@ -2573,13 +2307,11 @@ async function waitForTerminalStatusFast(
 
 describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", () => {
   afterEach(() => {
-    getDb().exec("DELETE FROM settings WHERE key = 'languages'");
+    deleteSetting("languages");
   });
 
   it("resolves and persists meetings.language once; a second run (re-transcribe) does not re-probe", async () => {
-    getDb()
-      .prepare("INSERT INTO settings (key, value) VALUES ('languages', ?)")
-      .run(JSON.stringify(["en", "pt"]));
+    writeSetting("languages", JSON.stringify(["en", "pt"]));
 
     let calls = 0;
     __setMeetingsTestOverrides({
@@ -2596,7 +2328,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", (
     });
     insertMeeting("m1");
 
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     await waitForTerminalStatusFast("m1");
     const after1 = await getMeeting("m1");
     expect(after1.language).toBe("pt");
@@ -2605,7 +2337,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", (
 
     // Re-transcribe: meetings.language is already set, so no new probe call
     // — only chunk-transcription calls should be added.
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     await waitForTerminalStatusFast("m1");
     const after2 = await getMeeting("m1");
     expect(after2.language).toBe("pt");
@@ -2615,9 +2347,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", (
   });
 
   it("with a single declared language, pins immediately with no probe call", async () => {
-    getDb()
-      .prepare("INSERT INTO settings (key, value) VALUES ('languages', ?)")
-      .run(JSON.stringify(["pt"]));
+    writeSetting("languages", JSON.stringify(["pt"]));
     let calls = 0;
     __setMeetingsTestOverrides({
       createTranscriberDeps: fakeDeps(async () => {
@@ -2626,7 +2356,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A2 language resolution", (
       }),
     });
     insertMeeting("m1");
-    await app.request("/api/meetings/m1/transcribe", { method: "POST" });
+    await postEmpty(app, "/api/meetings/m1/transcribe");
     await waitForTerminalStatusFast("m1");
     const after = await getMeeting("m1");
     expect(after.language).toBe("pt");
@@ -2653,9 +2383,7 @@ describe("meeting audio retention sweep", () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   afterEach(() => {
-    getDb()
-      .prepare("DELETE FROM settings WHERE key = ?")
-      .run(MEETING_RETENTION_SETTING_KEY);
+    deleteSetting(MEETING_RETENTION_SETTING_KEY);
     rmSync(meetingsRoot(), { recursive: true, force: true });
   });
 
@@ -2679,12 +2407,7 @@ describe("meeting audio retention sweep", () => {
   });
 
   it("skips meetings still recording, honors the retention setting", () => {
-    getDb()
-      .prepare(
-        `INSERT INTO settings (key, value, updated_at)
-         VALUES (?, '7', datetime('now'))`,
-      )
-      .run(MEETING_RETENTION_SETTING_KEY);
+    writeSetting(MEETING_RETENTION_SETTING_KEY, "7");
     const liveDir = makeMeetingDir("live");
     const doneDir = makeMeetingDir("done");
     insertMeeting("live", "recording", liveDir, Date.now() - 10 * DAY_MS);

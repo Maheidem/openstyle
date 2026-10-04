@@ -17,7 +17,11 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
 // preset-crud-evidence — RUNTIME VISUAL EVIDENCE for preset management on
@@ -41,8 +45,8 @@ import { _electron as electron } from "playwright";
 //     isolation `import-screen`/`meeting-import` spell
 //     `OPENSTYLE_E2E_SERVER_URL`).
 //   * The app's boot probe WILL find the foreign server on 4649 and set
-//     `serverPort = 4649` (`src/main/index.ts:2821`) — which is exactly why
-//     `serverUrl` is seeded: `getServerBaseUrl()` (`src/main/index.ts:361`)
+//     `serverPort = 4649` (in the boot probe of `src/main/index.ts`). This is
+//     the reason why `serverUrl` is seeded: `getServerBaseUrl()` (`src/main/server-target.ts`)
 //     and the renderer's `getApiBase()` (`src/renderer/src/lib/api.ts:26`)
 //     both prefer a configured URL. Test 00 asserts the app resolved to OUR
 //     server, and the manifest records whether any renderer request ever
@@ -98,15 +102,10 @@ let app: ElectronApplication | undefined;
 let page: Page;
 const pageErrors: string[] = [];
 const consoleErrors: string[] = [];
-const defectConsoleErrors: string[] = [];
 const requestFailures: string[] = [];
 const httpLog: HttpRow[] = [];
 const shots: ShotRow[] = [];
 const assertions: AssertionRow[] = [];
-/** Requests we deliberately provoke while documenting a defect — kept out of
- *  the clean-session assertion so the defect is reported, not hidden. */
-const defectRequestFailures: string[] = [];
-let swallowingRequestFailures = false;
 const blobs: Record<
   string,
   { step: string; key: string; value: string | null }
@@ -359,9 +358,9 @@ async function resizeDashboard(width: number, height: number): Promise<void> {
     ({ BrowserWindow }, [w, h]) => {
       const win = BrowserWindow.getAllWindows().find(
         (x) =>
-          x.getURL().includes("app://renderer") &&
-          !x.getURL().includes("pill") &&
-          !x.getURL().includes("bar.html"),
+          x.webContents.getURL().includes("app://renderer") &&
+          !x.webContents.getURL().includes("pill") &&
+          !x.webContents.getURL().includes("bar.html"),
       );
       win?.setContentSize(w, h);
     },
@@ -381,28 +380,6 @@ async function expandCleanup(): Promise<void> {
   await expect(panel().getByText("Params", { exact: true })).toBeVisible({
     timeout: 10_000,
   });
-}
-
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 25_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return electronApp.windows()[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -512,35 +489,18 @@ test.beforeAll(async () => {
   );
 
   // 4. launch the real app against out/main/index.js
-  app = await electron.launch({
-    args: [resolve(__dirname, "../out/main/index.js")],
-    env: {
-      ...process.env,
-      NODE_ENV: "development",
-      OPENSTYLE_USER_DATA: userDataDir,
-      OPENSTYLE_DB_PATH: dbPath,
-      OPENSTYLE_E2E: "1",
-      ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-    },
-    timeout: 60_000,
-  });
-
-  await app.firstWindow();
-  page = await waitForDashboardWindow(app);
+  app = await launchOpenstyle({ userDataDir, timeout: 60_000 });
+  page = await waitForDashboardWindow(app, 25_000);
 
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
     const line = `${msg.text()} @ ${msg.location()?.url ?? "?"}`;
-    (swallowingRequestFailures ? defectConsoleErrors : consoleErrors).push(
-      line,
-    );
+    consoleErrors.push(line);
   });
   page.on("pageerror", (err) => pageErrors.push(String(err)));
   page.on("requestfailed", (req) => {
     const line = `${req.method()} ${req.url()} :: ${req.failure()?.errorText ?? "failed"}`;
-    (swallowingRequestFailures ? defectRequestFailures : requestFailures).push(
-      line,
-    );
+    requestFailures.push(line);
   });
   page.on("response", (r) => {
     const u = new URL(r.url());
@@ -614,15 +574,8 @@ test.afterAll(async () => {
     assertions,
     httpLog,
     consoleErrors,
-    defectConsoleErrors,
     pageErrors,
     requestFailures,
-    defectRequestFailures,
-    visionReview: {
-      status: "pending",
-      note: "filled in by vision-review.mjs after capture",
-    },
-    knownGaps: ["placeholder — replaced by the handoff"],
   };
 
   writeFileSync(
@@ -630,17 +583,7 @@ test.afterAll(async () => {
     JSON.stringify(manifest, null, 2),
   );
 
-  if (app) {
-    const proc = app.process();
-    const kill = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-    try {
-      await app.close();
-    } catch {
-      proc.kill("SIGKILL");
-    } finally {
-      clearTimeout(kill);
-    }
-  }
+  if (app) await closeApp(app);
   server?.kill("SIGTERM");
 });
 
@@ -1181,8 +1124,9 @@ test("09 confirming deletes it everywhere and the task falls back to Auto", asyn
   // (`use-models.ts`) wrote both blobs and updated `taskAssignments` (via
   // `putTaskAssignments`) but never called `setUserPresets(plan.presets)`,
   // while the settings seed effect is one-shot
-  // (`if (!s || settingsSeeded) return`) — so `refreshSettingsCache()`'s
-  // invalidation refetched the query but never re-seeded the state, and the
+  // (`if (!s || settingsSeededRef.current) return`). Because of this, the
+  // invalidation of `refreshSettingsCache()` refetched the query but never
+  // re-seeded the state, and the
   // deleted preset stayed in `userPresets` → `mergedPresets` →
   // `segmentedOptions` for the life of the mount.
   const stale = panel().getByRole("radio", { name: RENAMED, exact: true });
@@ -1278,47 +1222,28 @@ test("10 dangling assignment renders 'Preset no longer available', never a raw u
     ),
   ).toBe(200);
 
-  // DEFECT B (observed): a real reload of a deep route renders a BLANK window.
-  // `registerAppProtocol` (src/main/index.ts:453) serves index.html for
-  // extension-less paths, but the built index.html references its assets
-  // RELATIVELY (`./assets/…`) because no `base` is set on the renderer build,
-  // so from /settings/models the browser asks for
-  // /settings/models/assets/index-*.js — which has an extension, gets no SPA
-  // fallback, resolves to a nonexistent file on disk, and `net.fetch` fails
-  // with net::ERR_UNEXPECTED (observed verbatim — not a 404). React never
-  // mounts.
-  swallowingRequestFailures = true;
-  await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
-  await new Promise((r) => setTimeout(r, 2_000));
-  const blankBody = await page
-    .locator("body")
-    .innerText()
-    .catch(() => "");
-  const blankSections = await page.locator("section").count();
-  record(
-    "10d",
-    "hard reload of /settings/models must re-render the app (DEFECT B: it renders BLANK)",
-    blankBody.length > 0 && blankSections > 0,
-    `url=${page.url()}; bodyText.length=${blankBody.length}; sections=${blankSections}; failedRequests=${defectRequestFailures.length}; consoleErrors=${defectConsoleErrors.length} — root cause: built index.html uses relative './assets/…' URLs while registerAppProtocol (src/main/index.ts:453) only SPA-falls-back for extension-less paths`,
-  );
-  await capture(
-    "10d",
-    "defect-blank-after-reload",
-    "DEFECT: reload of a deep route",
-    "DEFECT EVIDENCE: the whole window after pressing reload on /settings/models — chrome only / blank, React did not mount.",
-    page,
-  );
-
-  // Workaround that stays inside the app: load the ROOT document (assets then
-  // resolve correctly) and route to Models client-side. This is a genuine
-  // fresh mount, so it also proves the dangling state survives a restart.
-  await page.goto("app://renderer/", { waitUntil: "domcontentloaded" });
-  swallowingRequestFailures = false;
+  // A real reload is a fresh mount, so it also proves the dangling state
+  // survives a restart. The renderer must re-render the deep route.
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByRole("link", { name: "Models" }).first()).toBeVisible({
     timeout: 30_000,
   });
-  await page.getByRole("link", { name: "Models" }).first().click();
-  await page.waitForURL(/\/settings\/models/, { timeout: 20_000 });
+  const reloadBody = await page.locator("body").innerText();
+  const reloadSections = await page.locator("section").count();
+  record(
+    "10d",
+    "hard reload of /settings/models re-renders the app",
+    reloadBody.length > 0 && reloadSections > 0,
+    `url=${page.url()}; bodyText.length=${reloadBody.length}; sections=${reloadSections}`,
+  );
+  await capture(
+    "10d",
+    "reload-deep-route",
+    "Reload of a deep route",
+    "The whole window after pressing reload on /settings/models: the app mounts again.",
+    page,
+  );
+
   await section().waitFor({ state: "visible", timeout: 30_000 });
   await expandCleanup();
   const p = panel();
@@ -1559,9 +1484,8 @@ test("12 no console errors, no failed requests, no 4xx/5xx anywhere", async () =
 // The capture steps deliberately `record()` rather than `expect()`, so one
 // cosmetic miss cannot stop later screenshots. This is where the ledger is
 // settled. OFF by default: this file's job is EVIDENCE, and a red suite would
-// bury the 12 good captures; flip OPENSTYLE_EVIDENCE_STRICT=1 to make the
-// suite fail on any recorded defect (that is the shape you would keep if the
-// two open bugs below were fixed).
+// bury the good captures. Set OPENSTYLE_EVIDENCE_STRICT=1 to make the suite
+// fail on any recorded defect.
 // ---------------------------------------------------------------------------
 
 test("13 defect roll-up", async () => {
@@ -1578,11 +1502,7 @@ test("13 defect roll-up", async () => {
   );
   writeFileSync(
     join(EVIDENCE_DIR, "defects.json"),
-    JSON.stringify(
-      { failed, defectRequestFailures, defectConsoleErrors },
-      null,
-      2,
-    ),
+    JSON.stringify({ failed }, null, 2),
   );
 
   if (process.env.OPENSTYLE_EVIDENCE_STRICT === "1") {

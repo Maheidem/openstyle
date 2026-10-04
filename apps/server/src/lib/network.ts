@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createAppLogger } from "@openstyle/utils";
+import { SETTINGS_KEYS } from "@openstyle/validations";
 import {
   Agent,
   EnvHttpProxyAgent,
@@ -15,8 +16,8 @@ const log = createAppLogger("network");
  * matching environment variables so a locked-down desktop install can be
  * configured from the UI without editing the launch environment.
  */
-export const PROXY_URL_SETTING = "network_proxy_url";
-export const CA_CERT_PATH_SETTING = "network_ca_cert_path";
+export const PROXY_URL_SETTING = SETTINGS_KEYS.networkProxyUrl;
+export const CA_CERT_PATH_SETTING = SETTINGS_KEYS.networkCaCertPath;
 
 export interface NetworkConfig {
   /** Explicit proxy URL (e.g. http://proxy.corp:8080). */

@@ -1,10 +1,10 @@
 import { z } from "zod/v3";
+import { httpUrlOrEmpty } from "./http-url-or-empty.js";
+import { SETTINGS_KEYS } from "./settings-keys.js";
 
 export const settingValueSchema = z.object({
   value: z.string(),
 });
-
-export type SettingValueInput = z.infer<typeof settingValueSchema>;
 
 /** Post-processing (AI cleanup) intensity levels. */
 export const cleanupIntensitySchema = z.enum([
@@ -104,7 +104,7 @@ export const cleanupSamplingSchema = z.object({
 export type CleanupSampling = z.infer<typeof cleanupSamplingSchema>;
 
 /** No overrides — the request body stays exactly as the AI SDK built it. */
-export const DEFAULT_CLEANUP_SAMPLING: CleanupSampling = {};
+const DEFAULT_CLEANUP_SAMPLING: CleanupSampling = {};
 
 /**
  * Coerce an arbitrary persisted value into a valid {@link CleanupSampling},
@@ -129,41 +129,37 @@ export function parseCleanupSampling(
  * (or socks) URL when set — this is what downloads are routed through on
  * managed corporate networks.
  */
-export const proxyUrlSettingSchema = z
-  .string()
-  .max(2048)
-  .refine(
-    (value) => {
-      if (value.trim() === "") return true;
-      try {
-        const url = new URL(value.trim());
-        return ["http:", "https:", "socks:", "socks4:", "socks5:"].includes(
-          url.protocol,
-        );
-      } catch {
-        return false;
-      }
-    },
-    {
-      message:
-        "Proxy must be a valid http://, https:// or socks:// URL (or empty to disable)",
-    },
-  );
+export const proxyUrlSettingSchema = httpUrlOrEmpty(
+  ["http:", "https:", "socks:", "socks4:", "socks5:"],
+  "Proxy must be a valid http://, https:// or socks:// URL (or empty to disable)",
+);
 
 /** Filesystem path to a custom CA certificate bundle. Empty string clears it. */
 export const caCertPathSettingSchema = z.string().max(4096);
+
+/**
+ * Strict parse of a whole number inside [min, max]. Returns `null` when the
+ * value is missing, not a whole number, or out of bounds.
+ */
+function parseBoundedIntStrict(
+  value: string | null | undefined,
+  min: number,
+  max: number,
+): number | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  if (n < min || n > max) return null;
+  return n;
+}
 
 export const HISTORY_RETENTION_DAYS_MAX = 3650;
 
 export function parseRetentionDays(
   value: string | null | undefined,
 ): number | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  const days = Number(trimmed);
-  if (days < 1 || days > HISTORY_RETENTION_DAYS_MAX) return null;
-  return days;
+  return parseBoundedIntStrict(value, 1, HISTORY_RETENTION_DAYS_MAX);
 }
 
 export const historyRetentionDaysSettingSchema = z
@@ -221,12 +217,7 @@ function parseBoundedInt(
   max: number,
   fallback: number,
 ): number {
-  if (value == null) return fallback;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return fallback;
-  const n = Number(trimmed);
-  if (n < min || n > max) return fallback;
-  return n;
+  return parseBoundedIntStrict(value, min, max) ?? fallback;
 }
 
 /**
@@ -285,7 +276,7 @@ export function parseMeetingSummaryContextBudget(
  * (`apps/electron/src/shared/settings-keys.ts`).
  */
 export const MEETING_SUMMARY_TIMEOUT_SETTING_KEY =
-  "meeting_summary_timeout_seconds";
+  SETTINGS_KEYS.meetingSummaryTimeoutSeconds;
 
 /**
  * Bounds, with the arithmetic (see also the token-budget note at
@@ -338,17 +329,11 @@ export const DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS = 600;
 export function parseMeetingSummaryTimeoutSeconds(
   value: string | null | undefined,
 ): number | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  const seconds = Number(trimmed);
-  if (
-    seconds < MEETING_SUMMARY_TIMEOUT_SECONDS_MIN ||
-    seconds > MEETING_SUMMARY_TIMEOUT_SECONDS_MAX
-  ) {
-    return null;
-  }
-  return seconds;
+  return parseBoundedIntStrict(
+    value,
+    MEETING_SUMMARY_TIMEOUT_SECONDS_MIN,
+    MEETING_SUMMARY_TIMEOUT_SECONDS_MAX,
+  );
 }
 
 /**
@@ -400,7 +385,7 @@ export const meetingSummaryTimeoutSecondsSettingSchema = z
  * `SETTINGS_KEYS.meetingEnhanceTimeoutSeconds`.
  */
 export const MEETING_ENHANCE_TIMEOUT_SETTING_KEY =
-  "meeting_enhance_timeout_seconds";
+  SETTINGS_KEYS.meetingEnhanceTimeoutSeconds;
 
 /**
  * Same bounds and same default as the summarize knob, deliberately:
@@ -421,17 +406,11 @@ export const DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS = 600;
 export function parseMeetingEnhanceTimeoutSeconds(
   value: string | null | undefined,
 ): number | null {
-  if (value == null) return null;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  const seconds = Number(trimmed);
-  if (
-    seconds < MEETING_ENHANCE_TIMEOUT_SECONDS_MIN ||
-    seconds > MEETING_ENHANCE_TIMEOUT_SECONDS_MAX
-  ) {
-    return null;
-  }
-  return seconds;
+  return parseBoundedIntStrict(
+    value,
+    MEETING_ENHANCE_TIMEOUT_SECONDS_MIN,
+    MEETING_ENHANCE_TIMEOUT_SECONDS_MAX,
+  );
 }
 
 /** Milliseconds for one Enhance call. The one and only seconds→ms site —
@@ -475,8 +454,6 @@ export const historyPresetSchema = z.enum([
   "all-time",
   "custom",
 ]);
-
-export type HistoryPreset = z.infer<typeof historyPresetSchema>;
 
 /**
  * Persisted History-page filter + view state, stored as a single JSON blob in

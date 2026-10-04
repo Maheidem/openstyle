@@ -34,12 +34,10 @@
  */
 
 import {
-  closeSync,
   copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -49,6 +47,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
+import { SYSTEM_WAV } from "@openstyle/validations";
 import { Hono } from "hono";
 import {
   AudioDecodeError,
@@ -56,11 +55,12 @@ import {
   needsDecodeFile,
 } from "../lib/audio/decode.js";
 import {
-  ACCEPTED_EXTENSIONS_DETAIL,
   ACCEPTED_IMPORT_EXTENSIONS,
-  formatLimit,
+  decodeFailedBody,
   importFileExtension,
   MAX_IMPORT_BYTES,
+  tooLargeBody,
+  unsupportedTypeBody,
 } from "../lib/audio/import-limits.js";
 import {
   extractBoundary,
@@ -69,8 +69,9 @@ import {
   type StreamedFilePart,
   streamMultipartForm,
 } from "../lib/audio/multipart-stream.js";
-import { parseWavHeader, wavDurationMs } from "../lib/audio/wav.js";
+import { readWavInfo, wavDurationMs } from "../lib/audio/wav.js";
 import { getDb } from "../lib/db.js";
+import { getMeetingRow } from "../lib/meetings/store.js";
 
 const log = createAppLogger("meetings-import");
 
@@ -83,24 +84,6 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_TITLE_CHARS = 512; // mirrors startSchema's z.string().max(512)
-
-function tooLargeBody(maxBytes: number) {
-  return {
-    error: "File too large",
-    detail: `Maximum upload size is ${formatLimit(maxBytes)}`,
-    code: "PAYLOAD_TOO_LARGE",
-  } as const;
-}
-
-/** Header info of an on-disk WAV (`parseWavHeader` accepts an open fd). */
-function wavInfoAt(path: string) {
-  const fd = openSync(path, "r");
-  try {
-    return parseWavHeader(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
 
 /**
  * Move `src` to `dst` without ever holding it in memory: rename when the two
@@ -219,14 +202,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
 
       const ext = importFileExtension(audio.filename);
       if (!ext || !ACCEPTED_IMPORT_EXTENSIONS.has(ext)) {
-        return c.json(
-          {
-            error: "Unsupported file type",
-            detail: ACCEPTED_EXTENSIONS_DETAIL,
-            code: "UNSUPPORTED_MEDIA_TYPE",
-          },
-          415,
-        );
+        return c.json(unsupportedTypeBody(), 415);
       }
 
       const db = getDb();
@@ -269,15 +245,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
           log.error(
             `meeting ${id}: decode failed (${err.reason}): ${err.message}`,
           );
-          return c.json(
-            {
-              error: "Audio decode failed",
-              detail: "ffmpeg could not decode the file",
-              code: err.code,
-              reason: err.reason,
-            },
-            422,
-          );
+          return c.json(decodeFailedBody(err.code, err.reason), 422);
         }
         throw err;
       }
@@ -289,16 +257,11 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       // finds no segments).
       let durationMs: number;
       try {
-        durationMs = Math.round(wavDurationMs(wavInfoAt(wavPath)));
+        durationMs = Math.round(wavDurationMs(readWavInfo(wavPath)));
       } catch (err) {
         log.error(`meeting ${id}: WAV not parseable: ${String(err)}`);
         return c.json(
-          {
-            error: "Audio decode failed",
-            detail: "ffmpeg could not decode the file",
-            code: "AUDIO_DECODE_FAILED",
-            reason: "decode_failed",
-          },
+          decodeFailedBody("AUDIO_DECODE_FAILED", "decode_failed"),
           422,
         );
       }
@@ -309,7 +272,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       // retry isn't 409-blocked (it was empty or ours; nothing to lose).
       try {
         mkdirSync(audioDir, { recursive: true });
-        placeWavFile(wavPath, join(audioDir, "system.wav"));
+        placeWavFile(wavPath, join(audioDir, SYSTEM_WAV));
         db.prepare(
           `INSERT INTO meetings (id, title, started_at, ended_at, duration_ms,
                                 status, audio_dir, created_at)
@@ -333,12 +296,10 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
         throw err;
       }
 
-      const row = db
-        .prepare("SELECT * FROM meetings WHERE id = ?")
-        .get(id) as Record<string, unknown>;
+      const row = getMeetingRow(id);
       log.info(
         `meeting ${id}: imported ${audio.bytes} -> ${
-          statSync(join(audioDir, "system.wav")).size
+          statSync(join(audioDir, SYSTEM_WAV)).size
         } bytes, ${durationMs} ms`,
       );
       // Fresh-import response in the exact GET /:id shape so the renderer

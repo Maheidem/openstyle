@@ -3,7 +3,7 @@ import { z } from "zod/v3";
 /**
  * Format guard for dismissible-notification keys. Keys are short opaque
  * identifiers (e.g. `profile_info_prompt`, `changelog.1.2.0`) used as the
- * primary key of the local `dismissed_notifications` table / AsyncStorage list.
+ * primary key of the local `dismissed_notifications` table.
  * Presence of a key means the corresponding dialog/banner has been dismissed.
  */
 export const notificationKeySchema = z
@@ -13,9 +13,7 @@ export const notificationKeySchema = z
   .max(200)
   .regex(/^[a-z0-9_.:-]+$/);
 
-export type NotificationKey = z.infer<typeof notificationKeySchema>;
-
-/** Cross-platform return contract for `useDismissible(key)`. */
+/** Return contract for `useDismissible(key)`. */
 export interface DismissibleNotificationState {
   /** True once the persisted dismissal state has hydrated. */
   ready: boolean;
@@ -28,7 +26,7 @@ export interface DismissibleNotificationState {
 }
 
 /**
- * Registry of concrete dialog/banner keys shared by desktop and mobile.
+ * Registry of concrete dialog/banner keys used by the desktop app.
  * Object keys are UPPER_SNAKE constants; values are the persisted lowercase
  * identifiers. Hooks still accept any string — this is just the source of
  * truth for real use-sites so callers don't typo free-form literals.
@@ -39,6 +37,3 @@ export const KNOWN_NOTIFICATION_KEYS = {
   /** Today-page dictation tutorial hero (dismissible banner). */
   TODAY_TUTORIAL_HERO: "today.tutorial_hero",
 } as const;
-
-export type KnownNotificationKey =
-  (typeof KNOWN_NOTIFICATION_KEYS)[keyof typeof KNOWN_NOTIFICATION_KEYS];

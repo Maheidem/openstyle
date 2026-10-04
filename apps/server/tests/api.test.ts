@@ -12,6 +12,7 @@ import {
   startHistoryRetentionSweep,
   stopHistoryRetentionSweep,
 } from "../src/lib/history-store.js";
+import { jsonRequest } from "./helpers/http.js";
 
 const app = createApp();
 
@@ -24,11 +25,7 @@ function req(path: string, init?: RequestInit) {
 }
 
 function json(path: string, body: unknown, method = "POST") {
-  return req(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return jsonRequest(app, method, path, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -126,48 +123,25 @@ describe("Settings", () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
-  it("accepts valid tone preset settings", async () => {
-    const personal = await json(
-      "/api/settings/cleanup_personal_tone",
-      { value: "casual" },
-      "PUT",
-    );
-    const work = await json(
-      "/api/settings/cleanup_work_tone",
-      { value: "friendly" },
-      "PUT",
-    );
-    const email = await json(
-      "/api/settings/cleanup_email_tone",
-      { value: "warm" },
-      "PUT",
-    );
+  // [setting key, accepted value, rejected value]
+  const toneCases = [
+    ["cleanup_personal_tone", "casual", "corporate"],
+    ["cleanup_work_tone", "friendly", "playful"],
+    ["cleanup_email_tone", "warm", "ultra_formal"],
+  ] as const;
 
-    expect(personal.status).toBe(200);
-    expect(work.status).toBe(200);
-    expect(email.status).toBe(200);
+  it.each(
+    toneCases,
+  )("accepts a valid tone preset for %s", async (key, good) => {
+    const res = await json(`/api/settings/${key}`, { value: good }, "PUT");
+    expect(res.status).toBe(200);
   });
 
-  it("rejects invalid tone preset settings", async () => {
-    const personal = await json(
-      "/api/settings/cleanup_personal_tone",
-      { value: "corporate" },
-      "PUT",
-    );
-    const work = await json(
-      "/api/settings/cleanup_work_tone",
-      { value: "playful" },
-      "PUT",
-    );
-    const email = await json(
-      "/api/settings/cleanup_email_tone",
-      { value: "ultra_formal" },
-      "PUT",
-    );
-
-    expect(personal.status).toBe(400);
-    expect(work.status).toBe(400);
-    expect(email.status).toBe(400);
+  it.each(
+    toneCases,
+  )("rejects an invalid tone preset for %s", async (key, _good, bad) => {
+    const res = await json(`/api/settings/${key}`, { value: bad }, "PUT");
+    expect(res.status).toBe(400);
   });
 
   it("reads history pause setting", async () => {
@@ -288,12 +262,27 @@ describe("Dismissed notifications", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Dictionary CRUD
+// Dictionary and Vocabulary CRUD
 // ---------------------------------------------------------------------------
 
-describe("Dictionary", () => {
-  it("GET /api/dictionary returns empty list initially (ignoring seed data)", async () => {
-    const res = await req("/api/dictionary");
+// Cases that are the same for both resources. `field` is the unique name
+// field. `create(name)` builds a valid create payload for that name.
+describe.each([
+  {
+    label: "Dictionary",
+    path: "/api/dictionary",
+    field: "key",
+    create: (name: string) => ({ key: name, value: "V" }),
+  },
+  {
+    label: "Vocabulary",
+    path: "/api/vocabulary",
+    field: "term",
+    create: (name: string) => ({ term: name }),
+  },
+])("$label shared CRUD", ({ path, field, create }) => {
+  it("GET returns list shape", async () => {
+    const res = await req(path);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toHaveProperty("items");
@@ -301,6 +290,51 @@ describe("Dictionary", () => {
     expect(Array.isArray(data.items)).toBe(true);
   });
 
+  it("DELETE removes an entry", async () => {
+    const created = await json(path, create("to-delete"));
+    const { id } = await created.json();
+
+    const del = await req(`${path}/${id}`, { method: "DELETE" });
+    expect(del.status).toBe(200);
+
+    const get = await req(`${path}/${id}`);
+    expect(get.status).toBe(404);
+  });
+
+  it("POST rejects duplicate names", async () => {
+    await json(path, create("dupe"));
+    const res = await json(path, create("dupe"));
+    expect(res.status).toBe(409);
+  });
+
+  it("GET supports search", async () => {
+    await json(path, create("searchable"));
+
+    const res = await req(`${path}?search=searchable`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBeGreaterThanOrEqual(1);
+    expect(
+      data.items.some(
+        (i: Record<string, unknown>) => i[field] === "searchable",
+      ),
+    ).toBe(true);
+  });
+
+  it("GET /all returns all entries", async () => {
+    const res = await req(`${path}/all`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(await res.json())).toBe(true);
+  });
+
+  it("POST /export returns JSON export", async () => {
+    const res = await json(`${path}/export`, { type: "json" });
+    expect(res.status).toBe(200);
+    expect(Array.isArray(await res.json())).toBe(true);
+  });
+});
+
+describe("Dictionary", () => {
   it("POST creates a new entry", async () => {
     const res = await json("/api/dictionary", {
       key: "type script",
@@ -340,45 +374,6 @@ describe("Dictionary", () => {
     expect(data.value).toBe("NodeJS");
   });
 
-  it("DELETE removes an entry", async () => {
-    const create = await json("/api/dictionary", {
-      key: "to delete",
-      value: "gone",
-    });
-    const { id } = await create.json();
-
-    const del = await req(`/api/dictionary/${id}`, { method: "DELETE" });
-    expect(del.status).toBe(200);
-
-    const get = await req(`/api/dictionary/${id}`);
-    expect(get.status).toBe(404);
-  });
-
-  it("POST rejects duplicate keys", async () => {
-    await json("/api/dictionary", { key: "dupe", value: "first" });
-    const res = await json("/api/dictionary", { key: "dupe", value: "second" });
-    expect(res.status).toBe(409);
-  });
-
-  it("GET /api/dictionary supports search", async () => {
-    await json("/api/dictionary", { key: "searchable", value: "findme" });
-
-    const res = await req("/api/dictionary?search=searchable");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.items.length).toBeGreaterThanOrEqual(1);
-    expect(
-      data.items.some((i: { key: string }) => i.key === "searchable"),
-    ).toBe(true);
-  });
-
-  it("GET /api/dictionary/all returns all entries", async () => {
-    const res = await req("/api/dictionary/all");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-  });
-
   it("POST /api/dictionary/import bulk imports", async () => {
     const entries = [
       { key: "import one", value: "Import1" },
@@ -390,29 +385,9 @@ describe("Dictionary", () => {
     expect(data.imported).toBe(2);
     expect(data.skipped).toBe(0);
   });
-
-  it("POST /api/dictionary/export returns JSON export", async () => {
-    const res = await json("/api/dictionary/export", { type: "json" });
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-  });
 });
 
-// ---------------------------------------------------------------------------
-// Vocabulary CRUD
-// ---------------------------------------------------------------------------
-
 describe("Vocabulary", () => {
-  it("GET /api/vocabulary returns list shape", async () => {
-    const res = await req("/api/vocabulary");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toHaveProperty("items");
-    expect(data).toHaveProperty("total");
-    expect(Array.isArray(data.items)).toBe(true);
-  });
-
   it("POST creates a new term", async () => {
     const res = await json("/api/vocabulary", {
       term: "TypeScript",
@@ -447,40 +422,6 @@ describe("Vocabulary", () => {
     expect((await put.json()).notes).toBe("UI library");
   });
 
-  it("DELETE removes a term", async () => {
-    const create = await json("/api/vocabulary", { term: "to-delete" });
-    const { id } = await create.json();
-
-    const del = await req(`/api/vocabulary/${id}`, { method: "DELETE" });
-    expect(del.status).toBe(200);
-
-    const get = await req(`/api/vocabulary/${id}`);
-    expect(get.status).toBe(404);
-  });
-
-  it("POST rejects duplicate terms", async () => {
-    await json("/api/vocabulary", { term: "dupe-term" });
-    const res = await json("/api/vocabulary", { term: "dupe-term" });
-    expect(res.status).toBe(409);
-  });
-
-  it("GET /api/vocabulary supports search", async () => {
-    await json("/api/vocabulary", { term: "searchable-vocab" });
-
-    const res = await req("/api/vocabulary?search=searchable-vocab");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(
-      data.items.some((i: { term: string }) => i.term === "searchable-vocab"),
-    ).toBe(true);
-  });
-
-  it("GET /api/vocabulary/all returns all terms", async () => {
-    const res = await req("/api/vocabulary/all");
-    expect(res.status).toBe(200);
-    expect(Array.isArray(await res.json())).toBe(true);
-  });
-
   it("POST /api/vocabulary/import bulk imports", async () => {
     const res = await json("/api/vocabulary/import", [
       { term: "import-one" },
@@ -490,12 +431,6 @@ describe("Vocabulary", () => {
     const data = await res.json();
     expect(data.imported).toBe(2);
     expect(data.skipped).toBe(0);
-  });
-
-  it("POST /api/vocabulary/export returns JSON export", async () => {
-    const res = await json("/api/vocabulary/export", { type: "json" });
-    expect(res.status).toBe(200);
-    expect(Array.isArray(await res.json())).toBe(true);
   });
 });
 
@@ -866,7 +801,7 @@ describe("History retention", () => {
 // T1-7 (specs/lean-audit-2026-09.md §3): the dictionary rewrite snapshot is
 // compiled once per dictionary version, invalidated by every write route.
 // These tests drive the *real* delivery path (POST /api/post-process →
-// applyFinalRewrites) against the *real* write routes, so a forgotten
+// postProcess) against the *real* write routes, so a forgotten
 // markDictionaryChanged() in any of them reads as a stale replacement.
 // ---------------------------------------------------------------------------
 

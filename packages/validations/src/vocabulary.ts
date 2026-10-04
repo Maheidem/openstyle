@@ -1,5 +1,4 @@
 import { z } from "zod/v3";
-import { EXPORT_TYPES } from "./export.js";
 
 const VOCABULARY_TERM_MAX = 200;
 const VOCABULARY_NOTES_MAX = 2_000;
@@ -39,33 +38,16 @@ export const importVocabularySchema = z
 const VOCABULARY_BULK_MAX = 1_000;
 
 /**
- * Consolidated `POST /vocabulary/actions` payload: a discriminated union keyed
- * on `action`, so bulk operations that don't map cleanly onto REST verbs (delete
- * many, import, export) share one endpoint instead of proliferating routes.
- *
- * `bulk-delete` takes an array of row ids and removes them in a single
- * transaction (one cloud push, not one per row). `import` / `export` mirror the
- * standalone schemas so callers can route everything through `/actions`.
+ * `POST /vocabulary/actions` payload. The only action today is `bulk-delete`.
+ * It takes an array of row ids and removes them in a single transaction.
+ * Import and export have their own routes: `/import` and `/export`.
  */
-export const vocabularyActionSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("bulk-delete"),
-    ids: z
-      .array(z.number().int().positive())
-      .min(1, "No entries selected")
-      .max(VOCABULARY_BULK_MAX, "Too many entries selected"),
-  }),
-  z.object({
-    action: z.literal("import"),
-    entries: importVocabularySchema,
-  }),
-  z.object({
-    action: z.literal("export"),
-    type: z.enum(EXPORT_TYPES).default("json"),
-  }),
-]);
+export const vocabularyActionSchema = z.object({
+  action: z.literal("bulk-delete"),
+  ids: z
+    .array(z.number().int().positive())
+    .min(1, "No entries selected")
+    .max(VOCABULARY_BULK_MAX, "Too many entries selected"),
+});
 
 export type CreateVocabularyInput = z.infer<typeof createVocabularySchema>;
-export type UpdateVocabularyInput = z.infer<typeof updateVocabularySchema>;
-export type ImportVocabularyInput = z.infer<typeof importVocabularySchema>;
-export type VocabularyActionInput = z.infer<typeof vocabularyActionSchema>;

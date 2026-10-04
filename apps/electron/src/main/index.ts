@@ -39,15 +39,14 @@ if (process.env.NODE_ENV !== "production") {
   }
 }
 
-import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants } from "node:fs";
 import { rm } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join } from "node:path";
+import { setTimeout as wait } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { OutputMode } from "@openstyle/sdk";
 import {
-  type AppType,
   activateManagedMlxRuntimeForAppVersion,
   closeDb,
   prefetchManagedMlxRuntimeForAppRelease,
@@ -57,16 +56,19 @@ import {
   stopWhisperServer,
 } from "@openstyle/server";
 import { createAppLogger, enableFileLogging } from "@openstyle/utils";
-import { REMIX_CLIPBOARD_LIMIT, serverUrlSchema } from "@openstyle/validations";
+import {
+  DEFAULT_SERVER_PORT,
+  REMIX_CLIPBOARD_LIMIT,
+} from "@openstyle/validations";
 import {
   app,
   BrowserWindow,
   clipboard,
-  type Display,
   dialog,
   globalShortcut,
   ipcMain,
   Menu,
+  type MenuItemConstructorOptions,
   Notification,
   nativeImage,
   net,
@@ -77,20 +79,27 @@ import {
   Tray,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import { hc } from "hono/client";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
-import type { OpenAppCandidate } from "../shared/open-apps";
 import { normalizePillCancelMode } from "../shared/pill-cancel";
 import {
   getDefaultRemixHotkey,
   REMIX_CLIPBOARD_PREVIEW_LIMIT,
 } from "../shared/remix";
-import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { registerJobAbortIpc } from "./abortable-jobs";
+import {
+  getFocusedWindowDisplay,
+  getFrontmostContext,
+  getLinuxFrontmostApp,
+  getMacFrontmostApp,
+  getOpenAppCandidates,
+  getOpenstyleAppExclusions,
+  getWindowsFrontmostApp,
+} from "./active-window";
+import { registerAppSettingsIpc } from "./app-settings-ipc";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { registerDiskUsageIpc } from "./disk-usage";
@@ -98,19 +107,35 @@ import { HotkeyRecorder } from "./hotkey-recorder";
 import {
   diffLanguageHotkeys,
   isLanguageHotkeyTaken,
+  isValidAccelerator,
   normalizeAccelerator,
 } from "./hotkey-utils";
 import { registerImportIpc } from "./import-audio";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
-import { checkLinuxSetup } from "./linux-setup";
+import { isWaylandSession } from "./linux-session";
+import {
+  clearSettingsCache,
+  readSettings,
+  writeSettings,
+} from "./local-settings";
+import {
+  activateAnchorApp,
+  isSecureInputActive,
+  runKeystrokeScript,
+  runMacAxCaps,
+  runMacAxKey,
+  runMacAxRead,
+  runMacAxSelect,
+  sendChordToFocusedApp,
+  sendSelectAllToFocusedApp,
+} from "./mac-ax";
 import { registerMeetingImportIpc } from "./meeting-import";
+import { registerMeetingIpc } from "./meeting-ipc";
 import { MeetingRecorder } from "./meeting-recorder";
 import { migrateLegacyUserData } from "./migrate-user-data";
-import { getNativeBinaryPath } from "./native-binary";
 import {
   copySelectionFromFocusedApp,
-  isWaylandSession,
   pasteClipboardIntoFocusedApp,
   pasteIntoFocusedApp,
   startLinuxPasteHelper,
@@ -123,13 +148,35 @@ import {
   type StartupPermissionWarning,
   startupPermissionWarning,
 } from "./permission-checks";
-import { isRemixTargetAllowed } from "./remix-target";
-import { selfUpdater, sweepSelfUpdaterBackups } from "./self-updater";
-import { isSystemAudioCaptureSupported } from "./system-audio-capture";
+import { registerPermissionsIpc } from "./permissions-ipc";
 import {
-  openAudioCaptureSettings,
-  probeSystemAudio,
-} from "./system-audio-probe";
+  APP_HEIGHT,
+  APP_WIDTH,
+  presetPositionForDisplay,
+  resolveCustomPosition,
+} from "./pill-position";
+import { isRemixTargetAllowed } from "./remix-target";
+import {
+  getDashboardURL,
+  getMeetingCaptureURL,
+  getPillURL,
+  getRemixBarURL,
+} from "./renderer-urls";
+import { selfUpdater, sweepSelfUpdaterBackups } from "./self-updater";
+import {
+  getConfiguredModelCount,
+  getServerPort,
+  getServerSettings,
+  getServerToken,
+  getServerUrl,
+  probeServerHealth,
+  putServerSetting,
+  serverClient,
+  serverFetch,
+  setServerPort,
+  waitForServerReady,
+} from "./server-target";
+import { isSystemAudioCaptureSupported } from "./system-audio-capture";
 
 // Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
 // share the real "Electron" userData (settings.json included) with a running
@@ -199,13 +246,6 @@ process.on("unhandledRejection", (reason) => {
   );
 });
 
-const DEFAULT_PORT = 4649;
-/**
- * The pill's own slot: every position in this file is computed against these
- * dimensions, whatever size the window currently is. See `pillExpandOffset`.
- */
-const APP_WIDTH = 160;
-const APP_HEIGHT = 60;
 /**
  * The window is grown to this while the renderer shows its expanded status
  * card (a failure the user has to answer — see `pill:set-expanded`). The extra
@@ -276,89 +316,13 @@ function setPillHotRect(rect: PillHotRect | null): void {
   }, 120);
 }
 
-// ---------------------------------------------------------------------------
-// settings.json helpers — single source for read/write of the lightweight
-// JSON file the main process uses for settings it needs before the server
-// is available (pillPosition, onboardingComplete, autoUpdate).
-// ---------------------------------------------------------------------------
-
-let settingsCache: Record<string, unknown> | null = null;
-
-function readSettings(): Record<string, unknown> {
-  if (settingsCache) return settingsCache;
-  try {
-    const settingsPath = join(app.getPath("userData"), "settings.json");
-    settingsCache = JSON.parse(
-      require("node:fs").readFileSync(settingsPath, "utf-8"),
-    );
-    return settingsCache!;
-  } catch {
-    settingsCache = {};
-    return settingsCache;
-  }
-}
-
-function writeSettings(patch: Record<string, unknown>): void {
-  try {
-    const settingsPath = join(app.getPath("userData"), "settings.json");
-    const data = { ...readSettings(), ...patch };
-    require("node:fs").writeFileSync(
-      settingsPath,
-      JSON.stringify(data, null, 2),
-    );
-    settingsCache = data;
-  } catch {
-    // ignore
-  }
-}
-
 /**
- * The configured Openstyle server URL, if the user has set one. When present,
- * the app talks to that server (for server-owned data: settings, history,
- * transcription) instead of the locally-run one. Returns an empty
- * string when using the default local server.
- *
- * The local server is always started regardless, so switching back to local
- * (or between remotes) never requires a restart — see the startup block.
+ * Send one IPC message to the pill window and the settings window. The
+ * channel must be a string literal, so the preload drift test can find it.
  */
-function getServerUrl(): string {
-  const parsed = serverUrlSchema.safeParse(readSettings().serverUrl);
-  return parsed.success ? parsed.data : "";
-}
-
-/** Optional bearer token sent to a configured server ("" = none). */
-function getServerToken(): string {
-  const raw = readSettings().serverToken;
-  return typeof raw === "string" ? raw.trim() : "";
-}
-
-/**
- * Authorization headers for main-process API calls to a configured server.
- * Empty when no token is set (the default local-server case), so loopback
- * requests are unaffected.
- */
-function getServerAuthHeaders(): Record<string, string> {
-  return bearerAuthHeaders(getServerToken());
-}
-
-/**
- * Typed `hc` client bound to the current server target (local or configured
- * remote) with auth headers — the main-process counterpart to the renderer's
- * getClient(). Reads the target per call, so it always tracks the latest
- * server:changed state without a restart.
- */
-function serverClient() {
-  return hc<AppType>(getServerBaseUrl(), { headers: getServerAuthHeaders() });
-}
-
-/** Relay a main-process pipeline event to the current server target with auth. */
-/**
- * Base URL the app uses to reach the Openstyle server: the configured remote
- * URL, or the locally-run server on the resolved port. The DB lives behind the
- * server, so all server-owned data (settings, history) is read through it.
- */
-function getServerBaseUrl(): string {
-  return getServerUrl() || `http://127.0.0.1:${serverPort}`;
+function broadcastToWindows(channel: string, ...args: unknown[]): void {
+  mainWindow?.webContents.send(channel, ...args);
+  settingsWindow?.webContents.send(channel, ...args);
 }
 
 /**
@@ -366,13 +330,11 @@ function getServerBaseUrl(): string {
  * re-point their API clients and refetch, without an app restart.
  */
 function broadcastServerChanged(): void {
-  mainWindow?.webContents.send("server:changed");
-  settingsWindow?.webContents.send("server:changed");
+  broadcastToWindows("server:changed");
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
-let serverPort = DEFAULT_PORT;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 // In-flight settings-window creation. createSettingsWindow awaits an onboarding
@@ -417,9 +379,7 @@ let meetingRecorder: MeetingRecorder | null = null;
 let meetingsFlagEnabled = false;
 
 function refreshMeetingsFlag(): void {
-  void fetch(`${getServerBaseUrl()}/api/config/flags/meetings`, {
-    headers: getServerAuthHeaders(),
-  })
+  void serverFetch("/config/flags/meetings")
     .then(async (res) => {
       if (!res.ok) return;
       const body = (await res.json()) as { value?: boolean };
@@ -469,27 +429,6 @@ function registerAppProtocol(): void {
   });
 }
 
-function getPillURL(): string {
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    return `${process.env.ELECTRON_RENDERER_URL}/pill.html`;
-  }
-  return "app://renderer/pill.html";
-}
-
-function getRemixBarURL(): string {
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    return `${process.env.ELECTRON_RENDERER_URL}/bar.html`;
-  }
-  return "app://renderer/bar.html";
-}
-
-function getMeetingCaptureURL(): string {
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    return `${process.env.ELECTRON_RENDERER_URL}/meeting-capture.html`;
-  }
-  return "app://renderer/meeting-capture.html";
-}
-
 /**
  * Hidden mic-capture window for meeting recordings. Loads the minimal
  * meeting-capture entry (PCM AudioWorklet -> `meeting:mic-chunk` IPC). The
@@ -513,10 +452,7 @@ function createMeetingCaptureWindow(): BrowserWindow {
   void (async () => {
     let deviceParam = "";
     try {
-      const res = await fetch(
-        `${getServerBaseUrl()}/api/settings/${SETTINGS_KEYS.micDeviceId}`,
-        { headers: getServerAuthHeaders() },
-      );
+      const res = await serverFetch(`/settings/${SETTINGS_KEYS.micDeviceId}`);
       if (res.ok) {
         const { value } = (await res.json()) as { value?: string };
         if (value) deviceParam = `?device=${encodeURIComponent(value)}`;
@@ -530,13 +466,6 @@ function createMeetingCaptureWindow(): BrowserWindow {
   })();
 
   return win;
-}
-
-function getDashboardURL(path = "/"): string {
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    return `${process.env.ELECTRON_RENDERER_URL}${path}`;
-  }
-  return `app://renderer${path}`;
 }
 
 // Tracks the exact coordinates of the last programmatic setPosition call.
@@ -678,129 +607,12 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
   return wy < midY ? "custom-top" : "custom-bottom";
 }
 
-// Computes a preset pill slot for a specific display. The pill is aligned
-// inside the window via CSS (justify-center or justify-end).
-function presetPositionForDisplay(
-  display: Display,
-  position: string,
-): { x: number; y: number } {
-  const { x: waX, y: waY, width, height } = display.workArea;
-  const bottomInset = Math.max(
-    0,
-    display.bounds.y + display.bounds.height - (waY + height),
-  );
-  const overlap = process.platform !== "darwin" && bottomInset > 0 ? 14 : -8;
-  const centerX = waX + Math.round((width - APP_WIDTH) / 2);
-  const rightX = waX + width - APP_WIDTH;
-  const bottomY = waY + height - APP_HEIGHT + overlap;
-
-  switch (position) {
-    case "top-center":
-      return { x: centerX, y: waY };
-    case "top-right":
-      return { x: rightX, y: waY };
-    case "bottom-right":
-      return { x: rightX, y: bottomY };
-    default:
-      return { x: centerX, y: bottomY };
-  }
-}
-
-/**
- * Screen bounds (top-left origin, in screen coordinates) of the currently
- * focused *external* application window, or null if it can't be determined.
- *
- * Used to anchor the pill to the display the user is actually typing on, which
- * the cursor's display alone can't tell us: a keyboard-driven user often leaves
- * the mouse resting on a different monitor. This is intentionally async/native
- * (AppleScript / PowerShell), so it is never awaited on the pill-show hot path —
- * the pill shows immediately on the cursor's display and re-anchors here if this
- * resolves to a different one.
- */
-async function getFocusedWindowBounds(): Promise<{
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-} | null> {
-  try {
-    if (process.platform === "darwin") {
-      // `position`/`size` of the frontmost app's front window via Accessibility.
-      const out = await execAsync(
-        "osascript",
-        [
-          "-e",
-          'tell application "System Events" to tell (first application process whose frontmost is true) to get {position, size} of front window',
-        ],
-        1500,
-      );
-      // osascript returns e.g. "12, -340, 800, 600" (x, y, w, h).
-      const nums = out
-        .split(",")
-        .map((n) => Number.parseInt(n.trim(), 10))
-        .filter((n) => Number.isFinite(n));
-      if (nums.length < 4) return null;
-      const [x, y, width, height] = nums;
-      if (width <= 0 || height <= 0) return null;
-      return { x, y, width, height };
-    }
-
-    if (process.platform === "win32") {
-      const script = `
-        Add-Type @"
-          using System;
-          using System.Runtime.InteropServices;
-          public class Win32Rect {
-            [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-            [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
-          }
-"@
-        $hwnd = [Win32Rect]::GetForegroundWindow()
-        $r = New-Object Win32Rect+RECT
-        [Win32Rect]::GetWindowRect($hwnd, [ref]$r) | Out-Null
-        "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom)"
-      `;
-      const out = await execAsync(
-        "powershell",
-        ["-NoProfile", "-Command", script],
-        2000,
-      );
-      const nums = out
-        .split(",")
-        .map((n) => Number.parseInt(n.trim(), 10))
-        .filter((n) => Number.isFinite(n));
-      if (nums.length < 4) return null;
-      const [left, top, right, bottom] = nums;
-      const width = right - left;
-      const height = bottom - top;
-      if (width <= 0 || height <= 0) return null;
-      return { x: left, y: top, width, height };
-    }
-
-    // Linux compositors vary too much for a reliable synchronous rect; the
-    // cursor's display is used as-is there.
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The Electron display the focused external window is on, or null if it can't
- * be determined. Falls back to the cursor's display at call sites.
- */
-async function getFocusedWindowDisplay(): Promise<Electron.Display | null> {
-  const bounds = await getFocusedWindowBounds();
-  if (!bounds) return null;
-  return screen.getDisplayMatching(bounds);
-}
-
 // Preset positions follow the display under the cursor so the pill appears
 // on whichever monitor the user is working on. Custom positions can be on
-// any display — they are saved as absolute screen coordinates and
-// bounds-checked on restore.
-function getAppWindowPosition(preferredDisplay?: Electron.Display | null): {
+// any display. They are saved as absolute screen coordinates and
+// bounds-checked on restore. An off-screen custom slot resets to the default,
+// so this function writes settings in that case.
+function resolveAppWindowPosition(preferredDisplay?: Electron.Display | null): {
   x: number;
   y: number;
 } {
@@ -815,65 +627,26 @@ function getAppWindowPosition(preferredDisplay?: Electron.Display | null): {
   const position = (readSettings().pillPosition as string) || "bottom-center";
 
   if (position === "custom") {
-    const custom = readSettings().pillCustomPosition as
-      | { x: number; y: number }
-      | undefined;
-    if (
-      custom &&
-      typeof custom.x === "number" &&
-      typeof custom.y === "number"
-    ) {
-      const display = screen.getDisplayMatching({
-        x: custom.x,
-        y: custom.y,
-        width: APP_WIDTH,
-        height: APP_HEIGHT,
-      });
-      const wa = display.workArea;
-      if (
-        custom.x >= wa.x &&
-        custom.x + APP_WIDTH <= wa.x + wa.width &&
-        custom.y >= wa.y &&
-        custom.y <= wa.y + wa.height
-      ) {
-        // A custom slot is the user's *offset*, not an absolute point on one
-        // monitor: when the cursor is on a different display, carry the same
-        // fractional position over so the pill follows them there.
-        if (display.id === activeDisplay.id) return custom;
-        const activeWa = activeDisplay.workArea;
-        const fx =
-          wa.width > APP_WIDTH
-            ? (custom.x - wa.x) / (wa.width - APP_WIDTH)
-            : 0.5;
-        const fy =
-          wa.height > APP_HEIGHT
-            ? (custom.y - wa.y) / (wa.height - APP_HEIGHT)
-            : 1;
-        return {
-          x: Math.round(
-            activeWa.x +
-              Math.min(1, Math.max(0, fx)) * (activeWa.width - APP_WIDTH),
-          ),
-          y: Math.round(
-            activeWa.y +
-              Math.min(1, Math.max(0, fy)) * (activeWa.height - APP_HEIGHT),
-          ),
-        };
-      }
+    const { pos, offscreen } = resolveCustomPosition(
+      readSettings().pillCustomPosition as { x: number; y: number } | undefined,
+      activeDisplay,
+      (rect) => screen.getDisplayMatching(rect),
+    );
+    if (offscreen) {
       // Saved position is off-screen; reset to default.
       writeSettings({
         pillPosition: "bottom-center",
         pillCustomPosition: undefined,
       });
     }
-    return presetPositionForDisplay(activeDisplay, "bottom-center");
+    return pos;
   }
 
   return presetPositionForDisplay(activeDisplay, position);
 }
 
 function createAppWindow(): void {
-  const { x, y } = getAppWindowPosition();
+  const { x, y } = resolveAppWindowPosition();
 
   // Mark the initial position as programmatic so the move listener ignores it.
   markProgrammaticTarget(x, y);
@@ -980,11 +753,7 @@ function createAppWindow(): void {
         },
       });
       const alignment = getPillAlignmentForCustom();
-      mainWindow.webContents.send("settings:pill-position-changed", alignment);
-      settingsWindow?.webContents.send(
-        "settings:pill-position-changed",
-        alignment,
-      );
+      broadcastToWindows("settings:pill-position-changed", alignment);
     }, 200);
   });
 
@@ -1151,7 +920,7 @@ function showPill(): void {
           resolve();
           return;
         }
-        const { x, y } = getAppWindowPosition();
+        const { x, y } = resolveAppWindowPosition();
         setProgrammaticPosition(mainWindow, x, y);
         mainWindow.showInactive();
         updateRemixBar();
@@ -1164,7 +933,7 @@ function showPill(): void {
   }
 
   if (!mainWindow.isVisible()) {
-    const { x, y } = getAppWindowPosition();
+    const { x, y } = resolveAppWindowPosition();
     setProgrammaticPosition(mainWindow, x, y);
     mainWindow.showInactive();
     updateRemixBar();
@@ -1200,7 +969,7 @@ function anchorPillToFocusedDisplay(): void {
     });
     if (currentDisplay.id === focusedDisplay.id) return;
 
-    const { x, y } = getAppWindowPosition(focusedDisplay);
+    const { x, y } = resolveAppWindowPosition(focusedDisplay);
     setProgrammaticPosition(mainWindow, x, y);
   });
 }
@@ -1221,377 +990,6 @@ function updatePillEscape(): void {
       globalShortcut.unregister("Escape");
     } catch {}
   }
-}
-
-// -- Async helper: run a command without blocking the main thread --
-function execAsync(
-  cmd: string,
-  args: string[],
-  timeoutMs: number,
-  maxBuffer?: number,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      {
-        encoding: "utf-8",
-        timeout: timeoutMs,
-        ...(maxBuffer ? { maxBuffer } : {}),
-      },
-      (err, stdout) => {
-        if (err) reject(err);
-        else resolve((stdout as string).trim());
-      },
-    );
-  });
-}
-
-function getOpenstyleAppExclusions(): Set<string> {
-  return new Set(
-    // "Openstyle" stays alongside "Openstyle": a user upgrading from the old
-    // build may still have the previously-named app installed or a stale window
-    // open, and it must keep being excluded from remix targeting.
-    [app.getName(), app.name, "Openstyle", "Freestyle", "Electron"]
-      .map((name) => name?.trim().toLowerCase())
-      .filter((name): name is string => Boolean(name)),
-  );
-}
-
-function normalizeOpenAppCandidates(
-  rawLabels: readonly string[],
-): OpenAppCandidate[] {
-  const exclusions = getOpenstyleAppExclusions();
-  const deduped = new Map<string, OpenAppCandidate>();
-
-  for (const rawLabel of rawLabels) {
-    const label = rawLabel.replace(/\s+/g, " ").trim();
-    if (!label) continue;
-
-    const match = label.toLowerCase();
-    if (exclusions.has(match)) continue;
-
-    if (!deduped.has(match)) {
-      deduped.set(match, { label, match });
-    }
-  }
-
-  return [...deduped.values()].sort((a, b) =>
-    a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
-  );
-}
-
-function parseContextAppLabel(raw: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as { app?: string };
-    return parsed.app ? [parsed.app] : [];
-  } catch {
-    return [raw];
-  }
-}
-
-// -- macOS: Get frontmost app + browser tab context via AppleScript --
-async function getMacFrontmostApp(): Promise<string | null> {
-  try {
-    const appName = await execAsync(
-      "osascript",
-      [
-        "-e",
-        'tell application "System Events" to get name of first application process whose frontmost is true',
-      ],
-      2000,
-    );
-
-    const chromiumBrowsers = [
-      "Google Chrome",
-      "Arc",
-      "Brave Browser",
-      "Microsoft Edge",
-    ];
-
-    try {
-      if (appName === "Safari") {
-        const result = await execAsync(
-          "osascript",
-          [
-            "-e",
-            'tell application "Safari" to return {URL of current tab of front window, name of current tab of front window}',
-          ],
-          2000,
-        );
-        const idx = result.indexOf(", ");
-        if (idx > 0) {
-          return JSON.stringify({
-            app: appName,
-            url: result.substring(0, idx),
-            title: result.substring(idx + 2),
-          });
-        }
-      } else if (appName === "Firefox") {
-        const title = await execAsync(
-          "osascript",
-          [
-            "-e",
-            'tell application "System Events" to get name of front window of application process "Firefox"',
-          ],
-          2000,
-        );
-        return JSON.stringify({ app: appName, windowTitle: title });
-      } else if (chromiumBrowsers.includes(appName)) {
-        const result = await execAsync(
-          "osascript",
-          [
-            "-e",
-            `tell application "${appName}" to return {URL of active tab of front window, title of active tab of front window}`,
-          ],
-          2000,
-        );
-        const idx = result.indexOf(", ");
-        if (idx > 0) {
-          return JSON.stringify({
-            app: appName,
-            url: result.substring(0, idx),
-            title: result.substring(idx + 2),
-          });
-        }
-      }
-    } catch {
-      // Browser tab access failed — fall back to app name only
-    }
-
-    return JSON.stringify({ app: appName });
-  } catch {
-    return null;
-  }
-}
-
-async function getMacOpenAppCandidates(): Promise<OpenAppCandidate[]> {
-  try {
-    const result = await execAsync(
-      "osascript",
-      [
-        "-e",
-        'tell application "System Events" to get name of every application process whose background only is false and visible is true',
-      ],
-      2000,
-    );
-
-    return normalizeOpenAppCandidates(result.split(","));
-  } catch {
-    return [];
-  }
-}
-
-// -- Windows: Get foreground window process name + title via PowerShell --
-async function getWindowsFrontmostApp(): Promise<string | null> {
-  try {
-    const script = `
-      Add-Type @"
-        using System;
-        using System.Runtime.InteropServices;
-        using System.Text;
-        public class Win32 {
-          [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-          [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-          [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-        }
-"@
-      $hwnd = [Win32]::GetForegroundWindow()
-      $sb = New-Object System.Text.StringBuilder 256
-      [Win32]::GetWindowText($hwnd, $sb, 256) | Out-Null
-      $title = $sb.ToString()
-      $pid = 0
-      [Win32]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-      $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
-      "$($proc.ProcessName)|$title"
-    `;
-    const result = await execAsync(
-      "powershell",
-      ["-NoProfile", "-Command", script],
-      3000,
-    );
-
-    const pipeIdx = result.indexOf("|");
-    if (pipeIdx > 0) {
-      const processName = result.substring(0, pipeIdx);
-      const windowTitle = result.substring(pipeIdx + 1);
-      return JSON.stringify({ app: processName, windowTitle });
-    }
-    return JSON.stringify({ app: result });
-  } catch {
-    return null;
-  }
-}
-
-async function getWindowsOpenAppCandidates(): Promise<OpenAppCandidate[]> {
-  try {
-    const script = `
-      $apps = Get-Process |
-        Where-Object { $_.MainWindowTitle -and $_.ProcessName } |
-        Select-Object -Property ProcessName |
-        Sort-Object ProcessName -Unique |
-        ConvertTo-Json -Compress
-      $apps
-    `;
-    const result = await execAsync(
-      "powershell",
-      ["-NoProfile", "-Command", script],
-      3000,
-    );
-
-    const parsed = JSON.parse(result) as
-      | { ProcessName?: string }
-      | Array<{ ProcessName?: string }>;
-    const apps = Array.isArray(parsed) ? parsed : [parsed];
-
-    return normalizeOpenAppCandidates(
-      apps
-        .map((entry) => entry.ProcessName?.trim())
-        .filter((entry): entry is string => Boolean(entry)),
-    );
-  } catch {
-    return [];
-  }
-}
-
-// -- Linux: Get active window name + title (Wayland compositors + X11) --
-async function getLinuxFrontmostApp(): Promise<string | null> {
-  if (isWaylandSession()) {
-    return (
-      (await getSwayFrontmostApp()) ??
-      (await getGnomeFrontmostApp()) ??
-      (await getLinuxX11FrontmostApp())
-    );
-  }
-  return getLinuxX11FrontmostApp();
-}
-
-interface SwayNode {
-  focused?: boolean;
-  name?: string;
-  app_id?: string | null;
-  window_properties?: { class?: string };
-  nodes?: SwayNode[];
-  floating_nodes?: SwayNode[];
-}
-
-function findFocusedSwayNode(node: SwayNode): SwayNode | null {
-  if (node.focused) return node;
-  for (const child of [...(node.nodes ?? []), ...(node.floating_nodes ?? [])]) {
-    const hit = findFocusedSwayNode(child);
-    if (hit) return hit;
-  }
-  return null;
-}
-
-async function getSwayFrontmostApp(): Promise<string | null> {
-  try {
-    const output = await execAsync("swaymsg", ["-t", "get_tree"], 2000);
-    const focused = findFocusedSwayNode(JSON.parse(output) as SwayNode);
-    if (!focused) return null;
-    return JSON.stringify({
-      app: focused.app_id ?? focused.window_properties?.class ?? "Unknown",
-      windowTitle: focused.name ?? "",
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function getGnomeFrontmostApp(): Promise<string | null> {
-  try {
-    const output = await execAsync(
-      "gdbus",
-      [
-        "call",
-        "--session",
-        "--dest",
-        "org.gnome.Shell",
-        "--object-path",
-        "/org/gnome/Shell/Introspect",
-        "--method",
-        "org.gnome.Shell.Introspect.GetWindows",
-      ],
-      2000,
-    );
-    for (const win of output.split(/uint64 \d+:/).slice(1)) {
-      if (!/'has-focus':\s*<true>/.test(win)) continue;
-      const app =
-        /'wm-class':\s*<'((?:[^'\\]|\\.)*)'>/.exec(win)?.[1] ?? "Unknown";
-      const title = /'title':\s*<'((?:[^'\\]|\\.)*)'>/.exec(win)?.[1] ?? "";
-      return JSON.stringify({ app, windowTitle: title });
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function getLinuxX11FrontmostApp(): Promise<string | null> {
-  try {
-    const windowTitle = await execAsync(
-      "xdotool",
-      ["getactivewindow", "getwindowname"],
-      2000,
-    );
-
-    let processName = "";
-    try {
-      const pid = await execAsync(
-        "xdotool",
-        ["getactivewindow", "getwindowpid"],
-        2000,
-      );
-      processName = await execAsync("cat", [`/proc/${pid}/comm`], 1000);
-    } catch {
-      // some windows don't expose PID
-    }
-
-    return JSON.stringify({
-      app: processName || "Unknown",
-      windowTitle,
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function getLinuxOpenAppCandidates(): Promise<OpenAppCandidate[]> {
-  try {
-    const result = await execAsync("wmctrl", ["-lx"], 2000);
-    const labels = result
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const parts = line.split(/\s+/);
-        const wmClass = parts[3] ?? "";
-        return wmClass.split(".").at(-1)?.replace(/[_-]+/g, " ") ?? "";
-      });
-
-    const candidates = normalizeOpenAppCandidates(labels);
-    if (candidates.length > 0) return candidates;
-  } catch {
-    // Fall back to the current app only when a visible window list is unavailable.
-  }
-
-  return normalizeOpenAppCandidates(
-    parseContextAppLabel(await getLinuxFrontmostApp()),
-  );
-}
-
-async function getOpenAppCandidates(): Promise<OpenAppCandidate[]> {
-  if (process.platform === "darwin") {
-    return getMacOpenAppCandidates();
-  }
-  if (process.platform === "win32") {
-    return getWindowsOpenAppCandidates();
-  }
-  if (process.platform === "linux") {
-    return getLinuxOpenAppCandidates();
-  }
-  return [];
 }
 
 function hidePill(): void {
@@ -1619,10 +1017,6 @@ function hidePill(): void {
   try {
     globalShortcut.unregister("Escape");
   } catch {}
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -1661,64 +1055,6 @@ function resetOnboarding(): void {
   showSettingsWindow("/onboarding");
 }
 
-// Per-request timeout for main-process API calls to the server.
-const SERVER_SETTING_TIMEOUT_MS = 5000;
-// How long boot waits for the server to answer before registering the hotkey
-// with whatever it can read (falling back to the default accelerator).
-const SERVER_READY_TIMEOUT_MS = 5000;
-
-async function putServerSetting(key: string, value: string): Promise<boolean> {
-  try {
-    const res = await serverClient().api.settings[":key"].$put(
-      { param: { key }, json: { value } },
-      { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
-    );
-    return res.ok;
-  } catch (err) {
-    log.warn(`Failed to save setting "${key}":`, err);
-    return false;
-  }
-}
-
-/**
- * Read all server-owned settings in one request. Returns `null` when the server
- * is unreachable — distinct from an empty map (server reachable, nothing
- * stored) so callers don't mistake a network blip for "unset" and clobber
- * last-known-good values (e.g. reverting the hotkey mode to its default).
- *
- * All server-owned state (settings, models, history) lives behind the
- * server — local or a configured remote — so the main process reads it through
- * the API rather than opening the SQLite file directly. This keeps a single
- * source of truth and makes a configured remote server behave identically.
- */
-async function getServerSettings(): Promise<Record<string, string> | null> {
-  try {
-    const res = await serverClient().api.settings.$get(
-      {},
-      { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
-    );
-    if (!res.ok) return null;
-    return (await res.json()) as Record<string, string>;
-  } catch {
-    return null;
-  }
-}
-
-/** Number of configured models behind the current server (0 when unreachable). */
-async function getConfiguredModelCount(): Promise<number> {
-  try {
-    const res = await serverClient().api.models.configured.$get(
-      {},
-      { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
-    );
-    if (!res.ok) return 0;
-    const data = (await res.json()) as unknown[];
-    return Array.isArray(data) ? data.length : 0;
-  } catch {
-    return 0;
-  }
-}
-
 /**
  * Matches the route decision in buildSettingsWindow. Existing users who have
  * configured models are treated as onboarded even if the lightweight setting
@@ -1727,49 +1063,6 @@ async function getConfiguredModelCount(): Promise<number> {
 async function isOnboardingActive(): Promise<boolean> {
   if (readSettings().onboardingComplete === true) return false;
   return (await getConfiguredModelCount()) === 0;
-}
-
-/**
- * Probe `/api/health` at `baseUrl` and confirm it's actually a Openstyle server
- * (not some other service that happens to hold the port). Returns false on any
- * network error or non-matching identity.
- */
-async function probeServerHealth(
-  baseUrl: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  try {
-    const res = await net.fetch(`${baseUrl}/api/health`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { status?: string; name?: string };
-    // Accepts the legacy "freestyle" identity too so a not-yet-updated
-    // standalone/remote server (auto-update is on by default, but a
-    // separately-deployed apps/server may lag) is still recognized.
-    return (
-      data.status === "ok" &&
-      (data.name === "openstyle" || data.name === "freestyle")
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Resolve once the current server target answers `/api/health`, or after
- * `timeoutMs`. Used at boot before the first settings read, since the local
- * server starts asynchronously (fire-and-forget) and may not be listening yet.
- */
-async function waitForServerReady(
-  timeoutMs = SERVER_READY_TIMEOUT_MS,
-): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await probeServerHealth(getServerBaseUrl(), 1000)) return true;
-    await wait(150);
-  }
-  return false;
 }
 
 // Dev-only: reset every sector tone to off and cleanup intensity to medium.
@@ -1858,7 +1151,7 @@ async function factoryReset(): Promise<void> {
       await rm(join(userData, f), { force: true });
     }
 
-    settingsCache = null;
+    clearSettingsCache();
     if (process.platform === "linux") {
       linuxAutostart.setEnabled(false);
     } else {
@@ -2005,7 +1298,6 @@ function isRunningFromReadOnlyLocation(): boolean {
     return true;
   }
   try {
-    const { accessSync, constants } = require("node:fs");
     accessSync(dirname(exePath), constants.W_OK);
     return false;
   } catch {
@@ -2074,12 +1366,10 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     showMoveToApplicationsDialog();
     return;
   }
-  // updateDownloadState can't reach "downloaded" while autoDownload is forced
-  // off (see the update-available handler below) — always run a fresh check.
+  // autoDownload is always false (see the update setup below), so this check
+  // never starts a download. Always run a fresh check.
   try {
     const result = await autoUpdater.checkForUpdates();
-    // Swallow the auto-download rejection (see runUpdateCheck).
-    void result?.downloadPromise?.catch(() => {});
     const latest = result?.updateInfo?.version;
     if (latest && latest !== app.getVersion()) {
       const { response } = await dialog.showMessageBox({
@@ -2122,6 +1412,26 @@ function buildUpdateMenuItem(): { label: string; click: () => void } {
     : { label: "Check for Updates...", click: () => checkForUpdatesFromMenu() };
 }
 
+// Dev-only menu items, shared by the tray menu and the application menu.
+function devMenuItems(): MenuItemConstructorOptions[] {
+  return [
+    { type: "separator" },
+    { label: "Reset Onboarding", click: resetOnboarding },
+    {
+      label: "Reset Tone Configuration",
+      click: () => {
+        void resetToneConfiguration();
+      },
+    },
+    {
+      label: "Hard Reset",
+      click: () => {
+        void factoryReset();
+      },
+    },
+  ];
+}
+
 function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
@@ -2161,27 +1471,7 @@ function buildTrayContextMenu(): Menu {
               },
         ]
       : []),
-    ...(is.dev
-      ? [
-          { type: "separator" as const },
-          {
-            label: "Reset Onboarding",
-            click: resetOnboarding,
-          },
-          {
-            label: "Reset Tone Configuration",
-            click: () => {
-              void resetToneConfiguration();
-            },
-          },
-          {
-            label: "Hard Reset",
-            click: () => {
-              void factoryReset();
-            },
-          },
-        ]
-      : []),
+    ...(is.dev ? devMenuItems() : []),
     { type: "separator" },
     {
       label: "Quit",
@@ -2237,27 +1527,7 @@ function rebuildMenus(): void {
               },
               { type: "separator" as const },
               buildUpdateMenuItem(),
-              ...(is.dev
-                ? [
-                    { type: "separator" as const },
-                    {
-                      label: "Reset Onboarding",
-                      click: resetOnboarding,
-                    },
-                    {
-                      label: "Reset Tone Configuration",
-                      click: () => {
-                        void resetToneConfiguration();
-                      },
-                    },
-                    {
-                      label: "Hard Reset",
-                      click: () => {
-                        void factoryReset();
-                      },
-                    },
-                  ]
-                : []),
+              ...(is.dev ? devMenuItems() : []),
               { type: "separator" as const },
               { role: "hide" as const },
               { role: "hideOthers" as const },
@@ -2347,33 +1617,19 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window);
   });
 
-  // IPC: paste text at cursor. `appContext` is accepted for backward
-  // compatibility with the preload signature but is unused here — the plugin
-  // system that once consumed it server-side (beforeOutput /
-  // POST /api/output/deliver) was removed in v2.0.0 (6211514); cleanup
-  // routing is now resolved upstream in the transcription pipeline.
-  ipcMain.handle(
-    "paste:text",
-    async (_event, text: string, _appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Paste);
-    },
-  );
+  // IPC: paste text at cursor.
+  ipcMain.handle("paste:text", async (_event, text: string) => {
+    await deliverOutput(text, OutputMode.Paste);
+  });
 
-  // IPC: copy text to clipboard. See `paste:text` above re: `appContext`.
-  ipcMain.handle(
-    "copy:text",
-    async (_event, text: string, _appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Clipboard);
-    },
-  );
+  // IPC: copy text to clipboard.
+  ipcMain.handle("copy:text", async (_event, text: string) => {
+    await deliverOutput(text, OutputMode.Clipboard);
+  });
 
   ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
     if (!isActiveAudioPlaybackMode(mode)) return;
     await audioPlaybackController.prepare(mode);
-  });
-
-  ipcMain.handle("audio:duck", async () => {
-    await audioPlaybackController.duck();
   });
 
   ipcMain.handle("audio:restore", async () => {
@@ -2387,8 +1643,7 @@ app.whenReady().then(async () => {
   // --- Import screen ---------------------------------------------------------
   registerJobAbortIpc();
   registerImportIpc({
-    getServerBaseUrl,
-    getServerAuthHeaders,
+    serverFetch,
     getParentWindow: () => mainWindow,
     onTranscribed: ({ fileName }) => notifyImportComplete(fileName),
   });
@@ -2397,23 +1652,19 @@ app.whenReady().then(async () => {
   // as the dictation Import screen, but the upload lands in
   // POST /api/meetings/import as a full meeting record.
   registerMeetingImportIpc({
-    getServerBaseUrl,
-    getServerAuthHeaders,
+    serverFetch,
     getParentWindow: () => mainWindow,
   });
 
   // --- Meeting Mode ---------------------------------------------------------
   meetingRecorder = new MeetingRecorder({
-    getServerBaseUrl,
-    getServerAuthHeaders,
+    serverFetch,
     createCaptureWindow: createMeetingCaptureWindow,
     broadcastLevel: (event) => {
-      settingsWindow?.webContents.send("meeting:level", event);
-      mainWindow?.webContents.send("meeting:level", event);
+      broadcastToWindows("meeting:level", event);
     },
     broadcastStatus: (status) => {
-      settingsWindow?.webContents.send("meeting:status-changed", status);
-      mainWindow?.webContents.send("meeting:status-changed", status);
+      broadcastToWindows("meeting:status-changed", status);
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         tray?.setContextMenu(buildTrayContextMenu());
@@ -2421,87 +1672,9 @@ app.whenReady().then(async () => {
     },
   });
 
-  ipcMain.handle("meeting:start", async () => {
-    try {
-      const id = await meetingRecorder!.start();
-      return { ok: true, id };
-    } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  });
-
-  ipcMain.handle("meeting:stop", async () => {
-    await meetingRecorder?.stop();
-    return { ok: true };
-  });
-
-  ipcMain.handle("meeting:status", () => ({
-    status: meetingRecorder?.status ?? "idle",
-    meetingId: meetingRecorder?.currentMeetingId ?? null,
-    supported: isSystemAudioCaptureSupported(),
-  }));
-
-  // Mic PCM16 chunks from the hidden capture window. Only that window's
-  // webContents may feed the recorder — chunks from any other renderer
-  // (main window, settings) are dropped.
-  ipcMain.on("meeting:mic-chunk", (event, chunk: unknown) => {
-    if (event.sender.id !== meetingRecorder?.captureWebContentsId) return;
-    if (chunk instanceof ArrayBuffer) {
-      meetingRecorder.handleMicChunk(Buffer.from(chunk));
-    } else if (ArrayBuffer.isView(chunk)) {
-      meetingRecorder.handleMicChunk(
-        Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength),
-      );
-    }
-  });
-
-  ipcMain.on("meeting:capture-error", (event, message: unknown) => {
-    if (event.sender.id !== meetingRecorder?.captureWebContentsId) return;
-    log.error(`Meeting mic capture error: ${String(message)}`);
-  });
-
-  // TCC probe: run the real system-audio pipeline briefly to detect the
-  // silent-denial mode (denied taps deliver zero-filled buffers with success
-  // codes — there is no preflight API). Meeting-scoped and lazy by design:
-  // dictation-only users must never see this (startupPermissionWarning in
-  // permission-checks.ts intentionally knows nothing about meetings).
-  ipcMain.handle("meeting:probe-system-audio", async () => {
-    // A running recording already proves the pipeline; don't spawn a second
-    // helper under it.
-    if (meetingRecorder?.status !== "idle") return "ok";
-    return probeSystemAudio();
-  });
-
-  ipcMain.on("meeting:open-audio-capture-settings", () => {
-    openAudioCaptureSettings();
-  });
-
-  // Reveal a meeting's audio directory in Finder. The audio_dir path comes
-  // from the server-owned DB row, so mirror the same containment check the
-  // server's DELETE route applies before it removes a meeting's audio dir —
-  // never call shell.showItemInFolder on a path outside <userData>/meetings/.
-  ipcMain.handle("meeting:reveal-in-finder", async (_event, id: unknown) => {
-    if (typeof id !== "string" || !id) return false;
-    try {
-      const res = await serverClient().api.meetings[":id"].$get({
-        param: { id },
-      });
-      if (!res.ok) return false;
-      const row = (await res.json()) as { audio_dir: string | null };
-      if (!row.audio_dir) return false;
-      const dir = resolve(row.audio_dir);
-      const root = resolve(join(app.getPath("userData"), "meetings"));
-      if (!dir.startsWith(root + sep)) return false;
-      if (!existsSync(dir)) return false;
-      shell.showItemInFolder(dir);
-      return true;
-    } catch (err) {
-      log.error(`Failed to reveal meeting ${id} in Finder: ${String(err)}`);
-      return false;
-    }
+  registerMeetingIpc({
+    getMeetingRecorder: () => meetingRecorder,
+    serverClient,
   });
 
   // IPC: broadcast output mode changes to pill window
@@ -2509,15 +1682,19 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send("settings:output-mode-changed", mode);
   });
 
+  // IPC: broadcast the sound setting to the pill window
+  ipcMain.on("settings:sound-enabled-changed", (_event, enabled: unknown) => {
+    mainWindow?.webContents.send(
+      "settings:sound-enabled-changed",
+      enabled === true,
+    );
+  });
+
   ipcMain.on("settings:pill-cancel-mode-changed", (_event, mode: unknown) => {
     mainWindow?.webContents.send(
       "settings:pill-cancel-mode-changed",
       normalizePillCancelMode(mode),
     );
-  });
-
-  ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {
-    mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
   });
 
   ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {
@@ -2580,141 +1757,32 @@ app.whenReady().then(async () => {
     settingsWindow?.webContents.send("transcription:done");
   });
 
-  // IPC: expose the server port to the renderer
-  ipcMain.handle("server:port", () => serverPort);
-
-  // IPC: read the configured server URL ("" = use the local server).
-  ipcMain.handle("server:url", () => getServerUrl());
-
-  // IPC: persist the server URL. The local server keeps running regardless, so
-  // switching between local and a configured URL takes effect immediately —
-  // renderers re-point their clients on the "server:changed" broadcast and on
-  // the next transcription's refreshApiBase(). Invalid values are ignored.
-  ipcMain.handle("server:set-url", (_event, url: unknown) => {
-    const parsed = serverUrlSchema.safeParse(url);
-    if (parsed.success) {
-      writeSettings({ serverUrl: parsed.data });
-      broadcastServerChanged();
-    }
-    return getServerUrl();
+  registerAppSettingsIpc({
+    getServerPort,
+    getServerUrl,
+    getServerToken,
+    readSettings,
+    writeSettings,
+    broadcastServerChanged,
+    logsDir,
   });
 
-  // IPC: read/persist the optional bearer token for a configured server.
-  ipcMain.handle("server:token", () => getServerToken());
-  ipcMain.handle("server:set-token", (_event, token: unknown) => {
-    writeSettings({
-      serverToken: typeof token === "string" ? token.trim() : "",
-    });
-    broadcastServerChanged();
-    return getServerToken();
-  });
-
-  // IPC: reveal the diagnostic log folder so users can share openstyle.log.
-  ipcMain.handle("logs:open-folder", async () => {
-    if (!logsDir) return false;
-    try {
-      const result = await shell.openPath(logsDir);
-      if (result) {
-        log.error(`Failed to open logs folder: ${result}`);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      log.error(`Failed to open logs folder: ${String(err)}`);
-      return false;
-    }
-  });
-
-  ipcMain.handle("open:external", async (_event, url: unknown) => {
-    if (typeof url !== "string") return false;
-    try {
-      const parsed = new URL(url);
-      // mailto: is allowed for support links; everything else must be http(s).
-      if (
-        parsed.protocol !== "https:" &&
-        parsed.protocol !== "http:" &&
-        parsed.protocol !== "mailto:"
-      ) {
-        return false;
-      }
-      await shell.openExternal(parsed.toString());
-      return true;
-    } catch {
-      return false;
-    }
-  });
-
-  ipcMain.handle(
-    "dialog:show-error",
-    async (_event, title: string, detail: string) => {
-      await dialog.showMessageBox({
-        type: "error",
-        title,
-        message: title,
-        detail,
-        buttons: ["OK"],
-      });
+  registerPermissionsIpc({
+    hasAccessibilityPermission: hasCurrentAccessibilityPermission,
+    openAccessibilitySettings,
+    openMicrophoneSettings,
+    completeOnboarding: () => {
+      writeSettings({ onboardingComplete: true });
+      remixPracticeTarget = false;
+      remixBarHeldForOnboarding = false;
+      updateRemixBar();
     },
-  );
-
-  // IPC: permission checks
-  ipcMain.handle("permissions:check-mic", async () => {
-    if (process.platform === "linux") {
-      // Linux has no OS-level mic permission API; the renderer resolves the
-      // real state with a getUserMedia probe (see lib/permissions.ts).
-      return "unknown";
-    }
-    // macOS and Windows both report the real privacy-settings state here.
-    return systemPreferences.getMediaAccessStatus("microphone");
-  });
-
-  ipcMain.handle("permissions:request-mic", async () => {
-    if (process.platform === "darwin") {
-      const granted = await systemPreferences.askForMediaAccess("microphone");
-      return granted ? "granted" : "denied";
-    }
-    if (process.platform === "win32") {
-      // Windows has no programmatic prompt; report the privacy-settings
-      // state so the UI can send the user to Settings when it's denied.
-      return systemPreferences.getMediaAccessStatus("microphone");
-    }
-    return "unknown"; // Linux: renderer probes getUserMedia instead
-  });
-
-  ipcMain.handle("permissions:check-accessibility", async () => {
-    return hasCurrentAccessibilityPermission();
-  });
-
-  ipcMain.on("permissions:open-accessibility", () => {
-    openAccessibilitySettings();
-  });
-
-  ipcMain.on("permissions:open-mic-settings", () => {
-    openMicrophoneSettings();
   });
 
   if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
     ipcMain.on("e2e:trigger-hotkey-down", () => handleDictationHotkeyDown());
     ipcMain.on("e2e:trigger-hotkey-up", () => handleDictationHotkeyUp());
   }
-
-  // IPC: Linux system setup (input-group access for the hotkey listener and
-  // the xdotool/wtype paste fallback). Returns null on other platforms.
-  ipcMain.handle("permissions:check-linux-setup", async () => {
-    if (process.platform !== "linux") return null;
-    return checkLinuxSetup();
-  });
-
-  ipcMain.handle("onboarding:complete", () => {
-    return readSettings().onboardingComplete === true;
-  });
-
-  ipcMain.on("onboarding:set-complete", () => {
-    writeSettings({ onboardingComplete: true });
-    remixPracticeTarget = false;
-    remixBarHeldForOnboarding = false;
-    updateRemixBar();
-  });
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
   ipcMain.on("hotkey-record:start", () => {
@@ -2737,8 +1805,6 @@ app.whenReady().then(async () => {
     if (!target) return;
 
     hotkeyRecorder = new HotkeyRecorder({
-      onModifiers: () => {},
-      onCaptured: () => {},
       onCancel: () => {
         stopHotkeyRecorderProcess();
         scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
@@ -2750,10 +1816,6 @@ app.whenReady().then(async () => {
     hotkeyRecorder.start(target);
   });
 
-  ipcMain.on("hotkey-record:pause-recorder", () => {
-    stopHotkeyRecorderProcess();
-  });
-
   ipcMain.on("hotkey-record:stop", (_event, hotkey?: string) => {
     stopHotkeyRecorderProcess();
     scheduleHotkeyRegistration(
@@ -2763,18 +1825,14 @@ app.whenReady().then(async () => {
     );
   });
 
-  // Set database path for the server before any API calls. Also seeded under
-  // the legacy FREESTYLE_ name (every in-repo reader checks OPENSTYLE_ first
-  // and falls back to it, so this is redundant for them) purely so
-  // third-party plugin code that still reads process.env.FREESTYLE_DB_PATH
-  // directly keeps working without an update.
+  // Set database path for the server before any API calls. Server code reads
+  // the OPENSTYLE_ name first and falls back to the old FREESTYLE_ name, so
+  // only the OPENSTYLE_ name is set here.
   const dbPath = join(app.getPath("userData"), "freestyle.db");
   process.env.OPENSTYLE_DB_PATH = dbPath;
-  process.env.FREESTYLE_DB_PATH = dbPath;
 
   if (!is.dev) {
     process.env.OPENSTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
-    process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }
 
   // Run non-critical server startup tasks now that the DB path is set. This is
@@ -2795,12 +1853,14 @@ app.whenReady().then(async () => {
     startOpenstyleServer({ port, host: "127.0.0.1" })
       .then(({ server, port: boundPort }) => {
         httpServer = server;
-        serverPort = boundPort;
+        setServerPort(boundPort);
         log.info(`Server running on http://localhost:${boundPort}`);
       })
       .catch((err: NodeJS.ErrnoException) => {
-        if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
-          log.warn(`Port ${DEFAULT_PORT} in use, falling back to random port`);
+        if (err.code === "EADDRINUSE" && port === DEFAULT_SERVER_PORT) {
+          log.warn(
+            `Port ${DEFAULT_SERVER_PORT} in use, falling back to random port`,
+          );
           startServer(0);
         } else {
           log.error(`Server failed to start: ${err}`);
@@ -2813,17 +1873,17 @@ app.whenReady().then(async () => {
   // without a timeout a half-open socket on the port could hang window/tray
   // creation indefinitely.
   const existingServer = await probeServerHealth(
-    `http://127.0.0.1:${DEFAULT_PORT}`,
+    `http://127.0.0.1:${DEFAULT_SERVER_PORT}`,
     1500,
   );
 
   if (existingServer) {
-    serverPort = DEFAULT_PORT;
+    setServerPort(DEFAULT_SERVER_PORT);
     log.info(
-      `Reusing existing Openstyle server on http://localhost:${DEFAULT_PORT}`,
+      `Reusing existing Openstyle server on http://localhost:${DEFAULT_SERVER_PORT}`,
     );
   } else {
-    startServer(DEFAULT_PORT);
+    startServer(DEFAULT_SERVER_PORT);
   }
 
   if (!is.dev) {
@@ -2871,12 +1931,11 @@ app.whenReady().then(async () => {
   const repositionPillForDisplayChange = (): void => {
     if (!mainWindow) return;
     const before = readSettings().pillPosition as string;
-    const { x, y } = getAppWindowPosition();
+    const { x, y } = resolveAppWindowPosition();
     setProgrammaticPosition(mainWindow, x, y);
     const after = (readSettings().pillPosition as string) ?? "bottom-center";
     if (before !== after) {
-      mainWindow.webContents.send("settings:pill-position-changed", after);
-      settingsWindow?.webContents.send("settings:pill-position-changed", after);
+      broadcastToWindows("settings:pill-position-changed", after);
     }
   };
   screen.on("display-removed", repositionPillForDisplayChange);
@@ -2890,26 +1949,17 @@ app.whenReady().then(async () => {
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
-  // With autoDownload on, checkForUpdates() also starts the asset download and
-  // exposes it as result.downloadPromise. Swallow that rejection so a transient
-  // download failure (e.g. an expired 403 from the release CDN) is handled by
-  // the "error" event rather than leaking as an unhandled rejection / false
-  // crash report. We avoid checkForUpdatesAndNotify(): it drops the same
-  // rejection internally in a way callers can't intercept, and our own
-  // "update-downloaded" handler already shows the completion notification.
+  // autoDownload is always false, so checkForUpdates() only checks the feed
+  // and never starts a download. The selfUpdater "downloaded" handler shows
+  // the completion notification.
   function runUpdateCheck(): void {
-    autoUpdater
-      .checkForUpdates()
-      .then((result) => {
-        void result?.downloadPromise?.catch(() => {});
-      })
-      .catch((err) => {
-        log.warn(
-          `Update check failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
+    autoUpdater.checkForUpdates().catch((err) => {
+      log.warn(
+        `Update check failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    });
   }
 
   function startUpdateCheckInterval(): void {
@@ -2931,10 +1981,9 @@ app.whenReady().then(async () => {
     // downloading them ("Code signature ... did not pass validation"), so we
     // still use electron-updater only to *check* the release feed. On
     // macOS, downloading and installing goes through selfUpdater (see
-    // self-updater.ts) instead of Squirrel.Mac; other platforms keep the
-    // stock electron-updater install flow. autoDownload stays false here so
-    // electron-updater never itself downloads the (Squirrel-incompatible)
-    // update artifact.
+    // self-updater.ts) instead of Squirrel.Mac; other platforms open the
+    // releases page. autoDownload is always false, so electron-updater never
+    // itself downloads the (Squirrel-incompatible) update artifact.
     autoUpdater.autoDownload = false;
     // Honour the same preference on quit. Upstream hardcoded this to true, so a
     // single manual "Check for Updates" could stage a release that then
@@ -2949,17 +1998,13 @@ app.whenReady().then(async () => {
       // electron-updater never auto-downloads (autoDownload is always false
       // — see above); the in-app banner/notification drives the actual
       // download via updater:download.
-      if (
-        Notification.isSupported() &&
-        notifiedAvailableVersion !== info.version
-      ) {
+      if (notifiedAvailableVersion !== info.version) {
         notifiedAvailableVersion = info.version;
-        const note = new Notification({
-          title: "Openstyle Update Available",
-          body: `Version ${info.version} is available.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
+        notify(
+          "Openstyle Update Available",
+          `Version ${info.version} is available.`,
+          "/settings",
+        );
       }
     });
 
@@ -2972,51 +2017,14 @@ app.whenReady().then(async () => {
       settingsWindow?.webContents.send("updater:downloaded", {
         version: info.version,
       });
-      if (
-        Notification.isSupported() &&
-        notifiedDownloadedVersion !== info.version
-      ) {
+      if (notifiedDownloadedVersion !== info.version) {
         notifiedDownloadedVersion = info.version;
-        const note = new Notification({
-          title: "Update Ready to Install",
-          body: `Version ${info.version} has been downloaded. Restart to update.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
-      }
-      if (updateCheckTimer) {
-        clearInterval(updateCheckTimer);
-        updateCheckTimer = null;
-      }
-      rebuildMenus();
-      void prefetchManagedMlxRuntimeForAppRelease(info.version).catch((err) => {
-        log.warn(
-          `Failed to stage MLX runtime for ${info.version}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+        notify(
+          "Update Ready to Install",
+          `Version ${info.version} has been downloaded. Restart to update.`,
+          "/settings",
         );
-      });
-    });
-
-    autoUpdater.on("update-downloaded", (info) => {
-      updateDownloadState = "downloaded";
-      settingsWindow?.webContents.send("updater:downloaded", {
-        version: info.version,
-      });
-      // Only show a native notification once per version
-      if (
-        Notification.isSupported() &&
-        notifiedDownloadedVersion !== info.version
-      ) {
-        notifiedDownloadedVersion = info.version;
-        const note = new Notification({
-          title: "Update Ready to Install",
-          body: `Version ${info.version} has been downloaded. Restart to update.`,
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
       }
-      // No need to keep polling once the update is downloaded
       if (updateCheckTimer) {
         clearInterval(updateCheckTimer);
         updateCheckTimer = null;
@@ -3048,14 +2056,11 @@ app.whenReady().then(async () => {
     });
 
     if (isRunningFromReadOnlyLocation()) {
-      if (Notification.isSupported()) {
-        const note = new Notification({
-          title: "Move Openstyle to Applications",
-          body: "Openstyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
-        });
-        note.on("click", () => showSettingsWindow("/settings"));
-        note.show();
-      }
+      notify(
+        "Move Openstyle to Applications",
+        "Openstyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
+        "/settings",
+      );
     } else if (autoUpdateEnabled) {
       // Only poll when auto-update is actually on. Upstream polled every 5
       // minutes regardless of the setting, so turning auto-update off still
@@ -3104,8 +2109,6 @@ app.whenReady().then(async () => {
     if (is.dev) return null;
     try {
       const result = await autoUpdater.checkForUpdates();
-      // Swallow the auto-download rejection (see runUpdateCheck).
-      void result?.downloadPromise?.catch(() => {});
       const latest = result?.updateInfo?.version;
       if (!latest) return null;
       // Only report an update when the remote version is actually newer
@@ -3115,43 +2118,6 @@ app.whenReady().then(async () => {
       return null;
     }
   });
-
-  // -- Auto-update setting IPC --
-  ipcMain.handle("settings:auto-update", () => {
-    return readSettings().autoUpdate !== false;
-  });
-
-  ipcMain.on("settings:set-auto-update", (_event, enabled: boolean) => {
-    // autoDownload stays false regardless (see setup above) — this setting
-    // now only gates whether periodic update checks run at all.
-    writeSettings({ autoUpdate: enabled });
-  });
-
-  // -- Launch at startup setting IPC --
-  ipcMain.handle("settings:launch-at-startup", () => {
-    if (process.platform === "linux") return linuxAutostart.isEnabled();
-    return app.getLoginItemSettings().openAtLogin;
-  });
-
-  ipcMain.on("settings:set-launch-at-startup", (_event, enabled: boolean) => {
-    if (process.platform === "linux") {
-      linuxAutostart.setEnabled(enabled);
-      return;
-    }
-    app.setLoginItemSettings({ openAtLogin: enabled });
-  });
-
-  // -- Show dashboard on launch setting IPC --
-  ipcMain.handle("settings:show-dashboard-on-launch", () => {
-    return readSettings().showDashboardOnLaunch !== false;
-  });
-
-  ipcMain.on(
-    "settings:set-show-dashboard-on-launch",
-    (_event, enabled: boolean) => {
-      writeSettings({ showDashboardOnLaunch: enabled });
-    },
-  );
 
   // -- Context-aware dictation: get frontmost app + browser context --
   ipcMain.handle("system:frontmost-app", async () => {
@@ -3196,17 +2162,13 @@ app.whenReady().then(async () => {
     }
     // Reposition the window and notify the renderer for CSS alignment.
     if (mainWindow) {
-      const { x, y } = getAppWindowPosition();
+      const { x, y } = resolveAppWindowPosition();
       setProgrammaticPosition(mainWindow, x, y);
     }
     // For custom, resolve the live alignment; for presets, send as-is.
     const broadcast =
       position === "custom" ? getPillAlignmentForCustom() : position;
-    mainWindow?.webContents.send("settings:pill-position-changed", broadcast);
-    settingsWindow?.webContents.send(
-      "settings:pill-position-changed",
-      broadcast,
-    );
+    broadcastToWindows("settings:pill-position-changed", broadcast);
   });
 
   // Register the hold-to-record hotkey immediately with the default accelerator
@@ -3232,23 +2194,6 @@ app.whenReady().then(async () => {
     applyLanguageHotkeySettings(settings);
   });
 
-  // Listen for hotkey changes from the settings UI
-  ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
-    scheduleHotkeyRegistration(newHotkey);
-  });
-
-  ipcMain.on("hotkey:reload", () => {
-    void getServerSettings().then((settings) => {
-      // Server unreachable — keep last-known-good mode/hotkey rather than
-      // silently reverting to defaults on a transient blip.
-      if (!settings) return;
-      hotkeyActivationMode = hotkeyModeFromSettings(settings);
-      scheduleHotkeyRegistration(
-        hotkeyFromSettings(settings) ?? currentHotkeyAccel ?? undefined,
-      );
-    });
-  });
-
   ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
     hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
     hotkeyPressed = false;
@@ -3272,13 +2217,6 @@ app.whenReady().then(async () => {
       scheduleLanguageHotkeysRegistration(map);
     },
   );
-
-  ipcMain.on("language-hotkeys:reload", () => {
-    void getServerSettings().then((settings) => {
-      if (!settings) return;
-      applyLanguageHotkeySettings(settings);
-    });
-  });
 
   // Paste over selection — not deliverOutput (no trailing space).
   ipcMain.handle("remix:paste", async (_event, text: string) => {
@@ -3345,60 +2283,56 @@ app.whenReady().then(async () => {
 
   // AX read keeps the highlight; canvas editors return unsupported.
   ipcMain.handle("remix:read-document", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    const ax = await runMacAxRead();
-    if (!ax?.text) return { ok: false, reason: "unsupported" };
-    hotkeyLog.info(
-      `remix read-document: ${ax.text.length} chars via accessibility`,
-    );
-    return {
-      ok: true,
-      text: ax.text.slice(0, 60_000),
-      truncated: ax.text.length > 60_000,
-      selStart: ax.selStart,
-      selLen: ax.selLen,
-    };
+    return withFocusedAnchor(async () => {
+      const ax = await runMacAxRead();
+      if (!ax?.text) return { ok: false, reason: "unsupported" };
+      hotkeyLog.info(
+        `remix read-document: ${ax.text.length} chars via accessibility`,
+      );
+      return {
+        ok: true,
+        text: ax.text.slice(0, 60_000),
+        truncated: ax.text.length > 60_000,
+        selStart: ax.selStart,
+        selLen: ax.selLen,
+      };
+    });
   });
 
   ipcMain.handle("remix:select-all", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendSelectAllToFocusedApp())) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
+    return withFocusedAnchor(async () => {
+      if (!(await sendSelectAllToFocusedApp())) {
+        return { ok: false, reason: "inject-failed" };
+      }
+      return { ok: true };
+    });
   });
 
   ipcMain.handle("remix:collapse-selection", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (
-      !(await runMacAxKey(124)) &&
-      !(await runKeystrokeScript(["key code 124"]))
-    ) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
+    return withFocusedAnchor(async () => {
+      if (
+        !(await runMacAxKey(124)) &&
+        !(await runKeystrokeScript(["key code 124"]))
+      ) {
+        return { ok: false, reason: "inject-failed" };
+      }
+      return { ok: true };
+    });
   });
 
   ipcMain.handle("remix:copy", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    // Whole-document copy after select_all can be slow in rich editors.
-    const text = await copySelectionFromFocusedApp({
-      timeoutsMs: [600, 2_000],
-    }).catch(() => null);
-    if (text === null) return { ok: false, reason: "nothing-copied" };
-    return {
-      ok: true,
-      text: text.slice(0, 60_000),
-      truncated: text.length > 60_000,
-    };
+    return withFocusedAnchor(async () => {
+      // Whole-document copy after select_all can be slow in rich editors.
+      const text = await copySelectionFromFocusedApp({
+        timeoutsMs: [600, 2_000],
+      }).catch(() => null);
+      if (text === null) return { ok: false, reason: "nothing-copied" };
+      return {
+        ok: true,
+        text: text.slice(0, 60_000),
+        truncated: text.length > 60_000,
+      };
+    });
   });
 
   ipcMain.handle("remix:set-clipboard", (_event, text: unknown) => {
@@ -3424,23 +2358,22 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("remix:paste-clipboard", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    // Log length only — distinguishes empty clipboard from inject failure.
-    hotkeyLog.info(
-      `remix paste: injecting (clipboard: ${clipboard.readText().length} chars)`,
-    );
-    try {
-      await pasteClipboardIntoFocusedApp();
-      if (remixPracticeTarget) {
-        settingsWindow?.webContents.send("remix:practice-delivered");
+    return withFocusedAnchor(async () => {
+      // Log length only — distinguishes empty clipboard from inject failure.
+      hotkeyLog.info(
+        `remix paste: injecting (clipboard: ${clipboard.readText().length} chars)`,
+      );
+      try {
+        await pasteClipboardIntoFocusedApp();
+        if (remixPracticeTarget) {
+          settingsWindow?.webContents.send("remix:practice-delivered");
+        }
+        return { ok: true };
+      } catch (err) {
+        hotkeyLog.error(`Remix paste failed: ${err}`);
+        return { ok: false, reason: "paste-failed" };
       }
-      return { ok: true };
-    } catch (err) {
-      hotkeyLog.error(`Remix paste failed: ${err}`);
-      return { ok: false, reason: "paste-failed" };
-    }
+    });
   });
 
   ipcMain.handle(
@@ -3455,57 +2388,54 @@ app.whenReady().then(async () => {
         occurrence >= 1
           ? occurrence
           : null;
-      if (!(await focusAnchorForInjection())) {
-        return { ok: false, reason: "document-not-in-front" };
-      }
-      const ax = await runMacAxRead();
-      if (!ax?.text || !ax.settable) {
-        return { ok: false, reason: "unsupported" };
-      }
-      // Ambiguous matches error unless occurrence is named — wrong twin corrupts text.
-      const positions: number[] = [];
-      for (
-        let at = ax.text.indexOf(text);
-        at >= 0 && positions.length <= 50;
-        at = ax.text.indexOf(text, at + 1)
-      ) {
-        positions.push(at);
-      }
-      if (positions.length === 0) return { ok: false, reason: "not-found" };
-      if (wanted === null && positions.length > 1) {
-        return { ok: false, reason: "ambiguous", matches: positions.length };
-      }
-      const index = positions[(wanted ?? 1) - 1];
-      if (index === undefined) {
-        return { ok: false, reason: "not-found", matches: positions.length };
-      }
-      if (!(await runMacAxSelect(index, text.length))) {
-        return { ok: false, reason: "failed" };
-      }
-      if (remixAnchor) remixAnchor.capturedAt = Date.now();
-      return { ok: true };
+      return withFocusedAnchor(async () => {
+        const ax = await runMacAxRead();
+        if (!ax?.text || !ax.settable) {
+          return { ok: false, reason: "unsupported" };
+        }
+        // Ambiguous matches error unless occurrence is named — wrong twin corrupts text.
+        const positions: number[] = [];
+        for (
+          let at = ax.text.indexOf(text);
+          at >= 0 && positions.length <= 50;
+          at = ax.text.indexOf(text, at + 1)
+        ) {
+          positions.push(at);
+        }
+        if (positions.length === 0) return { ok: false, reason: "not-found" };
+        if (wanted === null && positions.length > 1) {
+          return { ok: false, reason: "ambiguous", matches: positions.length };
+        }
+        const index = positions[(wanted ?? 1) - 1];
+        if (index === undefined) {
+          return { ok: false, reason: "not-found", matches: positions.length };
+        }
+        if (!(await runMacAxSelect(index, text.length))) {
+          return { ok: false, reason: "failed" };
+        }
+        if (remixAnchor) remixAnchor.capturedAt = Date.now();
+        return { ok: true };
+      });
     },
   );
 
   // Undo/redo via native chord binary (non-QWERTY-safe); osascript fallback.
   ipcMain.handle("remix:undo", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendChordToFocusedApp("z", false))) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
+    return withFocusedAnchor(async () => {
+      if (!(await sendChordToFocusedApp("z", false))) {
+        return { ok: false, reason: "inject-failed" };
+      }
+      return { ok: true };
+    });
   });
 
   ipcMain.handle("remix:redo", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendChordToFocusedApp("z", true))) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
+    return withFocusedAnchor(async () => {
+      if (!(await sendChordToFocusedApp("z", true))) {
+        return { ok: false, reason: "inject-failed" };
+      }
+      return { ok: true };
+    });
   });
 
   ipcMain.handle(
@@ -3518,19 +2448,18 @@ app.whenReady().then(async () => {
         typeof times === "number" && Number.isInteger(times)
           ? Math.min(Math.max(times, 1), 50)
           : 1;
-      if (!(await focusAnchorForInjection())) {
-        return { ok: false, reason: "document-not-in-front" };
-      }
-      for (let i = 0; i < count; i++) {
-        if (
-          !(await runMacAxKey(code)) &&
-          !(await runKeystrokeScript([`key code ${code}`]))
-        ) {
-          return { ok: false, reason: "inject-failed", pressed: i };
+      return withFocusedAnchor(async () => {
+        for (let i = 0; i < count; i++) {
+          if (
+            !(await runMacAxKey(code)) &&
+            !(await runKeystrokeScript([`key code ${code}`]))
+          ) {
+            return { ok: false, reason: "inject-failed", pressed: i };
+          }
+          if (count > 1) await wait(25);
         }
-        if (count > 1) await wait(25);
-      }
-      return { ok: true };
+        return { ok: true };
+      });
     },
   );
 
@@ -3548,19 +2477,18 @@ app.whenReady().then(async () => {
     if (typeof text !== "string" || !text.trim()) {
       return { ok: false, reason: "bad-text" };
     }
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    try {
-      await pasteIntoFocusedApp(text, undefined, { trailingSpace: false });
-      if (remixPracticeTarget) {
-        settingsWindow?.webContents.send("remix:practice-delivered");
+    return withFocusedAnchor(async () => {
+      try {
+        await pasteIntoFocusedApp(text, undefined, { trailingSpace: false });
+        if (remixPracticeTarget) {
+          settingsWindow?.webContents.send("remix:practice-delivered");
+        }
+        return { ok: true };
+      } catch (err) {
+        hotkeyLog.error(`Remix paste-text failed: ${err}`);
+        return { ok: false, reason: "paste-failed" };
       }
-      return { ok: true };
-    } catch (err) {
-      hotkeyLog.error(`Remix paste-text failed: ${err}`);
-      return { ok: false, reason: "paste-failed" };
-    }
+    });
   });
 
   // Re-read selection for typed follow-ups (document may have changed).
@@ -3639,39 +2567,6 @@ app.whenReady().then(async () => {
   });
 });
 
-interface FrontmostContext {
-  appName: string | null;
-  windowTitle: string | null;
-  url: string | null;
-}
-
-async function getFrontmostContext(): Promise<FrontmostContext> {
-  try {
-    let raw: string | null = null;
-    if (process.platform === "darwin") raw = await getMacFrontmostApp();
-    else if (process.platform === "win32") raw = await getWindowsFrontmostApp();
-    else if (process.platform === "linux") raw = await getLinuxFrontmostApp();
-    if (!raw) return { appName: null, windowTitle: null, url: null };
-    try {
-      const parsed = JSON.parse(raw) as {
-        app?: string;
-        windowTitle?: string;
-        title?: string;
-        url?: string;
-      };
-      return {
-        appName: parsed.app?.trim() || null,
-        windowTitle: parsed.windowTitle?.trim() || parsed.title?.trim() || null,
-        url: parsed.url?.trim() || null,
-      };
-    } catch {
-      return { appName: raw.trim() || null, windowTitle: null, url: null };
-    }
-  } catch {
-    return { appName: null, windowTitle: null, url: null };
-  }
-}
-
 /** Clipboard preview after selection capture restores what Copy borrowed. */
 function clipboardPreviewFields(): {
   clipboard: string | null;
@@ -3693,93 +2588,6 @@ let remixAnchor: {
 
 const REMIX_ANCHOR_MAX_AGE_MS = 5 * 60 * 1000;
 
-// Remix document access: AX when available, keyboard fallback for canvas editors.
-
-interface AxReadResult {
-  text: string;
-  selStart: number;
-  selLen: number;
-  settable: boolean;
-}
-
-async function runMacAxRead(): Promise<AxReadResult | null> {
-  if (process.platform !== "darwin") return null;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return null;
-  try {
-    // A large document's JSON easily exceeds execFile's 1MB default buffer.
-    const out = await execAsync(binary, ["read"], 3000, 16 * 1024 * 1024);
-    return JSON.parse(out) as AxReadResult;
-  } catch {
-    return null;
-  }
-}
-
-async function runMacAxSelect(start: number, len: number): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    await execAsync(binary, ["select", String(start), String(len)], 3000);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function runMacAxCaps(): Promise<{
-  settable: boolean;
-  length: number;
-} | null> {
-  if (process.platform !== "darwin") return null;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return null;
-  try {
-    const out = await execAsync(binary, ["caps"], 3000);
-    return JSON.parse(out) as { settable: boolean; length: number };
-  } catch {
-    return null;
-  }
-}
-
-async function isSecureInputActive(): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    return (await execAsync(binary, ["secure"], 1000)) === "1";
-  } catch {
-    return false;
-  }
-}
-
-async function runMacAxKey(code: number): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    await execAsync(binary, ["key", String(code)], 3000);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Cmd+A via CGEvent binary (same AX permission as paste); osascript fallback. */
-async function sendSelectAllToFocusedApp(): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-fast-paste");
-  if (binary) {
-    try {
-      await execAsync(binary, ["a"], 3000);
-      return true;
-    } catch (err) {
-      hotkeyLog.warn(`Native select-all failed, trying osascript: ${err}`);
-    }
-  }
-  return runKeystrokeScript(['keystroke "a" using {command down}']);
-}
-
 /** Whitelist of bare keycodes press_key may inject (no modifier chords). */
 const REMIX_PRESSABLE_KEYS: Record<string, number> = {
   enter: 36,
@@ -3795,39 +2603,17 @@ const REMIX_PRESSABLE_KEYS: Record<string, number> = {
   end: 119,
 };
 
-async function sendChordToFocusedApp(
-  letter: string,
-  shift: boolean,
-): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-fast-paste");
-  if (binary) {
-    try {
-      await execAsync(binary, shift ? [letter, "shift"] : [letter], 3000);
-      return true;
-    } catch (err) {
-      hotkeyLog.warn(`Native chord ${letter} failed, trying osascript: ${err}`);
-    }
+/**
+ * Run `fn` when the document can take injected input. Otherwise, report that
+ * the document is not in front.
+ */
+async function withFocusedAnchor<T>(
+  fn: () => Promise<T>,
+): Promise<T | { ok: false; reason: "document-not-in-front" }> {
+  if (!(await focusAnchorForInjection())) {
+    return { ok: false, reason: "document-not-in-front" };
   }
-  return runKeystrokeScript([
-    `keystroke "${letter}" using {command down${shift ? ", shift down" : ""}}`,
-  ]);
-}
-
-async function runKeystrokeScript(lines: string[]): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const script = [
-    'tell application "System Events"',
-    ...lines,
-    "end tell",
-  ].flatMap((line) => ["-e", line]);
-  try {
-    await execAsync("osascript", script, 8000);
-    return true;
-  } catch (err) {
-    hotkeyLog.warn(`Keystroke script failed: ${err}`);
-    return false;
-  }
+  return fn();
 }
 
 /** Yield key focus to the document before injecting; false if it can't. */
@@ -3861,7 +2647,6 @@ async function focusAnchorForInjection(): Promise<boolean> {
   return front.appName === anchor.appName;
 }
 
-/** Keyboard-tier selection via the app's Find (canvas editors). */
 const REMIX_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
 const REMIX_IMAGE_TIMEOUT_MS = 15_000;
 
@@ -3889,21 +2674,6 @@ async function fetchRemixImage(
   } catch (err) {
     hotkeyLog.warn(`Remix image fetch failed: ${err}`);
     return null;
-  }
-}
-
-/** Bring the anchored app frontmost (macOS); settle before re-check. */
-async function activateAnchorApp(appName: string): Promise<void> {
-  if (process.platform !== "darwin") return;
-  try {
-    await execAsync(
-      "osascript",
-      ["-e", `tell application ${JSON.stringify(appName)} to activate`],
-      2000,
-    );
-    await wait(150);
-  } catch (err) {
-    hotkeyLog.warn(`Could not re-activate "${appName}": ${err}`);
   }
 }
 
@@ -4117,55 +2887,6 @@ function applyRemixSettings(settings: Record<string, string>): void {
 
 const DEFAULT_HOTKEY = getDefaultHotkey();
 const DEFAULT_REMIX_HOTKEY = getDefaultRemixHotkey();
-const HOTKEY_MODIFIER_PARTS = new Set([
-  "alt",
-  "option",
-  "control",
-  "ctrl",
-  "command",
-  "cmd",
-  "commandorcontrol",
-  "cmdorctrl",
-  "shift",
-  "super",
-  "meta",
-  "win",
-  "fn",
-  "globe",
-  "rightalt",
-  "rightoption",
-  "rightcontrol",
-  "rightctrl",
-  "rightshift",
-  "rightcommand",
-  "rightcmd",
-  "rightsuper",
-  "rightwin",
-  "rightmeta",
-]);
-const HOTKEY_MACRO_MOUSE_PARTS = new Set(["mousebutton4", "mousebutton5"]);
-
-function isValidAccelerator(accel: string): boolean {
-  if (!accel || typeof accel !== "string") return false;
-  if (!/^[\x20-\x7E]+$/.test(accel)) return false;
-  if (accel.endsWith("+")) return false;
-  const parts = accel.split("+");
-  if (parts.some((p) => !p.trim())) return false;
-  const lowered = parts.map((p) => p.trim().toLowerCase());
-  // Fn/Globe is only observable by the macOS native listener; on other
-  // platforms a hotkey containing it would silently never fire.
-  if (
-    process.platform !== "darwin" &&
-    lowered.some((p) => p === "fn" || p === "globe")
-  ) {
-    return false;
-  }
-  return lowered.some(
-    (part) =>
-      HOTKEY_MODIFIER_PARTS.has(part) || HOTKEY_MACRO_MOUSE_PARTS.has(part),
-  );
-}
-
 /** The configured hotkey accelerator from a settings map, if valid. */
 function hotkeyFromSettings(
   settings: Record<string, string>,
@@ -4195,26 +2916,22 @@ function sendHotkeyDown(language?: string | null): void {
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
-      mainWindow?.webContents.send("hotkey:down", payload);
-      settingsWindow?.webContents.send("hotkey:down", payload);
+      broadcastToWindows("hotkey:down", payload);
     });
     return;
   }
-  mainWindow?.webContents.send("hotkey:down", payload);
-  settingsWindow?.webContents.send("hotkey:down", payload);
+  broadcastToWindows("hotkey:down", payload);
 }
 
 function sendHotkeyUp(): void {
   if (pillReadyPromise) {
     // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
     void pillReadyPromise.then(() => {
-      mainWindow?.webContents.send("hotkey:up");
-      settingsWindow?.webContents.send("hotkey:up");
+      broadcastToWindows("hotkey:up");
     });
     return;
   }
-  mainWindow?.webContents.send("hotkey:up");
-  settingsWindow?.webContents.send("hotkey:up");
+  broadcastToWindows("hotkey:up");
 }
 
 /** Send to the pill, deferring until it exists so bursty IPC stays ordered. */
@@ -4508,9 +3225,16 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
   }
   const body = `Hold-to-talk isn't available, so "${accel}" now toggles recording on and off.${fix}`;
   hotkeyLog.warn(body);
-  if (Notification.isSupported()) {
-    new Notification({ title: "Openstyle is in toggle mode", body }).show();
-  }
+  notify("Openstyle is in toggle mode", body);
+}
+
+// Shows one native notification. A click opens the settings window on
+// `route`. Without a route, a click does nothing.
+function notify(title: string, body: string, route?: string): void {
+  if (!Notification.isSupported()) return;
+  const note = new Notification({ title, body });
+  if (route) note.on("click", () => showSettingsWindow(route));
+  note.show();
 }
 
 // Import completion (UX-04 / UX-A4, specs/lean-audit-2026-09.md §4): the
@@ -4530,13 +3254,7 @@ function notifyImportComplete(fileName: string): void {
     g.__openstyleE2E.importNotifications =
       (g.__openstyleE2E.importNotifications ?? 0) + 1;
   }
-  if (!Notification.isSupported()) return;
-  const note = new Notification({
-    title: "Transcript ready",
-    body: `“${fileName}” has been transcribed.`,
-  });
-  note.on("click", () => showSettingsWindow("/today"));
-  note.show();
+  notify("Transcript ready", `“${fileName}” has been transcribed.`, "/today");
 }
 
 // Rate-limited so a broken paste backend doesn't fire a notification per
@@ -4560,12 +3278,10 @@ function notifyPasteFailed(): void {
         " Installing xdotool may fix this (e.g. sudo apt install xdotool).";
     }
   }
-  if (Notification.isSupported()) {
-    new Notification({
-      title: "Openstyle couldn't paste",
-      body: `Your transcript is on the clipboard — press ${shortcut} to paste it.${hint}`,
-    }).show();
-  }
+  notify(
+    "Openstyle couldn't paste",
+    `Your transcript is on the clipboard — press ${shortcut} to paste it.${hint}`,
+  );
 }
 
 /** Electron globalShortcut rejects some combos (e.g. Alt+Super on Linux). */
@@ -4671,8 +3387,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
           const errorPayload = {
             message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Openstyle or pick a different combination in Settings.`,
           };
-          mainWindow?.webContents.send("hotkey:error", errorPayload);
-          settingsWindow?.webContents.send("hotkey:error", errorPayload);
+          broadcastToWindows("hotkey:error", errorPayload);
         }
       },
     });
@@ -4720,8 +3435,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
           message = `Hotkey "${accel}" requires access to input devices. Run: sudo usermod -aG input $USER — then log out and back in.`;
         }
         const errorPayload = { message };
-        mainWindow?.webContents.send("hotkey:error", errorPayload);
-        settingsWindow?.webContents.send("hotkey:error", errorPayload);
+        broadcastToWindows("hotkey:error", errorPayload);
       }
     }
   } catch (err) {
@@ -4845,10 +3559,33 @@ function applyLanguageHotkeySettings(settings: Record<string, string>): void {
   scheduleLanguageHotkeysRegistration(map);
 }
 
-// Clean up key listener and mic listener on quit
-app.on("will-quit", () => {
+// Keep app running in background when windows are closed (tray stays active)
+app.on("window-all-closed", () => {
+  // Stay alive for the tray. Quit only through the tray menu.
+});
+
+// Re-open the dashboard when the app is activated (e.g. clicking the dock
+// icon or relaunching) and no dashboard window is currently open.
+app.on("activate", () => {
+  showSettingsWindow();
+});
+
+let isUpdaterQuitting = false;
+let isQuitting = false;
+
+let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
+
+// Stop every native child process and timer. The before-quit handler runs
+// this on a normal quit and on an updater quit. A normal quit then calls
+// app.exit(0), which skips will-quit.
+function cleanupBeforeQuit(): void {
+  // Finalize any in-flight meeting recording's WAV headers before the process
+  // exits; the boot-time orphan sweep settles the DB row next launch.
+  meetingRecorder?.stopSync();
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
+  stopWhisperServer().catch(() => {});
+  stopMlxServer().catch(() => {});
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
@@ -4866,41 +3603,6 @@ app.on("will-quit", () => {
     clearInterval(remixBarFollowTimer);
     remixBarFollowTimer = null;
   }
-  globalShortcut.unregisterAll();
-});
-
-// Keep app running in background when windows are closed (tray stays active)
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    // On non-macOS, keep the app alive for the tray
-    // Only quit explicitly via tray menu
-  }
-});
-
-// Re-open the dashboard when the app is activated (e.g. clicking the dock
-// icon or relaunching) and no dashboard window is currently open.
-app.on("activate", () => {
-  showSettingsWindow();
-});
-
-// Gracefully shut down the HTTP server and flush Sentry before quitting
-let isUpdaterQuitting = false;
-let isQuitting = false;
-
-let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
-
-function cleanupBeforeQuit(): void {
-  // Finalize any in-flight meeting recording's WAV headers before the process
-  // exits; the boot-time orphan sweep settles the DB row next launch.
-  meetingRecorder?.stopSync();
-  audioPlaybackController.restoreSync();
-  stopLinuxPasteHelper();
-  stopWhisperServer().catch(() => {});
-  stopMlxServer().catch(() => {});
-  if (keyListener) {
-    keyListener.stop();
-    keyListener = null;
-  }
   stopHotkeyRecorderProcess();
   globalShortcut.unregisterAll();
   if (httpServer) {
@@ -4908,6 +3610,12 @@ function cleanupBeforeQuit(): void {
     httpServer = null;
   }
 }
+
+// A signal ends the process with no "exit" event unless a handler runs.
+// Quit through Electron so the exit hooks that stop the whisper and MLX child
+// servers run. The before-quit handler always ends with app.exit(0).
+process.on("SIGINT", () => app.quit());
+process.on("SIGTERM", () => app.quit());
 
 app.on("before-quit", (event) => {
   if (isUpdaterQuitting) {

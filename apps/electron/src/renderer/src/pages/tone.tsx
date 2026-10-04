@@ -8,6 +8,10 @@ import {
   type CleanupPersonalTone,
   type CleanupToneDestination,
   type CleanupWorkTone,
+  DEFAULT_CLEANUP_EMAIL_TONE,
+  DEFAULT_CLEANUP_OVERALL_TONE,
+  DEFAULT_CLEANUP_PERSONAL_TONE,
+  DEFAULT_CLEANUP_WORK_TONE,
   parseCleanupAppAssignments,
   parseCleanupEmailTone,
   parseCleanupIntensity,
@@ -15,6 +19,11 @@ import {
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
 } from "@openstyle/validations";
+import {
+  Eyebrow,
+  PageHeader,
+  PageShell,
+} from "@renderer/components/page-chrome";
 import { AppAssignments } from "@renderer/components/tone-previews/app-assignments";
 import {
   type AppMarkId,
@@ -31,6 +40,10 @@ import { TextMessagePreview } from "@renderer/components/tone-previews/text-mess
 import { WorkChatPreview } from "@renderer/components/tone-previews/work-chat-preview";
 import { Button } from "@renderer/components/ui/button";
 import {
+  RadioCard,
+  RadioCardGroup,
+} from "@renderer/components/ui/radio-card-group";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -39,22 +52,15 @@ import {
 import { Textarea } from "@renderer/components/ui/textarea";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
+import type { ConfiguredModel } from "@renderer/lib/models";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
-import { cn } from "@renderer/lib/utils";
+import { putSetting } from "@renderer/lib/settings";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import {
-  DEFAULT_CLEANUP_EMAIL_TONE,
-  DEFAULT_CLEANUP_OVERALL_TONE,
-  DEFAULT_CLEANUP_PERSONAL_TONE,
-  DEFAULT_CLEANUP_WORK_TONE,
-} from "../../../shared/cleanup-tone-settings";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
-import { Eyebrow, PageHeader, PageShell } from "./models/page-chrome";
-import type { ConfiguredModel } from "./models/types";
 
 // Settings that change whether the pill needs to capture the frontmost app for
 // cleanup destination routing. Saving any of these notifies the pill to refresh
@@ -92,140 +98,50 @@ type ToneCardOption<T extends string> = {
   sampleKey: string;
 };
 
-const CLEANUP_OPTIONS: ToneCardOption<CleanupCardValue>[] = [
-  {
-    value: "low",
-    titleKey: "tone.cleanup.cards.low.title",
-    descKey: "tone.cleanup.cards.low.desc",
-    sampleKey: "tone.cleanup.cards.low.sample",
-  },
-  {
-    value: "medium",
-    titleKey: "tone.cleanup.cards.medium.title",
-    descKey: "tone.cleanup.cards.medium.desc",
-    sampleKey: "tone.cleanup.cards.medium.sample",
-  },
-  {
-    value: "high",
-    titleKey: "tone.cleanup.cards.high.title",
-    descKey: "tone.cleanup.cards.high.desc",
-    sampleKey: "tone.cleanup.cards.high.sample",
-  },
-  {
-    value: "custom",
-    titleKey: "tone.cleanup.cards.custom.title",
-    descKey: "tone.cleanup.cards.custom.desc",
-    sampleKey: "tone.cleanup.cards.custom.sample",
-  },
-];
+// Builds the card options for one i18n group. All keys follow
+// `tone.<group>.cards.<value>.{title,desc,sample}`.
+function toneOptions<T extends string>(
+  group: string,
+  values: readonly T[],
+): ToneCardOption<T>[] {
+  return values.map((value) => ({
+    value,
+    titleKey: `tone.${group}.cards.${value}.title`,
+    descKey: `tone.${group}.cards.${value}.desc`,
+    sampleKey: `tone.${group}.cards.${value}.sample`,
+  }));
+}
 
-const PERSONAL_OPTIONS: ToneCardOption<CleanupPersonalTone>[] = [
-  {
-    value: "polished",
-    titleKey: "tone.personal.cards.polished.title",
-    descKey: "tone.personal.cards.polished.desc",
-    sampleKey: "tone.personal.cards.polished.sample",
-  },
-  {
-    value: "casual",
-    titleKey: "tone.personal.cards.casual.title",
-    descKey: "tone.personal.cards.casual.desc",
-    sampleKey: "tone.personal.cards.casual.sample",
-  },
-  {
-    value: "very_casual",
-    titleKey: "tone.personal.cards.very_casual.title",
-    descKey: "tone.personal.cards.very_casual.desc",
-    sampleKey: "tone.personal.cards.very_casual.sample",
-  },
-  {
-    value: "off",
-    titleKey: "tone.personal.cards.off.title",
-    descKey: "tone.personal.cards.off.desc",
-    sampleKey: "tone.personal.cards.off.sample",
-  },
-];
-
-const WORK_OPTIONS: ToneCardOption<CleanupWorkTone>[] = [
-  {
-    value: "direct",
-    titleKey: "tone.work.cards.direct.title",
-    descKey: "tone.work.cards.direct.desc",
-    sampleKey: "tone.work.cards.direct.sample",
-  },
-  {
-    value: "friendly",
-    titleKey: "tone.work.cards.friendly.title",
-    descKey: "tone.work.cards.friendly.desc",
-    sampleKey: "tone.work.cards.friendly.sample",
-  },
-  {
-    value: "formal",
-    titleKey: "tone.work.cards.formal.title",
-    descKey: "tone.work.cards.formal.desc",
-    sampleKey: "tone.work.cards.formal.sample",
-  },
-  {
-    value: "off",
-    titleKey: "tone.work.cards.off.title",
-    descKey: "tone.work.cards.off.desc",
-    sampleKey: "tone.work.cards.off.sample",
-  },
-];
-
-const EMAIL_OPTIONS: ToneCardOption<CleanupEmailTone>[] = [
-  {
-    value: "casual",
-    titleKey: "tone.email.cards.casual.title",
-    descKey: "tone.email.cards.casual.desc",
-    sampleKey: "tone.email.cards.casual.sample",
-  },
-  {
-    value: "warm",
-    titleKey: "tone.email.cards.warm.title",
-    descKey: "tone.email.cards.warm.desc",
-    sampleKey: "tone.email.cards.warm.sample",
-  },
-  {
-    value: "formal",
-    titleKey: "tone.email.cards.formal.title",
-    descKey: "tone.email.cards.formal.desc",
-    sampleKey: "tone.email.cards.formal.sample",
-  },
-  {
-    value: "off",
-    titleKey: "tone.email.cards.off.title",
-    descKey: "tone.email.cards.off.desc",
-    sampleKey: "tone.email.cards.off.sample",
-  },
-];
-
-const OVERALL_OPTIONS: ToneCardOption<CleanupOverallTone>[] = [
-  {
-    value: "casual",
-    titleKey: "tone.everythingElse.cards.casual.title",
-    descKey: "tone.everythingElse.cards.casual.desc",
-    sampleKey: "tone.everythingElse.cards.casual.sample",
-  },
-  {
-    value: "neutral",
-    titleKey: "tone.everythingElse.cards.neutral.title",
-    descKey: "tone.everythingElse.cards.neutral.desc",
-    sampleKey: "tone.everythingElse.cards.neutral.sample",
-  },
-  {
-    value: "professional",
-    titleKey: "tone.everythingElse.cards.professional.title",
-    descKey: "tone.everythingElse.cards.professional.desc",
-    sampleKey: "tone.everythingElse.cards.professional.sample",
-  },
-  {
-    value: "off",
-    titleKey: "tone.everythingElse.cards.off.title",
-    descKey: "tone.everythingElse.cards.off.desc",
-    sampleKey: "tone.everythingElse.cards.off.sample",
-  },
-];
+const CLEANUP_OPTIONS = toneOptions<CleanupCardValue>("cleanup", [
+  "low",
+  "medium",
+  "high",
+  "custom",
+]);
+const PERSONAL_OPTIONS = toneOptions<CleanupPersonalTone>("personal", [
+  "polished",
+  "casual",
+  "very_casual",
+  "off",
+]);
+const WORK_OPTIONS = toneOptions<CleanupWorkTone>("work", [
+  "direct",
+  "friendly",
+  "formal",
+  "off",
+]);
+const EMAIL_OPTIONS = toneOptions<CleanupEmailTone>("email", [
+  "casual",
+  "warm",
+  "formal",
+  "off",
+]);
+const OVERALL_OPTIONS = toneOptions<CleanupOverallTone>("everythingElse", [
+  "casual",
+  "neutral",
+  "professional",
+  "off",
+]);
 
 export default function TonePage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -318,12 +234,8 @@ export default function TonePage(): React.JSX.Element {
   const saveSetting = useCallback(async (key: string, value: string) => {
     // The Hono client does not throw on non-2xx — surface server rejections so
     // callers' .catch handlers fire (and "Saved" state isn't shown on failure).
-    const res = await getClient().api.settings[":key"].$put({
-      param: { key },
-      json: { value },
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to save setting "${key}" (${res.status})`);
+    if (!(await putSetting(key, value))) {
+      throw new Error(`Failed to save setting "${key}"`);
     }
     // Let the pill refresh its cached "needs frontmost app for routing" decision
     // when a cleanup-relevant setting changes, so it doesn't re-fetch settings
@@ -438,8 +350,6 @@ export default function TonePage(): React.JSX.Element {
     [assignments, persistAssignments],
   );
 
-  const cleanupMode: CleanupCardValue = cleanupIntensity;
-
   if (loading) {
     return (
       <PageShell>
@@ -490,7 +400,7 @@ export default function TonePage(): React.JSX.Element {
 
           <TabsContent value="cleanup" className="mt-0">
             <CleanupTonePanel
-              value={cleanupMode}
+              value={cleanupIntensity}
               onChange={selectCleanupMode}
               cleanupCustomPrompt={cleanupCustomPrompt}
               onCustomPromptChange={setCleanupCustomPrompt}
@@ -504,7 +414,6 @@ export default function TonePage(): React.JSX.Element {
           <TabsContent value="personal" className="mt-0">
             <SubsetTonePanel
               destination="personal"
-              previewKind="personal"
               title={t("tone.personal.title")}
               apps={getVisibleBuiltinRouteIds("personal", assignments)}
               value={personalTone}
@@ -522,7 +431,6 @@ export default function TonePage(): React.JSX.Element {
           <TabsContent value="work" className="mt-0">
             <SubsetTonePanel
               destination="work"
-              previewKind="work"
               title={t("tone.work.title")}
               apps={getVisibleBuiltinRouteIds("work", assignments)}
               value={workTone}
@@ -538,7 +446,6 @@ export default function TonePage(): React.JSX.Element {
           <TabsContent value="email" className="mt-0">
             <SubsetTonePanel
               destination="email"
-              previewKind="email"
               title={t("tone.email.title")}
               apps={getVisibleBuiltinRouteIds("email", assignments)}
               value={emailTone}
@@ -554,7 +461,6 @@ export default function TonePage(): React.JSX.Element {
           <TabsContent value="everythingElse" className="mt-0">
             <SubsetTonePanel
               destination="overall"
-              previewKind="overall"
               title={t("tone.everythingElse.title")}
               desc={t("tone.everythingElse.desc")}
               apps={[]}
@@ -631,7 +537,6 @@ function CleanupTonePanel({
   onSaveCustomPrompt,
   onResetToPreset,
   savingCustomPrompt,
-  disabled,
 }: {
   value: CleanupCardValue;
   onChange: (value: CleanupCardValue) => void;
@@ -641,45 +546,8 @@ function CleanupTonePanel({
   onSaveCustomPrompt: () => void;
   onResetToPreset: () => void;
   savingCustomPrompt: boolean;
-  disabled?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-
-  const handleOptionKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-      if (
-        ![
-          "ArrowRight",
-          "ArrowDown",
-          "ArrowLeft",
-          "ArrowUp",
-          "Home",
-          "End",
-        ].includes(event.key)
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-
-      if (event.key === "Home") {
-        onChange(CLEANUP_OPTIONS[0]!.value);
-        return;
-      }
-
-      if (event.key === "End") {
-        onChange(CLEANUP_OPTIONS.at(-1)!.value);
-        return;
-      }
-
-      const delta =
-        event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-      const nextIndex =
-        (index + delta + CLEANUP_OPTIONS.length) % CLEANUP_OPTIONS.length;
-      onChange(CLEANUP_OPTIONS[nextIndex]!.value);
-    },
-    [onChange],
-  );
 
   const activeOption =
     CLEANUP_OPTIONS.find((option) => option.value === value) ??
@@ -697,68 +565,39 @@ function CleanupTonePanel({
       </section>
 
       <div className="space-y-5">
-        <div
-          role="radiogroup"
+        <RadioCardGroup
+          value={value}
+          onValueChange={(next) => onChange(next as CleanupCardValue)}
           aria-label={t("tone.cleanup.title")}
-          aria-disabled={disabled}
-          className={cn(
-            "grid grid-cols-2 gap-2.5 min-[560px]:grid-cols-3 min-[1000px]:grid-cols-5",
-            disabled && "pointer-events-none opacity-50",
-          )}
+          className="grid grid-cols-2 gap-2.5 min-[560px]:grid-cols-3 min-[1000px]:grid-cols-5"
         >
-          {CLEANUP_OPTIONS.map((option, index) => {
-            const selected = option.value === value;
-            return (
-              // biome-ignore lint/a11y/useSemanticElements: roving-tabindex radiogroup on styled buttons; <input type="radio"> would need a full restyle of the card layout.
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                disabled={disabled}
-                tabIndex={disabled ? -1 : selected ? 0 : -1}
-                onClick={() => onChange(option.value)}
-                onKeyDown={(event) => handleOptionKeyDown(event, index)}
-                className={cn(
-                  "group border-border bg-card relative flex flex-col gap-1.5 overflow-hidden rounded-lg border p-3.5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
-                  "hover:border-foreground/20 hover:bg-card/90",
-                  selected && "border-primary/40 bg-accent/45",
-                )}
-              >
-                <div className="flex items-center justify-between gap-1.5">
-                  <p className="display text-foreground text-[21px] leading-none tracking-[-0.03em]">
-                    {t(option.titleKey)}
-                  </p>
-                  <span
-                    className={cn(
-                      "flex size-[18px] shrink-0 items-center justify-center rounded-full border transition-colors duration-150",
-                      selected
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border/70 bg-transparent text-transparent group-hover:border-foreground/25",
-                    )}
-                  >
-                    <Check
-                      className="size-2.5"
-                      strokeWidth={3}
-                      aria-hidden="true"
-                    />
-                  </span>
-                </div>
-                <p className="text-muted-foreground text-[11.5px] leading-[1.4]">
-                  {t(option.descKey)}
+          {CLEANUP_OPTIONS.map((option) => (
+            <RadioCard
+              key={option.value}
+              value={option.value}
+              className="flex flex-col gap-1.5 p-3.5"
+            >
+              <div className="flex items-center justify-between gap-1.5">
+                <p className="display text-foreground text-[21px] leading-none tracking-[-0.03em]">
+                  {t(option.titleKey)}
                 </p>
-              </button>
-            );
-          })}
-        </div>
+                <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full border border-border/70 bg-transparent text-transparent transition-colors duration-150 group-hover:border-foreground/25 group-data-[state=checked]:border-primary group-data-[state=checked]:bg-primary group-data-[state=checked]:text-primary-foreground">
+                  <Check
+                    className="size-2.5"
+                    strokeWidth={3}
+                    aria-hidden="true"
+                  />
+                </span>
+              </div>
+              <p className="text-muted-foreground text-[11.5px] leading-[1.4]">
+                {t(option.descKey)}
+              </p>
+            </RadioCard>
+          ))}
+        </RadioCardGroup>
 
         {value === "custom" ? (
-          <div
-            className={cn(
-              "border-border bg-card rounded-lg border p-5",
-              disabled && "pointer-events-none opacity-50",
-            )}
-          >
+          <div className="border-border bg-card rounded-lg border p-5">
             <div className="mb-2.5 flex items-center justify-between gap-3">
               <Eyebrow text={t("models.cleanup.promptLabel")} />
               <Button
@@ -766,7 +605,6 @@ function CleanupTonePanel({
                 size="sm"
                 className="h-auto p-0"
                 onClick={onResetToPreset}
-                disabled={disabled}
               >
                 {t("models.cleanup.resetToPresets")}
               </Button>
@@ -779,7 +617,6 @@ function CleanupTonePanel({
               maxLength={CLEANUP_CUSTOM_PROMPT_MAX}
               onChange={(event) => onCustomPromptChange(event.target.value)}
               spellCheck={false}
-              disabled={disabled}
               className="mono min-h-[180px] resize-y text-[12px] leading-[1.65]"
               aria-label={t("models.cleanup.promptLabel")}
             />
@@ -789,7 +626,7 @@ function CleanupTonePanel({
                 variant="ink"
                 size="sm"
                 onClick={onSaveCustomPrompt}
-                disabled={disabled || savingCustomPrompt || !customPromptDirty}
+                disabled={savingCustomPrompt || !customPromptDirty}
               >
                 {savingCustomPrompt ? (
                   <>
@@ -824,10 +661,7 @@ function CleanupTonePanel({
                   />
                   <Eyebrow text={t(activeOption.titleKey)} />
                 </div>
-                <CleanupPreview
-                  result={t(activeOption.sampleKey)}
-                  selected={false}
-                />
+                <CleanupPreview result={t(activeOption.sampleKey)} />
               </div>
             </div>
           </div>
@@ -839,7 +673,6 @@ function CleanupTonePanel({
 
 function SubsetTonePanel<T extends string>({
   destination,
-  previewKind,
   title,
   desc,
   apps,
@@ -850,10 +683,8 @@ function SubsetTonePanel<T extends string>({
   allAssignments,
   onAddAssignment,
   onRemoveAssignment,
-  disabled,
 }: {
   destination: CleanupToneDestination;
-  previewKind: "personal" | "work" | "email" | "overall";
   title: string;
   desc?: string;
   apps: readonly AppMarkId[];
@@ -864,82 +695,50 @@ function SubsetTonePanel<T extends string>({
   allAssignments: CleanupAppAssignment[];
   onAddAssignment: (assignment: CleanupAppAssignment) => void;
   onRemoveAssignment: (match: string) => void;
-  disabled?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const canManageRoutes = destination !== "overall";
   const hasRouteIcons = apps.length > 0 || assignments.length > 0;
+  const assignmentsButton = canManageRoutes ? (
+    <AppAssignments
+      destination={destination}
+      items={assignments}
+      allItems={allAssignments}
+      onAdd={onAddAssignment}
+      onRemove={onRemoveAssignment}
+    />
+  ) : null;
 
-  const handleOptionKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-      if (
-        ![
-          "ArrowRight",
-          "ArrowDown",
-          "ArrowLeft",
-          "ArrowUp",
-          "Home",
-          "End",
-        ].includes(event.key)
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-
-      if (event.key === "Home") {
-        onChange(options[0]!.value);
-        return;
-      }
-
-      if (event.key === "End") {
-        onChange(options.at(-1)!.value);
-        return;
-      }
-
-      const delta =
-        event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-      const nextIndex = (index + delta + options.length) % options.length;
-      onChange(options[nextIndex]!.value);
-    },
-    [onChange, options],
-  );
-
-  const renderPreview = (
-    sample: string,
-    selected: boolean,
-  ): React.JSX.Element => {
-    if (previewKind === "personal") {
-      return <TextMessagePreview sample={sample} selected={selected} />;
+  const renderPreview = (sample: string): React.JSX.Element => {
+    if (destination === "personal") {
+      return <TextMessagePreview sample={sample} />;
     }
-    if (previewKind === "work") {
+    if (destination === "work") {
       return (
         <WorkChatPreview
           sample={sample}
-          selected={selected}
           sender={t("tone.work.preview.sender")}
           time={t("tone.work.preview.time")}
         />
       );
     }
-    if (previewKind === "email") {
+    if (destination === "email") {
       return (
         <EmailPreview
           body={sample}
-          selected={selected}
           to={t("tone.email.preview.to")}
           subject={t("tone.email.preview.subject")}
         />
       );
     }
-    return <NotePreview sample={sample} selected={selected} />;
+    return <NotePreview sample={sample} />;
   };
 
   const activeOption = options.find((o) => o.value === value) ?? options[0]!;
   const rawSampleKey =
-    previewKind === "overall"
+    destination === "overall"
       ? "tone.everythingElse.preview.rawSample"
-      : `tone.${previewKind}.preview.rawSample`;
+      : `tone.${destination}.preview.rawSample`;
 
   return (
     <div className="space-y-6">
@@ -962,101 +761,50 @@ function SubsetTonePanel<T extends string>({
               assignments={assignments}
               size={30}
               className="mt-3"
-              trailing={
-                canManageRoutes ? (
-                  <AppAssignments
-                    destination={destination}
-                    items={assignments}
-                    allItems={allAssignments}
-                    onAdd={onAddAssignment}
-                    onRemove={onRemoveAssignment}
-                  />
-                ) : undefined
-              }
+              trailing={assignmentsButton}
             />
           ) : (
             <p className="text-muted-foreground mt-3 text-[12px] leading-[1.5]">
               {t("tone.apps.anyUnlisted")}
             </p>
           )}
-          {!hasRouteIcons && canManageRoutes ? (
-            <div className="mt-3 flex items-center">
-              <AppAssignments
-                destination={destination}
-                items={assignments}
-                allItems={allAssignments}
-                onAdd={onAddAssignment}
-                onRemove={onRemoveAssignment}
-              />
-            </div>
+          {!hasRouteIcons && assignmentsButton ? (
+            <div className="mt-3 flex items-center">{assignmentsButton}</div>
           ) : null}
         </div>
       </section>
 
       <div className="grid gap-4 min-[820px]:grid-cols-[minmax(0,300px)_minmax(0,1fr)] min-[820px]:items-start">
-        <div
-          role="radiogroup"
+        <RadioCardGroup
+          value={value}
+          onValueChange={(next) => onChange(next as T)}
           aria-label={title}
-          aria-disabled={disabled}
-          className={cn(
-            "flex flex-col gap-2.5",
-            disabled && "pointer-events-none opacity-50",
-          )}
+          className="flex flex-col gap-2.5"
         >
-          {options.map((option, index) => {
-            const selected = option.value === value;
-            return (
-              // biome-ignore lint/a11y/useSemanticElements: roving-tabindex radiogroup on styled buttons; <input type="radio"> would need a full restyle of the card layout.
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                disabled={disabled}
-                tabIndex={disabled ? -1 : selected ? 0 : -1}
-                onClick={() => onChange(option.value)}
-                onKeyDown={(event) => handleOptionKeyDown(event, index)}
-                className={cn(
-                  "group border-border bg-card relative flex items-center gap-3 overflow-hidden rounded-lg border py-4 pr-4 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
-                  "hover:border-foreground/20 hover:bg-card/90",
-                  selected && "border-primary/40 bg-accent/45",
-                )}
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r-full transition-all duration-150",
-                    selected
-                      ? "bg-primary h-9"
-                      : "bg-foreground/15 h-0 group-hover:h-5",
-                  )}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="display text-foreground text-[24px] leading-none tracking-[-0.03em]">
-                    {t(option.titleKey)}
-                  </p>
-                  <p className="text-muted-foreground mt-2 text-[12.5px] leading-[1.45]">
-                    {t(option.descKey)}
-                  </p>
-                </div>
-                <span
-                  className={cn(
-                    "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors duration-150",
-                    selected
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border/70 bg-transparent text-transparent group-hover:border-foreground/25",
-                  )}
-                >
-                  <Check
-                    className="size-3"
-                    strokeWidth={3}
-                    aria-hidden="true"
-                  />
-                </span>
-              </button>
-            );
-          })}
-        </div>
+          {options.map((option) => (
+            <RadioCard
+              key={option.value}
+              value={option.value}
+              className="flex items-center gap-3 py-4 pr-4 pl-5"
+            >
+              <span
+                aria-hidden="true"
+                className="absolute left-0 top-1/2 h-0 w-1 -translate-y-1/2 rounded-r-full bg-foreground/15 transition-all duration-150 group-hover:h-5 group-data-[state=checked]:h-9 group-data-[state=checked]:bg-primary"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="display text-foreground text-[24px] leading-none tracking-[-0.03em]">
+                  {t(option.titleKey)}
+                </p>
+                <p className="text-muted-foreground mt-2 text-[12.5px] leading-[1.45]">
+                  {t(option.descKey)}
+                </p>
+              </div>
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border/70 bg-transparent text-transparent transition-colors duration-150 group-hover:border-foreground/25 group-data-[state=checked]:border-primary group-data-[state=checked]:bg-primary group-data-[state=checked]:text-primary-foreground">
+                <Check className="size-3" strokeWidth={3} aria-hidden="true" />
+              </span>
+            </RadioCard>
+          ))}
+        </RadioCardGroup>
 
         <div>
           <div className="mb-2.5 flex items-center justify-between gap-2">
@@ -1075,9 +823,9 @@ function SubsetTonePanel<T extends string>({
             <span className="border-border/70 h-px flex-1 border-t" />
           </div>
           {activeOption.value === "off" ? (
-            <NotePreview sample={t(activeOption.sampleKey)} selected={false} />
+            <NotePreview sample={t(activeOption.sampleKey)} />
           ) : (
-            renderPreview(t(activeOption.sampleKey), false)
+            renderPreview(t(activeOption.sampleKey))
           )}
         </div>
       </div>

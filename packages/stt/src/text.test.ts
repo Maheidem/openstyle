@@ -143,9 +143,8 @@ describe("stripTrailingDuplicate", () => {
   });
 });
 
-// Shared home for merge.ts's leak detector — see meeting-merge.test.ts for
-// the full isVocabLeak suite (mergeTranscript segment scenarios). Kept here
-// too since this module is now its canonical source.
+// Canonical home of the leak detector. meeting-merge.test.ts has the
+// mergeTranscript segment scenarios that use it.
 describe("isVocabLeak", () => {
   const vocabTerms = Array.from({ length: 80 }, (_, i) => `Zylotrix${i + 1}`);
 

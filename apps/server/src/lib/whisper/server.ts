@@ -1,7 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { createAppLogger } from "@openstyle/utils";
-import { getDb } from "../db.js";
+import { SETTINGS_KEYS } from "@openstyle/validations";
+import { readSetting } from "../db.js";
 import {
   findWhisperServer,
   WIN_DLL_NOT_FOUND_EXIT,
@@ -26,7 +27,6 @@ let startPromise: Promise<void> | null = null;
 let autoRestart = false;
 let restartCount = 0;
 let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
-let serverFailed = false;
 let activePort = WHISPER_SERVER_PORT;
 let activeUses = 0;
 let unloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -47,24 +47,15 @@ export function isServerRunning(): boolean {
   return serverProcess !== null && serverReady;
 }
 
-export function isServerFailed(): boolean {
-  return serverFailed;
-}
-
 export function getServerPort(): number {
   return activePort;
 }
 
 export function getWhisperKeepAliveMinutes(): number {
   try {
-    const db = getDb();
-    const row = db
-      .prepare(
-        "SELECT value FROM settings WHERE key = 'whisper_keep_alive_minutes'",
-      )
-      .get() as { value: string } | undefined;
-    if (!row) return DEFAULT_KEEP_ALIVE_MINUTES;
-    const minutes = Number(row.value);
+    const value = readSetting(SETTINGS_KEYS.whisperKeepAliveMinutes);
+    if (value === undefined) return DEFAULT_KEEP_ALIVE_MINUTES;
+    const minutes = Number(value);
     if (!Number.isFinite(minutes)) return DEFAULT_KEEP_ALIVE_MINUTES;
     return Math.min(Math.max(Math.round(minutes), 0), MAX_KEEP_ALIVE_MINUTES);
   } catch {
@@ -122,7 +113,6 @@ export function startInBackground(modelId: string): void {
   if (serverProcess && currentModelId === modelId && serverReady) return;
   if (startPromise && currentModelId === modelId) return;
 
-  serverFailed = false;
   restartCount = 0;
   autoRestart = true;
 
@@ -135,31 +125,22 @@ export function startInBackground(modelId: string): void {
     });
 }
 
-function isPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.unref();
-    probe.once("error", () => resolve(false));
-    probe.listen({ port, host: "127.0.0.1" }, () => {
-      probe.close(() => resolve(true));
+// Probe the preferred port. If another process holds it, take a free port.
+// The probe closes before this returns, so the server can bind the port.
+function reservePort(preferred: number): Promise<number> {
+  const listen = (port: number) =>
+    new Promise<number>((resolve, reject) => {
+      const probe = createServer();
+      probe.unref();
+      probe.once("error", reject);
+      probe.listen({ port, host: "127.0.0.1" }, () => {
+        const address = probe.address();
+        const bound =
+          typeof address === "object" && address ? address.port : preferred;
+        probe.close(() => resolve(bound));
+      });
     });
-  });
-}
-
-function findFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.unref();
-    probe.once("error", reject);
-    probe.listen({ port: 0, host: "127.0.0.1" }, () => {
-      const address = probe.address();
-      const port =
-        typeof address === "object" && address
-          ? address.port
-          : WHISPER_SERVER_PORT;
-      probe.close(() => resolve(port));
-    });
-  });
+  return listen(preferred).catch(() => listen(0));
 }
 
 export async function ensureServerRunning(modelId: string): Promise<void> {
@@ -173,7 +154,6 @@ export async function ensureServerRunning(modelId: string): Promise<void> {
 
   await stopServer();
   autoRestart = true;
-  serverFailed = false;
 
   const promise = doStart(modelId);
   startPromise = promise;
@@ -200,10 +180,8 @@ async function doStart(modelId: string): Promise<void> {
   currentModelId = modelId;
   serverReady = false;
 
-  if (await isPortFree(WHISPER_SERVER_PORT)) {
-    activePort = WHISPER_SERVER_PORT;
-  } else {
-    activePort = await findFreePort();
+  activePort = await reservePort(WHISPER_SERVER_PORT);
+  if (activePort !== WHISPER_SERVER_PORT) {
     log.warn(
       `Port ${WHISPER_SERVER_PORT} is in use by another process, using ${activePort}`,
     );
@@ -327,7 +305,6 @@ function scheduleRestart(modelId: string): void {
   restartCount++;
   if (restartCount > MAX_RESTARTS) {
     log.error(`Server crashed ${MAX_RESTARTS} times, not restarting`);
-    serverFailed = true;
     autoRestart = false;
     currentModelId = null;
     return;
@@ -359,6 +336,12 @@ function clearStabilityTimer(): void {
     clearTimeout(stabilityTimer);
     stabilityTimer = null;
   }
+}
+
+// Stop the server only when it has this model loaded. The delete route
+// calls this: on Windows the server holds the model file open.
+export async function stopServerIfLoaded(modelId: string): Promise<void> {
+  if (currentModelId === modelId) await stopServer();
 }
 
 export async function stopServer(): Promise<void> {

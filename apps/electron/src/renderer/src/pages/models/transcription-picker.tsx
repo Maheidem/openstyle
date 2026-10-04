@@ -1,4 +1,6 @@
 import { Button } from "@renderer/components/ui/button";
+import type { ConfiguredModel } from "@renderer/lib/models";
+import { displayProviderName } from "@renderer/lib/models";
 import { ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { ExternalLink, Key, Laptop, Mic } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -7,9 +9,7 @@ import {
   PickerModalHeader,
   PickerOption,
 } from "./picker-option";
-import type { ConfiguredModel } from "./types";
 import type { UseModels } from "./use-models";
-import { displayName } from "./utils";
 
 // Engines that run on the user's own machine — the bundled workers plus a
 // user-run oMLX server. These belong to the On-device tier, not BYOK.
@@ -63,7 +63,8 @@ export function TranscriptionPicker({
         : t("models.picker.unavailableOnDevice");
 
   const byokLabel = byokActive
-    ? (m.defaultVoice?.model_name ?? displayName(m.defaultVoice!.provider))
+    ? (m.defaultVoice?.model_name ??
+      displayProviderName(m.defaultVoice!.provider))
     : byokCount > 0
       ? t("models.picker.cloudModelCount", { count: byokCount })
       : t("models.picker.byokProviders");

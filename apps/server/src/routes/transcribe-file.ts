@@ -38,11 +38,12 @@ import {
   needsDecodeFile,
 } from "../lib/audio/decode.js";
 import {
-  ACCEPTED_EXTENSIONS_DETAIL,
   ACCEPTED_IMPORT_EXTENSIONS,
-  formatLimit,
+  decodeFailedBody,
   importFileExtension,
   MAX_IMPORT_BYTES,
+  tooLargeBody,
+  unsupportedTypeBody,
 } from "../lib/audio/import-limits.js";
 import {
   extractBoundary,
@@ -50,7 +51,7 @@ import {
   requestBodyTooLarge,
   streamMultipartForm,
 } from "../lib/audio/multipart-stream.js";
-import { parseWavHeader, wavDurationMs } from "../lib/audio/wav.js";
+import { readWavInfo, wavDurationMs } from "../lib/audio/wav.js";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import {
   decodeAppContext,
@@ -58,34 +59,6 @@ import {
 } from "../lib/transcription-pipeline.js";
 
 const log = createAppLogger("transcribe-file");
-
-// Upload limits live in `lib/audio/import-limits.ts` (shared with
-// `routes/meetings-import.ts`); re-exported here so this module's public
-// surface is unchanged.
-export {
-  ACCEPTED_IMPORT_EXTENSIONS,
-  formatLimit,
-  importFileExtension,
-  MAX_IMPORT_BYTES,
-} from "../lib/audio/import-limits.js";
-
-function tooLargeBody(maxBytes: number) {
-  return {
-    error: "File too large",
-    detail: `Maximum upload size is ${formatLimit(maxBytes)}`,
-    code: "PAYLOAD_TOO_LARGE",
-  } as const;
-}
-
-/** Header info of an on-disk WAV (`parseWavHeader` accepts an open fd). */
-function wavInfoAt(path: string) {
-  const fd = openSync(path, "r");
-  try {
-    return parseWavHeader(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
 
 export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
   const maxBytes = opts.maxBytes ?? MAX_IMPORT_BYTES;
@@ -160,14 +133,7 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
 
           const ext = importFileExtension(audio.filename);
           if (!ext || !ACCEPTED_IMPORT_EXTENSIONS.has(ext)) {
-            return c.json(
-              {
-                error: "Unsupported file type",
-                detail: ACCEPTED_EXTENSIONS_DETAIL,
-                code: "UNSUPPORTED_MEDIA_TYPE",
-              },
-              415,
-            );
+            return c.json(unsupportedTypeBody(), 415);
           }
 
           if (audio.bytes === 0) {
@@ -195,22 +161,16 @@ export function createTranscribeFileRoute(opts: { maxBytes?: number } = {}) {
               // Full message (stderr tail) goes to the log only; the client
               // gets a fixed string so no server-side detail leaks.
               log.error(`decode failed (${err.reason}): ${err.message}`);
-              return c.json(
-                {
-                  error: "Audio decode failed",
-                  detail: "ffmpeg could not decode the file",
-                  code: err.code,
-                  reason: err.reason,
-                },
-                422,
-              );
+              return c.json(decodeFailedBody(err.code, err.reason), 422);
             }
             throw err;
           }
 
           // Duration from the post-transcode WAV (`fr_f86c5c0f`), rounded to an
           // integer like the dictation route's `(len-44)/32`.
-          const audioDurationMs = Math.round(wavDurationMs(wavInfoAt(wavPath)));
+          const audioDurationMs = Math.round(
+            wavDurationMs(readWavInfo(wavPath)),
+          );
 
           // The one full-size allocation on this path: the pipeline consumes
           // the decoded WAV exactly once. (`readFile` returns a Buffer,

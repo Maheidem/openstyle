@@ -7,26 +7,31 @@ import {
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
-  LEGACY_MLX_ASR_MODELS,
-  MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
   MLX_ASR_PROVIDER_NAME,
 } from "../lib/mlx-asr/constants.js";
-import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
+import {
+  getMlxCatalogModels,
+  getMlxModelStatus,
+} from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
-import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
+import {
+  DEPRECATED_STATUS,
+  fetchModelsFromRegistry,
+  isCleanupSuitableModel,
+  LLM_GATEWAYS,
+  REGISTRY_FETCH_TIMEOUT_MS,
+  type RegistryProvider,
+} from "../lib/model-registry.js";
+import { fetchModelIds } from "../lib/openai-compat.js";
+import { OMLX_PROVIDER_ID } from "../lib/streaming/local-providers.js";
 import {
   OMLX_API_KEY_SETTING,
   OMLX_BASE_URL_SETTING,
-  OMLX_PROVIDER_ID,
   OMLX_PROVIDER_NAME,
 } from "../lib/streaming/providers/omlx.js";
-import {
-  LEGACY_WHISPER_MODELS,
-  WHISPER_MODELS,
-  WHISPER_PROVIDER_ID,
-} from "../lib/whisper/constants.js";
-import { getModelStatus } from "../lib/whisper/models.js";
+import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
+import { getCatalogModels, getModelStatus } from "../lib/whisper/models.js";
 
 interface AvailableModel {
   provider_id: string;
@@ -47,11 +52,6 @@ interface AvailableModel {
   gateway?: string;
 }
 
-const DEPRECATED_STATUS = "deprecated";
-const REGISTRY_FETCH_TIMEOUT_MS = 3000;
-const UNSUITABLE_CLEANUP_MODEL_PATTERN =
-  /guard|safeguard|safety|moderation|classif(?:y|ier|ication)?|embed(?:ding)?|image/i;
-
 async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
   const db = getDb();
   const rows = db
@@ -68,26 +68,17 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
     .replace(/\/+$/, "")
     .replace(/\/v1$/, "");
 
-  const res = await fetch(`${baseUrl}/v1/models`, {
-    headers: {
-      ...(settings.local_llm_api_key
-        ? { Authorization: `Bearer ${settings.local_llm_api_key}` }
-        : {}),
-    },
-    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) return [];
+  const ids = await fetchModelIds(
+    `${baseUrl}/v1/models`,
+    settings.local_llm_api_key,
+    REGISTRY_FETCH_TIMEOUT_MS,
+  );
 
-  const data = (await res.json()) as {
-    data?: { id: string }[];
-  };
-  if (!data.data || !Array.isArray(data.data)) return [];
-
-  return data.data.map((m) => ({
+  return ids.map((id) => ({
     provider_id: "local-llm",
     provider_name: "Local LLM",
-    model_id: `local-llm/${m.id}`,
-    model_name: m.id,
+    model_id: `local-llm/${id}`,
+    model_name: id,
     family: "local",
     type: "llm" as const,
     cost_input: 0,
@@ -116,22 +107,17 @@ async function fetchOmlxModels(): Promise<AvailableModel[]> {
   if (!root) return [];
 
   const apiKey = settings[OMLX_API_KEY_SETTING]?.trim();
-  const res = await fetch(omlxModelsUrl(root), {
-    headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) return [];
+  const ids = await fetchModelIds(
+    omlxModelsUrl(root),
+    apiKey,
+    REGISTRY_FETCH_TIMEOUT_MS,
+  );
 
-  const data = (await res.json()) as {
-    data?: { id: string }[];
-  };
-  if (!data.data || !Array.isArray(data.data)) return [];
-
-  return data.data.map((m) => ({
+  return ids.map((id) => ({
     provider_id: OMLX_PROVIDER_ID,
     provider_name: OMLX_PROVIDER_NAME,
-    model_id: `${OMLX_PROVIDER_ID}/${m.id}`,
-    model_name: m.id,
+    model_id: `${OMLX_PROVIDER_ID}/${id}`,
+    model_name: id,
     family: "omlx",
     type: "voice" as const,
     cost_input: 0,
@@ -139,36 +125,25 @@ async function fetchOmlxModels(): Promise<AvailableModel[]> {
   }));
 }
 
-// Local voice models (curated + legacy that's still downloaded — the
-// /available handler filters to ready models, so legacy entries only
-// surface for installs that already have them on disk).
-const LOCAL_WHISPER_VOICE_MODELS: AvailableModel[] = [
-  ...WHISPER_MODELS,
-  ...LEGACY_WHISPER_MODELS,
-].map((m) => ({
-  provider_id: WHISPER_PROVIDER_ID,
-  provider_name: "Local Whisper",
-  model_id: `${WHISPER_PROVIDER_ID}/${m.id}`,
-  model_name: m.displayName,
-  family: "whisper-local",
-  type: "voice" as const,
-  cost_input: 0,
-  cost_output: 0,
-}));
-
-const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = [
-  ...MLX_ASR_MODELS,
-  ...LEGACY_MLX_ASR_MODELS,
-].map((m) => ({
-  provider_id: MLX_ASR_PROVIDER_ID,
-  provider_name: MLX_ASR_PROVIDER_NAME,
-  model_id: `${MLX_ASR_PROVIDER_ID}/${m.id}`,
-  model_name: m.displayName,
-  family: m.family,
-  type: "voice" as const,
-  cost_input: 0,
-  cost_output: 0,
-}));
+/** Build the /available entry for a local voice model. */
+function toVoiceModel(
+  def: { id: string; displayName: string },
+  providerId: string,
+  providerName: string,
+  family: string,
+): AvailableModel {
+  return {
+    provider_id: providerId,
+    provider_name: providerName,
+    model_id: `${providerId}/${def.id}`,
+    model_name: def.displayName,
+    family,
+    type: "voice",
+    cost_input: 0,
+    cost_output: 0,
+    curated: true,
+  };
+}
 
 // Curated voice catalog: one flagship per provider. The models.dev
 // registry is deliberately NOT merged for voice — untested model noise.
@@ -223,17 +198,6 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
   },
 ];
 
-// OpenAI-compatible LLM gateways (aggregators fronting many vendors' models).
-// Their catalogs live in models.dev under a single provider key, so they flow
-// through the same registry loop as first-party vendors — no key required to
-// list them. Models are tagged with the gateway's display name (badge in the
-// picker) and stay non-curated (behind "Show all models"). Add any future
-// gateway here and it works end to end with no further wiring.
-const LLM_GATEWAYS: Record<string, string> = {
-  openrouter: "OpenRouter",
-  vercel: "Vercel AI Gateway",
-};
-
 // Cleanup-LLM providers the app can actually run (see lib/providers.ts).
 const SUPPORTED_LLM_PROVIDERS = new Set([
   "openai",
@@ -269,145 +233,6 @@ const BUILTIN_LLM_MODELS: AvailableModel[] = [
     curated: true,
   },
 ];
-
-// In-memory cache for models.dev data
-let modelsCache: { data: unknown; fetchedAt: number } | null = null;
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-
-/** True when the in-memory registry cache is present and unexpired. */
-function isRegistryCacheFresh(): boolean {
-  return !!modelsCache && Date.now() - modelsCache.fetchedAt < CACHE_TTL_MS;
-}
-
-async function fetchModelsFromRegistry(): Promise<Record<string, unknown>> {
-  if (isRegistryCacheFresh()) {
-    return (modelsCache as { data: unknown }).data as Record<string, unknown>;
-  }
-
-  const res = await fetch("https://models.dev/api.json", {
-    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch models.dev: ${res.status}`);
-  }
-  const data = (await res.json()) as Record<string, unknown>;
-  modelsCache = { data, fetchedAt: Date.now() };
-  return data;
-}
-
-/**
- * Warm the models.dev registry cache in the background (fire-and-forget).
- * Called from the transcribe pre-warm route while the user is still speaking so
- * the per-dictation cost lookup ({@link getModelCostCached}) hits a warm cache
- * and never blocks the response on a network round-trip. No-op when the cache
- * is already fresh; swallows errors (cost is non-critical).
- */
-export function prewarmModelCostRegistry(): void {
-  if (isRegistryCacheFresh()) return;
-  void fetchModelsFromRegistry().catch(() => {
-    // Best-effort — a failed warm just means the next cost lookup returns null.
-  });
-}
-
-/**
- * Pull per-token cost for a model out of an already-fetched registry object.
- * Costs in the registry are per-million tokens; returned values are per-token.
- * Provider is taken from the models.dev provider key, not parsed from model ID.
- */
-function lookupCostInRegistry(
-  registry: Record<string, unknown>,
-  providerId: string,
-  modelId: string,
-): { input: number; output: number } | null {
-  const provider = registry[providerId] as RegistryProvider | undefined;
-  if (!provider?.models) return null;
-
-  const shortId = modelId.startsWith(`${providerId}/`)
-    ? modelId.slice(providerId.length + 1)
-    : modelId;
-  const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
-  if (!model?.cost) return null;
-
-  return {
-    input: (model.cost.input ?? 0) / 1_000_000,
-    output: (model.cost.output ?? 0) / 1_000_000,
-  };
-}
-
-/**
- * Synchronous, cache-only cost lookup for the transcription hot path. Never
- * triggers a network fetch: on a cold/expired cache it returns null (cost is
- * recorded as 0) rather than stalling the user-facing response on a models.dev
- * round-trip. Warm the cache ahead of time via {@link prewarmModelCostRegistry}.
- */
-export function getModelCostCached(
-  providerId: string,
-  modelId: string,
-): { input: number; output: number } | null {
-  if (!isRegistryCacheFresh() || !modelsCache) return null;
-  try {
-    return lookupCostInRegistry(
-      modelsCache.data as Record<string, unknown>,
-      providerId,
-      modelId,
-    );
-  } catch {
-    return null;
-  }
-}
-
-export async function isCleanupModelSupported(
-  providerId: string,
-  modelId: string,
-): Promise<boolean> {
-  if (providerId === "local-llm") return true;
-  if (providerId in LLM_GATEWAYS) return true;
-
-  try {
-    const registry = await fetchModelsFromRegistry();
-    const provider = registry[providerId] as RegistryProvider | undefined;
-    if (!provider?.models) return false;
-
-    const shortId = modelId.startsWith(`${providerId}/`)
-      ? modelId.slice(providerId.length + 1)
-      : modelId;
-    const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
-    if (!model) return false;
-
-    const inputMods = model.modalities?.input ?? [];
-    const outputMods = model.modalities?.output ?? [];
-    return (
-      model.status !== DEPRECATED_STATUS &&
-      inputMods.includes("text") &&
-      outputMods.includes("text") &&
-      isCleanupSuitableModel(model)
-    );
-  } catch {
-    return true;
-  }
-}
-
-interface RegistryModel {
-  id: string;
-  name: string;
-  family?: string;
-  modalities?: { input?: string[]; output?: string[] };
-  cost?: { input?: number; output?: number };
-  status?: string;
-  [key: string]: unknown;
-}
-
-interface RegistryProvider {
-  id: string;
-  name: string;
-  models?: Record<string, RegistryModel>;
-  [key: string]: unknown;
-}
-
-function isCleanupSuitableModel(model: RegistryModel): boolean {
-  const searchable = [model.id, model.name, model.family ?? ""].join(" ");
-  return !UNSUITABLE_CLEANUP_MODEL_PATTERN.test(searchable);
-}
 
 const models = new Hono()
   .get("/available", async (c) => {
@@ -468,22 +293,30 @@ const models = new Hono()
         ...BUILTIN_VOICE_MODELS.map((m) => ({ ...m, curated: true })),
       );
 
-      // Add local whisper voice models (only those that are downloaded)
-      for (const whisperModel of LOCAL_WHISPER_VOICE_MODELS) {
-        const modelId = whisperModel.model_id.split("/")[1];
-        const status = getModelStatus(modelId);
-        if (status?.status === "ready") {
-          available.push({ ...whisperModel, curated: true });
+      // Local voice models. The catalog helpers list the curated models and
+      // the legacy models on disk. Only ready models are shown.
+      for (const m of getCatalogModels()) {
+        if (getModelStatus(m.id)?.status === "ready") {
+          available.push(
+            toVoiceModel(
+              m,
+              WHISPER_PROVIDER_ID,
+              "Local Whisper",
+              "whisper-local",
+            ),
+          );
         }
       }
-
-      if (canRunMlxAsr()) {
-        for (const mlxModel of LOCAL_MLX_VOICE_MODELS) {
-          const modelId = mlxModel.model_id.split("/")[1];
-          const status = getMlxModelStatus(modelId);
-          if (status?.status === "ready") {
-            available.push({ ...mlxModel, curated: true });
-          }
+      for (const m of getMlxCatalogModels()) {
+        if (getMlxModelStatus(m.id)?.status === "ready") {
+          available.push(
+            toVoiceModel(
+              m,
+              MLX_ASR_PROVIDER_ID,
+              MLX_ASR_PROVIDER_NAME,
+              m.family,
+            ),
+          );
         }
       }
 
@@ -557,29 +390,6 @@ const models = new Hono()
       );
 
     return c.json({ id: result.lastInsertRowid, ...body }, 201);
-  })
-  .put("/configured/:id/default", (c) => {
-    const db = getDb();
-    const id = Number(c.req.param("id"));
-
-    const row = db
-      .prepare(
-        "SELECT type, provider, model_id FROM model_configs WHERE id = ?",
-      )
-      .get(id) as
-      | { type: string; provider: string; model_id: string }
-      | undefined;
-    if (!row) {
-      return c.json({ error: "Model config not found" }, 404);
-    }
-
-    // Unset existing default for this type, then set new one
-    db.prepare("UPDATE model_configs SET is_default = 0 WHERE type = ?").run(
-      row.type,
-    );
-    db.prepare("UPDATE model_configs SET is_default = 1 WHERE id = ?").run(id);
-
-    return c.json({ ok: true });
   })
   .delete("/configured/:id", (c) => {
     const db = getDb();

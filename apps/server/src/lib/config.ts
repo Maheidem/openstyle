@@ -3,8 +3,8 @@
  * SQLite database (userData). Stores experimental feature flags and other
  * non-settings configuration that doesn't belong in the DB.
  *
- * Versioned schema — bump `CONFIG_VERSION` when the shape changes. The loader
- * migrates from older versions automatically.
+ * The schema has a version. Bump `CONFIG_VERSION` when the shape changes. The
+ * file has one version so far, so the loader has no migration step yet.
  *
  * Shape (v1):
  * ```json
@@ -30,9 +30,9 @@ const CONFIG_FILENAME = "config.freestyle.json";
 // Schema
 // ---------------------------------------------------------------------------
 
-export const CONFIG_VERSION = 1;
+const CONFIG_VERSION = 1;
 
-export const openstyleConfigSchema = z.object({
+const openstyleConfigSchema = z.object({
   version: z.number().int().min(1),
   flags: z.record(z.string(), z.boolean()).default({}),
 });
@@ -58,22 +58,12 @@ function defaultConfig(): OpenstyleConfig {
   return { version: CONFIG_VERSION, flags: {} };
 }
 
-/**
- * Migrate a config object from an older version to the current one.
- * Add migration steps here as CONFIG_VERSION grows.
- */
-function migrate(config: OpenstyleConfig): OpenstyleConfig {
-  // v1 is the initial version — nothing to migrate yet.
-  // Future: if (config.version < 2) { ... config.version = 2; }
-  return config;
-}
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /** Load the config file from disk (or return the cached copy). */
-export function loadConfig(): OpenstyleConfig {
+function loadConfig(): OpenstyleConfig {
   if (cachedConfig) return cachedConfig;
 
   const path = resolveConfigPath();
@@ -86,7 +76,7 @@ export function loadConfig(): OpenstyleConfig {
     const raw = readFileSync(path, "utf-8");
     const parsed = openstyleConfigSchema.safeParse(JSON.parse(raw));
     if (parsed.success) {
-      cachedConfig = migrate(parsed.data);
+      cachedConfig = parsed.data;
     } else {
       log.warn(`Invalid ${CONFIG_FILENAME}, resetting to defaults`);
       cachedConfig = defaultConfig();
@@ -99,7 +89,7 @@ export function loadConfig(): OpenstyleConfig {
 }
 
 /** Persist the current config to disk. */
-export function saveConfig(config: OpenstyleConfig): void {
+function saveConfig(config: OpenstyleConfig): void {
   const path = resolveConfigPath();
   if (!path) return;
 
@@ -129,9 +119,4 @@ export function setFlag(key: string, value: boolean): void {
 export function getConfig(): OpenstyleConfig {
   const config = loadConfig();
   return { ...config, flags: { ...config.flags } };
-}
-
-/** Replace the full config and persist. */
-export function updateConfig(incoming: OpenstyleConfig): void {
-  saveConfig({ ...incoming, version: CONFIG_VERSION });
 }

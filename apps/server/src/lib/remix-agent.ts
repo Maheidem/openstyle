@@ -19,8 +19,8 @@ import {
   releaseLeaseOnResponseBodyEnd,
 } from "./llm/lane.js";
 import { getLlmProvider } from "./llm/registry.js";
-import { resolveTaskCall } from "./llm/task-profiles.js";
 import { createChatModel } from "./providers.js";
+import { resolveRemixCall } from "./remix-transform.js";
 
 const log = createAppLogger("remix-agent");
 
@@ -58,29 +58,20 @@ export function remixClientTools(): ToolSet {
   );
 }
 
-export interface ByokModelChoice {
-  provider: string;
-  model_id: string;
-}
-
 /**
- * The agent loop on the user's own model. Identical shape to the cloud run —
- * same system prompt, same client tools — minus the server tools (web search
- * is a cloud capability) and minus metering.
+ * The agent loop on the user's own model. The model gets the client tools
+ * only. There are no server tools and no metering.
  */
 export async function runRemixAgentLocally(
   request: RemixAgentRequest,
-  // Retained for the route's own pre-flight `isCleanupModelSupported` gate
-  // (routes/remix/agent.ts) — the actual model/params used here are resolved
-  // fresh below via the "remix" task profile, which independently falls back
-  // to the same app-wide default this was built from unless a per-task model
-  // override is assigned (specs/llm-task-profiles.md §6.3).
-  _llm: ByokModelChoice,
   abortSignal: AbortSignal | undefined,
 ): Promise<Response> {
-  const resolved = await resolveTaskCall("remix", {
-    autoMaxOutputTokens: REMIX_AGENT_AUTO_MAX_OUTPUT_TOKENS,
-  });
+  // Throws RemixTransformError before any stream starts, so the route can
+  // still return a plain 400.
+  const resolved = await resolveRemixCall(
+    { autoMaxOutputTokens: REMIX_AGENT_AUTO_MAX_OUTPUT_TOKENS },
+    "Remix",
+  );
   const providerOptions = getLlmProvider(resolved.provider)?.providerOptions?.(
     resolved.modelId,
     resolved.reasoningEnabled,
@@ -97,9 +88,10 @@ export async function runRemixAgentLocally(
   // that WINS the queue — the coarseness costs background work its slot,
   // never the dictation cleanup. The lease is released by the body wrapper
   // below, so a client that hangs up mid-stream cannot leak the slot.
-  const lane = await llmLaneKeyForProvider(resolved.provider);
+  const { key: lane, limit } = await llmLaneKeyForProvider(resolved.provider);
   const lease = await acquireLlmLane({
     lane,
+    limit,
     cls: "interactive",
     taskId: "remix",
     ...(abortSignal ? { signal: abortSignal } : {}),
@@ -110,11 +102,12 @@ export async function runRemixAgentLocally(
       task: "remix",
       sampling: resolved.samplingParams,
     }),
-    system: buildRemixAgentSystem(request.context, { hasWebSearch: false }),
+    system: buildRemixAgentSystem(request.context),
     messages: await convertToModelMessages(request.messages as UIMessage[]),
     tools: remixClientTools(),
     stopWhen: stepCountIs(REMIX_MAX_STEPS),
     temperature: resolved.temperature,
+    topP: resolved.topP,
     maxOutputTokens: resolved.maxOutputTokens,
     abortSignal: combinedSignal,
     ...(providerOptions ? { providerOptions } : {}),

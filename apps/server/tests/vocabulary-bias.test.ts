@@ -67,6 +67,16 @@ describe("buildAsrVocabularyBias", () => {
       }
     });
 
+    it("keeps shorter terms after a long term overflows the budget", () => {
+      const long = "x".repeat(950);
+      const bias = buildAsrVocabularyBias("openai", "whisper-1", [
+        long,
+        "alpha",
+        "beta",
+      ]);
+      expect(bias).toEqual({ kind: "prompt", text: "Terms: alpha, beta." });
+    });
+
     it("strips provider prefix from model id", () => {
       const bias = buildAsrVocabularyBias(
         "local-whisper",

@@ -1,7 +1,11 @@
 import { upgradeWebSocket } from "@hono/node-server";
-import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
+import type {
+  StreamClientMessage,
+  StreamServerMessage,
+} from "@openstyle/validations";
 import { Hono } from "hono";
+import { getApiKey } from "../lib/api-keys.js";
 import { beginDictation, endDictation } from "../lib/dictation-activity.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import {
@@ -15,20 +19,19 @@ import {
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
 import { getDefaultModels } from "../lib/providers.js";
-import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
-import { stripProviderPrefix } from "../lib/streaming/types.js";
+import { voiceProviderCategory } from "../lib/streaming/local-providers.js";
 import {
-  getApiKeyForProvider,
   openStreamingSession,
-  type StreamSession,
   supportsSessionTransport,
   supportsStreaming,
-  voiceProviderCategory,
-} from "../lib/streaming-stt.js";
+} from "../lib/streaming/registry.js";
+import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
 import {
-  resolveAsrVocabularyBias,
-  vocabularyBiasTerms,
-} from "../lib/vocabulary-bias.js";
+  type StreamSession,
+  stripProviderPrefix,
+} from "../lib/streaming/types.js";
+import { cleanAsrText } from "../lib/transcription-pipeline.js";
+import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("stream");
 const LOG_STREAM_PARTIALS =
@@ -37,6 +40,12 @@ const LOG_STREAM_PARTIALS =
 const LOG_PIPELINE_LATENCY =
   (process.env.OPENSTYLE_LOG_PIPELINE_LATENCY ??
     process.env.FREESTYLE_LOG_PIPELINE_LATENCY) !== "0";
+
+type Socket = { send: (data: string) => void; close: () => void };
+
+function sendJson(ws: Pick<Socket, "send">, msg: StreamServerMessage): void {
+  ws.send(JSON.stringify(msg));
+}
 
 const stream = new Hono().get(
   "/",
@@ -52,7 +61,7 @@ const stream = new Hono().get(
     let upstreamConfigKey: string | null = null;
     let appContext: string | null = null;
     // Per-recording language pin from a language hotkey (the "start" message's
-    // `language` field), normalized (trimmed, lowercased). Reset to null only
+    // `language` field), raw (`resolveLanguageOverride` normalizes it). Reset to null only
     // by a fresh "start" — a mid-recording reconnect (onClose → connectUpstream)
     // does not send a new "start", so the pin survives that reconnect, which is
     // correct: nothing should change the pinned language mid-recording.
@@ -89,11 +98,12 @@ const stream = new Hono().get(
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
+      const storedLanguages = getLanguagesSetting();
       const languages = resolveLanguageOverride(
         languageOverride,
-        getLanguagesSetting(),
+        storedLanguages,
       );
-      const translate = getTranslateModeSetting();
+      const translate = getTranslateModeSetting(storedLanguages);
       const bias = resolveAsrVocabularyBias(
         voice.provider,
         voice.model_id,
@@ -122,7 +132,9 @@ const stream = new Hono().get(
       pendingAudioChunks = [];
     }
 
-    function closeUpstreamSession(session: StreamSession | null): void {
+    function closeUpstreamSession(
+      session: StreamSession | null | undefined,
+    ): void {
       if (!session) return;
       if (upstream === session) {
         upstream = null;
@@ -134,7 +146,7 @@ const stream = new Hono().get(
     }
 
     function notifySessionReady(
-      ws: { send: (data: string) => void },
+      ws: Pick<Socket, "send">,
       model: string,
       token: number,
     ): void {
@@ -144,15 +156,25 @@ const stream = new Hono().get(
       if (voiceDefaults?.provider === "soniox") {
         prewarmPostProcess();
       }
-      ws.send(JSON.stringify({ type: "session.ready", model }));
+      sendJson(ws, { type: "session.ready", model });
       if (pendingCommit) {
         pendingCommit = false;
         upstream?.commit();
       }
     }
 
+    /** Providers without a session transport are ready as soon as they are announced. */
+    function sendReadyWithoutTransport(
+      ws: Pick<Socket, "send">,
+      model: string,
+    ): void {
+      readyToken++;
+      notifiedReadyToken = readyToken;
+      sendJson(ws, { type: "session.ready", model });
+    }
+
     function afterSessionReady(
-      ws: { send: (data: string) => void },
+      ws: Pick<Socket, "send">,
       session: StreamSession,
       model: string,
       token: number,
@@ -166,27 +188,20 @@ const stream = new Hono().get(
         })
         .catch((err: Error) => {
           if (closed) return;
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              message: err.message,
-            }),
-          );
+          sendJson(ws, {
+            type: "error",
+            message: err.message,
+          });
         });
     }
 
-    function announceConfig(ws: {
-      send: (data: string) => void;
-      close: () => void;
-    }): AnnouncedStreamConfig | null {
+    function announceConfig(ws: Socket): AnnouncedStreamConfig | null {
       const config = resolveStreamConfig();
       if (!config) {
-        ws.send(
-          JSON.stringify({
-            type: "error",
-            message: "No voice model configured",
-          }),
-        );
+        sendJson(ws, {
+          type: "error",
+          message: "No voice model configured",
+        });
         ws.close();
         return null;
       }
@@ -201,15 +216,13 @@ const stream = new Hono().get(
 
       const modelShort = stripProviderPrefix(voice.model_id);
 
-      ws.send(
-        JSON.stringify({
-          type: "config",
-          model: modelShort,
-          streaming: canStream,
-          sessionTransport: canUseSessionTransport,
-          providerCategory: voiceProviderCategory(voice.provider),
-        }),
-      );
+      sendJson(ws, {
+        type: "config",
+        model: modelShort,
+        streaming: canStream,
+        sessionTransport: canUseSessionTransport,
+        providerCategory: voiceProviderCategory(voice.provider),
+      });
 
       return {
         config,
@@ -219,13 +232,19 @@ const stream = new Hono().get(
       };
     }
 
-    async function connectUpstream(
-      ws: {
-        send: (data: string) => void;
-        close: () => void;
-      },
+    /** Tell the client that connecting upstream failed. Never throws. */
+    function reportConnectError(ws: Pick<Socket, "send">, err: unknown): void {
+      if (closed) return;
+      const message = errorMessage(err);
+      try {
+        sendJson(ws, { type: "error", message });
+      } catch {}
+    }
+
+    function connectUpstream(
+      ws: Socket,
       announced?: AnnouncedStreamConfig,
-    ): Promise<void> {
+    ): void {
       const resolved = announced ?? announceConfig(ws);
       if (!resolved) return;
 
@@ -233,29 +252,49 @@ const stream = new Hono().get(
         resolved;
       const voice = config.voice;
 
-      const apiKey = getApiKeyForProvider(voice.provider);
+      const apiKey = getApiKey(voice.provider);
       if (!apiKey) {
-        ws.send(
-          JSON.stringify({
-            type: "error",
-            message: `No API key for ${voice.provider}`,
-          }),
-        );
+        sendJson(ws, {
+          type: "error",
+          message: `No API key for ${voice.provider}`,
+        });
         ws.close();
         return;
       }
 
       if (!canUseSessionTransport) {
-        readyToken++;
-        notifiedReadyToken = readyToken;
-        ws.send(JSON.stringify({ type: "session.ready", model: modelShort }));
+        sendReadyWithoutTransport(ws, modelShort);
         return;
       }
 
       upstreamConfigKey = config.key;
 
       const token = ++readyToken;
-      const session = openStreamingSession({
+      // A transport can call a callback inside openStreamingSession, before
+      // `session` has a value. A `const` would throw there. Keep the error and
+      // report it after the assignment.
+      let session: StreamSession | undefined;
+      let earlyError: { message: string; code?: string } | undefined;
+      const failUpstream = (
+        failed: StreamSession,
+        message: string,
+        code?: string,
+      ): void => {
+        sessionTransportUnavailable = true;
+        sendJson(ws, {
+          type: "config",
+          streaming: false,
+          sessionTransport: false,
+          model: modelShort,
+        });
+        sendJson(ws, {
+          type: "error",
+          ...(code ? { code } : {}),
+          message,
+        });
+        closeUpstreamSession(failed);
+      };
+      session = openStreamingSession({
         providerId: voice.provider,
         apiKey,
         model: voice.model_id,
@@ -274,7 +313,7 @@ const stream = new Hono().get(
             if (LOG_STREAM_PARTIALS) {
               log.info(`partial ${voice.provider}/${modelShort}: ${text}`);
             }
-            ws.send(JSON.stringify({ type: "partial", text }));
+            sendJson(ws, { type: "partial", text });
           },
           onFinal: async (rawText) => {
             if (upstream !== session) return;
@@ -299,24 +338,10 @@ const stream = new Hono().get(
             beginDictation();
             let leaseHandedToCleanup = false;
             try {
-              rawText = sanitizeTranscriptText(rawText);
-
-              // Same vocabulary-prompt-echo guard as the REST /api/transcribe
-              // path (specs/meeting-transcription-quality.md Phase A, extended
-              // to dictation). Compare against the terms actually sent for
-              // *this* session's bias.
-              const strippedRawText = stripVocabLeak(
-                rawText,
-                vocabularyBiasTerms(config.bias),
-              );
-              if (strippedRawText !== rawText) {
-                log.info(
-                  strippedRawText.trim()
-                    ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
-                    : "dropped dictation output — entirely a vocabulary-prompt echo",
-                );
-                rawText = strippedRawText;
-              }
+              // Same sanitize and vocabulary-prompt-echo guard as the REST
+              // /api/transcribe path. Compare against the terms actually sent
+              // for *this* session's bias.
+              rawText = cleanAsrText(rawText, config.bias);
 
               // Use commitTime (when the user stopped speaking) to measure only
               // finalization + cleanup latency, not the entire recording session.
@@ -329,7 +354,7 @@ const stream = new Hono().get(
               }
 
               if (!rawText?.trim()) {
-                ws.send(JSON.stringify({ type: "final", text: "" }));
+                sendJson(ws, { type: "final", text: "" });
                 return;
               }
 
@@ -372,9 +397,7 @@ const stream = new Hono().get(
                     }
                   }
                   if (!closed) {
-                    ws.send(
-                      JSON.stringify({ type: "final", text: pp.cleaned }),
-                    );
+                    sendJson(ws, { type: "final", text: pp.cleaned });
                   }
                   try {
                     saveProcessedHistory({
@@ -396,7 +419,7 @@ const stream = new Hono().get(
                 })
                 .catch(() => {
                   if (!closed) {
-                    ws.send(JSON.stringify({ type: "final", text: rawText }));
+                    sendJson(ws, { type: "final", text: rawText });
                   }
                   try {
                     saveRawHistory({
@@ -419,27 +442,12 @@ const stream = new Hono().get(
             }
           },
           onError: (message, code) => {
+            if (!session) {
+              earlyError = { message, ...(code ? { code } : {}) };
+              return;
+            }
             if (upstream !== session) return;
-            sessionTransportUnavailable = true;
-            ws.send(
-              JSON.stringify({
-                type: "config",
-                streaming: false,
-                sessionTransport: false,
-                model: modelShort,
-              }),
-            );
-            ws.send(
-              JSON.stringify({
-                type: "error",
-                ...(code ? { code } : {}),
-                message,
-              }),
-            );
-            upstream = null;
-            try {
-              session.close();
-            } catch {}
+            failUpstream(session, message, code);
           },
           onClose: () => {
             // Ignore close from a superseded socket (replaced on a later "start").
@@ -453,15 +461,27 @@ const stream = new Hono().get(
               reconnectAttempts++;
               try {
                 connectUpstream(ws);
-              } catch {}
+              } catch (err) {
+                reportConnectError(ws, err);
+              }
             }
           },
         },
       });
       upstream = session;
-      if (canUseSessionTransport) {
-        afterSessionReady(ws, session, modelShort, token);
+      if (earlyError) {
+        failUpstream(session, earlyError.message, earlyError.code);
+        return;
       }
+      afterSessionReady(ws, session, modelShort, token);
+    }
+
+    /** Run when the client socket closes or fails. */
+    function teardown(): void {
+      closed = true;
+      pendingAudioChunks = [];
+      pendingCommit = false;
+      closeUpstreamSession(upstream);
     }
 
     return {
@@ -470,14 +490,7 @@ const stream = new Hono().get(
           const announced = announceConfig(ws);
           if (!announced) return;
           if (!announced.canUseSessionTransport) {
-            readyToken++;
-            notifiedReadyToken = readyToken;
-            ws.send(
-              JSON.stringify({
-                type: "session.ready",
-                model: announced.modelShort,
-              }),
-            );
+            sendReadyWithoutTransport(ws, announced.modelShort);
             return;
           }
           if (
@@ -487,8 +500,8 @@ const stream = new Hono().get(
           }
           connectUpstream(ws, announced);
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          ws.send(JSON.stringify({ type: "error", message }));
+          const message = errorMessage(err);
+          sendJson(ws, { type: "error", message });
           ws.close();
         }
       },
@@ -514,12 +527,10 @@ const stream = new Hono().get(
               // Tell the client so it can fall back to the recorded WAV
               // instead of silently losing audio.
               pendingChunksDropped = true;
-              ws.send(
-                JSON.stringify({
-                  type: "error",
-                  message: "Streaming session stalled; audio buffer overflow",
-                }),
-              );
+              sendJson(ws, {
+                type: "error",
+                message: "Streaming session stalled; audio buffer overflow",
+              });
             }
             return;
           }
@@ -527,12 +538,7 @@ const stream = new Hono().get(
           return;
         }
 
-        let msg: {
-          type: string;
-          context?: string | null;
-          audioDurationMs?: number;
-          language?: string;
-        };
+        let msg: StreamClientMessage;
         try {
           msg = JSON.parse(
             typeof event.data === "string"
@@ -554,9 +560,7 @@ const stream = new Hono().get(
             commitTime = 0;
             appContext = msg.context ?? null;
             languageOverride =
-              typeof msg.language === "string" && msg.language.trim()
-                ? msg.language.trim().toLowerCase()
-                : null;
+              typeof msg.language === "string" ? msg.language : null;
             pendingAudioChunks = [];
             pendingChunksDropped = false;
             pendingCommit = false;
@@ -600,7 +604,9 @@ const stream = new Hono().get(
             }
             try {
               connectUpstream(ws);
-            } catch {}
+            } catch (err) {
+              reportConnectError(ws, err);
+            }
             break;
           }
           case "commit":
@@ -638,25 +644,8 @@ const stream = new Hono().get(
         }
       },
 
-      onClose() {
-        closed = true;
-        pendingAudioChunks = [];
-        pendingCommit = false;
-        try {
-          upstream?.close();
-        } catch {}
-        upstream = null;
-      },
-
-      onError() {
-        closed = true;
-        pendingAudioChunks = [];
-        pendingCommit = false;
-        try {
-          upstream?.close();
-        } catch {}
-        upstream = null;
-      },
+      onClose: teardown,
+      onError: teardown,
     };
   }),
 );

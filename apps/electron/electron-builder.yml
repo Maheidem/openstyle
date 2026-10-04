@@ -6,9 +6,12 @@ files:
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # A stray main bundle can appear at the app root (see .gitignore). Anchor the
+  # pattern to the root: '!**/index.js' would also remove out/*/index.js.
+  - '!index.js'
   # Build inputs and dev tooling, never loaded at runtime:
   #
   # - `native/**` — SwiftPM sources + the ~665 MiB `.build` directory of
@@ -35,20 +38,12 @@ extraResources:
     to: "bin"
     filter:
       - "**/*"
-      # UX-12 follow-on (specs/lean-audit-2026-09.md): the always-on
-      # mic-listener was removed in feat/lean-wins — nothing spawns the
-      # binary. Sources still compile (compile-native.js) pending a
-      # follow-on source removal, but the dead binary must not ship; the
-      # no-match case on the other platforms is a harmless no-op.
-      - "!macos-mic-listener"
-      - "!windows-mic-listener.exe"
+  - from: "resources/whisper/${platform}-${arch}"
+    to: "whisper/${platform}-${arch}"
+    filter:
+      - "**/*"
 win:
   executableName: Openstyle
-  extraResources:
-    - from: "resources/whisper/win32-x64"
-      to: "whisper/win32-x64"
-      filter:
-        - "**/*"
 nsis:
   artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -64,10 +59,6 @@ mac:
     NSAudioCaptureUsageDescription: Openstyle records system audio during meetings you choose to record.
   notarize: true
   extraResources:
-    - from: "resources/whisper/darwin-${arch}"
-      to: "whisper/darwin-${arch}"
-      filter:
-        - "**/*"
     - from: "../../scripts/mlx_asr_server.py"
       to: "mlx-asr/mlx_asr_server.py"
     # Pre-bundled offline diarization models (specs/meeting-diarization.md
@@ -90,11 +81,6 @@ linux:
     - deb
   maintainer: Maheidem
   category: Utility
-  extraResources:
-    - from: "resources/whisper/linux-x64"
-      to: "whisper/linux-x64"
-      filter:
-        - "**/*"
 appImage:
   artifactName: ${productName}-${version}.${ext}
 deb:

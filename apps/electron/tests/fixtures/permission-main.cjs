@@ -1,13 +1,7 @@
-const { appendFileSync, mkdirSync } = require("node:fs");
+const { appendFileSync } = require("node:fs");
 const electron = require("electron");
 
 const eventsPath = process.env.OPENSTYLE_E2E_PERMISSION_EVENTS;
-const userDataDir = process.env.OPENSTYLE_E2E_USER_DATA_DIR;
-
-if (userDataDir) {
-  mkdirSync(userDataDir, { recursive: true });
-  electron.app.setPath("userData", userDataDir);
-}
 
 function record(event) {
   if (!eventsPath) return;
@@ -64,17 +58,6 @@ global.fetch = async (input, init) => {
       : input instanceof URL
         ? input.toString()
         : input.url;
-  if (url.endsWith("/api/events")) {
-    const body =
-      typeof init?.body === "string"
-        ? init.body
-        : input instanceof Request
-          ? await input.clone().text()
-          : "";
-    if (body) {
-      record({ type: "pipeline-event", body: JSON.parse(body) });
-    }
-  }
   if (
     process.env.OPENSTYLE_E2E_ONBOARDING_COMPLETE === "false" &&
     url.endsWith("/api/models/configured")

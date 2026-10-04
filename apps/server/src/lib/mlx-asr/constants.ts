@@ -12,9 +12,6 @@ export function isAppleSiliconMac(): boolean {
   return process.platform === "darwin" && process.arch === "arm64";
 }
 
-/** Avoid collision with whisper-server (8178). */
-export const MLX_ASR_SERVER_PORT = 8179;
-
 export interface MlxAsrModelDef {
   id: string;
   /** Hugging Face repo id passed to mlx-audio `load()`. */

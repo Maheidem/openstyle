@@ -13,10 +13,6 @@ import whatsappIcon from "@renderer/assets/route-icons/whatsapp.svg";
 import { cn } from "@renderer/lib/utils";
 import { Globe, Mail, MonitorSmartphone } from "lucide-react";
 import { useState } from "react";
-import {
-  type BuiltinRouteIconId,
-  normalizeRouteIconHost,
-} from "../../../../shared/route-icons";
 
 // ---------------------------------------------------------------------------
 // Route marks — larger app/site tiles used in the tone page's "Routes from"
@@ -24,14 +20,30 @@ import {
 // use generic local fallback icons so the page never depends on remote assets.
 // ---------------------------------------------------------------------------
 
-export type AppMarkId = BuiltinRouteIconId;
+export type AppMarkId =
+  | "messages"
+  | "whatsapp"
+  | "telegram"
+  | "discord"
+  | "slack"
+  | "linkedin"
+  | "work_chat"
+  | "gmail"
+  | "outlook"
+  | "apple_mail"
+  | "proton";
+
+export function normalizeRouteIconHost(raw: string): string {
+  return raw
+    .replace(/^www\./, "")
+    .trim()
+    .toLowerCase();
+}
 
 type Mark = {
   label: string;
   bg: string;
-  art?: React.ReactNode;
-  src?: string;
-  artScale?: number;
+  src: string;
   imageClassName?: string;
 };
 
@@ -147,10 +159,6 @@ function normalizeLabel(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-function hostFromSiteMatch(raw: string): string {
-  return normalizeRouteIconHost(raw);
-}
-
 function initialsFromLabel(label: string): string {
   const words = label
     .split(/\s+/)
@@ -163,17 +171,13 @@ function initialsFromLabel(label: string): string {
 }
 
 function resolveSiteAlias(host: string): AppMarkId | null {
-  const normalized = hostFromSiteMatch(host);
+  const normalized = normalizeRouteIconHost(host);
   for (const [domain, markId] of Object.entries(SITE_MARK_ALIASES)) {
     if (normalized === domain || normalized.endsWith(`.${domain}`)) {
       return markId;
     }
   }
   return null;
-}
-
-export function getAppMarkLabel(id: AppMarkId): string {
-  return APP_MARKS[id].label;
 }
 
 export function resolveBuiltInAppMarkFromAppMatch(
@@ -192,7 +196,7 @@ function resolveAssignmentMark(
   assignment: CleanupAppAssignment,
 ): RouteMarkDescriptor {
   if (assignment.kind === "site") {
-    const host = hostFromSiteMatch(assignment.match || assignment.label);
+    const host = normalizeRouteIconHost(assignment.match || assignment.label);
     const builtIn = resolveSiteAlias(host);
     if (builtIn) {
       return {
@@ -346,28 +350,11 @@ export function RouteMark({
         onEnter={onEnter}
         onExit={onExit}
       >
-        {builtIn.src ? (
-          <MarkImage
-            src={builtIn.src}
-            label={builtIn.label}
-            className={builtIn.imageClassName}
-          />
-        ) : builtIn.art ? (
-          <svg
-            viewBox="0 0 24 24"
-            width={Math.round(size * (builtIn.artScale ?? 0.64))}
-            height={Math.round(size * (builtIn.artScale ?? 0.64))}
-            aria-hidden="true"
-            focusable="false"
-          >
-            {builtIn.art}
-          </svg>
-        ) : (
-          <MonitorSmartphone
-            aria-hidden="true"
-            className="text-muted-foreground size-4"
-          />
-        )}
+        <MarkImage
+          src={builtIn.src}
+          label={builtIn.label}
+          className={builtIn.imageClassName}
+        />
       </MarkTile>
     );
   }
@@ -407,18 +394,6 @@ export function RouteMark({
       )}
     </MarkTile>
   );
-}
-
-export function AppMark({
-  id,
-  size = 30,
-  className,
-}: {
-  id: AppMarkId;
-  size?: number;
-  className?: string;
-}): React.JSX.Element {
-  return <RouteMark id={id} size={size} className={className} />;
 }
 
 export function AppMarkRow({

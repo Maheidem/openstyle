@@ -1,6 +1,7 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { initSchema } from "../src/lib/schema.js";
+import { createVersionedDb } from "./helpers/schema-db.js";
 
 let db: DatabaseSync | null = null;
 
@@ -11,24 +12,11 @@ afterEach(() => {
 
 describe("sync_outbox migration (v18)", () => {
   it("creates the sync_outbox table when upgrading an existing DB", () => {
-    db = new DatabaseSync(":memory:");
     // Minimal pre-v18 DB: just the version marker + settings table. The v18
     // migration only adds a new table, so no prior tables are required.
     // initSchema then runs every subsequent migration through SCHEMA_VERSION,
     // so the final version asserted below is the current schema head.
-    db.exec(`
-      CREATE TABLE schema_version (
-        id INTEGER PRIMARY KEY CHECK(id = 1),
-        version INTEGER NOT NULL
-      );
-      INSERT INTO schema_version (id, version) VALUES (1, 17);
-
-      CREATE TABLE settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
+    db = createVersionedDb(17);
 
     initSchema(db);
 

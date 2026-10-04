@@ -1,8 +1,13 @@
 import { collapseAsrLineBreaks } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
-import { normalizeOmlxRoot, omlxTranscribeUrl } from "@openstyle/validations";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
+import {
+  normalizeOmlxRoot,
+  omlxTranscribeUrl,
+  SETTINGS_KEYS,
+} from "@openstyle/validations";
 import { readSetting } from "../../db.js";
 import { redactHeaders, trace } from "../../trace.js";
+import { OMLX_PROVIDER_ID } from "../local-providers.js";
 import type {
   TranscribeOptions,
   TranscribeResult,
@@ -10,10 +15,9 @@ import type {
 } from "../types.js";
 import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "../types.js";
 
-export const OMLX_PROVIDER_ID = "omlx";
 export const OMLX_PROVIDER_NAME = "oMLX";
-export const OMLX_BASE_URL_SETTING = "omlx_base_url";
-export const OMLX_API_KEY_SETTING = "omlx_api_key";
+export const OMLX_BASE_URL_SETTING = SETTINGS_KEYS.omlxBaseUrl;
+export const OMLX_API_KEY_SETTING = SETTINGS_KEYS.omlxApiKey;
 
 const log = createAppLogger("omlx");
 
@@ -97,10 +101,10 @@ export class OmlxTranscriptionProvider implements TranscriptionProvider {
       });
     } catch (err) {
       trace("omlx.stt.error", `elapsed_ms=${Date.now() - t0} ${url}`, {
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMessage(err),
       });
       throw new Error(
-        `oMLX server unreachable at ${url}: ${err instanceof Error ? err.message : String(err)}`,
+        `oMLX server unreachable at ${url}: ${errorMessage(err)}`,
       );
     }
 

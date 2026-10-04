@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   diffLanguageHotkeys,
   isLanguageHotkeyTaken,
+  normalizeAccelerator,
 } from "../src/main/hotkey-utils";
 
 // Covers the pure diff/conflict logic `registerLanguageHotkeys` (index.ts)
@@ -106,31 +107,70 @@ test("isLanguageHotkeyTaken: free accelerator is not taken", () => {
   ).toBe(false);
 });
 
-test("registration loop shape: two entries sharing the same accelerator — first wins, second is skipped", () => {
-  // Mirrors the `for...of Object.entries(desired)` loop in
-  // `registerLanguageHotkeys` (index.ts): claims accumulate as each entry is
-  // processed in order, so a later duplicate is rejected by the entries the
-  // loop already committed to, never by itself.
-  const desired = { pt: "Alt+X", en: "Alt+X" };
-  const claimed = new Set<string>();
-  const registered: string[] = [];
-  const skipped: string[] = [];
-
-  for (const [lang, accel] of Object.entries(desired)) {
-    if (
-      isLanguageHotkeyTaken(accel, {
-        dictationAccel: null,
-        remixAccel: null,
-        claimedLanguageAccels: claimed,
-      })
-    ) {
-      skipped.push(lang);
-      continue;
-    }
-    claimed.add(accel);
-    registered.push(lang);
+test("normalizeAccelerator: pins the output for every alias and fallback case", () => {
+  const cases: Array<[string, string]> = [
+    ["fn", "Fn"],
+    ["Globe", "Fn"],
+    ["control", "Control"],
+    ["CTRL", "Control"],
+    ["command", "Command"],
+    ["cmd", "Command"],
+    ["Meta", "Command"],
+    ["alt", "Alt"],
+    ["Option", "Alt"],
+    ["shift", "Shift"],
+    ["commandorcontrol", "CommandOrControl"],
+    ["CmdOrCtrl", "CommandOrControl"],
+    ["space", "Space"],
+    ["return", "Return"],
+    ["ENTER", "Return"],
+    ["escape", "Escape"],
+    ["esc", "Escape"],
+    ["backspace", "Backspace"],
+    ["delete", "Delete"],
+    ["del", "Delete"],
+    ["tab", "Tab"],
+    ["rightalt", "RightAlt"],
+    ["RightOption", "RightAlt"],
+    ["rightcontrol", "RightControl"],
+    ["rightctrl", "RightControl"],
+    ["rightshift", "RightShift"],
+    ["rightcommand", "RightCommand"],
+    ["rightcmd", "RightCommand"],
+    ["rightsuper", "RightSuper"],
+    ["rightwin", "RightSuper"],
+    ["rightmeta", "RightSuper"],
+    ["mousebutton4", "MouseButton4"],
+    ["mouse4", "MouseButton4"],
+    ["mousebutton5", "MouseButton5"],
+    ["Mouse5", "MouseButton5"],
+    // F-keys
+    ["f1", "F1"],
+    ["f12", "F12"],
+    ["F24", "F24"],
+    // Single characters
+    ["k", "K"],
+    ["7", "7"],
+    // Arrows and the capitalise fallback
+    ["Up", "Up"],
+    ["Down", "Down"],
+    ["Left", "Left"],
+    ["Right", "Right"],
+    ["up", "Up"],
+    ["pageup", "Pageup"],
+    ["Home", "Home"],
+    ["constructor", "Constructor"],
+    // Blank parts stay blank
+    ["", ""],
+  ];
+  for (const [input, expected] of cases) {
+    expect(normalizeAccelerator(input), input).toBe(expected);
   }
+});
 
-  expect(registered).toEqual(["pt"]);
-  expect(skipped).toEqual(["en"]);
+test("normalizeAccelerator: normalizes each part and trims spaces", () => {
+  expect(normalizeAccelerator("ctrl + shift+ k")).toBe("Control+Shift+K");
+  expect(normalizeAccelerator("cmd+Up")).toBe("Command+Up");
+  expect(normalizeAccelerator("globe+f5")).toBe("Fn+F5");
+  expect(normalizeAccelerator("alt++")).toBe("Alt++");
 });

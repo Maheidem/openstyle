@@ -1,4 +1,4 @@
-import { getDb } from "./db.js";
+import { getDb, withTransaction } from "./db.js";
 
 /**
  * Local persistence for the Remix agent lane. One thread is "active" at a
@@ -113,8 +113,7 @@ export function saveThreadMessages(
      ON CONFLICT(thread_id, message_id)
        DO UPDATE SET ui_message = excluded.ui_message`,
   );
-  db.exec("BEGIN");
-  try {
+  withTransaction(db, () => {
     db.prepare(
       ids.length > 0
         ? `DELETE FROM remix_messages WHERE thread_id = ? AND message_id NOT IN (${ids.map(() => "?").join(", ")})`
@@ -131,11 +130,7 @@ export function saveThreadMessages(
     db.prepare(
       "UPDATE remix_threads SET last_active_at = datetime('now') WHERE id = ?",
     ).run(threadId);
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
+  });
   return true;
 }
 
@@ -197,17 +192,6 @@ export function listRemixRuns(limit: number, offset: number): RemixRunRow[] {
   return getDb()
     .prepare("SELECT * FROM remix_runs ORDER BY id DESC LIMIT ? OFFSET ?")
     .all(limit, offset) as unknown as RemixRunRow[];
-}
-
-export function getRemixRun(id: number): RemixRunRow | null {
-  const row = getDb()
-    .prepare("SELECT * FROM remix_runs WHERE id = ?")
-    .get(id) as RemixRunRow | undefined;
-  return row ?? null;
-}
-
-export function deleteRemixRun(id: number): void {
-  getDb().prepare("DELETE FROM remix_runs WHERE id = ?").run(id);
 }
 
 export function purgeExpiredRemixData(retentionDays: number): number {

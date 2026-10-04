@@ -62,32 +62,6 @@ const apiKeys = new Hono()
     const result = await validateApiKey(body.provider, body.key);
     return c.json({ valid: result.valid, error: result.error });
   })
-  .post("/:provider/revalidate", async (c) => {
-    const db = getDb();
-    const provider = c.req.param("provider");
-    const row = db
-      .prepare("SELECT key FROM api_keys WHERE provider = ?")
-      .get(provider) as { key: string } | undefined;
-
-    if (!row) {
-      return c.json({ error: "No API key for this provider" }, 404);
-    }
-
-    const result = await validateApiKey(provider, row.key);
-    const status = result.valid ? "valid" : "invalid";
-
-    db.prepare("UPDATE api_keys SET status = ? WHERE provider = ?").run(
-      status,
-      provider,
-    );
-
-    return c.json({
-      provider,
-      valid: result.valid,
-      status,
-      error: result.error,
-    });
-  })
   .delete("/:provider", (c) => {
     const db = getDb();
     const provider = c.req.param("provider");

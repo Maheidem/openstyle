@@ -3,17 +3,7 @@ import { serverStartSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
-import {
-  isBinaryAvailable,
-  isServerBinaryAvailable,
-} from "../lib/whisper/binary.js";
-
-import {
-  getModelsDir,
-  isSupportedWhisperArch,
-  unsupportedArchMessage,
-  WHISPER_PROVIDER_ID,
-} from "../lib/whisper/constants.js";
+import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import {
   cancelDownload,
   clearDownloadError,
@@ -25,25 +15,14 @@ import {
   isBinaryDownloading,
 } from "../lib/whisper/models.js";
 import {
-  isServerFailed,
-  isServerRunning,
   startInBackground,
-  stopServer,
+  stopServerIfLoaded,
 } from "../lib/whisper/server.js";
 
 const whisper = new Hono()
   .get("/status", (c) => {
     return c.json({
-      archSupported: isSupportedWhisperArch(),
-      archUnsupportedReason: isSupportedWhisperArch()
-        ? null
-        : unsupportedArchMessage(),
-      binaryAvailable: isBinaryAvailable(),
       binaryDownloading: isBinaryDownloading(),
-      serverBinaryAvailable: isServerBinaryAvailable(),
-      serverRunning: isServerRunning(),
-      serverFailed: isServerFailed(),
-      modelsDir: getModelsDir(),
       models: getAllModelStatuses(),
       modelDefinitions: getCatalogModels().map((m) => ({
         id: m.id,
@@ -85,6 +64,8 @@ const whisper = new Hono()
   })
   .delete("/models/:model", async (c) => {
     const modelId = c.req.param("model");
+    // On Windows the server holds the model file open. Stop it first.
+    await stopServerIfLoaded(modelId);
     const deleted = await deleteModel(modelId);
 
     return c.json({ ok: deleted });
@@ -104,10 +85,6 @@ const whisper = new Hono()
     }
 
     startInBackground(modelId);
-    return c.json({ ok: true });
-  })
-  .post("/server/stop", async (c) => {
-    await stopServer();
     return c.json({ ok: true });
   });
 

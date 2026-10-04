@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
+import { jsonRequest } from "./helpers/http.js";
 
 const app = createApp();
 
 function putFlag(key: string, body: unknown) {
-  return app.request(`/api/config/flags/${key}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return jsonRequest(app, "PUT", `/api/config/flags/${key}`, body);
 }
 
 describe("/api/config/flags/:key", () => {

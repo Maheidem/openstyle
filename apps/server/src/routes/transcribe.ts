@@ -8,6 +8,7 @@ import {
   isMlxServerRunning,
   startMlxInBackground,
 } from "../lib/mlx-asr/server.js";
+import { prewarmModelCostRegistry } from "../lib/model-registry.js";
 import { prewarmPostProcess } from "../lib/post-process.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
@@ -18,7 +19,6 @@ import {
 import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import { isServerRunning, startInBackground } from "../lib/whisper/server.js";
-import { prewarmModelCostRegistry } from "./models.js";
 
 const log = createAppLogger("transcribe");
 

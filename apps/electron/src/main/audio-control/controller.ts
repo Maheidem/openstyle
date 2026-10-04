@@ -40,10 +40,6 @@ export class AudioPlaybackController {
     this.ducked = this.ducked || (await duckPromise);
   }
 
-  async duck(): Promise<void> {
-    await this.prepare("duck");
-  }
-
   private async duckSafely(): Promise<boolean> {
     try {
       return await volumeDucker.duckVolume();
@@ -89,7 +85,7 @@ export class AudioPlaybackController {
       this.paused = false;
       try {
         if (process.platform === "darwin") {
-          await this.macosMediaPlayback.restore();
+          await this.macosMediaPlayback.resumePlayback();
         } else if (process.platform === "linux") {
           await linuxMediaPlayback.resumePlayback();
         } else if (process.platform === "win32") {
@@ -115,7 +111,7 @@ export class AudioPlaybackController {
     if (shouldResume) {
       this.paused = false;
       if (process.platform === "darwin") {
-        this.macosMediaPlayback.restoreSync();
+        this.macosMediaPlayback.resumePlaybackSync();
       } else if (process.platform === "linux") {
         linuxMediaPlayback.resumePlaybackSync();
       } else if (process.platform === "win32") {

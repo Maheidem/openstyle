@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -28,6 +27,7 @@ import {
   downloadErrorSourceUrl,
 } from "../download-guard.js";
 import { progressFetch } from "../hf/progress.js";
+import { isServerBinaryAvailable, resetBinaryCache } from "./binary.js";
 import {
   getBinDir,
   getModelPath,
@@ -49,7 +49,6 @@ const execFile = promisify(execFileCallback);
 export type DownloadStatus =
   | "not_downloaded"
   | "downloading"
-  | "verifying"
   | "ready"
   | "error";
 
@@ -79,7 +78,6 @@ interface ActiveDownload {
   bytesDownloaded: number;
   bytesTotal: number;
   speedBps: number;
-  startedAt: number;
   lastUpdate: number;
   lastBytes: number;
   error?: string;
@@ -183,7 +181,6 @@ export async function downloadModel(modelId: string): Promise<void> {
 
   if (isModelDownloaded(model)) return;
 
-  const { isServerBinaryAvailable } = await import("./binary.js");
   const needsBinary = !isServerBinaryAvailable();
 
   const controller = new AbortController();
@@ -193,7 +190,6 @@ export async function downloadModel(modelId: string): Promise<void> {
     bytesDownloaded: 0,
     bytesTotal: needsBinary ? 0 : model.sizeBytes,
     speedBps: 0,
-    startedAt: Date.now(),
     lastUpdate: Date.now(),
     lastBytes: 0,
   };
@@ -254,7 +250,7 @@ export async function downloadModel(modelId: string): Promise<void> {
       },
     });
     await pipeline(
-      webBodyToReadable(res.body),
+      Readable.fromWeb(res.body as never),
       hashThrough,
       createWriteStream(tempPath),
     );
@@ -294,12 +290,6 @@ export async function deleteModel(modelId: string): Promise<boolean> {
   if (!model) return false;
 
   cancelDownload(modelId);
-
-  // Stop the whisper server before deleting — on Windows the server
-  // process holds the model file open, so unlinkSync would fail with
-  // EPERM/EBUSY while it's running.
-  const { stopServer } = await import("./server.js");
-  await stopServer();
 
   const path = getModelPath(model);
   try {
@@ -373,9 +363,6 @@ export async function ensureBinariesDownloaded(): Promise<void> {
   if (!isSupportedWhisperArch()) {
     throw new Error(unsupportedArchMessage());
   }
-  const { isServerBinaryAvailable, resetBinaryCache } = await import(
-    "./binary.js"
-  );
   if (isServerBinaryAvailable()) return;
 
   if (binaryDownloadPromise) return binaryDownloadPromise;
@@ -418,7 +405,7 @@ async function buildFromSource(): Promise<void> {
   }
 
   const fileStream = createWriteStream(tarPath);
-  await pipeline(webBodyToReadable(res.body), fileStream);
+  await pipeline(Readable.fromWeb(res.body as never), fileStream);
 
   log.info("Extracting source...");
 
@@ -502,9 +489,6 @@ async function buildFromSource(): Promise<void> {
     rmSync(srcDir, { recursive: true, force: true });
   } catch {}
 
-  const { isServerBinaryAvailable, resetBinaryCache } = await import(
-    "./binary.js"
-  );
   resetBinaryCache();
   if (!isServerBinaryAvailable()) {
     throw new Error(
@@ -538,7 +522,7 @@ async function downloadWindowsBinaries(): Promise<void> {
   }
 
   const fileStream = createWriteStream(tmpZip);
-  await pipeline(webBodyToReadable(res.body), fileStream);
+  await pipeline(Readable.fromWeb(res.body as never), fileStream);
 
   const psQuote = (p: string): string => `'${p.replace(/'/g, "''")}'`;
   try {
@@ -572,26 +556,4 @@ async function downloadWindowsBinaries(): Promise<void> {
   }
 
   log.info("Windows binaries downloaded");
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function webBodyToReadable(body: ReadableStream<Uint8Array>): Readable {
-  const reader = body.getReader();
-  return new Readable({
-    async read() {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          this.push(null);
-          return;
-        }
-        this.push(Buffer.from(value));
-      } catch (err) {
-        this.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    },
-  });
 }

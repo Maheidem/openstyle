@@ -6,26 +6,32 @@ import type {
   LlmTaskId,
 } from "@openstyle/validations";
 import {
+  clampMlxKeepAliveMinutes,
+  MLX_KEEP_ALIVE_DEFAULT_MINUTES,
   parseCleanupSampling,
   parseLlmTaskAssignments,
 } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
-import type {
-  AvailableModel,
-  MlxAsrStatus,
-  VoiceItem,
-  WhisperStatus,
+import type { ApiKeyEntry, ConfiguredModel } from "@renderer/lib/models";
+import {
+  type AvailableModel,
+  buildVoiceItems,
+  hasActiveDownload,
+  type MlxAsrStatus,
+  type VoiceItem,
+  type WhisperStatus,
 } from "@renderer/lib/models";
-import { IS_MAC } from "@renderer/lib/platform";
 import {
   availableModelsQueryOptions,
+  mlxStatusQueryOptions,
   queryKeys,
   settingsQueryOptions,
+  whisperStatusQueryOptions,
 } from "@renderer/lib/query";
+import { putSetting } from "@renderer/lib/settings";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
-import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
 import {
   checkPresetWrite,
   duplicatePreset,
@@ -33,17 +39,12 @@ import {
   removePresetAndReassign,
   upsertPreset,
 } from "./preset-ops";
-import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import type {
   EndpointConnectConfig,
   EndpointConnectState,
 } from "./use-endpoint-connect";
 import { useEndpointConnect } from "./use-endpoint-connect";
-import {
-  buildSettingsVoiceItems,
-  clampMlxKeepAliveMinutes,
-  groupByProvider,
-} from "./utils";
+import { groupByProvider } from "./utils";
 
 export type { EndpointConnectState } from "./use-endpoint-connect";
 
@@ -66,13 +67,22 @@ const EMPTY_AVAILABLE: AvailableModel[] = [];
 const EMPTY_CONFIGURED: ConfiguredModel[] = [];
 const EMPTY_KEYS: ApiKeyEntry[] = [];
 
-/** True while any local model is downloading or verifying. */
-function hasActiveDownload(
-  models: { status: string }[] | undefined | null,
-): boolean {
-  return !!models?.some(
-    (m) => m.status === "downloading" || m.status === "verifying",
-  );
+/** Saves a model as the default for its type. */
+function postDefaultModel(
+  provider: string,
+  modelId: string,
+  modelName: string,
+  type: "voice" | "llm",
+) {
+  return getClient().api.models.configured.$post({
+    json: {
+      provider,
+      model_id: modelId,
+      model_name: modelName,
+      type,
+      is_default: true,
+    },
+  });
 }
 
 export interface UseModels {
@@ -83,8 +93,6 @@ export interface UseModels {
   whisperStatus: WhisperStatus | null;
   mlxStatus: MlxAsrStatus | null;
   llmCleanup: boolean;
-  /** True once the editable form state has been seeded from persisted settings. */
-  settingsSeeded: boolean;
   mlxKeepAliveMinutes: number;
   /** The retired global sampling blob (`cleanup_sampling`) — read-only here,
    *  kept only so `TaskProfilesSection` can show the "migrated from your old
@@ -157,7 +165,6 @@ export interface UseModels {
    *  `false` (state unchanged) on any failure. */
   deleteUserPreset: (presetId: string) => Promise<boolean>;
   deleteProvider: (provider: string) => Promise<void>;
-  reload: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,31 +198,6 @@ const OMLX_CONFIG: EndpointConnectConfig = {
   probe: (client, body) => client.api.settings.omlx.test.$post({ json: body }),
 };
 
-/**
- * One low-level settings PUT, resolved to a boolean (never rejected).
- * The preset/assignment write path in `useModels` needs to know whether the
- * server took the blob — the shape it replaced fired from inside a state
- * updater and only `console.error`'d on failure, which is how a refused write
- * came to look like a saved one. `PUT /api/settings/:key` is the ONLY write
- * surface used here: the DELETE route drops the whole key (§4.3).
- */
-async function putSettingValue(key: string, value: string): Promise<boolean> {
-  try {
-    const res = await getClient().api.settings[":key"].$put({
-      param: { key },
-      json: { value },
-    });
-    if (!res.ok) {
-      console.warn(`Failed to save setting "${key}": HTTP ${res.status}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn(`Failed to save setting "${key}":`, err);
-    return false;
-  }
-}
-
 export function useModels(): UseModels {
   const queryClient = useQueryClient();
 
@@ -245,38 +227,8 @@ export function useModels(): UseModels {
 
   const settingsQuery = useQuery(settingsQueryOptions());
 
-  const whisperQuery = useQuery({
-    queryKey: MODELS_KEYS.whisper,
-    queryFn: async () => {
-      const res = await getClient().api.whisper.status.$get();
-      if (!res.ok) throw new Error("Failed to load whisper status");
-      return (await res.json()) as WhisperStatus;
-    },
-    // Poll every 500ms while a download/verify is active, then stop.
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d && (d.binaryDownloading || hasActiveDownload(d.models))
-        ? 500
-        : false;
-    },
-    // Status is volatile during downloads — always treat as stale.
-    staleTime: 0,
-  });
-
-  const mlxQuery = useQuery({
-    queryKey: MODELS_KEYS.mlx,
-    enabled: IS_MAC,
-    queryFn: async () => {
-      const res = await getClient().api["mlx-asr"].status.$get();
-      if (!res.ok) throw new Error("Failed to load MLX ASR status");
-      return (await res.json()) as MlxAsrStatus;
-    },
-    refetchInterval: (query) => {
-      const d = query.state.data;
-      return d && hasActiveDownload(d.models) ? 500 : false;
-    },
-    staleTime: 0,
-  });
+  const whisperQuery = useQuery(whisperStatusQueryOptions());
+  const mlxQuery = useQuery(mlxStatusQueryOptions());
 
   const available = availableQuery.data ?? EMPTY_AVAILABLE;
   const configured = configuredQuery.data ?? EMPTY_CONFIGURED;
@@ -295,7 +247,7 @@ export function useModels(): UseModels {
 
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
-    DEFAULT_MLX_KEEP_ALIVE_MINUTES,
+    MLX_KEEP_ALIVE_DEFAULT_MINUTES,
   );
   const [cleanupSampling, setCleanupSampling] = useState<CleanupSampling>({});
   const [taskAssignments, setTaskAssignments] = useState<LlmTaskAssignments>(
@@ -338,15 +290,12 @@ export function useModels(): UseModels {
   // first resolves. Mutations update this local state directly, so we don't
   // re-seed on later invalidations (which would clobber in-progress edits).
   // keepAlive falls back to the MLX status report when the setting is unset.
-  // `settingsSeeded` is state (not a ref) so consumers can wait for the seed
-  // before acting on `llmCleanup` — reading it too early sees the initial
-  // `false` and can trigger spurious re-configuration.
-  const [settingsSeeded, setSettingsSeeded] = useState(false);
-  const seededRef = useRef({ keepAlive: false });
+  const settingsSeededRef = useRef(false);
+  const keepAliveSeededRef = useRef(false);
   useEffect(() => {
     const s = settingsQuery.data;
-    if (!s || settingsSeeded) return;
-    setSettingsSeeded(true);
+    if (!s || settingsSeededRef.current) return;
+    settingsSeededRef.current = true;
     const cleanup = s[SETTINGS_KEYS.llmCleanup];
     if (cleanup) setLlmCleanup(cleanup === "true");
     setCleanupSampling(parseCleanupSampling(s[SETTINGS_KEYS.cleanupSampling]));
@@ -366,16 +315,16 @@ export function useModels(): UseModels {
     if (rawMinutes) {
       const minutes = Number(rawMinutes);
       if (Number.isFinite(minutes)) {
-        seededRef.current.keepAlive = true;
+        keepAliveSeededRef.current = true;
         setMlxKeepAliveMinutes(clampMlxKeepAliveMinutes(minutes));
       }
     }
-  }, [settingsQuery.data, settingsSeeded]);
+  }, [settingsQuery.data]);
 
   useEffect(() => {
     const d = mlxQuery.data;
-    if (!d || seededRef.current.keepAlive) return;
-    seededRef.current.keepAlive = true;
+    if (!d || keepAliveSeededRef.current) return;
+    keepAliveSeededRef.current = true;
     if (Number.isFinite(d.keepAliveMinutes)) {
       setMlxKeepAliveMinutes(clampMlxKeepAliveMinutes(d.keepAliveMinutes));
     }
@@ -386,14 +335,13 @@ export function useModels(): UseModels {
   // refetchInterval on the whisper/mlx queries above)
   // -------------------------------------------------------------------------
 
-  const reload = useCallback(async () => {
+  const loadData = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.all }),
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.keys }),
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.settings }),
     ]);
   }, [queryClient]);
-  const loadData = reload;
 
   // -------------------------------------------------------------------------
   // Endpoint connections (local LLM + custom STT)
@@ -483,8 +431,9 @@ export function useModels(): UseModels {
   );
   const voiceItems = useMemo(
     () =>
-      buildSettingsVoiceItems(available, whisperStatus, mlxStatus, {
-        defaultVoice,
+      buildVoiceItems(available, whisperStatus, mlxStatus, {
+        selectedModelId: defaultVoice?.model_id,
+        selectedProvider: defaultVoice?.provider,
         keyProviders,
       }),
     [available, whisperStatus, mlxStatus, defaultVoice, keyProviders],
@@ -496,15 +445,12 @@ export function useModels(): UseModels {
 
   const configureModel = useCallback(
     async (model: AvailableModel, type: "voice" | "llm") => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: model.provider_id,
-          model_id: model.model_id,
-          model_name: model.model_name,
-          type,
-          is_default: true,
-        },
-      });
+      await postDefaultModel(
+        model.provider_id,
+        model.model_id,
+        model.model_name,
+        type,
+      );
       await loadData();
     },
     [loadData],
@@ -541,15 +487,7 @@ export function useModels(): UseModels {
   const selectLocalVoice = useCallback(
     async (defId: string, name: string, engine?: "whisper" | "mlx") => {
       const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
-      await getClient().api.models.configured.$post({
-        json: {
-          provider,
-          model_id: `${provider}/${defId}`,
-          model_name: name,
-          type: "voice",
-          is_default: true,
-        },
-      });
+      await postDefaultModel(provider, `${provider}/${defId}`, name, "voice");
       if (engine === "mlx") {
         getClient()
           .api["mlx-asr"].server.start.$post({ json: { modelId: defId } })
@@ -648,15 +586,12 @@ export function useModels(): UseModels {
 
   const selectLocalLlmModel = useCallback(
     async (modelName: string) => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: "local-llm",
-          model_id: `local-llm/${modelName}`,
-          model_name: modelName,
-          type: "llm",
-          is_default: true,
-        },
-      });
+      await postDefaultModel(
+        "local-llm",
+        `local-llm/${modelName}`,
+        modelName,
+        "llm",
+      );
       await loadData();
     },
     [loadData],
@@ -664,15 +599,7 @@ export function useModels(): UseModels {
 
   const selectOmlxModel = useCallback(
     async (modelName: string) => {
-      await getClient().api.models.configured.$post({
-        json: {
-          provider: "omlx",
-          model_id: `omlx/${modelName}`,
-          model_name: modelName,
-          type: "voice",
-          is_default: true,
-        },
-      });
+      await postDefaultModel("omlx", `omlx/${modelName}`, modelName, "voice");
       await loadData();
     },
     [loadData],
@@ -680,11 +607,7 @@ export function useModels(): UseModels {
 
   const setCleanup = useCallback((next: boolean) => {
     setLlmCleanup(next);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.llmCleanup },
-        json: { value: String(next) },
-      })
+    putSetting(SETTINGS_KEYS.llmCleanup, String(next))
       .then(() => {
         // Toggling cleanup changes whether the pill needs the frontmost app for
         // routing — notify it to refresh its cached decision.
@@ -698,11 +621,7 @@ export function useModels(): UseModels {
   const saveMlxKeepAliveMinutes = useCallback((minutes: number) => {
     const next = clampMlxKeepAliveMinutes(minutes);
     setMlxKeepAliveMinutes(next);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.mlxAsrKeepAliveMinutes },
-        json: { value: String(next) },
-      })
+    putSetting(SETTINGS_KEYS.mlxAsrKeepAliveMinutes, String(next))
       .then(() => {
         if (next !== 0) return;
         return getClient().api["mlx-asr"].server.stop.$post();
@@ -718,7 +637,7 @@ export function useModels(): UseModels {
     (next: LlmTaskAssignments): Promise<boolean> => {
       const prev = assignmentsRef.current;
       setTaskAssignments(next);
-      return putSettingValue(
+      return putSetting(
         SETTINGS_KEYS.llmTaskAssignments,
         JSON.stringify(next),
       ).then((ok) => {
@@ -775,7 +694,7 @@ export function useModels(): UseModels {
       // Client mirror of the route's §4.3 rules (id/name/count/params-bytes)
       // so a refused write shows an inline message instead of a bare 400.
       if (checkPresetWrite(next)) return false;
-      const ok = await putSettingValue(
+      const ok = await putSetting(
         SETTINGS_KEYS.llmParameterPresets,
         JSON.stringify({ presets: next }),
       );
@@ -857,7 +776,7 @@ export function useModels(): UseModels {
   // `setUserPresets` is load-bearing here, not a nicety: the Params track's
   // options ARE `userPresets` (`task-profiles-section.tsx` builds
   // `segmentedOptions` from `[...BUILTIN_LLM_PRESETS, ...userPresets]`), and
-  // the settings seed effect is one-shot (`settingsSeeded`, above), so
+  // the settings seed effect is one-shot (`settingsSeededRef`, above), so
   // `refreshSettingsCache()`'s invalidation repopulates the react-query cache
   // but NEVER re-seeds this state. A delete that wrote both blobs and skipped
   // this call therefore kept the dead preset as a permanently deselectable
@@ -930,7 +849,6 @@ export function useModels(): UseModels {
     whisperStatus,
     mlxStatus,
     llmCleanup,
-    settingsSeeded,
     mlxKeepAliveMinutes,
     deletingKeys,
     deletingProviders,
@@ -962,6 +880,5 @@ export function useModels(): UseModels {
     duplicateUserPreset,
     deleteUserPreset,
     deleteProvider,
-    reload: loadData,
   };
 }

@@ -1,13 +1,17 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   expect,
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import {
+  closeApp,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -15,80 +19,33 @@ import { _electron as electron } from "playwright";
 
 let app: ElectronApplication | undefined;
 let dashboardPage: Page;
-let serverPort: number;
 
 const DEFAULT_PORT = 4649;
-
-/**
- * Wait for a window whose URL is neither the pill nor the remix bar —
- * that's the dashboard / onboarding window. The pill (pill.html) and the
- * remix bar (bar.html) are auxiliary windows and may appear first.
- */
-async function waitForDashboardWindow(
-  electronApp: ElectronApplication,
-  timeoutMs = 10_000,
-): Promise<Page> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const win of electronApp.windows()) {
-      const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
-        await win.waitForLoadState("domcontentloaded");
-        return win;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-
-  // Fallback: return whatever window we have
-  return electronApp.windows()[0];
-}
 
 test.beforeAll(async () => {
   // Skip (rather than silently reusing) a foreign server on the default port
   // — the app's boot probe would find it and this suite's embedded-server
   // assertions would read (and PUT into) that real instance's DB. Same guard
   // as tests/meeting-cancel-transcribe.test.ts.
+  let foreign = false;
   try {
     const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
       signal: AbortSignal.timeout(1_500),
     });
-    test.skip(
-      res.ok,
-      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or run this suite against an isolated server.`,
-    );
+    foreign = res.ok;
   } catch {
     // nothing listening — clean environment, proceed with the embedded server
   }
+  // Call the skip outside the try: the bare catch would swallow its throw.
+  test.skip(
+    foreign,
+    `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or run this suite against an isolated server.`,
+  );
 
   const userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   try {
-    app = await electron.launch({
-      args: [resolve(__dirname, "../out/main/index.js")],
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-        OPENSTYLE_DB_PATH: dbPath,
-        // main/index.ts rewrites OPENSTYLE_DB_PATH from userData, so actual
-        // isolation depends on OPENSTYLE_USER_DATA (see the audit note in
-        // tests/import-screen.test.ts) — without it this suite would run
-        // against the developer's real profile whenever 4649 is free.
-        OPENSTYLE_USER_DATA: userDataDir,
-        OPENSTYLE_E2E: "1",
-        ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-      },
-      timeout: 30_000,
-    });
-
-    // Wait for the first window so Playwright's internal state is ready.
-    await app.firstWindow();
+    app = await launchOpenstyle({ userDataDir });
 
     // Find the dashboard (non-pill) window.
     dashboardPage = await waitForDashboardWindow(app, 15_000);
@@ -98,21 +55,6 @@ test.beforeAll(async () => {
       // Embedded server keeps connections open; networkidle may never fire.
       await dashboardPage.waitForLoadState("load", { timeout: 10_000 });
     }
-
-    // Resolve the actual server port by probing the default port from the
-    // main process. The server starts on DEFAULT_PORT and only falls back
-    // to a random port when DEFAULT_PORT is already in use.
-    const portResult = await app.evaluate(async (_electron, port) => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (res.ok) return port;
-      } catch {
-        // port not available
-      }
-      return 0;
-    }, DEFAULT_PORT);
-
-    serverPort = portResult || DEFAULT_PORT;
   } catch (error) {
     console.error("Failed to launch Electron app:", error);
     if (app) {
@@ -125,16 +67,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (!app) return;
-  const proc = app.process();
-  const killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
-  try {
-    await app.close();
-  } catch (error) {
-    console.warn("Error closing app:", error);
-    proc.kill("SIGKILL");
-  } finally {
-    clearTimeout(killTimer);
-  }
+  await closeApp(app);
 });
 
 // ---------------------------------------------------------------------------
@@ -142,33 +75,29 @@ test.afterAll(async () => {
 // ---------------------------------------------------------------------------
 
 test("app launches and creates windows", async () => {
-  const windows = app.windows();
+  const windows = app!.windows();
   expect(windows.length).toBeGreaterThanOrEqual(1);
 });
 
 test("main process is responsive", async () => {
-  const isPackaged = await app.evaluate(({ app }) => app.isPackaged);
+  const isPackaged = await app!.evaluate(({ app }) => app.isPackaged);
   expect(isPackaged).toBe(false);
 });
 
 test("app name is Openstyle", async () => {
-  const appName = await app.evaluate(({ app }) => app.getName());
+  const appName = await app!.evaluate(({ app }) => app.getName());
   expect(appName).toBe("Openstyle");
 });
 
 test("app version is defined", async () => {
-  const version = await app.evaluate(({ app }) => app.getVersion());
+  const version = await app!.evaluate(({ app }) => app.getVersion());
   expect(version).toBeTruthy();
   expect(version).toMatch(/^\d+\.\d+/);
 });
 
-test("dashboard window loads a valid route", async () => {
-  const url = dashboardPage.url();
-  const isValidRoute =
-    url.includes("/today") ||
-    url.includes("/onboarding") ||
-    url.includes("index.html");
-  expect(isValidRoute).toBe(true);
+test("dashboard window loads the onboarding route", async () => {
+  // A fresh profile has no settings.json, so onboarding is active.
+  expect(dashboardPage.url()).toContain("/onboarding");
 });
 
 test("dashboard window has a reasonable viewport", async () => {
@@ -180,68 +109,38 @@ test("dashboard window has a reasonable viewport", async () => {
 });
 
 test("embedded server is running", async () => {
-  const health = await app.evaluate(async (_electron, port) => {
+  const health = await app!.evaluate(async (_electron, port) => {
     const res = await fetch(`http://127.0.0.1:${port}/api/health`);
     return res.json() as Promise<{ status: string; name: string }>;
-  }, serverPort);
+  }, DEFAULT_PORT);
   expect(health).toEqual({ status: "ok", name: "openstyle" });
 });
 
 test("settings API works via embedded server", async () => {
-  await app.evaluate(async (_electron, port) => {
+  await app!.evaluate(async (_electron, port) => {
     await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: "hello" }),
     });
-  }, serverPort);
+  }, DEFAULT_PORT);
 
-  const result = await app.evaluate(async (_electron, port) => {
+  const result = await app!.evaluate(async (_electron, port) => {
     const res = await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`);
     return res.json() as Promise<{ key: string; value: string }>;
-  }, serverPort);
+  }, DEFAULT_PORT);
   expect(result).toEqual({ key: "e2e_test", value: "hello" });
 });
 
 test("dashboard renders content", async () => {
   const body = dashboardPage.locator("body");
-
-  if (dashboardPage.url().includes("/onboarding")) {
-    await body.waitFor({ state: "visible" });
-    expect((await body.innerText()).length).toBeGreaterThan(0);
-    return;
-  }
-
-  await dashboardPage.waitForSelector("main, nav", { timeout: 10_000 });
-
   await body.waitFor({ state: "visible" });
-  const bodyText = await body.innerText();
-  expect(bodyText.length).toBeGreaterThan(0);
-});
-
-test("sidebar navigation is rendered", async () => {
-  const url = dashboardPage.url();
-  if (url.includes("/onboarding")) {
-    // On onboarding page, there's no sidebar but there is content
-    const body = await dashboardPage.locator("body").innerText();
-    expect(body.length).toBeGreaterThan(0);
-    return;
-  }
-
-  await dashboardPage.waitForSelector("nav", { timeout: 10_000 });
-  // The exact link count varies by state (advanced mode reveals Models) —
-  // assert the core set.
-  const navLinks = await dashboardPage.locator("nav a").all();
-  expect(navLinks.length).toBeGreaterThanOrEqual(6);
+  expect((await body.innerText()).length).toBeGreaterThan(0);
 });
 
 // Runs LAST among the dashboard tests: completing onboarding changes the
 // window's route, which the earlier tests must not inherit.
 test("onboarding flow reaches the draft and remix steps and completes", async () => {
-  test.skip(
-    !dashboardPage.url().includes("/onboarding"),
-    "onboarding is not active in this run",
-  );
   const page = dashboardPage;
 
   // Permissions step, now first — E2E bypasses the OS grants.

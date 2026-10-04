@@ -2,17 +2,16 @@
  * Lower default output volume while dictating on Linux (PipeWire / PulseAudio).
  */
 
-import { execFile, execFileSync } from "node:child_process";
-import { promisify } from "node:util";
+import { execFileSync } from "node:child_process";
 import { createAppLogger } from "@openstyle/utils";
 import {
   AUDIO_CONTROL_CMD_TIMEOUT_MS,
   DUCKED_VOLUME,
 } from "./audio-control-constants";
+import { commandExists, runCmd } from "./exec-util";
 import type { VolumeDucker } from "./interfaces/volume-ducker.interface";
 
 const log = createAppLogger("linux-audio-ducker");
-const execFileAsync = promisify(execFile);
 
 type SinkMethod = "wpctl" | "pactl";
 
@@ -21,30 +20,11 @@ interface SinkVolumeSnapshot {
   previousVolume: number;
 }
 
-async function runCmd(
-  command: string,
-  args: string[],
-): Promise<{ stdout: string; ok: boolean }> {
-  try {
-    const { stdout } = await execFileAsync(command, args, {
-      timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS,
-    });
-    return { stdout: stdout.trim(), ok: true };
-  } catch {
-    return { stdout: "", ok: false };
-  }
-}
-
 function runCmdSync(command: string, args: string[]): string {
   return execFileSync(command, args, {
     encoding: "utf8",
     timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS,
   }).trim();
-}
-
-async function commandExists(command: string): Promise<boolean> {
-  const { ok } = await runCmd("sh", ["-c", `command -v ${command}`]);
-  return ok;
 }
 
 function parseWpctlVolume(stdout: string): number | null {
@@ -132,10 +112,6 @@ function targetDuckedVolume(current: SinkVolumeSnapshot): number {
 export class LinuxVolumeDucker implements VolumeDucker {
   private snapshot: SinkVolumeSnapshot | null = null;
   private active = false;
-
-  isActive(): boolean {
-    return this.active;
-  }
 
   async duck(): Promise<boolean> {
     if (process.platform !== "linux") return false;

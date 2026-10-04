@@ -57,9 +57,7 @@
     },
     "tutorial": {
       "almostReady": "Quasi pronto — ",
-      "finish": "Inizia a usare Openstyle",
-      "chooseModel": "Scegli un altro modello",
-      "usingModel": "Utilizzando {{name}} · Scegli un altro modello"
+      "finish": "Inizia a usare Openstyle"
     },
     "modelSelector": {
       "chooseModel": "Scegli un modello",
@@ -264,16 +262,11 @@
     "heatmapWords": "{{count}} parole"
   },
   "history": {
-    "title": "Cronologia",
-    "loading": "Caricamento cronologia...",
     "filterTitle": "Filtra Cronologia",
     "done": "Fatto",
     "filtersBtn": "Filtri",
     "timeLabelAllTime": "Tutto il periodo",
     "timeLabelFiltered": "Filtrato",
-    "wordsStat": "parole · {{label}}",
-    "sessionsStat": "sessioni · {{label}}",
-    "costStat": "costo · {{label}}",
     "sessionSingular": "sessione",
     "sessionPlural": "sessioni",
     "searchSingular": "Cerca in {{total}} trascrizione...",
@@ -338,7 +331,6 @@
     "newTerm": "Nuovo termine",
     "termLabel": "Termine · parola o frase",
     "notesLabel": "Note · opzionale",
-    "modelCompatNote": "Funziona su Nova 3, OpenAI e Groq.",
     "cancel": "Annulla",
     "update": "Aggiorna",
     "termSingular": "termine",
@@ -563,11 +555,9 @@
   },
   "models": {
     "title": "Modelli",
-    "loading": "Caricamento modelli...",
     "apiKeys": "Chiavi API",
     "noApiKeys": "Nessuna chiave API inserita.",
     "onDevice": "Sul dispositivo",
-    "keyInvalid": "Chiave non valida",
     "keyStored": "Chiave salvata nel portachiavi",
     "keyStoredWithHint": "Chiave {{hint}} salvata",
     "modelSingular": "modello",

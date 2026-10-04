@@ -13,11 +13,8 @@
 import type { PostProcessParams } from "@openstyle/stt";
 import { postProcess } from "@openstyle/stt";
 import type { LlmTaskId } from "@openstyle/validations";
-import {
-  acquireLlmLane,
-  type LaneLease,
-  llmLaneKeyForProvider,
-} from "../llm/lane.js";
+import { withLlmLane } from "../llm/lane.js";
+import { getModelCostCached } from "../model-registry.js";
 
 /**
  * Rough token estimate (~4 chars/token), mirroring `@openstyle/stt`
@@ -37,7 +34,8 @@ export interface ChatCallRequest {
    *  through — Summarize and Enhance are the only two meeting features that
    *  share this helper. */
   taskId: Extract<LlmTaskId, "meetingSummarize" | "meetingEnhance">;
-  /** Cancel seam threaded from the meeting job (`activeJobCancellations`).
+  /** Cancel seam threaded from the meeting job (`requestCancel` and
+   *  `isCancelRequested` in the job registry).
    *  A call cancelled while QUEUED never fires (spec §5.7). */
   shouldStop?: () => boolean;
   /** Queued-progress seam, threaded to the job blob for the UI. */
@@ -54,6 +52,34 @@ export interface ChatCallResponse {
   model?: string | null;
   /** Per-token USD pricing, when the callable can resolve it. */
   pricing?: { input: number; output: number } | null;
+}
+
+/** The part of a chat request a meeting feature builds itself. */
+export type ChatCallInput = Omit<
+  ChatCallRequest,
+  "taskId" | "shouldStop" | "onQueued"
+>;
+
+/**
+ * Build the default call function for one task id. Summarize and Enhance
+ * both use it, so they share one place that threads the cancel and queue
+ * seams. Callers that inject their own `llmCall` (tests) never reach it,
+ * so they never touch the database or provider SDKs.
+ */
+export function defaultChatCallFor<TInput extends ChatCallInput>(
+  taskId: ChatCallRequest["taskId"],
+  seams: Pick<ChatCallRequest, "shouldStop" | "onQueued">,
+): (request: TInput) => Promise<ChatCallResponse> {
+  return (request) =>
+    resolveDefaultChatCall({
+      ...request,
+      taskId,
+      // Cancel + queue-progress seams (§5.5/§5.7), threaded from the job so a
+      // cancel landing while a call is still QUEUED stops it before the
+      // request ever goes out.
+      ...(seams.shouldStop ? { shouldStop: seams.shouldStop } : {}),
+      ...(seams.onQueued ? { onQueued: seams.onQueued } : {}),
+    });
 }
 
 /**
@@ -93,43 +119,42 @@ export async function resolveDefaultChatCall(
   // `postProcess` only — never across the meeting, the chunk loop, or the
   // job. The lease is acquired before the model is even resolved, because the
   // resolution is what names the endpoint (§5.1: the lane IS the endpoint).
-  const lane = await llmLaneKeyForProvider(resolved.provider);
-  const lease: LaneLease = await acquireLlmLane({
-    lane,
-    cls: "background",
-    taskId: request.taskId,
-    ...(request.shouldStop ? { shouldStop: request.shouldStop } : {}),
-    ...(request.onQueued ? { onQueued: request.onQueued } : {}),
-  });
-  let result: Awaited<ReturnType<typeof postProcess>>;
-  try {
-    result = await postProcess({
-      model,
-      text: request.prompt,
-      system: request.system,
-      prompt: request.prompt,
-      temperature: resolved.temperature,
-      maxOutputTokens: resolved.maxOutputTokens,
-      skipEmptyText: false,
-      ...(providerOptions ? { providerOptions } : {}),
-      // Non-streaming call, so this window has to cover the entire generation.
-      // For `meetingSummarize` it is the user-settable
-      // `meeting_summary_timeout_seconds` (default 600 s), resolved fresh in
-      // `task-profiles.ts` -> `taskTimeoutMs()`; `meetingEnhance` keeps its
-      // user-settable `meeting_enhance_timeout_seconds` (default 600 s) for
-      // the same reason — a non-streaming generation on one local worker slot
-      // cannot be bounded by a 60 s guess. Seconds -> ms happens there, once.
-      signal: AbortSignal.timeout(resolved.timeoutMs),
-      onError: (err) => {
-        callError = err;
-      },
-    });
-  } finally {
-    // Released before the `result.model === null` check below, so a failed
-    // call never leaves the lane occupied — that is the difference between a
-    // dead engine stalling one call and a dead engine stalling every call.
-    lease.release();
-  }
+  // `withLlmLane` frees the slot before the `result.model === null` check
+  // below, so a failed call never leaves the lane occupied. That is the
+  // difference between a dead engine stalling one call and a dead engine
+  // stalling every call.
+  const result = await withLlmLane(
+    resolved.provider,
+    {
+      cls: "background",
+      taskId: request.taskId,
+      ...(request.shouldStop ? { shouldStop: request.shouldStop } : {}),
+      ...(request.onQueued ? { onQueued: request.onQueued } : {}),
+    },
+    () =>
+      postProcess({
+        model,
+        text: request.prompt,
+        system: request.system,
+        prompt: request.prompt,
+        temperature: resolved.temperature,
+        topP: resolved.topP,
+        maxOutputTokens: resolved.maxOutputTokens,
+        skipEmptyText: false,
+        ...(providerOptions ? { providerOptions } : {}),
+        // Non-streaming call, so this window has to cover the entire generation.
+        // For `meetingSummarize` it is the user-settable
+        // `meeting_summary_timeout_seconds` (default 600 s), resolved fresh in
+        // `task-profiles.ts` -> `taskTimeoutMs()`; `meetingEnhance` keeps its
+        // user-settable `meeting_enhance_timeout_seconds` (default 600 s) for
+        // the same reason — a non-streaming generation on one local worker slot
+        // cannot be bounded by a 60 s guess. Seconds -> ms happens there, once.
+        signal: AbortSignal.timeout(resolved.timeoutMs),
+        onError: (err) => {
+          callError = err;
+        },
+      }),
+  );
   if (result.model === null) {
     throw callError instanceof Error
       ? callError
@@ -138,7 +163,6 @@ export async function resolveDefaultChatCall(
 
   let pricing: { input: number; output: number } | null = null;
   try {
-    const { getModelCostCached } = await import("../../routes/models.js");
     pricing = getModelCostCached(resolved.provider, resolved.modelId);
   } catch {
     // Cost is best-effort; a missing registry just reports null cost.

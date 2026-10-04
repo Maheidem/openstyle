@@ -1,36 +1,16 @@
 import { zValidator } from "@hono/zod-validator";
 import {
-  caCertPathSettingSchema,
-  cleanupAppAssignmentsSchema,
-  cleanupCustomPromptSchema,
-  cleanupEmailToneSchema,
-  cleanupIntensitySchema,
-  cleanupOverallToneSchema,
-  cleanupPersonalToneSchema,
-  cleanupWorkToneSchema,
-  historyRetentionDaysSettingSchema,
-  LLM_PRESET_PARAMS_MAX_BYTES,
-  LLM_TASK_IDS,
-  llmParameterPresetsSettingSchema,
-  llmTaskAssignmentSchema,
   localLlmConfigSchema,
-  MEETING_ENHANCE_TIMEOUT_SETTING_KEY,
-  MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
-  meetingEnhanceTimeoutSecondsSettingSchema,
-  meetingSummaryInstructionsSchema,
-  meetingSummaryTimeoutSecondsSettingSchema,
   normalizeOmlxRoot,
-  omlxBaseUrlSchema,
   omlxConfigSchema,
   omlxModelsUrl,
   omlxTranscribeUrl,
-  openaiSttBaseUrlSchema,
   openaiSttConfigSchema,
-  proxyUrlSettingSchema,
+  SETTINGS_KEYS,
   settingValueSchema,
 } from "@openstyle/validations";
 import { Hono } from "hono";
-import { getDb } from "../lib/db.js";
+import { getDb, writeSetting } from "../lib/db.js";
 import {
   HISTORY_RETENTION_SETTING_KEY,
   purgeExpiredHistory,
@@ -41,6 +21,8 @@ import {
   configureNetwork,
   PROXY_URL_SETTING,
 } from "../lib/network.js";
+import { fetchModelIds } from "../lib/openai-compat.js";
+import { validateSetting } from "../lib/setting-validators.js";
 import { applyWhisperRetentionPolicy } from "../lib/whisper/server.js";
 
 /**
@@ -122,6 +104,18 @@ function resolveTestApiKey(
     : provided;
 }
 
+/** Run after a successful PUT of the key. */
+const SETTING_SIDE_EFFECTS: ReadonlyMap<string, () => void> = new Map([
+  [SETTINGS_KEYS.mlxAsrKeepAliveMinutes, applyMlxAsrRetentionPolicy],
+  [SETTINGS_KEYS.whisperKeepAliveMinutes, applyWhisperRetentionPolicy],
+  [HISTORY_RETENTION_SETTING_KEY, purgeExpiredHistory],
+]);
+
+/** PUT and DELETE of these keys must reset the global network dispatcher. */
+function isNetworkSetting(key: string): boolean {
+  return key === PROXY_URL_SETTING || key === CA_CERT_PATH_SETTING;
+}
+
 const settings = new Hono()
   .get("/", (c) => {
     const db = getDb();
@@ -149,7 +143,6 @@ const settings = new Hono()
     return c.json({ key, value: row.value });
   })
   .put("/:key", zValidator("json", settingValueSchema), async (c) => {
-    const db = getDb();
     const key = c.req.param("key");
     const body = c.req.valid("json");
 
@@ -163,201 +156,17 @@ const settings = new Hono()
     }
 
     // Key-specific validation for settings with constrained value shapes.
-    if (key === "cleanup_intensity") {
-      const parsed = cleanupIntensitySchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid cleanup intensity" }, 400);
-      }
-    } else if (key === "cleanup_custom_prompt") {
-      const parsed = cleanupCustomPromptSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Custom prompt is too long" }, 400);
-      }
-    } else if (key === "meeting_summary_instructions") {
-      const parsed = meetingSummaryInstructionsSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Summary instructions are too long" }, 400);
-      }
-    } else if (key === "cleanup_personal_tone") {
-      const parsed = cleanupPersonalToneSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid personal tone" }, 400);
-      }
-    } else if (key === "cleanup_work_tone") {
-      const parsed = cleanupWorkToneSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid work tone" }, 400);
-      }
-    } else if (key === "cleanup_email_tone") {
-      const parsed = cleanupEmailToneSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid email tone" }, 400);
-      }
-    } else if (key === "cleanup_overall_tone") {
-      const parsed = cleanupOverallToneSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid overall tone" }, 400);
-      }
-    } else if (key === "cleanup_app_assignments") {
-      let parsedJson: unknown;
-      try {
-        parsedJson = JSON.parse(body.value);
-      } catch {
-        return c.json({ error: "Invalid app assignments setting" }, 400);
-      }
-      const parsed = cleanupAppAssignmentsSchema.safeParse(parsedJson);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid app assignments setting" }, 400);
-      }
-    } else if (key === "llm_parameter_presets") {
-      let parsedJson: unknown;
-      try {
-        parsedJson = JSON.parse(body.value);
-      } catch {
-        return c.json({ error: "Invalid parameter presets setting" }, 400);
-      }
-      const parsed = llmParameterPresetsSettingSchema.safeParse(parsedJson);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid parameter presets setting" }, 400);
-      }
-      for (const preset of parsed.data.presets) {
-        if (
-          JSON.stringify(preset.params).length > LLM_PRESET_PARAMS_MAX_BYTES
-        ) {
-          return c.json({ error: `Preset "${preset.name}" is too large` }, 400);
-        }
-      }
-    } else if (key === "llm_task_assignments") {
-      let parsedJson: unknown;
-      try {
-        parsedJson = JSON.parse(body.value);
-      } catch {
-        return c.json({ error: "Invalid task assignments setting" }, 400);
-      }
-      // Reuses `parseLlmTaskAssignments`'s drop-unknown-keys behavior, but a
-      // PUT must still reject a body that is not JSON-object-shaped at all,
-      // or whose *known* keys fail their own schema outright — silently
-      // accepting a malformed known-task entry would let the UI PUT
-      // something it then can't read back.
-      if (
-        typeof parsedJson !== "object" ||
-        parsedJson === null ||
-        Array.isArray(parsedJson)
-      ) {
-        return c.json({ error: "Invalid task assignments setting" }, 400);
-      }
-      for (const [taskKey, entry] of Object.entries(
-        parsedJson as Record<string, unknown>,
-      )) {
-        if (!(LLM_TASK_IDS as readonly string[]).includes(taskKey)) continue;
-        if (!llmTaskAssignmentSchema.safeParse(entry).success) {
-          return c.json(
-            { error: `Invalid assignment for task "${taskKey}"` },
-            400,
-          );
-        }
-      }
-    } else if (key === "openai_stt_base_url") {
-      const parsed = openaiSttBaseUrlSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json(
-          {
-            error:
-              parsed.error.issues[0]?.message ?? "Invalid OpenAI STT base URL",
-          },
-          400,
-        );
-      }
-    } else if (key === "omlx_base_url") {
-      const parsed = omlxBaseUrlSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json(
-          {
-            error: parsed.error.issues[0]?.message ?? "Invalid oMLX server URL",
-          },
-          400,
-        );
-      }
-    } else if (key === PROXY_URL_SETTING) {
-      const parsed = proxyUrlSettingSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json(
-          { error: parsed.error.issues[0]?.message ?? "Invalid proxy URL" },
-          400,
-        );
-      }
-    } else if (key === CA_CERT_PATH_SETTING) {
-      const parsed = caCertPathSettingSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid CA certificate path" }, 400);
-      }
-    } else if (key === HISTORY_RETENTION_SETTING_KEY) {
-      const parsed = historyRetentionDaysSettingSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json(
-          {
-            error:
-              parsed.error.issues[0]?.message ?? "Invalid history retention",
-          },
-          400,
-        );
-      }
-    } else if (key === MEETING_SUMMARY_TIMEOUT_SETTING_KEY) {
-      // Stored in seconds, bounded 30-3600 — the arithmetic lives in
-      // `packages/validations/src/settings.ts`. Empty is valid and means
-      // "no preference" (the resolver uses its default); anything else out of
-      // bounds is a 400 rather than a row that is stored and silently ignored,
-      // so the UI can name the bound instead of lying about saving.
-      const parsed = meetingSummaryTimeoutSecondsSettingSchema.safeParse(
-        body.value,
-      );
-      if (!parsed.success) {
-        return c.json(
-          {
-            error: parsed.error.issues[0]?.message ?? "Invalid summary timeout",
-          },
-          400,
-        );
-      }
-    } else if (key === MEETING_ENHANCE_TIMEOUT_SETTING_KEY) {
-      // The exact sibling of the branch above, same bounds (30-3600 s) and the
-      // same reason to exist: Enhance is a non-streaming per-chunk generation
-      // through the same path, and this knob is what makes the window
-      // user-settable instead of a hard-coded 60 s. Until this branch existed
-      // the key had a validator and no route branch, so it could never be set
-      // from the UI at all. Empty is valid and means "no preference" (the
-      // resolver uses 600 s); anything else out of bounds is a 400 rather than
-      // a row that is stored and silently ignored.
-      const parsed = meetingEnhanceTimeoutSecondsSettingSchema.safeParse(
-        body.value,
-      );
-      if (!parsed.success) {
-        return c.json(
-          {
-            error: parsed.error.issues[0]?.message ?? "Invalid enhance timeout",
-          },
-          400,
-        );
-      }
+    const validationError = validateSetting(key, body.value);
+    if (validationError) {
+      return c.json({ error: validationError }, 400);
     }
 
-    db.prepare(
-      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-    ).run(key, String(body.value));
+    writeSetting(key, String(body.value));
 
-    if (key === "mlx_asr_keep_alive_minutes") {
-      applyMlxAsrRetentionPolicy();
-    }
-    if (key === "whisper_keep_alive_minutes") {
-      applyWhisperRetentionPolicy();
-    }
-    if (key === HISTORY_RETENTION_SETTING_KEY) {
-      purgeExpiredHistory();
-    }
+    SETTING_SIDE_EFFECTS.get(key)?.();
     // Re-install the global dispatcher so proxy/CA changes take effect for the
     // next download without an app restart.
-    if (key === PROXY_URL_SETTING || key === CA_CERT_PATH_SETTING) {
+    if (isNetworkSetting(key)) {
       configureNetwork();
     }
 
@@ -374,7 +183,7 @@ const settings = new Hono()
     db.prepare("DELETE FROM settings WHERE key = ?").run(key);
     // Deleting the proxy/CA key must also reset the global dispatcher, mirroring
     // the PUT path — otherwise a stale proxy/CA lingers until the next restart.
-    if (key === PROXY_URL_SETTING || key === CA_CERT_PATH_SETTING) {
+    if (isNetworkSetting(key)) {
       configureNetwork();
     }
     return c.json({ ok: true });
@@ -385,31 +194,13 @@ const settings = new Hono()
     async (c) => {
       const body = c.req.valid("json");
       const url = normalizeOpenaiBaseUrl(body.url);
-      const apiKey = resolveTestApiKey("local_llm_api_key", body.api_key);
+      const apiKey = resolveTestApiKey(
+        SETTINGS_KEYS.localLlmApiKey,
+        body.api_key,
+      );
 
       try {
-        const res = await fetch(`${url}/v1/models`, {
-          headers: {
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          signal: AbortSignal.timeout(5000),
-        });
-
-        if (!res.ok) {
-          return c.json(
-            { error: `Server returned ${res.status}: ${res.statusText}` },
-            502,
-          );
-        }
-
-        const data = (await res.json()) as {
-          data?: { id: string }[];
-        };
-
-        let models: string[] = [];
-        if (data.data && Array.isArray(data.data)) {
-          models = data.data.map((m) => m.id);
-        }
+        const models = await fetchModelIds(`${url}/v1/models`, apiKey);
 
         return c.json({ ok: true, models });
       } catch (err) {
@@ -425,31 +216,13 @@ const settings = new Hono()
     async (c) => {
       const body = c.req.valid("json");
       const url = normalizeOpenaiBaseUrl(body.url);
-      const apiKey = resolveTestApiKey("openai_stt_api_key", body.api_key);
+      const apiKey = resolveTestApiKey(
+        SETTINGS_KEYS.openaiSttApiKey,
+        body.api_key,
+      );
 
       try {
-        const res = await fetch(`${url}/v1/models`, {
-          headers: {
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          signal: AbortSignal.timeout(5000),
-        });
-
-        if (!res.ok) {
-          return c.json(
-            { error: `Server returned ${res.status}: ${res.statusText}` },
-            502,
-          );
-        }
-
-        const data = (await res.json()) as {
-          data?: { id: string }[];
-        };
-
-        let models: string[] = [];
-        if (data.data && Array.isArray(data.data)) {
-          models = data.data.map((m) => m.id);
-        }
+        const models = await fetchModelIds(`${url}/v1/models`, apiKey);
 
         return c.json({ ok: true, models });
       } catch (err) {
@@ -465,34 +238,15 @@ const settings = new Hono()
     // transcription request then 404s on.
     const root = normalizeOmlxRoot(body.url);
     const transcribeUrl = omlxTranscribeUrl(root);
-    const apiKey = resolveTestApiKey("omlx_api_key", body.api_key);
+    const apiKey = resolveTestApiKey(SETTINGS_KEYS.omlxApiKey, body.api_key);
     const auth: Record<string, string> = apiKey
       ? { Authorization: `Bearer ${apiKey}` }
       : {};
 
     try {
-      const res = await fetch(omlxModelsUrl(root), {
-        headers: auth,
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (!res.ok) {
-        return c.json(
-          { error: `Server returned ${res.status}: ${res.statusText}` },
-          502,
-        );
-      }
-
-      const data = (await res.json()) as {
-        data?: { id: string }[];
-      };
-
       // Every id is listed — oMLX reports no modality, and the user knows
       // which of their models is the ASR one.
-      let models: string[] = [];
-      if (data.data && Array.isArray(data.data)) {
-        models = data.data.map((m) => m.id);
-      }
+      const models = await fetchModelIds(omlxModelsUrl(root), apiKey);
 
       // Prove the transcription route exists too. A field-less POST gets a
       // validation error (oMLX answers 422) when the route is mounted, and a

@@ -29,7 +29,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createAppLogger } from "@openstyle/utils";
-import { getDb } from "../db.js";
+import { SYSTEM_WAV } from "@openstyle/validations";
+import { getDb, withTransaction } from "../db.js";
 import {
   isDictationActive,
   waitForDictationIdle,
@@ -356,10 +357,10 @@ export async function runDiarizationPass(
   audioDir: string,
   deps: DiarizeDeps = createDefaultDiarizeDeps(),
 ): Promise<void> {
-  const wavPath = join(audioDir, "system.wav");
+  const wavPath = join(audioDir, SYSTEM_WAV);
   if (!existsSync(wavPath)) {
     log.warn(
-      `meeting ${meetingId}: diarization skipped, no system.wav at ${wavPath}`,
+      `meeting ${meetingId}: diarization skipped, no ${SYSTEM_WAV} at ${wavPath}`,
     );
     return;
   }
@@ -467,12 +468,11 @@ export async function runDiarizationPass(
   const update = db.prepare(
     "UPDATE meeting_segments SET speaker_label = ? WHERE id = ?",
   );
-  db.exec("BEGIN");
   try {
-    for (const a of assignments) update.run(a.speakerLabel, a.id);
-    db.exec("COMMIT");
+    withTransaction(db, () => {
+      for (const a of assignments) update.run(a.speakerLabel, a.id);
+    });
   } catch (err) {
-    db.exec("ROLLBACK");
     log.warn(
       `meeting ${meetingId}: failed to persist speaker labels: ${String(err)}`,
     );

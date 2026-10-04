@@ -1,10 +1,13 @@
 import type { AppType } from "@openstyle/server";
-import { hc } from "hono/client";
+import {
+  DEFAULT_SERVER_PORT,
+  isOpenstyleHealthBody,
+} from "@openstyle/validations";
+import { hc, type InferResponseType } from "hono/client";
 import { bearerAuthHeaders } from "../../../shared/server-auth";
 
-const DEFAULT_PORT = 4649;
 const HEALTH_TIMEOUT_MS = 3000;
-let resolvedPort: number = DEFAULT_PORT;
+let resolvedPort: number = DEFAULT_SERVER_PORT;
 // Configured external server URL ("" = use the local server).
 let serverUrl = "";
 // Optional bearer token for a configured server ("" = none).
@@ -90,13 +93,7 @@ export async function checkServerHealth(
     );
     if (!res.ok) return false;
     const data = await res.json();
-    // Accepts the legacy "freestyle" identity too so a not-yet-updated
-    // standalone/remote server (auto-update is on by default, but a
-    // separately-deployed apps/server may lag) is still recognized.
-    return (
-      data.status === "ok" &&
-      (data.name === "openstyle" || data.name === "freestyle")
-    );
+    return isOpenstyleHealthBody(data);
   } catch {
     return false;
   }
@@ -141,7 +138,7 @@ export async function refreshApiBase(): Promise<boolean> {
     try {
       resolvedPort = await window.api.getServerPort();
     } catch {
-      resolvedPort = DEFAULT_PORT;
+      resolvedPort = DEFAULT_SERVER_PORT;
     }
   }
   return checkServerHealth(getApiBase(), HEALTH_TIMEOUT_MS);
@@ -160,3 +157,13 @@ export function getClient() {
   }
   return _client;
 }
+
+/** The typed Hono client that {@link getClient} returns. */
+export type ApiClient = ReturnType<typeof getClient>;
+
+/**
+ * The 200 body of one typed-client endpoint, for example
+ * `ApiRes<ApiClient["api"]["history"]["stats"]["$get"]>`. Use it in place of
+ * a hand-written copy of the server type, so a route change breaks the build.
+ */
+export type ApiRes<T> = InferResponseType<T, 200>;

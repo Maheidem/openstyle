@@ -1,7 +1,6 @@
 import {
   DEFAULT_HISTORY_FILTERS,
   type HistoryFiltersSetting,
-  KNOWN_NOTIFICATION_KEYS,
   parseHistoryFilters,
 } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
@@ -26,12 +25,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@renderer/components/ui/tooltip";
-import { useDismissible } from "@renderer/hooks/use-dismissible";
-import {
-  usePersistentJsonState,
-  usePersistentState,
-} from "@renderer/hooks/use-persistent-state";
-import { getClient } from "@renderer/lib/api";
+import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
+import { usePersistentJsonState } from "@renderer/hooks/use-persistent-state";
+import { useSearchShortcut } from "@renderer/hooks/use-search-shortcut";
+import { type ApiClient, type ApiRes, getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
@@ -58,126 +55,37 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { type DateRange, DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import {
+  formatClock,
+  formatCost,
+  formatRangeLabel,
+  formatSeconds,
+  getDateGroup,
+  getLocalDateString,
+  parseLocalDate,
+  shortModel,
+} from "./history/helpers";
+import {
+  STATS_WIDTH_MAX,
+  STATS_WIDTH_MIN,
+  useStatsPanel,
+} from "./history/use-stats-panel";
+import { useTutorialHero } from "./history/use-tutorial-hero";
 
-interface HistoryEntry {
-  id: number;
-  raw_text: string;
-  cleaned_text: string | null;
-  voice_provider: string;
-  voice_model: string;
-  llm_provider: string | null;
-  llm_model: string | null;
-  duration_ms: number;
-  audio_duration_ms: number;
-  input_tokens: number;
-  output_tokens: number;
-  cost_usd: number;
-  created_at: string;
-}
-
-interface Stats {
-  total_sessions: number;
-  total_duration_ms: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_cost_usd: number;
-  avg_duration_ms: number;
-  total_audio_ms: number;
-  total_fixes: number;
-  total_words: number;
-  today_sessions: number;
-  today_cost: number;
-  unfiltered_total_sessions: number;
-}
-
+type HistoryClient = ApiClient["api"]["history"];
+type HistoryEntry = ApiRes<HistoryClient["$get"]>["items"][number];
+type Stats = ApiRes<HistoryClient["stats"]["$get"]>;
 /** One local day of usage from GET /api/history/daily, feeding the heatmap. */
-interface DayActivity {
-  day: string;
-  words: number;
-  sessions: number;
-}
-
-function formatClock(iso: string): string {
-  return new Date(`${iso}Z`)
-    .toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })
-    .toLowerCase();
-}
-
-function formatSeconds(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
-}
-
-function shortModel(model: string | null | undefined): string {
-  if (!model) return "";
-  return model.includes("/") ? (model.split("/").pop() ?? "") : model;
-}
-
-function formatCost(cost: number): string {
-  if (cost === 0) return "$0.000";
-  if (cost < 0.001) return "<$0.001";
-  return `$${cost.toFixed(3)}`;
-}
-
-function getLocalDateString(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function parseLocalDate(value: string): Date | undefined {
-  if (!value) return undefined;
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return undefined;
-  return new Date(year, month - 1, day);
-}
-
-function formatRangeDate(value: string): string {
-  if (!value) return "Select";
-  const date = parseLocalDate(value);
-  if (!date) return "Select";
-  const day = date.getDate();
-  const month = date.toLocaleDateString(undefined, { month: "short" });
-  const year = date.getFullYear();
-  return `${day} ${month}, ${year}`;
-}
-
-function formatRangeLabel(start: string, end: string): string {
-  return `${formatRangeDate(start)} - ${formatRangeDate(end)}`;
-}
-
-/** Get a date key for grouping: "Today", "Yesterday", or "Day, Mon DD" */
-function getDateGroup(iso: string): string {
-  const d = new Date(`${iso}Z`);
-  const now = new Date();
-  const entryDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const diffDays = Math.floor(
-    (today.getTime() - entryDate.getTime()) / 86400_000,
-  );
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
+type DayActivity = ApiRes<HistoryClient["daily"]["$get"]>["days"][number];
 
 const PAGE_SIZE = 20;
-const DEV_HISTORY_SEED_ENABLED = import.meta.env.DEV;
-const STATS_WIDTH_MIN = 260;
-const STATS_WIDTH_MAX = 480;
+// Stable empty list, so the memoized StatsPanel does not re-render.
+const EMPTY_DAYS: DayActivity[] = [];
 
 export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -186,110 +94,16 @@ export default function HistoryPage(): React.JSX.Element {
   // The filter dialog is transient UI, not persisted state.
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Keep the legacy localStorage flag as a synchronous compatibility mirror:
-  // it prevents a flash for users who dismissed the hero before the SQLite
-  // store existed and preserves their choice if the migration PUT fails.
-  const [legacyHeroDismissed, setLegacyHeroDismissed] = usePersistentState<
-    "0" | "1"
-  >(
-    "today.heroDismissed",
-    "0",
-    (value): value is "0" | "1" => value === "0" || value === "1",
-  );
+  const { heroReady, heroDismissed, dismissHero, setShowTutorial } =
+    useTutorialHero();
   const {
-    dismissed: storedHeroDismissed,
-    dismiss: persistHeroDismissal,
-    reset: resetStoredHeroDismissal,
-    ready: heroReady,
-  } = useDismissible(KNOWN_NOTIFICATION_KEYS.TODAY_TUTORIAL_HERO);
-  const heroDismissed = storedHeroDismissed || legacyHeroDismissed === "1";
-  const migrationAttemptedRef = useRef(false);
-
-  // Best-effort one-time migration per mount. The legacy mirror is deliberately
-  // retained until the user explicitly resets the tutorial; if this PUT fails,
-  // the old dismissal still survives and migration retries next app launch.
-  useEffect(() => {
-    if (
-      !heroReady ||
-      storedHeroDismissed ||
-      legacyHeroDismissed !== "1" ||
-      migrationAttemptedRef.current
-    ) {
-      return;
-    }
-    migrationAttemptedRef.current = true;
-    persistHeroDismissal();
-  }, [
-    heroReady,
-    storedHeroDismissed,
-    legacyHeroDismissed,
-    persistHeroDismissal,
-  ]);
-
-  const dismissHero = useCallback(() => {
-    setLegacyHeroDismissed("1");
-    persistHeroDismissal();
-  }, [persistHeroDismissal, setLegacyHeroDismissed]);
-
-  const resetHero = useCallback(() => {
-    setLegacyHeroDismissed("0");
-    resetStoredHeroDismissal();
-  }, [resetStoredHeroDismissal, setLegacyHeroDismissed]);
-
-  const setShowTutorial = useCallback(
-    (value: boolean) => {
-      if (value) resetHero();
-      else dismissHero();
-    },
-    [dismissHero, resetHero],
-  );
-
-  // Stats sidebar visibility and width. Open by default, collapsible, and
-  // resizable by dragging its left edge; both persisted across sessions.
-  const [statsOpenRaw, setStatsOpenRaw] = usePersistentState<"0" | "1">(
-    "today.statsOpen",
-    "1",
-    (v): v is "0" | "1" => v === "0" || v === "1",
-  );
-  const statsOpen = statsOpenRaw === "1";
-  const openStats = useCallback(() => setStatsOpenRaw("1"), [setStatsOpenRaw]);
-  const closeStats = useCallback(() => setStatsOpenRaw("0"), [setStatsOpenRaw]);
-  const [statsWidthRaw, setStatsWidthRaw] = usePersistentState<string>(
-    "today.statsWidth",
-    "320",
-    (v): v is string => /^\d+$/.test(v),
-  );
-  const statsWidth = Math.min(
-    STATS_WIDTH_MAX,
-    Math.max(STATS_WIDTH_MIN, Number(statsWidthRaw) || 320),
-  );
-  const setStatsWidth = useCallback(
-    (w: number) =>
-      setStatsWidthRaw(
-        String(Math.min(STATS_WIDTH_MAX, Math.max(STATS_WIDTH_MIN, w))),
-      ),
-    [setStatsWidthRaw],
-  );
-  // The panel sits flush against the window's right edge, so its width is
-  // simply the distance from the pointer to that edge, clamped.
-  const onResizeStart = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      const el = e.currentTarget;
-      el.setPointerCapture(e.pointerId);
-      const onMove = (ev: PointerEvent): void => {
-        setStatsWidth(Math.round(window.innerWidth - ev.clientX));
-      };
-      const onUp = (ev: PointerEvent): void => {
-        el.releasePointerCapture(ev.pointerId);
-        el.removeEventListener("pointermove", onMove);
-        el.removeEventListener("pointerup", onUp);
-      };
-      el.addEventListener("pointermove", onMove);
-      el.addEventListener("pointerup", onUp);
-    },
-    [setStatsWidth],
-  );
+    statsOpen,
+    statsWidth,
+    openStats,
+    closeStats,
+    onResizeStart,
+    setStatsWidth,
+  } = useStatsPanel();
 
   // ── Persisted filter + view state ──────────────────────────────────────
   // Date range and view toggles are UI-only preferences, so — like each page's
@@ -318,8 +132,6 @@ export default function HistoryPage(): React.JSX.Element {
       setFilters((prev) => ({ ...prev, ...patch })),
     [setFilters],
   );
-
-  const todayStr = getLocalDateString(new Date());
 
   // Presets are gone: the only date filter is an explicit custom range.
   // Legacy persisted presets (today/weekly/monthly) are treated as all-time.
@@ -362,7 +174,12 @@ export default function HistoryPage(): React.JSX.Element {
 
   const queryClient = useQueryClient();
 
-  const { data: historyData, isLoading: loading } = useQuery({
+  // The list and the stats use separate queries. Stats depend only on the date
+  // range, so a search keystroke or a page change does not refetch them.
+  // `placeholderData` keeps the previous results on screen while a new
+  // filter/page/search query loads. Without it, every key change blanks the page
+  // to the loading spinner.
+  const { data: historyData, isLoading: listLoading } = useQuery({
     queryKey: queryKeys.history.list(page, search, startDate, endDate),
     queryFn: async () => {
       const q: Record<string, string> = {
@@ -374,73 +191,31 @@ export default function HistoryPage(): React.JSX.Element {
       if (startDate) q.start_date = startDate;
       if (endDate) q.end_date = endDate;
 
+      const res = await getClient().api.history.$get({ query: q });
+      return res.ok
+        ? await res.json()
+        : { items: [] as HistoryEntry[], total: 0 };
+    },
+    placeholderData: keepPreviousData,
+  });
+
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: queryKeys.history.stats(startDate, endDate),
+    queryFn: async () => {
       const statsQ: Record<string, string> = {};
       if (startDate) statsQ.start_date = startDate;
       if (endDate) statsQ.end_date = endDate;
 
-      const client = getClient();
-      const [histRes, statsRes] = await Promise.all([
-        client.api.history.$get({ query: q }),
-        client.api.history.stats.$get({ query: statsQ }),
-      ]);
-      const items = histRes.ok
-        ? ((await histRes.json()) as { items: HistoryEntry[]; total: number })
-        : { items: [] as HistoryEntry[], total: 0 };
-      const statsData = statsRes.ok ? ((await statsRes.json()) as Stats) : null;
-      return { ...items, stats: statsData };
+      const res = await getClient().api.history.stats.$get({ query: statsQ });
+      return res.ok ? await res.json() : null;
     },
-    // Keep showing the previous results while a new filter/page/search query
-    // loads. Without this every filter change is a brand-new query key with no
-    // cache, so `isLoading` flips true and the whole page blanks to the loading
-    // spinner — the "page re-renders" flash.
     placeholderData: keepPreviousData,
   });
 
-  const apiEntries = historyData?.items ?? [];
-  const devSeedEntry = useMemo<HistoryEntry | null>(() => {
-    if (!DEV_HISTORY_SEED_ENABLED) return null;
-    if (search && !"inline filter panel visual test".includes(search)) {
-      return null;
-    }
-    if (startDate && todayStr < startDate) return null;
-    if (endDate && todayStr > endDate) return null;
-
-    return {
-      id: -419,
-      raw_text: "Inline filter panel visual test.",
-      cleaned_text:
-        "Inline filter panel visual test entry for reviewing the History layout.",
-      voice_provider: "dev-seed",
-      voice_model: "dev-seed/local",
-      llm_provider: "dev-seed",
-      llm_model: "dev-seed/cleanup",
-      duration_ms: 640,
-      audio_duration_ms: 3200,
-      input_tokens: 18,
-      output_tokens: 12,
-      cost_usd: 0,
-      created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
-    };
-  }, [endDate, search, startDate, todayStr]);
-  const hasDevSeedEntry = apiEntries.length === 0 && devSeedEntry !== null;
-  const entries = hasDevSeedEntry ? [devSeedEntry] : apiEntries;
-  const total = hasDevSeedEntry ? 1 : (historyData?.total ?? 0);
-  const stats = hasDevSeedEntry
-    ? {
-        total_sessions: 1,
-        total_duration_ms: 640,
-        total_input_tokens: 18,
-        total_output_tokens: 12,
-        total_cost_usd: 0,
-        avg_duration_ms: 640,
-        total_audio_ms: 3200,
-        total_fixes: 3,
-        total_words: 12,
-        today_sessions: 1,
-        today_cost: 0,
-        unfiltered_total_sessions: 1,
-      }
-    : (historyData?.stats ?? null);
+  const loading = listLoading || statsLoading;
+  const entries = historyData?.items ?? [];
+  const total = historyData?.total ?? 0;
+  const stats = statsData ?? null;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // `history_paused` lives in the shared settings map — read it from the same
@@ -457,7 +232,7 @@ export default function HistoryPage(): React.JSX.Element {
     queryFn: async () => {
       const res = await getClient().api.history.daily.$get();
       if (!res.ok) return [] as DayActivity[];
-      const data = (await res.json()) as { days: DayActivity[] };
+      const data = await res.json();
       return data.days;
     },
   });
@@ -470,24 +245,8 @@ export default function HistoryPage(): React.JSX.Element {
     return () => remove?.();
   }, [queryClient]);
 
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const searchShortcutEnabled = total > 0 || !!search;
-
-  useEffect(() => {
-    if (!searchShortcutEnabled) return;
-
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
-      e.preventDefault();
-      const input = searchInputRef.current;
-      if (!input) return;
-      input.focus();
-      input.select();
-    };
-
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [searchShortcutEnabled]);
+  const searchInputRef = useSearchShortcut(searchShortcutEnabled);
 
   const invalidate = useCallback(
     () => queryClient.invalidateQueries({ queryKey: queryKeys.history.all }),
@@ -526,25 +285,7 @@ export default function HistoryPage(): React.JSX.Element {
       ? Math.round(stats.total_words / (stats.total_audio_ms / 60000))
       : 0;
 
-  // Heatmap series. With the dev seed active there's no real history, so
-  // synthesize a deterministic few months to make the heatmap reviewable.
-  const daily = useMemo<DayActivity[]>(() => {
-    if (!hasDevSeedEntry) return dailyData ?? [];
-    const out: DayActivity[] = [];
-    const d = new Date();
-    for (let i = 0; i < 112; i++) {
-      const words = (i * 37) % 7 === 0 ? 0 : 40 + ((i * 53) % 360);
-      if (words > 0) {
-        out.push({
-          day: getLocalDateString(d),
-          words,
-          sessions: 1 + (i % 3),
-        });
-      }
-      d.setDate(d.getDate() - 1);
-    }
-    return out;
-  }, [dailyData, hasDevSeedEntry]);
+  const daily = dailyData ?? EMPTY_DAYS;
 
   if (loading) {
     // Keep the real page frame (DragSpacer + scroll column) and show placeholder
@@ -1084,10 +825,7 @@ function StatsTab({
     <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-auto pt-4 pr-1">
       {/* Headline numbers — cards in a 2-up grid */}
       <div className="grid grid-cols-2 gap-2.5">
-        <StatCard
-          span2
-          inline
-          accent
+        <HeadlineStat
           n={formatNumber(avgWpm)}
           l={t("today.wpmLabel")}
           sub={timeLabel}
@@ -1119,66 +857,44 @@ function RailLabel({
   return <div className="text-muted-foreground text-[10px]">{children}</div>;
 }
 
-/** A bordered stat card matching the filter panel's card styling. */
-function StatCard({
+/** The wide headline card: number and label on one row, then the time range. */
+function HeadlineStat({
   n,
   l,
   sub,
-  accent,
-  span2,
-  inline,
 }: {
   n: string;
   l: string;
-  // Optional secondary label rendered below (e.g. the time range).
+  // Secondary label rendered below (the time range).
   sub?: string;
-  accent?: boolean;
-  // Span both grid columns.
-  span2?: boolean;
-  // Render the primary label inline (small text) next to the number.
-  inline?: boolean;
 }): React.JSX.Element {
   return (
-    <div
-      className={cn(
-        "border-border bg-card rounded-lg border px-3.5 py-3",
-        span2 && "col-span-2",
+    <div className="border-border bg-card col-span-2 rounded-lg border px-3.5 py-3">
+      <div className="flex items-baseline gap-2">
+        <span className="display text-primary text-[24px] leading-none">
+          {n}
+        </span>
+        <span className="text-muted-foreground text-[11px]">{l}</span>
+      </div>
+      {sub && (
+        <div className="text-muted-foreground/70 mt-1.5 text-[9.5px]">
+          {sub}
+        </div>
       )}
-    >
-      {inline ? (
-        <>
-          <div className="flex items-baseline gap-2">
-            <span
-              className={cn(
-                "display text-[24px] leading-none",
-                accent ? "text-primary" : "text-foreground",
-              )}
-            >
-              {n}
-            </span>
-            <span className="text-muted-foreground text-[11px]">{l}</span>
-          </div>
-          {sub && (
-            <div className="text-muted-foreground/70 mt-1.5 text-[9.5px]">
-              {sub}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div
-            className={cn(
-              "display text-[24px] leading-none",
-              accent ? "text-primary" : "text-foreground",
-            )}
-          >
-            {n}
-          </div>
-          <div className="text-muted-foreground mt-2 text-[11px] leading-tight">
-            {l}
-          </div>
-        </>
-      )}
+    </div>
+  );
+}
+
+/** A bordered stat card matching the filter panel's card styling. */
+function StatCard({ n, l }: { n: string; l: string }): React.JSX.Element {
+  return (
+    <div className="border-border bg-card rounded-lg border px-3.5 py-3">
+      <div className="display text-foreground text-[24px] leading-none">
+        {n}
+      </div>
+      <div className="text-muted-foreground mt-2 text-[11px] leading-tight">
+        {l}
+      </div>
     </div>
   );
 }
@@ -1392,7 +1108,7 @@ const FeedItem = memo(function FeedItem({
   nerdMode: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const hasAiEdit =
     !!entry.cleaned_text && entry.cleaned_text.trim() !== entry.raw_text.trim();
   const showDiff = diffMode && hasAiEdit;
@@ -1433,11 +1149,7 @@ const FeedItem = memo(function FeedItem({
       : null;
   const hasTokens = entry.input_tokens > 0 || entry.output_tokens > 0;
 
-  const copyText = useCallback(async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [text]);
+  const copyText = useCallback(() => copy(text), [copy, text]);
 
   return (
     <div className="group px-1.5 py-3.5">

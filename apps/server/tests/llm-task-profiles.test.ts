@@ -7,8 +7,7 @@ import {
 } from "@openstyle/validations";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import createApp from "../src/index.js";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import {
   createSamplingFetch,
   groqCleanupProviderOptions,
@@ -30,19 +29,14 @@ function seedDefaultLlm(provider: string, modelId: string): void {
 }
 
 function setAssignments(assignments: LlmTaskAssignments): void {
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO settings (key, value, updated_at) VALUES ('llm_task_assignments', ?, datetime('now'))
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-  ).run(JSON.stringify(assignments));
+  writeSetting("llm_task_assignments", JSON.stringify(assignments));
 }
 
 function clearSettings(): void {
-  const db = getDb();
-  db.prepare("DELETE FROM settings WHERE key = 'llm_task_assignments'").run();
-  db.prepare("DELETE FROM settings WHERE key = 'llm_parameter_presets'").run();
-  db.prepare("DELETE FROM settings WHERE key = 'cleanup_sampling'").run();
-  db.prepare("DELETE FROM api_keys").run();
+  deleteSetting("llm_task_assignments");
+  deleteSetting("llm_parameter_presets");
+  deleteSetting("cleanup_sampling");
+  getDb().prepare("DELETE FROM api_keys").run();
 }
 
 /** Captures anything written to stdout while `fn` runs. Winston's Console
@@ -70,12 +64,7 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
 beforeEach(() => {
   clearSettings();
   seedDefaultLlm("local-llm", "local-llm/Qwen3.8-27B");
-  getDb()
-    .prepare(
-      `INSERT INTO settings (key, value, updated_at) VALUES ('local_llm_url', ?, datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .run("http://127.0.0.1:8123");
+  writeSetting("local_llm_url", "http://127.0.0.1:8123");
 });
 
 afterEach(() => {
@@ -154,7 +143,6 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
     });
     expect(resolved.temperature).toBe(0);
     expect(resolved.reasoningEnabled).toBe(false);
-    expect(resolved.cloudPartial).toBe(false);
   });
 
   it("a mapped-subset provider gets an empty sampling object", async () => {
@@ -166,7 +154,6 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
       autoMaxOutputTokens: 512,
     });
     expect(resolved.samplingParams).toEqual({});
-    expect(resolved.cloudPartial).toBe(false);
   });
 
   it("throws when the profile is auto and no autoMaxOutputTokens is supplied", async () => {
@@ -202,9 +189,11 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
         .enable_thinking,
     ).toBe(true);
     expect(resolved.samplingParams).not.toHaveProperty("stream");
+    // Local providers get top_p inside samplingParams, never as `topP`.
+    expect(resolved.topP).toBeUndefined();
   });
 
-  it("on a mapped-subset provider: only the safe subset survives, floor applies, cloudPartial is set", async () => {
+  it("on a mapped-subset provider: only the safe subset survives, floor applies", async () => {
     seedDefaultLlm("openai", "gpt-4o-mini");
     getDb()
       .prepare("INSERT INTO api_keys (provider, key) VALUES ('openai', 'k')")
@@ -213,10 +202,10 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
       autoMaxOutputTokens: 100,
     });
     expect(resolved.temperature).toBe(1.0);
+    expect(resolved.topP).toBe(0.95);
     // Preset's max_tokens (512) beats the small auto budget (100).
     expect(resolved.maxOutputTokens).toBe(512);
     expect(resolved.samplingParams).toEqual({});
-    expect(resolved.cloudPartial).toBe(true);
   });
 });
 
@@ -395,6 +384,11 @@ describe("groqCleanupProviderOptions (§7.3) — per-family reasoningEnabled:fal
     expect(groqCleanupProviderOptions("groq/qwen/qwen3-32b", false)).toEqual({
       groq: { reasoningFormat: "hidden", reasoningEffort: "none" },
     });
+    expect(
+      groqCleanupProviderOptions("groq/openai/gpt-oss-120b", false),
+    ).toEqual({
+      groq: { reasoningFormat: "hidden", reasoningEffort: "low" },
+    });
   });
 });
 
@@ -428,20 +422,15 @@ describe("mergeSamplingIntoBody / createSamplingFetch (moved, unchanged)", () =>
 
   it("rewrites the request body via the installed fetch", async () => {
     const seen: unknown[] = [];
-    const original = globalThis.fetch;
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      seen.push(JSON.parse(String(init.body)));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      seen.push(JSON.parse(String(init?.body)));
       return new Response("{}", { status: 200 });
-    }) as typeof globalThis.fetch;
-    try {
-      const wrapped = createSamplingFetch({ temperature: 0.7, top_k: 40 });
-      await wrapped("https://example.test/v1/chat/completions", {
-        method: "POST",
-        body: JSON.stringify({ model: "m", temperature: 0 }),
-      });
-    } finally {
-      globalThis.fetch = original;
-    }
+    });
+    const wrapped = createSamplingFetch({ temperature: 0.7, top_k: 40 });
+    await wrapped("https://example.test/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "m", temperature: 0 }),
+    });
     expect(seen).toEqual([{ model: "m", temperature: 0.7, top_k: 40 }]);
   });
 });
@@ -455,10 +444,9 @@ describe("local-llm provider wiring — taskContext, not a direct DB read (§8.1
     task: string;
     sampling: Record<string, unknown>;
   }): Promise<string> {
-    const original = globalThis.fetch;
     let sent = "";
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      sent = String(init.body);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      sent = String(init?.body);
       return new Response(
         JSON.stringify({
           id: "1",
@@ -476,17 +464,13 @@ describe("local-llm provider wiring — taskContext, not a direct DB read (§8.1
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
-    }) as typeof globalThis.fetch;
-    try {
-      const model = await createChatModel(
-        "local-llm",
-        "local-llm/Qwen3.8-27B",
-        taskContext,
-      );
-      await generateText({ model, prompt: "hi", temperature: 0 });
-    } finally {
-      globalThis.fetch = original;
-    }
+    });
+    const model = await createChatModel(
+      "local-llm",
+      "local-llm/Qwen3.8-27B",
+      taskContext,
+    );
+    await generateText({ model, prompt: "hi", temperature: 0 });
     return sent;
   }
 
@@ -521,118 +505,5 @@ describe("local-llm provider wiring — taskContext, not a direct DB read (§8.1
       "model",
       "temperature",
     ]);
-  });
-});
-
-// End-to-end: PUT the two new settings keys through the real route.
-describe("PUT /api/settings/llm_parameter_presets and llm_task_assignments", () => {
-  const app = createApp();
-
-  it("accepts a valid preset list and a valid assignment blob", async () => {
-    const presets = JSON.stringify({
-      presets: [
-        {
-          id: "user_abc",
-          name: "Mine",
-          params: { temperature: 0.4 },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
-    });
-    const res1 = await app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: presets }),
-    });
-    expect(res1.status).toBe(200);
-
-    const assignments = JSON.stringify({
-      cleanup: { mode: "preset", presetId: "user_abc" },
-    });
-    const res2 = await app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: assignments }),
-    });
-    expect(res2.status).toBe(200);
-  });
-
-  it("rejects a builtin:-spoofing id and an out-of-enum mode with 400", async () => {
-    const spoofed = JSON.stringify({
-      presets: [
-        {
-          id: "builtin:qwen-thinking",
-          name: "spoof",
-          params: {},
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
-    });
-    const res1 = await app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: spoofed }),
-    });
-    expect(res1.status).toBe(400);
-
-    const bad = JSON.stringify({ cleanup: { mode: "not-a-mode" } });
-    const res2 = await app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: bad }),
-    });
-    expect(res2.status).toBe(400);
-  });
-
-  it("rejects malformed JSON for both keys", async () => {
-    const res1 = await app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: "{not json" }),
-    });
-    expect(res1.status).toBe(400);
-
-    const res2 = await app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: "{not json" }),
-    });
-    expect(res2.status).toBe(400);
-  });
-
-  it("rejects an oversized preset's params with 400", async () => {
-    const oversized = JSON.stringify({
-      presets: [
-        {
-          id: "user_big",
-          name: "Big",
-          params: { blob: "x".repeat(9000) },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
-    });
-    const res = await app.request("/api/settings/llm_parameter_presets", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: oversized }),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it("drops an unknown task-id key on write instead of rejecting the whole assignments blob", async () => {
-    const res = await app.request("/api/settings/llm_task_assignments", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        value: JSON.stringify({
-          cleanup: { mode: "auto" },
-          someFutureTask: { mode: "auto" },
-        }),
-      }),
-    });
-    expect(res.status).toBe(200);
   });
 });

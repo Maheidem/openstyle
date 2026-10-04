@@ -16,6 +16,7 @@
 import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
+import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
 import { parseWavHeader, sliceWav, type WavInfo } from "../audio/wav.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
 import type {
@@ -103,18 +104,13 @@ export interface MeetingChannels {
   systemSegments: Segment[];
 }
 
-interface RetryInfo {
-  retryable: boolean;
-  /** Explicit server-requested delay (Retry-After), if surfaced. */
-  retryAfterMs?: number;
-}
-
 /**
- * Inspect a provider error for HTTP 429 / Retry-After hints. Providers
+ * Inspect a provider error for HTTP 429 / Retry-After hints. Return the
+ * server-requested delay in ms, or `undefined` if there is none. Providers
  * surface these loosely (error.status, error.retryAfterMs, or message text),
  * so probe pragmatically.
  */
-function classifyError(err: unknown): RetryInfo {
+function retryAfterMsOf(err: unknown): number | undefined {
   const e = err as {
     status?: number;
     statusCode?: number;
@@ -136,10 +132,7 @@ function classifyError(err: unknown): RetryInfo {
     if (m) retryAfterMs = Number(m[1]) * 1000;
   }
 
-  return {
-    retryable: true,
-    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
-  };
+  return retryAfterMs;
 }
 
 const defaultSleep = (ms: number) =>
@@ -190,8 +183,8 @@ export class MeetingTranscriber {
       name: string;
       segments: Segment[];
     }> = [
-      { source: "mic", name: "mic.wav", segments: input.micSegments },
-      { source: "system", name: "system.wav", segments: input.systemSegments },
+      { source: "mic", name: MIC_WAV, segments: input.micSegments },
+      { source: "system", name: SYSTEM_WAV, segments: input.systemSegments },
     ];
 
     const opened: number[] = [];
@@ -302,12 +295,12 @@ export class MeetingTranscriber {
           status: text.length === 0 ? "empty" : "ok",
         };
       } catch (err) {
-        const retry = classifyError(err);
+        const retryAfterMs = retryAfterMsOf(err);
         log.warn(
           `chunk ${source}[${idx}] attempt ${attempt + 1}/${maxAttempts} failed: ${err instanceof Error ? err.message : String(err)}`,
         );
         if (attempt + 1 >= maxAttempts) break;
-        const delay = retry.retryAfterMs ?? backoffBase * 2 ** attempt;
+        const delay = retryAfterMs ?? backoffBase * 2 ** attempt;
         await this.sleep(delay);
       }
     }
@@ -338,13 +331,13 @@ export async function createDefaultTranscriberDeps(
   const [
     { getProvider },
     { getDefaultModels },
-    { getApiKeyForProvider },
+    { getApiKey },
     { getLanguagesSetting },
     { resolveAsrVocabularyBias },
   ] = await Promise.all([
     import("../streaming/registry.js"),
     import("../providers.js"),
-    import("../streaming-stt.js"),
+    import("../api-keys.js"),
     import("../language.js"),
     import("../vocabulary-bias.js"),
   ]);
@@ -360,7 +353,7 @@ export async function createDefaultTranscriberDeps(
       }
       const providerId = defaults.voice.provider;
       const modelId = defaults.voice.model_id;
-      const apiKey = getApiKeyForProvider(providerId);
+      const apiKey = getApiKey(providerId);
       if (!apiKey) {
         throw new Error(`No API key configured for provider: ${providerId}`);
       }

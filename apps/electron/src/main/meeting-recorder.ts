@@ -22,12 +22,17 @@ import { randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, openSync, writeSync } from "node:fs";
 import { mkdir, readdir, stat, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   DEFAULT_MEETING_MAX_DURATION_HOURS,
+  MEETINGS_DIR_NAME,
+  MIC_WAV,
   parseMeetingMaxDurationHours,
+  SYNC_JSON,
+  SYSTEM_WAV,
 } from "@openstyle/validations";
 import { app, type BrowserWindow, powerMonitor } from "electron";
+import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import {
   isSystemAudioCaptureSupported,
@@ -142,9 +147,8 @@ function buildWavHeader(dataBytes: number): Buffer {
 }
 
 export interface MeetingRecorderDeps {
-  /** Base URL + auth for the in-process/configured Openstyle server. */
-  getServerBaseUrl: () => string;
-  getServerAuthHeaders: () => Record<string, string>;
+  /** Fetch bound to the in-process/configured Openstyle server (adds auth). */
+  serverFetch: ServerFetch;
   /**
    * Create the hidden mic-capture BrowserWindow (show:false) loading
    * meeting-capture.html. Owned (and closed) by the recorder.
@@ -205,15 +209,11 @@ export class MeetingRecorder {
     path: string,
     init: { method?: string; body?: unknown } = {},
   ): Promise<Response> {
-    const res = await fetch(`${this.deps.getServerBaseUrl()}/api${path}`, {
+    return this.deps.serverFetch(path, {
       method: init.method ?? "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...this.deps.getServerAuthHeaders(),
-      },
+      headers: { "Content-Type": "application/json" },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
-    return res;
   }
 
   /** Max duration from settings (hours), falling back to the default. */
@@ -263,7 +263,7 @@ export class MeetingRecorder {
     }
 
     const id = randomUUID();
-    const dir = join(userData, "meetings", id);
+    const dir = join(userData, MEETINGS_DIR_NAME, id);
     await mkdir(dir, { recursive: true });
 
     const startedAt = Date.now();
@@ -279,8 +279,8 @@ export class MeetingRecorder {
     this.meetingDir = dir;
     this.startedAt = startedAt;
     this.lastError = null;
-    this.micWav = new WavWriter(join(dir, "mic.wav"));
-    this.systemWav = new WavWriter(join(dir, "system.wav"));
+    this.micWav = new WavWriter(join(dir, MIC_WAV));
+    this.systemWav = new WavWriter(join(dir, SYSTEM_WAV));
     this.journal = {
       meetingId: id,
       sampleRate: SAMPLE_RATE,
@@ -332,9 +332,7 @@ export class MeetingRecorder {
         this.captureWindow = null;
       });
     } catch (err) {
-      log.error(
-        `Failed to create mic capture window: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      log.error(`Failed to create mic capture window: ${errorMessage(err)}`);
       this.lastError = this.lastError ?? "mic: capture window failed";
     }
 
@@ -409,15 +407,12 @@ export class MeetingRecorder {
     this.journal.systemSamples += Math.floor(chunk.length / BYTES_PER_SAMPLE);
   }
 
-  /** Stop the recording and finalize files + DB row. */
-  async stop(
-    status: "recorded" | "failed" = "recorded",
-    error?: string,
-  ): Promise<void> {
-    if (this._status !== "recording") return;
-    const meetingId = this.meetingId;
-    this.setStatus("finalizing");
-
+  /**
+   * Stop the timers and capture sources, then finalize the WAV files. It is
+   * synchronous and does not change the status. Returns the finalize error,
+   * or null.
+   */
+  private teardown(): unknown {
     if (this.flushTimer) clearInterval(this.flushTimer);
     this.flushTimer = null;
     if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
@@ -434,16 +429,33 @@ export class MeetingRecorder {
     }
     this.captureWindow = null;
 
+    let finalizeError: unknown = null;
     try {
       this.micWav?.finalize();
       this.systemWav?.finalize();
     } catch (err) {
-      log.error(`WAV finalize failed: ${String(err)}`);
-      status = "failed";
-      error = error ?? `wav finalize failed: ${String(err)}`;
+      finalizeError = err;
     }
     this.micWav = null;
     this.systemWav = null;
+    return finalizeError;
+  }
+
+  /** Stop the recording and finalize files + DB row. */
+  async stop(
+    status: "recorded" | "failed" = "recorded",
+    error?: string,
+  ): Promise<void> {
+    if (this._status !== "recording") return;
+    const meetingId = this.meetingId;
+    this.setStatus("finalizing");
+
+    const finalizeError = this.teardown();
+    if (finalizeError) {
+      log.error(`WAV finalize failed: ${String(finalizeError)}`);
+      status = "failed";
+      error = error ?? `wav finalize failed: ${String(finalizeError)}`;
+    }
 
     await this.writeJournal();
 
@@ -480,28 +492,10 @@ export class MeetingRecorder {
   stopSync(): void {
     if (this._status !== "recording") return;
     this._status = "finalizing";
-    if (this.flushTimer) clearInterval(this.flushTimer);
-    this.flushTimer = null;
-    if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
-    this.maxDurationTimer = null;
-    if (this.resumeListener) {
-      powerMonitor.removeListener("resume", this.resumeListener);
-      this.resumeListener = null;
+    const finalizeError = this.teardown();
+    if (finalizeError) {
+      log.error(`WAV finalize failed during quit: ${String(finalizeError)}`);
     }
-    this.systemCapture?.stop();
-    this.systemCapture = null;
-    if (this.captureWindow && !this.captureWindow.isDestroyed()) {
-      this.captureWindow.destroy();
-    }
-    this.captureWindow = null;
-    try {
-      this.micWav?.finalize();
-      this.systemWav?.finalize();
-    } catch (err) {
-      log.error(`WAV finalize failed during quit: ${String(err)}`);
-    }
-    this.micWav = null;
-    this.systemWav = null;
     this._status = "idle";
   }
 
@@ -509,12 +503,12 @@ export class MeetingRecorder {
     if (!this.journal || !this.meetingDir) return;
     try {
       await writeFile(
-        join(this.meetingDir, "sync.json"),
+        join(this.meetingDir, SYNC_JSON),
         `${JSON.stringify(this.journal, null, 2)}\n`,
         "utf-8",
       );
     } catch (err) {
-      log.warn(`Failed to write sync.json: ${String(err)}`);
+      log.warn(`Failed to write ${SYNC_JSON}: ${String(err)}`);
     }
   }
 

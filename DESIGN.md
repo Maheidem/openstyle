@@ -57,7 +57,6 @@ you can reproduce the palette in a standalone HTML artifact.
 | `--border` | `#D6CDB8` | Hairline borders, dividers |
 | `--input` | `#E3DCC8` | Input borders |
 | `--ring` | `#6B8F12` | Focus ring (olive) |
-| `--plum` (`--chart-3`) | `#5E4E78` | Tertiary data accent only — never a UI accent |
 
 ### Dark
 

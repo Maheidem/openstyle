@@ -11,6 +11,10 @@
  * rather than rebuilding the whole client pipeline.
  */
 
+import type {
+  StreamClientMessage,
+  StreamServerMessage,
+} from "@openstyle/validations";
 import { getPCMProcessorUrl } from "./pcm-processor";
 import { encodeWavFromInt16 } from "./wav";
 
@@ -27,14 +31,12 @@ export type StreamerConnectionState =
 export interface StreamerCallbacks {
   onFinal: (text: string) => void;
   onError: (message: string, code?: string) => void;
-  onReady: () => void;
+  onReady?: () => void;
   /** Live partial transcript. Only the remix card consumes this today. */
   onPartial?: (text: string) => void;
   onConnectionState?: (state: StreamerConnectionState) => void;
   onConfig: (config: {
-    streaming: boolean;
     sessionTransport: boolean;
-    model: string;
     providerCategory?: string;
   }) => void;
 }
@@ -43,7 +45,6 @@ export class Streamer {
   private ws: WebSocket | null = null;
   private pendingChunks: ArrayBuffer[] = [];
   private destroyed = false;
-  private streamingSupported = false;
   private sessionTransportSupported = false;
   private configReceived = false;
   private readonly callbacks: StreamerCallbacks;
@@ -64,6 +65,12 @@ export class Streamer {
    * first recording after a disconnect cannot silently stream into no session.
    */
   private sessionStartPending = false;
+  /**
+   * True only after the server sent `session.ready` for the current session.
+   * Live audio goes straight to the socket only when this is true. Before
+   * that, it joins `pendingChunks`, so older queued audio keeps its order.
+   */
+  private sessionReady = false;
 
   // Capture pipeline — reused across sessions when possible
   private ctx: AudioContext | null = null;
@@ -113,6 +120,7 @@ export class Streamer {
     language?: string | null,
   ): Promise<void> {
     this.capturing = true;
+    this.sessionReady = false;
     this.pendingChunks = [];
     this.pcmChunks = [];
     this.pcmSampleCount = 0;
@@ -172,6 +180,7 @@ export class Streamer {
   cancel(): void {
     this.stopCapture();
     this.sessionStartPending = false;
+    this.sessionReady = false;
     this.sendJSON({ type: "cancel" });
   }
 
@@ -186,6 +195,7 @@ export class Streamer {
   destroy(): void {
     this.destroyed = true;
     this.sessionStartPending = false;
+    this.sessionReady = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -218,7 +228,8 @@ export class Streamer {
     if (
       this.ws?.readyState === WebSocket.OPEN &&
       this.configReceived &&
-      this.sessionTransportSupported
+      this.sessionTransportSupported &&
+      this.sessionReady
     ) {
       this.ws.send(chunk);
       return;
@@ -231,7 +242,7 @@ export class Streamer {
     }
   }
 
-  private sendJSON(obj: Record<string, unknown>): void {
+  private sendJSON(obj: StreamClientMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(obj));
     }
@@ -267,13 +278,11 @@ export class Streamer {
     ) {
       return;
     }
-    this.ws.send(
-      JSON.stringify({
-        type: "start",
-        context: this.currentContext,
-        language: this.pendingLanguage,
-      }),
-    );
+    this.sendJSON({
+      type: "start",
+      context: this.currentContext,
+      language: this.pendingLanguage,
+    });
     this.sessionStartPending = false;
   }
 
@@ -335,19 +344,11 @@ export class Streamer {
     ws.binaryType = "arraybuffer";
     this.ws = ws;
     this.configReceived = false;
+    this.sessionReady = false;
 
     ws.addEventListener("message", (e) => {
       if (typeof e.data !== "string") return;
-      let msg: {
-        type: string;
-        text?: string;
-        message?: string;
-        code?: string;
-        model?: string;
-        streaming?: boolean;
-        sessionTransport?: boolean;
-        providerCategory?: string;
-      };
+      let msg: StreamServerMessage;
       try {
         msg = JSON.parse(e.data);
       } catch {
@@ -355,9 +356,8 @@ export class Streamer {
       }
       switch (msg.type) {
         case "config":
-          this.streamingSupported = msg.streaming ?? false;
           this.sessionTransportSupported =
-            msg.sessionTransport ?? this.streamingSupported;
+            msg.sessionTransport ?? msg.streaming ?? false;
           this.configReceived = true;
           this.reconnectAttempts = 0;
           this.setConnectionState("connected");
@@ -365,16 +365,15 @@ export class Streamer {
             this.pendingChunks = [];
           }
           this.callbacks.onConfig({
-            streaming: this.streamingSupported,
             sessionTransport: this.sessionTransportSupported,
-            model: msg.model ?? "",
             providerCategory: msg.providerCategory,
           });
           this.startPendingSession();
           break;
         case "session.ready":
           this.flushPendingChunks();
-          this.callbacks.onReady();
+          this.sessionReady = true;
+          this.callbacks.onReady?.();
           break;
         case "partial":
           this.callbacks.onPartial?.(msg.text ?? "");
@@ -394,6 +393,7 @@ export class Streamer {
       if (this.ws !== ws) return;
       this.ws = null;
       this.configReceived = false;
+      this.sessionReady = false;
       if (this.capturing) {
         this.sessionStartPending = true;
         this.stageCapturedAudioForReplay();

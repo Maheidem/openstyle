@@ -1,5 +1,3 @@
-import { cn } from "@renderer/lib/utils";
-
 function splitEmailBody(body: string): {
   greeting: string | null;
   paragraphs: string[];
@@ -28,24 +26,17 @@ function splitEmailBody(body: string): {
 
 export function EmailPreview({
   body,
-  selected,
   to,
   subject,
 }: {
   body: string;
-  selected: boolean;
   to: string;
   subject: string;
 }): React.JSX.Element {
   const { greeting, paragraphs, signoff } = splitEmailBody(body);
 
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-lg border",
-        selected ? "border-primary/35 bg-accent/45" : "border-border bg-card",
-      )}
-    >
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
       <div className="bg-background/75 border-border/80 border-b px-3 py-2.5">
         <div className="grid gap-1">
           <div className="flex items-center gap-2">

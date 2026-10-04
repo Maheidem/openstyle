@@ -8,6 +8,7 @@
     "src/shared/**/*",
     "../server/src/**/*",
     "../../packages/sdk/src/**/*",
+    "../../packages/stt/src/**/*",
     "../../packages/utils/src/**/*",
     "../../packages/validations/src/**/*"
   ],
@@ -20,6 +21,7 @@
       "@shared/*": ["src/shared/*"],
       "@openstyle/sdk": ["../../packages/sdk/src/index.ts"],
       "@openstyle/server": ["../server/src/index.ts"],
+      "@openstyle/stt": ["../../packages/stt/src/index.ts"],
       "@openstyle/utils": ["../../packages/utils/src/index.ts"],
       "@openstyle/validations": ["../../packages/validations/src/index.ts"]
     }

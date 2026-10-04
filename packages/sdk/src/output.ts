@@ -3,7 +3,7 @@
  *
  * A const object (not a TS `enum`) so it has both a runtime value and a derived
  * type, stays tree-shakeable, and matches the convention used elsewhere in the
- * workspace. Plugins may assign either the constant (`OutputMode.None`) or the
+ * workspace. Callers may use either the constant (`OutputMode.None`) or the
  * literal (`"none"`).
  */
 export const OutputMode = {
@@ -13,8 +13,7 @@ export const OutputMode = {
   Clipboard: "clipboard",
   /**
    * Suppress delivery entirely — nothing is pasted or copied. Hints the app
-   * that it has nothing to do (e.g. a voice-command plugin consumed the
-   * utterance instead of typing it).
+   * that it has nothing to do.
    */
   None: "none",
 } as const;

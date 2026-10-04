@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createOpenAI } from "@ai-sdk/openai";
+import { errorMessage } from "@openstyle/utils";
 import { sanitizeSttBaseUrl } from "@openstyle/validations";
 import WebSocket from "ws";
 import { readSetting } from "../../db.js";
@@ -174,12 +175,24 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
     });
 
     ws.on("error", (err) => {
-      callbacks.onError(err instanceof Error ? err.message : String(err));
+      callbacks.onError(errorMessage(err));
     });
 
     ws.on("close", () => {
       callbacks.onClose();
     });
+
+    function clearRecording(): void {
+      pending.clear();
+      clearCommitTimeout();
+      partialText = "";
+      commitRequested = false;
+      commitSent = false;
+      finalDelivered = false;
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+      }
+    }
 
     return {
       sendAudio(chunk: ArrayBuffer): void {
@@ -206,27 +219,8 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         if (!configured) return;
         sendCommit();
       },
-      reset(): void {
-        pending.clear();
-        clearCommitTimeout();
-        partialText = "";
-        commitRequested = false;
-        commitSent = false;
-        finalDelivered = false;
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
-        }
-      },
-      cancel(): void {
-        pending.clear();
-        clearCommitTimeout();
-        partialText = "";
-        commitRequested = false;
-        commitSent = false;
-        finalDelivered = false;
-        if (ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
-      },
+      reset: clearRecording,
+      cancel: clearRecording,
       close(): void {
         clearCommitTimeout();
         if (ws.readyState <= WebSocket.OPEN) ws.close();

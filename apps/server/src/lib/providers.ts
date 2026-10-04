@@ -1,11 +1,11 @@
 import type { LanguageModel } from "ai";
+import { getApiKey } from "./api-keys.js";
 import { getDb } from "./db.js";
 import type { LlmTaskContext } from "./llm/registry.js";
-import { getLlmProvider } from "./llm/registry.js";
+import { getLlmProvider, isLocalProvider } from "./llm/registry.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
-import { getApiKeyForProvider } from "./streaming-stt.js";
+import { stripModelPrefix } from "./model-id.js";
 
-const LOCAL_PROVIDERS = new Set(["local-llm"]);
 const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "openai",
   "anthropic",
@@ -17,13 +17,9 @@ const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
 ]);
 
 function getChatModelId(providerId: string, modelId: string): string {
-  if (
-    PROVIDER_PREFIXED_CHAT_MODELS.has(providerId) &&
-    modelId.startsWith(`${providerId}/`)
-  ) {
-    return modelId.slice(providerId.length + 1);
-  }
-  return modelId;
+  return PROVIDER_PREFIXED_CHAT_MODELS.has(providerId)
+    ? stripModelPrefix(providerId, modelId)
+    : modelId;
 }
 
 interface DefaultModels {
@@ -63,8 +59,8 @@ export async function createChatModel(
   const provider = getLlmProvider(providerId);
   if (!provider) throw new Error(`Unsupported provider: ${providerId}`);
 
-  const isLocal = provider.local ?? LOCAL_PROVIDERS.has(providerId);
-  const apiKey = isLocal ? "local" : getApiKeyForProvider(providerId);
+  const isLocal = isLocalProvider(providerId);
+  const apiKey = isLocal ? "local" : getApiKey(providerId);
   if (!apiKey)
     throw new Error(`No API key configured for provider: ${providerId}`);
 

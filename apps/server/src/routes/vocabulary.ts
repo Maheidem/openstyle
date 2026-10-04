@@ -9,6 +9,7 @@ import {
 } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { queryPage } from "../lib/list-query.js";
 import {
   deleteVocabularyByIds,
   exportVocabularyEntries,
@@ -20,55 +21,21 @@ const ALLOWED_ORDER_COLUMNS = new Set(["created_at", "updated_at", "term"]);
 
 const vocabulary = new Hono()
   .get("/", zValidator("query", querySchema), (c) => {
-    const db = getDb();
     const { limit, offset, search: rawSearch, orderBy } = c.req.valid("query");
     const search = rawSearch?.trim() || "";
+    const pattern = `%${search}%`;
 
-    const orderColumn =
-      orderBy && ALLOWED_ORDER_COLUMNS.has(orderBy.column)
-        ? orderBy.column
-        : "created_at";
-    // Default ordering (no orderBy param) is newest-first.
-    const orderDir = orderBy
-      ? orderBy.order === "desc"
-        ? "DESC"
-        : "ASC"
-      : "DESC";
-
-    let rows: VocabularyRow[];
-    let countRow: { count: number };
-
-    if (search) {
-      const pattern = `%${search}%`;
-      rows = db
-        .prepare(
-          `SELECT * FROM vocabulary WHERE term LIKE ? OR notes LIKE ? ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
-        )
-        .all(pattern, pattern, limit, offset) as unknown as VocabularyRow[];
-
-      countRow = db
-        .prepare(
-          "SELECT COUNT(*) as count FROM vocabulary WHERE term LIKE ? OR notes LIKE ?",
-        )
-        .get(pattern, pattern) as { count: number };
-    } else {
-      rows = db
-        .prepare(
-          `SELECT * FROM vocabulary ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
-        )
-        .all(limit, offset) as unknown as VocabularyRow[];
-
-      countRow = db
-        .prepare("SELECT COUNT(*) as count FROM vocabulary")
-        .get() as { count: number };
-    }
-
-    return c.json({
-      items: rows,
-      total: countRow.count,
+    const { items, total } = queryPage<VocabularyRow>(getDb(), {
+      table: "vocabulary",
+      where: search ? ["(term LIKE ? OR notes LIKE ?)"] : [],
+      params: search ? [pattern, pattern] : [],
+      orderColumns: ALLOWED_ORDER_COLUMNS,
+      orderBy,
       limit,
       offset,
     });
+
+    return c.json({ items, total, limit, offset });
   })
   .get("/all", (c) => {
     const db = getDb();
@@ -162,23 +129,8 @@ const vocabulary = new Hono()
     return c.json({ imported, skipped });
   })
   .post("/actions", zValidator("json", vocabularyActionSchema), (c) => {
-    const body = c.req.valid("json");
-
-    switch (body.action) {
-      case "bulk-delete": {
-        const deleted = deleteVocabularyByIds(body.ids);
-        return c.json({ deleted });
-      }
-
-      case "import": {
-        const { imported, skipped } = importVocabularyEntries(body.entries);
-        return c.json({ imported, skipped });
-      }
-
-      case "export":
-        // Only "json" is supported today (the schema enum enforces this).
-        return c.json(exportVocabularyEntries());
-    }
+    const { ids } = c.req.valid("json");
+    return c.json({ deleted: deleteVocabularyByIds(ids) });
   });
 
 export default vocabulary;

@@ -21,14 +21,9 @@
   ],
   "ignoreFiles": [
     "apps/electron/src/preload/*.d.ts",
-    // Existing unused shadcn-style components kept as design-system inventory.
-    "apps/electron/src/renderer/src/components/ui/bar-visualizer.tsx",
+    // Kept on purpose: specs/lean-audit-2026-09.md T0-5 keeps this entry.
     "apps/electron/src/renderer/src/components/ui/card.tsx",
-    "apps/electron/src/renderer/src/env.d.ts",
-    "plugins/audio-transcription/ui/src/styles.css",
-    // Templates are standalone starter projects downloaded by create-openstyle-plugin,
-    // not workspace code. They are never imported or built within the monorepo.
-    "templates/**"
+    "apps/electron/src/renderer/src/env.d.ts"
   ],
   "workspaces": {
     "apps/electron": {
@@ -56,13 +51,7 @@
         "@openstyle/server": ["../server/src/index.ts"],
         "@openstyle/utils": ["../../packages/utils/src/index.ts"],
         "@openstyle/validations": ["../../packages/validations/src/index.ts"]
-      },
-      "ignoreDependencies": [
-        "@hono/node-server",
-        "@types/ws",
-        "react-hotkeys-hook",
-        "ws"
-      ]
+      }
     },
     "apps/server": {
       "entry": [
@@ -87,14 +76,6 @@
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]
       },
       "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
-    },
-    "packages/create-openstyle-plugin": {
-      "entry": ["src/index.ts"],
-      "project": ["src/**/*.ts"]
-    },
-    "plugins/*": {
-      "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],
-      "project": ["src/**/*.{ts,tsx}", "ui/src/**/*.{ts,tsx,css}"]
     }
   }
 }

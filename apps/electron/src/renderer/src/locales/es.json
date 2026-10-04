@@ -57,9 +57,7 @@
     },
     "tutorial": {
       "almostReady": "Casi listo — ",
-      "finish": "Empezar a usar Openstyle",
-      "chooseModel": "Elegir un modelo diferente",
-      "usingModel": "Usando {{name}} · Elegir un modelo diferente"
+      "finish": "Empezar a usar Openstyle"
     },
     "modelSelector": {
       "chooseModel": "Elegir un modelo",
@@ -264,16 +262,11 @@
     "heatmapWords": "{{count}} palabras"
   },
   "history": {
-    "title": "Historial",
-    "loading": "Cargando historial…",
     "filterTitle": "Filtrar historial",
     "done": "Listo",
     "filtersBtn": "Filtros",
     "timeLabelAllTime": "Todo el tiempo",
     "timeLabelFiltered": "Filtrado",
-    "wordsStat": "Palabras · {{label}}",
-    "sessionsStat": "Sesiones · {{label}}",
-    "costStat": "Costo · {{label}}",
     "sessionSingular": "Sesión",
     "sessionPlural": "Sesiones",
     "searchSingular": "Buscar {{total}} transcripción…",
@@ -338,7 +331,6 @@
     "newTerm": "Nuevo término",
     "termLabel": "Término · palabra o frase",
     "notesLabel": "Notas · opcional",
-    "modelCompatNote": "Las frases de varias palabras funcionan en Nova 3, OpenAI y Groq. Nova 2 potencia palabras individuales. Scribe v1 no usa bias de vocabulario.",
     "cancel": "Cancelar",
     "update": "Actualizar",
     "termSingular": "Término",
@@ -564,11 +556,9 @@
   },
   "models": {
     "title": "Modelos",
-    "loading": "Cargando modelos…",
     "apiKeys": "Claves API",
     "noApiKeys": "Sin claves API aún — elige un modelo en la nube arriba y se te pedirá una clave.",
     "onDevice": "En dispositivo",
-    "keyInvalid": "Clave inválida — actualizar o eliminar",
     "keyStored": "Clave guardada en el llavero",
     "keyStoredWithHint": "Clave {{hint}} guardada en el llavero",
     "modelSingular": "Modelo",

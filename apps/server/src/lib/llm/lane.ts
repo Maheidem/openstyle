@@ -29,7 +29,8 @@
  * The lane sits ALONGSIDE `lib/dictation-activity.ts` (it consumes that
  * module and shares its module-level `lastActiveAt` deliberately — spec §6
  * constraint 2) and ALONGSIDE `routes/meetings.ts`'s claim-before-await on
- * `activeJobs`, including the diarize rationale at `meetings.ts:963-973`.
+ * the job registry (`lib/meetings/job-registry.ts`), including the diarize
+ * rationale in `routes/meetings.ts`.
  * Neither is replaced or "simplified" by this file.
  */
 
@@ -65,10 +66,14 @@ export interface AcquireLlmLaneArgs {
   /** Normalized `host:port` — see {@link llmLaneKey}. Two config keys pointed
    *  at one box MUST produce the same value or the queue is decorative. */
   lane: string;
+  /** Concurrency for a new lane. Set it from the provider local flag (see
+   *  {@link llmLaneKeyForProvider}). When omitted, the host name decides. An
+   *  existing lane keeps its first limit. */
+  limit?: number;
   cls: LlmLaneClass;
   taskId: LlmTaskId;
   /** Polled on every queue tick — the existing cancel seam
-   *  (`routes/meetings.ts` `activeJobCancellations`). */
+   *  (`lib/meetings/job-registry.ts` cancel flag). */
   shouldStop?: () => boolean;
   /** Fired when the call actually had to wait, so the job blob can surface
    *  "queued" without inventing a second progress path. */
@@ -100,9 +105,6 @@ export interface AcquireLlmLaneArgs {
  */
 export const LLM_LANE_CONCURRENCY_LOCAL = 1;
 export const LLM_LANE_CONCURRENCY_CLOUD = 2;
-
-/** The settings key holding the local engine's base URL (`llm/registry.ts`). */
-const LOCAL_LLM_URL_SETTING = "local_llm_url";
 
 /** Known cloud endpoints, so a cloud lane key is still a normalized
  *  `host:port` under the same identity rule as a local one. */
@@ -169,18 +171,27 @@ export function llmLaneKey(input: string | null | undefined): string {
 }
 
 /**
- * Lane key for a provider id. Local providers resolve through `local_llm_url`
- * — that IS the point: the endpoint, never the setting name. Known cloud
- * providers use {@link CLOUD_HOSTS}; anything else gets a lane of its own.
+ * Lane key and concurrency for a provider id. Local providers resolve through
+ * `local_llm_url`. The key is the endpoint and never the setting name.
+ * Known cloud providers use {@link CLOUD_HOSTS}. Any other provider gets its
+ * own lane. The limit comes from the provider `local` flag and not from the
+ * host name. A local engine on a VPN or MagicDNS host still has one slot.
  */
 export async function llmLaneKeyForProvider(
   providerId: string,
-): Promise<string> {
+): Promise<{ key: string; limit: number }> {
+  let local = false;
   try {
-    const { getLlmProvider } = await import("./registry.js");
-    if (getLlmProvider(providerId)?.local) {
+    const { isLocalProvider, LOCAL_LLM_URL_SETTING } = await import(
+      "./registry.js"
+    );
+    local = isLocalProvider(providerId);
+    if (local) {
       const { readSetting } = await import("../db.js");
-      return llmLaneKey(readSetting(LOCAL_LLM_URL_SETTING));
+      return {
+        key: llmLaneKey(readSetting(LOCAL_LLM_URL_SETTING)),
+        limit: LLM_LANE_CONCURRENCY_LOCAL,
+      };
     }
   } catch {
     // DB/registry unavailable: fall through to a provider-identity lane. The
@@ -188,7 +199,10 @@ export async function llmLaneKeyForProvider(
     // serialises is the safe direction.
   }
   const known = CLOUD_HOSTS[providerId];
-  return known ? llmLaneKey(known) : `lane:${providerId}`;
+  return {
+    key: known ? llmLaneKey(known) : `lane:${providerId}`,
+    limit: local ? LLM_LANE_CONCURRENCY_LOCAL : LLM_LANE_CONCURRENCY_CLOUD,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -220,15 +234,17 @@ interface Lane {
 
 const lanes = new Map<string, Lane>();
 
-function laneFor(key: string): Lane {
+function laneFor(key: string, limit?: number): Lane {
   const existing = lanes.get(key);
   if (existing) return existing;
   const host = key.split(":")[0] ?? "";
   const lane: Lane = {
     key,
-    limit: isLocalLaneHost(host)
-      ? LLM_LANE_CONCURRENCY_LOCAL
-      : LLM_LANE_CONCURRENCY_CLOUD,
+    limit:
+      limit ??
+      (isLocalLaneHost(host)
+        ? LLM_LANE_CONCURRENCY_LOCAL
+        : LLM_LANE_CONCURRENCY_CLOUD),
     inFlight: 0,
     interactive: [],
     background: [],
@@ -377,7 +393,7 @@ async function gateBackground(
 export async function acquireLlmLane(
   a: AcquireLlmLaneArgs,
 ): Promise<LaneLease> {
-  const lane = laneFor(a.lane);
+  const lane = laneFor(a.lane, a.limit);
   const now = a.now ?? Date.now;
   const sleep = a.sleep ?? defaultSleep;
   const isActive = a.isDictationActive ?? isDictationActiveDefault;
@@ -478,6 +494,28 @@ function safeActive(isActive: () => boolean): boolean {
 }
 
 /**
+ * Run `fn` while it holds one lane slot for `provider`.
+ *
+ * This resolves the lane key, acquires the lease, runs `fn` and releases the
+ * lease in `finally`. A throw from `fn` still frees the slot. Use it for calls
+ * that finish inside `fn`. A call whose result is a stream that outlives `fn`
+ * must use {@link acquireLlmLane} with {@link releaseLeaseOnResponseBodyEnd}.
+ */
+export async function withLlmLane<T>(
+  provider: string,
+  opts: Pick<AcquireLlmLaneArgs, "cls" | "taskId" | "shouldStop" | "onQueued">,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const { key: lane, limit } = await llmLaneKeyForProvider(provider);
+  const lease = await acquireLlmLane({ lane, limit, ...opts });
+  try {
+    return await fn();
+  } finally {
+    lease.release();
+  }
+}
+
+/**
  * Release `lease` exactly when `response`'s body is done — consumed, errored,
  * or cancelled — and hand back an otherwise identical Response.
  *
@@ -543,7 +581,10 @@ export function __resetLlmLanesForTests(): void {
 
 /** Diagnostic snapshot of one lane — used by the runtime evidence capture to
  *  quote real occupancy, and by tests to prove exactly-once release. */
-export function llmLaneSnapshot(lane: string): {
+export function llmLaneSnapshot(
+  lane: string,
+  limit?: number,
+): {
   inFlight: number;
   limit: number;
   interactive: number;
@@ -551,7 +592,7 @@ export function llmLaneSnapshot(lane: string): {
 } {
   // `laneFor` creates on read, so a never-used lane still reports the limit it
   // WOULD have — the number a caller needs to know before it enqueues.
-  const l = laneFor(lane);
+  const l = laneFor(lane, limit);
   return {
     inFlight: l.inFlight,
     limit: l.limit,

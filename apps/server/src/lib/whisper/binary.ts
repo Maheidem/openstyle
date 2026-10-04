@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  getBinaryName,
   getBinDir,
   getResourcesDir,
   getServerBinaryName,
@@ -47,20 +46,10 @@ function findExecutable(name: string | null): string | null {
 
 // PATH lookups spawn `which`/`where` synchronously, so cache results.
 // Reset via resetBinaryCache() after binaries are downloaded/built.
-let cachedBinary: string | null | undefined;
 let cachedServer: string | null | undefined;
 
 export function resetBinaryCache(): void {
-  cachedBinary = undefined;
   cachedServer = undefined;
-}
-
-export function findWhisperBinary(): string | null {
-  if (cachedBinary === undefined) {
-    // Homebrew installs as "whisper-cpp" not "whisper-cli"
-    cachedBinary = findExecutable(getBinaryName()) ?? findInPath("whisper-cpp");
-  }
-  return cachedBinary;
 }
 
 export function findWhisperServer(): string | null {
@@ -68,10 +57,6 @@ export function findWhisperServer(): string | null {
     cachedServer = findExecutable(getServerBinaryName());
   }
   return cachedServer;
-}
-
-export function isBinaryAvailable(): boolean {
-  return findWhisperBinary() !== null;
 }
 
 export function isServerBinaryAvailable(): boolean {

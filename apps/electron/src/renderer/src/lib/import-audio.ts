@@ -1,17 +1,6 @@
-export const IMPORT_EXTENSIONS = [
-  "wav",
-  "mp3",
-  "m4a",
-  "aac",
-  "ogg",
-  "mp4",
-] as const;
+import { IMPORT_EXTENSIONS, importFileExtension } from "@openstyle/validations";
 
-export function importExtensionOf(name: string): string | null {
-  const dot = name.lastIndexOf(".");
-  if (dot === -1 || dot === name.length - 1) return null;
-  return name.slice(dot + 1).toLowerCase();
-}
+export const importExtensionOf = importFileExtension;
 
 export function isImportableFile(name: string): boolean {
   const ext = importExtensionOf(name);

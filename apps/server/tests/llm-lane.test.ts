@@ -16,6 +16,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { writeSetting } from "../src/lib/db.js";
 import { __resetDictationIdleStateForTests } from "../src/lib/dictation-activity.js";
 import {
   __resetLlmLanesForTests,
@@ -26,6 +27,7 @@ import {
   LLM_LANE_CONCURRENCY_LOCAL,
   LlmLaneCancelledError,
   llmLaneKey,
+  llmLaneKeyForProvider,
   llmLaneSnapshot,
 } from "../src/lib/llm/lane.js";
 
@@ -72,6 +74,19 @@ function idleCtx(clock = makeClock()) {
     isDictationActive: () => false,
     clock,
   };
+}
+
+type LaneOptions = Parameters<typeof acquireLlmLane>[0];
+
+/** Acquire with the standard seams. `extra` adds per-call options. */
+function acq(
+  c: ReturnType<typeof idleCtx>,
+  lane: string,
+  cls: LaneOptions["cls"],
+  taskId: LaneOptions["taskId"],
+  extra: Partial<LaneOptions> = {},
+) {
+  return acquireLlmLane({ ...c, lane, cls, taskId, ...extra });
 }
 
 beforeEach(() => {
@@ -139,15 +154,50 @@ describe("llmLaneKey — the lane is the ENDPOINT, not the config key", () => {
   });
 });
 
+describe("llmLaneKeyForProvider — the limit follows the provider local flag", () => {
+  it("gives a local provider on a non-private host a limit of 1", async () => {
+    // 100.64.0.0/10 (Tailscale) is not a private range for `isLocalLaneHost`.
+    writeSetting("local_llm_url", "http://100.64.0.5:8123/v1");
+    const lane = await llmLaneKeyForProvider("local-llm");
+    expect(lane).toEqual({
+      key: "100.64.0.5:8123",
+      limit: LLM_LANE_CONCURRENCY_LOCAL,
+    });
+    // The host guess alone would give this lane the cloud limit.
+    expect(isLocalLaneHost("100.64.0.5")).toBe(false);
+
+    const c = idleCtx();
+    const first = await acq(c, lane.key, "interactive", "cleanup", {
+      limit: lane.limit,
+    });
+    expect(llmLaneSnapshot(lane.key).limit).toBe(LLM_LANE_CONCURRENCY_LOCAL);
+    let second = false;
+    const pending = acq(c, lane.key, "interactive", "cleanup", {
+      limit: lane.limit,
+    }).then((l) => {
+      second = true;
+      return l;
+    });
+    await c.clock.flush();
+    expect(second).toBe(false);
+    first.release();
+    await c.clock.flush();
+    (await pending).release();
+    expect(second).toBe(true);
+  });
+
+  it("gives a cloud provider a limit of 2", async () => {
+    expect(await llmLaneKeyForProvider("openai")).toEqual({
+      key: CLOUD,
+      limit: LLM_LANE_CONCURRENCY_CLOUD,
+    });
+  });
+});
+
 describe("acquireLlmLane — strict interactive > background FIFO", () => {
   it("grants immediately on a free lane and returns the slot on release", async () => {
     const c = idleCtx();
-    const lease = await acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "interactive",
-      taskId: "cleanup",
-    });
+    const lease = await acq(c, LOCAL, "interactive", "cleanup");
     expect(llmLaneSnapshot(LOCAL)).toMatchObject({ inFlight: 1, limit: 1 });
     lease.release();
     expect(llmLaneSnapshot(LOCAL).inFlight).toBe(0);
@@ -156,32 +206,17 @@ describe("acquireLlmLane — strict interactive > background FIFO", () => {
   it("an interactive call enqueued AFTER a background call overtakes it", async () => {
     const c = idleCtx();
     const order: string[] = [];
-    const held = await acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingSummarize",
-    });
+    const held = await acq(c, LOCAL, "background", "meetingSummarize");
     order.push("bg-granted");
 
     // Enqueued first but the lower class...
-    void acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingEnhance",
-    }).then((l) => {
+    void acq(c, LOCAL, "background", "meetingEnhance").then((l) => {
       order.push("background-granted");
       l.release();
     });
     await c.clock.flush(1);
     // ...and this one arrives second.
-    void acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "interactive",
-      taskId: "cleanup",
-    }).then((l) => {
+    void acq(c, LOCAL, "interactive", "cleanup").then((l) => {
       order.push("interactive-granted");
       l.release();
     });
@@ -205,19 +240,9 @@ describe("acquireLlmLane — strict interactive > background FIFO", () => {
   it("keeps FIFO within a class", async () => {
     const c = idleCtx();
     const order: number[] = [];
-    const held = await acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingSummarize",
-    });
+    const held = await acq(c, LOCAL, "background", "meetingSummarize");
     const waiters = [1, 2, 3].map((n) =>
-      acquireLlmLane({
-        ...c,
-        lane: LOCAL,
-        cls: "background",
-        taskId: "meetingEnhance",
-      }).then((l) => {
+      acq(c, LOCAL, "background", "meetingEnhance").then((l) => {
         order.push(n);
         return l;
       }),
@@ -240,26 +265,11 @@ describe("acquireLlmLane — strict interactive > background FIFO", () => {
 
   it("runs 2 in flight on a cloud lane and only 1 on a local lane", async () => {
     const c = idleCtx();
-    const a = await acquireLlmLane({
-      ...c,
-      lane: CLOUD,
-      cls: "background",
-      taskId: "meetingSummarize",
-    });
-    const b = await acquireLlmLane({
-      ...c,
-      lane: CLOUD,
-      cls: "background",
-      taskId: "meetingEnhance",
-    });
+    const a = await acq(c, CLOUD, "background", "meetingSummarize");
+    const b = await acq(c, CLOUD, "background", "meetingEnhance");
     expect(llmLaneSnapshot(CLOUD).inFlight).toBe(2);
     let third = false;
-    const cp = acquireLlmLane({
-      ...c,
-      lane: CLOUD,
-      cls: "interactive",
-      taskId: "cleanup",
-    }).then((l) => {
+    const cp = acq(c, CLOUD, "interactive", "cleanup").then((l) => {
       third = true;
       return l;
     });
@@ -280,12 +290,7 @@ describe("acquireLlmLane — strict interactive > background FIFO", () => {
     const peaks: number[] = [];
     const settled: LaneLease[] = [];
     const all = [1, 2, 3, 4].map(() =>
-      acquireLlmLane({
-        ...c,
-        lane: LOCAL,
-        cls: "interactive",
-        taskId: "cleanup",
-      }).then((l) => {
+      acq(c, LOCAL, "interactive", "cleanup").then((l) => {
         peaks.push(llmLaneSnapshot(LOCAL).inFlight);
         settled.push(l);
         // Release as each one lands, so the burst walks the single slot
@@ -305,12 +310,7 @@ describe("acquireLlmLane — strict interactive > background FIFO", () => {
 
   it("releases exactly once when the guarded call throws", async () => {
     const c = idleCtx();
-    const lease = await acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "interactive",
-      taskId: "cleanup",
-    });
+    const lease = await acq(c, LOCAL, "interactive", "cleanup");
     expect(llmLaneSnapshot(LOCAL).inFlight).toBe(1);
     const guarded = async (): Promise<void> => {
       try {
@@ -413,19 +413,10 @@ describe("acquireLlmLane — the background gate fails CLOSED", () => {
 describe("acquireLlmLane — cancellation and queue reporting", () => {
   it("a cancelled queued call never acquires a slot", async () => {
     const c = idleCtx();
-    const held = await acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingSummarize",
-    });
+    const held = await acq(c, LOCAL, "background", "meetingSummarize");
     let stop = false;
     let acquired = false;
-    const queued = acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingSummarize",
+    const queued = acq(c, LOCAL, "background", "meetingSummarize", {
       shouldStop: () => stop,
     }).then((l) => {
       acquired = true;
@@ -445,18 +436,9 @@ describe("acquireLlmLane — cancellation and queue reporting", () => {
 
   it("onQueued fires once, with the wait and the position", async () => {
     const c = idleCtx();
-    const held = await acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingSummarize",
-    });
+    const held = await acq(c, LOCAL, "background", "meetingSummarize");
     const events: Array<{ waitedMs: number; ahead: number }> = [];
-    const p = acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingSummarize",
+    const p = acq(c, LOCAL, "background", "meetingSummarize", {
       onQueued: (i) => events.push(i),
     });
     await c.clock.flush(2);
@@ -476,24 +458,14 @@ describe("acquireLlmLane — cancellation and queue reporting", () => {
     const c = idleCtx();
     const timeline: string[] = [];
     const mapCall = async (i: number): Promise<void> => {
-      const lease = await acquireLlmLane({
-        ...c,
-        lane: LOCAL,
-        cls: "background",
-        taskId: "meetingSummarize",
-      });
+      const lease = await acq(c, LOCAL, "background", "meetingSummarize");
       timeline.push(`map${i}:start`);
       lease.release();
       timeline.push(`map${i}:end`);
     };
 
     await mapCall(1);
-    void acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "interactive",
-      taskId: "cleanup",
-    }).then((l) => {
+    void acq(c, LOCAL, "interactive", "cleanup").then((l) => {
       timeline.push("cleanup:granted");
       l.release();
     });
@@ -513,28 +485,13 @@ describe("acquireLlmLane — cancellation and queue reporting", () => {
     // §7's matrix row, pinned: no mid-call preemption (spec §1.1), but the
     // wait is exactly one call long and nothing else queues ahead of it.
     const c = idleCtx();
-    const bg = await acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingSummarize",
-    });
+    const bg = await acq(c, LOCAL, "background", "meetingSummarize");
     const timeline: string[] = [];
-    void acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "interactive",
-      taskId: "cleanup",
-    }).then((l) => {
+    void acq(c, LOCAL, "interactive", "cleanup").then((l) => {
       timeline.push("cleanup");
       l.release();
     });
-    void acquireLlmLane({
-      ...c,
-      lane: LOCAL,
-      cls: "background",
-      taskId: "meetingEnhance",
-    }).then((l) => {
+    void acq(c, LOCAL, "background", "meetingEnhance").then((l) => {
       timeline.push("enhance");
       l.release();
     });

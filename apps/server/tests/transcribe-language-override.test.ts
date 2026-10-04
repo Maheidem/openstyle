@@ -30,6 +30,14 @@ describe("resolveLanguageOverride", () => {
     expect(resolveLanguageOverride("", ["en", "pt"])).toEqual(["en", "pt"]);
   });
 
+  it("trims and lower-cases the override before the membership check", () => {
+    expect(resolveLanguageOverride(" PT ", ["en", "pt"])).toEqual(["pt"]);
+  });
+
+  it("treats a whitespace-only override as no override", () => {
+    expect(resolveLanguageOverride("   ", ["en", "pt"])).toEqual(["en", "pt"]);
+  });
+
   it("stays auto-detect when languages is empty, even with an override present", () => {
     // A language hotkey cannot override a user who has explicitly chosen
     // auto-detect and configured no languages at all — there is nothing in

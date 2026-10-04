@@ -21,6 +21,7 @@
  * CI runner ever reports noisy allocator numbers; see the spec's rollout
  * note).
  */
+
 import {
   createReadStream,
   createWriteStream,
@@ -46,6 +47,7 @@ import {
   vi,
 } from "vitest";
 import { getDb } from "../src/lib/db.js";
+import { buildWav } from "./helpers/wav.js";
 
 const SKIP = process.env.OPENSTYLE_SKIP_MEMORY_TESTS === "1";
 /** ~160 MB of 16 kHz mono PCM16 ≈ 83 minutes of audio. */
@@ -63,8 +65,14 @@ vi.mock("../src/lib/streaming/registry.js", () => ({
   getProvider: () => ({ transcribe: mocks.transcribe }),
 }));
 
-vi.mock("../src/lib/streaming-stt.js", () => ({
-  getApiKeyForProvider: () => "test-key",
+vi.mock("../src/lib/api-keys.js", () => ({
+  getApiKey: () => "test-key",
+}));
+
+vi.mock("../src/lib/streaming/local-providers.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/lib/streaming/local-providers.js")
+  >()),
   voiceProviderCategory: () => "byok",
 }));
 
@@ -86,29 +94,10 @@ const { serve } = await import("@hono/node-server");
 
 const BOUNDARY = "----openstyle-memory-test";
 
-function buildWav(samples: number): Buffer {
-  const data = Buffer.alloc(samples * 2);
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0, "ascii");
-  h.writeUInt32LE(36 + data.length, 4);
-  h.write("WAVE", 8, "ascii");
-  h.write("fmt ", 12, "ascii");
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(16_000, 24);
-  h.writeUInt32LE(32_000, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36, "ascii");
-  h.writeUInt32LE(data.length, 40);
-  return Buffer.concat([h, data]);
-}
-
 /** Write a large canonical WAV incrementally (bounded client memory). */
 async function writeBigWav(path: string, totalBytes: number): Promise<void> {
   const dataBytes = totalBytes - 44;
-  const h = buildWav(0).subarray(0, 44);
+  const h = buildWav({ samples: 0 }).subarray(0, 44);
   h.writeUInt32LE(dataBytes, 40); // data chunk size
   h.writeUInt32LE(36 + dataBytes, 4); // riff size
   await new Promise<void>((resolve, reject) => {
@@ -292,7 +281,7 @@ suite("import streaming memory shape", () => {
     });
     // Default decode seam: small canonical WAV (decode-to-small shapes).
     mocks.decode.mockImplementation(async (_input: string, output: string) => {
-      const decoded = buildWav(8_000); // 0.5 s
+      const decoded = buildWav({ samples: 8_000 }); // 0.5 s
       writeFileSync(output, decoded);
       return { bytes: decoded.length };
     });

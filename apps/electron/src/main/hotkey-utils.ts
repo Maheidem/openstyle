@@ -1,3 +1,52 @@
+const HOTKEY_MODIFIER_PARTS = new Set([
+  "alt",
+  "option",
+  "control",
+  "ctrl",
+  "command",
+  "cmd",
+  "commandorcontrol",
+  "cmdorctrl",
+  "shift",
+  "super",
+  "meta",
+  "win",
+  "fn",
+  "globe",
+  "rightalt",
+  "rightoption",
+  "rightcontrol",
+  "rightctrl",
+  "rightshift",
+  "rightcommand",
+  "rightcmd",
+  "rightsuper",
+  "rightwin",
+  "rightmeta",
+]);
+const HOTKEY_MACRO_MOUSE_PARTS = new Set(["mousebutton4", "mousebutton5"]);
+
+export function isValidAccelerator(accel: string): boolean {
+  if (!accel || typeof accel !== "string") return false;
+  if (!/^[\x20-\x7E]+$/.test(accel)) return false;
+  if (accel.endsWith("+")) return false;
+  const parts = accel.split("+");
+  if (parts.some((p) => !p.trim())) return false;
+  const lowered = parts.map((p) => p.trim().toLowerCase());
+  // Fn/Globe is only observable by the macOS native listener; on other
+  // platforms a hotkey containing it would silently never fire.
+  if (
+    process.platform !== "darwin" &&
+    lowered.some((p) => p === "fn" || p === "globe")
+  ) {
+    return false;
+  }
+  return lowered.some(
+    (part) =>
+      HOTKEY_MODIFIER_PARTS.has(part) || HOTKEY_MACRO_MOUSE_PARTS.has(part),
+  );
+}
+
 /**
  * Normalize user-recorded accelerators to the Electron-style format expected
  * by native binaries and isValidAccelerator.
@@ -40,7 +89,6 @@ export function normalizeAccelerator(accel: string): string {
       if (lower === "mousebutton5" || lower === "mouse5") return "MouseButton5";
       if (/^f\d+$/i.test(p)) return p.toUpperCase();
       if (p.length === 1) return p.toUpperCase();
-      if (p === "Up" || p === "Down" || p === "Left" || p === "Right") return p;
       return p.charAt(0).toUpperCase() + p.slice(1);
     })
     .join("+");

@@ -3,14 +3,14 @@
  * an audio file via the native dialog and upload it to
  * `POST /api/meetings/import`, which normalizes it to 16 kHz mono PCM16 at
  * `<userData>/meetings/<id>/system.wav` and inserts a `meetings` row in
- * `recorded` status. Mirrors `import-audio.ts` (dictation Import screen):
- * the renderer only ever sees a path string, the bytes stream from disk
- * here, and client-side extension/size checks fail fast before any upload.
+ * `recorded` status. This file mirrors `import-audio.ts` (dictation Import
+ * screen). The renderer sees only a path string. The bytes stream from disk
+ * here. Client-side extension and size checks fail fast, before any upload.
  *
- * The `audio_dir` is computed with the same root `meeting-recorder.ts` uses
- * (`join(app.getPath("userData"), "meetings", id)`) — that's what makes
- * server-side DELETE containment and the retention sweep treat an imported
- * meeting exactly like a recorded one.
+ * The `audio_dir` uses the same root as `meeting-recorder.ts`
+ * (`join(app.getPath("userData"), MEETINGS_DIR_NAME, id)`). Because of this,
+ * the server DELETE containment check and the retention sweep treat an
+ * imported meeting like a recorded meeting.
  *
  * `started_at` comes from the file's mtime so an imported back-catalog file
  * lands at its recorded date in the timeline (spec §7.1's preferred option).
@@ -20,16 +20,18 @@ import { randomUUID } from "node:crypto";
 import { openAsBlob } from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
+import {
+  IMPORT_EXTENSIONS,
+  MAX_IMPORT_BYTES,
+  MEETINGS_DIR_NAME,
+  type MeetingDetail,
+  type MeetingImportResult,
+} from "@openstyle/validations";
 import { app, type BrowserWindow, dialog, ipcMain } from "electron";
+import type { ServerFetch } from "../shared/server-auth";
 
 const log = createAppLogger("meeting-import");
-
-// Kept local rather than imported from @openstyle/server: the server package
-// only exports its root (see apps/server/package.json `exports`), and
-// duplicating the two checks is the established precedent in import-audio.ts.
-const IMPORT_EXTENSIONS = ["wav", "mp3", "m4a", "aac", "ogg", "mp4"] as const;
-const MAX_IMPORT_BYTES = 1024 * 1024 * 1024; // 1 GiB
 
 function isE2E(): boolean {
   return (process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1";
@@ -39,59 +41,13 @@ function extensionOf(path: string): string {
   return extname(path).replace(/^\./, "").toLowerCase();
 }
 
-/**
- * A freshly imported meeting in the exact `GET /api/meetings/:id` response
- * shape (row + `job`/`segment_counts`/`summary`, constructed by the route).
- * Kept structural so it can be mirrored (without a runtime import) in
- * `preload/index.ts` and `preload/index.d.ts`, like `ImportAudioResult`.
- */
-export interface ImportedMeeting {
-  id: string;
-  title: string | null;
-  started_at: number | null;
-  ended_at: number | null;
-  duration_ms: number | null;
-  status: string;
-  language: string | null;
-  error: string | null;
-  created_at: number | null;
-  stt_provider: string | null;
-  stt_model: string | null;
-  audio_dir: string | null;
-  context: string | null;
-  job: { done: number; total: number; failed: number } | null;
-  /** Last background-job failure for this meeting (GET /:id shape). Always
-   * null on a fresh import — nothing has run yet. */
-  job_error: string | null;
-  segment_counts: { total: number; failed: number };
-  summary: {
-    markdown: string | null;
-    llm_provider: string | null;
-    llm_model: string | null;
-    cost_usd: number | null;
-    created_at: number | null;
-  } | null;
-}
-
-export type MeetingImportResult =
-  | { ok: true; meeting: ImportedMeeting }
-  | {
-      ok: false;
-      status?: number;
-      error: string;
-      detail?: string;
-      code?: string;
-    };
-
 interface RegisterMeetingImportIpcOptions {
-  getServerBaseUrl: () => string;
-  getServerAuthHeaders: () => Record<string, string>;
+  serverFetch: ServerFetch;
   getParentWindow: () => BrowserWindow | null;
 }
 
 export function registerMeetingImportIpc({
-  getServerBaseUrl,
-  getServerAuthHeaders,
+  serverFetch,
   getParentWindow,
 }: RegisterMeetingImportIpcOptions): void {
   ipcMain.handle(
@@ -151,7 +107,7 @@ export function registerMeetingImportIpc({
       } catch (err) {
         log.debug("meeting-import:transcribe stat failed", {
           ext,
-          message: err instanceof Error ? err.message : String(err),
+          message: errorMessage(err),
         });
         return {
           ok: false,
@@ -174,7 +130,7 @@ export function registerMeetingImportIpc({
       // `basename(audio_dir) === id`, and DELETE/retention only treat dirs
       // under `<userData>/meetings` as meeting-owned audio.
       const id = randomUUID();
-      const audioDir = join(app.getPath("userData"), "meetings", id);
+      const audioDir = join(app.getPath("userData"), MEETINGS_DIR_NAME, id);
 
       try {
         const blob = await openAsBlob(path);
@@ -188,14 +144,10 @@ export function registerMeetingImportIpc({
         if (title) form.append("title", title);
         form.append("started_at", String(startedAt));
 
-        const response = await fetch(
-          `${getServerBaseUrl()}/api/meetings/import`,
-          {
-            method: "POST",
-            headers: getServerAuthHeaders(),
-            body: form,
-          },
-        );
+        const response = await serverFetch("/meetings/import", {
+          method: "POST",
+          body: form,
+        });
 
         const json = (await response.json().catch(() => ({}))) as Record<
           string,
@@ -211,7 +163,7 @@ export function registerMeetingImportIpc({
         if (response.ok) {
           return {
             ok: true,
-            meeting: json as unknown as ImportedMeeting,
+            meeting: json as unknown as MeetingDetail,
           };
         }
         // Surface the server's message verbatim (localized-enough: these are
@@ -228,7 +180,7 @@ export function registerMeetingImportIpc({
           code: typeof json.code === "string" ? json.code : undefined,
         };
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = errorMessage(err);
         log.debug("meeting-import:transcribe fetch failed", {
           ext,
           bytes: size,

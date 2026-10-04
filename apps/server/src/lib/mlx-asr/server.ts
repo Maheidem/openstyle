@@ -4,9 +4,14 @@ import { existsSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
-import { getDb } from "../db.js";
-import { getMlxAsrModel, isAppleSiliconMac } from "./constants.js";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
+import {
+  clampMlxKeepAliveMinutes,
+  MLX_KEEP_ALIVE_ALWAYS,
+  MLX_KEEP_ALIVE_DEFAULT_MINUTES,
+} from "@openstyle/validations";
+import { readSetting } from "../db.js";
+import { getMlxAsrModel } from "./constants.js";
 import {
   describeMlxSetupBlocker,
   findPythonExecutable,
@@ -24,11 +29,6 @@ import {
 const log = createAppLogger("mlx-asr");
 const START_TIMEOUT_MS = 120_000;
 const TRANSCRIBE_TIMEOUT_MS = 300_000;
-const DEFAULT_KEEP_ALIVE_MINUTES = 10;
-const MAX_KEEP_ALIVE_MINUTES = 10;
-// Sentinel keep-alive value meaning "never unload" — the model stays resident
-// until the app quits. Stored as -1 in the settings table.
-const KEEP_ALIVE_ALWAYS = -1;
 
 interface WorkerResponse {
   id?: number;
@@ -47,7 +47,6 @@ interface PendingRequest {
 let workerProcess: ChildProcess | null = null;
 let currentModelId: string | null = null;
 let workerReady = false;
-let workerFailed = false;
 let startPromise: Promise<void> | null = null;
 let stdoutBuffer = "";
 let nextRequestId = 1;
@@ -79,35 +78,15 @@ export function isMlxServerRunning(): boolean {
   return workerProcess !== null && workerReady;
 }
 
-export function isMlxServerFailed(): boolean {
-  return workerFailed;
-}
-
-export function canRunMlxAsr(): boolean {
-  if (!isAppleSiliconMac()) return false;
-  if (existsSync(getMlxAsrWorkerPath())) return true;
-  const python = findPythonExecutable();
-  if (!python) return false;
-  if (!existsSync(getMlxAsrServerScriptPath())) return false;
-  return isMlxAudioInstalled(python);
-}
+export { canRunMlxAsr } from "./python.js";
 
 export function getMlxAsrKeepAliveMinutes(): number {
   try {
-    const db = getDb();
-    const row = db
-      .prepare(
-        "SELECT value FROM settings WHERE key = 'mlx_asr_keep_alive_minutes'",
-      )
-      .get() as { value: string } | undefined;
-    if (!row) return DEFAULT_KEEP_ALIVE_MINUTES;
-    const minutes = Number(row.value);
-    if (!Number.isFinite(minutes)) return DEFAULT_KEEP_ALIVE_MINUTES;
-    // Any negative value is the "always on" sentinel (never unload).
-    if (Math.round(minutes) < 0) return KEEP_ALIVE_ALWAYS;
-    return Math.min(Math.max(Math.round(minutes), 0), MAX_KEEP_ALIVE_MINUTES);
+    const value = readSetting("mlx_asr_keep_alive_minutes");
+    if (value === undefined) return MLX_KEEP_ALIVE_DEFAULT_MINUTES;
+    return clampMlxKeepAliveMinutes(Number(value));
   } catch {
-    return DEFAULT_KEEP_ALIVE_MINUTES;
+    return MLX_KEEP_ALIVE_DEFAULT_MINUTES;
   }
 }
 
@@ -116,7 +95,6 @@ export function startMlxInBackground(modelId: string): void {
   if (workerProcess && currentModelId === modelId && workerReady) return;
   if (startPromise && currentModelId === modelId) return;
 
-  workerFailed = false;
   ensureMlxServerRunning(modelId)
     .then(() => {
       log.info("Worker ready");
@@ -150,7 +128,6 @@ async function ensureMlxServerRunningLocked(modelId: string): Promise<void> {
   }
 
   await stopMlxServer();
-  workerFailed = false;
   currentModelId = modelId;
 
   const promise = startWorker(modelId);
@@ -167,49 +144,26 @@ async function ensureMlxServerRunningLocked(modelId: string): Promise<void> {
 export async function transcribeWithMlxAsr(opts: {
   modelId: string;
   audio: Uint8Array;
+  /** Set for raw 16-bit PCM audio. Leave unset for a WAV file. */
+  pcmSampleRate?: number;
   language?: string;
   context?: string;
   deferUnload?: boolean;
 }): Promise<string> {
   await ensureMlxServerRunning(opts.modelId);
 
+  const isPcm = opts.pcmSampleRate !== undefined;
   const dir = join(tmpdir(), "openstyle-mlx-asr");
   await mkdir(dir, { recursive: true });
-  const audioPath = join(dir, `${randomUUID()}.wav`);
+  const audioPath = join(dir, `${randomUUID()}.${isPcm ? "pcm" : "wav"}`);
   await writeFile(audioPath, opts.audio);
 
   try {
     return await sendTranscribeRequest({
       audioPath,
-      language: opts.language,
-      context: opts.context,
-    });
-  } finally {
-    await unlink(audioPath).catch(() => undefined);
-    if (!opts.deferUnload) scheduleUnload();
-  }
-}
-
-export async function transcribePcmWithMlxAsr(opts: {
-  modelId: string;
-  pcm: Uint8Array;
-  sampleRate: number;
-  language?: string;
-  context?: string;
-  deferUnload?: boolean;
-}): Promise<string> {
-  await ensureMlxServerRunning(opts.modelId);
-
-  const dir = join(tmpdir(), "openstyle-mlx-asr");
-  await mkdir(dir, { recursive: true });
-  const audioPath = join(dir, `${randomUUID()}.pcm`);
-  await writeFile(audioPath, opts.pcm);
-
-  try {
-    return await sendTranscribeRequest({
-      audioPath,
-      audioFormat: "pcm_s16le",
-      sampleRate: opts.sampleRate,
+      ...(isPcm
+        ? { audioFormat: "pcm_s16le", sampleRate: opts.pcmSampleRate }
+        : {}),
       language: opts.language,
       context: opts.context,
     });
@@ -333,9 +287,9 @@ async function startWorker(modelId: string): Promise<void> {
 
   await updateManagedMlxRuntimeIfNeeded().catch((err) => {
     log.warn(
-      `Failed to refresh managed runtime before worker start: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `Failed to refresh managed runtime before worker start: ${errorMessage(
+        err,
+      )}`,
     );
   });
 
@@ -350,7 +304,6 @@ async function startWorker(modelId: string): Promise<void> {
   let lastError: Error | null = null;
 
   for (const candidate of candidates) {
-    workerFailed = false;
     try {
       await spawnWorkerProcess(candidate.command, candidate.spawnArgs);
       const releaseTag = mlxAsrReleaseTagOverride();
@@ -366,7 +319,6 @@ async function startWorker(modelId: string): Promise<void> {
     }
   }
 
-  workerFailed = true;
   throw (
     lastError ??
     new Error("MLX ASR worker failed to start with every launch method.")
@@ -468,7 +420,6 @@ function failWorker(err: Error): void {
   currentModelId = null;
   workerReady = false;
   startPromise = null;
-  workerFailed = true;
 }
 
 function clearUnloadTimer(): void {
@@ -483,7 +434,7 @@ function scheduleUnload(): void {
   if (pending.size > 0) return;
   const minutes = getMlxAsrKeepAliveMinutes();
 
-  if (minutes === KEEP_ALIVE_ALWAYS) {
+  if (minutes === MLX_KEEP_ALIVE_ALWAYS) {
     // "Always on": keep the model resident indefinitely; never schedule unload.
     return;
   }
@@ -515,7 +466,6 @@ export async function stopMlxServer(): Promise<void> {
   currentModelId = null;
   workerReady = false;
   startPromise = null;
-  workerFailed = false;
 
   readyReject?.(new Error("mlx-asr worker stopped"));
   readyResolve = null;

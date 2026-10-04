@@ -1,32 +1,16 @@
-import { cn } from "@renderer/lib/utils";
-
 export function WorkChatPreview({
   sample,
-  selected,
   sender,
   time,
 }: {
   sample: string;
-  selected: boolean;
   sender: string;
   time: string;
 }): React.JSX.Element {
   return (
-    <div
-      className={cn(
-        "w-full rounded-lg border px-3 py-3",
-        selected ? "border-primary/35 bg-accent/55" : "border-border bg-card",
-      )}
-    >
+    <div className="w-full rounded-lg border border-border bg-card px-3 py-3">
       <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
-            selected
-              ? "border-primary/35 bg-primary text-primary-foreground"
-              : "border-border bg-secondary text-secondary-foreground",
-          )}
-        >
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-secondary text-[11px] font-semibold text-secondary-foreground">
           {sender.slice(0, 1).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">

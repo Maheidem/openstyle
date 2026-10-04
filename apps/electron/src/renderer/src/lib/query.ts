@@ -1,6 +1,12 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, queryOptions } from "@tanstack/react-query";
 import { getClient } from "./api";
-import type { AvailableModel } from "./models";
+import {
+  type AvailableModel,
+  hasActiveDownload,
+  type MlxAsrStatus,
+  type WhisperStatus,
+} from "./models";
+import { IS_MAC } from "./platform";
 
 /** Common staleTime for cached queries (1 hour). */
 export const ONE_HOUR = 60 * 60 * 1000;
@@ -56,6 +62,8 @@ export const queryKeys = {
     daily: ["history", "daily"] as const,
     list: (page: number, search: string, startDate: string, endDate: string) =>
       ["history", page, search, startDate, endDate] as const,
+    stats: (startDate: string, endDate: string) =>
+      ["history", "stats", startDate, endDate] as const,
   },
 
   dictionary: {
@@ -88,7 +96,7 @@ export function settingsQueryOptions() {
     queryFn: async (): Promise<Record<string, string>> => {
       const res = await getClient().api.settings.$get();
       if (!res.ok) throw new Error("Failed to load settings");
-      return (await res.json()) as Record<string, string>;
+      return await res.json();
     },
   };
 }
@@ -104,9 +112,50 @@ export function availableModelsQueryOptions() {
     queryFn: async (): Promise<AvailableModel[]> => {
       const res = await getClient().api.models.available.$get();
       if (!res.ok) throw new Error("Failed to load available models");
-      return (await res.json()) as AvailableModel[];
+      return await res.json();
     },
   };
+}
+
+/**
+ * Query options for the Whisper status. The status is volatile during
+ * downloads, so it is always stale. It polls every 500 ms while a download or
+ * verify is active, then stops.
+ */
+export function whisperStatusQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.whisperStatus,
+    queryFn: async (): Promise<WhisperStatus> => {
+      const res = await getClient().api.whisper.status.$get();
+      if (!res.ok) throw new Error("Failed to load whisper status");
+      return await res.json();
+    },
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      return d && (d.binaryDownloading || hasActiveDownload(d.models))
+        ? 500
+        : false;
+    },
+    staleTime: 0,
+  });
+}
+
+/** Same rules as the Whisper status. Only runs on macOS. */
+export function mlxStatusQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.mlxStatus,
+    enabled: IS_MAC,
+    queryFn: async (): Promise<MlxAsrStatus> => {
+      const res = await getClient().api["mlx-asr"].status.$get();
+      if (!res.ok) throw new Error("Failed to load MLX ASR status");
+      return await res.json();
+    },
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      return d && hasActiveDownload(d.models) ? 500 : false;
+    },
+    staleTime: 0,
+  });
 }
 
 export type OpenstyleConfig = {
@@ -126,7 +175,7 @@ export function configQueryOptions() {
     queryFn: async (): Promise<OpenstyleConfig> => {
       const res = await getClient().api.config.$get();
       if (!res.ok) throw new Error("Failed to load config");
-      return (await res.json()) as OpenstyleConfig;
+      return await res.json();
     },
   };
 }
@@ -143,7 +192,7 @@ export function dismissedNotificationsQueryOptions() {
     queryFn: async (): Promise<string[]> => {
       const res = await getClient().api["dismissed-notifications"].$get();
       if (!res.ok) throw new Error("Failed to load dismissed notifications");
-      return (await res.json()) as string[];
+      return await res.json();
     },
   };
 }

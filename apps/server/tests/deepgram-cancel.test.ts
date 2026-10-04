@@ -40,13 +40,14 @@ function openSession() {
   return provider.openStreamingSession({
     apiKey: "test-key",
     model: "nova-3",
-    language: "en",
+    languages: ["en"],
     bias: null,
     callbacks: {
       onReady: vi.fn(),
       onPartial: vi.fn(),
       onFinal: vi.fn(),
       onError: vi.fn(),
+      onClose: vi.fn(),
     },
   });
 }
@@ -74,5 +75,35 @@ describe("DeepgramTranscriptionProvider.cancel", () => {
     session.close();
 
     expect(socket.close).toHaveBeenCalled();
+  });
+});
+
+describe("DeepgramTranscriptionProvider.transcribe", () => {
+  it("puts the vocabulary bias in the /v1/listen query", async () => {
+    const fetchMock = vi.fn(async (..._args: unknown[]) =>
+      Response.json({
+        results: { channels: [{ alternatives: [{ transcript: " hi " }] }] },
+        metadata: { duration: 1 },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new DeepgramTranscriptionProvider();
+    const result = await provider.transcribe({
+      audio: new Uint8Array([1]),
+      model: "nova-3",
+      apiKey: "test-key",
+      language: "en",
+      bias: { kind: "deepgram-keyterms", terms: ["Openstyle", "Deepgram"] },
+    });
+    vi.unstubAllGlobals();
+
+    expect(result.text).toBe("hi");
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.getAll("keyterm")).toEqual([
+      "Openstyle",
+      "Deepgram",
+    ]);
+    expect(url.searchParams.get("smart_format")).toBe("true");
   });
 });

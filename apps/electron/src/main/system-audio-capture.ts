@@ -11,17 +11,14 @@
  *   ERR_UNSUPPORTED_OS / ERR_TAP_CREATE / ERR_AGG_CREATE / ERR_START <code>
  *
  * Requires macOS >= 14.4 (Core Audio process taps). Modeled on the removed
- * always-on mic-listener (see git history; the native helper sources are kept
- * under native/).
+ * always-on mic-listener (see git history; its sources are deleted).
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("system-audio");
-
-export const SYSTEM_AUDIO_SAMPLE_RATE = 16000;
 
 /** Grace period between SIGTERM and SIGKILL when stopping the helper. */
 const KILL_GRACE_MS = 3000;
@@ -65,10 +62,6 @@ export class SystemAudioCapture {
     this.options = options;
   }
 
-  get running(): boolean {
-    return this.process !== null;
-  }
-
   /**
    * Spawn the helper and start streaming. Returns false when unsupported,
    * the binary is missing, or the spawn fails (onError is called for the
@@ -96,7 +89,7 @@ export class SystemAudioCapture {
       });
     } catch (err) {
       this.options.onError?.(
-        `Failed to spawn system audio helper: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to spawn system audio helper: ${errorMessage(err)}`,
       );
       this.process = null;
       return false;

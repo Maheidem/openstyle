@@ -1,6 +1,12 @@
 import { unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { parseMeetingRetentionDays } from "@openstyle/validations";
+import {
+  MIC_WAV,
+  parseMeetingRetentionDays,
+  SETTINGS_KEYS,
+  SYSTEM_WAV,
+} from "@openstyle/validations";
+import { createDailySweep } from "../daily-sweep.js";
 import { getDb, readSetting } from "../db.js";
 
 /**
@@ -10,12 +16,10 @@ import { getDb, readSetting } from "../db.js";
  * `meeting_retention_days` and nulls `audio_dir` as the "audio is gone"
  * marker. DB rows (segments + summaries) are kept forever.
  *
- * Modeled on startHistoryRetentionSweep in lib/history-store.ts.
+ * Uses the same daily sweep as lib/history-store.ts.
  */
 
-export const MEETING_RETENTION_SETTING_KEY = "meeting_retention_days";
-
-const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+export const MEETING_RETENTION_SETTING_KEY = SETTINGS_KEYS.meetingRetentionDays;
 
 interface ExpiredMeetingRow {
   id: string;
@@ -45,7 +49,7 @@ export function purgeExpiredMeetingAudio(): number {
 
   let purged = 0;
   for (const row of rows) {
-    for (const name of ["mic.wav", "system.wav"]) {
+    for (const name of [MIC_WAV, SYSTEM_WAV]) {
       try {
         unlinkSync(join(row.audio_dir, name));
       } catch {
@@ -58,27 +62,9 @@ export function purgeExpiredMeetingAudio(): number {
   return purged;
 }
 
-let retentionSweepTimer: NodeJS.Timeout | null = null;
+const meetingSweep = createDailySweep(() => {
+  purgeExpiredMeetingAudio();
+});
 
-export function startMeetingRetentionSweep(): void {
-  if (retentionSweepTimer) return;
-
-  const sweep = (): void => {
-    try {
-      purgeExpiredMeetingAudio();
-    } catch {
-      // Never let a sweep failure kill the periodic timer.
-    }
-  };
-
-  sweep();
-  retentionSweepTimer = setInterval(sweep, RETENTION_SWEEP_INTERVAL_MS);
-  retentionSweepTimer.unref();
-}
-
-export function stopMeetingRetentionSweep(): void {
-  if (retentionSweepTimer) {
-    clearInterval(retentionSweepTimer);
-    retentionSweepTimer = null;
-  }
-}
+export const startMeetingRetentionSweep = meetingSweep.start;
+export const stopMeetingRetentionSweep = meetingSweep.stop;

@@ -1,18 +1,9 @@
-export interface AvailableModel {
-  provider_id: string;
-  provider_name: string;
-  model_id: string;
-  model_name: string;
-  family?: string;
-  type: "voice" | "llm";
-  /** Surfaced in the default picker; non-curated models live behind "All models". */
-  curated?: boolean;
-  /**
-   * Display name of the LLM gateway fronting this model (e.g. "OpenRouter"),
-   * shown as a small badge in the picker. Absent for first-party vendors.
-   */
-  gateway?: string;
-}
+import type { ApiClient, ApiRes } from "./api";
+
+/** One entry of GET /api/models/available. */
+export type AvailableModel = ApiRes<
+  ApiClient["api"]["models"]["available"]["$get"]
+>[number];
 
 export interface WhisperModelDef {
   id: string;
@@ -43,28 +34,15 @@ export interface WhisperModelDownloadState {
 }
 
 export interface WhisperStatus {
-  archSupported?: boolean;
-  archUnsupportedReason?: string | null;
-  binaryAvailable: boolean;
   binaryDownloading: boolean;
-  serverBinaryAvailable: boolean;
-  serverRunning: boolean;
-  serverFailed: boolean;
-  modelsDir: string;
   models: WhisperModelDownloadState[];
   modelDefinitions: WhisperModelDef[];
 }
 
 export interface MlxAsrStatus {
   platformSupported: boolean;
-  pythonAvailable: boolean;
-  pythonPath: string | null;
-  workerPath: string | null;
-  mlxAudioInstalled: boolean;
   canRun: boolean;
   blockedReason: string | null;
-  serverRunning: boolean;
-  serverFailed: boolean;
   keepAliveMinutes: number;
   runtime?: {
     available: boolean;
@@ -76,6 +54,15 @@ export interface MlxAsrStatus {
   models: WhisperModelDownloadState[];
   modelDefinitions: WhisperModelDef[];
   setupHint: string | null;
+}
+
+/** True while any local model is downloading or verifying. */
+export function hasActiveDownload(
+  models: { status: string }[] | undefined | null,
+): boolean {
+  return !!models?.some(
+    (m) => m.status === "downloading" || m.status === "verifying",
+  );
 }
 
 export const CLOUD_VOICE_PROVIDERS = [
@@ -172,7 +159,6 @@ export interface VoiceItem {
   state?: WhisperModelDownloadState;
   status?: WhisperModelDownloadState["status"];
   cost?: number;
-  streaming?: boolean;
   hasKey?: boolean;
   available?: AvailableModel;
 }
@@ -183,7 +169,6 @@ export const VOICE_META: Record<
     speed: number;
     quality: number;
     cost?: number;
-    streaming?: boolean;
     note?: string;
   }
 > = {
@@ -249,12 +234,6 @@ export const LOCAL_VOICE_NOTES: Record<string, string> = {
   "qwen3-1.7b-8bit": "Highest on-device accuracy",
   "parakeet-tdt-0.6b-v3": "Very fast · 25 languages · no custom vocabulary",
 };
-
-/** The single recommended model per platform (one badge, everywhere). */
-export const RECOMMENDED_LOCAL_IDS = new Set([
-  "local-mlx/qwen3-0.6b-8bit",
-  "local-whisper/small-q5_1",
-]);
 
 export function buildVoiceItems(
   available: AvailableModel[],
@@ -366,7 +345,6 @@ export function buildVoiceItems(
       speed: meta?.speed,
       quality: meta?.quality,
       cost: meta?.cost,
-      streaming: meta?.streaming,
       note: meta?.note,
       hasKey: ctx.keyProviders.has(m.provider_id),
       available: m,
@@ -383,4 +361,21 @@ export function buildVoiceItems(
   });
 
   return [...whisperLocal, ...mlxLocal, ...cloud];
+}
+
+export interface ConfiguredModel {
+  id: number;
+  provider: string;
+  model_id: string;
+  model_name: string;
+  type: string;
+  is_default: number;
+}
+
+export interface ApiKeyEntry {
+  provider: string;
+  created_at: string;
+  status: "valid" | "invalid" | "unknown";
+  /** Masked last-4 preview (e.g. "…a4F2") so keys are tellable apart. */
+  hint?: string;
 }

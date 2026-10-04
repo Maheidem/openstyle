@@ -2,10 +2,6 @@ import { IS_MAC } from "@renderer/lib/platform";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
-// Platform detection
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Key symbol maps
 // ---------------------------------------------------------------------------
 
@@ -105,9 +101,6 @@ const CAPTURED_MODIFIER_KEYS: Record<string, string> = {
   RightSuper: "Super",
 };
 
-/** Fallback capture inside Settings when native global recording is unavailable. */
-const USE_DOM_CAPTURE = true;
-
 const DOM_MODIFIER_KEYS = new Set([
   "Control",
   "Meta",
@@ -144,7 +137,7 @@ function domKeyFromEvent(e: KeyboardEvent): string | null {
 }
 
 function isDomModifierKey(e: KeyboardEvent): boolean {
-  return DOM_MODIFIER_KEYS.has(e.key) || e.key === "Option";
+  return DOM_MODIFIER_KEYS.has(e.key);
 }
 
 function orderModifiers(modifiers: string[]): string[] {
@@ -315,10 +308,6 @@ export function formatAcceleratorKeys(accel: string): string[] {
   return comboDisplayKeys(acceleratorToCombo(accel));
 }
 
-export function formatAccelerator(accel: string): string {
-  return formatAcceleratorKeys(accel).join(" ");
-}
-
 /** Compare two accelerators after normalizing aliases and modifier order. */
 export function acceleratorsEqual(a: string, b: string): boolean {
   const norm = (accel: string): string =>
@@ -403,23 +392,37 @@ export function useHotkeyRecorder(
     }
   }, []);
 
-  const showInvalidReleaseNotice = useCallback(() => {
-    clearWarningTimer();
-    setInvalidReleaseNotice(true);
-    warningTimerRef.current = setTimeout(() => {
-      setInvalidReleaseNotice(false);
-      warningTimerRef.current = null;
-    }, 1800);
-  }, [clearWarningTimer]);
+  const flashNotice = useCallback(
+    (setNotice: (value: boolean) => void) => {
+      clearWarningTimer();
+      setNotice(true);
+      warningTimerRef.current = setTimeout(() => {
+        setNotice(false);
+        warningTimerRef.current = null;
+      }, 1800);
+    },
+    [clearWarningTimer],
+  );
 
-  const showBlockedNotice = useCallback(() => {
-    clearWarningTimer();
-    setBlockedNotice(true);
-    warningTimerRef.current = setTimeout(() => {
-      setBlockedNotice(false);
-      warningTimerRef.current = null;
-    }, 1800);
-  }, [clearWarningTimer]);
+  const showInvalidReleaseNotice = useCallback(
+    () => flashNotice(setInvalidReleaseNotice),
+    [flashNotice],
+  );
+
+  const showBlockedNotice = useCallback(
+    () => flashNotice(setBlockedNotice),
+    [flashNotice],
+  );
+
+  // Set the recorder to idle with an empty draft. This does not change the
+  // notice flags or the warning timer. Each caller handles its own notices.
+  const resetDraft = useCallback(() => {
+    recordingActiveRef.current = false;
+    setState("idle");
+    draftComboRef.current = EMPTY_COMBO;
+    setDraftCombo(EMPTY_COMBO);
+    rightModifierLatchRef.current = null;
+  }, []);
 
   const startRecording = useCallback(() => {
     recordingActiveRef.current = true;
@@ -434,15 +437,11 @@ export function useHotkeyRecorder(
 
   const cancelRecording = useCallback(() => {
     clearWarningTimer();
-    recordingActiveRef.current = false;
-    setState("idle");
-    draftComboRef.current = EMPTY_COMBO;
-    setDraftCombo(EMPTY_COMBO);
-    rightModifierLatchRef.current = null;
+    resetDraft();
     setInvalidReleaseNotice(false);
     setBlockedNotice(false);
     window.api?.stopHotkeyRecording();
-  }, [clearWarningTimer]);
+  }, [clearWarningTimer, resetDraft]);
 
   const completeRecording = useCallback(() => {
     const draft = draftComboRef.current;
@@ -461,11 +460,7 @@ export function useHotkeyRecorder(
       if (draft.key || draft.modifiers.length > 0) {
         showInvalidReleaseNotice();
         window.api?.stopHotkeyRecording();
-        recordingActiveRef.current = false;
-        setState("idle");
-        draftComboRef.current = EMPTY_COMBO;
-        setDraftCombo(EMPTY_COMBO);
-        rightModifierLatchRef.current = null;
+        resetDraft();
       }
       return;
     }
@@ -475,18 +470,12 @@ export function useHotkeyRecorder(
       // so the rejected combo never becomes the live listener.
       showBlockedNotice();
       window.api?.stopHotkeyRecording();
-      recordingActiveRef.current = false;
-      setState("idle");
-      draftComboRef.current = EMPTY_COMBO;
-      setDraftCombo(EMPTY_COMBO);
-      rightModifierLatchRef.current = null;
+      resetDraft();
       return;
     }
 
     clearWarningTimer();
-    if (accel) {
-      onRecordRef.current(accel);
-    }
+    onRecordRef.current(accel);
     // Re-register the global listener with the new accelerator (single IPC),
     // but only for the primary dictation hotkey. Every other target (remix,
     // language) only stops the recorder here: main re-reads that binding from
@@ -495,13 +484,14 @@ export function useHotkeyRecorder(
     window.api?.stopHotkeyRecording(
       targetRef.current === "dictation" ? accel : undefined,
     );
-    recordingActiveRef.current = false;
-    setState("idle");
-    draftComboRef.current = EMPTY_COMBO;
-    setDraftCombo(EMPTY_COMBO);
-    rightModifierLatchRef.current = null;
+    resetDraft();
     setInvalidReleaseNotice(false);
-  }, [clearWarningTimer, showInvalidReleaseNotice, showBlockedNotice]);
+  }, [
+    clearWarningTimer,
+    resetDraft,
+    showInvalidReleaseNotice,
+    showBlockedNotice,
+  ]);
 
   const hasDraftCombo = useCallback(() => {
     return (
@@ -549,11 +539,7 @@ export function useHotkeyRecorder(
     });
 
     const removeCancel = window.api.onHotkeyRecordCancel(() => {
-      recordingActiveRef.current = false;
-      setState("idle");
-      draftComboRef.current = EMPTY_COMBO;
-      setDraftCombo(EMPTY_COMBO);
-      rightModifierLatchRef.current = null;
+      resetDraft();
       setInvalidReleaseNotice(false);
     });
 
@@ -563,10 +549,10 @@ export function useHotkeyRecorder(
       removeReleased();
       removeCancel();
     };
-  }, [state, completeRecording, hasDraftCombo, updateDraftCombo]);
+  }, [state, completeRecording, hasDraftCombo, resetDraft, updateDraftCombo]);
 
   useEffect(() => {
-    if (state !== "recording" || !USE_DOM_CAPTURE) return;
+    if (state !== "recording") return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();

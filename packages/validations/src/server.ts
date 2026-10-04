@@ -1,5 +1,25 @@
 import { z } from "zod/v3";
 
+/** Default loopback port of the Openstyle server. */
+export const DEFAULT_SERVER_PORT = 4649;
+
+/**
+ * True when a `/api/health` body shows an Openstyle server and not another
+ * service that holds the port. The check also accepts the old "freestyle"
+ * identity. A standalone or remote server that is not updated yet can still
+ * use it. Auto-update is on by default, but a server in a separate deployment
+ * can be late.
+ */
+export function isOpenstyleHealthBody(body: {
+  status?: string;
+  name?: string;
+}): boolean {
+  return (
+    body.status === "ok" &&
+    (body.name === "openstyle" || body.name === "freestyle")
+  );
+}
+
 /**
  * Server URL for the desktop app. An empty string means "use the built-in
  * local server"; otherwise it must be a valid URL. Trailing slashes are

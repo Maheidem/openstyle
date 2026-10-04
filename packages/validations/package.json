@@ -27,8 +27,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "pkgroll": "^2.27.0",
-    "typescript": "^5.8.3",
-    "vitest": "^4.1.7"
+    "pkgroll": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

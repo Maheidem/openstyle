@@ -1,5 +1,6 @@
 import { type ServerType, serve } from "@hono/node-server";
 import { createAppLogger } from "@openstyle/utils";
+import { DEFAULT_SERVER_PORT } from "@openstyle/validations";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -9,14 +10,8 @@ import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
 import { authMiddleware, generateAuthToken, setAuthToken } from "./lib/auth.js";
 import { formatError } from "./lib/format-error.js";
-import {
-  startHistoryRetentionSweep,
-  stopHistoryRetentionSweep,
-} from "./lib/history-store.js";
-import {
-  startMeetingRetentionSweep,
-  stopMeetingRetentionSweep,
-} from "./lib/meetings/retention.js";
+import { startHistoryRetentionSweep } from "./lib/history-store.js";
+import { startMeetingRetentionSweep } from "./lib/meetings/retention.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -47,14 +42,6 @@ const TIMEOUT_PREFIXES = [
   "/api/remix/thread",
   "/api/remix/runs",
 ];
-
-async function shutdownServer(): Promise<void> {
-  stopHistoryRetentionSweep();
-  stopMeetingRetentionSweep();
-}
-
-process.on("SIGINT", () => shutdownServer().finally(() => process.exit(0)));
-process.on("SIGTERM", () => shutdownServer().finally(() => process.exit(0)));
 
 /** Build the Hono app. */
 function createApp() {
@@ -142,7 +129,7 @@ function createApp() {
 }
 
 export interface StartServerOptions {
-  /** Port to listen on. Defaults to 4649. Use 0 for a random free port. */
+  /** Port to listen on. Defaults to `DEFAULT_SERVER_PORT`. Use 0 for a random free port. */
   port?: number;
   /**
    * Host/interface to bind to. Defaults to "127.0.0.1" (loopback only).
@@ -195,7 +182,7 @@ export interface RunningServer {
 export async function startServer(
   options: StartServerOptions = {},
 ): Promise<RunningServer> {
-  const { port = 4649, host = "127.0.0.1" } = options;
+  const { port = DEFAULT_SERVER_PORT, host = "127.0.0.1" } = options;
 
   // Bearer-token auth is always in effect once the server actually starts: an
   // explicitly supplied token is used verbatim, otherwise a strong random one

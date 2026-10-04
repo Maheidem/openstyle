@@ -15,6 +15,7 @@ import {
   wavDurationMs,
   wavHeader,
 } from "../src/lib/audio/wav.js";
+import { buildWav as buildBaseWav, type WavOptions } from "./helpers/wav.js";
 
 const dirs: string[] = [];
 
@@ -22,64 +23,18 @@ afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
-interface BuildOpts {
-  sampleRate?: number;
-  channels?: number;
-  bitsPerSample?: number;
-  formatTag?: number;
-  samples?: number;
-  listChunk?: boolean;
-  /** Override the `data` chunk size field (e.g. 0xFFFFFFFF). */
-  declaredDataSize?: number;
-  /** Override the RIFF size field. */
-  declaredRiffSize?: number;
-}
-
 /** Build an in-memory WAV with a ramp payload; mirrors meeting-transcriber's writeWav. */
-function buildWav(opts: BuildOpts = {}): Buffer {
-  const sampleRate = opts.sampleRate ?? 16_000;
-  const channels = opts.channels ?? 1;
-  const bits = opts.bitsPerSample ?? 16;
-  const formatTag = opts.formatTag ?? 1;
-  const samples = opts.samples ?? 160;
-  const blockAlign = (channels * bits) / 8;
-  const dataBytes = samples * blockAlign;
-
-  const data = Buffer.alloc(dataBytes);
-  if (bits === 16) {
-    for (let i = 0; i < dataBytes / 2; i++) {
-      data.writeInt16LE(i % 32768, i * 2);
-    }
-  }
-
-  const fmt = Buffer.alloc(24);
-  fmt.write("fmt ", 0, "ascii");
-  fmt.writeUInt32LE(16, 4);
-  fmt.writeUInt16LE(formatTag, 8);
-  fmt.writeUInt16LE(channels, 10);
-  fmt.writeUInt32LE(sampleRate, 12);
-  fmt.writeUInt32LE(sampleRate * blockAlign, 16);
-  fmt.writeUInt16LE(blockAlign, 20);
-  fmt.writeUInt16LE(bits, 22);
-
-  let list = Buffer.alloc(0);
-  if (opts.listChunk) {
-    list = Buffer.alloc(12);
-    list.write("LIST", 0, "ascii");
-    list.writeUInt32LE(4, 4);
-    list.write("INFO", 8, "ascii");
-  }
-
-  const dataHeader = Buffer.alloc(8);
-  dataHeader.write("data", 0, "ascii");
-  dataHeader.writeUInt32LE(opts.declaredDataSize ?? dataBytes, 4);
-
-  const body = Buffer.concat([fmt, list, dataHeader, data]);
-  const riff = Buffer.alloc(12);
-  riff.write("RIFF", 0, "ascii");
-  riff.writeUInt32LE(opts.declaredRiffSize ?? 4 + body.length, 4);
-  riff.write("WAVE", 8, "ascii");
-  return Buffer.concat([riff, body]);
+function buildWav(opts: WavOptions = {}): Buffer {
+  const is16 = (opts.bitsPerSample ?? 16) === 16;
+  return buildBaseWav({
+    ...opts,
+    fill: (data) => {
+      if (!is16) return;
+      for (let i = 0; i < data.length / 2; i++) {
+        data.writeInt16LE(i % 32768, i * 2);
+      }
+    },
+  });
 }
 
 function withFd<T>(bytes: Buffer, fn: (fd: number) => T): T {

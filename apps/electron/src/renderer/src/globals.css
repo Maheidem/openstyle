@@ -37,11 +37,6 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -93,11 +88,6 @@
   --border: #E5E7EB;
   --input: #E5E7EB;
   --ring: #2563EB;
-  --chart-1: #2563EB;
-  --chart-2: #1D4ED8;
-  --chart-3: #3B4E6B;
-  --chart-4: #6B8CAE;
-  --chart-5: #1D2129;
   --sidebar: #F6F7F9;
   --sidebar-foreground: #1D2129;
   --sidebar-primary: #2563EB;
@@ -116,8 +106,6 @@
   --glass-shadow: rgba(29, 33, 41, 0.18);
   --glass-nav-active: rgba(232, 241, 252, 0.9);
   --glass-nav-active-border: rgba(37, 99, 235, 0.22);
-  --glass-card: rgba(255, 255, 255, 0.9);
-  --glass-card-border: rgba(229, 231, 235, 0.78);
   /* Accent-passive: the ONLY sanctioned spot for the blue family outside
      focus rings — selected-nav state and identity/diarization-speaker chips.
      Never reuse these on generic hover/active surfaces. */
@@ -157,11 +145,6 @@
   --border: #2E3138;
   --input: #2E3138;
   --ring: #5B8DEF;
-  --chart-1: #5B8DEF;
-  --chart-2: #7DA2F5;
-  --chart-3: #7C8CA6;
-  --chart-4: #4D6A8F;
-  --chart-5: #E8E9EB;
   --sidebar: #17181B;
   --sidebar-foreground: #E8E9EB;
   --sidebar-primary: #5B8DEF;
@@ -180,8 +163,6 @@
   --glass-shadow: rgba(0, 0, 0, 0.42);
   --glass-nav-active: rgba(91, 141, 239, 0.16);
   --glass-nav-active-border: rgba(91, 141, 239, 0.3);
-  --glass-card: rgba(232, 233, 235, 0.06);
-  --glass-card-border: rgba(232, 233, 235, 0.12);
   --accent-passive-tint: rgba(91, 141, 239, 0.16);
   --accent-passive-ink: #8FB4F5;
   --live: #E86A60;
@@ -288,11 +269,6 @@
     border-color: rgba(37, 99, 235, 0.18);
   }
 
-  .glass-card {
-    background: var(--card);
-    border-color: var(--border);
-  }
-
   /*
    * macOS glass treatment. The shell becomes a transparent, blur-only
    * container so per-pane tints don't stack on a shared background (which is
@@ -323,14 +299,6 @@
     background: var(--glass-nav-active);
     border-color: var(--glass-nav-active-border);
     box-shadow: inset 0 1px 0 0 var(--glass-nav-active-border);
-  }
-
-  /* Frosted card surface (e.g. the cloud promo) so it blends with the glass
-     sidebar instead of reading as a hard opaque rectangle. */
-  html.glass .glass-card {
-    background: var(--glass-card);
-    border-color: var(--glass-card-border);
-    box-shadow: inset 0 1px 0 0 var(--glass-card-border);
   }
 
   @supports ((backdrop-filter: blur(24px)) or (-webkit-backdrop-filter: blur(24px))) {
@@ -374,21 +342,11 @@
       border-color: rgba(37, 99, 235, 0.18);
       box-shadow: none;
     }
-
-    html.glass .glass-card {
-      background: var(--card);
-      border-color: var(--border);
-      box-shadow: none;
-    }
   }
 
   .responsive-page-scroll {
     padding-inline: 3rem;
     padding-bottom: 3rem;
-  }
-
-  .responsive-standalone-pad {
-    padding-inline: 1.5rem;
   }
 
   .dictionary-entry-row {
@@ -418,10 +376,6 @@
       padding-inline: 1rem;
       padding-bottom: 1.5rem;
     }
-
-    .responsive-standalone-pad {
-      padding-inline: 1rem;
-    }
   }
 
   .no-scrollbar {
@@ -431,5 +385,26 @@
 
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+}
+
+@keyframes beui-text-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes tdot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.5;
   }
 }

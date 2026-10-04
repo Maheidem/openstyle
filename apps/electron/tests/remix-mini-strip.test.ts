@@ -1,14 +1,14 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   expect,
   type Page,
   test,
 } from "@playwright/test";
-import { _electron as electron } from "playwright";
+import { launchOpenstyle } from "./helpers/e2e-app";
 
 let app: ElectronApplication | undefined;
 let fakeServer: Server;
@@ -65,12 +65,7 @@ test.beforeAll(async () => {
     }
     if (url.startsWith("/api/whisper/status")) {
       return send({
-        binaryAvailable: false,
         binaryDownloading: false,
-        serverBinaryAvailable: false,
-        serverRunning: false,
-        serverFailed: false,
-        modelsDir: "",
         models: [],
         modelDefinitions: [],
       });
@@ -90,25 +85,46 @@ test.beforeAll(async () => {
     }),
   );
 
-  app = await electron.launch({
-    args: [resolve(__dirname, "../out/main/index.js")],
-    env: {
-      ...process.env,
-      NODE_ENV: "development",
-      OPENSTYLE_USER_DATA: userDataDir,
-      OPENSTYLE_DB_PATH: join(userDataDir, "freestyle.db"),
-      OPENSTYLE_E2E: "1",
-      ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-    },
-    timeout: 30_000,
-  });
-  await app.firstWindow();
+  app = await launchOpenstyle({ userDataDir });
 });
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
   await new Promise((r) => fakeServer.close(r));
 });
+
+function launched(): ElectronApplication {
+  if (!app) throw new Error("Electron app did not launch");
+  return app;
+}
+
+async function pillPage(electronApp: ElectronApplication): Promise<Page> {
+  let page: Page | undefined;
+  for (let i = 0; i < 40 && !page; i++) {
+    page = electronApp.windows().find((w) => w.url().includes("pill"));
+    if (!page) await new Promise((r) => setTimeout(r, 250));
+  }
+  if (!page) throw new Error("Pill window did not open");
+  return page;
+}
+
+function pillBounds(electronApp: ElectronApplication) {
+  return electronApp.evaluate(({ BrowserWindow }) => {
+    const pill = BrowserWindow.getAllWindows().find((w) =>
+      w.webContents.getURL().includes("pill"),
+    );
+    return pill?.getBounds();
+  });
+}
+
+function openChat(electronApp: ElectronApplication) {
+  return electronApp.evaluate(({ BrowserWindow }) => {
+    const pill = BrowserWindow.getAllWindows().find((w) =>
+      w.webContents.getURL().includes("pill"),
+    );
+    pill?.webContents.send("remix:open-chat");
+  });
+}
 
 // The remix session holds the full chat-sized window (440x600) for its whole
 // life: chat, strip, and every morph between them are DOM animation inside
@@ -120,32 +136,16 @@ test.afterAll(async () => {
 
 test("settled remix strip grows around the final message", async () => {
   test.setTimeout(60_000);
-  // Find the pill window.
-  let pillPage: Page | undefined;
-  for (let i = 0; i < 40 && !pillPage; i++) {
-    pillPage = app!.windows().find((w) => w.url().includes("pill"));
-    if (!pillPage) await new Promise((r) => setTimeout(r, 250));
-  }
-  expect(pillPage, "pill window").toBeTruthy();
-  await pillPage!.waitForLoadState("domcontentloaded");
+  const electronApp = launched();
+  const pill = await pillPage(electronApp);
+  await pill.waitForLoadState("domcontentloaded");
   await new Promise((r) => setTimeout(r, 2500));
 
   // Open the chat card (the bar-hover path).
-  await app!.evaluate(({ BrowserWindow }) => {
-    const pill = BrowserWindow.getAllWindows().find((w) =>
-      w.webContents.getURL().includes("pill"),
-    );
-    pill?.webContents.send("remix:open-chat");
-  });
+  await openChat(electronApp);
   await new Promise((r) => setTimeout(r, 1500));
 
-  const expanded = await app!.evaluate(({ BrowserWindow }) => {
-    const pill = BrowserWindow.getAllWindows().find((w) =>
-      w.webContents.getURL().includes("pill"),
-    );
-    return pill?.getBounds();
-  });
-  console.log("after open-chat:", JSON.stringify(expanded));
+  const expanded = await pillBounds(electronApp);
   expect(expanded?.width).toBe(440);
   expect(expanded?.height).toBe(600);
 
@@ -153,34 +153,26 @@ test("settled remix strip grows around the final message", async () => {
   // its grace period (380ms). The window keeps the held room — only the DOM
   // surface changes. The settled strip self-dismisses 3s after minimizing,
   // so everything below reads promptly inside that window.
-  await pillPage!.evaluate(() => {
+  await pill.evaluate(() => {
     document.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
   });
   await new Promise((r) => setTimeout(r, 1300));
 
-  const stripText = await pillPage!.evaluate(
+  const stripText = await pill.evaluate(
     () =>
       (document.querySelector(".remix-mini-message") as HTMLElement | null)
         ?.innerText ?? null,
   );
-  console.log("strip message:", JSON.stringify(stripText));
 
-  const held = await app!.evaluate(({ BrowserWindow }) => {
-    const pill = BrowserWindow.getAllWindows().find((w) =>
-      w.webContents.getURL().includes("pill"),
-    );
-    return pill?.getBounds();
-  });
-  console.log("after minimize:", JSON.stringify(held));
+  const held = await pillBounds(electronApp);
   expect(held?.width).toBe(440);
   expect(held?.height).toBe(600);
 
   // The strip itself is the surface, sized around the final message.
-  const strip = await pillPage!.evaluate(() => {
+  const strip = await pill.evaluate(() => {
     const el = document.querySelector(".pill-chat-morph") as HTMLElement | null;
     return el ? { width: el.style.width, height: el.style.height } : null;
   });
-  console.log("strip surface:", JSON.stringify(strip));
   expect(strip?.width).toBe("320px");
   expect(Number.parseInt(strip?.height ?? "0", 10)).toBeGreaterThan(44);
   expect(stripText).toContain("one Cmd+Z away");
@@ -188,51 +180,28 @@ test("settled remix strip grows around the final message", async () => {
   // The settled strip hands the corner back on its own — the session closes
   // and the window returns to the collapsed pill slot.
   await new Promise((r) => setTimeout(r, 3200));
-  const dismissed = await app!.evaluate(({ BrowserWindow }) => {
-    const pill = BrowserWindow.getAllWindows().find((w) =>
-      w.webContents.getURL().includes("pill"),
-    );
-    return pill?.getBounds();
-  });
-  console.log("after dismiss:", JSON.stringify(dismissed));
+  const dismissed = await pillBounds(electronApp);
   expect(dismissed?.width).toBe(160);
 });
 
 test("hovering the strip morphs the chat surface open in place", async () => {
   test.setTimeout(60_000);
-  let pillPage: Page | undefined;
-  for (let i = 0; i < 40 && !pillPage; i++) {
-    pillPage = app!.windows().find((w) => w.url().includes("pill"));
-    if (!pillPage) await new Promise((r) => setTimeout(r, 250));
-  }
-  expect(pillPage, "pill window").toBeTruthy();
+  const electronApp = launched();
+  const pill = await pillPage(electronApp);
 
-  const bounds = () =>
-    app!.evaluate(({ BrowserWindow }) => {
-      const pill = BrowserWindow.getAllWindows().find((w) =>
-        w.webContents.getURL().includes("pill"),
-      );
-      return pill?.getBounds();
-    });
-
-  await app!.evaluate(({ BrowserWindow }) => {
-    const pill = BrowserWindow.getAllWindows().find((w) =>
-      w.webContents.getURL().includes("pill"),
-    );
-    pill?.webContents.send("remix:open-chat");
-  });
+  await openChat(electronApp);
   await new Promise((r) => setTimeout(r, 1500));
-  expect((await bounds())?.height).toBe(600);
+  expect((await pillBounds(electronApp))?.height).toBe(600);
 
-  await pillPage!.evaluate(() => {
+  await pill.evaluate(() => {
     document.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
   });
   await new Promise((r) => setTimeout(r, 1300));
   // Held room: minimizing swaps the surface, never the window.
-  const mini = await bounds();
+  const mini = await pillBounds(electronApp);
   expect(mini?.width).toBe(440);
   expect(mini?.height).toBe(600);
-  const hasStrip = await pillPage!.evaluate(
+  const hasStrip = await pill.evaluate(
     () => document.querySelector('[data-testid="remix-chat-mini"]') !== null,
   );
   expect(hasStrip).toBe(true);
@@ -240,30 +209,28 @@ test("hovering the strip morphs the chat surface open in place", async () => {
   // Hover the strip: the surface morphs to the full conversation while the
   // window sits still. The style targets flip promptly (the morph itself is
   // a 320ms transition inside them).
-  await pillPage!.evaluate(() => {
+  await pill.evaluate(() => {
     const strip = document.querySelector('[data-testid="remix-chat-mini"]');
     strip?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
   });
   await new Promise((r) => setTimeout(r, 300));
-  const grown = await bounds();
-  console.log("after hover:", JSON.stringify(grown));
+  const grown = await pillBounds(electronApp);
   expect(grown?.width).toBe(440);
   expect(grown?.height).toBe(600);
 
-  const surface = await pillPage!.evaluate(() => {
+  const surface = await pill.evaluate(() => {
     const el = document.querySelector(".pill-chat-morph") as HTMLElement | null;
     return el ? { width: el.style.width, height: el.style.height } : null;
   });
-  console.log("surface target after hover:", JSON.stringify(surface));
   expect(surface?.width).toBe("408px");
   expect(surface?.height).toBe("560px");
-  const hasFullChat = await pillPage!.evaluate(
+  const hasFullChat = await pill.evaluate(
     () => document.querySelector('[data-testid="remix-chat"]') !== null,
   );
   expect(hasFullChat).toBe(true);
 
   // Leave everything closed for any test that follows.
-  await pillPage!.evaluate(() => {
+  await pill.evaluate(() => {
     document.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
     );

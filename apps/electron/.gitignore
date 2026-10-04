@@ -9,6 +9,6 @@ stats
 # Stray main-process bundle occasionally emitted at the app root instead of
 # out/main/index.js (the path package.json's "main" field actually points
 # to). Nothing loads it from here, but keep it out of git status if a build
-# re-emits it; this does not stop electron-builder from packaging it, since
-# it globs its own "files" list rather than reading .gitignore.
+# re-emits it. electron-builder does not read .gitignore, so
+# electron-builder.yml excludes it with '!index.js'.
 /index.js

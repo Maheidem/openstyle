@@ -21,8 +21,6 @@ export const querySchema = z.object({
     }),
 });
 
-export type QueryInput = z.infer<typeof querySchema>;
-
 // ISO calendar date (YYYY-MM-DD) used by the history date-range filters.
 // Malformed/empty values coerce to undefined (ignored) rather than 400, matching
 // the route's prior lenient behavior.
@@ -36,5 +34,3 @@ export const historyQuerySchema = querySchema.extend({
   start_date: dateStringSchema,
   end_date: dateStringSchema,
 });
-
-export type HistoryQueryInput = z.infer<typeof historyQuerySchema>;

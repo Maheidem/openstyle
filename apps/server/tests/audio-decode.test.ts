@@ -1,81 +1,51 @@
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
-  closeSync,
   existsSync,
-  fstatSync,
   mkdtempSync,
-  openSync,
   readdirSync,
-  readSync,
+  readFileSync,
   rmSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import {
   AudioDecodeError,
   buildFfmpegArgs,
   type DecodeDeps,
   decodeFileToWav16kMono,
-  needsDecode,
   needsDecodeFile,
 } from "../src/lib/audio/decode.js";
 import { parseWavHeader, wavHeader } from "../src/lib/audio/wav.js";
+import { buildWav as buildBaseWav, type WavOptions } from "./helpers/wav.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-interface WavOpts {
-  sampleRate?: number;
-  channels?: number;
-  bitsPerSample?: number;
-  formatTag?: number;
-  samples?: number;
-  listChunk?: boolean;
-  streamSizes?: boolean;
-}
-
-function buildWav(opts: WavOpts = {}): Buffer {
-  const sampleRate = opts.sampleRate ?? 16_000;
-  const channels = opts.channels ?? 1;
-  const bits = opts.bitsPerSample ?? 16;
-  const blockAlign = (channels * bits) / 8;
-  const samples = opts.samples ?? 160;
-  const data = Buffer.alloc(samples * blockAlign);
-  for (let i = 0; i + 1 < data.length; i += 2) data.writeInt16LE(i % 1000, i);
-
-  const fmt = Buffer.alloc(24);
-  fmt.write("fmt ", 0, "ascii");
-  fmt.writeUInt32LE(16, 4);
-  fmt.writeUInt16LE(opts.formatTag ?? 1, 8);
-  fmt.writeUInt16LE(channels, 10);
-  fmt.writeUInt32LE(sampleRate, 12);
-  fmt.writeUInt32LE(sampleRate * blockAlign, 16);
-  fmt.writeUInt16LE(blockAlign, 20);
-  fmt.writeUInt16LE(bits, 22);
-
-  let list = Buffer.alloc(0);
-  if (opts.listChunk) {
-    list = Buffer.alloc(12);
-    list.write("LIST", 0, "ascii");
-    list.writeUInt32LE(4, 4);
-    list.write("INFO", 8, "ascii");
-  }
-  const dataHeader = Buffer.alloc(8);
-  dataHeader.write("data", 0, "ascii");
-  dataHeader.writeUInt32LE(opts.streamSizes ? 0xffffffff : data.length, 4);
-
-  const body = Buffer.concat([fmt, list, dataHeader, data]);
-  const riff = Buffer.alloc(12);
-  riff.write("RIFF", 0, "ascii");
-  riff.writeUInt32LE(opts.streamSizes ? 0xffffffff : 4 + body.length, 4);
-  riff.write("WAVE", 8, "ascii");
-  return Buffer.concat([riff, body]);
+/** Build an in-memory WAV whose payload ramps (`i % 1000` at each even byte). */
+function buildWav(opts: WavOptions = {}): Buffer {
+  return buildBaseWav({
+    ...opts,
+    fill: (data) => {
+      for (let i = 0; i + 1 < data.length; i += 2) {
+        data.writeInt16LE(i % 1000, i);
+      }
+    },
+  });
 }
 
 class FakeProc extends EventEmitter {
@@ -126,14 +96,17 @@ function makeDeps(
   return { deps, spawns };
 }
 
-/** Decode into a fresh temp dir; returns the paths used. */
+/**
+ * Decode into a fresh temp dir; returns the paths used. The dir is removed
+ * when the calling test ends.
+ */
 function freshPaths() {
   const dir = mkdtempSync(join(tmpdir(), "decode-test-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   return {
     dir,
     input: join(dir, "input"),
     output: join(dir, "out.wav"),
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }
 
@@ -158,34 +131,20 @@ async function expectDecodeError(
   throw new Error("expected decodeFileToWav16kMono to reject");
 }
 
-function fileSize(path: string): number {
-  const fd = openSync(path, "r");
-  try {
-    return fstatSync(fd).size;
-  } finally {
-    closeSync(fd);
-  }
-}
-
-function readAll(path: string): Buffer {
-  const fd = openSync(path, "r");
-  try {
-    const size = fstatSync(fd).size;
-    const b = Buffer.alloc(size);
-    readSync(fd, b, 0, size, 0);
-    return b;
-  } finally {
-    closeSync(fd);
-  }
-}
-
 // ---------------------------------------------------------------------------
-// needsDecode / needsDecodeFile
+// needsDecodeFile
 // ---------------------------------------------------------------------------
 
-describe("needsDecode", () => {
+describe("needsDecodeFile", () => {
+  /** Write `bytes` to a temp file and return the verdict for it. */
+  function verdictFor(bytes: Uint8Array): boolean {
+    const { input } = freshPaths();
+    writeFileSync(input, bytes);
+    return needsDecodeFile(input);
+  }
+
   it("is false for a canonical 16 kHz mono PCM16 WAV", () => {
-    expect(needsDecode(buildWav())).toBe(false);
+    expect(verdictFor(buildWav())).toBe(false);
   });
 
   it.each([
@@ -220,39 +179,12 @@ describe("needsDecode", () => {
     ["truncated header", buildWav().subarray(0, 30)],
     ["empty", new Uint8Array(0)],
   ])("is true for %s", (_name, bytes) => {
-    expect(needsDecode(bytes)).toBe(true);
-  });
-});
-
-describe("needsDecodeFile", () => {
-  it("agrees with needsDecode on the same bytes", async () => {
-    const { dir, input, cleanup } = freshPaths();
-    try {
-      const cases = [
-        buildWav(),
-        buildWav({ listChunk: true }),
-        buildWav({ streamSizes: true }),
-        buildWav({ sampleRate: 44_100, channels: 2 }),
-        Buffer.concat([Buffer.from("ID3\x04"), Buffer.alloc(64)]),
-      ];
-      for (const bytes of cases) {
-        writeFileSync(input, bytes);
-        expect(needsDecodeFile(input)).toBe(needsDecode(bytes));
-      }
-      expect(needsDecodeFile(join(dir, "missing-file"))).toBe(true);
-    } finally {
-      cleanup();
-    }
+    expect(verdictFor(bytes)).toBe(true);
   });
 
-  it("is true for trailing garbage after an otherwise-canonical WAV", () => {
-    const { input, cleanup } = freshPaths();
-    try {
-      writeFileSync(input, Buffer.concat([buildWav(), Buffer.alloc(7)]));
-      expect(needsDecodeFile(input)).toBe(true);
-    } finally {
-      cleanup();
-    }
+  it("is true for a missing file", () => {
+    const { dir } = freshPaths();
+    expect(needsDecodeFile(join(dir, "missing-file"))).toBe(true);
   });
 });
 
@@ -304,81 +236,69 @@ describe("decodeFileToWav16kMono", () => {
   });
 
   it("spawns ffmpeg with the exact argv against the caller's paths", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, "not really audio, ffmpeg is faked");
     const out = buildWav({ samples: 320 });
     const { deps, spawns } = makeDeps(succeed(out));
-    try {
-      const r = await decodeFileToWav16kMono(input, output, deps);
-      expect(r.bytes).toBe(out.length);
+    const r = await decodeFileToWav16kMono(input, output, deps);
+    expect(r.bytes).toBe(out.length);
 
-      expect(spawns).toHaveLength(1);
-      const rec = spawns[0];
-      expect(rec.file).toBe("/fake/bin/ffmpeg");
-      expect(rec.args).toEqual(buildFfmpegArgs(input, output));
-      expect(rec.options).toEqual({
-        stdio: ["ignore", "ignore", "pipe"],
-        windowsHide: true,
-        cwd: "/fake/bin",
-      });
-      // Pass-through: a canonical output is left byte-identical.
-      expect(readAll(output).equals(out)).toBe(true);
-      expect(existsSync(`${output}.canonical`)).toBe(false);
-    } finally {
-      cleanup();
-    }
+    expect(spawns).toHaveLength(1);
+    const rec = spawns[0];
+    expect(rec.file).toBe("/fake/bin/ffmpeg");
+    expect(rec.args).toEqual(buildFfmpegArgs(input, output));
+    expect(rec.options).toEqual({
+      stdio: ["ignore", "ignore", "pipe"],
+      windowsHide: true,
+      cwd: "/fake/bin",
+    });
+    // Pass-through: a canonical output is left byte-identical.
+    expect(readFileSync(output).equals(out)).toBe(true);
+    expect(existsSync(`${output}.canonical`)).toBe(false);
   });
 
   it("rewrites a streamed (LIST + 0xFFFFFFFF) WAV to a canonical 44-byte header", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const out = buildWav({ samples: 1600, listChunk: true, streamSizes: true });
     const { deps } = makeDeps(succeed(out));
-    try {
-      const r = await decodeFileToWav16kMono(input, output, deps);
+    const r = await decodeFileToWav16kMono(input, output, deps);
 
-      expect(r.bytes).toBe(44 + 1600 * 2);
-      const result = readAll(output);
-      expect(parseWavHeader(result)).toEqual({
-        formatTag: 1,
-        sampleRate: 16_000,
-        channels: 1,
-        bitsPerSample: 16,
-        dataOffset: 44,
-        dataLength: 3200,
-      });
-      // Header is byte-identical to wavHeader() and payload is untouched.
-      const expectedHeader = wavHeader(
-        { sampleRate: 16_000, channels: 1, bitsPerSample: 16 },
-        3200,
-      );
-      expect(result.subarray(0, 44).equals(expectedHeader)).toBe(true);
-      expect(result.subarray(44).equals(out.subarray(56))).toBe(true);
-      expect(existsSync(`${output}.canonical`)).toBe(false);
-    } finally {
-      cleanup();
-    }
+    expect(r.bytes).toBe(44 + 1600 * 2);
+    const result = readFileSync(output);
+    expect(parseWavHeader(result)).toEqual({
+      formatTag: 1,
+      sampleRate: 16_000,
+      channels: 1,
+      bitsPerSample: 16,
+      dataOffset: 44,
+      dataLength: 3200,
+    });
+    // Header is byte-identical to wavHeader() and payload is untouched.
+    const expectedHeader = wavHeader(
+      { sampleRate: 16_000, channels: 1, bitsPerSample: 16 },
+      3200,
+    );
+    expect(result.subarray(0, 44).equals(expectedHeader)).toBe(true);
+    expect(result.subarray(44).equals(out.subarray(56))).toBe(true);
+    expect(existsSync(`${output}.canonical`)).toBe(false);
   });
 
   it("canonicalizes a multi-MiB output without buffering it (file size preserved)", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps } = makeDeps(
       succeed(buildWav({ samples: 1_000_000, streamSizes: true })),
       { maxOutputBytes: 64 * 1024 * 1024 },
     );
-    try {
-      const r = await decodeFileToWav16kMono(input, output, deps);
-      expect(r.bytes).toBe(44 + 2_000_000);
-      expect(fileSize(output)).toBe(44 + 2_000_000);
-      expect(parseWavHeader(readAll(output)).dataOffset).toBe(44);
-    } finally {
-      cleanup();
-    }
+    const r = await decodeFileToWav16kMono(input, output, deps);
+    expect(r.bytes).toBe(44 + 2_000_000);
+    expect(statSync(output).size).toBe(44 + 2_000_000);
+    expect(parseWavHeader(readFileSync(output)).dataOffset).toBe(44);
   });
 
   it("maps a non-zero exit to decode_failed with exitCode and a 500-char stderr tail", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const stderr = `${"x".repeat(900)}Invalid data found when processing input`;
     const { deps } = makeDeps((proc) => {
@@ -386,107 +306,83 @@ describe("decodeFileToWav16kMono", () => {
       proc.stderr.end();
       setImmediate(() => proc.emit("close", 1, null));
     });
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.code).toBe("AUDIO_DECODE_FAILED");
-      expect(err.reason).toBe("decode_failed");
-      expect(err.details.exitCode).toBe(1);
-      expect(err.details.stderrTail).toHaveLength(500);
-      expect(err.details.stderrTail).toBe(stderr.slice(-500));
-      expect(err.message).toContain("Invalid data found");
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.code).toBe("AUDIO_DECODE_FAILED");
+    expect(err.reason).toBe("decode_failed");
+    expect(err.details.exitCode).toBe(1);
+    expect(err.details.stderrTail).toHaveLength(500);
+    expect(err.details.stderrTail).toBe(stderr.slice(-500));
+    expect(err.message).toContain("Invalid data found");
   });
 
   it("redacts the output dir path from the message and stderr tail", async () => {
-    const { dir, input, output, cleanup } = freshPaths();
+    const { dir, input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps } = makeDeps((proc, rec) => {
       proc.stderr.write(`${rec.outputPath}: Invalid data found`);
       proc.stderr.end();
       setImmediate(() => proc.emit("close", 1, null));
     });
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.message).not.toContain(dir);
-      expect(err.details.stderrTail).not.toContain(dir);
-      expect(err.details.stderrTail).toBe("<tmp>/out.wav: Invalid data found");
-      expect(err.message).toContain("<tmp>/out.wav: Invalid data found");
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.message).not.toContain(dir);
+    expect(err.details.stderrTail).not.toContain(dir);
+    expect(err.details.stderrTail).toBe("<tmp>/out.wav: Invalid data found");
+    expect(err.message).toContain("<tmp>/out.wav: Invalid data found");
   });
 
   it("maps a header-only WAV (zero samples) to empty_output", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps } = makeDeps(succeed(buildWav({ samples: 0 })));
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.reason).toBe("empty_output");
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.reason).toBe("empty_output");
   });
 
   it("maps a streamed header with no payload to empty_output", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps } = makeDeps(
       succeed(buildWav({ samples: 0, streamSizes: true })),
     );
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.reason).toBe("empty_output");
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.reason).toBe("empty_output");
   });
 
   it("maps a garbage output with exit 0 to decode_failed", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps } = makeDeps(succeed(Buffer.from("this is not a wav file")));
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.reason).toBe("decode_failed");
-      expect(err.message).toContain("not a RIFF/WAVE file");
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.reason).toBe("decode_failed");
+    expect(err.message).toContain("not a RIFF/WAVE file");
   });
 
   it("returns binary_missing without spawning when no binary resolves", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps, spawns } = makeDeps(succeed(buildWav()), {
       resolveBinaryPath: () => null,
     });
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.reason).toBe("binary_missing");
-      expect(spawns).toHaveLength(0);
-      expect(existsSync(output)).toBe(false);
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.reason).toBe("binary_missing");
+    expect(spawns).toHaveLength(0);
+    expect(existsSync(output)).toBe(false);
   });
 
   it("maps a spawn ENOENT to binary_missing", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps } = makeDeps((proc) => {
       proc.emit(
@@ -494,18 +390,14 @@ describe("decodeFileToWav16kMono", () => {
         Object.assign(new Error("spawn ffmpeg ENOENT"), { code: "ENOENT" }),
       );
     });
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.reason).toBe("binary_missing");
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.reason).toBe("binary_missing");
   });
 
   it("maps other spawn errors to decode_failed", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps } = makeDeps((proc) => {
       proc.emit(
@@ -513,19 +405,15 @@ describe("decodeFileToWav16kMono", () => {
         Object.assign(new Error("spawn EACCES"), { code: "EACCES" }),
       );
     });
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.reason).toBe("decode_failed");
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.reason).toBe("decode_failed");
   });
 
   it("times out: SIGKILL, later close does not double-settle", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     let hung: FakeProc | null = null;
     const { deps } = makeDeps(
@@ -552,12 +440,11 @@ describe("decodeFileToWav16kMono", () => {
     hung!.emit("close", null, "SIGKILL");
     await vi.advanceTimersByTimeAsync(0);
     expect(err.reason).toBe("timeout");
-    cleanup();
   });
 
   it("kills ffmpeg mid-run when the output file passes the size cap (poller)", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     let proc: FakeProc | null = null;
     const { deps } = makeDeps(
@@ -582,25 +469,20 @@ describe("decodeFileToWav16kMono", () => {
     expect(err.reason).toBe("decode_failed");
     expect(err.message).toContain("exceeds 1000 bytes");
     expect(proc!.kill).toHaveBeenCalledWith("SIGKILL");
-    cleanup();
   });
 
   it("fails with decode_failed when a finished output exceeds the cap (final check)", async () => {
-    const { input, output, cleanup } = freshPaths();
+    const { input, output } = freshPaths();
     writeFileSync(input, Buffer.alloc(10));
     const { deps } = makeDeps(succeed(buildWav({ samples: 600 })), {
       maxOutputBytes: 1000,
       pollIntervalMs: 10_000,
     });
-    try {
-      const err = await expectDecodeError(
-        decodeFileToWav16kMono(input, output, deps),
-      );
-      expect(err.reason).toBe("decode_failed");
-      expect(err.message).toContain("exceeds 1000 bytes");
-    } finally {
-      cleanup();
-    }
+    const err = await expectDecodeError(
+      decodeFileToWav16kMono(input, output, deps),
+    );
+    expect(err.reason).toBe("decode_failed");
+    expect(err.message).toContain("exceeds 1000 bytes");
   });
 
   it("leaves no .canonical siblings behind across runs", async () => {

@@ -6,6 +6,7 @@ import {
   LLM_PRESET_COUNT_MAX,
   LLM_PRESET_NAME_MAX,
   LLM_PRESET_PARAMS_MAX_BYTES,
+  LLM_TASK_IDS,
 } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
 
@@ -13,7 +14,6 @@ import {
   checkPresetWrite,
   clampPresetName,
   duplicatePreset,
-  findMissingPresetIds,
   isBuiltinPresetId,
   isDanglingAssignment,
   makePresetId,
@@ -320,9 +320,12 @@ describe("removePresetAndReassign", () => {
     };
     const presets = [ALPHA, BUILTIN];
     const result = removePresetAndReassign(presets, assignments, ALPHA.id);
-    expect(findMissingPresetIds(result.assignments, result.presets)).toEqual(
-      [],
-    );
+    for (const taskId of LLM_TASK_IDS) {
+      const assignment = result.assignments[taskId];
+      if (assignment) {
+        expect(isDanglingAssignment(assignment, result.presets)).toBe(false);
+      }
+    }
     expect(
       isDanglingAssignment(
         result.assignments.cleanup ?? { mode: "auto" },
@@ -330,20 +333,22 @@ describe("removePresetAndReassign", () => {
       ),
     ).toBe(false);
     // The untouched built-in assignment still resolves.
-    expect(findMissingPresetIds(assignments, presets)).toEqual([]);
+    expect(
+      isDanglingAssignment(
+        assignments.meetingEnhance ?? { mode: "auto" },
+        presets,
+      ),
+    ).toBe(false);
   });
 });
 
-describe("findMissingPresetIds / isDanglingAssignment", () => {
+describe("isDanglingAssignment", () => {
   it("names the id of a preset that was deleted under a live assignment", () => {
     const assignments: LlmTaskAssignments = {
       cleanup: { mode: "preset", presetId: "user_ghost" },
       remix: { mode: "preset", presetId: ALPHA.id },
       meetingEnhance: { mode: "custom", params: {} },
     };
-    expect(findMissingPresetIds(assignments, [ALPHA, BUILTIN])).toEqual([
-      "user_ghost",
-    ]);
     expect(
       isDanglingAssignment(assignments.cleanup ?? { mode: "auto" }, [ALPHA]),
     ).toBe(true);
@@ -357,26 +362,7 @@ describe("findMissingPresetIds / isDanglingAssignment", () => {
         BUILTIN,
       ]),
     ).toBe(false);
-    expect(
-      findMissingPresetIds(
-        { cleanup: { mode: "preset", presetId: BUILTIN.id } },
-        [BUILTIN],
-      ),
-    ).toEqual([]);
     expect(isDanglingAssignment({ mode: "auto" }, [])).toBe(false);
-  });
-
-  it("collapses repeated missing ids to one entry", () => {
-    const ghost = "user_ghost";
-    expect(
-      findMissingPresetIds(
-        {
-          cleanup: { mode: "preset", presetId: ghost },
-          remix: { mode: "preset", presetId: ghost },
-        },
-        [],
-      ),
-    ).toEqual([ghost]);
   });
 });
 

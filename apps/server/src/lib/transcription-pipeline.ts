@@ -16,18 +16,17 @@
  */
 
 import { sanitizeTranscriptText, stripVocabLeak } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
+import { getApiKey } from "./api-keys.js";
 import { formatError } from "./format-error.js";
 import { saveProcessedHistory, saveRawHistory } from "./history-store.js";
 import { getLanguagesSetting, resolveLanguageOverride } from "./language.js";
 import { postProcess, resolveAppContextForCleanup } from "./post-process.js";
 import { getDefaultModels } from "./providers.js";
+import { voiceProviderCategory } from "./streaming/local-providers.js";
 import { getProvider } from "./streaming/registry.js";
 import {
-  getApiKeyForProvider,
-  voiceProviderCategory,
-} from "./streaming-stt.js";
-import {
+  type AsrVocabularyBias,
   resolveAsrVocabularyBias,
   vocabularyBiasTerms,
 } from "./vocabulary-bias.js";
@@ -46,6 +45,31 @@ export function decodeAppContext(raw: string | undefined): string | null {
   } catch {
     return raw;
   }
+}
+
+/**
+ * Clean raw ASR text before the LLM cleanup step. Used by the batch pipeline
+ * and the streaming route.
+ *
+ * The vocabulary bias prompt sent to the ASR can come back echoed as fake
+ * speech (specs/meeting-transcription-quality.md Phase A, extended to
+ * dictation). Compare against the terms sent for *this* bias, not a fresh DB
+ * read. The result can be empty. The caller must check for that.
+ */
+export function cleanAsrText(
+  text: string,
+  bias: AsrVocabularyBias | null,
+): string {
+  const sanitized = sanitizeTranscriptText(text);
+  const stripped = stripVocabLeak(sanitized, vocabularyBiasTerms(bias));
+  if (stripped !== sanitized) {
+    log.info(
+      stripped.trim()
+        ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
+        : "dropped dictation output — entirely a vocabulary-prompt echo",
+    );
+  }
+  return stripped;
 }
 
 export interface TranscriptionPipelineInput {
@@ -108,12 +132,10 @@ export async function runTranscriptionPipeline(
   const voiceModel = defaults.voice.model_id;
 
   // A language-hotkey dictation pins the request to one language, overriding
-  // languages[0] and auto-detect alike. `languages` is already normalized
-  // lowercase (normalizeLanguageList, cloud-config.ts), so match case here
-  // rather than assuming the header arrives pre-normalized.
-  const languageOverride = input.languageOverride?.trim().toLowerCase();
+  // languages[0] and auto-detect alike. `resolveLanguageOverride` normalizes
+  // the raw header value.
   const effectiveLanguages = resolveLanguageOverride(
-    languageOverride,
+    input.languageOverride,
     languages,
   );
   const primaryLanguage = effectiveLanguages[0];
@@ -127,7 +149,7 @@ export async function runTranscriptionPipeline(
     };
   }
 
-  const apiKey = getApiKeyForProvider(voiceProvider);
+  const apiKey = getApiKey(voiceProvider);
   if (!apiKey) {
     return {
       ok: false,
@@ -140,7 +162,7 @@ export async function runTranscriptionPipeline(
     const bias = resolveAsrVocabularyBias(voiceProvider, voiceModel);
     log.debug(`bias=${JSON.stringify(bias)}`);
     log.debug(
-      `languages=${JSON.stringify(languages)} override=${languageOverride ?? "none"} effective=${JSON.stringify(effectiveLanguages)}`,
+      `languages=${JSON.stringify(languages)} override=${input.languageOverride ?? "none"} effective=${JSON.stringify(effectiveLanguages)}`,
     );
     const t0 = Date.now();
     const result = await provider.transcribe({
@@ -151,22 +173,7 @@ export async function runTranscriptionPipeline(
       bias,
       appContext,
     });
-    rawText = sanitizeTranscriptText(result.text);
-
-    // The same vocabulary bias prompt sent above can come back echoed as
-    // fake speech instead of a real transcription (specs/meeting-
-    // transcription-quality.md Phase A, extended here to dictation — the
-    // meeting pipeline already had this guard, dictation didn't). Compare
-    // against the terms actually sent for *this* bias, not a fresh DB read.
-    const strippedRawText = stripVocabLeak(rawText, vocabularyBiasTerms(bias));
-    if (strippedRawText !== rawText) {
-      log.info(
-        strippedRawText.trim()
-          ? "stripped a vocabulary-prompt echo from dictation output (partial leak)"
-          : "dropped dictation output — entirely a vocabulary-prompt echo",
-      );
-      rawText = strippedRawText;
-    }
+    rawText = cleanAsrText(result.text, bias);
 
     log.debug(
       `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
@@ -180,7 +187,7 @@ export async function runTranscriptionPipeline(
       status: 500,
       body: {
         error: "Transcription failed",
-        detail: err instanceof Error ? err.message : String(err),
+        detail: errorMessage(err),
       },
     };
   }

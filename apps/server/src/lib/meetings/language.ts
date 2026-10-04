@@ -16,6 +16,7 @@
 import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
+import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
 import { getDb } from "../db.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
 import { getLanguagesSetting } from "../language.js";
@@ -55,10 +56,7 @@ export function readMeetingLanguage(meetingId: string): string | undefined {
 }
 
 /** Persist the resolved (or user-set) language for a meeting. */
-export function persistMeetingLanguage(
-  meetingId: string,
-  language: string,
-): void {
+function persistMeetingLanguage(meetingId: string, language: string): void {
   getDb()
     .prepare("UPDATE meetings SET language = ? WHERE id = ?")
     .run(language, meetingId);
@@ -105,10 +103,7 @@ export function sliceProbeAudio(
   audioDir: string,
   probe: ProbeSegment,
 ): Uint8Array {
-  const path = join(
-    audioDir,
-    probe.source === "mic" ? "mic.wav" : "system.wav",
-  );
+  const path = join(audioDir, probe.source === "mic" ? MIC_WAV : SYSTEM_WAV);
   const fd = openSync(path, "r");
   try {
     const info = parseWavHeader(fd);

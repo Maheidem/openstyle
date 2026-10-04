@@ -108,63 +108,33 @@ static guint subscribe_response(PortalData *app, const char *request_path,
         callback, app, NULL);
 }
 
-static void portal_send_paste(PortalData *app) {
+/* Send one key event through the portal. Print the error with a label. */
+static void portal_key(PortalData *app, int code, guint32 state, const char *label) {
     GError *err = NULL;
-    GVariant *opts;
-
-    opts = g_variant_new("a{sv}", NULL);
+    GVariant *opts = g_variant_new("a{sv}", NULL);
     g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
         PORTAL_IFACE, "NotifyKeyboardKeycode",
         g_variant_new("(o@a{sv}iu)", app->session_handle, opts,
-                       (gint32)PORTAL_KEY_LEFTCTRL, (guint32)1),
+                       (gint32)code, state),
         NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
-    if (err) { fprintf(stderr, "Ctrl press: %s\n", err->message); g_clear_error(&err); }
+    if (err) { fprintf(stderr, "%s: %s\n", label, err->message); g_clear_error(&err); }
+}
 
-    if (app->use_shift) {
-        opts = g_variant_new("a{sv}", NULL);
-        g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
-            PORTAL_IFACE, "NotifyKeyboardKeycode",
-            g_variant_new("(o@a{sv}iu)", app->session_handle, opts,
-                           (gint32)PORTAL_KEY_LEFTSHIFT, (guint32)1),
-            NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
-        if (err) { fprintf(stderr, "Shift press: %s\n", err->message); g_clear_error(&err); }
-    }
+static void portal_send_paste(PortalData *app) {
+    portal_key(app, PORTAL_KEY_LEFTCTRL, 1, "Ctrl press");
+    if (app->use_shift)
+        portal_key(app, PORTAL_KEY_LEFTSHIFT, 1, "Shift press");
 
-    opts = g_variant_new("a{sv}", NULL);
-    g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
-        PORTAL_IFACE, "NotifyKeyboardKeycode",
-        g_variant_new("(o@a{sv}iu)", app->session_handle, opts,
-                       (gint32)app->v_keycode, (guint32)1),
-        NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
-    if (err) { fprintf(stderr, "V press: %s\n", err->message); g_clear_error(&err); }
+    portal_key(app, app->v_keycode, 1, "V press");
 
     usleep(20000);
 
-    opts = g_variant_new("a{sv}", NULL);
-    g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
-        PORTAL_IFACE, "NotifyKeyboardKeycode",
-        g_variant_new("(o@a{sv}iu)", app->session_handle, opts,
-                       (gint32)app->v_keycode, (guint32)0),
-        NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
-    if (err) { fprintf(stderr, "V release: %s\n", err->message); g_clear_error(&err); }
+    portal_key(app, app->v_keycode, 0, "V release");
 
-    if (app->use_shift) {
-        opts = g_variant_new("a{sv}", NULL);
-        g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
-            PORTAL_IFACE, "NotifyKeyboardKeycode",
-            g_variant_new("(o@a{sv}iu)", app->session_handle, opts,
-                           (gint32)PORTAL_KEY_LEFTSHIFT, (guint32)0),
-            NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
-        if (err) { fprintf(stderr, "Shift release: %s\n", err->message); g_clear_error(&err); }
-    }
+    if (app->use_shift)
+        portal_key(app, PORTAL_KEY_LEFTSHIFT, 0, "Shift release");
 
-    opts = g_variant_new("a{sv}", NULL);
-    g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
-        PORTAL_IFACE, "NotifyKeyboardKeycode",
-        g_variant_new("(o@a{sv}iu)", app->session_handle, opts,
-                       (gint32)PORTAL_KEY_LEFTCTRL, (guint32)0),
-        NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
-    if (err) { fprintf(stderr, "Ctrl release: %s\n", err->message); g_clear_error(&err); }
+    portal_key(app, PORTAL_KEY_LEFTCTRL, 0, "Ctrl release");
 
     g_main_loop_quit(app->loop);
 }
@@ -409,6 +379,34 @@ static int check_parent_terminal(Display *dpy, Window win) {
     return 0;
 }
 
+/* Return 1 if the window, or one of its parents, is a terminal. */
+static int window_wants_shift(Display *dpy, Window win) {
+    XClassHint hint;
+    if (XGetClassHint(dpy, win, &hint)) {
+        int terminal = is_terminal(hint.res_class) || is_terminal(hint.res_name);
+        XFree(hint.res_name);
+        XFree(hint.res_class);
+        return terminal;
+    }
+    return check_parent_terminal(dpy, win);
+}
+
+#if defined(HAVE_GIO) || defined(HAVE_UINPUT)
+/* Decide on Ctrl+Shift+V for the portal and uinput modes. Open the display
+ * only when it is needed. */
+static int resolve_shift(int force_terminal, Window target_window) {
+    int shift = force_terminal;
+    if (!shift && target_window != None) {
+        Display *dpy = XOpenDisplay(NULL);
+        if (dpy) {
+            shift = window_wants_shift(dpy, target_window);
+            XCloseDisplay(dpy);
+        }
+    }
+    return shift;
+}
+#endif
+
 static Window get_active_window(Display *dpy) {
     Atom prop = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", True);
     if (prop != None) {
@@ -612,21 +610,7 @@ int main(int argc, char *argv[]) {
 
     if (use_portal) {
 #ifdef HAVE_GIO
-        int shift = force_terminal;
-        if (!shift && target_window != None) {
-            Display *dpy = XOpenDisplay(NULL);
-            if (dpy) {
-                XClassHint hint;
-                if (XGetClassHint(dpy, target_window, &hint)) {
-                    shift = is_terminal(hint.res_class) || is_terminal(hint.res_name);
-                    XFree(hint.res_name);
-                    XFree(hint.res_class);
-                } else {
-                    shift = check_parent_terminal(dpy, target_window);
-                }
-                XCloseDisplay(dpy);
-            }
-        }
+        int shift = resolve_shift(force_terminal, target_window);
         return paste_via_portal(shift, restore_token);
 #else
         fprintf(stderr, "portal support not compiled in\n");
@@ -636,21 +620,7 @@ int main(int argc, char *argv[]) {
 
     if (use_uinput) {
 #ifdef HAVE_UINPUT
-        int shift = force_terminal;
-        if (!shift && target_window != None) {
-            Display *dpy = XOpenDisplay(NULL);
-            if (dpy) {
-                XClassHint hint;
-                if (XGetClassHint(dpy, target_window, &hint)) {
-                    shift = is_terminal(hint.res_class) || is_terminal(hint.res_name);
-                    XFree(hint.res_name);
-                    XFree(hint.res_class);
-                } else {
-                    shift = check_parent_terminal(dpy, target_window);
-                }
-                XCloseDisplay(dpy);
-            }
-        }
+        int shift = resolve_shift(force_terminal, target_window);
         return paste_via_uinput(shift);
 #else
         fprintf(stderr, "uinput support not compiled in\n");
@@ -675,16 +645,8 @@ int main(int argc, char *argv[]) {
     Window win = (target_window != None) ? target_window : get_active_window(dpy);
 
     int use_shift = force_terminal;
-    if (!use_shift && win != None) {
-        XClassHint hint;
-        if (XGetClassHint(dpy, win, &hint)) {
-            use_shift = is_terminal(hint.res_class) || is_terminal(hint.res_name);
-            XFree(hint.res_name);
-            XFree(hint.res_class);
-        } else {
-            use_shift = check_parent_terminal(dpy, win);
-        }
-    }
+    if (!use_shift && win != None)
+        use_shift = window_wants_shift(dpy, win);
 
     KeyCode ctrl = XKeysymToKeycode(dpy, XK_Control_L);
     KeyCode shift = XKeysymToKeycode(dpy, XK_Shift_L);

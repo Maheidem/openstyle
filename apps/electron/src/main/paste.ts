@@ -6,12 +6,31 @@ import {
 } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import { app, clipboard } from "electron";
+import { isWaylandSession } from "./linux-session";
 import { isLinuxTerminalFocused } from "./linux-terminal-focus";
 import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("paste");
+
+/**
+ * Run async tasks one at a time, in call order. A task that fails does not
+ * stop the tasks after it. Make one queue for each set of tasks that must not
+ * overlap. Two queues must stay apart when a task of one queue waits on the
+ * other, or both wait for each other forever.
+ */
+function createSerialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
+  let tail: Promise<void> = Promise.resolve();
+  return (task) => {
+    const result = tail.then(task, task);
+    tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+}
 
 function execAsync(cmd: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -24,7 +43,7 @@ async function tryExecAsync(cmd: string, label: string): Promise<boolean> {
     await execAsync(cmd);
     return true;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`${label} failed: ${message}`);
     return false;
   }
@@ -63,13 +82,6 @@ async function execFileAsync(
 ): Promise<number> {
   const { code } = await execFileWithOutput(path, args);
   return code;
-}
-
-export function isWaylandSession(): boolean {
-  return (
-    process.env.XDG_SESSION_TYPE?.toLowerCase() === "wayland" ||
-    Boolean(process.env.WAYLAND_DISPLAY)
-  );
 }
 
 async function pasteMac(): Promise<"native" | "legacy"> {
@@ -117,7 +129,7 @@ let linuxUinputReady = false;
 let linuxUinputStarting: Promise<boolean> | null = null;
 let linuxUinputLineBuffer = "";
 let linuxUinputPendingResponse: ((success: boolean) => void) | null = null;
-let linuxUinputCommandChain: Promise<unknown> = Promise.resolve();
+const linuxUinputCommandQueue = createSerialQueue();
 
 function settleLinuxUinputResponse(success: boolean): void {
   const resolve = linuxUinputPendingResponse;
@@ -274,12 +286,7 @@ async function sendPersistentUinputPaste(
     });
   };
 
-  const result = linuxUinputCommandChain.then(run, run);
-  linuxUinputCommandChain = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
+  return linuxUinputCommandQueue(run);
 }
 
 function linuxPasteArgs(isTerminal: boolean): string[] {
@@ -303,7 +310,7 @@ function savePortalToken(token: string): void {
   try {
     writeFileSync(portalTokenPath(), token, "utf8");
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Failed to persist portal restore token: ${message}`);
   }
 }
@@ -335,7 +342,7 @@ async function pasteLinuxPortal(isTerminal: boolean): Promise<boolean> {
     log.warn(`Portal paste failed (exit ${code})`);
     return false;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Portal paste error: ${message}`);
     return false;
   }
@@ -441,6 +448,26 @@ function pasteSettleMs(method: PasteMethod): number {
   return table[process.platform] ?? 500;
 }
 
+/**
+ * Send the paste keystroke with the backend for this platform. Only the text
+ * paste logs that the focused Linux app is a terminal.
+ */
+async function injectPaste(logTerminal: boolean): Promise<PasteMethod> {
+  switch (process.platform) {
+    case "darwin":
+      return pasteMac();
+    case "win32":
+      return pasteWindows();
+    default: {
+      const isTerminal = await isLinuxTerminalFocused();
+      if (isTerminal && logTerminal) {
+        log.debug("focused app is a terminal, using Ctrl+Shift+V");
+      }
+      return pasteLinux(isTerminal);
+    }
+  }
+}
+
 const RESTORABLE_TEXT_FORMATS = new Set([
   "text/plain",
   "text/html",
@@ -478,7 +505,7 @@ function snapshotClipboard(): ClipboardSnapshot {
       image: hasImage ? clipboard.readImage() : undefined,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Failed to snapshot clipboard: ${message}`);
     return { restorable: false };
   }
@@ -502,7 +529,7 @@ function restoreClipboard(
     }
     clipboard.write(data);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     log.warn(`Failed to restore clipboard: ${message}`);
   }
 }
@@ -534,12 +561,7 @@ export function copySelectionFromFocusedApp(
   options?: CopySelectionOptions,
 ): Promise<string | null> {
   const run = (): Promise<string | null> => doCopySelection(options);
-  const result = pasteChain.then(run, run);
-  pasteChain = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
+  return pasteQueue(run);
 }
 
 /**
@@ -654,7 +676,7 @@ async function doCopySelection(
   return selection?.trim() ? selection : null;
 }
 
-let pasteChain: Promise<void> = Promise.resolve();
+const pasteQueue = createSerialQueue();
 
 export interface PasteOptions {
   /**
@@ -673,12 +695,7 @@ export function pasteIntoFocusedApp(
 ): Promise<void> {
   const run = (): Promise<void> =>
     doPasteIntoFocusedApp(text, beforePaste, options);
-  const result = pasteChain.then(run, run);
-  pasteChain = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
+  return pasteQueue(run);
 }
 
 async function doPasteIntoFocusedApp(
@@ -700,23 +717,7 @@ async function doPasteIntoFocusedApp(
   try {
     await beforePaste?.();
 
-    let method: PasteMethod = "legacy";
-    switch (process.platform) {
-      case "darwin":
-        method = await pasteMac();
-        break;
-      case "win32":
-        method = await pasteWindows();
-        break;
-      default: {
-        const isTerminal = await isLinuxTerminalFocused();
-        if (isTerminal) {
-          log.debug("focused app is a terminal, using Ctrl+Shift+V");
-        }
-        method = await pasteLinux(isTerminal);
-        break;
-      }
-    }
+    const method = await injectPaste(true);
     pasted = true;
 
     await new Promise((r) => setTimeout(r, pasteSettleMs(method)));
@@ -737,28 +738,10 @@ async function doPasteIntoFocusedApp(
  */
 export function pasteClipboardIntoFocusedApp(): Promise<void> {
   const run = (): Promise<void> => doPasteClipboard();
-  const result = pasteChain.then(run, run);
-  pasteChain = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
+  return pasteQueue(run);
 }
 
 async function doPasteClipboard(): Promise<void> {
-  let method: PasteMethod = "legacy";
-  switch (process.platform) {
-    case "darwin":
-      method = await pasteMac();
-      break;
-    case "win32":
-      method = await pasteWindows();
-      break;
-    default: {
-      const isTerminal = await isLinuxTerminalFocused();
-      method = await pasteLinux(isTerminal);
-      break;
-    }
-  }
+  const method = await injectPaste(false);
   await new Promise((r) => setTimeout(r, pasteSettleMs(method)));
 }

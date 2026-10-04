@@ -7,22 +7,24 @@ import { describe, expect, it } from "vitest";
 // ---------------------------------------------------------------------------
 // Preload channel-drift guard (C3′, specs/lean-audit-2026-09.md §3 T1-6).
 //
-// `src/preload/index.ts` (the runtime bridge) and `src/preload/index.d.ts`
-// (the hand-written renderer-facing declaration) must be kept in sync by
-// hand — a manual sync that has already drifted once (the removed mic
-// listener's channel lived on in both long past its last consumer, and a
-// stale main/index.ts comment referenced the deleted `beforeOutput` hook).
+// The renderer type `Window.api` comes from the `api` object in
+// `src/preload/index.ts` (see `OpenstyleApi`). The type checker keeps the two
+// in sync. This guard covers the part that types cannot see: the IPC channel
+// names. A removed mic listener once stayed in the preload long after its
+// last consumer, and a stale comment in main/index.ts named a deleted hook.
 //
-// This test parses both files with the TypeScript compiler API and asserts:
+// This test parses the source files with the TypeScript compiler API and
+// asserts:
 //
-//   1. every `api` property in index.ts that subscribes via
-//      `ipcRenderer.on("<channel>")` is declared in index.d.ts;
-//   2. every `on*` member declared in index.d.ts's `api` has a matching
-//      subscription in index.ts (no declarations for dead channels);
-//   3. every `webContents.send("<channel>")` (or WebContents-shaped
+//   1. every `api` member that subscribes forwards exactly one channel;
+//   2. every `webContents.send("<channel>")` (or WebContents-shaped
 //      `.send(...)`) anywhere in src/main has a preload subscription
-//      forwarding it — the exact class of drift the mic-listener removal
-//      exercised.
+//      forwarding it. This is the class of drift the mic-listener removal
+//      exercised;
+//   3. every `ipcRenderer.invoke("<channel>")` and `ipcRenderer.send(...)`
+//      in the preload has an `ipcMain.handle`, `ipcMain.on` or
+//      `ipcMain.once` handler in src/main. A missing handler fails only at
+//      runtime, with "No handler registered".
 //
 // This is a vitest file that lives beside the Playwright e2e suites but must
 // not run under Playwright (no Electron launch); playwright.config.ts ignores
@@ -31,7 +33,6 @@ import { describe, expect, it } from "vitest";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 const PRELOAD_TS = join(TESTS_DIR, "../src/preload/index.ts");
-const PRELOAD_DTS = join(TESTS_DIR, "../src/preload/index.d.ts");
 const MAIN_DIR = join(TESTS_DIR, "../src/main");
 
 function parse(file: string): ts.SourceFile {
@@ -44,19 +45,26 @@ function parse(file: string): ts.SourceFile {
   );
 }
 
-/** All `ipcRenderer.on("<channel>")` string literals under a node. */
+/**
+ * All channel string literals under a node. A channel comes from either
+ * `ipcRenderer.on("<channel>")` or `listen("<channel>")` (the helper in
+ * preload/index.ts, with or without type arguments).
+ */
 function ipcOnChannels(source: ts.SourceFile, root: ts.Node): string[] {
   const channels: string[] = [];
   (function walk(node: ts.Node): void {
     if (
       ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === "on" &&
-      node.expression.expression.getText(source) === "ipcRenderer" &&
       node.arguments.length > 0 &&
       ts.isStringLiteralLike(node.arguments[0])
     ) {
-      channels.push(node.arguments[0].text);
+      const callee = node.expression;
+      const isOn =
+        ts.isPropertyAccessExpression(callee) &&
+        callee.name.text === "on" &&
+        callee.expression.getText(source) === "ipcRenderer";
+      const isListen = ts.isIdentifier(callee) && callee.text === "listen";
+      if (isOn || isListen) channels.push(node.arguments[0].text);
     }
     ts.forEachChild(node, walk);
   })(root);
@@ -102,57 +110,28 @@ function preloadSubscriptions(): Subscription[] {
   return subs;
 }
 
-/** The `api: { ... }` member's type literal from the Window interface. */
-function declaredApiMembers(source: ts.SourceFile): string[] {
-  const members: string[] = [];
-  (function walk(node: ts.Node): void {
-    if (ts.isInterfaceDeclaration(node) && node.name.text === "Window") {
-      for (const member of node.members) {
-        if (
-          ts.isPropertySignature(member) &&
-          ts.isIdentifier(member.name) &&
-          member.name.text === "api" &&
-          member.type &&
-          ts.isTypeLiteralNode(member.type)
-        ) {
-          for (const m of member.type.members) {
-            if (
-              (ts.isPropertySignature(m) || ts.isMethodSignature(m)) &&
-              ts.isIdentifier(m.name)
-            ) {
-              members.push(m.name.text);
-            }
-          }
-        }
-      }
-    }
-    ts.forEachChild(node, walk);
-  })(source);
-  if (members.length === 0) {
-    throw new Error(
-      "Window.api member not found in src/preload/index.d.ts — did the declaration shape change?",
-    );
-  }
-  return members;
-}
-
 /**
- * Every `.send("<channel>", ...)` call site in src/main, keyed by channel
- * with file provenance. Receivers are WebContents-shaped
- * (`win.webContents.send`, `event.sender.send`, a stored `target.send`) —
- * if a future non-IPC `.send` with a string first argument appears here as
- * a false positive, add it to IGNORED_MAIN_SENDS with a justification.
+ * Every `.send("<channel>", ...)` and `broadcastToWindows("<channel>", ...)`
+ * call site in src/main and its subfolders, keyed by channel with file
+ * provenance. Receivers are WebContents-shaped (`win.webContents.send`,
+ * `event.sender.send`, a stored `target.send`).
+ * A future non-IPC `.send` with a string first argument can appear here as
+ * a false positive. In that case, add it to IGNORED_MAIN_SENDS and give a
+ * reason.
  */
 function mainSendChannels(): Map<string, string[]> {
   const IGNORED_MAIN_SENDS: ReadonlySet<string> = new Set([]);
   const sends = new Map<string, string[]>();
-  for (const file of readdirSync(MAIN_DIR).filter((f) => f.endsWith(".ts"))) {
+  const files = readdirSync(MAIN_DIR, { recursive: true }) as string[];
+  for (const file of files.filter((f) => f.endsWith(".ts"))) {
     const source = parse(join(MAIN_DIR, file));
     (function walk(node: ts.Node): void {
       if (
         ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === "send" &&
+        ((ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === "send") ||
+          (ts.isIdentifier(node.expression) &&
+            node.expression.text === "broadcastToWindows")) &&
         node.arguments.length > 0 &&
         ts.isStringLiteralLike(node.arguments[0])
       ) {
@@ -169,32 +148,35 @@ function mainSendChannels(): Map<string, string[]> {
   return sends;
 }
 
+/**
+ * String-literal first arguments of `<receiver>.<method>(...)` calls in one
+ * file, for the given method names.
+ */
+function receiverChannels(
+  source: ts.SourceFile,
+  receiver: string,
+  methods: ReadonlySet<string>,
+): string[] {
+  const channels: string[] = [];
+  (function walk(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node) &&
+      node.arguments.length > 0 &&
+      ts.isStringLiteralLike(node.arguments[0]) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      methods.has(node.expression.name.text) &&
+      node.expression.expression.getText(source) === receiver
+    ) {
+      channels.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, walk);
+  })(source);
+  return channels;
+}
+
 describe("preload channel drift guard", () => {
   const subscriptions = preloadSubscriptions();
-  const subscribedNames = new Set(subscriptions.map((s) => s.apiName));
   const subscribedChannels = new Set(subscriptions.flatMap((s) => s.channels));
-  const declared = declaredApiMembers(parse(PRELOAD_DTS));
-  const declaredOnNames = new Set(declared.filter((n) => n.startsWith("on")));
-
-  it("every preload subscription is declared in index.d.ts", () => {
-    const undeclared = subscriptions
-      .map((s) => s.apiName)
-      .filter((name) => !declared.includes(name));
-    expect(
-      undeclared,
-      "api members in preload/index.ts that subscribe but have no declaration in preload/index.d.ts",
-    ).toEqual([]);
-  });
-
-  it("every declared on* member has a live subscription in index.ts", () => {
-    const dead = [...declaredOnNames].filter(
-      (name) => !subscribedNames.has(name),
-    );
-    expect(
-      dead,
-      "on* members declared in preload/index.d.ts with no ipcRenderer.on subscription in preload/index.ts",
-    ).toEqual([]);
-  });
 
   it("every subscription forwards exactly one channel", () => {
     const multi = subscriptions.filter((s) => s.channels.length !== 1);
@@ -211,6 +193,31 @@ describe("preload channel drift guard", () => {
     expect(
       orphaned,
       "channels sent from src/main that no preload api member forwards to the renderer",
+    ).toEqual([]);
+  });
+
+  it("every preload invoke/send channel has an ipcMain handler in src/main", () => {
+    // Add a channel here, with a justification, if main handles it outside src/main.
+    const IGNORED_PRELOAD_CHANNELS: ReadonlySet<string> = new Set([]);
+    const handled = new Set<string>();
+    const mainFiles = readdirSync(MAIN_DIR, { recursive: true }) as string[];
+    for (const file of mainFiles.filter((f) => f.endsWith(".ts"))) {
+      for (const channel of receiverChannels(
+        parse(join(MAIN_DIR, file)),
+        "ipcMain",
+        new Set(["handle", "on", "once"]),
+      )) {
+        handled.add(channel);
+      }
+    }
+    const missing = receiverChannels(
+      parse(PRELOAD_TS),
+      "ipcRenderer",
+      new Set(["invoke", "send"]),
+    ).filter((c) => !handled.has(c) && !IGNORED_PRELOAD_CHANNELS.has(c));
+    expect(
+      [...new Set(missing)],
+      "preload invoke/send channels that no ipcMain handler in src/main handles",
     ).toEqual([]);
   });
 });
