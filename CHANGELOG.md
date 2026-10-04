@@ -1,4 +1,38 @@
 # Changelog
+
+## 2.9.0
+
+### Bug Fixes 🐛
+
+- Fix a stream that fails at start. The app now shows the real error from the provider. Before, it showed an internal "ReferenceError" message.
+- Fix upstream stream errors during dictation. A failed connection or reconnect now sends an error message to the app.
+- Fix streamed audio chunks that could arrive out of order.
+- Fix Remix. The app now checks the model that the call really uses before it starts.
+- Fix preset `top_p` values. They now reach cloud providers.
+- Fix the meeting summary. It now stops at the job deadline.
+- Fix a speaker merge that resolves to the same speaker. The server now rejects it.
+- Fix the selection in the Meetings list after you delete a meeting. The app now resets it.
+- Fix the sound setting. The recording pill now receives changes to it.
+- Fix the Home and End keys in the tone cards. They now select and focus the first or last card.
+- Fix macOS hotkeys that use more than one key. The app cut the first two characters of the key name on key release, so these hotkeys never released.
+- Fix the new preset editor. It now keeps your draft and re-seeds only when the value changes.
+- Fix the concurrency of the LLM lane. It now follows the provider "local" setting and not the host name. A local engine on a VPN or MagicDNS host keeps one slot.
+- Fix quit. The Remix and language key listeners now stop when the app quits.
+- Fix shutdown on SIGINT and SIGTERM. The server now closes the database, and the app stops its child servers.
+- Fix the packaged app. A stray root file no longer goes into it.
+- Fix extra history stats requests. The History page no longer fetches stats on each keystroke.
+
+### Internal 🔧
+
+- Split large pages (Meetings, History, Onboarding, Pill) and the main-process IPC handlers into smaller modules and hooks.
+- Share more code between the Remix lanes, the meeting jobs (one job registry), the speaker labels and the stream protocol types.
+- Infer API response types from the typed client. Derive `Window.api` from the preload object.
+- Remove dead code: unused exports, CSS rules, locale keys, dependencies, the mic listener sources and the React Native skill pack.
+- Add type checks for the test files, a check that preload channels match the main handlers, and test helpers (WAV builder, versioned database).
+- Add a shared tsconfig base, a pnpm catalog and a pinned `@types/node`. Pin Node 22.
+- Run the validations, stt and Electron unit tests in CI. Share the CI setup steps in one composite action.
+- Rewrite code comments in simplified technical English.
+
 ## 2.8.1
 
 ### Bug Fixes 🐛
