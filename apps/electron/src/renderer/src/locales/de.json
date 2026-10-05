@@ -127,7 +127,7 @@
     },
     "application": {
       "autoUpdate": "Automatische Updates",
-      "autoUpdateDesc": "Prüft im Hintergrund auf neue Versionen und benachrichtigt Sie, sobald eine verfügbar ist. Die Installation erfolgt manuell über die Releases-Seite.",
+      "autoUpdateDesc": "Prüft im Hintergrund auf neue Versionen. Unter macOS wird das Update selbst heruntergeladen und wartet auf Ihren Neustart.",
       "launchAtStartup": "Beim Start ausführen",
       "launchAtStartupDesc": "Openstyle automatisch starten, wenn Sie sich an Ihrem Computer anmelden.",
       "showOnLaunch": "Dashboard beim Start anzeigen",

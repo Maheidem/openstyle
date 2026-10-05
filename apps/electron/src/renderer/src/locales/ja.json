@@ -127,7 +127,7 @@
     },
     "application": {
       "autoUpdate": "自動アップデート",
-      "autoUpdateDesc": "バックグラウンドで新しいバージョンを確認し、利用可能になったら通知します。インストールはリリースページから手動で行います。",
+      "autoUpdateDesc": "バックグラウンドで新しいバージョンを確認します。macOSでは、アップデートが自動でダウンロードされ、再起動を待ちます。",
       "launchAtStartup": "システム起動時に起動",
       "launchAtStartupDesc": "コンピューターにログインした際、自動的に Openstyle を起動します。",
       "showOnLaunch": "起動時にダッシュボードを表示",
