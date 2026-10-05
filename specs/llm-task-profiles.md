@@ -1,5 +1,7 @@
 # LLM Task Profiles & Parameter Presets — Implementation Spec
 
+> **Note (2026-10).** The `omlx` and `local-llm` providers, the `local_llm_url` and `local_llm_api_key` settings, and the `/settings/local-llm/test` route were replaced by the `server` provider and the `own_servers` table (`specs/model-picker-groups.md`). The old names below are historical.
+
 Grounded in the codebase as of `main` @ 2026-08-27 (HEAD `5abf094`, the
 Summarize truncation fix — see §3.3, this spec absorbs it rather than
 fighting it). Companion reading: [`meeting-diarization.md`](meeting-diarization.md)
