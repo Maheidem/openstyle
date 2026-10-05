@@ -14,6 +14,7 @@ export type CustomModelCheck = ApiRes<
 export interface CustomModelFailure {
   code: string;
   modelType?: string;
+  missing?: string[];
   needBytes?: number;
   freeBytes?: number;
   totalBytes?: number;
@@ -36,6 +37,7 @@ const KNOWN_FAILURE_CODES = new Set([
   "not_transcriber",
   "remote_code",
   "no_weights",
+  "missing_files",
   "too_large",
   "no_disk",
   "already_added",
@@ -56,6 +58,7 @@ export function customModelFailureText(f: CustomModelFailure): {
     key: `models.custom.errors.${code}`,
     values: {
       type: f.modelType ?? "?",
+      files: (f.missing ?? []).join(", "),
       need: toGb(f.needBytes),
       free: toGb(f.freeBytes),
       size: toGb(f.totalBytes),

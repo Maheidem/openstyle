@@ -19,6 +19,7 @@ const CODES = [
   "not_transcriber",
   "remote_code",
   "no_weights",
+  "missing_files",
   "too_large",
   "no_disk",
   "already_added",
@@ -41,12 +42,14 @@ describe("customModelFailureText", () => {
     const { values } = customModelFailureText({
       code: "no_disk",
       modelType: "kokoro",
+      missing: ["preprocessor_config.json", "tokenizer.json"],
       needBytes: 2_500_000_000,
       freeBytes: 1_200_000_000,
       totalBytes: 9_400_000_000,
     });
     expect(values).toEqual({
       type: "kokoro",
+      files: "preprocessor_config.json, tokenizer.json",
       need: "2.5",
       free: "1.2",
       size: "9.4",

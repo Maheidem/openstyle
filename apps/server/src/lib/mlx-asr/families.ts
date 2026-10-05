@@ -18,18 +18,76 @@ export const FAMILIES_FOR_WORKER_SPEC =
   "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;bundle=onedir";
 
 /**
+ * A file that a family needs next to its weights. A plain name must be in the
+ * repo. A list means that any one of its names is enough.
+ */
+type RequiredFile = string | readonly string[];
+
+interface SttFamilyDef {
+  family: string;
+  displayName: string;
+  /**
+   * Top-level files that the load hook of the family reads
+   * (`post_load_hook` in mlx-audio 0.5.7, checked on 2026-10-04). A repo that
+   * lacks one loads without error, or fails at the first transcription. The
+   * files that `config.json` replaces are not listed.
+   */
+  requiredFiles: readonly RequiredFile[];
+}
+
+/**
  * v1 allowlist: worker key to the curated family spelling. A family enters
  * this list only after its smoke test passes in the frozen worker.
  */
-export const SUPPORTED_STT_FAMILIES: Record<
-  string,
-  { family: string; displayName: string }
-> = {
-  qwen3_asr: { family: "qwen3-asr", displayName: "Qwen3-ASR" },
-  sensevoice: { family: "sensevoice", displayName: "SenseVoice" },
-  parakeet: { family: "parakeet", displayName: "Parakeet" },
-  whisper: { family: "whisper", displayName: "Whisper" },
+export const SUPPORTED_STT_FAMILIES: Record<string, SttFamilyDef> = {
+  // `AutoTokenizer` and `WhisperFeatureExtractor` load in the hook. A missing
+  // file fails the load, or leaves the text as chat-template tokens only
+  // (tested with Qwen3-ASR-0.6B-5bit). The curated repos have no tokenizer.json.
+  qwen3_asr: {
+    family: "qwen3-asr",
+    displayName: "Qwen3-ASR",
+    requiredFiles: [
+      "preprocessor_config.json",
+      "tokenizer_config.json",
+      "vocab.json",
+      "merges.txt",
+    ],
+  },
+  // Without a tokenizer file the text is a list of token ids.
+  sensevoice: {
+    family: "sensevoice",
+    displayName: "SenseVoice",
+    requiredFiles: [["chn_jpn_yue_eng_ko_spectok.bpe.model", "tokens.json"]],
+  },
+  // The vocabulary is in `config.json`.
+  parakeet: { family: "parakeet", displayName: "Parakeet", requiredFiles: [] },
+  // The hook calls `WhisperProcessor.from_pretrained` inside a `try`. When it
+  // fails, the load works and every transcription fails with "Processor not
+  // found". Tested with whisper-tiny-asr-fp16: with preprocessor_config.json
+  // and no tokenizer.json, the transcription fails or gives wrong text, even
+  // with vocab.json and merges.txt. Repos in the mlx-whisper layout (config.json
+  // and weights only) have neither file.
+  whisper: {
+    family: "whisper",
+    displayName: "Whisper",
+    requiredFiles: ["preprocessor_config.json", "tokenizer.json"],
+  },
 };
+
+/**
+ * The required files of a family that the repo does not have. An empty list
+ * means the repo is complete. A group of alternatives shows as `a or b`.
+ */
+export function missingFamilyFiles(
+  def: SttFamilyDef,
+  paths: readonly string[],
+): string[] {
+  const present = new Set(paths);
+  return def.requiredFiles.flatMap((need) => {
+    const names = typeof need === "string" ? [need] : need;
+    return names.some((name) => present.has(name)) ? [] : [names.join(" or ")];
+  });
+}
 
 /** Families that load but do not transcribe speech. Checked before the allowlist. */
 const NOT_TRANSCRIBER_FAMILIES = new Set(["moss_music", "phonon"]);

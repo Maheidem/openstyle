@@ -684,6 +684,7 @@
         "not_transcriber": "This model does not turn speech into text.",
         "no_config": "This repo has no config.json. Openstyle cannot tell what kind of model it is.",
         "no_weights": "This repo has no weight file (.safetensors or .npz) that the speech engine can load.",
+        "missing_files": "This repo lacks files that the speech engine needs to load the model: {{files}}.",
         "remote_code": "This model includes its own code. Openstyle does not run code from model repos.",
         "invalid_input": "Enter a Hugging Face link or a name like org/model.",
         "too_large": "This model is {{size}} GB. Openstyle accepts models up to 8 GB.",
