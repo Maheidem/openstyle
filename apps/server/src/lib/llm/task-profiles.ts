@@ -26,15 +26,13 @@ import {
   meetingSummaryTimeoutMs,
   parseCleanupSampling,
   parseLlmTaskAssignments,
+  parseServerModelId,
   SETTINGS_KEYS,
 } from "@openstyle/validations";
 import { getApiKey } from "../api-keys.js";
 import { readSetting } from "../db.js";
-import {
-  getLlmProvider,
-  isLocalProvider,
-  LOCAL_LLM_URL_SETTING,
-} from "./registry.js";
+import { getOwnServer } from "../own-servers.js";
+import { getLlmProvider, isLocalProvider } from "./registry.js";
 
 const log = createAppLogger("llm-task-profiles");
 
@@ -288,9 +286,10 @@ function resolveEffectiveModel(
   }
 
   if (isLocalProvider(override.provider)) {
-    if (!readSetting(LOCAL_LLM_URL_SETTING)) {
+    const target = parseServerModelId(override.model_id);
+    if (!target || !getOwnServer(target.serverId)) {
       log.warn(
-        `resolveTaskCall("${taskId}"): model override's local endpoint is no longer configured, falling back to the app default`,
+        `resolveTaskCall("${taskId}"): model override's server is no longer in the list, falling back to the app default`,
       );
       return { provider: fallback.provider, modelId: fallback.model_id };
     }

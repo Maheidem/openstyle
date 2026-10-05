@@ -2,9 +2,10 @@ import { Eyebrow } from "@renderer/components/page-chrome";
 import { Button } from "@renderer/components/ui/button";
 import { Switch } from "@renderer/components/ui/switch";
 import type { ConfiguredModel } from "@renderer/lib/models";
-import { displayProviderName } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
+import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { providerLabel, type ServerView } from "./server-roles";
 
 // ---------------------------------------------------------------------------
 // PairCard — the current model pair: Voice (required) + cleanup model.
@@ -14,6 +15,8 @@ import { useTranslation } from "react-i18next";
 
 export function PairCard({
   voice,
+  voiceCannotTranscribe,
+  servers,
   llm,
   llmCleanup,
   onToggleCleanup,
@@ -23,6 +26,9 @@ export function PairCard({
   onConfigureSampling,
 }: {
   voice: ConfiguredModel | undefined;
+  /** The default voice model is on an own server and cannot transcribe. */
+  voiceCannotTranscribe: boolean;
+  servers: ServerView[];
   llm: ConfiguredModel | undefined;
   llmCleanup: boolean;
   onToggleCleanup: (next: boolean) => void;
@@ -40,7 +46,12 @@ export function PairCard({
       <PairSide
         kicker={t("models.pair.transcriptionKicker")}
         modelName={voice?.model_name}
-        providerName={voice ? displayProviderName(voice.provider) : undefined}
+        providerName={voice ? providerLabel(voice, servers, t) : undefined}
+        warning={
+          voiceCannotTranscribe
+            ? t("models.servers.cannotTranscribe")
+            : undefined
+        }
         cta={t("models.pair.changeVoiceShort")}
         ctaAriaLabel={t("models.pair.changeVoice")}
         noneLabel={t("models.pair.noneSelected")}
@@ -59,7 +70,7 @@ export function PairCard({
           kicker={t("models.pair.cleanupKicker")}
           modelName={llmCleanup ? llm?.model_name : undefined}
           providerName={
-            llmCleanup && llm ? displayProviderName(llm.provider) : undefined
+            llmCleanup && llm ? providerLabel(llm, servers, t) : undefined
           }
           cta={llm ? t("models.pair.change") : t("models.pair.pickModel")}
           noneLabel={t("models.pair.noneSelected")}
@@ -85,6 +96,7 @@ function PairSide({
   kicker,
   modelName,
   providerName,
+  warning,
   cta,
   ctaAriaLabel,
   noneLabel,
@@ -98,6 +110,8 @@ function PairSide({
   kicker: string;
   modelName: string | undefined;
   providerName: string | undefined;
+  /** A problem with the selected model, shown under the provider line. */
+  warning?: string;
   cta: string;
   ctaAriaLabel?: string;
   noneLabel: string;
@@ -149,6 +163,12 @@ function PairSide({
             <span className="text-foreground/80 font-medium">
               {providerName}
             </span>
+          </div>
+        )}
+        {warning && (
+          <div className="text-destructive mt-2 flex items-start gap-1.5 text-[12.5px] leading-snug">
+            <AlertTriangle className="mt-px size-3.5 shrink-0" />
+            {warning}
           </div>
         )}
       </div>

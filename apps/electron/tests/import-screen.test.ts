@@ -97,31 +97,50 @@ async function getHistoryCount(): Promise<number> {
   return json.total;
 }
 
+/** Add an own server and return its id. A 409 answers with the existing id. */
+async function addServer(url: string): Promise<string | null> {
+  const res = await fetch(`${apiBase()}/api/servers`, {
+    method: "POST",
+    headers: { ...apiHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok && res.status !== 409) return null;
+  const body = (await res.json()) as { id?: string };
+  return body.id ?? null;
+}
+
 async function hasDefaultVoiceModel(): Promise<boolean> {
   const res = await fetch(`${apiBase()}/api/models/configured`, {
     headers: apiHeaders(),
   });
   expect(res.ok).toBe(true);
   const rows = (await res.json()) as {
+    model_id: string;
     type: string;
     is_default: number;
   }[];
-  const hasRow = rows.some((r) => r.type === "voice" && r.is_default === 1);
-  if (!hasRow) return false;
+  const row = rows.find((r) => r.type === "voice" && r.is_default === 1);
+  if (!row) return false;
   // The DB row alone doesn't mean the model is actually usable: POST
   // /api/models/configured inserts unconditionally with no health check
   // (apps/server/src/routes/models.ts). On CI there's no oMLX server, so
-  // the row exists but every request against it will fail — probe the
-  // configured oMLX base URL's /v1/models the same way settings.ts and
-  // models.ts do, with a short timeout so an unreachable server fails fast
-  // instead of hanging the test.
-  return isOmlxReachable();
+  // the row exists but every request against it will fail. GET /api/servers
+  // probes every server live, so its `reachable` flag is the real answer.
+  const serverId = row.model_id.split("/")[1];
+  const serversRes = await fetch(`${apiBase()}/api/servers`, {
+    headers: apiHeaders(),
+  });
+  if (!serversRes.ok) return false;
+  const servers = (await serversRes.json()) as {
+    id: string;
+    reachable: boolean;
+  }[];
+  return servers.some((s) => s.id === serverId && s.reachable);
 }
 
 /**
- * Probes a raw oMLX base URL's /v1/models the same way settings.ts and
- * models.ts do, with a short timeout so an unreachable server fails fast
- * instead of hanging the caller.
+ * Probes a raw oMLX base URL's /v1/models with a short timeout, so an
+ * unreachable server fails fast instead of hanging the caller.
  */
 async function probeOmlxReachable(baseUrl: string): Promise<boolean> {
   const base = baseUrl.replace(/\/+$/, "");
@@ -130,20 +149,6 @@ async function probeOmlxReachable(baseUrl: string): Promise<boolean> {
       signal: AbortSignal.timeout(2_000),
     });
     return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function isOmlxReachable(): Promise<boolean> {
-  try {
-    const settingsRes = await fetch(`${apiBase()}/api/settings/omlx_base_url`, {
-      headers: apiHeaders(),
-    });
-    if (!settingsRes.ok) return false;
-    const { value } = (await settingsRes.json()) as { value?: string };
-    if (!value) return false;
-    return await probeOmlxReachable(value);
   } catch {
     return false;
   }
@@ -219,7 +224,7 @@ test.beforeAll(async () => {
     }
 
     // Probe oMLX reachability FIRST, before seeding anything. Seeding
-    // omlx_base_url + a default voice model unconditionally (as this used
+    // a server + a default voice model unconditionally (as this used
     // to do) leaves a real, "configured" model row in the DB even when the
     // oMLX server is unreachable (e.g. in CI) — the app then attempts a
     // real transcription request and surfaces a "transcription failed /
@@ -242,32 +247,28 @@ test.beforeAll(async () => {
         "import-screen beforeAll: oMLX reachable — seeding default voice model (success branch)",
       );
       try {
-        const urlRes = await fetch(`${apiBase()}/api/settings/omlx_base_url`, {
-          method: "PUT",
-          headers: { ...apiHeaders(), "Content-Type": "application/json" },
-          body: JSON.stringify({ value: omlxBaseUrl }),
-        });
-        if (!urlRes.ok) {
+        const serverId = await addServer(omlxBaseUrl);
+        if (!serverId) {
           console.warn(
-            `import-screen: oMLX base URL seeding failed (status ${urlRes.status}) — tests will exercise the no-model branch`,
+            "import-screen: oMLX server seeding failed — tests will exercise the no-model branch",
           );
-        }
-
-        const res = await fetch(`${apiBase()}/api/models/configured`, {
-          method: "POST",
-          headers: { ...apiHeaders(), "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: "omlx",
-            model_id: "omlx/Qwen3-ASR",
-            model_name: "Qwen3-ASR",
-            type: "voice",
-            is_default: true,
-          }),
-        });
-        if (!res.ok) {
-          console.warn(
-            `import-screen: voice model seeding failed (status ${res.status}) — tests will exercise the no-model branch`,
-          );
+        } else {
+          const res = await fetch(`${apiBase()}/api/models/configured`, {
+            method: "POST",
+            headers: { ...apiHeaders(), "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provider: "server",
+              model_id: `server/${serverId}/Qwen3-ASR`,
+              model_name: "Qwen3-ASR",
+              type: "voice",
+              is_default: true,
+            }),
+          });
+          if (!res.ok) {
+            console.warn(
+              `import-screen: voice model seeding failed (status ${res.status}) — tests will exercise the no-model branch`,
+            );
+          }
         }
       } catch (seedError) {
         console.warn(
@@ -455,8 +456,8 @@ test("corrupt file reports a decode error (ts_307c89e8)", async () => {
 // UX-04 (specs/lean-audit-2026-09.md §3 T1-2): cancel + completion. Both
 // drive the STT backend through a local HTTP server this file owns, so they
 // are deterministic in CI (no oMLX server, no `say`) and don't depend on the
-// beforeAll oMLX probe outcome: whatever default voice model exists gets its
-// omlx_base_url re-pointed at the owned server.
+// beforeAll oMLX probe outcome: the owned server is added as an own server and
+// one of its models becomes the default voice model.
 // ---------------------------------------------------------------------------
 
 interface OwnedSttServer {
@@ -474,6 +475,20 @@ async function startOwnedSttServer(
 ): Promise<OwnedSttServer> {
   const sockets = new Set<Socket>();
   const server: Server = createServer((req, res) => {
+    // Answer the probe of POST /api/servers (the model list) at once. Every
+    // other request goes to `respond`.
+    if (req.method === "GET" && req.url?.startsWith("/v1/models")) {
+      const isStatus = req.url.startsWith("/v1/models/status");
+      res.writeHead(isStatus ? 404 : 200, {
+        "Content-Type": "application/json",
+      });
+      res.end(
+        isStatus
+          ? "{}"
+          : JSON.stringify({ data: [{ id: "owned-test-model" }] }),
+      );
+      return;
+    }
     // Consume the (possibly large) multipart body so the request settles.
     req.resume();
     req.on("end", () => respond(req, res));
@@ -497,27 +512,18 @@ async function startOwnedSttServer(
   };
 }
 
-/** Point the default voice model's oMLX base URL at `base`, seeding a
- * default oMLX model row first when this environment has none (CI's
- * no-oMLX branch of the beforeAll probe). */
-async function pointDefaultVoiceModelAt(
-  base: string,
-  seedModel: boolean,
-): Promise<void> {
-  const putBase = await fetch(`${apiBase()}/api/settings/omlx_base_url`, {
-    method: "PUT",
-    headers: { ...apiHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify({ value: base }),
-  });
-  expect(putBase.ok, `PUT omlx_base_url -> ${putBase.status}`).toBe(true);
-  if (!seedModel) return;
+/** Add `base` as an own server, then make a model of it the default voice
+ * model. The owned server answers the probe of POST /api/servers. */
+async function pointDefaultVoiceModelAt(base: string): Promise<void> {
+  const serverId = await addServer(base);
+  expect(serverId, `POST /api/servers ${base}`).not.toBeNull();
   const res = await fetch(`${apiBase()}/api/models/configured`, {
     method: "POST",
     headers: { ...apiHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({
-      provider: "omlx",
-      model_id: "omlx/owned-test-model",
-      model_name: "oMLX owned-test model",
+      provider: "server",
+      model_id: `server/${serverId}/owned-test-model`,
+      model_name: "Owned test model",
       type: "voice",
       is_default: true,
     }),
@@ -536,10 +542,7 @@ test("cancelling an in-flight import returns to the dropzone (UX-04)", async () 
     parked.push(res);
   });
   try {
-    await pointDefaultVoiceModelAt(
-      `http://127.0.0.1:${park.port}`,
-      !voiceModelConfigured,
-    );
+    await pointDefaultVoiceModelAt(`http://127.0.0.1:${park.port}`);
 
     const wavPath = join(userDataDir, "cancel-import.wav");
     writeSilentWav(wavPath);
@@ -593,10 +596,7 @@ test("a completed import raises the completion notification (UX-04)", async () =
     );
   });
   try {
-    await pointDefaultVoiceModelAt(
-      `http://127.0.0.1:${mock.port}`,
-      !voiceModelConfigured,
-    );
+    await pointDefaultVoiceModelAt(`http://127.0.0.1:${mock.port}`);
 
     const wavPath = join(userDataDir, "notify-import.wav");
     writeSilentWav(wavPath);

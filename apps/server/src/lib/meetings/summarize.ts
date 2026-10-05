@@ -10,7 +10,7 @@
  *
  * Model resolution goes through the existing LLM registry (`providers.ts` →
  * `llm/registry.ts`), so it works with every configured provider including
- * the `local-llm` BYO OpenAI-compatible endpoint. Calls run through the
+ * an own OpenAI-compatible server (provider `server`). Calls run through the
  * prompt-agnostic `postProcess` wrapper from `@openstyle/stt` with an
  * explicit `maxOutputTokens` — the wrapper's own token heuristic sizes output
  * off input length, which is wrong for summaries.

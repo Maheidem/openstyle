@@ -35,6 +35,7 @@ export function PickerModalHeader({
 export function PickerOption({
   icon: Icon,
   title,
+  description,
   hint,
   active,
   onClick,
@@ -42,6 +43,8 @@ export function PickerOption({
 }: {
   icon: LucideIcon;
   title: string;
+  /** One-line subtitle under the title. */
+  description: string;
   hint: string;
   active: boolean;
   onClick: () => void;
@@ -62,6 +65,9 @@ export function PickerOption({
       <div className="min-w-0 flex-1">
         <span className="text-foreground text-[13px] font-medium">{title}</span>
         <span className="text-muted-foreground text-[12px]"> · {hint}</span>
+        <p className="text-muted-foreground mt-0.5 text-[12px] leading-snug">
+          {description}
+        </p>
       </div>
       {active && <Check className="text-primary size-4 shrink-0" />}
       <ChevronRight className="text-muted-foreground size-4 shrink-0" />

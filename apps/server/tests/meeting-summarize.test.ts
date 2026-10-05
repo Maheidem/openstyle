@@ -259,8 +259,8 @@ describe("summarizeMeeting", () => {
     const llm = fakeLlm(() => ({
       inputTokens: 100,
       outputTokens: 10,
-      provider: "local-llm",
-      model: "local-llm/test-model",
+      provider: "server",
+      model: "server/srv_00000000/test-model",
       pricing: { input: 0.000001, output: 0.000002 },
     }));
     const result = await summarizeMeeting(longTranscript(), {
@@ -272,8 +272,8 @@ describe("summarizeMeeting", () => {
     expect(calls).toBeGreaterThanOrEqual(3);
     expect(result.inputTokens).toBe(100 * calls);
     expect(result.outputTokens).toBe(10 * calls);
-    expect(result.llmProvider).toBe("local-llm");
-    expect(result.llmModel).toBe("local-llm/test-model");
+    expect(result.llmProvider).toBe("server");
+    expect(result.llmModel).toBe("server/srv_00000000/test-model");
     expect(result.costUsd).toBeCloseTo(
       100 * calls * 0.000001 + 10 * calls * 0.000002,
       12,

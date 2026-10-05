@@ -4,6 +4,7 @@ import {
   parseHistoryFilters,
 } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { ServerVoiceNotice } from "@renderer/components/server-voice-notice";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -493,6 +494,7 @@ export default function HistoryPage(): React.JSX.Element {
         >
           <TranscriptionsPageHeader />
           {historyPaused && <HistoryPausedNotice />}
+          <ServerVoiceNotice />
           {hero}
           <EmptyState />
         </div>
@@ -525,6 +527,7 @@ export default function HistoryPage(): React.JSX.Element {
         >
           <TranscriptionsPageHeader />
           {historyPaused && <HistoryPausedNotice />}
+          <ServerVoiceNotice />
           {hero}
           {searchRow}
           {feed}

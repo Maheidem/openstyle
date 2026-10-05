@@ -9,6 +9,7 @@ import {
   LLM_PRESET_NAME_MAX,
   LLM_TASK_IDS,
   SAFE_SUBSET_KEYS,
+  SERVER_PROVIDER_ID,
 } from "@openstyle/validations";
 import { Eyebrow } from "@renderer/components/page-chrome";
 import { Badge } from "@renderer/components/ui/badge";
@@ -21,12 +22,13 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
 import type { ConfiguredModel } from "@renderer/lib/models";
-import { displayProviderName } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -42,6 +44,7 @@ import {
   makePresetId,
   upsertPreset,
 } from "./preset-ops";
+import { providerLabel, type ServerView } from "./server-roles";
 
 // ---------------------------------------------------------------------------
 // TaskProfilesSection — "Where your models work" (specs/llm-task-profiles.md
@@ -49,12 +52,12 @@ import {
 // optionally overrides which model this task uses.
 // ---------------------------------------------------------------------------
 
-// Only `local-llm` is the verbatim transport tier (§7.1) — every other
+// Only `server` is the verbatim transport tier (§7.1) — every other
 // provider is mapped-subset. Mirrors `apps/server/src/lib/llm/registry.ts`'s
 // `PROVIDERS`; duplicated here in miniature because "which provider is
 // local" isn't part of the shared `@openstyle/validations` surface the way
 // `SAFE_SUBSET_KEYS` is.
-const LOCAL_PROVIDER_IDS = new Set(["local-llm"]);
+const LOCAL_PROVIDER_IDS = new Set([SERVER_PROVIDER_ID]);
 
 const CUSTOM_VALUE = "__custom__";
 const NEW_PRESET_VALUE = "__new__";
@@ -95,6 +98,7 @@ export function TaskProfilesSection({
   taskAssignments,
   userPresets,
   configured,
+  servers,
   defaultLlm,
   cleanupSampling,
   expandedTask,
@@ -108,6 +112,7 @@ export function TaskProfilesSection({
   taskAssignments: Partial<Record<LlmTaskId, LlmTaskAssignment>>;
   userPresets: LlmParameterPreset[];
   configured: ConfiguredModel[];
+  servers: ServerView[];
   defaultLlm: ConfiguredModel | undefined;
   /** The retired global `cleanup_sampling` blob — see §12.7's read-time
    *  fallback. `{}` when there's nothing to fall back to. */
@@ -160,6 +165,7 @@ export function TaskProfilesSection({
               presets={mergedPresets}
               userPresets={userPresets}
               llmModels={llmModels}
+              servers={servers}
               defaultLlm={defaultLlm}
               expanded={expandedTask === taskId}
               onToggleExpand={() =>
@@ -186,6 +192,7 @@ function TaskRow({
   presets,
   userPresets,
   llmModels,
+  servers,
   defaultLlm,
   expanded,
   onToggleExpand,
@@ -207,6 +214,7 @@ function TaskRow({
    *  which is why this is not just `presets`. */
   userPresets: LlmParameterPreset[];
   llmModels: ConfiguredModel[];
+  servers: ServerView[];
   defaultLlm: ConfiguredModel | undefined;
   expanded: boolean;
   onToggleExpand: () => void;
@@ -220,6 +228,12 @@ function TaskRow({
   onRequestDeletePreset: (preset: LlmParameterPreset) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
+  const ownServerModels = llmModels.filter(
+    (c) => c.provider === SERVER_PROVIDER_ID,
+  );
+  const cloudModels = llmModels.filter(
+    (c) => c.provider !== SERVER_PROVIDER_ID,
+  );
   const [editor, setEditor] = useState<EditorState | null>(null);
   // Inline failure for the action row — a refused write never silently
   // looks like a saved one (the bug the old `saveUserPreset` had).
@@ -599,14 +613,27 @@ function TaskRow({
                     name: defaultLlm?.model_name ?? "—",
                   })}
                 </SelectItem>
-                {llmModels.map((m) => (
-                  <SelectItem
-                    key={`${m.provider}/${m.model_id}`}
-                    value={`${m.provider}/${m.model_id}`}
-                  >
-                    {m.model_name} · {displayProviderName(m.provider)}
-                  </SelectItem>
-                ))}
+                {[
+                  {
+                    label: t("models.picker.ownServer"),
+                    models: ownServerModels,
+                  },
+                  { label: t("models.picker.cloud"), models: cloudModels },
+                ]
+                  .filter((group) => group.models.length > 0)
+                  .map((group) => (
+                    <SelectGroup key={group.label}>
+                      <SelectLabel>{group.label}</SelectLabel>
+                      {group.models.map((m) => (
+                        <SelectItem
+                          key={`${m.provider}/${m.model_id}`}
+                          value={`${m.provider}/${m.model_id}`}
+                        >
+                          {m.model_name} · {providerLabel(m, servers, t)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
               </SelectContent>
             </Select>
           </div>

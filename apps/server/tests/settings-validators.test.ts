@@ -52,10 +52,6 @@ const preset = (name: string, params: Record<string, unknown>) => ({
   updatedAt: "2026-01-01T00:00:00Z",
 });
 
-const URL_STT =
-  "OpenAI STT base URL must be a valid http:// or https:// URL (or empty to disable)";
-const URL_OMLX =
-  "oMLX server URL must be a valid http:// or https:// URL (or empty to disable)";
 const URL_PROXY =
   "Proxy must be a valid http://, https:// or socks:// URL (or empty to disable)";
 const RETENTION =
@@ -138,11 +134,6 @@ const rows: [string, string, number, string | null][] = [
     400,
     'Invalid assignment for task "remix"',
   ],
-  ["openai_stt_base_url", "https://example.com/v1", 200, null],
-  ["openai_stt_base_url", "", 200, null],
-  ["openai_stt_base_url", "ftp://example.com", 400, URL_STT],
-  ["omlx_base_url", "http://localhost:8000", 200, null],
-  ["omlx_base_url", "nonsense", 400, URL_OMLX],
   ["network_proxy_url", "http://proxy:3128", 200, null],
   ["network_proxy_url", "nonsense", 400, URL_PROXY],
   ["network_ca_cert_path", "/etc/ca.pem", 200, null],
@@ -190,10 +181,10 @@ describe("PUT /api/settings/:key validation", () => {
   });
 
   it("keeps the redaction guard ahead of validation", async () => {
-    const res = await put("omlx_api_key", "••••••••");
+    const res = await put("custom_api_key", "••••••••");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      key: "omlx_api_key",
+      key: "custom_api_key",
       value: "••••••••",
     });
   });

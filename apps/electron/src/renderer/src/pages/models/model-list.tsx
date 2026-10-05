@@ -1,23 +1,18 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import type { EndpointConnectFormValues } from "@openstyle/validations";
 import {
-  localLlmConnectFormSchema,
-  omlxConnectFormSchema,
-  openaiSttConnectFormSchema,
+  parseServerModelId,
+  SERVER_PROVIDER_ID,
+  serverModelId,
 } from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
-import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import type {
   AvailableModel,
-  ConfiguredModel,
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
 import {
@@ -25,13 +20,14 @@ import {
   formatBytes,
   formatSpeed,
 } from "@renderer/lib/models";
-import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
+import { cn } from "@renderer/lib/utils";
+import type { TFunction } from "i18next";
 import {
+  AlertTriangle,
   ArrowLeft,
   Check,
   Download,
   Key,
-  Laptop,
   Loader2,
   Mic,
   Plus,
@@ -42,20 +38,13 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { Controller, type Resolver, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { AddCustomModelDialog } from "./add-custom-model-dialog";
-import {
-  PICKER_MODAL_BODY,
-  PickerModalHeader,
-  PickerOption,
-} from "./picker-option";
-import {
-  OpenModelSourceButton,
-  recommendedVoiceKey,
-  TranscriptionPicker,
-} from "./transcription-picker";
-import type { EndpointConnectState, UseModels } from "./use-models";
+import { kindFitsRole, type ModelRole, type ServerView } from "./server-roles";
+import { ServersSection } from "./servers-section";
+import { type PickerGroup, SourcePicker } from "./source-picker";
+import type { UseModels } from "./use-models";
+import { OpenModelSourceButton, recommendedVoiceKey } from "./voice-helpers";
 
 // ---------------------------------------------------------------------------
 // Normalized row — one shape for cloud + local, voice + LLM.
@@ -64,11 +53,17 @@ import type { EndpointConnectState, UseModels } from "./use-models";
 interface Row {
   key: string;
   name: string;
-  source: "cloud" | "local";
+  source: "cloud" | "local" | "server";
   meta: string;
   selected: boolean;
   /** Shown by default; non-curated rows live behind "Show all models". */
   curated?: boolean;
+  /** Own-server rows only: the model fits the role of this list. */
+  fits?: boolean;
+  /** Own-server rows only: kind label of a model that does not fit the role. */
+  kindBadge?: string;
+  /** A problem with this row, shown under the name. */
+  warning?: string;
   /** LLM gateway display name (e.g. "OpenRouter"); rendered as a meta badge. */
   gateway?: string;
   recommended?: boolean;
@@ -155,32 +150,6 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
     };
   });
 
-  // Models served by the user's oMLX server. It runs on their own machine, so
-  // the rows sit with the on-device engines: no key gate, nothing to download.
-  const omlxNames = new Set(
-    m.available
-      .filter((a) => a.type === "voice" && a.provider_id === "omlx")
-      .map((a) => a.model_name),
-  );
-  if (m.defaultVoice?.provider === "omlx") {
-    // Keep the selected model visible even when the server is unreachable.
-    omlxNames.add(m.defaultVoice.model_id.replace(/^omlx\//, ""));
-  }
-  for (const name of omlxNames) {
-    rows.push({
-      key: `omlx/${name}`,
-      name,
-      source: "local",
-      meta: "On-device · oMLX",
-      curated: true,
-      selected:
-        m.defaultVoice?.provider === "omlx" &&
-        m.defaultVoice?.model_id === `omlx/${name}`,
-      status: "ready",
-      onSelect: () => void m.selectOmlxModel(name).then(h.onClose),
-    });
-  }
-
   return rows;
 }
 
@@ -215,26 +184,61 @@ function buildLlmRows(
     }
   }
 
-  const names = new Set(m.localLlm.models);
-  if (m.defaultLlm?.provider === "local-llm") {
-    names.add(m.defaultLlm.model_id.replace(/^local-llm\//, ""));
-  }
-  for (const name of names) {
-    const modelId = `local-llm/${name}`;
-    rows.push({
-      key: `local:${name}`,
-      name,
-      source: "local",
-      meta: "On-device",
-      curated: true,
-      selected:
-        m.defaultLlm?.provider === "local-llm" &&
-        m.defaultLlm?.model_id === modelId,
-      status: "ready",
-      onSelect: () => void m.selectLocalLlmModel(name).then(h.onClose),
-    });
+  return rows;
+}
+
+function buildServerRows(
+  m: UseModels,
+  role: ModelRole,
+  t: TFunction,
+  onPickServerModel: (serverId: string, modelId: string) => void,
+): Row[] {
+  const { servers } = m.servers;
+  const selected = role === "voice" ? m.defaultVoice : m.defaultLlm;
+  const selectedId =
+    selected?.provider === SERVER_PROVIDER_ID ? selected.model_id : null;
+  const misfit = t(
+    role === "voice"
+      ? "models.servers.cannotTranscribe"
+      : "models.servers.cannotWrite",
+  );
+
+  const rows: Row[] = [];
+  for (const server of servers) {
+    for (const model of server.models) {
+      const id = serverModelId(server.id, model.id);
+      const fits = kindFitsRole(model.kind, role);
+      const isSelected = id === selectedId;
+      rows.push({
+        key: id,
+        name: model.id,
+        source: "server",
+        meta: servers.length > 1 ? server.name : "",
+        selected: isSelected,
+        fits,
+        kindBadge: fits ? undefined : t(`models.servers.kind.${model.kind}`),
+        warning: isSelected && !fits ? misfit : undefined,
+        hasKey: true,
+        onSelect: () => onPickServerModel(server.id, model.id),
+      });
+    }
   }
 
+  // The selected model stays visible, even when its server does not list it.
+  if (selectedId && selected && !rows.some((r) => r.key === selectedId)) {
+    const parsed = parseServerModelId(selectedId);
+    const server = servers.find((s) => s.id === parsed?.serverId);
+    rows.push({
+      key: selectedId,
+      name: parsed?.model ?? selected.model_name,
+      source: "server",
+      meta: servers.length > 1 && server ? server.name : "",
+      selected: true,
+      fits: true,
+      warning: server?.reachable ? t("models.servers.modelMissing") : undefined,
+      hasKey: true,
+    });
+  }
   return rows;
 }
 
@@ -248,7 +252,9 @@ export function ModelList({
   onClose,
   onPickCloud,
   onPickLocalVoice,
+  onPickServerModel,
   onRequestDeleteLocal,
+  onRequestRemoveServer,
 }: {
   type: "voice" | "llm";
   m: UseModels;
@@ -259,55 +265,47 @@ export function ModelList({
     name: string,
     engine?: "whisper" | "mlx",
   ) => void;
+  onPickServerModel: (serverId: string, modelId: string) => void;
   onRequestDeleteLocal: (defId: string, engine?: "whisper" | "mlx") => void;
+  onRequestRemoveServer: (server: ServerView) => void;
 }): React.JSX.Element {
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"tiers" | "local" | "cloud">("tiers");
-  const [showAllLlm, setShowAllLlm] = useState(false);
+  const [view, setView] = useState<"tiers" | PickerGroup>("tiers");
+  const [showAll, setShowAll] = useState(false);
   const [addingModel, setAddingModel] = useState(false);
   const { t } = useTranslation();
 
-  if (type === "voice" && view === "tiers") {
+  if (view === "tiers") {
     return (
-      <TranscriptionPicker
-        m={m}
-        onClose={onClose}
-        onBrowseLocal={() => setView("local")}
-        onBrowseCloud={() => setView("cloud")}
-      />
+      <SourcePicker role={type} m={m} onClose={onClose} onBrowse={setView} />
     );
   }
 
-  if (type === "llm" && view === "tiers") {
-    return (
-      <CleanupTierPicker
-        m={m}
-        onClose={onClose}
-        onBrowseLocal={() => setView("local")}
-        onBrowseCloud={() => setView("cloud")}
-      />
-    );
-  }
-
-  const cloudOnly = view === "cloud";
-  const localOnly = view === "local";
-
+  const group = view;
   const rows =
-    type === "voice"
-      ? buildVoiceRows(m, {
-          onPickCloud,
-          onPickLocalVoice,
-          onRequestDeleteLocal,
-          onClose,
-        })
-      : buildLlmRows(m, { onPickCloud, onClose });
+    group === "server"
+      ? buildServerRows(m, type, t, onPickServerModel)
+      : type === "voice"
+        ? buildVoiceRows(m, {
+            onPickCloud,
+            onPickLocalVoice,
+            onRequestDeleteLocal,
+            onClose,
+          })
+        : buildLlmRows(m, { onPickCloud, onClose });
 
   const q = search.toLowerCase();
-  // Curated-only for LLM until expanded; searching always searches everything.
-  const curatedOnly = type === "llm" && !showAllLlm && !q;
+  // Some rows wait behind "Show all models": the models of an own server that
+  // do not fit the role, and the non-curated LLM registry models. Searching
+  // always searches everything. The selected model of a server stays visible.
+  const collapsed = !showAll && !q;
+  const isHidden = (r: Row): boolean =>
+    group === "server"
+      ? r.fits === false && !r.selected
+      : type === "llm" && r.curated !== true;
   const filteredRows = rows.filter((r) => {
-    if (localOnly && r.source !== "local") return false;
-    if (cloudOnly && r.source !== "cloud") return false;
+    if (group === "builtin" && r.source !== "local") return false;
+    if (group === "cloud" && r.source !== "cloud") return false;
     if (
       q &&
       !`${r.name} ${r.meta} ${r.gateway ?? ""}`.toLowerCase().includes(q)
@@ -315,31 +313,34 @@ export function ModelList({
       return false;
     return true;
   });
-  const visible = filteredRows.filter((r) => {
-    if (curatedOnly && !r.curated) return false;
-    return true;
-  });
-  const hiddenCount = curatedOnly
-    ? filteredRows.length - filteredRows.filter((r) => r.curated).length
-    : 0;
+  const visible = collapsed
+    ? filteredRows.filter((r) => !isHidden(r))
+    : filteredRows;
+  const hiddenCount = filteredRows.length - visible.length;
 
-  const showLocalLlmForm = type === "llm" && localOnly;
-  const showOpenaiSttForm = type === "voice" && cloudOnly;
-  // An oMLX server runs on localhost, so its connect form belongs with the
-  // on-device engines rather than under Cloud.
-  const showOmlxForm = type === "voice" && localOnly;
   // Same gate as the MLX rows: Apple Silicon only.
   const showAddModel =
-    type === "voice" && localOnly && m.mlxStatus?.platformSupported === true;
+    type === "voice" &&
+    group === "builtin" &&
+    m.mlxStatus?.platformSupported === true;
 
   const scopedTitle =
-    type === "voice"
-      ? localOnly
-        ? "On-device models"
-        : "Cloud models"
-      : localOnly
-        ? "On-device cleanup"
-        : "Cloud cleanup models";
+    group === "builtin"
+      ? t("models.picker.builtIn")
+      : group === "server"
+        ? t("models.picker.ownServer")
+        : t("models.picker.cloudPlural");
+
+  // Servers that answer but have no model for this role (specs 3.4).
+  const noFitServers =
+    group === "server" && collapsed
+      ? m.servers.servers.filter(
+          (s) =>
+            s.reachable &&
+            s.models.length > 0 &&
+            !s.models.some((it) => kindFitsRole(it.kind, type)),
+        )
+      : [];
 
   return (
     <>
@@ -393,25 +394,42 @@ export function ModelList({
         </InputGroup>
       </header>
 
-      {type === "voice" && localOnly && m.whisperStatus?.binaryDownloading && (
-        <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
-          <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
-          <span className="text-muted-foreground text-[12px]">
-            Building whisper.cpp from source — this may take a minute…
-          </span>
-        </div>
-      )}
+      {type === "voice" &&
+        group === "builtin" &&
+        m.whisperStatus?.binaryDownloading && (
+          <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
+            <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
+            <span className="text-muted-foreground text-[12px]">
+              Building whisper.cpp from source — this may take a minute…
+            </span>
+          </div>
+        )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showLocalLlmForm && <LocalLlmConnect connect={m.localLlm} />}
-        {showOpenaiSttForm && <OpenaiSttConnect connect={m.openaiStt} />}
-        {showOmlxForm && <OmlxConnect connect={m.omlx} />}
+        {group === "server" && (
+          <ServersSection
+            servers={m.servers}
+            onRequestRemove={onRequestRemoveServer}
+          />
+        )}
+        {noFitServers.map((server) => (
+          <p
+            key={server.id}
+            className="text-muted-foreground border-border border-b px-5 py-3 text-[12.5px] leading-snug"
+          >
+            {t(
+              type === "voice"
+                ? "models.servers.noSpeechModel"
+                : "models.servers.noChatModel",
+              { server: server.name },
+            )}
+          </p>
+        ))}
         {visible.length === 0 ? (
           <ListEmptyState
-            type={type}
-            localOnly={localOnly}
-            showLlmConnect={showLocalLlmForm}
-            connected={m.localLlm.connected}
+            group={group}
+            hasServers={m.servers.servers.length > 0}
+            hasHidden={hiddenCount > 0 || noFitServers.length > 0}
           />
         ) : (
           visible.map((row, i) => (
@@ -421,10 +439,12 @@ export function ModelList({
         {hiddenCount > 0 && (
           <Button
             variant="ghost"
-            onClick={() => setShowAllLlm(true)}
+            onClick={() => setShowAll(true)}
             className="border-border text-muted-foreground hover:text-foreground h-auto w-full justify-start rounded-none px-5 py-3 text-left text-[12.5px] font-normal border-x-0 border-b-0"
           >
-            Show all models ({hiddenCount} more) →
+            {group === "server"
+              ? t("models.servers.showAll", { count: hiddenCount })
+              : `Show all models (${hiddenCount} more) →`}
           </Button>
         )}
       </div>
@@ -501,19 +521,35 @@ function ModelRow({
               {t("models.custom.badge")}
             </Badge>
           )}
-        </div>
-        <div className="text-muted-foreground mt-0.5 text-[12px]">
-          {row.gateway ? (
-            <>
-              {row.meta}
-              {row.meta && " "}
-              <span className="text-muted-foreground/70">via</span>{" "}
-              {row.gateway}
-            </>
-          ) : (
-            row.meta
+          {row.kindBadge && (
+            <Badge
+              variant="outline"
+              className="shrink-0 text-[10px] font-semibold"
+            >
+              {row.kindBadge}
+            </Badge>
           )}
         </div>
+        {(row.meta || row.gateway) && (
+          <div className="text-muted-foreground mt-0.5 text-[12px]">
+            {row.gateway ? (
+              <>
+                {row.meta}
+                {row.meta && " "}
+                <span className="text-muted-foreground/70">via</span>{" "}
+                {row.gateway}
+              </>
+            ) : (
+              row.meta
+            )}
+          </div>
+        )}
+        {row.warning && (
+          <div className="text-destructive mt-1 flex items-start gap-1.5 text-[11.5px] leading-snug">
+            <AlertTriangle className="mt-px size-3 shrink-0" />
+            {row.warning}
+          </div>
+        )}
         {local && status === "error" && row.state?.error && (
           <div className="text-destructive mt-1 text-[11.5px] leading-snug">
             {row.state.error}
@@ -619,34 +655,31 @@ function DownloadProgress({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Local LLM connect form (shown under the On-device filter for LLM)
-// ---------------------------------------------------------------------------
-
 function ListEmptyState({
-  type,
-  localOnly,
-  showLlmConnect,
-  connected,
+  group,
+  hasServers,
+  hasHidden,
 }: {
-  type: "voice" | "llm";
-  localOnly: boolean;
-  showLlmConnect: boolean;
-  connected: boolean | null;
+  group: PickerGroup;
+  hasServers: boolean;
+  /** Models wait behind "Show all models", or a server has none for the role. */
+  hasHidden: boolean;
 }): React.JSX.Element | null {
-  if (showLlmConnect) {
-    if (connected !== true) return null;
+  const { t } = useTranslation();
+  if (group === "builtin") {
     return (
       <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
-        No models found on this server.
+        No on-device transcription models on this device.
       </p>
     );
   }
 
-  if (type === "voice" && localOnly) {
+  if (group === "server") {
+    // The role messages and the Show all button already explain this state.
+    if (hasHidden) return null;
     return (
       <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
-        No on-device transcription models on this device.
+        {hasServers ? "No models match." : t("models.servers.noServer")}
       </p>
     );
   }
@@ -655,250 +688,5 @@ function ListEmptyState({
     <p className="text-muted-foreground px-5 py-10 text-center text-[13px]">
       No models match.
     </p>
-  );
-}
-
-function LocalLlmConnect({
-  connect,
-}: {
-  connect: EndpointConnectState;
-}): React.JSX.Element {
-  return (
-    <EndpointConnectForm
-      connect={connect}
-      resolver={zodResolver(localLlmConnectFormSchema)}
-      description="Connect to Ollama, LM Studio, or another OpenAI-compatible server running locally."
-      urlPlaceholder="http://localhost:11434"
-    />
-  );
-}
-
-function OpenaiSttConnect({
-  connect,
-}: {
-  connect: EndpointConnectState;
-}): React.JSX.Element {
-  return (
-    <EndpointConnectForm
-      connect={connect}
-      resolver={zodResolver(openaiSttConnectFormSchema)}
-      description="Point OpenAI transcription at a self-hosted or OpenAI-compatible server (vLLM, LiteLLM, LM Studio). Leave the URL empty to use OpenAI."
-      urlPlaceholder="https://example.com/v1"
-    />
-  );
-}
-
-function OmlxConnect({
-  connect,
-}: {
-  connect: EndpointConnectState;
-}): React.JSX.Element {
-  return (
-    <EndpointConnectForm
-      connect={connect}
-      resolver={zodResolver(omlxConnectFormSchema)}
-      description="Transcribe with an oMLX server you already run. Enter the server address — every model it serves is listed; pick the ASR one. Leave the URL empty to disconnect."
-      urlPlaceholder="http://127.0.0.1:8123"
-    />
-  );
-}
-
-/**
- * Shared connect form for OpenAI-compatible endpoints (local LLM, custom STT).
- * Drives a react-hook-form with inline validation from the shared schema; the
- * Test button persists the values then probes the endpoint via the hook.
- */
-function EndpointConnectForm({
-  connect,
-  resolver,
-  description,
-  urlPlaceholder,
-}: {
-  connect: EndpointConnectState;
-  resolver: Resolver<EndpointConnectFormValues>;
-  description: string;
-  urlPlaceholder: string;
-}): React.JSX.Element {
-  const [showKey, setShowKey] = useState(false);
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<EndpointConnectFormValues>({
-    resolver,
-    defaultValues: { url: connect.initialUrl, apiKey: connect.initialApiKey },
-    mode: "onBlur",
-  });
-
-  return (
-    <div className="border-border border-b px-5 py-4">
-      <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
-        {description}
-      </p>
-      <form
-        onSubmit={handleSubmit((values) => connect.test(values))}
-        className="space-y-3"
-      >
-        <Controller
-          control={control}
-          name="url"
-          render={({ field }) => (
-            <div className="flex items-center gap-2">
-              <Input
-                type="text"
-                name={field.name}
-                ref={field.ref}
-                value={field.value}
-                onChange={(e) => {
-                  field.onChange(e);
-                  connect.clearStatus();
-                }}
-                onBlur={field.onBlur}
-                placeholder={urlPlaceholder}
-                aria-invalid={errors.url ? true : undefined}
-                className="min-w-0 flex-1"
-              />
-              <Button
-                type="submit"
-                variant="secondary"
-                size="sm"
-                disabled={connect.testing}
-                className="shrink-0"
-              >
-                {connect.testing ? (
-                  <span className="flex items-center gap-1.5">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Testing…
-                  </span>
-                ) : (
-                  "Test"
-                )}
-              </Button>
-            </div>
-          )}
-        />
-        {errors.url && (
-          <p className="text-destructive text-[12px] leading-snug">
-            {errors.url.message}
-          </p>
-        )}
-        <Controller
-          control={control}
-          name="apiKey"
-          render={({ field }) => (
-            <InputGroup>
-              <InputGroupInput
-                type={showKey ? "text" : "password"}
-                name={field.name}
-                ref={field.ref}
-                value={field.value}
-                onChange={field.onChange}
-                onBlur={field.onBlur}
-                placeholder="API key (optional)"
-              />
-              <RevealToggle
-                revealed={showKey}
-                onToggle={() => setShowKey(!showKey)}
-                label="API key"
-              />
-            </InputGroup>
-          )}
-        />
-        {connect.connected === true && (
-          <>
-            <p className="text-primary text-[12px]">
-              Connected · {connect.models.length}{" "}
-              {connect.models.length === 1 ? "model" : "models"} found
-            </p>
-            {connect.transcribeUrl && (
-              <p className="text-muted-foreground mono text-[11px] break-all">
-                {connect.transcribeUrl}
-              </p>
-            )}
-          </>
-        )}
-        {connect.connected === false && connect.error && (
-          <p className="text-destructive text-[12px] leading-snug">
-            {connect.error}
-          </p>
-        )}
-      </form>
-    </div>
-  );
-}
-
-const MANAGED_LLM_PROVIDERS = new Set(["local-llm"]);
-
-function isLocalLlm(llm: ConfiguredModel | undefined): boolean {
-  return llm?.provider === "local-llm";
-}
-
-function isByokLlm(llm: ConfiguredModel | undefined): boolean {
-  if (!llm) return false;
-  return !MANAGED_LLM_PROVIDERS.has(llm.provider);
-}
-
-/** On-device and BYOK only — Openstyle cleanup ships with Openstyle Transcribe. */
-function CleanupTierPicker({
-  m,
-  onClose,
-  onBrowseLocal,
-  onBrowseCloud,
-}: {
-  m: UseModels;
-  onClose: () => void;
-  onBrowseLocal: () => void;
-  onBrowseCloud: () => void;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-
-  const byokCount = [...m.llmModelsByProvider.values()].reduce(
-    (sum, { models }) => sum + models.length,
-    0,
-  );
-
-  const localActive = isLocalLlm(m.defaultLlm);
-  const byokActive = isByokLlm(m.defaultLlm);
-
-  const localHint = localActive
-    ? (m.defaultLlm?.model_name ?? t("models.onDevice"))
-    : m.localLlm.connected === true
-      ? t("models.picker.modelCount", { count: m.localLlm.models.length })
-      : t("models.picker.ollamaHint");
-
-  const byokLabel = byokActive
-    ? (m.defaultLlm?.model_name ?? displayProviderName(m.defaultLlm!.provider))
-    : byokCount > 0
-      ? t("models.picker.cloudModelCount", { count: byokCount })
-      : t("models.picker.byokProviders");
-
-  return (
-    <>
-      <PickerModalHeader
-        icon={Sparkles}
-        title={t("models.picker.cleanup")}
-        onClose={onClose}
-      />
-      <div className={PICKER_MODAL_BODY}>
-        <div className="border-border divide-border overflow-hidden rounded-lg border divide-y">
-          <PickerOption
-            icon={Laptop}
-            title={t("models.picker.onDevice", { phrase: ON_DEVICE_PHRASE })}
-            hint={localHint}
-            active={localActive}
-            onClick={onBrowseLocal}
-            browseLabel={t("models.picker.browseLocalCleanup")}
-          />
-          <PickerOption
-            icon={Key}
-            title={t("models.picker.yourApiKey")}
-            hint={byokLabel}
-            active={byokActive}
-            onClick={onBrowseCloud}
-            browseLabel={t("models.picker.browseByokCleanup")}
-          />
-        </div>
-      </div>
-    </>
   );
 }

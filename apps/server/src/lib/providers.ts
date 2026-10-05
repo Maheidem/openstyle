@@ -13,7 +13,7 @@ const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "mistral",
   "openrouter",
   "vercel",
-  "local-llm",
+  "server",
 ]);
 
 function getChatModelId(providerId: string, modelId: string): string {

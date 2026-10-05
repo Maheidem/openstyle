@@ -28,8 +28,8 @@ import { pcm16Wav } from "./helpers/wav";
 //
 // Deterministically "sticking" the job needs a transcription provider whose
 // requests we control the resolution of: the default voice model is pointed
-// at oMLX (local-llm-ish OpenAI-compatible provider, no API key needed) with
-// a base URL at a hold-server this test owns. The hold-server parks every
+// at an own server (OpenAI-compatible provider, no API key needed) whose
+// address is a hold-server this test owns. The hold-server parks every
 // request until the test releases it, so the job reliably sits at 0/2 with
 // both chunk requests in flight when Cancel is clicked.
 //
@@ -85,7 +85,21 @@ function answer(res: import("node:http").ServerResponse): void {
 
 function startHoldServer(): Promise<void> {
   return new Promise((resolvePromise) => {
-    holdServer = createServer((_req, res) => {
+    holdServer = createServer((req, res) => {
+      // The probe of POST /api/servers lists the models. Answer it at once.
+      // Only the transcription requests park.
+      if (req.method === "GET" && req.url?.startsWith("/v1/models")) {
+        const isStatus = req.url.startsWith("/v1/models/status");
+        res.writeHead(isStatus ? 404 : 200, {
+          "Content-Type": "application/json",
+        });
+        res.end(
+          isStatus
+            ? "{}"
+            : JSON.stringify({ data: [{ id: "hold-test-model" }] }),
+        );
+        return;
+      }
       if (!released) {
         parked.push({ res });
         return;
@@ -240,25 +254,28 @@ test.beforeAll(async () => {
     // the test deterministic regardless.)
     await new Promise((r) => setTimeout(r, 3500));
 
-    // Point the default voice model at the hold-server via oMLX: no API key
-    // required (oMLX is a local STT provider server-side), and every chunk
-    // request parks until the test releases it. The renderer app and this
-    // test process share the loopback interface, also in external-server
-    // mode (the hold-server is reached by the *server*, not the renderer).
+    // Point the default voice model at the hold-server as an own server: no
+    // API key required, and every chunk request parks until the test
+    // releases it. The renderer app and this test process share the loopback
+    // interface, also in external-server mode (the hold-server is reached by
+    // the *server*, not the renderer).
     const base = `http://127.0.0.1:${holdServerPort}`;
-    const putBase = await fetch(`${apiBase()}/api/settings/omlx_base_url`, {
-      method: "PUT",
+    const addServer = await fetch(`${apiBase()}/api/servers`, {
+      method: "POST",
       headers: { ...apiHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ value: base }),
+      body: JSON.stringify({ url: base }),
     });
-    expect(putBase.ok, `PUT omlx_base_url -> ${putBase.status}`).toBe(true);
+    expect(addServer.status, `POST /api/servers -> ${addServer.status}`).toBe(
+      201,
+    );
+    const { id: serverId } = (await addServer.json()) as { id: string };
     const putModel = await fetch(`${apiBase()}/api/models/configured`, {
       method: "POST",
       headers: { ...apiHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({
-        provider: "omlx",
-        model_id: "omlx/hold-test-model",
-        model_name: "oMLX hold-test model",
+        provider: "server",
+        model_id: `server/${serverId}/hold-test-model`,
+        model_name: "Hold-test model",
         type: "voice",
         is_default: true,
       }),

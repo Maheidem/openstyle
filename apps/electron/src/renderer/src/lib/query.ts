@@ -2,6 +2,7 @@ import { QueryClient, queryOptions } from "@tanstack/react-query";
 import { getClient } from "./api";
 import {
   type AvailableModel,
+  type ConfiguredModel,
   hasActiveDownload,
   type MlxAsrStatus,
   type WhisperStatus,
@@ -34,6 +35,8 @@ export const queryKeys = {
     configured: ["models", "configured"] as const,
   },
   apiKeys: ["api-keys"] as const,
+  /** Own servers with their live probe (`GET /api/servers`). */
+  servers: ["servers"] as const,
   whisperStatus: ["whisper-status"] as const,
   mlxStatus: ["mlx-status"] as const,
 
@@ -114,6 +117,34 @@ export function availableModelsQueryOptions() {
       if (!res.ok) throw new Error("Failed to load available models");
       return await res.json();
     },
+  };
+}
+
+/** Query options for the configured models (the saved default per type). */
+export function configuredModelsQueryOptions() {
+  return {
+    queryKey: queryKeys.models.configured,
+    queryFn: async (): Promise<ConfiguredModel[]> => {
+      const res = await getClient().api.models.configured.$get();
+      if (!res.ok) throw new Error("Failed to load configured models");
+      return (await res.json()) as ConfiguredModel[];
+    },
+  };
+}
+
+/**
+ * Query options for the own servers. The route probes every server live (up to
+ * 3 s each), so the result stays fresh for 30 s and `refetch` is the Retry.
+ */
+export function serversQueryOptions() {
+  return {
+    queryKey: queryKeys.servers,
+    queryFn: async () => {
+      const res = await getClient().api.servers.$get();
+      if (!res.ok) throw new Error("Failed to load servers");
+      return await res.json();
+    },
+    staleTime: 30_000,
   };
 }
 

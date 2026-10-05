@@ -4,6 +4,7 @@
  * from routes. The cost lookup is cache-only on purpose (see
  * {@link getModelCostCached}).
  */
+import { isLocalProvider } from "./llm/registry.js";
 import { stripModelPrefix } from "./model-id.js";
 
 export const DEPRECATED_STATUS = "deprecated";
@@ -134,7 +135,7 @@ export async function isCleanupModelSupported(
   providerId: string,
   modelId: string,
 ): Promise<boolean> {
-  if (providerId === "local-llm") return true;
+  if (isLocalProvider(providerId)) return true;
   if (providerId in LLM_GATEWAYS) return true;
 
   try {

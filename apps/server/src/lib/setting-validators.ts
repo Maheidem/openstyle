@@ -17,8 +17,6 @@ import {
   meetingEnhanceTimeoutSecondsSettingSchema,
   meetingSummaryInstructionsSchema,
   meetingSummaryTimeoutSecondsSettingSchema,
-  omlxBaseUrlSchema,
-  openaiSttBaseUrlSchema,
   proxyUrlSettingSchema,
 } from "@openstyle/validations";
 import { HISTORY_RETENTION_SETTING_KEY } from "./history-store.js";
@@ -161,16 +159,6 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
     ),
   ],
   ["llm_task_assignments", checkTaskAssignments],
-  [
-    "openai_stt_base_url",
-    schemaCheck(openaiSttBaseUrlSchema, {
-      fallback: "Invalid OpenAI STT base URL",
-    }),
-  ],
-  [
-    "omlx_base_url",
-    schemaCheck(omlxBaseUrlSchema, { fallback: "Invalid oMLX server URL" }),
-  ],
   [
     PROXY_URL_SETTING,
     schemaCheck(proxyUrlSettingSchema, { fallback: "Invalid proxy URL" }),

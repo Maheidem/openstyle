@@ -1,9 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import {
-  configureModelSchema,
-  normalizeOmlxRoot,
-  omlxModelsUrl,
-} from "@openstyle/validations";
+import { configureModelSchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
@@ -20,16 +16,8 @@ import {
   fetchModelsFromRegistry,
   isCleanupSuitableModel,
   LLM_GATEWAYS,
-  REGISTRY_FETCH_TIMEOUT_MS,
   type RegistryProvider,
 } from "../lib/model-registry.js";
-import { fetchModelIds } from "../lib/openai-compat.js";
-import { OMLX_PROVIDER_ID } from "../lib/streaming/local-providers.js";
-import {
-  OMLX_API_KEY_SETTING,
-  OMLX_BASE_URL_SETTING,
-  OMLX_PROVIDER_NAME,
-} from "../lib/streaming/providers/omlx.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import { getCatalogModels, getModelStatus } from "../lib/whisper/models.js";
 
@@ -50,79 +38,6 @@ interface AvailableModel {
    * picker shows this as a small badge next to the model.
    */
   gateway?: string;
-}
-
-async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      "SELECT key, value FROM settings WHERE key IN ('local_llm_url', 'local_llm_api_key')",
-    )
-    .all() as { key: string; value: string }[];
-  const settings = Object.fromEntries(
-    rows.map((r) => [r.key, r.value]),
-  ) as Record<string, string | undefined>;
-  if (!settings.local_llm_url) return [];
-
-  const baseUrl = settings.local_llm_url
-    .replace(/\/+$/, "")
-    .replace(/\/v1$/, "");
-
-  const ids = await fetchModelIds(
-    `${baseUrl}/v1/models`,
-    settings.local_llm_api_key,
-    REGISTRY_FETCH_TIMEOUT_MS,
-  );
-
-  return ids.map((id) => ({
-    provider_id: "local-llm",
-    provider_name: "Local LLM",
-    model_id: `local-llm/${id}`,
-    model_name: id,
-    family: "local",
-    type: "llm" as const,
-    cost_input: 0,
-    cost_output: 0,
-  }));
-}
-
-/**
- * Voice models served by the user's oMLX server. Every id is listed — oMLX
- * reports no modality, so guessing which entry is an ASR model would be wrong
- * more often than useful; picking a non-ASR one simply errors at dictation.
- */
-async function fetchOmlxModels(): Promise<AvailableModel[]> {
-  const db = getDb();
-  const rows = db
-    .prepare("SELECT key, value FROM settings WHERE key IN (?, ?)")
-    .all(OMLX_BASE_URL_SETTING, OMLX_API_KEY_SETTING) as {
-    key: string;
-    value: string;
-  }[];
-  const settings = Object.fromEntries(
-    rows.map((r) => [r.key, r.value]),
-  ) as Record<string, string | undefined>;
-
-  const root = normalizeOmlxRoot(settings[OMLX_BASE_URL_SETTING] ?? "");
-  if (!root) return [];
-
-  const apiKey = settings[OMLX_API_KEY_SETTING]?.trim();
-  const ids = await fetchModelIds(
-    omlxModelsUrl(root),
-    apiKey,
-    REGISTRY_FETCH_TIMEOUT_MS,
-  );
-
-  return ids.map((id) => ({
-    provider_id: OMLX_PROVIDER_ID,
-    provider_name: OMLX_PROVIDER_NAME,
-    model_id: `${OMLX_PROVIDER_ID}/${id}`,
-    model_name: id,
-    family: "omlx",
-    type: "voice" as const,
-    cost_input: 0,
-    cost_output: 0,
-  }));
 }
 
 /** Build the /available entry for a local voice model. */
@@ -318,22 +233,6 @@ const models = new Hono()
             ),
           );
         }
-      }
-
-      try {
-        const localModels = await fetchLocalLlmModels();
-        // The user explicitly connected this server — everything it serves is curated.
-        available.push(...localModels.map((m) => ({ ...m, curated: true })));
-      } catch {
-        // Local LLM server not reachable
-      }
-
-      try {
-        const omlxModels = await fetchOmlxModels();
-        // Same rationale: the user pointed us at this server on purpose.
-        available.push(...omlxModels.map((m) => ({ ...m, curated: true })));
-      } catch {
-        // oMLX server not reachable
       }
 
       return c.json(available);

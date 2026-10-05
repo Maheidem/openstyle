@@ -88,7 +88,10 @@ export async function runRemixAgentLocally(
   // that WINS the queue — the coarseness costs background work its slot,
   // never the dictation cleanup. The lease is released by the body wrapper
   // below, so a client that hangs up mid-stream cannot leak the slot.
-  const { key: lane, limit } = await llmLaneKeyForProvider(resolved.provider);
+  const { key: lane, limit } = await llmLaneKeyForProvider(
+    resolved.provider,
+    resolved.modelId,
+  );
   const lease = await acquireLlmLane({
     lane,
     limit,

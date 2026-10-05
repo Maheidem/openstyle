@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import { jsonRequest } from "./helpers/http.js";
@@ -6,6 +6,10 @@ import { jsonRequest } from "./helpers/http.js";
 const app = createApp();
 
 const REDACTED = "••••••••";
+
+// The six old server keys stay in the settings table for one release (rule M7
+// of specs/model-picker-groups.md). The redaction is name-based, so a leftover
+// key must stay masked.
 
 function getStoredSetting(key: string): string | undefined {
   const row = getDb()
@@ -106,54 +110,5 @@ describe("PUT /api/settings/:key sentinel guard on credential keys", () => {
 
     expect(res.status).toBe(200);
     expect(getStoredSetting("hotkey")).toBe("F14");
-  });
-});
-
-describe("POST /api/settings/omlx/test resolves a re-submitted placeholder to the real key", () => {
-  afterEach(() => {
-    clearSettings("omlx_api_key");
-    vi.restoreAllMocks();
-  });
-
-  function okResponse(): Response {
-    return new Response(JSON.stringify({ data: [{ id: "test-model" }] }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  it("sends the real stored key, not the literal placeholder, when the field was untouched", async () => {
-    writeSetting("omlx_api_key", "sk-stored-real-key");
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(okResponse());
-
-    const res = await jsonRequest(app, "POST", "/api/settings/omlx/test", {
-      url: "http://127.0.0.1:8123",
-      api_key: REDACTED,
-    });
-
-    expect(res.status).toBe(200);
-    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect((init.headers as Record<string, string>).Authorization).toBe(
-      "Bearer sk-stored-real-key",
-    );
-  });
-
-  it("sends a freshly typed key as-is rather than the stored one", async () => {
-    writeSetting("omlx_api_key", "sk-stored-real-key");
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(okResponse());
-
-    await jsonRequest(app, "POST", "/api/settings/omlx/test", {
-      url: "http://127.0.0.1:8123",
-      api_key: "sk-freshly-typed",
-    });
-
-    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect((init.headers as Record<string, string>).Authorization).toBe(
-      "Bearer sk-freshly-typed",
-    );
   });
 });

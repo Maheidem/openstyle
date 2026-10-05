@@ -147,9 +147,10 @@ export function buildAsrVocabularyBias(
         ...(noteText ? { text: noteText } : {}),
       };
     }
-    // Both run the same MLX ASR models and take the same free-text prompt.
+    // Both run MLX ASR models and take the same free-text prompt. A server
+    // that the user runs gets the same prompt. It sends the field itself.
     case "local-mlx":
-    case "omlx": {
+    case "server": {
       const text = `Technical terms: ${capped.join(", ")}`.slice(
         0,
         PROMPT_CHAR_BUDGET,
@@ -184,7 +185,7 @@ export function resolveAsrVocabularyBias(
  * actually used (dictation leak filter, specs/meeting-transcription-quality.md
  * Phase A extended to the dictation paths).
  *
- * For the `prompt` kind (openai/groq/local-whisper/local-mlx/omlx) the terms
+ * For the `prompt` kind (openai/groq/local-whisper/local-mlx/server) the terms
  * live inlined in the free-text prompt rather than as a list — returning the
  * whole label-stripped prompt text as a single "term" is equivalent for
  * `isVocabLeak`'s purposes, since it tokenizes on word boundaries either way.

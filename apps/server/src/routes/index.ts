@@ -13,6 +13,7 @@ import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
 import postProcessRoute from "./post-process-route.js";
 import remixRoute from "./remix/index.js";
+import servers from "./servers.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
@@ -38,6 +39,7 @@ const apiRouter = new Hono()
   .route("/config", configRoute)
   .route("/keys", apiKeys)
   .route("/models", models)
+  .route("/servers", servers)
   .route("/transcribe", transcribe)
   .route("/transcribe", transcribePreWarmRoute)
   .route("/transcribe", transcribeFile)

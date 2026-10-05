@@ -221,16 +221,16 @@ describe("buildAsrVocabularyBias", () => {
     });
   });
 
-  describe("omlx", () => {
-    // A self-hosted oMLX server runs the same MLX ASR models as the bundled
-    // worker, so it takes the same prompt. Without its own case it fell through
-    // to `default` and the user's vocabulary was silently dropped.
+  describe("server", () => {
+    // A server that the user runs (for example oMLX) runs the same MLX ASR
+    // models as the bundled worker, so it takes the same prompt. Without its
+    // own case it fell through to `default` and the vocabulary was dropped.
     it("builds the same prompt as the bundled mlx worker", () => {
       const terms = ["TypeScript", "Kubernetes"];
       expect(
         buildAsrVocabularyBias(
-          "omlx",
-          "mlx-community--Qwen3-ASR-1.7B-8bit",
+          "server",
+          "server/srv_00000000/Qwen3-ASR",
           terms,
         ),
       ).toEqual(buildAsrVocabularyBias("local-mlx", "qwen", terms));
@@ -238,7 +238,7 @@ describe("buildAsrVocabularyBias", () => {
 
     it("returns a prompt rather than null", () => {
       expect(
-        buildAsrVocabularyBias("omlx", "mlx-community--Qwen3-ASR-1.7B-8bit", [
+        buildAsrVocabularyBias("server", "server/srv_00000000/Qwen3-ASR", [
           "presales-toolkit",
         ]),
       ).toEqual({ kind: "prompt", text: "Technical terms: presales-toolkit" });
@@ -355,7 +355,7 @@ describe("vocabularyBiasTerms", () => {
   });
 
   it("strips the 'Technical terms:' label from a prompt-kind bias", () => {
-    const bias = buildAsrVocabularyBias("omlx", "Qwen3-ASR", [
+    const bias = buildAsrVocabularyBias("server", "Qwen3-ASR", [
       "PortifolioZero",
       "churrasqueira",
     ]);

@@ -23,6 +23,7 @@ import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { PairCard } from "./pair-card";
 import { tasksUsingPreset } from "./preset-ops";
+import { type ServerView, voiceCannotTranscribe } from "./server-roles";
 import { TaskProfilesSection } from "./task-profiles-section";
 import { useModels } from "./use-models";
 
@@ -50,6 +51,8 @@ export default function ModelsPage(): React.JSX.Element {
   const [pendingProviderDelete, setPendingProviderDelete] = useState<
     string | null
   >(null);
+  const [pendingServerRemove, setPendingServerRemove] =
+    useState<ServerView | null>(null);
   // Preset deletes confirm here, in the page that owns the dialog (§9.3) —
   // the same shape as `pendingProviderDelete` above. `tasks` is resolved at
   // request time so the dialog can NAME the tasks that revert to Auto, which
@@ -114,9 +117,7 @@ export default function ModelsPage(): React.JSX.Element {
     if (modal?.kind !== "list") return;
     const type = modal.type;
 
-    const needsKey =
-      model.provider_id !== "local-llm" &&
-      !m.keyProviders.has(model.provider_id);
+    const needsKey = !m.keyProviders.has(model.provider_id);
     if (needsKey) {
       setKeyError(null);
       setModal({
@@ -139,6 +140,11 @@ export default function ModelsPage(): React.JSX.Element {
     void m.selectLocalVoice(defId, name, engine).then(() => {
       if (modal?.kind === "list") closeModal();
     });
+  };
+
+  const onPickServerModel = (serverId: string, modelId: string): void => {
+    if (modal?.kind !== "list") return;
+    void m.selectServerModel(serverId, modelId, modal.type).then(closeModal);
   };
 
   const onRequestDeleteLocal = (
@@ -222,6 +228,11 @@ export default function ModelsPage(): React.JSX.Element {
       <div className="space-y-6">
         <PairCard
           voice={m.defaultVoice}
+          voiceCannotTranscribe={voiceCannotTranscribe(
+            m.defaultVoice,
+            m.servers.servers,
+          )}
+          servers={m.servers.servers}
           llm={m.defaultLlm}
           llmCleanup={m.llmCleanup}
           onToggleCleanup={onToggleCleanup}
@@ -239,6 +250,7 @@ export default function ModelsPage(): React.JSX.Element {
               taskAssignments={m.taskAssignments}
               userPresets={m.userPresets}
               configured={m.configured}
+              servers={m.servers.servers}
               defaultLlm={m.defaultLlm}
               cleanupSampling={m.cleanupSampling}
               expandedTask={expandedTask}
@@ -297,7 +309,9 @@ export default function ModelsPage(): React.JSX.Element {
           onClose={closeModal}
           onPickCloud={onPickCloud}
           onPickLocalVoice={onPickLocalVoice}
+          onPickServerModel={onPickServerModel}
           onRequestDeleteLocal={onRequestDeleteLocal}
+          onRequestRemoveServer={setPendingServerRemove}
           onBack={onBack}
           onSaveKey={onSaveKey}
         />
@@ -369,6 +383,27 @@ export default function ModelsPage(): React.JSX.Element {
             void m.deleteUserPreset(id).then((ok) => {
               setPresetDeleteFailed(!ok);
             });
+          }}
+        />
+      )}
+
+      {pendingServerRemove && (
+        <ConfirmDialog
+          title={t("models.servers.removeTitle")}
+          message={
+            <Trans
+              i18nKey="models.servers.removeMsg"
+              values={{ name: pendingServerRemove.name }}
+              components={{
+                b: <span className="text-foreground/80 font-medium" />,
+              }}
+            />
+          }
+          onCancel={() => setPendingServerRemove(null)}
+          onConfirm={() => {
+            const { id } = pendingServerRemove;
+            setPendingServerRemove(null);
+            void m.servers.removeServer(id);
           }}
         />
       )}

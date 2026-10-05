@@ -17,7 +17,7 @@ vi.mock("../src/lib/streaming/local-providers.js", async (importOriginal) => ({
     typeof import("../src/lib/streaming/local-providers.js")
   >()),
   voiceProviderCategory: (id: string) =>
-    id === "local-whisper" || id === "local-mlx" || id === "omlx"
+    id === "local-whisper" || id === "local-mlx" || id === "server"
       ? "local"
       : "byok",
 }));

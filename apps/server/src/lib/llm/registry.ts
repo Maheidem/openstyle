@@ -1,14 +1,11 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
-import { SETTINGS_KEYS } from "@openstyle/validations";
+import { parseServerModelId, SERVER_PROVIDER_ID } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
-import { readSettings } from "../db.js";
 import { stripModelPrefix } from "../model-id.js";
+import { getOwnServer } from "../own-servers.js";
 import { traceLlmFetch } from "../trace.js";
-
-/** The settings key holding the local engine's base URL. */
-export const LOCAL_LLM_URL_SETTING = SETTINGS_KEYS.localLlmUrl;
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
@@ -16,7 +13,7 @@ type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
 /**
  * Per-task context threaded into `createModel` (specs/llm-task-profiles.md
  * §8.1). `sampling` is the resolver's already-merged verbatim sampling object
- * (§8.3) — only `local-llm`'s entry reads it; every other provider ignores
+ * (§8.3) — only the `server` entry reads it; every other provider ignores
  * the parameter entirely.
  */
 export interface LlmTaskContext {
@@ -39,7 +36,7 @@ export interface LlmProvider {
    * Build (or return a cached) chat model. `modelId` is already stripped of the
    * provider prefix for prefixed providers; `apiKey` is `"local"` for local
    * providers. `taskContext` (§8.1) carries the resolver's per-task sampling
-   * params; only `local-llm`'s entry reads it.
+   * params; only the `server` entry reads it.
    */
   createModel(
     modelId: string,
@@ -129,7 +126,7 @@ export function mergeSamplingIntoBody(
 
     // max_tokens is a floor, not a cap. The user sets it to give a thinking
     // model room to reason; the caller computes it from the input length. Every
-    // local-llm path shares this fetch, and Remix legitimately needs a bigger
+    // server path shares this fetch, and Remix legitimately needs a bigger
     // budget than cleanup and has no truncation fallback -- a literal override
     // tuned for cleanup would silently cut its rewrites short.
     if (typeof sampling.max_tokens === "number") {
@@ -242,23 +239,23 @@ const PROVIDERS: LlmProvider[] = [
     },
   },
   {
-    providerId: "local-llm",
+    // A server the user runs. The model id is `<serverId>/<model>` here: the
+    // caller already stripped the `server/` prefix. The server row holds the
+    // address and the optional key.
+    providerId: SERVER_PROVIDER_ID,
     local: true,
     createModel: async (modelId, _apiKey, taskContext) => {
       const { createOpenAI } = await import("@ai-sdk/openai");
-      const settings = readSettings([
-        LOCAL_LLM_URL_SETTING,
-        SETTINGS_KEYS.localLlmApiKey,
-      ]);
-      const url = settings.get(LOCAL_LLM_URL_SETTING);
-      if (!url) {
+      const target = parseServerModelId(modelId);
+      const server = target ? getOwnServer(target.serverId) : null;
+      if (!target || !server) {
         throw new Error(
-          "Local LLM endpoint URL not configured. Go to Settings > Models to set it up.",
+          "This server is not in your list any more. Add it again under Models, then pick a model.",
         );
       }
 
-      const baseURL = url.replace(/\/v1\/?$/, "");
-      const apiKey = settings.get(SETTINGS_KEYS.localLlmApiKey) || "local";
+      const baseURL = server.base_url.replace(/\/v1\/?$/, "");
+      const apiKey = server.api_key || "local";
 
       // No more direct `cleanup_sampling` read here — the caller already
       // resolved this task's sampling params (`resolveTaskCall`,
@@ -274,7 +271,7 @@ const PROVIDERS: LlmProvider[] = [
         fetch: createSamplingFetch(
           (taskContext?.sampling ?? {}) as CleanupSampling,
         ),
-      }).chat(modelId);
+      }).chat(target.model);
     },
   },
 ];

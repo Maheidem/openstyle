@@ -39,6 +39,7 @@ const TIMEOUT_PREFIXES = [
   "/api/vocabulary",
   "/api/history",
   "/api/models",
+  "/api/servers",
   "/api/remix/thread",
   "/api/remix/runs",
 ];

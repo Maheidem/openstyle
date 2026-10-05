@@ -1,5 +1,7 @@
 # Meeting LLM Queue — Resource-Aware Lane Spec
 
+> **Note (2026-10).** The `omlx` and `local-llm` providers, the `local_llm_url` and `local_llm_api_key` settings, and the `/settings/local-llm/test` route were replaced by the `server` provider and the `own_servers` table (`specs/model-picker-groups.md`). The old names below are historical.
+
 **PROPOSED 2026-09-27 — not approved, not implemented.** Spec for making
 meeting summarization (and every other LLM call) *resource-aware* when the
 user's inference engine is a single-worker server hosted **outside** openstyle.
