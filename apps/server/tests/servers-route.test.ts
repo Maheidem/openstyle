@@ -187,6 +187,18 @@ describe("POST /api/servers", () => {
     expect(await list()).toHaveLength(1);
   });
 
+  it("answers 409, not 500, when two requests add one address at once", async () => {
+    mockHosts();
+
+    const [a, b] = await Promise.all([
+      post({ url: "http://127.0.0.1:8123" }),
+      post({ url: "http://localhost:8123" }),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    expect(await list()).toHaveLength(1);
+  });
+
   it("treats http and https on one port as two servers", async () => {
     mockHosts();
 

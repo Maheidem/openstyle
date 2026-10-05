@@ -118,6 +118,13 @@ const servers = new Hono()
       throw err;
     }
 
+    // The probe awaited, so a second request can have saved this address
+    // meanwhile. Check again. No await follows, so the insert cannot race.
+    const saved = findOwnServerByUrl(baseUrl);
+    if (saved) {
+      return c.json({ code: "duplicate" as const, id: saved.id }, 409);
+    }
+
     const server = insertOwnServer({ baseUrl, apiKey, flavor: probe.flavor });
     return c.json(toView(server, probe), 201);
   })
