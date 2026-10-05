@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.12.0
+
+### Improvements ⚡
+
+- The model pickers now group models by who runs them:
+  - Built into Openstyle: models that Openstyle downloads and runs on your Mac.
+  - Your own server: oMLX, LM Studio, vLLM or any OpenAI-compatible server that you run.
+  - Cloud provider: OpenAI, Groq, Deepgram, ElevenLabs and other services that use an API key.
+- AI cleanup, Remix and the meeting tasks use the same groups. They show only Your own server and Cloud provider, because Openstyle has no built-in text model.
+- You add each server one time, in one place. All tasks use the same list of servers.
+- The server list shows only the models that fit the task. For transcription, it shows speech-to-text models. Select Show all models to see the other models. For oMLX, the app reads the model type from the server.
+- If your transcription model cannot transcribe, for example a text-to-speech model, the app shows a warning.
+
+### Changes 🔁
+
+- The Cloud provider list no longer has a server address field. Add a server in Your own server.
+
+### Upgrade notes 📌
+
+- The app moves your server settings to the new server list one time. If you set one server in more than one place, it becomes one entry. Your selected models do not change.
+- This change is one way. If you go back to 2.11 or older, select your server models again.
+
 ## 2.11.2
 
 ### Bug Fixes 🐛
