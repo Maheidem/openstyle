@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { countFixes } from "./fixes.js";
+import { migrateOwnServers } from "./own-servers-migration.js";
 
 // The host the retired hosted service used to be keyed under. Only the
 // host-keyed `sessions` migration below still references it, to rewrite rows
@@ -10,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 35;
+const SCHEMA_VERSION = 36;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -919,6 +920,14 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     db.exec(
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_mlx_models_hf_id_lower ON custom_mlx_models(lower(hf_id))`,
     );
+  }
+
+  if (currentVersion < 36) {
+    // Own servers (specs/model-picker-groups.md section 6). One table for the
+    // user's own OpenAI-compatible servers. The three old URL settings and the
+    // `omlx` and `local-llm` model rows move into it. One way: an older build
+    // has no `server` provider (rule M7).
+    migrateOwnServers(db, (name) => tableExists(db, name));
   }
 
   // Upsert schema version

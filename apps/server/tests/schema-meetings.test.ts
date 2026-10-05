@@ -4,7 +4,7 @@ import { initSchema } from "../src/lib/schema.js";
 import { createVersionedDb } from "./helpers/schema-db.js";
 
 // The current schema head. Raise it when you add a migration.
-const EXPECTED_SCHEMA_VERSION = 35;
+const EXPECTED_SCHEMA_VERSION = 36;
 
 // Old table shapes, as they existed before each migration.
 const MEETINGS_V29 = `
