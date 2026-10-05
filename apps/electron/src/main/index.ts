@@ -102,6 +102,10 @@ import {
 import { registerAppSettingsIpc } from "./app-settings-ipc";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
+import {
+  shouldStartAutoDownload,
+  type UpdateDownloadState,
+} from "./auto-update-policy";
 import { registerDiskUsageIpc } from "./disk-usage";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import {
@@ -1367,7 +1371,8 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     return;
   }
   // autoDownload is always false (see the update setup below), so this check
-  // never starts a download. Always run a fresh check.
+  // does not download by itself. The update-available handler can start the
+  // download when "Automatic updates" is on. Always run a fresh check.
   try {
     const result = await autoUpdater.checkForUpdates();
     const latest = result?.updateInfo?.version;
@@ -1949,9 +1954,10 @@ app.whenReady().then(async () => {
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
-  // autoDownload is always false, so checkForUpdates() only checks the feed
-  // and never starts a download. The selfUpdater "downloaded" handler shows
-  // the completion notification.
+  // autoDownload is always false, so checkForUpdates() only checks the feed.
+  // The update-available handler starts the download when "Automatic updates"
+  // is on. The selfUpdater "downloaded" handler shows the completion
+  // notification.
   function runUpdateCheck(): void {
     autoUpdater.checkForUpdates().catch((err) => {
       log.warn(
@@ -1959,6 +1965,32 @@ app.whenReady().then(async () => {
           err instanceof Error ? err.message : String(err)
         }`,
       );
+    });
+  }
+
+  // Downloads the release zip through selfUpdater (see the updater:download
+  // handler for why). A click on the banner opens the releases page when the
+  // download fails. The background download of "Automatic updates" only logs
+  // the failure: it must not open a browser. The next check tries again.
+  function startSelfUpdateDownload(openReleasesOnFailure: boolean): void {
+    updateDownloadState = "downloading";
+    settingsWindow?.webContents.send("updater:downloading", {
+      percent: 0,
+      transferred: 0,
+      total: 0,
+    });
+    selfUpdater.downloadUpdate().catch((err) => {
+      updateDownloadState = "idle";
+      const msg = err instanceof Error ? err.message : String(err);
+      settingsWindow?.webContents.send("updater:error", { message: msg });
+      if (!openReleasesOnFailure) {
+        log.warn(`Background self-update download failed: ${msg}`);
+        return;
+      }
+      log.warn(
+        `Self-update download failed, falling back to releases page: ${msg}`,
+      );
+      void shell.openExternal(RELEASES_PAGE_URL);
     });
   }
 
@@ -1996,8 +2028,20 @@ app.whenReady().then(async () => {
         version: info.version,
       });
       // electron-updater never auto-downloads (autoDownload is always false
-      // — see above); the in-app banner/notification drives the actual
-      // download via updater:download.
+      // — see above). With "Automatic updates" on, the main process starts
+      // the self-update download here. With it off, the in-app banner drives
+      // the download via updater:download. The setting is read now, not at
+      // startup, so a toggle in settings applies to the next check.
+      if (
+        shouldStartAutoDownload({
+          autoUpdateEnabled: readSettings().autoUpdate !== false,
+          downloadState: updateDownloadState,
+          selfUpdateUnavailableReason: selfUpdater.unavailableReason(),
+        })
+      ) {
+        log.info(`Automatic updates on: downloading ${info.version}`);
+        startSelfUpdateDownload(false);
+      }
       if (notifiedAvailableVersion !== info.version) {
         notifiedAvailableVersion = info.version;
         notify(
@@ -2084,21 +2128,7 @@ app.whenReady().then(async () => {
       void shell.openExternal(RELEASES_PAGE_URL);
       return;
     }
-    updateDownloadState = "downloading";
-    settingsWindow?.webContents.send("updater:downloading", {
-      percent: 0,
-      transferred: 0,
-      total: 0,
-    });
-    selfUpdater.downloadUpdate().catch((err) => {
-      updateDownloadState = "idle";
-      const msg = err instanceof Error ? err.message : String(err);
-      log.warn(
-        `Self-update download failed, falling back to releases page: ${msg}`,
-      );
-      settingsWindow?.webContents.send("updater:error", { message: msg });
-      void shell.openExternal(RELEASES_PAGE_URL);
-    });
+    startSelfUpdateDownload(true);
   });
 
   ipcMain.on("updater:install", () => {
@@ -3573,7 +3603,7 @@ app.on("activate", () => {
 let isUpdaterQuitting = false;
 let isQuitting = false;
 
-let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
+let updateDownloadState: UpdateDownloadState = "idle";
 
 // Stop every native child process and timer. The before-quit handler runs
 // this on a normal quit and on an updater quit. A normal quit then calls
