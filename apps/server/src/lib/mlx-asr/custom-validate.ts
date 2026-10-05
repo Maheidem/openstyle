@@ -25,6 +25,7 @@ import {
 } from "./custom-models.js";
 import {
   isNotTranscriber,
+  missingFamilyFiles,
   resolveSttFamily,
   SUPPORTED_STT_FAMILIES,
 } from "./families.js";
@@ -49,6 +50,7 @@ type CustomModelErrorCode =
   | "not_transcriber"
   | "remote_code"
   | "no_weights"
+  | "missing_files"
   | "too_large"
   | "no_disk"
   | "already_added";
@@ -67,6 +69,7 @@ const ERROR_STATUS: Record<CustomModelErrorCode, CustomModelErrorStatus> = {
   not_transcriber: 422,
   remote_code: 422,
   no_weights: 422,
+  missing_files: 422,
   too_large: 422,
   no_disk: 422,
 };
@@ -406,12 +409,21 @@ export async function validateCustomModel(
     );
   }
 
-  // 9: weights the worker can load. Top-level files only.
+  // 9: weights the worker can load, and the other files that the family reads
+  // when it loads. Top-level files only.
   const hasWeights = paths.some(
     (p) => !p.includes("/") && /\.(safetensors|npz)$/i.test(p),
   );
   if (!hasWeights) {
     throw new CustomModelError("no_weights", "Repo has no loadable weights");
+  }
+  const missing = missingFamilyFiles(family, paths);
+  if (missing.length > 0) {
+    throw new CustomModelError(
+      "missing_files",
+      `Repo lacks files that ${family.displayName} needs: ${missing.join(", ")}`,
+      { missing },
+    );
   }
 
   // 10: size.

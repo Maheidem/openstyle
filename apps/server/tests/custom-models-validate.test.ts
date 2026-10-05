@@ -33,6 +33,9 @@ const API_URL = `https://huggingface.co/api/models/${HF_ID}?blobs=true`;
 const FILE_URL = (file: string, id = HF_ID) =>
   `https://huggingface.co/${id}/resolve/main/${file}`;
 
+// A family that needs no files besides config.json and the weights.
+const PARAKEET = { model_type: "parakeet" };
+
 type Responder = () => Response | Promise<Response>;
 
 let routes: Record<string, Responder> = {};
@@ -51,6 +54,7 @@ function metadata(overrides: Record<string, unknown> = {}) {
     siblings: [
       { rfilename: "config.json", size: 262 },
       { rfilename: "model.safetensors", size: 1000 },
+      { rfilename: "preprocessor_config.json", size: 30 },
       { rfilename: "tokenizer.json", size: 50 },
     ],
     ...overrides,
@@ -91,7 +95,12 @@ beforeEach(() => {
     vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
       calls.push({ url, init });
-      const responder = routes[url];
+      // Most repos list this file. It has no auto_map unless a test sets one.
+      const responder =
+        routes[url] ??
+        (url.endsWith("/resolve/main/preprocessor_config.json")
+          ? () => json({})
+          : undefined);
       if (!responder) throw new Error(`unmocked fetch: ${url}`);
       return responder();
     }),
@@ -112,12 +121,13 @@ describe("validateCustomModel", () => {
       hfId: HF_ID,
       family: "whisper",
       modelType: "whisper",
-      totalBytes: 1312,
+      totalBytes: 1342,
       revision: "sha-1",
     });
     expect(result.files).toEqual([
       { path: "config.json", size: 262 },
       { path: "model.safetensors", size: 1000 },
+      { path: "preprocessor_config.json", size: 30 },
       { path: "tokenizer.json", size: 50 },
     ]);
     // The disk check includes the download buffer.
@@ -126,7 +136,7 @@ describe("validateCustomModel", () => {
       string,
       number,
     ];
-    expect(required).toBeGreaterThan(1312);
+    expect(required).toBeGreaterThan(1342);
   });
 
   it("writes no row and starts no download", async () => {
@@ -503,9 +513,11 @@ describe("validateCustomModel", () => {
 
       await validateCustomModel(HF_ID);
 
+      // tokenizer_config.json is not in the file list, so it is not fetched.
       expect(calls.map((c) => c.url)).toEqual([
         API_URL,
         FILE_URL("config.json"),
+        FILE_URL("preprocessor_config.json"),
       ]);
     });
   });
@@ -601,42 +613,179 @@ describe("validateCustomModel", () => {
         siblings: [
           { rfilename: "config.json", size: 10 },
           { rfilename: "weights.npz", size: 10 },
+          { rfilename: "preprocessor_config.json", size: 10 },
+          { rfilename: "tokenizer.json", size: 10 },
         ],
       });
 
-      expect((await validateCustomModel(HF_ID)).totalBytes).toBe(20);
+      expect((await validateCustomModel(HF_ID)).totalBytes).toBe(40);
+    });
+  });
+
+  describe("step 9: family files", () => {
+    const weights = { rfilename: "model.safetensors", size: 10 };
+    const file = (rfilename: string) => ({ rfilename, size: 10 });
+    const SENSEVOICE = { model_type: "sensevoice" };
+
+    it("rejects a whisper repo that has no processor files", async () => {
+      // The layout of mlx-community/whisper-tiny.en-8bit (checked 2026-10-04).
+      serveRepo({
+        siblings: [file("config.json"), file("gpt2.tiktoken"), weights],
+      });
+
+      const err = await failure(HF_ID);
+
+      expect(err.code).toBe("missing_files");
+      expect(err.status).toBe(422);
+      expect(err.extra).toEqual({
+        missing: ["preprocessor_config.json", "tokenizer.json"],
+      });
+    });
+
+    it("rejects the mlx-whisper layout: config.json and weights.npz only", async () => {
+      // mlx-community/whisper-small-mlx has this layout (checked 2026-10-04).
+      serveRepo({
+        siblings: [file("config.json"), file("weights.npz")],
+      });
+
+      expect((await failure(HF_ID)).code).toBe("missing_files");
+    });
+
+    it.each([
+      ["preprocessor_config.json", ["tokenizer.json"]],
+      ["tokenizer.json", ["preprocessor_config.json"]],
+    ])("lists only the whisper file that is missing (has %s)", async (name, missing) => {
+      serveRepo({
+        siblings: [file("config.json"), weights, file(name)],
+      });
+
+      expect((await failure(HF_ID)).extra).toEqual({ missing });
+    });
+
+    it("does not count a file in a subdirectory", async () => {
+      serveRepo({
+        siblings: [
+          file("config.json"),
+          weights,
+          file("preprocessor_config.json"),
+          file("tokenizer/tokenizer.json"),
+        ],
+      });
+
+      expect((await failure(HF_ID)).extra).toEqual({
+        missing: ["tokenizer.json"],
+      });
+    });
+
+    it("rejects a qwen3_asr repo without its tokenizer files", async () => {
+      const id = "someone/Qwen3-ASR-0.6B-4bit";
+      routes[`https://huggingface.co/api/models/${id}?blobs=true`] = () =>
+        json(
+          metadata({
+            id,
+            siblings: [
+              file("config.json"),
+              weights,
+              file("tokenizer_config.json"),
+            ],
+          }),
+        );
+      routes[FILE_URL("config.json", id)] = () =>
+        json({ model_type: "qwen3_asr" });
+      routes[FILE_URL("tokenizer_config.json", id)] = () => json({});
+
+      const err = await failure(id);
+
+      expect(err.code).toBe("missing_files");
+      expect(err.extra).toEqual({
+        missing: ["preprocessor_config.json", "vocab.json", "merges.txt"],
+      });
+    });
+
+    it("accepts a sensevoice repo with either tokenizer file", async () => {
+      const id = "someone/SenseVoiceSmall-4bit";
+      routes[FILE_URL("config.json", id)] = () => json(SENSEVOICE);
+      for (const tokenizer of [
+        "chn_jpn_yue_eng_ko_spectok.bpe.model",
+        "tokens.json",
+      ]) {
+        routes[`https://huggingface.co/api/models/${id}?blobs=true`] = () =>
+          json(
+            metadata({
+              id,
+              siblings: [file("config.json"), weights, file(tokenizer)],
+            }),
+          );
+
+        expect((await validateCustomModel(id)).family).toBe("sensevoice");
+      }
+    });
+
+    it("rejects a sensevoice repo with no tokenizer file, and names both options", async () => {
+      const id = "someone/SenseVoiceSmall-4bit";
+      routes[`https://huggingface.co/api/models/${id}?blobs=true`] = () =>
+        json(metadata({ id, siblings: [file("config.json"), weights] }));
+      routes[FILE_URL("config.json", id)] = () => json(SENSEVOICE);
+
+      expect((await failure(id)).extra).toEqual({
+        missing: ["chn_jpn_yue_eng_ko_spectok.bpe.model or tokens.json"],
+      });
+    });
+
+    it("accepts a parakeet repo with only config.json and weights", async () => {
+      const id = "someone/parakeet-tdt-0.6b-v2";
+      routes[`https://huggingface.co/api/models/${id}?blobs=true`] = () =>
+        json(metadata({ id, siblings: [file("config.json"), weights] }));
+      routes[FILE_URL("config.json", id)] = () => json({ target: {} });
+
+      expect((await validateCustomModel(id)).family).toBe("parakeet");
+    });
+
+    it("checks weights before family files", async () => {
+      serveRepo({ siblings: [file("config.json")] });
+
+      expect((await failure(HF_ID)).code).toBe("no_weights");
     });
   });
 
   describe("step 10: size", () => {
     it("accepts exactly 8 GiB and rejects one byte more", async () => {
       const gib8 = 8 * 1024 ** 3;
-      serveRepo({
-        siblings: [
-          { rfilename: "config.json", size: 10 },
-          { rfilename: "model.safetensors", size: gib8 - 10 },
-        ],
-      });
+      serveRepo(
+        {
+          siblings: [
+            { rfilename: "config.json", size: 10 },
+            { rfilename: "model.safetensors", size: gib8 - 10 },
+          ],
+        },
+        PARAKEET,
+      );
       expect((await validateCustomModel(HF_ID)).totalBytes).toBe(gib8);
 
-      serveRepo({
-        siblings: [
-          { rfilename: "config.json", size: 11 },
-          { rfilename: "model.safetensors", size: gib8 - 10 },
-        ],
-      });
+      serveRepo(
+        {
+          siblings: [
+            { rfilename: "config.json", size: 11 },
+            { rfilename: "model.safetensors", size: gib8 - 10 },
+          ],
+        },
+        PARAKEET,
+      );
       const err = await failure(HF_ID);
       expect(err.code).toBe("too_large");
       expect(err.status).toBe(422);
     });
 
     it("fails with hf_error when a file has no size", async () => {
-      serveRepo({
-        siblings: [
-          { rfilename: "config.json" },
-          { rfilename: "model.safetensors", size: 10 },
-        ],
-      });
+      serveRepo(
+        {
+          siblings: [
+            { rfilename: "config.json" },
+            { rfilename: "model.safetensors", size: 10 },
+          ],
+        },
+        PARAKEET,
+      );
 
       expect((await failure(HF_ID)).code).toBe("hf_error");
     });
@@ -646,13 +795,16 @@ describe("validateCustomModel", () => {
       "a/../../x",
       "/etc/passwd",
     ])("fails with hf_error for the file path %s", async (rfilename) => {
-      serveRepo({
-        siblings: [
-          { rfilename: "config.json", size: 10 },
-          { rfilename: "model.safetensors", size: 10 },
-          { rfilename, size: 10 },
-        ],
-      });
+      serveRepo(
+        {
+          siblings: [
+            { rfilename: "config.json", size: 10 },
+            { rfilename: "model.safetensors", size: 10 },
+            { rfilename, size: 10 },
+          ],
+        },
+        PARAKEET,
+      );
 
       expect((await failure(HF_ID)).code).toBe("hf_error");
     });
@@ -697,10 +849,10 @@ describe("addCustomModel", () => {
       display_name: "whisper-tiny-asr-fp16",
       family: "whisper",
       model_type: "whisper",
-      total_bytes: 1312,
+      total_bytes: 1342,
       revision: "sha-1",
     });
-    expect(JSON.parse(row.files_json as string)).toHaveLength(3);
+    expect(JSON.parse(row.files_json as string)).toHaveLength(4);
   });
 
   it("writes no row when validation fails", async () => {
@@ -850,7 +1002,7 @@ describe("custom model routes", () => {
     expect(await res.json()).toEqual({
       hfId: HF_ID,
       family: "whisper",
-      totalBytes: 1312,
+      totalBytes: 1342,
       revision: "sha-1",
     });
     expect(customRowCount()).toBe(0);
@@ -886,6 +1038,27 @@ describe("custom model routes", () => {
       code: "unsupported_family",
       modelType: "voxtral",
     });
+  });
+
+  it("answers missing_files with the list of missing files", async () => {
+    serveRepo({
+      siblings: [
+        { rfilename: "config.json", size: 10 },
+        { rfilename: "weights.npz", size: 10 },
+      ],
+    });
+
+    const res = await jsonRequest(app, "POST", "/api/mlx-asr/custom-models", {
+      model: HF_ID,
+    });
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({
+      error: expect.any(String),
+      code: "missing_files",
+      missing: ["preprocessor_config.json", "tokenizer.json"],
+    });
+    expect(customRowCount()).toBe(0);
   });
 
   it("answers invalid_input for a body that fails the schema", async () => {

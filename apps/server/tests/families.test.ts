@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   FAMILIES_FOR_WORKER_SPEC,
   isNotTranscriber,
+  missingFamilyFiles,
   resolveSttFamily,
   SUPPORTED_STT_FAMILIES,
 } from "../src/lib/mlx-asr/families.js";
@@ -29,6 +30,116 @@ describe("SUPPORTED_STT_FAMILIES", () => {
       parakeet: "parakeet",
       whisper: "whisper",
     });
+  });
+});
+
+describe("missingFamilyFiles", () => {
+  const family = (key: string) => {
+    const def = SUPPORTED_STT_FAMILIES[key];
+    if (!def) throw new Error(`no family ${key}`);
+    return def;
+  };
+
+  // File lists of the curated repos (HF API, 2026-10-04). The rule must not
+  // reject any of them.
+  it.each([
+    [
+      "qwen3_asr",
+      "mlx-community/Qwen3-ASR-0.6B-8bit",
+      [
+        ".gitattributes",
+        "README.md",
+        "chat_template.json",
+        "config.json",
+        "generation_config.json",
+        "merges.txt",
+        "model.safetensors",
+        "model.safetensors.index.json",
+        "preprocessor_config.json",
+        "tokenizer_config.json",
+        "vocab.json",
+      ],
+    ],
+    [
+      "sensevoice",
+      "mlx-community/SenseVoiceSmall",
+      [
+        ".gitattributes",
+        "README.md",
+        "am.mvn",
+        "chn_jpn_yue_eng_ko_spectok.bpe.model",
+        "config.json",
+        "model.safetensors",
+      ],
+    ],
+    [
+      "parakeet",
+      "mlx-community/parakeet-tdt-0.6b-v3",
+      [
+        ".gitattributes",
+        "README.md",
+        "config.json",
+        "model.safetensors",
+        "tokenizer.model",
+        "tokenizer.vocab",
+        "vocab.txt",
+      ],
+    ],
+    [
+      "whisper",
+      "mlx-community/whisper-tiny-asr-fp16",
+      [
+        "added_tokens.json",
+        "config.json",
+        "generation_config.json",
+        "merges.txt",
+        "model.safetensors",
+        "model.safetensors.index.json",
+        "normalizer.json",
+        "preprocessor_config.json",
+        "special_tokens_map.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.json",
+      ],
+    ],
+  ])("finds nothing missing in %s repo %s", (key, _repo, files) => {
+    expect(missingFamilyFiles(family(key), files)).toEqual([]);
+  });
+
+  it.each([
+    [
+      "mlx-community/whisper-tiny.en-8bit",
+      ["config.json", "gpt2.tiktoken", "model.safetensors"],
+    ],
+    ["mlx-community/whisper-small-mlx", ["config.json", "weights.npz"]],
+    [
+      "mlx-community/whisper-large-v3-turbo",
+      ["config.json", "weights.safetensors"],
+    ],
+  ])("lists both processor files for the whisper repo %s", (_repo, files) => {
+    expect(missingFamilyFiles(family("whisper"), files)).toEqual([
+      "preprocessor_config.json",
+      "tokenizer.json",
+    ]);
+  });
+
+  it("shows a group of alternatives as one entry", () => {
+    expect(missingFamilyFiles(family("sensevoice"), ["config.json"])).toEqual([
+      "chn_jpn_yue_eng_ko_spectok.bpe.model or tokens.json",
+    ]);
+    expect(missingFamilyFiles(family("sensevoice"), ["tokens.json"])).toEqual(
+      [],
+    );
+  });
+
+  it("counts only the exact top-level name", () => {
+    expect(
+      missingFamilyFiles(family("whisper"), [
+        "sub/preprocessor_config.json",
+        "tokenizer.json.bak",
+      ]),
+    ).toEqual(["preprocessor_config.json", "tokenizer.json"]);
   });
 });
 
