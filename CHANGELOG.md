@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.11.2
+
+### Bug Fixes 🐛
+
+- Show the real download size of the built-in MLX models. Qwen3 Fast is 1.0 GB, not 650 MB. Qwen3 Pro is 2.5 GB, not 1.8 GB. The onboarding and the Models page now show these sizes.
+
 ## 2.11.1
 
 ### Improvements ⚡
