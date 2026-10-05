@@ -55,6 +55,7 @@ import {
   summarizeJobDeadlineMs,
   summarizeJobPlan,
 } from "../src/lib/meetings/summarize.js";
+import { insertOwnServer } from "../src/lib/own-servers.js";
 
 /** What `postProcess` was handed — the abort signal is the load-bearing bit. */
 interface CapturedCall {
@@ -82,7 +83,7 @@ const captured = vi.hoisted(() => {
       }
       return {
         cleaned: '{"seg-1":"corrected text"}',
-        model: "local-llm/mock-meeting-model",
+        model: "server/srv_00000000/mock-meeting-model",
         inputTokens: 900,
         outputTokens: 300,
       };
@@ -158,16 +159,21 @@ const KNOBS = [
 beforeEach(() => {
   deleteSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY);
   deleteSetting(MEETING_ENHANCE_TIMEOUT_SETTING_KEY);
-  // A default chat model + a configured local endpoint, so `resolveTaskCall`
-  // and `createChatModel` resolve exactly the way they do for a user who
-  // points openstyle at their own llama.cpp / oMLX server.
+  // A default chat model + an own server, so `resolveTaskCall` and
+  // `createChatModel` resolve exactly the way they do for a user who points
+  // openstyle at their own llama.cpp / oMLX server.
   const db = getDb();
+  db.exec("DELETE FROM own_servers");
+  const server = insertOwnServer({
+    baseUrl: "http://127.0.0.1:4321",
+    apiKey: null,
+    flavor: "openai",
+  });
   db.exec("DELETE FROM model_configs WHERE type = 'llm'");
   db.prepare(
     `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
-     VALUES ('local-llm', 'local-llm/mock-meeting-model', 'mock-meeting-model', 'llm', 1)`,
-  ).run();
-  writeSetting("local_llm_url", "http://127.0.0.1:4321/v1");
+     VALUES ('server', ?, 'mock-meeting-model', 'llm', 1)`,
+  ).run(`server/${server.id}/mock-meeting-model`);
   captured.calls.length = 0;
 });
 

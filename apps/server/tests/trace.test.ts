@@ -234,13 +234,17 @@ describe("traceLlmFetch response cloning", () => {
   });
 });
 
-describe("oMLX STT boundary", () => {
+describe("own server STT boundary", () => {
   it("traces every multipart field but only the audio's byte length", async () => {
-    const { writeSetting } = await import("../src/lib/db.js");
-    const { OmlxTranscriptionProvider } = await import(
-      "../src/lib/streaming/providers/omlx.js"
+    const { insertOwnServer } = await import("../src/lib/own-servers.js");
+    const { ServerTranscriptionProvider } = await import(
+      "../src/lib/streaming/providers/server.js"
     );
-    writeSetting("omlx_base_url", "http://127.0.0.1:8123");
+    const server = insertOwnServer({
+      baseUrl: "http://127.0.0.1:8123",
+      apiKey: null,
+      flavor: "omlx",
+    });
 
     vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
@@ -249,16 +253,16 @@ describe("oMLX STT boundary", () => {
           { status: 200, headers: { "content-type": "application/json" } },
         ),
     );
-    await new OmlxTranscriptionProvider().transcribe({
+    await new ServerTranscriptionProvider().transcribe({
       audio: new Uint8Array(2048),
-      model: "omlx/mlx-community--Qwen3-ASR-1.7B-8bit",
+      model: `server/${server.id}/mlx-community--Qwen3-ASR-1.7B-8bit`,
       apiKey: "local",
       language: "en",
       bias: { kind: "prompt", text: "Openstyle, oMLX" },
     });
 
-    const trace = await waitForTrace("omlx.stt.response");
-    expect(trace).toContain("omlx.stt.request POST");
+    const trace = await waitForTrace("server.stt.response");
+    expect(trace).toContain("server.stt.request POST");
     expect(trace).toContain('"prompt": "Openstyle, oMLX"');
     expect(trace).toContain('"model": "mlx-community--Qwen3-ASR-1.7B-8bit"');
     expect(trace).toContain('"language": "en"');
@@ -293,10 +297,14 @@ describe("createSamplingFetch tracing", () => {
   // fetch, and the clone tees the body. Drive a real `streamText` through the
   // real provider wiring and assert the SDK still assembles the whole stream.
   it("does not break the SDK's consumption of a streamed response", async () => {
-    const { writeSetting } = await import("../src/lib/db.js");
+    const { insertOwnServer } = await import("../src/lib/own-servers.js");
     const { createChatModel } = await import("../src/lib/providers.js");
     const { streamText } = await import("ai");
-    writeSetting("local_llm_url", "http://127.0.0.1:8123");
+    const server = insertOwnServer({
+      baseUrl: "http://127.0.0.1:8124",
+      apiKey: null,
+      flavor: "omlx",
+    });
 
     const frames = ["Hel", "lo ", "there."].map(
       (delta) =>
@@ -316,7 +324,10 @@ describe("createSamplingFetch tracing", () => {
           headers: { "content-type": "text/event-stream" },
         }),
     );
-    const model = await createChatModel("local-llm", "local-llm/Qwen3.8-27B");
+    const model = await createChatModel(
+      "server",
+      `server/${server.id}/Qwen3.8-27B`,
+    );
     const result = streamText({ model, prompt: "hi" });
     let text = "";
     for await (const chunk of result.textStream) text += chunk;

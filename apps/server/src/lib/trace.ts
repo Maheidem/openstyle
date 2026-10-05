@@ -16,7 +16,7 @@ import { traceLog } from "@openstyle/utils";
  * pretty-printed JSON payload:
  *
  * ```
- * 17:41:02.311 [a1b2c3d4] omlx.stt.request POST http://127.0.0.1:8123/...
+ * 17:41:02.311 [a1b2c3d4] server.stt.request POST http://127.0.0.1:8123/...
  * {
  *   "fields": { ... }
  * }
@@ -251,7 +251,7 @@ function traceLlmResponse(
 
 /**
  * Trace one chat-completions call and hand the caller back the untouched
- * `Response`. Installed as the `fetch` of the `local-llm` provider, so it sees
+ * `Response`. Installed as the `fetch` of the `server` provider, so it sees
  * the body exactly as it goes on the wire — after the sampling merge.
  */
 export function traceLlmFetch(

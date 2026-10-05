@@ -125,6 +125,7 @@ export async function resolveDefaultChatCall(
   // stalling every call.
   const result = await withLlmLane(
     resolved.provider,
+    resolved.modelId,
     {
       cls: "background",
       taskId: request.taskId,

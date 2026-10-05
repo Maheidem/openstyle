@@ -117,4 +117,37 @@ describe("GET /api/models/available local voice entries", () => {
       }),
     ]);
   });
+  it("lists no own-server models and never calls an own server", async () => {
+    // Own-server models come from GET /api/servers. A server in the table, and
+    // the leftover URL settings of an older build, must change nothing here.
+    const { getDb, writeSetting } = await import("../src/lib/db.js");
+    const { insertOwnServer } = await import("../src/lib/own-servers.js");
+    insertOwnServer({
+      baseUrl: "http://127.0.0.1:8123",
+      apiKey: null,
+      flavor: "omlx",
+    });
+    writeSetting("local_llm_url", "http://127.0.0.1:8123");
+    writeSetting("omlx_base_url", "http://127.0.0.1:8123");
+    const fetchMock = vi.fn(async () => {
+      throw new Error("offline");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { default: createApp } = await import("../src/index.js");
+    const res = await createApp().request("/api/models/available");
+    expect(res.status).toBe(200);
+
+    const entries = (await res.json()) as Entry[];
+    expect(
+      entries.filter((m) =>
+        ["server", "omlx", "local-llm"].includes(m.provider_id),
+      ),
+    ).toEqual([]);
+    const urls = (fetchMock.mock.calls as unknown as [unknown][]).map(([url]) =>
+      String(url),
+    );
+    expect(urls.filter((url) => url.includes("127.0.0.1:8123"))).toEqual([]);
+    getDb().exec("DELETE FROM own_servers");
+  });
 });

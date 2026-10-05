@@ -222,6 +222,7 @@ export async function postProcess(
       // time to the commit -> delivered-text path, the lane is wrong.
       const result = await withLlmLane(
         resolved.provider,
+        resolved.modelId,
         { cls: "interactive", taskId: "cleanup" },
         () =>
           cleanupWithModel({

@@ -71,13 +71,14 @@ describe("dictation vocabulary-leak filter (REST /api/transcribe)", () => {
     db.exec("DELETE FROM transcription_history");
     db.exec("DELETE FROM model_configs");
     db.exec("DELETE FROM vocabulary");
-    // omlx: the provider from the confirmed incident — resolves to the
-    // "Technical terms: ..." prompt-bias shape (vocabulary-bias.ts).
+    // server: the provider from the confirmed incident (an oMLX server) —
+    // resolves to the "Technical terms: ..." prompt-bias shape
+    // (vocabulary-bias.ts).
     db.prepare(
       `INSERT INTO model_configs
          (provider, model_id, model_name, type, is_default)
          VALUES (?, ?, ?, 'voice', 1)`,
-    ).run("omlx", "omlx/Qwen3-ASR", "Qwen3-ASR");
+    ).run("server", "server/srv_00000000/Qwen3-ASR", "Qwen3-ASR");
     for (const term of VOCAB_TERMS) {
       db.prepare("INSERT INTO vocabulary (term) VALUES (?)").run(term);
     }

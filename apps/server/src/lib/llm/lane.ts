@@ -1,8 +1,8 @@
 /**
  * Per-endpoint LLM lane (specs/meeting-llm-queue.md §5.1–§5.3).
  *
- * The user's inference engine is one server hosted outside openstyle behind
- * `local_llm_url` — effectively one worker slot. Before this module nothing in
+ * The user's inference engine is one server hosted outside openstyle (an own
+ * server, see `own_servers`) — effectively one worker slot. Before this module nothing in
  * the repo arbitrated between the four LLM call sites that all hit it
  * (spec §3): a background meeting Summarize could occupy the engine for its
  * whole per-call window while the interactive dictation cleanup queued behind
@@ -14,8 +14,8 @@
  *
  * Three properties that are easy to get wrong and are load-bearing here:
  *
- * 1. **The lane key is the ENDPOINT, not the config key.** `local_llm_url`
- *    and an oMLX base URL that both resolve to `127.0.0.1:8123` are one
+ * 1. **The lane key is the ENDPOINT, not the config key.** Two server rows
+ *    that share `host:port` (for example two proxy paths on one gateway) are one
  *    physical box and must collapse into ONE lane. Keying on a setting name
  *    or a provider id would silently create two lanes and one GPU (§5.1).
  * 2. **Acquired and released PER CALL, never per job.** A Summarize run is
@@ -36,7 +36,7 @@
 
 import { createAppLogger } from "@openstyle/utils";
 import type { LlmTaskId } from "@openstyle/validations";
-import { normalizeOmlxRoot } from "@openstyle/validations";
+import { normalizeOmlxRoot, parseServerModelId } from "@openstyle/validations";
 import {
   isDictationActive as isDictationActiveDefault,
   waitForDictationIdle,
@@ -141,8 +141,8 @@ export function isLocalLaneHost(host: string): boolean {
  * (spec §5.1):
  *  - trailing path and `/v1` are not lane identity. Reuses
  *    `normalizeOmlxRoot()` (`packages/validations/src/omlx.ts:40-44`) rather
- *    than writing a third regex — the same precedent the local-llm provider
- *    follows at `llm/registry.ts:261`;
+ *    than writing a third regex — the same precedent the `server` provider
+ *    follows in `llm/registry.ts`;
  *  - `localhost`, `127.0.0.1` and `[::1]` are the same socket → fold;
  *  - an omitted port folds to the scheme default, so `https://engine` and
  *    `https://engine:443` are one lane.
@@ -171,25 +171,27 @@ export function llmLaneKey(input: string | null | undefined): string {
 }
 
 /**
- * Lane key and concurrency for a provider id. Local providers resolve through
- * `local_llm_url`. The key is the endpoint and never the setting name.
- * Known cloud providers use {@link CLOUD_HOSTS}. Any other provider gets its
- * own lane. The limit comes from the provider `local` flag and not from the
- * host name. A local engine on a VPN or MagicDNS host still has one slot.
+ * Lane key and concurrency for a provider id and a model id. A local provider
+ * (an own server) resolves through the server row that the model id names.
+ * The key is the server root and never a setting name. Known cloud providers
+ * use {@link CLOUD_HOSTS}. Any other provider gets its own lane. The limit
+ * comes from the provider `local` flag and not from the host name. A local
+ * engine on a VPN or MagicDNS host still has one slot.
  */
 export async function llmLaneKeyForProvider(
   providerId: string,
+  modelId: string,
 ): Promise<{ key: string; limit: number }> {
   let local = false;
   try {
-    const { isLocalProvider, LOCAL_LLM_URL_SETTING } = await import(
-      "./registry.js"
-    );
+    const { isLocalProvider } = await import("./registry.js");
     local = isLocalProvider(providerId);
     if (local) {
-      const { readSetting } = await import("../db.js");
+      const { getOwnServer } = await import("../own-servers.js");
+      const target = parseServerModelId(modelId);
+      const server = target ? getOwnServer(target.serverId) : null;
       return {
-        key: llmLaneKey(readSetting(LOCAL_LLM_URL_SETTING)),
+        key: llmLaneKey(server?.base_url),
         limit: LLM_LANE_CONCURRENCY_LOCAL,
       };
     }
@@ -494,7 +496,7 @@ function safeActive(isActive: () => boolean): boolean {
 }
 
 /**
- * Run `fn` while it holds one lane slot for `provider`.
+ * Run `fn` while it holds one lane slot for `provider` and `modelId`.
  *
  * This resolves the lane key, acquires the lease, runs `fn` and releases the
  * lease in `finally`. A throw from `fn` still frees the slot. Use it for calls
@@ -503,10 +505,11 @@ function safeActive(isActive: () => boolean): boolean {
  */
 export async function withLlmLane<T>(
   provider: string,
+  modelId: string,
   opts: Pick<AcquireLlmLaneArgs, "cls" | "taskId" | "shouldStop" | "onQueued">,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const { key: lane, limit } = await llmLaneKeyForProvider(provider);
+  const { key: lane, limit } = await llmLaneKeyForProvider(provider, modelId);
   const lease = await acquireLlmLane({ lane, limit, ...opts });
   try {
     return await fn();

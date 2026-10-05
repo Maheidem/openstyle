@@ -2,8 +2,8 @@ import { DeepgramTranscriptionProvider } from "./providers/deepgram.js";
 import { ElevenLabsTranscriptionProvider } from "./providers/elevenlabs.js";
 import { GroqTranscriptionProvider } from "./providers/groq.js";
 import { MlxLocalTranscriptionProvider } from "./providers/mlx-local.js";
-import { OmlxTranscriptionProvider } from "./providers/omlx.js";
 import { OpenAITranscriptionProvider } from "./providers/openai.js";
+import { ServerTranscriptionProvider } from "./providers/server.js";
 import { SonioxTranscriptionProvider } from "./providers/soniox.js";
 import { WhisperLocalTranscriptionProvider } from "./providers/whisper-local.js";
 import type {
@@ -20,7 +20,7 @@ const providers: TranscriptionProvider[] = [
   new SonioxTranscriptionProvider(),
   new WhisperLocalTranscriptionProvider(),
   new MlxLocalTranscriptionProvider(),
-  new OmlxTranscriptionProvider(),
+  new ServerTranscriptionProvider(),
 ];
 
 const providerMap = new Map(providers.map((p) => [p.providerId, p]));

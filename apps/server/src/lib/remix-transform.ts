@@ -126,6 +126,7 @@ export async function runRemixTransform(
   // staring at. Per call, released by `withLlmLane` when the call ends.
   const result = await withLlmLane(
     resolved.provider,
+    resolved.modelId,
     { cls: "interactive", taskId: "remix" },
     async () =>
       generateText({

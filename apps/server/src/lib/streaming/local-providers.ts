@@ -1,16 +1,13 @@
+import { SERVER_PROVIDER_ID } from "@openstyle/validations";
 import { MLX_ASR_PROVIDER_ID } from "../mlx-asr/constants.js";
 import { WHISPER_PROVIDER_ID } from "../whisper/constants.js";
 
-// Kept here, not in providers/omlx.ts, so that LLM modules can import this
-// file without loading the STT provider code.
-export const OMLX_PROVIDER_ID = "omlx";
-
-// Engines that need no API key: the bundled on-device workers plus a
-// user-run oMLX server (localhost, keyless).
+// Engines that need no API key from the api_keys table: the bundled on-device
+// workers plus the servers the user runs. A server holds its own key.
 export const LOCAL_STT_PROVIDERS = new Set([
   WHISPER_PROVIDER_ID,
   MLX_ASR_PROVIDER_ID,
-  OMLX_PROVIDER_ID,
+  SERVER_PROVIDER_ID,
 ]);
 
 export type VoiceProviderCategory = "local" | "byok";

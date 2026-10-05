@@ -3,23 +3,19 @@ import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   normalizeOmlxRoot,
   omlxTranscribeUrl,
-  SETTINGS_KEYS,
+  parseServerModelId,
+  SERVER_PROVIDER_ID,
 } from "@openstyle/validations";
-import { readSetting } from "../../db.js";
+import { getOwnServer } from "../../own-servers.js";
 import { redactHeaders, trace } from "../../trace.js";
-import { OMLX_PROVIDER_ID } from "../local-providers.js";
 import type {
   TranscribeOptions,
   TranscribeResult,
   TranscriptionProvider,
 } from "../types.js";
-import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "../types.js";
+import { CLOUD_TRANSCRIBE_TIMEOUT_MS } from "../types.js";
 
-export const OMLX_PROVIDER_NAME = "oMLX";
-export const OMLX_BASE_URL_SETTING = SETTINGS_KEYS.omlxBaseUrl;
-export const OMLX_API_KEY_SETTING = SETTINGS_KEYS.omlxApiKey;
-
-const log = createAppLogger("omlx");
+const log = createAppLogger("server-stt");
 
 /**
  * Every multipart field as it goes on the wire, with the audio reduced to its
@@ -43,21 +39,26 @@ function traceableFields(form: FormData): Record<string, unknown> {
 }
 
 /**
- * Batch transcription against a user-run oMLX server (an MLX inference server
- * the user already has speech models loaded into).
+ * Batch transcription against a server the user runs (oMLX, vLLM, LiteLLM, or
+ * any OpenAI-compatible address). The configured model id is
+ * `server/<serverId>/<model>`. The server row holds the address and the key.
  *
  * Deliberately a direct `fetch` rather than the AI SDK: we own the URL
  * convention, so both the `/v1/models` probe and this request derive from the
  * same {@link normalizeOmlxRoot} root and cannot disagree about the endpoint.
+ * It also sends the vocabulary `prompt` field itself. The AI SDK path passes
+ * that field for `openai` and `groq` only.
  */
-export class OmlxTranscriptionProvider implements TranscriptionProvider {
-  readonly providerId = OMLX_PROVIDER_ID;
+export class ServerTranscriptionProvider implements TranscriptionProvider {
+  readonly providerId = SERVER_PROVIDER_ID;
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    const root = normalizeOmlxRoot(readSetting(OMLX_BASE_URL_SETTING) ?? "");
-    if (!root) {
+    const target = parseServerModelId(opts.model);
+    const server = target ? getOwnServer(target.serverId) : null;
+    const root = normalizeOmlxRoot(server?.base_url ?? "");
+    if (!target || !server || !root) {
       throw new Error(
-        "No oMLX server URL configured — set one under Models → Transcription → On-device.",
+        "This server is not in your list any more. Add it again under Models, then pick a model.",
       );
     }
 
@@ -66,7 +67,7 @@ export class OmlxTranscriptionProvider implements TranscriptionProvider {
     // The audio is always ArrayBuffer-backed (it comes from the HTTP body).
     const audio = opts.audio as Uint8Array<ArrayBuffer>;
     form.append("file", new Blob([audio], { type: "audio/wav" }), "a.wav");
-    form.append("model", stripProviderPrefix(opts.model));
+    form.append("model", target.model);
     form.append("response_format", "json");
     if (opts.language && opts.language !== "auto") {
       form.append("language", opts.language);
@@ -75,15 +76,14 @@ export class OmlxTranscriptionProvider implements TranscriptionProvider {
       form.append("prompt", opts.bias.text);
     }
 
-    // oMLX ignores auth entirely, so the key stays optional — only send the
-    // header when the user stored one (e.g. a reverse proxy in front of it).
-    const apiKey = (readSetting(OMLX_API_KEY_SETTING) ?? "").trim();
+    // The key is optional. Send the header only when the user stored one.
+    const apiKey = (server.api_key ?? "").trim();
 
     const headers: Record<string, string> = apiKey
       ? { Authorization: `Bearer ${apiKey}` }
       : {};
 
-    trace("omlx.stt.request", `POST ${url}`, {
+    trace("server.stt.request", `POST ${url}`, {
       url,
       method: "POST",
       headers: redactHeaders(headers),
@@ -100,12 +100,10 @@ export class OmlxTranscriptionProvider implements TranscriptionProvider {
         signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
       });
     } catch (err) {
-      trace("omlx.stt.error", `elapsed_ms=${Date.now() - t0} ${url}`, {
+      trace("server.stt.error", `elapsed_ms=${Date.now() - t0} ${url}`, {
         error: errorMessage(err),
       });
-      throw new Error(
-        `oMLX server unreachable at ${url}: ${errorMessage(err)}`,
-      );
+      throw new Error(`Server unreachable at ${url}: ${errorMessage(err)}`);
     }
 
     // Read the body once, up front, so the trace carries the full payload on
@@ -119,7 +117,7 @@ export class OmlxTranscriptionProvider implements TranscriptionProvider {
     }
 
     trace(
-      "omlx.stt.response",
+      "server.stt.response",
       `status=${res.status} elapsed_ms=${Date.now() - t0} ${url}`,
       {
         status: res.status,
@@ -132,16 +130,18 @@ export class OmlxTranscriptionProvider implements TranscriptionProvider {
       const detail = bodyText.slice(0, 300);
       if (res.status === 404) {
         throw new Error(
-          `oMLX has no transcription endpoint at ${url} — check the server URL.`,
+          `Server has no transcription endpoint at ${url}. Check that it supports speech-to-text.`,
         );
       }
       throw new Error(
-        `oMLX transcription failed: HTTP ${res.status}${detail ? ` ${detail}` : ""}`,
+        `Server transcription failed: HTTP ${res.status}${detail ? ` ${detail}` : ""}`,
       );
     }
 
     if (typeof data?.text !== "string") {
-      throw new Error("oMLX returned no transcript — is this an ASR model?");
+      throw new Error(
+        "Server returned no transcript. This model may not be a speech-to-text model.",
+      );
     }
 
     log.debug(`inference took ${Date.now() - t0}ms`);

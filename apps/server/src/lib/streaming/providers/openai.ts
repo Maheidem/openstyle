@@ -1,9 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createOpenAI } from "@ai-sdk/openai";
 import { errorMessage } from "@openstyle/utils";
-import { sanitizeSttBaseUrl } from "@openstyle/validations";
 import WebSocket from "ws";
-import { readSetting } from "../../db.js";
 import { createPcmUpsampler } from "../pcm.js";
 import { createPendingAudio } from "../pending-audio.js";
 import type {
@@ -25,18 +23,7 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "openai";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    const baseUrl = sanitizeSttBaseUrl(
-      readSetting("openai_stt_base_url") ?? "",
-    );
-    if (!baseUrl) {
-      return transcribeWithAiSdk(opts, createOpenAI, this.providerId);
-    }
-
-    const apiKey = readSetting("openai_stt_api_key") ?? "";
-    const createOpenAIWithBaseUrl = () =>
-      createOpenAI({ apiKey, baseURL: baseUrl });
-
-    return transcribeWithAiSdk(opts, createOpenAIWithBaseUrl, this.providerId);
+    return transcribeWithAiSdk(opts, createOpenAI, this.providerId);
   }
 
   supportsStreaming(modelId: string): boolean {

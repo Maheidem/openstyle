@@ -15,8 +15,8 @@
  * queue deterministically in this suite.
  */
 
+import { serverModelId } from "@openstyle/validations";
 import { beforeEach, describe, expect, it } from "vitest";
-import { writeSetting } from "../src/lib/db.js";
 import { __resetDictationIdleStateForTests } from "../src/lib/dictation-activity.js";
 import {
   __resetLlmLanesForTests,
@@ -30,6 +30,7 @@ import {
   llmLaneKeyForProvider,
   llmLaneSnapshot,
 } from "../src/lib/llm/lane.js";
+import { insertOwnServer } from "../src/lib/own-servers.js";
 
 const LOCAL = "127.0.0.1:8123";
 const CLOUD = "api.openai.com:443";
@@ -109,7 +110,7 @@ describe("llmLaneKey — the lane is the ENDPOINT, not the config key", () => {
     expect(llmLaneKey("http://127.0.0.1:8123/v1")).toBe(LOCAL);
     expect(llmLaneKey("http://127.0.0.1:8123/v1/chat/completions")).toBe(LOCAL);
     // The oMLX precedent (`normalizeOmlxRoot`): the transcribe path collapses
-    // too, so an oMLX base URL and `local_llm_url` land on one lane.
+    // too, so two server rows that share a `host:port` land on one lane.
     expect(llmLaneKey("http://127.0.0.1:8123/v1/audio/transcriptions")).toBe(
       LOCAL,
     );
@@ -157,8 +158,15 @@ describe("llmLaneKey — the lane is the ENDPOINT, not the config key", () => {
 describe("llmLaneKeyForProvider — the limit follows the provider local flag", () => {
   it("gives a local provider on a non-private host a limit of 1", async () => {
     // 100.64.0.0/10 (Tailscale) is not a private range for `isLocalLaneHost`.
-    writeSetting("local_llm_url", "http://100.64.0.5:8123/v1");
-    const lane = await llmLaneKeyForProvider("local-llm");
+    const server = insertOwnServer({
+      baseUrl: "http://100.64.0.5:8123",
+      apiKey: null,
+      flavor: "openai",
+    });
+    const lane = await llmLaneKeyForProvider(
+      "server",
+      serverModelId(server.id, "m"),
+    );
     expect(lane).toEqual({
       key: "100.64.0.5:8123",
       limit: LLM_LANE_CONCURRENCY_LOCAL,
@@ -186,8 +194,42 @@ describe("llmLaneKeyForProvider — the limit follows the provider local flag", 
     expect(second).toBe(true);
   });
 
+  it("gives two servers on one host:port one lane", async () => {
+    const plain = insertOwnServer({
+      baseUrl: "http://gw.example.test:9000/a",
+      apiKey: null,
+      flavor: "openai",
+    });
+    const secure = insertOwnServer({
+      baseUrl: "https://gw.example.test:9000/b",
+      apiKey: null,
+      flavor: "openai",
+    });
+
+    const a = await llmLaneKeyForProvider(
+      "server",
+      serverModelId(plain.id, "m"),
+    );
+    const b = await llmLaneKeyForProvider(
+      "server",
+      serverModelId(secure.id, "m"),
+    );
+
+    expect(a).toEqual({
+      key: "gw.example.test:9000",
+      limit: LLM_LANE_CONCURRENCY_LOCAL,
+    });
+    expect(b).toEqual(a);
+  });
+
+  it("gives a removed server its own local lane", async () => {
+    expect(
+      await llmLaneKeyForProvider("server", "server/srv_gone0000/m"),
+    ).toEqual({ key: "lane:unconfigured", limit: LLM_LANE_CONCURRENCY_LOCAL });
+  });
+
   it("gives a cloud provider a limit of 2", async () => {
-    expect(await llmLaneKeyForProvider("openai")).toEqual({
+    expect(await llmLaneKeyForProvider("openai", "gpt-4o-mini")).toEqual({
       key: CLOUD,
       limit: LLM_LANE_CONCURRENCY_CLOUD,
     });

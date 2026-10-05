@@ -4,6 +4,7 @@ import {
   DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
   type LlmTaskAssignments,
+  serverModelId,
 } from "@openstyle/validations";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +18,10 @@ import {
   LLM_TASK_PROFILES,
   resolveTaskCall,
 } from "../src/lib/llm/task-profiles.js";
+import { insertOwnServer } from "../src/lib/own-servers.js";
 import { createChatModel } from "../src/lib/providers.js";
+
+let serverId = "";
 
 function seedDefaultLlm(provider: string, modelId: string): void {
   const db = getDb();
@@ -63,8 +67,13 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
 
 beforeEach(() => {
   clearSettings();
-  seedDefaultLlm("local-llm", "local-llm/Qwen3.8-27B");
-  writeSetting("local_llm_url", "http://127.0.0.1:8123");
+  getDb().exec("DELETE FROM own_servers");
+  serverId = insertOwnServer({
+    baseUrl: "http://127.0.0.1:8123",
+    apiKey: null,
+    flavor: "omlx",
+  }).id;
+  seedDefaultLlm("server", serverModelId(serverId, "Qwen3.8-27B"));
 });
 
 afterEach(() => {
@@ -134,7 +143,7 @@ describe("BUILTIN_LLM_PRESETS — param key spelling (§4.2 amendment, §12 item
 });
 
 describe("resolveTaskCall — mode: auto (§6.1)", () => {
-  it("local-llm gets only the reasoning seed, nothing else", async () => {
+  it("a server gets only the reasoning seed, nothing else", async () => {
     const resolved = await resolveTaskCall("cleanup", {
       autoMaxOutputTokens: 512,
     });
@@ -170,7 +179,7 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
     });
   });
 
-  it("on local-llm: every key survives except `stream` (denylisted), and the preset's enable_thinking wins over the task seed", async () => {
+  it("on a server: every key survives except `stream` (denylisted), and the preset's enable_thinking wins over the task seed", async () => {
     const resolved = await resolveTaskCall("cleanup", {
       autoMaxOutputTokens: 512,
     });
@@ -261,8 +270,8 @@ describe("resolveTaskCall — model override (§6.3, §11)", () => {
     const out = await captureStdout(async () => {
       resolved = await resolveTaskCall("cleanup", { autoMaxOutputTokens: 512 });
     });
-    expect(resolved!.provider).toBe("local-llm");
-    expect(resolved!.modelId).toBe("local-llm/Qwen3.8-27B");
+    expect(resolved!.provider).toBe("server");
+    expect(resolved!.modelId).toBe(serverModelId(serverId, "Qwen3.8-27B"));
     expect(out).toMatch(/anthropic/);
   });
 
@@ -281,6 +290,48 @@ describe("resolveTaskCall — model override (§6.3, §11)", () => {
     });
     expect(resolved.provider).toBe("anthropic");
     expect(resolved.modelId).toBe("claude-x");
+  });
+});
+
+describe("resolveTaskCall — server model override (§6.3, §6.2)", () => {
+  it("uses an override that names a server in the list", async () => {
+    const other = insertOwnServer({
+      baseUrl: "http://127.0.0.1:1234",
+      apiKey: null,
+      flavor: "openai",
+    });
+    setAssignments({
+      cleanup: {
+        mode: "auto",
+        modelOverride: {
+          provider: "server",
+          model_id: serverModelId(other.id, "qwen/qwen3-4b"),
+        },
+      },
+    });
+    const resolved = await resolveTaskCall("cleanup", {
+      autoMaxOutputTokens: 512,
+    });
+    expect(resolved.provider).toBe("server");
+    expect(resolved.modelId).toBe(serverModelId(other.id, "qwen/qwen3-4b"));
+  });
+
+  it("falls back to the app default and warns when the override server was removed", async () => {
+    setAssignments({
+      cleanup: {
+        mode: "auto",
+        modelOverride: {
+          provider: "server",
+          model_id: serverModelId("srv_gone0000", "m"),
+        },
+      },
+    });
+    let resolved: Awaited<ReturnType<typeof resolveTaskCall>>;
+    const out = await captureStdout(async () => {
+      resolved = await resolveTaskCall("cleanup", { autoMaxOutputTokens: 512 });
+    });
+    expect(resolved!.modelId).toBe(serverModelId(serverId, "Qwen3.8-27B"));
+    expect(out).toMatch(/server is no longer in the list/);
   });
 });
 
@@ -436,10 +487,10 @@ describe("mergeSamplingIntoBody / createSamplingFetch (moved, unchanged)", () =>
 });
 
 // Rewritten from the retired apps/server/tests/cleanup-sampling.test.ts's
-// "local-llm provider wiring" suite: the provider no longer reads
+// "server provider wiring" suite: the provider no longer reads
 // `cleanup_sampling` from the DB itself (§8.1) — sampling now arrives only
 // via the explicit `taskContext` `createChatModel` is called with.
-describe("local-llm provider wiring — taskContext, not a direct DB read (§8.1)", () => {
+describe("server provider wiring — taskContext, not a direct DB read (§8.1)", () => {
   async function captureBody(taskContext?: {
     task: string;
     sampling: Record<string, unknown>;
@@ -466,8 +517,8 @@ describe("local-llm provider wiring — taskContext, not a direct DB read (§8.1
       );
     });
     const model = await createChatModel(
-      "local-llm",
-      "local-llm/Qwen3.8-27B",
+      "server",
+      serverModelId(serverId, "Qwen3.8-27B"),
       taskContext,
     );
     await generateText({ model, prompt: "hi", temperature: 0 });
