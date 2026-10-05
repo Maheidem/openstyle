@@ -46,7 +46,7 @@ export function parseCleanupIntensity(
  * (oMLX, llama.cpp, vLLM). Field names are snake_case because they go straight
  * onto the wire — the AI SDK cannot carry `top_k`, `min_p` or
  * `chat_template_kwargs`, so these are merged into the request body by a custom
- * `fetch` on the `local-llm` provider entry.
+ * `fetch` on the `server` provider entry.
  *
  * Every field is optional and none has a `.default()`: an empty object means
  * "send nothing extra", which keeps the request body identical to what the SDK

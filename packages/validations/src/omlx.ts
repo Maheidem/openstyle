@@ -1,24 +1,8 @@
-import { z } from "zod/v3";
-import { httpUrlOrEmpty } from "./http-url-or-empty.js";
-
-/** Body for `POST /api/settings/omlx/test`. */
-export const omlxConfigSchema = z.object({
-  url: z.string().min(1, "Server URL is required").url("Must be a valid URL"),
-  api_key: z.string().optional(),
-});
-
-export type OmlxConfigInput = z.infer<typeof omlxConfigSchema>;
-
-export const omlxBaseUrlSchema = httpUrlOrEmpty(
-  ["http:", "https:"],
-  "oMLX server URL must be a valid http:// or https:// URL (or empty to disable)",
-);
-
 /**
- * The single normalizer for the oMLX server URL — reduce whatever the user
+ * The single normalizer for an own-server URL. It reduces whatever the user
  * typed to the server ROOT.
  *
- * Every oMLX URL is derived from this root ({@link omlxModelsUrl},
+ * Every server URL is derived from this root ({@link omlxModelsUrl},
  * {@link omlxTranscribeUrl}), so the probe and the transcription request can
  * never disagree about where the server lives. `http://127.0.0.1:8123` and
  * `http://127.0.0.1:8123/v1` (and a pasted `.../v1/audio/transcriptions`) all
@@ -31,24 +15,12 @@ export function normalizeOmlxRoot(input: string): string {
     .replace(/\/v1(?:\/[^?#]*)?$/, "");
 }
 
-/** Model discovery endpoint for an oMLX root. */
+/** Model discovery endpoint for a server root. */
 export function omlxModelsUrl(root: string): string {
   return `${root}/v1/models`;
 }
 
-/** Batch transcription endpoint for an oMLX root. */
+/** Batch transcription endpoint for a server root. */
 export function omlxTranscribeUrl(root: string): string {
   return `${root}/v1/audio/transcriptions`;
 }
-
-/**
- * Shape for the oMLX connect form in the Models page. The URL may be empty
- * (disconnects the server), so it uses the same relaxed schema the server
- * enforces on `PUT /settings/omlx_base_url`.
- */
-export const omlxConnectFormSchema = z.object({
-  url: omlxBaseUrlSchema,
-  apiKey: z.string().max(2048),
-});
-
-export type OmlxConnectForm = z.infer<typeof omlxConnectFormSchema>;
