@@ -15,6 +15,11 @@ export interface WhisperModelDef {
   quantized: boolean;
 }
 
+/** One entry of GET /api/mlx-asr/status modelDefinitions. `custom` marks a model the user added. */
+export type MlxModelDef = ApiRes<
+  ApiClient["api"]["mlx-asr"]["status"]["$get"]
+>["modelDefinitions"][number];
+
 export interface WhisperModelDownloadState {
   model: string;
   fileName?: string;
@@ -52,7 +57,7 @@ export interface MlxAsrStatus {
     error?: string;
   };
   models: WhisperModelDownloadState[];
-  modelDefinitions: WhisperModelDef[];
+  modelDefinitions: MlxModelDef[];
   setupHint: string | null;
 }
 
@@ -152,6 +157,8 @@ export interface VoiceItem {
   quality?: number;
   quantized?: boolean;
   note?: string;
+  /** The user added this MLX model from Hugging Face. */
+  custom?: boolean;
   selected: boolean;
   defId?: string;
   sizeBytes?: number;
@@ -310,7 +317,12 @@ export function buildVoiceItems(
             speed: SPEED_RANK[def.speed] ?? 4,
             quality: QUALITY_RANK[def.quality] ?? 4,
             quantized: def.quantized,
-            note: canRun ? (LOCAL_VOICE_NOTES[def.id] ?? undefined) : undefined,
+            // A custom model has no curated note: its meta line names the repo.
+            note: canRun
+              ? (LOCAL_VOICE_NOTES[def.id] ??
+                (def.custom ? def.hfId : undefined))
+              : undefined,
+            custom: def.custom !== undefined,
             defId: def.id,
             sizeBytes: def.sizeBytes,
             ram: def.ramRequired,

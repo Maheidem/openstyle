@@ -11,7 +11,8 @@ import {
   MLX_KEEP_ALIVE_DEFAULT_MINUTES,
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
-import { getMlxAsrModel } from "./constants.js";
+import { getMlxAsrModel, hfRepoCacheDir } from "./constants.js";
+import { hasRemoteCode } from "./custom-models.js";
 import {
   describeMlxSetupBlocker,
   findPythonExecutable,
@@ -213,10 +214,11 @@ function workerLaunchCandidates(modelHfId: string): WorkerLaunchCandidate[] {
 async function spawnWorkerProcess(
   command: string,
   spawnArgs: string[],
+  extraEnv: NodeJS.ProcessEnv,
 ): Promise<void> {
   const proc = spawn(command, spawnArgs, {
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    env: { ...process.env, PYTHONUNBUFFERED: "1", ...extraEnv },
   });
 
   workerProcess = proc;
@@ -285,6 +287,14 @@ async function startWorker(modelId: string): Promise<void> {
     throw new Error(`Unknown MLX ASR model: ${modelId}`);
   }
 
+  // The files on disk are the ones the worker loads. A repo that gained code
+  // files after the add step must not start (spec section 11).
+  if (def.custom && hasRemoteCode(hfRepoCacheDir(def.hfId))) {
+    throw new Error(
+      `The custom model ${def.hfId} holds its own code files, so it will not start. Delete it.`,
+    );
+  }
+
   await updateManagedMlxRuntimeIfNeeded().catch((err) => {
     log.warn(
       `Failed to refresh managed runtime before worker start: ${errorMessage(
@@ -301,11 +311,19 @@ async function startWorker(modelId: string): Promise<void> {
     );
   }
 
+  // A custom model was checked at add time only. The worker must not fetch
+  // other repos for it (spec section 11), so it loads from the cache alone.
+  const extraEnv = def.custom ? { HF_HUB_OFFLINE: "1" } : {};
+
   let lastError: Error | null = null;
 
   for (const candidate of candidates) {
     try {
-      await spawnWorkerProcess(candidate.command, candidate.spawnArgs);
+      await spawnWorkerProcess(
+        candidate.command,
+        candidate.spawnArgs,
+        extraEnv,
+      );
       const releaseTag = mlxAsrReleaseTagOverride();
       if (releaseTag && isManagedMlxRuntimeAvailable()) {
         markManagedMlxRuntimeSyncedForAppVersion(releaseTag);
@@ -319,6 +337,11 @@ async function startWorker(modelId: string): Promise<void> {
     }
   }
 
+  if (def.custom && lastError) {
+    throw new Error(
+      `Could not load the custom model ${def.hfId}. Its files may be incomplete. Delete it and add it again. (${lastError.message})`,
+    );
+  }
   throw (
     lastError ??
     new Error("MLX ASR worker failed to start with every launch method.")

@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { modelCacheDir } from "../model-cache.js";
 
@@ -12,6 +13,25 @@ export function isAppleSiliconMac(): boolean {
   return process.platform === "darwin" && process.arch === "arm64";
 }
 
+export function hfCacheRoot(): string {
+  return (
+    process.env.HUGGINGFACE_HUB_CACHE ??
+    (process.env.HF_HOME
+      ? join(process.env.HF_HOME, "hub")
+      : join(homedir(), ".cache", "huggingface", "hub"))
+  );
+}
+
+export function hfRepoCacheDir(hfId: string): string {
+  return join(hfCacheRoot(), `models--${hfId.replaceAll("/", "--")}`);
+}
+
+/** One expected file of a custom model snapshot (path in the repo, size in bytes). */
+export interface CustomMlxFile {
+  path: string;
+  size: number;
+}
+
 export interface MlxAsrModelDef {
   id: string;
   /** Hugging Face repo id passed to mlx-audio `load()`. */
@@ -24,6 +44,8 @@ export interface MlxAsrModelDef {
   speed: string;
   quality: string;
   quantized: boolean;
+  /** Set only for a custom model the user added. Used by the completeness check. */
+  custom?: { revision: string; files: CustomMlxFile[] };
 }
 
 /** App catalog → passed to the worker as `--model <hfId>`. Any mlx-audio STT repo works. */
@@ -92,10 +114,23 @@ export const LEGACY_MLX_ASR_MODELS: MlxAsrModelDef[] = [
   },
 ];
 
+type CustomMlxResolver = (id: string) => MlxAsrModelDef | undefined;
+
+let customResolver: CustomMlxResolver = () => undefined;
+
+/**
+ * `custom-models.ts` registers its table lookup here. This file cannot import
+ * it, because `models.ts` imports both.
+ */
+export function setCustomMlxResolver(resolver: CustomMlxResolver): void {
+  customResolver = resolver;
+}
+
 export function getMlxAsrModel(id: string): MlxAsrModelDef | undefined {
   return (
     MLX_ASR_MODELS.find((m) => m.id === id) ??
-    LEGACY_MLX_ASR_MODELS.find((m) => m.id === id)
+    LEGACY_MLX_ASR_MODELS.find((m) => m.id === id) ??
+    customResolver(id)
   );
 }
 

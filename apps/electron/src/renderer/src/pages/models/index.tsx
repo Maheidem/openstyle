@@ -45,6 +45,7 @@ export default function ModelsPage(): React.JSX.Element {
     defId: string;
     engine?: "whisper" | "mlx";
     name: string;
+    custom: boolean;
   } | null>(null);
   const [pendingProviderDelete, setPendingProviderDelete] = useState<
     string | null
@@ -147,7 +148,12 @@ export default function ModelsPage(): React.JSX.Element {
     const item = m.voiceItems.find(
       (row) => row.defId === defId && row.localEngine === engine,
     );
-    setPendingLocalDelete({ defId, engine, name: item?.name ?? defId });
+    setPendingLocalDelete({
+      defId,
+      engine,
+      name: item?.name ?? defId,
+      custom: item?.custom === true,
+    });
   };
 
   const onBack = (): void => {
@@ -299,10 +305,18 @@ export default function ModelsPage(): React.JSX.Element {
 
       {pendingLocalDelete && (
         <ConfirmDialog
-          title={t("models.deleteLocalTitle")}
+          title={t(
+            pendingLocalDelete.custom
+              ? "models.custom.deleteTitle"
+              : "models.deleteLocalTitle",
+          )}
           message={
             <Trans
-              i18nKey="models.deleteLocalMsg"
+              i18nKey={
+                pendingLocalDelete.custom
+                  ? "models.custom.deleteMsg"
+                  : "models.deleteLocalMsg"
+              }
               values={{
                 name: pendingLocalDelete.name,
                 phrase: ON_DEVICE_PHRASE,

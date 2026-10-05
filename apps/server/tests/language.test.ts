@@ -1,5 +1,7 @@
 import { normalizeLanguageList } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
+import { getDb } from "../src/lib/db.js";
+import { insertCustomModel } from "../src/lib/mlx-asr/custom-models.js";
 import { resolveMlxLanguage } from "../src/lib/mlx-asr/language.js";
 import { aiSdkProviderOptions } from "../src/lib/streaming/utils.js";
 
@@ -94,5 +96,25 @@ describe("resolveMlxLanguage", () => {
   it("passes ISO codes through for non-qwen3 models", () => {
     expect(resolveMlxLanguage("parakeet-tdt-0.6b-v3", "fr")).toBe("fr");
     expect(resolveMlxLanguage("parakeet-tdt-0.6b-v3", "auto")).toBeUndefined();
+  });
+
+  it("treats a custom model by its stored family", () => {
+    getDb().exec("DELETE FROM custom_mlx_models");
+    const add = (hfId: string, family: string) =>
+      insertCustomModel({
+        hfId,
+        family,
+        modelType: null,
+        totalBytes: 1,
+        revision: "r",
+        files: [],
+      });
+
+    const qwen = add("someone/qwen3-asr-custom", "qwen3-asr");
+    const whisper = add("someone/whisper-custom", "whisper");
+
+    expect(resolveMlxLanguage(qwen, "en")).toBe("English");
+    expect(resolveMlxLanguage(qwen, "uk")).toBeUndefined();
+    expect(resolveMlxLanguage(whisper, "en")).toBe("en");
   });
 });

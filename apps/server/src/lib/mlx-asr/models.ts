@@ -1,5 +1,4 @@
-import { existsSync, readdirSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { listFiles, snapshotDownload } from "@huggingface/hub";
 import { getDb } from "../db.js";
@@ -12,11 +11,20 @@ import { downloadErrorSourceUrl } from "../download-guard.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getMlxAsrModel,
+  hfCacheRoot,
+  hfRepoCacheDir,
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
   type MlxAsrModelDef,
 } from "./constants.js";
+import {
+  deleteCustomModelRow,
+  hasRemoteCode,
+  listCustomMlxDefs,
+  MAX_MODEL_BYTES,
+  recordCustomSnapshot,
+} from "./custom-models.js";
 import {
   describeMlxSetupBlocker,
   mlxSetupBlocker,
@@ -81,19 +89,6 @@ function baseModelState(
   };
 }
 
-function hfCacheRoot(): string {
-  return (
-    process.env.HUGGINGFACE_HUB_CACHE ??
-    (process.env.HF_HOME
-      ? join(process.env.HF_HOME, "hub")
-      : join(homedir(), ".cache", "huggingface", "hub"))
-  );
-}
-
-export function hfRepoCacheDir(hfId: string): string {
-  return join(hfCacheRoot(), `models--${hfId.replaceAll("/", "--")}`);
-}
-
 function hasSnapshotFiles(snapshotDir: string): boolean {
   try {
     return readdirSync(snapshotDir).length > 0;
@@ -102,7 +97,28 @@ function hasSnapshotFiles(snapshotDir: string): boolean {
   }
 }
 
+/**
+ * A custom model counts as downloaded only when the snapshot of the stored
+ * revision holds every expected file at its expected size (spec section 8).
+ * Snapshot files are symlinks into blobs/. `statSync` follows them.
+ */
+function isCustomModelComplete(
+  hfId: string,
+  custom: NonNullable<MlxAsrModelDef["custom"]>,
+): boolean {
+  const snapshotDir = join(hfRepoCacheDir(hfId), "snapshots", custom.revision);
+  if (!existsSync(snapshotDir)) return false;
+  try {
+    return custom.files.every(
+      (file) => statSync(join(snapshotDir, file.path)).size === file.size,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isMlxModelDownloaded(model: MlxAsrModelDef): boolean {
+  if (model.custom) return isCustomModelComplete(model.hfId, model.custom);
   const snapshotsDir = join(hfRepoCacheDir(model.hfId), "snapshots");
   if (!existsSync(snapshotsDir)) return false;
 
@@ -181,11 +197,11 @@ export function getMlxModelStatus(
 
 /**
  * Catalog shown in pickers: the curated models, plus legacy models that
- * this install still has downloaded.
+ * this install still has downloaded, plus the custom models the user added.
  */
 export function getMlxCatalogModels(): MlxAsrModelDef[] {
   const legacy = LEGACY_MLX_ASR_MODELS.filter((m) => isMlxModelDownloaded(m));
-  return [...MLX_ASR_MODELS, ...legacy];
+  return [...MLX_ASR_MODELS, ...legacy, ...listCustomMlxDefs()];
 }
 
 export function getAllMlxModelStatuses(): MlxModelDownloadState[] {
@@ -273,6 +289,13 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
   }
 
   try {
+    // The add step checked the size once. The repo can grow before a retry.
+    if (model.custom && active.bytesTotal > MAX_MODEL_BYTES) {
+      throw new Error(
+        "This model is now larger than 8 GiB. It was not downloaded.",
+      );
+    }
+
     // Fail fast if the model won't fit before streaming gigabytes from HF.
     if (active.bytesTotal > 0) {
       await assertEnoughDiskSpace(
@@ -281,15 +304,33 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       );
     }
 
-    await snapshotDownload({
+    const snapshotDir = await snapshotDownload({
       repo,
       cacheDir: hfCacheRoot(),
       fetch: progressFetch(active, active.controller.signal),
     });
+    if (model.custom) {
+      // The add step checked `main` once. Check the files that were stored.
+      if (hasRemoteCode(hfRepoCacheDir(model.hfId))) {
+        rmSync(hfRepoCacheDir(model.hfId), { recursive: true, force: true });
+        throw new Error(
+          "This model now holds its own code files. It was blocked and removed.",
+        );
+      }
+      recordCustomSnapshot(modelId, snapshotDir);
+    }
     activeDownloads.delete(modelId);
   } catch (err) {
     if (active.controller.signal.aborted) {
-      activeDownloads.delete(modelId);
+      // A write that was in flight can recreate files after the cancel or the
+      // delete removed the dir. Remove them, unless a new download owns the dir.
+      if (!activeDownloads.has(modelId)) {
+        try {
+          rmSync(hfRepoCacheDir(model.hfId), { recursive: true, force: true });
+        } catch {}
+      } else if (activeDownloads.get(modelId) === active) {
+        activeDownloads.delete(modelId);
+      }
       return;
     }
     active.error = describeDownloadError(err);
@@ -345,5 +386,7 @@ export function deleteMlxModel(modelId: string): boolean {
     // DB may be unavailable during shutdown
   }
 
-  return existed;
+  // A custom model leaves the list. The caller adds it again through the dialog.
+  const rowRemoved = model.custom ? deleteCustomModelRow(modelId) : false;
+  return existed || rowRemoved;
 }

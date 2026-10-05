@@ -1,5 +1,10 @@
 import { zValidator } from "@hono/zod-validator";
-import { serverStartSchema } from "@openstyle/validations";
+import {
+  addCustomMlxModelSchema,
+  mlxSearchQuerySchema,
+  serverStartSchema,
+} from "@openstyle/validations";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import {
   isAppleSiliconMac,
@@ -7,6 +12,12 @@ import {
   MLX_ASR_PROVIDER_NAME,
   MLX_UNSUPPORTED_PLATFORM_REASON,
 } from "../lib/mlx-asr/constants.js";
+import {
+  addCustomModel,
+  CustomModelError,
+  searchMlxModels,
+  validateCustomModel,
+} from "../lib/mlx-asr/custom-validate.js";
 import {
   cancelMlxDownload,
   clearMlxDownloadError,
@@ -32,6 +43,24 @@ import {
 } from "../lib/mlx-asr/server.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
+
+/** Keep the `{ error, code }` shape when the body or query fails the schema. */
+function invalidInput(
+  result: { success: boolean },
+  c: Context,
+): Response | undefined {
+  if (result.success) return undefined;
+  return c.json({ error: "Invalid input", code: "invalid_input" }, 400);
+}
+
+/** Map a custom model failure to `{ error, code, ...extra }`. */
+function customModelError(c: Context, err: unknown) {
+  if (!(err instanceof CustomModelError)) throw err;
+  return c.json(
+    { error: err.message, code: err.code, ...err.extra },
+    err.status,
+  );
+}
 
 const mlxAsr = new Hono()
   .get("/status", (c) => {
@@ -60,6 +89,7 @@ const mlxAsr = new Hono()
             speed: m.speed,
             quality: m.quality,
             quantized: m.quantized,
+            custom: m.custom,
           }))
         : [],
       setupHint: platformSupported
@@ -68,6 +98,41 @@ const mlxAsr = new Hono()
         : MLX_UNSUPPORTED_PLATFORM_REASON,
     });
   })
+  .get(
+    "/search",
+    zValidator("query", mlxSearchQuerySchema, invalidInput),
+    async (c) => {
+      try {
+        return c.json(await searchMlxModels(c.req.valid("query").q));
+      } catch (err) {
+        return customModelError(c, err);
+      }
+    },
+  )
+  .post(
+    "/custom-models/validate",
+    zValidator("json", addCustomMlxModelSchema, invalidInput),
+    async (c) => {
+      try {
+        const { hfId, family, totalBytes, revision } =
+          await validateCustomModel(c.req.valid("json").model);
+        return c.json({ hfId, family, totalBytes, revision });
+      } catch (err) {
+        return customModelError(c, err);
+      }
+    },
+  )
+  .post(
+    "/custom-models",
+    zValidator("json", addCustomMlxModelSchema, invalidInput),
+    async (c) => {
+      try {
+        return c.json(await addCustomModel(c.req.valid("json").model), 201);
+      } catch (err) {
+        return customModelError(c, err);
+      }
+    },
+  )
   .post("/models/:model/download", async (c) => {
     const modelId = c.req.param("model");
 

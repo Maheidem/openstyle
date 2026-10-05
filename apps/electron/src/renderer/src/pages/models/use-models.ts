@@ -12,6 +12,10 @@ import {
   parseLlmTaskAssignments,
 } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
+import {
+  addCustomMlxModel,
+  type CustomModelResult,
+} from "@renderer/lib/custom-models";
 import type { ApiKeyEntry, ConfiguredModel } from "@renderer/lib/models";
 import {
   type AvailableModel,
@@ -136,6 +140,8 @@ export interface UseModels {
     engine?: "whisper" | "mlx",
   ) => Promise<void>;
   retryLocalMlx: (defId: string) => Promise<void>;
+  /** Add a Hugging Face MLX model and start its download. */
+  addCustomModel: (model: string) => Promise<CustomModelResult<{ id: string }>>;
   downloadLocal: (defId: string, engine?: "whisper" | "mlx") => void;
   cancelLocal: (defId: string, engine?: "whisper" | "mlx") => void;
   deleteLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
@@ -584,6 +590,16 @@ export function useModels(): UseModels {
     [loadMlxStatus, downloadLocal, selectLocalVoice],
   );
 
+  const addCustomModel = useCallback(
+    async (model: string) => {
+      const result = await addCustomMlxModel(model);
+      // The server starts the download at once: refresh so the row shows it.
+      if (result.ok) await loadMlxStatus();
+      return result;
+    },
+    [loadMlxStatus],
+  );
+
   const selectLocalLlmModel = useCallback(
     async (modelName: string) => {
       await postDefaultModel(
@@ -864,6 +880,7 @@ export function useModels(): UseModels {
     saveKey,
     selectLocalVoice,
     retryLocalMlx,
+    addCustomModel,
     downloadLocal,
     cancelLocal,
     deleteLocal,
