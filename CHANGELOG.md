@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.11.1
+
+### Improvements ⚡
+
+- Automatic updates now download a new version in the background. When the download is ready, select Restart & Update to install it. To stop this, turn off Automatic updates in Settings.
+
+### Bug Fixes 🐛
+
+- Fix custom Whisper models that downloaded but could not transcribe. Many Whisper repos on Hugging Face, for example whisper-large-v3-turbo and whisper-small-mlx, do not include the processor files that the speech engine needs. The app now finds this before the download and blocks the model.
+- The app now checks the files that each supported model type needs: Whisper, Qwen3-ASR and SenseVoice.
+
+### Notes 📌
+
+- If you use 2.11.0 or older, open the Openstyle window and select Download Update one time. From 2.11.1, the download starts automatically.
+- If you added a custom Whisper model that does not transcribe, delete it. Then add a repo that includes the processor files, for example mlx-community/whisper-base-asr-fp16.
+
 ## 2.11.0
 
 ### New Features ✨
