@@ -104,7 +104,7 @@ product whose pitch is accuracy (Handy dropped tiny *and* base).
 **Remove:** `qwen3-0.6b-5bit` (quantization variant of the same model — noise).
 
 Industry default is Parakeet, but ours stays **Qwen3 0.6B 8-bit**: Parakeet ignores vocabulary
-bias (a Freestyle differentiator) and is 4× the download (2.5 GB vs 650 MB) — bad for
+bias (a Freestyle differentiator) and is 2.5× the download (2.5 GB vs 1.0 GB) — bad for
 time-to-first-dictation. Revisit if Qwen accuracy complaints appear.
 
 ### 4.3 Cloud voice: ~18–20 → 4 (one per provider, registry OFF for voice)
@@ -157,7 +157,7 @@ and **5 cleanup models**. Today it's ~30 and 50–100+.
   accurate — this is also what Wispr asks, and the only choice that genuinely changes outcomes
   for a normal user).
 - **The moment this screen appears, the platform default model starts downloading in the
-  background:** Qwen3 Fast (650 MB) on Apple Silicon, Whisper Balanced (181 MB) elsewhere.
+  background:** Qwen3 Fast (1.0 GB) on Apple Silicon, Whisper Balanced (181 MB) elsewhere.
   No card, no decision. A quiet one-line progress indicator at the bottom:
   *"Setting up your transcription engine… 42%"*.
 - Footnote escape hatch (small, muted): *"Want a specific model? Choose advanced setup."* →
@@ -165,7 +165,7 @@ and **5 cleanup models**. Today it's ~30 and 50–100+.
 
 **Step 3 — Hotkey + practice** (existing tutorial, two upgrades):
 - Download continues during hotkey setup; by the time a user finishes recording a hotkey,
-  the 181–650 MB default is typically done. If not, the practice box shows
+  the 181 MB to 1.0 GB default is typically done. If not, the practice box shows
   *"Almost ready — finishing download (1.2 of 1.6 GB)"* with the mic disabled until ready.
 - Whisper server / MLX worker pre-warms as soon as the download lands, so the first practice
   dictation is fast — first impressions are the latency users remember.
