@@ -1,12 +1,39 @@
 # Changelog
 
+## 2.11.0
+
+### New Features ✨
+
+- Add your own local MLX speech model from Hugging Face. Open Models, go to the on-device list and select Add model. This works on Apple Silicon Macs only.
+- Search for a model, or paste a Hugging Face link or a name like `org/model`.
+- The app checks the model before it downloads anything. It shows the model type and size, or the reason why the model is blocked.
+- Supported model types in this version: Qwen3-ASR, SenseVoice, Parakeet and Whisper.
+- The app blocks models that need a Hugging Face login, models that include their own code files, unsupported or non-speech models, models larger than 8 GB, and models larger than your free disk space.
+- A custom model shows a Custom badge. You can download, cancel, retry, select and delete it like a built-in model. Settings > Data counts its disk space.
+- The built-in model list and onboarding do not change.
+
+### Security 🔒
+
+- The app checks the model files on disk after the download and before it starts the model. If it finds code files, it removes the download and shows an error.
+- The app accepts only links to huggingface.co.
+
+### Known Limits ⚠️
+
+- Search depends on Hugging Face. If Hugging Face is slow, search can fail. Try again, or paste the link.
+- If you delete your default custom model, select a new model.
+- If you go back to an older version while a custom model is your default, select a model again.
+
+### Internal 🔧
+
+- Add the `custom_mlx_models` table (database schema version 35).
+
 ## 2.10.0
 
 ### Improvements ⚡
 
 - Upgrade the local MLX speech engine to mlx-audio 0.5.7, transformers 5.18, huggingface_hub 1.33 and pyinstaller 6.22.3. mlx stays at 0.32.3 and is now pinned. The old transformers pin below 5.13 is removed, because the upstream fix (ml-explore/mlx-lm#1465) is released.
 - Local MLX transcription is a little faster. In our test on an Apple Silicon Mac, Qwen3-ASR 0.6B was about 15% faster on a 3-minute clip (2.7 s to 2.3 s). Parakeet TDT 0.6B v3 was also faster in each paired test.
-- Qwen3-ASR made fewer errors on our Portuguese test clip. The word error rate went from 5.9% to 0.0%.
+- Qwen3-ASR gave fewer errors on our Portuguese test clip in local builds. We did not confirm this in the published worker.
 - Qwen3-ASR uses about 6% less memory.
 - If you use a local MLX model, the app downloads the new worker one time after the update.
 
