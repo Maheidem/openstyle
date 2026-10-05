@@ -655,6 +655,8 @@
     "deleteProviderCurrentSuffix": ", including a model you're currently using",
     "custom": {
       "badge": "Custom",
+      "deleteTitle": "Remove this custom model?",
+      "deleteMsg": "Openstyle deletes the files of <b>{{name}}</b> and removes it from the list. To use it again, add it again.",
       "addModel": "Add model",
       "title": "Add a speech model",
       "description": "Models come from Hugging Face. Openstyle checks a model before it downloads it.",
