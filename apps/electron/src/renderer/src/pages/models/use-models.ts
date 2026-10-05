@@ -27,6 +27,7 @@ import {
 } from "@renderer/lib/models";
 import {
   availableModelsQueryOptions,
+  configuredModelsQueryOptions,
   mlxStatusQueryOptions,
   queryKeys,
   settingsQueryOptions,
@@ -43,6 +44,7 @@ import {
   removePresetAndReassign,
   upsertPreset,
 } from "./preset-ops";
+import { type UseServers, useServers } from "./use-servers";
 import { groupByProvider } from "./utils";
 
 // Query keys for the models page, all sourced from the shared registry.
@@ -51,7 +53,6 @@ import { groupByProvider } from "./utils";
 const MODELS_KEYS = {
   all: queryKeys.models.all,
   available: queryKeys.models.available,
-  configured: queryKeys.models.configured,
   keys: queryKeys.apiKeys,
   settings: queryKeys.settings,
   whisper: queryKeys.whisperStatus,
@@ -87,6 +88,8 @@ export interface UseModels {
   available: AvailableModel[];
   configured: ConfiguredModel[];
   apiKeys: ApiKeyEntry[];
+  /** Own servers: the live list plus add and remove. */
+  servers: UseServers;
   whisperStatus: WhisperStatus | null;
   mlxStatus: MlxAsrStatus | null;
   llmCleanup: boolean;
@@ -175,14 +178,8 @@ export function useModels(): UseModels {
 
   const availableQuery = useQuery(availableModelsQueryOptions());
 
-  const configuredQuery = useQuery({
-    queryKey: MODELS_KEYS.configured,
-    queryFn: async () => {
-      const res = await getClient().api.models.configured.$get();
-      if (!res.ok) throw new Error("Failed to load configured models");
-      return (await res.json()) as ConfiguredModel[];
-    },
-  });
+  const configuredQuery = useQuery(configuredModelsQueryOptions());
+  const servers = useServers();
 
   const keysQuery = useQuery({
     queryKey: MODELS_KEYS.keys,
@@ -800,6 +797,7 @@ export function useModels(): UseModels {
     available,
     configured,
     apiKeys,
+    servers,
     whisperStatus,
     mlxStatus,
     llmCleanup,

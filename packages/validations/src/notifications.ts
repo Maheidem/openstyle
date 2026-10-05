@@ -36,4 +36,6 @@ export const KNOWN_NOTIFICATION_KEYS = {
   PROFILE_INFO_PROMPT: "profile_info_prompt",
   /** Today-page dictation tutorial hero (dismissible banner). */
   TODAY_TUTORIAL_HERO: "today.tutorial_hero",
+  /** Today-page notice: the default voice model is on an own server and cannot transcribe. */
+  SERVER_VOICE_NOTICE: "models.server_voice_notice",
 } as const;

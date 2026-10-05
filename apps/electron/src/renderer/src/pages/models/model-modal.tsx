@@ -29,6 +29,7 @@ import { AlertTriangle, Key, Loader2, X } from "lucide-react";
 import { useState } from "react";
 
 import { ModelList } from "./model-list";
+import type { ServerView } from "./server-roles";
 import type { UseModels } from "./use-models";
 
 // ---------------------------------------------------------------------------
@@ -86,7 +87,9 @@ export function ModelModal({
   onClose,
   onPickCloud,
   onPickLocalVoice,
+  onPickServerModel,
   onRequestDeleteLocal,
+  onRequestRemoveServer,
   onBack,
   onSaveKey,
 }: {
@@ -101,7 +104,9 @@ export function ModelModal({
     name: string,
     engine?: "whisper" | "mlx",
   ) => void;
+  onPickServerModel: (serverId: string, modelId: string) => void;
   onRequestDeleteLocal: (defId: string, engine?: "whisper" | "mlx") => void;
+  onRequestRemoveServer: (server: ServerView) => void;
   onBack: () => void;
   onSaveKey: (key: string) => void;
 }): React.JSX.Element {
@@ -135,7 +140,9 @@ export function ModelModal({
         onClose={onClose}
         onPickCloud={onPickCloud}
         onPickLocalVoice={onPickLocalVoice}
+        onPickServerModel={onPickServerModel}
         onRequestDeleteLocal={onRequestDeleteLocal}
+        onRequestRemoveServer={onRequestRemoveServer}
       />
     </Backdrop>
   );
