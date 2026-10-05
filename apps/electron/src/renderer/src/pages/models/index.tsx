@@ -114,9 +114,7 @@ export default function ModelsPage(): React.JSX.Element {
     if (modal?.kind !== "list") return;
     const type = modal.type;
 
-    const needsKey =
-      model.provider_id !== "local-llm" &&
-      !m.keyProviders.has(model.provider_id);
+    const needsKey = !m.keyProviders.has(model.provider_id);
     if (needsKey) {
       setKeyError(null);
       setModal({

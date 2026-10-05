@@ -43,14 +43,7 @@ import {
   removePresetAndReassign,
   upsertPreset,
 } from "./preset-ops";
-import type {
-  EndpointConnectConfig,
-  EndpointConnectState,
-} from "./use-endpoint-connect";
-import { useEndpointConnect } from "./use-endpoint-connect";
 import { groupByProvider } from "./utils";
-
-export type { EndpointConnectState } from "./use-endpoint-connect";
 
 // Query keys for the models page, all sourced from the shared registry.
 // `queryKeys.models.all` (`["models"]`) is a family so a single invalidate
@@ -124,10 +117,6 @@ export interface UseModels {
     { providerName: string; models: AvailableModel[] }
   >;
 
-  localLlm: EndpointConnectState;
-  openaiStt: EndpointConnectState;
-  omlx: EndpointConnectState;
-
   // Actions — each refetches as needed
   configureModel: (
     model: AvailableModel,
@@ -145,8 +134,12 @@ export interface UseModels {
   downloadLocal: (defId: string, engine?: "whisper" | "mlx") => void;
   cancelLocal: (defId: string, engine?: "whisper" | "mlx") => void;
   deleteLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
-  selectLocalLlmModel: (modelName: string) => Promise<void>;
-  selectOmlxModel: (modelName: string) => Promise<void>;
+  /** Make a model of an own server the default for `type`. */
+  selectServerModel: (
+    serverId: string,
+    modelId: string,
+    type: "voice" | "llm",
+  ) => Promise<void>;
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   saveTaskAssignment: (
@@ -172,37 +165,6 @@ export interface UseModels {
   deleteUserPreset: (presetId: string) => Promise<boolean>;
   deleteProvider: (provider: string) => Promise<void>;
 }
-
-// ---------------------------------------------------------------------------
-// Endpoint connect configs — static, defined once at module level so the
-// probe callback references are stable across renders.
-// ---------------------------------------------------------------------------
-
-const LOCAL_LLM_CONFIG: EndpointConnectConfig = {
-  urlKey: SETTINGS_KEYS.localLlmUrl,
-  apiKeyKey: SETTINGS_KEYS.localLlmApiKey,
-  defaultUrl: "http://localhost:11434",
-  clearUrlWhenEmpty: false,
-  probe: (client, body) =>
-    client.api.settings["local-llm"].test.$post({ json: body }),
-};
-
-const OPENAI_STT_CONFIG: EndpointConnectConfig = {
-  urlKey: SETTINGS_KEYS.openaiSttBaseUrl,
-  apiKeyKey: SETTINGS_KEYS.openaiSttApiKey,
-  defaultUrl: "",
-  clearUrlWhenEmpty: true,
-  probe: (client, body) =>
-    client.api.settings["openai-stt"].test.$post({ json: body }),
-};
-
-const OMLX_CONFIG: EndpointConnectConfig = {
-  urlKey: SETTINGS_KEYS.omlxBaseUrl,
-  apiKeyKey: SETTINGS_KEYS.omlxApiKey,
-  defaultUrl: "http://127.0.0.1:8123",
-  clearUrlWhenEmpty: true,
-  probe: (client, body) => client.api.settings.omlx.test.$post({ json: body }),
-};
 
 export function useModels(): UseModels {
   const queryClient = useQueryClient();
@@ -348,22 +310,6 @@ export function useModels(): UseModels {
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.settings }),
     ]);
   }, [queryClient]);
-
-  // -------------------------------------------------------------------------
-  // Endpoint connections (local LLM + custom STT)
-  // -------------------------------------------------------------------------
-
-  const localLlm = useEndpointConnect(
-    LOCAL_LLM_CONFIG,
-    settingsQuery.data,
-    loadData,
-  );
-  const openaiStt = useEndpointConnect(
-    OPENAI_STT_CONFIG,
-    settingsQuery.data,
-    loadData,
-  );
-  const omlx = useEndpointConnect(OMLX_CONFIG, settingsQuery.data, loadData);
 
   const loadWhisperStatus = useCallback(
     () => queryClient.invalidateQueries({ queryKey: MODELS_KEYS.whisper }),
@@ -600,22 +546,14 @@ export function useModels(): UseModels {
     [loadMlxStatus],
   );
 
-  const selectLocalLlmModel = useCallback(
-    async (modelName: string) => {
+  const selectServerModel = useCallback(
+    async (serverId: string, modelId: string, type: "voice" | "llm") => {
       await postDefaultModel(
-        "local-llm",
-        `local-llm/${modelName}`,
-        modelName,
-        "llm",
+        "server",
+        `server/${serverId}/${modelId}`,
+        modelId,
+        type,
       );
-      await loadData();
-    },
-    [loadData],
-  );
-
-  const selectOmlxModel = useCallback(
-    async (modelName: string) => {
-      await postDefaultModel("omlx", `omlx/${modelName}`, modelName, "voice");
       await loadData();
     },
     [loadData],
@@ -873,9 +811,6 @@ export function useModels(): UseModels {
     defaultLlm,
     voiceItems,
     llmModelsByProvider,
-    localLlm,
-    openaiStt,
-    omlx,
     configureModel,
     saveKey,
     selectLocalVoice,
@@ -884,8 +819,7 @@ export function useModels(): UseModels {
     downloadLocal,
     cancelLocal,
     deleteLocal,
-    selectLocalLlmModel,
-    selectOmlxModel,
+    selectServerModel,
     setCleanup,
     saveMlxKeepAliveMinutes,
     cleanupSampling,

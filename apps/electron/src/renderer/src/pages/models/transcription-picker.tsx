@@ -13,7 +13,7 @@ import type { UseModels } from "./use-models";
 
 // Engines that run on the user's own machine — the bundled workers plus a
 // user-run oMLX server. These belong to the On-device tier, not BYOK.
-const LOCAL_PROVIDERS = new Set(["local-whisper", "local-mlx", "omlx"]);
+const LOCAL_PROVIDERS = new Set(["local-whisper", "local-mlx"]);
 
 export function recommendedVoiceKey(
   items: { key: string; localEngine?: string }[],

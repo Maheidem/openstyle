@@ -49,12 +49,12 @@ import {
 // optionally overrides which model this task uses.
 // ---------------------------------------------------------------------------
 
-// Only `local-llm` is the verbatim transport tier (§7.1) — every other
+// Only `server` is the verbatim transport tier (§7.1) — every other
 // provider is mapped-subset. Mirrors `apps/server/src/lib/llm/registry.ts`'s
 // `PROVIDERS`; duplicated here in miniature because "which provider is
 // local" isn't part of the shared `@openstyle/validations` surface the way
 // `SAFE_SUBSET_KEYS` is.
-const LOCAL_PROVIDER_IDS = new Set(["local-llm"]);
+const LOCAL_PROVIDER_IDS = new Set(["server"]);
 
 const CUSTOM_VALUE = "__custom__";
 const NEW_PRESET_VALUE = "__new__";

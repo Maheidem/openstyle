@@ -7,6 +7,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -116,6 +117,10 @@ let serverUrl = "";
 let serverToken = "";
 let server: ChildProcess | undefined;
 let serverLogPath = "";
+// A loopback model-list server. POST /api/servers probes /v1/models, so the
+// seeded own server needs a real answer there.
+let modelServer: Server | undefined;
+let modelServerId = "";
 
 // Seeded state. Ids are genuine `user_<uuid>` so the "never print a raw
 // uuid" assertion has something real to catch.
@@ -456,8 +461,32 @@ test.beforeAll(async () => {
     ),
   ).toBe(200);
 
-  // A default LLM + a second one, so the Model override selector has real
-  // options for the §6.3 "modelOverride survives the fork" proof.
+  // An own server that lists the two models, so the Model override selector
+  // has real options for the §6.3 "modelOverride survives the fork" proof.
+  modelServer = createHttpServer((req, res) => {
+    const isStatus = req.url?.startsWith("/v1/models/status");
+    res.writeHead(isStatus ? 404 : 200, { "Content-Type": "application/json" });
+    res.end(
+      isStatus
+        ? "{}"
+        : JSON.stringify({
+            data: [{ id: "qwen3.8-flash" }, { id: "qwen3.8-27b" }],
+          }),
+    );
+  });
+  const modelServerPort = await new Promise<number>((res) => {
+    modelServer?.listen(0, "127.0.0.1", () => {
+      const address = modelServer?.address();
+      res(typeof address === "object" && address ? address.port : 0);
+    });
+  });
+  const addServerRes = await fetch(`${serverUrl}/api/servers`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ url: `http://127.0.0.1:${modelServerPort}` }),
+  });
+  expect(addServerRes.status).toBe(201);
+  modelServerId = ((await addServerRes.json()) as { id: string }).id;
   for (const [model_id, model_name, is_default] of [
     ["qwen3.8-flash", "Local Qwen Flash", true],
     ["qwen3.8-27b", "Local Qwen 27B", false],
@@ -466,8 +495,8 @@ test.beforeAll(async () => {
       method: "POST",
       headers: { ...headers(), "Content-Type": "application/json" },
       body: JSON.stringify({
-        provider: "local-llm",
-        model_id,
+        provider: "server",
+        model_id: `server/${modelServerId}/${model_id}`,
         model_name,
         type: "llm",
         is_default,
@@ -565,8 +594,16 @@ test.afterAll(async () => {
         remix: { mode: "preset", presetId: P2.id },
       },
       configuredModels: [
-        { provider: "local-llm", model_id: "qwen3.8-flash", is_default: true },
-        { provider: "local-llm", model_id: "qwen3.8-27b", is_default: false },
+        {
+          provider: "server",
+          model_id: `server/${modelServerId}/qwen3.8-flash`,
+          is_default: true,
+        },
+        {
+          provider: "server",
+          model_id: `server/${modelServerId}/qwen3.8-27b`,
+          is_default: false,
+        },
       ],
     },
     blobs,
@@ -585,6 +622,7 @@ test.afterAll(async () => {
 
   if (app) await closeApp(app);
   server?.kill("SIGTERM");
+  modelServer?.close();
 });
 
 // ---------------------------------------------------------------------------
@@ -1410,7 +1448,10 @@ test("11 builtin fork: editing 'Qwen fast' writes a new user_* copy, keeps model
     "11",
     "modelOverride survived the fork (§6.3)",
     JSON.stringify(cleanup?.modelOverride) ===
-      JSON.stringify({ provider: "local-llm", model_id: "qwen3.8-27b" }),
+      JSON.stringify({
+        provider: "server",
+        model_id: `server/${modelServerId}/qwen3.8-27b`,
+      }),
     `modelOverride=${JSON.stringify(cleanup?.modelOverride)}`,
   );
 

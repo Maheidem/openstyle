@@ -17,8 +17,7 @@ export function groupByProvider(
   for (const m of list) {
     if (m.type !== type) continue;
     if (!allowed.includes(m.provider_id)) continue;
-    // Local LLM and local voice engines have their own dedicated sections.
-    if (type === "llm" && m.provider_id === "local-llm") continue;
+    // The built-in voice engines have their own dedicated section.
     if (type === "voice" && m.provider_id === "local-whisper") continue;
     if (type === "voice" && m.provider_id === "local-mlx") continue;
     let entry = map.get(m.provider_id);

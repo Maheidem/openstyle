@@ -232,7 +232,10 @@ describe("removePresetAndReassign", () => {
   });
 
   it("preserves each rewritten task's modelOverride and no other key", () => {
-    const override = { provider: "local-llm", model_id: "qwen3.8-flash" };
+    const override = {
+      provider: "server",
+      model_id: "server/srv_00000000/qwen3.8-flash",
+    };
     const result = removePresetAndReassign(
       [ALPHA],
       {

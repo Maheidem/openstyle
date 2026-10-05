@@ -82,7 +82,6 @@ export const VOICE_PROVIDERS = [
   ...CLOUD_VOICE_PROVIDERS,
   "local-whisper",
   "local-mlx",
-  "omlx",
 ];
 
 export const LLM_PROVIDERS = [
@@ -93,7 +92,6 @@ export const LLM_PROVIDERS = [
   "mistral",
   "openrouter",
   "vercel",
-  "local-llm",
 ];
 
 export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
@@ -107,10 +105,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   mistral: "Mistral",
   openrouter: "OpenRouter",
   vercel: "Vercel AI Gateway",
-  "local-llm": "Local LLM",
   "local-whisper": "Local Whisper",
   "local-mlx": "Local MLX",
-  omlx: "oMLX",
 };
 
 /** Where to create an API key, linked from the key-entry views. */
@@ -341,9 +337,6 @@ export function buildVoiceItems(
     if (m.type !== "voice") continue;
     if (m.provider_id === "local-whisper") continue;
     if (m.provider_id === "local-mlx") continue;
-    // A user-run oMLX server is not a cloud model — it gets its own rows
-    // under On-device, built from the catalog in `buildVoiceRows`.
-    if (m.provider_id === "omlx") continue;
     if (!VOICE_PROVIDERS.includes(m.provider_id)) continue;
     if (seen.has(m.model_id)) continue;
     seen.add(m.model_id);

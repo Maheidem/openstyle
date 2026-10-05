@@ -1,20 +1,11 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import type { EndpointConnectFormValues } from "@openstyle/validations";
-import {
-  localLlmConnectFormSchema,
-  omlxConnectFormSchema,
-  openaiSttConnectFormSchema,
-} from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
-import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import type {
   AvailableModel,
   ConfiguredModel,
@@ -42,7 +33,6 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { Controller, type Resolver, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { AddCustomModelDialog } from "./add-custom-model-dialog";
 import {
@@ -55,7 +45,7 @@ import {
   recommendedVoiceKey,
   TranscriptionPicker,
 } from "./transcription-picker";
-import type { EndpointConnectState, UseModels } from "./use-models";
+import type { UseModels } from "./use-models";
 
 // ---------------------------------------------------------------------------
 // Normalized row — one shape for cloud + local, voice + LLM.
@@ -155,32 +145,6 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
     };
   });
 
-  // Models served by the user's oMLX server. It runs on their own machine, so
-  // the rows sit with the on-device engines: no key gate, nothing to download.
-  const omlxNames = new Set(
-    m.available
-      .filter((a) => a.type === "voice" && a.provider_id === "omlx")
-      .map((a) => a.model_name),
-  );
-  if (m.defaultVoice?.provider === "omlx") {
-    // Keep the selected model visible even when the server is unreachable.
-    omlxNames.add(m.defaultVoice.model_id.replace(/^omlx\//, ""));
-  }
-  for (const name of omlxNames) {
-    rows.push({
-      key: `omlx/${name}`,
-      name,
-      source: "local",
-      meta: "On-device · oMLX",
-      curated: true,
-      selected:
-        m.defaultVoice?.provider === "omlx" &&
-        m.defaultVoice?.model_id === `omlx/${name}`,
-      status: "ready",
-      onSelect: () => void m.selectOmlxModel(name).then(h.onClose),
-    });
-  }
-
   return rows;
 }
 
@@ -213,26 +177,6 @@ function buildLlmRows(
         onSelect: () => h.onPickCloud(model),
       });
     }
-  }
-
-  const names = new Set(m.localLlm.models);
-  if (m.defaultLlm?.provider === "local-llm") {
-    names.add(m.defaultLlm.model_id.replace(/^local-llm\//, ""));
-  }
-  for (const name of names) {
-    const modelId = `local-llm/${name}`;
-    rows.push({
-      key: `local:${name}`,
-      name,
-      source: "local",
-      meta: "On-device",
-      curated: true,
-      selected:
-        m.defaultLlm?.provider === "local-llm" &&
-        m.defaultLlm?.model_id === modelId,
-      status: "ready",
-      onSelect: () => void m.selectLocalLlmModel(name).then(h.onClose),
-    });
   }
 
   return rows;
@@ -323,11 +267,6 @@ export function ModelList({
     ? filteredRows.length - filteredRows.filter((r) => r.curated).length
     : 0;
 
-  const showLocalLlmForm = type === "llm" && localOnly;
-  const showOpenaiSttForm = type === "voice" && cloudOnly;
-  // An oMLX server runs on localhost, so its connect form belongs with the
-  // on-device engines rather than under Cloud.
-  const showOmlxForm = type === "voice" && localOnly;
   // Same gate as the MLX rows: Apple Silicon only.
   const showAddModel =
     type === "voice" && localOnly && m.mlxStatus?.platformSupported === true;
@@ -403,16 +342,8 @@ export function ModelList({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showLocalLlmForm && <LocalLlmConnect connect={m.localLlm} />}
-        {showOpenaiSttForm && <OpenaiSttConnect connect={m.openaiStt} />}
-        {showOmlxForm && <OmlxConnect connect={m.omlx} />}
         {visible.length === 0 ? (
-          <ListEmptyState
-            type={type}
-            localOnly={localOnly}
-            showLlmConnect={showLocalLlmForm}
-            connected={m.localLlm.connected}
-          />
+          <ListEmptyState type={type} localOnly={localOnly} />
         ) : (
           visible.map((row, i) => (
             <ModelRow key={row.key} row={row} first={i === 0} />
@@ -626,23 +557,10 @@ function DownloadProgress({
 function ListEmptyState({
   type,
   localOnly,
-  showLlmConnect,
-  connected,
 }: {
   type: "voice" | "llm";
   localOnly: boolean;
-  showLlmConnect: boolean;
-  connected: boolean | null;
 }): React.JSX.Element | null {
-  if (showLlmConnect) {
-    if (connected !== true) return null;
-    return (
-      <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
-        No models found on this server.
-      </p>
-    );
-  }
-
   if (type === "voice" && localOnly) {
     return (
       <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
@@ -658,179 +576,10 @@ function ListEmptyState({
   );
 }
 
-function LocalLlmConnect({
-  connect,
-}: {
-  connect: EndpointConnectState;
-}): React.JSX.Element {
-  return (
-    <EndpointConnectForm
-      connect={connect}
-      resolver={zodResolver(localLlmConnectFormSchema)}
-      description="Connect to Ollama, LM Studio, or another OpenAI-compatible server running locally."
-      urlPlaceholder="http://localhost:11434"
-    />
-  );
-}
-
-function OpenaiSttConnect({
-  connect,
-}: {
-  connect: EndpointConnectState;
-}): React.JSX.Element {
-  return (
-    <EndpointConnectForm
-      connect={connect}
-      resolver={zodResolver(openaiSttConnectFormSchema)}
-      description="Point OpenAI transcription at a self-hosted or OpenAI-compatible server (vLLM, LiteLLM, LM Studio). Leave the URL empty to use OpenAI."
-      urlPlaceholder="https://example.com/v1"
-    />
-  );
-}
-
-function OmlxConnect({
-  connect,
-}: {
-  connect: EndpointConnectState;
-}): React.JSX.Element {
-  return (
-    <EndpointConnectForm
-      connect={connect}
-      resolver={zodResolver(omlxConnectFormSchema)}
-      description="Transcribe with an oMLX server you already run. Enter the server address — every model it serves is listed; pick the ASR one. Leave the URL empty to disconnect."
-      urlPlaceholder="http://127.0.0.1:8123"
-    />
-  );
-}
-
-/**
- * Shared connect form for OpenAI-compatible endpoints (local LLM, custom STT).
- * Drives a react-hook-form with inline validation from the shared schema; the
- * Test button persists the values then probes the endpoint via the hook.
- */
-function EndpointConnectForm({
-  connect,
-  resolver,
-  description,
-  urlPlaceholder,
-}: {
-  connect: EndpointConnectState;
-  resolver: Resolver<EndpointConnectFormValues>;
-  description: string;
-  urlPlaceholder: string;
-}): React.JSX.Element {
-  const [showKey, setShowKey] = useState(false);
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<EndpointConnectFormValues>({
-    resolver,
-    defaultValues: { url: connect.initialUrl, apiKey: connect.initialApiKey },
-    mode: "onBlur",
-  });
-
-  return (
-    <div className="border-border border-b px-5 py-4">
-      <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
-        {description}
-      </p>
-      <form
-        onSubmit={handleSubmit((values) => connect.test(values))}
-        className="space-y-3"
-      >
-        <Controller
-          control={control}
-          name="url"
-          render={({ field }) => (
-            <div className="flex items-center gap-2">
-              <Input
-                type="text"
-                name={field.name}
-                ref={field.ref}
-                value={field.value}
-                onChange={(e) => {
-                  field.onChange(e);
-                  connect.clearStatus();
-                }}
-                onBlur={field.onBlur}
-                placeholder={urlPlaceholder}
-                aria-invalid={errors.url ? true : undefined}
-                className="min-w-0 flex-1"
-              />
-              <Button
-                type="submit"
-                variant="secondary"
-                size="sm"
-                disabled={connect.testing}
-                className="shrink-0"
-              >
-                {connect.testing ? (
-                  <span className="flex items-center gap-1.5">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Testing…
-                  </span>
-                ) : (
-                  "Test"
-                )}
-              </Button>
-            </div>
-          )}
-        />
-        {errors.url && (
-          <p className="text-destructive text-[12px] leading-snug">
-            {errors.url.message}
-          </p>
-        )}
-        <Controller
-          control={control}
-          name="apiKey"
-          render={({ field }) => (
-            <InputGroup>
-              <InputGroupInput
-                type={showKey ? "text" : "password"}
-                name={field.name}
-                ref={field.ref}
-                value={field.value}
-                onChange={field.onChange}
-                onBlur={field.onBlur}
-                placeholder="API key (optional)"
-              />
-              <RevealToggle
-                revealed={showKey}
-                onToggle={() => setShowKey(!showKey)}
-                label="API key"
-              />
-            </InputGroup>
-          )}
-        />
-        {connect.connected === true && (
-          <>
-            <p className="text-primary text-[12px]">
-              Connected · {connect.models.length}{" "}
-              {connect.models.length === 1 ? "model" : "models"} found
-            </p>
-            {connect.transcribeUrl && (
-              <p className="text-muted-foreground mono text-[11px] break-all">
-                {connect.transcribeUrl}
-              </p>
-            )}
-          </>
-        )}
-        {connect.connected === false && connect.error && (
-          <p className="text-destructive text-[12px] leading-snug">
-            {connect.error}
-          </p>
-        )}
-      </form>
-    </div>
-  );
-}
-
-const MANAGED_LLM_PROVIDERS = new Set(["local-llm"]);
+const MANAGED_LLM_PROVIDERS = new Set(["server"]);
 
 function isLocalLlm(llm: ConfiguredModel | undefined): boolean {
-  return llm?.provider === "local-llm";
+  return llm?.provider === "server";
 }
 
 function isByokLlm(llm: ConfiguredModel | undefined): boolean {
@@ -862,9 +611,7 @@ function CleanupTierPicker({
 
   const localHint = localActive
     ? (m.defaultLlm?.model_name ?? t("models.onDevice"))
-    : m.localLlm.connected === true
-      ? t("models.picker.modelCount", { count: m.localLlm.models.length })
-      : t("models.picker.ollamaHint");
+    : t("models.picker.ollamaHint");
 
   const byokLabel = byokActive
     ? (m.defaultLlm?.model_name ?? displayProviderName(m.defaultLlm!.provider))
