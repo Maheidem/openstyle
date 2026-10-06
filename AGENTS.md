@@ -90,6 +90,20 @@ Gotchas:
 
 Releases: use the release skill at `.claude/skills/release/SKILL.md`. The automated Craft release train (`gh workflow run release.yml -f version=auto` → Build & Test on `release/<version>` → label the publish-request issue `accepted` → `publish.yml` publishes and merges) is the primary path and is proven end-to-end since v1.1.1; the manual `gh release create` procedure at the bottom of that skill is the fallback for when the GitHub App secrets break. Releases ship 4 assets (dmg, arm64 zip, `latest-mac.yml`, the mlx_asr_worker tarball) with a bare semver tag, no `v` prefix — auto-update reads `latest-mac.yml`, so a filename mismatch silently breaks it. Version + changelog live in `apps/electron/package.json` and `CHANGELOG.md`.
 
+## Agent skills (`.claude/skills/`)
+
+Repeatable procedures live as skills. Check them before you start a task; do not rediscover a proven method.
+
+| Skill | Use it for |
+|---|---|
+| `release` | Ship a desktop release (Craft train, accept the publish issue, verify the feed). |
+| `live-testing` | Run the real app and server in isolation: port 4649 rule, `cwd=apps/electron`, MLX worker lookup, seeding, screenshots, cleanup by PID. |
+| `site-captures` | Refresh the landing page screenshots and pill video (`node scripts/site-captures/capture.mjs`). |
+| `meeting-benchmarks` | Measure meeting transcription on real meetings, read-only, numbers only, against the recorded baseline. |
+| `pi-briefs` | Delegate work to pi children (local model): brief template, time box, known failure modes. |
+
+pi children start without skills or context files, so every pi brief must name the skill files to read first.
+
 ## UI conventions
 
 - Design tokens and the accent discipline live in `specs/design-system.md` and `apps/electron/src/renderer/src/globals.css`. The accent is deliberately **neutral grey**; `--accent-passive-tint`/`--accent-passive-ink` (blue) are the only sanctioned blue fills (selection, speaker/diarization chips), `--live` (coral) is **recording/live only**, and `--destructive` is kept distinct from both. Check that file before styling, and `specs/design/reskin-mockups.html` for pixel-level truth.

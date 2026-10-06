@@ -1,6 +1,6 @@
 # Technical Spec: Model Pickers Grouped by Who Runs the Model
 
-**Status:** Draft
+**Status:** Shipped in 2.12.0. Migration 36 verified on the owner's real DB after the update (2026-10-05).
 **Author:** _TBD_
 **Date:** 2026-10-05
 **Scope:** `apps/server/src/routes/models.ts`, `routes/settings.ts`, a new `routes/servers.ts`, `lib/streaming`, `lib/llm`, `lib/schema.ts`, `packages/validations`, and the Models page in `apps/electron/src/renderer/src/pages/models`.
