@@ -15,7 +15,8 @@ The scripts are in `scripts/meeting-v2/`. They came from `specs/meeting-transcri
 2. Never print, log, commit or report transcript text or audio. Report counts, durations, hashes and ids only.
 3. Copy only these rows into the scratch DB: vocabulary, the `languages` setting, the own server rows, and the default voice and LLM model rows. Never copy API keys. Do not use a cloud model. A cloud model would send the meeting text off the Mac.
 4. `DELETE /api/meetings/<id>` removes the meeting's `audio_dir` folder. Before any DELETE test, run `sqlite3 "$DB" "select audio_dir from meetings"` and check that every path starts with `/tmp/`. If one does not, stop.
-5. Leave `OPENSTYLE_LOG_DIR` unset, so the request trace (which has text) stays off the disk.
+5. A screenshot of a meeting page shows the transcript. Never take a screenshot of a real meeting. For UI proof screenshots, use a fictional meeting (seed it as `scripts/site-captures/seed-data.mjs` does) or crop to the control you prove. On 2026-10-06 a pi child saved 3 screenshots with real meeting text; the coordinator deleted them.
+6. Leave `OPENSTYLE_LOG_DIR` unset, so the request trace (which has text) stays off the disk.
 
 ## Proof meetings
 
