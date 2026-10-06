@@ -113,12 +113,14 @@ export function MeetingDetailView({
       return await res.json();
     },
     // Poll while the transcription job runs so progress and the final status
-    // arrive without user interaction. Summarize is a background job too
-    // (specs/meeting-llm-queue.md §5.6) and never changes `status` until it
-    // succeeds, so its slot — `job.kind` — is what the predicate watches.
+    // arrive without user interaction. Summarize and the auto-Enhance pass
+    // are background jobs too: neither changes `status` until it succeeds
+    // (specs/meeting-llm-queue.md §5.6, meeting-transcription-v2.md §3.2),
+    // so their slot — `job.kind` — is what the predicate watches.
     refetchInterval: (query) =>
       query.state.data?.status === "transcribing" ||
-      query.state.data?.job?.kind === "summarize"
+      query.state.data?.job?.kind === "summarize" ||
+      query.state.data?.job?.kind === "enhance"
         ? 1000
         : false,
   });
@@ -292,6 +294,13 @@ export function MeetingDetailView({
     if (meeting?.job?.kind !== "summarize") return;
     await cancelJob();
   }, [meeting, cancelJob]);
+  // Cancel the auto-Enhance pass (meeting-transcription-v2.md §3.2). Same
+  // server seam as the other two cancellable jobs: it keeps the chunks it
+  // already finished and leaves the status `transcribed`.
+  const cancelEnhance = useCallback(async () => {
+    if (meeting?.job?.kind !== "enhance") return;
+    await cancelJob();
+  }, [meeting, cancelJob]);
   const identifySpeakers = useCallback(async () => {
     const { ok, body } = await runAction<{
       labeledCount: number;
@@ -362,6 +371,16 @@ export function MeetingDetailView({
   // summary, so the polled job blob — not the status — is what the UI reads
   // for "a summarize is happening on this meeting".
   const summarizing = meeting.job?.kind === "summarize";
+  // The auto-Enhance pass runs as its own job after the status flip
+  // (meeting-transcription-v2.md §3.2): while it holds the slot the status
+  // is already `transcribed`, so — like summarize — the job blob is the
+  // only signal that something is happening.
+  const enhancingJob = meeting.job?.kind === "enhance";
+  // Any job holding the slot disables the actions that would race it
+  // (meeting-transcription-v2.md §3.2, detail-page rule). The server
+  // answers a race with 409 naming the real job; this keeps the UI honest
+  // before the click.
+  const jobHoldsSlot = meeting.job !== null;
   const summarizeQueueAhead = meeting.job?.queued?.ahead ?? 0;
   const summarizeQueued = summarizing && meeting.job?.queued != null;
   // A failed/cancelled Summarize lands in `job_error`, never in `meeting.error`
@@ -371,7 +390,10 @@ export function MeetingDetailView({
     !actionError && !summarizing ? (meeting.job_error ?? null) : null;
   const summarizeCancelled = summarizeFailure === "Cancelled by user";
   const canTranscribe =
-    !transcribing && meeting.status !== "recording" && busy === null;
+    !transcribing &&
+    meeting.status !== "recording" &&
+    busy === null &&
+    !jobHoldsSlot;
   const failedCount = meeting.segment_counts.failed;
   // T1-1: the server's canonical cancel error (routes/meetings.ts
   // POST /:id/cancel-transcribe) — mapped to the localized kept-transcript
@@ -479,10 +501,10 @@ export function MeetingDetailView({
             variant="outline"
             size="sm"
             onClick={() => void enhance()}
-            disabled={busy !== null}
+            disabled={busy !== null || jobHoldsSlot}
           >
             <WandSparkles data-icon="inline-start" />
-            {busy === "enhance"
+            {busy === "enhance" || enhancingJob
               ? t("meetings.enhancing")
               : hasEnhanced
                 ? t("meetings.reEnhance")
@@ -493,7 +515,9 @@ export function MeetingDetailView({
           variant="outline"
           size="sm"
           onClick={() => void summarize()}
-          disabled={!hasTranscript || busy !== null || summarizing}
+          disabled={
+            !hasTranscript || busy !== null || summarizing || jobHoldsSlot
+          }
         >
           <Sparkles data-icon="inline-start" />
           {busy === "summarize" || summarizing
@@ -507,7 +531,7 @@ export function MeetingDetailView({
             variant="outline"
             size="sm"
             onClick={() => void retryFailed()}
-            disabled={busy !== null}
+            disabled={busy !== null || jobHoldsSlot}
           >
             <RefreshCw data-icon="inline-start" />
             {t("meetings.retryFailed", { n: failedCount })}
@@ -541,7 +565,7 @@ export function MeetingDetailView({
           same contract (202 + poll, §5.6), so they get the same face. The
           coral spinner is the only sanctioned live accent. The queued slot
           says *why* nothing is moving yet (the LLM lane is busy, §5.5). */}
-      {(transcribing || summarizing) && (
+      {(transcribing || summarizing || enhancingJob) && (
         <Card className="mb-5 p-4">
           <div className="flex items-center gap-3">
             <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
@@ -551,15 +575,19 @@ export function MeetingDetailView({
                   ? cancelRequested
                     ? t("meetings.cancellingTranscription")
                     : t("meetings.transcribing")
-                  : cancelRequested
-                    ? t("meetings.cancellingSummarize")
-                    : summarizeQueued && summarizeQueueAhead > 0
-                      ? t("meetings.summarizeQueuedAhead", {
-                          n: summarizeQueueAhead,
-                        })
-                      : summarizeQueued
-                        ? t("meetings.summarizeQueued")
-                        : t("meetings.summarizing")}
+                  : enhancingJob
+                    ? cancelRequested
+                      ? t("meetings.cancellingEnhance")
+                      : t("meetings.enhancing")
+                    : cancelRequested
+                      ? t("meetings.cancellingSummarize")
+                      : summarizeQueued && summarizeQueueAhead > 0
+                        ? t("meetings.summarizeQueuedAhead", {
+                            n: summarizeQueueAhead,
+                          })
+                        : summarizeQueued
+                          ? t("meetings.summarizeQueued")
+                          : t("meetings.summarizing")}
               </div>
               {meeting.job && meeting.job.total > 0 && (
                 <Progress
@@ -586,16 +614,24 @@ export function MeetingDetailView({
               data-testid={
                 transcribing
                   ? "meetings-cancel-transcribe"
-                  : "meetings-cancel-summarize"
+                  : summarizing
+                    ? "meetings-cancel-summarize"
+                    : "meetings-cancel-enhance"
               }
               onClick={() =>
-                void (transcribing ? cancelTranscribe() : cancelSummarize())
+                void (transcribing
+                  ? cancelTranscribe()
+                  : summarizing
+                    ? cancelSummarize()
+                    : cancelEnhance())
               }
               disabled={cancelRequested}
             >
               {transcribing
                 ? t("meetings.cancelTranscription")
-                : t("meetings.cancelSummarize")}
+                : summarizing
+                  ? t("meetings.cancelSummarize")
+                  : t("meetings.cancelEnhance")}
             </Button>
           </div>
         </Card>

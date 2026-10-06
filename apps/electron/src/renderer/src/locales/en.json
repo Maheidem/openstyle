@@ -943,6 +943,8 @@
     "summarizeQueuedAhead": "Waiting for the model to be free ({{n}} ahead)…",
     "cancelSummarize": "Cancel",
     "cancellingSummarize": "Cancelling…",
+    "cancelEnhance": "Cancel",
+    "cancellingEnhance": "Cancelling…",
     "summarizeCancelled": "Summary cancelled — your transcript is unchanged.",
     "cancelledKeptTranscript": "Cancelled — partial transcript kept ({{n}} of {{total}} segments transcribed)",
     "copyTranscript": "Copy transcript",
