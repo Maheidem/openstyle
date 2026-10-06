@@ -60,6 +60,7 @@ import {
   MeetingTranscriber,
   type TranscriberDeps,
 } from "../lib/meetings/transcriber.js";
+import { getProvider } from "../lib/streaming/registry.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
 
 /**
@@ -898,11 +899,24 @@ const meetings = new Hono()
     });
     try {
       // I3 (specs/meeting-transcription-v2.md §3.3): retry-failed resolves
-      // the model from the row's own stamp when both columns are set, so a
-      // retry uses the model the failed chunks ran with — not whatever the
-      // default (or the meeting model setting) is now. If that provider or
-      // model is gone, the provider call fails with its own message and
-      // this route answers 500 with it.
+      // the model from the row's own stamp, so a retry uses the model the
+      // failed chunks ran with — not whatever the default (or the meeting
+      // model setting) is now. Migration 36 left old stamps behind (a gone
+      // "omlx" provider, old "openai" override pairs), so the stamp is
+      // trusted only while its provider still exists AND its
+      // (provider, model) pair is still configured. Otherwise the normal
+      // resolution (setting, then default voice) runs.
+      const stamp =
+        row.stt_provider &&
+        row.stt_model &&
+        getProvider(row.stt_provider) &&
+        db
+          .prepare(
+            "SELECT 1 FROM model_configs WHERE provider = ? AND model_id = ?",
+          )
+          .get(row.stt_provider, row.stt_model)
+          ? { provider: row.stt_provider, modelId: row.stt_model }
+          : undefined;
       const baseDeps = await buildTranscriberDeps(
         {
           isDictationActive,
@@ -928,9 +942,7 @@ const meetings = new Hono()
           },
           onProgress: (p) => setProgress(id, p),
         },
-        row.stt_provider && row.stt_model
-          ? { provider: row.stt_provider, modelId: row.stt_model }
-          : undefined,
+        stamp,
       );
       // Phase A2: reuse the meeting's already-resolved language with no
       // re-probe — retrying a handful of failed chunks doesn't warrant a

@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
+import { __resetDictationIdleStateForTests } from "../src/lib/dictation-activity.js";
 import {
   type DetectAllFn,
   pickDeclaredLanguage,
@@ -10,6 +11,7 @@ import {
   readMeetingLanguage,
   resolveMeetingLanguage,
 } from "../src/lib/meetings/language.js";
+import { MLX_ASR_PROVIDER_ID } from "../src/lib/mlx-asr/constants.js";
 import type {
   TranscribeOptions,
   TranscribeResult,
@@ -82,6 +84,7 @@ function run(
 afterEach(() => {
   resetMeetingTables();
   deleteSetting("languages");
+  __resetDictationIdleStateForTests();
 });
 
 describe("pickProbeSegment", () => {
@@ -225,5 +228,64 @@ describe("resolveMeetingLanguage", () => {
     const { provider } = makeProvider(async () => ({ text: "   " }));
     const result = await run({ provider });
     expect(result).toBe("en");
+  });
+
+  // I3 (specs/meeting-transcription-v2.md §3.3): a meeting model that
+  // differs from the dictation model yields to active dictation before the
+  // language probe (same lease as chunk transcription); the dictation
+  // model itself never waits.
+  it("waits out active dictation for a different local-mlx model (I3)", async () => {
+    setDeclaredLanguages(["en", "pt"]);
+    insertMeeting("m1");
+    const { provider, calls } = makeProvider(async () => ({ text: "oi" }));
+    let active = true;
+    const detectAll: DetectAllFn = () => [{ lang: "pt", accuracy: 0.9 }];
+    const promise = run({
+      provider,
+      detectAll,
+      config: {
+        providerId: MLX_ASR_PROVIDER_ID,
+        modelId: "mlx/meeting-model",
+        apiKey: "k",
+        differsFromDictation: true,
+      },
+      isDictationActive: () => active,
+    });
+    // Dictation stays active across several polls: the probe must not
+    // have started yet.
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(calls).toHaveLength(0);
+    active = false;
+    // Then the full 15 s idle window after the last active observation.
+    await vi.advanceTimersByTimeAsync(20_000);
+    const result = await promise;
+    expect(result).toBe("pt");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("never consults the dictation lease for the dictation model itself (I3)", async () => {
+    setDeclaredLanguages(["en", "pt"]);
+    insertMeeting("m1");
+    const { provider, calls } = makeProvider(async () => ({ text: "oi" }));
+    let asked = 0;
+    const detectAll: DetectAllFn = () => [{ lang: "pt", accuracy: 0.9 }];
+    const result = await run({
+      provider,
+      detectAll,
+      config: {
+        providerId: MLX_ASR_PROVIDER_ID,
+        modelId: "mlx/dictation-model",
+        apiKey: "k",
+        differsFromDictation: false,
+      },
+      // Even with dictation reported active, the probe must run at once.
+      isDictationActive: () => {
+        asked++;
+        return true;
+      },
+    });
+    expect(result).toBe("pt");
+    expect(calls).toHaveLength(1);
+    expect(asked).toBe(0);
   });
 });

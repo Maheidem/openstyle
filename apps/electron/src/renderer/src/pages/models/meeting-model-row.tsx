@@ -10,7 +10,10 @@
  * the server also yields to dictation for it (transcriber's
  * `differsFromDictation` path).
  */
-import { parseMeetingSttModel } from "@openstyle/validations";
+import {
+  parseMeetingSttModel,
+  SERVER_PROVIDER_ID,
+} from "@openstyle/validations";
 import {
   Select,
   SelectContent,
@@ -24,6 +27,7 @@ import { putSetting } from "@renderer/lib/settings";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { findServerModel, kindFitsRole, type ServerView } from "./server-roles";
 
 // Radix `Select` reserves `""` internally to mean "no selection" and throws
 // if an item uses it as its value — same reason `task-profiles-section.tsx`
@@ -38,22 +42,50 @@ function storedOptionValue(m: { provider: string; modelId: string }): string {
   return `${m.provider}/${m.modelId}`;
 }
 
+/**
+ * I3: a configured voice model fits the meeting transcription role by the
+ * same rule as the dictation voice picker — a non-speech kind reported by
+ * a live own server (LLM/TTS/embedding stored as voice after migration 36)
+ * does not fit. A missing kind (server down, or model not listed) stays.
+ */
+function fitsVoiceRole(model: ConfiguredModel, servers: ServerView[]): boolean {
+  if (model.provider !== SERVER_PROVIDER_ID) return true;
+  const found = findServerModel(servers, model.model_id);
+  return !found?.kind || kindFitsRole(found.kind, "voice");
+}
+
 export function MeetingModelRow({
   value,
   voiceModels,
+  servers,
 }: {
   /** Raw persisted `meeting_stt_model` value; `""` or absent = dictation. */
   value: string | undefined;
   /** The configured models where `type === "voice"`. */
   voiceModels: ConfiguredModel[];
+  /** Live own-server views, for the voice-role filter (I3). */
+  servers: ServerView[];
 }): React.JSX.Element {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const stored = parseMeetingSttModel(value);
   const storedValue = stored ? storedOptionValue(stored) : "";
+  // I3: same voice-role rule as the dictation voice picker — non-speech
+  // server kinds are filtered out of the Select; unknown kinds stay.
+  const visibleModels = voiceModels.filter((m) => fitsVoiceRole(m, servers));
   const storedInList =
-    stored !== null && voiceModels.some((m) => optionValue(m) === storedValue);
+    stored !== null &&
+    visibleModels.some((m) => optionValue(m) === storedValue);
+  // I3: the stored model itself, checked by the same rule — a non-speech
+  // kind keeps the model visible with a warning instead of hiding it.
+  const storedFitsVoiceRole =
+    stored === null ||
+    stored.provider !== SERVER_PROVIDER_ID ||
+    (() => {
+      const found = findServerModel(servers, stored.modelId);
+      return !found?.kind || kindFitsRole(found.kind, "voice");
+    })();
   const selected = stored ? storedValue : SAME_AS_DICTATION;
 
   const onValueChange = (next: string): void => {
@@ -104,7 +136,7 @@ export function MeetingModelRow({
                   {stored.modelName ?? stored.modelId}
                 </SelectItem>
               )}
-              {voiceModels.map((m) => (
+              {visibleModels.map((m) => (
                 <SelectItem key={optionValue(m)} value={optionValue(m)}>
                   {m.model_name}
                 </SelectItem>
@@ -113,7 +145,9 @@ export function MeetingModelRow({
           </Select>
           {stored && !storedInList && (
             <p className="text-destructive text-[11px] leading-snug">
-              {t("models.meetingModel.notConfigured")}
+              {storedFitsVoiceRole
+                ? t("models.meetingModel.notConfigured")
+                : t("models.servers.cannotTranscribe")}
             </p>
           )}
         </div>

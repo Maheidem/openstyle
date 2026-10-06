@@ -96,6 +96,9 @@ afterAll(() => {
 afterEach(() => {
   resetMeetingTables();
   __setMeetingsTestOverrides();
+  // The retry-failed stamp tests insert model_configs rows; the per-file
+  // scratch DB starts with none, so a full delete restores that state.
+  getDb().prepare("DELETE FROM model_configs").run();
 });
 
 function insertMeeting(
@@ -489,13 +492,19 @@ describe("POST /api/meetings/:id/retry-failed", () => {
   // I3 (specs/meeting-transcription-v2.md §3.3): retry-failed resolves the
   // model from the row's own stt_provider/stt_model stamp, not from the
   // current default or the meeting model setting.
-  it("resolves the model from the row's stt_provider and stt_model (I3)", async () => {
+  it("resolves the model from a still-valid row stamp (I3)", async () => {
     insertMeeting("m1", "transcribed");
     getDb()
       .prepare(
         "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
       )
       .run("openai", "whisper-1", "m1");
+    getDb()
+      .prepare(
+        `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
+         VALUES ('openai', 'whisper-1', 'Whisper', 'voice', 0)`,
+      )
+      .run();
     insertSegment({
       id: "s1",
       meetingId: "m1",
@@ -561,16 +570,133 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     });
 
     let seenOverride: unknown = "unset";
+    const seenModels: string[] = [];
     __setMeetingsTestOverrides({
       createTranscriberDeps: async (extras, override) => {
         seenOverride = override;
-        const base = fakeDeps(async () => ({ text: "recovered" }));
-        return base(extras);
+        return {
+          getProvider: () => ({
+            providerId: "fake",
+            transcribe: async (o) => {
+              seenModels.push(o.model);
+              return { text: "recovered" };
+            },
+            supportsStreaming: () => false,
+          }),
+          resolveConfig: () => ({
+            providerId: "fake",
+            modelId: "fake-model",
+            apiKey: "key",
+            bias: null,
+          }),
+          sleep: async () => {},
+          backoffBaseMs: 1,
+          maxAttempts: 1,
+          ...extras,
+        };
       },
     });
 
     const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
     expect(res.status).toBe(200);
+    expect(seenOverride).toBeUndefined();
+    // Normal resolution ran: the provider was called with the default.
+    expect(seenModels).toEqual(["fake-model"]);
+  });
+
+  it("falls back to normal resolution for a stamp whose provider is gone (I3)", async () => {
+    // Migration 36 never rewrites meetings.stt_provider: a meeting stamped
+    // "omlx" must retry with the normal resolution, not 500 on the gone
+    // provider.
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
+      )
+      .run("omlx", "omlx/qwen3-asr", "m1");
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    let seenOverride: unknown = "unset";
+    const seenModels: string[] = [];
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras, override) => {
+        seenOverride = override;
+        return {
+          getProvider: () => ({
+            providerId: "fake",
+            transcribe: async (o) => {
+              seenModels.push(o.model);
+              return { text: "recovered" };
+            },
+            supportsStreaming: () => false,
+          }),
+          resolveConfig: () => ({
+            providerId: "fake",
+            modelId: "fake-model",
+            apiKey: "key",
+            bias: null,
+          }),
+          sleep: async () => {},
+          backoffBaseMs: 1,
+          maxAttempts: 1,
+          ...extras,
+        };
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { retried: number; failed: number };
+    expect(body.retried).toBe(1);
+    expect(body.failed).toBe(0);
+    expect(seenOverride).toBeUndefined();
+    expect(seenModels).toEqual(["fake-model"]);
+  });
+
+  it("falls back to normal resolution for a stamp whose pair is no longer configured (I3)", async () => {
+    // An "openai" stamp from the old openai_stt_base_url override: the
+    // provider still exists, but the pair is gone from model_configs — the
+    // retry must not send meeting audio to a cloud provider the user no
+    // longer configured.
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
+      )
+      .run("openai", "whisper-1", "m1");
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    let seenOverride: unknown = "unset";
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras, override) => {
+        seenOverride = override;
+        return fakeDeps(async () => ({ text: "recovered" }))(extras);
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { retried: number; failed: number };
+    expect(body.retried).toBe(1);
+    expect(body.failed).toBe(0);
     expect(seenOverride).toBeUndefined();
   });
 });

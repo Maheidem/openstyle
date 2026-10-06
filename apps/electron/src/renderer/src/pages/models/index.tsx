@@ -250,6 +250,7 @@ export default function ModelsPage(): React.JSX.Element {
         <MeetingModelRow
           value={settings?.[SETTINGS_KEYS.meetingSttModel]}
           voiceModels={m.configured.filter((cm) => cm.type === "voice")}
+          servers={m.servers.servers}
         />
 
         {showParams && (

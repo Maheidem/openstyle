@@ -547,6 +547,7 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
     db.prepare(
       "DELETE FROM api_keys WHERE provider IN ('openai', 'groq')",
     ).run();
+    db.prepare("DELETE FROM vocabulary WHERE term = 'Qwen3'").run();
   });
 
   it("uses the stored meeting_stt_model over the default voice model", async () => {
@@ -592,13 +593,14 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
     expect(config.differsFromDictation).toBe(false);
   });
 
-  it("resolves the API key for the stored provider", async () => {
+  it("resolves the API key and vocabulary bias for the stored provider", async () => {
     setDefaultVoice("local-mlx", "mlx/dictation-model");
     getDb()
       .prepare(
         "INSERT INTO api_keys (provider, key) VALUES ('openai', 'sk-stored-test')",
       )
       .run();
+    getDb().prepare("INSERT INTO vocabulary (term) VALUES ('Qwen3')").run();
     writeSetting(
       "meeting_stt_model",
       JSON.stringify({
@@ -612,6 +614,9 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
     expect(config.modelId).toBe("whisper-1");
     expect(config.apiKey).toBe("sk-stored-test");
     expect(config.differsFromDictation).toBe(true);
+    // The bias is built for the STORED provider/model, not the default.
+    expect(config.bias?.kind).toBe("prompt");
+    expect(config.bias?.text).toContain("Qwen3");
   });
 
   it("lets an explicit row override win over the setting (retry-failed, I3)", async () => {
