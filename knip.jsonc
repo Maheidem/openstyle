@@ -23,6 +23,13 @@
     // Static marketing site: loaded from site/index.html, which knip does
     // not parse for script references.
     "site/main.js",
+    // Meeting transcription v2 proof scripts (specs/meeting-transcription-v2.md
+    // phases 0a/0b): run manually against the isolated scratch profile, not
+    // imported by any entry.
+    "scripts/meeting-v2/measure-diarizer.mjs",
+    "scripts/meeting-v2/metrics.mjs",
+    "scripts/meeting-v2/run-baseline.mjs",
+    "scripts/meeting-v2/seed-scratch-db.mjs",
     "apps/electron/src/preload/*.d.ts",
     // Kept on purpose: specs/lean-audit-2026-09.md T0-5 keeps this entry.
     "apps/electron/src/renderer/src/components/ui/card.tsx",
