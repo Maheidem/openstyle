@@ -14,7 +14,8 @@ The scripts are in `scripts/meeting-v2/`. They came from `specs/meeting-transcri
 1. The real folder `~/Library/Application Support/Openstyle/meetings` and the real DB are read only. Read the DB only with `sqlite3 -readonly ... ".backup ..."`.
 2. Never print, log, commit or report transcript text or audio. Report counts, durations, hashes and ids only.
 3. Copy only these rows into the scratch DB: vocabulary, the `languages` setting, the own server rows, and the default voice and LLM model rows. Never copy API keys. Do not use a cloud model. A cloud model would send the meeting text off the Mac.
-4. Leave `OPENSTYLE_LOG_DIR` unset, so the request trace (which has text) stays off the disk.
+4. `DELETE /api/meetings/<id>` removes the meeting's `audio_dir` folder. Before any DELETE test, run `sqlite3 "$DB" "select audio_dir from meetings"` and check that every path starts with `/tmp/`. If one does not, stop.
+5. Leave `OPENSTYLE_LOG_DIR` unset, so the request trace (which has text) stays off the disk.
 
 ## Proof meetings
 
