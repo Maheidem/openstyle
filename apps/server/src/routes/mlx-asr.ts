@@ -114,9 +114,9 @@ const mlxAsr = new Hono()
     zValidator("json", addCustomMlxModelSchema, invalidInput),
     async (c) => {
       try {
-        const { hfId, family, totalBytes, revision } =
+        const { hfId, family, totalBytes, revision, processorSource } =
           await validateCustomModel(c.req.valid("json").model);
-        return c.json({ hfId, family, totalBytes, revision });
+        return c.json({ hfId, family, totalBytes, revision, processorSource });
       } catch (err) {
         return customModelError(c, err);
       }

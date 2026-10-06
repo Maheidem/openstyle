@@ -1,7 +1,9 @@
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   truncateSync,
@@ -16,6 +18,8 @@ import {
   getCustomMlxDef,
   insertCustomModel,
 } from "../src/lib/mlx-asr/custom-models.js";
+import { whisperProcessorSource } from "../src/lib/mlx-asr/whisper-processor.js";
+import { TOKENIZER_FOR_N_VOCAB } from "./helpers/whisper-tokenizer.js";
 
 const mocks = vi.hoisted(() => ({
   blocker: "runtime missing" as string | null,
@@ -166,8 +170,8 @@ describe("custom MLX models", () => {
     mocks.listSize = 2;
     insertCustomModel({
       hfId: CUSTOM_HF_ID,
-      family: "whisper",
-      modelType: "whisper",
+      family: "qwen3-asr",
+      modelType: "qwen3_asr",
       totalBytes: 10,
       revision: "rev-1",
       files: FILES,
@@ -267,7 +271,7 @@ describe("custom MLX models", () => {
       ]);
       expect(catalog.at(-1)).toMatchObject({
         hfId: CUSTOM_HF_ID,
-        family: "whisper",
+        family: "qwen3-asr",
         quantized: false,
         custom: { revision: "rev-1", files: FILES },
       });
@@ -465,6 +469,215 @@ describe("custom MLX models", () => {
       second.models.cancelMlxDownload(CUSTOM_ID);
       failers[1]?.(new Error("aborted"));
       await second.done;
+    });
+  });
+
+  describe("whisper processor fill-in", () => {
+    const WHISPER_CONFIG = {
+      model_type: "whisper",
+      n_vocab: 51866,
+      n_mels: 128,
+    };
+    const CONFIG_JSON = JSON.stringify(WHISPER_CONFIG);
+    const PROCESSOR_FILES = [
+      "preprocessor_config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+    ];
+    let tokenizer = "";
+    let tokenizerConfig = "{}";
+    let fetched: string[] = [];
+
+    /** An old mlx-whisper snapshot: config.json and weights. `own` adds processor files of the repo. */
+    function writeOldWhisperSnapshot(
+      revision: string,
+      config = CONFIG_JSON,
+      own = false,
+    ): string {
+      const repoDir = join(cacheDir, "models--someone--whisper-tiny");
+      const snapshotDir = join(repoDir, "snapshots", revision);
+      mkdirSync(join(repoDir, "blobs"), { recursive: true });
+      mkdirSync(snapshotDir, { recursive: true });
+      const files: Record<string, string> = {
+        "config.json": config,
+        "weights.npz": "12345",
+        ...(own
+          ? Object.fromEntries(PROCESSOR_FILES.map((f) => [f, "{}"]))
+          : {}),
+      };
+      for (const [name, content] of Object.entries(files)) {
+        const blob = join(repoDir, "blobs", `${revision}-${name}`);
+        writeFileSync(blob, content);
+        symlinkSync(blob, join(snapshotDir, name));
+      }
+      return snapshotDir;
+    }
+
+    /** The row that validation writes for an old whisper repo. */
+    function insertWhisperRow(
+      config: Record<string, unknown> = WHISPER_CONFIG,
+    ) {
+      const source = whisperProcessorSource(config, ["config.json"]);
+      getDb().exec("DELETE FROM custom_mlx_models");
+      insertCustomModel({
+        hfId: CUSTOM_HF_ID,
+        family: "whisper",
+        modelType: "whisper",
+        totalBytes: 10,
+        revision: "rev-1",
+        files: [
+          { path: "config.json", size: CONFIG_JSON.length },
+          { path: "weights.npz", size: 5 },
+          ...(source?.files ?? []),
+        ],
+      });
+    }
+
+    beforeEach(() => {
+      tokenizer = TOKENIZER_FOR_N_VOCAB[51866]();
+      tokenizerConfig = "{}";
+      fetched = [];
+      insertWhisperRow();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL) => {
+          const url = String(input);
+          fetched.push(url);
+          if (url.endsWith("/tokenizer.json")) return new Response(tokenizer);
+          if (url.endsWith("/tokenizer_config.json")) {
+            return new Response(tokenizerConfig);
+          }
+          return new Response("{}");
+        }),
+      );
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("is not ready while the added files are missing, and ready after the download adds them", async () => {
+      const snapshotDir = writeOldWhisperSnapshot("rev-1");
+      mocks.snapshotDownload.mockResolvedValue(snapshotDir);
+      const { downloadMlxModel, getMlxModelStatus } = await import(
+        "../src/lib/mlx-asr/models.js"
+      );
+      // The weights are all there. The three added files are not.
+      expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("not_downloaded");
+
+      await downloadMlxModel(CUSTOM_ID);
+
+      expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("ready");
+      for (const name of PROCESSOR_FILES) {
+        expect(lstatSync(join(snapshotDir, name)).isFile()).toBe(true);
+      }
+      expect(readFileSync(join(snapshotDir, "tokenizer.json"), "utf8")).toBe(
+        tokenizer,
+      );
+      // The row lists what is on disk now.
+      expect(getCustomMlxDef(CUSTOM_ID)?.custom).toEqual({
+        revision: "rev-1",
+        files: [
+          { path: "config.json", size: CONFIG_JSON.length },
+          { path: "preprocessor_config.json", size: 2 },
+          { path: "tokenizer.json", size: tokenizer.length },
+          { path: "tokenizer_config.json", size: 2 },
+          { path: "weights.npz", size: 5 },
+        ],
+      });
+      expect(fetched).toHaveLength(3);
+      expect(
+        fetched.every((url) =>
+          url.includes("/openai/whisper-large-v3-turbo/resolve/"),
+        ),
+      ).toBe(true);
+    });
+
+    it("fills in a new snapshot when main moved", async () => {
+      writeOldWhisperSnapshot("rev-1");
+      const moved = writeOldWhisperSnapshot("rev-2");
+      mocks.snapshotDownload.mockResolvedValue(moved);
+      const { downloadMlxModel, getMlxModelStatus } = await import(
+        "../src/lib/mlx-asr/models.js"
+      );
+
+      await downloadMlxModel(CUSTOM_ID);
+
+      expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("ready");
+      expect(getCustomMlxDef(CUSTOM_ID)?.custom?.revision).toBe("rev-2");
+      expect(existsSync(join(moved, "tokenizer.json"))).toBe(true);
+    });
+
+    it("refuses a tokenizer of the wrong length and the model does not read as ready", async () => {
+      tokenizer = TOKENIZER_FOR_N_VOCAB[51865]();
+      const snapshotDir = writeOldWhisperSnapshot("rev-1");
+      mocks.snapshotDownload.mockResolvedValue(snapshotDir);
+      const { clearMlxDownloadError, downloadMlxModel, getMlxModelStatus } =
+        await import("../src/lib/mlx-asr/models.js");
+
+      await expect(downloadMlxModel(CUSTOM_ID)).rejects.toThrow(
+        /has 51865 tokens\. The model needs 51866/,
+      );
+
+      expect(getMlxModelStatus(CUSTOM_ID)).toMatchObject({
+        status: "error",
+        error: expect.stringContaining("51866"),
+      });
+      clearMlxDownloadError(CUSTOM_ID);
+      expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("not_downloaded");
+      expect(existsSync(join(snapshotDir, "tokenizer.json"))).toBe(false);
+    });
+
+    it("blocks and removes a download when an added file has an auto_map", async () => {
+      tokenizerConfig = '{"auto_map":{}}';
+      mocks.snapshotDownload.mockResolvedValue(
+        writeOldWhisperSnapshot("rev-1"),
+      );
+      const { downloadMlxModel } = await import("../src/lib/mlx-asr/models.js");
+
+      await expect(downloadMlxModel(CUSTOM_ID)).rejects.toThrow(
+        /holds its own code files/,
+      );
+
+      expect(existsSync(join(cacheDir, "models--someone--whisper-tiny"))).toBe(
+        false,
+      );
+    });
+
+    it("keeps a model whose layout is not a standard one blocked at download", async () => {
+      insertWhisperRow({ n_vocab: 51867, n_mels: 128 });
+      mocks.snapshotDownload.mockResolvedValue(
+        writeOldWhisperSnapshot(
+          "rev-1",
+          JSON.stringify({ n_vocab: 51867, n_mels: 128 }),
+        ),
+      );
+      const { downloadMlxModel, getMlxModelStatus } = await import(
+        "../src/lib/mlx-asr/models.js"
+      );
+
+      await expect(downloadMlxModel(CUSTOM_ID)).rejects.toThrow(
+        /no standard tokenizer/,
+      );
+
+      expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("error");
+      expect(fetched).toEqual([]);
+    });
+
+    it("fetches nothing for a repo that has its own processor files", async () => {
+      const snapshotDir = writeOldWhisperSnapshot("rev-1", CONFIG_JSON, true);
+      mocks.snapshotDownload.mockResolvedValue(snapshotDir);
+      const { downloadMlxModel, getMlxModelStatus } = await import(
+        "../src/lib/mlx-asr/models.js"
+      );
+
+      await downloadMlxModel(CUSTOM_ID);
+
+      expect(fetched).toEqual([]);
+      expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("ready");
+      expect(
+        lstatSync(join(snapshotDir, "tokenizer.json")).isSymbolicLink(),
+      ).toBe(true);
     });
   });
 

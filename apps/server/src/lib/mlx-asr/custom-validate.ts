@@ -37,6 +37,7 @@ import {
   readBody,
 } from "./hf-http.js";
 import { downloadMlxModel } from "./models.js";
+import { whisperProcessorSource } from "./whisper-processor.js";
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const SEARCH_LIMIT = 20;
@@ -160,6 +161,11 @@ export interface ValidatedCustomModel {
   totalBytes: number;
   revision: string;
   files: CustomMlxFile[];
+  /**
+   * The official repo whose processor files the download adds (spec section
+   * 14). Absent when the repo has its own.
+   */
+  processorSource?: string;
 }
 
 /** Step 1. Accept `org/name` or a huggingface.co model URL. */
@@ -312,7 +318,11 @@ export async function validateCustomModel(
     throw new CustomModelError("no_weights", "Repo has no loadable weights");
   }
   const missing = missingFamilyFiles(family, paths);
-  if (missing.length > 0) {
+  const processor =
+    missing.length > 0 && family.family === "whisper"
+      ? whisperProcessorSource(config, paths)
+      : null;
+  if (missing.length > 0 && !processor) {
     throw new CustomModelError(
       "missing_files",
       `Repo lacks files that ${family.displayName} needs: ${missing.join(", ")}`,
@@ -332,6 +342,8 @@ export async function validateCustomModel(
     }
     files.push({ path, size: sibling.size });
   }
+  // The download adds these files. They count for the size and for completeness.
+  if (processor) files.push(...processor.files);
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
   if (totalBytes > MAX_MODEL_BYTES) {
     throw new CustomModelError("too_large", "Model is larger than 8 GiB", {
@@ -365,6 +377,7 @@ export async function validateCustomModel(
     totalBytes,
     revision: meta.sha,
     files,
+    processorSource: processor?.repo,
   };
 }
 
