@@ -80,7 +80,16 @@ jobs:
         run: |
           branch="release/${{ steps.version.outputs.version }}"
           echo "Waiting for CI on $branch..."
-          run_id=$(gh run list --workflow "Build & Test" --branch "$branch" --json databaseId --jq '.[0].databaseId')
+          # The runs API can answer with an empty list for a short time, so try again before failing.
+          run_id=""
+          for attempt in 1 2 3 4 5; do
+            run_id=$(gh run list --repo "${{ github.repository }}" --workflow "Build & Test" --branch "$branch" --json databaseId --jq '.[0].databaseId')
+            if [[ -n "$run_id" && "$run_id" != "null" ]]; then
+              break
+            fi
+            echo "No CI run found for $branch yet (attempt $attempt of 5). Trying again in 10 s."
+            sleep 10
+          done
           if [[ -z "$run_id" || "$run_id" == "null" ]]; then
             echo "::error::No CI run found for branch $branch"
             exit 1
