@@ -30,6 +30,8 @@ The build steps are only needed when the code changed. The capture alone is
 | `models-server.png` | Your own server list |
 | `pill-recording.png` | Pill while recording, transparent background |
 | `pill-recording.webm` | 4 s of the pill recording on `#18202E` (webm has no alpha) |
+| `pill-recording-crop.webm` | The pill alone, cropped from the webm (VP9) |
+| `pill-recording-poster.png` | Poster frame of the crop (1.5 s) |
 
 Dashboard images are 1280x800 at 2x, dark theme.
 

@@ -43,6 +43,13 @@ const { _electron: electron } = createRequire(
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const say = (msg) => console.log(`[site-captures] ${msg}`);
+const run = (cmd, args) =>
+  new Promise((res, rej) => {
+    const p = spawn(cmd, args, { stdio: "inherit" });
+    p.on("close", (code) =>
+      code === 0 ? res() : rej(new Error(`${cmd} exited with ${code}`)),
+    );
+  });
 
 for (const f of [MAIN_JS, SERVER_JS]) {
   if (!existsSync(f)) {
@@ -408,6 +415,44 @@ async function startRecording(pill) {
   if (!src) throw new Error("no pill video was recorded");
   cpSync(src, join(OUT, "pill-recording.webm"));
   record("pill-recording.webm");
+
+  // Crop the pill out of the full recording and render the poster frame.
+  // Box: the pill's bounding box in the 640x240 recording, found by reading
+  // frames as raw RGB (ffmpeg -f rawvideo -pix_fmt rgb24) and taking the
+  // bbox of pixels that differ from the scene bg #18202E: x=62 y=44
+  // w=196 h=60, plus a 1px margin.
+  const PILL_CROP = { x: 61, y: 43, w: 198, h: 62 };
+  await run("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    join(OUT, "pill-recording.webm"),
+    "-vf",
+    `crop=${PILL_CROP.w}:${PILL_CROP.h}:${PILL_CROP.x}:${PILL_CROP.y}`,
+    "-c:v",
+    "libvpx-vp9",
+    "-crf",
+    "32",
+    "-b:v",
+    "0",
+    "-an",
+    join(OUT, "pill-recording-crop.webm"),
+  ]);
+  record("pill-recording-crop.webm");
+  await run("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-ss",
+    "1.5",
+    "-i",
+    join(OUT, "pill-recording-crop.webm"),
+    "-frames:v",
+    "1",
+    join(OUT, "pill-recording-poster.png"),
+  ]);
+  record("pill-recording-poster.png");
 }
 
 console.log(JSON.stringify(written, null, 2));

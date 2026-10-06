@@ -39,6 +39,8 @@ The only contact with the installed app is the one boot health probe on 4649.
 | `models-builtin.png` / `models-server.png` | The two model lists |
 | `pill-recording.png` | The pill while recording, transparent background, 2x |
 | `pill-recording.webm` | 4 s of the pill on `#18202E` (webm has no alpha) |
+| `pill-recording-crop.webm` | The pill alone, cropped from the webm (VP9) |
+| `pill-recording-poster.png` | Poster frame of the crop (1.5 s) |
 
 Dashboard shots are 1280x800 at 2x, dark theme.
 

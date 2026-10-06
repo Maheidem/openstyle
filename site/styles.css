@@ -271,10 +271,15 @@ img {
 .pill-screen video,
 .pill-screen img {
   display: block;
-  width: 440px;
+  width: 198px;
   max-width: 100%;
   height: auto;
   margin: 0 auto;
+}
+
+.pill-screen video,
+.pill-screen .pill-still {
+  border-radius: 999px;
 }
 
 .pill-screen .pill-still {
