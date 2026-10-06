@@ -706,6 +706,12 @@
       "configureWarming": "Configure model warming",
       "configureSampling": "Sampling parameters"
     },
+    "meetingModel": {
+      "label": "Meeting transcription",
+      "sameAsDictation": "Same as dictation",
+      "reloadNote": "A different local model reloads when you dictate.",
+      "notConfigured": "This model is not in your configured list."
+    },
     "picker": {
       "transcription": "Transcription",
       "cleanup": "AI cleanup",

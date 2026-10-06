@@ -755,6 +755,12 @@
       "deletePresetMsg": "<b>{{name}}</b> is used by {{tasks}}. Deleting it switches those tasks back to Auto.",
       "deletePresetNoTasksMsg": "<b>{{name}}</b> isn't used by any task right now. Deleting it removes it for good."
     },
+    "meetingModel": {
+      "label": "Meeting transcription",
+      "sameAsDictation": "Same as dictation",
+      "reloadNote": "A different local model reloads when you dictate.",
+      "notConfigured": "This model is not in your configured list."
+    },
     "picker": {
       "transcription": "Transcription",
       "cleanup": "AI cleanup",
