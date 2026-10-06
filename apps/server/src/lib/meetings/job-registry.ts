@@ -22,11 +22,12 @@ export interface MeetingJobProgress {
 }
 
 /** What kind of job holds a meeting's slot. Transcription jobs (a full
- * re-transcribe or a retry-failed pass) and the async Summarize job are
- * cancellable via POST /:id/cancel-transcribe; the diarize pass claims the
- * same concurrency slot (shared-ANE-resource exclusion) but is a bounded,
- * in-request local-model run that ignores the cancellation flag, and Enhance
- * is an in-request pass with no stop seam of its own. */
+ * re-transcribe or a retry-failed pass), the async Summarize job and the
+ * Enhance passes (the in-request /enhance and the auto-run job behind the
+ * status flip, specs/meeting-transcription-v2.md §3.2) are cancellable via
+ * POST /:id/cancel-transcribe; the diarize pass claims the same concurrency
+ * slot (shared-ANE-resource exclusion) but is a bounded, in-request
+ * local-model run that ignores the cancellation flag. */
 export type MeetingJobKind =
   | "transcribe"
   | "retry-failed"
@@ -38,6 +39,7 @@ const CANCELLABLE_KINDS: ReadonlySet<MeetingJobKind> = new Set([
   "transcribe",
   "retry-failed",
   "summarize",
+  "enhance",
 ]);
 
 const jobs = new Map<string, MeetingJobProgress>();
@@ -111,7 +113,7 @@ export function getJob(
 }
 
 /** Ask the running job to stop. Returns false when no cancellable job holds
- * the slot (none, or a diarize or enhance pass). */
+ * the slot (none, or a diarize pass). */
 export function requestCancel(id: string): boolean {
   const kind = jobKinds.get(id);
   if (!kind || !CANCELLABLE_KINDS.has(kind)) return false;

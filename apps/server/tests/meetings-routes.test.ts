@@ -2654,3 +2654,264 @@ describe("DELETE /api/meetings/:id", () => {
     expect(existsSync(join(audioDir, "mic.wav"))).toBe(true);
   });
 });
+
+// I2 (specs/meeting-transcription-v2.md §3.2): with the auto-run setting on,
+// the status flips to 'transcribed' first, then the job releases its slot
+// and re-claims it as a cancellable "enhance" job that runs in the
+// background with progress of its own.
+describe("transcribe — auto-run Enhance as its own job (I2)", () => {
+  afterEach(() => {
+    deleteSetting("meeting_enhance_auto_run");
+  });
+
+  /** Poll until the meeting's job blob has the given kind (microtask
+   * yields only — the same contract as waitForTerminalStatusNoRealTimers). */
+  async function waitForJobKind(
+    id: string,
+    kind: string,
+  ): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 2000; i++) {
+      const body = await getMeeting(id);
+      const job = body.job as { kind: string | null } | null;
+      if (job && job.kind === kind) return body;
+      await Promise.resolve();
+    }
+    throw new Error(`job kind ${kind} never appeared`);
+  }
+
+  /** Poll until no job holds the slot. */
+  async function waitForNoJob(id: string): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 2000; i++) {
+      const body = await getMeeting(id);
+      if (body.job === null) return body;
+      await Promise.resolve();
+    }
+    throw new Error("the job never released its slot");
+  }
+
+  const enhanceOk = (
+    over: Partial<
+      import("../src/lib/meetings/enhance.js").EnhanceMeetingResult
+    > = {},
+  ) => ({
+    correctedCount: 0,
+    speakerSuggestions: 0,
+    chunksAttempted: 0,
+    chunksSucceeded: 0,
+    chunksFailed: 0,
+    stoppedEarly: false,
+    ...over,
+  });
+
+  it("does not run Enhance when the row is missing (default off)", async () => {
+    let enhanceCalls = 0;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async () => {
+        enhanceCalls++;
+        return enhanceOk();
+      },
+    });
+    insertMeeting("m1");
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(202);
+    const done = await waitForTerminalStatus("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.job).toBeNull();
+    expect(enhanceCalls).toBe(0);
+  });
+
+  it("keeps the status transcribed with job kind enhance while the pass runs, and reads transcribed at pass start", async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let startedStatus: string | null = null;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async (
+        meetingId,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        startedStatus = (
+          getDb()
+            .prepare("SELECT status FROM meetings WHERE id = ?")
+            .get(meetingId) as { status: string }
+        ).status;
+        await gate;
+        options.onProgress?.({ done: 1, total: 1 });
+        getDb()
+          .prepare(
+            "UPDATE meeting_segments SET enhanced_text = 'fixed' WHERE meeting_id = ?",
+          )
+          .run(meetingId);
+        return enhanceOk({
+          correctedCount: 1,
+          chunksAttempted: 1,
+          chunksSucceeded: 1,
+        });
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(202);
+
+    // While the pass is parked on the gate, the meeting already reads
+    // 'transcribed' and the polled job names kind "enhance".
+    const mid = await waitForJobKind("m1", "enhance");
+    expect(mid.status).toBe("transcribed");
+
+    release();
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.job).toBeNull();
+    // The flip happened BEFORE the pass started (spec step 1).
+    expect(startedStatus).toBe("transcribed");
+    const cnt = (
+      getDb()
+        .prepare(
+          "SELECT COUNT(*) AS c FROM meeting_segments WHERE enhanced_text IS NOT NULL",
+        )
+        .get() as unknown as { c: number }
+    ).c;
+    expect(cnt).toBeGreaterThan(0);
+  });
+
+  it("reports the enhance pass progress in the polled job blob", async () => {
+    let reportProgress:
+      | ((p: { done: number; total: number }) => void)
+      | undefined;
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async (
+        _id,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        reportProgress = options.onProgress;
+        await gate;
+        return enhanceOk({ chunksAttempted: 3, chunksSucceeded: 3 });
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    await postEmpty(app, "/api/meetings/m1/transcribe");
+    await waitForJobKind("m1", "enhance");
+
+    reportProgress?.({ done: 1, total: 3 });
+    const p1 = await getMeeting("m1");
+    expect(p1.job).toMatchObject({
+      kind: "enhance",
+      done: 1,
+      total: 3,
+      failed: 0,
+    });
+
+    reportProgress?.({ done: 2, total: 3 });
+    const p2 = await getMeeting("m1");
+    expect(p2.job).toMatchObject({
+      kind: "enhance",
+      done: 2,
+      total: 3,
+      failed: 0,
+    });
+
+    release();
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.job).toBeNull();
+  });
+
+  it("cancel-transcribe stops an in-flight auto-run enhance: finished chunks stay, the status stays transcribed, the slot frees", async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let ranToCompletion = false;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async (
+        meetingId,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        await gate;
+        // Chunk 1 finished before the cancel: its correction persists.
+        getDb()
+          .prepare(
+            "UPDATE meeting_segments SET enhanced_text = 'kept' WHERE id = ?",
+          )
+          .run(`${meetingId}:mic:0`);
+        options.onProgress?.({ done: 1, total: 2 });
+        // Chunk 2 sees the cancel flag and stops (the pass's shouldStop
+        // seam is isCancelRequested, same as the real enhance loop).
+        if (options.shouldStop?.()) {
+          return enhanceOk({
+            correctedCount: 1,
+            chunksAttempted: 2,
+            chunksSucceeded: 1,
+            chunksFailed: 1,
+            stoppedEarly: true,
+          });
+        }
+        ranToCompletion = true;
+        return enhanceOk({ chunksAttempted: 2, chunksSucceeded: 2 });
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    await postEmpty(app, "/api/meetings/m1/transcribe");
+    const mid = await waitForJobKind("m1", "enhance");
+    expect(mid.status).toBe("transcribed");
+
+    const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+    expect(cancel.status).toBe(202); // kind "enhance" IS cancellable now
+
+    release();
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed"); // never changed by the pass
+    expect(done.error).toBeNull();
+    expect(done.job).toBeNull();
+    expect(ranToCompletion).toBe(false);
+
+    // The finished chunk's correction survives the cancel.
+    const cnt = (
+      getDb()
+        .prepare(
+          "SELECT COUNT(*) AS c FROM meeting_segments WHERE enhanced_text IS NOT NULL",
+        )
+        .get() as unknown as { c: number }
+    ).c;
+    expect(cnt).toBe(1);
+
+    // Slot freed — a late cancel is a plain 409.
+    const after = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+    expect(after.status).toBe(409);
+  });
+
+  it("leaves the status transcribed when the auto-run pass throws", async () => {
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async () => {
+        throw new Error("llm lane exploded");
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.error).toBeNull(); // the failure is logged, not stored here
+    expect(done.job_error).toBeNull();
+  });
+});

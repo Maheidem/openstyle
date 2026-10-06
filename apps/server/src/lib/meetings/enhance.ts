@@ -79,6 +79,14 @@ export interface EnhanceMeetingOptions {
   shouldStop?: () => boolean;
   /** Queue-progress seam (§5.5) for the same reason as Summarize's. */
   onQueued?: (info: { waitedMs: number; ahead: number }) => void;
+  /**
+   * Chunk-progress seam (specs/meeting-transcription-v2.md §3.2): fired
+   * after each COMPLETED chunk — success or failure, never a chunk that
+   * was skipped by `shouldStop` — with the running count, so the
+   * auto-run job behind the status flip can render done/total in the
+   * polled job blob (the same seam shape as Summarize's onProgress).
+   */
+  onProgress?: (p: { done: number; total: number }) => void;
 }
 
 export interface EnhanceMeetingResult {
@@ -472,6 +480,7 @@ export async function enhanceMeetingTranscript(
       log.warn(
         `meeting ${meetingId}: enhance chunk ${chunkIndex}/${chunks.length} call failed (${reason}), skipping: ${detail}`,
       );
+      options.onProgress?.({ done: chunkIndex + 1, total: chunks.length });
       continue;
     }
 
@@ -484,6 +493,7 @@ export async function enhanceMeetingTranscript(
       log.warn(
         `meeting ${meetingId}: enhance chunk ${chunkIndex}/${chunks.length} parse failed, skipping`,
       );
+      options.onProgress?.({ done: chunkIndex + 1, total: chunks.length });
       continue;
     }
     chunksSucceeded++;
@@ -584,6 +594,7 @@ export async function enhanceMeetingTranscript(
         );
       }
     }
+    options.onProgress?.({ done: chunkIndex + 1, total: chunks.length });
   }
 
   if (corrections.size > 0) {
