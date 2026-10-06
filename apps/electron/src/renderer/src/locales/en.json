@@ -976,6 +976,8 @@
     "diarizationHint": "Label other participants separately (Them 1, Them 2, ...) using on-device speaker detection.",
     "diarizationNotReady": "Speaker models are missing from this build.",
     "diarizationUnavailable": "Speaker labels aren't available in this build.",
+    "enhanceAutoLabel": "Auto Enhance",
+    "enhanceAutoHint": "Right after a meeting transcribes, clean up its transcript automatically with your default LLM.",
     "identifySpeakers": "Identify speakers",
     "identifyingSpeakers": "Identifying speakers…",
     "diarizeResult": "Speakers identified: {{n}}.",

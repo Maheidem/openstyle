@@ -20,7 +20,10 @@ import {
   useRecorder,
   useSystemAudioProbe,
 } from "./recording";
-import { DiarizationSettingsPopover } from "./settings-popovers";
+import {
+  DiarizationSettingsPopover,
+  EnhanceSettingsPopover,
+} from "./settings-popovers";
 import { StatusBadge } from "./shared";
 
 export default function MeetingsPage(): React.JSX.Element {
@@ -117,8 +120,9 @@ export default function MeetingsPage(): React.JSX.Element {
               <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
                 {t("meetings.titleAccent")}
               </h1>
-              <div className="pt-2">
+              <div className="flex gap-1.5 pt-2">
                 <DiarizationSettingsPopover />
+                <EnhanceSettingsPopover />
               </div>
             </div>
             <p className="text-muted-foreground mb-6 max-w-[480px] text-[13px] leading-[1.5]">
@@ -169,7 +173,10 @@ export default function MeetingsPage(): React.JSX.Element {
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <span className="eyebrow">{t("meetings.titleAccent")}</span>
-              <DiarizationSettingsPopover />
+              <div className="flex gap-1.5">
+                <DiarizationSettingsPopover />
+                <EnhanceSettingsPopover />
+              </div>
             </div>
 
             <MeetingImportRail
