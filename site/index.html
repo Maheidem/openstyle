@@ -91,9 +91,12 @@
         <div class="hero-demo">
           <figure class="pill-panel">
             <div class="pill-screen">
+              <p class="pill-text">
+                The deploy went fine, but the login page is slow on Safari.
+              </p>
               <video
                 class="pill-video"
-                src="assets/screens/pill-recording.webm"
+                src="assets/screens/pill-recording-crop.webm"
                 autoplay
                 muted
                 loop
@@ -105,8 +108,8 @@
                 class="pill-still"
                 src="assets/screens/pill-recording.png"
                 alt="The Openstyle pill while it records"
-                width="220"
-                height="84"
+                width="440"
+                height="168"
                 decoding="async"
               />
             </div>
@@ -150,9 +153,18 @@
             </picture>
           </div>
           <ol class="steps">
-            <li>Hold your shortcut</li>
-            <li>Talk</li>
-            <li>Let go</li>
+            <li>
+              <span class="step-num" aria-hidden="true">1</span>
+              Hold your shortcut
+            </li>
+            <li>
+              <span class="step-num" aria-hidden="true">2</span>
+              Talk
+            </li>
+            <li>
+              <span class="step-num" aria-hidden="true">3</span>
+              Let go
+            </li>
           </ol>
         </figure>
       </section>
@@ -219,33 +231,26 @@
           </div>
         </div>
         <figure class="shot">
-          <div class="mac">
-            <div class="mac-bar" aria-hidden="true">
-              <span class="mac-dots">
-                <span class="mac-dot mac-dot-close"></span>
-                <span class="mac-dot mac-dot-min"></span>
-                <span class="mac-dot mac-dot-max"></span>
-              </span>
-            </div>
+          <div class="dialog-card">
             <picture>
               <source
                 type="image/webp"
                 srcset="
-                  assets/screens/models-picker-1600.webp 1x,
-                  assets/screens/models-picker.png       2x
+                  assets/screens/models-picker-dialog-680.webp 1x,
+                  assets/screens/models-picker-dialog.png  2x
                 "
               />
               <img
-                src="assets/screens/models-picker.png"
+                src="assets/screens/models-picker-dialog.png"
                 srcset="
-                  assets/screens/models-picker-1600.webp 1x,
-                  assets/screens/models-picker.png       2x
+                  assets/screens/models-picker-dialog-680.webp 1x,
+                  assets/screens/models-picker-dialog.png  2x
                 "
-                width="1280"
-                height="800"
+                width="1360"
+                height="660"
                 loading="lazy"
                 decoding="async"
-                alt="The Openstyle model picker with three groups: Built into Openstyle, Your own server and Cloud provider"
+                alt="The model picker dialog with three groups: Built into Openstyle, Your own server and Cloud provider"
               />
             </picture>
           </div>
@@ -286,7 +291,6 @@
                   "
                   width="1280"
                   height="800"
-                  loading="lazy"
                   decoding="async"
                   alt="A recorded meeting called Weekly product sync with its transcript"
                 />
@@ -318,7 +322,6 @@
                   "
                   width="1280"
                   height="800"
-                  loading="lazy"
                   decoding="async"
                   alt="The written summary of the Weekly product sync meeting"
                 />

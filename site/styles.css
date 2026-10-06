@@ -249,16 +249,29 @@ img {
 }
 
 .pill-screen {
+  width: 520px;
+  max-width: 100%;
   background: var(--ink);
   border-radius: 16px;
-  padding: 32px 36px;
+  padding: 36px 40px 40px;
   box-shadow: var(--shadow-window);
+}
+
+.pill-text {
+  margin: 0 0 26px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--frost);
+  text-align: center;
 }
 
 .pill-screen video,
 .pill-screen img {
   display: block;
-  width: 220px;
+  width: 440px;
   max-width: 100%;
   height: auto;
   margin: 0 auto;
@@ -323,6 +336,23 @@ img {
   display: block;
   width: 100%;
   height: auto;
+  aspect-ratio: 2560 / 1600;
+}
+
+/* Dialog card (no title bar) */
+
+.dialog-card {
+  background: var(--ink);
+  border-radius: 12px;
+  box-shadow: var(--shadow-window);
+  overflow: hidden;
+}
+
+.dialog-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1360 / 660;
 }
 
 /* Sections */
@@ -355,7 +385,7 @@ img {
 
 .steps li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 9px;
   font-family: var(--font-display);
   font-weight: 500;
@@ -363,9 +393,7 @@ img {
   color: var(--slate);
 }
 
-.steps li::before {
-  content: counter(step);
-  counter-increment: step;
+.step-num {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--ink);
@@ -374,6 +402,7 @@ img {
   border-radius: 999px;
   width: 22px;
   height: 22px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
