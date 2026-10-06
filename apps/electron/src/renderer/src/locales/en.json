@@ -988,6 +988,12 @@
     "enhancePromptNoLlm": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically with your default LLM.",
     "enhancePromptTurnOn": "Turn on auto Enhance",
     "enhancePromptNotNow": "Not now",
+    "enhancePromptSaveFailed": "Couldn't save that choice — please try again.",
+    "enhancePromptScope": {
+      "local": "local",
+      "server": "your own server",
+      "cloud": "cloud"
+    },
     "identifySpeakers": "Identify speakers",
     "identifyingSpeakers": "Identifying speakers…",
     "diarizeResult": "Speakers identified: {{n}}.",

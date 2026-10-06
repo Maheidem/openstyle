@@ -17,14 +17,17 @@ import { useTranslation } from "react-i18next";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 
 /**
- * The scope label the auto-Enhance prompt names for the default LLM
- * (specs/meeting-transcription-v2.md §3.2): "local" for the on-device MLX
- * provider, "your own server" for a user-run server, "cloud" for anything
- * else. `null` means no default LLM is configured at all.
+ * The scope key the auto-Enhance prompt names for the default LLM
+ * (specs/meeting-transcription-v2.md §3.2): `"local"` for the on-device MLX
+ * provider, `"server"` for a user-run server, `"cloud"` for anything else.
+ * `null` means no default LLM is configured at all. Callers render the
+ * human string via the `meetings.enhancePromptScope.*` locale keys.
  */
-export function llmScopeLabel(provider: string | undefined): string | null {
+export function llmScopeLabel(
+  provider: string | undefined,
+): "local" | "server" | "cloud" | null {
   if (provider === "local-mlx") return "local";
-  if (provider === "server") return "your own server";
+  if (provider === "server") return "server";
   return provider ? "cloud" : null;
 }
 
@@ -42,6 +45,9 @@ export function EnhancePromptDialog(): React.JSX.Element {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(true);
   const [busy, setBusy] = useState(false);
+  // A refused/failed settings write: keep the dialog open so the choice can
+  // be retried (closing on a failed write would silently lose the prompt).
+  const [saveError, setSaveError] = useState(false);
 
   const { data: models } = useQuery({
     queryKey: queryKeys.models.configured,
@@ -58,30 +64,46 @@ export function EnhancePromptDialog(): React.JSX.Element {
 
   const choose = useCallback(
     async (turnOn: boolean) => {
+      if (busy) return;
       setBusy(true);
+      setSaveError(false);
       try {
+        // `putSetting` resolves to a boolean (never rejects). A false means
+        // the server refused the write — in that case keep the dialog open
+        // and surface an error instead of closing on a choice that didn't
+        // land.
+        let saved = true;
         if (turnOn) {
-          await putSetting(SETTINGS_KEYS.meetingEnhanceAutoRun, "true");
+          saved =
+            (await putSetting(SETTINGS_KEYS.meetingEnhanceAutoRun, "true")) &&
+            saved;
         }
         // The seen flag is written in BOTH cases, so the dialog is one-time.
-        await putSetting(SETTINGS_KEYS.meetingEnhancePromptSeen, "true");
+        saved =
+          (await putSetting(SETTINGS_KEYS.meetingEnhancePromptSeen, "true")) &&
+          saved;
+        if (!saved) {
+          setSaveError(true);
+          return;
+        }
         await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
         setOpen(false);
       } finally {
         setBusy(false);
       }
     },
-    [queryClient],
+    [busy, queryClient],
   );
 
   return (
-    // Deliberately un-dismissible without a choice: closing via overlay or
-    // Escape is refused (the controlled `open` only turns off through the
-    // buttons below), so the seen flag always lands before the dialog goes.
+    // Escape and an outside click count as "Not now": they write only the
+    // seen flag (the same as the outline button), so the dialog is always
+    // answered one way or another and never shows twice.
     <Dialog
       open={open}
       onOpenChange={(next) => {
         if (next) setOpen(true);
+        else if (!busy) void choose(false);
       }}
     >
       <DialogContent showCloseButton={false}>
@@ -91,11 +113,16 @@ export function EnhancePromptDialog(): React.JSX.Element {
             {defaultLlm && scope
               ? t("meetings.enhancePromptDesc", {
                   model: defaultLlm.model_name,
-                  scope,
+                  scope: t(`meetings.enhancePromptScope.${scope}`),
                 })
               : t("meetings.enhancePromptNoLlm")}
           </DialogDescription>
         </DialogHeader>
+        {saveError && (
+          <p role="alert" className="text-destructive m-0 text-[13px]">
+            {t("meetings.enhancePromptSaveFailed")}
+          </p>
+        )}
         <DialogFooter>
           <Button
             variant="outline"

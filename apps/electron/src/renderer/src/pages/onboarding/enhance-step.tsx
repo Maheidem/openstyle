@@ -39,7 +39,7 @@ export function EnhanceStep({
         {model
           ? t("meetings.enhancePromptDesc", {
               model: model.name,
-              scope: model.scope,
+              scope: t(`meetings.enhancePromptScope.${model.scope}`),
             })
           : t("meetings.enhancePromptNoLlm")}
       </p>

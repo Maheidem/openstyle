@@ -8,7 +8,11 @@ import {
   resolveMicStatus,
 } from "@renderer/lib/permissions";
 import { IS_LINUX } from "@renderer/lib/platform";
-import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  configQueryOptions,
+  queryKeys,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
 import { llmScopeLabel } from "@renderer/pages/meetings/enhance-prompt-dialog";
 import { DraftStep } from "@renderer/pages/onboarding/draft-step";
@@ -61,6 +65,13 @@ export default function OnboardingPage(): React.JSX.Element {
     defaultLlm && enhanceLlmScope
       ? { name: defaultLlm.model_name, scope: enhanceLlmScope }
       : null;
+
+  // The auto-Enhance onboarding step only makes sense when Meeting Mode is
+  // on — the same `flags?.meetings === true` gate the app shell uses to show
+  // the Meetings nav item (shell.tsx). When the flag is off there is no
+  // Meetings feature to turn on, so onboarding finishes right after remix.
+  const { data: config } = useQuery(configQueryOptions());
+  const meetingsEnabled = config?.flags?.meetings === true;
 
   // Permissions state
   const [micStatus, setMicStatus] = useState<string>("unknown");
@@ -278,7 +289,11 @@ export default function OnboardingPage(): React.JSX.Element {
             dictationHotkey={hotkey}
             onRemixHotkeyRecorded={handleRemixHotkeyRecorded}
             onBack={() => setStep("draft")}
-            onFinish={() => setStep("enhance")}
+            onFinish={() => {
+              // Meeting Mode flag off → no Enhance step, finish as before.
+              if (meetingsEnabled) setStep("enhance");
+              else finishSetup();
+            }}
           />
         )}
 

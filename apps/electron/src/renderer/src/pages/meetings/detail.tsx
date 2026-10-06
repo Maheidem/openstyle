@@ -43,7 +43,7 @@ import {
   Users,
   WandSparkles,
 } from "lucide-react";
-import { Fragment, useCallback, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   EditableTitle,
@@ -175,6 +175,29 @@ export function MeetingDetailView({
   const invalidate = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
   }, [queryClient]);
+
+  // specs/meeting-transcription-v2.md §3.2: when the auto-Enhance job ends
+  // (job.kind flips "enhance" → null) its corrections and speaker
+  // suggestions have just been written, so invalidate this meeting's
+  // transcript (enhanced text), speakers, and the list (the row's badge)
+  // here — the global `refetchOnWindowFocus` is off (lib/query.ts), so
+  // without this the enhanced text would not appear until the meeting was
+  // opened again.
+  const prevJobKindRef = useRef<string | null>(null);
+  useEffect(() => {
+    const kind = meeting?.job?.kind ?? null;
+    const wasEnhance = prevJobKindRef.current === "enhance";
+    prevJobKindRef.current = kind;
+    if (wasEnhance && kind !== "enhance") {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.meetings.transcript(id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.meetings.speakers(id),
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.list });
+    }
+  }, [meeting?.job?.kind, queryClient, id]);
 
   // Returns the parsed JSON body with the `ok` flag. `body` is null when the
   // request throws or the body is not JSON. On `!ok`, `body` holds the error
@@ -478,7 +501,10 @@ export function MeetingDetailView({
             variant="outline"
             size="sm"
             onClick={handleIdentifySpeakersClick}
-            disabled={busy !== null}
+            // Diarization is a slot-holding job too: while any job runs
+            // (transcribe/summarize/enhance) the re-diarize 409s, so the
+            // button stays off with the rest. "Speakers" (view-only) stays on.
+            disabled={busy !== null || jobHoldsSlot}
           >
             <Users data-icon="inline-start" />
             {busy === "diarize"
