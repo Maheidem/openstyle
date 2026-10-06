@@ -1,0 +1,25 @@
+{
+  "name": "Openstyle",
+  "short_name": "Openstyle",
+  "description": "Free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go; it types clean text in the app you use.",
+  "id": "https://maheidem.github.io/openstyle/",
+  "start_url": "https://maheidem.github.io/openstyle/",
+  "scope": "https://maheidem.github.io/openstyle/",
+  "display": "standalone",
+  "background_color": "#edf0f4",
+  "theme_color": "#edf0f4",
+  "icons": [
+    {
+      "src": "assets/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
