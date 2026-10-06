@@ -162,6 +162,8 @@ The same switch lives in a new `EnhanceSettingsPopover` in `pages/meetings/setti
 5. At the end, the job rewrites `transcript-enhanced.md` and releases the slot in a `finally`.
 A failure is logged and never changes the meeting status. This keeps the fail-closed rule of today (`routes/meetings.ts:462-464`). The reason for the change: a 10 minute Enhance no longer hides a finished transcript, and the user can stop it. A cancel that lands after the transcription finished (for example during the diarization pass) is not lost either: the job re-reads the cancel flag right before the handoff and skips the auto-run when the flag is set.
 
+**Chunk size.** The pass maps whole-segment chunks of a default **1200 tokens** each (`DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS`, `enhance.ts`) — small enough that a ~7-minute meeting is several chunks, so a single call that ends `finishReason: length` drops one chunk instead of the whole meeting; each chunk's `maxOutputTokens` is `ceil(chunkTokens * 2) + 200 + 150 × distinct labels in the chunk`.
+
 **Delete.** `DELETE /:id` asks a running job to stop: when a job holds the slot, the DELETE handler calls the same cancel request before it deletes the row. The cancellable kinds wind down between their steps; an Enhance that ends this way keeps its finished chunks and writes no transcript files for the gone meeting. DELETE never answers 409 for a running job.
 
 **Detail page (part of 2b).** `pages/meetings/detail.tsx` must poll while the job kind is `enhance` (the `refetchInterval` at `detail.tsx:119-123` polls only for status `transcribing` or kind `summarize`), show the enhance progress and a cancel button for it, and turn off the job buttons while any job holds the slot.
