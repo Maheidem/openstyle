@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Openstyle, speak anywhere on your Mac and get clean text</title>
+    <meta
+      name="description"
+      content="Openstyle is a local-first voice dictation app for Mac. Hold a key, talk, let go, and clean text appears where your cursor is."
+    />
+    <meta property="og:title" content="Openstyle" />
+    <meta
+      property="og:description"
+      content="Hold a key, talk, let go. Openstyle turns what you said into clean text in the app you are using."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/icon.png" />
+    <link rel="icon" type="image/png" href="icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Mono&family=IBM+Plex+Sans:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="main.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#">
+          <img class="brand-icon" src="icon.png" alt="" width="28" height="28" />
+          <span class="brand-name">Openstyle</span>
+        </a>
+        <nav class="site-nav" aria-label="Main">
+          <a class="nav-link" href="#how-it-works">How it works</a>
+          <a class="nav-link" href="#privacy">Privacy</a>
+          <a class="nav-link" href="https://github.com/Maheidem/openstyle">GitHub</a>
+        </nav>
+        <a
+          class="button button-primary"
+          data-download
+          href="https://github.com/Maheidem/openstyle/releases/latest"
+          >Download for Mac</a
+        >
+      </div>
+    </header>
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <h1 class="hero-title" id="hero-title">
+            Speak anywhere on your Mac. Get clean text.
+          </h1>
+          <p class="hero-sub">
+            Hold a key, talk, let go. Openstyle turns what you said into clean
+            text in the app you are using.
+          </p>
+          <div class="hero-actions">
+            <a
+              class="button button-primary"
+              data-download
+              href="https://github.com/Maheidem/openstyle/releases/latest"
+              >Download for Mac</a
+            >
+            <a
+              class="link-secondary"
+              href="https://github.com/Maheidem/openstyle"
+              >View on GitHub</a
+            >
+          </div>
+          <p class="hero-meta">
+            <span class="hero-meta-group">
+              <span data-version>Version 2.12.0</span>
+              <span class="meta-sep" aria-hidden="true">&middot;</span>
+            </span>
+            <span>For Macs with Apple silicon</span>
+          </p>
+        </div>
+        <div class="hero-demo">
+          <p class="demo-hint">
+            <span class="hint-keyboard">Hold the space bar to try</span>
+            <span class="hint-touch">Press and hold to try</span>
+          </p>
+          <div class="demo-window" data-demo>
+            <div class="window-bar" aria-hidden="true">
+              <span class="window-dots">
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+                <span class="window-dot"></span>
+              </span>
+              <span class="window-title">Notes</span>
+            </div>
+            <p class="visually-hidden">
+              Interactive demo. Hold the space bar, or press and hold the dark
+              pill, to watch a raw transcription become clean text.
+            </p>
+            <div class="window-body">
+              <p class="window-text window-text-placeholder" data-placeholder>
+                Hold, talk, let go.
+              </p>
+              <p
+                class="window-text window-text-raw"
+                data-raw
+                hidden
+              ></p>
+              <p class="window-text window-text-clean" data-clean hidden></p>
+            </div>
+            <button
+              class="pill"
+              type="button"
+              data-pill
+              aria-label="Press and hold to try the demo"
+            >
+              <span class="pill-dot" aria-hidden="true"></span>
+              <span class="pill-wave" aria-hidden="true">
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+                <span class="pill-bar"></span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </section>
+      <section class="section" id="how-it-works" aria-labelledby="how-title">
+        <h2 class="section-title" id="how-title">How it works</h2>
+        <ol class="steps">
+          <li class="step">
+            <span class="step-num" aria-hidden="true">1</span>
+            <div class="step-body">
+              <h3 class="step-name">Hold your shortcut</h3>
+              <p class="step-text">Pick any key combination in Shortcuts.</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-num" aria-hidden="true">2</span>
+            <div class="step-body">
+              <h3 class="step-name">Talk</h3>
+              <p class="step-text">
+                A small pill shows that Openstyle is listening.
+              </p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-num" aria-hidden="true">3</span>
+            <div class="step-body">
+              <h3 class="step-name">Let go</h3>
+              <p class="step-text">
+                The text appears where your cursor is. Filler words and false
+                starts are gone.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+      <section class="section" id="privacy" aria-labelledby="privacy-title">
+        <h2 class="section-title" id="privacy-title">
+          You choose where your voice goes
+        </h2>
+        <div class="lanes">
+          <div class="lane lane-emphasis">
+            <div class="lane-head">
+              <h3 class="lane-name">Built into Openstyle</h3>
+              <p class="lane-tag">Stays on your Mac</p>
+            </div>
+            <p class="lane-text">
+              Models run on your Mac with MLX: Parakeet, Qwen3-ASR, Whisper.
+              Add more from Hugging Face.
+            </p>
+          </div>
+          <div class="lane">
+            <div class="lane-head">
+              <h3 class="lane-name">Your own server</h3>
+              <p class="lane-tag">Your network</p>
+            </div>
+            <p class="lane-text">
+              Use oMLX, LM Studio or any OpenAI-compatible server you run.
+            </p>
+          </div>
+          <div class="lane">
+            <div class="lane-head">
+              <h3 class="lane-name">Cloud provider</h3>
+              <p class="lane-tag">Your API key</p>
+            </div>
+            <p class="lane-text">
+              Use OpenAI, Groq, Deepgram, ElevenLabs and others with your own
+              key.
+            </p>
+          </div>
+        </div>
+      </section>
+      <section class="section" id="more" aria-labelledby="more-title">
+        <h2 class="section-title" id="more-title">More than dictation</h2>
+        <ul class="feature-list">
+          <li class="feature-item">
+            <h3 class="feature-name">Remix</h3>
+            <p class="feature-text">Rewrite text with a prompt</p>
+          </li>
+          <li class="feature-item">
+            <h3 class="feature-name">Meetings</h3>
+            <p class="feature-text">
+              Record, transcribe and summarize meetings
+            </p>
+          </li>
+          <li class="feature-item">
+            <h3 class="feature-name">Import</h3>
+            <p class="feature-text">Transcribe audio files</p>
+          </li>
+          <li class="feature-item">
+            <h3 class="feature-name">Vocabulary</h3>
+            <p class="feature-text">Teach it your names and terms</p>
+          </li>
+          <li class="feature-item">
+            <h3 class="feature-name">Tone</h3>
+            <p class="feature-text">Set how the cleaned text sounds</p>
+          </li>
+          <li class="feature-item">
+            <h3 class="feature-name">Transcriptions</h3>
+            <p class="feature-text">Find anything you said</p>
+          </li>
+        </ul>
+      </section>
+      <section class="section section-quiet" id="speed" aria-labelledby="speed-title">
+        <h2 class="section-title" id="speed-title">Fast on Apple silicon</h2>
+        <p class="speed-line">
+          In our tests on an Apple silicon Mac, Parakeet transcribed a
+          3-minute recording in about half a second.
+        </p>
+        <p class="speed-caption">
+          Measured October 2026 with Openstyle 2.10, warm model.
+        </p>
+      </section>
+      <section class="section" id="faq" aria-labelledby="faq-title">
+        <h2 class="section-title" id="faq-title">Frequently asked questions</h2>
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary class="faq-question">Does my audio leave my Mac?</summary>
+            <p class="faq-answer">
+              Not with a built-in model. With your own server it goes to that
+              server. With a cloud provider it goes to that provider.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-question">Which Macs are supported?</summary>
+            <p class="faq-answer">
+              Openstyle runs on Macs with Apple silicon. The published builds
+              are for arm64 only.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-question">How do updates work?</summary>
+            <p class="faq-answer">
+              Openstyle checks for updates and downloads them in the
+              background. You choose when to restart.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary class="faq-question">Is it open source?</summary>
+            <p class="faq-answer">
+              Yes. Openstyle is open source under the MIT license. The source
+              is on
+              <a
+                class="link-inline"
+                href="https://github.com/Maheidem/openstyle"
+                >GitHub</a
+              >.
+            </p>
+          </details>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <span class="footer-brand">Openstyle</span>
+        <nav class="footer-nav" aria-label="Footer">
+          <a
+            class="footer-link"
+            href="https://github.com/Maheidem/openstyle"
+            >GitHub</a
+          >
+          <a
+            class="footer-link"
+            href="https://github.com/Maheidem/openstyle/releases"
+            >Releases</a
+          >
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>
