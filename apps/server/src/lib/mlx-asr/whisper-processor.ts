@@ -126,7 +126,7 @@ function isRepoFile(snapshotDir: string, name: string): boolean {
 
 async function fetchSourceFile(
   source: WhisperProcessorSource,
-  path: string,
+  { path, size }: CustomMlxFile,
   signal: AbortSignal,
 ): Promise<Buffer> {
   const res = await hfGet(
@@ -136,14 +136,21 @@ async function fetchSourceFile(
   if (!res.ok) {
     throw new Error(`Hugging Face answered ${res.status} for ${source.repo}`);
   }
-  return readBody(res, MAX_FILE_BYTES);
+  const body = await readBody(res, MAX_FILE_BYTES);
+  // A proxy or a captive portal can answer 200 with a web page.
+  if (body.length !== size) {
+    throw new Error(
+      `${path} from ${source.repo} has ${body.length} bytes. It needs ${size}. It was not used.`,
+    );
+  }
+  return body;
 }
 
 /**
  * Write the processor files into a downloaded snapshot of a whisper repo, when
  * the repo has none of its own. It does nothing for a repo that has its own.
- * It throws, and writes nothing, when no layout matches or the tokenizer length
- * differs from `n_vocab`.
+ * It throws, and writes nothing, when no layout matches, a file differs in size
+ * from the pinned file, or the tokenizer length differs from `n_vocab`.
  */
 export async function fillWhisperProcessor(
   snapshotDir: string,
@@ -165,8 +172,8 @@ export async function fillWhisperProcessor(
   }
 
   const bodies = new Map<string, Buffer>();
-  for (const { path } of source.files) {
-    bodies.set(path, await fetchSourceFile(source, path, signal));
+  for (const file of source.files) {
+    bodies.set(file.path, await fetchSourceFile(source, file, signal));
   }
 
   let length: number | null = null;

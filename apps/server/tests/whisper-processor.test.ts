@@ -11,12 +11,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  downloadErrorSourceUrl,
+  isLikelyProxyOrTlsFailure,
+} from "../src/lib/download-guard.js";
+import { CustomModelError } from "../src/lib/mlx-asr/hf-http.js";
+import {
   fillWhisperProcessor,
   tokenizerLength,
   whisperProcessorSource,
 } from "../src/lib/mlx-asr/whisper-processor.js";
 import {
   fakeTokenizer,
+  pinnedBody,
   TOKENIZER_FOR_N_VOCAB,
 } from "./helpers/whisper-tokenizer.js";
 
@@ -111,7 +117,10 @@ describe("fillWhisperProcessor", () => {
         const url = String(input);
         urls.push(url);
         return new Response(
-          url.endsWith("/tokenizer.json") ? tokenizer : `{"file":"${url}"}`,
+          pinnedBody(
+            url,
+            url.endsWith("/tokenizer.json") ? tokenizer : `{"file":"${url}"}`,
+          ),
         );
       }),
     );
@@ -141,7 +150,9 @@ describe("fillWhisperProcessor", () => {
           `https://huggingface.co/openai/whisper-large-v3-turbo/resolve/${revision}/${file}`,
       ),
     );
-    expect(readFileSync(join(dir, "tokenizer.json"), "utf8")).toBe(tokenizer);
+    expect(readFileSync(join(dir, "tokenizer.json"), "utf8").trimEnd()).toBe(
+      tokenizer,
+    );
     expect(readFileSync(join(dir, "tokenizer_config.json"), "utf8")).toContain(
       "tokenizer_config.json",
     );
@@ -200,7 +211,53 @@ describe("fillWhisperProcessor", () => {
 
     await fillWhisperProcessor(dir, new AbortController().signal);
 
-    expect(readFileSync(join(dir, "tokenizer.json"), "utf8")).toBe(tokenizer);
+    expect(readFileSync(join(dir, "tokenizer.json"), "utf8").trimEnd()).toBe(
+      tokenizer,
+    );
+  });
+
+  it("refuses a 200 answer whose size is not the pinned size and writes nothing", async () => {
+    writeConfig({ n_vocab: 51866, n_mels: 128 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) =>
+        String(input).endsWith("/tokenizer_config.json")
+          ? new Response("<html>Please sign in to the network</html>")
+          : new Response(pinnedBody(String(input), "{}")),
+      ),
+    );
+
+    await expect(
+      fillWhisperProcessor(dir, new AbortController().signal),
+    ).rejects.toThrow(
+      /tokenizer_config\.json from openai\/whisper-large-v3-turbo has 42 bytes\. It needs 282843/,
+    );
+
+    expect(() => lstatSync(join(dir, "tokenizer.json"))).toThrow();
+    expect(() => lstatSync(join(dir, "tokenizer_config.json"))).toThrow();
+  });
+
+  it("keeps the cause of a connection failure, so the proxy hint still shows", async () => {
+    writeConfig({ n_vocab: 51866, n_mels: 128 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed", {
+          cause: new Error("self-signed certificate in certificate chain"),
+        });
+      }),
+    );
+
+    const err = await fillWhisperProcessor(
+      dir,
+      new AbortController().signal,
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CustomModelError);
+    expect(isLikelyProxyOrTlsFailure(err)).toBe(true);
+    expect(downloadErrorSourceUrl(err, "https://huggingface.co/x/y")).toBe(
+      "https://huggingface.co/x/y",
+    );
   });
 
   it("fails on an answer that is not 200", async () => {

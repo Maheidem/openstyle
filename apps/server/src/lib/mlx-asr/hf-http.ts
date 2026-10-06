@@ -55,8 +55,9 @@ export class CustomModelError extends Error {
     readonly code: CustomModelErrorCode,
     message: string,
     readonly extra: Record<string, unknown> = {},
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "CustomModelError";
     this.status = ERROR_STATUS[code];
   }
@@ -84,7 +85,12 @@ export async function hfGet(
       if (err instanceof Error && err.name === "TimeoutError") {
         throw new CustomModelError("hf_error", "Hugging Face timed out");
       }
-      throw new CustomModelError("offline", "Cannot reach Hugging Face");
+      throw new CustomModelError(
+        "offline",
+        "Cannot reach Hugging Face",
+        {},
+        { cause: err },
+      );
     }
     if (!REDIRECT_STATUSES.has(res.status)) return res;
 
@@ -116,7 +122,12 @@ export async function readBody(
       if (err instanceof Error && err.name === "TimeoutError") {
         throw new CustomModelError("hf_error", "Hugging Face timed out");
       }
-      throw new CustomModelError("offline", "Cannot reach Hugging Face");
+      throw new CustomModelError(
+        "offline",
+        "Cannot reach Hugging Face",
+        {},
+        { cause: err },
+      );
     }
     const { done, value } = chunk;
     if (done) break;

@@ -19,7 +19,10 @@ import {
   insertCustomModel,
 } from "../src/lib/mlx-asr/custom-models.js";
 import { whisperProcessorSource } from "../src/lib/mlx-asr/whisper-processor.js";
-import { TOKENIZER_FOR_N_VOCAB } from "./helpers/whisper-tokenizer.js";
+import {
+  pinnedBody,
+  TOKENIZER_FOR_N_VOCAB,
+} from "./helpers/whisper-tokenizer.js";
 
 const mocks = vi.hoisted(() => ({
   blocker: "runtime missing" as string | null,
@@ -543,11 +546,13 @@ describe("custom MLX models", () => {
         vi.fn(async (input: string | URL) => {
           const url = String(input);
           fetched.push(url);
-          if (url.endsWith("/tokenizer.json")) return new Response(tokenizer);
-          if (url.endsWith("/tokenizer_config.json")) {
-            return new Response(tokenizerConfig);
+          if (url.endsWith("/tokenizer.json")) {
+            return new Response(pinnedBody(url, tokenizer));
           }
-          return new Response("{}");
+          if (url.endsWith("/tokenizer_config.json")) {
+            return new Response(pinnedBody(url, tokenizerConfig));
+          }
+          return new Response(pinnedBody(url, "{}"));
         }),
       );
     });
@@ -571,17 +576,16 @@ describe("custom MLX models", () => {
       for (const name of PROCESSOR_FILES) {
         expect(lstatSync(join(snapshotDir, name)).isFile()).toBe(true);
       }
-      expect(readFileSync(join(snapshotDir, "tokenizer.json"), "utf8")).toBe(
-        tokenizer,
-      );
-      // The row lists what is on disk now.
+      expect(
+        readFileSync(join(snapshotDir, "tokenizer.json"), "utf8").trimEnd(),
+      ).toBe(tokenizer);
+      // The row lists what is on disk now: the pinned sizes of the added files.
       expect(getCustomMlxDef(CUSTOM_ID)?.custom).toEqual({
         revision: "rev-1",
         files: [
           { path: "config.json", size: CONFIG_JSON.length },
-          { path: "preprocessor_config.json", size: 2 },
-          { path: "tokenizer.json", size: tokenizer.length },
-          { path: "tokenizer_config.json", size: 2 },
+          ...(whisperProcessorSource(WHISPER_CONFIG, ["config.json"])?.files ??
+            []),
           { path: "weights.npz", size: 5 },
         ],
       });

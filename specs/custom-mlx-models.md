@@ -444,7 +444,7 @@ None of the nine files has an `auto_map` key. The remote-code scan (section 11) 
 ### 14.4 Checks
 
 - **At validation.** The class comes from `n_vocab`. `n_mels` must match the class. No file is fetched.
-- **At download.** Before the server writes a file, it checks that the tokenizer length equals `n_vocab`. The length is the number of entries in `model.vocab` of `tokenizer.json`, plus the `added_tokens` whose `content` is not already in `model.vocab`. A tokenizer that fails the check is not written. The download ends with an error. Checked against `len(WhisperProcessor.tokenizer)` in transformers 5.18.0: tiny.en 51864, tiny 51865 and large-v3-turbo 51866. Both counts agree for all three files.
+- **At download.** Before the server writes a file, it checks that every file has the pinned size of section 14.3. A proxy or a captive portal can answer 200 with a web page. A file of another size is not written, and the download ends with an error. Then it checks that the tokenizer length equals `n_vocab`. The length is the number of entries in `model.vocab` of `tokenizer.json`, plus the `added_tokens` whose `content` is not already in `model.vocab`. A tokenizer that fails the check is not written. The download ends with an error. Checked against `len(WhisperProcessor.tokenizer)` in transformers 5.18.0: tiny.en 51864, tiny 51865 and large-v3-turbo 51866. Both counts agree for all three files.
 
 A wrong set of files does not give an error in the worker. It gives wrong text (test of turbo-8bit with the tiny, tiny.en and large-v2 files: word error rate 0.65 to 13). So these checks are the only guard.
 
