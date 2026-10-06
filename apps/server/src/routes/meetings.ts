@@ -56,6 +56,7 @@ import {
 import {
   type ChunkResult,
   createDefaultTranscriberDeps,
+  type MeetingSttModelOverride,
   MeetingTranscriber,
   type TranscriberDeps,
 } from "../lib/meetings/transcriber.js";
@@ -310,10 +311,11 @@ async function buildTranscriberDeps(
     TranscriberDeps,
     "isDictationActive" | "onChunk" | "onProgress" | "shouldStop"
   >,
+  modelOverride?: MeetingSttModelOverride,
 ): Promise<TranscriberDeps> {
   const factory =
     testOverrides.createTranscriberDeps ?? createDefaultTranscriberDeps;
-  return factory(extras);
+  return factory(extras, modelOverride);
 }
 
 /** The background transcription job for one meeting. Never throws. */
@@ -895,27 +897,41 @@ const meetings = new Hono()
       failed: 0,
     });
     try {
-      const baseDeps = await buildTranscriberDeps({
-        isDictationActive,
-        shouldStop: () => isCancelRequested(id),
-        // Chunk idx here is positional within the retry batch, so key the
-        // update on (source, start, end) — stable across runs. Phase A1
-        // leak check applies here too, via the same shared helper
-        // persistChunk uses, so a leak surfacing on a retry is caught
-        // exactly as it would be on the original pass.
-        onChunk: (chunk) => {
-          const { text, status } = leakCheckedTextAndStatus(chunk, vocabTerms);
-          update.run(
-            text,
-            status,
-            id,
-            chunk.source,
-            chunk.startMs,
-            chunk.endMs,
-          );
+      // I3 (specs/meeting-transcription-v2.md §3.3): retry-failed resolves
+      // the model from the row's own stamp when both columns are set, so a
+      // retry uses the model the failed chunks ran with — not whatever the
+      // default (or the meeting model setting) is now. If that provider or
+      // model is gone, the provider call fails with its own message and
+      // this route answers 500 with it.
+      const baseDeps = await buildTranscriberDeps(
+        {
+          isDictationActive,
+          shouldStop: () => isCancelRequested(id),
+          // Chunk idx here is positional within the retry batch, so key the
+          // update on (source, start, end) — stable across runs. Phase A1
+          // leak check applies here too, via the same shared helper
+          // persistChunk uses, so a leak surfacing on a retry is caught
+          // exactly as it would be on the original pass.
+          onChunk: (chunk) => {
+            const { text, status } = leakCheckedTextAndStatus(
+              chunk,
+              vocabTerms,
+            );
+            update.run(
+              text,
+              status,
+              id,
+              chunk.source,
+              chunk.startMs,
+              chunk.endMs,
+            );
+          },
+          onProgress: (p) => setProgress(id, p),
         },
-        onProgress: (p) => setProgress(id, p),
-      });
+        row.stt_provider && row.stt_model
+          ? { provider: row.stt_provider, modelId: row.stt_model }
+          : undefined,
+      );
       // Phase A2: reuse the meeting's already-resolved language with no
       // re-probe — retrying a handful of failed chunks doesn't warrant a
       // fresh language decision.

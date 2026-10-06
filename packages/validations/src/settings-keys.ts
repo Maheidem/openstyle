@@ -38,6 +38,12 @@ export const SETTINGS_KEYS = {
   meetingEnhanceTimeoutSeconds: "meeting_enhance_timeout_seconds",
   meetingMaxDurationHours: "meeting_max_duration_hours",
   meetingRetentionDays: "meeting_retention_days",
+  /**
+   * I3 (specs/meeting-transcription-v2.md §3.3): JSON model pair meetings
+   * transcribe with, instead of the default voice (dictation) model. An
+   * empty string means missing — meetings use the dictation model.
+   */
+  meetingSttModel: "meeting_stt_model",
   meetingSummaryContextBudget: "meeting_summary_context_budget",
   meetingSummaryInstructions: "meeting_summary_instructions",
   meetingSummaryTimeoutSeconds: "meeting_summary_timeout_seconds",

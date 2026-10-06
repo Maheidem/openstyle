@@ -485,6 +485,94 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, retried: 0 });
   });
+
+  // I3 (specs/meeting-transcription-v2.md §3.3): retry-failed resolves the
+  // model from the row's own stt_provider/stt_model stamp, not from the
+  // current default or the meeting model setting.
+  it("resolves the model from the row's stt_provider and stt_model (I3)", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
+      )
+      .run("openai", "whisper-1", "m1");
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    let seenOverride: { provider: string; modelId: string } | undefined;
+    const seenModels: string[] = [];
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras, override) => {
+        seenOverride = override;
+        return {
+          getProvider: () => ({
+            providerId: "openai",
+            transcribe: async (o) => {
+              seenModels.push(o.model);
+              return { text: "recovered" };
+            },
+            supportsStreaming: () => false,
+          }),
+          resolveConfig: () => ({
+            providerId: override?.provider ?? "fake",
+            modelId: override?.modelId ?? "fake-model",
+            apiKey: "key",
+            bias: null,
+          }),
+          sleep: async () => {},
+          backoffBaseMs: 1,
+          maxAttempts: 1,
+          ...extras,
+        };
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { retried: number; failed: number };
+    expect(body.retried).toBe(1);
+    expect(body.failed).toBe(0);
+    // The factory got the row's pair, and the provider was called with it.
+    expect(seenOverride).toEqual({ provider: "openai", modelId: "whisper-1" });
+    expect(seenModels).toEqual(["whisper-1"]);
+    const after = await getMeeting("m1");
+    expect((after.segment_counts as { failed: number }).failed).toBe(0);
+  });
+
+  it("passes no model override when the row has no stt stamp (I3)", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    let seenOverride: unknown = "unset";
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras, override) => {
+        seenOverride = override;
+        const base = fakeDeps(async () => ({ text: "recovered" }));
+        return base(extras);
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    expect(seenOverride).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

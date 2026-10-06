@@ -15,6 +15,7 @@ import {
   MEETING_ENHANCE_TIMEOUT_SETTING_KEY,
   MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
   meetingEnhanceTimeoutSecondsSettingSchema,
+  meetingSttModelSettingSchema,
   meetingSummaryInstructionsSchema,
   meetingSummaryTimeoutSecondsSettingSchema,
   proxyUrlSettingSchema,
@@ -188,6 +189,15 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
     MEETING_ENHANCE_TIMEOUT_SETTING_KEY,
     schemaCheck(meetingEnhanceTimeoutSecondsSettingSchema, {
       fallback: "Invalid enhance timeout",
+    }),
+  ],
+  // I3 (specs/meeting-transcription-v2.md §3.3): the meeting transcription
+  // model is a JSON pair. Empty string is valid and means "use the
+  // dictation model". Any other bad value is a 400 so the UI can show it.
+  [
+    "meeting_stt_model",
+    schemaCheck(meetingSttModelSettingSchema, {
+      fallback: "Invalid meeting transcription model",
     }),
   ],
 ]);

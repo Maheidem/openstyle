@@ -16,9 +16,15 @@
 import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
-import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
+import {
+  MIC_WAV,
+  parseMeetingSttModel,
+  SYSTEM_WAV,
+} from "@openstyle/validations";
 import { parseWavHeader, sliceWav, type WavInfo } from "../audio/wav.js";
+import { readSetting } from "../db.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
+import { MLX_ASR_PROVIDER_ID } from "../mlx-asr/constants.js";
 import type {
   TranscribeResult,
   TranscriptionProvider,
@@ -67,6 +73,13 @@ export interface SttConfig {
   /** Primary language hint; omitted lets the model auto-detect. */
   language?: string;
   bias: AsrVocabularyBias | null;
+  /**
+   * I3 (specs/meeting-transcription-v2.md §3.3): true when this model pair
+   * is not the default voice (dictation) pair. The transcriber then yields
+   * to active dictation also for `local-mlx` (a different local model
+   * reloads in the single MLX worker and would stall a live dictation).
+   */
+  differsFromDictation?: boolean;
 }
 
 export interface TranscriberDeps {
@@ -261,7 +274,15 @@ export class MeetingTranscriber {
     const backoffBase = this.deps.backoffBaseMs ?? 1000;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (config.providerId === WHISPER_PROVIDER_ID) {
+      // whisper-local runs one shared server for dictation and meetings.
+      // A DIFFERENT local-mlx model reloads the single MLX worker, so it
+      // must not load mid-dictation either (I3, §3.3). A local-mlx model
+      // that IS the dictation model needs no yield — it is already loaded.
+      const yieldsToDictation =
+        config.providerId === WHISPER_PROVIDER_ID ||
+        (config.providerId === MLX_ASR_PROVIDER_ID &&
+          config.differsFromDictation === true);
+      if (yieldsToDictation) {
         await waitForDictationIdle({
           isDictationActive: this.deps.isDictationActive,
           idleMs: this.deps.dictationIdleResumeMs,
@@ -317,6 +338,19 @@ export class MeetingTranscriber {
 }
 
 /**
+ * I3 (specs/meeting-transcription-v2.md §3.3): explicit model pair for one
+ * job. retry-failed passes the meeting row's `stt_provider`/`stt_model` so
+ * a retry uses the model the failed chunks ran with. When present it wins
+ * over the `meeting_stt_model` setting and the default voice model. No
+ * existence check runs here — a gone provider or model fails the provider
+ * call with its own message.
+ */
+export interface MeetingSttModelOverride {
+  provider: string;
+  modelId: string;
+}
+
+/**
  * Production dependency wiring: resolves provider/model/key/language/bias
  * from the live configuration exactly as `routes/transcribe.ts` does for
  * dictation. Kept as a factory (with lazy imports at call time already
@@ -327,6 +361,7 @@ export async function createDefaultTranscriberDeps(
     TranscriberDeps,
     "isDictationActive" | "onChunk" | "onProgress"
   > = {},
+  modelOverride?: MeetingSttModelOverride,
 ): Promise<TranscriberDeps> {
   const [
     { getProvider },
@@ -342,29 +377,62 @@ export async function createDefaultTranscriberDeps(
     import("../vocabulary-bias.js"),
   ]);
 
+  const resolveFor = (
+    providerId: string,
+    modelId: string,
+    differsFromDictation: boolean,
+  ): SttConfig => {
+    const apiKey = getApiKey(providerId);
+    if (!apiKey) {
+      throw new Error(`No API key configured for provider: ${providerId}`);
+    }
+    const language = getLanguagesSetting()[0];
+    return {
+      providerId,
+      modelId,
+      apiKey,
+      ...(language ? { language } : {}),
+      bias: resolveAsrVocabularyBias(providerId, modelId),
+      differsFromDictation,
+    };
+  };
+
   return {
     getProvider,
     resolveConfig: () => {
       const defaults = getDefaultModels();
+      // I3 (specs/meeting-transcription-v2.md §3.3): an explicit row
+      // override (retry-failed) wins over the `meeting_stt_model` setting,
+      // which wins over the default voice (dictation) model. A missing,
+      // empty or unparseable setting falls back to the dictation model —
+      // today's behaviour.
+      const stored = modelOverride
+        ? {
+            provider: modelOverride.provider,
+            modelId: modelOverride.modelId,
+          }
+        : parseMeetingSttModel(readSetting("meeting_stt_model"));
+      if (stored) {
+        const differsFromDictation =
+          !defaults.voice ||
+          defaults.voice.provider !== stored.provider ||
+          defaults.voice.model_id !== stored.modelId;
+        return resolveFor(
+          stored.provider,
+          stored.modelId,
+          differsFromDictation,
+        );
+      }
       if (!defaults.voice) {
         throw new Error(
           "No voice model configured. Go to Settings > Models to add one.",
         );
       }
-      const providerId = defaults.voice.provider;
-      const modelId = defaults.voice.model_id;
-      const apiKey = getApiKey(providerId);
-      if (!apiKey) {
-        throw new Error(`No API key configured for provider: ${providerId}`);
-      }
-      const language = getLanguagesSetting()[0];
-      return {
-        providerId,
-        modelId,
-        apiKey,
-        ...(language ? { language } : {}),
-        bias: resolveAsrVocabularyBias(providerId, modelId),
-      };
+      return resolveFor(
+        defaults.voice.provider,
+        defaults.voice.model_id,
+        false,
+      );
     },
     ...extras,
   };

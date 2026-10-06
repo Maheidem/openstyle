@@ -7,15 +7,18 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import {
   type ChunkResult,
+  createDefaultTranscriberDeps,
   MeetingTranscriber,
   parseWavHeader,
   type SttConfig,
   sliceWav,
   type TranscriberDeps,
 } from "../src/lib/meetings/transcriber.js";
+import { MLX_ASR_PROVIDER_ID } from "../src/lib/mlx-asr/constants.js";
 import type {
   TranscribeOptions,
   TranscribeResult,
@@ -457,5 +460,176 @@ describe("MeetingTranscriber", () => {
     await expect(
       run(t, dir, { micSegments: [{ startMs: 0, endMs: 500 }] }),
     ).rejects.toThrow(/Unsupported transcription provider/);
+  });
+
+  it("yields to active dictation for local-mlx when the model differs from the dictation model (I3)", async () => {
+    const dir = makeMeetingDir({ mic: 2000, system: 100 });
+    const { provider } = makeFakeProvider({
+      providerId: MLX_ASR_PROVIDER_ID,
+    });
+    let clock = 0;
+    const isDictationActive = () => clock < 1000;
+    const t = new MeetingTranscriber(
+      makeDeps(
+        provider,
+        {
+          isDictationActive,
+          now: () => clock,
+          sleep: (ms) => {
+            clock += ms;
+            return Promise.resolve();
+          },
+          dictationIdleResumeMs: 15_000,
+          dictationPollMs: 500,
+        },
+        { differsFromDictation: true },
+      ),
+    );
+    const results = await run(t, dir, {
+      micSegments: [{ startMs: 0, endMs: 1000 }],
+    });
+    expect(results[0].status).toBe("ok");
+    // Dictation was active until t=1000; the call may only start after a
+    // full 15 s idle window — same contract as the whisper-local test.
+    expect(clock).toBeGreaterThanOrEqual(15_000);
+    expect(clock).toBeLessThan(17_000);
+  });
+
+  it("does not consult the dictation lease for local-mlx when the model IS the dictation model (I3)", async () => {
+    const dir = makeMeetingDir({ mic: 2000, system: 100 });
+    const { provider } = makeFakeProvider({
+      providerId: MLX_ASR_PROVIDER_ID,
+    });
+    let asked = 0;
+    const t = new MeetingTranscriber(
+      makeDeps(
+        provider,
+        {
+          isDictationActive: () => {
+            asked++;
+            return true;
+          },
+        },
+        { differsFromDictation: false },
+      ),
+    );
+    const results = await run(t, dir, {
+      micSegments: [{ startMs: 0, endMs: 1000 }],
+    });
+    expect(results[0].status).toBe("ok");
+    expect(asked).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createDefaultTranscriberDeps — I3 (specs/meeting-transcription-v2.md §3.3)
+// model resolution: row override > meeting_stt_model setting > default voice
+// ---------------------------------------------------------------------------
+
+function setDefaultVoice(
+  provider: string,
+  modelId: string,
+  modelName = "Voice",
+): void {
+  const db = getDb();
+  db.prepare("DELETE FROM model_configs WHERE type = 'voice'").run();
+  db.prepare(
+    `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
+     VALUES (?, ?, ?, 'voice', 1)`,
+  ).run(provider, modelId, modelName);
+}
+
+describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
+  afterEach(() => {
+    deleteSetting("meeting_stt_model");
+    const db = getDb();
+    db.prepare("DELETE FROM model_configs WHERE type = 'voice'").run();
+    db.prepare(
+      "DELETE FROM api_keys WHERE provider IN ('openai', 'groq')",
+    ).run();
+  });
+
+  it("uses the stored meeting_stt_model over the default voice model", async () => {
+    setDefaultVoice("local-mlx", "mlx/dictation-model");
+    writeSetting(
+      "meeting_stt_model",
+      JSON.stringify({
+        provider: "local-mlx",
+        model_id: "mlx/meeting-model",
+        model_name: "Meeting Model",
+      }),
+    );
+    const config = (await createDefaultTranscriberDeps()).resolveConfig();
+    expect(config.providerId).toBe("local-mlx");
+    expect(config.modelId).toBe("mlx/meeting-model");
+    expect(config.differsFromDictation).toBe(true);
+  });
+
+  it("uses the default voice model when the row is missing, empty or bad JSON", async () => {
+    setDefaultVoice("local-mlx", "mlx/dictation-model");
+    for (const value of [undefined, "", "not json", '{"provider":"x"}']) {
+      if (value === undefined) deleteSetting("meeting_stt_model");
+      else writeSetting("meeting_stt_model", value);
+      const config = (await createDefaultTranscriberDeps()).resolveConfig();
+      expect(config.providerId).toBe("local-mlx");
+      expect(config.modelId).toBe("mlx/dictation-model");
+      expect(config.differsFromDictation).toBe(false);
+    }
+  });
+
+  it("flags differsFromDictation false when the stored model equals the default", async () => {
+    setDefaultVoice("local-mlx", "mlx/same-model");
+    writeSetting(
+      "meeting_stt_model",
+      JSON.stringify({
+        provider: "local-mlx",
+        model_id: "mlx/same-model",
+        model_name: "Same",
+      }),
+    );
+    const config = (await createDefaultTranscriberDeps()).resolveConfig();
+    expect(config.modelId).toBe("mlx/same-model");
+    expect(config.differsFromDictation).toBe(false);
+  });
+
+  it("resolves the API key for the stored provider", async () => {
+    setDefaultVoice("local-mlx", "mlx/dictation-model");
+    getDb()
+      .prepare(
+        "INSERT INTO api_keys (provider, key) VALUES ('openai', 'sk-stored-test')",
+      )
+      .run();
+    writeSetting(
+      "meeting_stt_model",
+      JSON.stringify({
+        provider: "openai",
+        model_id: "whisper-1",
+        model_name: "OpenAI Whisper",
+      }),
+    );
+    const config = (await createDefaultTranscriberDeps()).resolveConfig();
+    expect(config.providerId).toBe("openai");
+    expect(config.modelId).toBe("whisper-1");
+    expect(config.apiKey).toBe("sk-stored-test");
+    expect(config.differsFromDictation).toBe(true);
+  });
+
+  it("lets an explicit row override win over the setting (retry-failed, I3)", async () => {
+    setDefaultVoice("local-mlx", "mlx/dictation-model");
+    writeSetting(
+      "meeting_stt_model",
+      JSON.stringify({
+        provider: "local-mlx",
+        model_id: "mlx/meeting-model",
+        model_name: "Meeting Model",
+      }),
+    );
+    const deps = await createDefaultTranscriberDeps(
+      {},
+      { provider: "local-mlx", modelId: "mlx/row-model" },
+    );
+    const config = deps.resolveConfig();
+    expect(config.modelId).toBe("mlx/row-model");
+    expect(config.differsFromDictation).toBe(true);
   });
 });
