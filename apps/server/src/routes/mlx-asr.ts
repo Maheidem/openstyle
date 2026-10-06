@@ -14,10 +14,10 @@ import {
 } from "../lib/mlx-asr/constants.js";
 import {
   addCustomModel,
-  CustomModelError,
   searchMlxModels,
   validateCustomModel,
 } from "../lib/mlx-asr/custom-validate.js";
+import { CustomModelError } from "../lib/mlx-asr/hf-http.js";
 import {
   cancelMlxDownload,
   clearMlxDownloadError,

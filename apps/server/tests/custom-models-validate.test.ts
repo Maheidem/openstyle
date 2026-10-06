@@ -22,10 +22,10 @@ import { InsufficientDiskSpaceError } from "../src/lib/disk.js";
 import { insertCustomModel } from "../src/lib/mlx-asr/custom-models.js";
 import {
   addCustomModel,
-  CustomModelError,
   searchMlxModels,
   validateCustomModel,
 } from "../src/lib/mlx-asr/custom-validate.js";
+import { CustomModelError } from "../src/lib/mlx-asr/hf-http.js";
 import { jsonRequest } from "./helpers/http.js";
 
 const HF_ID = "mlx-community/whisper-tiny-asr-fp16";

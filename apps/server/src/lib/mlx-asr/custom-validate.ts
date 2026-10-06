@@ -29,132 +29,26 @@ import {
   resolveSttFamily,
   SUPPORTED_STT_FAMILIES,
 } from "./families.js";
+import {
+  CustomModelError,
+  type CustomModelErrorCode,
+  HF_HOST,
+  hfGet,
+  readBody,
+} from "./hf-http.js";
 import { downloadMlxModel } from "./models.js";
 
-const HF_HOST = "huggingface.co";
-const FETCH_TIMEOUT_MS = 15_000;
-const MAX_REDIRECTS = 3;
 const MAX_JSON_BYTES = 1024 * 1024;
 const SEARCH_LIMIT = 20;
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const BARE_HF_ID = /^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
-
-type CustomModelErrorCode =
-  | "invalid_input"
-  | "offline"
-  | "hf_error"
-  | "not_found"
-  | "gated"
-  | "no_config"
-  | "unsupported_family"
-  | "not_transcriber"
-  | "remote_code"
-  | "no_weights"
-  | "missing_files"
-  | "too_large"
-  | "no_disk"
-  | "already_added";
-
-type CustomModelErrorStatus = 400 | 404 | 409 | 422 | 502 | 503;
-
-const ERROR_STATUS: Record<CustomModelErrorCode, CustomModelErrorStatus> = {
-  invalid_input: 400,
-  not_found: 404,
-  already_added: 409,
-  offline: 503,
-  hf_error: 502,
-  gated: 422,
-  no_config: 422,
-  unsupported_family: 422,
-  not_transcriber: 422,
-  remote_code: 422,
-  no_weights: 422,
-  missing_files: 422,
-  too_large: 422,
-  no_disk: 422,
-};
-
-/**
- * A failed validation or search. The renderer maps `code` to text, so the
- * message is for logs only. `extra` carries the values a text needs.
- */
-export class CustomModelError extends Error {
-  readonly status: CustomModelErrorStatus;
-
-  constructor(
-    readonly code: CustomModelErrorCode,
-    message: string,
-    readonly extra: Record<string, unknown> = {},
-  ) {
-    super(message);
-    this.name = "CustomModelError";
-    this.status = ERROR_STATUS[code];
-  }
-}
-
-// --- Hugging Face HTTP -----------------------------------------------------
-
-/**
- * GET with a timeout. Redirects are followed by hand, and only to
- * huggingface.co over https, for at most 3 hops.
- */
-async function hfGet(url: string): Promise<Response> {
-  let current = url;
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    let res: Response;
-    try {
-      res = await fetch(current, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-    } catch (err) {
-      if (err instanceof Error && err.name === "TimeoutError") {
-        throw new CustomModelError("hf_error", "Hugging Face timed out");
-      }
-      throw new CustomModelError("offline", "Cannot reach Hugging Face");
-    }
-    if (!REDIRECT_STATUSES.has(res.status)) return res;
-
-    await res.body?.cancel();
-    const location = res.headers.get("location");
-    const next = location ? new URL(location, current) : null;
-    if (!next || next.protocol !== "https:" || next.hostname !== HF_HOST) {
-      throw new CustomModelError("hf_error", "Unexpected redirect");
-    }
-    current = next.href;
-  }
-  throw new CustomModelError("hf_error", "Too many redirects");
-}
 
 async function readJson(
   res: Response,
   badJsonCode: CustomModelErrorCode,
 ): Promise<unknown> {
-  const reader = res.body?.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (reader) {
-    // The request timeout also covers the body. A stalled body is a timeout.
-    let chunk: ReadableStreamReadResult<Uint8Array>;
-    try {
-      chunk = await reader.read();
-    } catch (err) {
-      if (err instanceof Error && err.name === "TimeoutError") {
-        throw new CustomModelError("hf_error", "Hugging Face timed out");
-      }
-      throw new CustomModelError("offline", "Cannot reach Hugging Face");
-    }
-    const { done, value } = chunk;
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_JSON_BYTES) {
-      await reader.cancel();
-      throw new CustomModelError("hf_error", "Response is too large");
-    }
-    chunks.push(value);
-  }
+  const body = await readBody(res, MAX_JSON_BYTES);
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return JSON.parse(body.toString("utf8"));
   } catch {
     throw new CustomModelError(badJsonCode, "Response is not valid JSON");
   }
