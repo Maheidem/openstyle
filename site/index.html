@@ -3,19 +3,157 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Openstyle, speak anywhere on your Mac and get clean text</title>
+    <title>Openstyle: free, local dictation app for Mac</title>
     <meta
       name="description"
-      content="Openstyle is a local-first voice dictation app for Mac. Hold a key, talk, let go, and clean text appears where your cursor is."
+      content="Free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go. Local speech to text with MLX, your own server, or the cloud. Private."
     />
-    <meta property="og:title" content="Openstyle" />
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+    <meta name="theme-color" content="#edf0f4" />
+    <link rel="canonical" href="https://maheidem.github.io/openstyle/" />
+    <link rel="alternate" type="text/plain" href="llms.txt" />
+    <link rel="icon" type="image/png" href="icon.png" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="assets/apple-touch-icon.png"
+    />
+    <link rel="manifest" href="site.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Openstyle" />
+    <meta property="og:title" content="Openstyle: free, local dictation app for Mac" />
     <meta
       property="og:description"
-      content="Hold a key, talk, let go. Openstyle turns what you said into clean text in the app you are using."
+      content="Free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go. Local speech to text with MLX, your own server, or the cloud. Private."
     />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="/icon.png" />
-    <link rel="icon" type="image/png" href="icon.png" />
+    <meta property="og:url" content="https://maheidem.github.io/openstyle/" />
+    <meta
+      property="og:image"
+      content="https://maheidem.github.io/openstyle/assets/og-image.png"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Openstyle: free, local dictation for Mac on Apple silicon"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Openstyle: free, local dictation app for Mac" />
+    <meta
+      name="twitter:description"
+      content="Free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go. Local speech to text with MLX, your own server, or the cloud. Private."
+    />
+    <meta
+      name="twitter:image"
+      content="https://maheidem.github.io/openstyle/assets/og-image.png"
+    />
+    <meta
+      name="twitter:image:alt"
+      content="Openstyle: free, local dictation for Mac on Apple silicon"
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "Openstyle",
+            "operatingSystem": "macOS",
+            "applicationCategory": "ProductivityApplication",
+            "url": "https://maheidem.github.io/openstyle/",
+            "description": "Free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go; it types clean text in the app you use. Speech-to-text runs locally with MLX models, on your own server, or on a cloud provider.",
+            "softwareVersion": "2.12.1",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "license": "https://opensource.org/license/mit",
+            "downloadUrl": "https://github.com/Maheidem/openstyle/releases/latest",
+            "screenshot": [
+              "https://maheidem.github.io/openstyle/assets/screens/transcriptions.png",
+              "https://maheidem.github.io/openstyle/assets/screens/models-picker-dialog.png",
+              "https://maheidem.github.io/openstyle/assets/screens/meeting.png",
+              "https://maheidem.github.io/openstyle/assets/screens/meeting-summary.png"
+            ],
+            "author": {
+              "@type": "Person",
+              "name": "Maheidem",
+              "url": "https://github.com/Maheidem"
+            },
+            "publisher": {
+              "@type": "Person",
+              "name": "Maheidem",
+              "url": "https://github.com/Maheidem"
+            },
+            "codeRepository": "https://github.com/Maheidem/openstyle",
+            "sameAs": "https://github.com/Maheidem/openstyle"
+          },
+          {
+            "@type": "WebSite",
+            "name": "Openstyle",
+            "url": "https://maheidem.github.io/openstyle/",
+            "description": "Free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go; it types clean text in the app you use."
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Is Openstyle free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Openstyle is free to download. The code is on GitHub under the MIT license."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does Openstyle work locally, without a cloud account?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Speech-to-text can run entirely on your Mac with built-in MLX models. There is no account, no cloud service, and no telemetry."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which Macs are supported?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Openstyle runs on Macs with Apple silicon. The published builds are for arm64 only."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does my audio leave my Mac?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Not with a built-in model. With your own server it goes to that server. With a cloud provider it goes to that provider."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I use my own server?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Openstyle works with oMLX, LM Studio or any OpenAI-compatible server you run."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does Openstyle take meeting notes?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. It records meetings, transcribes them after the call, writes a summary, and detects speakers."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -26,6 +164,9 @@
     <script src="main.js" defer></script>
   </head>
   <body>
+    <noscript>
+      <p class="visually-hidden">This page is complete without JavaScript.</p>
+    </noscript>
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="header-inner">
@@ -82,7 +223,7 @@
           </p>
           <p class="hero-meta">
             <span class="hero-meta-group">
-              <span data-version>Version 2.12.0</span>
+              <span data-version>Version 2.12.1</span>
               <span class="meta-sep" aria-hidden="true">&middot;</span>
             </span>
             <span>For Macs with Apple silicon</span>
