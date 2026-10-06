@@ -30,6 +30,13 @@ export const SETTINGS_KEYS = {
   llmTaskAssignments: "llm_task_assignments",
   meetingDiarizationEnabled: "meeting_diarization_enabled",
   meetingEnhanceAutoRun: "meeting_enhance_auto_run",
+  /**
+   * I2 (specs/meeting-transcription-v2.md §3.2): the one-time auto-Enhance
+   * prompt (or the onboarding step for new users) has been shown. Only
+   * `"true"` counts as shown; a missing row means not shown yet. Written
+   * by the prompt and the onboarding step; no other writer.
+   */
+  meetingEnhancePromptSeen: "meeting_enhance_prompt_seen",
   // The Enhance twin of `meetingSummaryTimeoutSeconds` below. It limits ONE
   // non-streaming LLM call per chunk. It does not limit the whole pass. The
   // key has three places: this file, `routes/settings.ts` (the bounds branch),

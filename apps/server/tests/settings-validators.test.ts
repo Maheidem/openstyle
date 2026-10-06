@@ -60,6 +60,9 @@ const TIMEOUT =
   "Timeout must be a whole number of seconds between 30 and 3600 (or empty for 600)";
 const MEETING_STT_MODEL =
   "Meeting transcription model must be a JSON object with provider and model_id (or empty to use the dictation model)";
+// I2 (specs/meeting-transcription-v2.md §3.2): shared by the two Enhance
+// flags, which accept only the flat strings "true" and "false".
+const ENHANCE_FLAG = 'Value must be "true" or "false"';
 
 // Each row records what the old if/else chain answered: key, value, status
 // and the exact error text (null for a 200).
@@ -165,6 +168,16 @@ const rows: [string, string, number, string | null][] = [
     200,
     null,
   ],
+  // I2 (specs/meeting-transcription-v2.md §3.2): the two Enhance flags
+  // accept only "true" and "false"; anything else is a 400.
+  ["meeting_enhance_auto_run", "true", 200, null],
+  ["meeting_enhance_auto_run", "false", 200, null],
+  ["meeting_enhance_auto_run", "yes", 400, ENHANCE_FLAG],
+  ["meeting_enhance_auto_run", "True", 400, ENHANCE_FLAG],
+  ["meeting_enhance_auto_run", "", 400, ENHANCE_FLAG],
+  ["meeting_enhance_prompt_seen", "true", 200, null],
+  ["meeting_enhance_prompt_seen", "false", 200, null],
+  ["meeting_enhance_prompt_seen", "1", 400, ENHANCE_FLAG],
   ["meeting_stt_model", "not json", 400, MEETING_STT_MODEL],
   [
     "meeting_stt_model",
