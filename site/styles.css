@@ -482,14 +482,24 @@ img {
 
 .lanes {
   display: grid;
-  grid-template-columns: 96px 1fr;
-  align-items: center;
-  column-gap: 8px;
+  grid-template-columns: 160px 1fr;
+}
+
+.lanes-left {
+  position: relative;
 }
 
 .lanes-mic {
-  display: flex;
-  justify-content: center;
+  position: absolute;
+  top: 50%;
+  left: 65px;
+  transform: translateY(-50%);
+}
+
+.lanes-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .lanes-mic-fill {
@@ -503,6 +513,19 @@ img {
   stroke-linecap: round;
 }
 
+.lanes-path-solid {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3;
+}
+
+.lanes-path-dash {
+  fill: none;
+  stroke: var(--slate);
+  stroke-width: 2;
+  stroke-dasharray: 7 6;
+}
+
 .lanes-rows {
   display: flex;
   flex-direction: column;
@@ -510,21 +533,7 @@ img {
 }
 
 .lane {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  column-gap: 16px;
-  align-items: start;
-}
-
-.lane-line {
-  height: 0;
-  border-top: 2px dashed var(--slate);
-  margin-top: 11px;
-}
-
-.lane-solid .lane-line {
-  border-top: 3px solid var(--ink);
-  margin-top: 10px;
+  min-height: 112px;
 }
 
 .lane-name {
@@ -717,20 +726,25 @@ img {
     row-gap: 24px;
   }
 
+  .lanes-mic {
+    position: static;
+    transform: none;
+  }
+
+  .lanes-svg {
+    display: none;
+  }
+
   .lanes-rows {
     width: 100%;
     align-items: center;
   }
 
   .lane {
-    grid-template-columns: 1fr;
     width: 100%;
     max-width: 440px;
     padding-left: 16px;
-  }
-
-  .lane-line {
-    display: none;
+    min-height: 0;
   }
 
   .lane-solid {
@@ -743,21 +757,28 @@ img {
 }
 
 @media (max-width: 640px) {
+  .site-header {
+    height: 58px;
+  }
+
   .header-inner {
-    gap: 14px;
-    flex-wrap: wrap;
+    gap: 12px;
+    flex-wrap: nowrap;
+    padding: 8px 16px;
   }
 
   .site-nav {
-    gap: 16px;
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-    padding-bottom: 4px;
+    display: none;
+  }
+
+  .brand-name {
+    font-size: 17px;
   }
 
   .button-primary {
     margin-left: auto;
+    padding: 7px 14px;
+    font-size: 14px;
   }
 
   .feature-list {
