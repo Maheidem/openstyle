@@ -277,7 +277,7 @@ img {
   margin: 0 auto;
 }
 
-.pill-still {
+.pill-screen .pill-still {
   display: none;
 }
 
@@ -427,22 +427,24 @@ img {
 }
 
 .meetings-stack {
-  position: relative;
-  max-width: 760px;
-  padding-bottom: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
 }
 
-.shot-front {
-  position: absolute;
-  top: 24px;
-  left: 24px;
-  width: 78%;
-  z-index: 1;
+.meetings-stack .shot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
 }
 
-.shot-back {
-  position: relative;
-  z-index: 0;
+.shot-caption {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--slate);
+  text-align: center;
 }
 
 /* Privacy lane diagram */
@@ -665,7 +667,7 @@ img {
 
 @media (max-width: 960px) {
   .hero {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 40px;
     padding-top: 48px;
   }
@@ -674,14 +676,16 @@ img {
     order: 2;
   }
 
+  .pill-panel {
+    min-width: 0;
+  }
+
   .flexible {
     grid-template-columns: 1fr;
   }
 
-  .shot-front {
-    position: static;
-    width: 100%;
-    margin-top: 24px;
+  .meetings-stack {
+    grid-template-columns: 1fr;
   }
 
 }
@@ -778,7 +782,7 @@ img {
     display: none;
   }
 
-  .pill-still {
+  .pill-screen .pill-still {
     display: block;
   }
 }
