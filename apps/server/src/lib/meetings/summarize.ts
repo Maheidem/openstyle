@@ -296,16 +296,23 @@ export interface SummarizeMeetingResult {
  * "how big is this transcript" is exactly how a bound stops being a bound.
  */
 function renderTranscript(segments: readonly MergedSegment[]): string {
+  // I2 (specs/meeting-transcription-v2.md §3.2): filter on the RENDERED
+  // text, not on `text` — a segment whose raw text is blank but whose
+  // enhanced text is not still reads as a line of the summary.
   return segments
-    .filter((s) => s.text.trim().length > 0)
+    .filter((s) => (s.enhancedText ?? s.text).trim().length > 0)
     .map(formatSegment)
     .join("\n");
 }
 
 /** Format one merged segment as a labeled transcript line. The label rule
- * (named, numbered, or "Unidentified") lives in `speakerDisplayLabel`. */
+ * (named, numbered, or "Unidentified") lives in `speakerDisplayLabel`.
+ * I2 (specs/meeting-transcription-v2.md §3.2): renders the enhanced text
+ * when present, else the raw text — Enhance can change only some chunks,
+ * so one summary can mix enhanced and raw lines. */
 function formatSegment(segment: MergedSegment): string {
-  return `${speakerDisplayLabel(segment, "Unidentified")}: ${segment.text}`;
+  const text = segment.enhancedText ?? segment.text;
+  return `${speakerDisplayLabel(segment, "Unidentified")}: ${text}`;
 }
 
 /**
@@ -384,7 +391,13 @@ export async function summarizeMeeting(
   const maxOutputTokens =
     options.maxOutputTokens ?? DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS;
 
-  const withText = segments.filter((s) => s.text.trim().length > 0);
+  // I2 (specs/meeting-transcription-v2.md §3.2): same rendered-text rule
+  // as renderTranscript above, so a segment with only enhanced text
+  // counts toward the transcript (and an all-enhanced meeting is not
+  // reported as empty).
+  const withText = segments.filter(
+    (s) => (s.enhancedText ?? s.text).trim().length > 0,
+  );
   if (withText.length === 0) {
     return {
       markdown: "",
