@@ -48,6 +48,8 @@ FINAL ANSWER: <what to return>; Simplified Technical English; metrics only for p
 
 ## Watch the child
 
+- Send one message for each change of plan. On 2026-10-06 a child got "do not change the capture resolution", then the owner's choice to re-capture at 2x. It followed the first message and did not re-capture. When a decision replaces an earlier note, say so in the same message: "This replaces my note X."
+
 - On every `done` event, read the result and look at its screenshots yourself before you report anything.
 - On a `question` event, answer technical questions yourself with `pi_answer`. Ask the owner first (AskUserQuestion, then `relay_user:true`) when the answer changes scope or is outward-facing.
 - If a child runs longer than its time box: read `pi_read {what:"transcript", last:8}` and `pi_list_agents {name}`. Signs of a stuck child are many steps on one bug, tokens above about 5 million, or the same file read again and again.

@@ -19,6 +19,7 @@ The script does the following:
 - It starts its own server on `127.0.0.1:8790` and a fake oMLX-style model server on `127.0.0.1:8787`.
 - It uses a throwaway profile, and deletes the profile at the end.
 - It writes to `site/assets/screens/`.
+- In a git worktree, check `ls apps/electron/node_modules/electron/dist/Electron.app` first. On 2026-10-06 the worktree's pnpm Electron entry had no `dist/Electron.app` and no `path.txt`, so the launch failed. The fix: copy the same Electron version's folder from the main checkout's `node_modules/.pnpm`. A symlink fails with a macOS sandbox error.
 
 The only contact with the installed app is the one boot health probe on 4649.
 
