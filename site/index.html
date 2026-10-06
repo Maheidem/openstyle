@@ -69,6 +69,17 @@
               >View on GitHub</a
             >
           </div>
+          <p class="hero-props">
+            <span>Local</span>
+            <span class="meta-sep" aria-hidden="true">&middot;</span>
+            <span>Flexible</span>
+            <span class="meta-sep" aria-hidden="true">&middot;</span>
+            <span>Simple</span>
+            <span class="meta-sep" aria-hidden="true">&middot;</span>
+            <span>Free</span>
+            <span class="meta-sep" aria-hidden="true">&middot;</span>
+            <span>Open source</span>
+          </p>
           <p class="hero-meta">
             <span class="hero-meta-group">
               <span data-version>Version 2.12.0</span>
@@ -107,7 +118,7 @@
               <p class="window-text window-text-clean" data-clean hidden></p>
             </div>
             <button
-              class="pill"
+              class="pill pill-demo"
               type="button"
               data-pill
               aria-label="Press and hold to try the demo"
@@ -132,71 +143,121 @@
         </div>
       </section>
       <section class="section" id="how-it-works" aria-labelledby="how-title">
-        <h2 class="section-title" id="how-title">How it works</h2>
-        <ol class="steps">
-          <li class="step">
-            <span class="step-num" aria-hidden="true">1</span>
-            <div class="step-body">
-              <h3 class="step-name">Hold your shortcut</h3>
-              <p class="step-text">Pick any key combination in Shortcuts.</p>
+        <h2 class="section-title" id="how-title">
+          Simple: hold, talk, let go
+        </h2>
+        <ol class="seq">
+          <li class="seq-item">
+            <div class="pill pill-static pill-idle" aria-hidden="true">
+              <span class="pill-dot"></span>
+              <span class="pill-wave">
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+                <span class="pill-bar" style="height: 26%"></span>
+              </span>
             </div>
+            <h3 class="seq-label">Hold your shortcut</h3>
           </li>
-          <li class="step">
-            <span class="step-num" aria-hidden="true">2</span>
-            <div class="step-body">
-              <h3 class="step-name">Talk</h3>
-              <p class="step-text">
-                A small pill shows that Openstyle is listening.
-              </p>
+          <li class="seq-item">
+            <div class="pill pill-static pill-listening" aria-hidden="true">
+              <span class="pill-dot"></span>
+              <span class="pill-wave">
+                <span class="pill-bar" style="height: 48%"></span>
+                <span class="pill-bar" style="height: 78%"></span>
+                <span class="pill-bar" style="height: 56%"></span>
+                <span class="pill-bar" style="height: 92%"></span>
+                <span class="pill-bar" style="height: 64%"></span>
+                <span class="pill-bar" style="height: 88%"></span>
+                <span class="pill-bar" style="height: 52%"></span>
+                <span class="pill-bar" style="height: 74%"></span>
+                <span class="pill-bar" style="height: 60%"></span>
+                <span class="pill-bar" style="height: 84%"></span>
+                <span class="pill-bar" style="height: 46%"></span>
+                <span class="pill-bar" style="height: 70%"></span>
+              </span>
             </div>
+            <h3 class="seq-label">Talk</h3>
           </li>
-          <li class="step">
-            <span class="step-num" aria-hidden="true">3</span>
-            <div class="step-body">
-              <h3 class="step-name">Let go</h3>
-              <p class="step-text">
-                The text appears where your cursor is. Filler words and false
-                starts are gone.
-              </p>
-            </div>
+          <li class="seq-item">
+            <p class="seq-clean" aria-hidden="true">Ship it on Friday.</p>
+            <h3 class="seq-label">Let go</h3>
           </li>
         </ol>
       </section>
       <section class="section" id="privacy" aria-labelledby="privacy-title">
         <h2 class="section-title" id="privacy-title">
-          You choose where your voice goes
+          Flexible: you choose where your voice goes
         </h2>
         <div class="lanes">
-          <div class="lane lane-emphasis">
-            <div class="lane-head">
-              <h3 class="lane-name">Built into Openstyle</h3>
-              <p class="lane-tag">Stays on your Mac</p>
-            </div>
-            <p class="lane-text">
-              Models run on your Mac with MLX: Parakeet, Qwen3-ASR, Whisper.
-              Add more from Hugging Face.
-            </p>
+          <div class="lanes-mic" aria-hidden="true">
+            <svg class="lanes-mic-svg" viewBox="0 0 24 24" width="30" height="30">
+              <title>Microphone</title>
+              <path
+                class="lanes-mic-fill"
+                d="M12 2.5a3.5 3.5 0 0 0-3.5 3.5v6a3.5 3.5 0 0 0 7 0V6A3.5 3.5 0 0 0 12 2.5Z"
+              />
+              <path
+                class="lanes-mic-stroke"
+                d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M8.5 21.5h7"
+              />
+            </svg>
           </div>
-          <div class="lane">
-            <div class="lane-head">
-              <h3 class="lane-name">Your own server</h3>
-              <p class="lane-tag">Your network</p>
+          <div class="lanes-rows">
+            <div class="lane lane-solid">
+              <span class="lane-line" aria-hidden="true"></span>
+              <div class="lane-copy">
+                <h3 class="lane-name">Built into Openstyle</h3>
+                <p class="lane-tag">Stays on your Mac</p>
+                <p class="lane-text">
+                  Models run on your Mac with MLX: Parakeet, Qwen3-ASR,
+                  Whisper. Add more from Hugging Face.
+                </p>
+              </div>
             </div>
-            <p class="lane-text">
-              Use oMLX, LM Studio or any OpenAI-compatible server you run.
-            </p>
-          </div>
-          <div class="lane">
-            <div class="lane-head">
-              <h3 class="lane-name">Cloud provider</h3>
-              <p class="lane-tag">Your API key</p>
+            <div class="lane lane-dash">
+              <span class="lane-line" aria-hidden="true"></span>
+              <div class="lane-copy">
+                <h3 class="lane-name">Your own server</h3>
+                <p class="lane-tag">Your network</p>
+                <p class="lane-text">
+                  Use oMLX, LM Studio or any OpenAI-compatible server you run.
+                </p>
+              </div>
             </div>
-            <p class="lane-text">
-              Use OpenAI, Groq, Deepgram, ElevenLabs and others with your own
-              key.
-            </p>
+            <div class="lane lane-dash">
+              <span class="lane-line" aria-hidden="true"></span>
+              <div class="lane-copy">
+                <h3 class="lane-name">Cloud provider</h3>
+                <p class="lane-tag">Your API key</p>
+                <p class="lane-text">
+                  Use OpenAI, Groq, Deepgram, ElevenLabs and others with your
+                  own key.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
+      </section>
+      <section class="section section-quiet" id="free-oss" aria-labelledby="free-oss-title">
+        <h2 class="section-title" id="free-oss-title">Free and open source</h2>
+        <p class="oss-line">
+          Openstyle is free to download. The code is on GitHub under the MIT
+          license.
+          <a
+            class="link-inline"
+            href="https://github.com/Maheidem/openstyle"
+            >View the code on GitHub</a
+          >
+        </p>
       </section>
       <section class="section" id="more" aria-labelledby="more-title">
         <h2 class="section-title" id="more-title">More than dictation</h2>
@@ -230,10 +291,10 @@
         </ul>
       </section>
       <section class="section section-quiet" id="speed" aria-labelledby="speed-title">
-        <h2 class="section-title" id="speed-title">Fast on Apple silicon</h2>
+        <h2 class="section-title" id="speed-title">Local and fast</h2>
         <p class="speed-line">
-          In our tests on an Apple silicon Mac, Parakeet transcribed a
-          3-minute recording in about half a second.
+          In our tests on an idle Apple silicon Mac, Parakeet transcribed a
+          3-minute recording in under a second.
         </p>
         <p class="speed-caption">
           Measured October 2026 with Openstyle 2.10, warm model.
@@ -261,18 +322,6 @@
             <p class="faq-answer">
               Openstyle checks for updates and downloads them in the
               background. You choose when to restart.
-            </p>
-          </details>
-          <details class="faq-item">
-            <summary class="faq-question">Is it open source?</summary>
-            <p class="faq-answer">
-              Yes. Openstyle is open source under the MIT license. The source
-              is on
-              <a
-                class="link-inline"
-                href="https://github.com/Maheidem/openstyle"
-                >GitHub</a
-              >.
             </p>
           </details>
         </div>
