@@ -271,7 +271,7 @@ For a custom model `ramRequired` is derived: `ceil(totalBytes * 1.5)` shown as "
 6. **config.json.** `siblings` must contain `config.json`. If not, `no_config`. Fetch `https://huggingface.co/<hfId>/resolve/main/config.json` (limit 1 MB, parse JSON). The API `config` field is not enough (section 4.1).
 7. **Remote code.** Reject (`remote_code`) when any sibling ends in `.py`, or when `config.json`, `tokenizer_config.json` or `preprocessor_config.json` has a top-level `auto_map` key. Fetch the two optional files only when they are in `siblings`. See section 11.
 8. **Family.** `family = resolveSttFamily(config, name)`. If `family` is in the exclusion list or `config.json` has `timestamp_token_id` (section 4.3), return `not_transcriber`. If it is not in `SUPPORTED_STT_FAMILIES`, return `unsupported_family` with the raw `model_type` for the message. A TTS repo such as `mlx-community/Kokoro-82M-bf16` has no `model_type` and a name that maps to no STT family. It fails here.
-9. **Weights and family files.** `siblings` must hold a top-level `*.safetensors` or `*.npz` file, else `no_weights`. The worker loads only these (`utils.py:181-200`). It never loads `.bin` or `.pkl`. Then every `requiredFiles` entry of the family (section 4.3) must be a top-level sibling. If not, the error is `missing_files` with `missing`, the list of the missing names (a group of alternatives shows as `a or b`). This is a check on the file list only. It fetches nothing. It runs before the download, so the app never downloads a repo that loads but cannot transcribe. Example: `mlx-community/whisper-tiny.en-8bit` has `config.json`, `gpt2.tiktoken` and `model.safetensors`. It passes the family and weights checks, loads in the worker and fails every transcription with "Processor not found". Step 9 blocks it with `missing: ["preprocessor_config.json", "tokenizer.json"]`.
+9. **Weights and family files.** `siblings` must hold a top-level `*.safetensors` or `*.npz` file, else `no_weights`. The worker loads only these (`utils.py:181-200`). It never loads `.bin` or `.pkl`. Then every `requiredFiles` entry of the family (section 4.3) must be a top-level sibling. If not, the error is `missing_files` with `missing`, the list of the missing names (a group of alternatives shows as `a or b`). This is a check on the file list only. It fetches nothing. It runs before the download, so the app never downloads a repo that loads but cannot transcribe. Example: `mlx-community/whisper-tiny.en-8bit` has `config.json`, `gpt2.tiktoken` and `model.safetensors`. It passes the family and weights checks, loads in the worker and fails every transcription with "Processor not found". Step 9 blocks it with `missing: ["preprocessor_config.json", "tokenizer.json"]`. Section 14 relaxes this for the mlx-whisper layout: the server adds the files at download time.
 10. **Size sanity.** `totalBytes` is the sum of `siblings[].size`. It must be at most 8 GiB, else `too_large`. A repo with no file sizes fails with `hf_error`.
 11. **Free disk.** `assertEnoughDiskSpace(hfCacheRoot(), total + DOWNLOAD_FREE_BUFFER_BYTES)` (`lib/disk.ts:57`, buffer `:12`). Failure gives `no_disk`. The download path checks again (`models.ts:276-282`).
 12. **Insert** the row (section 5.1) and start `downloadMlxModel(id)`. Return `201 { id }`.
@@ -326,7 +326,7 @@ The list row for a custom model shows no language list in v1.
   - Mitigation in v1: validation step 7 blocks a repo with any `.py` file or any top-level `auto_map` key in `config.json`, `tokenizer_config.json` or `preprocessor_config.json`.
   - The allowlist (section 4.3) is small, so the exposed code paths are few.
   - Residual risk: the three files are read at add time from `main`. A later change to `main` is not re-checked, because the weights are downloaded from `main` after the add. Section 13 lists the sha pin as the fix. The worker runs with `HF_HUB_OFFLINE=1` for custom models (set in the worker `env`, `server.ts:219`), so it cannot fetch extra repos. A test run with `HF_HUB_OFFLINE=1` and `HF_HOME` loaded the model from cache and transcribed (2026-10-04). A custom model with a partial cache must give a clear load error, not a silent network fetch.
-  - The worker loads only top-level `*.safetensors`, then `*.npz` (`utils.py:181-200`). It never loads `.bin` or `.pkl`, so v1 does not block them. A repo with neither format fails validation with `no_weights` (section 7, step 9). `.npz` is allowed, but a Whisper `.npz` repo still needs the processor files (section 4.3). `whisper-small-mlx` (240,536 downloads) has none, so it is blocked with `missing_files`.
+  - The worker loads only top-level `*.safetensors`, then `*.npz` (`utils.py:181-200`). It never loads `.bin` or `.pkl`, so v1 does not block them. A repo with neither format fails validation with `no_weights` (section 7, step 9). `.npz` is allowed, but a Whisper `.npz` repo still needs the processor files (section 4.3). `whisper-small-mlx` (240,536 downloads) has none. Section 14 fills them in.
 - **Size caps.** 8 GiB total (sum of `siblings[].size`), 1 MB for each metadata JSON fetch, 15 s timeouts.
 - **Log hygiene.** Do not log the full HF response body.
 
@@ -359,7 +359,7 @@ Start a standalone isolated server with a throwaway `OPENSTYLE_USER_DATA` dir an
 | E4 | Select and transcribe | Make the model the default voice model: `POST /api/models` with `local-mlx/custom--mlx-community--whisper-tiny-asr-fp16` and `is_default` (confirm the transcribe route reads the default when you implement this). `POST /api/mlx-asr/server/start {"modelId":"custom--mlx-community--whisper-tiny-asr-fp16"}`. Create the clip with `say -o clip.aiff "The quick brown fox jumps over the lazy dog"`, convert it to 16 kHz WAV and pad it with about 1 s of silence. `POST /api/transcribe` with the clip. Done when the output, lowercased and stripped of punctuation, contains the nine reference words in order. Do not use WER: the tiny model adds noise and invented text after the sentence, and the result changes between runs (2026-10-04). |
 | E5 | UI proof | In the running app: open Models, click Add model, search, paste the URL, watch progress, see the `Custom` badge, select the model, dictate once. Take a screenshot at each step. An API 200 does not prove the screen. |
 | E6 | Unsupported | Paste `mlx-community/Kokoro-82M-bf16` (TTS, `pipeline_tag: text-to-speech`). Expect 4xx `unsupported_family`. Paste `mlx-community/Qwen3-ForcedAligner-0.6B-8bit`. Expect `not_transcriber`. No table row and no cache dir exists afterwards. |
-| E6b | Missing family files | Validate `mlx-community/whisper-tiny.en-8bit`, `whisper-small-mlx`, `whisper-base-mlx` and `whisper-large-v3-turbo`. Expect 422 `missing_files` with `missing` equal to `["preprocessor_config.json","tokenizer.json"]`. Before this rule they passed validation, downloaded to `ready` and failed every transcription. |
+| E6b | Missing family files | Validate `mlx-community/whisper-tiny.en-8bit`, `whisper-small-mlx` and `whisper-large-v3-turbo-8bit`. Expect 200 with `processorSource` `openai/whisper-tiny.en`, `openai/whisper-tiny` and `openai/whisper-large-v3-turbo`. Validate a whisper repo outside the table of section 14.2, or one that has only `preprocessor_config.json`. Expect 422 `missing_files`. |
 | E7 | Gated | Paste `pyannote/segmentation-3.0` (`gated: "auto"`). Expect `gated`. |
 | E8 | Bad input | Paste `https://evil.example/mlx-community/x`, `../x/y`, `http://huggingface.co/a/b`. Expect `invalid_input` each time. |
 | E9 | Persistence | Stop and start the server. `GET /status` still lists the custom model as `ready`. The configured default still resolves. Transcribe again. |
@@ -398,3 +398,81 @@ Closed: Q3 (`HF_HUB_OFFLINE=1` works, section 11), Q5 (`.npz` is loadable, allow
 - Option (c): a worker `capabilities` command for an exact runtime check.
 - Search sorting and a "recently used" list.
 - Update check for custom models (compare `revision` with HF `sha`).
+
+---
+
+## 14. Whisper processor fill-in
+
+**Date:** 2026-10-06. Decided by the user. Facts below come from a test of the 2.12 worker (mlx-audio 0.5.7, transformers 5.18.0) with an isolated `HF_HOME`.
+
+### 14.1 Problem
+
+Old mlx-whisper repos have `config.json` and weights only. Examples: `mlx-community/whisper-large-v3-turbo-8bit`, `whisper-small-mlx` (`weights.npz`) and `whisper-tiny.en-8bit`. They have no `preprocessor_config.json` and no `tokenizer.json`. Step 9 blocks them with `missing_files` (section 7). The worker needs those files only to build `WhisperProcessor`. The weights are fine.
+
+A test copied three files from an official OpenAI repo into the snapshot dir. The worker then loaded the repo and transcribed. `whisper-large-v3-turbo-8bit` gave a word error rate of 0.105 on English (the model writes "9.30" for "nine thirty") and 0.000 on Portuguese, in 3 of 3 runs. `whisper-small-mlx` gave the same text as the complete repo `whisper-small-asr-fp16`.
+
+### 14.2 Rule
+
+The server fills in the files when all of these are true:
+
+1. The family is `whisper`.
+2. The repo has none of `preprocessor_config.json`, `tokenizer.json` and `tokenizer_config.json` at the top level. A repo with one or two of them stays blocked with `missing_files`. The server does not mix repo files with files from another repo.
+3. `config.json` has the integers `n_vocab` and `n_mels` (the key names of the old format), and the pair is in this table:
+
+| `n_vocab` | `n_mels` | Source repo | Pinned revision (HF API, 2026-10-06) |
+|---|---|---|---|
+| 51864 | 80 | `openai/whisper-tiny.en` | `87c7102498dcde7456f24cfd30239ca606ed9063` |
+| 51865 | 80 | `openai/whisper-tiny` | `169d4a4341b33bc18d8881c4b69c2e104e1cc0af` |
+| 51866 | 128 | `openai/whisper-large-v3-turbo` | `41f01f3fe87f28c78e2fbf8b568835947dd65ed9` |
+
+The model size does not matter. Only the vocabulary layout does. Each size of a class has the same tokenizer as the source repo. The large-v3 and large-v3-turbo tokenizers are the same JSON. The turbo repo is the source for 51866 because its licence is MIT. The other two repos are Apache-2.0. None of the three is gated.
+
+A repo outside the table, or a repo whose `n_vocab` and `n_mels` do not form a pair of the table, stays blocked with `missing_files`.
+
+### 14.3 Files and sizes
+
+The server fetches `preprocessor_config.json`, `tokenizer.json` and `tokenizer_config.json`. Without `tokenizer_config.json` the tokenizer has no end-of-text token. These sizes are pinned with the revisions:
+
+| Source | `preprocessor_config.json` | `tokenizer.json` | `tokenizer_config.json` |
+|---|---|---|---|
+| tiny.en | 184,990 | 2,405,679 | 805 |
+| tiny | 184,990 | 2,480,466 | 282,683 |
+| large-v3-turbo | 340 | 2,710,337 | 282,843 |
+
+None of the nine files has an `auto_map` key. The remote-code scan (section 11) still runs and still passes.
+
+### 14.4 Checks
+
+- **At validation.** The class comes from `n_vocab`. `n_mels` must match the class. No file is fetched.
+- **At download.** Before the server writes a file, it checks that the tokenizer length equals `n_vocab`. The length is the number of entries in `model.vocab` of `tokenizer.json`, plus the `added_tokens` whose `content` is not already in `model.vocab`. A tokenizer that fails the check is not written. The download ends with an error. Checked against `len(WhisperProcessor.tokenizer)` in transformers 5.18.0: tiny.en 51864, tiny 51865 and large-v3-turbo 51866. Both counts agree for all three files.
+
+A wrong set of files does not give an error in the worker. It gives wrong text (test of turbo-8bit with the tiny, tiny.en and large-v2 files: word error rate 0.65 to 13). So these checks are the only guard.
+
+### 14.5 Where the files go
+
+`downloadMlxModel` runs the fill-in after `snapshotDownload` and before the remote-code scan and `recordCustomSnapshot`. It fetches the files from `https://huggingface.co/<repo>/resolve/<revision>/<file>`. The redirect rule is the one of step 4: only `huggingface.co` over https, at most 3 hops. It writes the files as plain files into `snapshots/<revision>/` next to the symlinks to the blobs. The worker runs with `HF_HUB_OFFLINE=1` and reads them from there.
+
+The server does not store that a row needs the fill-in. It derives it at download time from the family, `config.json` and the snapshot: a whisper snapshot where none of the three files is a symlink (a symlink is a file of the repo). So there is no new column and no migration.
+
+### 14.6 Completeness
+
+Validation adds the three files, with the pinned sizes, to `files` and to `totalBytes` of the new row. The completeness check of section 8 is unchanged. So a model is `ready` only when the three files exist with the right sizes. After the download, `recordCustomSnapshot` replaces `files_json` with the list of the snapshot, which includes them.
+
+### 14.7 Revisions
+
+The files live in one snapshot dir. When `main` moves, the hub creates a new snapshot dir. It has no copy of the files. The next download fills them in again, because the rule of 14.5 runs on every download.
+
+### 14.8 API and UI
+
+`POST /custom-models/validate` adds the field `processorSource` (for example `"openai/whisper-large-v3-turbo"`). It is absent when the repo needs no fill-in. The add dialog shows "Uses the standard Whisper tokenizer" under the family line when the field is set. `POST /custom-models` has no new field.
+
+### 14.9 Risk
+
+A fine-tune that keeps the standard `n_vocab` passes all checks. The server cannot tell its tokenizer from the standard one. Some fine-tunes have their own tokenizer. For example `mlx-community/belle-whisper-large-v2-zh-fp16` has a `tokenizer.json` without the 1,501 timestamp tokens that the OpenAI file has. The user accepted this risk (2026-10-06). Such a repo gets the standard tokenizer and may give wrong text without an error.
+
+### 14.10 Tests
+
+- Class mapping: the three pairs, a pair that does not match, a missing key, a non-integer.
+- Tokenizer length: the formula, and a wrong-class file that is refused.
+- Validation: an old-layout repo passes with `processorSource` and the three files in `files`. A repo outside the table, and a repo with one of the three files, stay `missing_files`.
+- Download: the fill-in writes the three files, the remote-code scan passes, the model reads `ready`, and a wrong tokenizer ends in an error and a model that is not `ready`.
