@@ -19,6 +19,7 @@ import { CheckCircle, Info, Key, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import { MeetingModelRow } from "./meeting-model-row";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { PairCard } from "./pair-card";
@@ -242,6 +243,14 @@ export default function ModelsPage(): React.JSX.Element {
             showMlxWarming ? () => setWarmingOpen(true) : undefined
           }
           onConfigureSampling={showParams ? onOpenCleanupParams : undefined}
+        />
+
+        {/* I3 (specs/meeting-transcription-v2.md §3.3): the meeting
+            transcription model, separate from the dictation model. */}
+        <MeetingModelRow
+          value={settings?.[SETTINGS_KEYS.meetingSttModel]}
+          voiceModels={m.configured.filter((cm) => cm.type === "voice")}
+          servers={m.servers.servers}
         />
 
         {showParams && (

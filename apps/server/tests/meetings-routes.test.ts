@@ -96,6 +96,9 @@ afterAll(() => {
 afterEach(() => {
   resetMeetingTables();
   __setMeetingsTestOverrides();
+  // The retry-failed stamp tests insert model_configs rows; the per-file
+  // scratch DB starts with none, so a full delete restores that state.
+  getDb().prepare("DELETE FROM model_configs").run();
 });
 
 function insertMeeting(
@@ -484,6 +487,217 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, retried: 0 });
+  });
+
+  // I3 (specs/meeting-transcription-v2.md §3.3): retry-failed resolves the
+  // model from the row's own stt_provider/stt_model stamp, not from the
+  // current default or the meeting model setting.
+  it("resolves the model from a still-valid row stamp (I3)", async () => {
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
+      )
+      .run("openai", "whisper-1", "m1");
+    getDb()
+      .prepare(
+        `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
+         VALUES ('openai', 'whisper-1', 'Whisper', 'voice', 0)`,
+      )
+      .run();
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    let seenOverride: { provider: string; modelId: string } | undefined;
+    const seenModels: string[] = [];
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras, override) => {
+        seenOverride = override;
+        return {
+          getProvider: () => ({
+            providerId: "openai",
+            transcribe: async (o) => {
+              seenModels.push(o.model);
+              return { text: "recovered" };
+            },
+            supportsStreaming: () => false,
+          }),
+          resolveConfig: () => ({
+            providerId: override?.provider ?? "fake",
+            modelId: override?.modelId ?? "fake-model",
+            apiKey: "key",
+            bias: null,
+          }),
+          sleep: async () => {},
+          backoffBaseMs: 1,
+          maxAttempts: 1,
+          ...extras,
+        };
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { retried: number; failed: number };
+    expect(body.retried).toBe(1);
+    expect(body.failed).toBe(0);
+    // The factory got the row's pair, and the provider was called with it.
+    expect(seenOverride).toEqual({ provider: "openai", modelId: "whisper-1" });
+    expect(seenModels).toEqual(["whisper-1"]);
+    const after = await getMeeting("m1");
+    expect((after.segment_counts as { failed: number }).failed).toBe(0);
+  });
+
+  it("passes no model override when the row has no stt stamp (I3)", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    let seenOverride: unknown = "unset";
+    const seenModels: string[] = [];
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras, override) => {
+        seenOverride = override;
+        return {
+          getProvider: () => ({
+            providerId: "fake",
+            transcribe: async (o) => {
+              seenModels.push(o.model);
+              return { text: "recovered" };
+            },
+            supportsStreaming: () => false,
+          }),
+          resolveConfig: () => ({
+            providerId: "fake",
+            modelId: "fake-model",
+            apiKey: "key",
+            bias: null,
+          }),
+          sleep: async () => {},
+          backoffBaseMs: 1,
+          maxAttempts: 1,
+          ...extras,
+        };
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    expect(seenOverride).toBeUndefined();
+    // Normal resolution ran: the provider was called with the default.
+    expect(seenModels).toEqual(["fake-model"]);
+  });
+
+  it("falls back to normal resolution for a stamp whose provider is gone (I3)", async () => {
+    // Migration 36 never rewrites meetings.stt_provider: a meeting stamped
+    // "omlx" must retry with the normal resolution, not 500 on the gone
+    // provider.
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
+      )
+      .run("omlx", "omlx/qwen3-asr", "m1");
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    let seenOverride: unknown = "unset";
+    const seenModels: string[] = [];
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras, override) => {
+        seenOverride = override;
+        return {
+          getProvider: () => ({
+            providerId: "fake",
+            transcribe: async (o) => {
+              seenModels.push(o.model);
+              return { text: "recovered" };
+            },
+            supportsStreaming: () => false,
+          }),
+          resolveConfig: () => ({
+            providerId: "fake",
+            modelId: "fake-model",
+            apiKey: "key",
+            bias: null,
+          }),
+          sleep: async () => {},
+          backoffBaseMs: 1,
+          maxAttempts: 1,
+          ...extras,
+        };
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { retried: number; failed: number };
+    expect(body.retried).toBe(1);
+    expect(body.failed).toBe(0);
+    expect(seenOverride).toBeUndefined();
+    expect(seenModels).toEqual(["fake-model"]);
+  });
+
+  it("falls back to normal resolution for a stamp whose pair is no longer configured (I3)", async () => {
+    // An "openai" stamp from the old openai_stt_base_url override: the
+    // provider still exists, but the pair is gone from model_configs — the
+    // retry must not send meeting audio to a cloud provider the user no
+    // longer configured.
+    insertMeeting("m1", "transcribed");
+    getDb()
+      .prepare(
+        "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
+      )
+      .run("openai", "whisper-1", "m1");
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    let seenOverride: unknown = "unset";
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras, override) => {
+        seenOverride = override;
+        return fakeDeps(async () => ({ text: "recovered" }))(extras);
+      },
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { retried: number; failed: number };
+    expect(body.retried).toBe(1);
+    expect(body.failed).toBe(0);
+    expect(seenOverride).toBeUndefined();
   });
 });
 
@@ -2285,6 +2499,56 @@ describe("POST /api/meetings/:id/enhance", () => {
     expect(body.partial).toBe(true);
     expect(body.ok).toBe(true);
   });
+
+  it("is cancellable: cancel-transcribe 202s and the in-flight result is stoppedEarly", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    __setMeetingsTestOverrides({
+      enhance: async (
+        _id,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        await gate;
+        // The pass honors the cancel flag between chunks (kind "enhance"
+        // is cancellable): the real loop checks shouldStop at every chunk
+        // boundary and returns stoppedEarly.
+        return {
+          correctedCount: 0,
+          speakerSuggestions: 0,
+          chunksAttempted: 1,
+          chunksSucceeded: 1,
+          chunksFailed: 0,
+          stoppedEarly: options.shouldStop?.() ?? false,
+        };
+      },
+    });
+
+    const res = postEmpty(app, "/api/meetings/m1/enhance");
+    // Wait until the in-request pass holds the slot.
+    let kind: string | null = null;
+    for (let i = 0; i < 2000; i++) {
+      const body = await getMeeting("m1");
+      kind = (body.job as { kind: string | null } | null)?.kind ?? null;
+      if (kind === "enhance") break;
+      await Promise.resolve();
+    }
+    expect(kind).toBe("enhance");
+
+    const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+    expect(cancel.status).toBe(202);
+
+    release();
+    const out = await res;
+    expect(out.status).toBe(200);
+    const body = (await out.json()) as { stopped_early: boolean };
+    expect(body.stopped_early).toBe(true);
+  });
 });
 
 /**
@@ -2438,5 +2702,388 @@ describe("DELETE /api/meetings/:id", () => {
     const res = await app.request("/api/meetings/del2", { method: "DELETE" });
     expect(res.status).toBe(200);
     expect(existsSync(join(audioDir, "mic.wav"))).toBe(true);
+  });
+
+  it("asks a running enhance job to stop when the meeting is deleted (no 409, the pass sees the cancel)", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let stopFlag: (() => boolean) | undefined;
+    __setMeetingsTestOverrides({
+      enhance: async (
+        _id,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        stopFlag = options.shouldStop;
+        await gate; // parked inside the (fake) pass
+        // The DELETE set the cancel flag; the pass's stop seam now reads
+        // it and ends the run (the real loop checks it between chunks).
+        return {
+          correctedCount: 0,
+          speakerSuggestions: 0,
+          chunksAttempted: 1,
+          chunksSucceeded: 1,
+          chunksFailed: 0,
+          stoppedEarly: options.shouldStop?.() ?? false,
+        };
+      },
+    });
+
+    const res = postEmpty(app, "/api/meetings/m1/enhance");
+    await waitForMicrotasks(() => stopFlag !== undefined);
+
+    // DELETE never 409s on a running job — it asks the job to stop and
+    // deletes the row either way.
+    const del = await app.request("/api/meetings/m1", { method: "DELETE" });
+    expect(del.status).toBe(200);
+    expect(stopFlag?.()).toBe(true); // the flag was set by the DELETE
+
+    release();
+    const out = await res;
+    expect(out.status).toBe(200);
+    const body = (await out.json()) as { stopped_early: boolean };
+    expect(body.stopped_early).toBe(true);
+
+    // The row is gone (child rows cascade).
+    const row = getDb()
+      .prepare("SELECT id FROM meetings WHERE id = 'm1'")
+      .get();
+    expect(row).toBeUndefined();
+  });
+});
+
+// I2 (specs/meeting-transcription-v2.md §3.2): with the auto-run setting on,
+// the status flips to 'transcribed' first, then the job releases its slot
+// and re-claims it as a cancellable "enhance" job that runs in the
+// background with progress of its own.
+describe("transcribe — auto-run Enhance as its own job (I2)", () => {
+  afterEach(() => {
+    deleteSetting("meeting_enhance_auto_run");
+  });
+
+  /** Poll until the meeting's job blob has the given kind (microtask
+   * yields only — the same contract as waitForTerminalStatusNoRealTimers). */
+  async function waitForJobKind(
+    id: string,
+    kind: string,
+  ): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 2000; i++) {
+      const body = await getMeeting(id);
+      const job = body.job as { kind: string | null } | null;
+      if (job && job.kind === kind) return body;
+      await Promise.resolve();
+    }
+    throw new Error(`job kind ${kind} never appeared`);
+  }
+
+  /** Poll until no job holds the slot. */
+  async function waitForNoJob(id: string): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 2000; i++) {
+      const body = await getMeeting(id);
+      if (body.job === null) return body;
+      await Promise.resolve();
+    }
+    throw new Error("the job never released its slot");
+  }
+
+  const enhanceOk = (
+    over: Partial<
+      import("../src/lib/meetings/enhance.js").EnhanceMeetingResult
+    > = {},
+  ) => ({
+    correctedCount: 0,
+    speakerSuggestions: 0,
+    chunksAttempted: 0,
+    chunksSucceeded: 0,
+    chunksFailed: 0,
+    stoppedEarly: false,
+    ...over,
+  });
+
+  it("does not run Enhance when the row is missing (default off)", async () => {
+    let enhanceCalls = 0;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async () => {
+        enhanceCalls++;
+        return enhanceOk();
+      },
+    });
+    insertMeeting("m1");
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(202);
+    const done = await waitForTerminalStatus("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.job).toBeNull();
+    expect(enhanceCalls).toBe(0);
+  });
+
+  it("keeps the status transcribed with job kind enhance while the pass runs, and reads transcribed at pass start", async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let startedStatus: string | null = null;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async (
+        meetingId,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        startedStatus = (
+          getDb()
+            .prepare("SELECT status FROM meetings WHERE id = ?")
+            .get(meetingId) as { status: string }
+        ).status;
+        await gate;
+        options.onProgress?.({ done: 1, total: 1 });
+        getDb()
+          .prepare(
+            "UPDATE meeting_segments SET enhanced_text = 'fixed' WHERE meeting_id = ?",
+          )
+          .run(meetingId);
+        return enhanceOk({
+          correctedCount: 1,
+          chunksAttempted: 1,
+          chunksSucceeded: 1,
+        });
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(202);
+
+    // While the pass is parked on the gate, the meeting already reads
+    // 'transcribed' and the polled job names kind "enhance".
+    const mid = await waitForJobKind("m1", "enhance");
+    expect(mid.status).toBe("transcribed");
+
+    release();
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.job).toBeNull();
+    // The job's end step rewrote the export: the enhanced file now
+    // exists alongside the raw transcript.
+    expect(existsSync(join(audioDir, "transcript-enhanced.md"))).toBe(true);
+    // The flip happened BEFORE the pass started (spec step 1).
+    expect(startedStatus).toBe("transcribed");
+    const cnt = (
+      getDb()
+        .prepare(
+          "SELECT COUNT(*) AS c FROM meeting_segments WHERE enhanced_text IS NOT NULL",
+        )
+        .get() as unknown as { c: number }
+    ).c;
+    expect(cnt).toBeGreaterThan(0);
+  });
+
+  it("reports the enhance pass progress in the polled job blob", async () => {
+    let reportProgress:
+      | ((p: { done: number; total: number }) => void)
+      | undefined;
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async (
+        _id,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        reportProgress = options.onProgress;
+        await gate;
+        return enhanceOk({ chunksAttempted: 3, chunksSucceeded: 3 });
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    await postEmpty(app, "/api/meetings/m1/transcribe");
+    await waitForJobKind("m1", "enhance");
+
+    reportProgress?.({ done: 1, total: 3 });
+    const p1 = await getMeeting("m1");
+    expect(p1.job).toMatchObject({
+      kind: "enhance",
+      done: 1,
+      total: 3,
+      failed: 0,
+    });
+
+    reportProgress?.({ done: 2, total: 3 });
+    const p2 = await getMeeting("m1");
+    expect(p2.job).toMatchObject({
+      kind: "enhance",
+      done: 2,
+      total: 3,
+      failed: 0,
+    });
+
+    release();
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.job).toBeNull();
+  });
+
+  it("cancel-transcribe stops an in-flight auto-run enhance: finished chunks stay, the status stays transcribed, the slot frees", async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let ranToCompletion = false;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async (
+        meetingId,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        await gate;
+        // Chunk 1 finished before the cancel: its correction persists.
+        getDb()
+          .prepare(
+            "UPDATE meeting_segments SET enhanced_text = 'kept' WHERE id = ?",
+          )
+          .run(`${meetingId}:mic:0`);
+        options.onProgress?.({ done: 1, total: 2 });
+        // Chunk 2 sees the cancel flag and stops (the pass's shouldStop
+        // seam is isCancelRequested, same as the real enhance loop).
+        if (options.shouldStop?.()) {
+          return enhanceOk({
+            correctedCount: 1,
+            chunksAttempted: 2,
+            chunksSucceeded: 1,
+            chunksFailed: 1,
+            stoppedEarly: true,
+          });
+        }
+        ranToCompletion = true;
+        return enhanceOk({ chunksAttempted: 2, chunksSucceeded: 2 });
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    await postEmpty(app, "/api/meetings/m1/transcribe");
+    const mid = await waitForJobKind("m1", "enhance");
+    expect(mid.status).toBe("transcribed");
+
+    const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+    expect(cancel.status).toBe(202); // kind "enhance" IS cancellable now
+
+    release();
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed"); // never changed by the pass
+    expect(done.error).toBeNull();
+    expect(done.job).toBeNull();
+    expect(ranToCompletion).toBe(false);
+
+    // The finished chunk's correction survives the cancel.
+    const cnt = (
+      getDb()
+        .prepare(
+          "SELECT COUNT(*) AS c FROM meeting_segments WHERE enhanced_text IS NOT NULL",
+        )
+        .get() as unknown as { c: number }
+    ).c;
+    expect(cnt).toBe(1);
+
+    // Slot freed — a late cancel is a plain 409.
+    const after = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+    expect(after.status).toBe(409);
+  });
+
+  it("leaves the status transcribed when the auto-run pass throws", async () => {
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async () => {
+        throw new Error("llm lane exploded");
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.error).toBeNull(); // the failure is logged, not stored here
+    expect(done.job_error).toBeNull();
+  });
+
+  it("a cancel that lands during the diarization pass skips the auto-run (the cancel is not lost)", async () => {
+    writeSetting("meeting_diarization_enabled", "true");
+    try {
+      const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+      let diarizeRuns = 0;
+      let enhanceCalls = 0;
+      __setMeetingsTestOverrides({
+        createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+        diarizeDeps: {
+          resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+          resolveModelsDirPath: () => "/fake/resources/models",
+          execFile: async (_file, args) => {
+            if (args[0] === "--probe") return { stdout: "READY", stderr: "" };
+            diarizeRuns++;
+            await gate; // park inside the real diarizer run
+            return { stdout: "[]", stderr: "" };
+          },
+        },
+        enhance: async () => {
+          enhanceCalls++;
+          return enhanceOk();
+        },
+      });
+      insertMeeting("m1");
+      writeSetting("meeting_enhance_auto_run", "true");
+      const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+      expect(res.status).toBe(202);
+      // The job is parked inside the diarizer run — AFTER the cancel
+      // check at the top of the job already passed.
+      await waitForMicrotasks(() => diarizeRuns >= 1);
+
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+      expect(cancel.status).toBe(202); // kind transcribe is cancellable
+
+      release();
+      const done = await waitForNoJob("m1");
+      expect(done.status).toBe("transcribed"); // the finished transcript stands
+      expect(enhanceCalls).toBe(0); // the auto-run was skipped, not lost
+    } finally {
+      deleteSetting("meeting_diarization_enabled");
+    }
+  });
+
+  it("names the real job kind in the 409 while an enhance job holds the slot", async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async () => {
+        await gate;
+        return enhanceOk({ chunksAttempted: 1, chunksSucceeded: 1 });
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    await postEmpty(app, "/api/meetings/m1/transcribe");
+    await waitForJobKind("m1", "enhance");
+
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "Enhance is already running",
+    );
+
+    release();
+    await waitForNoJob("m1");
   });
 });

@@ -434,6 +434,68 @@ export const meetingEnhanceTimeoutSecondsSettingSchema = z
     },
   );
 
+// --- Meeting transcription model (I3, specs/meeting-transcription-v2.md §3.3) ---
+
+/**
+ * Parsed `meeting_stt_model` value: the model pair meetings transcribe with
+ * instead of the default voice (dictation) model.
+ */
+export interface MeetingSttModel {
+  provider: string;
+  modelId: string;
+  modelName?: string;
+}
+
+const meetingSttModelValueSchema = z.object({
+  provider: z.string().min(1),
+  model_id: z.string().min(1),
+  model_name: z.string().optional(),
+});
+
+/**
+ * Coerce the persisted `meeting_stt_model` setting into a model pair, or
+ * `null` when missing, empty or malformed. A `null` answer means "use the
+ * default voice (dictation) model" — the same as no row at all, so a
+ * corrupted value degrades to today's behaviour instead of failing jobs.
+ */
+export function parseMeetingSttModel(
+  value: string | null | undefined,
+): MeetingSttModel | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  const parsed = meetingSttModelValueSchema.safeParse(data);
+  if (!parsed.success) return null;
+  return {
+    provider: parsed.data.provider,
+    modelId: parsed.data.model_id,
+    ...(parsed.data.model_name !== undefined
+      ? { modelName: parsed.data.model_name }
+      : {}),
+  };
+}
+
+/**
+ * Route-level validator for `PUT /api/settings/meeting_stt_model`. An empty
+ * string is accepted and means "use the dictation model". Any other value
+ * must be a JSON object with a non-empty `provider` and `model_id`.
+ */
+export const meetingSttModelSettingSchema = z
+  .string()
+  .refine(
+    (value) => value.trim() === "" || parseMeetingSttModel(value) !== null,
+    {
+      message:
+        "Meeting transcription model must be a JSON object with provider and model_id (or empty to use the dictation model)",
+    },
+  );
+
 /**
  * Combined shape for the Network settings form. The renderer drives a
  * react-hook-form with this schema so its inline validation matches exactly

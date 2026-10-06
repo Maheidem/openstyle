@@ -2,13 +2,19 @@ import type { MeetingListItem } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { getClient } from "@renderer/lib/api";
 import { formatClockDuration, formatTimestamp } from "@renderer/lib/format";
-import { configQueryOptions, queryKeys } from "@renderer/lib/query";
+import {
+  configQueryOptions,
+  queryKeys,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router";
+import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 import { MeetingDetailView } from "./detail";
+import { EnhancePromptDialog } from "./enhance-prompt-dialog";
 import {
   MeetingImportRail,
   MeetingsEmptyState,
@@ -20,7 +26,10 @@ import {
   useRecorder,
   useSystemAudioProbe,
 } from "./recording";
-import { DiarizationSettingsPopover } from "./settings-popovers";
+import {
+  DiarizationSettingsPopover,
+  EnhanceSettingsPopover,
+} from "./settings-popovers";
 import { StatusBadge } from "./shared";
 
 export default function MeetingsPage(): React.JSX.Element {
@@ -66,6 +75,19 @@ export default function MeetingsPage(): React.JSX.Element {
   });
 
   const meetings = useMemo(() => listData ?? [], [listData]);
+
+  // One-time auto-Enhance prompt (specs/meeting-transcription-v2.md §3.2):
+  // shown to existing users once, after their first finished meeting, when
+  // they never chose. "No row" matters: a user who already answered the
+  // prompt or flipped the popover has an explicit value and never sees it.
+  const { data: enhanceSettings } = useQuery(settingsQueryOptions());
+  const showEnhancePrompt =
+    meetings.some(
+      (m) => m.status === "transcribed" || m.status === "summarized",
+    ) &&
+    enhanceSettings !== undefined &&
+    enhanceSettings[SETTINGS_KEYS.meetingEnhanceAutoRun] === undefined &&
+    enhanceSettings[SETTINGS_KEYS.meetingEnhancePromptSeen] !== "true";
 
   // Master-detail (see below) keeps the right-hand pane non-empty by default
   // once meetings exist, so the persistent list rail never sits next to a
@@ -117,8 +139,9 @@ export default function MeetingsPage(): React.JSX.Element {
               <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
                 {t("meetings.titleAccent")}
               </h1>
-              <div className="pt-2">
+              <div className="flex gap-1.5 pt-2">
                 <DiarizationSettingsPopover />
+                <EnhanceSettingsPopover />
               </div>
             </div>
             <p className="text-muted-foreground mb-6 max-w-[480px] text-[13px] leading-[1.5]">
@@ -154,6 +177,7 @@ export default function MeetingsPage(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
+      {showEnhancePrompt && <EnhancePromptDialog />}
       <div
         className="responsive-page-scroll flex-1 overflow-auto pt-5"
         style={{ scrollbarWidth: "none" } as React.CSSProperties}
@@ -169,7 +193,10 @@ export default function MeetingsPage(): React.JSX.Element {
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <span className="eyebrow">{t("meetings.titleAccent")}</span>
-              <DiarizationSettingsPopover />
+              <div className="flex gap-1.5">
+                <DiarizationSettingsPopover />
+                <EnhanceSettingsPopover />
+              </div>
             </div>
 
             <MeetingImportRail

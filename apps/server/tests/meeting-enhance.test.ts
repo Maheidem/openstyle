@@ -1,15 +1,21 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getDb } from "../src/lib/db.js";
+import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import {
   chunkForEnhance,
+  DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS,
   type EnhanceLlmCall,
   type EnhanceLlmRequest,
   type EnhanceLlmResponse,
   type EnhanceMeetingOptions,
   enhanceMeetingTranscript,
   extractJsonObject,
+  getMeetingEnhanceAutoRunSetting,
 } from "../src/lib/meetings/enhance.js";
-import { buildEnhanceSystemPrompt } from "../src/lib/meetings/enhance-prompt.js";
+import {
+  buildEnhanceSystemPrompt,
+  formatEnhanceLine,
+} from "../src/lib/meetings/enhance-prompt.js";
+import { estimateTokens } from "../src/lib/meetings/llm-call.js";
 import type { MergedSegment } from "../src/lib/meetings/merge.js";
 import { insertSegment, resetMeetingTables } from "./helpers/meetings-db.js";
 
@@ -777,6 +783,84 @@ describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speak
   });
 });
 
+// Item-1 fix (2026-10-06 real run, 425 s meeting): a 6000-token chunk
+// swallowed a whole 7-minute meeting, and the old output budget
+// (ceil(chunkTokens*1.3)+200+60*labels) came up short of the model's real
+// JSON echo-back, so the call ended finishReason "length" and the stt
+// wrapper discarded the whole chunk. The budget is now 1200 tokens/chunk
+// and the output formula is ceil(chunkTokens*2)+200+150*distinctLabels.
+describe("enhance chunk budget and per-chunk output formula", () => {
+  it("uses a 1200-token default context budget (small enough that a 7-minute meeting is several chunks)", () => {
+    expect(DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS).toBe(1200);
+  });
+
+  // lineTokensOf (private) = estimateTokens(line) + 1; a single-segment
+  // chunk has no joining, so chunkTokens is exactly that value. Recomputed
+  // here from the exported helpers so the test stays honest if the line
+  // format or the chars/token estimate move.
+  function singleChunkTokens(
+    id: string,
+    speaker: string,
+    text: string,
+  ): number {
+    return estimateTokens(formatEnhanceLine(id, speaker, text)) + 1;
+  }
+
+  it("sizes the no-label output budget as ceil(chunkTokens*2)+200 (not the old 1.3x, which hit finishReason length)", async () => {
+    const text = "hello world";
+    const llm = fakeLlm(() => ({ text: "{}" }));
+
+    await runEnhance([seg("m1:mic:0", "Me", text)], { llm });
+
+    const chunkTokens = singleChunkTokens("m1:mic:0", "Me", text);
+    expect(llm.requests[0].maxOutputTokens).toBe(
+      Math.ceil(chunkTokens * 2) + 200,
+    );
+    // Guard against regressing to the 1.3x formula that under-budgeted.
+    expect(llm.requests[0].maxOutputTokens).toBeGreaterThan(
+      Math.ceil(chunkTokens * 1.3) + 200,
+    );
+  });
+
+  it("adds 150 tokens per distinct speaker label in the chunk (not the old 60)", async () => {
+    const text = "hello world";
+    const labeled = fakeLlm(() => ({ text: "{}" }));
+    await runEnhance([seg("m1:system:0", "Them", text, 0, 1000, "3")], {
+      llm: labeled,
+    });
+
+    // One distinct label ("Them 3") → the full formula with the 150-term.
+    const chunkTokens = singleChunkTokens("m1:system:0", "Them 3", text);
+    expect(labeled.requests[0].maxOutputTokens).toBe(
+      Math.ceil(chunkTokens * 2) + 200 + 150,
+    );
+    // Guard against regressing to the old 60-per-label term.
+    expect(labeled.requests[0].maxOutputTokens).toBeGreaterThan(
+      Math.ceil(chunkTokens * 2) + 200 + 60,
+    );
+  });
+
+  it("splits a 7-minute-length transcript (well over the old 6000 budget) into more than one chunk by default", async () => {
+    // ~7 minutes of speech ≈ 6000 tokens of transcript. Under the old
+    // 6000-token budget this was ONE chunk (the failure); under 1200 it is
+    // several, so one truncated call can no longer drop the whole meeting.
+    const segments = Array.from({ length: 300 }, (_, i) =>
+      seg(
+        `m1:mic:${i}`,
+        i % 2 ? "Them" : "Me",
+        "word ".repeat(8).trim(),
+        i * 1000,
+        i * 1000 + 1000,
+      ),
+    );
+    const llm = fakeLlm(() => ({ text: "{}" }));
+
+    const result = await runEnhance(segments, { llm });
+
+    expect(result.chunksAttempted).toBeGreaterThan(1);
+  });
+});
+
 describe("buildEnhanceSystemPrompt speaker/context block (specs/meeting-speaker-naming.md §5.2)", () => {
   it("includes the context sentence when meetingContext is non-empty and speakerLabels is non-empty", () => {
     const prompt = buildEnhanceSystemPrompt(
@@ -1043,5 +1127,135 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
       chunksFailed: 0,
       stoppedEarly: true,
     });
+  });
+
+  // I2 (specs/meeting-transcription-v2.md §3.2): the auto-run job renders
+  // done/total from this seam.
+  it("reports the total up front (0 of N), then after each completed chunk, in order", async () => {
+    const progress: Array<{ done: number; total: number }> = [];
+    const llm = fakeLlm(() => ({ text: "{}" }));
+
+    await runEnhance(twoSegments, {
+      llm,
+      options: {
+        contextBudgetTokens: 20, // forces two chunks
+        onProgress: (p) => progress.push(p),
+      },
+    });
+
+    // 0 of N before the loop, then one report per completed chunk.
+    expect(progress).toEqual([
+      { done: 0, total: 2 },
+      { done: 1, total: 2 },
+      { done: 2, total: 2 },
+    ]);
+  });
+
+  it("reports onProgress for a failed chunk too, but never for a chunk skipped by shouldStop", async () => {
+    const progress: Array<{ done: number; total: number }> = [];
+    const llm = fakeLlm((_request, index) => {
+      if (index === 0) throw new Error("provider down");
+      return { text: "{}" };
+    });
+
+    await runEnhance(twoSegments, {
+      llm,
+      options: {
+        contextBudgetTokens: 20,
+        onProgress: (p) => progress.push(p),
+      },
+    });
+    // 0 of N up front, then chunk 0 failed (still reported), chunk 1 succeeded.
+    expect(progress).toEqual([
+      { done: 0, total: 2 },
+      { done: 1, total: 2 },
+      { done: 2, total: 2 },
+    ]);
+
+    progress.length = 0;
+    let calls = 0;
+    const stopping = fakeLlm(() => {
+      calls++;
+      return { text: "{}" };
+    });
+    // Direct call (not runEnhance) so the m1 seed insert is not repeated;
+    // a stopped pass corrects nothing, so no DB rows are needed.
+    await enhanceMeetingTranscript(
+      "m2",
+      twoSegments,
+      undefined,
+      [],
+      undefined,
+      undefined,
+      {
+        llmCall: stopping.call,
+        contextBudgetTokens: 20,
+        shouldStop: () => calls >= 1, // stop before chunk 2 runs
+        onProgress: (p) => progress.push(p),
+      },
+    );
+    // 0 of N up front, then only the first chunk completed; the skipped
+    // one is not reported.
+    expect(progress).toEqual([
+      { done: 0, total: 2 },
+      { done: 1, total: 2 },
+    ]);
+  });
+
+  // Partial cancel through the REAL loop: chunk 1 is corrected, then
+  // shouldStop turns true before chunk 2 runs. The finished chunk's
+  // correction must be persisted (written in the one transaction after
+  // the loop); the unrun chunk keeps its raw text.
+  it("keeps the finished chunk's correction when shouldStop stops the real loop after chunk 1", async () => {
+    let calls = 0;
+    const llm = fakeLlm(() => {
+      calls++;
+      return { text: JSON.stringify({ "m1:mic:0": "corrected first chunk" }) };
+    });
+
+    const result = await runEnhance(twoSegments, {
+      llm,
+      options: {
+        contextBudgetTokens: 20, // two chunks
+        shouldStop: () => calls >= 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      chunksAttempted: 1,
+      chunksSucceeded: 1,
+      chunksFailed: 0,
+      stoppedEarly: true,
+      correctedCount: 1,
+    });
+    expect(enhancedText("m1:mic:0")).toBe("corrected first chunk");
+    expect(enhancedText("m1:mic:1")).toBeNull();
+  });
+});
+
+// I2 (specs/meeting-transcription-v2.md §3.2): the auto-run rule is
+// unchanged — only "true" turns it on; a missing row means off.
+describe("getMeetingEnhanceAutoRunSetting", () => {
+  afterEach(() => {
+    deleteSetting("meeting_enhance_auto_run");
+  });
+
+  it("is off when the row is missing", () => {
+    expect(getMeetingEnhanceAutoRunSetting()).toBe(false);
+  });
+
+  it('is on only for the exact value "true"', () => {
+    writeSetting("meeting_enhance_auto_run", "true");
+    expect(getMeetingEnhanceAutoRunSetting()).toBe(true);
+  });
+
+  it.each([
+    "false",
+    "yes",
+    "1",
+    "",
+  ])("is off for %j (the validator keeps other values out, but the rule stays strict)", (value) => {
+    writeSetting("meeting_enhance_auto_run", value);
+    expect(getMeetingEnhanceAutoRunSetting()).toBe(false);
   });
 });

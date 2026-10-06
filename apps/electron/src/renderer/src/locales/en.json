@@ -80,6 +80,9 @@
     "tutorial": {
       "finish": "Start using Openstyle"
     },
+    "enhance": {
+      "skip": "Skip"
+    },
     "modelSelector": {
       "chooseModel": "Choose a model",
       "allVoiceModels": "All voice models",
@@ -706,6 +709,12 @@
       "configureWarming": "Configure model warming",
       "configureSampling": "Sampling parameters"
     },
+    "meetingModel": {
+      "label": "Meeting transcription",
+      "sameAsDictation": "Same as dictation",
+      "reloadNote": "A different local model reloads when you dictate.",
+      "notConfigured": "This model is not in your configured list."
+    },
     "picker": {
       "transcription": "Transcription",
       "cleanup": "AI cleanup",
@@ -937,6 +946,8 @@
     "summarizeQueuedAhead": "Waiting for the model to be free ({{n}} ahead)…",
     "cancelSummarize": "Cancel",
     "cancellingSummarize": "Cancelling…",
+    "cancelEnhance": "Cancel",
+    "cancellingEnhance": "Cancelling…",
     "summarizeCancelled": "Summary cancelled — your transcript is unchanged.",
     "cancelledKeptTranscript": "Cancelled — partial transcript kept ({{n}} of {{total}} segments transcribed)",
     "copyTranscript": "Copy transcript",
@@ -970,6 +981,19 @@
     "diarizationHint": "Label other participants separately (Them 1, Them 2, ...) using on-device speaker detection.",
     "diarizationNotReady": "Speaker models are missing from this build.",
     "diarizationUnavailable": "Speaker labels aren't available in this build.",
+    "enhanceAutoLabel": "Auto Enhance",
+    "enhanceAutoHint": "Right after a meeting transcribes, clean up its transcript automatically with your default LLM.",
+    "enhancePromptTitle": "Enhance transcripts automatically?",
+    "enhancePromptDesc": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically. The meeting text goes to your default LLM: {{model}} ({{scope}}).",
+    "enhancePromptNoLlm": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically with your default LLM.",
+    "enhancePromptTurnOn": "Turn on auto Enhance",
+    "enhancePromptNotNow": "Not now",
+    "enhancePromptSaveFailed": "Couldn't save that choice — please try again.",
+    "enhancePromptScope": {
+      "local": "local",
+      "server": "your own server",
+      "cloud": "cloud"
+    },
     "identifySpeakers": "Identify speakers",
     "identifyingSpeakers": "Identifying speakers…",
     "diarizeResult": "Speakers identified: {{n}}.",

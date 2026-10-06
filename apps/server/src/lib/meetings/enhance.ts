@@ -56,8 +56,16 @@ export function getMeetingEnhanceAutoRunSetting(): boolean {
   return row?.value === "true";
 }
 
-/** Conservative default transcript-context budget (tokens) per chunk. */
-export const DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS = 6000;
+/**
+ * Default transcript-context budget (tokens) per chunk. 1200 (not the old
+ * 6000): at ~4 chars/token, 6000 tokens is ~24,000 chars — a 7-minute
+ * meeting was one chunk, whose full correction output exceeded the
+ * maxOutputTokens formula and finished `length`-truncated, so the whole
+ * chunk was dropped (real run 2026-10-06, 425 s meeting, `finishReason:
+ * length`). Smaller chunks keep each chunk's echo-back output inside the
+ * budget formula, at the cost of a few more LLM calls per meeting.
+ */
+export const DEFAULT_ENHANCE_CONTEXT_BUDGET_TOKENS = 1200;
 
 /** One LLM request issued by the enhancer. */
 export type EnhanceLlmRequest = ChatCallInput;
@@ -79,6 +87,14 @@ export interface EnhanceMeetingOptions {
   shouldStop?: () => boolean;
   /** Queue-progress seam (§5.5) for the same reason as Summarize's. */
   onQueued?: (info: { waitedMs: number; ahead: number }) => void;
+  /**
+   * Chunk-progress seam (specs/meeting-transcription-v2.md §3.2): fired
+   * after each COMPLETED chunk — success or failure, never a chunk that
+   * was skipped by `shouldStop` — with the running count, so the
+   * auto-run job behind the status flip can render done/total in the
+   * polled job blob (the same seam shape as Summarize's onProgress).
+   */
+  onProgress?: (p: { done: number; total: number }) => void;
 }
 
 export interface EnhanceMeetingResult {
@@ -411,6 +427,9 @@ export async function enhanceMeetingTranscript(
   let chunksSucceeded = 0;
   let stoppedEarly = false;
   let firstFailure: EnhancePassFailure | undefined;
+  // Report the total up front so the polled job blob shows 0 of N
+  // immediately, not 0 of 0 until the first chunk finishes.
+  options.onProgress?.({ done: 0, total: chunks.length });
   const corrections = new Map<string, string>();
   const nameProposals = new Map<
     string,
@@ -428,10 +447,11 @@ export async function enhanceMeetingTranscript(
   >();
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-    // Cancel between chunks (§5.7): nothing this pass does is destructive and
-    // every earlier chunk's corrections are already persisted, so stopping
-    // here leaves a coherent, partially-enhanced transcript — never a
-    // half-written one.
+    // Cancel between chunks (§5.7): stopping here leaves a coherent,
+    // partially-enhanced transcript. The collected corrections are written
+    // in ONE transaction after the loop (never per chunk), so a stopped
+    // pass still persists everything it finished — nothing is
+    // half-written.
     if (options.shouldStop?.()) {
       stoppedEarly = true;
       log.info(
@@ -452,8 +472,15 @@ export async function enhanceMeetingTranscript(
     const speakerLabelsInChunk = new Set(
       chunk.filter((s) => s.speakerLabel).map((s) => s.speakerLabel as string),
     ).size;
+    // `*2` (not `*1.3`) and `150` (not `60`) per label: the 2026-10-06 real
+    // run proved `1.3` underestimates the JSON echo-back — a corrected
+    // segment returns id + text (plus id/speaker overhead the input's
+    // `lineTokensOf` already counted), and a reasoning model spends hidden
+    // thinking tokens from the same budget. An undersized budget ends the
+    // call with `finishReason: "length"`, and the stt wrapper then discards
+    // the truncated output, dropping the whole chunk.
     const maxOutputTokens =
-      Math.ceil(chunkTokens * 1.3) + 200 + 60 * speakerLabelsInChunk;
+      Math.ceil(chunkTokens * 2) + 200 + 150 * speakerLabelsInChunk;
 
     let raw: string;
     chunksAttempted++;
@@ -472,6 +499,7 @@ export async function enhanceMeetingTranscript(
       log.warn(
         `meeting ${meetingId}: enhance chunk ${chunkIndex}/${chunks.length} call failed (${reason}), skipping: ${detail}`,
       );
+      options.onProgress?.({ done: chunkIndex + 1, total: chunks.length });
       continue;
     }
 
@@ -484,6 +512,7 @@ export async function enhanceMeetingTranscript(
       log.warn(
         `meeting ${meetingId}: enhance chunk ${chunkIndex}/${chunks.length} parse failed, skipping`,
       );
+      options.onProgress?.({ done: chunkIndex + 1, total: chunks.length });
       continue;
     }
     chunksSucceeded++;
@@ -584,6 +613,7 @@ export async function enhanceMeetingTranscript(
         );
       }
     }
+    options.onProgress?.({ done: chunkIndex + 1, total: chunks.length });
   }
 
   if (corrections.size > 0) {

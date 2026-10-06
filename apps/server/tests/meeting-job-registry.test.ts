@@ -90,6 +90,7 @@ describe("job registry cancel", () => {
     "transcribe",
     "retry-failed",
     "summarize",
+    "enhance",
   ] as const)("accepts a cancel for a %s job", (kind) => {
     claimJob("m1", kind, progress());
     expect(isCancelRequested("m1")).toBe(false);
@@ -97,10 +98,7 @@ describe("job registry cancel", () => {
     expect(isCancelRequested("m1")).toBe(true);
   });
 
-  it.each([
-    "diarize",
-    "enhance",
-  ] as const)("refuses a cancel for a %s job", (kind) => {
+  it.each(["diarize"] as const)("refuses a cancel for a %s job", (kind) => {
     claimJob("m1", kind, progress());
     expect(requestCancel("m1")).toBe(false);
     expect(isCancelRequested("m1")).toBe(false);

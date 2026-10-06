@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -43,6 +43,15 @@ test.beforeAll(async () => {
   );
 
   const userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-"));
+
+  // Turn Meeting Mode on BEFORE launch (the onboarding auto-Enhance step is
+  // gated on `flags.meetings === true`). Pre-seeding the config file in the
+  // throwaway userData dir is deterministic — no race with the onboarding
+  // page's first config load — and it's isolated to this temp profile.
+  writeFileSync(
+    join(userDataDir, "config.freestyle.json"),
+    `${JSON.stringify({ version: 1, flags: { meetings: true } }, null, 2)}\n`,
+  );
 
   try {
     app = await launchOpenstyle({ userDataDir });
@@ -165,7 +174,30 @@ test("onboarding flow reaches the draft and remix steps and completes", async ()
     .waitFor({ state: "visible", timeout: 15_000 });
 
   await page.getByRole("button", { name: "Start using Openstyle" }).click();
+
+  // Enhance step (specs/meeting-transcription-v2.md §3.2) — the new final
+  // step before /today. Skip it: it must not write the auto-run setting.
+  await page.getByTestId("onboarding-enhance-skip").click();
   await page.waitForURL(/\/today/, { timeout: 15_000 });
+
+  // Skip writes ONLY the seen flag — the auto-run key must stay absent
+  // (a missing row means "off"). 404 = the row was never created.
+  const autoRunStatus = await app!.evaluate(async (_electron, port) => {
+    const res = await fetch(
+      `http://127.0.0.1:${port}/api/settings/meeting_enhance_auto_run`,
+    );
+    return res.status as number;
+  }, DEFAULT_PORT);
+  expect(autoRunStatus).toBe(404);
+  const seenStatus = await app!.evaluate(async (_electron, port) => {
+    const res = await fetch(
+      `http://127.0.0.1:${port}/api/settings/meeting_enhance_prompt_seen`,
+    );
+    const body = res.ok ? ((await res.json()) as { value: string }) : null;
+    return { status: res.status, value: body?.value };
+  }, DEFAULT_PORT);
+  expect(seenStatus.status).toBe(200);
+  expect(seenStatus.value).toBe("true");
 
   // Practice-target mode must be off once onboarding is done.
   const practiceTarget = await page.evaluate(() =>

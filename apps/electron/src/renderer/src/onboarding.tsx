@@ -1,14 +1,22 @@
 import { normalizeLanguageList } from "@openstyle/validations";
+import { getClient } from "@renderer/lib/api";
 import { defaultLanguage } from "@renderer/lib/languages";
+import type { ConfiguredModel } from "@renderer/lib/models";
 import {
   pollUntil,
   requestMicAccess,
   resolveMicStatus,
 } from "@renderer/lib/permissions";
 import { IS_LINUX } from "@renderer/lib/platform";
-import { settingsQueryOptions } from "@renderer/lib/query";
+import {
+  configQueryOptions,
+  queryKeys,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
+import { llmScopeLabel } from "@renderer/pages/meetings/enhance-prompt-dialog";
 import { DraftStep } from "@renderer/pages/onboarding/draft-step";
+import { EnhanceStep } from "@renderer/pages/onboarding/enhance-step";
 import { LanguageStep } from "@renderer/pages/onboarding/language-step";
 import {
   type LinuxSetup,
@@ -23,7 +31,7 @@ import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import { getDefaultRemixHotkey } from "../../shared/remix";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 
-type Step = "permissions" | "language" | "draft" | "remix";
+type Step = "permissions" | "language" | "draft" | "remix" | "enhance";
 
 const DEFAULT_HOTKEY =
   (typeof window !== "undefined" && window.api?.defaultHotkey) ||
@@ -37,6 +45,33 @@ export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("permissions");
   const model = useOnboardingModel();
+
+  // The default LLM the enhance step names (specs/meeting-transcription-v2.md
+  // §3.2). null when none is configured: the step then shows the unnamed
+  // variant of the text.
+  const { data: modelConfigs } = useQuery({
+    queryKey: queryKeys.models.configured,
+    queryFn: async () => {
+      const res = await getClient().api.models.configured.$get();
+      if (!res.ok) throw new Error("Failed to load configured models");
+      return (await res.json()) as ConfiguredModel[];
+    },
+  });
+  const defaultLlm = (modelConfigs ?? []).find(
+    (m) => m.type === "llm" && m.is_default === 1,
+  );
+  const enhanceLlmScope = llmScopeLabel(defaultLlm?.provider);
+  const enhanceModel =
+    defaultLlm && enhanceLlmScope
+      ? { name: defaultLlm.model_name, scope: enhanceLlmScope }
+      : null;
+
+  // The auto-Enhance onboarding step only makes sense when Meeting Mode is
+  // on — the same `flags?.meetings === true` gate the app shell uses to show
+  // the Meetings nav item (shell.tsx). When the flag is off there is no
+  // Meetings feature to turn on, so onboarding finishes right after remix.
+  const { data: config } = useQuery(configQueryOptions());
+  const meetingsEnabled = config?.flags?.meetings === true;
 
   // Permissions state
   const [micStatus, setMicStatus] = useState<string>("unknown");
@@ -167,6 +202,22 @@ export default function OnboardingPage(): React.JSX.Element {
     navigate("/today", { replace: true });
   }, [navigate]);
 
+  // Specs/meeting-transcription-v2.md §3.2: turn on and not now both write
+  // the auto-run setting (explicit off included); Skip writes only the seen
+  // flag, so a missing row keeps meaning off.
+  const handleEnhanceChoice = useCallback(
+    async (choice: "on" | "off" | "skip") => {
+      if (choice === "on") {
+        await putSetting(SETTINGS_KEYS.meetingEnhanceAutoRun, "true");
+      } else if (choice === "off") {
+        await putSetting(SETTINGS_KEYS.meetingEnhanceAutoRun, "false");
+      }
+      await putSetting(SETTINGS_KEYS.meetingEnhancePromptSeen, "true");
+      finishSetup();
+    },
+    [finishSetup],
+  );
+
   return (
     <div className="glass-window-shell glass-content flex h-screen flex-col">
       <div
@@ -238,7 +289,19 @@ export default function OnboardingPage(): React.JSX.Element {
             dictationHotkey={hotkey}
             onRemixHotkeyRecorded={handleRemixHotkeyRecorded}
             onBack={() => setStep("draft")}
-            onFinish={finishSetup}
+            onFinish={() => {
+              // Meeting Mode flag off → no Enhance step, finish as before.
+              if (meetingsEnabled) setStep("enhance");
+              else finishSetup();
+            }}
+          />
+        )}
+
+        {step === "enhance" && (
+          <EnhanceStep
+            model={enhanceModel}
+            onChoose={(choice) => void handleEnhanceChoice(choice)}
+            onBack={() => setStep("remix")}
           />
         )}
       </div>

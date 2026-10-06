@@ -354,3 +354,66 @@ describe("summarizeMeeting", () => {
     );
   });
 });
+
+// I2 (specs/meeting-transcription-v2.md §3.2): the summary reads the
+// enhanced text when present, else the raw text.
+describe("enhanced text (I2)", () => {
+  it("renders enhancedText when present, else text (via chunkTranscript)", () => {
+    const segments: MergedSegment[] = [
+      {
+        speaker: "Me",
+        startMs: 0,
+        endMs: 1000,
+        text: "raw words",
+        enhancedText: "enhanced words",
+      },
+      { speaker: "Me", startMs: 1000, endMs: 2000, text: "raw only" },
+    ];
+    const [chunk] = chunkTranscript(segments, 8000);
+    expect(chunk).toBe("Me: enhanced words\nMe: raw only");
+  });
+
+  it("mixes enhanced and raw lines in the single-pass prompt", async () => {
+    const segments: MergedSegment[] = [
+      seg("Me", "raw words"),
+      {
+        speaker: "Them",
+        startMs: 1000,
+        endMs: 2000,
+        text: "raw them",
+        enhancedText: "enhanced them",
+      },
+    ];
+    const llm = fakeLlm();
+    await summarizeMeeting(segments, {
+      contextBudgetTokens: 8000,
+      llmCall: llm.call,
+    });
+    expect(llm.requests[0].prompt).toContain("Me: raw words");
+    expect(llm.requests[0].prompt).toContain("enhanced them");
+    expect(llm.requests[0].prompt).not.toContain("raw them");
+  });
+
+  it("counts a segment whose text is blank but whose enhancedText is not", async () => {
+    const segments: MergedSegment[] = [
+      seg("Me", "   "), // blank raw text, no enhanced text: dropped
+      {
+        speaker: "Me",
+        startMs: 1000,
+        endMs: 2000,
+        text: "   ",
+        enhancedText: "only enhanced",
+      },
+    ];
+    const llm = fakeLlm();
+    const result = await summarizeMeeting(segments, {
+      contextBudgetTokens: 8000,
+      llmCall: llm.call,
+    });
+    // The enhanced-only segment reaches the LLM (not an empty transcript),
+    // and the blank-blank one is dropped from the rendered line.
+    expect(llm.requests).toHaveLength(1);
+    expect(llm.requests[0].prompt).toContain("Me: only enhanced");
+    expect(result.markdown).toBe("summary-0");
+  });
+});

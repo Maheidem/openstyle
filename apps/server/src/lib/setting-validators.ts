@@ -15,6 +15,7 @@ import {
   MEETING_ENHANCE_TIMEOUT_SETTING_KEY,
   MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
   meetingEnhanceTimeoutSecondsSettingSchema,
+  meetingSttModelSettingSchema,
   meetingSummaryInstructionsSchema,
   meetingSummaryTimeoutSecondsSettingSchema,
   proxyUrlSettingSchema,
@@ -79,6 +80,13 @@ function jsonCheck<T>(
 }
 
 const TASK_ASSIGNMENTS_MESSAGE = "Invalid task assignments setting";
+
+// I2 (specs/meeting-transcription-v2.md §3.2): the two Enhance flags are
+// flat "true"/"false" strings. A missing row means off / not shown; any
+// other stored value is a 400 so the UI can name the allowed values.
+const ENHANCE_FLAG_MESSAGE = 'Value must be "true" or "false"';
+const checkEnhanceFlag: SettingCheck = (value) =>
+  value === "true" || value === "false" ? null : ENHANCE_FLAG_MESSAGE;
 
 // The PUT must reject a body that is not a JSON object. It must also reject a
 // known task whose entry fails its schema. Unknown task keys are ignored. The
@@ -190,6 +198,19 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
       fallback: "Invalid enhance timeout",
     }),
   ],
+  // I3 (specs/meeting-transcription-v2.md §3.3): the meeting transcription
+  // model is a JSON pair. Empty string is valid and means "use the
+  // dictation model". Any other bad value is a 400 so the UI can show it.
+  [
+    "meeting_stt_model",
+    schemaCheck(meetingSttModelSettingSchema, {
+      fallback: "Invalid meeting transcription model",
+    }),
+  ],
+  // I2 (specs/meeting-transcription-v2.md §3.2): the auto-run flag and the
+  // one-time-prompt-seen flag both take only "true" and "false".
+  ["meeting_enhance_auto_run", checkEnhanceFlag],
+  ["meeting_enhance_prompt_seen", checkEnhanceFlag],
 ]);
 
 /**

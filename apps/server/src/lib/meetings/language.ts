@@ -20,6 +20,7 @@ import { MIC_WAV, SYSTEM_WAV } from "@openstyle/validations";
 import { getDb } from "../db.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
 import { getLanguagesSetting } from "../language.js";
+import { MLX_ASR_PROVIDER_ID } from "../mlx-asr/constants.js";
 import type {
   TranscribeOptions,
   TranscriptionProvider,
@@ -149,7 +150,9 @@ export interface ResolveMeetingLanguageInput {
   meetingId: string;
   audioDir: string;
   provider: TranscriptionProvider;
-  config: Pick<SttConfig, "providerId" | "modelId" | "apiKey">;
+  config: Pick<SttConfig, "providerId" | "modelId" | "apiKey"> & {
+    differsFromDictation?: boolean;
+  };
   micSegments: Segment[];
   systemSegments: Segment[];
   /** Same dictation-yield lease `MeetingTranscriber` uses. */
@@ -190,10 +193,15 @@ export async function resolveMeetingLanguage(
 
   let text = "";
   try {
-    if (input.config.providerId === WHISPER_PROVIDER_ID) {
-      // Same shared-ANE-resource yield contract as every other whisper-local
-      // call in this pipeline — the probe is one more transcription call and
-      // must not fire mid-dictation.
+    // Same shared-ANE-resource yield contract as every other local call in
+    // this pipeline — the probe is one more transcription call and must not
+    // fire mid-dictation. A different local-mlx model reloads the single MLX
+    // worker, so it yields too (I3, specs/meeting-transcription-v2.md §3.3).
+    const yieldsToDictation =
+      input.config.providerId === WHISPER_PROVIDER_ID ||
+      (input.config.providerId === MLX_ASR_PROVIDER_ID &&
+        input.config.differsFromDictation === true);
+    if (yieldsToDictation) {
       await waitForDictationIdle({
         isDictationActive: input.isDictationActive,
       });
