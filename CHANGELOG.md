@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.13.0
+
+### Improvements ⚡
+
+- Meetings can use a different transcription model from dictation. Select it in Models > Meeting transcription. The default is Same as dictation. The list shows only models that can transcribe.
+- Auto Enhance cleans up a meeting transcript right after it is ready. Turn it on with the new Auto Enhance switch in the Meetings settings. It is off by default.
+  - Auto Enhance runs as its own step. You can read the transcript while it runs. A progress bar shows the parts that are done, and Cancel stops it.
+  - When the step ends, the enhanced text shows without a reload.
+- After your first finished meeting, Openstyle asks one time if you want auto Enhance. The question names your default LLM and tells you where it runs: on your Mac, on your own server, or in the cloud. New users see the same question in the setup steps when Meetings is on.
+- The meeting summary uses the enhanced text when a segment has it.
+
+### Bug Fixes 🐛
+
+- Enhance no longer fails on a long transcript. Before, the app sent a whole meeting to the LLM in one request, and the answer could stop at the model's output limit. Now the app sends smaller parts, so the progress shows a real count.
+- Retry failed uses your current model when the model that the meeting used is gone. Before, meetings from before 2.12.0 could fail with "No API key configured", or use an old server setting.
+- Deleting a meeting stops its Enhance step.
+- A Cancel during speaker detection also stops the auto Enhance that comes after it.
+- When a meeting is busy, the message names the step that runs, for example "Enhance is already running".
+- Identify speakers is off while another meeting step runs.
+
 ## 2.12.1
 
 ### Bug Fixes 🐛
