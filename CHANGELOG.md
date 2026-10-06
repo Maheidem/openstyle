@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.12.1
+
+### Bug Fixes 🐛
+
+- Add Whisper models from Hugging Face that do not include the processor files, for example mlx-community/whisper-large-v3-turbo-8bit. Before, the app blocked these models. Now the app adds the standard Whisper tokenizer files from the official OpenAI repo of the same type. The add dialog says "Uses the standard Whisper tokenizer".
+- The app checks that the added files match the model before it uses them. Whisper models of other types stay blocked.
+
 ## 2.12.0
 
 ### Improvements ⚡
