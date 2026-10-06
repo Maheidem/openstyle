@@ -1,6 +1,6 @@
 # Technical Spec: Meeting Transcription v2 (use the after-recording design fully)
 
-**Status:** Draft
+**Status:** In progress. Spec approved 2026-10-06. Phases 0a and 0b done (`08c93a0`). Next: phase 1. Phase 5 dropped (see 5.0).
 **Author:** _TBD_
 **Date:** 2026-10-06
 **Scope:** `apps/server/src/lib/meetings` (`segmenter.ts`, `transcriber.ts`, `diarize.ts`, `enhance.ts`, `summarize.ts`), `lib/meetings/merge.ts`, `lib/meetings/job-registry.ts`, `lib/vocabulary-bias.ts`, `routes/meetings.ts`, `packages/validations` (settings), and small UI changes on the Models page (`pages/models`) and the Meetings page (`pages/meetings`).
@@ -28,7 +28,7 @@ An audit says no. The pipeline has the whole recording on disk, yet each chunk i
    - I5. Overlap chunk edges and remove duplicate words at the joins.
 4. Enhance stays OFF by default. New users choose it in an onboarding step. Existing users see a one-time prompt after their first finished meeting (recorded or imported) that offers to turn on auto Enhance. The prompt says that the text goes to the default LLM and names it as local or cloud. The summary reads `enhancedText` when present, else `text`. Auto Enhance runs after the status flips to `transcribed`, as its own claimed `enhance` job with progress and cancel (3.2).
 5. The proof term list comes from the owner's Vocabulary entries. The script reads them read-only and counts each spelling in both transcripts, locally. It reports counts only.
-6. Diarization becomes default-on only if its wall time is at most 10 percent of the audio length on the real meeting and 3 runs have no failure. A synthetic measurement gave about 0.22 percent of the audio length. It is a synthetic number and does not decide anything.
+6. Diarization becomes default-on only if its wall time is at most 10 percent of the audio length on the real meeting and 3 runs have no failure. A synthetic measurement gave about 0.22 percent of the audio length. The real baseline (5.0) gave 0.22 and 0.12 percent with 3 of 3 runs OK, so the condition is met. Owner decision 2026-10-06: diarization is on by default in phase 4.
 7. Context never crosses a silence longer than 30 s. There is no context when the meeting language is not declared (`config.language` undefined) or when the language changes.
 8. Retry-failed runs without context and without overlap. It resolves the model from the row's `stt_provider` and `stt_model` when they are set.
 9. The overlap phase ships only if the baseline real meeting has `contiguousCuts > 0` and the phase shows a measurable gain. Otherwise the phase is dropped.
@@ -286,6 +286,30 @@ A synthetic measurement gave about 0.22 percent of the audio length. It is not t
 Each phase is one pull request. Each is small enough for one coding session. Run from `apps/server` unless a path says otherwise. The commands are `pnpm vitest run <file>` and `pnpm typecheck:tests`, plus `pnpm biome check` at the repo root.
 
 Every proof server starts with `cd apps/electron && node ../server/dist/startup.js`. The diarizer binary and models resolve from the current directory and `resources`. Every run writes a fresh `server.log` (`rm -f "$SCRATCH/server.log"` first).
+
+### 5.0 Status and baseline (2026-10-06)
+
+| Phase | Status |
+|---|---|
+| 0a scratch profile | Done (`08c93a0`, `scripts/meeting-v2/setup-scratch.sh`, `seed-scratch-db.mjs`) |
+| 0b metrics and baseline | Done (`08c93a0`, `metrics.mjs`, `run-baseline.mjs`, `measure-diarizer.mjs`) |
+| 1 meeting model | Next |
+| 2 Enhance (onboarding step + one-time prompt) | To do |
+| 3a lanes | To do |
+| 3b context | To do |
+| 4 diarize first, default on | To do. Owner approved default-on. |
+| 5 overlap and join | Dropped: `contiguousCuts` is 0 on both proof meetings (Q8 rule). |
+
+Baseline on the owner's real meetings (scratch copies, Qwen3-ASR and Qwen3.8-27B on the owner's oMLX, `main` at `f320740`):
+
+| Meeting | Run | wallSeconds | chunks (mic/system) | labeled (speakers) | failed | under 3 s | termHits | contiguousCuts | langMismatch |
+|---|---|---|---|---|---|---|---|---|---|
+| short 2943c36a (425 s) | R0 | 12.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
+| short | R0d | 14.03 | 17/20 | 14 (1) | 0 | 5 | 3 | 0 | 9 |
+| long 9243bea0 (3580 s) | R0 | 96.19 | 168/79 | 0 | 0 | 22 | 30 | 0 | 31 |
+| long | R0d | 100.20 | 168/79 | 59 (5) | 0 | 22 | 30 | 0 | 31 |
+
+Diarizer wall time (standalone, median of 3 runs, all OK): short 0.92 s (0.22 percent), long 4.39 s (0.12 percent). R0d text hash equals R0 on both meetings: diarization changes only the labels. The installed app was open during the runs; ASR ran on the separate oMLX process. Metric files: `/tmp/meeting-v2/baseline/<run>-<meetingId>/metrics.json` (scratch, not committed). The procedure is in `.claude/skills/meeting-benchmarks/SKILL.md`.
 
 ### Phase 0a: scratch profile and DB rows
 
