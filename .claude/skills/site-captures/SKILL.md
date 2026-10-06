@@ -48,6 +48,7 @@ Dashboard shots are 1280x800 at 2x, dark theme.
 
 - **The pill:** the script sends the app's own `e2e:trigger-hotkey-down` IPC (`apps/electron/src/main/index.ts:1788`). It also gives the pill a synthetic oscillator as the microphone, so the bars move. No real microphone is used.
 - **The 2x pill PNG:** Playwright gives 1x for the pill window. The script uses CDP `Page.captureScreenshot` with `clip.scale: 2` and a transparent background.
+- **The pill video:** `recordVideo` only captures CSS pixels (1x) into a padded canvas, so the script runs a CDP screenshot loop at 2x (clip scale 2, ~25 fps for 4 s) and assembles the VP9 webm with ffmpeg at the measured fps.
 - **Navigation:** a direct `goto` to the models route does not render, so the script uses `history.pushState`. The history page can load empty on the first try, so the script reloads up to 4 times until the rows show.
 
 ## Rules for the content

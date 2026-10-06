@@ -8,11 +8,9 @@
 // app sends to 127.0.0.1:4649.
 import { spawn } from "node:child_process";
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -23,6 +21,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startFakeModelServer } from "./fake-model-server.mjs";
 import { seedDatabase } from "./seed-data.mjs";
+
+// `--only pill` runs just the pill video; `--only dash` just the other run.
+const ONLY = process.argv[2] === "--only" ? process.argv[3] : null;
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const ELECTRON_DIR = join(REPO, "apps/electron");
@@ -61,7 +62,6 @@ for (const f of [MAIN_JS, SERVER_JS]) {
 const scratch = mkdtempSync(join(tmpdir(), "openstyle-site-captures-"));
 const userData = join(scratch, "user-data");
 const dbPath = join(userData, "openstyle.db");
-const videoDir = join(scratch, "video");
 mkdirSync(userData, { recursive: true });
 mkdirSync(OUT, { recursive: true });
 
@@ -259,7 +259,7 @@ async function startRecording(pill) {
 // ---------------------------------------------------------------------------
 // Run 1: dashboard screenshots and the transparent pill still
 // ---------------------------------------------------------------------------
-{
+if (!ONLY || ONLY === "dash") {
   const app = await electron.launch(launchOptions);
   try {
     const pill = await waitForWindow(app, isPill, "pill window");
@@ -377,16 +377,13 @@ async function startRecording(pill) {
 // ---------------------------------------------------------------------------
 // Run 2: pill video (webm has no alpha, so the page gets a solid color)
 // ---------------------------------------------------------------------------
-{
-  const app = await electron.launch({
-    ...launchOptions,
-    recordVideo: { dir: videoDir, size: { width: 640, height: 240 } },
-  });
-  let video = null;
+if (!ONLY || ONLY === "pill") {
+  const app = await electron.launch(launchOptions);
+  const framesDir = join(scratch, "pill-frames");
+  let frames = null;
   try {
     const pill = await waitForWindow(app, isPill, "pill window");
     await pill.waitForLoadState("domcontentloaded");
-    video = pill.video();
     await pill.evaluate(() => localStorage.setItem("theme", "dark"));
     await pill.reload({ waitUntil: "domcontentloaded" });
     await pill.addStyleTag({
@@ -394,7 +391,34 @@ async function startRecording(pill) {
     });
     await sleep(800);
     await startRecording(pill);
-    await sleep(4000);
+    // recordVideo captures CSS pixels (1x) into a padded canvas, so grab
+    // CDP screenshots at 2x (same trick as the transparent pill still)
+    // and assemble the webm with ffmpeg.
+    const cdp = await pill.context().newCDPSession(pill);
+    const view = await pill.evaluate(() => ({
+      w: window.innerWidth,
+      h: window.innerHeight,
+    }));
+    mkdirSync(framesDir);
+    const clip = { x: 0, y: 0, width: view.w, height: view.h, scale: 2 };
+    frames = [];
+    const step = 40; // ms per frame: 25 fps target
+    const t0 = Date.now();
+    for (let i = 0; Date.now() - t0 < 4000; i++) {
+      const f0 = Date.now();
+      const shot = await cdp.send("Page.captureScreenshot", {
+        format: "png",
+        captureBeyondViewport: false,
+        clip,
+      });
+      writeFileSync(
+        join(framesDir, `frame_${String(i).padStart(4, "0")}.png`),
+        Buffer.from(shot.data, "base64"),
+      );
+      frames.push(f0);
+      const elapsed = Date.now() - f0;
+      if (elapsed < step) await sleep(step - elapsed);
+    }
     await pill.evaluate(() =>
       window.electron.ipcRenderer.send("e2e:trigger-hotkey-up"),
     );
@@ -402,26 +426,39 @@ async function startRecording(pill) {
   } finally {
     await closeApp(app);
   }
-  let src = null;
-  try {
-    src = video ? await video.path() : null;
-  } catch {}
-  if (!src || !existsSync(src)) {
-    const files = readdirSync(videoDir)
-      .map((f) => join(videoDir, f))
-      .sort((a, b) => statSync(a).size - statSync(b).size);
-    src = files.at(-1) ?? null;
+  if (!frames || frames.length < 10) {
+    throw new Error(`only ${frames?.length ?? 0} pill frames captured`);
   }
-  if (!src) throw new Error("no pill video was recorded");
-  cpSync(src, join(OUT, "pill-recording.webm"));
+  // The loop can run slower than 25 fps; use the measured fps.
+  const fps = Math.round((frames.length * 1000) / (frames.at(-1) - frames[0]));
+  say(`assembling ${frames.length} pill frames at ${fps} fps`);
+  await run("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-framerate",
+    String(fps),
+    "-i",
+    join(framesDir, "frame_%04d.png"),
+    "-c:v",
+    "libvpx-vp9",
+    "-crf",
+    "32",
+    "-b:v",
+    "0",
+    "-pix_fmt",
+    "yuv420p",
+    "-an",
+    join(OUT, "pill-recording.webm"),
+  ]);
   record("pill-recording.webm");
 
   // Crop the pill out of the full recording and render the poster frame.
-  // Box: the pill's bounding box in the 640x240 recording, found by reading
+  // Box: the pill's bounding box in the 2x recording, found by reading
   // frames as raw RGB (ffmpeg -f rawvideo -pix_fmt rgb24) and taking the
-  // bbox of pixels that differ from the scene bg #18202E: x=62 y=44
-  // w=196 h=60, plus a 1px margin.
-  const PILL_CROP = { x: 61, y: 43, w: 198, h: 62 };
+  // bbox of pixels that differ from the scene bg #18202E (x=124 y=88
+  // w=391 h=120), plus a 1-2px margin. Re-measure after any capture change.
+  const PILL_CROP = { x: 123, y: 86, w: 394, h: 124 };
   await run("ffmpeg", [
     "-v",
     "error",

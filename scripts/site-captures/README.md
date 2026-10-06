@@ -17,6 +17,8 @@ pnpm turbo build --filter=@openstyle/server && pnpm --filter @openstyle/electron
 
 The build steps are only needed when the code changed. The capture alone is
 `node scripts/site-captures/capture.mjs` (Node 22+ for `node:sqlite`, on macOS).
+Add `--only pill` for just the pill video (with its crop and poster), or
+`--only dash` for just the dashboard screenshots and the pill still.
 
 ## Output
 
