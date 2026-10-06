@@ -673,6 +673,7 @@
       "supported": "Supported",
       "blocked": "Blocked",
       "details": "{{family}} · {{size}}",
+      "standardTokenizer": "Uses the standard Whisper tokenizer",
       "addAndDownload": "Add and download",
       "adding": "Adding…",
       "errors": {

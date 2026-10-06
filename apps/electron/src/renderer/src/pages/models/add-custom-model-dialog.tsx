@@ -328,6 +328,11 @@ function CheckPanel({
             size: formatBytes(check.result.totalBytes),
           })}
         </p>
+        {check.result.processorSource && (
+          <p className="text-muted-foreground text-[12px]">
+            {t("models.custom.standardTokenizer")}
+          </p>
+        )}
       </div>
     </div>
   );
