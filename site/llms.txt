@@ -1,0 +1,24 @@
+# Openstyle
+
+> Openstyle is a free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go; it types clean text in the app you use. Speech-to-text runs locally with MLX models, on your own server, or on a cloud provider. There is no account, no cloud service, and no telemetry.
+
+## Links
+
+- [GitHub repository](https://github.com/Maheidem/openstyle): source code, MIT license
+- [Releases](https://github.com/Maheidem/openstyle/releases/latest): download the latest .dmg for Apple silicon Macs
+- [Landing page](https://maheidem.github.io/openstyle/): screenshots and feature overview
+
+## Key facts
+
+- Free and open source (MIT license)
+- macOS only, Apple silicon (arm64) builds
+- Hold a key, talk, let go; the text lands in the app you are typing in
+- Models: built-in MLX speech models (Parakeet, Qwen3-ASR, Whisper, more from Hugging Face), your own OpenAI-compatible server (oMLX, LM Studio), or a cloud provider with your own API key
+- Optional AI cleanup of the transcript with an LLM
+- Meetings: records, transcribes after the call, writes a summary, speaker detection
+- Custom vocabulary, tones and shortcuts
+- In tests on an idle Apple silicon Mac, Parakeet transcribed a 3-minute recording in under a second (measured October 2026 with Openstyle 2.10, warm model)
+
+## Full content
+
+For the complete plain-text description, features, FAQ and install steps, see [llms-full.txt](https://maheidem.github.io/openstyle/llms-full.txt).

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+      xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://maheidem.github.io/openstyle/</loc>
+    <lastmod>2026-10-06</lastmod>
+    <image:image>
+      <image:loc>https://maheidem.github.io/openstyle/assets/screens/transcriptions.png</image:loc>
+      <image:title>The Openstyle Transcriptions page with a list of recent transcriptions</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://maheidem.github.io/openstyle/assets/screens/models-picker-dialog.png</image:loc>
+      <image:title>The model picker dialog with three groups: Built into Openstyle, Your own server and Cloud provider</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://maheidem.github.io/openstyle/assets/screens/meeting.png</image:loc>
+      <image:title>A recorded meeting called Weekly product sync with its transcript</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://maheidem.github.io/openstyle/assets/screens/meeting-summary.png</image:loc>
+      <image:title>The written summary of the Weekly product sync meeting</image:title>
+    </image:image>
+  </url>
+</urlset>

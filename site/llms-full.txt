@@ -1,0 +1,91 @@
+# Openstyle
+
+Openstyle is a free, open source (MIT license) dictation app for macOS on
+Apple silicon. Hold a key, talk, let go; it types clean text in the app you
+use. Speech-to-text runs locally with MLX models, on your own server, or on a
+cloud provider. There is no account, no cloud service, and no telemetry.
+
+Website: https://maheidem.github.io/openstyle/
+Source: https://github.com/Maheidem/openstyle
+Downloads: https://github.com/Maheidem/openstyle/releases/latest
+
+## What it does
+
+- Hold your shortcut key, talk, let go. The text appears at your cursor in
+  whatever app you were already typing in: editors, browsers, chat clients,
+  terminals.
+- Optional AI cleanup fixes grammar and punctuation and strips filler words.
+- Meetings: Openstyle records your meetings, transcribes them after the call
+  and writes a summary. It detects speakers.
+- Import: transcribe audio files.
+- Vocabulary: teach it your names and terms.
+- Tone: set how the cleaned text sounds.
+- Transcriptions: find anything you said.
+
+## Where speech-to-text runs
+
+You choose where your voice goes:
+
+- Built into Openstyle: models run on your Mac with MLX (Parakeet, Qwen3-ASR,
+  Whisper). Add more from Hugging Face. Audio stays on your Mac.
+- Your own server: use oMLX, LM Studio or any OpenAI-compatible server you
+  run. Audio goes to that server.
+- Cloud provider: use OpenAI, Groq, Deepgram, ElevenLabs and others with your
+  own API key. Audio goes to that provider.
+
+## Requirements
+
+- macOS. The published builds are for Macs with Apple silicon (arm64) only.
+- On first launch macOS asks for Microphone access, and for Accessibility and
+  Input Monitoring access so the app can read the global hotkey and paste into
+  other applications.
+
+## Install
+
+1. Download the latest .dmg (Apple Silicon) from the
+   https://github.com/Maheidem/openstyle/releases page and drag it to
+   Applications.
+2. The build is ad-hoc signed, not notarized, so macOS will warn on first
+   launch. Right-click the app and choose Open, or run:
+   xattr -cr /Applications/Openstyle.app
+
+## Performance
+
+In tests on an idle Apple silicon Mac, Parakeet transcribed a 3-minute
+recording in under a second. Measured October 2026 with Openstyle 2.10, warm
+model.
+
+## FAQ
+
+Is Openstyle free?
+Yes. Openstyle is free to download. The code is on GitHub under the MIT
+license.
+
+Does it work locally, without a cloud account?
+Yes. Transcription can run entirely on your Mac with built-in MLX models.
+There is no account, no cloud service, and no telemetry.
+
+Which Macs are supported?
+Macs with Apple silicon. The published builds are for arm64 only.
+
+Does my audio leave my Mac?
+Not with a built-in model. With your own server it goes to that server. With
+a cloud provider it goes to that provider.
+
+Can I use my own server?
+Yes. Openstyle works with oMLX, LM Studio or any OpenAI-compatible server you
+run.
+
+Does it take meeting notes?
+Yes. It records meetings, transcribes them after the call, writes a summary,
+and detects speakers.
+
+How do updates work?
+Openstyle checks for updates and downloads them in the background. You choose
+when to restart.
+
+## Links
+
+- Landing page: https://maheidem.github.io/openstyle/
+- Source code (MIT): https://github.com/Maheidem/openstyle
+- Releases: https://github.com/Maheidem/openstyle/releases

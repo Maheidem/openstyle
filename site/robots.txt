@@ -1,0 +1,52 @@
+# Note for crawlers and humans: search engines read robots.txt from the domain
+# root (https://maheidem.github.io/robots.txt), not from this project sub-path.
+# GitHub Pages cannot serve a robots.txt at the domain root for a project site.
+# This file is included because some tools and crawlers do read it, and it
+# documents intent. The meta robots tags in the HTML are the authoritative
+# signal for indexing.
+User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: DuckAssistBot
+Allow: /
+
+Sitemap: https://maheidem.github.io/openstyle/sitemap.xml
