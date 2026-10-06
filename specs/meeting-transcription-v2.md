@@ -293,7 +293,7 @@ Every proof server starts with `cd apps/electron && node ../server/dist/startup.
 |---|---|
 | 0a scratch profile | Done (`08c93a0`, `scripts/meeting-v2/setup-scratch.sh`, `seed-scratch-db.mjs`) |
 | 0b metrics and baseline | Done (`08c93a0`, `metrics.mjs`, `run-baseline.mjs`, `measure-diarizer.mjs`) |
-| 1 meeting model | Next |
+| 1 meeting model | Done (`bdf99f5` + `dce5e7e`). |
 | 2 Enhance (onboarding step + one-time prompt) | To do |
 | 3a lanes | To do |
 | 3b context | To do |
