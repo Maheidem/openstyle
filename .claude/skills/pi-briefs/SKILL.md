@@ -45,6 +45,8 @@ FINAL ANSWER: <what to return>; Simplified Technical English; metrics only for p
 4. Name the files the child may change, and the files it must not touch.
 5. When two children run at the same time, give each its own scratch folder. Tell each child that the other exists, and that it must not touch the other's processes.
 6. Ask for real command output in the final answer, not a summary of it.
+7. Always add the FULL test suite of each changed package to VERIFY (`pnpm vitest run` in `apps/server` and `apps/electron`), not only the files the spec names. On 2026-10-06 a child ran 4 named files; an old registry test in a fifth file failed.
+8. UI proof screenshots of meeting pages use a fictional meeting or an element crop (see the meeting-benchmarks skill).
 
 ## Watch the child
 
