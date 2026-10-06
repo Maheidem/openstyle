@@ -19,13 +19,16 @@ vi.mock("../src/lib/disk.js", async (importOriginal) => {
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
 import { InsufficientDiskSpaceError } from "../src/lib/disk.js";
-import { insertCustomModel } from "../src/lib/mlx-asr/custom-models.js";
+import {
+  getCustomMlxDef,
+  insertCustomModel,
+} from "../src/lib/mlx-asr/custom-models.js";
 import {
   addCustomModel,
-  CustomModelError,
   searchMlxModels,
   validateCustomModel,
 } from "../src/lib/mlx-asr/custom-validate.js";
+import { CustomModelError } from "../src/lib/mlx-asr/hf-http.js";
 import { jsonRequest } from "./helpers/http.js";
 
 const HF_ID = "mlx-community/whisper-tiny-asr-fp16";
@@ -748,6 +751,98 @@ describe("validateCustomModel", () => {
     });
   });
 
+  describe("step 9: whisper processor fill-in", () => {
+    const file = (rfilename: string, size = 10) => ({ rfilename, size });
+    // The layout of the old mlx-whisper repos: config.json and weights only.
+    const OLD_LAYOUT = [file("config.json"), file("weights.npz", 1000)];
+    const processorFiles = (sizes: readonly [number, number, number]) => [
+      { path: "preprocessor_config.json", size: sizes[0] },
+      { path: "tokenizer.json", size: sizes[1] },
+      { path: "tokenizer_config.json", size: sizes[2] },
+    ];
+
+    it.each([
+      [51864, 80, "openai/whisper-tiny.en", [184990, 2405679, 805]],
+      [51865, 80, "openai/whisper-tiny", [184990, 2480466, 282683]],
+      [51866, 128, "openai/whisper-large-v3-turbo", [340, 2710337, 282843]],
+    ] as const)("accepts an old repo with n_vocab %i and adds the files of %s", async (n_vocab, n_mels, source, sizes) => {
+      serveRepo(
+        { siblings: OLD_LAYOUT },
+        { model_type: "whisper", n_vocab, n_mels },
+      );
+
+      const result = await validateCustomModel(HF_ID);
+
+      expect(result.processorSource).toBe(source);
+      expect(result.files).toEqual([
+        { path: "config.json", size: 10 },
+        { path: "weights.npz", size: 1000 },
+        ...processorFiles(sizes),
+      ]);
+      // The added files count for the size and for the disk check.
+      expect(result.totalBytes).toBe(1010 + sizes[0] + sizes[1] + sizes[2]);
+    });
+
+    it("sets no processorSource for a repo that has its own processor files", async () => {
+      serveRepo({}, { model_type: "whisper", n_vocab: 51865, n_mels: 80 });
+
+      const result = await validateCustomModel(HF_ID);
+
+      expect(result.processorSource).toBeUndefined();
+      expect(result.files).toHaveLength(4);
+    });
+
+    it.each([
+      ["n_vocab outside the classes", { n_vocab: 51867, n_mels: 80 }],
+      ["n_mels that does not match", { n_vocab: 51866, n_mels: 80 }],
+      ["no n_vocab", { n_mels: 80 }],
+    ])("keeps an old repo with %s blocked", async (_name, dims) => {
+      serveRepo({ siblings: OLD_LAYOUT }, { model_type: "whisper", ...dims });
+
+      const err = await failure(HF_ID);
+
+      expect(err.code).toBe("missing_files");
+      expect(err.extra).toEqual({
+        missing: ["preprocessor_config.json", "tokenizer.json"],
+      });
+    });
+
+    it.each([
+      "preprocessor_config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+    ])("keeps a repo with only %s blocked, although its dims match", async (name) => {
+      serveRepo(
+        { siblings: [...OLD_LAYOUT, file(name)] },
+        { model_type: "whisper", n_vocab: 51865, n_mels: 80 },
+      );
+      // Step 7 reads this file, because the repo lists it.
+      routes[FILE_URL("tokenizer_config.json")] = () => json({});
+
+      expect((await failure(HF_ID)).code).toBe("missing_files");
+    });
+
+    it("does not fill in another family", async () => {
+      serveRepo(
+        { siblings: [file("config.json"), file("model.safetensors")] },
+        { model_type: "qwen3_asr", n_vocab: 51865, n_mels: 80 },
+      );
+
+      expect((await failure(HF_ID)).code).toBe("missing_files");
+    });
+
+    it("counts the added bytes against the 8 GiB limit", async () => {
+      serveRepo(
+        {
+          siblings: [file("config.json"), file("weights.npz", 8 * 1024 ** 3)],
+        },
+        { model_type: "whisper", n_vocab: 51865, n_mels: 80 },
+      );
+
+      expect((await failure(HF_ID)).code).toBe("too_large");
+    });
+  });
+
   describe("step 10: size", () => {
     it("accepts exactly 8 GiB and rejects one byte more", async () => {
       const gib8 = 8 * 1024 ** 3;
@@ -834,6 +929,28 @@ describe("validateCustomModel", () => {
 });
 
 describe("addCustomModel", () => {
+  it("stores the processor files in the row of an old whisper repo", async () => {
+    serveRepo(
+      {
+        siblings: [
+          { rfilename: "config.json", size: 10 },
+          { rfilename: "weights.npz", size: 10 },
+        ],
+      },
+      { model_type: "whisper", n_vocab: 51866, n_mels: 128 },
+    );
+
+    const { id } = await addCustomModel(HF_ID);
+
+    expect(getCustomMlxDef(id)?.custom?.files.map((f) => f.path)).toEqual([
+      "config.json",
+      "weights.npz",
+      "preprocessor_config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+    ]);
+  });
+
   it("inserts the row and starts the download", async () => {
     serveRepo();
 
@@ -1004,6 +1121,35 @@ describe("custom model routes", () => {
       family: "whisper",
       totalBytes: 1342,
       revision: "sha-1",
+    });
+    expect(customRowCount()).toBe(0);
+  });
+
+  it("POST /custom-models/validate answers processorSource for an old whisper repo", async () => {
+    serveRepo(
+      {
+        siblings: [
+          { rfilename: "config.json", size: 10 },
+          { rfilename: "weights.npz", size: 10 },
+        ],
+      },
+      { model_type: "whisper", n_vocab: 51866, n_mels: 128 },
+    );
+
+    const res = await jsonRequest(
+      app,
+      "POST",
+      "/api/mlx-asr/custom-models/validate",
+      { model: HF_ID },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      hfId: HF_ID,
+      family: "whisper",
+      totalBytes: 20 + 340 + 2710337 + 282843,
+      revision: "sha-1",
+      processorSource: "openai/whisper-large-v3-turbo",
     });
     expect(customRowCount()).toBe(0);
   });

@@ -14,10 +14,10 @@ import {
 } from "../lib/mlx-asr/constants.js";
 import {
   addCustomModel,
-  CustomModelError,
   searchMlxModels,
   validateCustomModel,
 } from "../lib/mlx-asr/custom-validate.js";
+import { CustomModelError } from "../lib/mlx-asr/hf-http.js";
 import {
   cancelMlxDownload,
   clearMlxDownloadError,
@@ -114,9 +114,9 @@ const mlxAsr = new Hono()
     zValidator("json", addCustomMlxModelSchema, invalidInput),
     async (c) => {
       try {
-        const { hfId, family, totalBytes, revision } =
+        const { hfId, family, totalBytes, revision, processorSource } =
           await validateCustomModel(c.req.valid("json").model);
-        return c.json({ hfId, family, totalBytes, revision });
+        return c.json({ hfId, family, totalBytes, revision, processorSource });
       } catch (err) {
         return customModelError(c, err);
       }

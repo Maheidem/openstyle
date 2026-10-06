@@ -38,6 +38,7 @@ import {
   updateManagedMlxRuntimeIfNeeded,
 } from "./runtime.js";
 import { stopMlxServer } from "./server.js";
+import { fillWhisperProcessor } from "./whisper-processor.js";
 
 export type MlxDownloadStatus =
   | "not_downloaded"
@@ -310,6 +311,11 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       fetch: progressFetch(active, active.controller.signal),
     });
     if (model.custom) {
+      // An old mlx-whisper repo has no processor files. Add them before the
+      // scan and the record, so both see them (spec section 14).
+      if (model.family === "whisper") {
+        await fillWhisperProcessor(snapshotDir, active.controller.signal);
+      }
       // The add step checked `main` once. Check the files that were stored.
       if (hasRemoteCode(hfRepoCacheDir(model.hfId))) {
         rmSync(hfRepoCacheDir(model.hfId), { recursive: true, force: true });
