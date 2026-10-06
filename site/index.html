@@ -89,114 +89,90 @@
           </p>
         </div>
         <div class="hero-demo">
-          <p class="demo-hint">
-            <span class="hint-keyboard">Hold the space bar to try</span>
-            <span class="hint-touch">Press and hold to try</span>
-          </p>
-          <div class="demo-window" data-demo>
-            <div class="window-bar" aria-hidden="true">
-              <span class="window-dots">
-                <span class="window-dot"></span>
-                <span class="window-dot"></span>
-                <span class="window-dot"></span>
-              </span>
-              <span class="window-title">Notes</span>
-            </div>
-            <p class="visually-hidden">
-              Interactive demo. Hold the space bar, or press and hold the dark
-              pill, to watch a raw transcription become clean text.
-            </p>
-            <div class="window-body">
-              <p class="window-text window-text-placeholder" data-placeholder>
-                Hold, talk, let go.
+          <figure class="pill-panel">
+            <div class="pill-screen">
+              <p class="pill-text">
+                The deploy went fine, but the login page is slow on Safari.
               </p>
-              <p
-                class="window-text window-text-raw"
-                data-raw
-                hidden
-              ></p>
-              <p class="window-text window-text-clean" data-clean hidden></p>
+              <video
+                class="pill-video"
+                src="assets/screens/pill-recording-crop.webm"
+                autoplay
+                muted
+                loop
+                playsinline
+                poster="assets/screens/pill-recording-poster.png"
+                aria-label="The Openstyle pill while it records, a short loop"
+              ></video>
+              <img
+                class="pill-still"
+                src="assets/screens/pill-recording-poster.png"
+                alt="The Openstyle pill while it records"
+                width="394"
+                height="124"
+                decoding="async"
+              />
             </div>
-            <button
-              class="pill pill-demo"
-              type="button"
-              data-pill
-              aria-label="Press and hold to try the demo"
-            >
-              <span class="pill-dot" aria-hidden="true"></span>
-              <span class="pill-wave" aria-hidden="true">
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-                <span class="pill-bar"></span>
-              </span>
-            </button>
-          </div>
+            <figcaption class="pill-caption">The pill while you speak</figcaption>
+          </figure>
         </div>
       </section>
       <section class="section" id="how-it-works" aria-labelledby="how-title">
         <h2 class="section-title" id="how-title">
           Simple: hold, talk, let go
         </h2>
-        <ol class="seq">
-          <li class="seq-item">
-            <div class="pill pill-static pill-idle" aria-hidden="true">
-              <span class="pill-dot"></span>
-              <span class="pill-wave">
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
-                <span class="pill-bar" style="height: 26%"></span>
+        <figure class="shot">
+          <div class="mac">
+            <div class="mac-bar" aria-hidden="true">
+              <span class="mac-dots">
+                <span class="mac-dot mac-dot-close"></span>
+                <span class="mac-dot mac-dot-min"></span>
+                <span class="mac-dot mac-dot-max"></span>
               </span>
             </div>
-            <h3 class="seq-label">Hold your shortcut</h3>
-          </li>
-          <li class="seq-item">
-            <div class="pill pill-static pill-listening" aria-hidden="true">
-              <span class="pill-dot"></span>
-              <span class="pill-wave">
-                <span class="pill-bar" style="height: 48%"></span>
-                <span class="pill-bar" style="height: 78%"></span>
-                <span class="pill-bar" style="height: 56%"></span>
-                <span class="pill-bar" style="height: 92%"></span>
-                <span class="pill-bar" style="height: 64%"></span>
-                <span class="pill-bar" style="height: 88%"></span>
-                <span class="pill-bar" style="height: 52%"></span>
-                <span class="pill-bar" style="height: 74%"></span>
-                <span class="pill-bar" style="height: 60%"></span>
-                <span class="pill-bar" style="height: 84%"></span>
-                <span class="pill-bar" style="height: 46%"></span>
-                <span class="pill-bar" style="height: 70%"></span>
-              </span>
-            </div>
-            <h3 class="seq-label">Talk</h3>
-          </li>
-          <li class="seq-item">
-            <p class="seq-clean" aria-hidden="true">Ship it on Friday.</p>
-            <h3 class="seq-label">Let go</h3>
-          </li>
-        </ol>
+            <picture>
+              <source
+                type="image/webp"
+                srcset="
+                  assets/screens/transcriptions-1600.webp 1x,
+                  assets/screens/transcriptions.png       2x
+                "
+              />
+              <img
+                src="assets/screens/transcriptions.png"
+                srcset="
+                  assets/screens/transcriptions-1600.webp 1x,
+                  assets/screens/transcriptions.png       2x
+                "
+                width="1280"
+                height="800"
+                loading="lazy"
+                decoding="async"
+                alt="The Openstyle Transcriptions page with a list of recent transcriptions"
+              />
+            </picture>
+          </div>
+          <ol class="steps">
+            <li>
+              <span class="step-num" aria-hidden="true">1</span>
+              Hold your shortcut
+            </li>
+            <li>
+              <span class="step-num" aria-hidden="true">2</span>
+              Talk
+            </li>
+            <li>
+              <span class="step-num" aria-hidden="true">3</span>
+              Let go
+            </li>
+          </ol>
+        </figure>
       </section>
       <section class="section" id="privacy" aria-labelledby="privacy-title">
         <h2 class="section-title" id="privacy-title">
           Flexible: you choose where your voice goes
         </h2>
+        <div class="flexible">
         <div class="lanes">
           <div class="lanes-left">
             <div class="lanes-mic" aria-hidden="true">
@@ -253,6 +229,107 @@
               </p>
             </div>
           </div>
+        </div>
+        <figure class="shot">
+          <div class="dialog-card">
+            <picture>
+              <source
+                type="image/webp"
+                srcset="
+                  assets/screens/models-picker-dialog-680.webp 1x,
+                  assets/screens/models-picker-dialog.png  2x
+                "
+              />
+              <img
+                src="assets/screens/models-picker-dialog.png"
+                srcset="
+                  assets/screens/models-picker-dialog-680.webp 1x,
+                  assets/screens/models-picker-dialog.png  2x
+                "
+                width="1360"
+                height="660"
+                loading="lazy"
+                decoding="async"
+                alt="The model picker dialog with three groups: Built into Openstyle, Your own server and Cloud provider"
+              />
+            </picture>
+          </div>
+        </figure>
+        </div>
+      </section>
+      <section class="section" id="meetings" aria-labelledby="meetings-title">
+        <h2 class="section-title" id="meetings-title">
+          Meetings: record now, read later
+        </h2>
+        <p class="meetings-line">
+          Openstyle records your meetings, transcribes them after the call and
+          writes a summary.
+        </p>
+        <div class="meetings-stack">
+          <figure class="shot">
+            <div class="mac">
+              <div class="mac-bar" aria-hidden="true">
+                <span class="mac-dots">
+                  <span class="mac-dot mac-dot-close"></span>
+                  <span class="mac-dot mac-dot-min"></span>
+                  <span class="mac-dot mac-dot-max"></span>
+                </span>
+              </div>
+              <picture>
+                <source
+                  type="image/webp"
+                  srcset="
+                    assets/screens/meeting-1600.webp 1x,
+                    assets/screens/meeting.png       2x
+                  "
+                />
+                <img
+                  src="assets/screens/meeting.png"
+                  srcset="
+                    assets/screens/meeting-1600.webp 1x,
+                    assets/screens/meeting.png       2x
+                  "
+                  width="1280"
+                  height="800"
+                  decoding="async"
+                  alt="A recorded meeting called Weekly product sync with its transcript"
+                />
+              </picture>
+            </div>
+            <figcaption class="shot-caption">Transcript</figcaption>
+          </figure>
+          <figure class="shot">
+            <div class="mac">
+              <div class="mac-bar" aria-hidden="true">
+                <span class="mac-dots">
+                  <span class="mac-dot mac-dot-close"></span>
+                  <span class="mac-dot mac-dot-min"></span>
+                  <span class="mac-dot mac-dot-max"></span>
+                </span>
+              </div>
+              <picture>
+                <source
+                  type="image/webp"
+                  srcset="
+                    assets/screens/meeting-summary-1600.webp 1x,
+                    assets/screens/meeting-summary.png       2x
+                  "
+                />
+                <img
+                  src="assets/screens/meeting-summary.png"
+                  srcset="
+                    assets/screens/meeting-summary-1600.webp 1x,
+                    assets/screens/meeting-summary.png       2x
+                  "
+                  width="1280"
+                  height="800"
+                  decoding="async"
+                  alt="The written summary of the Weekly product sync meeting"
+                />
+              </picture>
+            </div>
+            <figcaption class="shot-caption">Summary</figcaption>
+          </figure>
         </div>
       </section>
       <section class="section section-quiet" id="free-oss" aria-labelledby="free-oss-title">

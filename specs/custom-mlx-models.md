@@ -1,6 +1,6 @@
 # Technical Spec: Curated + Custom Local MLX Speech Models
 
-**Status:** Draft
+**Status:** Shipped in 2.11.0. The Whisper processor fill-in (section 14) shipped in 2.12.1.
 **Author:** _TBD_
 **Date:** 2026-10-04
 **Scope:** `apps/server/src/lib/mlx-asr`, `apps/server/src/routes/mlx-asr.ts`, `packages/validations`, and the Models page in `apps/electron/src/renderer/src/pages/models`.

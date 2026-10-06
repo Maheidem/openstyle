@@ -23,6 +23,8 @@
     // Static marketing site: loaded from site/index.html, which knip does
     // not parse for script references.
     "site/main.js",
+    // Run by hand (scripts/site-captures/README.md), not imported anywhere.
+    "scripts/site-captures/*.mjs",
     "apps/electron/src/preload/*.d.ts",
     // Kept on purpose: specs/lean-audit-2026-09.md T0-5 keeps this entry.
     "apps/electron/src/renderer/src/components/ui/card.tsx",
