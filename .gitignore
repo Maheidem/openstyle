@@ -79,3 +79,6 @@ test-results/
 # transcripts; root-anchored so no source path can match)
 /.pi/
 /pi-session-*.html
+
+# Local agent handoffs and scratch notes
+.scratchpad/
