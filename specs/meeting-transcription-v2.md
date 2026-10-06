@@ -160,7 +160,11 @@ The same switch lives in a new `EnhanceSettingsPopover` in `pages/meetings/setti
 3. Progress: `enhanceMeetingTranscript` gets an optional `onProgress(done, total)`. The job writes it with `setProgress`.
 4. Cancel: add `"enhance"` to `CANCELLABLE_KINDS` (`job-registry.ts:30-34`). The job passes `shouldStop: () => isCancelRequested(id)` (`enhance.ts:79`). `POST /:id/cancel-transcribe` then stops it. A cancelled Enhance keeps the chunks it finished and leaves the status `transcribed`.
 5. At the end, the job rewrites `transcript-enhanced.md` and releases the slot in a `finally`.
-A failure is logged and never changes the meeting status. This keeps the fail-closed rule of today (`routes/meetings.ts:462-464`). The reason for the change: a 10 minute Enhance no longer hides a finished transcript, and the user can stop it.
+A failure is logged and never changes the meeting status. This keeps the fail-closed rule of today (`routes/meetings.ts:462-464`). The reason for the change: a 10 minute Enhance no longer hides a finished transcript, and the user can stop it. A cancel that lands after the transcription finished (for example during the diarization pass) is not lost either: the job re-reads the cancel flag right before the handoff and skips the auto-run when the flag is set.
+
+**Delete.** `DELETE /:id` asks a running job to stop: when a job holds the slot, the DELETE handler calls the same cancel request before it deletes the row. The cancellable kinds wind down between their steps; an Enhance that ends this way keeps its finished chunks and writes no transcript files for the gone meeting. DELETE never answers 409 for a running job.
+
+**Detail page (part of 2b).** `pages/meetings/detail.tsx` must poll while the job kind is `enhance` (the `refetchInterval` at `detail.tsx:119-123` polls only for status `transcribing` or kind `summarize`), show the enhance progress and a cancel button for it, and turn off the job buttons while any job holds the slot.
 
 **Summary.** `formatSegment` renders `segment.enhancedText ?? segment.text` (`summarize.ts:307-309`). `renderTranscript` filters on the rendered text, not on `text` (`:298-305`). The `withText` filter in `summarizeMeeting` (`:387`) changes the same way, so a segment with only enhanced text counts. `chunkTranscript` uses `formatSegment`, so it follows.
 - Enhance can change only some chunks, so one summary can mix enhanced and raw lines.
@@ -338,7 +342,7 @@ Done when:
 
 ### Phase 2: Enhance prompt, validator, enhance job, summary (I2)
 
-Files: `lib/meetings/enhance.ts` (`onProgress`), `lib/meetings/summarize.ts` (`:298-309`, `:387`), `lib/meetings/job-registry.ts` (`CANCELLABLE_KINDS`), `lib/setting-validators.ts`, `packages/validations/src/settings-keys.ts` (`meeting_enhance_prompt_seen`), `routes/meetings.ts` (the auto-run moves after the status flip), `pages/meetings/settings-popovers.tsx`, `pages/meetings/index.tsx`, a new one-time prompt dialog, a new onboarding step under `pages/onboarding/`, locales.
+Files: `lib/meetings/enhance.ts` (`onProgress`), `lib/meetings/summarize.ts` (`:298-309`, `:387`), `lib/meetings/job-registry.ts` (`CANCELLABLE_KINDS`), `lib/setting-validators.ts`, `packages/validations/src/settings-keys.ts` (`meeting_enhance_prompt_seen`), `routes/meetings.ts` (the auto-run moves after the status flip; DELETE asks a running job to stop), `pages/meetings/settings-popovers.tsx`, `pages/meetings/index.tsx`, `pages/meetings/detail.tsx` (part of 2b: poll while the job kind is `enhance`, progress plus a cancel button, job buttons off while any job holds the slot), a new one-time prompt dialog, a new onboarding step under `pages/onboarding/`, locales.
 Tests: `meeting-enhance.test.ts` (missing row off, `"true"` on); `meeting-summarize.test.ts` (input uses `enhancedText` when present, else `text`; a segment with blank `text` and an `enhancedText` counts); `meetings-routes.test.ts` (the status is `transcribed` before Enhance starts; the `enhance` job reports progress; cancel stops it; an Enhance failure leaves the status); validator test for `"true"`, `"false"` and a bad value.
 Done when:
 - `pnpm vitest run tests/meeting-enhance.test.ts tests/meeting-summarize.test.ts tests/meetings-routes.test.ts tests/settings-validators.test.ts` passes.

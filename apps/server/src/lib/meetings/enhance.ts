@@ -419,6 +419,9 @@ export async function enhanceMeetingTranscript(
   let chunksSucceeded = 0;
   let stoppedEarly = false;
   let firstFailure: EnhancePassFailure | undefined;
+  // Report the total up front so the polled job blob shows 0 of N
+  // immediately, not 0 of 0 until the first chunk finishes.
+  options.onProgress?.({ done: 0, total: chunks.length });
   const corrections = new Map<string, string>();
   const nameProposals = new Map<
     string,
@@ -436,10 +439,11 @@ export async function enhanceMeetingTranscript(
   >();
 
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-    // Cancel between chunks (§5.7): nothing this pass does is destructive and
-    // every earlier chunk's corrections are already persisted, so stopping
-    // here leaves a coherent, partially-enhanced transcript — never a
-    // half-written one.
+    // Cancel between chunks (§5.7): stopping here leaves a coherent,
+    // partially-enhanced transcript. The collected corrections are written
+    // in ONE transaction after the loop (never per chunk), so a stopped
+    // pass still persists everything it finished — nothing is
+    // half-written.
     if (options.shouldStop?.()) {
       stoppedEarly = true;
       log.info(

@@ -103,6 +103,12 @@ export function updateProgress(
   jobs.set(id, { ...cur, ...patch });
 }
 
+/** The kind of the job holding the slot, or null when the slot is free.
+ * (Set and cleared together with the slot, so `hasJob(id)` implies a kind.) */
+export function getJobKind(id: string): MeetingJobKind | null {
+  return jobKinds.get(id) ?? null;
+}
+
 /** The job blob with its kind, or null when no job holds the slot. */
 export function getJob(
   id: string,

@@ -30,8 +30,10 @@ import {
   clearJobFailure,
   getJob,
   getJobFailure,
+  getJobKind,
   hasJob,
   isCancelRequested,
+  type MeetingJobKind,
   releaseJob,
   requestCancel,
   setJobFailure,
@@ -92,10 +94,11 @@ interface MeetingsTestOverrides {
   createTranscriberDeps?: typeof createDefaultTranscriberDeps;
   summarize?: typeof summarizeMeeting;
   /** Injected into both the pre-flight probe and the real diarization pass
-   * on POST /:id/diarize, mirroring how `meeting-diarize-pipeline.test.ts`
-   * drives `runDiarizationPass` directly — a single fake deps object
-   * exercises the route's pre-flight check, the real run, and the
-   * follow-up count query together. */
+   * on POST /:id/diarize AND the diarization pass inside the transcribe
+   * job (after all chunks, before the status flip), mirroring how
+   * `meeting-diarize-pipeline.test.ts` drives `runDiarizationPass`
+   * directly — a single fake deps object exercises the pre-flight check,
+   * the real run, and the follow-up count query together. */
   diarizeDeps?: DiarizeDeps;
   /** Injected LLM-call dependency for POST /:id/enhance and the auto-run call
    * site inside runTranscribeJob, so route tests never touch a real LLM
@@ -283,6 +286,28 @@ function leakCheckedTextAndStatus(
     : { text: chunk.text, status: chunk.status };
 }
 
+/**
+ * The 409 text for a meeting whose slot is already held. Names the REAL
+ * job kind (from the job registry), so the UI never reads a running
+ * Enhance pass as a transcription. `hasJob` implies a kind exists, so the
+ * fallback only guards a state the registry invariants make impossible.
+ */
+function runningJobMessage(kind: MeetingJobKind | null): string {
+  switch (kind) {
+    case "enhance":
+      return "Enhance is already running";
+    case "summarize":
+      return "Summarize is already running";
+    case "diarize":
+      return "Speaker identification is already running";
+    case "retry-failed":
+      return "Retrying failed chunks is already running";
+    case "transcribe":
+    default:
+      return "Transcription is already running";
+  }
+}
+
 function persistChunk(
   meetingId: string,
   chunk: ChunkResult,
@@ -402,7 +427,10 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // holes, so the log reports completed chunks only. Rare benign race:
     // a cancel landing after the last chunk finished still takes this
     // branch — every chunk persisted, status reads 'failed'/"Cancelled by
-    // user", which matches what the user asked for.
+    // user", which matches what the user asked for. (A cancel that LANDS
+    // later — during the diarization pass below, after this check already
+    // passed — is handled at the auto-run handoff: the pass is skipped
+    // and the finished transcript stands.)
     if (isCancelRequested(id)) {
       const completed = results.filter((r) => r !== undefined).length;
       db.prepare("UPDATE meetings SET status = ?, error = ? WHERE id = ?").run(
@@ -425,7 +453,11 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // .catch is defense-in-depth for anything unanticipated, never the
     // primary error path, and never fails the transcribe job itself.
     if (getMeetingDiarizationEnabledSetting()) {
-      await runDiarizationPass(id, audioDir).catch((err) => {
+      await runDiarizationPass(
+        id,
+        audioDir,
+        testOverrides.diarizeDeps ?? createDefaultDiarizeDeps(),
+      ).catch((err) => {
         log.warn(
           `meeting ${id}: diarization failed, falling back to "Them": ${String(err)}`,
         );
@@ -453,7 +485,21 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // request can observe the slot free or race the claim. Enhance now
     // runs after the flip (not before it, as the old Phase C placement
     // did) precisely so this handoff exists.
-    if (getMeetingEnhanceAutoRunSetting()) {
+    //
+    // A cancel that landed during the diarization pass above already
+    // passed the check at the top of this block: without this re-read it
+    // would be LOST — the status would flip, releaseJob would clear the
+    // cancel flag, and the auto Enhance would run on top of it. Skip the
+    // auto-run when the flag is set: the transcription is finished
+    // (every chunk persisted), so the transcript stands and the flag is
+    // dropped by the release below.
+    const cancelled = isCancelRequested(id);
+    if (cancelled) {
+      log.info(
+        `meeting ${id}: cancel requested after transcription finished — skipping auto Enhance`,
+      );
+    }
+    if (getMeetingEnhanceAutoRunSetting() && !cancelled) {
       releaseJob(id);
       if (claimJob(id, "enhance", { done: 0, total: 0, failed: 0 })) {
         handedOff = true;
@@ -532,15 +578,27 @@ async function runEnhanceJob(
       log.info(`meeting ${id}: enhance auto-run cancelled by user`);
     }
   } catch (err) {
-    // §3.2: a failure is logged and never changes the meeting status —
-    // the fail-closed rule of the old in-job auto-run, kept.
-    log.warn(`meeting ${id}: enhance auto-run failed: ${String(err)}`);
+    if (getMeetingRow(id) === null) {
+      // The meeting was DELETED mid-pass: DELETE already asked this job
+      // to stop, and whatever threw afterwards (usually the
+      // meeting_speakers foreign key on the suggestion upsert, whose
+      // parent row is gone) is expected. Not an error to report.
+      log.info(
+        `meeting ${id}: enhance auto-run ended because the meeting was deleted`,
+      );
+    } else {
+      // §3.2: a failure is logged and never changes the meeting status —
+      // the fail-closed rule of the old in-job auto-run, kept.
+      log.warn(`meeting ${id}: enhance auto-run failed: ${String(err)}`);
+    }
   } finally {
     // §3.2 step 5: rewrite transcript-enhanced.md at the end of EVERY pass
     // (a cancelled one included, so its finished chunks reach the export),
     // then release the slot. writeTranscriptMarkdown is best-effort and
-    // never throws.
-    writeTranscriptMarkdown(id, audioDir);
+    // never throws. Skipped when the meeting row no longer exists
+    // (deleted mid-pass): there is nothing left to export, and writing
+    // would only log a spurious failure for a gone directory.
+    if (getMeetingRow(id)) writeTranscriptMarkdown(id, audioDir);
     releaseJob(id);
   }
 }
@@ -861,7 +919,7 @@ const meetings = new Hono()
       return c.json({ error: "Meeting is still recording" }, 409);
     }
     if (hasJob(id)) {
-      return c.json({ error: "Transcription already running" }, 409);
+      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
     }
     if (!row.audio_dir) {
       return c.json({ error: "Meeting has no audio directory" }, 409);
@@ -917,7 +975,7 @@ const meetings = new Hono()
     const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     if (hasJob(id)) {
-      return c.json({ error: "Transcription already running" }, 409);
+      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
     }
     if (!row.audio_dir) {
       return c.json({ error: "Meeting has no audio directory" }, 409);
@@ -1069,7 +1127,7 @@ const meetings = new Hono()
     // guard that actually fires; status is filtered to
     // transcribed/summarized above regardless.
     if (hasJob(id)) {
-      return c.json({ error: "Transcription already running" }, 409);
+      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
     }
     if (!row.audio_dir) {
       return c.json({ error: "Meeting has no audio directory" }, 409);
@@ -1418,7 +1476,7 @@ const meetings = new Hono()
     // already check — an enhance pass reading meeting_segments mid-write
     // from a running transcribe job would see a half-written transcript.
     if (hasJob(id)) {
-      return c.json({ error: "Transcription already running" }, 409);
+      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
     }
     const merged = loadMergedTranscript(id, row.audio_dir);
     if (merged.length === 0) {
@@ -1479,7 +1537,11 @@ const meetings = new Hono()
           502,
         );
       }
-      if (row.audio_dir) writeTranscriptMarkdown(id, row.audio_dir);
+      // Skipped when the meeting was deleted mid-pass: the audio dir goes
+      // away with the row, and writing to it would only log a spurious
+      // failure for a meeting that no longer exists.
+      if (row.audio_dir && getMeetingRow(id))
+        writeTranscriptMarkdown(id, row.audio_dir);
       // `partial` is the second honest state: some chunks corrected, some did
       // not. The pass is a success but must not read as a complete one.
       // `stopped_early` distinguishes "the user cancelled it" from "chunks
@@ -1555,6 +1617,14 @@ const meetings = new Hono()
   .delete("/:id", (c) => {
     const db = getDb();
     const id = c.req.param("id");
+    // Ask any running job to stop BEFORE the row goes away
+    // (specs/meeting-transcription-v2.md §3.2): the cancellable kinds
+    // (transcribe, retry-failed, summarize, enhance) poll this flag and
+    // wind down between steps. Without it, an auto-run Enhance would keep
+    // calling the LLM for a deleted meeting and then trip the
+    // meeting_speakers foreign key on its end write. DELETE never 409s on
+    // a running job — the row is deleted either way; the job just stops.
+    if (hasJob(id)) requestCancel(id);
     const row = db
       .prepare("SELECT audio_dir FROM meetings WHERE id = ?")
       .get(id) as { audio_dir: string | null } | undefined;

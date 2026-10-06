@@ -2499,6 +2499,56 @@ describe("POST /api/meetings/:id/enhance", () => {
     expect(body.partial).toBe(true);
     expect(body.ok).toBe(true);
   });
+
+  it("is cancellable: cancel-transcribe 202s and the in-flight result is stoppedEarly", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    __setMeetingsTestOverrides({
+      enhance: async (
+        _id,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        await gate;
+        // The pass honors the cancel flag between chunks (kind "enhance"
+        // is cancellable): the real loop checks shouldStop at every chunk
+        // boundary and returns stoppedEarly.
+        return {
+          correctedCount: 0,
+          speakerSuggestions: 0,
+          chunksAttempted: 1,
+          chunksSucceeded: 1,
+          chunksFailed: 0,
+          stoppedEarly: options.shouldStop?.() ?? false,
+        };
+      },
+    });
+
+    const res = postEmpty(app, "/api/meetings/m1/enhance");
+    // Wait until the in-request pass holds the slot.
+    let kind: string | null = null;
+    for (let i = 0; i < 2000; i++) {
+      const body = await getMeeting("m1");
+      kind = (body.job as { kind: string | null } | null)?.kind ?? null;
+      if (kind === "enhance") break;
+      await Promise.resolve();
+    }
+    expect(kind).toBe("enhance");
+
+    const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+    expect(cancel.status).toBe(202);
+
+    release();
+    const out = await res;
+    expect(out.status).toBe(200);
+    const body = (await out.json()) as { stopped_early: boolean };
+    expect(body.stopped_early).toBe(true);
+  });
 });
 
 /**
@@ -2653,6 +2703,58 @@ describe("DELETE /api/meetings/:id", () => {
     expect(res.status).toBe(200);
     expect(existsSync(join(audioDir, "mic.wav"))).toBe(true);
   });
+
+  it("asks a running enhance job to stop when the meeting is deleted (no 409, the pass sees the cancel)", async () => {
+    insertMeeting("m1", "transcribed");
+    insertSystemSegment("m1:system:0", "m1", 0, 0, 1000);
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let stopFlag: (() => boolean) | undefined;
+    __setMeetingsTestOverrides({
+      enhance: async (
+        _id,
+        _segments,
+        _language,
+        _vocab,
+        _title,
+        _context,
+        options,
+      ) => {
+        stopFlag = options.shouldStop;
+        await gate; // parked inside the (fake) pass
+        // The DELETE set the cancel flag; the pass's stop seam now reads
+        // it and ends the run (the real loop checks it between chunks).
+        return {
+          correctedCount: 0,
+          speakerSuggestions: 0,
+          chunksAttempted: 1,
+          chunksSucceeded: 1,
+          chunksFailed: 0,
+          stoppedEarly: options.shouldStop?.() ?? false,
+        };
+      },
+    });
+
+    const res = postEmpty(app, "/api/meetings/m1/enhance");
+    await waitForMicrotasks(() => stopFlag !== undefined);
+
+    // DELETE never 409s on a running job — it asks the job to stop and
+    // deletes the row either way.
+    const del = await app.request("/api/meetings/m1", { method: "DELETE" });
+    expect(del.status).toBe(200);
+    expect(stopFlag?.()).toBe(true); // the flag was set by the DELETE
+
+    release();
+    const out = await res;
+    expect(out.status).toBe(200);
+    const body = (await out.json()) as { stopped_early: boolean };
+    expect(body.stopped_early).toBe(true);
+
+    // The row is gone (child rows cascade).
+    const row = getDb()
+      .prepare("SELECT id FROM meetings WHERE id = 'm1'")
+      .get();
+    expect(row).toBeUndefined();
+  });
 });
 
 // I2 (specs/meeting-transcription-v2.md §3.2): with the auto-run setting on,
@@ -2768,6 +2870,9 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
     const done = await waitForNoJob("m1");
     expect(done.status).toBe("transcribed");
     expect(done.job).toBeNull();
+    // The job's end step rewrote the export: the enhanced file now
+    // exists alongside the raw transcript.
+    expect(existsSync(join(audioDir, "transcript-enhanced.md"))).toBe(true);
     // The flip happened BEFORE the pass started (spec step 1).
     expect(startedStatus).toBe("transcribed");
     const cnt = (
@@ -2913,5 +3018,72 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
     expect(done.status).toBe("transcribed");
     expect(done.error).toBeNull(); // the failure is logged, not stored here
     expect(done.job_error).toBeNull();
+  });
+
+  it("a cancel that lands during the diarization pass skips the auto-run (the cancel is not lost)", async () => {
+    writeSetting("meeting_diarization_enabled", "true");
+    try {
+      const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+      let diarizeRuns = 0;
+      let enhanceCalls = 0;
+      __setMeetingsTestOverrides({
+        createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+        diarizeDeps: {
+          resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+          resolveModelsDirPath: () => "/fake/resources/models",
+          execFile: async (_file, args) => {
+            if (args[0] === "--probe") return { stdout: "READY", stderr: "" };
+            diarizeRuns++;
+            await gate; // park inside the real diarizer run
+            return { stdout: "[]", stderr: "" };
+          },
+        },
+        enhance: async () => {
+          enhanceCalls++;
+          return enhanceOk();
+        },
+      });
+      insertMeeting("m1");
+      writeSetting("meeting_enhance_auto_run", "true");
+      const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+      expect(res.status).toBe(202);
+      // The job is parked inside the diarizer run — AFTER the cancel
+      // check at the top of the job already passed.
+      await waitForMicrotasks(() => diarizeRuns >= 1);
+
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+      expect(cancel.status).toBe(202); // kind transcribe is cancellable
+
+      release();
+      const done = await waitForNoJob("m1");
+      expect(done.status).toBe("transcribed"); // the finished transcript stands
+      expect(enhanceCalls).toBe(0); // the auto-run was skipped, not lost
+    } finally {
+      deleteSetting("meeting_diarization_enabled");
+    }
+  });
+
+  it("names the real job kind in the 409 while an enhance job holds the slot", async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+      enhance: async () => {
+        await gate;
+        return enhanceOk({ chunksAttempted: 1, chunksSucceeded: 1 });
+      },
+    });
+    insertMeeting("m1");
+    writeSetting("meeting_enhance_auto_run", "true");
+    await postEmpty(app, "/api/meetings/m1/transcribe");
+    await waitForJobKind("m1", "enhance");
+
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "Enhance is already running",
+    );
+
+    release();
+    await waitForNoJob("m1");
   });
 });

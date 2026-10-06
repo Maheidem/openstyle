@@ -1048,7 +1048,7 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
 
   // I2 (specs/meeting-transcription-v2.md §3.2): the auto-run job renders
   // done/total from this seam.
-  it("reports onProgress after each completed chunk, in order", async () => {
+  it("reports the total up front (0 of N), then after each completed chunk, in order", async () => {
     const progress: Array<{ done: number; total: number }> = [];
     const llm = fakeLlm(() => ({ text: "{}" }));
 
@@ -1060,7 +1060,9 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
       },
     });
 
+    // 0 of N before the loop, then one report per completed chunk.
     expect(progress).toEqual([
+      { done: 0, total: 2 },
       { done: 1, total: 2 },
       { done: 2, total: 2 },
     ]);
@@ -1080,8 +1082,9 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
         onProgress: (p) => progress.push(p),
       },
     });
-    // Chunk 0 failed (still reported), chunk 1 succeeded.
+    // 0 of N up front, then chunk 0 failed (still reported), chunk 1 succeeded.
     expect(progress).toEqual([
+      { done: 0, total: 2 },
       { done: 1, total: 2 },
       { done: 2, total: 2 },
     ]);
@@ -1108,8 +1111,42 @@ describe("enhanceMeetingTranscript pass accounting (all-chunks-failed is not a s
         onProgress: (p) => progress.push(p),
       },
     );
-    // Only the first chunk completed; the skipped one is not reported.
-    expect(progress).toEqual([{ done: 1, total: 2 }]);
+    // 0 of N up front, then only the first chunk completed; the skipped
+    // one is not reported.
+    expect(progress).toEqual([
+      { done: 0, total: 2 },
+      { done: 1, total: 2 },
+    ]);
+  });
+
+  // Partial cancel through the REAL loop: chunk 1 is corrected, then
+  // shouldStop turns true before chunk 2 runs. The finished chunk's
+  // correction must be persisted (written in the one transaction after
+  // the loop); the unrun chunk keeps its raw text.
+  it("keeps the finished chunk's correction when shouldStop stops the real loop after chunk 1", async () => {
+    let calls = 0;
+    const llm = fakeLlm(() => {
+      calls++;
+      return { text: JSON.stringify({ "m1:mic:0": "corrected first chunk" }) };
+    });
+
+    const result = await runEnhance(twoSegments, {
+      llm,
+      options: {
+        contextBudgetTokens: 20, // two chunks
+        shouldStop: () => calls >= 1,
+      },
+    });
+
+    expect(result).toMatchObject({
+      chunksAttempted: 1,
+      chunksSucceeded: 1,
+      chunksFailed: 0,
+      stoppedEarly: true,
+      correctedCount: 1,
+    });
+    expect(enhancedText("m1:mic:0")).toBe("corrected first chunk");
+    expect(enhancedText("m1:mic:1")).toBeNull();
   });
 });
 
