@@ -28,8 +28,9 @@ You choose where your voice goes:
 
 - Built into Openstyle: models run on your Mac with MLX (Parakeet, Qwen3-ASR,
   Whisper). Add more from Hugging Face. Audio stays on your Mac.
-- Your own server: use oMLX, LM Studio or any OpenAI-compatible server you
-  run. Audio goes to that server.
+- Your own server: use a server with an OpenAI-compatible transcription
+  endpoint, for example oMLX. Audio goes to that server. The AI cleanup LLM
+  can run on oMLX, LM Studio or any OpenAI-compatible server.
 - Cloud provider: use OpenAI, Groq, Deepgram, ElevenLabs and others with your
   own API key. Audio goes to that provider.
 
@@ -73,8 +74,9 @@ Not with a built-in model. With your own server it goes to that server. With
 a cloud provider it goes to that provider.
 
 Can I use my own server?
-Yes. Openstyle works with oMLX, LM Studio or any OpenAI-compatible server you
-run.
+Yes. Speech-to-text needs a server with an OpenAI-compatible transcription
+endpoint, for example oMLX. The AI cleanup LLM can run on oMLX, LM Studio or
+any OpenAI-compatible server.
 
 Does it take meeting notes?
 Yes. It records meetings, transcribes them after the call, writes a summary,
