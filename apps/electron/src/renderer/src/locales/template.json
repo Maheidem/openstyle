@@ -79,6 +79,9 @@
     "tutorial": {
       "finish": "Start using Openstyle"
     },
+    "enhance": {
+      "skip": "Skip"
+    },
     "modelSelector": {
       "chooseModel": "Choose a model",
       "allVoiceModels": "All voice models",

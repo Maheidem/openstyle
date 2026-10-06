@@ -165,6 +165,10 @@ test("onboarding flow reaches the draft and remix steps and completes", async ()
     .waitFor({ state: "visible", timeout: 15_000 });
 
   await page.getByRole("button", { name: "Start using Openstyle" }).click();
+
+  // Enhance step (specs/meeting-transcription-v2.md §3.2) — the new final
+  // step before /today. Skip it: it must not write the auto-run setting.
+  await page.getByTestId("onboarding-enhance-skip").click();
   await page.waitForURL(/\/today/, { timeout: 15_000 });
 
   // Practice-target mode must be off once onboarding is done.
