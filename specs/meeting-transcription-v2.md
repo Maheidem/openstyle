@@ -301,7 +301,7 @@ Every proof server starts with `cd apps/electron && node ../server/dist/startup.
 | 0b metrics and baseline | Done (`08c93a0`, `metrics.mjs`, `run-baseline.mjs`, `measure-diarizer.mjs`) |
 | 1 meeting model | Done (`bdf99f5` + `dce5e7e`). |
 | 2 Enhance (onboarding step + one-time prompt) | 2a and 2b done |
-| 3a lanes | To do |
+| 3a lanes | Done (`75cc0f7`). |
 | 3b context | To do |
 | 4 diarize first, default on | To do. Owner approved default-on. |
 | 5 overlap and join | Dropped: `contiguousCuts` is 0 on both proof meetings (Q8 rule). |
@@ -314,8 +314,10 @@ Baseline on the owner's real meetings (scratch copies, Qwen3-ASR and Qwen3.8-27B
 | short | R0d | 14.03 | 17/20 | 14 (1) | 0 | 5 | 3 | 0 | 9 |
 | long 9243bea0 (3580 s) | R0 | 96.19 | 168/79 | 0 | 0 | 22 | 30 | 0 | 31 |
 | long | R0d | 100.20 | 168/79 | 59 (5) | 0 | 22 | 30 | 0 | 31 |
+| short | R3a | 12.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
+| long | R3a | 96.25 | 168/79 | 0 | 0 | 22 | 30 | 0 | 31 |
 
-Diarizer wall time (standalone, median of 3 runs, all OK): short 0.92 s (0.22 percent), long 4.39 s (0.12 percent). R0d text hash equals R0 on both meetings: diarization changes only the labels. The installed app was open during the runs; ASR ran on the separate oMLX process. Metric files: `/tmp/meeting-v2/baseline/<run>-<meetingId>/metrics.json` (scratch, not committed). The procedure is in `.claude/skills/meeting-benchmarks/SKILL.md`.
+Diarizer wall time (standalone, median of 3 runs, all OK): short 0.92 s (0.22 percent), long 4.39 s (0.12 percent). R0d text hash equals R0 on both meetings: diarization changes only the labels. R3a (lanes, R0 settings) text hash equals R0 on both meetings; wall time 12.03 s (budget 14.31 s at ratio 2*20/37 = 1.081) and 96.25 s (budget 143.93 s at ratio 2*168/247 = 1.360). The installed app was open during the runs; ASR ran on the separate oMLX process. Metric files: `/tmp/meeting-v2/baseline/<run>-<meetingId>/metrics.json` (scratch, not committed). The procedure is in `.claude/skills/meeting-benchmarks/SKILL.md`.
 
 ### Phase 0a: scratch profile and DB rows
 
