@@ -15,6 +15,7 @@ import {
   describe,
   expect,
   it,
+  onTestFinished,
   vi,
 } from "vitest";
 import createApp from "../src/index.js";
@@ -487,6 +488,102 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, retried: 0 });
+  });
+
+  // Phase 3a (specs/meeting-transcription-v2.md §3.1): retry-failed passes
+  // lanes: false — the old shared pool, not the per-channel lanes.
+  it("runs the retry pass on the old shared pool, not the lanes (phase 3a)", async () => {
+    // The shared audioDir WAV is 2 s; the failed rows below reach 5 s,
+    // so this meeting gets its own dir with 8 s WAVs.
+    const dir = mkdtempSync(join(tmpdir(), "meeting-retry-test-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const wav = buildWav(4000, 2000);
+    writeFileSync(join(dir, "mic.wav"), wav);
+    writeFileSync(join(dir, "system.wav"), wav);
+    insertMeeting("m1", "transcribed", dir);
+    // Two failed rows per channel, distinct lengths per channel, so the
+    // slice byte count identifies the chunk (1 s = 32 044 B, 3 s = 96 044).
+    // mic.wav and system.wav are identical, so mic[i] and system[i] share
+    // a length: the old pool's first two in-flight calls (mic[0], mic[1])
+    // have DIFFERENT lengths, while the lanes path's (mic[0], system[0])
+    // would have EQUAL ones.
+    insertSegment({
+      id: "s1",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "mic",
+      text: null,
+      status: "failed",
+    });
+    insertSegment({
+      id: "s2",
+      meetingId: "m1",
+      idx: 1,
+      startMs: 2000,
+      endMs: 5000,
+      source: "mic",
+      text: null,
+      status: "failed",
+    });
+    insertSegment({
+      id: "s3",
+      meetingId: "m1",
+      idx: 0,
+      startMs: 0,
+      endMs: 1000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+    insertSegment({
+      id: "s4",
+      meetingId: "m1",
+      idx: 1,
+      startMs: 2000,
+      endMs: 5000,
+      source: "system",
+      text: null,
+      status: "failed",
+    });
+
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let started = 0;
+    const startedBytes: number[] = [];
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras) => ({
+        getProvider: () => ({
+          providerId: "fake",
+          transcribe: async (o) => {
+            startedBytes.push(o.audio.length);
+            started++;
+            if (started === 2) release();
+            await gate;
+            return { text: "recovered" };
+          },
+          supportsStreaming: () => false,
+        }),
+        resolveConfig: () => ({
+          providerId: "fake",
+          modelId: "fake-model",
+          apiKey: "key",
+          bias: null,
+        }),
+        sleep: async () => {},
+        backoffBaseMs: 1,
+        maxAttempts: 2,
+        ...extras,
+      }),
+    });
+
+    const res = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { retried: number; failed: number };
+    expect(body.retried).toBe(4);
+    expect(body.failed).toBe(0);
+    // The first two in-flight calls were the first two tasks — both mic.
+    expect(startedBytes.slice(0, 2)).toEqual([32_044, 96_044]);
   });
 
   // I3 (specs/meeting-transcription-v2.md §3.3): retry-failed resolves the

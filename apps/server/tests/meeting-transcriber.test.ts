@@ -65,7 +65,9 @@ function makeFakeProvider(
     failFirst?: number;
     failWith?: () => Error;
     delayTicks?: number;
-    onCall?: () => void | Promise<void>;
+    /** Called (with the call's audio byte count) while the call is in
+     * flight — a gate or delay here holds the worker. */
+    onCall?: (bytes: number) => void | Promise<void>;
   } = {},
 ) {
   const calls: FakeCall[] = [];
@@ -87,7 +89,7 @@ function makeFakeProvider(
           ...(o.language ? { language: o.language } : {}),
           startedAt: Date.now(),
         });
-        await opts.onCall?.();
+        await opts.onCall?.(o.audio.length);
         // Yield so concurrent workers actually overlap.
         await Promise.resolve();
         if (failures > 0) {
@@ -202,11 +204,14 @@ describe("MeetingTranscriber", () => {
     }
   });
 
-  it("caps concurrency at 2 for cloud providers", async () => {
-    const dir = makeMeetingDir({ mic: 10_000, system: 100 });
+  // Phase 3a (specs/meeting-transcription-v2.md §3.1): lanes. Every test
+  // below uses distinct chunk durations so a call's audio byte count
+  // identifies its chunk (1 s = 32 044 bytes, +32 000 per second).
+  it("runs the two lanes in parallel: one chunk in flight per lane, each lane starts with its first chunk (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 9000 });
     const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let started = 0;
-    const { provider, maxInFlight } = makeFakeProvider({
+    const { provider, calls, maxInFlight } = makeFakeProvider({
       onCall: async () => {
         started++;
         if (started === 2) release();
@@ -214,20 +219,121 @@ describe("MeetingTranscriber", () => {
       },
     });
     const t = new MeetingTranscriber(makeDeps(provider));
-    const results = await run(t, dir, {
+    const runPromise = t.run({
+      meetingDir: dir,
       micSegments: [
-        { startMs: 0, endMs: 1000 },
-        { startMs: 1000, endMs: 2000 },
-        { startMs: 2000, endMs: 3000 },
-        { startMs: 3000, endMs: 4000 },
+        { startMs: 0, endMs: 1000 }, // 32 044 bytes
+        { startMs: 2000, endMs: 4000 }, // 64 044
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 3000 }, // 96 044
+        { startMs: 4000, endMs: 8000 }, // 128 044
       ],
     });
+    // Both lanes have a chunk in flight — the gate released at 2.
+    await gate;
+    expect(started).toBe(2);
+    // One chunk from each lane: mic[0] then system[0]. The old pool would
+    // hold the first two tasks, both mic (32 044 then 64 044).
+    expect(calls.slice(0, 2).map((c) => c.bytes)).toEqual([32_044, 96_044]);
+    release();
+    const results = await runPromise;
     expect(results).toHaveLength(4);
     expect(maxInFlight()).toBe(2);
   });
 
-  it("shouldStop checked between chunk tasks: in-flight chunks finish, unstarted chunks never run (holes in results)", async () => {
-    const dir = makeMeetingDir({ mic: 10_000, system: 100 });
+  it("keeps chunk order within each lane: the next chunk starts only after the previous one finishes (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 9000 });
+    // Each chunk has a distinct byte count; bytes < 96 044 are mic.
+    // The first chunk of each lane is held on its own gate — a lane that
+    // ran its chunks in parallel would start its second chunk while the
+    // first is still in flight.
+    const { promise: micGate, resolve: releaseMic } =
+      Promise.withResolvers<void>();
+    const { promise: sysGate, resolve: releaseSys } =
+      Promise.withResolvers<void>();
+    const { promise: bothStarted, resolve: announceBoth } =
+      Promise.withResolvers<void>();
+    let micFirst = true;
+    let sysFirst = true;
+    const startedBytes: number[] = [];
+    const { provider } = makeFakeProvider({
+      onCall: async (bytes) => {
+        startedBytes.push(bytes);
+        if (bytes < 96_044) {
+          if (micFirst) {
+            micFirst = false;
+            if (!sysFirst) announceBoth();
+            await micGate;
+          }
+        } else if (sysFirst) {
+          sysFirst = false;
+          if (!micFirst) announceBoth();
+          await sysGate;
+        }
+      },
+    });
+    const t = new MeetingTranscriber(makeDeps(provider));
+    const runPromise = t.run({
+      meetingDir: dir,
+      micSegments: [
+        { startMs: 0, endMs: 1000 }, // 32 044 bytes
+        { startMs: 2000, endMs: 4000 }, // 64 044
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 3000 }, // 96 044
+        { startMs: 4000, endMs: 8000 }, // 128 044
+      ],
+    });
+    // Both lanes have a chunk in flight — one per lane, in lane order.
+    await bothStarted;
+    expect(startedBytes).toEqual([32_044, 96_044]);
+    releaseMic();
+    releaseSys();
+    const results = await runPromise;
+    expect(results).toHaveLength(4);
+    // Start order within each lane is the chunk order.
+    expect(startedBytes.filter((b) => b < 96_044)).toEqual([32_044, 64_044]);
+    expect(startedBytes.filter((b) => b >= 96_044)).toEqual([96_044, 128_044]);
+  });
+
+  it("lanes: false keeps the old shared cursor and pool (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 9000 });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let started = 0;
+    const { provider, calls, maxInFlight } = makeFakeProvider({
+      onCall: async () => {
+        started++;
+        if (started === 2) release();
+        await gate;
+      },
+    });
+    const t = new MeetingTranscriber(makeDeps(provider));
+    const runPromise = t.run({
+      meetingDir: dir,
+      micSegments: [
+        { startMs: 0, endMs: 1000 }, // 32 044 bytes
+        { startMs: 2000, endMs: 4000 }, // 64 044
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 3000 }, // 96 044
+        { startMs: 4000, endMs: 8000 }, // 128 044
+      ],
+      lanes: false,
+    });
+    await gate;
+    // The old pool takes the first two tasks — both mic — while the lanes
+    // path would hold one chunk per lane (mic[0] and system[0]).
+    expect(calls.slice(0, 2).map((c) => c.bytes)).toEqual([32_044, 64_044]);
+    release();
+    const results = await runPromise;
+    expect(results).toHaveLength(4);
+    expect(results.every((r) => r?.status === "ok")).toBe(true);
+    expect(maxInFlight()).toBe(2);
+  });
+
+  it("shouldStop stops each lane between chunk tasks: in-flight chunks finish, unstarted chunks never run (holes in results) (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 10_000, system: 10_000 });
     const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let started = 0;
     const { provider, calls } = makeFakeProvider({
@@ -245,26 +351,29 @@ describe("MeetingTranscriber", () => {
         onChunk: (c) => onChunk.push(c),
       }),
     );
-    const runPromise = run(t, dir, {
+    const runPromise = t.run({
+      meetingDir: dir,
       micSegments: [
         { startMs: 0, endMs: 1000 },
-        { startMs: 1000, endMs: 2000 },
         { startMs: 2000, endMs: 3000 },
-        { startMs: 3000, endMs: 4000 },
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 1000 },
+        { startMs: 2000, endMs: 3000 },
       ],
     });
-    // Wait until both workers have a chunk in flight, then cancel.
+    // Wait until both lanes have a chunk in flight, then cancel.
     await gate;
     stop = true;
     release();
     const results = await runPromise;
-    // Only the two in-flight chunks ran; their results (and only theirs)
-    // are present, the rest are holes.
+    // Only the two in-flight chunks ran (one per lane); their results
+    // (and only theirs) are present, the rest are holes.
     expect(calls).toHaveLength(2);
     expect(onChunk).toHaveLength(2);
     expect(results).toHaveLength(4);
     expect(results.filter((r) => r !== undefined)).toHaveLength(2);
-    expect(results[2]).toBeUndefined();
+    expect(results[1]).toBeUndefined();
     expect(results[3]).toBeUndefined();
   });
 
@@ -281,6 +390,31 @@ describe("MeetingTranscriber", () => {
         { startMs: 2000, endMs: 3000 },
       ],
     });
+    expect(maxInFlight()).toBe(1);
+  });
+
+  it("runs local-whisper lane by lane: the mic lane first, then the system lane, one at a time (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 9000 });
+    const { provider, calls, maxInFlight } = makeFakeProvider({
+      providerId: WHISPER_PROVIDER_ID,
+    });
+    const t = new MeetingTranscriber(makeDeps(provider));
+    const results = await t.run({
+      meetingDir: dir,
+      micSegments: [
+        { startMs: 0, endMs: 1000 }, // 32 044 bytes
+        { startMs: 2000, endMs: 4000 }, // 64 044
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 3000 }, // 96 044
+        { startMs: 4000, endMs: 8000 }, // 128 044
+      ],
+    });
+    expect(results).toHaveLength(4);
+    // Same order as today's single pool: all mic chunks, then system.
+    expect(calls.map((c) => c.bytes)).toEqual([
+      32_044, 64_044, 96_044, 128_044,
+    ]);
     expect(maxInFlight()).toBe(1);
   });
 

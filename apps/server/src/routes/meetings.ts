@@ -1071,6 +1071,10 @@ const meetings = new Hono()
         meetingDir: audioDir,
         micSegments: toSegments("mic"),
         systemSegments: toSegments("system"),
+        // Phase 3a (specs/meeting-transcription-v2.md §3.1): retry-failed
+        // runs without lanes (old pool) — and, with it, without the
+        // context and overlap phases that build on lanes.
+        lanes: false,
       });
       // Cancelled mid-retry (T1-1): chunks already retried keep their new
       // text (persisted inline by onChunk above), the rest stay 'failed' —

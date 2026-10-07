@@ -115,6 +115,16 @@ export interface MeetingChannels {
   meetingDir: string;
   micSegments: Segment[];
   systemSegments: Segment[];
+  /**
+   * I1 (specs/meeting-transcription-v2.md §3.1, phase 3a): one lane per
+   * channel. A lane runs its chunks in order, one at a time; the two
+   * lanes run in parallel. `local-whisper` keeps the pool at 1 — the mic
+   * lane runs first, then the system lane (same order as the old single
+   * pool). Default true. When false the transcriber keeps the old shared
+   * cursor and pool (retry-failed passes false, which also keeps the
+   * later context and overlap phases off).
+   */
+  lanes?: boolean;
 }
 
 /**
@@ -214,41 +224,78 @@ export class MeetingTranscriber {
       }
 
       const results: ChunkResult[] = new Array(tasks.length);
-      let cursor = 0;
       let done = 0;
       let failed = 0;
 
-      const worker = async (): Promise<void> => {
-        for (;;) {
-          // Between chunk tasks: a cancellation stops this worker from
-          // claiming anything further; chunks already in flight finish
-          // normally (their results are persisted via onChunk as usual).
-          if (this.deps.shouldStop?.()) return;
-          const i = cursor++;
-          if (i >= tasks.length) return;
-          const t = tasks[i];
-          const result = await this.transcribeChunk(
-            provider,
-            config,
-            t.fd,
-            t.info,
-            t.source,
-            t.idx,
-            t.seg,
-          );
-          results[i] = result;
-          done++;
-          if (result.status === "failed") failed++;
-          this.deps.onChunk?.(result);
-          this.deps.onProgress?.({ done, total: tasks.length, failed });
-        }
+      const runTask = async (i: number): Promise<void> => {
+        const t = tasks[i];
+        const result = await this.transcribeChunk(
+          provider,
+          config,
+          t.fd,
+          t.info,
+          t.source,
+          t.idx,
+          t.seg,
+        );
+        results[i] = result;
+        done++;
+        if (result.status === "failed") failed++;
+        this.deps.onChunk?.(result);
+        this.deps.onProgress?.({ done, total: tasks.length, failed });
       };
 
-      await Promise.all(
-        Array.from({ length: Math.min(concurrency, tasks.length) }, () =>
-          worker(),
-        ),
-      );
+      if (input.lanes ?? true) {
+        // Phase 3a (specs/meeting-transcription-v2.md §3.1): one lane per
+        // channel. Tasks were pushed mic-first, so the mic lane is the
+        // first `micSegments.length` tasks and the system lane the rest.
+        const lanes: Array<{ start: number; count: number }> = [];
+        if (input.micSegments.length > 0)
+          lanes.push({ start: 0, count: input.micSegments.length });
+        if (input.systemSegments.length > 0)
+          lanes.push({
+            start: input.micSegments.length,
+            count: input.systemSegments.length,
+          });
+
+        const laneWorker = async (lane: { start: number; count: number }) => {
+          for (let i = lane.start; i < lane.start + lane.count; i++) {
+            // Between chunk tasks: a cancellation stops this lane from
+            // claiming anything further; chunks already in flight finish
+            // normally (their results are persisted via onChunk as usual).
+            if (this.deps.shouldStop?.()) return;
+            await runTask(i);
+          }
+        };
+
+        // local-whisper keeps the pool at 1: the lanes run one after
+        // another, mic first — the same order as the old single pool.
+        if (concurrency === 1) {
+          for (const lane of lanes) await laneWorker(lane);
+        } else {
+          await Promise.all(lanes.map((lane) => laneWorker(lane)));
+        }
+      } else {
+        // Old behavior (lanes: false, used by retry-failed): one shared
+        // cursor, a pool of workers.
+        let cursor = 0;
+        const worker = async (): Promise<void> => {
+          for (;;) {
+            // Between chunk tasks: a cancellation stops this worker from
+            // claiming anything further; chunks already in flight finish
+            // normally (their results are persisted via onChunk as usual).
+            if (this.deps.shouldStop?.()) return;
+            const i = cursor++;
+            if (i >= tasks.length) return;
+            await runTask(i);
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(concurrency, tasks.length) }, () =>
+            worker(),
+          ),
+        );
+      }
       return results;
     } finally {
       for (const fd of opened) {
