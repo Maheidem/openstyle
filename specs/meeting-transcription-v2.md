@@ -302,7 +302,7 @@ Every proof server starts with `cd apps/electron && node ../server/dist/startup.
 | 1 meeting model | Done (`bdf99f5` + `dce5e7e`). |
 | 2 Enhance (onboarding step + one-time prompt) | 2a and 2b done |
 | 3a lanes | Done (`75cc0f7`). |
-| 3b context | To do |
+| 3b context | Done (`f769365`). |
 | 4 diarize first, default on | To do. Owner approved default-on. |
 | 5 overlap and join | Dropped: `contiguousCuts` is 0 on both proof meetings (Q8 rule). |
 
@@ -316,8 +316,10 @@ Baseline on the owner's real meetings (scratch copies, Qwen3-ASR and Qwen3.8-27B
 | long | R0d | 100.20 | 168/79 | 59 (5) | 0 | 22 | 30 | 0 | 31 |
 | short | R3a | 12.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
 | long | R3a | 96.25 | 168/79 | 0 | 0 | 22 | 30 | 0 | 31 |
+| short | R3b | 14.04 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
+| long | R3b | 98.24 | 168/79 | 0 | 0 | 22 | 31 | 0 | 30 |
 
-Diarizer wall time (standalone, median of 3 runs, all OK): short 0.92 s (0.22 percent), long 4.39 s (0.12 percent). R0d text hash equals R0 on both meetings: diarization changes only the labels. R3a (lanes, R0 settings) text hash equals R0 on both meetings; wall time 12.03 s (budget 14.31 s at ratio 2*20/37 = 1.081) and 96.25 s (budget 143.93 s at ratio 2*168/247 = 1.360). The installed app was open during the runs; ASR ran on the separate oMLX process. Metric files: `/tmp/meeting-v2/baseline/<run>-<meetingId>/metrics.json` (scratch, not committed). The procedure is in `.claude/skills/meeting-benchmarks/SKILL.md`.
+Diarizer wall time (standalone, median of 3 runs, all OK): short 0.92 s (0.22 percent), long 4.39 s (0.12 percent). R0d text hash equals R0 on both meetings: diarization changes only the labels. R3a (lanes, R0 settings) text hash equals R0 on both meetings; wall time 12.03 s (budget 14.31 s at ratio 2*20/37 = 1.081) and 96.25 s (budget 143.93 s at ratio 2*168/247 = 1.360). R3b (lanes plus context, R0 settings): short 14.04 s (context on 22 of 37 chunks, 1 echo retry, 8 chunks with changed text vs R3a), long 98.24 s (context on 182 of 247 chunks, 2 echo retries, 79 chunks with changed text vs R3a). The R3b rule holds on both meetings (termHits not lower, filtered up by at most 2, langMismatch not higher); the R3b text hash differs from R0/R3a by design (context changes the output). Side-by-side of the changed chunks: `/tmp/meeting-v2/compare/R3a-vs-R3b-<meetingId8>.md` (scratch, not committed). The installed app was open during the runs; ASR ran on the separate oMLX process. Metric files: `/tmp/meeting-v2/baseline/<run>-<meetingId>/metrics.json` (scratch, not committed). The procedure is in `.claude/skills/meeting-benchmarks/SKILL.md`.
 
 ### Phase 0a: scratch profile and DB rows
 
