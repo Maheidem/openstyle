@@ -1,9 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { readWavPcm16 } from "../src/lib/audio/wav.js";
 import {
+  cutAtSpeakerChanges,
   DEFAULT_MERGE_TOWARD_OPTIONS,
   mergeSegmentsToward,
   type Segment,
   segmentPcm,
+  segmentWavFile,
 } from "../src/lib/meetings/segmenter.js";
 
 const SAMPLE_RATE = 16_000;
@@ -309,5 +316,240 @@ describe("mergeSegmentsToward", () => {
     // With targetMs lowered to 500ms, the first segment (1000ms) already
     // meets/exceeds target before any merge is attempted, so nothing merges.
     expect(out).toEqual(input);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Speaker cuts (specs/meeting-transcription-v2.md §3.4, I4)
+// ---------------------------------------------------------------------------
+
+describe("cutAtSpeakerChanges", () => {
+  const FRAME_MS = 20;
+
+  /** A flat-energy rmsDb (dBFS) covering `totalMs`. */
+  function flatDb(totalMs: number, db = -30): Float64Array {
+    return new Float64Array(Math.ceil(totalMs / FRAME_MS)).fill(db);
+  }
+
+  const turn = (speaker: string, startSeconds: number, endSeconds: number) => ({
+    speakerId: speaker,
+    startTimeSeconds: startSeconds,
+    endTimeSeconds: endSeconds,
+  });
+
+  it("two turns in one segment give two parts, one per speaker", () => {
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("A", 0, 4), turn("B", 4, 10)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    expect(out).toHaveLength(2);
+    expect(out[0]!.speaker).toBe("A");
+    expect(out[1]!.speaker).toBe("B");
+    // The cut sits at the turn boundary: part 0 ends where part 1 starts,
+    // within the +/-300 ms snap window of 4000 ms.
+    expect(out[0]!.endMs).toBe(out[1]!.startMs);
+    expect(Math.abs(out[0]!.endMs - 4000)).toBeLessThanOrEqual(300);
+    expect(out[0]!.startMs).toBe(0);
+    expect(out[1]!.endMs).toBe(10_000);
+  });
+
+  it("a flicker under 1 s is absorbed into the previous turn", () => {
+    // A ... B (300 ms blip) ... A: the blip joins the previous turn and the
+    // re-join collapses everything back to one A part.
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("A", 0, 4), turn("B", 4, 4.3), turn("A", 4.3, 10)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    expect(out).toEqual([{ startMs: 0, endMs: 10_000, speaker: "A" }]);
+  });
+
+  it("a first turn under 1 s joins the next turn", () => {
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("B", 0, 0.3), turn("A", 0.3, 10)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    expect(out).toEqual([{ startMs: 0, endMs: 10_000, speaker: "A" }]);
+  });
+
+  it("same-speaker neighbors re-join after flicker absorption", () => {
+    // A B(300ms flicker) A A: step 2 joins the two A turns, step 3 extends
+    // the first A over the blip, and step 4 re-joins the now-touching A
+    // turns. Without the re-join this would be two A parts; with it, one.
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("A", 0, 3), turn("B", 3, 3.3), turn("A", 3.3, 5), turn("A", 5, 10)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    expect(out).toEqual([{ startMs: 0, endMs: 10_000, speaker: "A" }]);
+  });
+
+  it("a cut snaps to the lowest-energy frame within 300 ms", () => {
+    // Flat energy except one dip at 4200 ms (frame 210): the cut at the
+    // 4000 ms turn start snaps forward to the frame center, 4210 ms.
+    const db = flatDb(10_000);
+    db[210] = -90;
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("A", 0, 4), turn("B", 4, 10)],
+      db,
+      FRAME_MS,
+    );
+    expect(out[0]!.endMs).toBe(4210);
+    expect(out[1]!.startMs).toBe(4210);
+  });
+
+  it("a part under 1.5 s merges into the longer neighbor", () => {
+    // The B turn leaves only a 1200 ms part at the end: it merges into the
+    // longer A part and takes A's speaker.
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("A", 0, 8.8), turn("B", 8.8, 10)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    expect(out).toEqual([{ startMs: 0, endMs: 10_000, speaker: "A" }]);
+  });
+
+  it("a part with no overlapping turn has no speaker", () => {
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("A", 20, 25)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    expect(out).toEqual([{ startMs: 0, endMs: 10_000 }]);
+    expect(out[0]!.speaker).toBeUndefined();
+  });
+
+  it("segments with no overlapping turns are returned untouched", () => {
+    const input: Segment[] = [
+      { startMs: 0, endMs: 3_000 },
+      { startMs: 5_000, endMs: 8_000 },
+    ];
+    const out = cutAtSpeakerChanges(
+      input,
+      [turn("A", 30, 40)],
+      flatDb(40_000),
+      FRAME_MS,
+    );
+    expect(out).toEqual(input);
+  });
+});
+
+describe("mergeSegmentsToward speaker rule (I4, §3.4)", () => {
+  it("never merges across two different speakers", () => {
+    const out = mergeSegmentsToward([
+      { startMs: 0, endMs: 10_000, speaker: "A" },
+      { startMs: 10_200, endMs: 20_000, speaker: "B" },
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out[0]!.speaker).toBe("A");
+    expect(out[1]!.speaker).toBe("B");
+  });
+
+  it("still merges parts of the same speaker toward the target", () => {
+    const out = mergeSegmentsToward([
+      { startMs: 0, endMs: 10_000, speaker: "A" },
+      { startMs: 10_200, endMs: 20_000, speaker: "A" },
+    ]);
+    expect(out).toEqual([{ startMs: 0, endMs: 20_000, speaker: "A" }]);
+  });
+
+  it("a part with no speaker still merges as before", () => {
+    const out = mergeSegmentsToward([
+      { startMs: 0, endMs: 10_000 },
+      { startMs: 10_200, endMs: 20_000, speaker: "B" },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.endMs).toBe(20_000);
+  });
+});
+
+describe("segmentPcm with diarizer turns (I4, §3.4)", () => {
+  it("a 10 s clip with turns 0-4 s and 4-10 s gives exactly 2 chunks, cut within 300 ms of 4 s", async () => {
+    // Generated with `ffmpeg -f lavfi`: 10 s of 440 Hz tone at -20 dBFS
+    // (continuous speech, one VAD opening), 16 kHz mono PCM16.
+    const dir = mkdtempSync(join(tmpdir(), "seg-turns-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const wavPath = join(dir, "tone.wav");
+    // A quiet pink-noise bed (so the adaptive noise floor calibrates) with
+    // a 440 Hz tone on top from 2 s on (continuous "speech").
+    execFileSync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "anoisesrc=d=10:r=16000:c=pink:a=0.005",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=8:sample_rate=16000,volume=0.8",
+      "-filter_complex",
+      "[1:a]adelay=2000|2000[t];[0:a][t]amix=inputs=2:duration=first:weights=1 1",
+      "-ar",
+      "16000",
+      "-ac",
+      "1",
+      "-c:a",
+      "pcm_s16le",
+      wavPath,
+    ]);
+    const channel = readWavPcm16(wavPath);
+    expect(channel).not.toBeNull();
+    const segments = segmentPcm(channel!.pcm, channel!.sampleRate, undefined, [
+      { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 4 },
+      { speakerId: "B", startTimeSeconds: 4, endTimeSeconds: 10 },
+    ]);
+    expect(segments).toHaveLength(2);
+    expect(segments[0]!.speaker).toBe("A");
+    expect(segments[1]!.speaker).toBe("B");
+    expect(segments[0]!.endMs).toBe(segments[1]!.startMs);
+    expect(Math.abs(segments[0]!.endMs - 4000)).toBeLessThanOrEqual(300);
+  });
+
+  it("without turns the same clip gives one chunk, unspoken", () => {
+    // Regression guard for the argument: no turns in, no speaker out.
+    const dir = mkdtempSync(join(tmpdir(), "seg-noturns-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const wavPath = join(dir, "tone.wav");
+    // A quiet pink-noise bed (so the adaptive noise floor calibrates) with
+    // a 440 Hz tone on top from 2 s on (continuous "speech").
+    execFileSync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "anoisesrc=d=10:r=16000:c=pink:a=0.005",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=8:sample_rate=16000,volume=0.8",
+      "-filter_complex",
+      "[1:a]adelay=2000|2000[t];[0:a][t]amix=inputs=2:duration=first:weights=1 1",
+      "-ar",
+      "16000",
+      "-ac",
+      "1",
+      "-c:a",
+      "pcm_s16le",
+      wavPath,
+    ]);
+    const segments = segmentWavFile(wavPath);
+    expect(segments!.length).toBeGreaterThanOrEqual(1);
+    // No turns in: no part may carry a speaker.
+    for (const s of segments!) expect(s.speaker).toBeUndefined();
   });
 });

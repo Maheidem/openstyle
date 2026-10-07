@@ -8,6 +8,7 @@
  */
 
 import { readWavPcm16 } from "../audio/wav.js";
+import type { DiarizerSegment } from "./diarize.js";
 
 export interface SegmenterOptions {
   /** Analysis frame length in ms. */
@@ -37,6 +38,11 @@ export interface SegmenterOptions {
 export interface Segment {
   startMs: number;
   endMs: number;
+  /** The diarizer speaker this part belongs to (specs/meeting-
+   *  transcription-v2.md §3.4, system channel only). Set by
+   *  `cutAtSpeakerChanges`; undefined for parts with no overlapping turn
+   *  and for every mic-channel segment. */
+  speaker?: string;
 }
 
 export const DEFAULT_SEGMENTER_OPTIONS: SegmenterOptions = {
@@ -89,10 +95,19 @@ export function mergeSegmentsToward(
     const next = segments[i];
     const gap = next.startMs - last.endMs;
     const merged = next.endMs - last.startMs;
+    // A speaker cut is a hard boundary (specs/meeting-transcription-v2.md
+    // §3.4): two parts that carry DIFFERENT speakers never merge. Parts of
+    // the same speaker (or a part with no speaker) still merge toward the
+    // target as before.
+    const differentSpeakers =
+      last.speaker !== undefined &&
+      next.speaker !== undefined &&
+      last.speaker !== next.speaker;
     if (
       gap <= o.maxGapMs &&
       merged <= o.maxSegmentMs &&
-      last.endMs - last.startMs < o.targetMs
+      last.endMs - last.startMs < o.targetMs &&
+      !differentSpeakers
     ) {
       last.endMs = next.endMs;
     } else {
@@ -270,16 +285,218 @@ function forceSplit(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Speaker cuts (specs/meeting-transcription-v2.md §3.4, I4)
+// ---------------------------------------------------------------------------
+
+/** Turns shorter than this join the previous turn (flicker absorption). */
+const FLICKER_MS = 1000;
+/** A cut part shorter than this merges into a neighbor. */
+const SHORT_PART_MS = 1500;
+/** Cuts snap to the lowest-energy frame within this window. */
+const SNAP_WINDOW_MS = 300;
+
+interface TurnSlice {
+  speaker: string;
+  startMs: number;
+  endMs: number;
+}
+
+/** Join neighbor turns of the same speaker (spec §3.4 step 2/4). */
+function mergeSameSpeakerTurns(turns: TurnSlice[]): TurnSlice[] {
+  const out: TurnSlice[] = [];
+  for (const t of turns) {
+    const last = out[out.length - 1];
+    if (last && last.speaker === t.speaker) {
+      last.endMs = Math.max(last.endMs, t.endMs);
+    } else {
+      out.push({ ...t });
+    }
+  }
+  return out;
+}
+
+/** Remove flicker (spec §3.4 step 3): a turn under 1 s joins the previous
+ * turn; the first turn, if under 1 s, joins the next. */
+function absorbFlicker(turns: TurnSlice[]): TurnSlice[] {
+  if (turns.length === 0) return [];
+  const out: TurnSlice[] = [];
+  for (const t of turns) {
+    const last = out[out.length - 1];
+    if (last && t.endMs - t.startMs < FLICKER_MS) {
+      last.endMs = Math.max(last.endMs, t.endMs);
+    } else {
+      out.push({ ...t });
+    }
+  }
+  if (out.length >= 2 && out[0].endMs - out[0].startMs < FLICKER_MS) {
+    out[1].startMs = out[0].startMs;
+    out.shift();
+  }
+  return out;
+}
+
+/**
+ * Snap a cut to the lowest-energy frame within +/- SNAP_WINDOW_MS of the
+ * turn start (spec §3.4 step 5), kept strictly inside the segment.
+ */
+function snapCut(
+  cutMs: number,
+  segStartMs: number,
+  segEndMs: number,
+  rmsDb: Float64Array,
+  frameMs: number,
+): number {
+  const lo = Math.max(segStartMs, cutMs - SNAP_WINDOW_MS);
+  const hi = Math.min(segEndMs, cutMs + SNAP_WINDOW_MS);
+  const loFrame = Math.max(0, Math.ceil(lo / frameMs));
+  const hiFrame = Math.min(rmsDb.length, Math.floor(hi / frameMs) + 1);
+  if (hiFrame <= loFrame) {
+    return Math.min(Math.max(cutMs, segStartMs + 1), segEndMs - 1);
+  }
+  let best = loFrame;
+  for (let i = loFrame; i < hiFrame; i++) {
+    if (rmsDb[i] < rmsDb[best]) best = i;
+  }
+  const snapped = Math.round((best + 0.5) * frameMs);
+  return Math.min(Math.max(snapped, segStartMs + 1), segEndMs - 1);
+}
+
+/** The turn with the most overlap with the part; undefined when no turn
+ * overlaps it at all (spec §3.4 step 7: that part gets no speaker). */
+function ownerSpeaker(part: Segment, turns: TurnSlice[]): string | undefined {
+  let best: string | undefined;
+  let bestMs = 0;
+  for (const t of turns) {
+    const overlap =
+      Math.min(part.endMs, t.endMs) - Math.max(part.startMs, t.startMs);
+    if (overlap > bestMs) {
+      best = t.speaker;
+      bestMs = overlap;
+    }
+  }
+  return best;
+}
+
+/**
+ * A part shorter than SHORT_PART_MS merges into the previous part, taking
+ * the speaker of the longer of the two (spec §3.4 step 8). This is where a
+ * sub-1.5 s sliver of one speaker joins a longer neighbor of the other —
+ * the deliberate opposite of `mergeSegmentsToward`, which never merges
+ * across different speakers.
+ */
+function mergeShortParts(parts: Segment[]): Segment[] {
+  if (parts.length <= 1) return parts;
+  const out: Segment[] = [{ ...parts[0] }];
+  for (let i = 1; i < parts.length; i++) {
+    const last = out[out.length - 1];
+    const cur = parts[i];
+    if (cur.endMs - cur.startMs < SHORT_PART_MS) {
+      const lastDur = last.endMs - last.startMs;
+      if (cur.endMs - cur.startMs > lastDur) last.speaker = cur.speaker;
+      last.endMs = cur.endMs;
+    } else {
+      out.push({ ...cur });
+    }
+  }
+  return out;
+}
+
+function cutSegment(
+  seg: Segment,
+  turns: TurnSlice[],
+  rmsDb: Float64Array,
+  frameMs: number,
+): Segment[] {
+  // Step 1: the turns that overlap the segment, clipped to it.
+  const clipped: TurnSlice[] = [];
+  for (const t of turns) {
+    if (t.endMs <= seg.startMs || t.startMs >= seg.endMs) continue;
+    clipped.push({
+      speaker: t.speaker,
+      startMs: Math.max(t.startMs, seg.startMs),
+      endMs: Math.min(t.endMs, seg.endMs),
+    });
+  }
+  if (clipped.length === 0) return [seg];
+
+  // Steps 2-4: same-speaker neighbors, flicker, same-speaker again.
+  let live = mergeSameSpeakerTurns(clipped);
+  live = absorbFlicker(live);
+  live = mergeSameSpeakerTurns(live);
+
+  if (live.length === 1) {
+    return [{ ...seg, speaker: live[0].speaker }];
+  }
+
+  // Steps 5-6: one cut per speaker change (each turn start after the
+  // first), snapped to the lowest-energy frame.
+  const bounds = [seg.startMs];
+  for (let i = 1; i < live.length; i++) {
+    bounds.push(
+      snapCut(live[i].startMs, seg.startMs, seg.endMs, rmsDb, frameMs),
+    );
+  }
+  bounds.push(seg.endMs);
+  // Snapping can push a cut onto its neighbor: keep bounds strictly
+  // increasing so no part is empty.
+  for (let i = 1; i < bounds.length; i++) {
+    if (bounds[i] <= bounds[i - 1]) bounds[i] = bounds[i - 1] + 1;
+  }
+
+  const parts: Segment[] = [];
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const part: Segment = { startMs: bounds[i], endMs: bounds[i + 1] };
+    const speaker = ownerSpeaker(part, live);
+    if (speaker !== undefined) part.speaker = speaker;
+    parts.push(part);
+  }
+
+  // Step 8: short parts merge into a neighbor.
+  return mergeShortParts(parts);
+}
+
+/**
+ * Cut system-channel segments at speaker changes (specs/meeting-
+ * transcription-v2.md §3.4). Pure: same inputs, same output. `turns` are the
+ * diarizer turns in time order; `rmsDb` is the per-frame energy in the same
+ * frame layout `segmentPcm` computes (frame length `frameMs`). Segments
+ * with no overlapping turn are returned untouched (no speaker).
+ */
+export function cutAtSpeakerChanges(
+  segments: Segment[],
+  turns: DiarizerSegment[],
+  rmsDb: Float64Array,
+  frameMs: number,
+): Segment[] {
+  if (turns.length === 0) return segments.map((s) => ({ ...s }));
+  const turnSlices: TurnSlice[] = turns.map((t) => ({
+    speaker: t.speakerId,
+    startMs: Math.round(t.startTimeSeconds * 1000),
+    endMs: Math.round(t.endTimeSeconds * 1000),
+  }));
+  const out: Segment[] = [];
+  for (const seg of segments) {
+    out.push(...cutSegment(seg, turnSlices, rmsDb, frameMs));
+  }
+  return out;
+}
+
 /**
  * Segment a mono PCM16 channel into utterance chunks.
  *
  * Permissive by design: borderline audio is emitted as a segment rather than
  * dropped, since a false positive only costs an extra STT call.
+ *
+ * `turns` (specs/meeting-transcription-v2.md §3.4): diarizer turns that cut
+ * the segments at speaker changes. Only the CALLER decides which channel
+ * gets them (the system track only — the mic is never cut).
  */
 export function segmentPcm(
   pcm: Int16Array,
   sampleRate: number,
   optsIn?: Partial<SegmenterOptions>,
+  turns?: DiarizerSegment[],
 ): Segment[] {
   if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
     throw new Error(`segmentPcm: invalid sampleRate ${sampleRate}`);
@@ -306,8 +523,12 @@ export function segmentPcm(
   segments = padAndMerge(segments, totalMs, opts);
   segments = mergeWithGap(segments, opts.coalesceGapMs);
   segments = forceSplit(segments, rmsDb, opts);
+  if (turns && turns.length > 0) {
+    segments = cutAtSpeakerChanges(segments, turns, rmsDb, opts.frameMs);
+  }
 
   return segments.map((s) => ({
+    ...s,
     startMs: Math.round(s.startMs),
     endMs: Math.round(s.endMs),
   }));
@@ -316,10 +537,17 @@ export function segmentPcm(
 /**
  * Segment one on-disk WAV channel. Returns null when the file is missing. A
  * bad header still throws. Only the segments leave this function, so the PCM
- * can be freed before the next channel is read.
+ * can be freed before the next channel is read. `turns` are diarizer speaker
+ * cuts (specs/meeting-transcription-v2.md §3.4); pass them only for the
+ * system channel.
  */
-export function segmentWavFile(path: string): Segment[] | null {
+export function segmentWavFile(
+  path: string,
+  turns?: DiarizerSegment[],
+): Segment[] | null {
   const channel = readWavPcm16(path);
   if (!channel) return null;
-  return mergeSegmentsToward(segmentPcm(channel.pcm, channel.sampleRate));
+  return mergeSegmentsToward(
+    segmentPcm(channel.pcm, channel.sampleRate, undefined, turns),
+  );
 }

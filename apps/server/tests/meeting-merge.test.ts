@@ -277,6 +277,23 @@ describe("isHallucination", () => {
       ),
     ).toBe(false);
   });
+
+  // Speaker cuts (specs/meeting-transcription-v2.md §3.4) make short
+  // single-speaker chunks: the EXACT rule skips a labeled chunk and a chunk
+  // above 1 s, so a real "thank you" from a speaker survives.
+  it("skips the exact rule for a labeled chunk", () => {
+    expect(isHallucination(seg(0, 500, "thank you", "2"))).toBe(false);
+    // The prefix rule is untouched: it names whole-utterance junk.
+    expect(isHallucination(seg(0, 3000, "Subtitles by SomeCorp", "2"))).toBe(
+      true,
+    );
+  });
+
+  it("skips the exact rule for a chunk above 1 s", () => {
+    expect(isHallucination(seg(0, 1500, "thank you"))).toBe(false);
+    // At or under 1 s, unlabeled, it is still a hallucination.
+    expect(isHallucination(seg(0, 1000, "thank you"))).toBe(true);
+  });
 });
 
 describe("isVocabLeak", () => {
@@ -370,5 +387,28 @@ describe("filterConsecutiveRepeats", () => {
       seg(2, 3, "yes"),
     ];
     expect(filterConsecutiveRepeats(segs)).toHaveLength(3);
+  });
+
+  // Speaker cuts (specs/meeting-transcription-v2.md §3.4): a run of
+  // identical texts across DIFFERENT speakers is agreement, not a stuck
+  // loop — the collapse only applies within one label.
+  it("does not collapse a run across different labels", () => {
+    const segs = [
+      seg(0, 1, "yes", "1"),
+      seg(1, 2, "yes", "2"),
+      seg(2, 3, "yes", "1"),
+    ];
+    expect(filterConsecutiveRepeats(segs)).toHaveLength(3);
+  });
+
+  it("still collapses a run within one label", () => {
+    const segs = [
+      seg(0, 1, "yes", "1"),
+      seg(1, 2, "yes", "1"),
+      seg(2, 3, "yes", "1"),
+    ];
+    const out = filterConsecutiveRepeats(segs);
+    expect(out).toHaveLength(1);
+    expect(out[0].startMs).toBe(0);
   });
 });

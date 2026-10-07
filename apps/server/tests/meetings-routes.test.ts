@@ -3231,14 +3231,22 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
     expect(done.job_error).toBeNull();
   });
 
-  it("a cancel that lands during the diarization pass skips the auto-run (the cancel is not lost)", async () => {
+  it("a cancel that lands during the diarizer run exits the job (I4: cancel right after runDiarizer)", async () => {
+    // Phase 4 (specs/meeting-transcription-v2.md §3.4): the diarizer now
+    // runs BEFORE transcription, and the cancel check sits right after it
+    // — a cancel that lands while the diarizer is parked takes the cancel
+    // exit: no chunks run, no labels, no status flip, no auto Enhance.
     writeSetting("meeting_diarization_enabled", "true");
     try {
       const { promise: gate, resolve: release } = Promise.withResolvers<void>();
       let diarizeRuns = 0;
       let enhanceCalls = 0;
+      let transcribeCalls = 0;
       __setMeetingsTestOverrides({
-        createTranscriberDeps: fakeDeps(async () => ({ text: "some words" })),
+        createTranscriberDeps: fakeDeps(async () => {
+          transcribeCalls++;
+          return { text: "some words" };
+        }),
         diarizeDeps: {
           resolveBinaryPath: () => "/fake/fluidaudio-diarize",
           resolveModelsDirPath: () => "/fake/resources/models",
@@ -3258,8 +3266,7 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
       writeSetting("meeting_enhance_auto_run", "true");
       const res = await postEmpty(app, "/api/meetings/m1/transcribe");
       expect(res.status).toBe(202);
-      // The job is parked inside the diarizer run — AFTER the cancel
-      // check at the top of the job already passed.
+      // The job is parked inside the diarizer run (before any chunk).
       await waitForMicrotasks(() => diarizeRuns >= 1);
 
       const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
@@ -3267,8 +3274,10 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
 
       release();
       const done = await waitForNoJob("m1");
-      expect(done.status).toBe("transcribed"); // the finished transcript stands
-      expect(enhanceCalls).toBe(0); // the auto-run was skipped, not lost
+      expect(done.status).toBe("failed");
+      expect(done.error).toBe("Cancelled by user");
+      expect(transcribeCalls).toBe(0); // no chunk ever ran
+      expect(enhanceCalls).toBe(0); // the auto-run never happened
     } finally {
       deleteSetting("meeting_diarization_enabled");
     }
@@ -3296,5 +3305,195 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
 
     release();
     await waitForNoJob("m1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 (I4, specs/meeting-transcription-v2.md §3.4): diarize first,
+// cut the system track at speaker changes, label with the same turns.
+// ---------------------------------------------------------------------------
+
+describe("Phase 4 (I4): diarize first and speaker cuts", () => {
+  /** One 7 s tone from 1.5 s on (8.5 s total): a single VAD opening that
+   * spans the 4 s turn boundary, so the cut really splits the segment. */
+  function longToneWav(): Buffer {
+    const leadMs = 1500;
+    const toneMs = 7000;
+    const totalMs = leadMs + toneMs;
+    const totalSamples = Math.round((totalMs / 1000) * SAMPLE_RATE);
+    return buildBaseWav({
+      data: tonePayload(totalSamples, [
+        [
+          Math.round((leadMs / 1000) * SAMPLE_RATE),
+          Math.round(((leadMs + toneMs) / 1000) * SAMPLE_RATE),
+        ],
+      ]),
+    });
+  }
+
+  function makeAudioDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "meeting-i4-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const wav = longToneWav();
+    writeFileSync(join(dir, "mic.wav"), wav);
+    writeFileSync(join(dir, "system.wav"), wav);
+    return dir;
+  }
+
+  async function waitForNoJob(id: string): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 2000; i++) {
+      const res = await app.request(`/api/meetings/${id}`);
+      const body = (await res.json()) as Record<string, unknown>;
+      if (body.job === null) return body;
+      await Promise.resolve();
+    }
+    throw new Error("the job never released its slot");
+  }
+
+  it("runs the binary once, cuts the system track, and labels from the stored turns", async () => {
+    const dir = makeAudioDir();
+    let probeCalls = 0;
+    let runCalls = 0;
+    let transcribeCalls = 0;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        transcribeCalls++;
+        return { text: "some words" };
+      }),
+      diarizeDeps: {
+        resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+        resolveModelsDirPath: () => "/fake/resources/models",
+        execFile: async (_file, args) => {
+          if (args[0] === "--probe") {
+            probeCalls++;
+            return { stdout: "READY", stderr: "" };
+          }
+          runCalls++;
+          return {
+            stdout: JSON.stringify([
+              { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 4 },
+              { speakerId: "B", startTimeSeconds: 4, endTimeSeconds: 10 },
+            ]),
+            stderr: "",
+          };
+        },
+      },
+    });
+    insertMeeting("m1", "recorded", dir);
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+
+    // The binary ran exactly once (probe + one real run): the job labels
+    // with the turns it already has — never a second run.
+    expect(probeCalls).toBe(1);
+    expect(runCalls).toBe(1);
+
+    // The 7 s tone is one VAD opening on each channel. The system track
+    // is cut at the 4 s turn boundary; the mic track is never cut.
+    const rows = getDb()
+      .prepare(
+        `SELECT source, idx, start_ms, end_ms, speaker_label
+           FROM meeting_segments WHERE meeting_id = 'm1' ORDER BY source, idx`,
+      )
+      .all() as unknown as Array<{
+      source: string;
+      idx: number;
+      start_ms: number;
+      end_ms: number;
+      speaker_label: string | null;
+    }>;
+    const mic = rows.filter((r) => r.source === "mic");
+    const system = rows.filter((r) => r.source === "system");
+    expect(mic).toHaveLength(1);
+    expect(system).toHaveLength(2);
+    expect(transcribeCalls).toBe(3); // 1 mic + 2 system chunks
+
+    // The cut sits within the +/-300 ms snap window of the 4 s turn start.
+    expect(system[0]!.end_ms).toBe(system[1]!.start_ms);
+    expect(Math.abs(system[0]!.end_ms - 4000)).toBeLessThanOrEqual(300);
+
+    // Labels from the stored turns: first appearance A -> "1", B -> "2";
+    // the mic channel is never labeled.
+    expect(system.map((r) => r.speaker_label)).toEqual(["1", "2"]);
+    expect(mic.map((r) => r.speaker_label)).toEqual([null]);
+  });
+
+  it("a missing binary keeps the old behavior: no cuts, no labels, never fails the job", async () => {
+    const dir = makeAudioDir();
+    let transcribeCalls = 0;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        transcribeCalls++;
+        return { text: "some words" };
+      }),
+      // Deterministic "not built" regardless of process.cwd().
+      diarizeDeps: {
+        resolveBinaryPath: () => null,
+        resolveModelsDirPath: () => null,
+        execFile: async () => {
+          throw new Error("must not run");
+        },
+      },
+    });
+    insertMeeting("m1", "recorded", dir);
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    expect(done.error).toBeNull();
+
+    // The same 7 s tone, uncut, on both channels; no labels anywhere.
+    const rows = getDb()
+      .prepare(
+        `SELECT source, speaker_label FROM meeting_segments
+           WHERE meeting_id = 'm1' ORDER BY source, idx`,
+      )
+      .all() as unknown as Array<{
+      source: string;
+      speaker_label: string | null;
+    }>;
+    expect(rows).toHaveLength(2); // one segment per channel
+    expect(rows.every((r) => r.speaker_label === null)).toBe(true);
+    expect(transcribeCalls).toBe(2);
+  });
+
+  it("resolveConfig runs before the diarizer: a missing model never spends diarizer time", async () => {
+    const dir = makeAudioDir();
+    let runCalls = 0;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async () => ({
+        getProvider: () => ({
+          providerId: "fake",
+          transcribe: async () => ({ text: "unreachable" }),
+          supportsStreaming: () => false,
+        }),
+        resolveConfig: () => {
+          throw new Error("No voice model configured");
+        },
+        sleep: async () => {},
+        backoffBaseMs: 1,
+        maxAttempts: 1,
+      }),
+      diarizeDeps: {
+        resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+        resolveModelsDirPath: () => "/fake/resources/models",
+        execFile: async (_file, args) => {
+          if (args[0] !== "--probe") runCalls++;
+          return { stdout: args[0] === "--probe" ? "READY" : "[]", stderr: "" };
+        },
+      },
+    });
+    insertMeeting("m1", "recorded", dir);
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("failed");
+    // The diarizer never ran: the failure surfaced before it.
+    expect(runCalls).toBe(0);
   });
 });

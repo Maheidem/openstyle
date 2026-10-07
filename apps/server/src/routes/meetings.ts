@@ -15,11 +15,14 @@ import { z } from "zod";
 import { getDb, withTransaction } from "../lib/db.js";
 import { isDictationActive } from "../lib/dictation-activity.js";
 import {
+  applyDiarization,
   createDefaultDiarizeDeps,
   type DiarizeDeps,
+  type DiarizerSegment,
   getMeetingDiarizationEnabledSetting,
   probeDiarizationModels,
   runDiarizationPass,
+  runDiarizer,
 } from "../lib/meetings/diarize.js";
 import {
   enhanceMeetingTranscript,
@@ -375,20 +378,6 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
   // then leave the ENHANCE job's slot alone — runEnhanceJob owns it.
   let handedOff = false;
   try {
-    const micFound = segmentWavFile(join(audioDir, MIC_WAV));
-    const systemFound = segmentWavFile(join(audioDir, SYSTEM_WAV));
-    if (!micFound && !systemFound) {
-      throw new Error(`No audio files found in ${audioDir}`);
-    }
-    // Phase B (specs/meeting-transcription-quality.md §5): merge VAD output
-    // toward a ~20-25s target per channel before transcription — pure
-    // post-processing over segmentPcm's already-detected boundaries, mic
-    // and system merged independently (never bridged across channels).
-    const micSegments = micFound ?? [];
-    const systemSegments = systemFound ?? [];
-    const total = micSegments.length + systemSegments.length;
-    setProgress(id, { done: 0, total, failed: 0 });
-
     // Loaded once per job, not per chunk — vocabulary rarely changes
     // mid-meeting and loadVocabularyTerms() hits the DB.
     const vocabTerms = loadVocabularyTerms();
@@ -398,12 +387,84 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       onProgress: (p) => setProgress(id, p),
       shouldStop: () => isCancelRequested(id),
     });
-    // Resolve once up front: stamps provider/model on the row and fails fast
-    // (before any STT call) when no voice model or key is configured.
+    // I4 (specs/meeting-transcription-v2.md §3.4): resolve the config
+    // FIRST — a missing model or key fails before the diarizer runs.
+    // Stamps provider/model on the row and fails fast before any STT call.
     const config = deps.resolveConfig();
     db.prepare(
       "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
     ).run(config.providerId, config.modelId, id);
+
+    // I4: diarize BEFORE transcription, so the system track can be cut at
+    // speaker changes. Active only when the setting is on (default-on per
+    // Decision 6, owner 2026-10-06). runDiarizer returns null on any
+    // expected failure (missing wav/binary/models) and the job keeps the
+    // old behavior: no speaker cuts, no labels, never a failed job.
+    let diarSegments: DiarizerSegment[] | null = null;
+    if (getMeetingDiarizationEnabledSetting()) {
+      setProgress(id, { done: 0, total: 0, failed: 0, phase: "diarizing" });
+      const durationRow = db
+        .prepare("SELECT duration_ms FROM meetings WHERE id = ?")
+        .get(id) as { duration_ms: number | null } | undefined;
+      // Brackets the binary's wall time for the measurement: the
+      // "diarization labeled" line comes AFTER transcription in the new
+      // order, so the previous-log-line heuristic can't span the binary.
+      log.info(
+        `meeting ${id}: diarization started (${durationRow?.duration_ms ?? 0} ms audio)`,
+      );
+      diarSegments = await runDiarizer(
+        audioDir,
+        durationRow?.duration_ms ?? 0,
+        testOverrides.diarizeDeps ?? createDefaultDiarizeDeps(),
+      ).catch((err) => {
+        log.warn(
+          `meeting ${id}: diarization failed, falling back to no speaker cuts: ${String(err)}`,
+        );
+        return null;
+      });
+      // Closes the wall-time bracket for the measurement (the "labeled"
+      // line comes after transcription and would include the whole STT
+      // run). The turn count is not private (speaker ids and times only).
+      log.info(
+        `meeting ${id}: diarization finished (${diarSegments?.length ?? 0} turns)`,
+      );
+      // Cancel right after the diarizer (spec §3.4): the expensive
+      // on-device step is done — don't spend minutes of STT on a meeting
+      // the user already cancelled. Same cancel exit as after
+      // transcription: the row lands in 'failed'/"Cancelled by user", no
+      // labels, no status flip, no auto Enhance.
+      if (isCancelRequested(id)) {
+        db.prepare(
+          "UPDATE meetings SET status = ?, error = ? WHERE id = ?",
+        ).run("failed", "Cancelled by user", id);
+        writeTranscriptMarkdown(id, audioDir);
+        log.info(
+          `meeting ${id}: transcription cancelled by user after the diarization pass`,
+        );
+        return;
+      }
+    } else {
+      log.info(`meeting ${id}: diarization skipped (setting is off)`);
+    }
+
+    const micFound = segmentWavFile(join(audioDir, MIC_WAV));
+    const systemFound = segmentWavFile(
+      join(audioDir, SYSTEM_WAV),
+      diarSegments ?? undefined,
+    );
+    if (!micFound && !systemFound) {
+      throw new Error(`No audio files found in ${audioDir}`);
+    }
+    // Phase B (specs/meeting-transcription-quality.md §5): merge VAD output
+    // toward a ~20-25s target per channel before transcription — pure
+    // post-processing over segmentPcm's already-detected boundaries, mic
+    // and system merged independently (never bridged across channels).
+    // The speaker cuts from above travel with the segments: merging never
+    // crosses two different speakers (G4).
+    const micSegments = micFound ?? [];
+    const systemSegments = systemFound ?? [];
+    const total = micSegments.length + systemSegments.length;
+    setProgress(id, { done: 0, total, failed: 0, phase: "transcribing" });
 
     // Phase A2 (specs/meeting-transcription-quality.md §3.2): resolve the
     // meeting-level language once (sticky across re-transcribe via
@@ -468,25 +529,14 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       return;
     }
 
-    // Diarization Phase 1 (specs/meeting-diarization.md §9): after
-    // transcription resolves, before status flips to 'transcribed' and
-    // before writeTranscriptMarkdown, so the markdown export always renders
-    // final labels, never an intermediate undiarized state. Fails closed —
-    // every failure inside runDiarizationPass degrades in-function; this
-    // .catch is defense-in-depth for anything unanticipated, never the
-    // primary error path, and never fails the transcribe job itself.
-    if (getMeetingDiarizationEnabledSetting()) {
-      await runDiarizationPass(
-        id,
-        audioDir,
-        testOverrides.diarizeDeps ?? createDefaultDiarizeDeps(),
-      ).catch((err) => {
-        log.warn(
-          `meeting ${id}: diarization failed, falling back to "Them": ${String(err)}`,
-        );
-      });
-    } else {
-      log.info(`meeting ${id}: diarization skipped (setting is off)`);
+    // I4 (specs/meeting-transcription-v2.md §3.4): label the system
+    // segments with the turns the diarizer ALREADY produced before
+    // segmentation — the binary ran once, never a second time. Still before
+    // the status flip and writeTranscriptMarkdown, so the markdown export
+    // renders final labels. applyDiarization degrades in-function on a
+    // failed write (NULL labels, "Them"); it never fails the job.
+    if (diarSegments !== null) {
+      applyDiarization(id, diarSegments);
     }
 
     const failed = results.filter((r) => r.status === "failed").length;
@@ -958,6 +1008,12 @@ const meetings = new Hono()
     // — a stale name/merge mapping would silently misattribute a confirmed
     // name to a different, unrelated voice.
     db.prepare("DELETE FROM meeting_speakers WHERE meeting_id = ?").run(id);
+    // Phase 4 (specs/meeting-transcription-v2.md §3.4): the old run's
+    // diarizer turns go with the old segments — the new run re-diarizes
+    // and re-writes them (or the measurement sees none, not stale ones).
+    db.prepare("DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?").run(
+      id,
+    );
     claimJob(id, "transcribe", { done: 0, total: 0, failed: 0 });
     // A full re-transcribe supersedes any earlier background-job failure —
     // without this, a stale "Summary failed" note would keep rendering next to

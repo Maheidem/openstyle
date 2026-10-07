@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 36;
+const SCHEMA_VERSION = 37;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -928,6 +928,26 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // `omlx` and `local-llm` model rows move into it. One way: an older build
     // has no `server` provider (rule M7).
     migrateOwnServers(db, (name) => tableExists(db, name));
+  }
+
+  if (currentVersion < 37) {
+    // Meeting transcription v2 phase 4 (specs/meeting-transcription-v2.md
+    // §3.4): the diarizer's raw turns, persisted when diarization runs so
+    // the measurement can count chunks that overlap more than one turn
+    // (multiTurnChunks, §7.4) and a re-transcribe can label again without
+    // spending diarizer time. The OLD order (before phase 4) never stored
+    // turns, only the derived speaker_label — those meetings have no rows
+    // here and the metric reports null, exactly as before.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_diarizer_turns (
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        idx INTEGER NOT NULL,
+        speaker_id TEXT NOT NULL,
+        start_ms INTEGER NOT NULL,
+        end_ms INTEGER NOT NULL,
+        PRIMARY KEY (meeting_id, idx)
+      )
+    `);
   }
 
   // Upsert schema version

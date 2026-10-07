@@ -12,7 +12,14 @@
 //     [--diarizer-seconds <n>]
 //
 // Metric definitions follow spec 7.4. `multiTurnChunks` is null in the
-// baseline: the old order never stores diarizer turns, only labels.
+// baseline: the old order never stores diarizer turns, only labels. Phase 4
+// (spec 3.4) stores the raw turns in meeting_diarizer_turns. A chunk counts
+// as multi-turn when it overlaps turns of TWO OR MORE distinct speakers by
+// more than the 300 ms snap window: the cut rule only cuts at speaker
+// changes, so same-speaker multi-turn overlap (a 15 s chunk over several
+// utterance turns of one voice) is normal, and a sub-window sliver is the
+// sanctioned snap artifact (the cut lands in the quiet part). Only a
+// second speaker inside one chunk violates G4.
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -62,6 +69,21 @@ const segments = db
   .all(meetingId);
 
 const vocabulary = db.prepare("SELECT term FROM vocabulary").all();
+
+// The diarizer's raw turns (spec 3.4). Absent table (a scratch DB from
+// before phase 4) or no rows (diarization did not run) → null metric.
+let turns = null;
+try {
+  const t = db
+    .prepare(
+      `SELECT speaker_id, start_ms, end_ms FROM meeting_diarizer_turns
+       WHERE meeting_id = ? ORDER BY idx`,
+    )
+    .all(meetingId);
+  turns = t.length > 0 ? t : null;
+} catch {
+  turns = null;
+}
 db.close();
 
 const bySource = { mic: [], system: [] };
@@ -205,18 +227,56 @@ if (diarizerSecondsRaw !== undefined) {
       );
     };
     const tEnd = parseTs(lines[labeledIdx]);
-    let tStart = null;
-    for (let i = labeledIdx - 1; i >= 0; i -= 1) {
-      tStart = parseTs(lines[i]);
-      if (tStart !== null) break;
+    // Phase 4 (spec 3.4): the "diarization started"/"finished" lines
+    // bracket the binary's wall time (the labeled line comes after
+    // transcription in the new order and would include the whole STT
+    // run). Old-order logs have neither — fall back to the previous log
+    // line before "labeled" as a lower bound.
+    let pair = null;
+    const finishedIdx = lines.findIndex((l) =>
+      l.includes("diarization finished"),
+    );
+    const startedIdx = lines.findIndex((l) =>
+      l.includes("diarization started"),
+    );
+    if (startedIdx >= 0 && finishedIdx >= 0) {
+      pair = [parseTs(lines[startedIdx]), parseTs(lines[finishedIdx])];
+    } else if (labeledIdx > 0) {
+      let tStart = null;
+      for (let i = labeledIdx - 1; i >= 0; i -= 1) {
+        tStart = parseTs(lines[i]);
+        if (tStart !== null) break;
+      }
+      pair = [tStart, tEnd];
     }
-    if (tEnd !== null && tStart !== null && tEnd >= tStart) {
-      diarizerSeconds = Math.round((tEnd - tStart) * 100) / 100;
+    if (pair && pair[0] !== null && pair[1] !== null && pair[1] >= pair[0]) {
+      diarizerSeconds = Math.round((pair[1] - pair[0]) * 100) / 100;
     }
   }
 }
 
 const audioSeconds = meeting.duration_ms ? meeting.duration_ms / 1000 : null;
+
+// multiTurnChunks: system chunks overlapping turns of two or more
+// distinct speakers by more than the 300 ms snap window (see header).
+// Null when no turns were stored (old-order runs).
+const SNAP_TOLERANCE_MS = 300;
+let multiTurnChunks = null;
+if (turns) {
+  multiTurnChunks = 0;
+  for (const s of systemRows) {
+    const speakers = new Set();
+    for (const t of turns) {
+      const overlap =
+        Math.min(s.end_ms, t.end_ms) - Math.max(s.start_ms, t.start_ms);
+      if (overlap > SNAP_TOLERANCE_MS) {
+        speakers.add(t.speaker_id);
+        if (speakers.size >= 2) break;
+      }
+    }
+    if (speakers.size >= 2) multiTurnChunks += 1;
+  }
+}
 
 const metrics = {
   meetingId,
@@ -227,7 +287,7 @@ const metrics = {
     count: labeledSystem.length,
     distinctLabels: distinctLabels.size,
   },
-  multiTurnChunks: null,
+  multiTurnChunks,
   termHits,
   textHash,
   dupJoins,
@@ -253,7 +313,7 @@ console.log(
   [
     `chunks=${metrics.chunks.total} (mic=${metrics.chunks.mic} system=${metrics.chunks.system})`,
     `wallSeconds=${metrics.wallSeconds}`,
-    `labeled=${metrics.labeled.count}/${metrics.labeled.distinctLabels}`,
+    `labeled=${metrics.labeled.count}/${metrics.labeled.distinctLabels} multiTurnChunks=${metrics.multiTurnChunks}`,
     `termHits=${metrics.termHits}`,
     `dupJoins=${metrics.dupJoins} (k>=2: ${metrics.dupJoinsK2})`,
     `contiguousCuts=${metrics.contiguousCuts}`,

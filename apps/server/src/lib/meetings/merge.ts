@@ -135,7 +135,20 @@ export function isHallucination(seg: TranscriptSegment): boolean {
   // you" mid-sentence lives inside longer text and survives.
   const words = norm.split(" ").length;
   const shortEnough = words <= 8;
-  if (shortEnough && HALLUCINATION_EXACT.has(norm)) return true;
+  // Speaker cuts (specs/meeting-transcription-v2.md §3.4) make short
+  // single-speaker chunks, and short chunks trigger this filter. The exact
+  // rule therefore skips a chunk that has a diarization speakerLabel, or a
+  // chunk longer than 1 s — a real "thank you" from a labeled speaker (or a
+  // chunk with any context) survives. The prefix rule is untouched: it
+  // names whole-utterance junk, not a thing a speaker says.
+  if (
+    shortEnough &&
+    HALLUCINATION_EXACT.has(norm) &&
+    seg.speakerLabel === undefined &&
+    seg.endMs - seg.startMs <= 1000
+  ) {
+    return true;
+  }
   if (shortEnough && HALLUCINATION_PREFIXES.some((p) => norm.startsWith(p))) {
     return true;
   }
@@ -146,6 +159,13 @@ export function isHallucination(seg: TranscriptSegment): boolean {
  * Same-channel consecutive-repeat filter: whisper stuck-loop output repeats
  * one phrase over and over. Runs of >= REPEAT_MIN_RUN identical normalized
  * texts keep only the first occurrence.
+ *
+ * Speaker cuts (specs/meeting-transcription-v2.md §3.4) mean a run of
+ * identical texts can be several speakers agreeing — two speakers who each
+ * say "yes" is real speech, not a stuck loop. A run therefore collapses
+ * only when every segment in it carries the SAME speaker label (two
+ * segments both unlabeled count as the same label: without diarization the
+ * filter behaves exactly as before).
  */
 export function filterConsecutiveRepeats(
   segments: TranscriptSegment[],
@@ -155,7 +175,13 @@ export function filterConsecutiveRepeats(
   while (i < segments.length) {
     const norm = normalizeText(segments[i].text);
     let j = i + 1;
-    while (j < segments.length && normalizeText(segments[j].text) === norm) j++;
+    while (
+      j < segments.length &&
+      normalizeText(segments[j].text) === norm &&
+      segments[j].speakerLabel === segments[i].speakerLabel
+    ) {
+      j++;
+    }
     const runLength = j - i;
     if (runLength >= REPEAT_MIN_RUN) {
       out.push(segments[i]);

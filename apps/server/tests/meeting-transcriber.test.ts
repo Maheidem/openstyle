@@ -1050,11 +1050,18 @@ describe("phase 3b: previous-chunk context and echo guard (I1, §3.1)", () => {
   it("no context after a chunk rejected by the hallucination filter", async () => {
     // "thank you" is an exact silence hallucination (merge.ts HALLUCINATION
     // list): the lane must treat the chunk as unclean, though its status
-    // is ok.
+    // is ok. The exact rule only applies at or under 1 s (phase 4: longer
+    // chunks and labeled chunks are real speech), so the first chunk is
+    // sub-second.
     const { dir, fake, t } = setup({
       texts: ["thank you", "next chunk speech"],
     });
-    const results = await run(t, dir, { micSegments: twoChunks });
+    const results = await run(t, dir, {
+      micSegments: [
+        { startMs: 0, endMs: 800 },
+        { startMs: 4000, endMs: 8000 },
+      ],
+    });
     expect(results[0]!.status).toBe("ok");
     expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
   });

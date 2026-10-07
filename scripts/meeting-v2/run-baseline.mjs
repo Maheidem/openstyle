@@ -4,7 +4,8 @@
 // Runs one baseline run (R0 = diarization off, R0d = diarization on,
 // R3a = phase 3a with R0's settings, R3b/R3b2 = phase 3b with R0's
 // settings; R3b2 = the review-fixed context guards, R3c-off/R3c-on =
-// the context setting (owner decision 2026-10-07) absent / "true")
+// the context setting (owner decision 2026-10-07) absent / "true",
+// R4 = phase 4, diarization on and context off so it compares with R0d)
 // of the pipeline against the scratch profile. Starts its own isolated
 // server (never port 4649), transcribes the copied meeting, measures the
 // wall time from the POST /transcribe reply to status = transcribed, stops
@@ -46,7 +47,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4 [options]",
   );
   process.exit(2);
 }
@@ -57,15 +58,17 @@ if (
   runName !== "R3b" &&
   runName !== "R3b2" &&
   runName !== "R3c-off" &&
-  runName !== "R3c-on"
+  runName !== "R3c-on" &&
+  runName !== "R4"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off or R3c-on, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on or R4, got: ${runName}`,
   );
   process.exit(2);
 }
-// R3a/R3b/R3b2/R3c-* run with R0's settings: diarization off.
-const diarizationOn = runName === "R0d";
+// R0d and R4 run with diarization on; every other run with R0's settings
+// (diarization off).
+const diarizationOn = runName === "R0d" || runName === "R4";
 // The previous-chunk context setting (owner decision 2026-10-07):
 // R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
 // had context on — the setting did not exist yet); every other run
@@ -97,22 +100,28 @@ rmSync(logPath, { force: true });
   db.prepare("DELETE FROM meeting_summaries WHERE meeting_id = ?").run(
     meetingId,
   );
+  // Phase 4: stale diarizer turns from a previous run must not leak into
+  // this run's metrics (multiTurnChunks reads the table).
+  try {
+    db.prepare("DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?").run(
+      meetingId,
+    );
+  } catch {
+    // The scratch DB predates the phase 4 table: nothing to delete.
+  }
   db.prepare(
     `UPDATE meetings
      SET status = 'recorded', language = NULL, error = NULL,
          stt_provider = NULL, stt_model = NULL
      WHERE id = ?`,
   ).run(meetingId);
-  if (diarizationOn) {
-    db.prepare(
-      "INSERT INTO settings (key, value) VALUES ('meeting_diarization_enabled', 'true') \
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    ).run();
-  } else {
-    db.prepare(
-      "DELETE FROM settings WHERE key = 'meeting_diarization_enabled'",
-    ).run();
-  }
+  // Phase 4 decision 6 (2026-10-06): a MISSING row now reads ON, so the
+  // off runs must write an explicit "false" — deleting the row would
+  // leave diarization on.
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES ('meeting_diarization_enabled', ?) \
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).run(diarizationOn ? "true" : "false");
   if (asrContextOn) {
     db.prepare(
       "INSERT INTO settings (key, value) VALUES ('meeting_asr_context', 'true') \
