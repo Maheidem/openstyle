@@ -493,6 +493,41 @@ describe("cutAtSpeakerChanges", () => {
       expect(p.startMs).toBeGreaterThanOrEqual(0);
     }
   });
+
+  it("first part starts at the segment start, last ends at the segment end, parts tile each segment", () => {
+    // Guard for the gap fix: whatever the cuts and short-part merges do,
+    // the parts must tile each segment exactly — no hole at either edge or
+    // between parts (a hole would be audio sent to nobody). The 2 s hole
+    // BETWEEN the two input segments is the VAD's own (silence) and is not
+    // a part's business.
+    const out = cutAtSpeakerChanges(
+      [
+        { startMs: 0, endMs: 10_000 },
+        { startMs: 12_000, endMs: 25_000 },
+      ],
+      [turn("A", 0, 5), turn("B", 5, 18), turn("A", 18, 30)],
+      flatDb(30_000),
+      FRAME_MS,
+    );
+    expect(out.length).toBeGreaterThanOrEqual(2);
+    expect(out[0]!.startMs).toBe(0);
+    expect(out[out.length - 1]!.endMs).toBe(25_000);
+    let expectStart: number | null = null;
+    for (const p of out) {
+      if (expectStart === null) {
+        expect(p.startMs).toBeGreaterThanOrEqual(0);
+      } else {
+        // Either the next part of the same segment (exact tile) or the
+        // start of the next input segment (the VAD gap).
+        const nextSegStart = 12_000;
+        expect(
+          p.startMs === expectStart || p.startMs === nextSegStart,
+          `part ${p.startMs} does not tile after ${expectStart}`,
+        ).toBe(true);
+      }
+      expectStart = p.endMs;
+    }
+  });
 });
 
 describe("mergeSegmentsToward speaker rule (I4, §3.4)", () => {
@@ -537,6 +572,98 @@ describe("mergeSegmentsToward speaker rule (I4, §3.4)", () => {
     expect(out[0]!.speaker).toBe("A");
     expect(out[0]!.endMs).toBe(11_000);
     expect(out[1]!.speaker).toBe("B");
+  });
+
+  it("the gap between two speakers' parts goes to the new part (council fix, 2026-10-07)", () => {
+    // A speaker cut blocks the merge, but the speech in the gap must still
+    // be sent: without the fix this gap (2660 ms, the real case from the
+    // council root cause) went to nobody and a word was lost in R4b.
+    const out = mergeSegmentsToward([
+      { startMs: 0, endMs: 4_000, speaker: "A" },
+      { startMs: 6_660, endMs: 20_000, speaker: "B" },
+    ]);
+    expect(out).toHaveLength(2);
+    // Contiguous: the new part extends back over the gap, cut at the
+    // speaker boundary.
+    expect(out[0]!.endMs).toBe(out[1]!.startMs);
+    expect(out[0]!.startMs).toBe(0);
+    expect(out[1]!.endMs).toBe(20_000);
+    expect(out[0]!.speaker).toBe("A");
+    expect(out[1]!.speaker).toBe("B");
+  });
+
+  it("extends the previous part instead when extending the new one would pass 30 s", () => {
+    // Extending B back to A's end would span 32 s; extending A forward to
+    // B's start spans 6 s, so A takes the gap.
+    const out = mergeSegmentsToward([
+      { startMs: 0, endMs: 5_000, speaker: "A" },
+      { startMs: 6_000, endMs: 37_000, speaker: "B" },
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out[0]!.endMs).toBe(out[1]!.startMs);
+    expect(out[0]!.endMs).toBe(6_000);
+  });
+
+  it("keeps the gap when extending either part would pass 30 s", () => {
+    // A ends at 27 s, B starts 4 s later: extending B back spans 31 s and
+    // extending A forward spans 31 s — neither side can take the gap, so
+    // it stays where the VAD left it (the old behavior for this case).
+    const out = mergeSegmentsToward([
+      { startMs: 0, endMs: 27_000, speaker: "A" },
+      { startMs: 31_000, endMs: 58_000, speaker: "B" },
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out[0]!.endMs).toBe(27_000);
+    expect(out[1]!.startMs).toBe(31_000);
+  });
+});
+
+describe("gap coverage across speaker cuts (council fix, 2026-10-07)", () => {
+  /** True when every millisecond in `base` lies inside the union of `parts`. */
+  function unionCovers(base: Segment[], parts: Segment[]): boolean {
+    const ordered = [...parts].sort((a, b) => a.startMs - b.startMs);
+    for (const seg of base) {
+      let pos = seg.startMs;
+      for (const p of ordered) {
+        if (p.endMs <= pos) continue;
+        if (p.startMs > pos) return false; // a hole
+        pos = Math.max(pos, p.endMs);
+        if (pos >= seg.endMs) break;
+      }
+      if (pos < seg.endMs) return false;
+    }
+    return true;
+  }
+
+  it("segmentPcm + mergeSegmentsToward with turns covers at least the span it covers without turns", () => {
+    // Speech 2-5.3 s and 8-22 s (2 s lead so the adaptive floor calibrates
+    // before the first opening), turns A (1-4 s) then B (4-20 s+): the VAD
+    // opening 2-5.3 s straddles the A|B boundary, so the cut splits it and
+    // the merge pass meets a speaker cut. Everything covered without turns
+    // must still be covered with turns — the gap between the two speakers'
+    // parts may not go unsent.
+    const pcm = concat(
+      silence(2_000),
+      tone(3_300, -20),
+      silence(2_700),
+      tone(14_000, -20),
+      silence(1_000),
+    );
+    const turns = [
+      { speakerId: "A", startTimeSeconds: 1, endTimeSeconds: 4 },
+      { speakerId: "B", startTimeSeconds: 4, endTimeSeconds: 20 },
+    ];
+    const withoutRaw = segmentPcm(pcm, SAMPLE_RATE);
+    const withRaw = segmentPcm(pcm, SAMPLE_RATE, undefined, turns);
+    const without = mergeSegmentsToward(withoutRaw);
+    const withTurns = mergeSegmentsToward(withRaw);
+    expect(withoutRaw.length).toBeGreaterThanOrEqual(2);
+    expect(withRaw.length).toBeGreaterThanOrEqual(3);
+    expect(
+      withTurns.some((p) => p.speaker !== undefined),
+      "the turns must actually produce speaker parts",
+    ).toBe(true);
+    expect(unionCovers(without, withTurns)).toBe(true);
   });
 });
 
