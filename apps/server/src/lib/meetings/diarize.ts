@@ -286,6 +286,28 @@ function pickNearestWithinWindow(
 }
 
 /**
+ * The diarizer speaker that "wins" one system span (spec §7, steps 1-4):
+ * the largest-overlap turn, else a nearest turn within the 2 s window, else
+ * null. Shared by `assignSpeakerLabels` and the phase 4b align path
+ * (specs/meeting-transcription-v2.md §3.6), which labels the unsplit
+ * chunks and the align-fallback chunks with the same rule.
+ */
+export function winnerSpeakerFor(
+  span: { startMs: number; endMs: number },
+  diarSegments: DiarizerSegment[],
+): string | null {
+  const diar: InternalDiarSegment[] = diarSegments.map((d) => ({
+    speakerId: d.speakerId,
+    startMs: d.startTimeSeconds * 1000,
+    endMs: d.endTimeSeconds * 1000,
+  }));
+  const winner =
+    pickOverlapWinner(span, diar) ??
+    pickNearestWithinWindow(span, diar, NEAREST_NEIGHBOR_WINDOW_MS);
+  return winner?.speakerId ?? null;
+}
+
+/**
  * Assign `speaker_label` values to whisper (system-channel) segments from a
  * diarizer segment list, per spec §7. Pure and deterministic: same inputs,
  * same output, no randomness in any tie-break.

@@ -59,6 +59,18 @@ export interface MlxAsrStatus {
   models: WhisperModelDownloadState[];
   modelDefinitions: MlxModelDef[];
   setupHint: string | null;
+  /** The aligner helper model (spec 3.6): the meeting row's word-timing
+   * status line. Never in `models`/`modelDefinitions` (not a picker item). */
+  aligner?: {
+    status: "not_downloaded" | "downloading" | "ready" | "error";
+    downloadProgress?: {
+      bytesDownloaded: number;
+      bytesTotal: number;
+      percent: number;
+      speedBps: number;
+    };
+    error?: string;
+  } | null;
 }
 
 /** True while any local model is downloading or verifying. */

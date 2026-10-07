@@ -1,4 +1,11 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { zValidator } from "@hono/zod-validator";
 import { isVocabLeak, TERMS_MARKER } from "@openstyle/stt";
@@ -12,6 +19,7 @@ import {
 } from "@openstyle/validations";
 import { Hono } from "hono";
 import { z } from "zod";
+import { parseWavHeader, sliceWav, type WavInfo } from "../lib/audio/wav.js";
 import { getDb, withTransaction } from "../lib/db.js";
 import { isDictationActive } from "../lib/dictation-activity.js";
 import {
@@ -23,6 +31,7 @@ import {
   probeDiarizationModels,
   runDiarizationPass,
   runDiarizer,
+  winnerSpeakerFor,
 } from "../lib/meetings/diarize.js";
 import {
   enhanceMeetingTranscript,
@@ -51,7 +60,11 @@ import {
   type SyncData,
   type TranscriptSegment,
 } from "../lib/meetings/merge.js";
-import { segmentWavFile } from "../lib/meetings/segmenter.js";
+import {
+  isMixedChunk,
+  segmentWavFile,
+  splitAlignedChunk,
+} from "../lib/meetings/segmenter.js";
 import { resolveSpeakerNames } from "../lib/meetings/speaker-names.js";
 import { getMeetingRow, type MeetingRow } from "../lib/meetings/store.js";
 import {
@@ -65,7 +78,20 @@ import {
   MeetingTranscriber,
   type TranscriberDeps,
 } from "../lib/meetings/transcriber.js";
-import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
+import {
+  alignerLanguageFor,
+  isAlignerModelReady,
+  maybeStartAlignerDownload,
+} from "../lib/mlx-asr/aligner.js";
+import {
+  isAppleSiliconMac,
+  MLX_ASR_PROVIDER_ID,
+} from "../lib/mlx-asr/constants.js";
+import {
+  alignWithMlxAsr,
+  canRunMlxAsr,
+  type MlxAlignedWord,
+} from "../lib/mlx-asr/server.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
@@ -98,6 +124,20 @@ function meetingsRootDir(): string | null {
 interface MeetingsTestOverrides {
   createTranscriberDeps?: typeof createDefaultTranscriberDeps;
   summarize?: typeof summarizeMeeting;
+  /** I4b (spec §3.6): the aligner call, injectable so route tests never
+   * spawn a worker. Default is the real MLX align path. */
+  alignChunk?: (
+    wav: Uint8Array,
+    text: string,
+    language: string,
+  ) => Promise<MlxAlignedWord[]>;
+  /** I4b: force/forbid the aligner gate in tests (default: the real check).
+   * `isAlignerModelReady` and `isAppleSiliconMac` are the other two gate
+   * inputs; both are true on this Mac, so a test that wants the fallback
+   * passes `alignerReady: false` (or vice versa). */
+  alignerReady?: boolean;
+  /** I4b: the automatic-download trigger (default: the real one). */
+  startAlignerDownload?: () => boolean;
   /** Injected into both the pre-flight probe and the real diarization pass
    * on POST /:id/diarize AND the diarization pass inside the transcribe
    * job (after all chunks, before the status flip), mirroring how
@@ -189,7 +229,7 @@ function loadMergedTranscript(
   const rows = getDb()
     .prepare(
       `SELECT id, source, start_ms, end_ms, text, status, speaker_label, enhanced_text
-       FROM meeting_segments WHERE meeting_id = ? ORDER BY idx`,
+       FROM meeting_segments WHERE meeting_id = ? ORDER BY idx, start_ms, id`,
     )
     .all(meetingId) as unknown as SegmentRow[];
   const channel = (source: "mic" | "system"): TranscriptSegment[] =>
@@ -373,6 +413,286 @@ async function buildTranscriberDeps(
 }
 
 /** The background transcription job for one meeting. Never throws. */
+/**
+ * I4b (specs/meeting-transcription-v2.md §3.6): the per-meeting decision
+ * for the system track. `align`: segment WITHOUT speaker cuts (the ASR
+ * hears whole chunks) and split mixed chunks with the aligner after
+ * transcription. `cut`: the phase 4 behavior (cut at speaker changes).
+ * `plain`: no diarization turns at all (the pre-phase 4 path).
+ */
+type AlignPlan =
+  | { mode: "align"; languageName: string }
+  | { mode: "cut"; reason: string }
+  | { mode: "plain" };
+
+/**
+ * The §3.6 gate, in fallback order (each reason is the logged one, 3.6
+ * step 4). The aligner is MODEL-AGNOSTIC — it aligns whatever text the
+ * meeting's provider produced — so the gate never looks at the provider.
+ * The language must be DECLARED and one of the aligner's 11 languages.
+ */
+function decideAlignPlan(input: {
+  hasTurns: boolean;
+  /** The meeting's resolved language code (undefined = not declared). */
+  language: string | undefined;
+  appleSilicon: boolean;
+  canRun: boolean;
+  alignerReady: boolean;
+}): AlignPlan {
+  if (!input.hasTurns) return { mode: "plain" };
+  if (!input.appleSilicon) {
+    return {
+      mode: "cut",
+      reason: "the word-timing aligner needs Apple silicon",
+    };
+  }
+  if (!input.canRun) {
+    return {
+      mode: "cut",
+      reason: "the MLX runtime is not available",
+    };
+  }
+  if (!input.alignerReady) {
+    return {
+      mode: "cut",
+      reason: "the word-timing aligner is not downloaded yet",
+    };
+  }
+  if (input.language === undefined) {
+    return {
+      mode: "cut",
+      reason: "the meeting language is not declared",
+    };
+  }
+  const name = alignerLanguageFor(input.language);
+  if (!name) {
+    return {
+      mode: "cut",
+      reason: `the aligner does not support the meeting language (${input.language})`,
+    };
+  }
+  return { mode: "align", languageName: name };
+}
+
+/**
+ * I4b (spec §3.6 step 3): split the mixed system chunks of one finished
+ * run with the aligner, persist the parts, and label every system row.
+ * Never throws — any failure leaves the chunks as transcribed (single
+ * rows) with the phase 4 winner labels. One info line per meeting: the
+ * fallback reason (first one that occurs) or the align summary.
+ */
+async function runAlignPass(
+  id: string,
+  audioDir: string,
+  systemResults: ChunkResult[],
+  turns: DiarizerSegment[],
+  plan: Extract<AlignPlan, { mode: "align" }>,
+): Promise<void> {
+  const db = getDb();
+  const alignChunk =
+    testOverrides.alignChunk ??
+    ((wav: Uint8Array, text: string, language: string) =>
+      alignWithMlxAsr({ audio: wav, text, language }));
+
+  const stats = { calls: 0, alignMs: 0, fallbacks: 0, fallbackReason: "" };
+  const noteFallback = (reason: string): void => {
+    stats.fallbacks += 1;
+    if (!stats.fallbackReason) stats.fallbackReason = reason;
+  };
+
+  const alignedByIdx = new Map<
+    number,
+    Array<{ startMs: number; endMs: number; text: string; speakerId: string }>
+  >();
+
+  try {
+    const fd = openSync(join(audioDir, SYSTEM_WAV), "r");
+    try {
+      const info = parseWavHeader(fd) as WavInfo;
+      for (const r of systemResults) {
+        if (r.status !== "ok" || !r.text.trim()) continue;
+        if (!isMixedChunk(r.startMs, r.endMs, turns)) continue;
+        const t0 = Date.now();
+        let words: MlxAlignedWord[];
+        try {
+          const wav = sliceWav(fd, info, r.startMs, r.endMs);
+          words = await alignChunk(wav, r.text, plan.languageName);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          noteFallback(`align call failed (${reason})`);
+          continue;
+        }
+        stats.calls += 1;
+        stats.alignMs += Date.now() - t0;
+        const parts = splitAlignedChunk(
+          { startMs: r.startMs, endMs: r.endMs },
+          words.map((w) => ({
+            text: w.text,
+            startMs: w.start * 1000,
+            endMs: w.end * 1000,
+          })),
+          turns,
+        );
+        if (parts.length >= 2) {
+          alignedByIdx.set(r.idx, parts);
+        } else {
+          noteFallback("the aligner returned no usable split");
+        }
+      }
+    } finally {
+      closeSync(fd);
+    }
+  } catch (err) {
+    noteFallback(
+      `align setup failed (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+
+  // Combined label numbering (spec §7 step 5, extended for §3.6): walk the
+  // system chunks in order; an aligned chunk contributes its PARTS' speakers
+  // in time order, every other chunk contributes its overlap winner. First-
+  // appearance order becomes "1", "2", ... — the parts and the unsplit
+  // chunks number against the SAME map, so "2" means the same person both
+  // ways. Then, in one transaction: replace each aligned chunk's row with
+  // its parts (labels included) and label the rest.
+  const rows = db
+    .prepare(
+      `SELECT id, idx, start_ms, end_ms FROM meeting_segments
+       WHERE meeting_id = ? AND source = 'system' ORDER BY idx, start_ms, id`,
+    )
+    .all(id) as unknown as Array<{
+    id: string;
+    idx: number;
+    start_ms: number;
+    end_ms: number;
+  }>;
+  const indexBySpeaker = new Map<string, number>();
+  const labelOf = (speakerId: string): string => {
+    if (!indexBySpeaker.has(speakerId)) {
+      indexBySpeaker.set(speakerId, indexBySpeaker.size + 1);
+    }
+    return String(indexBySpeaker.get(speakerId));
+  };
+  const partLabels = new Map<string, string>();
+  for (const r of rows) {
+    const parts = alignedByIdx.get(r.idx);
+    if (parts) {
+      for (const p of parts)
+        partLabels.set(`${r.idx}:${p.startMs}`, labelOf(p.speakerId));
+    } else {
+      const winner = winnerSpeakerFor(
+        { startMs: r.start_ms, endMs: r.end_ms },
+        turns,
+      );
+      if (winner) labelOf(winner);
+    }
+  }
+
+  try {
+    const del = db.prepare("DELETE FROM meeting_segments WHERE id = ?");
+    const insPart = db.prepare(
+      `INSERT OR REPLACE INTO meeting_segments
+         (id, meeting_id, source, idx, start_ms, end_ms, text, status, speaker_label)
+       VALUES (?, ?, 'system', ?, ?, ?, ?, 'ok', ?)`,
+    );
+    const updLabel = db.prepare(
+      "UPDATE meeting_segments SET speaker_label = ? WHERE id = ?",
+    );
+    withTransaction(db, () => {
+      for (const r of rows) {
+        const parts = alignedByIdx.get(r.idx);
+        if (!parts) continue;
+        del.run(r.id);
+        parts.forEach((p, k) => {
+          insPart.run(
+            `${id}:system:${r.idx}:${k}`,
+            id,
+            r.idx,
+            p.startMs,
+            p.endMs,
+            p.text,
+            partLabels.get(`${r.idx}:${p.startMs}`) ?? null,
+          );
+        });
+      }
+      for (const r of rows) {
+        if (alignedByIdx.has(r.idx)) continue;
+        const winner = winnerSpeakerFor(
+          { startMs: r.start_ms, endMs: r.end_ms },
+          turns,
+        );
+        updLabel.run(winner ? labelOf(winner) : null, r.id);
+      }
+    });
+  } catch (err) {
+    log.warn(`meeting ${id}: failed to persist aligned parts: ${String(err)}`);
+    return;
+  }
+
+  const totalParts = [...alignedByIdx.values()].reduce(
+    (a, p) => a + p.length,
+    0,
+  );
+  const logLine =
+    alignedByIdx.size > 0
+      ? `meeting ${id}: aligner split ${alignedByIdx.size} mixed chunk(s) into ${totalParts} part(s), ${stats.calls} call(s) in ${(stats.alignMs / 1000).toFixed(1)} s, ${stats.fallbacks} fallback(s)${stats.fallbackReason ? ` (${stats.fallbackReason})` : ""}`
+      : stats.fallbacks > 0
+        ? `meeting ${id}: aligner fallback for all mixed chunks (${stats.fallbackReason})`
+        : `meeting ${id}: aligner had no mixed chunk to split`;
+  log.info(logLine);
+  // Same "diarization labeled" shape as applyDiarization (the metrics read
+  // the line): aligned chunks count as their parts, unsplit ones as rows.
+  const labeledNow = rows.reduce(
+    (a, r) =>
+      a +
+      (alignedByIdx.has(r.idx)
+        ? alignedByIdx.get(r.idx)!.length
+        : winnerSpeakerFor({ startMs: r.start_ms, endMs: r.end_ms }, turns)
+          ? 1
+          : 0),
+    0,
+  );
+  log.info(
+    `meeting ${id}: diarization labeled ${labeledNow}/${
+      rows.length - alignedByIdx.size + totalParts
+    } system segments`,
+  );
+}
+
+/**
+ * I4b: persist the diarizer turns (the §3.4 measurement reads the table)
+ * for an align-plan run — the align pass labels the rows itself, so
+ * applyDiarization (which would re-label everything) must not run.
+ */
+function storeDiarizerTurns(id: string, turns: DiarizerSegment[]): void {
+  const db = getDb();
+  const clearTurns = db.prepare(
+    "DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?",
+  );
+  const insertTurn = db.prepare(
+    `INSERT INTO meeting_diarizer_turns
+       (meeting_id, idx, speaker_id, start_ms, end_ms)
+     VALUES (?, ?, ?, ?, ?)`,
+  );
+  try {
+    withTransaction(db, () => {
+      clearTurns.run(id);
+      for (let i = 0; i < turns.length; i += 1) {
+        const t = turns[i];
+        insertTurn.run(
+          id,
+          i,
+          t.speakerId,
+          Math.round(t.startTimeSeconds * 1000),
+          Math.round(t.endTimeSeconds * 1000),
+        );
+      }
+    });
+  } catch (err) {
+    log.warn(`meeting ${id}: failed to persist diarizer turns: ${String(err)}`);
+  }
+}
+
 async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
   const db = getDb();
   // Set when the auto-run handoff below re-claims the slot as an "enhance"
@@ -380,6 +700,11 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
   // then leave the ENHANCE job's slot alone — runEnhanceJob owns it.
   let handedOff = false;
   try {
+    // I4b (spec §3.6 step 1): the FIRST meeting job starts the automatic
+    // aligner download in the background (Apple silicon + MLX +
+    // diarization on + a meeting exists; once per process). Fire-and-
+    // forget — this job uses the aligner only if it is ready NOW.
+    (testOverrides.startAlignerDownload ?? maybeStartAlignerDownload)();
     // Loaded once per job, not per chunk — vocabulary rarely changes
     // mid-meeting and loadVocabularyTerms() hits the DB.
     const vocabTerms = loadVocabularyTerms();
@@ -464,24 +789,21 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       log.info(`meeting ${id}: diarization skipped (setting is off)`);
     }
 
+    // I4b (spec §3.6): the system track is segmented WITHOUT speaker cuts
+    // when the aligner will split the mixed chunks; the language is
+    // resolved first (it is one gate input) and the plan decided. When the
+    // gate falls back (aligner not ready, language missing, ...), the
+    // system track is re-segmented WITH the phase 4 cuts — the second
+    // read is cheap compared to the STT run. The probe for the language
+    // uses the uncut segments (a superset of the cut ones' early span —
+    // the same early speech, never cut shorter).
     const micFound = segmentWavFile(join(audioDir, MIC_WAV));
-    const systemFound = segmentWavFile(
-      join(audioDir, SYSTEM_WAV),
-      diarSegments ?? undefined,
-    );
-    if (!micFound && !systemFound) {
+    const systemUncut = segmentWavFile(join(audioDir, SYSTEM_WAV));
+    if (!micFound && !systemUncut) {
       throw new Error(`No audio files found in ${audioDir}`);
     }
-    // Phase B (specs/meeting-transcription-quality.md §5): merge VAD output
-    // toward a ~20-25s target per channel before transcription — pure
-    // post-processing over segmentPcm's already-detected boundaries, mic
-    // and system merged independently (never bridged across channels).
-    // The speaker cuts from above travel with the segments: merging never
-    // crosses two different speakers (G4).
     const micSegments = micFound ?? [];
-    const systemSegments = systemFound ?? [];
-    const total = micSegments.length + systemSegments.length;
-    setProgress(id, { done: 0, total, failed: 0, phase: "transcribing" });
+    let systemSegments = systemUncut ?? [];
 
     // Phase A2 (specs/meeting-transcription-quality.md §3.2): resolve the
     // meeting-level language once (sticky across re-transcribe via
@@ -507,6 +829,25 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
           return config.language;
         })
       : config.language;
+
+    // §3.6 gate: align (uncut segments + aligner split) vs cut (phase 4)
+    // vs plain (no turns). The fallback reason is logged once, at info.
+    const plan = decideAlignPlan({
+      hasTurns: (diarSegments?.length ?? 0) > 0,
+      language: resolvedLanguage,
+      appleSilicon: isAppleSiliconMac(),
+      canRun: canRunMlxAsr(),
+      alignerReady: testOverrides.alignerReady ?? isAlignerModelReady(),
+    });
+    if (plan.mode === "cut") {
+      log.info(`meeting ${id}: speaker alignment fallback: ${plan.reason}`);
+      systemSegments =
+        segmentWavFile(join(audioDir, SYSTEM_WAV), diarSegments ?? undefined) ??
+        systemSegments;
+    }
+
+    const total = micSegments.length + systemSegments.length;
+    setProgress(id, { done: 0, total, failed: 0, phase: "transcribing" });
     const effectiveDeps: TranscriberDeps = {
       ...deps,
       resolveConfig: () => ({ ...config, language: resolvedLanguage }),
@@ -546,13 +887,24 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       return;
     }
 
-    // I4 (specs/meeting-transcription-v2.md §3.4): label the system
-    // segments with the turns the diarizer ALREADY produced before
-    // segmentation — the binary ran once, never a second time. Still before
-    // the status flip and writeTranscriptMarkdown, so the markdown export
-    // renders final labels. applyDiarization degrades in-function on a
-    // failed write (NULL labels, "Them"); it never fails the job.
-    if (diarSegments !== null) {
+    // I4/I4b: label the system segments with the turns the diarizer
+    // ALREADY produced before segmentation — the binary ran once, never a
+    // second time. Still before the status flip and
+    // writeTranscriptMarkdown, so the markdown export renders final
+    // labels. applyDiarization degrades in-function on a failed write
+    // (NULL labels, "Them"); it never fails the job.
+    // §3.6: the align plan labels inside runAlignPass (word-midpoint
+    // labels, numbered against the same map as the unsplit chunks), so
+    // applyDiarization must NOT re-label — it would overwrite the
+    // midpoint labels with overlap winners. The turns are stored by the
+    // align pass's storeDiarizerTurns (same table, same contract).
+    if (plan.mode === "align" && diarSegments !== null) {
+      const systemResults = results.filter(
+        (r): r is ChunkResult => r !== undefined && r.source === "system",
+      );
+      await runAlignPass(id, audioDir, systemResults, diarSegments, plan);
+      storeDiarizerTurns(id, diarSegments);
+    } else if (diarSegments !== null) {
       applyDiarization(id, diarSegments);
     }
 

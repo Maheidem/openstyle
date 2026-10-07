@@ -8,6 +8,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import {
   isAppleSiliconMac,
+  MLX_ALIGNER_MODEL_ID,
   MLX_ASR_PROVIDER_ID,
   MLX_ASR_PROVIDER_NAME,
   MLX_UNSUPPORTED_PLATFORM_REASON,
@@ -78,6 +79,12 @@ const mlxAsr = new Hono()
       keepAliveMinutes: getMlxAsrKeepAliveMinutes(),
       runtime: getMlxRuntimeDownloadStatus(),
       models: platformSupported ? getAllMlxModelStatuses() : [],
+      // The aligner helper (spec 3.6): status for the Models page meeting
+      // row's one-line word-timing state. It is deliberately NOT in
+      // `models`/`modelDefinitions` — the picker never lists it.
+      aligner: platformSupported
+        ? (getMlxModelStatus(MLX_ALIGNER_MODEL_ID) ?? null)
+        : null,
       modelDefinitions: platformSupported
         ? getMlxCatalogModels().map((m) => ({
             id: m.id,

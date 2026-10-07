@@ -762,7 +762,10 @@
       "label": "Meeting transcription",
       "sameAsDictation": "Same as dictation",
       "reloadNote": "A different local model reloads when you dictate.",
-      "notConfigured": "This model is not in your configured list."
+      "notConfigured": "This model is not in your configured list.",
+      "asrTimingReady": "Word timing for speaker changes: ready",
+      "asrTimingDownloading": "Word timing for speaker changes: downloading {{percent}} %",
+      "asrTimingUnavailable": "Word timing for speaker changes: not available on this Mac"
     },
     "picker": {
       "transcription": "Transcription",

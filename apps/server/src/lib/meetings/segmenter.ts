@@ -495,6 +495,145 @@ function cutSegment(
 }
 
 /**
+ * One aligned word span (specs/meeting-transcription-v2.md §3.6): start and
+ * end in ms RELATIVE to the aligned audio's start (the chunk slice).
+ */
+export interface AlignedWord {
+  text: string;
+  startMs: number;
+  endMs: number;
+}
+
+/**
+ * One part of a split mixed chunk (§3.6): absolute times from the part's
+ * first and last word, the words' text, and the diarizer speaker whose turn
+ * holds each word's midpoint.
+ */
+export interface AlignedPart {
+  startMs: number;
+  endMs: number;
+  text: string;
+  speakerId: string;
+}
+
+/** The snap window of the cut rule; overlaps within it are noise. */
+export const SPEAKER_OVERLAP_TOLERANCE_MS = 300;
+
+/**
+ * Does this span hold turns of two or more distinct speakers beyond the
+ * snap window? The same rule as the `multiTurnChunks` metric (§3.4) and the
+ * phase 4 cut rule: same-speaker multi-turn overlap is normal, only a
+ * second speaker makes a chunk mixed. Pure.
+ */
+export function isMixedChunk(
+  startMs: number,
+  endMs: number,
+  turns: DiarizerSegment[],
+  toleranceMs: number = SPEAKER_OVERLAP_TOLERANCE_MS,
+): boolean {
+  const speakers = new Set<string>();
+  for (const t of turns) {
+    const overlap =
+      Math.min(endMs, t.endTimeSeconds * 1000) -
+      Math.max(startMs, t.startTimeSeconds * 1000);
+    if (overlap > toleranceMs) {
+      speakers.add(t.speakerId);
+      if (speakers.size >= 2) return true;
+    }
+  }
+  return false;
+}
+
+/** The turn whose span holds `ms`; null when none does (a gap). */
+function turnAt(
+  ms: number,
+  turns: Array<{ speaker: string; startMs: number; endMs: number }>,
+): string | null {
+  for (const t of turns) {
+    if (ms >= t.startMs && ms <= t.endMs) return t.speaker;
+  }
+  return null;
+}
+
+/** Nearest turn by distance of `ms` to the turn span (ties: earlier). */
+function nearestTurn(
+  ms: number,
+  turns: Array<{ speaker: string; startMs: number; endMs: number }>,
+): { speaker: string; startMs: number } | null {
+  let best: { speaker: string; startMs: number } | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const t of turns) {
+    const dist =
+      ms < t.startMs ? t.startMs - ms : ms > t.endMs ? ms - t.endMs : 0;
+    if (
+      dist < bestDist ||
+      (dist === bestDist && best !== null && t.startMs < best.startMs)
+    ) {
+      best = { speaker: t.speaker, startMs: t.startMs };
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+/**
+ * Split a mixed chunk's aligned words at the diarizer's change times
+ * (specs/meeting-transcription-v2.md §3.6, step 3). Pure: same inputs, same
+ * output. Each word goes to the speaker whose turn holds the word's
+ * MIDPOINT; a word in a gap between turns takes the NEAREST turn (the
+ * diarizer leaves small gaps; the word was spoken, so it must land
+ * somewhere). Each run of words of one speaker becomes one part, with
+ * start/end from its first and last word (absolute ms: the chunk's start
+ * plus the word's relative time). Words with no usable text are skipped;
+ * when no part survives, the caller keeps the chunk unsplit.
+ */
+export function splitAlignedChunk(
+  chunk: { startMs: number; endMs: number },
+  words: AlignedWord[],
+  turns: DiarizerSegment[],
+): AlignedPart[] {
+  if (turns.length === 0) return [];
+  const ts = turns
+    .map((t) => ({
+      speaker: t.speakerId,
+      startMs: Math.round(t.startTimeSeconds * 1000),
+      endMs: Math.round(t.endTimeSeconds * 1000),
+    }))
+    .sort((a, b) => a.startMs - b.startMs);
+
+  const parts: AlignedPart[] = [];
+  let run: AlignedPart | null = null;
+  let runSpeaker: string | null = null;
+
+  for (const w of words) {
+    if (!Number.isFinite(w.startMs) || !Number.isFinite(w.endMs)) continue;
+    const absStart = Math.round(chunk.startMs + w.startMs);
+    const absEnd = Math.round(chunk.startMs + w.endMs);
+    const mid = (absStart + absEnd) / 2;
+    const speaker = turnAt(mid, ts) ?? nearestTurn(mid, ts)?.speaker ?? null;
+    if (speaker === null) continue;
+    const text = w.text.trim();
+    // A word is a unit with letters or digits; a punctuation-only item
+    // (the aligner can split "!" off) carries no speech and no part.
+    if (!/\p{L}|\p{N}/u.test(text)) continue;
+    if (run && runSpeaker === speaker) {
+      run.endMs = Math.max(run.endMs, absEnd);
+      run.text = `${run.text} ${text}`;
+    } else {
+      run = {
+        startMs: absStart,
+        endMs: Math.max(absEnd, absStart + 1),
+        text,
+        speakerId: speaker,
+      };
+      runSpeaker = speaker;
+      parts.push(run);
+    }
+  }
+  return parts;
+}
+
+/**
  * Cut system-channel segments at speaker changes (specs/meeting-
  * transcription-v2.md §3.4). Pure: same inputs, same output. `turns` are the
  * diarizer turns in time order; `rmsDb` is the per-frame energy in the same

@@ -47,7 +47,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d [options]",
   );
   process.exit(2);
 }
@@ -61,21 +61,24 @@ if (
   runName !== "R3c-on" &&
   runName !== "R4" &&
   runName !== "R4b" &&
-  runName !== "R4c"
+  runName !== "R4c" &&
+  runName !== "R4d"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b or R4c, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c or R4d, got: ${runName}`,
   );
   process.exit(2);
 }
-// R0d, R4, R4b and R4c (the post-council re-run: the speaker-cut gap now
-// goes to a neighbor) run with diarization on; every other run with R0's
+// R0d, R4, R4b, R4c (the post-council re-run: the speaker-cut gap now
+// goes to a neighbor) and R4d (phase 4b: forced alignment at speaker
+// cuts, spec 3.6) run with diarization on; every other run with R0's
 // settings (diarization off).
 const diarizationOn =
   runName === "R0d" ||
   runName === "R4" ||
   runName === "R4b" ||
-  runName === "R4c";
+  runName === "R4c" ||
+  runName === "R4d";
 // The previous-chunk context setting (owner decision 2026-10-07):
 // R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
 // had context on — the setting did not exist yet); every other run
@@ -151,6 +154,33 @@ env.OPENSTYLE_DB_PATH = dbPath;
 env.PORT = String(port);
 env.HOST = "127.0.0.1";
 env.OPENSTYLE_AUTH_TOKEN = token;
+// Every isolated server gets a SCRATCH Hugging Face cache (phase 4b, spec
+// 3.6): the automatic aligner download (~1.2 GB) goes here, never into
+// the user's ~/.cache/huggingface. R4d reads the aligner from the same
+// env-scoped cache (hfCacheRoot honors HF_HOME/HF_HUB_CACHE).
+env.HF_HOME = "/tmp/meeting-p4b-hf/hf";
+env.HF_HUB_CACHE = "/tmp/meeting-p4b-hf/hf/hub";
+// R4d (spec 3.6): the align path needs the worker's "align" message, which
+// lands in the worker script this release. The managed runtime binary in
+// ~/.cache/freestyle is the previous release's (no align handler), and the
+// proof runs must not rewrite the owner's integrity-verified cache — so
+// R4d points the documented trusted-operator override at the freshly
+// built local bundle. Non-R4d runs never change worker behavior.
+if (runName === "R4d") {
+  const localWorker = join(
+    repoRoot,
+    "dist",
+    "mlx_asr_worker",
+    "mlx_asr_worker",
+  );
+  if (!existsSync(localWorker)) {
+    console.error(
+      `R4d needs the phase 4b worker bundle at ${localWorker} (scripts/build_mlx_asr_worker.sh)`,
+    );
+    process.exit(2);
+  }
+  env.OPENSTYLE_MLX_ASR_WORKER = localWorker;
+}
 
 const logStream = createWriteStream(logPath, { flags: "a" });
 const server = spawn(process.execPath, ["../server/dist/startup.js"], {
@@ -292,6 +322,17 @@ try {
       ];
       if (diarizerSecondsRaw !== undefined) {
         args.push("--diarizer-seconds", diarizerSecondsRaw);
+      }
+      // R4d (spec 3.6): edgeWordsLost/edgeWordsAdded need the R0d side —
+      // the r3a dump (R0's output: same boundaries and text as R0d; R0d
+      // only adds the labels the metric ignores).
+      if (runName === "R4d") {
+        const r0d = join(
+          scratch,
+          "compare",
+          `r3a-${meetingId.slice(0, 8)}.json`,
+        );
+        if (existsSync(r0d)) args.push("--r0d", r0d);
       }
       const m = spawnSync(process.execPath, args, { stdio: "inherit" });
       if (m.status !== 0) exitCode = 1;

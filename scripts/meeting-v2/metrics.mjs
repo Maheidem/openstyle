@@ -10,7 +10,14 @@
 // Usage:
 //   node scripts/meeting-v2/metrics.mjs --db <test.db> --meeting <id> \
 //     --out <metrics.json> --wall <seconds> [--log <server.log>] \
-//     [--diarizer-seconds <n>]
+//     [--diarizer-seconds <n>] [--r0d <r0d-dump.json>]
+//
+// `--r0d` (spec §3.6): the R0d chunk dump (the source:idx-keyed JSON the
+// proof dumps each run). With it, `edgeWordsLost` / `edgeWordsAdded` are
+// computed: for every R0d system chunk that the new run splits (the new
+// rows over the chunk's span are not exactly the chunk itself), the
+// normalized-word multiset of the R0d text minus the multiset of the new
+// parts' texts over the same span (and the reverse). Ids + counts only.
 //
 // Metric definitions follow spec 7.4. `multiTurnChunks` is null in the
 // baseline: the old order never stores diarizer turns, only labels. Phase 4
@@ -45,6 +52,7 @@ const outPath = arg("out");
 const wallRaw = arg("wall");
 const logPath = arg("log");
 const diarizerSecondsRaw = arg("diarizer-seconds");
+const r0dPath = arg("r0d");
 
 if (!dbPath || !meetingId || !outPath || wallRaw === undefined) {
   console.error(
@@ -368,6 +376,100 @@ const audioSeconds = meeting.duration_ms ? meeting.duration_ms / 1000 : null;
 // distinct speakers by more than the 300 ms snap window (see header).
 // Null when no turns were stored (old-order runs).
 const SNAP_TOLERANCE_MS = 300;
+
+// edgeWordsLost / edgeWordsAdded (spec §3.6): needs the R0d dump.
+// `words` above is the normalizer (same as normalizeText in @openstyle/stt
+// — lower case, punctuation stripped, whitespace-collapsed).
+function multisetDiff(a, b) {
+  const counts = new Map();
+  for (const w of a) counts.set(w, (counts.get(w) ?? 0) + 1);
+  for (const w of b) counts.set(w, (counts.get(w) ?? 0) - 1);
+  let missing = 0;
+  for (const n of counts.values()) if (n > 0) missing += n;
+  return missing;
+}
+let edgeWordsLost = null;
+let edgeWordsAdded = null;
+const edgeWordsLostByChunk = {};
+const edgeWordsAddedByChunk = {};
+if (r0dPath && existsSync(r0dPath)) {
+  const r0dRaw = JSON.parse(readFileSync(r0dPath, "utf8"));
+  const r0dSystem = r0dRaw
+    .filter((r) => r.source === "system" && r.text)
+    .sort((a, b) => a.start_ms - b.start_ms);
+  const newSystem = systemRows
+    .filter((r) => r.status === "ok" && r.text)
+    .sort((a, b) => a.start_ms - b.start_ms);
+  edgeWordsLost = 0;
+  edgeWordsAdded = 0;
+  for (const c of r0dSystem) {
+    // The new rows over this chunk's span.
+    const over = newSystem.filter(
+      (p) => p.start_ms < c.end_ms && p.end_ms > c.start_ms,
+    );
+    const identical =
+      over.length === 1 &&
+      over[0].start_ms === c.start_ms &&
+      over[0].end_ms === c.end_ms &&
+      words(over[0].text).join(" ") === words(c.text).join(" ");
+    if (identical) continue; // not divided
+    const lost = multisetDiff(
+      words(c.text),
+      over.flatMap((p) => words(p.text)),
+    );
+    const added = multisetDiff(
+      over.flatMap((p) => words(p.text)),
+      words(c.text),
+    );
+    if (lost > 0) edgeWordsLostByChunk[`${c.source}:${c.idx}`] = lost;
+    if (added > 0) edgeWordsAddedByChunk[`${c.source}:${c.idx}`] = added;
+    edgeWordsLost += lost;
+    edgeWordsAdded += added;
+  }
+}
+
+// aligner stats (spec §3.6): parsed from the run's log line
+// "aligner split N mixed chunk(s) into M part(s), K call(s) in T s, F
+// fallback(s) [reason]" (or the fallback-only / no-mixed variants).
+let aligner = null;
+if (logPath && existsSync(logPath)) {
+  const logText = readFileSync(logPath, "utf8");
+  const m = logText.match(
+    /aligner split (\d+) mixed chunk\(s\) into (\d+) part\(s\), (\d+) call\(s\) in ([\d.]+) s, (\d+) fallback\(s\)(?: \(([^)]*)\))?/,
+  );
+  const mf = logText.match(/aligner fallback for all mixed chunks \(([^)]*)\)/);
+  if (m) {
+    aligner = {
+      calls: Number(m[3]),
+      parts: Number(m[2]),
+      chunksSplit: Number(m[1]),
+      alignMs: Math.round(Number(m[4]) * 1000),
+      fallbacks: Number(m[5]),
+      ...(m[6] ? { fallbackReason: m[6] } : {}),
+    };
+  } else if (mf) {
+    aligner = {
+      calls: 0,
+      parts: 0,
+      chunksSplit: 0,
+      alignMs: 0,
+      fallbacks: 1,
+      fallbackReason: mf[1],
+    };
+  } else {
+    const fb = logText.match(/speaker alignment fallback: (.*)/);
+    if (fb) {
+      aligner = {
+        calls: 0,
+        parts: 0,
+        chunksSplit: 0,
+        alignMs: 0,
+        fallbacks: 0,
+        fallbackReason: `plan fallback: ${fb[1].trim()}`,
+      };
+    }
+  }
+}
 let multiTurnChunks = null;
 if (turns) {
   multiTurnChunks = 0;
@@ -395,6 +497,11 @@ const metrics = {
     distinctLabels: distinctLabels.size,
   },
   multiTurnChunks,
+  edgeWordsLost,
+  edgeWordsAdded,
+  edgeWordsLostByChunk,
+  edgeWordsAddedByChunk,
+  aligner,
   termHits,
   textHash,
   mergedHash,
@@ -422,6 +529,8 @@ console.log(
     `chunks=${metrics.chunks.total} (mic=${metrics.chunks.mic} system=${metrics.chunks.system})`,
     `wallSeconds=${metrics.wallSeconds}`,
     `labeled=${metrics.labeled.count}/${metrics.labeled.distinctLabels} multiTurnChunks=${metrics.multiTurnChunks}`,
+    `edgeWordsLost=${metrics.edgeWordsLost} edgeWordsAdded=${metrics.edgeWordsAdded}`,
+    `aligner=${metrics.aligner ? `${metrics.aligner.calls} calls, ${metrics.aligner.parts} parts, ${metrics.aligner.alignMs} ms, ${metrics.aligner.fallbacks} fallback(s)${metrics.aligner.fallbackReason ? ` (${metrics.aligner.fallbackReason})` : ""}` : "null"}`,
     `termHits=${metrics.termHits}`,
     `dupJoins=${metrics.dupJoins} (k>=2: ${metrics.dupJoinsK2})`,
     `contiguousCuts=${metrics.contiguousCuts}`,

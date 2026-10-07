@@ -58,6 +58,7 @@ export function MeetingModelRow({
   value,
   voiceModels,
   servers,
+  alignerStatus,
 }: {
   /** Raw persisted `meeting_stt_model` value; `""` or absent = dictation. */
   value: string | undefined;
@@ -65,6 +66,13 @@ export function MeetingModelRow({
   voiceModels: ConfiguredModel[];
   /** Live own-server views, for the voice-role filter (I3). */
   servers: ServerView[];
+  /** I4b (spec 3.6): the aligner helper's download state — the one-line
+   * "Word timing for speaker changes" status. `null`/absent = not
+   * available on this Mac. */
+  alignerStatus?: {
+    status: "not_downloaded" | "downloading" | "ready" | "error";
+    downloadProgress?: { percent: number };
+  } | null;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -120,6 +128,15 @@ export function MeetingModelRow({
           </span>
           <p className="text-muted-foreground mt-0.5 text-[11.5px] leading-snug">
             {t("models.meetingModel.reloadNote")}
+          </p>
+          <p className="text-muted-foreground mt-0.5 text-[11px] leading-snug">
+            {alignerStatus?.status === "ready"
+              ? t("models.meetingModel.asrTimingReady")
+              : alignerStatus?.status === "downloading"
+                ? t("models.meetingModel.asrTimingDownloading", {
+                    percent: alignerStatus.downloadProgress?.percent ?? 0,
+                  })
+                : t("models.meetingModel.asrTimingUnavailable")}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">

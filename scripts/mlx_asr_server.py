@@ -319,6 +319,66 @@ def _handle_transcribe(message: dict[str, Any]) -> None:
         _send({"id": req_id, "error": str(exc)})
 
 
+def _item_field(item: Any, names: tuple[str, ...]) -> Any:
+    """Read the first present attribute/key from an aligned-item span."""
+    for name in names:
+        value = item.get(name) if isinstance(item, dict) else getattr(item, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _handle_align(message: dict[str, Any]) -> None:
+    """Forced alignment: word times for (audio, text, language).
+
+    Used only by a worker that loaded a forced-aligner model (specs/
+    meeting-transcription-v2.md section 3.6). Input: ``{id, audio_path,
+    audio_format, sample_rate, text, language}``. Output: ``{id, type:
+    "aligned", words: [{text, start, end}]}`` with start/end in seconds
+    relative to the audio start. A worker that loaded an ASR model answers
+    with an error (its ``generate`` is not an aligner).
+    """
+    req_id = message.get("id")
+    try:
+        model = _state["model"]
+        if model is None:
+            raise RuntimeError("model not loaded")
+
+        text = message.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("missing text")
+
+        audio = _audio_from_message(message)
+        language = message.get("language")
+        result = model.generate(
+            audio,
+            text,
+            language=language if isinstance(language, str) and language else "English",
+        )
+
+        # generate() returns a ForcedAlignResult (iterable of items) for a
+        # single sample; be defensive about list wrappers.
+        items = result.items if hasattr(result, "items") else list(result)
+        words = []
+        for item in items:
+            wtext = _item_field(item, ("text",))
+            start = _item_field(item, ("start_time", "start"))
+            end = _item_field(item, ("end_time", "end"))
+            if wtext is None or start is None or end is None:
+                continue
+            words.append(
+                {
+                    "text": str(wtext),
+                    "start": float(start),
+                    "end": float(end),
+                }
+            )
+        _send({"id": req_id, "type": "aligned", "words": words})
+    except Exception as exc:
+        _log(f"align error: {exc}")
+        _send({"id": req_id, "error": str(exc)})
+
+
 def _serve() -> None:
     for line in sys.stdin:
         line = line.strip()
@@ -337,6 +397,9 @@ def _serve() -> None:
             return
         if msg_type == "transcribe":
             _handle_transcribe(message)
+            continue
+        if msg_type == "align":
+            _handle_align(message)
             continue
         _send({"id": message.get("id"), "error": f"unknown message type: {msg_type}"})
 
