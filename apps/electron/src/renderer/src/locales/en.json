@@ -983,6 +983,8 @@
     "diarizationUnavailable": "Speaker labels aren't available in this build.",
     "enhanceAutoLabel": "Auto Enhance",
     "enhanceAutoHint": "Right after a meeting transcribes, clean up its transcript automatically with your default LLM.",
+    "asrContextLabel": "Use previous text as context",
+    "asrContextHint": "Can fix technical terms, can also change names. Off by default.",
     "enhancePromptTitle": "Enhance transcripts automatically?",
     "enhancePromptDesc": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically. The meeting text goes to your default LLM: {{model}} ({{scope}}).",
     "enhancePromptNoLlm": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically with your default LLM.",

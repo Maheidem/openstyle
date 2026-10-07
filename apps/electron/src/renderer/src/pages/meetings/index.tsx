@@ -27,6 +27,7 @@ import {
   useSystemAudioProbe,
 } from "./recording";
 import {
+  AsrContextSettingsPopover,
   DiarizationSettingsPopover,
   EnhanceSettingsPopover,
 } from "./settings-popovers";
@@ -142,6 +143,7 @@ export default function MeetingsPage(): React.JSX.Element {
               <div className="flex gap-1.5 pt-2">
                 <DiarizationSettingsPopover />
                 <EnhanceSettingsPopover />
+                <AsrContextSettingsPopover />
               </div>
             </div>
             <p className="text-muted-foreground mb-6 max-w-[480px] text-[13px] leading-[1.5]">
@@ -196,6 +198,7 @@ export default function MeetingsPage(): React.JSX.Element {
               <div className="flex gap-1.5">
                 <DiarizationSettingsPopover />
                 <EnhanceSettingsPopover />
+                <AsrContextSettingsPopover />
               </div>
             </div>
 

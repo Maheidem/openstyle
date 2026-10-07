@@ -211,6 +211,9 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   // one-time-prompt-seen flag both take only "true" and "false".
   ["meeting_enhance_auto_run", checkEnhanceFlag],
   ["meeting_enhance_prompt_seen", checkEnhanceFlag],
+  // I1 (specs/meeting-transcription-v2.md §3.1): the previous-chunk context
+  // flag, off by default (owner decision 2026-10-07) — same contract.
+  ["meeting_asr_context", checkEnhanceFlag],
 ]);
 
 /**

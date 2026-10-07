@@ -7,7 +7,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import {
   type ChunkResult,
@@ -809,6 +816,14 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
 // first, context last) — with guards, plus one retry without context when
 // the model echoes the context back as fake speech.
 describe("phase 3b: previous-chunk context and echo guard (I1, §3.1)", () => {
+  // Owner decision 2026-10-07: the context ships OFF by default behind the
+  // `meeting_asr_context` setting. These tests exercise the ON behavior,
+  // so setup writes the row by default; the setting tests below manage it
+  // themselves. A missing row (the beforeEach state) means off.
+  beforeEach(() => {
+    deleteSetting("meeting_asr_context");
+  });
+
   // A prompt-taking provider ("server") and one channel (mic only), so the
   // chunks run sequentially in a single lane.
   function setup(
@@ -819,8 +834,12 @@ describe("phase 3b: previous-chunk context and echo guard (I1, §3.1)", () => {
       texts?: string[];
       failFirst?: number;
       throwOnCalls?: number[];
+      contextOn?: boolean;
     } = {},
   ) {
+    if (opts.contextOn ?? true) {
+      writeSetting("meeting_asr_context", "true");
+    }
     const dir = makeMeetingDir({
       mic: opts.micDurationMs ?? 10_000,
       system: 1_000,
@@ -1052,6 +1071,9 @@ describe("phase 3b: previous-chunk context and echo guard (I1, §3.1)", () => {
   });
 
   it("two parallel lanes never cross context (mic vs system)", async () => {
+    // The setting is on for this test (it builds the transcriber directly,
+    // bypassing setup's default write).
+    writeSetting("meeting_asr_context", "true");
     // The respond hook keys on the FIRST SAMPLE of the slice: the test
     // WAV fills sample i with i % 32768, so the low byte is
     // 16 * (startMs % 16) — four distinct start residues give four
@@ -1156,5 +1178,28 @@ describe("phase 3b: previous-chunk context and echo guard (I1, §3.1)", () => {
     // terms label and is a terms+context leak, so the lane keeps nothing
     // from it.
     expect(fake.calls[3]!.bias).toEqual({ kind: "prompt", text: terms });
+  });
+
+  it("no context on any chunk when the setting row is missing (off by default)", async () => {
+    // contextOn: false keeps the beforeEach state: no row at all.
+    const { dir, fake, t } = setup({
+      contextOn: false,
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, { micSegments: twoChunks });
+    // Both chunks carry the plain bias — the lane ran, but no context.
+    expect(fake.calls[0]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it('no context when the setting is "false"', async () => {
+    const { dir, fake, t } = setup({
+      contextOn: false,
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    writeSetting("meeting_asr_context", "false");
+    await run(t, dir, { micSegments: twoChunks });
+    expect(fake.calls[0]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
   });
 });

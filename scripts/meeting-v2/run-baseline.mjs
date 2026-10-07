@@ -3,7 +3,8 @@
 //
 // Runs one baseline run (R0 = diarization off, R0d = diarization on,
 // R3a = phase 3a with R0's settings, R3b/R3b2 = phase 3b with R0's
-// settings; R3b2 = the review-fixed context guards)
+// settings; R3b2 = the review-fixed context guards, R3c-off/R3c-on =
+// the context setting (owner decision 2026-10-07) absent / "true")
 // of the pipeline against the scratch profile. Starts its own isolated
 // server (never port 4649), transcribes the copied meeting, measures the
 // wall time from the POST /transcribe reply to status = transcribed, stops
@@ -45,7 +46,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2 [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on [options]",
   );
   process.exit(2);
 }
@@ -54,13 +55,23 @@ if (
   runName !== "R0d" &&
   runName !== "R3a" &&
   runName !== "R3b" &&
-  runName !== "R3b2"
+  runName !== "R3b2" &&
+  runName !== "R3c-off" &&
+  runName !== "R3c-on"
 ) {
-  console.error(`--run must be R0, R0d, R3a, R3b or R3b2, got: ${runName}`);
+  console.error(
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off or R3c-on, got: ${runName}`,
+  );
   process.exit(2);
 }
-// R3a/R3b/R3b2 run with R0's settings: diarization off.
+// R3a/R3b/R3b2/R3c-* run with R0's settings: diarization off.
 const diarizationOn = runName === "R0d";
+// The previous-chunk context setting (owner decision 2026-10-07):
+// R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
+// had context on — the setting did not exist yet); every other run
+// removes the row (off).
+const asrContextOn =
+  runName === "R3c-on" || runName === "R3b" || runName === "R3b2";
 if (port === 4649) {
   console.error("refusing to use port 4649 (the installed app owns it)");
   process.exit(2);
@@ -102,10 +113,18 @@ rmSync(logPath, { force: true });
       "DELETE FROM settings WHERE key = 'meeting_diarization_enabled'",
     ).run();
   }
+  if (asrContextOn) {
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES ('meeting_asr_context', 'true') \
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run();
+  } else {
+    db.prepare("DELETE FROM settings WHERE key = 'meeting_asr_context'").run();
+  }
   db.close();
 }
 console.log(
-  `reset scratch DB for ${runName} (diarization ${diarizationOn ? "on" : "off"})`,
+  `reset scratch DB for ${runName} (diarization ${diarizationOn ? "on" : "off"}, context setting ${asrContextOn ? "on" : "off"})`,
 );
 
 // --- 2. Start the isolated server ---------------------------------------

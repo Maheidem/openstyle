@@ -175,6 +175,12 @@ const rows: [string, string, number, string | null][] = [
   ["meeting_enhance_auto_run", "yes", 400, ENHANCE_FLAG],
   ["meeting_enhance_auto_run", "True", 400, ENHANCE_FLAG],
   ["meeting_enhance_auto_run", "", 400, ENHANCE_FLAG],
+  // I1 (specs/meeting-transcription-v2.md §3.1): the context flag is off
+  // by default (owner decision 2026-10-07) but validates like the others.
+  ["meeting_asr_context", "true", 200, null],
+  ["meeting_asr_context", "false", 200, null],
+  ["meeting_asr_context", "yes", 400, ENHANCE_FLAG],
+  ["meeting_asr_context", "", 400, ENHANCE_FLAG],
   ["meeting_enhance_prompt_seen", "true", 200, null],
   ["meeting_enhance_prompt_seen", "false", 200, null],
   ["meeting_enhance_prompt_seen", "1", 400, ENHANCE_FLAG],

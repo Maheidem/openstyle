@@ -1189,6 +1189,9 @@ describe("boot sweep — quit-mid-transcription recovery (T1-1a)", () => {
 describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
   afterEach(() => {
     getDb().exec("DELETE FROM vocabulary");
+    getDb()
+      .prepare("DELETE FROM settings WHERE key = 'meeting_asr_context'")
+      .run();
   });
 
   it("persists a leaked chunk as status='filtered', text=NULL, end to end", async () => {
@@ -1231,6 +1234,14 @@ describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
     // is diluted by the context words.
     getDb().prepare("INSERT INTO vocabulary (term) VALUES (?)").run("AlphaCo");
     getDb().prepare("INSERT INTO vocabulary (term) VALUES (?)").run("BetaLab");
+    // The context must be on (off by default since 2026-10-07): the echo
+    // only contains the context words when chunk 1 got chunk 0's tail.
+    getDb()
+      .prepare(
+        "INSERT INTO settings (key, value) VALUES ('meeting_asr_context', 'true') \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run();
     const dir = mkdtempSync(join(tmpdir(), "meeting-3b-persist-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     // Two 3.5 s tone bursts (both >= 3 s, so the second chunk is eligible

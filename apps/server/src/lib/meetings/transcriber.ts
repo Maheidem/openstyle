@@ -292,6 +292,14 @@ export class MeetingTranscriber {
     // Early-return note: when shouldStop fires, the results array keeps
     // absent (hole) slots for chunks that never ran — see shouldStop.
     const config = this.deps.resolveConfig();
+    // Decision (owner, 2026-10-07, §3.1): the previous-chunk context ships
+    // OFF BY DEFAULT behind the flat `meeting_asr_context` setting — only
+    // the value "true" turns it on; a missing row means off. Read once per
+    // run, next to the config. The lanes from phase 3a stay on either way;
+    // this gate only decides whether a lane may send context. retry-failed
+    // (lanes: false) has no lane state, so it stays without context even
+    // when the setting is on.
+    const contextEnabled = readSetting("meeting_asr_context") === "true";
     const provider = this.deps.getProvider(config.providerId);
     if (!provider) {
       throw new Error(
@@ -353,6 +361,7 @@ export class MeetingTranscriber {
           t.idx,
           t.seg,
           lane,
+          contextEnabled,
           counters,
         );
         results[i] = result;
@@ -456,6 +465,7 @@ export class MeetingTranscriber {
     idx: number,
     seg: Segment,
     lane: LaneState | null,
+    contextEnabled: boolean,
     counters: ContextCounters,
   ): Promise<ChunkResult> {
     const maxAttempts = this.deps.maxAttempts ?? 3;
@@ -464,9 +474,12 @@ export class MeetingTranscriber {
     // The same constant guards both: below this, neither the vocabulary
     // bias prompt nor the context is sent (phase 3b, §3.1).
     const baseBias = durationMs < MIN_BIAS_DURATION_MS ? null : config.bias;
-    // Previous-chunk context (phase 3b): lanes only. The old pool
-    // (lanes: false, retry-failed) has no lane state, so no context.
-    const context = lane ? await this.contextFor(lane, config, seg) : null;
+    // Previous-chunk context (phase 3b): lanes only, and only when the
+    // `meeting_asr_context` setting is on (owner decision 2026-10-07: off
+    // by default). The old pool (lanes: false, retry-failed) has no lane
+    // state, so no context either way.
+    const context =
+      lane && contextEnabled ? await this.contextFor(lane, config, seg) : null;
     const withContext =
       context !== null ? this.biasWithContext(config, context) : null;
     const bias = withContext ?? baseBias;

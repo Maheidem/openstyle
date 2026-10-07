@@ -10,7 +10,13 @@ import { getClient } from "@renderer/lib/api";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, Settings2, Users, WandSparkles } from "lucide-react";
+import {
+  Info,
+  MessageSquareText,
+  Settings2,
+  Users,
+  WandSparkles,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
@@ -192,6 +198,68 @@ export function DiarizationSettingsPopover(): React.JSX.Element {
  * string contract the server validator accepts: only `"true"` turns it on,
  * `"false"` is an explicit off, and a missing row means off too.
  */
+/**
+ * Global previous-chunk-context toggle (specs/meeting-transcription-v2.md
+ * §3.1, owner decision 2026-10-07). When on, each chunk's bias prompt
+ * carries the tail of the previous chunk's cleaned text in the same
+ * channel. Like the auto-Enhance switch above it, it writes the string
+ * contract the server validator accepts: only `"true"` turns it on,
+ * `"false"` is an explicit off, and a missing row means off too.
+ */
+export function AsrContextSettingsPopover(): React.JSX.Element {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { data: settings } = useQuery(settingsQueryOptions());
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const checked = settings?.[SETTINGS_KEYS.meetingAsrContext] === "true";
+
+  const handleToggle = useCallback(
+    async (next: boolean) => {
+      setBusy(true);
+      try {
+        await putSetting(SETTINGS_KEYS.meetingAsrContext, String(next));
+        await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [queryClient],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label={t("meetings.asrContextLabel")}
+          title={t("meetings.asrContextLabel")}
+        >
+          <MessageSquareText />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-foreground m-0 text-[12.5px] font-medium">
+              {t("meetings.asrContextLabel")}
+            </p>
+            <p className="text-muted-foreground m-0 text-[11px] leading-[1.5]">
+              {t("meetings.asrContextHint")}
+            </p>
+          </div>
+          <Switch
+            checked={checked}
+            disabled={busy}
+            onCheckedChange={(v) => void handleToggle(v)}
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function EnhanceSettingsPopover(): React.JSX.Element {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
