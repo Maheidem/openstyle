@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Phase 0b metrics (specs/meeting-transcription-v2.md, section 7.4).
 //
 // Computes the run metrics for one finished transcribe run over the scratch
@@ -21,9 +22,11 @@
 // sanctioned snap artifact (the cut lands in the quiet part). Only a
 // second speaker inside one chunk violates G4.
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
@@ -255,6 +258,110 @@ if (diarizerSecondsRaw !== undefined) {
   }
 }
 
+// mergedHash: sha256 over the MERGED transcript the user sees — the exact
+// merge code path (apps/server/src/lib/meetings/merge.ts), run in a tsx
+// subprocess because the module is TypeScript. textHash hashes the raw DB
+// rows, so a merge-filter regression (a chunk surviving or dropping in
+// mergeTranscript) is invisible to it; mergedHash is not. The per-segment
+// line is speaker|start|end|(enhancedText ?? text), like the UI renders
+// it. Null when tsx is not available (the metric is absent, not wrong).
+function computeMergedHash() {
+  const tsxBin = join(
+    repoRoot,
+    "apps",
+    "server",
+    "node_modules",
+    ".bin",
+    "tsx",
+  );
+  if (!existsSync(tsxBin) || !meeting.audio_dir) return null;
+  // Channel rows exactly as loadMergedTranscript builds them
+  // (routes/meetings.ts): status ok with text, speakerLabel when set,
+  // enhancedText when set.
+  const channel = (source) =>
+    segments
+      .filter((s) => s.source === source && s.status === "ok" && s.text)
+      .map((s) => ({
+        startMs: s.start_ms,
+        endMs: s.end_ms,
+        text: s.text,
+        ...(s.speaker_label ? { speakerLabel: s.speaker_label } : {}),
+        ...(s.enhanced_text ? { enhancedText: s.enhanced_text } : {}),
+      }));
+  // sync.json with the same rules as loadSyncData (routes/meetings.ts).
+  let sync;
+  try {
+    const j = JSON.parse(
+      readFileSync(join(meeting.audio_dir, "sync.json"), "utf8"),
+    );
+    if (Number.isFinite(j.sampleRate)) {
+      sync = { sampleRate: j.sampleRate, epochs: [], syncMarkers: [] };
+      if (typeof j.micT0 === "number")
+        sync.epochs.push({ channel: "mic", t0WallclockMs: j.micT0 });
+      if (typeof j.systemT0 === "number")
+        sync.epochs.push({ channel: "system", t0WallclockMs: j.systemT0 });
+      for (const m of j.syncMarkers ?? []) {
+        if (
+          typeof m.wallclockMs === "number" &&
+          typeof m.totalSamples === "number"
+        ) {
+          sync.syncMarkers.push({
+            channel: "system",
+            wallclockMs: m.wallclockMs,
+            totalSamples: m.totalSamples,
+          });
+        }
+      }
+    }
+  } catch {
+    // No sync file: no drift correction, same as the route.
+  }
+  const mergeTs = join(
+    repoRoot,
+    "apps",
+    "server",
+    "src",
+    "lib",
+    "meetings",
+    "merge.ts",
+  );
+  const inputs = {
+    mic: channel("mic"),
+    system: channel("system"),
+    sync,
+    vocab: vocabulary.map((r) => r.term),
+  };
+  const code = [
+    `import { createHash } from "node:crypto";`,
+    `import { mergeTranscript } from ${JSON.stringify(mergeTs)};`,
+    `const inputs = ${JSON.stringify(inputs)};`,
+    `const merged = mergeTranscript(inputs.mic, inputs.system, inputs.sync, inputs.vocab);`,
+    `const h = createHash("sha256");`,
+    `for (const s of merged) h.update(s.speaker + "|" + s.startMs + "|" + s.endMs + "|" + (s.enhancedText ?? s.text) + "\\n");`,
+    `console.log(h.digest("hex"));`,
+  ].join("\n");
+  const tmp = join(tmpdir(), `merged-hash-${process.pid}.mts`);
+  try {
+    writeFileSync(tmp, code);
+    const out = execFileSync(tsxBin, [tmp], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      cwd: join(repoRoot, "apps", "server"),
+    });
+    const hash = out.trim().split("\n").pop();
+    return /^[0-9a-f]{64}$/.test(hash) ? hash : null;
+  } catch {
+    return null;
+  } finally {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // best effort
+    }
+  }
+}
+const mergedHash = computeMergedHash();
+
 const audioSeconds = meeting.duration_ms ? meeting.duration_ms / 1000 : null;
 
 // multiTurnChunks: system chunks overlapping turns of two or more
@@ -290,6 +397,7 @@ const metrics = {
   multiTurnChunks,
   termHits,
   textHash,
+  mergedHash,
   dupJoins,
   dupJoinsK2,
   contiguousCuts,
@@ -322,5 +430,6 @@ console.log(
     `langMismatch=${metrics.langMismatch}`,
     `diarizerSeconds=${metrics.diarizerSeconds} percentOfAudio=${metrics.diarizerPercentOfAudio}`,
     `textHash=${metrics.textHash.slice(0, 16)}…`,
+    `mergedHash=${metrics.mergedHash ? `${metrics.mergedHash.slice(0, 16)}…` : "null"}`,
   ].join(" "),
 );

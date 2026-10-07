@@ -1050,15 +1050,16 @@ describe("phase 3b: previous-chunk context and echo guard (I1, §3.1)", () => {
   it("no context after a chunk rejected by the hallucination filter", async () => {
     // "thank you" is an exact silence hallucination (merge.ts HALLUCINATION
     // list): the lane must treat the chunk as unclean, though its status
-    // is ok. The exact rule only applies at or under 1 s (phase 4: longer
-    // chunks and labeled chunks are real speech), so the first chunk is
-    // sub-second.
+    // is ok. The exact rule fires on any UNLABELED chunk, whatever its
+    // padded length (phase 4, decision owner 2026-10-07: the skip is the
+    // label only — an earlier >1 s clause let padded silence chunks
+    // survive everywhere), so this "thank you" is filtered at any size.
     const { dir, fake, t } = setup({
       texts: ["thank you", "next chunk speech"],
     });
     const results = await run(t, dir, {
       micSegments: [
-        { startMs: 0, endMs: 800 },
+        { startMs: 0, endMs: 4000 },
         { startMs: 4000, endMs: 8000 },
       ],
     });

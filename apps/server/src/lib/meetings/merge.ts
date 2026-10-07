@@ -137,15 +137,22 @@ export function isHallucination(seg: TranscriptSegment): boolean {
   const shortEnough = words <= 8;
   // Speaker cuts (specs/meeting-transcription-v2.md §3.4) make short
   // single-speaker chunks, and short chunks trigger this filter. The exact
-  // rule therefore skips a chunk that has a diarization speakerLabel, or a
-  // chunk longer than 1 s — a real "thank you" from a labeled speaker (or a
-  // chunk with any context) survives. The prefix rule is untouched: it
-  // names whole-utterance junk, not a thing a speaker says.
+  // rule therefore skips a chunk that has a diarization speakerLabel — a
+  // real "thank you" from a labeled speaker may be a single word in a cut
+  // part, while an unlabeled chunk is judged on its words alone. The
+  // prefix rule is untouched: it names whole-utterance junk, not a thing a
+  // speaker says.
+  //
+  // Decision (owner, 2026-10-07): the skip is the LABEL ONLY. An earlier
+  // "or a chunk longer than 1 s" clause was a regression: padding makes
+  // almost every chunk longer than 1 s (a 260 ms burst probes as 960 ms),
+  // so "Thank you." on silence survived everywhere — mic channel,
+  // diarization off, and on every read of old meetings (this merge runs on
+  // every read). The label is the honest signal.
   if (
     shortEnough &&
     HALLUCINATION_EXACT.has(norm) &&
-    seg.speakerLabel === undefined &&
-    seg.endMs - seg.startMs <= 1000
+    seg.speakerLabel === undefined
   ) {
     return true;
   }

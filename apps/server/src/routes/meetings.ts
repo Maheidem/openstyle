@@ -65,8 +65,10 @@ import {
   MeetingTranscriber,
   type TranscriberDeps,
 } from "../lib/meetings/transcriber.js";
+import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
+import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 
 /**
  * Internal endpoints backing Meeting Mode. The Electron main process (the
@@ -397,11 +399,16 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
 
     // I4: diarize BEFORE transcription, so the system track can be cut at
     // speaker changes. Active only when the setting is on (default-on per
-    // Decision 6, owner 2026-10-06). runDiarizer returns null on any
-    // expected failure (missing wav/binary/models) and the job keeps the
-    // old behavior: no speaker cuts, no labels, never a failed job.
+    // Decision 6, owner 2026-10-06) AND system.wav exists — a mic-only
+    // meeting has nothing to diarize and skips the phase silently (no
+    // "diarizing" phase, no log line). runDiarizer returns null on any
+    // expected failure (missing binary/models) and the job keeps the old
+    // behavior: no speaker cuts, no labels, never a failed job.
     let diarSegments: DiarizerSegment[] | null = null;
-    if (getMeetingDiarizationEnabledSetting()) {
+    if (
+      getMeetingDiarizationEnabledSetting() &&
+      existsSync(join(audioDir, SYSTEM_WAV))
+    ) {
       setProgress(id, { done: 0, total: 0, failed: 0, phase: "diarizing" });
       const durationRow = db
         .prepare("SELECT duration_ms FROM meetings WHERE id = ?")
@@ -412,10 +419,20 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       log.info(
         `meeting ${id}: diarization started (${durationRow?.duration_ms ?? 0} ms audio)`,
       );
+      // §3.3 rule for the pre-chunk diarizer wait: yield to live
+      // dictation only when the meeting's STT provider shares a local
+      // resource with it (local-whisper, or a local-mlx model that differs
+      // from the dictation model). Cloud meetings never waited before
+      // phase 4 and must not start now.
+      const yieldsToDictation =
+        config.providerId === WHISPER_PROVIDER_ID ||
+        (config.providerId === MLX_ASR_PROVIDER_ID &&
+          config.differsFromDictation === true);
       diarSegments = await runDiarizer(
         audioDir,
         durationRow?.duration_ms ?? 0,
         testOverrides.diarizeDeps ?? createDefaultDiarizeDeps(),
+        yieldsToDictation,
       ).catch((err) => {
         log.warn(
           `meeting ${id}: diarization failed, falling back to no speaker cuts: ${String(err)}`,

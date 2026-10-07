@@ -98,7 +98,10 @@ export function mergeSegmentsToward(
     // A speaker cut is a hard boundary (specs/meeting-transcription-v2.md
     // §3.4): two parts that carry DIFFERENT speakers never merge. Parts of
     // the same speaker (or a part with no speaker) still merge toward the
-    // target as before.
+    // target as before. When they merge, an unlabeled part absorbs the
+    // neighbor's attribution — otherwise "no-turn, A, B" merges into one
+    // unlabeled chunk and swallows the A|B boundary (the part's speech
+    // came from the labeled neighbor).
     const differentSpeakers =
       last.speaker !== undefined &&
       next.speaker !== undefined &&
@@ -110,6 +113,7 @@ export function mergeSegmentsToward(
       !differentSpeakers
     ) {
       last.endMs = next.endMs;
+      last.speaker ??= next.speaker;
     } else {
       out.push({ ...next });
     }
@@ -384,6 +388,11 @@ function ownerSpeaker(part: Segment, turns: TurnSlice[]): string | undefined {
  * sub-1.5 s sliver of one speaker joins a longer neighbor of the other —
  * the deliberate opposite of `mergeSegmentsToward`, which never merges
  * across different speakers.
+ *
+ * Step 8 also covers the FIRST part: the loop only ever merges a part into
+ * the one before it, so a short opening part (a cut that lands 1.2 s in)
+ * would otherwise survive as a near-empty chunk of its own. After the loop
+ * it merges into the next part, keeping the longer part's speaker.
  */
 function mergeShortParts(parts: Segment[]): Segment[] {
   if (parts.length <= 1) return parts;
@@ -398,6 +407,13 @@ function mergeShortParts(parts: Segment[]): Segment[] {
     } else {
       out.push({ ...cur });
     }
+  }
+  if (out.length > 1 && out[0].endMs - out[0].startMs < SHORT_PART_MS) {
+    const firstDur = out[0].endMs - out[0].startMs;
+    if (firstDur > out[1].endMs - out[1].startMs)
+      out[1].speaker = out[0].speaker;
+    out[1].startMs = out[0].startMs;
+    out.shift();
   }
   return out;
 }
@@ -439,9 +455,13 @@ function cutSegment(
   }
   bounds.push(seg.endMs);
   // Snapping can push a cut onto its neighbor: keep bounds strictly
-  // increasing so no part is empty.
+  // increasing so no part is empty. The +1 ms nudge must stay inside the
+  // segment (a second-to-last cut snapped to seg.endMs would otherwise
+  // push the final bound past it).
   for (let i = 1; i < bounds.length; i++) {
-    if (bounds[i] <= bounds[i - 1]) bounds[i] = bounds[i - 1] + 1;
+    if (bounds[i] <= bounds[i - 1]) {
+      bounds[i] = Math.min(bounds[i - 1] + 1, seg.endMs);
+    }
   }
 
   const parts: Segment[] = [];
@@ -470,11 +490,17 @@ export function cutAtSpeakerChanges(
   frameMs: number,
 ): Segment[] {
   if (turns.length === 0) return segments.map((s) => ({ ...s }));
-  const turnSlices: TurnSlice[] = turns.map((t) => ({
-    speaker: t.speakerId,
-    startMs: Math.round(t.startTimeSeconds * 1000),
-    endMs: Math.round(t.endTimeSeconds * 1000),
-  }));
+  // The cut rule (flicker absorption, same-speaker re-join) assumes time
+  // order. The diarizer output is sanitized at the source (diarize.ts),
+  // but this is a pure function with a public contract — sort here too,
+  // cheaply, so a caller with unsorted turns still gets correct parts.
+  const turnSlices: TurnSlice[] = turns
+    .map((t) => ({
+      speaker: t.speakerId,
+      startMs: Math.round(t.startTimeSeconds * 1000),
+      endMs: Math.round(t.endTimeSeconds * 1000),
+    }))
+    .sort((a, b) => a.startMs - b.startMs);
   const out: Segment[] = [];
   for (const seg of segments) {
     out.push(...cutSegment(seg, turnSlices, rmsDb, frameMs));

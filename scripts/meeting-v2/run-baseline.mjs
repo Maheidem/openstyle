@@ -47,7 +47,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4 [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b [options]",
   );
   process.exit(2);
 }
@@ -59,16 +59,18 @@ if (
   runName !== "R3b2" &&
   runName !== "R3c-off" &&
   runName !== "R3c-on" &&
-  runName !== "R4"
+  runName !== "R4" &&
+  runName !== "R4b"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on or R4, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4 or R4b, got: ${runName}`,
   );
   process.exit(2);
 }
-// R0d and R4 run with diarization on; every other run with R0's settings
-// (diarization off).
-const diarizationOn = runName === "R0d" || runName === "R4";
+// R0d, R4 and R4b (the post-review re-run of R4) run with diarization on;
+// every other run with R0's settings (diarization off).
+const diarizationOn =
+  runName === "R0d" || runName === "R4" || runName === "R4b";
 // The previous-chunk context setting (owner decision 2026-10-07):
 // R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
 // had context on — the setting did not exist yet); every other run

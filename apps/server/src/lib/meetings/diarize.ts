@@ -165,6 +165,34 @@ export interface SpeakerLabelAssignment {
   speakerLabel: string | null;
 }
 
+/**
+ * Validate and order the diarizer's raw turns (specs/meeting-transcription-
+ * v2.md §3.4): the cut rule and the label assignment both assume finite,\n * increasing turns in time order. Drop entries whose speakerId, start or
+ * end is not a usable finite number, and turns with end <= start; sort the
+ * rest by start. Returns null when nothing survives — the caller then
+ * treats the pass as failed, exactly like malformed JSON.
+ */
+export function sanitizeDiarizerTurns(
+  parsed: unknown[],
+): DiarizerSegment[] | null {
+  const usable = parsed.filter((t): t is DiarizerSegment => {
+    if (typeof t !== "object" || t === null) return false;
+    const d = t as DiarizerSegment;
+    return (
+      typeof d.speakerId === "string" &&
+      d.speakerId.length > 0 &&
+      typeof d.startTimeSeconds === "number" &&
+      Number.isFinite(d.startTimeSeconds) &&
+      typeof d.endTimeSeconds === "number" &&
+      Number.isFinite(d.endTimeSeconds) &&
+      d.endTimeSeconds > d.startTimeSeconds
+    );
+  });
+  if (usable.length === 0) return null;
+  usable.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds);
+  return usable;
+}
+
 /** Nearest-neighbor fallback window (spec §7 step 4). */
 const NEAREST_NEIGHBOR_WINDOW_MS = 2000;
 
@@ -352,39 +380,53 @@ interface SystemSegmentRow {
 /**
  * Run the fluidaudio-diarize binary against one meeting's `system.wav` and
  * return its turns — or null on any expected failure (missing wav, binary,
- * models, a failed probe or run, malformed JSON). Every failure logs a
- * "diarization skipped" warning and degrades to the old behavior; this
- * function never throws in normal operation. No database access: the caller
- * supplies the meeting duration (specs/meeting-transcription-v2.md §3.4).
+ * models, a failed probe or run, malformed JSON). Every failure logs an
+ * info line and degrades to the old behavior; this function never throws in
+ * normal operation. No database access: the caller supplies the meeting
+ * duration (specs/meeting-transcription-v2.md §3.4).
+ *
+ * The skips are info, not warnings (diarization is default-on since the
+ * phase 4 decision): a build without the binary or a mic-only meeting is a
+ * normal state, not a fault, and must not alarm in the server log. The UI
+ * surfaces availability through GET /diarization/status, not the log.
  */
 export async function runDiarizer(
   audioDir: string,
   durationMs: number,
   deps: DiarizeDeps = createDefaultDiarizeDeps(),
+  // The transcribe job passes the §3.3 verdict for the meeting's STT
+  // provider. The standalone /diarize path keeps the old unconditional
+  // yield (an explicit user action; a short wait there costs nothing).
+  yieldsToDictation = true,
 ): Promise<DiarizerSegment[] | null> {
   const wavPath = join(audioDir, SYSTEM_WAV);
   if (!existsSync(wavPath)) {
-    log.warn(`diarization skipped, no ${SYSTEM_WAV} at ${wavPath}`);
+    log.info(`diarization skipped, no ${SYSTEM_WAV} at ${wavPath}`);
     return null;
   }
 
   const binaryPath = deps.resolveBinaryPath();
   if (!binaryPath) {
-    log.warn("diarization skipped, fluidaudio-diarize binary not found");
+    log.info("diarization skipped, fluidaudio-diarize binary not found");
     return null;
   }
 
   const modelsDir = deps.resolveModelsDirPath();
   if (!modelsDir) {
-    log.warn("diarization skipped, models missing from bundle");
+    log.info("diarization skipped, models missing from bundle");
     return null;
   }
 
   // The diarizer runs on-device via CoreML/ANE, the same physical resource
-  // whisper-local targets — yield to live dictation exactly like chunk
-  // transcription does (spec §11), unconditionally (diarization always runs
-  // on-device regardless of which STT provider transcribed the meeting).
-  await waitForDictationIdle({ isDictationActive: deps.isDictationActive });
+  // whisper-local targets — yield to live dictation under the same §3.3 rule
+  // the transcription chunks use: always for local-whisper (shared server)
+  // and for a local-mlx model that differs from the dictation model
+  // (worker reload). A cloud-provider meeting never shared a local
+  // resource with dictation and must not gain a new wait before its first
+  // chunk just because diarization became default-on.
+  if (yieldsToDictation) {
+    await waitForDictationIdle({ isDictationActive: deps.isDictationActive });
+  }
 
   // Defensive probe before the real run — the bundle is expected to always
   // be present and loadable once `resolveModelsDirPath` returns non-null,
@@ -429,17 +471,16 @@ export async function runDiarizer(
     return null;
   }
 
-  let diarSegments: DiarizerSegment[];
   try {
     const parsed: unknown = JSON.parse(stdout);
     if (!Array.isArray(parsed)) throw new Error("stdout JSON is not an array");
-    diarSegments = parsed as DiarizerSegment[];
+    const diarSegments = sanitizeDiarizerTurns(parsed);
+    if (diarSegments === null) throw new Error("no usable turns");
+    return diarSegments;
   } catch (err) {
     log.warn(`diarization returned malformed JSON: ${String(err)}`);
     return null;
   }
-
-  return diarSegments;
 }
 
 /**
@@ -473,8 +514,9 @@ export function applyDiarization(
   );
   // The raw turns go in the same transaction as the labels they derive
   // (specs/meeting-transcription-v2.md §3.4): the measurement counts
-  // chunks overlapping more than one turn, and a re-transcribe of the
-  // same meeting can re-cut and re-label without running the binary.
+  // multi-speaker chunks from them. A re-transcribe deletes them with the
+  // old segments and re-diarizes — the stored turns are for the measurement,
+  // not a cache.
   const clearTurns = db.prepare(
     "DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?",
   );
