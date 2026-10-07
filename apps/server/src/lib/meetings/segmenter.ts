@@ -115,7 +115,25 @@ export function mergeSegmentsToward(
       last.endMs = next.endMs;
       last.speaker ??= next.speaker;
     } else {
-      out.push({ ...next });
+      // The speaker cut blocks the merge, but the gap audio (speech that
+      // the VAD found between the two parts) must still be sent to the
+      // model — otherwise a word in the gap is lost (council finding,
+      // 2026-10-07: a 2660 ms gap between two speakers' parts went
+      // unsent in R4b). Give the gap to a neighbor: extend the new part
+      // back to `last.endMs` (preferred — the cut stays at the speaker
+      // boundary) unless that would pass the 30 s cap; otherwise extend
+      // `last` forward to `next.startMs`; if both would pass the cap,
+      // keep the gap (it is shorter than 4 s and neither side can take
+      // it).
+      const part = { ...next };
+      if (differentSpeakers && gap > 0 && gap <= o.maxGapMs) {
+        if (next.endMs - last.endMs <= o.maxSegmentMs) {
+          part.startMs = last.endMs;
+        } else if (next.startMs - last.startMs <= o.maxSegmentMs) {
+          last.endMs = next.startMs;
+        }
+      }
+      out.push(part);
     }
   }
   return out;

@@ -47,7 +47,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c [options]",
   );
   process.exit(2);
 }
@@ -60,17 +60,22 @@ if (
   runName !== "R3c-off" &&
   runName !== "R3c-on" &&
   runName !== "R4" &&
-  runName !== "R4b"
+  runName !== "R4b" &&
+  runName !== "R4c"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4 or R4b, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b or R4c, got: ${runName}`,
   );
   process.exit(2);
 }
-// R0d, R4 and R4b (the post-review re-run of R4) run with diarization on;
-// every other run with R0's settings (diarization off).
+// R0d, R4, R4b and R4c (the post-council re-run: the speaker-cut gap now
+// goes to a neighbor) run with diarization on; every other run with R0's
+// settings (diarization off).
 const diarizationOn =
-  runName === "R0d" || runName === "R4" || runName === "R4b";
+  runName === "R0d" ||
+  runName === "R4" ||
+  runName === "R4b" ||
+  runName === "R4c";
 // The previous-chunk context setting (owner decision 2026-10-07):
 // R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
 // had context on — the setting did not exist yet); every other run
