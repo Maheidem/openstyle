@@ -149,6 +149,20 @@ for (const s of segments) {
 }
 const textHash = hash.digest("hex");
 
+// wordEndsSentence as in packages/stt/src/text.ts (spec 3.6, Decision
+// owner 2026-10-07): ends in . ? ! after dropping trailing closing
+// quotes. The cut snap rule makes this the expected state of every
+// kept cut, so badCutRatio should be 0.
+function wordEndsSentence(word) {
+  const w = word.trim();
+  if (w.length === 0) return false;
+  let end = w.length - 1;
+  while (end >= 0 && /["\u201d'\u2019\u00bb\u203a]/.test(w.charAt(end))) {
+    end -= 1;
+  }
+  return end >= 0 && ".?!".includes(w.charAt(end));
+}
+
 // normalizeText as in packages/stt/src/text.ts: lower case, no punctuation.
 function words(text) {
   return text
@@ -393,6 +407,7 @@ let edgeWordsAdded = null;
 let splitChunkCount = null;
 let distinctSplitChunks = null;
 let punctRatio = null;
+let badCutRatio = null;
 const edgeWordsLostByChunk = {};
 const edgeWordsAddedByChunk = {};
 if (r0dPath && existsSync(r0dPath)) {
@@ -409,6 +424,8 @@ if (r0dPath && existsSync(r0dPath)) {
   distinctSplitChunks = 0;
   let punctInSplitR0d = 0;
   let punctInSplitParts = 0;
+  let cutCount = 0;
+  let badCuts = 0;
   for (const c of r0dSystem) {
     // The new rows over this chunk's span.
     const over = newSystem.filter(
@@ -442,6 +459,19 @@ if (r0dPath && existsSync(r0dPath)) {
     // unless the turns say otherwise).
     if (over.length >= 2) {
       splitChunkCount += 1;
+      // Spec 3.6 (Decision, owner 2026-10-07): badCutRatio = cuts whose
+      // previous word does NOT end a sentence / all cuts. The parts are
+      // `over` in time order; every internal boundary is one cut and
+      // its previous word is the left part's last (raw, punctuated)
+      // token.
+      for (let k = 1; k < over.length; k += 1) {
+        cutCount += 1;
+        const leftTokens = (over[k - 1].text ?? "")
+          .split(/\s+/)
+          .filter((t) => t.length > 0);
+        const last = leftTokens[leftTokens.length - 1] ?? "";
+        if (!wordEndsSentence(last)) badCuts += 1;
+      }
       let punct0 = 0;
       for (const ch of c.text) {
         if (!/[\p{L}\p{N}\s]/u.test(ch)) punct0 += 1;
@@ -462,15 +492,22 @@ if (r0dPath && existsSync(r0dPath)) {
     punctInSplitR0d > 0
       ? Math.round((punctInSplitParts / punctInSplitR0d) * 1000) / 1000
       : null;
+  badCutRatio =
+    cutCount > 0 ? Math.round((badCuts / cutCount) * 1000) / 1000 : null;
 }
 
 // aligner stats (spec §3.6): parsed from the run's log line
 // "aligner split N mixed chunk(s) into M part(s), K call(s) in T s, F
-// fallback(s) [reason]" (or the fallback-only / no-mixed variants).
+// fallback(s), C cut(s), D dropped(s), W kept whole [reason]" (or the
+// no-mixed variant). C/D/W are the sentence-end cut stats (Decision,
+// owner 2026-10-07).
 let aligner = null;
 if (logPath && existsSync(logPath)) {
   const logText = readFileSync(logPath, "utf8");
   const m = logText.match(
+    /aligner split (\d+) mixed chunk\(s\) into (\d+) part\(s\), (\d+) call\(s\) in ([\d.]+) s, (\d+) fallback\(s\), (\d+) cut\(s\), (\d+) dropped\(s\), (\d+) kept whole(?: \(([^)]*)\))?/,
+  );
+  const mOld = logText.match(
     /aligner split (\d+) mixed chunk\(s\) into (\d+) part\(s\), (\d+) call\(s\) in ([\d.]+) s, (\d+) fallback\(s\)(?: \(([^)]*)\))?/,
   );
   const mf = logText.match(/aligner fallback for all mixed chunks \(([^)]*)\)/);
@@ -481,7 +518,20 @@ if (logPath && existsSync(logPath)) {
       chunksSplit: Number(m[1]),
       alignMs: Math.round(Number(m[4]) * 1000),
       fallbacks: Number(m[5]),
-      ...(m[6] ? { fallbackReason: m[6] } : {}),
+      cuts: Number(m[6]),
+      cutsDropped: Number(m[7]),
+      keptWhole: Number(m[8]),
+      ...(m[9] ? { fallbackReason: m[9] } : {}),
+    };
+  } else if (mOld) {
+    // Pre-decision log line (no cut stats).
+    aligner = {
+      calls: Number(mOld[3]),
+      parts: Number(mOld[2]),
+      chunksSplit: Number(mOld[1]),
+      alignMs: Math.round(Number(mOld[4]) * 1000),
+      fallbacks: Number(mOld[5]),
+      ...(mOld[6] ? { fallbackReason: mOld[6] } : {}),
     };
   } else if (mf) {
     aligner = {
@@ -544,6 +594,10 @@ const metrics = {
       ? Math.round((distinctSplitChunks / splitChunkCount) * 1000) / 1000
       : null,
   punctRatio,
+  // Spec 3.6 (Decision, owner 2026-10-07): the cut quality. badCutRatio
+  // from the stored parts (null without a --r0d dump); the log-side
+  // cut stats ride in `aligner` (cuts/cutsDropped/keptWhole).
+  badCutRatio,
   aligner,
   termHits,
   textHash,
@@ -573,7 +627,7 @@ console.log(
     `wallSeconds=${metrics.wallSeconds}`,
     `labeled=${metrics.labeled.count}/${metrics.labeled.distinctLabels} multiTurnChunks=${metrics.multiTurnChunks}`,
     `edgeWordsLost=${metrics.edgeWordsLost} edgeWordsAdded=${metrics.edgeWordsAdded}`,
-    `splitChunks=${metrics.splitChunks} splitLabelDistinct=${metrics.splitLabelDistinct} punctRatio=${metrics.punctRatio}`,
+    `splitChunks=${metrics.splitChunks} splitLabelDistinct=${metrics.splitLabelDistinct} punctRatio=${metrics.punctRatio} badCutRatio=${metrics.badCutRatio}`,
     `aligner=${metrics.aligner ? `${metrics.aligner.calls} calls, ${metrics.aligner.parts} parts, ${metrics.aligner.alignMs} ms, ${metrics.aligner.fallbacks} fallback(s)${metrics.aligner.fallbackReason ? ` (${metrics.aligner.fallbackReason})` : ""}` : "null"}`,
     `termHits=${metrics.termHits}`,
     `dupJoins=${metrics.dupJoins} (k>=2: ${metrics.dupJoinsK2})`,

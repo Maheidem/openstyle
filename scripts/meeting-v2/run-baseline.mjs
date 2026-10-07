@@ -5,7 +5,9 @@
 // R3a = phase 3a with R0's settings, R3b/R3b2 = phase 3b with R0's
 // settings; R3b2 = the review-fixed context guards, R3c-off/R3c-on =
 // the context setting (owner decision 2026-10-07) absent / "true",
-// R4 = phase 4, diarization on and context off so it compares with R0d)
+// R4 = phase 4, diarization on and context off so it compares with
+// R0d; R4f = the sentence-end cut snap (Decision, owner 2026-10-07,
+// spec 3.6), same treatment as R4d/R4e)
 // of the pipeline against the scratch profile. Starts its own isolated
 // server (never port 4649), transcribes the copied meeting, measures the
 // wall time from the POST /transcribe reply to status = transcribed, stops
@@ -47,7 +49,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f [options]",
   );
   process.exit(2);
 }
@@ -63,10 +65,11 @@ if (
   runName !== "R4b" &&
   runName !== "R4c" &&
   runName !== "R4d" &&
-  runName !== "R4e"
+  runName !== "R4e" &&
+  runName !== "R4f"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c or R4d or R4e, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e or R4f, got: ${runName}`,
   );
   process.exit(2);
 }
@@ -80,7 +83,8 @@ const diarizationOn =
   runName === "R4b" ||
   runName === "R4c" ||
   runName === "R4d" ||
-  runName === "R4e";
+  runName === "R4e" ||
+  runName === "R4f";
 // The previous-chunk context setting (owner decision 2026-10-07):
 // R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
 // had context on — the setting did not exist yet); every other run
@@ -162,13 +166,16 @@ env.OPENSTYLE_AUTH_TOKEN = token;
 // env-scoped cache (hfCacheRoot honors HF_HOME/HF_HUB_CACHE).
 env.HF_HOME = "/tmp/meeting-p4b-hf/hf";
 env.HF_HUB_CACHE = "/tmp/meeting-p4b-hf/hf/hub";
-// R4d (spec 3.6): the align path needs the worker's "align" message, which
-// lands in the worker script this release. The managed runtime binary in
-// ~/.cache/freestyle is the previous release's (no align handler), and the
-// proof runs must not rewrite the owner's integrity-verified cache — so
-// R4d points the documented trusted-operator override at the freshly
-// built local bundle. Non-R4d runs never change worker behavior.
-if (runName === "R4d" || runName === "R4e") {
+// Isolation (council review, 2026-10-07): the managed runtime folder
+// ~/.cache/freestyle/mlx-asr/runtime is the OWNER's integrity-verified
+// cache and must never be written by the proof runs (it was
+// re-downloaded once, at 15:48, by an R0d run without this override).
+// Every isolated server therefore gets the dev-built local bundle
+// (documented trusted-operator override) — it carries the "align"
+// handler and the behavior is identical for runs that never spawn a
+// worker (R0). The R0d runs of this round onward are NOT the old
+// fallback-path runs.
+{
   const localWorker = join(
     repoRoot,
     "dist",
@@ -177,7 +184,7 @@ if (runName === "R4d" || runName === "R4e") {
   );
   if (!existsSync(localWorker)) {
     console.error(
-      `R4d/R4e needs the phase 4b worker bundle at ${localWorker} (scripts/build_mlx_asr_worker.sh)`,
+      `the proof runs need the dev worker bundle at ${localWorker} (scripts/build_mlx_asr_worker.sh)`,
     );
     process.exit(2);
   }
@@ -328,7 +335,7 @@ try {
       // R4d (spec 3.6): edgeWordsLost/edgeWordsAdded need the R0d side —
       // the r3a dump (R0's output: same boundaries and text as R0d; R0d
       // only adds the labels the metric ignores).
-      if (runName === "R4d" || runName === "R4e") {
+      if (runName === "R4d" || runName === "R4e" || runName === "R4f") {
         const r0d = join(
           scratch,
           "compare",

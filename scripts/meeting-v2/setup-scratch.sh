@@ -87,8 +87,12 @@ if [ "$booted" -ne 1 ]; then
   exit 1
 fi
 stop_boot
-if [ "$(sqlite3 "$SCRATCH_DB" "select version from schema_version limit 1;")" != "36" ]; then
-  echo "scratch DB was not migrated to schema 36; see $SCRATCH/bootstrap.log" >&2
+# The expected schema version is read from the branch's schema.ts so the
+# check does not go stale when a migration lands (it was pinned at 36
+# while the branch moved to 37 in phase 4).
+SCHEMA_WANT="$(node -e "const fs=require('node:fs');const m=fs.readFileSync(process.argv[1],'utf8').match(/SCHEMA_VERSION = (\\d+)/);if(!m){process.exit(1)}console.log(m[1]);" "$REPO_ROOT/apps/server/src/lib/schema.ts")"
+if [ "$(sqlite3 "$SCRATCH_DB" "select version from schema_version limit 1;")" != "$SCHEMA_WANT" ]; then
+  echo "scratch DB was not migrated to schema $SCHEMA_WANT; see $SCRATCH/bootstrap.log" >&2
   exit 1
 fi
 
