@@ -114,3 +114,7 @@ git status --short                   # no stray files
 ## For pi children
 
 pi children start without skills or context files (`--no-skills --no-context-files`). The coordinating agent must write this line in every pi brief that runs the app or the server: "Read `.claude/skills/live-testing/SKILL.md` first and follow it."
+
+## The owner's oMLX server (127.0.0.1:8123)
+
+It is live infrastructure: the owner's dictation and AI cleanup use it. Call it only with the models the app already uses (Qwen3-ASR, Qwen3.8-27B). Never send other model types (Parakeet, TTS, embeddings): on 2026-10-07 one Parakeet request hung oMLX 0.7.0 at 100% CPU for about 15 minutes. After any test, check `timeout 8 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/v1/models` prints 200.
