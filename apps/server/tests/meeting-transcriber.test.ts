@@ -700,30 +700,34 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
     expect(config.differsFromDictation).toBe(true);
   });
 
+  // The default voice in these two tests is local-whisper, not local-mlx:
+  // getDefaultModels() swaps an MLX default to local-whisper on machines that
+  // are not Apple silicon (reconcileUnsupportedMlxVoiceDefault), and CI runs
+  // on Linux.
   it("uses the default voice model when the row is missing, empty or bad JSON", async () => {
-    setDefaultVoice("local-mlx", "mlx/dictation-model");
+    setDefaultVoice("local-whisper", "whisper/dictation-model");
     for (const value of [undefined, "", "not json", '{"provider":"x"}']) {
       if (value === undefined) deleteSetting("meeting_stt_model");
       else writeSetting("meeting_stt_model", value);
       const config = (await createDefaultTranscriberDeps()).resolveConfig();
-      expect(config.providerId).toBe("local-mlx");
-      expect(config.modelId).toBe("mlx/dictation-model");
+      expect(config.providerId).toBe("local-whisper");
+      expect(config.modelId).toBe("whisper/dictation-model");
       expect(config.differsFromDictation).toBe(false);
     }
   });
 
   it("flags differsFromDictation false when the stored model equals the default", async () => {
-    setDefaultVoice("local-mlx", "mlx/same-model");
+    setDefaultVoice("local-whisper", "whisper/same-model");
     writeSetting(
       "meeting_stt_model",
       JSON.stringify({
-        provider: "local-mlx",
-        model_id: "mlx/same-model",
+        provider: "local-whisper",
+        model_id: "whisper/same-model",
         model_name: "Same",
       }),
     );
     const config = (await createDefaultTranscriberDeps()).resolveConfig();
-    expect(config.modelId).toBe("mlx/same-model");
+    expect(config.modelId).toBe("whisper/same-model");
     expect(config.differsFromDictation).toBe(false);
   });
 
@@ -749,8 +753,10 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
     expect(config.apiKey).toBe("sk-stored-test");
     expect(config.differsFromDictation).toBe(true);
     // The bias is built for the STORED provider/model, not the default.
-    expect(config.bias?.kind).toBe("prompt");
-    expect(config.bias?.text).toContain("Qwen3");
+    expect(config.bias).toEqual({
+      kind: "prompt",
+      text: expect.stringContaining("Qwen3"),
+    });
   });
 
   it("lets an explicit row override win over the setting (retry-failed, I3)", async () => {

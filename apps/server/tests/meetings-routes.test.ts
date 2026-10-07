@@ -21,6 +21,7 @@ import {
 import createApp from "../src/index.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import type { DiarizeDeps } from "../src/lib/meetings/diarize.js";
+import type { EnhanceMeetingOptions } from "../src/lib/meetings/enhance.js";
 import {
   MEETING_RETENTION_SETTING_KEY,
   purgeExpiredMeetingAudio,
@@ -2609,7 +2610,7 @@ describe("POST /api/meetings/:id/enhance", () => {
         _vocab,
         _title,
         _context,
-        options,
+        options?: EnhanceMeetingOptions,
       ) => {
         await gate;
         // The pass honors the cancel flag between chunks (kind "enhance"
@@ -2621,7 +2622,7 @@ describe("POST /api/meetings/:id/enhance", () => {
           chunksAttempted: 1,
           chunksSucceeded: 1,
           chunksFailed: 0,
-          stoppedEarly: options.shouldStop?.() ?? false,
+          stoppedEarly: options?.shouldStop?.() ?? false,
         };
       },
     });
@@ -2814,9 +2815,9 @@ describe("DELETE /api/meetings/:id", () => {
         _vocab,
         _title,
         _context,
-        options,
+        options?: EnhanceMeetingOptions,
       ) => {
-        stopFlag = options.shouldStop;
+        stopFlag = options?.shouldStop;
         await gate; // parked inside the (fake) pass
         // The DELETE set the cancel flag; the pass's stop seam now reads
         // it and ends the run (the real loop checks it between chunks).
@@ -2826,7 +2827,7 @@ describe("DELETE /api/meetings/:id", () => {
           chunksAttempted: 1,
           chunksSucceeded: 1,
           chunksFailed: 0,
-          stoppedEarly: options.shouldStop?.() ?? false,
+          stoppedEarly: options?.shouldStop?.() ?? false,
         };
       },
     });
@@ -2932,7 +2933,7 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
         _vocab,
         _title,
         _context,
-        options,
+        options?: EnhanceMeetingOptions,
       ) => {
         startedStatus = (
           getDb()
@@ -2940,7 +2941,7 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
             .get(meetingId) as { status: string }
         ).status;
         await gate;
-        options.onProgress?.({ done: 1, total: 1 });
+        options?.onProgress?.({ done: 1, total: 1 });
         getDb()
           .prepare(
             "UPDATE meeting_segments SET enhanced_text = 'fixed' WHERE meeting_id = ?",
@@ -2996,9 +2997,9 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
         _vocab,
         _title,
         _context,
-        options,
+        options?: EnhanceMeetingOptions,
       ) => {
-        reportProgress = options.onProgress;
+        reportProgress = options?.onProgress;
         await gate;
         return enhanceOk({ chunksAttempted: 3, chunksSucceeded: 3 });
       },
@@ -3044,7 +3045,7 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
         _vocab,
         _title,
         _context,
-        options,
+        options?: EnhanceMeetingOptions,
       ) => {
         await gate;
         // Chunk 1 finished before the cancel: its correction persists.
@@ -3053,10 +3054,10 @@ describe("transcribe — auto-run Enhance as its own job (I2)", () => {
             "UPDATE meeting_segments SET enhanced_text = 'kept' WHERE id = ?",
           )
           .run(`${meetingId}:mic:0`);
-        options.onProgress?.({ done: 1, total: 2 });
+        options?.onProgress?.({ done: 1, total: 2 });
         // Chunk 2 sees the cancel flag and stops (the pass's shouldStop
         // seam is isCancelRequested, same as the real enhance loop).
-        if (options.shouldStop?.()) {
+        if (options?.shouldStop?.()) {
           return enhanceOk({
             correctedCount: 1,
             chunksAttempted: 2,
