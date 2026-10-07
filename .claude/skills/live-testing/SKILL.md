@@ -118,3 +118,7 @@ pi children start without skills or context files (`--no-skills --no-context-fil
 ## The owner's oMLX server (127.0.0.1:8123)
 
 It is live infrastructure: the owner's dictation and AI cleanup use it. Call it only with the models the app already uses (Qwen3-ASR, Qwen3.8-27B). Never send other model types (Parakeet, TTS, embeddings): on 2026-10-07 one Parakeet request hung oMLX 0.7.0 at 100% CPU for about 15 minutes. After any test, check `timeout 8 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/v1/models` prints 200.
+
+## Synthetic audio is silent
+
+Make synthetic speech only with `say -v <voice> -o <file> "text"`. A `say` call without `-o` plays through the owner's speakers (it happened on 2026-10-07). Never use `afplay` or any other audio playback.
