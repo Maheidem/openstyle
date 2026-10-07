@@ -157,26 +157,39 @@ export function isVocabLeak(text: string, vocabTerms: string[]): boolean {
  */
 export function isContextEcho(text: string, context: string): boolean {
   const normText = normalizeText(text);
-  const words = normText.split(" ").filter(Boolean);
+  const words = normText.split(/\s/).filter(Boolean);
   if (words.length < 3) return false;
-  const normContext = normalizeText(context);
-  const contextWords = normContext.split(" ").filter(Boolean);
+  const contextWords = normalizeText(context).split(/\s/).filter(Boolean);
   if (contextWords.length === 0) return false;
-  // A contiguous run of the normalized context.
-  if (normContext.includes(normText)) return true;
+  // A word-aligned contiguous run of the context words (matched on the
+  // word arrays, so a string match can never straddle a word boundary).
+  for (let i = 0; i + words.length <= contextWords.length; i++) {
+    let match = true;
+    for (let j = 0; j < words.length; j++) {
+      if (contextWords[i + j] !== words[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return true;
+  }
   // Starts with 4 or more of the last words of the context: the text
   // begins with a suffix of the context that is at least 4 words long.
+  // Word-aligned: the reference must end at a word boundary of the text.
   const maxK = Math.min(contextWords.length, words.length);
   for (let k = 4; k <= maxK; k++) {
-    if (normText.startsWith(contextWords.slice(-k).join(" "))) return true;
+    const ref = contextWords.slice(-k).join(" ");
+    if (normText === ref || normText.startsWith(`${ref} `)) return true;
   }
   return textSimilarity(text, context) >= 0.8;
 }
 
 /** Marks the "Terms:" / "Technical terms:" prompt-boilerplate label
  * (asr-bias.ts / vocabulary-bias.ts). The injected prompt always carries
- * this label, so a leak's onset is normally findable directly. */
-const TERMS_MARKER = /\b(?:technical\s+)?terms:\s*/i;
+ * this label, so a leak's onset is normally findable directly. Exported
+ * for the meeting context (phase 3b, specs/meeting-transcription-v2.md
+ * §3.1): text carrying the label is prompt boilerplate, never speech. */
+export const TERMS_MARKER = /\b(?:technical\s+)?terms:\s*/i;
 
 /** A leak chunk shorter than this (in normalized tokens) is never flagged —
  * real speech that happens to be a couple of vocabulary words ("Claude

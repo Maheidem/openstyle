@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { zValidator } from "@hono/zod-validator";
-import { isVocabLeak } from "@openstyle/stt";
+import { isVocabLeak, TERMS_MARKER } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   MEETINGS_DIR_NAME,
@@ -276,14 +276,37 @@ function writeTranscriptMarkdown(meetingId: string, audioDir: string): void {
  * retry-failed's inline UPDATE) so the check can't drift between them.
  */
 function leakCheckedTextAndStatus(
-  chunk: Pick<ChunkResult, "status" | "text">,
+  chunk: Pick<ChunkResult, "status" | "text" | "context">,
   vocabTerms: string[],
 ): { text: string | null; status: string } {
-  const leaked =
-    chunk.status === "ok" && chunk.text && isVocabLeak(chunk.text, vocabTerms);
-  return leaked
-    ? { text: null, status: "filtered" }
-    : { text: chunk.text, status: chunk.status };
+  if (chunk.status !== "ok" || !chunk.text) {
+    return { text: chunk.text, status: chunk.status };
+  }
+  // Phase A1: the classic terms-only leak (label-less echo of the term
+  // list). Real speech is almost never drawn this strongly from a
+  // proper-noun vocabulary.
+  if (isVocabLeak(chunk.text, vocabTerms)) {
+    return { text: null, status: "filtered" };
+  }
+  // Phase 3b (specs/meeting-transcription-v2.md §3.1): the FULL-prompt
+  // echo — "Technical terms: A, B, C <context words>" — dilutes below
+  // the terms-only threshold (its context words are not terms) and is
+  // what the transcriber's echo guard retries away. What a stubborn
+  // model still stores must be caught here. It carries the prompt's
+  // label (boilerplate, never speech) AND is overwhelmingly drawn from
+  // the prompt that was really sent (terms+context). Both together: a
+  // real sentence that happens to say "terms:" or that rhymes with the
+  // previous chunk's words is kept.
+  if (
+    TERMS_MARKER.test(chunk.text) &&
+    isVocabLeak(
+      chunk.text,
+      chunk.context ? [...vocabTerms, chunk.context] : vocabTerms,
+    )
+  ) {
+    return { text: null, status: "filtered" };
+  }
+  return { text: chunk.text, status: chunk.status };
 }
 
 /**

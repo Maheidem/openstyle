@@ -15,7 +15,7 @@
 
 import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
-import { isContextEcho, isVocabLeak } from "@openstyle/stt";
+import { isContextEcho, isVocabLeak, TERMS_MARKER } from "@openstyle/stt";
 import { createAppLogger } from "@openstyle/utils";
 import {
   MIC_WAV,
@@ -56,6 +56,15 @@ export interface ChunkResult {
   endMs: number;
   text: string;
   status: "ok" | "failed" | "empty";
+  /**
+   * I1 (phase 3b): the previous-chunk context sent in this chunk's bias
+   * prompt, when one was sent. Persist widens the leak check to
+   * terms+context for exactly this chunk, so a full-prompt echo (label +
+   * terms + context) is caught even though the context words dilute the
+   * terms-only leak ratio. Undefined on the old pool (lanes: false,
+   * retry-failed) — no context is sent there.
+   */
+  context?: string;
 }
 
 /**
@@ -233,9 +242,10 @@ export class MeetingTranscriber {
    * guards bias and context); the previous chunk had no cleaned text
    * (empty, failed or filtered — the lane never reaches back further);
    * the gap from the previous chunk's end exceeds CONTEXT_GAP_MAX_MS;
-   * tinyld (as `language.ts` uses it) detects a language other than
-   * `config.language` on the tail (no candidate at all keeps it — the
-   * same fail-open as language resolution).
+   * tinyld (as `language.ts` uses it) finds no candidate, or a candidate
+   * other than `config.language`, on the tail. Decision (owner,
+   * 2026-10-06): a no-detected-language tail is not trusted as the
+   * meeting's speech, so it gives the next chunk NO context.
    */
   private async contextFor(
     lane: LaneState,
@@ -251,7 +261,9 @@ export class MeetingTranscriber {
     if (!tail) return null;
     const detectAll = await this.resolveDetectAll();
     const top = detectAll(tail)[0]?.lang;
-    if (top && top !== config.language) return null;
+    // Owner decision (2026-10-06, §3.1): no detected language at all
+    // drops the context (not a fail-open keep).
+    if (top !== config.language) return null;
     return tail;
   }
 
@@ -265,7 +277,7 @@ export class MeetingTranscriber {
   private biasWithContext(
     config: SttConfig,
     context: string,
-  ): AsrVocabularyBias {
+  ): { kind: "prompt"; text: string } {
     const biasText = config.bias?.kind === "prompt" ? config.bias.text : "";
     // combinePrompt handles the no-terms case (returns the context alone).
     return { kind: "prompt", text: combinePrompt(biasText, context) };
@@ -455,8 +467,20 @@ export class MeetingTranscriber {
     // Previous-chunk context (phase 3b): lanes only. The old pool
     // (lanes: false, retry-failed) has no lane state, so no context.
     const context = lane ? await this.contextFor(lane, config, seg) : null;
-    const bias = context ? this.biasWithContext(config, context) : baseBias;
+    const withContext =
+      context !== null ? this.biasWithContext(config, context) : null;
+    const bias = withContext ?? baseBias;
     if (context) counters.contextApplied++;
+    // Echo reference (phase 3b): the prompt REALLY sent, terms label
+    // removed. The context alone would miss a FULL-prompt echo — the
+    // model returns "Technical terms: A, B, C <context words>", whose
+    // context words dilute the terms-only leak ratio and whose label
+    // prefix breaks the context-only echo match. Measured against the
+    // whole sent prompt, every echo shape is a contiguous run (or a
+    // close paraphrase) of it.
+    const echoReference = withContext
+      ? withContext.text.replace(TERMS_MARKER, "")
+      : null;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       // whisper-local runs one shared server for dictation and meetings.
@@ -486,11 +510,19 @@ export class MeetingTranscriber {
           bias,
         });
         let text = result.text.trim();
-        if (context && isContextEcho(text, context)) {
+        if (
+          context &&
+          echoReference !== null &&
+          isContextEcho(text, echoReference)
+        ) {
           // Echo guard (phase 3b, §3.1): one extra call for the same
           // chunk with NO context, and its result wins. It does not count
           // against maxAttempts; if it throws, the normal attempt retry
-          // below handles it.
+          // below handles it. Call-count worst case for this chunk:
+          // 2 x maxAttempts (one echo retry per attempt) + the retry's
+          // own failure falls into the next attempt — with the defaults
+          // (maxAttempts 3) that is at most 6 calls, versus 3 without the
+          // guard.
           counters.echoRetries++;
           const retry = await provider.transcribe({
             audio,
@@ -507,6 +539,9 @@ export class MeetingTranscriber {
           startMs: seg.startMs,
           endMs: seg.endMs,
           text,
+          // The context travels with the result: persist widens this
+          // chunk's leak check to terms+context (see ChunkResult).
+          ...(context ? { context } : {}),
           // Phase A4: an empty result is legitimate silence, not a failure —
           // distinguishing it from a real "ok" transcription keeps
           // retry-failed's WHERE status = 'failed' from re-attempting
@@ -562,7 +597,22 @@ export class MeetingTranscriber {
         endMs: seg.endMs,
         text: result.text,
       }) &&
-      !isVocabLeak(result.text, vocabularyBiasTerms(config.bias))
+      // A result carrying the prompt label is boilerplate, never speech
+      // (phase 3b feedback loop: a full-prompt echo must never become
+      // the next chunk's context).
+      !TERMS_MARKER.test(result.text) &&
+      !isVocabLeak(
+        result.text,
+        // Widen to terms+context for exactly the chunk that got context:
+        // a label-less full-prompt echo (the echo guard's retry returned
+        // the echo again) dilutes the terms-only ratio. Deliberately
+        // STRONGER than the persist check (marker AND ratio): a false
+        // positive here only costs the next chunk its context, while at
+        // persist a false positive would filter real speech.
+        result.context
+          ? [...vocabularyBiasTerms(config.bias), result.context]
+          : vocabularyBiasTerms(config.bias),
+      )
         ? result.text
         : null;
   }

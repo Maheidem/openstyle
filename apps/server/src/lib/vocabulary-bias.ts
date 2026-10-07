@@ -30,9 +30,23 @@ export function contextTail(text: string): string {
   const trimmed = text.trim();
   // Short enough to fit whole: it already starts at a word boundary.
   if (trimmed.length <= CONTEXT_TAIL_CHARS) return trimmed;
-  const t = trimmed.slice(-CONTEXT_TAIL_CHARS);
-  const firstSpace = t.indexOf(" ");
-  return firstSpace >= 0 ? t.slice(firstSpace + 1) : t;
+  const cut = trimmed.length - CONTEXT_TAIL_CHARS;
+  const t = trimmed.slice(cut);
+  // The slice starts at a word boundary only when the character before it
+  // is whitespace; then the first word of the slice is whole and stays.
+  const prev = trimmed[cut - 1];
+  if (prev !== undefined && !/\s/.test(prev)) {
+    const m = t.search(/\s/);
+    if (m >= 0) {
+      // Mid-word start: drop the broken head up to the first whitespace.
+      return t.slice(m + 1);
+    }
+    // No whitespace at all: keep the slice, but never split a surrogate
+    // pair — a lone trailing surrogate is invalid, so drop it.
+    const code = t.codePointAt(0) ?? 0;
+    if (code >= 0xdc00 && code <= 0xdfff) return t.slice(1);
+  }
+  return t;
 }
 
 /**

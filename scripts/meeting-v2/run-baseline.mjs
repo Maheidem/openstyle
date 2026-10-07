@@ -2,7 +2,8 @@
 // Phase 0b runner (specs/meeting-transcription-v2.md, sections 5, 7.2, 7.3).
 //
 // Runs one baseline run (R0 = diarization off, R0d = diarization on,
-// R3a = phase 3a with R0's settings, R3b = phase 3b with R0's settings)
+// R3a = phase 3a with R0's settings, R3b/R3b2 = phase 3b with R0's
+// settings; R3b2 = the review-fixed context guards)
 // of the pipeline against the scratch profile. Starts its own isolated
 // server (never port 4649), transcribes the copied meeting, measures the
 // wall time from the POST /transcribe reply to status = transcribed, stops
@@ -44,7 +45,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2 [options]",
   );
   process.exit(2);
 }
@@ -52,12 +53,13 @@ if (
   runName !== "R0" &&
   runName !== "R0d" &&
   runName !== "R3a" &&
-  runName !== "R3b"
+  runName !== "R3b" &&
+  runName !== "R3b2"
 ) {
-  console.error(`--run must be R0, R0d, R3a or R3b, got: ${runName}`);
+  console.error(`--run must be R0, R0d, R3a, R3b or R3b2, got: ${runName}`);
   process.exit(2);
 }
-// R3a/R3b run with R0's settings: diarization off.
+// R3a/R3b/R3b2 run with R0's settings: diarization off.
 const diarizationOn = runName === "R0d";
 if (port === 4649) {
   console.error("refusing to use port 4649 (the installed app owns it)");

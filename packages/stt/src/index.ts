@@ -15,6 +15,7 @@ export {
   stripTrailingDuplicate,
   stripVocabLeak,
   stripWrappingQuotes,
+  TERMS_MARKER,
   textSimilarity,
   VOCAB_LEAK_OVERLAP_THRESHOLD,
 } from "./text.js";
