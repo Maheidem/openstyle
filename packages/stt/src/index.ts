@@ -18,6 +18,7 @@ export {
   TERMS_MARKER,
   textSimilarity,
   VOCAB_LEAK_OVERLAP_THRESHOLD,
+  wordEndsSentence,
 } from "./text.js";
 export { maxOutputTokensForCleanup } from "./tokens.js";
 export type {

@@ -93,6 +93,23 @@ export function sanitizeTranscriptText(text: string): string {
   return stripTrailingDuplicate(cleaned);
 }
 
+/**
+ * Whether a word token ends a sentence: it ends in one of `. ? !` after
+ * dropping trailing closing quotes (spec 3.6, Decision (owner,
+ * 2026-10-07) — the align-then-split cut snap rule). Portuguese and
+ * Spanish use the same sentence-final marks (¿ ¡ only OPEN sentences),
+ * and a closing quote after the mark (`"stop."`) still counts.
+ */
+export function wordEndsSentence(word: string): boolean {
+  const w = word.trim();
+  if (w.length === 0) return false;
+  let end = w.length - 1;
+  while (end >= 0 && /["\u201d'\u2019\u00bb\u203a]/.test(w.charAt(end))) {
+    end -= 1;
+  }
+  return end >= 0 && ".?!".includes(w.charAt(end));
+}
+
 /** Lowercase, strip punctuation, collapse whitespace. */
 export function normalizeText(text: string): string {
   return text

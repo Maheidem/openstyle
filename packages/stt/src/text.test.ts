@@ -7,7 +7,21 @@ import {
   stripThinkingBlocks,
   stripTrailingDuplicate,
   stripVocabLeak,
+  wordEndsSentence,
 } from "./text.js";
+
+describe("wordEndsSentence (phase 4f, §3.6 decision)", () => {
+  it("flags period, question and exclamation ends (ASCII and curly)", () => {
+    expect(wordEndsSentence("here.")).toBe(true);
+    expect(wordEndsSentence("ready?")).toBe(true);
+    expect(wordEndsSentence("ok!")).toBe(true);
+    expect(wordEndsSentence("stop.")).toBe(true);
+    expect(wordEndsSentence("there?\u2019")).toBe(true); // trailing apostrophe
+    expect(wordEndsSentence("“oh,”")).toBe(false); // quotes only
+    expect(wordEndsSentence("here")).toBe(false);
+    expect(wordEndsSentence("")).toBe(false);
+  });
+});
 
 describe("stripThinkingBlocks", () => {
   it("returns text with no think tags byte-identically", () => {

@@ -767,61 +767,64 @@ const turn = (
   endTimeSeconds: endMs / 1000,
 });
 
-describe("splitAlignedChunk (I4b, §3.6)", () => {
-  it("splits words at the change time by the midpoint rule", () => {
-    // Chunk 0-10 s; speaker A until 4 s, B after. Word "alpha" ends just
-    // after the change (midpoint 3.9 s → A); "beta" starts just after
-    // (midpoint 4.1 s → B); "gamma" is well inside B.
-    const parts = splitAlignedChunk(
+describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
+  it("splits at a sentence end and keeps the midpoint rule", () => {
+    // Chunk 0-10 s; speaker A until 4 s, B after. Word "alpha." ends just
+    // after the change (midpoint 3.5 s → A) and ends a sentence, so the
+    // cut at its boundary is kept; "beta" and "gamma" are B.
+    const res = splitAlignedChunk(
       { startMs: 0, endMs: 10_000 },
       [
-        { text: "alpha", startMs: 3_800, endMs: 4_000 },
-        { text: "beta", startMs: 4_100, endMs: 4_300 },
-        { text: "gamma", startMs: 5_000, endMs: 5_400 },
+        { text: "alpha.", startMs: 3_000, endMs: 4_000 },
+        { text: "beta", startMs: 4_100, endMs: 5_100 },
+        { text: "gamma", startMs: 5_200, endMs: 6_200 },
       ],
       [turn("A", 0, 4_000), turn("B", 4_000, 10_000)],
     );
-    expect(parts).toHaveLength(2);
-    expect(parts[0]).toEqual({
-      startMs: 3_800,
+    expect(res.parts).toHaveLength(2);
+    expect(res.parts[0]).toEqual({
+      startMs: 3_000,
       endMs: 4_000,
-      text: "alpha",
+      text: "alpha.",
       speakerId: "A",
     });
-    expect(parts[1]).toEqual({
+    expect(res.parts[1]).toEqual({
       startMs: 4_100,
-      endMs: 5_400,
+      endMs: 6_200,
       text: "beta gamma",
       speakerId: "B",
     });
+    expect(res.cutsDropped).toBe(0);
   });
 
   it("gives a word in a gap to the NEAREST turn", () => {
     // Turns 0-3 s (A) and 5-10 s (B): a gap 3-5 s. A word at 3.9-4.1 s has
     // its midpoint (4.0 s) 0.9 s from A's end and 0.9 s from B's start —
-    // equal; the earlier turn wins (A).
-    const parts = splitAlignedChunk(
+    // equal; the earlier turn wins (A). "gap." ends a sentence, so the
+    // cut before "y" is kept.
+    const res = splitAlignedChunk(
       { startMs: 0, endMs: 10_000 },
       [
         { text: "x", startMs: 1_000, endMs: 1_400 },
-        { text: "gap", startMs: 3_900, endMs: 4_100 },
-        { text: "y", startMs: 6_000, endMs: 6_400 },
+        { text: "gap.", startMs: 3_900, endMs: 4_100 },
+        { text: "y", startMs: 6_000, endMs: 7_000 },
       ],
       [turn("A", 0, 3_000), turn("B", 5_000, 10_000)],
     );
-    expect(parts).toHaveLength(2);
-    expect(parts[0]!.speakerId).toBe("A");
-    expect(parts[0]!.text).toBe("x gap");
-    expect(parts[1]!.speakerId).toBe("B");
+    expect(res.parts).toHaveLength(2);
+    expect(res.parts[0]!.speakerId).toBe("A");
+    expect(res.parts[0]!.text).toBe("x gap.");
+    expect(res.parts[1]!.speakerId).toBe("B");
+    expect(res.parts[1]!.text).toBe("y");
   });
 
-  it("re-joins alternating same-speaker runs (A, B, A → three parts)", () => {
-    const parts = splitAlignedChunk(
+  it("re-joins alternating same-speaker runs (A, B, A → two parts)", () => {
+    const res = splitAlignedChunk(
       { startMs: 1_000, endMs: 10_000 },
       [
-        { text: "a1", startMs: 0, endMs: 900 },
-        { text: "b1", startMs: 1_000, endMs: 1_900 },
-        { text: "a2", startMs: 2_000, endMs: 2_900 },
+        { text: "a1.", startMs: 0, endMs: 1_500 },
+        { text: "b1", startMs: 1_500, endMs: 2_400 },
+        { text: "a2", startMs: 2_400, endMs: 3_400 },
       ],
       [
         turn("A", 1_000, 2_000),
@@ -829,16 +832,16 @@ describe("splitAlignedChunk (I4b, §3.6)", () => {
         turn("A", 4_000, 5_000),
       ],
     );
-    // midpoints: a1 → 1_450 (A turn 1), b1 → 2_450 (B), a2 → 3_450 (B!).
-    // So the runs are A(a1) then B(b1 a2).
-    expect(parts).toHaveLength(2);
-    expect(parts[0]!.speakerId).toBe("A");
-    expect(parts[0]!.text).toBe("a1");
-    expect(parts[1]!.speakerId).toBe("B");
-    expect(parts[1]!.text).toBe("b1 a2");
+    // Midpoints: a1. → 1_750 (A turn 1), b1 → 2_950 (B), a2 → 3_900 (B!).
+    // So the runs are A(a1.) then B(b1 a2); the cut after "a1." is kept.
+    expect(res.parts).toHaveLength(2);
+    expect(res.parts[0]!.speakerId).toBe("A");
+    expect(res.parts[0]!.text).toBe("a1.");
+    expect(res.parts[1]!.speakerId).toBe("B");
+    expect(res.parts[1]!.text).toBe("b1 a2");
     // Absolute times: the chunk starts at 1_000.
-    expect(parts[1]!.startMs).toBe(2_000);
-    expect(parts[1]!.endMs).toBe(3_900);
+    expect(res.parts[1]!.startMs).toBe(2_500);
+    expect(res.parts[1]!.endMs).toBe(4_400);
   });
 
   it("keeps the ASR punctuation and case from the source text (1:1)", () => {
@@ -846,7 +849,7 @@ describe("splitAlignedChunk (I4b, §3.6)", () => {
     // parts must be built from the ORIGINAL tokens in order, so joining
     // the parts with a space reproduces the chunk text.
     const source = "I don't see any other. Yeah, we all here.";
-    const parts = splitAlignedChunk(
+    const res = splitAlignedChunk(
       { startMs: 0, endMs: 10_000 },
       [
         { text: "i", startMs: 0, endMs: 300 },
@@ -862,27 +865,28 @@ describe("splitAlignedChunk (I4b, §3.6)", () => {
       [turn("A", 0, 1_900), turn("B", 1_900, 10_000)],
       source,
     );
-    expect(parts).toHaveLength(2);
-    expect(parts[0]).toEqual({
+    expect(res.parts).toHaveLength(2);
+    expect(res.parts[0]).toEqual({
       startMs: 0,
       endMs: 1_700,
       text: "I don't see any other.",
       speakerId: "A",
     });
-    expect(parts[1]).toEqual({
+    expect(res.parts[1]).toEqual({
       startMs: 2_000,
       endMs: 3_400,
       text: "Yeah, we all here.",
       speakerId: "B",
     });
     // The two parts joined with a space equal the original text.
-    expect(parts.map((p) => p.text).join(" ")).toBe(source);
+    expect(res.parts.map((p) => p.text).join(" ")).toBe(source);
   });
 
   it("falls back to normalized words on a token count mismatch", () => {
-    // 3 words but only 2 source tokens: no 1:1 mapping, previous
-    // behavior (the metrics' punctRatio keeps the chunk visible).
-    const parts = splitAlignedChunk(
+    // 3 words but only 1 source token: no 1:1 mapping, the parts use the
+    // normalized words (no punctuation → no sentence end → the cut is
+    // DROPPED, one part with the larger word share).
+    const res = splitAlignedChunk(
       { startMs: 0, endMs: 10_000 },
       [
         { text: "alpha", startMs: 0, endMs: 900 },
@@ -893,10 +897,206 @@ describe("splitAlignedChunk (I4b, §3.6)", () => {
       "Alpha.",
     );
     // Midpoints: alpha 450 (A), beta 1450 (A), gamma 2450 (B).
-    expect(parts.map((p) => p.text)).toEqual(["alpha beta", "gamma"]);
+    expect(res.parts).toHaveLength(1);
+    expect(res.parts[0]!.text).toBe("alpha beta gamma");
+    expect(res.parts[0]!.speakerId).toBe("A"); // 2 words vs 1
+    expect(res.cutsDropped).toBe(1);
   });
 
-  it("skips words without text and returns [] when nothing survives", () => {
+  it("snaps the cut to a sentence end one word away", () => {
+    // The diarizer says A ends after "you" (a false change inside the
+    // sentence): the cut there cannot stay, but "stop." one word later
+    // ends a sentence, so the cut snaps ONTO that boundary and A keeps
+    // the word "stop."
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "did", startMs: 0, endMs: 500 },
+        { text: "you", startMs: 500, endMs: 1_100 },
+        { text: "stop.", startMs: 1_100, endMs: 1_900 },
+        { text: "ok", startMs: 1_900, endMs: 2_400 },
+        { text: "yes", startMs: 3_400, endMs: 3_900 },
+        { text: "right", startMs: 3_900, endMs: 4_400 },
+      ],
+      [turn("A", 0, 1_200), turn("B", 1_200, 3_500), turn("A", 3_500, 10_000)],
+    );
+    // Midpoints: did 250 (A), you 800 (A), stop. 1500 (B), ok 2150 (B),
+    // yes 3650 (A), right 4150 (A). Speaker changes after "you" (A→B)
+    // and after "ok" (B→A); both snap onto the "stop." boundary.
+    expect(res.parts).toHaveLength(2);
+    expect(res.parts[0]).toEqual({
+      startMs: 0,
+      endMs: 1_900,
+      text: "did you stop.",
+      speakerId: "A", // 2 words vs 1
+    });
+    expect(res.parts[1]).toEqual({
+      startMs: 1_900,
+      endMs: 4_400,
+      text: "ok yes right",
+      speakerId: "A", // A 2 words vs B 1
+    });
+    expect(res.cutsDropped).toBe(0);
+  });
+
+  it("drops the cut (and keeps the larger share) when no sentence end is within one word", () => {
+    // No word in any window ends a sentence: both candidate cuts are
+    // DROPPED and all the words stay in one part, labeled by the larger
+    // word share (A: 3 of 5).
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "I", startMs: 0, endMs: 500 },
+        { text: "think", startMs: 500, endMs: 1_100 },
+        { text: "so", startMs: 4_000, endMs: 4_500 },
+        { text: "do", startMs: 4_500, endMs: 5_000 },
+        { text: "you", startMs: 6_000, endMs: 6_500 },
+      ],
+      [turn("A", 0, 4_000), turn("B", 4_000, 6_000), turn("A", 6_000, 10_000)],
+    );
+    expect(res.parts).toHaveLength(1);
+    expect(res.parts[0]!.text).toBe("I think so do you");
+    expect(res.parts[0]!.speakerId).toBe("A");
+    expect(res.cutsDropped).toBe(2);
+  });
+
+  it("merges a part shorter than 1000 ms into its LARGER neighbor", () => {
+    // The B part ("bb.") is 400 ms, squeezed between a 1200 ms A part and
+    // a 2000 ms A part: it merges into the LARGER neighbor (the next
+    // part, not the previous one). Both cuts were kept (sentence ends).
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "aa.", startMs: 0, endMs: 1_200 },
+        { text: "bb.", startMs: 1_300, endMs: 1_700 },
+        { text: "cc", startMs: 1_800, endMs: 3_800 },
+      ],
+      [turn("A", 0, 1_300), turn("B", 1_300, 1_800), turn("A", 1_800, 10_000)],
+    );
+    // Midpoints: aa. 600 (A), bb. 1500 (B), cc 2800 (A). Cuts after "aa."
+    // and after "bb." (both sentence ends). "bb." (400 ms) merges into
+    // the 2000 ms neighbor.
+    expect(res.parts).toHaveLength(2);
+    expect(res.parts[0]).toEqual({
+      startMs: 0,
+      endMs: 1_200,
+      text: "aa.",
+      speakerId: "A",
+    });
+    expect(res.parts[1]).toEqual({
+      startMs: 1_300,
+      endMs: 3_800,
+      text: "bb. cc",
+      speakerId: "A", // A 2 words (1200+2000 ms) vs B 1 (400 ms)
+    });
+    expect(res.cutsDropped).toBe(0);
+  });
+
+  it("keeps a real one-word reply that starts after a sentence end", () => {
+    // A asks, B answers "ok.", A continues: the middle B part starts
+    // after "there?" — a real reply — and stays separate (the A-B-A rule
+    // must not merge it).
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "are", startMs: 0, endMs: 600 },
+        { text: "you", startMs: 600, endMs: 1_200 },
+        { text: "there?", startMs: 1_200, endMs: 2_000 },
+        { text: "ok.", startMs: 2_000, endMs: 3_000 },
+        { text: "thanks", startMs: 3_000, endMs: 3_900 },
+        { text: "for", startMs: 3_900, endMs: 4_500 },
+        { text: "coming.", startMs: 4_500, endMs: 5_300 },
+      ],
+      [turn("A", 0, 2_000), turn("B", 2_000, 3_000), turn("A", 3_000, 10_000)],
+    );
+    expect(res.parts).toHaveLength(3);
+    expect(res.parts[0]).toEqual({
+      startMs: 0,
+      endMs: 2_000,
+      text: "are you there?",
+      speakerId: "A",
+    });
+    expect(res.parts[1]).toEqual({
+      startMs: 2_000,
+      endMs: 3_000,
+      text: "ok.",
+      speakerId: "B",
+    });
+    expect(res.parts[2]).toEqual({
+      startMs: 3_000,
+      endMs: 5_300,
+      text: "thanks for coming.",
+      speakerId: "A",
+    });
+    expect(res.cutsDropped).toBe(0);
+  });
+
+  it("snaps back and drops the no-sentence cut for a false mid-sentence change", () => {
+    // B's words are a false change inside A's sentence: the A→B cut
+    // snaps back onto "two." (one word earlier) and the B→A cut has no
+    // sentence end in its window (dropped) — the middle part does not
+    // start after a sentence end and merges into the surrounding A.
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "one", startMs: 0, endMs: 600 },
+        { text: "two.", startMs: 600, endMs: 1_400 },
+        { text: "three", startMs: 1_400, endMs: 1_900 },
+        { text: "four", startMs: 1_900, endMs: 3_400 },
+        { text: "five", startMs: 3_400, endMs: 4_900 },
+      ],
+      [turn("A", 0, 1_800), turn("B", 1_800, 3_400), turn("A", 3_400, 10_000)],
+    );
+    // Midpoints: two. 1000 (A), three 1650 (A — turn ends 1800), four
+    // 2650 (B), five 4150 (A). Changes: after "three" (A→B) — "three" is
+    // not a sentence end, "two." one word earlier is, so the cut snaps
+    // back onto "two."; after "four" (B→A) — no sentence end within one
+    // word ("four", "three", "five"), so it is DROPPED.
+    expect(res.parts).toHaveLength(2);
+    expect(res.parts[0]).toEqual({
+      startMs: 0,
+      endMs: 1_400,
+      text: "one two.",
+      speakerId: "A",
+    });
+    expect(res.parts[1]).toEqual({
+      startMs: 1_400,
+      endMs: 4_900,
+      text: "three four five",
+      speakerId: "A", // A 3 words vs B 1
+    });
+    expect(res.cutsDropped).toBe(1);
+  });
+
+  it("keeps a reply that is the ONLY change and starts after a sentence end", () => {
+    // A single A→B→A wiggle around a one-word B reply: both cuts sit on
+    // sentence ends ("there?", "ok.") so nothing is dropped and no
+    // part is short — the reply survives.
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "is", startMs: 0, endMs: 500 },
+        { text: "it", startMs: 500, endMs: 1_000 },
+        { text: "ready?", startMs: 1_000, endMs: 1_800 },
+        { text: "ok.", startMs: 1_800, endMs: 2_800 },
+        { text: "go", startMs: 2_800, endMs: 3_400 },
+        { text: "ahead", startMs: 3_400, endMs: 4_200 },
+        { text: "then", startMs: 4_200, endMs: 4_900 },
+        { text: "start.", startMs: 4_900, endMs: 5_600 },
+      ],
+      [turn("A", 0, 1_800), turn("B", 1_800, 2_800), turn("A", 2_800, 10_000)],
+    );
+    expect(res.parts).toHaveLength(3);
+    expect(res.parts.map((p) => p.text)).toEqual([
+      "is it ready?",
+      "ok.",
+      "go ahead then start.",
+    ]);
+    expect(res.parts.map((p) => p.speakerId)).toEqual(["A", "B", "A"]);
+    expect(res.cutsDropped).toBe(0);
+  });
+
+  it("skips words without text and returns empty parts when nothing survives", () => {
     expect(
       splitAlignedChunk(
         { startMs: 0, endMs: 5_000 },
@@ -907,7 +1107,7 @@ describe("splitAlignedChunk (I4b, §3.6)", () => {
         ],
         [turn("A", 0, 5_000)],
       ),
-    ).toEqual([]);
+    ).toEqual({ parts: [], cutsDropped: 0 });
     // No turns at all: the caller keeps the chunk unsplit.
     expect(
       splitAlignedChunk(
@@ -915,7 +1115,7 @@ describe("splitAlignedChunk (I4b, §3.6)", () => {
         [{ text: "hi", startMs: 0, endMs: 500 }],
         [],
       ),
-    ).toEqual([]);
+    ).toEqual({ parts: [], cutsDropped: 0 });
   });
 });
 

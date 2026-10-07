@@ -7,6 +7,7 @@
  * `segmentWavFile` reads a file.
  */
 
+import { wordEndsSentence } from "@openstyle/stt";
 import { readWavPcm16 } from "../audio/wav.js";
 import type { DiarizerSegment } from "./diarize.js";
 
@@ -516,6 +517,181 @@ export interface AlignedPart {
   speakerId: string;
 }
 
+export interface AlignedSplitResult {
+  parts: AlignedPart[];
+  /** Candidate speaker cuts DROPPED (no sentence end within one word). */
+  cutsDropped: number;
+}
+
+/**
+ * Decision (owner, 2026-10-07, spec 3.6): after the sentence-end snap, a
+ * part shorter than this merges into its neighbor. The phase 4
+ * `mergeShortParts` 1500 ms rule does not apply here: its input was
+ * ENERGY segments, while here the parts are word-aligned and the
+ * sub-second parts are the diarizer's false changes inside continuous
+ * speech.
+ */
+const MIN_ALIGNED_PART_MS = 1000;
+
+/** One kept word: absolute times, the display text (source token when
+ * available), and the speaker by the midpoint rule. */
+interface KeptWord {
+  startMs: number;
+  endMs: number;
+  text: string;
+  speaker: string;
+}
+
+/** A part under construction: the share bookkeeping (words per speaker,
+ * word time per speaker, first-appearance order) decides the label of a
+ * mixed part — the words stay with the speaker of the larger share. */
+interface PartAcc {
+  startMs: number;
+  endMs: number;
+  text: string;
+  words: Map<string, number>;
+  time: Map<string, number>;
+  order: string[];
+}
+
+function accOf(word: KeptWord): PartAcc {
+  return {
+    startMs: word.startMs,
+    endMs: word.endMs,
+    text: word.text,
+    words: new Map([[word.speaker, 1]]),
+    time: new Map([[word.speaker, word.endMs - word.startMs]]),
+    order: [word.speaker],
+  };
+}
+
+function accAdd(acc: PartAcc, word: KeptWord): void {
+  acc.startMs = Math.min(acc.startMs, word.startMs);
+  acc.endMs = Math.max(acc.endMs, word.endMs);
+  acc.text = `${acc.text} ${word.text}`;
+  acc.words.set(word.speaker, (acc.words.get(word.speaker) ?? 0) + 1);
+  acc.time.set(
+    word.speaker,
+    (acc.time.get(word.speaker) ?? 0) + (word.endMs - word.startMs),
+  );
+  if (!acc.order.includes(word.speaker)) acc.order.push(word.speaker);
+}
+
+/** The larger share: most words; tie: longer total word time; tie: the
+ * speaker seen first in the part. */
+function accSpeaker(acc: PartAcc): string {
+  let best = acc.order[0]!;
+  let bestWords = acc.words.get(best) ?? 0;
+  let bestTime = acc.time.get(best) ?? 0;
+  for (const s of acc.order.slice(1)) {
+    const w = acc.words.get(s) ?? 0;
+    const t = acc.time.get(s) ?? 0;
+    if (w > bestWords || (w === bestWords && t > bestTime)) {
+      best = s;
+      bestWords = w;
+      bestTime = t;
+    }
+  }
+  return best;
+}
+
+function accToPart(acc: PartAcc): AlignedPart {
+  return {
+    startMs: acc.startMs,
+    endMs: Math.max(acc.endMs, acc.startMs + 1),
+    text: acc.text,
+    speakerId: accSpeaker(acc),
+  };
+}
+
+/**
+ * Decision (owner, 2026-10-07, spec 3.6), rule 2a: merge a part shorter
+ * than MIN_ALIGNED_PART_MS into its LARGER neighbor (tie: the previous
+ * part). A merge only grows parts, so one restart loop terminates.
+ */
+/** Combine parts (in time order) into one: the span, the joined text
+ * and the share bookkeeping; the label is the larger share of ALL the
+ * merged words. */
+function mergeAccs(parts: PartAcc[]): PartAcc {
+  const merged: PartAcc = {
+    startMs: Math.min(...parts.map((p) => p.startMs)),
+    endMs: Math.max(...parts.map((p) => p.endMs)),
+    text: parts.map((p) => p.text).join(" "),
+    words: new Map(),
+    time: new Map(),
+    order: [],
+  };
+  for (const p of parts) {
+    for (const [s, n] of p.words) {
+      merged.words.set(s, (merged.words.get(s) ?? 0) + n);
+    }
+    for (const [s, t] of p.time) {
+      merged.time.set(s, (merged.time.get(s) ?? 0) + t);
+    }
+    for (const s of p.order) {
+      if (!merged.order.includes(s)) merged.order.push(s);
+    }
+  }
+  return merged;
+}
+
+function mergeShortAlignedParts(accs: PartAcc[]): PartAcc[] {
+  const out = [...accs];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < out.length; i += 1) {
+      const p = out[i]!;
+      if (p.endMs - p.startMs >= MIN_ALIGNED_PART_MS) continue;
+      const prevDur = i > 0 ? out[i - 1]!.endMs - out[i - 1]!.startMs : -1;
+      const nextDur =
+        i + 1 < out.length ? out[i + 1]!.endMs - out[i + 1]!.startMs : -1;
+      const j = nextDur > prevDur ? i + 1 : i - 1;
+      if (j < 0 || j >= out.length) continue;
+      const q = out[j]!;
+      const ordered = j < i ? [q, p] : [p, q]; // time order
+      const merged = mergeAccs(ordered);
+      // i and j are adjacent: remove both, insert the merged part once.
+      out.splice(Math.min(i, j), 2, merged);
+      changed = true;
+      break; // indices shifted
+    }
+  }
+  return out;
+}
+
+/**
+ * Decision (owner, 2026-10-07, spec 3.6), rule 2b: an A-B-A middle part
+ * merges into the surrounding A WHEN the middle part does not START
+ * after a sentence end (the previous part's last word must end a
+ * sentence for the B to be a real reply and stay separate).
+ */
+function mergeAbbaParts(accs: PartAcc[]): PartAcc[] {
+  const lastWordEndsSentence = (acc: PartAcc): boolean => {
+    const words = acc.text.split(/\s+/).filter((t) => t.length > 0);
+    return words.length > 0 && wordEndsSentence(words[words.length - 1]!);
+  };
+  const out = [...accs];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 1; i + 1 < out.length; i += 1) {
+      const a = out[i - 1]!;
+      const b = out[i]!;
+      const c = out[i + 1]!;
+      if (accSpeaker(a) !== accSpeaker(c)) continue;
+      if (accSpeaker(a) === accSpeaker(b)) continue;
+      // The middle part STARTS after a sentence end when the previous
+      // part's last word ends a sentence: then it is a real reply.
+      if (lastWordEndsSentence(a)) continue;
+      out.splice(i - 1, 3, mergeAccs([a, b, c]));
+      changed = true;
+      break; // indices shifted
+    }
+  }
+  return out;
+}
+
 /** The snap window of the cut rule; overlaps within it are noise. */
 export const SPEAKER_OVERLAP_TOLERANCE_MS = 300;
 
@@ -600,8 +776,8 @@ export function splitAlignedChunk(
   words: AlignedWord[],
   turns: DiarizerSegment[],
   sourceText?: string,
-): AlignedPart[] {
-  if (turns.length === 0) return [];
+): AlignedSplitResult {
+  if (turns.length === 0) return { parts: [], cutsDropped: 0 };
   const ts = turns
     .map((t) => ({
       speaker: t.speakerId,
@@ -610,18 +786,16 @@ export function splitAlignedChunk(
     }))
     .sort((a, b) => a.startMs - b.startMs);
 
-  const parts: AlignedPart[] = [];
-  let run: AlignedPart | null = null;
-  let runSpeaker: string | null = null;
-
   const sourceTokens =
     sourceText !== undefined
       ? sourceText.split(/\s+/).filter((t) => t.length > 0)
       : null;
   const oneToOne =
     sourceTokens !== null && sourceTokens.length === words.length;
-  let tokenIdx = 0;
 
+  // The kept words, in order, with the speaker by the midpoint rule.
+  const kept: KeptWord[] = [];
+  let tokenIdx = 0;
   for (const w of words) {
     // The token cursor advances for EVERY word (skipped ones included):
     // the mapping is positional over the whole word list.
@@ -637,21 +811,52 @@ export function splitAlignedChunk(
     // A word is a unit with letters or digits; a punctuation-only item
     // (the aligner can split "!" off) carries no speech and no part.
     if (!/\p{L}|\p{N}/u.test(text)) continue;
-    if (run && runSpeaker === speaker) {
-      run.endMs = Math.max(run.endMs, absEnd);
-      run.text = `${run.text} ${text}`;
+    kept.push({ startMs: absStart, endMs: absEnd, text, speaker });
+  }
+  if (kept.length === 0) return { parts: [], cutsDropped: 0 };
+
+  // Decision (owner, 2026-10-07, spec 3.6), rule 1: the diarizer makes
+  // false speaker changes inside continuous speech (24 of 25 bad cuts in
+  // the council data came after a word with no sentence end). A cut is
+  // only kept when it can be snapped onto the NEAREST word boundary
+  // within +-1 word of the change that FOLLOWS a sentence end (. ? !
+  // and the Portuguese/Spanish equivalents, incl. closing quotes);
+  // otherwise it is DROPPED and the words stay with the speaker of the
+  // larger share of the chunk (the part's label rule below).
+  const n = kept.length;
+  const cuts = new Set<number>(); // boundary index 1..n-1: after word i-1
+  let cutsDropped = 0;
+  for (let b = 1; b < n; b += 1) {
+    if (kept[b - 1]!.speaker === kept[b]!.speaker) continue;
+    let snapped: number | null = null;
+    for (const cand of [b, b - 1, b + 1]) {
+      if (cand < 1 || cand > n - 1) continue;
+      if (wordEndsSentence(kept[cand - 1]!.text)) {
+        snapped = cand;
+        break;
+      }
+    }
+    if (snapped === null) cutsDropped += 1;
+    else cuts.add(snapped);
+  }
+
+  // The parts: word groups between the kept cuts.
+  const groups: PartAcc[] = [];
+  let cur = accOf(kept[0]!);
+  for (let i = 1; i < n; i += 1) {
+    if (cuts.has(i)) {
+      groups.push(cur);
+      cur = accOf(kept[i]!);
     } else {
-      run = {
-        startMs: absStart,
-        endMs: Math.max(absEnd, absStart + 1),
-        text,
-        speakerId: speaker,
-      };
-      runSpeaker = speaker;
-      parts.push(run);
+      accAdd(cur, kept[i]!);
     }
   }
-  return parts;
+  groups.push(cur);
+
+  // Decision rule 2: post-snap cleanup (short parts, A-B-A).
+  let accs = mergeShortAlignedParts(groups);
+  accs = mergeAbbaParts(accs);
+  return { parts: accs.map(accToPart), cutsDropped };
 }
 
 /**

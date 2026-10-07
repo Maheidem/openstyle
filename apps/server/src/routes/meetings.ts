@@ -494,10 +494,26 @@ async function runAlignPass(
     ((wav: Uint8Array, text: string, language: string) =>
       alignWithMlxAsr({ audio: wav, text, language }));
 
-  const stats = { calls: 0, alignMs: 0, fallbacks: 0, fallbackReason: "" };
+  const stats = {
+    calls: 0,
+    alignMs: 0,
+    fallbacks: 0,
+    fallbackReason: "",
+    cuts: 0,
+    cutsDropped: 0,
+    // Mixed chunks the split policy kept WHOLE (no sentence end to cut
+    // on, or the aligner's words all map to one speaker). A policy
+    // outcome, not a failure: the chunk keeps its winner-overlap label.
+    keptWhole: 0,
+    keptWholeReason: "",
+  };
   const noteFallback = (reason: string): void => {
     stats.fallbacks += 1;
     if (!stats.fallbackReason) stats.fallbackReason = reason;
+  };
+  const noteKeptWhole = (reason: string): void => {
+    stats.keptWhole += 1;
+    if (!stats.keptWholeReason) stats.keptWholeReason = reason;
   };
 
   const alignedByIdx = new Map<
@@ -524,7 +540,7 @@ async function runAlignPass(
         }
         stats.calls += 1;
         stats.alignMs += Date.now() - t0;
-        const parts = splitAlignedChunk(
+        const res = splitAlignedChunk(
           { startMs: r.startMs, endMs: r.endMs },
           words.map((w) => ({
             text: w.text,
@@ -536,10 +552,19 @@ async function runAlignPass(
           // case (1:1 token mapping, spec 3.6 review fix).
           r.text,
         );
-        if (parts.length >= 2) {
-          alignedByIdx.set(r.idx, parts);
+        stats.cutsDropped += res.cutsDropped;
+        if (res.parts.length >= 2) {
+          alignedByIdx.set(r.idx, res.parts);
+          stats.cuts += res.parts.length - 1;
         } else {
-          noteFallback("the aligner returned no usable split");
+          // Decision (owner, 2026-10-07, spec 3.6): every candidate cut
+          // needs a sentence end within one word; without one the chunk
+          // stays whole and keeps its winner-overlap label.
+          noteKeptWhole(
+            res.cutsDropped > 0
+              ? "no sentence end to cut on"
+              : "the aligner's words all map to one speaker",
+          );
         }
       }
     } finally {
@@ -636,12 +661,15 @@ async function runAlignPass(
     (a, p) => a + p.length,
     0,
   );
+  // The metrics parse this line (spec 3.6): the sentence-end cut stats
+  // (Decision, owner 2026-10-07) ride along as cut(s)/dropped(s)/
+  // kept whole.
+  const detail = `${stats.cuts} cut(s), ${stats.cutsDropped} dropped(s), ${stats.keptWhole} kept whole`;
+  const firstReason = stats.fallbackReason || stats.keptWholeReason;
   const logLine =
-    alignedByIdx.size > 0
-      ? `meeting ${id}: aligner split ${alignedByIdx.size} mixed chunk(s) into ${totalParts} part(s), ${stats.calls} call(s) in ${(stats.alignMs / 1000).toFixed(1)} s, ${stats.fallbacks} fallback(s)${stats.fallbackReason ? ` (${stats.fallbackReason})` : ""}`
-      : stats.fallbacks > 0
-        ? `meeting ${id}: aligner fallback for all mixed chunks (${stats.fallbackReason})`
-        : `meeting ${id}: aligner had no mixed chunk to split`;
+    stats.calls > 0 || stats.fallbacks > 0 || stats.keptWhole > 0
+      ? `meeting ${id}: aligner split ${alignedByIdx.size} mixed chunk(s) into ${totalParts} part(s), ${stats.calls} call(s) in ${(stats.alignMs / 1000).toFixed(1)} s, ${stats.fallbacks} fallback(s), ${detail}${firstReason ? ` (${firstReason})` : ""}`
+      : `meeting ${id}: aligner had no mixed chunk to split`;
   log.info(logLine);
   // Same "diarization labeled" shape as applyDiarization (the metrics read
   // the line): aligned chunks count as their parts, unsplit ones as rows.

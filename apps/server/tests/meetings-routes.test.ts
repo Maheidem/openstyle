@@ -3550,7 +3550,10 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     extra: Record<string, unknown> = {},
   ): Record<string, unknown> {
     return {
-      createTranscriberDeps: fakeDeps(async () => ({ text: "left right" })),
+      // The default chunk text carries the sentence end at the speaker
+      // change — the cut is kept only on a sentence end (decision
+      // 2026-10-07); the 1:1 mapping reads the source token.
+      createTranscriberDeps: fakeDeps(async () => ({ text: "Left. Right." })),
       diarizeDeps: {
         resolveBinaryPath: () => "/fake/fluidaudio-diarize",
         resolveModelsDirPath: () => "/fake/resources/models",
@@ -3575,10 +3578,11 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
         alignCalls++;
         seenLanguage = language;
         // Word times RELATIVE to the chunk start (the worker's contract):
-        // "left" well inside A's turn, "right" well inside B's.
+        // "left." well inside A's turn, "right." well inside B's. The
+        // sentence ends are what KEEP the cut (decision 2026-10-07).
         return [
-          { text: "left", start: 0.5, end: 1.5 },
-          { text: "right", start: 5.0, end: 6.0 },
+          { text: "left.", start: 0.5, end: 1.5 },
+          { text: "right.", start: 5.0, end: 6.0 },
         ];
       }),
     );
@@ -3650,12 +3654,12 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     __setMeetingsTestOverrides(
       alignOverrides(
         async (_wav, _text, _language) => [
-          { text: "left", start: 0.5, end: 1.5 },
-          { text: "right", start: 5.0, end: 6.0 },
+          { text: "left.", start: 0.5, end: 1.5 },
+          { text: "right.", start: 5.0, end: 6.0 },
         ],
         {
           createTranscriberDeps: fakeDeps(async () => ({
-            text: "Left, right.",
+            text: "Left. Right.",
           })),
         },
       ),
@@ -3682,9 +3686,9 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     }>;
     expect(rows).toHaveLength(2);
     // Punctuation and case survive the split.
-    expect(rows.map((r) => r.text)).toEqual(["Left,", "right."]);
+    expect(rows.map((r) => r.text)).toEqual(["Left.", "Right."]);
     // Joined with a space the parts equal the original chunk text.
-    expect(rows.map((r) => r.text).join(" ")).toBe("Left, right.");
+    expect(rows.map((r) => r.text).join(" ")).toBe("Left. Right.");
     // Per-part midpoint labels (A then B), not the overlap winner's
     // label on the whole span (which would be B for both).
     expect(rows.map((r) => r.speaker_label)).toEqual(["1", "2"]);
