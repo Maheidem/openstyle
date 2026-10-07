@@ -417,6 +417,19 @@ describe("cutAtSpeakerChanges", () => {
     expect(out).toEqual([{ startMs: 0, endMs: 10_000, speaker: "A" }]);
   });
 
+  it("the FIRST short part merges into the next part (step 8 covers it too)", () => {
+    // A 0-1.2 s, B 1.2-10 s: the loop only ever merges a part into the one
+    // before it, so the short opening A part used to survive as a ~1.2 s
+    // chunk of its own. Now it merges into the longer B part, keeping B.
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("A", 0, 1.2), turn("B", 1.2, 10)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    expect(out).toEqual([{ startMs: 0, endMs: 10_000, speaker: "B" }]);
+  });
+
   it("a part with no overlapping turn has no speaker", () => {
     const out = cutAtSpeakerChanges(
       [{ startMs: 0, endMs: 10_000 }],
@@ -440,6 +453,45 @@ describe("cutAtSpeakerChanges", () => {
       FRAME_MS,
     );
     expect(out).toEqual(input);
+  });
+
+  it("unsorted turns give the same parts as sorted ones", () => {
+    // The cut rule assumes time order; the diarizer output is sanitized at
+    // the source, but the pure function must not depend on the caller's
+    // order. Reversed input must produce the identical parts.
+    const sorted = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("A", 0, 4), turn("B", 4, 10)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    const reversed = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 10_000 }],
+      [turn("B", 4, 10), turn("A", 0, 4)],
+      flatDb(10_000),
+      FRAME_MS,
+    );
+    expect(reversed).toEqual(sorted);
+    expect(reversed).toHaveLength(2);
+    expect(reversed[0]!.speaker).toBe("A");
+    expect(reversed[1]!.speaker).toBe("B");
+  });
+
+  it("no part ever ends past the segment end when a cut snaps to the edge", () => {
+    // B starts 150 ms before the segment ends: the snap window (300 ms)
+    // reaches seg.endMs, so the snapped cut can land exactly on it and the
+    // +1 ms nudge must clamp instead of pushing the final bound past it.
+    const out = cutAtSpeakerChanges(
+      [{ startMs: 0, endMs: 5_000 }],
+      [turn("A", 0, 4.9), turn("B", 4.9, 5.2)],
+      flatDb(5_000),
+      FRAME_MS,
+    );
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    for (const p of out) {
+      expect(p.endMs).toBeLessThanOrEqual(5_000);
+      expect(p.startMs).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 
@@ -469,6 +521,22 @@ describe("mergeSegmentsToward speaker rule (I4, §3.4)", () => {
     ]);
     expect(out).toHaveLength(1);
     expect(out[0]!.endMs).toBe(20_000);
+  });
+
+  it("an unlabeled part absorbs the neighbor's speaker when they merge", () => {
+    // The speech in the merged part came from the labeled neighbor, so the
+    // merged part keeps that attribution. Without the carry-over, "no-turn,
+    // A, B" with gaps under maxGapMs merged into ONE unlabeled chunk and
+    // swallowed the A|B boundary (G4 break).
+    const out = mergeSegmentsToward([
+      { startMs: 0, endMs: 5_000 }, // no overlapping turn
+      { startMs: 5_200, endMs: 11_000, speaker: "A" },
+      { startMs: 11_200, endMs: 18_000, speaker: "B" },
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out[0]!.speaker).toBe("A");
+    expect(out[0]!.endMs).toBe(11_000);
+    expect(out[1]!.speaker).toBe("B");
   });
 });
 

@@ -1,12 +1,14 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assignSpeakerLabels,
   type DiarizerSegment,
   getFluidAudioDiarizeBinaryPath,
   getFluidAudioModelsDirPath,
+  runDiarizer,
+  sanitizeDiarizerTurns,
   type WhisperSegmentForDiarization,
 } from "../src/lib/meetings/diarize.js";
 
@@ -22,6 +24,47 @@ function w(
 function d(speakerId: string, startS: number, endS: number): DiarizerSegment {
   return { speakerId, startTimeSeconds: startS, endTimeSeconds: endS };
 }
+
+describe("sanitizeDiarizerTurns", () => {
+  it("sorts unsorted turns by start", () => {
+    const out = sanitizeDiarizerTurns([
+      d("B", 4, 10),
+      d("A", 0, 2),
+      d("B2", 2, 4),
+    ]);
+    expect(out?.map((t) => t.speakerId)).toEqual(["A", "B2", "B"]);
+  });
+
+  it("drops turns with non-finite or inverted times", () => {
+    const out = sanitizeDiarizerTurns([
+      d("A", 0, 2),
+      d("NaN", Number.NaN, 5),
+      d("Inf", 1, Number.POSITIVE_INFINITY),
+      d("inverted", 4, 4),
+      d("backwards", 5, 3),
+      d("B", 2, 4),
+    ]);
+    expect(out?.map((t) => t.speakerId)).toEqual(["A", "B"]);
+  });
+
+  it("drops entries without a usable speakerId", () => {
+    const out = sanitizeDiarizerTurns([
+      { speakerId: "", startTimeSeconds: 0, endTimeSeconds: 1 },
+      { startTimeSeconds: 1, endTimeSeconds: 2 },
+      42,
+      null,
+      d("A", 0, 2),
+    ]);
+    expect(out?.map((t) => t.speakerId)).toEqual(["A"]);
+  });
+
+  it("returns null when nothing survives (the caller treats it as a failed pass)", () => {
+    expect(
+      sanitizeDiarizerTurns([d("NaN", Number.NaN, 5), d("inverted", 4, 4)]),
+    ).toBeNull();
+    expect(sanitizeDiarizerTurns([])).toBeNull();
+  });
+});
 
 describe("assignSpeakerLabels", () => {
   it("assigns the correct label for perfect 1:1 overlap", () => {
@@ -126,6 +169,64 @@ describe("assignSpeakerLabels", () => {
 // actually exists on disk, mirroring `mlxAsrWorkerCandidates()`
 // (apps/server/src/lib/mlx-asr/python.ts).
 // -----------------------------------------------------------------------
+describe("runDiarizer dictation yield (§3.3 gate)", () => {
+  // The diarizer wait follows the meeting's STT provider (spec §3.3):
+  // local-whisper always, local-mlx when it differs from dictation,
+  // and never for cloud providers — a cloud meeting must not gain a new
+  // wait before its first chunk now that diarization is default-on.
+  // The caller passes the verdict; this proves runDiarizer honors it:
+  // with yield on and dictation active, the lease parks BEFORE the probe
+  // (the binary never starts); with yield off, the binary runs and
+  // dictation is never polled. Fake timers: the parked lease sleeps on
+  // fake ms, so advancing them drives one poll tick with no real time.
+  function startProbe(yields: boolean) {
+    const dir = mkdtempSync(join(tmpdir(), "diar-yield-"));
+    writeFileSync(join(dir, "system.wav"), new Uint8Array(44));
+    let activeCalls = 0;
+    let runCalls = 0;
+    const deps = {
+      resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+      resolveModelsDirPath: () => "/fake/models",
+      execFile: async (_file: string, args: string[]) => {
+        if (args[0] === "--probe") {
+          return { stdout: "READY", stderr: "" };
+        }
+        runCalls += 1;
+        return { stdout: JSON.stringify([d("A", 0, 1)]), stderr: "" };
+      },
+      isDictationActive: () => {
+        activeCalls += 1;
+        return true; // active forever: an engaged lease never finishes
+      },
+    };
+    const p = runDiarizer(dir, 1000, deps, yields);
+    return { p, dir, state: () => ({ activeCalls, runCalls }) };
+  }
+
+  it("with yield on: an active dictation parks the run before the binary starts", async () => {
+    const { p, dir, state } = startProbe(true);
+    // The synchronous part of the lease has already polled once and is
+    // parked in its (fake) 500 ms sleep: the binary has not run yet.
+    expect(state().runCalls).toBe(0);
+    expect(state().activeCalls).toBeGreaterThanOrEqual(1);
+    vi.advanceTimersByTime(500); // one poll tick
+    await Promise.resolve();
+    expect(state().activeCalls).toBeGreaterThanOrEqual(2);
+    expect(state().runCalls).toBe(0); // still waiting — the binary never started
+    rmSync(dir, { recursive: true, force: true });
+    p.catch(() => {}); // the lease is parked forever; discard it
+  });
+
+  it("with yield off (cloud provider): the binary runs and dictation is never polled", async () => {
+    const { p, dir, state } = startProbe(false);
+    const out = await p;
+    expect(out).not.toBeNull();
+    expect(state().runCalls).toBe(1);
+    expect(state().activeCalls).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe("path resolution", () => {
   const originalCwd = process.cwd();
   let tmpRoot: string | undefined;

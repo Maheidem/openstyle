@@ -279,20 +279,28 @@ describe("isHallucination", () => {
   });
 
   // Speaker cuts (specs/meeting-transcription-v2.md §3.4) make short
-  // single-speaker chunks: the EXACT rule skips a labeled chunk and a chunk
-  // above 1 s, so a real "thank you" from a speaker survives.
+  // single-speaker chunks: the EXACT rule skips a LABELED chunk, so a real
+  // "thank you" from a speaker survives. The skip is the label only
+  // (Decision, owner 2026-10-07): an earlier "or above 1 s" clause let
+  // "Thank you." on silence survive everywhere, because padding makes
+  // almost every chunk longer than 1 s (a 260 ms burst probes as 960 ms).
   it("skips the exact rule for a labeled chunk", () => {
     expect(isHallucination(seg(0, 500, "thank you", "2"))).toBe(false);
+    // The label alone decides — a labeled chunk is kept at any length.
+    expect(isHallucination(seg(0, 2000, "thank you", "2"))).toBe(false);
     // The prefix rule is untouched: it names whole-utterance junk.
     expect(isHallucination(seg(0, 3000, "Subtitles by SomeCorp", "2"))).toBe(
       true,
     );
   });
 
-  it("skips the exact rule for a chunk above 1 s", () => {
-    expect(isHallucination(seg(0, 1500, "thank you"))).toBe(false);
-    // At or under 1 s, unlabeled, it is still a hallucination.
-    expect(isHallucination(seg(0, 1000, "thank you"))).toBe(true);
+  it("keeps the exact rule for an UNLABELED chunk, however long it is", () => {
+    // A padded 2000 ms chunk on silence is still a hallucination without a
+    // label — the regression the old >1 s clause caused.
+    expect(isHallucination(seg(0, 2000, "thank you"))).toBe(true);
+    expect(isHallucination(seg(0, 1500, "Thank you."))).toBe(true);
+    // Same as before for the short case.
+    expect(isHallucination(seg(0, 500, "thank you"))).toBe(true);
   });
 });
 
