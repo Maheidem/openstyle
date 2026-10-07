@@ -1223,6 +1223,108 @@ describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
     const { segments } = (await tRes.json()) as { segments: unknown[] };
     expect(segments).toHaveLength(0);
   });
+
+  it("filters a stored full-prompt echo (label + terms + context) end to end", async () => {
+    // Phase 3b: the echo guard retries a full-prompt echo without context,
+    // but a stubborn model returns the echo again; the persist check must
+    // catch it (label AND terms+context draw), where the terms-only check
+    // is diluted by the context words.
+    getDb().prepare("INSERT INTO vocabulary (term) VALUES (?)").run("AlphaCo");
+    getDb().prepare("INSERT INTO vocabulary (term) VALUES (?)").run("BetaLab");
+    const dir = mkdtempSync(join(tmpdir(), "meeting-3b-persist-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    // Two 3.5 s tone bursts (both >= 3 s, so the second chunk is eligible
+    // for context) with a 5 s silence between (the segmenter keeps two
+    // bursts separate at 5 s, merges them at 4.5 s, for this layout), 2 s
+    // lead-in so the adaptive noise floor calibrates, 2 s trailing.
+    // Silence-only system.
+    const leadMs = 2000,
+      burstMs = 3500,
+      gapMs = 5000,
+      trailMs = 2000;
+    const totalMs = leadMs + 2 * burstMs + gapMs + trailMs;
+    const s = (ms: number) => Math.round((ms / 1000) * SAMPLE_RATE);
+    writeFileSync(
+      join(dir, "mic.wav"),
+      buildBaseWav({
+        data: tonePayload(s(totalMs), [
+          [s(leadMs), s(leadMs + burstMs)],
+          [s(leadMs + burstMs + gapMs), s(leadMs + 2 * burstMs + gapMs)],
+        ]),
+      }),
+    );
+    writeFileSync(join(dir, "system.wav"), buildBaseWav({ samples: 1600 }));
+    writeFileSync(
+      join(dir, "sync.json"),
+      JSON.stringify({
+        meetingId: "m1",
+        sampleRate: SAMPLE_RATE,
+        micT0: 1000,
+        systemT0: 1000,
+        micSamples: 0,
+        systemSamples: 0,
+        syncMarkers: [],
+        epochs: [],
+      }),
+    );
+    const cleanText =
+      "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi";
+    const fullEcho = `Technical terms: AlphaCo, BetaLab ${cleanText}`;
+    let call = 0;
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras) => ({
+        getProvider: () => ({
+          providerId: "server",
+          transcribe: async () => ({
+            text: ++call === 1 ? cleanText : fullEcho,
+          }),
+          supportsStreaming: () => false,
+        }),
+        resolveConfig: () => ({
+          providerId: "server",
+          modelId: "fake-model",
+          apiKey: "key",
+          language: "en",
+          bias: { kind: "prompt", text: "Technical terms: AlphaCo, BetaLab" },
+        }),
+        sleep: async () => {},
+        backoffBaseMs: 1,
+        maxAttempts: 2,
+        detectAll: () => [{ lang: "en", accuracy: 0.9 }],
+        // onChunk (the persist hook) and friends come from the route.
+        ...extras,
+      }),
+    });
+    insertMeeting("m1", "recorded", dir);
+    // A2: the route pins the meeting language (stored value wins
+    // without probing) and wraps resolveConfig with it — the
+    // context guard needs a declared language.
+    getDb()
+      .prepare("UPDATE meetings SET language = 'en' WHERE id = 'm1'")
+      .run();
+
+    await postEmpty(app, "/api/meetings/m1/transcribe");
+    const done = await waitForTerminalStatus("m1");
+    expect(done.status).toBe("transcribed");
+
+    const rows = getDb()
+      .prepare(
+        "SELECT source, idx, status, text FROM meeting_segments WHERE meeting_id = 'm1' ORDER BY source, idx",
+      )
+      .all() as {
+      source: string;
+      idx: number;
+      status: string;
+      text: string | null;
+    }[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.status).toBe("ok");
+    expect(rows[0]!.text).toBe(cleanText);
+    // The stubborn full-prompt echo: label AND terms+context draw →
+    // filtered, text NULL.
+    expect(rows[1]!.status).toBe("filtered");
+    expect(rows[1]!.text).toBeNull();
+  });
 });
 
 describe("POST /api/meetings/:id/diarize", () => {

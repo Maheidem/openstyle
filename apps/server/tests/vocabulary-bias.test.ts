@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAsrVocabularyBias,
   combinePrompt,
+  contextTail,
   providerTakesPrompt,
   vocabularyBiasTerms,
 } from "../src/lib/vocabulary-bias.js";
@@ -440,7 +441,7 @@ describe("combinePrompt", () => {
   });
 
   it("truncates the context to its 200-char word-boundary tail", () => {
-    const longContext = `w `.repeat(300) + "end word"; // ~900 chars
+    const longContext = `${"w ".repeat(300)}end word`; // ~900 chars
     const out = combinePrompt("PortifolioZero", longContext);
     expect(out.length).toBeLessThanOrEqual(900);
     expect(out.startsWith("PortifolioZero ")).toBe(true);
@@ -456,5 +457,40 @@ describe("combinePrompt", () => {
 
   it("returns the context alone when there are no terms", () => {
     expect(combinePrompt("", context)).toBe(context);
+  });
+});
+
+// Phase 3b review: contextTail word-boundary and surrogate-pair rules.
+describe("contextTail", () => {
+  it("keeps the first word when the slice already starts at a word boundary", () => {
+    // 70 "xx" words (210-1 chars) + 15-char tail = 224; the 200-char
+    // slice starts at char 24, right after a space — the whole "xx" word
+    // must stay (the old code cut it off).
+    const text = `${"xx ".repeat(70).trim()} alpha beta del`;
+    expect(text.length).toBe(224);
+    expect(text[23]).toBe(" ");
+    const tail = contextTail(text);
+    expect(tail).toBe(text.slice(24));
+    expect(tail).toHaveLength(200);
+    expect(tail.startsWith("xx ")).toBe(true);
+  });
+
+  it("cuts a mid-word start at the first whitespace", () => {
+    // 34 six-letter words + spaces = 237 chars; the 200-char slice
+    // starts at char 37, mid-word. The tail must start at the next word
+    // (char 42), dropping the broken head.
+    const text = "abcdef ".repeat(34).trim();
+    expect(text.length).toBe(237);
+    const tail = contextTail(text);
+    expect(tail).toBe(text.slice(42));
+    expect(tail.startsWith("abcdef")).toBe(true);
+  });
+
+  it("never leaves a lone trailing surrogate when the text has no whitespace", () => {
+    // 198 "a" + U+1D11E (2 code units) + 199 "a" = 399 units; the 200-
+    // unit slice starts exactly on the pair's second half.
+    const text = `${"a".repeat(198)}\u{1D11E}${"a".repeat(199)}`;
+    const tail = contextTail(text);
+    expect(tail).toBe("a".repeat(199));
   });
 });

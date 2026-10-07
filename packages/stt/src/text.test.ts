@@ -277,4 +277,22 @@ describe("isContextEcho", () => {
     expect(isContextEcho("the quarter", context)).toBe(false);
     expect(isContextEcho(context, "")).toBe(false);
   });
+
+  it("flags a close paraphrase by similarity alone (no contiguous run, no tail start)", () => {
+    const ctx = "one two three four five six seven eight nine ten";
+    // Nine of the ten words, one substitution: Jaccard 9/11 >= 0.8. Not a
+    // contiguous run (the substitution breaks it) and not a tail start.
+    const text = "one two three four five six seven eight nine eleven";
+    expect(isContextEcho(text, ctx)).toBe(true);
+  });
+
+  it("matches word-aligned: no mid-word substring, no partial-word tail prefix", () => {
+    const ctx = "xab cdef ghij klmn opqr";
+    // "ab cdef" straddles the xab/cdef boundary of the context — a string
+    // substring, not a word run: not an echo.
+    expect(isContextEcho("ab cdef ghij", ctx)).toBe(false);
+    // Starts with the 4-word tail but its first word is a LONGER word
+    // (opqrabc): a word-aligned match must reject the partial word.
+    expect(isContextEcho("cdef ghij klmn opqrabc zzz", ctx)).toBe(false);
+  });
 });
