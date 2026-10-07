@@ -105,7 +105,7 @@ Phase 3a builds the lanes and the flag. Its output is identical to `main`. Phase
 - No context for chunks shorter than 3 s. The same constant guards both: `MIN_BIAS_DURATION_MS` (`transcriber.ts:54`).
 - No context when `startMs(N) - endMs(N-1)` is above 30 000 ms.
 - No context when `config.language` is undefined (the meeting language is not declared).
-- No context when the language changes: `tinyld` (as `language.ts` uses it) detects the language of the context tail. If it is not `config.language`, the context is dropped.
+- No context when the language changes: `tinyld` (as `language.ts` uses it) detects the language of the context tail. If it is not `config.language`, the context is dropped. If it finds no candidate at all, the context is dropped too (owner decision 2026-10-06): a tail whose language cannot be detected is not trusted as the meeting's speech (fail-closed, not fail-open).
 
 **How it joins the bias.** `buildAsrBiasPrompt({ terms, context })` (`packages/stt/src/asr-bias.ts:64-117`) puts the context first and the `Terms:` list last. Its budget keeps room for the terms. The model gives the most weight to the end of a prompt, so the context must be last. The order of `buildAsrBiasPrompt` is not acceptable. So:
 - A new helper `combinePrompt(biasText, context)` in `vocabulary-bias.ts` puts terms first and context last.
@@ -302,7 +302,7 @@ Every proof server starts with `cd apps/electron && node ../server/dist/startup.
 | 1 meeting model | Done (`bdf99f5` + `dce5e7e`). |
 | 2 Enhance (onboarding step + one-time prompt) | 2a and 2b done |
 | 3a lanes | Done (`75cc0f7`). |
-| 3b context | Done (`f769365`). |
+| 3b context | Done (`f769365` + review fixes `d1c9a1d`, `9079421`). |
 | 4 diarize first, default on | To do. Owner approved default-on. |
 | 5 overlap and join | Dropped: `contiguousCuts` is 0 on both proof meetings (Q8 rule). |
 
@@ -318,8 +318,10 @@ Baseline on the owner's real meetings (scratch copies, Qwen3-ASR and Qwen3.8-27B
 | long | R3a | 96.25 | 168/79 | 0 | 0 | 22 | 30 | 0 | 31 |
 | short | R3b | 14.04 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
 | long | R3b | 98.24 | 168/79 | 0 | 0 | 22 | 31 | 0 | 30 |
+| short | R3b2 | 12.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
+| long | R3b2 | 98.27 | 168/79 | 0 | 0 | 22 | 31 | 0 | 32 |
 
-Diarizer wall time (standalone, median of 3 runs, all OK): short 0.92 s (0.22 percent), long 4.39 s (0.12 percent). R0d text hash equals R0 on both meetings: diarization changes only the labels. R3a (lanes, R0 settings) text hash equals R0 on both meetings; wall time 12.03 s (budget 14.31 s at ratio 2*20/37 = 1.081) and 96.25 s (budget 143.93 s at ratio 2*168/247 = 1.360). R3b (lanes plus context, R0 settings): short 14.04 s (context on 22 of 37 chunks, 1 echo retry, 8 chunks with changed text vs R3a), long 98.24 s (context on 182 of 247 chunks, 2 echo retries, 79 chunks with changed text vs R3a). The R3b rule holds on both meetings (termHits not lower, filtered up by at most 2, langMismatch not higher); the R3b text hash differs from R0/R3a by design (context changes the output). Side-by-side of the changed chunks: `/tmp/meeting-v2/compare/R3a-vs-R3b-<meetingId8>.md` (scratch, not committed). The installed app was open during the runs; ASR ran on the separate oMLX process. Metric files: `/tmp/meeting-v2/baseline/<run>-<meetingId>/metrics.json` (scratch, not committed). The procedure is in `.claude/skills/meeting-benchmarks/SKILL.md`.
+Diarizer wall time (standalone, median of 3 runs, all OK): short 0.92 s (0.22 percent), long 4.39 s (0.12 percent). R0d text hash equals R0 on both meetings: diarization changes only the labels. R3a (lanes, R0 settings) text hash equals R0 on both meetings; wall time 12.03 s (budget 14.31 s at ratio 2*20/37 = 1.081) and 96.25 s (budget 143.93 s at ratio 2*168/247 = 1.360). R3b (lanes plus context, R0 settings): short 14.04 s (context on 22 of 37 chunks, 1 echo retry, 8 chunks with changed text vs R3a), long 98.24 s (context on 182 of 247 chunks, 2 echo retries, 79 chunks with changed text vs R3a). The R3b rule holds on both meetings (termHits not lower, filtered up by at most 2, langMismatch not higher); the R3b text hash differs from R0/R3a by design (context changes the output). R3b2 (the review-fixed context guards, R0 settings): short 12.03 s (context on 22 of 37 chunks, 1 echo retry, 8 chunks with changed text vs R3a; text hash equals R3b — the fixes change no output on this meeting), long 98.27 s (context on 176 of 247 chunks, 4 echo retries, 76 chunks with changed text vs R3a). The R3b2 rule holds on the short meeting; on the long one termHits (31 >= 30) and filtered (11 <= 13) hold, but langMismatch is 32 against R3a's 31: the single extra chunk is one whose text the context changed (system chunk 12, of the 76 changed) and tinyld now labels non-English; the chunk the fixed persist check restores (filtered 15 to 11) was already counted in R3a, and none of the 32 carries the prompt label, so no echo boilerplate is counted. Side-by-side of the changed chunks: `/tmp/meeting-v2/compare/R3a-vs-R3b2-<meetingId8>.md` (scratch, not committed). The installed app was open during the runs; ASR ran on the separate oMLX process. Metric files: `/tmp/meeting-v2/baseline/<run>-<meetingId>/metrics.json` (scratch, not committed). The procedure is in `.claude/skills/meeting-benchmarks/SKILL.md`.
 
 ### Phase 0a: scratch profile and DB rows
 
