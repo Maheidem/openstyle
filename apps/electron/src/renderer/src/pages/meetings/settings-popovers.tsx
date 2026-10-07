@@ -192,17 +192,10 @@ export function DiarizationSettingsPopover(): React.JSX.Element {
 }
 
 /**
- * Global auto-Enhance toggle (specs/meeting-transcription-v2.md §3.2). When
- * on, a finished transcription is followed automatically by an Enhance pass
- * with the default LLM. Like the diarization switch above it writes the
- * string contract the server validator accepts: only `"true"` turns it on,
- * `"false"` is an explicit off, and a missing row means off too.
- */
-/**
  * Global previous-chunk-context toggle (specs/meeting-transcription-v2.md
  * §3.1, owner decision 2026-10-07). When on, each chunk's bias prompt
  * carries the tail of the previous chunk's cleaned text in the same
- * channel. Like the auto-Enhance switch above it, it writes the string
+ * channel. Like the auto-Enhance switch next to it, it writes the string
  * contract the server validator accepts: only `"true"` turns it on,
  * `"false"` is an explicit off, and a missing row means off too.
  */
@@ -260,6 +253,13 @@ export function AsrContextSettingsPopover(): React.JSX.Element {
   );
 }
 
+/**
+ * Global auto-Enhance toggle (specs/meeting-transcription-v2.md §3.2). When
+ * on, a finished transcription is followed automatically by an Enhance pass
+ * with the default LLM. Writes the string contract the server validator
+ * accepts: only `"true"` turns it on, `"false"` is an explicit off, and a
+ * missing row means off too.
+ */
 export function EnhanceSettingsPopover(): React.JSX.Element {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
