@@ -586,11 +586,20 @@ function nearestTurn(
  * start/end from its first and last word (absolute ms: the chunk's start
  * plus the word's relative time). Words with no usable text are skipped;
  * when no part survives, the caller keeps the chunk unsplit.
+ *
+ * `sourceText` (the chunk's original ASR text): the aligner's words are
+ * normalized (no punctuation, no case). When the ASR text's token count
+ * matches the word count 1:1, each part is built from the ORIGINAL
+ * tokens in order, so punctuation and sentence capitals survive the
+ * split — joining the parts with a single space reproduces the chunk
+ * text. On a count mismatch the normalized words are used (the previous
+ * behavior); the metrics' `punctRatio` keeps such a chunk visible.
  */
 export function splitAlignedChunk(
   chunk: { startMs: number; endMs: number },
   words: AlignedWord[],
   turns: DiarizerSegment[],
+  sourceText?: string,
 ): AlignedPart[] {
   if (turns.length === 0) return [];
   const ts = turns
@@ -605,14 +614,26 @@ export function splitAlignedChunk(
   let run: AlignedPart | null = null;
   let runSpeaker: string | null = null;
 
+  const sourceTokens =
+    sourceText !== undefined
+      ? sourceText.split(/\s+/).filter((t) => t.length > 0)
+      : null;
+  const oneToOne =
+    sourceTokens !== null && sourceTokens.length === words.length;
+  let tokenIdx = 0;
+
   for (const w of words) {
+    // The token cursor advances for EVERY word (skipped ones included):
+    // the mapping is positional over the whole word list.
+    const srcToken = oneToOne ? (sourceTokens as string[])[tokenIdx] : null;
+    tokenIdx += 1;
     if (!Number.isFinite(w.startMs) || !Number.isFinite(w.endMs)) continue;
     const absStart = Math.round(chunk.startMs + w.startMs);
     const absEnd = Math.round(chunk.startMs + w.endMs);
     const mid = (absStart + absEnd) / 2;
     const speaker = turnAt(mid, ts) ?? nearestTurn(mid, ts)?.speaker ?? null;
     if (speaker === null) continue;
-    const text = w.text.trim();
+    const text = srcToken ?? w.text.trim();
     // A word is a unit with letters or digits; a punctuation-only item
     // (the aligner can split "!" off) carries no speech and no part.
     if (!/\p{L}|\p{N}/u.test(text)) continue;

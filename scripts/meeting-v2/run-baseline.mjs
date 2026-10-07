@@ -47,7 +47,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e [options]",
   );
   process.exit(2);
 }
@@ -62,10 +62,11 @@ if (
   runName !== "R4" &&
   runName !== "R4b" &&
   runName !== "R4c" &&
-  runName !== "R4d"
+  runName !== "R4d" &&
+  runName !== "R4e"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c or R4d, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c or R4d or R4e, got: ${runName}`,
   );
   process.exit(2);
 }
@@ -78,7 +79,8 @@ const diarizationOn =
   runName === "R4" ||
   runName === "R4b" ||
   runName === "R4c" ||
-  runName === "R4d";
+  runName === "R4d" ||
+  runName === "R4e";
 // The previous-chunk context setting (owner decision 2026-10-07):
 // R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
 // had context on — the setting did not exist yet); every other run
@@ -166,7 +168,7 @@ env.HF_HUB_CACHE = "/tmp/meeting-p4b-hf/hf/hub";
 // proof runs must not rewrite the owner's integrity-verified cache — so
 // R4d points the documented trusted-operator override at the freshly
 // built local bundle. Non-R4d runs never change worker behavior.
-if (runName === "R4d") {
+if (runName === "R4d" || runName === "R4e") {
   const localWorker = join(
     repoRoot,
     "dist",
@@ -175,7 +177,7 @@ if (runName === "R4d") {
   );
   if (!existsSync(localWorker)) {
     console.error(
-      `R4d needs the phase 4b worker bundle at ${localWorker} (scripts/build_mlx_asr_worker.sh)`,
+      `R4d/R4e needs the phase 4b worker bundle at ${localWorker} (scripts/build_mlx_asr_worker.sh)`,
     );
     process.exit(2);
   }
@@ -326,7 +328,7 @@ try {
       // R4d (spec 3.6): edgeWordsLost/edgeWordsAdded need the R0d side —
       // the r3a dump (R0's output: same boundaries and text as R0d; R0d
       // only adds the labels the metric ignores).
-      if (runName === "R4d") {
+      if (runName === "R4d" || runName === "R4e") {
         const r0d = join(
           scratch,
           "compare",

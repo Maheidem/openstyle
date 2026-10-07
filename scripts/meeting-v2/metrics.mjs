@@ -390,6 +390,9 @@ function multisetDiff(a, b) {
 }
 let edgeWordsLost = null;
 let edgeWordsAdded = null;
+let splitChunkCount = null;
+let distinctSplitChunks = null;
+let punctRatio = null;
 const edgeWordsLostByChunk = {};
 const edgeWordsAddedByChunk = {};
 if (r0dPath && existsSync(r0dPath)) {
@@ -402,6 +405,10 @@ if (r0dPath && existsSync(r0dPath)) {
     .sort((a, b) => a.start_ms - b.start_ms);
   edgeWordsLost = 0;
   edgeWordsAdded = 0;
+  splitChunkCount = 0;
+  distinctSplitChunks = 0;
+  let punctInSplitR0d = 0;
+  let punctInSplitParts = 0;
   for (const c of r0dSystem) {
     // The new rows over this chunk's span.
     const over = newSystem.filter(
@@ -425,7 +432,36 @@ if (r0dPath && existsSync(r0dPath)) {
     if (added > 0) edgeWordsAddedByChunk[`${c.source}:${c.idx}`] = added;
     edgeWordsLost += lost;
     edgeWordsAdded += added;
+    // Spec 3.6 review: split-chunk health. A SPLIT chunk is one the R0d
+    // side divided into two or more new rows (the parts). punctRatio =
+    // punctuation marks in the parts / punctuation marks in the R0d
+    // text over the same span (the align path must keep the ASR
+    // punctuation: expect ~1.0). splitLabelDistinct = split chunks
+    // whose parts carry two or more distinct stored labels / split
+    // chunks (the parts keep the word-midpoint speakers: expect 1.0
+    // unless the turns say otherwise).
+    if (over.length >= 2) {
+      splitChunkCount += 1;
+      let punct0 = 0;
+      for (const ch of c.text) {
+        if (!/[\p{L}\p{N}\s]/u.test(ch)) punct0 += 1;
+      }
+      let punctNew = 0;
+      for (const p of over) {
+        for (const ch of p.text ?? "") {
+          if (!/[\p{L}\p{N}\s]/u.test(ch)) punctNew += 1;
+        }
+      }
+      punctInSplitR0d += punct0;
+      punctInSplitParts += punctNew;
+      const distinct = new Set(over.map((p) => p.speaker_label));
+      if (distinct.size >= 2) distinctSplitChunks += 1;
+    }
   }
+  punctRatio =
+    punctInSplitR0d > 0
+      ? Math.round((punctInSplitParts / punctInSplitR0d) * 1000) / 1000
+      : null;
 }
 
 // aligner stats (spec §3.6): parsed from the run's log line
@@ -501,6 +537,13 @@ const metrics = {
   edgeWordsAdded,
   edgeWordsLostByChunk,
   edgeWordsAddedByChunk,
+  // Spec 3.6 review: split-chunk health (null without a --r0d dump).
+  splitChunks: splitChunkCount,
+  splitLabelDistinct:
+    splitChunkCount !== null && splitChunkCount > 0
+      ? Math.round((distinctSplitChunks / splitChunkCount) * 1000) / 1000
+      : null,
+  punctRatio,
   aligner,
   termHits,
   textHash,
@@ -530,6 +573,7 @@ console.log(
     `wallSeconds=${metrics.wallSeconds}`,
     `labeled=${metrics.labeled.count}/${metrics.labeled.distinctLabels} multiTurnChunks=${metrics.multiTurnChunks}`,
     `edgeWordsLost=${metrics.edgeWordsLost} edgeWordsAdded=${metrics.edgeWordsAdded}`,
+    `splitChunks=${metrics.splitChunks} splitLabelDistinct=${metrics.splitLabelDistinct} punctRatio=${metrics.punctRatio}`,
     `aligner=${metrics.aligner ? `${metrics.aligner.calls} calls, ${metrics.aligner.parts} parts, ${metrics.aligner.alignMs} ms, ${metrics.aligner.fallbacks} fallback(s)${metrics.aligner.fallbackReason ? ` (${metrics.aligner.fallbackReason})` : ""}` : "null"}`,
     `termHits=${metrics.termHits}`,
     `dupJoins=${metrics.dupJoins} (k>=2: ${metrics.dupJoinsK2})`,

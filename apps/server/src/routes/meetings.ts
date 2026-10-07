@@ -532,6 +532,9 @@ async function runAlignPass(
             endMs: w.end * 1000,
           })),
           turns,
+          // The original ASR text: the parts keep its punctuation and
+          // case (1:1 token mapping, spec 3.6 review fix).
+          r.text,
         );
         if (parts.length >= 2) {
           alignedByIdx.set(r.idx, parts);
