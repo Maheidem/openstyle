@@ -72,3 +72,7 @@ Give a table like the one above for the new run next to the baseline. State the 
 ## For pi children
 
 A pi brief must say: "Read `.claude/skills/meeting-benchmarks/SKILL.md` and `.claude/skills/live-testing/SKILL.md` first." The scripts exist on `main` only after the meeting v2 branch merges. Until then, they are on `feat/meeting-transcription-v2`.
+
+## Metrics are not enough
+
+On 2026-10-07 a run passed every metric (edgeWordsLost 0, multiTurnChunks 0) while every split part had lost its punctuation and both parts of each split had the same speaker label. Always read the compare file (or run the council) before you call a quality run good. Add a metric for each new failure class (punctRatio, splitLabelDistinct).
