@@ -3640,6 +3640,56 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     expect(mic[0]!.speaker_label).toBeNull();
   });
 
+  it("keeps the ASR punctuation and case in the stored parts (§3.6 review)", async () => {
+    // The stored part text must come from the ORIGINAL ASR tokens (the
+    // aligner's words are normalized): the parts keep punctuation and
+    // sentence capitals, and joined with a space they equal the
+    // original chunk text. The labels stay per-part (the later label
+    // step must not overwrite them with the overlap winner).
+    const dir = makeAudioDir();
+    __setMeetingsTestOverrides(
+      alignOverrides(
+        async (_wav, _text, _language) => [
+          { text: "left", start: 0.5, end: 1.5 },
+          { text: "right", start: 5.0, end: 6.0 },
+        ],
+        {
+          createTranscriberDeps: fakeDeps(async () => ({
+            text: "Left, right.",
+          })),
+        },
+      ),
+    );
+    insertMeeting("m2", "recorded", dir);
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m2");
+
+    const start = await postEmpty(app, "/api/meetings/m2/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m2");
+    expect(done.status).toBe("transcribed");
+
+    const rows = getDb()
+      .prepare(
+        `SELECT text, speaker_label FROM meeting_segments
+           WHERE meeting_id = 'm2' AND source = 'system'
+           ORDER BY start_ms, id`,
+      )
+      .all() as unknown as Array<{
+      text: string | null;
+      speaker_label: string | null;
+    }>;
+    expect(rows).toHaveLength(2);
+    // Punctuation and case survive the split.
+    expect(rows.map((r) => r.text)).toEqual(["Left,", "right."]);
+    // Joined with a space the parts equal the original chunk text.
+    expect(rows.map((r) => r.text).join(" ")).toBe("Left, right.");
+    // Per-part midpoint labels (A then B), not the overlap winner's
+    // label on the whole span (which would be B for both).
+    expect(rows.map((r) => r.speaker_label)).toEqual(["1", "2"]);
+  });
+
   it("keeps a single-speaker chunk as one row (no align call)", async () => {
     const dir = makeAudioDir();
     let alignCalls = 0;

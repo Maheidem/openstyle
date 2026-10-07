@@ -841,6 +841,61 @@ describe("splitAlignedChunk (I4b, §3.6)", () => {
     expect(parts[1]!.endMs).toBe(3_900);
   });
 
+  it("keeps the ASR punctuation and case from the source text (1:1)", () => {
+    // The aligner returns normalized words (no punctuation, no case); the
+    // parts must be built from the ORIGINAL tokens in order, so joining
+    // the parts with a space reproduces the chunk text.
+    const source = "I don't see any other. Yeah, we all here.";
+    const parts = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "i", startMs: 0, endMs: 300 },
+        { text: "don't", startMs: 300, endMs: 700 },
+        { text: "see", startMs: 700, endMs: 1_000 },
+        { text: "any", startMs: 1_000, endMs: 1_300 },
+        { text: "other", startMs: 1_300, endMs: 1_700 },
+        { text: "yeah", startMs: 2_000, endMs: 2_400 },
+        { text: "we", startMs: 2_400, endMs: 2_700 },
+        { text: "all", startMs: 2_700, endMs: 3_000 },
+        { text: "here", startMs: 3_000, endMs: 3_400 },
+      ],
+      [turn("A", 0, 1_900), turn("B", 1_900, 10_000)],
+      source,
+    );
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toEqual({
+      startMs: 0,
+      endMs: 1_700,
+      text: "I don't see any other.",
+      speakerId: "A",
+    });
+    expect(parts[1]).toEqual({
+      startMs: 2_000,
+      endMs: 3_400,
+      text: "Yeah, we all here.",
+      speakerId: "B",
+    });
+    // The two parts joined with a space equal the original text.
+    expect(parts.map((p) => p.text).join(" ")).toBe(source);
+  });
+
+  it("falls back to normalized words on a token count mismatch", () => {
+    // 3 words but only 2 source tokens: no 1:1 mapping, previous
+    // behavior (the metrics' punctRatio keeps the chunk visible).
+    const parts = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "alpha", startMs: 0, endMs: 900 },
+        { text: "beta", startMs: 1_000, endMs: 1_900 },
+        { text: "gamma", startMs: 2_000, endMs: 2_900 },
+      ],
+      [turn("A", 0, 1_500), turn("B", 1_500, 10_000)],
+      "Alpha.",
+    );
+    // Midpoints: alpha 450 (A), beta 1450 (A), gamma 2450 (B).
+    expect(parts.map((p) => p.text)).toEqual(["alpha beta", "gamma"]);
+  });
+
   it("skips words without text and returns [] when nothing survives", () => {
     expect(
       splitAlignedChunk(
