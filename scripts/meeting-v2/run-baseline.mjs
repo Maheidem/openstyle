@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Phase 0b runner (specs/meeting-transcription-v2.md, sections 5, 7.2, 7.3).
 //
-// Runs one baseline run (R0 = diarization off, R0d = diarization on) of the
-// unmodified pipeline against the scratch profile. Starts its own isolated
+// Runs one baseline run (R0 = diarization off, R0d = diarization on,
+// R3a = phase 3a with R0's settings) of the pipeline against the scratch
+// profile. Starts its own isolated
 // server (never port 4649), transcribes the copied meeting, measures the
 // wall time from the POST /transcribe reply to status = transcribed, stops
 // the server it started, and writes run.json plus metrics.json.
@@ -47,10 +48,12 @@ if (!meetingId || !runName) {
   );
   process.exit(2);
 }
-if (runName !== "R0" && runName !== "R0d") {
-  console.error(`--run must be R0 or R0d, got: ${runName}`);
+if (runName !== "R0" && runName !== "R0d" && runName !== "R3a") {
+  console.error(`--run must be R0, R0d or R3a, got: ${runName}`);
   process.exit(2);
 }
+// R3a runs with R0's settings: diarization off.
+const diarizationOn = runName === "R0d";
 if (port === 4649) {
   console.error("refusing to use port 4649 (the installed app owns it)");
   process.exit(2);
@@ -82,20 +85,20 @@ rmSync(logPath, { force: true });
          stt_provider = NULL, stt_model = NULL
      WHERE id = ?`,
   ).run(meetingId);
-  if (runName === "R0") {
-    db.prepare(
-      "DELETE FROM settings WHERE key = 'meeting_diarization_enabled'",
-    ).run();
-  } else {
+  if (diarizationOn) {
     db.prepare(
       "INSERT INTO settings (key, value) VALUES ('meeting_diarization_enabled', 'true') \
        ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run();
+  } else {
+    db.prepare(
+      "DELETE FROM settings WHERE key = 'meeting_diarization_enabled'",
     ).run();
   }
   db.close();
 }
 console.log(
-  `reset scratch DB for ${runName} (diarization ${runName === "R0" ? "off" : "on"})`,
+  `reset scratch DB for ${runName} (diarization ${diarizationOn ? "on" : "off"})`,
 );
 
 // --- 2. Start the isolated server ---------------------------------------
