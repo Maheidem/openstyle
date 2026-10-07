@@ -2,11 +2,12 @@ export type {
   AsrBiasInput,
   BuildAsrBiasPromptOptions,
 } from "./asr-bias.js";
-export { buildAsrBiasPrompt } from "./asr-bias.js";
+export { buildAsrBiasPrompt, truncateAtWordBoundary } from "./asr-bias.js";
 export type { PostProcessParams, PostProcessResult } from "./post-process.js";
 export { postProcess } from "./post-process.js";
 export {
   collapseAsrLineBreaks,
+  isContextEcho,
   isVocabLeak,
   normalizeText,
   sanitizeTranscriptText,

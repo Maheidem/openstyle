@@ -14,6 +14,75 @@ export type AsrVocabularyBias =
   | { kind: "soniox-context"; terms: string[]; text?: string };
 
 const PROMPT_CHAR_BUDGET = 900;
+/**
+ * I1 (specs/meeting-transcription-v2.md §3.1, phase 3b): context tail
+ * length — the last 200 characters of the previous chunk's cleaned text,
+ * about 30 to 40 English words.
+ */
+export const CONTEXT_TAIL_CHARS = 200;
+
+/**
+ * I1 (phase 3b): the context tail — the last {@link CONTEXT_TAIL_CHARS}
+ * characters of the previous chunk's cleaned text, starting at the first
+ * whole word (a cut mid-word would hand the model a broken token).
+ */
+export function contextTail(text: string): string {
+  const trimmed = text.trim();
+  // Short enough to fit whole: it already starts at a word boundary.
+  if (trimmed.length <= CONTEXT_TAIL_CHARS) return trimmed;
+  const t = trimmed.slice(-CONTEXT_TAIL_CHARS);
+  const firstSpace = t.indexOf(" ");
+  return firstSpace >= 0 ? t.slice(firstSpace + 1) : t;
+}
+
+/**
+ * I1 (specs/meeting-transcription-v2.md §3.1, phase 3b): the five providers
+ * whose bias travels as a free-text prompt and therefore takes the
+ * previous-chunk context (in the `prompt` field, or `context` for
+ * local-mlx, which the worker maps to `system_prompt`). deepgram,
+ * elevenlabs and soniox take a term list, not a prompt — no context for
+ * them (soniox's `context.text` could take it; out of scope).
+ */
+const PROMPT_PROVIDERS = new Set([
+  "local-whisper",
+  "server",
+  "openai",
+  "groq",
+  "local-mlx",
+]);
+
+export function providerTakesPrompt(providerId: string): boolean {
+  return PROMPT_PROVIDERS.has(providerId);
+}
+
+/**
+ * I1 (specs/meeting-transcription-v2.md §3.1, phase 3b): join the
+ * vocabulary-bias prompt with the previous-chunk context — terms FIRST,
+ * context LAST. `buildAsrBiasPrompt` orders context first and terms last,
+ * which is not acceptable here: the model gives the most weight to the END
+ * of a prompt, so the context — the freshest speech on this channel — must
+ * come last. The total never exceeds {@link PROMPT_CHAR_BUDGET} (900):
+ * the context gets its 200-char tail (via {@link contextTail} — a longer
+ * input is cut at the FRONT, never the tail), the terms the rest (up to
+ * ~700), cut at the last ", " that fits.
+ */
+export function combinePrompt(biasText: string, context: string): string {
+  const ctx = context.trim();
+  if (!ctx) return biasText;
+  const contextPart = contextTail(ctx);
+  if (!contextPart) return biasText;
+  if (!biasText) return contextPart;
+  // The context (plus the separating space) comes last, so the terms get
+  // whatever of the 900-char budget is left.
+  const termBudget = PROMPT_CHAR_BUDGET - contextPart.length - 1;
+  let terms = biasText;
+  if (terms.length > termBudget) {
+    const slice = terms.slice(0, termBudget);
+    const lastComma = slice.lastIndexOf(", ");
+    terms = lastComma >= 0 ? slice.slice(0, lastComma) : slice;
+  }
+  return `${terms} ${contextPart}`;
+}
 const DEEPGRAM_KEYTERM_MAX = 100;
 /** Keep streaming URLs short — long keyterm lists break the WS handshake. */
 const DEEPGRAM_STREAMING_KEYTERM_MAX = 25;

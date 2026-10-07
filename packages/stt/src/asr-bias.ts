@@ -47,7 +47,7 @@ export interface BuildAsrBiasPromptOptions {
 }
 
 /** Truncate to `maxChars`, backing off to the last word boundary when it's close by. */
-function truncateAtWordBoundary(text: string, maxChars: number): string {
+export function truncateAtWordBoundary(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const slice = text.slice(0, maxChars);
   const lastSpace = slice.lastIndexOf(" ");

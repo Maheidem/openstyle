@@ -142,6 +142,37 @@ export function isVocabLeak(text: string, vocabTerms: string[]): boolean {
   return matched / textTokens.size >= VOCAB_LEAK_OVERLAP_THRESHOLD;
 }
 
+/**
+ * True when an ASR result looks like the model echoed the previous-chunk
+ * CONTEXT back as fake speech instead of transcribing the audio (I1,
+ * specs/meeting-transcription-v2.md §3.1, phase 3b). The context is speech
+ * text from the same channel — unlike the vocabulary terms (a list of
+ * discrete words, guarded by {@link isVocabLeak}), an echo of it is
+ * contiguous speech. True when the normalized result has at least 3 words
+ * and any of these holds:
+ *
+ * - it is a contiguous run of the normalized context;
+ * - it starts with 4 or more of the last words of the context;
+ * - {@link textSimilarity}(result, context) is at least 0.8.
+ */
+export function isContextEcho(text: string, context: string): boolean {
+  const normText = normalizeText(text);
+  const words = normText.split(" ").filter(Boolean);
+  if (words.length < 3) return false;
+  const normContext = normalizeText(context);
+  const contextWords = normContext.split(" ").filter(Boolean);
+  if (contextWords.length === 0) return false;
+  // A contiguous run of the normalized context.
+  if (normContext.includes(normText)) return true;
+  // Starts with 4 or more of the last words of the context: the text
+  // begins with a suffix of the context that is at least 4 words long.
+  const maxK = Math.min(contextWords.length, words.length);
+  for (let k = 4; k <= maxK; k++) {
+    if (normText.startsWith(contextWords.slice(-k).join(" "))) return true;
+  }
+  return textSimilarity(text, context) >= 0.8;
+}
+
 /** Marks the "Terms:" / "Technical terms:" prompt-boilerplate label
  * (asr-bias.ts / vocabulary-bias.ts). The injected prompt always carries
  * this label, so a leak's onset is normally findable directly. */

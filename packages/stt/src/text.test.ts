@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collapseAsrLineBreaks,
+  isContextEcho,
   isVocabLeak,
   sanitizeTranscriptText,
   stripThinkingBlocks,
@@ -229,5 +230,51 @@ describe("stripVocabLeak", () => {
   it("is a no-op on empty input", () => {
     expect(stripVocabLeak("", vocabTerms)).toBe("");
     expect(stripVocabLeak("   ", vocabTerms)).toBe("   ");
+  });
+});
+
+// Phase 3b (specs/meeting-transcription-v2.md §3.1): the previous-chunk
+// context echo guard.
+describe("isContextEcho", () => {
+  const context =
+    "and so the quarter close plan is to ship the lane change first";
+
+  it("flags a contiguous run of the context", () => {
+    expect(isContextEcho("the quarter close plan is to ship", context)).toBe(
+      true,
+    );
+    expect(isContextEcho(context, context)).toBe(true);
+    // Case- and punctuation-normalized.
+    expect(isContextEcho("Quarter close plan is to ship!", context)).toBe(true);
+  });
+
+  it("flags a start with 4 or more of the last words of the context", () => {
+    expect(
+      isContextEcho("ship the lane change first and then we go home", context),
+    ).toBe(true);
+    // Three of the last words is not enough — real speech that happens to
+    // rhyme with the context's tail must pass.
+    expect(isContextEcho("lane change first is done", context)).toBe(false);
+  });
+
+  it("flags a close paraphrase (similarity >= 0.8)", () => {
+    expect(
+      isContextEcho(
+        "and so the quarter close plan is to ship the lane change",
+        context,
+      ),
+    ).toBe(true);
+  });
+
+  it("passes unrelated speech", () => {
+    expect(isContextEcho("hello can you repeat the question", context)).toBe(
+      false,
+    );
+    expect(isContextEcho("ship it", context)).toBe(false);
+  });
+
+  it("is a no-op for short results (< 3 words) and an empty context", () => {
+    expect(isContextEcho("the quarter", context)).toBe(false);
+    expect(isContextEcho(context, "")).toBe(false);
   });
 });
