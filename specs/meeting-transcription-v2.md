@@ -278,7 +278,7 @@ It runs only when overlap audio was used for this boundary. 1 s holds about 3 to
 - `families.ts:96-110` already keeps the aligner out of the ASR picker (`isNotTranscriber`).
 
 **Design.**
-1. **Helper model.** The aligner is a helper download, not an ASR choice. The Models page shows it under the meeting row as "Word timing for speaker changes" with its size and a download button. It is never offered as a transcription model.
+1. **Helper model, automatic download (owner decision 2026-10-07).** The aligner is a helper model, not an ASR choice, and the user is not asked. On Apple silicon with the MLX runtime installed and diarization on, the server starts the aligner download in the background the first time a meeting job starts (or at server start when a meeting exists). It uses the existing model download path and its progress events. Until the model is ready, meetings use the fallback (step 4). The Models page meeting row shows a one-line status: "Word timing for speaker changes: downloading N %" / "ready" / "not available on this Mac". The aligner is never offered as a transcription model (`isNotTranscriber`).
 2. **Worker.** The MLX worker (`scripts/mlx_asr_server.py`) gets an `align` message: input `{id, wav, text, language}`, output `{id, type: "aligned", words: [{text, start, end}]}`. The server starts a second worker for the aligner with the existing `ensureMlxServerRunning(alignerId)` (`mlx-asr/server.ts:114`). The aligner worker answers only `align`.
 3. **Pipeline.** When diarization gives turns and the aligner is ready:
    - The system track is segmented as before phase 4 (no slicing at speaker changes), so the ASR hears whole chunks.
@@ -440,8 +440,8 @@ Done when:
 
 ### Phase 4b: forced alignment at speaker cuts (I4b)
 
-Files: `scripts/mlx_asr_server.py` (`align` message), `lib/mlx-asr/server.ts` (aligner worker, `alignWithMlx`), `lib/mlx-asr/models.ts` or the catalog (helper model entry), `lib/meetings/transcriber.ts` and `lib/meetings/segmenter.ts` (align-then-split path, fallback), `routes/meetings.ts`, `pages/models/meeting-model-row.tsx` (helper download), locales, `scripts/meeting-v2/metrics.mjs` (`edgeWordsLost`, `edgeWordsAdded`), `run-baseline.mjs` (R4d).
-Tests: word split at a change time (midpoint rule); one-speaker chunk unchanged; fallback for each reason in 3.6 step 4; worker `align` message contract (fake worker); helper model never in the ASR picker.
+Files: `scripts/mlx_asr_server.py` (`align` message), `lib/mlx-asr/server.ts` (aligner worker, `alignWithMlx`), `lib/mlx-asr/models.ts` or the catalog (helper model entry), `lib/meetings/transcriber.ts` and `lib/meetings/segmenter.ts` (align-then-split path, fallback), `routes/meetings.ts`, `pages/models/meeting-model-row.tsx` (status line), the download trigger (auto, background), locales, `scripts/meeting-v2/metrics.mjs` (`edgeWordsLost`, `edgeWordsAdded`), `run-baseline.mjs` (R4d).
+Tests: word split at a change time (midpoint rule); one-speaker chunk unchanged; fallback for each reason in 3.6 step 4; worker `align` message contract (fake worker); helper model never in the ASR picker; the auto-download starts once and only on Apple silicon with diarization on; a meeting before the download ends uses the fallback.
 Done when:
 - Full server and electron suites, server `typecheck:tests`, build, biome and knip pass.
 - Python worker: a synthetic two-voice clip made with `say` gives word times within 120 ms of the known change.
