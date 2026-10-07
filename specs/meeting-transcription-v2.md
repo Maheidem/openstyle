@@ -268,6 +268,31 @@ It runs only when overlap audio was used for this boundary. 1 s holds about 3 to
 
 ---
 
+### 3.6 I4b: forced alignment at speaker cuts (owner decision 2026-10-07)
+
+**Why.** The phase 4 council (Claude, pi, Codex, 2026-10-07) agreed that speaker cuts lose 1 to 3 short words in a 60-minute meeting ("voice", "Right.", "just"). Each lost word sat at a speaker change. The ASR drops a short word at the edge of a sliced part, while it hears the same word inside a longer chunk. Giving the gap audio to a neighbor (7e680c9) sent the audio but did not bring the word back. The owner held release 2.14.0 until this is solved with word timestamps.
+
+**Facts (research, 2026-10-07).**
+- oMLX 0.7.0 with Qwen3-ASR returns no word times. It ignores `response_format` and `timestamp_granularities` (live test; its `/openapi.json` says so).
+- `mlx-community/Qwen3-ForcedAligner-0.6B-8bit` gives word times from (audio, text, language). It ships in the bundled mlx-audio 0.5.7 (`qwen3_asr/qwen3_forced_aligner.py:637`). On synthetic clips it placed three speaker cuts within 40 ms of the truth, in under 0.1 s per 30 s of audio. It needs about 1.2 GB. It covers 11 languages.
+- `families.ts:96-110` already keeps the aligner out of the ASR picker (`isNotTranscriber`).
+
+**Design.**
+1. **Helper model.** The aligner is a helper download, not an ASR choice. The Models page shows it under the meeting row as "Word timing for speaker changes" with its size and a download button. It is never offered as a transcription model.
+2. **Worker.** The MLX worker (`scripts/mlx_asr_server.py`) gets an `align` message: input `{id, wav, text, language}`, output `{id, type: "aligned", words: [{text, start, end}]}`. The server starts a second worker for the aligner with the existing `ensureMlxServerRunning(alignerId)` (`mlx-asr/server.ts:114`). The aligner worker answers only `align`.
+3. **Pipeline.** When diarization gives turns and the aligner is ready:
+   - The system track is segmented as before phase 4 (no slicing at speaker changes), so the ASR hears whole chunks.
+   - For each chunk that overlaps two or more speakers (beyond the 300 ms rule), the job aligns the chunk text with the chunk audio.
+   - It splits the words at the diarizer change times. A word goes to the speaker whose turn holds the word's midpoint. Each run of words of one speaker becomes one stored segment with `start_ms` and `end_ms` from its first and last word, and that speaker label.
+   - Chunks with one speaker are stored as today.
+4. **Fallback.** Phase 4 slice cuts (`cutAtSpeakerChanges`) stay as the fallback when: the aligner is not downloaded, the platform is not Apple silicon, the meeting language is not one of the aligner's languages or is not declared, or an `align` call fails or times out (10 s). The job logs the reason once per meeting, at info level.
+5. **Privacy.** Everything runs on the Mac. No new network call. The model download uses the existing Hugging Face path.
+6. **Cost.** One aligner call per mixed chunk. Expected under 0.1 s each, plus a one-time load of about 1 s.
+
+**Metric.** `edgeWordsLost`: for each R0d chunk that a speaker cut divides, count the normalized words of the R0d text that are missing from the new parts' texts over the same span (multiset difference). Report the sum and the per-cut list (ids and counts only). `edgeWordsAdded` is the reverse count.
+
+**Limits.** The aligner aligns only words the ASR produced. A garbled word can stretch the times of its neighbors. Overlapping speech (two people at once) stays a known limit.
+
 ## 4. Settings and migration rules
 
 ### 4.1 Table
@@ -412,6 +437,17 @@ Done when:
 - `grep -c "diarization labeled" "$SCRATCH/server.log"` prints 1.
 - `D` is recorded for the default decision (4.3).
 - Synthetic clips (generated with `ffmpeg -f lavfi`, fake diarizer turns in test): a 10 s clip with turns at 0-4 s and 4-10 s must give exactly 2 chunks, cut within 300 ms of 4 s.
+
+### Phase 4b: forced alignment at speaker cuts (I4b)
+
+Files: `scripts/mlx_asr_server.py` (`align` message), `lib/mlx-asr/server.ts` (aligner worker, `alignWithMlx`), `lib/mlx-asr/models.ts` or the catalog (helper model entry), `lib/meetings/transcriber.ts` and `lib/meetings/segmenter.ts` (align-then-split path, fallback), `routes/meetings.ts`, `pages/models/meeting-model-row.tsx` (helper download), locales, `scripts/meeting-v2/metrics.mjs` (`edgeWordsLost`, `edgeWordsAdded`), `run-baseline.mjs` (R4d).
+Tests: word split at a change time (midpoint rule); one-speaker chunk unchanged; fallback for each reason in 3.6 step 4; worker `align` message contract (fake worker); helper model never in the ASR picker.
+Done when:
+- Full server and electron suites, server `typecheck:tests`, build, biome and knip pass.
+- Python worker: a synthetic two-voice clip made with `say` gives word times within 120 ms of the known change.
+- Isolated run R4d on both meetings: `jq -e '.edgeWordsLost == 0 and .multiTurnChunks == 0 and .labeled >= $b.labeled and .failed == $b.failed' --argjson b "$(cat "$SCRATCH/R0d/metrics.json")" "$SCRATCH/R4d/metrics.json"` exits 0 for the long meeting; the short meeting text is unchanged.
+- oMLX is called only with Qwen3-ASR and Qwen3.8-27B, and `/v1/models` answers 200 after the run.
+- Council round 3 (Claude, pi, Codex) on `R0d-vs-R4d` agrees before release 2.14.0.
 
 ### Phase 5: overlap and join (I5, conditional)
 
