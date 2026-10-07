@@ -226,7 +226,9 @@ Active only when `meeting_diarization_enabled` is on and `system.wav` exists.
 - `isHallucination` skips the `HALLUCINATION_EXACT` rule (`:138`) for a chunk that has a `speakerLabel` or a duration above 1 s. The prefix rule stays.
 Without these two changes, two speakers who each say "yes" would collapse, and a real "thank you" from a labeled speaker would be dropped.
 
-**Labels.** After transcription the job calls `applyDiarization` with the turns it already has. It does not run the binary a second time. `assignSpeakerLabels` gives each chunk the label of its one speaker. Numbering stays first-appearance (`diarize.ts:280-292`).
+**Labels.** After transcription the job calls `applyDiarization` with the turns it already has. It does not run the binary a second time. `assignSpeakerLabels` gives each chunk the label of its one speaker. Numbering stays first-appearance (`diarize.ts:280-292`). The raw turns are stored in `meeting_diarizer_turns` (schema 37) in the same transaction as the labels: the measurement computes `multiTurnChunks` (7.4) from them, a re-transcribe re-cuts and re-labels without spending diarizer time again, and the old order's meetings have no rows (the metric reports null, exactly as before).
+
+**Log lines.** The job logs `diarization started` / `diarization finished (N turns)` around the binary run. They bracket `D` for the measurement (the `labeled` line comes after transcription in the new order). The turn count is not private (speaker ids and times only).
 
 **Failure.** If the binary or the models are missing, `runDiarizer` returns null and logs a warning. The job then segments with no speaker cuts and skips labels. It never fails the job.
 
@@ -273,12 +275,12 @@ It runs only when overlap audio was used for this boundary. 1 s holds about 3 to
 | `meeting_enhance_auto_run` (validator only) | Auto Enhance after transcription | Off | On | Off | Popover switch, one-time prompt |
 | `meeting_enhance_prompt_seen` (new) | The one-time prompt was shown | Not shown yet | Shown | Shown | One-time prompt |
 | `meeting_asr_context` (new) | Previous-chunk context for transcription (3.1) | Off | On | Off | Popover switch (off by default, owner decision 2026-10-07) |
-| `meeting_diarization_enabled` (rule change only if 4.3 passes) | Diarize before transcription | Off (On if 4.3 passes) | On | Off | Existing popover switch |
+| `meeting_diarization_enabled` | Diarize before transcription, with speaker cuts | On (decision D, 2026-10-07, after 4.3 passed) | On | Off | Existing popover switch |
 
 ### 4.2 Migration
 
-- No schema bump. `SCHEMA_VERSION` stays 36 (`schema.ts:14`).
-- No migration writes any key. Existing explicit values are kept.
+- The settings phase itself bumps no schema (`SCHEMA_VERSION` 36). Phase 4's `meeting_diarizer_turns` table bumps it to 37 (`schema.ts:14`); the table is additive — old meetings simply have no rows.
+- No migration writes any key. Existing explicit values are kept — an explicit `"false"` still turns diarization off after the default flips to on (4.1).
 - `getMeetingEnhanceAutoRunSetting` stays the one place of the Enhance rule.
 
 ### 4.3 Is diarization on by default?
@@ -287,6 +289,8 @@ It becomes default-on (the `!== "false"` rule) only if the proof phase shows bot
 - diarizer time `D` is at most 10 percent of the audio length on the owner's real meeting (360 s for the 3580 s meeting);
 - no failure in 3 runs.
 A synthetic measurement gave about 0.22 percent of the audio length. It is not the real meeting, so it does not decide. Otherwise diarization stays opt-in and phase 4 ships with the switch as it is. A privacy note: diarization runs on device (`diarize.ts:384-388`).
+
+**Decision D (owner, 2026-10-07): diarization is ON by default.** The R4 proof met both conditions: `D` = 4.42 s on the 3580 s meeting (0.12 percent of the audio, far under 10 percent; 0.99 s on the 425 s meeting) and no failure in any of the runs (R0d, R4 short, R4 long — all `failed = 0`). `getMeetingDiarizationEnabledSetting` now reads `row?.value !== "false"`. Users who want the old behavior set the switch to off (an explicit `"false"`).
 
 ---
 
@@ -306,25 +310,29 @@ Every proof server starts with `cd apps/electron && node ../server/dist/startup.
 | 2 Enhance (onboarding step + one-time prompt) | 2a and 2b done |
 | 3a lanes | Done (`75cc0f7`). |
 | 3b context | Done (`f769365` + review fixes `d1c9a1d`, `9079421`, off-by-default setting `ffc25f2`). |
-| 4 diarize first, default on | To do. Owner approved default-on. |
+| 4 diarize first, default on | Done (`fb195e0`). Decision D recorded in 4.3. |
 | 5 overlap and join | Dropped: `contiguousCuts` is 0 on both proof meetings (Q8 rule). |
 
 Baseline on the owner's real meetings (scratch copies, Qwen3-ASR and Qwen3.8-27B on the owner's oMLX, `main` at `f320740`):
 
-| Meeting | Run | wallSeconds | chunks (mic/system) | labeled (speakers) | failed | under 3 s | termHits | contiguousCuts | langMismatch |
-|---|---|---|---|---|---|---|---|---|---|
-| short 2943c36a (425 s) | R0 | 12.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
-| short | R0d | 14.03 | 17/20 | 14 (1) | 0 | 5 | 3 | 0 | 9 |
-| long 9243bea0 (3580 s) | R0 | 96.19 | 168/79 | 0 | 0 | 22 | 30 | 0 | 31 |
-| long | R0d | 100.20 | 168/79 | 59 (5) | 0 | 22 | 30 | 0 | 31 |
-| short | R3a | 12.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
-| long | R3a | 96.25 | 168/79 | 0 | 0 | 22 | 30 | 0 | 31 |
-| short | R3b | 14.04 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
-| long | R3b | 98.24 | 168/79 | 0 | 0 | 22 | 31 | 0 | 30 |
-| short | R3b2 | 12.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
-| long | R3b2 | 98.27 | 168/79 | 0 | 0 | 22 | 31 | 0 | 32 |
-| short | R3c-off | 12.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
-| short | R3c-on | 14.03 | 17/20 | 0 | 0 | 5 | 3 | 0 | 9 |
+| Meeting | Run | wallSeconds | chunks (mic/system) | labeled (speakers) | multiTurnChunks | failed | under 3 s | termHits | contiguousCuts | langMismatch |
+|---|---|---|---|---|---|---|---|---|---|---|
+| short 2943c36a (425 s) | R0 | 12.03 | 17/20 | 0 | — | 0 | 5 | 3 | 0 | 9 |
+| short | R0d | 14.03 | 17/20 | 14 (1) | — | 0 | 5 | 3 | 0 | 9 |
+| long 9243bea0 (3580 s) | R0 | 96.19 | 168/79 | 0 | — | 0 | 22 | 30 | 0 | 31 |
+| long | R0d | 100.20 | 168/79 | 59 (5) | — | 0 | 22 | 30 | 0 | 31 |
+| short | R3a | 12.03 | 17/20 | 0 | — | 0 | 5 | 3 | 0 | 9 |
+| long | R3a | 96.25 | 168/79 | 0 | — | 0 | 22 | 30 | 0 | 31 |
+| short | R3b | 14.04 | 17/20 | 0 | — | 0 | 5 | 3 | 0 | 9 |
+| long | R3b | 98.24 | 168/79 | 0 | — | 0 | 22 | 31 | 0 | 30 |
+| short | R3b2 | 12.03 | 17/20 | 0 | — | 0 | 5 | 3 | 0 | 9 |
+| long | R3b2 | 98.27 | 168/79 | 0 | — | 0 | 22 | 31 | 0 | 32 |
+| short | R3c-off | 12.03 | 17/20 | 0 | — | 0 | 5 | 3 | 0 | 9 |
+| short | R3c-on | 14.03 | 17/20 | 0 | — | 0 | 5 | 3 | 0 | 9 |
+| short | R4 | 14.03 | 17/20 | 14 (1) | 0 | 0 | 5 | 3 | 0 | 9 |
+| long | R4 | 102.24 | 168/86 | 67 (5) | 0 | 0 | 21 | 30 | 0 | 31 |
+
+R4 rows (phase 4 proof, diarization on, context off, new order): `multiTurnChunks` counts system chunks overlapping turns of two or more speakers by more than the 300 ms snap window — 0 on both meetings, the cut rule holds (G4). The long meeting's system chunks go 79 to 86: speaker cuts split multi-speaker chunks, and the cuts add 4.42 s of diarizer time (`D`, 4.39 s in R0d — the binary is unchanged). `labeled` goes 59 to 67 because the cut parts are labelable where the old long chunks were not. The short meeting is single-speaker (1 speaker in both orders): no cuts, output byte-identical to R0 (hash `a6e6ea51…`), labels applied exactly as in R0d. The jq rule `.labeled >= $b.labeled and .multiTurnChunks == 0 and .failed == $b.failed` passes on both. `grep -c "diarization skipped"` is 0 and `grep -c "diarization labeled"` is 1 in both server logs. A re-run of R0 on the new code reproduces the recorded R0 output (short hash `a6e6ea51…`; long quality metrics 22/30/0/31 identical, wall 100.24 s on loaded hardware). The private compare files `R0d-vs-R4-2943c36a.md` (0 changed chunks) and `R0d-vs-R4-9243bea0.md` (39 changed chunks, all system) hold the per-chunk labels and text for owner review. The R0d side of the compare is rebuilt offline (R0 boundaries + the old winner-overlap rule on the stored turns — it reproduces the recorded 14/1 and 59/5 exactly), because the old order is no longer in the code.
 
 Diarizer wall time (standalone, median of 3 runs, all OK): short 0.92 s (0.22 percent), long 4.39 s (0.12 percent). R0d text hash equals R0 on both meetings: diarization changes only the labels. R3a (lanes, R0 settings) text hash equals R0 on both meetings; wall time 12.03 s (budget 14.31 s at ratio 2*20/37 = 1.081) and 96.25 s (budget 143.93 s at ratio 2*168/247 = 1.360). R3b (lanes plus context, R0 settings): short 14.04 s (context on 22 of 37 chunks, 1 echo retry, 8 chunks with changed text vs R3a), long 98.24 s (context on 182 of 247 chunks, 2 echo retries, 79 chunks with changed text vs R3a). The R3b rule holds on both meetings (termHits not lower, filtered up by at most 2, langMismatch not higher); the R3b text hash differs from R0/R3a by design (context changes the output). R3b2 (the review-fixed context guards, R0 settings): short 12.03 s (context on 22 of 37 chunks, 1 echo retry, 8 chunks with changed text vs R3a; text hash equals R3b — the fixes change no output on this meeting), long 98.27 s (context on 176 of 247 chunks, 4 echo retries, 76 chunks with changed text vs R3a). The R3b2 rule holds on the short meeting; on the long one termHits (31 >= 30) and filtered (11 <= 13) hold, but langMismatch is 32 against R3a's 31: the single extra chunk is one whose text the context changed (system chunk 12, of the 76 changed) and tinyld now labels non-English; the chunk the fixed persist check restores (filtered 15 to 11) was already counted in R3a, and none of the 32 carries the prompt label, so no echo boilerplate is counted. R3c (the off-by-default setting, short meeting only): R3c-off runs with the setting absent and its `textHash` equals R0 and R3a (`a6e6ea51…`); R3c-on sets `meeting_asr_context` to `"true"` and its `textHash` equals R3b2 (`2262fad2…`), with the same 22 of 37 context chunks and 1 echo retry. The gate is output-identical to the pre-gate runs on both sides. Side-by-side of the changed chunks: `/tmp/meeting-v2/compare/R3a-vs-R3b2-<meetingId8>.md` (scratch, not committed). The installed app was open during the runs; ASR ran on the separate oMLX process. Metric files: `/tmp/meeting-v2/baseline/<run>-<meetingId>/metrics.json` (scratch, not committed). The procedure is in `.claude/skills/meeting-benchmarks/SKILL.md`.
 
@@ -384,8 +392,8 @@ Done when:
 
 ### Phase 4: diarize first and speaker cuts (I4)
 
-Files: `lib/meetings/diarize.ts` (`runDiarizer`, `applyDiarization`), `lib/meetings/segmenter.ts` (`speaker`, `turns` argument, `cutAtSpeakerChanges`, merge rule), `lib/meetings/merge.ts` (repeat and hallucination rules), `lib/meetings/job-registry.ts` (`phase`), `routes/meetings.ts` (`runTranscribeJob` order).
-Tests: `segmenter.test.ts` (two turns in one segment give two parts; flicker under 1 s is absorbed; first turn under 1 s joins the next; same-speaker neighbors re-join; a cut snaps to the lowest-energy frame within 300 ms; a part under 1.5 s merges into a neighbor; no merge across speakers; a part with no turn has no speaker); `meeting-merge.test.ts` (repeat collapse only within one label; `HALLUCINATION_EXACT` skipped for a labeled chunk and for a chunk above 1 s); `meeting-diarize-pipeline.test.ts` (labels from the stored turns, binary runs once; missing binary leaves the old behavior; cancel right after `runDiarizer`; `resolveConfig` runs before the diarizer).
+Files: `lib/meetings/diarize.ts` (`runDiarizer`, `applyDiarization`, the turns storage, the default-on rule), `lib/meetings/segmenter.ts` (`speaker`, `turns` argument, `cutAtSpeakerChanges`, merge rule), `lib/meetings/merge.ts` (repeat and hallucination rules), `lib/meetings/job-registry.ts` (`phase`), `routes/meetings.ts` (`runTranscribeJob` order, the started/finished log lines, the re-transcribe turns cleanup), `lib/schema.ts` (`meeting_diarizer_turns`, version 37), `scripts/meeting-v2/metrics.mjs` (`multiTurnChunks`, the started/finished `D` bracket), `scripts/meeting-v2/run-baseline.mjs` (R4; off runs write an explicit `"false"` after decision D).
+Tests: `segmenter.test.ts` (two turns in one segment give two parts; flicker under 1 s is absorbed; first turn under 1 s joins the next; same-speaker neighbors re-join; a cut snaps to the lowest-energy frame within 300 ms; a part under 1.5 s merges into a neighbor; no merge across speakers; a part with no turn has no speaker; the synthetic 10 s clip below); `meeting-merge.test.ts` (repeat collapse only within one label; `HALLUCINATION_EXACT` skipped for a labeled chunk and for a chunk above 1 s); `meetings-routes.test.ts` Phase 4 block (labels from the stored turns, binary runs once; missing binary leaves the old behavior; cancel right after `runDiarizer` — status `failed`, error `Cancelled by user`, zero transcribe calls; `resolveConfig` runs before the diarizer).
 Done when:
 - `pnpm vitest run tests/segmenter.test.ts tests/meeting-merge.test.ts tests/meeting-diarize.test.ts tests/meeting-diarize-pipeline.test.ts` passes.
 - Isolated run with diarization on, compared with R0d (diarization on, old order): `jq -e '.labeled >= $b.labeled and .multiTurnChunks == 0 and .failed == $b.failed' --argjson b "$(cat "$SCRATCH/R0d/metrics.json")" "$SCRATCH/R4/metrics.json"` exits 0. `multiTurnChunks` counts chunks that overlap more than one diarizer turn. The script also reports the count of chunks under 3 s.
