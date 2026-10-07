@@ -3497,3 +3497,303 @@ describe("Phase 4 (I4): diarize first and speaker cuts", () => {
     expect(runCalls).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 4b (I4b, specs/meeting-transcription-v2.md §3.6): forced alignment
+// at speaker cuts — the align-then-split path, the gate fallbacks, and the
+// automatic-download trigger.
+// ---------------------------------------------------------------------------
+
+describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
+  function makeAudioDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "meeting-i4b-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const wav = (() => {
+      const leadMs = 1500;
+      const toneMs = 7000;
+      const totalSamples = Math.round(((leadMs + toneMs) / 1000) * SAMPLE_RATE);
+      return buildBaseWav({
+        data: tonePayload(totalSamples, [
+          [
+            Math.round((leadMs / 1000) * SAMPLE_RATE),
+            Math.round(((leadMs + toneMs) / 1000) * SAMPLE_RATE),
+          ],
+        ]),
+      });
+    })();
+    writeFileSync(join(dir, "mic.wav"), wav);
+    writeFileSync(join(dir, "system.wav"), wav);
+    return dir;
+  }
+
+  async function waitForNoJob(id: string): Promise<Record<string, unknown>> {
+    for (let i = 0; i < 2000; i++) {
+      const res = await app.request(`/api/meetings/${id}`);
+      const body = (await res.json()) as Record<string, unknown>;
+      if (body.job === null) return body;
+      await Promise.resolve();
+    }
+    throw new Error("the job never released its slot");
+  }
+
+  const twoTurns = [
+    { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 4 },
+    { speakerId: "B", startTimeSeconds: 4, endTimeSeconds: 10 },
+  ];
+
+  function alignOverrides(
+    alignChunk: (
+      wav: Uint8Array,
+      text: string,
+      language: string,
+    ) => Promise<Array<{ text: string; start: number; end: number }>>,
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      createTranscriberDeps: fakeDeps(async () => ({ text: "left right" })),
+      diarizeDeps: {
+        resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+        resolveModelsDirPath: () => "/fake/resources/models",
+        execFile: async (_file: string, args: string[]) => ({
+          stdout: args[0] === "--probe" ? "READY" : JSON.stringify(twoTurns),
+          stderr: "",
+        }),
+      },
+      alignerReady: true,
+      alignChunk,
+      startAlignerDownload: () => false,
+      ...extra,
+    };
+  }
+
+  it("splits a mixed chunk at the change time and labels the parts (any provider)", async () => {
+    const dir = makeAudioDir();
+    let alignCalls = 0;
+    let seenLanguage: string | null = null;
+    __setMeetingsTestOverrides(
+      alignOverrides(async (_wav, _text, language) => {
+        alignCalls++;
+        seenLanguage = language;
+        // Word times RELATIVE to the chunk start (the worker's contract):
+        // "left" well inside A's turn, "right" well inside B's.
+        return [
+          { text: "left", start: 0.5, end: 1.5 },
+          { text: "right", start: 5.0, end: 6.0 },
+        ];
+      }),
+    );
+    insertMeeting("m1", "recorded", dir);
+    // Declared + sticky language (the gate needs it; "en" maps to English).
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m1");
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+
+    // The aligner was called once for the one mixed system chunk, with
+    // the aligner's language NAME (the meeting language "en" mapped).
+    expect(alignCalls).toBe(1);
+    expect(seenLanguage).toBe("English");
+
+    // The single uncut system chunk was REPLACED by its parts: the id
+    // carries the part suffix, the times come from the words, and the
+    // labels number by first appearance (A -> 1, B -> 2). The provider
+    // here is the FAKE one — not Qwen: the path is model-agnostic.
+    const rows = getDb()
+      .prepare(
+        `SELECT id, source, idx, start_ms, end_ms, text, speaker_label
+           FROM meeting_segments WHERE meeting_id = 'm1'
+           ORDER BY source, idx, start_ms, id`,
+      )
+      .all() as unknown as Array<{
+      id: string;
+      source: string;
+      idx: number;
+      start_ms: number;
+      end_ms: number;
+      text: string | null;
+      speaker_label: string | null;
+    }>;
+    const system = rows.filter((r) => r.source === "system");
+    expect(system).toHaveLength(2);
+    expect(system.map((r) => r.speaker_label)).toEqual(["1", "2"]);
+    expect(
+      system.every((r) => r.id.endsWith(":0:0") || r.id.endsWith(":0:1")),
+    ).toBe(true);
+    // Word-derived times (chunk starts ~1.2 s after the tone lead-in):
+    // part 0 ends before the 4 s change; part 1 starts after it.
+    expect(system[0]!.end_ms).toBeLessThan(4000 + 300);
+    expect(system[1]!.start_ms).toBeGreaterThan(4000 - 300);
+    // The turns are stored (the measurement reads the table).
+    const turns = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM meeting_diarizer_turns WHERE meeting_id = 'm1'",
+      )
+      .get() as { n: number };
+    expect(turns.n).toBe(2);
+    // The mic chunk is untouched and unlabeled.
+    const mic = rows.filter((r) => r.source === "mic");
+    expect(mic).toHaveLength(1);
+    expect(mic[0]!.speaker_label).toBeNull();
+  });
+
+  it("keeps a single-speaker chunk as one row (no align call)", async () => {
+    const dir = makeAudioDir();
+    let alignCalls = 0;
+    __setMeetingsTestOverrides(
+      alignOverrides(
+        async () => {
+          alignCalls++;
+          return [];
+        },
+        {
+          // B starts after the chunk ends (~8.7 s): the chunk overlaps
+          // only A — not mixed, stored as today, labeled by the winner.
+          diarizeDeps: {
+            resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+            resolveModelsDirPath: () => "/fake/resources/models",
+            execFile: async (_file: string, args: string[]) => ({
+              stdout:
+                args[0] === "--probe"
+                  ? "READY"
+                  : JSON.stringify([
+                      {
+                        speakerId: "A",
+                        startTimeSeconds: 0,
+                        endTimeSeconds: 10,
+                      },
+                      {
+                        speakerId: "B",
+                        startTimeSeconds: 10,
+                        endTimeSeconds: 12,
+                      },
+                    ]),
+              stderr: "",
+            }),
+          },
+        },
+      ),
+    );
+    insertMeeting("m1", "recorded", dir);
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m1");
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+
+    expect(alignCalls).toBe(0);
+    const rows = getDb()
+      .prepare(
+        `SELECT id, source, speaker_label FROM meeting_segments
+           WHERE meeting_id = 'm1' ORDER BY source, idx`,
+      )
+      .all() as unknown as Array<{
+      id: string;
+      source: string;
+      speaker_label: string | null;
+    }>;
+    const system = rows.filter((r) => r.source === "system");
+    expect(system).toHaveLength(1);
+    expect(system[0]!.speaker_label).toBe("1");
+    expect(system[0]!.id.endsWith(":0:0")).toBe(false);
+  });
+
+  it("falls back to the phase 4 cuts when the aligner is not downloaded", async () => {
+    const dir = makeAudioDir();
+    let alignCalls = 0;
+    __setMeetingsTestOverrides(
+      alignOverrides(
+        async () => {
+          alignCalls++;
+          return [];
+        },
+        { alignerReady: false },
+      ),
+    );
+    insertMeeting("m1", "recorded", dir);
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m1");
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+
+    // No align call; the phase 4 path ran instead: the chunk is CUT at
+    // the 4 s change and labeled from the turns (1, 2) — a meeting that
+    // starts before the download ends gets exactly the old behavior.
+    expect(alignCalls).toBe(0);
+    const rows = getDb()
+      .prepare(
+        `SELECT source, idx, speaker_label FROM meeting_segments
+           WHERE meeting_id = 'm1' AND source = 'system' ORDER BY idx`,
+      )
+      .all() as unknown as Array<{
+      idx: number;
+      speaker_label: string | null;
+    }>;
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.speaker_label)).toEqual(["1", "2"]);
+  });
+
+  it("falls back when the meeting language is not declared", async () => {
+    const dir = makeAudioDir();
+    let alignCalls = 0;
+    __setMeetingsTestOverrides(
+      alignOverrides(
+        async () => {
+          alignCalls++;
+          return [];
+        },
+        { alignerReady: true },
+      ),
+    );
+    insertMeeting("m1", "recorded", dir);
+    // No meetings.language row and no declared languages: the gate's
+    // "language not declared" reason applies.
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+
+    expect(alignCalls).toBe(0);
+    const rows = getDb()
+      .prepare(
+        `SELECT source, idx FROM meeting_segments
+           WHERE meeting_id = 'm1' AND source = 'system' ORDER BY idx`,
+      )
+      .all() as unknown as Array<{ idx: number }>;
+    expect(rows).toHaveLength(2); // cut, as phase 4
+  });
+
+  it("starts the automatic aligner download once at job start", async () => {
+    const dir = makeAudioDir();
+    const startCalls: number[] = [];
+    __setMeetingsTestOverrides(
+      alignOverrides(async () => [], {
+        startAlignerDownload: () => {
+          startCalls.push(1);
+          return true;
+        },
+      }),
+    );
+    insertMeeting("m1", "recorded", dir);
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m1");
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    expect(startCalls).toHaveLength(1);
+  });
+});

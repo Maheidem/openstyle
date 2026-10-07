@@ -4,13 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { readWavPcm16 } from "../src/lib/audio/wav.js";
+import type { DiarizerSegment } from "../src/lib/meetings/diarize.js";
 import {
   cutAtSpeakerChanges,
   DEFAULT_MERGE_TOWARD_OPTIONS,
+  isMixedChunk,
   mergeSegmentsToward,
   type Segment,
   segmentPcm,
   segmentWavFile,
+  splitAlignedChunk,
 } from "../src/lib/meetings/segmenter.js";
 
 const SAMPLE_RATE = 16_000;
@@ -746,5 +749,141 @@ describe("segmentPcm with diarizer turns (I4, §3.4)", () => {
     expect(segments!.length).toBeGreaterThanOrEqual(1);
     // No turns in: no part may carry a speaker.
     for (const s of segments!) expect(s.speaker).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I4b (specs/meeting-transcription-v2.md §3.6): forced alignment at speaker
+// cuts — the pure split rule and the mixed-chunk rule.
+// ---------------------------------------------------------------------------
+
+const turn = (
+  speakerId: string,
+  startMs: number,
+  endMs: number,
+): DiarizerSegment => ({
+  speakerId,
+  startTimeSeconds: startMs / 1000,
+  endTimeSeconds: endMs / 1000,
+});
+
+describe("splitAlignedChunk (I4b, §3.6)", () => {
+  it("splits words at the change time by the midpoint rule", () => {
+    // Chunk 0-10 s; speaker A until 4 s, B after. Word "alpha" ends just
+    // after the change (midpoint 3.9 s → A); "beta" starts just after
+    // (midpoint 4.1 s → B); "gamma" is well inside B.
+    const parts = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "alpha", startMs: 3_800, endMs: 4_000 },
+        { text: "beta", startMs: 4_100, endMs: 4_300 },
+        { text: "gamma", startMs: 5_000, endMs: 5_400 },
+      ],
+      [turn("A", 0, 4_000), turn("B", 4_000, 10_000)],
+    );
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toEqual({
+      startMs: 3_800,
+      endMs: 4_000,
+      text: "alpha",
+      speakerId: "A",
+    });
+    expect(parts[1]).toEqual({
+      startMs: 4_100,
+      endMs: 5_400,
+      text: "beta gamma",
+      speakerId: "B",
+    });
+  });
+
+  it("gives a word in a gap to the NEAREST turn", () => {
+    // Turns 0-3 s (A) and 5-10 s (B): a gap 3-5 s. A word at 3.9-4.1 s has
+    // its midpoint (4.0 s) 0.9 s from A's end and 0.9 s from B's start —
+    // equal; the earlier turn wins (A).
+    const parts = splitAlignedChunk(
+      { startMs: 0, endMs: 10_000 },
+      [
+        { text: "x", startMs: 1_000, endMs: 1_400 },
+        { text: "gap", startMs: 3_900, endMs: 4_100 },
+        { text: "y", startMs: 6_000, endMs: 6_400 },
+      ],
+      [turn("A", 0, 3_000), turn("B", 5_000, 10_000)],
+    );
+    expect(parts).toHaveLength(2);
+    expect(parts[0]!.speakerId).toBe("A");
+    expect(parts[0]!.text).toBe("x gap");
+    expect(parts[1]!.speakerId).toBe("B");
+  });
+
+  it("re-joins alternating same-speaker runs (A, B, A → three parts)", () => {
+    const parts = splitAlignedChunk(
+      { startMs: 1_000, endMs: 10_000 },
+      [
+        { text: "a1", startMs: 0, endMs: 900 },
+        { text: "b1", startMs: 1_000, endMs: 1_900 },
+        { text: "a2", startMs: 2_000, endMs: 2_900 },
+      ],
+      [
+        turn("A", 1_000, 2_000),
+        turn("B", 2_000, 4_000),
+        turn("A", 4_000, 5_000),
+      ],
+    );
+    // midpoints: a1 → 1_450 (A turn 1), b1 → 2_450 (B), a2 → 3_450 (B!).
+    // So the runs are A(a1) then B(b1 a2).
+    expect(parts).toHaveLength(2);
+    expect(parts[0]!.speakerId).toBe("A");
+    expect(parts[0]!.text).toBe("a1");
+    expect(parts[1]!.speakerId).toBe("B");
+    expect(parts[1]!.text).toBe("b1 a2");
+    // Absolute times: the chunk starts at 1_000.
+    expect(parts[1]!.startMs).toBe(2_000);
+    expect(parts[1]!.endMs).toBe(3_900);
+  });
+
+  it("skips words without text and returns [] when nothing survives", () => {
+    expect(
+      splitAlignedChunk(
+        { startMs: 0, endMs: 5_000 },
+        [
+          { text: "", startMs: 0, endMs: 500 },
+          { text: "  ", startMs: 500, endMs: 1_000 },
+          { text: "!", startMs: 1_000, endMs: 1_200 },
+        ],
+        [turn("A", 0, 5_000)],
+      ),
+    ).toEqual([]);
+    // No turns at all: the caller keeps the chunk unsplit.
+    expect(
+      splitAlignedChunk(
+        { startMs: 0, endMs: 5_000 },
+        [{ text: "hi", startMs: 0, endMs: 500 }],
+        [],
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("isMixedChunk (I4b, §3.6)", () => {
+  it("is true only with two speakers beyond the 300 ms snap window", () => {
+    const a = turn("A", 0, 10_000);
+    const b = turn("B", 10_100, 12_000);
+    // A chunk inside A only.
+    expect(isMixedChunk(0, 4_000, [a, b])).toBe(false);
+    // A chunk spanning the change with real overlap on both sides.
+    expect(isMixedChunk(8_000, 11_000, [a, b])).toBe(true);
+    // Same speaker, two turns: never mixed.
+    expect(
+      isMixedChunk(0, 10_000, [turn("A", 0, 4_900), turn("A", 5_100, 10_000)]),
+    ).toBe(false);
+    // The second speaker only touches the edge within the snap window
+    // (a 250 ms sliver) — the sanctioned cut artifact, not mixed.
+    expect(isMixedChunk(8_500, 10_500, [a, turn("B", 10_250, 12_000)])).toBe(
+      false,
+    );
+    // A 350 ms sliver of the second speaker IS beyond the window.
+    expect(isMixedChunk(8_500, 10_500, [a, turn("B", 10_100, 12_000)])).toBe(
+      true,
+    );
   });
 });
