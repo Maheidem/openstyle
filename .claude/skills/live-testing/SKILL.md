@@ -122,3 +122,7 @@ It is live infrastructure: the owner's dictation and AI cleanup use it. Call it 
 ## Synthetic audio is silent
 
 Make synthetic speech only with `say -v <voice> -o <file> "text"`. A `say` call without `-o` plays through the owner's speakers (it happened on 2026-10-07). Never use `afplay` or any other audio playback.
+
+## The MLX worker folder is shared
+
+The server keeps the managed MLX worker in `~/.cache/freestyle/mlx-asr/runtime` (paths from `homedir()`). An isolated test server uses the SAME folder as the installed app and can re-download it (it happened on 2026-10-07 at 15:48). For tests that touch local MLX: set `OPENSTYLE_MLX_ASR_WORKER` to the dev worker you built, or start the server with `HOME` set to a scratch folder. Never let a test write the real worker folder.
