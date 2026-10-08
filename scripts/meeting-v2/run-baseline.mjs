@@ -83,10 +83,11 @@ if (
   runName !== "R4g" &&
   runName !== "R4h" &&
   runName !== "R6base" &&
-  runName !== "R6ctx"
+  runName !== "R6ctx" &&
+  runName !== "R6ctx2"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g, R4h, R6base or R6ctx, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g, R4h, R6base, R6ctx or R6ctx2, got: ${runName}`,
   );
   process.exit(2);
 }

@@ -95,6 +95,7 @@ import {
 } from "../lib/mlx-asr/server.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
+import { mergeContextVocabTerms } from "../lib/vocabulary-bias.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 
 /**
@@ -764,7 +765,9 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // meetings without a context are untouched. Stored nowhere.
     const contextTerms = extractContextTerms(getMeetingRow(id)?.context ?? "");
     const meetingVocabTerms =
-      contextTerms.length > 0 ? [...contextTerms, ...vocabTerms] : vocabTerms;
+      contextTerms.length > 0
+        ? mergeContextVocabTerms(contextTerms, vocabTerms)
+        : vocabTerms;
     const deps = await buildTranscriberDeps(
       {
         isDictationActive,
@@ -1511,7 +1514,9 @@ const meetings = new Hono()
     // job (bias + leak check) — the row is already loaded here.
     const contextTerms = extractContextTerms(row.context ?? "");
     const meetingVocabTerms =
-      contextTerms.length > 0 ? [...contextTerms, ...vocabTerms] : vocabTerms;
+      contextTerms.length > 0
+        ? mergeContextVocabTerms(contextTerms, vocabTerms)
+        : vocabTerms;
     // Claim the concurrency slot (kind: retry-failed) so /transcribe,
     // /diarize, /enhance and a second /retry-failed can't race this run —
     // and so POST /:id/cancel-transcribe can cancel it. Same claim-before-

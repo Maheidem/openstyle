@@ -261,6 +261,49 @@ export function resolveAsrVocabularyBias(
 }
 
 /**
+ * PR #39 (council round 1): merge the context terms into the global
+ * vocabulary term list, in ONE place — used by both the meeting bias
+ * ({@link resolveMeetingAsrVocabularyBias}) and the persist-time
+ * leak-check term list (routes/meetings.ts, main job and retry).
+ *
+ * The context terms keep their FIRST positions (they win the provider
+ * caps). But when a context term equals a global vocabulary term
+ * case-insensitively ("ecoatm" from an email domain vs the owner's
+ * "ecoATM"), the VOCABULARY spelling wins: the owner typed it, and a
+ * lowercase context spelling first in the prompt drags the ASR output
+ * to the wrong case (2026-10 council finding on ca70f895). The global
+ * twin is then not listed again. Case is the only thing reconciled —
+ * a context term with no global twin keeps its own spelling.
+ */
+export function mergeContextVocabTerms(
+  contextTerms: string[],
+  globalTerms: string[],
+): string[] {
+  const vocabByKey = new Map<string, string>();
+  for (const raw of globalTerms) {
+    const key = raw.trim().toLowerCase();
+    if (key && !vocabByKey.has(key)) vocabByKey.set(key, raw.trim());
+  }
+  const out: string[] = [];
+  const used = new Set<string>();
+  for (const raw of contextTerms) {
+    const term = raw.trim();
+    if (!term) continue;
+    const key = term.toLowerCase();
+    if (used.has(key)) continue;
+    used.add(key);
+    out.push(vocabByKey.get(key) ?? term);
+  }
+  for (const raw of globalTerms) {
+    const key = raw.trim().toLowerCase();
+    if (!key || used.has(key)) continue;
+    used.add(key);
+    out.push(raw.trim());
+  }
+  return out;
+}
+
+/**
  * PR #39: the vocabulary bias for ONE meeting that has a free-text
  * context (the calendar invitee list). The terms extracted from the
  * context (see `meetings/context-terms.ts`) are PREPENDED to the global
@@ -268,8 +311,9 @@ export function resolveAsrVocabularyBias(
  * keeps the first N, and the prompt builders slice the assembled text
  * at the FRONT budget. The owner's 80-term vocabulary overflows the
  * 900-char prompt budget, so the meeting's invitee names must come
- * first within the cap. Dictation (`resolveAsrVocabularyBias`) is
- * untouched.
+ * first within the cap. A context term with a global twin uses the
+ * vocabulary spelling ({@link mergeContextVocabTerms}). Dictation
+ * (`resolveAsrVocabularyBias`) is untouched.
  */
 export function resolveMeetingAsrVocabularyBias(
   providerId: string,
@@ -281,7 +325,10 @@ export function resolveMeetingAsrVocabularyBias(
   return buildAsrVocabularyBias(
     providerId,
     modelId,
-    [...contextTerms, ...entries.map((e) => e.term)],
+    mergeContextVocabTerms(
+      contextTerms,
+      entries.map((e) => e.term),
+    ),
     streaming,
     buildVocabularyNoteText(entries),
   );

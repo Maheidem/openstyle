@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "../src/lib/db.js";
+import { extractContextTerms } from "../src/lib/meetings/context-terms.js";
 import {
   buildAsrVocabularyBias,
   combinePrompt,
   contextTail,
+  mergeContextVocabTerms,
   providerTakesPrompt,
   resolveMeetingAsrVocabularyBias,
   vocabularyBiasTerms,
@@ -368,6 +370,36 @@ describe("resolveMeetingAsrVocabularyBias (PR #39)", () => {
     expect(
       resolveMeetingAsrVocabularyBias("openai", "whisper-1", []),
     ).toBeNull();
+  });
+
+  // Council round 1 (PR #39): a context term with a global twin takes the
+  // VOCABULARY spelling at the context position — a lowercase email-domain
+  // spelling first in the prompt dragged the ASR output to the wrong case.
+  it("uses the vocabulary spelling when a context term matches it (case-insensitive)", () => {
+    // "a@ecoatm.com" extracts the domain word "ecoatm" (lowercase).
+    const contextTerms = extractContextTerms("a@ecoatm.com");
+    expect(contextTerms).toEqual(["ecoatm"]);
+
+    const merged = mergeContextVocabTerms(contextTerms, ["ecoATM"]);
+    // The vocabulary spelling, ONCE, FIRST.
+    expect(merged).toEqual(["ecoATM"]);
+  });
+
+  it("keeps the context spelling when no vocabulary term matches", () => {
+    const contextTerms = extractContextTerms("a@foo.io");
+    expect(contextTerms).toEqual(["foo"]);
+
+    const merged = mergeContextVocabTerms(contextTerms, ["ecoATM"]);
+    expect(merged).toEqual(["foo", "ecoATM"]);
+  });
+
+  it("sends the vocabulary spelling in the meeting bias prompt (once, first)", () => {
+    getDb().prepare("INSERT INTO vocabulary (term) VALUES ('ecoATM')").run();
+
+    const bias = resolveMeetingAsrVocabularyBias("openai", "whisper-1", [
+      "ecoatm",
+    ]);
+    expect(bias).toEqual({ kind: "prompt", text: "Terms: ecoATM." });
   });
 });
 
