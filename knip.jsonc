@@ -33,6 +33,7 @@
     "scripts/meeting-v2/metrics.mjs",
     "scripts/meeting-v2/run-baseline.mjs",
     "scripts/meeting-v2/seed-scratch-db.mjs",
+    "scripts/meeting-v2/compare-r4f.mts",
     "apps/electron/src/preload/*.d.ts",
     // Kept on purpose: specs/lean-audit-2026-09.md T0-5 keeps this entry.
     "apps/electron/src/renderer/src/components/ui/card.tsx",
