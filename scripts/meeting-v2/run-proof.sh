@@ -107,7 +107,9 @@ fi
 for id in "$@"; do
   short=${id:0:8}
   echo "=== $short $RUN start $(date +%H:%M:%S) ==="
-  isolated_run SCRATCH="$SCRATCH" node "$REPO/scripts/meeting-v2/run-baseline.mjs" \
+  # SCRATCH is an env assignment BEFORE the function call: a VAR=val word
+  # inside isolated_run's "$@" would be executed as a command (127).
+  SCRATCH="$SCRATCH" isolated_run node "$REPO/scripts/meeting-v2/run-baseline.mjs" \
     --meeting "$id" --run "$RUN" --hf-cache "$HF_CACHE" \
     > "$RUNSDIR/$short-$RUN_LC.log" 2>&1
   status=$?

@@ -62,7 +62,7 @@ const hfCache = arg("hf-cache");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f|R4g|R4h [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f|R4g|R4h|R5base|R5sil [options]",
   );
   process.exit(2);
 }
@@ -81,13 +81,18 @@ if (
   runName !== "R4e" &&
   runName !== "R4f" &&
   runName !== "R4g" &&
-  runName !== "R4h"
+  runName !== "R4h" &&
+  runName !== "R5base" &&
+  runName !== "R5sil"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g or R4h, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g, R4h, R5base or R5sil, got: ${runName}`,
   );
   process.exit(2);
 }
+// R5base / R5sil (PR #38): the pre/post "skip silent mic" comparison. Both
+// run the current pipeline with R0's settings (diarization off, context
+// off) so the only difference between the two runs is the code change.
 // R0d, R4, R4b, R4c (the post-council re-run: the speaker-cut gap now
 // goes to a neighbor) and R4d (phase 4b: forced alignment at speaker
 // cuts, spec 3.6) run with diarization on; every other run with R0's
