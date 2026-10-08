@@ -33,8 +33,11 @@ for br in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
   [ "$br" = main ] && continue
   up=$(git rev-parse --abbrev-ref "$br@{upstream}" 2>/dev/null || echo "")
   unmerged=$(git cherry origin/main "$br" 2>/dev/null | grep -c '^+' || true)
-  echo "  $br upstream=${up:-NONE} commits-not-on-main=$unmerged"
+  ahead=0
+  [ -n "$up" ] && ahead=$(git rev-list --count "$up..$br" 2>/dev/null || echo 0)
+  echo "  $br upstream=${up:-NONE} commits-not-on-main=$unmerged unpushed=$ahead"
   [ -z "$up" ] && flag "$br is local only: push it and open a draft PR"
+  [ "$ahead" -gt 0 ] && flag "$br has $ahead unpushed commit(s): push them"
   case " $pr_branches " in *" $br "*) ;; *) [ "$unmerged" -eq 0 ] && flag "$br is fully on main: delete it" || flag "$br has no open PR";; esac
 done
 
