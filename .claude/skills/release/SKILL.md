@@ -189,3 +189,9 @@ git push origin --delete release/<version>   # optional cleanup
 ```bash
 rm -rf /tmp/release-<version>
 ```
+
+## Let CI run on the merged code before the release train (lesson 2026-10-06/07)
+
+Releases 2.13.0 and 2.14.0 both failed on the release branch for Linux-only reasons: tests that assumed Apple silicon (`getDefaultModels()` swaps an MLX default on Linux; the aligner gate is off), a test that spawned `ffmpeg` (not on the runner), and an E2E test with an old concurrency assumption. Each failure cost a fix-and-push cycle on the release branch.
+
+Before `gh workflow run release.yml`: push the merged code to a throwaway branch (for example `ci/pre-release-<version>`), wait for Build & Test (all jobs, including Electron E2E, which cannot run locally while the installed app owns port 4649), and only then dispatch. Delete the throwaway branch after. Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
