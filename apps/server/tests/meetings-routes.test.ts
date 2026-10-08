@@ -3563,6 +3563,10 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
         }),
       },
       alignerReady: true,
+      // The gate's platform inputs, forced so the align tests run on any
+      // host (Linux CI has no Apple silicon / MLX runtime).
+      appleSilicon: true,
+      canRunMlx: true,
       alignChunk,
       startAlignerDownload: () => false,
       ...extra,
