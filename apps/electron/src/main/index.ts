@@ -205,6 +205,9 @@ if (quietE2E) {
   app.on("browser-window-created", (_, window) => {
     window.setOpacity(0);
     window.setIgnoreMouseEvents(true);
+    // Without this, any shown window (even at opacity 0 or off-screen)
+    // changes the macOS menu bar tint while the app runs.
+    window.setHiddenInMissionControl(true);
   });
 }
 
