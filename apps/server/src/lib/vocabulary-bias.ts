@@ -261,6 +261,33 @@ export function resolveAsrVocabularyBias(
 }
 
 /**
+ * PR #39: the vocabulary bias for ONE meeting that has a free-text
+ * context (the calendar invitee list). The terms extracted from the
+ * context (see `meetings/context-terms.ts`) are PREPENDED to the global
+ * vocabulary terms, so they win every per-provider cap — `capTerms`
+ * keeps the first N, and the prompt builders slice the assembled text
+ * at the FRONT budget. The owner's 80-term vocabulary overflows the
+ * 900-char prompt budget, so the meeting's invitee names must come
+ * first within the cap. Dictation (`resolveAsrVocabularyBias`) is
+ * untouched.
+ */
+export function resolveMeetingAsrVocabularyBias(
+  providerId: string,
+  modelId: string,
+  contextTerms: string[],
+  streaming = false,
+): AsrVocabularyBias | null {
+  const entries = loadVocabularyEntries();
+  return buildAsrVocabularyBias(
+    providerId,
+    modelId,
+    [...contextTerms, ...entries.map((e) => e.term)],
+    streaming,
+    buildVocabularyNoteText(entries),
+  );
+}
+
+/**
  * Recover the vocabulary terms out of an already-resolved {@link
  * AsrVocabularyBias}, for comparing STT output against *what was actually
  * sent* to this request's provider — not a fresh DB read, which could race a

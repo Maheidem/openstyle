@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getDb } from "../src/lib/db.js";
 import {
   buildAsrVocabularyBias,
   combinePrompt,
   contextTail,
   providerTakesPrompt,
+  resolveMeetingAsrVocabularyBias,
   vocabularyBiasTerms,
 } from "../src/lib/vocabulary-bias.js";
 
@@ -287,6 +289,85 @@ describe("resolveAsrVocabularyBias", () => {
       expect(bias.terms).toContain("Soniox");
       expect(bias.text).toContain("Soniox: speech-to-text provider");
     }
+  });
+});
+
+describe("resolveMeetingAsrVocabularyBias (PR #39)", () => {
+  // This file's earlier tests leave terms in the (per-file) test DB;
+  // start each test from an empty vocabulary.
+  beforeEach(() => {
+    getDb().prepare("DELETE FROM vocabulary").run();
+  });
+  afterEach(() => {
+    getDb().prepare("DELETE FROM vocabulary").run();
+  });
+
+  it("prepends the context terms ahead of the global terms", () => {
+    getDb().prepare("INSERT INTO vocabulary (term) VALUES ('Qwen3')").run();
+
+    const bias = resolveMeetingAsrVocabularyBias("openai", "whisper-1", [
+      "Jane Doe",
+      "acme",
+    ]);
+    expect(bias).toEqual({
+      kind: "prompt",
+      text: "Terms: Jane Doe, acme, Qwen3.",
+    });
+  });
+
+  it("context terms win the 900-char prompt budget (server provider)", () => {
+    // The owner's real vocabulary has 80 terms that overflow the budget.
+    // Long-enough terms so 80 of them really exceed 900 chars.
+    for (let i = 0; i < 80; i++) {
+      getDb()
+        .prepare("INSERT INTO vocabulary (term) VALUES (?)")
+        .run(`globalTerm${i}`);
+    }
+
+    const bias = resolveMeetingAsrVocabularyBias(
+      "server",
+      "server/srv_00000000/Qwen3-ASR",
+      ["Jane Doe", "acme"],
+    );
+    expect(bias?.kind).toBe("prompt");
+    if (bias?.kind === "prompt") {
+      // The context terms are FIRST in the prompt and survive the cap.
+      expect(bias.text.startsWith("Technical terms: Jane Doe, acme")).toBe(
+        true,
+      );
+      expect(bias.text.length).toBeLessThanOrEqual(900);
+      // The 80 global terms overflow the budget: some of them are cut
+      // (never the context terms, which come first).
+      const keptGlobal = bias.text.match(/globalTerm\d+/g) ?? [];
+      expect(keptGlobal.length).toBeGreaterThan(0);
+      expect(keptGlobal.length).toBeLessThan(80);
+    }
+  });
+
+  it("context terms win the deepgram keyterm cap", () => {
+    for (let i = 0; i < 40; i++) {
+      getDb()
+        .prepare("INSERT INTO vocabulary (term) VALUES (?)")
+        .run(`global${i}`);
+    }
+
+    const bias = resolveMeetingAsrVocabularyBias(
+      "deepgram",
+      "deepgram/nova-3",
+      ["Jane Doe"],
+      true, // streaming: the cap is 25
+    );
+    expect(bias?.kind).toBe("deepgram-keyterms");
+    if (bias?.kind === "deepgram-keyterms") {
+      expect(bias.terms).toHaveLength(25);
+      expect(bias.terms[0]).toBe("Jane Doe");
+    }
+  });
+
+  it("returns null when there are no context and no global terms", () => {
+    expect(
+      resolveMeetingAsrVocabularyBias("openai", "whisper-1", []),
+    ).toBeNull();
   });
 });
 

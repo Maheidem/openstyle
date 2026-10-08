@@ -22,6 +22,7 @@ import { z } from "zod";
 import { parseWavHeader, sliceWav, type WavInfo } from "../lib/audio/wav.js";
 import { getDb, withTransaction } from "../lib/db.js";
 import { isDictationActive } from "../lib/dictation-activity.js";
+import { extractContextTerms } from "../lib/meetings/context-terms.js";
 import {
   applyDiarization,
   createDefaultDiarizeDeps,
@@ -412,10 +413,11 @@ async function buildTranscriberDeps(
     "isDictationActive" | "onChunk" | "onProgress" | "shouldStop"
   >,
   modelOverride?: MeetingSttModelOverride,
+  contextTerms: string[] = [],
 ): Promise<TranscriberDeps> {
   const factory =
     testOverrides.createTranscriberDeps ?? createDefaultTranscriberDeps;
-  return factory(extras, modelOverride);
+  return factory(extras, modelOverride, contextTerms);
 }
 
 /** The background transcription job for one meeting. Never throws. */
@@ -754,12 +756,25 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // Loaded once per job, not per chunk — vocabulary rarely changes
     // mid-meeting and loadVocabularyTerms() hits the DB.
     const vocabTerms = loadVocabularyTerms();
-    const deps = await buildTranscriberDeps({
-      isDictationActive,
-      onChunk: (chunk) => persistChunk(id, chunk, vocabTerms),
-      onProgress: (p) => setProgress(id, p),
-      shouldStop: () => isCancelRequested(id),
-    });
+    // PR #39: terms extracted from the meeting's free-text context
+    // (the calendar invitee list). They are prepended to this meeting's
+    // vocabulary bias (winning the provider caps, 900 chars in
+    // particular) and widen this meeting's persist-time leak check, so
+    // a prompt echo of the invitee names is still caught. Dictation and
+    // meetings without a context are untouched. Stored nowhere.
+    const contextTerms = extractContextTerms(getMeetingRow(id)?.context ?? "");
+    const meetingVocabTerms =
+      contextTerms.length > 0 ? [...contextTerms, ...vocabTerms] : vocabTerms;
+    const deps = await buildTranscriberDeps(
+      {
+        isDictationActive,
+        onChunk: (chunk) => persistChunk(id, chunk, meetingVocabTerms),
+        onProgress: (p) => setProgress(id, p),
+        shouldStop: () => isCancelRequested(id),
+      },
+      undefined,
+      contextTerms,
+    );
     // I4 (specs/meeting-transcription-v2.md §3.4): resolve the config
     // FIRST — a missing model or key fails before the diarizer runs.
     // Stamps provider/model on the row and fails fast before any STT call.
@@ -1492,6 +1507,11 @@ const meetings = new Hono()
        WHERE meeting_id = ? AND source = ? AND start_ms = ? AND end_ms = ?`,
     );
     const vocabTerms = loadVocabularyTerms();
+    // PR #39: the retry runs with the same context terms as the main
+    // job (bias + leak check) — the row is already loaded here.
+    const contextTerms = extractContextTerms(row.context ?? "");
+    const meetingVocabTerms =
+      contextTerms.length > 0 ? [...contextTerms, ...vocabTerms] : vocabTerms;
     // Claim the concurrency slot (kind: retry-failed) so /transcribe,
     // /diarize, /enhance and a second /retry-failed can't race this run —
     // and so POST /:id/cancel-transcribe can cancel it. Same claim-before-
@@ -1534,7 +1554,7 @@ const meetings = new Hono()
           onChunk: (chunk) => {
             const { text, status } = leakCheckedTextAndStatus(
               chunk,
-              vocabTerms,
+              meetingVocabTerms,
             );
             update.run(
               text,
@@ -1548,6 +1568,7 @@ const meetings = new Hono()
           onProgress: (p) => setProgress(id, p),
         },
         stamp,
+        contextTerms,
       );
       // Phase A2: reuse the meeting's already-resolved language with no
       // re-probe — retrying a handful of failed chunks doesn't warrant a

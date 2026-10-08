@@ -656,13 +656,20 @@ export async function createDefaultTranscriberDeps(
     "isDictationActive" | "onChunk" | "onProgress"
   > = {},
   modelOverride?: MeetingSttModelOverride,
+  /**
+   * PR #39: terms extracted from the meeting's free-text context
+   * (the calendar invitee list). Prepended to this meeting's
+   * vocabulary bias — dictation and meetings without a context are
+   * untouched.
+   */
+  contextTerms: string[] = [],
 ): Promise<TranscriberDeps> {
   const [
     { getProvider },
     { getDefaultModels },
     { getApiKey },
     { getLanguagesSetting },
-    { resolveAsrVocabularyBias },
+    { resolveAsrVocabularyBias, resolveMeetingAsrVocabularyBias },
   ] = await Promise.all([
     import("../streaming/registry.js"),
     import("../providers.js"),
@@ -686,7 +693,14 @@ export async function createDefaultTranscriberDeps(
       modelId,
       apiKey,
       ...(language ? { language } : {}),
-      bias: resolveAsrVocabularyBias(providerId, modelId),
+      // PR #39: a meeting with a free-text context (the calendar
+      // invitee list) gets its extracted terms PREPENDED to the global
+      // vocabulary, so they win the per-provider caps (the 900-char
+      // prompt budget in particular). No context = today's behavior.
+      bias:
+        contextTerms.length > 0
+          ? resolveMeetingAsrVocabularyBias(providerId, modelId, contextTerms)
+          : resolveAsrVocabularyBias(providerId, modelId),
       differsFromDictation,
     };
   };
