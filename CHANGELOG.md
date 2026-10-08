@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.14.2
+
+### Improvements ⚡
+
+- When a meeting has invitee names in its context field, Openstyle gives those names to the transcription model first. Names of people and companies are spelled correctly more often. If your vocabulary already has a term with a different case, such as "ecoATM", the vocabulary spelling is used.
+
+### Bug Fixes 🐛
+
+- Silent parts of your microphone track no longer show a false "Okay." or "Yeah." in the meeting transcript. Openstyle does not send these parts to the transcription model.
+
 ## 2.14.1
 
 ### Bug Fixes 🐛
