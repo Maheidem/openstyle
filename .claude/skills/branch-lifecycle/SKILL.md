@@ -32,6 +32,7 @@ bash scripts/branch-status.sh
 ## Close-out checklist (after a merge)
 
 - `git switch main && git pull --ff-only`
-- `git branch -d <branch>` (squash merges need `-D` after you check `git cherry origin/main <branch>` shows no `+`)
-- `git worktree remove ../openstyle-<topic>` if you used one
+- Check that nothing was lost, then delete. After a squash merge `git cherry` shows every branch commit as `+` (false alarm), so compare diffs instead:
+  `h=$(gh pr view <n> --json headRefOid --jq .headRefOid); mb=$(git merge-base $h <squash>^); diff <(git diff $mb $h) <(git diff <squash>^ <squash>) && git branch -D <branch>`
+- `git worktree remove ../openstyle-<topic>` if you used one. Do the close-out right after the merge, not later: on 2026-10-08 a merged branch and its worktree were left behind and branch-status flagged them.
 - `bash scripts/branch-status.sh` shows 0 problems for that branch.
