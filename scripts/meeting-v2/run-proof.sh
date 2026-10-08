@@ -34,6 +34,8 @@
 #             the automatic aligner download (~1.2 GB) goes here, never into
 #             the user's ~/.cache/huggingface.
 #   OMLX_URL  oMLX endpoint for the health check (default http://127.0.0.1:8123)
+#   PORT      server port for the runs (default 4787): parallel proof
+#             children must use their OWN port (never 4649)
 #
 # oMLX health (HTTP 200 on /v1/models) is checked before the first run and
 # after EVERY meeting. It prints counts, statuses and file paths only —
@@ -60,6 +62,11 @@ REPO=$(cd "$(dirname "$0")/../.." && pwd)
 SCRATCH=${SCRATCH:-/tmp/meeting-v2}
 HF_CACHE=${HF_CACHE:-/tmp/meeting-p4b-hf/hf}
 OMLX_URL=${OMLX_URL:-http://127.0.0.1:8123}
+PORT=${PORT:-4787}
+if [ "$PORT" = "4649" ]; then
+  echo "REFUSED: port 4649 (the installed app owns it)" >&2
+  exit 2
+fi
 CMP=$SCRATCH/compare
 RUNSDIR=$SCRATCH/runs
 RUN_LC=$(printf '%s' "$RUN" | tr 'A-Z' 'a-z')
@@ -108,7 +115,7 @@ for id in "$@"; do
   short=${id:0:8}
   echo "=== $short $RUN start $(date +%H:%M:%S) ==="
   isolated_run SCRATCH="$SCRATCH" node "$REPO/scripts/meeting-v2/run-baseline.mjs" \
-    --meeting "$id" --run "$RUN" --hf-cache "$HF_CACHE" \
+    --meeting "$id" --run "$RUN" --hf-cache "$HF_CACHE" --port "$PORT" \
     > "$RUNSDIR/$short-$RUN_LC.log" 2>&1
   status=$?
   echo "$RUN exit=$status $(date +%H:%M:%S)"

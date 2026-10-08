@@ -166,7 +166,7 @@ rmSync(logPath, { force: true });
   db.close();
 }
 console.log(
-  `reset scratch DB for ${runName} (diarization ${diarizationOn ? "on" : "off"}, context setting ${asrContextOn ? "on" : "off"})`,
+  `reset scratch DB for ${runName} (diarization ${diarizationOn ? "on" : "off"}, previous-chunk context setting ${asrContextOn ? "on" : "off"})`,
 );
 
 // --- 2. Start the isolated server ---------------------------------------
