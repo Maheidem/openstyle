@@ -42,6 +42,44 @@ jq -e 'has("wallSeconds") and has("chunks") and has("labeled") and has("termHits
 
 `run-baseline.mjs` starts its own server from `apps/electron` (so the diarizer resolves), resets the scratch DB, transcribes, and writes `metrics.json` in `/tmp/meeting-v2/baseline/<run>-<meetingId>/`. Each run of a phase gets its own run name (for example `R3b-<id>`).
 
+## How to compare runs
+
+Two committed tools (PR #34; they replace the copy-edited per-run compare
+scripts, which is what caused the 2026-10-07 false findings):
+
+```bash
+# 1. One proof run per meeting + the stored dumps. Requires the worker
+#    override (it refuses without it) and a healthy oMLX.
+OPENSTYLE_MLX_ASR_WORKER=$PWD/dist/mlx_asr_worker/mlx_asr_worker \
+  ./scripts/meeting-v2/run-proof.sh <RUN> <meetingId> [meetingId ...]
+# optional env: SCRATCH (default /tmp/meeting-v2), HF_CACHE (default
+# /tmp/meeting-p4b-hf/hf, passed to run-baseline.mjs --hf-cache),
+# OMLX_URL (default http://127.0.0.1:8123).
+# writes /tmp/meeting-v2/compare/<run-lowercase>-<id8>.json and turns-<id8>.json
+
+# 2. Compare two runs (from the repo root). The run names are CLI
+#    arguments, so a stale dump path cannot survive a copy.
+node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare.mts \
+  --from R4f --to R4g --meeting all [--out-dir <dir>] [--only-changed]
+# writes <FROM>-vs-<TO>-<id8>.md (byte-stable format, council-judged).
+# --meeting takes an id8, a full uuid, or all (all = every meeting that
+# has dumps for BOTH runs). --only-changed skips meetings with no
+# changed chunks. Dump dir: /tmp/meeting-v2/compare (MEETING_CMP_DIR env
+# overrides).
+```
+
+Dump format: `meeting_segments` rows `{source, idx, start_ms, end_ms,
+text, speaker_label}` ordered by (source, idx); `turns-<id8>.json` is the
+`meeting_diarizer_turns` rows. The **R0d special case**: R0d was R0's
+output plus the diarizer labels and the old pipeline is gone from the
+code, so `--from R0d` (or `--to R0d`) rebuilds the R0d side offline from
+the `r3a-<id8>.json` dump (R3a == R0 output) plus the stored turns with
+the winner-overlap rule, and MIC chunks are never labeled (the app
+labels the system channel only). The self-check contract below applies
+to both sides of every compare; on a failure the tool exits 1 and
+writes nothing. Never hand-edit the dumps or the compare files —
+re-run the tools.
+
 ## Metrics
 
 | Metric | Meaning |
