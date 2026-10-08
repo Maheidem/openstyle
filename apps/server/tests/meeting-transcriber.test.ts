@@ -16,6 +16,7 @@ import {
   onTestFinished,
 } from "vitest";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
+import { MIN_MIC_VOICED_MS } from "../src/lib/meetings/segmenter.js";
 import {
   type ChunkResult,
   createDefaultTranscriberDeps,
@@ -611,6 +612,98 @@ describe("MeetingTranscriber", () => {
     });
     expect(results[0].status).toBe("empty");
     expect(results[0].text).toBe("");
+  });
+
+  describe("pre-ASR silence gate (PR #38)", () => {
+    it("marks a noise-floor mic chunk `empty` WITHOUT calling the provider", async () => {
+      const dir = makeMeetingDir({ mic: 2000, system: 100 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        micSegments: [{ startMs: 0, endMs: 1000, voicedMs: 40 }],
+      });
+      expect(calls).toHaveLength(0);
+      expect(results[0].status).toBe("empty");
+      expect(results[0].text).toBe("");
+    });
+
+    it("uses the owner's 60 ms threshold: 59 ms is skipped, 60 ms is sent", async () => {
+      expect(MIN_MIC_VOICED_MS).toBe(60);
+      const dir = makeMeetingDir({ mic: 3000, system: 100 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        micSegments: [
+          { startMs: 0, endMs: 1000, voicedMs: 59 },
+          { startMs: 1500, endMs: 2500, voicedMs: 60 },
+        ],
+      });
+      expect(calls).toHaveLength(1);
+      expect(results[0]!.status).toBe("empty");
+      expect(results[1]!.status).toBe("ok");
+    });
+
+    it("still sends a mic chunk with real speech evidence", async () => {
+      const dir = makeMeetingDir({ mic: 2000, system: 100 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        micSegments: [{ startMs: 0, endMs: 1000, voicedMs: 400 }],
+      });
+      expect(calls).toHaveLength(1);
+      expect(results[0].status).toBe("ok");
+    });
+
+    it("keeps the old behavior when evidence is absent (retry path: segments from the DB)", async () => {
+      const dir = makeMeetingDir({ mic: 2000, system: 100 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        micSegments: [{ startMs: 0, endMs: 1000 }],
+      });
+      expect(calls).toHaveLength(1);
+      expect(results[0].status).toBe("ok");
+    });
+
+    it("does not gate the system channel (mic only)", async () => {
+      const dir = makeMeetingDir({ mic: 100, system: 2000 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        micSegments: [],
+        systemSegments: [{ startMs: 0, endMs: 1000, voicedMs: 10 }],
+      });
+      expect(calls).toHaveLength(1);
+      expect(results[0].status).toBe("ok");
+    });
+
+    it("cuts the lane context across a skipped chunk", async () => {
+      const dir = makeMeetingDir({ mic: 8000, system: 100 });
+      const { provider } = makeFakeProvider({
+        providerId: "server", // a prompt-taking provider (context needs one)
+        texts: ["hello world there", "second chunk text"],
+      });
+      const t = new MeetingTranscriber(
+        makeDeps(provider, {
+          // A detected-language tail so context WOULD apply after chunk 0.
+          detectAll: () => [{ lang: "en", accuracy: 0.9 }],
+        }),
+      );
+      writeSetting("meeting_asr_context", "true");
+      const results = await run(t, dir, {
+        micSegments: [
+          { startMs: 0, endMs: 3500, voicedMs: 500 }, // ok, provides context
+          { startMs: 3600, endMs: 4200, voicedMs: 0 }, // skipped
+          { startMs: 4300, endMs: 7500, voicedMs: 500 },
+        ],
+      });
+      expect(results[0]!.status).toBe("ok");
+      expect(results[1]!.status).toBe("empty");
+      expect(results[2]!.status).toBe("ok");
+      // The skipped chunk broke the lane: chunk 2 carries no context.
+      expect(results[2]!.context).toBeUndefined();
+      deleteSetting("meeting_asr_context");
+    });
   });
 
   it("throws for an unknown provider", async () => {
