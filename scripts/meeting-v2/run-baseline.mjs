@@ -81,13 +81,20 @@ if (
   runName !== "R4e" &&
   runName !== "R4f" &&
   runName !== "R4g" &&
-  runName !== "R4h"
+  runName !== "R4h" &&
+  runName !== "R6base" &&
+  runName !== "R6ctx" &&
+  runName !== "R6ctx2"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g or R4h, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g, R4h, R6base, R6ctx or R6ctx2, got: ${runName}`,
   );
   process.exit(2);
 }
+// R6base/R6ctx (PR #39, context vocabulary) run with R0's settings
+// (diarization off, previous-chunk context setting off): the two runs
+// differ only in the branch the server is built from — R6base on main,
+// R6ctx on feat/context-vocab.
 // R0d, R4, R4b, R4c (the post-council re-run: the speaker-cut gap now
 // goes to a neighbor) and R4d (phase 4b: forced alignment at speaker
 // cuts, spec 3.6) run with diarization on; every other run with R0's
@@ -166,7 +173,7 @@ rmSync(logPath, { force: true });
   db.close();
 }
 console.log(
-  `reset scratch DB for ${runName} (diarization ${diarizationOn ? "on" : "off"}, context setting ${asrContextOn ? "on" : "off"})`,
+  `reset scratch DB for ${runName} (diarization ${diarizationOn ? "on" : "off"}, previous-chunk context setting ${asrContextOn ? "on" : "off"})`,
 );
 
 // --- 2. Start the isolated server ---------------------------------------
