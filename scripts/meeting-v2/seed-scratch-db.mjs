@@ -76,15 +76,19 @@ try {
       FROM src.model_configs WHERE is_default = 1 AND type IN ('voice','llm');
   `);
 
+  // PR #39: the `context` column (free-text per-meeting context — the
+  // calendar invitee list) must reach the scratch DB: the context
+  // vocabulary bias reads it at transcribe time.
   const realRow = db.prepare(
-    "SELECT title, started_at, ended_at, duration_ms FROM src.meetings WHERE id = ?",
+    "SELECT title, context, started_at, ended_at, duration_ms FROM src.meetings WHERE id = ?",
   );
   const insert = db.prepare(
     `INSERT INTO main.meetings
-       (id, title, started_at, ended_at, duration_ms, status, audio_dir, created_at)
-     VALUES (?, ?, ?, ?, ?, 'recorded', ?, ?)
+       (id, title, context, started_at, ended_at, duration_ms, status, audio_dir, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'recorded', ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        status = 'recorded', audio_dir = excluded.audio_dir,
+       context = excluded.context,
        language = NULL, error = NULL,
        stt_provider = NULL, stt_model = NULL,
        created_at = excluded.created_at`,
@@ -112,6 +116,7 @@ try {
     insert.run(
       id,
       row?.title ?? `scratch ${id.slice(0, 8)}`,
+      row?.context ?? null,
       startedAt,
       endedAt,
       durationMs,

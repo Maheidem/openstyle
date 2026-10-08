@@ -882,6 +882,55 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
     });
   });
 
+  // PR #39: the meeting's free-text context (the calendar invitee list)
+  // contributes terms that are PREPENDED to the vocabulary bias — so
+  // they win the per-provider caps — for that meeting only.
+  it("prepends the meeting context terms to the vocabulary bias (PR #39)", async () => {
+    setDefaultVoice("local-mlx", "mlx/dictation-model");
+    getDb()
+      .prepare(
+        "INSERT INTO api_keys (provider, key) VALUES ('openai', 'sk-stored-test')",
+      )
+      .run();
+    getDb().prepare("INSERT INTO vocabulary (term) VALUES ('Qwen3')").run();
+    writeSetting(
+      "meeting_stt_model",
+      JSON.stringify({
+        provider: "openai",
+        model_id: "whisper-1",
+        model_name: "OpenAI Whisper",
+      }),
+    );
+    const config = (
+      await createDefaultTranscriberDeps({}, undefined, ["Jane Doe", "acme"])
+    ).resolveConfig();
+    // Context terms first, global vocabulary after.
+    expect(config.bias).toEqual({
+      kind: "prompt",
+      text: "Terms: Jane Doe, acme, Qwen3.",
+    });
+  });
+
+  it("leaves the bias untouched for a meeting without context terms (PR #39)", async () => {
+    setDefaultVoice("local-mlx", "mlx/dictation-model");
+    getDb()
+      .prepare(
+        "INSERT INTO api_keys (provider, key) VALUES ('openai', 'sk-stored-test')",
+      )
+      .run();
+    getDb().prepare("INSERT INTO vocabulary (term) VALUES ('Qwen3')").run();
+    writeSetting(
+      "meeting_stt_model",
+      JSON.stringify({
+        provider: "openai",
+        model_id: "whisper-1",
+        model_name: "OpenAI Whisper",
+      }),
+    );
+    const config = (await createDefaultTranscriberDeps()).resolveConfig();
+    expect(config.bias).toEqual({ kind: "prompt", text: "Terms: Qwen3." });
+  });
+
   it("lets an explicit row override win over the setting (retry-failed, I3)", async () => {
     setDefaultVoice("local-mlx", "mlx/dictation-model");
     writeSetting(
