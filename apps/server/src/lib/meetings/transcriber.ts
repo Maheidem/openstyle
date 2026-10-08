@@ -40,13 +40,22 @@ import {
 import { WHISPER_PROVIDER_ID } from "../whisper/constants.js";
 import type { DetectAllFn } from "./language.js";
 import { isHallucination } from "./merge.js";
-import type { Segment } from "./segmenter.js";
+import { MIN_MIC_VOICED_MS, type Segment } from "./segmenter.js";
 
 const log = createAppLogger("meeting-transcriber");
 
 export { parseWavHeader, sliceWav, type WavInfo };
 
 export type ChunkSource = "mic" | "system";
+
+/**
+ * PR #38: channels whose noise-floor-only chunks are skipped BEFORE the
+ * ASR call (`seg.voicedMs` under MIN_MIC_VOICED_MS → status `empty`, no
+ * provider call). Mic only, for now: the proof data (meeting ca70f895)
+ * shows the owner's mic at the noise floor producing "Okay." rows while
+ * the system channel's pattern was checked separately.
+ */
+const SILENT_SKIP_SOURCES: readonly ChunkSource[] = ["mic"];
 
 export interface ChunkResult {
   source: ChunkSource;
@@ -104,6 +113,8 @@ interface LaneState {
 interface ContextCounters {
   contextApplied: number;
   echoRetries: number;
+  /** PR #38: chunks marked `empty` by the pre-ASR silence gate. */
+  silentSkipped: number;
 }
 
 export interface TranscriberProgress {
@@ -345,7 +356,11 @@ export class MeetingTranscriber {
       const results: ChunkResult[] = new Array(tasks.length);
       let done = 0;
       let failed = 0;
-      const counters: ContextCounters = { contextApplied: 0, echoRetries: 0 };
+      const counters: ContextCounters = {
+        contextApplied: 0,
+        echoRetries: 0,
+        silentSkipped: 0,
+      };
 
       const runTask = async (
         i: number,
@@ -438,10 +453,14 @@ export class MeetingTranscriber {
           ),
         );
       }
-      // Phase 3b proof report (counts only — never text).
-      if (counters.contextApplied > 0 || counters.echoRetries > 0) {
+      // Phase 3b / PR #38 proof report (counts only — never text).
+      if (
+        counters.contextApplied > 0 ||
+        counters.echoRetries > 0 ||
+        counters.silentSkipped > 0
+      ) {
         log.info(
-          `transcribe: context applied to ${counters.contextApplied} chunk(s), echo retries ${counters.echoRetries}`,
+          `transcribe: context applied to ${counters.contextApplied} chunk(s), echo retries ${counters.echoRetries}, silent skipped ${counters.silentSkipped}`,
         );
       }
       return results;
@@ -468,6 +487,32 @@ export class MeetingTranscriber {
     contextEnabled: boolean,
     counters: ContextCounters,
   ): Promise<ChunkResult> {
+    // PR #38: pre-ASR silence gate. A chunk whose speech evidence
+    // (voicedMs, set by the segmenter) is under MIN_MIC_VOICED_MS is
+    // noise floor plus clicks — the model transcribes that as "Okay."
+    // or echoes the bias prompt. Mark it `empty` and skip the provider
+    // call entirely. `voicedMs === undefined` (retry-failed rebuilds the
+    // segments from the DB) keeps the old behavior: the chunk is sent.
+    if (
+      SILENT_SKIP_SOURCES.includes(source) &&
+      seg.voicedMs !== undefined &&
+      seg.voicedMs < MIN_MIC_VOICED_MS
+    ) {
+      const skipped: ChunkResult = {
+        source,
+        idx,
+        startMs: seg.startMs,
+        endMs: seg.endMs,
+        text: "",
+        status: "empty",
+      };
+      counters.silentSkipped++;
+      // The lane sees a gap here: the NEXT chunk gets no context across
+      // this skipped chunk (same rule as any non-`ok` result).
+      this.updateLaneState(lane, skipped, config, seg);
+      return skipped;
+    }
+
     const maxAttempts = this.deps.maxAttempts ?? 3;
     const backoffBase = this.deps.backoffBaseMs ?? 1000;
     const durationMs = seg.endMs - seg.startMs;

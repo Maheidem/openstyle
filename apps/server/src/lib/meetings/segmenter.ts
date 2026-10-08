@@ -44,6 +44,14 @@ export interface Segment {
    *  `cutAtSpeakerChanges`; undefined for parts with no overlapping turn
    *  and for every mic-channel segment. */
   speaker?: string;
+  /**
+   * Speech evidence (PR #38): total ms of 20 ms frames in [startMs,
+   * endMs) whose RMS exceeds the channel noise floor + SILENCE_GATE_DB.
+   * Set by `annotateSpeechEvidence` (via `segmentWavFile`); undefined on
+   * segments that skip the annotation (e.g. retry-failed rebuilds from the
+   * DB), which disables the pre-ASR silence gate for them.
+   */
+  voicedMs?: number;
 }
 
 export const DEFAULT_SEGMENTER_OPTIONS: SegmenterOptions = {
@@ -164,17 +172,33 @@ function frameRmsDb(
 }
 
 /**
- * Raw gate openings in frame indices [startFrame, endFrame).
+ * Raw gate openings in frame indices [startFrame, endFrame), plus the
+ * adaptive noise floor the run ends with (dBFS).
  *
  * The adaptive noise floor is computed online as the rolling minimum of
  * lightly smoothed RMS over the configured window, clamped to
  * `minNoiseFloorDb` — and frozen while the gate is open so sustained speech
- * cannot raise the floor and choke itself off.
+ * cannot raise the floor and choke itself off. Because it only updates
+ * while the gate is CLOSED, it tracks the silence level even when the
+ * stream ends mid-speech.
+ *
+ * `floorDb` (the returned channel floor, used by the speech-evidence
+ * count, PR #38) is the MEDIAN of the smoothed levels over ALL gate-
+ * CLOSED frames of the channel, excluding digital silence (≤
+ * NO_FLOOR_LEVEL_DB — recorder-muted frames). A trailing silence can be
+ * digital (recorder off), so the online floor's end state is not the
+ * channel's noise level; and a speech-dense channel makes any plain
+ * percentile speech-biased. Gate-closed frames are pauses — the true
+ * noise regime — in either case. Fallback (no usable closed frames):
+ * the online floor's end state.
  */
+/** Frames at or below this (dBFS) are digital silence, not noise. */
+const NO_FLOOR_LEVEL_DB = -90;
+
 function gateFrames(
   rmsDb: Float64Array,
   opts: SegmenterOptions,
-): Array<[number, number]> {
+): { openings: Array<[number, number]>; floorDb: number } {
   const framesPerMs = 1 / opts.frameMs;
   const hangoverFrames = Math.round(opts.hangoverMs * framesPerMs);
   const minSpeechFrames = Math.max(
@@ -198,10 +222,13 @@ function gateFrames(
   const dequePos: number[] = [];
   let pos = 0;
   let floor = Math.max(opts.minNoiseFloorDb, acc);
+  // Channel floor (PR #38): smoothed levels of every gate-closed frame.
+  const closedLevels: number[] = [];
 
   for (let i = 0; i < rmsDb.length; i++) {
     acc = 0.7 * acc + 0.3 * rmsDb[i];
     if (!open) {
+      closedLevels.push(acc);
       while (dequeVal.length > 0 && dequeVal[dequeVal.length - 1] >= acc) {
         dequeVal.pop();
         dequePos.pop();
@@ -235,7 +262,16 @@ function gateFrames(
   if (open) raw.push([start, rmsDb.length]);
 
   // Min speech duration measured on the pre-hangover opening.
-  return raw.filter(([s, e]) => e - s >= minSpeechFrames);
+  const live = closedLevels.filter((v) => v > NO_FLOOR_LEVEL_DB);
+  let channelFloor = floor;
+  if (live.length > 0) {
+    live.sort((a, b) => a - b);
+    channelFloor = live[Math.floor(live.length / 2)]!;
+  }
+  return {
+    openings: raw.filter(([s, e]) => e - s >= minSpeechFrames),
+    floorDb: Math.max(opts.minNoiseFloorDb, channelFloor),
+  };
 }
 
 /** Pad, clamp, and merge overlapping segments (ms domain). */
@@ -947,6 +983,107 @@ export function cutAtSpeakerChanges(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Speech evidence (PR #38: skip noise-floor-only mic chunks before ASR)
+// ---------------------------------------------------------------------------
+
+/**
+ * A frame counts as voiced for `chunkVoicedMs` when its RMS exceeds the
+ * channel noise floor + this (dB). Owner decision (PR #38), final: +6 dB
+ * with MIN_MIC_VOICED_MS = 60. Source: a grid over 6 real meetings. In
+ * meeting ca70f895 the mic noise floor is about -51 dBFS, and the model
+ * wrote "Okay." for at least 11 chunks at that floor. At +6 dB / 60 ms the
+ * grid showed: 13 of 28 silent "Okay." rows removed, 18 of 586 mic ASR
+ * calls saved, and 1 kept row at risk.
+ */
+export const SILENCE_GATE_DB = 6;
+
+/**
+ * Minimum voiced evidence (ms) for a mic chunk to be sent to the ASR
+ * provider. Below it the transcriber marks the chunk `empty` and does not
+ * call the provider. A model asked to transcribe noise floor writes
+ * "Okay." or echoes the prompt. Owner decision (PR #38): 60 ms, chosen
+ * with SILENCE_GATE_DB above (see the grid numbers there). A higher value
+ * removes more "Okay." rows but puts more real short replies at risk.
+ */
+export const MIN_MIC_VOICED_MS = 60;
+
+/**
+ * Total ms of the 20 ms frames inside [startMs, endMs) whose RMS exceeds
+ * `floorDb + gateDb`. Pure and deterministic.
+ */
+export function chunkVoicedMs(
+  rmsDb: Float64Array,
+  frameMs: number,
+  startMs: number,
+  endMs: number,
+  floorDb: number,
+  gateDb: number = SILENCE_GATE_DB,
+): number {
+  const first = Math.max(0, Math.floor(startMs / frameMs));
+  const last = Math.min(rmsDb.length, Math.ceil(endMs / frameMs));
+  const gate = floorDb + gateDb;
+  let voiced = 0;
+  for (let f = first; f < last; f++) {
+    if (rmsDb[f]! > gate) voiced += frameMs;
+  }
+  return voiced;
+}
+
+/**
+ * The channel noise floor (dBFS) for a whole channel: the median of the
+ * gate-closed smoothed levels, excluding digital silence (see
+ * `gateFrames` for why the online floor's end state is not used). The
+ * speech-evidence gate level is `floor + SILENCE_GATE_DB`. Deterministic
+ * on the input.
+ */
+export function channelNoiseFloorDb(
+  pcm: Int16Array,
+  sampleRate: number,
+  optsIn?: Partial<SegmenterOptions>,
+): number {
+  const opts: SegmenterOptions = { ...DEFAULT_SEGMENTER_OPTIONS, ...optsIn };
+  const frameSamples = Math.max(
+    1,
+    Math.round((opts.frameMs / 1000) * sampleRate),
+  );
+  const frameCount = Math.max(1, Math.ceil(pcm.length / frameSamples));
+  const rmsDb = frameRmsDb(pcm, frameSamples, frameCount);
+  return gateFrames(rmsDb, opts).floorDb;
+}
+
+/**
+ * Annotate FINAL segments (post merge / force-split / speaker cuts) with
+ * `voicedMs` — the speech-evidence count the transcriber uses to skip
+ * noise-floor-only chunks (PR #38). The floor is the segmenter's own
+ * adaptive noise floor for the whole channel (`channelNoiseFloorDb`), so
+ * the gate level is consistent with what opened the VAD.
+ *
+ * Re-derives the per-frame RMS (the segmenter already did once in
+ * `segmentPcm`); for a one-hour channel that is a couple of hundred ms of
+ * pure CPU — cheap next to the STT calls it saves.
+ */
+export function annotateSpeechEvidence(
+  pcm: Int16Array,
+  sampleRate: number,
+  segments: Segment[],
+  optsIn?: Partial<SegmenterOptions>,
+): Segment[] {
+  if (segments.length === 0) return segments;
+  const opts: SegmenterOptions = { ...DEFAULT_SEGMENTER_OPTIONS, ...optsIn };
+  const frameSamples = Math.max(
+    1,
+    Math.round((opts.frameMs / 1000) * sampleRate),
+  );
+  const frameCount = Math.max(1, Math.ceil(pcm.length / frameSamples));
+  const rmsDb = frameRmsDb(pcm, frameSamples, frameCount);
+  const floorDb = gateFrames(rmsDb, opts).floorDb;
+  return segments.map((s) => ({
+    ...s,
+    voicedMs: chunkVoicedMs(rmsDb, opts.frameMs, s.startMs, s.endMs, floorDb),
+  }));
+}
+
 /**
  * Segment a mono PCM16 channel into utterance chunks.
  *
@@ -977,7 +1114,7 @@ export function segmentPcm(
   const totalMs = (pcm.length / sampleRate) * 1000;
 
   const rmsDb = frameRmsDb(pcm, frameSamples, frameCount);
-  const openings = gateFrames(rmsDb, opts);
+  const openings = gateFrames(rmsDb, opts).openings;
   if (openings.length === 0) return [];
 
   let segments: Segment[] = openings.map(([s, e]) => ({
@@ -1012,7 +1149,14 @@ export function segmentWavFile(
 ): Segment[] | null {
   const channel = readWavPcm16(path);
   if (!channel) return null;
-  return mergeSegmentsToward(
-    segmentPcm(channel.pcm, channel.sampleRate, undefined, turns),
+  // Speech evidence for every final chunk (PR #38): the transcriber skips
+  // mic chunks whose voicedMs is under MIN_MIC_VOICED_MS instead of asking
+  // the model to transcribe noise floor.
+  return annotateSpeechEvidence(
+    channel.pcm,
+    channel.sampleRate,
+    mergeSegmentsToward(
+      segmentPcm(channel.pcm, channel.sampleRate, undefined, turns),
+    ),
   );
 }

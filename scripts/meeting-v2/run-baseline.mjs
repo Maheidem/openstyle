@@ -62,7 +62,7 @@ const hfCache = arg("hf-cache");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f|R4g|R4h [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f|R4g|R4h|R5base|R5sil|R6base|R6ctx|R6ctx2 [options]",
   );
   process.exit(2);
 }
@@ -82,15 +82,20 @@ if (
   runName !== "R4f" &&
   runName !== "R4g" &&
   runName !== "R4h" &&
+  runName !== "R5base" &&
+  runName !== "R5sil" &&
   runName !== "R6base" &&
   runName !== "R6ctx" &&
   runName !== "R6ctx2"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g, R4h, R6base, R6ctx or R6ctx2, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g, R4h, R5base, R5sil, R6base, R6ctx or R6ctx2, got: ${runName}`,
   );
   process.exit(2);
 }
+// R5base / R5sil (PR #38): the pre/post "skip silent mic" comparison. Both
+// run the current pipeline with R0's settings (diarization off, context
+// off) so the only difference between the two runs is the code change.
 // R6base/R6ctx (PR #39, context vocabulary) run with R0's settings
 // (diarization off, previous-chunk context setting off): the two runs
 // differ only in the branch the server is built from — R6base on main,

@@ -5,11 +5,15 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { readWavPcm16 } from "../src/lib/audio/wav.js";
 import type { DiarizerSegment } from "../src/lib/meetings/diarize.js";
 import {
+  annotateSpeechEvidence,
+  channelNoiseFloorDb,
+  chunkVoicedMs,
   cutAtSpeakerChanges,
   DEFAULT_MERGE_TOWARD_OPTIONS,
   isMixedChunk,
   mergeSegmentsToward,
   type Segment,
+  SILENCE_GATE_DB,
   segmentPcm,
   segmentWavFile,
   splitAlignedChunk,
@@ -1215,6 +1219,81 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
     });
     expect(res.cutsDropped).toBe(0);
     expect(res.sameSpeakerMerges).toBe(1);
+  });
+});
+
+describe("speech evidence (PR #38)", () => {
+  it("chunkVoicedMs counts only frames strictly above floor + gate", () => {
+    // floor -50, gate +6 → level -44. Loud frames: -40 and -30 only
+    // (-44.0, -44.1 and -44.5 stay below the strict >).
+    const rms = Float64Array.from([-60, -40, -44.5, -44.1, -30, -50, -44]);
+    expect(chunkVoicedMs(rms, 20, 0, 140, -50)).toBe(40);
+    // The span clips to the frames it actually covers.
+    expect(chunkVoicedMs(rms, 20, 40, 100, -50)).toBe(20);
+    expect(chunkVoicedMs(rms, 20, 0, 0, -50)).toBe(0);
+    expect(chunkVoicedMs(new Float64Array(0), 20, 0, 100, -50)).toBe(0);
+  });
+
+  it("channelNoiseFloorDb tracks a steady noise bed", () => {
+    const floor = channelNoiseFloorDb(noise(30_000, -50), SAMPLE_RATE);
+    expect(floor).toBeGreaterThan(-53);
+    expect(floor).toBeLessThan(-47);
+  });
+
+  it("channelNoiseFloorDb clamps to minNoiseFloorDb on pure silence", () => {
+    expect(channelNoiseFloorDb(silence(10_000), SAMPLE_RATE)).toBe(-70);
+  });
+
+  it("a 400 ms voiced burst on a noise bed yields >= 400 ms of evidence", () => {
+    // A short real-like reply: 400 ms at -30 dBFS on a -50 dBFS bed.
+    const bed = noise(20_000, -50);
+    const pcm = mix(bed, tone(400, -30), 10 * SAMPLE_RATE); // 10 s in
+    const segs = mergeSegmentsToward(segmentPcm(pcm, SAMPLE_RATE));
+    expect(segs).toHaveLength(1);
+    const [annotated] = annotateSpeechEvidence(pcm, SAMPLE_RATE, segs);
+    expect(annotated!.voicedMs).toBeGreaterThanOrEqual(400);
+    expect(annotated!.voicedMs!).toBeLessThan(
+      annotated!.endMs - annotated!.startMs,
+    );
+  });
+
+  it("annotateSpeechEvidence leaves the chunk geometry untouched", () => {
+    const bed = noise(15_000, -50);
+    const pcm = mix(bed, tone(600, -32), 5 * SAMPLE_RATE); // 5 s in
+    const segs = mergeSegmentsToward(segmentPcm(pcm, SAMPLE_RATE));
+    const annotated = annotateSpeechEvidence(pcm, SAMPLE_RATE, segs);
+    expect(annotated.map((s) => [s.startMs, s.endMs])).toEqual(
+      segs.map((s) => [s.startMs, s.endMs]),
+    );
+    for (const s of annotated) {
+      expect(s.voicedMs).toBeGreaterThanOrEqual(0);
+      expect(s.voicedMs!).toBeLessThanOrEqual(s.endMs - s.startMs);
+    }
+  });
+
+  it("segmentWavFile annotates every chunk (evidence present)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "seg-evidence-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const bed = noise(12_000, -50);
+    const pcm = mix(bed, tone(800, -30), 4 * SAMPLE_RATE); // 4 s in
+    const path = join(dir, "mic.wav");
+    const data = Buffer.alloc(pcm.length * 2);
+    for (let i = 0; i < pcm.length; i++) data.writeInt16LE(pcm[i]!, i * 2);
+    writeFileSync(path, buildWav({ sampleRate: SAMPLE_RATE, data }));
+    const segs = segmentWavFile(path);
+    expect(segs).not.toBeNull();
+    expect(segs!.length).toBeGreaterThanOrEqual(1);
+    for (const s of segs!) {
+      expect(s.voicedMs).toBeTypeOf("number");
+      expect(s.voicedMs!).toBeGreaterThan(0);
+    }
+    // The burst itself must dominate the evidence.
+    const total = segs!.reduce((a, s) => a + (s.voicedMs ?? 0), 0);
+    expect(total).toBeGreaterThanOrEqual(800);
+  });
+
+  it("SILENCE_GATE_DB is a positive dB offset", () => {
+    expect(SILENCE_GATE_DB).toBeGreaterThan(0);
   });
 });
 
