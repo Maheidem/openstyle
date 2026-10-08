@@ -58,9 +58,12 @@ OPENSTYLE_MLX_ASR_WORKER=$PWD/dist/mlx_asr_worker/mlx_asr_worker \
 # writes /tmp/meeting-v2/compare/<run-lowercase>-<id8>.json and turns-<id8>.json
 
 # 2. Compare two runs (from the repo root). The run names are CLI
-#    arguments, so a stale dump path cannot survive a copy.
-node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare.mts \
-  --from R4f --to R4g --meeting all [--out-dir <dir>] [--only-changed]
+#    arguments, so a stale dump path cannot survive a copy. One word
+#    (the package.json script carries the ts-register loader):
+pnpm meeting:compare --from R4f --to R4g --meeting all [--out-dir <dir>] [--only-changed]
+#    the same tool without pnpm (a pi child without pnpm context):
+#    node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare.mts \
+#      --from R4f --to R4g --meeting all
 # writes <FROM>-vs-<TO>-<id8>.md (byte-stable format, council-judged).
 # --meeting takes an id8, a full uuid, or all (all = every meeting that
 # has dumps for BOTH runs). --only-changed skips meetings with no

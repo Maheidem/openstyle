@@ -6,6 +6,7 @@
     "dev": "turbo dev",
     "format": "biome check --write .",
     "knip": "knip",
+    "meeting:compare": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare.mts",
     "test": "turbo test",
     "prepare": "is-ci || husky"
   },

@@ -104,7 +104,8 @@ Repeatable procedures live as skills. Check them before you start a task; do not
 | `live-testing` | Run the real app and server in isolation: port 4649 rule, `cwd=apps/electron`, MLX worker lookup, seeding, screenshots, cleanup by PID. |
 | `site-captures` | Refresh the landing page screenshots and pill video (`node scripts/site-captures/capture.mjs`). |
 | `meeting-benchmarks` | Measure meeting transcription on real meetings, read-only, numbers only, against the recorded baseline. |
-| `branch-lifecycle` | Branch rules: draft PR at birth, WIP limit 2, session-start check (`scripts/branch-status.sh`), auto-merge, cleanup. |
+| `branch-lifecycle` | Branch rules: draft PR at birth, WIP limit 2, session-start check (`scripts/branch-status.sh`, `--fix` closes out merged PRs), auto-merge, cleanup. |
+| `council` | Judge a meeting quality change with three independent judges (Claude, pi, Codex); release only on consensus (`scripts/council.sh`). |
 | `pi-briefs` | Delegate work to pi children (local model): brief template, time box, known failure modes. |
 
 pi children start without skills or context files, so every pi brief must name the skill files to read first.

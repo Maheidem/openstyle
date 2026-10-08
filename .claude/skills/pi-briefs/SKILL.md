@@ -51,6 +51,7 @@ FINAL ANSWER: <what to return>; Simplified Technical English; metrics only for p
 
 ## Watch the child
 
+- One fresh pi child per PR. Do not reuse a child across PRs (2026-10-07: a 16-turn child carried stale rules and 180M tokens into a new PR). The child's session keeps every earlier turn — old decisions, old file versions, old rubrics — and all of it costs tokens on the new task.
 - Send one message for each change of plan. On 2026-10-06 a child got "do not change the capture resolution", then the owner's choice to re-capture at 2x. It followed the first message and did not re-capture. When a decision replaces an earlier note, say so in the same message: "This replaces my note X."
 
 - On every `done` event, read the result and look at its screenshots yourself before you report anything.
