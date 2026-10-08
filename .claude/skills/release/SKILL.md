@@ -195,3 +195,7 @@ rm -rf /tmp/release-<version>
 Releases 2.13.0 and 2.14.0 both failed on the release branch for Linux-only reasons: tests that assumed Apple silicon (`getDefaultModels()` swaps an MLX default on Linux; the aligner gate is off), a test that spawned `ffmpeg` (not on the runner), and an E2E test with an old concurrency assumption. Each failure cost a fix-and-push cycle on the release branch.
 
 Before `gh workflow run release.yml`: push the merged code to a throwaway branch (for example `ci/pre-release-<version>`), wait for Build & Test (all jobs, including Electron E2E, which cannot run locally while the installed app owns port 4649), and only then dispatch. Delete the throwaway branch after. Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
+
+## main is protected (since 2026-10-08)
+
+No direct push to main. The hand-written changelog and any pre-release merge go through a PR (`docs/changelog-<version>`) with green `CI Status`, squash-merged (auto-merge). That PR's CI run is also the pre-release CI check above. Craft's release merge into main still works: the release bot (app 4715859) is the only bypass actor of the ruleset. A fix needed on `release/<version>` is pushed there (not protected) and must also reach main through a PR.

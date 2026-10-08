@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/branch-status.sh\" 2>/dev/null | head -60",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
