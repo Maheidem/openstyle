@@ -84,6 +84,10 @@ jobs:
       - name: Biome check
         run: pnpm biome check .
 
+      # Isolation guard hook (.claude/settings.json PreToolUse): allow/block table.
+      - name: Guard hook tests
+        run: bash scripts/guard-hook.test.sh
+
   knip:
     name: Knip
     runs-on: ubuntu-latest
