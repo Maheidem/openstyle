@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.14.1
+
+### Bug Fixes 🐛
+
+- In Portuguese meetings, a short tag question such as "sabe?", "tá?" or "né?" no longer starts a new speaker part. The rest of the sentence stays with the person who says it.
+- When a split gives two neighboring parts the same speaker, the parts are joined again into one.
+
 ## 2.14.0
 
 ### Improvements ⚡
