@@ -60,6 +60,10 @@ fi
 
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 SCRATCH=${SCRATCH:-/tmp/meeting-v2}
+# isolated_run runs its command with a scratch HOME; the SCRATCH env var
+# must be EXPORTED to cross that boundary (an assignment as the first
+# command word is not an env prefix once it comes from "$@").
+export SCRATCH
 HF_CACHE=${HF_CACHE:-/tmp/meeting-p4b-hf/hf}
 OMLX_URL=${OMLX_URL:-http://127.0.0.1:8123}
 PORT=${PORT:-4787}
@@ -114,7 +118,7 @@ fi
 for id in "$@"; do
   short=${id:0:8}
   echo "=== $short $RUN start $(date +%H:%M:%S) ==="
-  isolated_run SCRATCH="$SCRATCH" node "$REPO/scripts/meeting-v2/run-baseline.mjs" \
+  isolated_run node "$REPO/scripts/meeting-v2/run-baseline.mjs" \
     --meeting "$id" --run "$RUN" --hf-cache "$HF_CACHE" --port "$PORT" \
     > "$RUNSDIR/$short-$RUN_LC.log" 2>&1
   status=$?
