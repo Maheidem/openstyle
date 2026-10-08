@@ -42,6 +42,11 @@ allow|Bash|ls -la "$HOME/Library/Application Support/Openstyle"
 allow|Bash|du -sh ~/.cache/huggingface/hub
 allow|Bash|cat ~/.cache/freestyle/mlx-asr/runtime/VERSION
 allow|Bash|stat /Applications/Openstyle.app
+allow|Bash|defaults read /Applications/Openstyle.app/Contents/Info.plist CFBundleShortVersionString
+allow|Bash|defaults read-type /Applications/Openstyle.app/Contents/Info.plist CFBundleVersion
+block|Bash|defaults write /Applications/Openstyle.app/Contents/Info.plist LSUIElement -bool true
+block|Bash|defaults delete "$HOME/Library/Application Support/Openstyle/x.plist"
+block|Bash|defaults import /Applications/Openstyle.app/Contents/Info.plist /tmp/x.plist
 allow|Bash|sqlite3 -readonly "$HOME/Library/Application Support/Openstyle/freestyle.db" ".backup /tmp/t/copy.db"
 allow|Bash|cp -R ~/.cache/freestyle/mlx-asr/runtime /tmp/t/home/.cache/freestyle/mlx-asr/
 allow|Bash|rm -rf /tmp/t/home/.cache/freestyle
