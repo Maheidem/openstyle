@@ -70,9 +70,20 @@ unattended — no manual asset upload or merge needed.
 ## 5. Verify
 
 ```bash
-gh release view <version> --repo Maheidem/openstyle
+bash scripts/release-verify.sh <version>   # must end with "RESULT: PASS"
 git log main -1   # release commit should be present
 ```
+
+`scripts/release-verify.sh` downloads the release like the updater does and
+prints PASS/FAIL per check (exit 1 on any FAIL). It checks: not a draft; all
+assets present (the 4 mac assets plus blockmaps, Windows and Linux files);
+`latest-mac.yml` version; the zip and dmg sha512 and size against the feed;
+and one forced alignment with the released MLX worker. The worker check uses
+the aligner model in `ALIGNER_HF_HOME` (default `/tmp/meeting-p4b-hf/hf`) and
+prints SKIPPED when the model is not there. It never downloads the model.
+It needs `gh`, `jq` and about 300 MB in `/tmp`; a full run takes about
+2.5 minutes (proved 2026-10-08: 2.14.1 gives 9 PASS, exit 0; 9.9.9 gives
+`FAIL release 9.9.9 exists`, exit 1).
 
 - `isDraft: false`
 - `latest-mac.yml` inside the release: `version:` matches `<version>`, and
@@ -194,7 +205,7 @@ rm -rf /tmp/release-<version>
 
 Releases 2.13.0 and 2.14.0 both failed on the release branch for Linux-only reasons: tests that assumed Apple silicon (`getDefaultModels()` swaps an MLX default on Linux; the aligner gate is off), a test that spawned `ffmpeg` (not on the runner), and an E2E test with an old concurrency assumption. Each failure cost a fix-and-push cycle on the release branch.
 
-Before `gh workflow run release.yml`: push the merged code to a throwaway branch (for example `ci/pre-release-<version>`), wait for Build & Test (all jobs, including Electron E2E, which cannot run locally while the installed app owns port 4649), and only then dispatch. Delete the throwaway branch after. Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
+Before `gh workflow run release.yml`: push the merged code to a throwaway branch (for example `ci/pre-release-<version>`), wait for Build & Test (all jobs, including Electron E2E), and only then dispatch. The Electron E2E suite also runs locally next to the installed app, in quiet mode only (see the live-testing skill). Delete the throwaway branch after. Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
 
 ## main is protected (since 2026-10-08)
 
