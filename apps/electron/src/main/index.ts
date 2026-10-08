@@ -191,6 +191,23 @@ if (userDataOverride) {
   app.setPath("userData", userDataOverride);
 }
 
+// Quiet E2E mode (macOS only): a local E2E run must not disturb the person at
+// the screen. No dock icon, no focus steal, no always-on-top overlay, no tray
+// icon, no notification, and every window is fully transparent (opacity 0)
+// and ignores the real mouse. Playwright drives the renderers over CDP, so
+// interaction and screenshots still work. Linux CI runs under Xvfb, so its
+// behavior stays unchanged.
+const quietE2E =
+  (process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1" &&
+  process.platform === "darwin";
+if (quietE2E) {
+  app.setActivationPolicy("accessory");
+  app.on("browser-window-created", (_, window) => {
+    window.setOpacity(0);
+    window.setIgnoreMouseEvents(true);
+  });
+}
+
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
 const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
@@ -665,7 +682,8 @@ function createAppWindow(): void {
     transparent: true,
     resizable: false,
     hasShadow: false,
-    alwaysOnTop: true,
+    // Quiet E2E: never always-on-top.
+    alwaysOnTop: !quietE2E,
     skipTaskbar: true,
     roundedCorners: true,
     autoHideMenuBar: true,
@@ -682,10 +700,14 @@ function createAppWindow(): void {
     },
   });
 
-  mainWindow.setAlwaysOnTop(true, "screen-saver");
-  mainWindow.setVisibleOnAllWorkspaces(true, {
-    visibleOnFullScreen: true,
-  });
+  // Quiet E2E: no always-on-top. setVisibleOnAllWorkspaces also toggles the
+  // macOS process type, which would bring the dock icon back.
+  if (!quietE2E) {
+    mainWindow.setAlwaysOnTop(true, "screen-saver");
+    mainWindow.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+    });
+  }
 
   let moveTimeout: NodeJS.Timeout | null = null;
   let moveBurst = 0;
@@ -810,6 +832,21 @@ function createSettingsWindow(initialPath?: string): Promise<void> {
   return creation;
 }
 
+/** Show the dashboard and bring the app to the front (dock icon + focus). */
+function revealSettingsWindow(win: BrowserWindow): void {
+  // Quiet E2E: show without focus, dock icon or app activation.
+  if (quietE2E) {
+    win.showInactive();
+    return;
+  }
+  if (process.platform === "darwin") {
+    app.dock?.show();
+    app.focus({ steal: true });
+  }
+  win.show();
+  win.focus();
+}
+
 async function buildSettingsWindow(initialPath?: string): Promise<void> {
   // Resolve the initial route BEFORE creating the window. The onboarding probe
   // is an async server call; doing it first means there's no await gap between
@@ -841,16 +878,13 @@ async function buildSettingsWindow(initialPath?: string): Promise<void> {
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
+      // Quiet E2E: the window is transparent, so keep it rendering.
+      ...(quietE2E ? { backgroundThrottling: false } : {}),
     },
   });
 
   settingsWindow.on("ready-to-show", () => {
-    if (process.platform === "darwin") {
-      app.dock?.show();
-      app.focus({ steal: true });
-    }
-    settingsWindow!.show();
-    settingsWindow!.focus();
+    revealSettingsWindow(settingsWindow!);
   });
 
   settingsWindow.on("closed", () => {
@@ -1101,12 +1135,7 @@ async function resetToneConfiguration(): Promise<void> {
   } else {
     void settingsWindow.loadURL(url);
   }
-  if (process.platform === "darwin") {
-    app.dock?.show();
-    app.focus({ steal: true });
-  }
-  settingsWindow.show();
-  settingsWindow.focus();
+  revealSettingsWindow(settingsWindow);
 }
 
 async function factoryReset(): Promise<void> {
@@ -1183,12 +1212,7 @@ function showSettingsWindow(path?: string): void {
   if (path) {
     void settingsWindow.loadURL(getDashboardURL(path));
   }
-  if (process.platform === "darwin") {
-    app.dock?.show();
-    app.focus({ steal: true });
-  }
-  settingsWindow.show();
-  settingsWindow.focus();
+  revealSettingsWindow(settingsWindow);
 }
 
 const ACCESSIBILITY_SETTINGS_URL =
@@ -1588,6 +1612,11 @@ if (!gotTheLock) {
 app.on("second-instance", () => {
   if (settingsWindow) {
     if (settingsWindow.isMinimized()) settingsWindow.restore();
+    // Quiet E2E: show without focus.
+    if (quietE2E) {
+      settingsWindow.showInactive();
+      return;
+    }
     settingsWindow.show();
     settingsWindow.focus();
   } else {
@@ -1903,7 +1932,8 @@ app.whenReady().then(async () => {
     );
   }
 
-  createTray();
+  // Quiet E2E: no menu bar icon.
+  if (!quietE2E) createTray();
 
   createAppWindow();
 
@@ -2770,7 +2800,8 @@ function createRemixBarWindow(): void {
     transparent: true,
     resizable: false,
     hasShadow: false,
-    alwaysOnTop: true,
+    // Quiet E2E: never always-on-top.
+    alwaysOnTop: !quietE2E,
     skipTaskbar: true,
     autoHideMenuBar: true,
     focusable: false,
@@ -2783,8 +2814,11 @@ function createRemixBarWindow(): void {
       backgroundThrottling: false,
     },
   });
-  win.setAlwaysOnTop(true, "screen-saver");
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Quiet E2E: no always-on-top and no process-type toggle (see the pill).
+  if (!quietE2E) {
+    win.setAlwaysOnTop(true, "screen-saver");
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
   win.on("closed", () => {
     remixBarWindow = null;
   });
@@ -2819,7 +2853,8 @@ function calibrateThenShow(bar: BrowserWindow, displayId: number): void {
       });
     } finally {
       // Whatever happened above, the bar must not be left invisible.
-      live.setOpacity(1);
+      // Quiet E2E: every window stays at opacity 0.
+      if (!quietE2E) live.setOpacity(1);
     }
     // Re-learn after correction in case the display needs another pass.
     remixBarLearn();
@@ -3261,7 +3296,8 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
 // Shows one native notification. A click opens the settings window on
 // `route`. Without a route, a click does nothing.
 function notify(title: string, body: string, route?: string): void {
-  if (!Notification.isSupported()) return;
+  // Quiet E2E: no notification banner on the screen.
+  if (quietE2E || !Notification.isSupported()) return;
   const note = new Notification({ title, body });
   if (route) note.on("click", () => showSettingsWindow(route));
   note.show();
