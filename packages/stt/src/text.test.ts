@@ -8,6 +8,7 @@ import {
   stripTrailingDuplicate,
   stripVocabLeak,
   wordEndsSentence,
+  wordEndsTurn,
 } from "./text.js";
 
 describe("wordEndsSentence (phase 4f, §3.6 decision)", () => {
@@ -20,6 +21,54 @@ describe("wordEndsSentence (phase 4f, §3.6 decision)", () => {
     expect(wordEndsSentence("“oh,”")).toBe(false); // quotes only
     expect(wordEndsSentence("here")).toBe(false);
     expect(wordEndsSentence("")).toBe(false);
+  });
+});
+
+describe("wordEndsTurn (2.14.1, §3.6 council round 4)", () => {
+  it("does not end a turn on a Portuguese tag question with ?", () => {
+    for (const w of [
+      "sabe?",
+      "tá?",
+      "ta?",
+      "né?",
+      "ne?",
+      "certo?",
+      "entendeu?",
+      "viu?",
+      "ok?",
+    ]) {
+      expect(wordEndsTurn(w)).toBe(false);
+    }
+  });
+
+  it("still ends a turn on 'beleza?' (council round 5: a hand-off question, not a tag)", () => {
+    expect(wordEndsTurn("beleza?")).toBe(true);
+    expect(wordEndsTurn("Beleza?")).toBe(true);
+  });
+
+  it("compares lowercase with accents as written, closing quotes stripped", () => {
+    expect(wordEndsTurn("Sabe?")).toBe(false);
+    expect(wordEndsTurn("Tá?")).toBe(false);
+    expect(wordEndsTurn("ok?")).toBe(false);
+    expect(wordEndsTurn("OK?")).toBe(false);
+    expect(wordEndsTurn("tá?\u2019")).toBe(false); // trailing apostrophe
+    expect(wordEndsTurn("sabe?\u201d")).toBe(false); // closing quote
+  });
+
+  it("still ends a turn on every other sentence end", () => {
+    // English "?" (the "Are you? | Yeah" shape) still ends a turn.
+    expect(wordEndsTurn("you?")).toBe(true);
+    expect(wordEndsTurn("there?")).toBe(true);
+    // A tag word without "?" is not a tag question; "."/"!" always do.
+    expect(wordEndsTurn("sabe")).toBe(false); // no sentence end at all
+    expect(wordEndsTurn("sabe.")).toBe(true);
+    expect(wordEndsTurn("tá!")).toBe(true);
+    expect(wordEndsTurn("ok.")).toBe(true);
+    // A longer word that only CONTAINS a tag word is a real question.
+    expect(wordEndsTurn("sabemos?")).toBe(true);
+    expect(wordEndsTurn("ok?\u2019\u201d")).toBe(false); // stacked closers
+    expect(wordEndsTurn("here")).toBe(false);
+    expect(wordEndsTurn("")).toBe(false);
   });
 });
 

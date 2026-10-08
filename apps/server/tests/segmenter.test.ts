@@ -883,8 +883,10 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
   it("snaps the cut to a sentence end one word away", () => {
     // The diarizer says A ends after "you" (a false change inside the
     // sentence): the cut there cannot stay, but "stop." one word later
-    // ends a sentence, so the cut snaps ONTO that boundary and A keeps
-    // the word "stop."
+    // ends a turn, so the cut snaps ONTO that boundary and A keeps the
+    // word "stop." 2.14.1: both parts' word-midpoint majority is A, so
+    // the same-speaker neighbor merge re-joins them (the split did no
+    // visible work).
     const res = splitAlignedChunk(
       { startMs: 0, endMs: 10_000 },
       [
@@ -900,20 +902,17 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
     // Midpoints: did 250 (A), you 800 (A), stop. 1500 (B), ok 2150 (B),
     // yes 3650 (A), right 4150 (A). Speaker changes after "you" (A→B)
     // and after "ok" (B→A); both snap onto the "stop." boundary.
-    expect(res.parts).toHaveLength(2);
+    // Parts before the merge: "did you stop." (A 2 vs B 1) and
+    // "ok yes right" (A 2 vs B 1) — same label, merged.
+    expect(res.parts).toHaveLength(1);
     expect(res.parts[0]).toEqual({
       startMs: 0,
-      endMs: 1_900,
-      text: "did you stop.",
-      speakerId: "A", // 2 words vs 1
-    });
-    expect(res.parts[1]).toEqual({
-      startMs: 1_900,
       endMs: 4_400,
-      text: "ok yes right",
-      speakerId: "A", // A 2 words vs B 1
+      text: "did you stop. ok yes right",
+      speakerId: "A",
     });
     expect(res.cutsDropped).toBe(0);
+    expect(res.sameSpeakerMerges).toBe(1);
   });
 
   it("drops the cut (and keeps the larger share) when no sentence end is within one word", () => {
@@ -939,8 +938,10 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
 
   it("merges a part shorter than 1000 ms into its LARGER neighbor", () => {
     // The B part ("bb.") is 400 ms, squeezed between a 1200 ms A part and
-    // a 2000 ms A part: it merges into the LARGER neighbor (the next
-    // part, not the previous one). Both cuts were kept (sentence ends).
+    // a 2000 ms C part: it merges into the LARGER neighbor (the next
+    // part, not the previous one). Both cuts were kept (turn ends). The
+    // neighbors keep DIFFERENT labels, so the 2.14.1 same-speaker merge
+    // does not touch them.
     const res = splitAlignedChunk(
       { startMs: 0, endMs: 10_000 },
       [
@@ -948,11 +949,12 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
         { text: "bb.", startMs: 1_300, endMs: 1_700 },
         { text: "cc", startMs: 1_800, endMs: 3_800 },
       ],
-      [turn("A", 0, 1_300), turn("B", 1_300, 1_800), turn("A", 1_800, 10_000)],
+      [turn("A", 0, 1_300), turn("B", 1_300, 1_800), turn("C", 1_800, 10_000)],
     );
-    // Midpoints: aa. 600 (A), bb. 1500 (B), cc 2800 (A). Cuts after "aa."
-    // and after "bb." (both sentence ends). "bb." (400 ms) merges into
-    // the 2000 ms neighbor.
+    // Midpoints: aa. 600 (A), bb. 1500 (B), cc 2800 (C). Cuts after "aa."
+    // and after "bb." (both turn ends). "bb." (400 ms) merges into the
+    // 2000 ms neighbor; the merged part's label is C (word-count tie:
+    // the longer total word time wins).
     expect(res.parts).toHaveLength(2);
     expect(res.parts[0]).toEqual({
       startMs: 0,
@@ -964,9 +966,10 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
       startMs: 1_300,
       endMs: 3_800,
       text: "bb. cc",
-      speakerId: "A", // A 2 words (1200+2000 ms) vs B 1 (400 ms)
+      speakerId: "C", // 1 word 400 ms (B) vs 1 word 2000 ms (C)
     });
     expect(res.cutsDropped).toBe(0);
+    expect(res.sameSpeakerMerges).toBe(0);
   });
 
   it("keeps a real one-word reply that starts after a sentence end", () => {
@@ -1026,23 +1029,19 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
     );
     // Midpoints: two. 1000 (A), three 1650 (A — turn ends 1800), four
     // 2650 (B), five 4150 (A). Changes: after "three" (A→B) — "three" is
-    // not a sentence end, "two." one word earlier is, so the cut snaps
-    // back onto "two."; after "four" (B→A) — no sentence end within one
-    // word ("four", "three", "five"), so it is DROPPED.
-    expect(res.parts).toHaveLength(2);
+    // not a turn end, "two." one word earlier is, so the cut snaps back
+    // onto "two."; after "four" (B→A) — no turn end within one word
+    // ("four", "three", "five"), so it is DROPPED. 2.14.1: both parts'
+    // majority is A, so the same-speaker neighbor merge re-joins them.
+    expect(res.parts).toHaveLength(1);
     expect(res.parts[0]).toEqual({
       startMs: 0,
-      endMs: 1_400,
-      text: "one two.",
+      endMs: 4_900,
+      text: "one two. three four five",
       speakerId: "A",
     });
-    expect(res.parts[1]).toEqual({
-      startMs: 1_400,
-      endMs: 4_900,
-      text: "three four five",
-      speakerId: "A", // A 3 words vs B 1
-    });
     expect(res.cutsDropped).toBe(1);
+    expect(res.sameSpeakerMerges).toBe(1);
   });
 
   it("keeps a reply that is the ONLY change and starts after a sentence end", () => {
@@ -1084,7 +1083,7 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
         ],
         [turn("A", 0, 5_000)],
       ),
-    ).toEqual({ parts: [], cutsDropped: 0 });
+    ).toEqual({ parts: [], cutsDropped: 0, sameSpeakerMerges: 0 });
     // No turns at all: the caller keeps the chunk unsplit.
     expect(
       splitAlignedChunk(
@@ -1092,7 +1091,130 @@ describe("splitAlignedChunk (I4b, §3.6 + Decision owner 2026-10-07)", () => {
         [{ text: "hi", startMs: 0, endMs: 500 }],
         [],
       ),
-    ).toEqual({ parts: [], cutsDropped: 0 });
+    ).toEqual({ parts: [], cutsDropped: 0, sameSpeakerMerges: 0 });
+  });
+
+  it("does not cut on a Portuguese tag question (sabe?)", () => {
+    // 2.14.1, council round 4 (9742105a #125 shape): A's explanation
+    // ends on "sabe?" — a tag question that ends the clause, not the
+    // turn — and the diarizer's false change lands right after it. The
+    // cut has no turn end within one word and is DROPPED; the words
+    // stay in one part (A's, the larger share) and the text is kept
+    // exactly.
+    const source = "Eu sei, sabe? Tá ótimo";
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 5_000 },
+      [
+        { text: "eu", startMs: 100, endMs: 400 },
+        { text: "sei,", startMs: 500, endMs: 800 },
+        { text: "sabe?", startMs: 900, endMs: 1_400 },
+        { text: "tá", startMs: 2_100, endMs: 2_400 },
+        { text: "ótimo", startMs: 2_500, endMs: 3_000 },
+      ],
+      [turn("A", 0, 2_000), turn("B", 2_000, 5_000)],
+      source,
+    );
+    expect(res.parts).toHaveLength(1);
+    expect(res.parts[0]).toEqual({
+      startMs: 100,
+      endMs: 3_000,
+      text: source, // kept exactly, 1:1 source tokens
+      speakerId: "A", // 3 words vs 2
+    });
+    expect(res.cutsDropped).toBe(1);
+    expect(res.sameSpeakerMerges).toBe(0);
+  });
+
+  it("does not cut on a Portuguese tag question (tá?)", () => {
+    // 9ad10a3c #59 shape: "tá?" does not end the turn, so the cut after
+    // it is dropped and the next speaker's words do not start a new
+    // part.
+    const source = "Você viu, tá? Beleza ótimo";
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 5_000 },
+      [
+        { text: "você", startMs: 100, endMs: 400 },
+        { text: "viu,", startMs: 500, endMs: 800 },
+        { text: "tá?", startMs: 900, endMs: 1_400 },
+        { text: "beleza", startMs: 2_100, endMs: 2_400 },
+        { text: "ótimo", startMs: 2_500, endMs: 3_000 },
+      ],
+      [turn("A", 0, 2_000), turn("B", 2_000, 5_000)],
+      source,
+    );
+    expect(res.parts).toHaveLength(1);
+    expect(res.parts[0]!.text).toBe(source);
+    expect(res.parts[0]!.speakerId).toBe("A");
+    expect(res.cutsDropped).toBe(1);
+    expect(res.sameSpeakerMerges).toBe(0);
+  });
+
+  it("still cuts on an English question mark (Are you? | Yeah)", () => {
+    // "there?" is a real question (not a tag question): the cut after
+    // it is KEPT and the reply starts a new part. The reply part is
+    // >= 1000 ms so the pre-existing short-part merge (rule 2a) does not
+    // re-join it: the test isolates the cut rule.
+    const source = "Are you there? Yeah";
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 5_000 },
+      [
+        { text: "are", startMs: 100, endMs: 400 },
+        { text: "you", startMs: 500, endMs: 800 },
+        { text: "there?", startMs: 900, endMs: 1_500 },
+        { text: "yeah", startMs: 2_100, endMs: 3_300 },
+      ],
+      [turn("A", 0, 2_000), turn("B", 2_000, 5_000)],
+      source,
+    );
+    expect(res.parts).toHaveLength(2);
+    expect(res.parts[0]).toEqual({
+      startMs: 100,
+      endMs: 1_500,
+      text: "Are you there?",
+      speakerId: "A",
+    });
+    expect(res.parts[1]).toEqual({
+      startMs: 2_100,
+      endMs: 3_300,
+      text: "Yeah",
+      speakerId: "B",
+    });
+    expect(res.cutsDropped).toBe(0);
+    expect(res.sameSpeakerMerges).toBe(0);
+  });
+
+  it("merges neighboring parts with the same speaker label (a24 #20)", () => {
+    // 2.14.1, council round 4 (a24a70ec #20 shape): the cut snaps onto
+    // "it." (a turn end), but the second part's word-midpoint majority
+    // is the SAME speaker as the first part (B's single word is the
+    // minority) — the split does no visible work, so the parts merge
+    // back into one and the text is kept exactly.
+    const source = "We fixed it. Next time.";
+    const res = splitAlignedChunk(
+      { startMs: 0, endMs: 5_000 },
+      [
+        { text: "we", startMs: 100, endMs: 400 },
+        { text: "fixed", startMs: 500, endMs: 900 },
+        { text: "it.", startMs: 1_000, endMs: 1_400 },
+        { text: "next", startMs: 1_800, endMs: 2_100 },
+        { text: "time.", startMs: 2_800, endMs: 3_200 },
+      ],
+      [turn("A", 0, 1_500), turn("B", 1_500, 2_500), turn("A", 2_500, 5_000)],
+      source,
+    );
+    // Midpoints: we 250 (A), fixed 700 (A), it. 1200 (A), next 1950
+    // (B), time. 3000 (A). Both speaker changes snap onto the "it."
+    // boundary; the parts are "we fixed it." (A 3 vs B 0) and
+    // "next time." (A 2 vs B 1) — same label, merged.
+    expect(res.parts).toHaveLength(1);
+    expect(res.parts[0]).toEqual({
+      startMs: 100,
+      endMs: 3_200,
+      text: source,
+      speakerId: "A",
+    });
+    expect(res.cutsDropped).toBe(0);
+    expect(res.sameSpeakerMerges).toBe(1);
   });
 });
 

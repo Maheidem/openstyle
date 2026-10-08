@@ -507,6 +507,9 @@ async function runAlignPass(
     fallbackReason: "",
     cuts: 0,
     cutsDropped: 0,
+    // 2.14.1: kept cuts whose two parts carried the same speaker label
+    // and were merged back into one part.
+    sameSpeakerMerges: 0,
     // Mixed chunks the split policy kept WHOLE (no sentence end to cut
     // on, or the aligner's words all map to one speaker). A policy
     // outcome, not a failure: the chunk keeps its winner-overlap label.
@@ -559,17 +562,22 @@ async function runAlignPass(
           r.text,
         );
         stats.cutsDropped += res.cutsDropped;
+        stats.sameSpeakerMerges += res.sameSpeakerMerges;
         if (res.parts.length >= 2) {
           alignedByIdx.set(r.idx, res.parts);
           stats.cuts += res.parts.length - 1;
         } else {
           // Decision (owner, 2026-10-07, spec 3.6): every candidate cut
           // needs a sentence end within one word; without one the chunk
-          // stays whole and keeps its winner-overlap label.
+          // stays whole and keeps its winner-overlap label. 2.14.1:
+          // a kept cut whose parts carry the same speaker label merges
+          // back to one part (the split did no visible work).
           noteKeptWhole(
             res.cutsDropped > 0
               ? "no sentence end to cut on"
-              : "the aligner's words all map to one speaker",
+              : res.sameSpeakerMerges > 0
+                ? "the cut parts had the same speaker"
+                : "the aligner's words all map to one speaker",
           );
         }
       }
@@ -669,8 +677,9 @@ async function runAlignPass(
   );
   // The metrics parse this line (spec 3.6): the sentence-end cut stats
   // (Decision, owner 2026-10-07) ride along as cut(s)/dropped(s)/
-  // kept whole.
-  const detail = `${stats.cuts} cut(s), ${stats.cutsDropped} dropped(s), ${stats.keptWhole} kept whole`;
+  // kept whole; the 2.14.1 same-speaker merge count rides along after
+  // "kept whole" (the metrics' regex reads up to the reason, unanchored).
+  const detail = `${stats.cuts} cut(s), ${stats.cutsDropped} dropped(s), ${stats.keptWhole} kept whole, ${stats.sameSpeakerMerges} same-speaker merge(s)`;
   const firstReason = stats.fallbackReason || stats.keptWholeReason;
   const logLine =
     stats.calls > 0 || stats.fallbacks > 0 || stats.keptWhole > 0

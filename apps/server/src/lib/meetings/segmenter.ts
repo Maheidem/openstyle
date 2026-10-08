@@ -7,7 +7,7 @@
  * `segmentWavFile` reads a file.
  */
 
-import { wordEndsSentence } from "@openstyle/stt";
+import { wordEndsSentence, wordEndsTurn } from "@openstyle/stt";
 import { readWavPcm16 } from "../audio/wav.js";
 import type { DiarizerSegment } from "./diarize.js";
 
@@ -521,6 +521,9 @@ export interface AlignedSplitResult {
   parts: AlignedPart[];
   /** Candidate speaker cuts DROPPED (no sentence end within one word). */
   cutsDropped: number;
+  /** Kept cuts whose two parts carried the SAME speaker label and were
+   * merged back together (2.14.1: the split did no visible work). */
+  sameSpeakerMerges: number;
 }
 
 /**
@@ -666,6 +669,31 @@ function mergeShortAlignedParts(accs: PartAcc[]): PartAcc[] {
  * after a sentence end (the previous part's last word must end a
  * sentence for the B to be a real reply and stay separate).
  */
+/**
+ * Decision (owner, 2026-10-07, spec 3.6, 2.14.1): merge neighboring
+ * parts that carry the SAME speaker label into one part. A kept cut can
+ * snap so that both sides' word-midpoint majority is one speaker — the
+ * split did no visible work (a24a70ec #20 in the council round 4 read).
+ * Returns the merged parts and how many merges happened.
+ */
+function mergeSameSpeakerParts(accs: PartAcc[]): {
+  parts: PartAcc[];
+  merges: number;
+} {
+  const out: PartAcc[] = [];
+  let merges = 0;
+  for (const p of accs) {
+    const last = out[out.length - 1];
+    if (last !== undefined && accSpeaker(last) === accSpeaker(p)) {
+      out[out.length - 1] = mergeAccs([last, p]);
+      merges += 1;
+    } else {
+      out.push(p);
+    }
+  }
+  return { parts: out, merges };
+}
+
 function mergeAbbaParts(accs: PartAcc[]): PartAcc[] {
   const lastWordEndsSentence = (acc: PartAcc): boolean => {
     const words = acc.text.split(/\s+/).filter((t) => t.length > 0);
@@ -770,6 +798,11 @@ function nearestTurn(
  * split — joining the parts with a single space reproduces the chunk
  * text. On a count mismatch the normalized words are used (the previous
  * behavior); the metrics' `punctRatio` keeps such a chunk visible.
+ *
+ * 2.14.1: a cut must snap onto a TURN end (not a Portuguese tag
+ * question, `wordEndsTurn`), and neighboring parts that carry the SAME
+ * speaker label are merged into one part (the split did no visible
+ * work) — the count of those merges comes back as `sameSpeakerMerges`.
  */
 export function splitAlignedChunk(
   chunk: { startMs: number; endMs: number },
@@ -777,7 +810,8 @@ export function splitAlignedChunk(
   turns: DiarizerSegment[],
   sourceText?: string,
 ): AlignedSplitResult {
-  if (turns.length === 0) return { parts: [], cutsDropped: 0 };
+  if (turns.length === 0)
+    return { parts: [], cutsDropped: 0, sameSpeakerMerges: 0 };
   const ts = turns
     .map((t) => ({
       speaker: t.speakerId,
@@ -813,7 +847,8 @@ export function splitAlignedChunk(
     if (!/\p{L}|\p{N}/u.test(text)) continue;
     kept.push({ startMs: absStart, endMs: absEnd, text, speaker });
   }
-  if (kept.length === 0) return { parts: [], cutsDropped: 0 };
+  if (kept.length === 0)
+    return { parts: [], cutsDropped: 0, sameSpeakerMerges: 0 };
 
   // Decision (owner, 2026-10-07, spec 3.6), rule 1: the diarizer makes
   // false speaker changes inside continuous speech (24 of 25 bad cuts in
@@ -823,6 +858,11 @@ export function splitAlignedChunk(
   // and the Portuguese/Spanish equivalents, incl. closing quotes);
   // otherwise it is DROPPED and the words stay with the speaker of the
   // larger share of the chunk (the part's label rule below).
+  // 2.14.1 (council round 4): the end must be a TURN end, not just a
+  // sentence end — a Portuguese tag question ("sabe?", "tá?") ends the
+  // clause but the speaker continues, so a cut there lands inside one
+  // speaker's own explanation (wordEndsTurn; English "?" still ends a
+  // turn).
   const n = kept.length;
   const cuts = new Set<number>(); // boundary index 1..n-1: after word i-1
   let cutsDropped = 0;
@@ -831,7 +871,7 @@ export function splitAlignedChunk(
     let snapped: number | null = null;
     for (const cand of [b, b - 1, b + 1]) {
       if (cand < 1 || cand > n - 1) continue;
-      if (wordEndsSentence(kept[cand - 1]!.text)) {
+      if (wordEndsTurn(kept[cand - 1]!.text)) {
         snapped = cand;
         break;
       }
@@ -853,10 +893,26 @@ export function splitAlignedChunk(
   }
   groups.push(cur);
 
-  // Decision rule 2: post-snap cleanup (short parts, A-B-A).
-  let accs = mergeShortAlignedParts(groups);
-  accs = mergeAbbaParts(accs);
-  return { parts: accs.map(accToPart), cutsDropped };
+  // Decision rule 2: post-snap cleanup (short parts, A-B-A, and — 2.14.1 —
+  // same-label neighbor merge). A merge can only REMOVE parts, and each
+  // merge strictly reduces the part count, so running the passes to a
+  // fixed point terminates. (A merged part's label is recomputed over ALL
+  // its words, so one pass can expose a new same-label adjacency.)
+  let accs = groups;
+  let sameSpeakerMerges = 0;
+  for (;;) {
+    const next = mergeSameSpeakerParts(
+      mergeAbbaParts(mergeShortAlignedParts(accs)),
+    );
+    sameSpeakerMerges += next.merges;
+    if (next.parts.length === accs.length) break;
+    accs = next.parts;
+  }
+  return {
+    parts: accs.map(accToPart),
+    cutsDropped,
+    sameSpeakerMerges,
+  };
 }
 
 /**
