@@ -29,6 +29,7 @@
     // Meeting transcription v2 proof scripts (specs/meeting-transcription-v2.md
     // phases 0a/0b): run manually against the isolated scratch profile, not
     // imported by any entry.
+    "scripts/meeting-v2/compare-r4f.mts",
     "scripts/meeting-v2/measure-diarizer.mjs",
     "scripts/meeting-v2/metrics.mjs",
     "scripts/meeting-v2/run-baseline.mjs",

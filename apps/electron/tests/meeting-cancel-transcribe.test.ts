@@ -29,9 +29,19 @@ import { pcm16Wav } from "./helpers/wav";
 // Deterministically "sticking" the job needs a transcription provider whose
 // requests we control the resolution of: the default voice model is pointed
 // at an own server (OpenAI-compatible provider, no API key needed) whose
-// address is a hold-server this test owns. The hold-server parks every
-// request until the test releases it, so the job reliably sits at 0/2 with
-// both chunk requests in flight when Cancel is clicked.
+// address is a hold-server this test owns.
+//
+// Staging (since phase 3a the lane is SERIAL — one chunk at a time,
+// apps/server/src/lib/meetings/transcriber.ts laneWorker — so a
+// single-channel meeting can never have two chunks in flight, and the old
+// "park everything" staging ended with zero failed chunks and no Retry
+// button): the hold-server fails the first chunk's attempts with immediate
+// 500s (the transcriber retries maxAttempts=3 times, so that is exactly 3
+// requests), and parks the second chunk — dispatched only after the first
+// one has burned all its attempts — until the test releases it. Cancel
+// lands with one failed chunk already persisted and one in flight; the
+// release answers the in-flight chunk with the single 200. Final state: one
+// ok segment (kept partial transcript) + one failed segment (retryable).
 //
 // Fixture WAV: two 1s 440 Hz bursts separated by a 6 s gap — same shape the
 // server-side cancel tests use (tests/meetings-routes.test.ts
@@ -60,18 +70,25 @@ let app: ElectronApplication | undefined;
 let dashboardPage: Page;
 let userDataDir: string;
 
-/** Parks every request until released; then answers exactly one pending
- * request with a valid transcription and everything else with a 500 (so the
- * second in-flight chunk fails after its retries and "Retry failed (1)" has
- * something real to retry). */
 let holdServer: Server | undefined;
 let holdServerPort = 0;
 const parked: Array<{ res: import("node:http").ServerResponse }> = [];
 let released = false;
 let okAnswered = 0;
+let sttRequests = 0;
 
-/** Exactly one chunk (whichever it is) succeeds and persists. This makes the
- * post-cancel note read "(1 of 2 …)". All other chunks get a 500. */
+/** How many transcription requests the FIRST chunk consumes: the
+ * transcriber retries every chunk maxAttempts = 3 times
+ * (apps/server/src/lib/meetings/transcriber.ts). The lane is serial, so
+ * chunk 2 is dispatched only once chunk 1 has burned all three — the
+ * 4th request and beyond is chunk 2. (A fresh test app declares no
+ * languages, so the Phase A2 language probe — the only other STT call the
+ * pipeline can make before the chunks — does not run.) */
+const FIRST_CHUNK_ATTEMPTS = 3;
+
+/** The in-flight chunk (the only one ever parked) succeeds and persists —
+ * the kept partial transcript, so the post-cancel note reads
+ * "(1 of 2 …)". Any other release answer would be a 500. */
 function answer(res: import("node:http").ServerResponse): void {
   if (okAnswered === 0) {
     okAnswered++;
@@ -86,8 +103,8 @@ function answer(res: import("node:http").ServerResponse): void {
 function startHoldServer(): Promise<void> {
   return new Promise((resolvePromise) => {
     holdServer = createServer((req, res) => {
-      // The probe of POST /api/servers lists the models. Answer it at once.
-      // Only the transcription requests park.
+      // The probe of POST /api/servers lists the models. Answer it at once;
+      // only transcription POSTs are counted/staged.
       if (req.method === "GET" && req.url?.startsWith("/v1/models")) {
         const isStatus = req.url.startsWith("/v1/models/status");
         res.writeHead(isStatus ? 404 : 200, {
@@ -100,7 +117,16 @@ function startHoldServer(): Promise<void> {
         );
         return;
       }
+      sttRequests += 1;
+      if (sttRequests <= FIRST_CHUNK_ATTEMPTS) {
+        // Chunk 1's attempts: fail at once so the serial lane moves on to
+        // chunk 2 quickly (one 500 per attempt, three attempts).
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "forced 500 for the cancel test" }));
+        return;
+      }
       if (!released) {
+        // Chunk 2 (and beyond): park until the test releases it.
         parked.push({ res });
         return;
       }
@@ -318,8 +344,9 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       await dashboardPage.getByTestId("meetings-import-choose-file").click();
 
       // Import → detail view opens on the new meeting and auto-fires the
-      // transcribe job, which parks both chunks on the hold-server: the progress
-      // card is up with a 0/2 counter and the Cancel button enabled.
+      // transcribe job: the lane is serial, so chunk 1 burns its attempts on
+      // immediate 500s and chunk 2 parks on the hold-server. The progress
+      // card is up with the Cancel button enabled.
       const cancelButton = dashboardPage.getByTestId(
         "meetings-cancel-transcribe",
       );
@@ -327,7 +354,9 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       await expect(cancelButton).toBeEnabled();
       await expect(dashboardPage.getByText("Transcribing…")).toBeVisible();
 
-      // The meeting is stuck mid-job server-side: 0 of 2 done, both in flight.
+      // The meeting is stuck mid-job server-side: 2 planned chunks, none
+      // finished (chunk 1 is failing through its retries, chunk 2 is about
+      // to be dispatched).
       const meetingsRes = await fetch(`${apiBase()}/api/meetings`, {
         headers: apiHeaders(),
       });
@@ -338,7 +367,19 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       expect(meeting?.status).toBe("transcribing");
       const detail = await getMeeting(meeting!.id);
       expect(detail.job?.total).toBe(2);
-      expect(detail.job?.done).toBe(0);
+      expect(detail.job?.done).toBeLessThan(2);
+
+      // Wait until chunk 2 is actually in flight (parked on the hold
+      // server): a cancel that lands earlier — during chunk 1's retry
+      // backoff — would never dispatch chunk 2, and the meeting would wind
+      // down with no in-flight chunk to keep (0 of 2, not 1 of 2).
+      const parkDeadline = Date.now() + 30_000;
+      while (parked.length < 1) {
+        if (Date.now() > parkDeadline) {
+          throw new Error("chunk 2 never reached the hold server");
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
 
       // Cancel from the UI. waitForResponse gives the ordering guarantee the
       // release below needs: by the time the 202 is back, the server has latched
@@ -357,9 +398,10 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       });
       await expect(cancelButton).toBeDisabled();
 
-      // Release the parked chunks: exactly one succeeds (its segment persists),
-      // the other fails through its retries. The job then stops launching
-      // anything further and lands in failed/"Cancelled by user".
+      // Release the in-flight chunk: it succeeds (its segment persists —
+      // the kept partial transcript), while chunk 1 is already a failed
+      // segment. The job lands in failed/"Cancelled by user" with one ok
+      // and one failed chunk.
       releaseHoldServer();
 
       // The note must say the partial transcript survived, with real counts.
