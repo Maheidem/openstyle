@@ -69,3 +69,4 @@ The fix: give the proven commands (see the live-testing skill), set a time box, 
 ## Branches
 
 A pi child never creates, pushes, merges or deletes a branch. The coordinator creates the branch with a draft PR (see `.claude/skills/branch-lifecycle/SKILL.md`) and names it in the brief: "work on branch X, commit there, never push". The coordinator pushes the child's commits.
+A child never amends, rebases or squashes a commit: the coordinator may have pushed it already (2026-10-08 a child amended a pushed commit and the push needed a force-push). Fix a mistake with a new commit.
