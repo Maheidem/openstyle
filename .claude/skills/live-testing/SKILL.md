@@ -17,6 +17,7 @@ The owner runs the installed Openstyle app every day. Every live test must run n
 6. Put every temporary file in one scratch folder (`/tmp/<task-name>/`). Delete it at the end. Keep only the evidence the task asks for.
 7. Give every `curl` a timeout (`timeout 30 curl ...`). A hook blocks a `curl` with no timeout.
 8. Do not push, merge or change GitHub settings. The coordinating agent does outward actions.
+9. Launch a local app or E2E run only in quiet mode (`OPENSTYLE_E2E=1`, section 4). Prefer CI for the full E2E suite.
 
 ## Enforced by the guard hook
 
@@ -105,7 +106,7 @@ afconvert -f WAVE -d LEI16@16000 "$S/en.aiff" "$S/en.wav"     # 16 kHz mono PCM1
 
 ## 4. Launch the real app against the isolated server
 
-Use `launchOpenstyle` from `apps/electron/tests/helpers/e2e-app.ts`. It sets `OPENSTYLE_USER_DATA`, `OPENSTYLE_DB_PATH` and `OPENSTYLE_E2E=1`, so the run never uses the real profile.
+Use `launchOpenstyle` from `apps/electron/tests/helpers/e2e-app.ts`. It sets `OPENSTYLE_USER_DATA`, `OPENSTYLE_DB_PATH`, `OPENSTYLE_SERVER_PORT` (a free port) and `OPENSTYLE_E2E=1`, so the run never uses the real profile or port 4649.
 
 To point the app at your server, do one of these:
 - Write `{"serverUrl":"http://127.0.0.1:<PORT>","serverToken":"<TOKEN>"}` into `<userDataDir>/settings.json` before launch (`server-target.ts:36-45`).
@@ -120,6 +121,25 @@ pnpm --filter @openstyle/electron test:e2e tests/<suite>.test.ts
 ```
 
 The first window can be the pill (`pill.html`) or the remix bar (`bar.html`). Use `waitForDashboardWindow` from the same helper to get the main window.
+
+### Run Electron E2E on this Mac (quiet mode only)
+
+Launch the app or an E2E suite locally only in quiet mode. Prefer CI for the full suite. Quiet mode is on when `OPENSTYLE_E2E=1` on macOS (`launchOpenstyle` sets it). In quiet mode the app has no dock icon, no tray icon, no notification, never takes focus, never sets always-on-top, and every window has opacity 0, ignores the real mouse and is hidden in Mission Control (`quietE2E` in `apps/electron/src/main/index.ts`). Playwright still clicks and takes screenshots over CDP. Never start the app without `OPENSTYLE_E2E=1`: windows then open on the owner's screen.
+
+The suite runs next to the installed app. `launchOpenstyle` sets `OPENSTYLE_SERVER_PORT` to a free port, so the app does not probe or reuse 4649. Main honors that variable only together with `OPENSTYLE_USER_DATA`. Build first (section 1), then run one suite (or omit the file for the full suite):
+
+```bash
+S=/tmp/e2e-local; source scripts/isolated-env.sh $S >/dev/null && \
+  (cd apps/electron && isolated_run timeout 1500 ./node_modules/.bin/playwright test tests/app.test.ts) 2>&1 | tail -40
+rm -rf $S
+```
+
+- Use the playwright binary, not `pnpm`, under `isolated_run` (scratch `HOME`).
+- To prove a run is quiet: `screencapture -x -m` before and during the run, and count changed pixels. On 2026-10-08 the main display changed by 0.01-0.03% (clock and menu bar stats only). Without `setHiddenInMissionControl` a shown window, even at opacity 0 or off-screen, changed the menu bar tint (5.3%).
+- `import-screen` sends one Qwen3-ASR request to the owner's oMLX when it answers on 8123. Set `OPENSTYLE_E2E_OMLX_URL=http://127.0.0.1:1` to skip that branch.
+- New worktree trap: `pnpm install` can leave `node_modules/.pnpm/electron@*/node_modules/electron/dist` with only `LICENSES.chromium.html` (extract-zip quits without an error). Fix: `ditto -x -k ~/Library/Caches/electron/electron-v<ver>-darwin-arm64.zip dist` in that folder and `printf 'Electron.app/Contents/MacOS/Electron' > path.txt`.
+- A test must reach the embedded server with `embeddedServerUrl(app)`, never with a hard-coded 4649.
+- A new worktree has no `apps/electron/resources/bin`. Run `pnpm --filter @openstyle/electron download:ffmpeg` first, or the import suites fail with "ffmpeg could not decode the file".
 
 ## 5. Screenshots and video
 
