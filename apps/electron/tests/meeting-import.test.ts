@@ -10,6 +10,7 @@ import {
 import { dropFile, e2eCounter, withPickerFile } from "./e2e-helpers";
 import {
   closeApp,
+  embeddedServerUrl,
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
@@ -23,17 +24,13 @@ import { writeSilentWav } from "./helpers/wav";
 // the throwaway DB the same way import-screen pre-seeds settings.json.
 //
 // Environment notes:
-// - The app *reuses* an already-running Openstyle server on the default port
-//   4649 (main/index.ts's single-instance probe). If one is healthy there at
-//   launch — e.g. the developer's installed app is running — this suite would
-//   silently read and WRITE that real server's DB, so it skips instead. CI is
-//   always clean.
-// - To run the suite anyway while another Openstyle occupies 4649, point it
-//   at an isolated standalone server (apps/server dist/startup.js) via
-//   OPENSTYLE_E2E_SERVER_URL (+ OPENSTYLE_E2E_SERVER_TOKEN). That routes the
-//   app's configured-server path (settings.json serverUrl/serverToken) at it;
-//   the operator seeds its DB dir with config.freestyle.json (meetings flag)
-//   before starting it.
+// - The app runs its embedded server on its own free port against a
+//   throwaway userData dir (launchOpenstyle), so an installed Openstyle on
+//   port 4649 is never touched.
+// - To run against an isolated standalone server (apps/server
+//   dist/startup.js) instead, set OPENSTYLE_E2E_SERVER_URL
+//   (+ OPENSTYLE_E2E_SERVER_TOKEN). That routes the app's configured-server
+//   path (settings.json serverUrl/serverToken) at it.
 // ---------------------------------------------------------------------------
 
 const EXTERNAL_SERVER_URL = process.env.OPENSTYLE_E2E_SERVER_URL?.replace(
@@ -45,8 +42,6 @@ const EXTERNAL_SERVER_TOKEN = process.env.OPENSTYLE_E2E_SERVER_TOKEN ?? "";
 let app: ElectronApplication | undefined;
 let dashboardPage: Page;
 let userDataDir: string;
-
-const DEFAULT_PORT = 4649;
 
 interface MeetingListRow {
   id: string;
@@ -64,7 +59,7 @@ async function listMeetings(): Promise<MeetingListRow[]> {
 }
 
 function apiBase(): string {
-  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${DEFAULT_PORT}`;
+  return EXTERNAL_SERVER_URL ?? embeddedServerUrl(app!);
 }
 
 function apiHeaders(): Record<string, string> {
@@ -79,25 +74,6 @@ async function navigateToMeetings(page: Page): Promise<void> {
 }
 
 test.beforeAll(async () => {
-  // Skip (rather than silently reusing) a foreign server on the default
-  // port: the app's single-instance probe would attach this suite to the
-  // developer's real DB. Only the opt-in external-server mode may proceed.
-  if (!EXTERNAL_SERVER_URL) {
-    let foreign = false;
-    try {
-      const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
-        signal: AbortSignal.timeout(1_500),
-      });
-      foreign = res.ok;
-    } catch {
-      // nothing listening — clean environment, proceed with the embedded server
-    }
-    test.skip(
-      foreign,
-      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
-    );
-  }
-
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-meeting-import-"));
 
   // Skip onboarding (mirrors import-screen.test.ts) …

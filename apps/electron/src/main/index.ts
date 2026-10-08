@@ -1905,16 +1905,29 @@ app.whenReady().then(async () => {
       });
   };
 
+  // Test isolation: a run with its own userData (OPENSTYLE_USER_DATA) can pin
+  // its own server port with OPENSTYLE_SERVER_PORT. It then never probes or
+  // reuses a server on the default port, so E2E runs next to an installed
+  // app without touching its DB. Without the userData override the variable
+  // is ignored: a second server on the real profile DB is never wanted.
+  const pinnedPort = userDataOverride
+    ? Number(process.env.OPENSTYLE_SERVER_PORT)
+    : Number.NaN;
+  const usePinnedPort =
+    Number.isInteger(pinnedPort) && pinnedPort > 0 && pinnedPort < 65536;
+
   // Check if a Openstyle server is already running on the default port. The
   // 1.5s bound matters: a normal cold start fast-fails with ECONNREFUSED, but
   // without a timeout a half-open socket on the port could hang window/tray
   // creation indefinitely.
-  const existingServer = await probeServerHealth(
-    `http://127.0.0.1:${DEFAULT_SERVER_PORT}`,
-    1500,
-  );
+  const existingServer =
+    !usePinnedPort &&
+    (await probeServerHealth(`http://127.0.0.1:${DEFAULT_SERVER_PORT}`, 1500));
 
-  if (existingServer) {
+  if (usePinnedPort) {
+    setServerPort(pinnedPort);
+    startServer(pinnedPort);
+  } else if (existingServer) {
     setServerPort(DEFAULT_SERVER_PORT);
     log.info(
       `Reusing existing Openstyle server on http://localhost:${DEFAULT_SERVER_PORT}`,

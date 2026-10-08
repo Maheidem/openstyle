@@ -13,6 +13,7 @@ import {
 import { dropFile, e2eCounter, withPickerFile } from "./e2e-helpers";
 import {
   closeApp,
+  embeddedServerUrl,
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
@@ -22,11 +23,10 @@ import { writeSilentWav } from "./helpers/wav";
 // Helpers (self-contained, mirrors tests/app.test.ts)
 //
 // Isolation: with no OPENSTYLE_E2E_SERVER_URL the suite boots the app's
-// embedded server against a throwaway userData dir and SKIPS if a foreign
-// Openstyle already owns port 4649 (the app would reuse it and touch its
-// DB). Point OPENSTYLE_E2E_SERVER_URL (+ _TOKEN) at a standalone isolated
-// server to run against that instead — same escape hatch as
-// tests/meeting-cancel-transcribe.test.ts.
+// embedded server against a throwaway userData dir on its own free port
+// (launchOpenstyle sets OPENSTYLE_SERVER_PORT), so an installed Openstyle on
+// port 4649 is never probed or reused. Point OPENSTYLE_E2E_SERVER_URL
+// (+ _TOKEN) at a standalone isolated server to run against that instead.
 // ---------------------------------------------------------------------------
 
 const EXTERNAL_SERVER_URL = process.env.OPENSTYLE_E2E_SERVER_URL?.replace(
@@ -39,10 +39,8 @@ let app: ElectronApplication | undefined;
 let dashboardPage: Page;
 let userDataDir: string;
 
-const DEFAULT_PORT = 4649;
-
 function apiBase(): string {
-  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${DEFAULT_PORT}`;
+  return EXTERNAL_SERVER_URL ?? embeddedServerUrl(app!);
 }
 
 function apiHeaders(): Record<string, string> {
@@ -172,27 +170,6 @@ async function navigateToImport(page: Page): Promise<void> {
 }
 
 test.beforeAll(async () => {
-  // Skip (rather than silently reusing) a foreign server on the default
-  // port — the app's boot probe would find it, route test traffic at that
-  // real instance, and touch its DB. Mirrors
-  // tests/meeting-cancel-transcribe.test.ts.
-  if (!EXTERNAL_SERVER_URL) {
-    let foreign = false;
-    try {
-      const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
-        signal: AbortSignal.timeout(1_500),
-      });
-      foreign = res.ok;
-    } catch {
-      // nothing listening — clean environment, proceed with the embedded server
-    }
-    // Call the skip outside the try: the bare catch would swallow its throw.
-    test.skip(
-      foreign,
-      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
-    );
-  }
-
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-import-"));
 
   // Fresh userData means onboarding is active by default (main/index.ts

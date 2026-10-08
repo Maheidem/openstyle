@@ -14,6 +14,7 @@ import {
   test,
 } from "@playwright/test";
 import { _electron as electron } from "playwright";
+import { freeLoopbackPort } from "./helpers/e2e-app";
 
 test.skip(
   process.platform !== "darwin",
@@ -121,6 +122,7 @@ async function launchPermissionApp(
       OPENSTYLE_E2E_ONBOARDING_COMPLETE: String(options.onboardingComplete),
       OPENSTYLE_E2E_PERMISSION_EVENTS: eventsPath,
       OPENSTYLE_USER_DATA: userDataDir,
+      OPENSTYLE_SERVER_PORT: String(await freeLoopbackPort()),
       ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
     },
     timeout: 30_000,
