@@ -18,7 +18,16 @@
 //
 // Usage:
 //   node scripts/meeting-v2/run-baseline.mjs --meeting <id> --run R0 \
-//     [--port 4787] [--timeout-sec 10800] [--diarizer-seconds <n>]
+//     [--port 4787] [--timeout-sec 10800] [--diarizer-seconds <n>] \
+//     [--hf-cache <dir>]
+//
+// --hf-cache <dir> (default /tmp/meeting-p4b-hf/hf): the isolated server's
+// Hugging Face cache root (the automatic aligner download, ~1.2 GB, goes
+// here, never into the user's ~/.cache/huggingface).
+//
+// OPENSTYLE_MLX_ASR_WORKER: if set by the operator (run-proof.sh REQUIRES
+// it), it is passed through untouched. Otherwise the dev-built local
+// bundle at dist/mlx_asr_worker/mlx_asr_worker is used.
 //
 // It prints counts, ids, durations and file paths only.
 
@@ -49,6 +58,7 @@ const runName = arg("run");
 const port = Number(arg("port") ?? "4787");
 const timeoutSec = Number(arg("timeout-sec") ?? "10800");
 const diarizerSecondsRaw = arg("diarizer-seconds");
+const hfCache = arg("hf-cache");
 
 if (!meetingId || !runName) {
   console.error(
@@ -168,11 +178,13 @@ env.PORT = String(port);
 env.HOST = "127.0.0.1";
 env.OPENSTYLE_AUTH_TOKEN = token;
 // Every isolated server gets a SCRATCH Hugging Face cache (phase 4b, spec
-// 3.6): the automatic aligner download (~1.2 GB) goes here, never into
-// the user's ~/.cache/huggingface. R4d reads the aligner from the same
-// env-scoped cache (hfCacheRoot honors HF_HOME/HF_HUB_CACHE).
-env.HF_HOME = "/tmp/meeting-p4b-hf/hf";
-env.HF_HUB_CACHE = "/tmp/meeting-p4b-hf/hf/hub";
+// 3.6; --hf-cache argument): the automatic aligner download (~1.2 GB)
+// goes here, never into the user's ~/.cache/huggingface. R4d reads the
+// aligner from the same env-scoped cache (hfCacheRoot honors
+// HF_HOME/HF_HUB_CACHE).
+const hfHome = hfCache ?? "/tmp/meeting-p4b-hf/hf";
+env.HF_HOME = hfHome;
+env.HF_HUB_CACHE = join(hfHome, "hub");
 // Isolation (council review, 2026-10-07): the managed runtime folder
 // ~/.cache/freestyle/mlx-asr/runtime is the OWNER's integrity-verified
 // cache and must never be written by the proof runs (it was
@@ -181,8 +193,16 @@ env.HF_HUB_CACHE = "/tmp/meeting-p4b-hf/hf/hub";
 // (documented trusted-operator override) — it carries the "align"
 // handler and the behavior is identical for runs that never spawn a
 // worker (R0). The R0d runs of this round onward are NOT the old
-// fallback-path runs.
-{
+// fallback-path runs. An operator-set OPENSTYLE_MLX_ASR_WORKER
+// (run-proof.sh requires it) is passed through untouched.
+if (process.env.OPENSTYLE_MLX_ASR_WORKER) {
+  if (!existsSync(process.env.OPENSTYLE_MLX_ASR_WORKER)) {
+    console.error(
+      `OPENSTYLE_MLX_ASR_WORKER=${process.env.OPENSTYLE_MLX_ASR_WORKER} does not exist (scripts/build_mlx_asr_worker.sh)`,
+    );
+    process.exit(2);
+  }
+} else {
   const localWorker = join(
     repoRoot,
     "dist",

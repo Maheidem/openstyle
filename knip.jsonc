@@ -29,12 +29,14 @@
     // Meeting transcription v2 proof scripts (specs/meeting-transcription-v2.md
     // phases 0a/0b): run manually against the isolated scratch profile, not
     // imported by any entry.
-    "scripts/meeting-v2/compare-r4f.mts",
-    "scripts/meeting-v2/compare-r4g.mts",
+    "scripts/meeting-v2/compare.mts",
+    "scripts/meeting-v2/dump-chunks.mjs",
+    "scripts/meeting-v2/dump-turns.mjs",
     "scripts/meeting-v2/measure-diarizer.mjs",
     "scripts/meeting-v2/metrics.mjs",
     "scripts/meeting-v2/run-baseline.mjs",
     "scripts/meeting-v2/seed-scratch-db.mjs",
+    "scripts/meeting-v2/ts-register.mjs",
     "apps/electron/src/preload/*.d.ts",
     // Kept on purpose: specs/lean-audit-2026-09.md T0-5 keeps this entry.
     "apps/electron/src/renderer/src/components/ui/card.tsx",
