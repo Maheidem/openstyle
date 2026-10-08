@@ -1,17 +1,43 @@
+import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { _electron as electron } from "playwright";
+
+/** A free loopback TCP port, picked by the OS. */
+export function freeLoopbackPort(): Promise<number> {
+  return new Promise((done, fail) => {
+    const probe = createServer();
+    probe.once("error", fail);
+    probe.listen(0, "127.0.0.1", () => {
+      const address = probe.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      probe.close(() => done(port));
+    });
+  });
+}
+
+const serverPorts = new WeakMap<ElectronApplication, number>();
+
+/** Base URL of the embedded server of an app from launchOpenstyle(). */
+export function embeddedServerUrl(app: ElectronApplication): string {
+  const port = serverPorts.get(app);
+  if (!port) throw new Error("App was not started by launchOpenstyle()");
+  return `http://127.0.0.1:${port}`;
+}
 
 /**
  * Starts the built app (out/main/index.js) against a throwaway userData dir
  * and waits for its first window. OPENSTYLE_USER_DATA gives the isolation:
  * main/index.ts rewrites OPENSTYLE_DB_PATH from userData, so without it the
- * run would use the real profile of the developer.
+ * run would use the real profile of the developer. OPENSTYLE_SERVER_PORT
+ * gives the embedded server its own free port, so the app never probes or
+ * reuses an installed Openstyle on port 4649.
  */
 export async function launchOpenstyle(options: {
   userDataDir: string;
   timeout?: number;
 }): Promise<ElectronApplication> {
+  const serverPort = await freeLoopbackPort();
   const app = await electron.launch({
     args: [resolve(__dirname, "../../out/main/index.js")],
     env: {
@@ -19,11 +45,13 @@ export async function launchOpenstyle(options: {
       NODE_ENV: "development",
       OPENSTYLE_DB_PATH: join(options.userDataDir, "freestyle.db"),
       OPENSTYLE_USER_DATA: options.userDataDir,
+      OPENSTYLE_SERVER_PORT: String(serverPort),
       OPENSTYLE_E2E: "1",
       ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
     },
     timeout: options.timeout ?? 30_000,
   });
+  serverPorts.set(app, serverPort);
   // Wait for the first window so the state of Playwright is ready.
   await app.firstWindow();
   return app;

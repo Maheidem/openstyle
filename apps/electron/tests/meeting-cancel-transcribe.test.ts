@@ -12,6 +12,7 @@ import {
 import { withPickerFile } from "./e2e-helpers";
 import {
   closeApp,
+  embeddedServerUrl,
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
@@ -50,9 +51,9 @@ import { pcm16Wav } from "./helpers/wav";
 // exactly 2 chunks.
 //
 // Environment notes (mirrors tests/meeting-import.test.ts):
-// - The app reuses an already-running Openstyle server on port 4649; if one
-//   is healthy there at launch this suite would touch that real DB, so it
-//   skips instead.
+// - The app runs its embedded server on its own free port against a
+//   throwaway userData dir (launchOpenstyle), so an installed Openstyle on
+//   port 4649 is never touched.
 // - The copy assertions assume the English locale (like the other suites —
 //   i18next falls back to en and CI runners are en).
 // ---------------------------------------------------------------------------
@@ -63,7 +64,6 @@ const EXTERNAL_SERVER_URL = process.env.OPENSTYLE_E2E_SERVER_URL?.replace(
 );
 const EXTERNAL_SERVER_TOKEN = process.env.OPENSTYLE_E2E_SERVER_TOKEN ?? "";
 
-const DEFAULT_PORT = 4649;
 const SAMPLE_RATE = 16_000;
 
 let app: ElectronApplication | undefined;
@@ -162,7 +162,7 @@ async function stopHoldServer(): Promise<void> {
 }
 
 function apiBase(): string {
-  return EXTERNAL_SERVER_URL ?? `http://127.0.0.1:${DEFAULT_PORT}`;
+  return EXTERNAL_SERVER_URL ?? embeddedServerUrl(app!);
 }
 
 function apiHeaders(): Record<string, string> {
@@ -213,24 +213,6 @@ async function getMeeting(id: string): Promise<MeetingDetailRow> {
 }
 
 test.beforeAll(async () => {
-  // Skip (rather than silently reusing) a foreign server on the default
-  // port — mirrors tests/meeting-import.test.ts.
-  if (!EXTERNAL_SERVER_URL) {
-    let foreign = false;
-    try {
-      const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
-        signal: AbortSignal.timeout(1_500),
-      });
-      foreign = res.ok;
-    } catch {
-      // nothing listening — clean environment, proceed with the embedded server
-    }
-    test.skip(
-      foreign,
-      `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or point this suite at an isolated server via OPENSTYLE_E2E_SERVER_URL.`,
-    );
-  }
-
   await startHoldServer();
 
   userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-meeting-cancel-"));

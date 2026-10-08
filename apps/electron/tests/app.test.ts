@@ -9,6 +9,7 @@ import {
 } from "@playwright/test";
 import {
   closeApp,
+  embeddedServerUrl,
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
@@ -20,28 +21,7 @@ import {
 let app: ElectronApplication | undefined;
 let dashboardPage: Page;
 
-const DEFAULT_PORT = 4649;
-
 test.beforeAll(async () => {
-  // Skip (rather than silently reusing) a foreign server on the default port
-  // — the app's boot probe would find it and this suite's embedded-server
-  // assertions would read (and PUT into) that real instance's DB. Same guard
-  // as tests/meeting-cancel-transcribe.test.ts.
-  let foreign = false;
-  try {
-    const res = await fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
-      signal: AbortSignal.timeout(1_500),
-    });
-    foreign = res.ok;
-  } catch {
-    // nothing listening — clean environment, proceed with the embedded server
-  }
-  // Call the skip outside the try: the bare catch would swallow its throw.
-  test.skip(
-    foreign,
-    `Another Openstyle server is listening on ${DEFAULT_PORT}; the app would reuse it and touch its DB. Stop it, or run this suite against an isolated server.`,
-  );
-
   const userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-"));
 
   // Turn Meeting Mode on BEFORE launch (the onboarding auto-Enhance step is
@@ -118,26 +98,26 @@ test("dashboard window has a reasonable viewport", async () => {
 });
 
 test("embedded server is running", async () => {
-  const health = await app!.evaluate(async (_electron, port) => {
-    const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+  const health = await app!.evaluate(async (_electron, base) => {
+    const res = await fetch(`${base}/api/health`);
     return res.json() as Promise<{ status: string; name: string }>;
-  }, DEFAULT_PORT);
+  }, embeddedServerUrl(app!));
   expect(health).toEqual({ status: "ok", name: "openstyle" });
 });
 
 test("settings API works via embedded server", async () => {
-  await app!.evaluate(async (_electron, port) => {
-    await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`, {
+  await app!.evaluate(async (_electron, base) => {
+    await fetch(`${base}/api/settings/e2e_test`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: "hello" }),
     });
-  }, DEFAULT_PORT);
+  }, embeddedServerUrl(app!));
 
-  const result = await app!.evaluate(async (_electron, port) => {
-    const res = await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`);
+  const result = await app!.evaluate(async (_electron, base) => {
+    const res = await fetch(`${base}/api/settings/e2e_test`);
     return res.json() as Promise<{ key: string; value: string }>;
-  }, DEFAULT_PORT);
+  }, embeddedServerUrl(app!));
   expect(result).toEqual({ key: "e2e_test", value: "hello" });
 });
 
@@ -182,20 +162,16 @@ test("onboarding flow reaches the draft and remix steps and completes", async ()
 
   // Skip writes ONLY the seen flag — the auto-run key must stay absent
   // (a missing row means "off"). 404 = the row was never created.
-  const autoRunStatus = await app!.evaluate(async (_electron, port) => {
-    const res = await fetch(
-      `http://127.0.0.1:${port}/api/settings/meeting_enhance_auto_run`,
-    );
+  const autoRunStatus = await app!.evaluate(async (_electron, base) => {
+    const res = await fetch(`${base}/api/settings/meeting_enhance_auto_run`);
     return res.status as number;
-  }, DEFAULT_PORT);
+  }, embeddedServerUrl(app!));
   expect(autoRunStatus).toBe(404);
-  const seenStatus = await app!.evaluate(async (_electron, port) => {
-    const res = await fetch(
-      `http://127.0.0.1:${port}/api/settings/meeting_enhance_prompt_seen`,
-    );
+  const seenStatus = await app!.evaluate(async (_electron, base) => {
+    const res = await fetch(`${base}/api/settings/meeting_enhance_prompt_seen`);
     const body = res.ok ? ((await res.json()) as { value: string }) : null;
     return { status: res.status, value: body?.value };
-  }, DEFAULT_PORT);
+  }, embeddedServerUrl(app!));
   expect(seenStatus.status).toBe(200);
   expect(seenStatus.value).toBe("true");
 

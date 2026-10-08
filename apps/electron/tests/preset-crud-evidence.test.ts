@@ -45,13 +45,13 @@ import {
 //     documented `serverUrl`/`serverToken` profile escape hatch (the same
 //     isolation `import-screen`/`meeting-import` spell
 //     `OPENSTYLE_E2E_SERVER_URL`).
-//   * The app's boot probe WILL find the foreign server on 4649 and set
-//     `serverPort = 4649` (in the boot probe of `src/main/index.ts`). This is
-//     the reason why `serverUrl` is seeded: `getServerBaseUrl()` (`src/main/server-target.ts`)
-//     and the renderer's `getApiBase()` (`src/renderer/src/lib/api.ts:26`)
-//     both prefer a configured URL. Test 00 asserts the app resolved to OUR
-//     server, and the manifest records whether any renderer request ever
-//     touched :4649.
+//   * launchOpenstyle gives the embedded server its own free port
+//     (OPENSTYLE_SERVER_PORT), so the boot probe of `src/main/index.ts` does
+//     not look at 4649. `serverUrl` is still seeded: `getServerBaseUrl()`
+//     (`src/main/server-target.ts`) and the renderer's `getApiBase()`
+//     (`src/renderer/src/lib/api.ts`) both prefer a configured URL. Test 00
+//     asserts the app resolved to OUR server, and the manifest records
+//     whether any renderer request ever touched :4649.
 //   * The server runs with `cwd = apps/electron` per the AGENTS.md gotcha so
 //     bundled ffmpeg / diarize candidate lists resolve (unused here, obeyed).
 //
