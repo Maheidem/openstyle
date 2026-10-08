@@ -18,6 +18,15 @@
 #                            written by the proof runs (council review,
 #                            2026-10-07). run-baseline.mjs passes the value
 #                            through to the isolated server untouched.
+# Isolation (follow-up to PR #34): every server and worker this driver
+# starts runs under the scratch HOME via scripts/isolated-env.sh's
+# isolated_run — the server writes the managed MLX runtime under
+# homedir() (updateManagedMlxRuntimeIfNeeded), and the scratch HOME is
+# the only place it may go. The driver refuses to start when
+# isolated-env.sh is missing or when it cannot set the scratch HOME.
+# SCRATCH must therefore be an absolute path under /tmp or /private/tmp
+# (isolated-env.sh's rule).
+#
 # Optional env:
 #   REPO      repo root (default: resolved from this script's location)
 #   SCRATCH   scratch profile dir (default /tmp/meeting-v2)
@@ -56,6 +65,19 @@ RUNSDIR=$SCRATCH/runs
 RUN_LC=$(printf '%s' "$RUN" | tr 'A-Z' 'a-z')
 mkdir -p "$CMP" "$RUNSDIR"
 
+ISO_ENV="$REPO/scripts/isolated-env.sh"
+if [ ! -f "$ISO_ENV" ]; then
+  echo "REFUSED: $ISO_ENV is missing; run-proof starts every server/worker under the scratch HOME (isolated-env.sh)" >&2
+  exit 2
+fi
+# shellcheck disable=SC1090
+source "$ISO_ENV" "$SCRATCH" "$OPENSTYLE_MLX_ASR_WORKER"
+if [ -z "${OPENSTYLE_ISOLATED_HOME:-}" ] || ! command -v isolated_run >/dev/null 2>&1; then
+  echo "REFUSED: isolated-env.sh did not set the scratch HOME (scratch=$SCRATCH must be an absolute path under /tmp or /private/tmp)" >&2
+  exit 2
+fi
+echo "scratch HOME: $OPENSTYLE_ISOLATED_HOME (every server/worker runs via isolated_run)"
+
 if [ ! -f "$REPO/apps/server/dist/startup.js" ]; then
   echo "REFUSED: the server is not built (pnpm --filter \"@openstyle/server...\" build)" >&2
   exit 2
@@ -85,7 +107,7 @@ fi
 for id in "$@"; do
   short=${id:0:8}
   echo "=== $short $RUN start $(date +%H:%M:%S) ==="
-  SCRATCH="$SCRATCH" node "$REPO/scripts/meeting-v2/run-baseline.mjs" \
+  isolated_run SCRATCH="$SCRATCH" node "$REPO/scripts/meeting-v2/run-baseline.mjs" \
     --meeting "$id" --run "$RUN" --hf-cache "$HF_CACHE" \
     > "$RUNSDIR/$short-$RUN_LC.log" 2>&1
   status=$?
