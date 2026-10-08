@@ -277,6 +277,31 @@ describe("isHallucination", () => {
       ),
     ).toBe(false);
   });
+
+  // Speaker cuts (specs/meeting-transcription-v2.md §3.4) make short
+  // single-speaker chunks: the EXACT rule skips a LABELED chunk, so a real
+  // "thank you" from a speaker survives. The skip is the label only
+  // (Decision, owner 2026-10-07): an earlier "or above 1 s" clause let
+  // "Thank you." on silence survive everywhere, because padding makes
+  // almost every chunk longer than 1 s (a 260 ms burst probes as 960 ms).
+  it("skips the exact rule for a labeled chunk", () => {
+    expect(isHallucination(seg(0, 500, "thank you", "2"))).toBe(false);
+    // The label alone decides — a labeled chunk is kept at any length.
+    expect(isHallucination(seg(0, 2000, "thank you", "2"))).toBe(false);
+    // The prefix rule is untouched: it names whole-utterance junk.
+    expect(isHallucination(seg(0, 3000, "Subtitles by SomeCorp", "2"))).toBe(
+      true,
+    );
+  });
+
+  it("keeps the exact rule for an UNLABELED chunk, however long it is", () => {
+    // A padded 2000 ms chunk on silence is still a hallucination without a
+    // label — the regression the old >1 s clause caused.
+    expect(isHallucination(seg(0, 2000, "thank you"))).toBe(true);
+    expect(isHallucination(seg(0, 1500, "Thank you."))).toBe(true);
+    // Same as before for the short case.
+    expect(isHallucination(seg(0, 500, "thank you"))).toBe(true);
+  });
 });
 
 describe("isVocabLeak", () => {
@@ -370,5 +395,28 @@ describe("filterConsecutiveRepeats", () => {
       seg(2, 3, "yes"),
     ];
     expect(filterConsecutiveRepeats(segs)).toHaveLength(3);
+  });
+
+  // Speaker cuts (specs/meeting-transcription-v2.md §3.4): a run of
+  // identical texts across DIFFERENT speakers is agreement, not a stuck
+  // loop — the collapse only applies within one label.
+  it("does not collapse a run across different labels", () => {
+    const segs = [
+      seg(0, 1, "yes", "1"),
+      seg(1, 2, "yes", "2"),
+      seg(2, 3, "yes", "1"),
+    ];
+    expect(filterConsecutiveRepeats(segs)).toHaveLength(3);
+  });
+
+  it("still collapses a run within one label", () => {
+    const segs = [
+      seg(0, 1, "yes", "1"),
+      seg(1, 2, "yes", "1"),
+      seg(2, 3, "yes", "1"),
+    ];
+    const out = filterConsecutiveRepeats(segs);
+    expect(out).toHaveLength(1);
+    expect(out[0].startMs).toBe(0);
   });
 });

@@ -2,11 +2,12 @@ export type {
   AsrBiasInput,
   BuildAsrBiasPromptOptions,
 } from "./asr-bias.js";
-export { buildAsrBiasPrompt } from "./asr-bias.js";
+export { buildAsrBiasPrompt, truncateAtWordBoundary } from "./asr-bias.js";
 export type { PostProcessParams, PostProcessResult } from "./post-process.js";
 export { postProcess } from "./post-process.js";
 export {
   collapseAsrLineBreaks,
+  isContextEcho,
   isVocabLeak,
   normalizeText,
   sanitizeTranscriptText,
@@ -14,8 +15,10 @@ export {
   stripTrailingDuplicate,
   stripVocabLeak,
   stripWrappingQuotes,
+  TERMS_MARKER,
   textSimilarity,
   VOCAB_LEAK_OVERLAP_THRESHOLD,
+  wordEndsSentence,
 } from "./text.js";
 export { maxOutputTokensForCleanup } from "./tokens.js";
 export type {

@@ -43,9 +43,13 @@ const log = createAppLogger("meeting-diarize");
 // ---------------------------------------------------------------------------
 
 /**
- * Mirrors `getTranslateModeSetting()` (`lib/language.ts`) exactly — the
- * existing flat settings pattern, no new validation route logic needed
- * (spec §8).
+ * Flat settings flag for meeting diarization (spec §8). DECISION 6
+ * (specs/meeting-transcription-v2.md, owner 2026-10-06): diarization is ON
+ * BY DEFAULT — only an explicit `"false"` row turns it off; a missing row
+ * means on (the proof runs met both conditions of spec 4.3: D at most 10
+ * percent of the audio length, no failure in 3 runs). The settings UI
+ * derives its switch state from this rule via GET /diarization/status, so
+ * the popover and the job can never disagree about the default.
  */
 export function getMeetingDiarizationEnabledSetting(): boolean {
   const row = getDb()
@@ -53,7 +57,7 @@ export function getMeetingDiarizationEnabledSetting(): boolean {
       "SELECT value FROM settings WHERE key = 'meeting_diarization_enabled'",
     )
     .get() as { value: string } | undefined;
-  return row?.value === "true";
+  return row?.value !== "false";
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +165,34 @@ export interface SpeakerLabelAssignment {
   speakerLabel: string | null;
 }
 
+/**
+ * Validate and order the diarizer's raw turns (specs/meeting-transcription-
+ * v2.md §3.4): the cut rule and the label assignment both assume finite,\n * increasing turns in time order. Drop entries whose speakerId, start or
+ * end is not a usable finite number, and turns with end <= start; sort the
+ * rest by start. Returns null when nothing survives — the caller then
+ * treats the pass as failed, exactly like malformed JSON.
+ */
+export function sanitizeDiarizerTurns(
+  parsed: unknown[],
+): DiarizerSegment[] | null {
+  const usable = parsed.filter((t): t is DiarizerSegment => {
+    if (typeof t !== "object" || t === null) return false;
+    const d = t as DiarizerSegment;
+    return (
+      typeof d.speakerId === "string" &&
+      d.speakerId.length > 0 &&
+      typeof d.startTimeSeconds === "number" &&
+      Number.isFinite(d.startTimeSeconds) &&
+      typeof d.endTimeSeconds === "number" &&
+      Number.isFinite(d.endTimeSeconds) &&
+      d.endTimeSeconds > d.startTimeSeconds
+    );
+  });
+  if (usable.length === 0) return null;
+  usable.sort((a, b) => a.startTimeSeconds - b.startTimeSeconds);
+  return usable;
+}
+
 /** Nearest-neighbor fallback window (spec §7 step 4). */
 const NEAREST_NEIGHBOR_WINDOW_MS = 2000;
 
@@ -251,6 +283,28 @@ function pickNearestWithinWindow(
     }
   }
   return best && bestDist <= windowMs ? best : null;
+}
+
+/**
+ * The diarizer speaker that "wins" one system span (spec §7, steps 1-4):
+ * the largest-overlap turn, else a nearest turn within the 2 s window, else
+ * null. Shared by `assignSpeakerLabels` and the phase 4b align path
+ * (specs/meeting-transcription-v2.md §3.6), which labels the unsplit
+ * chunks and the align-fallback chunks with the same rule.
+ */
+export function winnerSpeakerFor(
+  span: { startMs: number; endMs: number },
+  diarSegments: DiarizerSegment[],
+): string | null {
+  const diar: InternalDiarSegment[] = diarSegments.map((d) => ({
+    speakerId: d.speakerId,
+    startMs: d.startTimeSeconds * 1000,
+    endMs: d.endTimeSeconds * 1000,
+  }));
+  const winner =
+    pickOverlapWinner(span, diar) ??
+    pickNearestWithinWindow(span, diar, NEAREST_NEIGHBOR_WINDOW_MS);
+  return winner?.speakerId ?? null;
 }
 
 /**
@@ -346,46 +400,55 @@ interface SystemSegmentRow {
 }
 
 /**
- * Run the diarization pass for one meeting's `system.wav` and persist
- * per-segment `speaker_label` values. Every expected failure mode (spec
- * §9-10) logs a warning and returns — this function never throws in normal
- * operation, so the `.catch` at the call site in `runTranscribeJob` is
- * defense-in-depth, not the primary error path.
+ * Run the fluidaudio-diarize binary against one meeting's `system.wav` and
+ * return its turns — or null on any expected failure (missing wav, binary,
+ * models, a failed probe or run, malformed JSON). Every failure logs an
+ * info line and degrades to the old behavior; this function never throws in
+ * normal operation. No database access: the caller supplies the meeting
+ * duration (specs/meeting-transcription-v2.md §3.4).
+ *
+ * The skips are info, not warnings (diarization is default-on since the
+ * phase 4 decision): a build without the binary or a mic-only meeting is a
+ * normal state, not a fault, and must not alarm in the server log. The UI
+ * surfaces availability through GET /diarization/status, not the log.
  */
-export async function runDiarizationPass(
-  meetingId: string,
+export async function runDiarizer(
   audioDir: string,
+  durationMs: number,
   deps: DiarizeDeps = createDefaultDiarizeDeps(),
-): Promise<void> {
+  // The transcribe job passes the §3.3 verdict for the meeting's STT
+  // provider. The standalone /diarize path keeps the old unconditional
+  // yield (an explicit user action; a short wait there costs nothing).
+  yieldsToDictation = true,
+): Promise<DiarizerSegment[] | null> {
   const wavPath = join(audioDir, SYSTEM_WAV);
   if (!existsSync(wavPath)) {
-    log.warn(
-      `meeting ${meetingId}: diarization skipped, no ${SYSTEM_WAV} at ${wavPath}`,
-    );
-    return;
+    log.info(`diarization skipped, no ${SYSTEM_WAV} at ${wavPath}`);
+    return null;
   }
 
   const binaryPath = deps.resolveBinaryPath();
   if (!binaryPath) {
-    log.warn(
-      `meeting ${meetingId}: diarization skipped, fluidaudio-diarize binary not found`,
-    );
-    return;
+    log.info("diarization skipped, fluidaudio-diarize binary not found");
+    return null;
   }
 
   const modelsDir = deps.resolveModelsDirPath();
   if (!modelsDir) {
-    log.warn(
-      `meeting ${meetingId}: diarization skipped, models missing from bundle`,
-    );
-    return;
+    log.info("diarization skipped, models missing from bundle");
+    return null;
   }
 
   // The diarizer runs on-device via CoreML/ANE, the same physical resource
-  // whisper-local targets — yield to live dictation exactly like chunk
-  // transcription does (spec §11), unconditionally (diarization always runs
-  // on-device regardless of which STT provider transcribed the meeting).
-  await waitForDictationIdle({ isDictationActive: deps.isDictationActive });
+  // whisper-local targets — yield to live dictation under the same §3.3 rule
+  // the transcription chunks use: always for local-whisper (shared server)
+  // and for a local-mlx model that differs from the dictation model
+  // (worker reload). A cloud-provider meeting never shared a local
+  // resource with dictation and must not gain a new wait before its first
+  // chunk just because diarization became default-on.
+  if (yieldsToDictation) {
+    await waitForDictationIdle({ isDictationActive: deps.isDictationActive });
+  }
 
   // Defensive probe before the real run — the bundle is expected to always
   // be present and loadable once `resolveModelsDirPath` returns non-null,
@@ -401,34 +464,20 @@ export async function runDiarizationPass(
     );
     probeStdout = probe.stdout.trim();
   } catch (err) {
-    log.warn(`meeting ${meetingId}: diarization probe failed: ${String(err)}`);
-    return;
+    log.warn(`diarization probe failed: ${String(err)}`);
+    return null;
   }
   if (probeStdout !== "READY") {
     log.warn(
-      `meeting ${meetingId}: diarization models missing from bundle (${probeStdout || "no output"}), skipping`,
+      `diarization models missing from bundle (${probeStdout || "no output"}), skipping`,
     );
-    return;
+    return null;
   }
 
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id, start_ms, end_ms FROM meeting_segments
-       WHERE meeting_id = ? AND source = 'system' ORDER BY idx`,
-    )
-    .all(meetingId) as unknown as SystemSegmentRow[];
-
   // Timeout: meeting duration x 1.0, minimum 120s, no fixed ceiling (spec
-  // §11). `meetings.duration_ms` is the primary source; fall back to the
-  // system channel's own last segment end when it's unset (e.g. a still-
-  // recording edge case shouldn't happen here, but costs nothing to guard).
-  const durationRow = db
-    .prepare("SELECT duration_ms FROM meetings WHERE id = ?")
-    .get(meetingId) as { duration_ms: number | null } | undefined;
-  const durationMs =
-    durationRow?.duration_ms ??
-    rows.reduce((max, r) => Math.max(max, r.end_ms), 0);
+  // §11). The caller supplies the duration (meetings.duration_ms, or the
+  // system channel's last segment end when unset); a zero/undefined duration
+  // still gets the 120 s floor.
   const timeoutMs = Math.max(MIN_TIMEOUT_MS, durationMs);
 
   let stdout: string;
@@ -440,21 +489,40 @@ export async function runDiarizationPass(
     );
     stdout = result.stdout;
   } catch (err) {
-    log.warn(`meeting ${meetingId}: diarization run failed: ${String(err)}`);
-    return;
+    log.warn(`diarization run failed: ${String(err)}`);
+    return null;
   }
 
-  let diarSegments: DiarizerSegment[];
   try {
     const parsed: unknown = JSON.parse(stdout);
     if (!Array.isArray(parsed)) throw new Error("stdout JSON is not an array");
-    diarSegments = parsed as DiarizerSegment[];
+    const diarSegments = sanitizeDiarizerTurns(parsed);
+    if (diarSegments === null) throw new Error("no usable turns");
+    return diarSegments;
   } catch (err) {
-    log.warn(
-      `meeting ${meetingId}: diarization returned malformed JSON: ${String(err)}`,
-    );
-    return;
+    log.warn(`diarization returned malformed JSON: ${String(err)}`);
+    return null;
   }
+}
+
+/**
+ * Persist `speaker_label` values for one meeting's already-transcribed
+ * system segments from turns the caller already has (specs/meeting-
+ * transcription-v2.md §3.4: the transcribe job runs the binary once and
+ * labels with the same turns). Explicit NULL write for every row (spec §7
+ * step 7). Never throws: a failed write logs and leaves the labels NULL.
+ */
+export function applyDiarization(
+  meetingId: string,
+  diarSegments: DiarizerSegment[],
+): void {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, start_ms, end_ms FROM meeting_segments
+       WHERE meeting_id = ? AND source = 'system' ORDER BY idx`,
+    )
+    .all(meetingId) as unknown as SystemSegmentRow[];
 
   const whisperSegments: WhisperSegmentForDiarization[] = rows.map((r) => ({
     id: r.id,
@@ -463,14 +531,36 @@ export async function runDiarizationPass(
   }));
   const assignments = assignSpeakerLabels(whisperSegments, diarSegments);
 
-  // Explicit NULL write for every row (spec §7 step 7) — correct behavior on
-  // a future re-run, not just "leave whatever was there".
   const update = db.prepare(
     "UPDATE meeting_segments SET speaker_label = ? WHERE id = ?",
+  );
+  // The raw turns go in the same transaction as the labels they derive
+  // (specs/meeting-transcription-v2.md §3.4): the measurement counts
+  // multi-speaker chunks from them. A re-transcribe deletes them with the
+  // old segments and re-diarizes — the stored turns are for the measurement,
+  // not a cache.
+  const clearTurns = db.prepare(
+    "DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?",
+  );
+  const insertTurn = db.prepare(
+    `INSERT INTO meeting_diarizer_turns
+       (meeting_id, idx, speaker_id, start_ms, end_ms)
+     VALUES (?, ?, ?, ?, ?)`,
   );
   try {
     withTransaction(db, () => {
       for (const a of assignments) update.run(a.speakerLabel, a.id);
+      clearTurns.run(meetingId);
+      for (let i = 0; i < diarSegments.length; i += 1) {
+        const t = diarSegments[i];
+        insertTurn.run(
+          meetingId,
+          i,
+          t.speakerId,
+          Math.round(t.startTimeSeconds * 1000),
+          Math.round(t.endTimeSeconds * 1000),
+        );
+      }
     });
   } catch (err) {
     log.warn(
@@ -482,6 +572,43 @@ export async function runDiarizationPass(
   log.info(
     `meeting ${meetingId}: diarization labeled ${assignments.filter((a) => a.speakerLabel).length}/${assignments.length} system segments`,
   );
+}
+
+/**
+ * Run the diarization pass for one meeting's `system.wav` and persist
+ * per-segment `speaker_label` values (the standalone POST /:id/diarize
+ * path, spec §9). Composes `runDiarizer` + `applyDiarization`. Every
+ * expected failure mode (spec §9-10) logs a warning and returns — this
+ * function never throws in normal operation, so the `.catch` at its call
+ * sites is defense-in-depth, not the primary error path.
+ */
+export async function runDiarizationPass(
+  meetingId: string,
+  audioDir: string,
+  deps: DiarizeDeps = createDefaultDiarizeDeps(),
+): Promise<void> {
+  // Timeout input: `meetings.duration_ms` is the primary source; fall back
+  // to the system channel's own last segment end when it's unset (e.g. a
+  // still-recording edge case shouldn't happen here, but costs nothing to
+  // guard).
+  const db = getDb();
+  const durationRow = db
+    .prepare("SELECT duration_ms FROM meetings WHERE id = ?")
+    .get(meetingId) as { duration_ms: number | null } | undefined;
+  const durationMs =
+    durationRow?.duration_ms ??
+    (
+      db
+        .prepare(
+          `SELECT end_ms FROM meeting_segments
+         WHERE meeting_id = ? AND source = 'system'`,
+        )
+        .all(meetingId) as unknown as { end_ms: number }[]
+    ).reduce((max, r) => Math.max(max, r.end_ms), 0);
+
+  const diarSegments = await runDiarizer(audioDir, durationMs, deps);
+  if (diarSegments === null) return;
+  applyDiarization(meetingId, diarSegments);
 }
 
 // ---------------------------------------------------------------------------

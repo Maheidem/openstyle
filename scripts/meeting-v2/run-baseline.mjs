@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 // Phase 0b runner (specs/meeting-transcription-v2.md, sections 5, 7.2, 7.3).
 //
-// Runs one baseline run (R0 = diarization off, R0d = diarization on) of the
-// unmodified pipeline against the scratch profile. Starts its own isolated
+// Runs one baseline run (R0 = diarization off, R0d = diarization on,
+// R3a = phase 3a with R0's settings, R3b/R3b2 = phase 3b with R0's
+// settings; R3b2 = the review-fixed context guards, R3c-off/R3c-on =
+// the context setting (owner decision 2026-10-07) absent / "true",
+// R4 = phase 4, diarization on and context off so it compares with
+// R0d; R4f = the sentence-end cut snap (Decision, owner 2026-10-07,
+// spec 3.6), same treatment as R4d/R4e)
+// of the pipeline against the scratch profile. Starts its own isolated
 // server (never port 4649), transcribes the copied meeting, measures the
 // wall time from the POST /transcribe reply to status = transcribed, stops
 // the server it started, and writes run.json plus metrics.json.
@@ -43,14 +49,48 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f [options]",
   );
   process.exit(2);
 }
-if (runName !== "R0" && runName !== "R0d") {
-  console.error(`--run must be R0 or R0d, got: ${runName}`);
+if (
+  runName !== "R0" &&
+  runName !== "R0d" &&
+  runName !== "R3a" &&
+  runName !== "R3b" &&
+  runName !== "R3b2" &&
+  runName !== "R3c-off" &&
+  runName !== "R3c-on" &&
+  runName !== "R4" &&
+  runName !== "R4b" &&
+  runName !== "R4c" &&
+  runName !== "R4d" &&
+  runName !== "R4e" &&
+  runName !== "R4f"
+) {
+  console.error(
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e or R4f, got: ${runName}`,
+  );
   process.exit(2);
 }
+// R0d, R4, R4b, R4c (the post-council re-run: the speaker-cut gap now
+// goes to a neighbor) and R4d (phase 4b: forced alignment at speaker
+// cuts, spec 3.6) run with diarization on; every other run with R0's
+// settings (diarization off).
+const diarizationOn =
+  runName === "R0d" ||
+  runName === "R4" ||
+  runName === "R4b" ||
+  runName === "R4c" ||
+  runName === "R4d" ||
+  runName === "R4e" ||
+  runName === "R4f";
+// The previous-chunk context setting (owner decision 2026-10-07):
+// R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
+// had context on — the setting did not exist yet); every other run
+// removes the row (off).
+const asrContextOn =
+  runName === "R3c-on" || runName === "R3b" || runName === "R3b2";
 if (port === 4649) {
   console.error("refusing to use port 4649 (the installed app owns it)");
   process.exit(2);
@@ -76,26 +116,40 @@ rmSync(logPath, { force: true });
   db.prepare("DELETE FROM meeting_summaries WHERE meeting_id = ?").run(
     meetingId,
   );
+  // Phase 4: stale diarizer turns from a previous run must not leak into
+  // this run's metrics (multiTurnChunks reads the table).
+  try {
+    db.prepare("DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?").run(
+      meetingId,
+    );
+  } catch {
+    // The scratch DB predates the phase 4 table: nothing to delete.
+  }
   db.prepare(
     `UPDATE meetings
      SET status = 'recorded', language = NULL, error = NULL,
          stt_provider = NULL, stt_model = NULL
      WHERE id = ?`,
   ).run(meetingId);
-  if (runName === "R0") {
+  // Phase 4 decision 6 (2026-10-06): a MISSING row now reads ON, so the
+  // off runs must write an explicit "false" — deleting the row would
+  // leave diarization on.
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES ('meeting_diarization_enabled', ?) \
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).run(diarizationOn ? "true" : "false");
+  if (asrContextOn) {
     db.prepare(
-      "DELETE FROM settings WHERE key = 'meeting_diarization_enabled'",
-    ).run();
-  } else {
-    db.prepare(
-      "INSERT INTO settings (key, value) VALUES ('meeting_diarization_enabled', 'true') \
+      "INSERT INTO settings (key, value) VALUES ('meeting_asr_context', 'true') \
        ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     ).run();
+  } else {
+    db.prepare("DELETE FROM settings WHERE key = 'meeting_asr_context'").run();
   }
   db.close();
 }
 console.log(
-  `reset scratch DB for ${runName} (diarization ${runName === "R0" ? "off" : "on"})`,
+  `reset scratch DB for ${runName} (diarization ${diarizationOn ? "on" : "off"}, context setting ${asrContextOn ? "on" : "off"})`,
 );
 
 // --- 2. Start the isolated server ---------------------------------------
@@ -106,6 +160,36 @@ env.OPENSTYLE_DB_PATH = dbPath;
 env.PORT = String(port);
 env.HOST = "127.0.0.1";
 env.OPENSTYLE_AUTH_TOKEN = token;
+// Every isolated server gets a SCRATCH Hugging Face cache (phase 4b, spec
+// 3.6): the automatic aligner download (~1.2 GB) goes here, never into
+// the user's ~/.cache/huggingface. R4d reads the aligner from the same
+// env-scoped cache (hfCacheRoot honors HF_HOME/HF_HUB_CACHE).
+env.HF_HOME = "/tmp/meeting-p4b-hf/hf";
+env.HF_HUB_CACHE = "/tmp/meeting-p4b-hf/hf/hub";
+// Isolation (council review, 2026-10-07): the managed runtime folder
+// ~/.cache/freestyle/mlx-asr/runtime is the OWNER's integrity-verified
+// cache and must never be written by the proof runs (it was
+// re-downloaded once, at 15:48, by an R0d run without this override).
+// Every isolated server therefore gets the dev-built local bundle
+// (documented trusted-operator override) — it carries the "align"
+// handler and the behavior is identical for runs that never spawn a
+// worker (R0). The R0d runs of this round onward are NOT the old
+// fallback-path runs.
+{
+  const localWorker = join(
+    repoRoot,
+    "dist",
+    "mlx_asr_worker",
+    "mlx_asr_worker",
+  );
+  if (!existsSync(localWorker)) {
+    console.error(
+      `the proof runs need the dev worker bundle at ${localWorker} (scripts/build_mlx_asr_worker.sh)`,
+    );
+    process.exit(2);
+  }
+  env.OPENSTYLE_MLX_ASR_WORKER = localWorker;
+}
 
 const logStream = createWriteStream(logPath, { flags: "a" });
 const server = spawn(process.execPath, ["../server/dist/startup.js"], {
@@ -247,6 +331,17 @@ try {
       ];
       if (diarizerSecondsRaw !== undefined) {
         args.push("--diarizer-seconds", diarizerSecondsRaw);
+      }
+      // R4d (spec 3.6): edgeWordsLost/edgeWordsAdded need the R0d side —
+      // the r3a dump (R0's output: same boundaries and text as R0d; R0d
+      // only adds the labels the metric ignores).
+      if (runName === "R4d" || runName === "R4e" || runName === "R4f") {
+        const r0d = join(
+          scratch,
+          "compare",
+          `r3a-${meetingId.slice(0, 8)}.json`,
+        );
+        if (existsSync(r0d)) args.push("--r0d", r0d);
       }
       const m = spawnSync(process.execPath, args, { stdio: "inherit" });
       if (m.status !== 0) exitCode = 1;

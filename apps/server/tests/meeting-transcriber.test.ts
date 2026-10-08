@@ -7,7 +7,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import {
   type ChunkResult,
@@ -24,6 +31,7 @@ import type {
   TranscribeResult,
   TranscriptionProvider,
 } from "../src/lib/streaming/types.js";
+import { contextTail } from "../src/lib/vocabulary-bias.js";
 import { WHISPER_PROVIDER_ID } from "../src/lib/whisper/constants.js";
 import { buildWav } from "./helpers/wav.js";
 
@@ -63,9 +71,20 @@ function makeFakeProvider(
   opts: {
     providerId?: string;
     failFirst?: number;
+    /** Scripted per-call text responses (cycled), for the phase 3b
+     * context/echo tests. Unset keeps the default `text-<n>` sequence. */
+    texts?: string[];
+    /** Per-call response override (wins over texts), keyed on the call's
+     * audio bytes — for the lane-isolation test, where the lanes' calls
+     * interleave and a global sequence can't address them. */
+    respond?: (audio: Uint8Array) => string;
+    /** 1-based call numbers at which the provider throws. */
+    throwOnCalls?: number[];
     failWith?: () => Error;
     delayTicks?: number;
-    onCall?: () => void | Promise<void>;
+    /** Called (with the call's audio byte count) while the call is in
+     * flight — a gate or delay here holds the worker. */
+    onCall?: (bytes: number) => void | Promise<void>;
   } = {},
 ) {
   const calls: FakeCall[] = [];
@@ -87,14 +106,23 @@ function makeFakeProvider(
           ...(o.language ? { language: o.language } : {}),
           startedAt: Date.now(),
         });
-        await opts.onCall?.();
+        await opts.onCall?.(o.audio.length);
         // Yield so concurrent workers actually overlap.
         await Promise.resolve();
         if (failures > 0) {
           failures--;
           throw opts.failWith?.() ?? new Error("boom");
         }
-        return { text: `text-${calls.length}` };
+        if (opts.throwOnCalls?.includes(calls.length)) {
+          throw new Error(`scripted throw on call ${calls.length}`);
+        }
+        return {
+          text: opts.respond
+            ? opts.respond(o.audio)
+            : opts.texts
+              ? (opts.texts[(calls.length - 1) % opts.texts.length] ?? "")
+              : `text-${calls.length}`,
+        };
       } finally {
         inFlight--;
       }
@@ -120,6 +148,10 @@ function makeDeps(
     }),
     sleep: () => Promise.resolve(),
     backoffBaseMs: 0,
+    // Phase 3b: a hermetic language-ID seam (no tinyld in unit tests).
+    // No candidates = NO context (owner decision 2026-10-06); individual
+    // tests override it with a real candidate.
+    detectAll: () => [],
     ...overrides,
   };
 }
@@ -202,11 +234,14 @@ describe("MeetingTranscriber", () => {
     }
   });
 
-  it("caps concurrency at 2 for cloud providers", async () => {
-    const dir = makeMeetingDir({ mic: 10_000, system: 100 });
+  // Phase 3a (specs/meeting-transcription-v2.md §3.1): lanes. Every test
+  // below uses distinct chunk durations so a call's audio byte count
+  // identifies its chunk (1 s = 32 044 bytes, +32 000 per second).
+  it("runs the two lanes in parallel: one chunk in flight per lane, each lane starts with its first chunk (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 9000 });
     const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let started = 0;
-    const { provider, maxInFlight } = makeFakeProvider({
+    const { provider, calls, maxInFlight } = makeFakeProvider({
       onCall: async () => {
         started++;
         if (started === 2) release();
@@ -214,20 +249,121 @@ describe("MeetingTranscriber", () => {
       },
     });
     const t = new MeetingTranscriber(makeDeps(provider));
-    const results = await run(t, dir, {
+    const runPromise = t.run({
+      meetingDir: dir,
       micSegments: [
-        { startMs: 0, endMs: 1000 },
-        { startMs: 1000, endMs: 2000 },
-        { startMs: 2000, endMs: 3000 },
-        { startMs: 3000, endMs: 4000 },
+        { startMs: 0, endMs: 1000 }, // 32 044 bytes
+        { startMs: 2000, endMs: 4000 }, // 64 044
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 3000 }, // 96 044
+        { startMs: 4000, endMs: 8000 }, // 128 044
       ],
     });
+    // Both lanes have a chunk in flight — the gate released at 2.
+    await gate;
+    expect(started).toBe(2);
+    // One chunk from each lane: mic[0] then system[0]. The old pool would
+    // hold the first two tasks, both mic (32 044 then 64 044).
+    expect(calls.slice(0, 2).map((c) => c.bytes)).toEqual([32_044, 96_044]);
+    release();
+    const results = await runPromise;
     expect(results).toHaveLength(4);
     expect(maxInFlight()).toBe(2);
   });
 
-  it("shouldStop checked between chunk tasks: in-flight chunks finish, unstarted chunks never run (holes in results)", async () => {
-    const dir = makeMeetingDir({ mic: 10_000, system: 100 });
+  it("keeps chunk order within each lane: the next chunk starts only after the previous one finishes (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 9000 });
+    // Each chunk has a distinct byte count; bytes < 96 044 are mic.
+    // The first chunk of each lane is held on its own gate — a lane that
+    // ran its chunks in parallel would start its second chunk while the
+    // first is still in flight.
+    const { promise: micGate, resolve: releaseMic } =
+      Promise.withResolvers<void>();
+    const { promise: sysGate, resolve: releaseSys } =
+      Promise.withResolvers<void>();
+    const { promise: bothStarted, resolve: announceBoth } =
+      Promise.withResolvers<void>();
+    let micFirst = true;
+    let sysFirst = true;
+    const startedBytes: number[] = [];
+    const { provider } = makeFakeProvider({
+      onCall: async (bytes) => {
+        startedBytes.push(bytes);
+        if (bytes < 96_044) {
+          if (micFirst) {
+            micFirst = false;
+            if (!sysFirst) announceBoth();
+            await micGate;
+          }
+        } else if (sysFirst) {
+          sysFirst = false;
+          if (!micFirst) announceBoth();
+          await sysGate;
+        }
+      },
+    });
+    const t = new MeetingTranscriber(makeDeps(provider));
+    const runPromise = t.run({
+      meetingDir: dir,
+      micSegments: [
+        { startMs: 0, endMs: 1000 }, // 32 044 bytes
+        { startMs: 2000, endMs: 4000 }, // 64 044
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 3000 }, // 96 044
+        { startMs: 4000, endMs: 8000 }, // 128 044
+      ],
+    });
+    // Both lanes have a chunk in flight — one per lane, in lane order.
+    await bothStarted;
+    expect(startedBytes).toEqual([32_044, 96_044]);
+    releaseMic();
+    releaseSys();
+    const results = await runPromise;
+    expect(results).toHaveLength(4);
+    // Start order within each lane is the chunk order.
+    expect(startedBytes.filter((b) => b < 96_044)).toEqual([32_044, 64_044]);
+    expect(startedBytes.filter((b) => b >= 96_044)).toEqual([96_044, 128_044]);
+  });
+
+  it("lanes: false keeps the old shared cursor and pool (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 9000 });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let started = 0;
+    const { provider, calls, maxInFlight } = makeFakeProvider({
+      onCall: async () => {
+        started++;
+        if (started === 2) release();
+        await gate;
+      },
+    });
+    const t = new MeetingTranscriber(makeDeps(provider));
+    const runPromise = t.run({
+      meetingDir: dir,
+      micSegments: [
+        { startMs: 0, endMs: 1000 }, // 32 044 bytes
+        { startMs: 2000, endMs: 4000 }, // 64 044
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 3000 }, // 96 044
+        { startMs: 4000, endMs: 8000 }, // 128 044
+      ],
+      lanes: false,
+    });
+    await gate;
+    // The old pool takes the first two tasks — both mic — while the lanes
+    // path would hold one chunk per lane (mic[0] and system[0]).
+    expect(calls.slice(0, 2).map((c) => c.bytes)).toEqual([32_044, 64_044]);
+    release();
+    const results = await runPromise;
+    expect(results).toHaveLength(4);
+    expect(results.every((r) => r?.status === "ok")).toBe(true);
+    expect(maxInFlight()).toBe(2);
+  });
+
+  it("shouldStop stops each lane between chunk tasks: in-flight chunks finish, unstarted chunks never run (holes in results) (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 10_000, system: 10_000 });
     const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     let started = 0;
     const { provider, calls } = makeFakeProvider({
@@ -245,26 +381,29 @@ describe("MeetingTranscriber", () => {
         onChunk: (c) => onChunk.push(c),
       }),
     );
-    const runPromise = run(t, dir, {
+    const runPromise = t.run({
+      meetingDir: dir,
       micSegments: [
         { startMs: 0, endMs: 1000 },
-        { startMs: 1000, endMs: 2000 },
         { startMs: 2000, endMs: 3000 },
-        { startMs: 3000, endMs: 4000 },
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 1000 },
+        { startMs: 2000, endMs: 3000 },
       ],
     });
-    // Wait until both workers have a chunk in flight, then cancel.
+    // Wait until both lanes have a chunk in flight, then cancel.
     await gate;
     stop = true;
     release();
     const results = await runPromise;
-    // Only the two in-flight chunks ran; their results (and only theirs)
-    // are present, the rest are holes.
+    // Only the two in-flight chunks ran (one per lane); their results
+    // (and only theirs) are present, the rest are holes.
     expect(calls).toHaveLength(2);
     expect(onChunk).toHaveLength(2);
     expect(results).toHaveLength(4);
     expect(results.filter((r) => r !== undefined)).toHaveLength(2);
-    expect(results[2]).toBeUndefined();
+    expect(results[1]).toBeUndefined();
     expect(results[3]).toBeUndefined();
   });
 
@@ -281,6 +420,31 @@ describe("MeetingTranscriber", () => {
         { startMs: 2000, endMs: 3000 },
       ],
     });
+    expect(maxInFlight()).toBe(1);
+  });
+
+  it("runs local-whisper lane by lane: the mic lane first, then the system lane, one at a time (phase 3a)", async () => {
+    const dir = makeMeetingDir({ mic: 5000, system: 9000 });
+    const { provider, calls, maxInFlight } = makeFakeProvider({
+      providerId: WHISPER_PROVIDER_ID,
+    });
+    const t = new MeetingTranscriber(makeDeps(provider));
+    const results = await t.run({
+      meetingDir: dir,
+      micSegments: [
+        { startMs: 0, endMs: 1000 }, // 32 044 bytes
+        { startMs: 2000, endMs: 4000 }, // 64 044
+      ],
+      systemSegments: [
+        { startMs: 0, endMs: 3000 }, // 96 044
+        { startMs: 4000, endMs: 8000 }, // 128 044
+      ],
+    });
+    expect(results).toHaveLength(4);
+    // Same order as today's single pool: all mic chunks, then system.
+    expect(calls.map((c) => c.bytes)).toEqual([
+      32_044, 64_044, 96_044, 128_044,
+    ]);
     expect(maxInFlight()).toBe(1);
   });
 
@@ -619,8 +783,10 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
     expect(config.apiKey).toBe("sk-stored-test");
     expect(config.differsFromDictation).toBe(true);
     // The bias is built for the STORED provider/model, not the default.
-    expect(config.bias?.kind).toBe("prompt");
-    expect(config.bias?.text).toContain("Qwen3");
+    expect(config.bias).toEqual({
+      kind: "prompt",
+      text: expect.stringContaining("Qwen3"),
+    });
   });
 
   it("lets an explicit row override win over the setting (retry-failed, I3)", async () => {
@@ -640,5 +806,408 @@ describe("createDefaultTranscriberDeps (meeting model, I3)", () => {
     const config = deps.resolveConfig();
     expect(config.modelId).toBe("mlx/row-model");
     expect(config.differsFromDictation).toBe(true);
+  });
+});
+
+// Phase 3b (specs/meeting-transcription-v2.md §3.1): the previous-chunk
+// context (I1) and the echo guard. The context travels with the LANE — the
+// last 200 characters (from a word boundary) of the previous chunk's
+// cleaned text on the same channel, appended to the bias prompt (terms
+// first, context last) — with guards, plus one retry without context when
+// the model echoes the context back as fake speech.
+describe("phase 3b: previous-chunk context and echo guard (I1, §3.1)", () => {
+  // Owner decision 2026-10-07: the context ships OFF by default behind the
+  // `meeting_asr_context` setting. These tests exercise the ON behavior,
+  // so setup writes the row by default; the setting tests below manage it
+  // themselves. A missing row (the beforeEach state) means off.
+  beforeEach(() => {
+    deleteSetting("meeting_asr_context");
+  });
+
+  // A prompt-taking provider ("server") and one channel (mic only), so the
+  // chunks run sequentially in a single lane.
+  function setup(
+    opts: {
+      micDurationMs?: number;
+      config?: Partial<SttConfig>;
+      deps?: Partial<TranscriberDeps>;
+      texts?: string[];
+      failFirst?: number;
+      throwOnCalls?: number[];
+      contextOn?: boolean;
+    } = {},
+  ) {
+    if (opts.contextOn ?? true) {
+      writeSetting("meeting_asr_context", "true");
+    }
+    const dir = makeMeetingDir({
+      mic: opts.micDurationMs ?? 10_000,
+      system: 1_000,
+    });
+    const fake = makeFakeProvider({
+      providerId: "server",
+      texts: opts.texts,
+      failFirst: opts.failFirst,
+      throwOnCalls: opts.throwOnCalls,
+    });
+    const t = new MeetingTranscriber(
+      makeDeps(
+        fake.provider,
+        {
+          // Context only applies when the guard finds the meeting
+          // language (owner decision 2026-10-06: no candidate means no
+          // context); tests that need the other behaviors override this.
+          detectAll: () => [{ lang: "en", accuracy: 0.9 }],
+          ...opts.deps,
+        },
+        opts.config,
+      ),
+    );
+    return { dir, fake, t };
+  }
+
+  const twoChunks = [
+    { startMs: 0, endMs: 4000 },
+    { startMs: 4000, endMs: 8000 },
+  ];
+
+  it("context is the last 200 characters from a word boundary, after the terms", async () => {
+    // 40 five-letter words = 239 chars: the 200-char slice starts mid-word.
+    const longText = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+    expect(longText.length).toBeGreaterThan(200);
+    const { dir, fake, t } = setup({ texts: [longText, "second chunk"] });
+    await run(t, dir, { micSegments: twoChunks });
+    const tail = contextTail(longText);
+    expect(tail.length).toBeLessThanOrEqual(200);
+    expect(longText.endsWith(tail)).toBe(true);
+    // The cut starts at a whole word, not mid-word.
+    expect(/^word\d+/.test(tail)).toBe(true);
+    // No context on the first chunk; terms first, context last on the next.
+    expect(fake.calls[0]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+    expect(fake.calls[1]!.bias).toEqual({
+      kind: "prompt",
+      text: `vocab ${tail}`,
+    });
+  });
+
+  it("no context when the chunk is under 3s (the bias guard constant)", async () => {
+    const { dir, fake, t } = setup({
+      texts: ["first chunk speech", "short"],
+    });
+    await run(t, dir, {
+      micSegments: [
+        { startMs: 0, endMs: 4000 },
+        { startMs: 4000, endMs: 6000 },
+      ],
+    });
+    // 2s chunk: base bias withheld too, so the call carries no bias at all.
+    expect(fake.calls[1]!.bias).toBeNull();
+  });
+
+  it("no context after an empty chunk", async () => {
+    const { dir, fake, t } = setup({
+      texts: ["", "next chunk speech"],
+    });
+    const results = await run(t, dir, { micSegments: twoChunks });
+    expect(results[0]!.status).toBe("empty");
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("no context after a failed chunk", async () => {
+    const { dir, fake, t } = setup({
+      failFirst: 1,
+      deps: { maxAttempts: 1 },
+    });
+    const results = await run(t, dir, { micSegments: twoChunks });
+    expect(results[0]!.status).toBe("failed");
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("no context across a gap longer than 30s", async () => {
+    const { dir, fake, t } = setup({
+      micDurationMs: 45_000,
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, {
+      micSegments: [
+        { startMs: 0, endMs: 4000 },
+        { startMs: 40_000, endMs: 44_000 },
+      ],
+    });
+    // 40000 - 4000 = 36000 > 30000.
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("keeps context across a gap of exactly 30s", async () => {
+    const { dir, fake, t } = setup({
+      micDurationMs: 40_000,
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, {
+      micSegments: [
+        { startMs: 0, endMs: 4000 },
+        { startMs: 34_000, endMs: 38_000 },
+      ],
+    });
+    // 34000 - 4000 = 30000, not over the limit.
+    expect(fake.calls[1]!.bias).toEqual({
+      kind: "prompt",
+      text: "vocab first chunk speech",
+    });
+  });
+
+  it("no context when config.language is undefined", async () => {
+    const { dir, fake, t } = setup({
+      config: { language: undefined },
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, { micSegments: twoChunks });
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("no context when the language guard detects a different language", async () => {
+    const { dir, fake, t } = setup({
+      deps: { detectAll: () => [{ lang: "pt", accuracy: 1 }] },
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, { micSegments: twoChunks });
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("drops context when the language guard has no candidate (owner decision)", async () => {
+    const { dir, fake, t } = setup({
+      deps: { detectAll: () => [] },
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, { micSegments: twoChunks });
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("keeps context when the language guard finds the meeting language", async () => {
+    const { dir, fake, t } = setup({
+      deps: { detectAll: () => [{ lang: "en", accuracy: 0.9 }] },
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, { micSegments: twoChunks });
+    expect(fake.calls[1]!.bias).toEqual({
+      kind: "prompt",
+      text: "vocab first chunk speech",
+    });
+  });
+
+  it("no context for term-list providers (deepgram keeps its keyterms)", async () => {
+    const dir = makeMeetingDir({ mic: 10_000, system: 1_000 });
+    const fake = makeFakeProvider({ providerId: "deepgram" });
+    const t = new MeetingTranscriber(
+      makeDeps(fake.provider, undefined, {
+        bias: { kind: "deepgram-keyterms", terms: ["Openstyle"] },
+      }),
+    );
+    await run(t, dir, { micSegments: twoChunks });
+    expect(fake.calls[1]!.bias).toEqual({
+      kind: "deepgram-keyterms",
+      terms: ["Openstyle"],
+    });
+  });
+
+  it("no context on the old pool (lanes: false)", async () => {
+    const { dir, fake, t } = setup({
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, { micSegments: twoChunks, lanes: false });
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("an echo of the context triggers a retry without context", async () => {
+    const first = "alpha beta gamma delta epsilon";
+    const echo = "gamma delta epsilon"; // contiguous 3-word run of the context
+    const { dir, fake, t } = setup({
+      texts: [first, echo, "the real answer came here"],
+    });
+    const results = await run(t, dir, { micSegments: twoChunks });
+    expect(results[1]!.text).toBe("the real answer came here");
+    expect(results[1]!.status).toBe("ok");
+    // Chunk 1 was transcribed twice: with context, then without.
+    expect(fake.calls).toHaveLength(3);
+    expect(fake.calls[1]!.bias).toEqual({
+      kind: "prompt",
+      text: "vocab alpha beta gamma delta epsilon",
+    });
+    expect(fake.calls[2]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("empty text after the echo retry is an empty chunk", async () => {
+    const first = "alpha beta gamma delta epsilon";
+    const { dir, fake, t } = setup({
+      texts: [first, "beta gamma delta", ""],
+    });
+    const results = await run(t, dir, { micSegments: twoChunks });
+    expect(results[1]!.text).toBe("");
+    expect(results[1]!.status).toBe("empty");
+    expect(fake.calls).toHaveLength(3);
+  });
+
+  it("no context after a chunk rejected by the hallucination filter", async () => {
+    // "thank you" is an exact silence hallucination (merge.ts HALLUCINATION
+    // list): the lane must treat the chunk as unclean, though its status
+    // is ok. The exact rule fires on any UNLABELED chunk, whatever its
+    // padded length (phase 4, decision owner 2026-10-07: the skip is the
+    // label only — an earlier >1 s clause let padded silence chunks
+    // survive everywhere), so this "thank you" is filtered at any size.
+    const { dir, fake, t } = setup({
+      texts: ["thank you", "next chunk speech"],
+    });
+    const results = await run(t, dir, {
+      micSegments: [
+        { startMs: 0, endMs: 4000 },
+        { startMs: 4000, endMs: 8000 },
+      ],
+    });
+    expect(results[0]!.status).toBe("ok");
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("no context after a chunk rejected by the vocab-leak filter", async () => {
+    // The whole text is drawn from the vocabulary (bias "vocab"): the
+    // lane must treat the chunk as filtered, though its status is ok.
+    const { dir, fake, t } = setup({
+      texts: ["vocab vocab vocab", "next chunk speech"],
+    });
+    const results = await run(t, dir, { micSegments: twoChunks });
+    expect(results[0]!.status).toBe("ok");
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("two parallel lanes never cross context (mic vs system)", async () => {
+    // The setting is on for this test (it builds the transcriber directly,
+    // bypassing setup's default write).
+    writeSetting("meeting_asr_context", "true");
+    // The respond hook keys on the FIRST SAMPLE of the slice: the test
+    // WAV fills sample i with i % 32768, so the low byte is
+    // 16 * (startMs % 16) — four distinct start residues give four
+    // distinct bytes the lanes' calls can be told apart on, whatever
+    // order the parallel lanes complete in.
+    const dir = makeMeetingDir({ mic: 12_000, system: 12_000 });
+    const fake = makeFakeProvider({
+      providerId: "server",
+      respond: (audio) => {
+        const b = audio[44] ?? 0;
+        if (b === 0) return "MIC first chunk text"; // mic chunk 0: start 0
+        if (b === 16) return "SYSTEM first chunk text"; // system: start 1 ms
+        return "ok second chunk";
+      },
+    });
+    const t = new MeetingTranscriber(
+      makeDeps(fake.provider, {
+        detectAll: () => [{ lang: "en", accuracy: 0.9 }],
+      }),
+    );
+    await run(t, dir, {
+      micSegments: [
+        { startMs: 0, endMs: 4000 },
+        { startMs: 4002, endMs: 8002 },
+      ],
+      systemSegments: [
+        { startMs: 1, endMs: 4001 },
+        { startMs: 5003, endMs: 9003 },
+      ],
+    });
+    expect(fake.calls).toHaveLength(4);
+    const biasTexts = fake.calls.map((c) =>
+      c.bias && typeof c.bias === "object" && "text" in c.bias
+        ? (c.bias as { text: string }).text
+        : "",
+    );
+    // Each chunk 1 carries ITS OWN lane's chunk 0 — never the other's.
+    expect(
+      biasTexts.filter((b) => b === "vocab MIC first chunk text"),
+    ).toHaveLength(1);
+    expect(
+      biasTexts.filter((b) => b === "vocab SYSTEM first chunk text"),
+    ).toHaveLength(1);
+    expect(biasTexts.filter((b) => b === "vocab")).toHaveLength(2);
+  });
+
+  it("an echo retry that throws falls into the normal attempt retry", async () => {
+    // Chunk 1: the context call echoes, the no-context retry throws. The
+    // error must land in the attempt loop, not crash the run. With
+    // maxAttempts 1 the attempts are exhausted and the chunk is failed.
+    const first = "alpha beta gamma delta epsilon";
+    const echo = "gamma delta epsilon";
+    const { dir, fake, t } = setup({
+      texts: [first, echo],
+      throwOnCalls: [3],
+      deps: { maxAttempts: 1 },
+    });
+    const results = await run(t, dir, { micSegments: twoChunks });
+    expect(results[0]!.status).toBe("ok");
+    expect(results[1]!.status).toBe("failed");
+    // call 1: chunk 0; call 2: chunk 1 with context (echo); call 3: the
+    // no-context retry, which throws.
+    expect(fake.calls).toHaveLength(3);
+    expect(fake.calls[2]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it("a full-prompt echo (label + terms + context) retries and never becomes context", async () => {
+    // The feedback loop the guard exists for: the model returns the WHOLE
+    // sent prompt — "Technical terms: A, B, C <context words>". The
+    // context words dilute the terms-only leak ratio and the label prefix
+    // breaks the context-only echo match, so both must be widened:
+    // echo check against the really-sent prompt, leak check against
+    // terms+context, and a result carrying the label never becomes the
+    // next chunk's context. (The context is long enough that the full
+    // echo stays a close paraphrase: Jaccard 15/17 >= 0.8.)
+    const terms = "Technical terms: AlphaCo, BetaLab";
+    const first =
+      "the quarter close plan is to ship the lane change first today";
+    const fullEcho = `${terms} ${first}`;
+    const { dir, fake, t } = setup({
+      config: { bias: { kind: "prompt", text: terms } },
+      texts: [first, fullEcho, fullEcho],
+    });
+    const results = await run(t, dir, {
+      micSegments: [
+        { startMs: 0, endMs: 4000 },
+        { startMs: 4000, endMs: 8000 },
+        { startMs: 8000, endMs: 12000 },
+      ],
+    });
+    // Chunk 1: the context call got the full prompt (label + terms +
+    // context), was detected as an echo, retried WITHOUT context; the
+    // retry returned the echo again, so the chunk stores it.
+    expect(results[1]!.text).toBe(fullEcho);
+    expect(results[1]!.status).toBe("ok");
+    expect(fake.calls).toHaveLength(4);
+    // call 2: chunk 1 with context — the bias is the full prompt.
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: fullEcho });
+    // call 3: the no-context retry of chunk 1.
+    expect(fake.calls[2]!.bias).toEqual({ kind: "prompt", text: terms });
+    // call 4: chunk 2 with NO context — the echoed chunk carries the
+    // terms label and is a terms+context leak, so the lane keeps nothing
+    // from it.
+    expect(fake.calls[3]!.bias).toEqual({ kind: "prompt", text: terms });
+  });
+
+  it("no context on any chunk when the setting row is missing (off by default)", async () => {
+    // contextOn: false keeps the beforeEach state: no row at all.
+    const { dir, fake, t } = setup({
+      contextOn: false,
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    await run(t, dir, { micSegments: twoChunks });
+    // Both chunks carry the plain bias — the lane ran, but no context.
+    expect(fake.calls[0]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+  });
+
+  it('no context when the setting is "false"', async () => {
+    const { dir, fake, t } = setup({
+      contextOn: false,
+      texts: ["first chunk speech", "second chunk speech"],
+    });
+    writeSetting("meeting_asr_context", "false");
+    await run(t, dir, { micSegments: twoChunks });
+    expect(fake.calls[0]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+    expect(fake.calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
   });
 });

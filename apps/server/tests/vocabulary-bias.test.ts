@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAsrVocabularyBias,
+  combinePrompt,
+  contextTail,
+  providerTakesPrompt,
   vocabularyBiasTerms,
 } from "../src/lib/vocabulary-bias.js";
 
@@ -385,5 +388,109 @@ describe("vocabularyBiasTerms", () => {
         text: "Openstyle: our voice dictation app",
       }),
     ).toEqual(["Openstyle"]);
+  });
+});
+
+// Phase 3b (specs/meeting-transcription-v2.md §3.1): the five prompt
+// providers and the terms-first / context-last combined prompt.
+describe("providerTakesPrompt", () => {
+  it("accepts the five prompt providers and nothing else", () => {
+    for (const id of [
+      "local-whisper",
+      "server",
+      "openai",
+      "groq",
+      "local-mlx",
+    ]) {
+      expect(providerTakesPrompt(id)).toBe(true);
+    }
+    for (const id of ["deepgram", "elevenlabs", "soniox", "fake", ""]) {
+      expect(providerTakesPrompt(id)).toBe(false);
+    }
+  });
+});
+
+describe("combinePrompt", () => {
+  const context =
+    "and so the quarter close plan is to ship the lane change first";
+
+  it("puts terms first and context last", () => {
+    const out = combinePrompt("PortifolioZero, churrasqueira", context);
+    expect(out.startsWith("PortifolioZero, churrasqueira ")).toBe(true);
+    expect(out.endsWith(context)).toBe(true);
+    expect(out).toBe(`PortifolioZero, churrasqueira ${context}`);
+  });
+
+  it("never exceeds the 900-char budget, cutting terms at the last comma", () => {
+    // 300 terms x ~10 chars ≈ 3000 — far over the budget.
+    const termsText = terms(300).join(", ");
+    const out = combinePrompt(termsText, context);
+    expect(out.length).toBeLessThanOrEqual(900);
+    expect(out.endsWith(context)).toBe(true);
+    // The cut is at a comma boundary: no term is truncated mid-word.
+    const keptTerms = out.slice(0, out.length - context.length - 1);
+    for (const piece of keptTerms.split(", ")) {
+      expect(termsText.split(", ")).toContain(piece);
+    }
+  });
+
+  it("keeps short terms uncut and adds the context within the budget", () => {
+    const out = combinePrompt("PortifolioZero", context);
+    expect(out.length).toBeLessThanOrEqual(900);
+    expect(out.startsWith("PortifolioZero ")).toBe(true);
+  });
+
+  it("truncates the context to its 200-char word-boundary tail", () => {
+    const longContext = `${"w ".repeat(300)}end word`; // ~900 chars
+    const out = combinePrompt("PortifolioZero", longContext);
+    expect(out.length).toBeLessThanOrEqual(900);
+    expect(out.startsWith("PortifolioZero ")).toBe(true);
+    const ctxPart = out.slice("PortifolioZero ".length);
+    expect(ctxPart.length).toBeLessThanOrEqual(200);
+    expect(ctxPart.endsWith("end word")).toBe(true);
+  });
+
+  it("returns the bias text unchanged for an empty context", () => {
+    expect(combinePrompt("PortifolioZero", "")).toBe("PortifolioZero");
+    expect(combinePrompt("PortifolioZero", "   ")).toBe("PortifolioZero");
+  });
+
+  it("returns the context alone when there are no terms", () => {
+    expect(combinePrompt("", context)).toBe(context);
+  });
+});
+
+// Phase 3b review: contextTail word-boundary and surrogate-pair rules.
+describe("contextTail", () => {
+  it("keeps the first word when the slice already starts at a word boundary", () => {
+    // 70 "xx" words (210-1 chars) + 15-char tail = 224; the 200-char
+    // slice starts at char 24, right after a space — the whole "xx" word
+    // must stay (the old code cut it off).
+    const text = `${"xx ".repeat(70).trim()} alpha beta del`;
+    expect(text.length).toBe(224);
+    expect(text[23]).toBe(" ");
+    const tail = contextTail(text);
+    expect(tail).toBe(text.slice(24));
+    expect(tail).toHaveLength(200);
+    expect(tail.startsWith("xx ")).toBe(true);
+  });
+
+  it("cuts a mid-word start at the first whitespace", () => {
+    // 34 six-letter words + spaces = 237 chars; the 200-char slice
+    // starts at char 37, mid-word. The tail must start at the next word
+    // (char 42), dropping the broken head.
+    const text = "abcdef ".repeat(34).trim();
+    expect(text.length).toBe(237);
+    const tail = contextTail(text);
+    expect(tail).toBe(text.slice(42));
+    expect(tail.startsWith("abcdef")).toBe(true);
+  });
+
+  it("never leaves a lone trailing surrogate when the text has no whitespace", () => {
+    // 198 "a" + U+1D11E (2 code units) + 199 "a" = 399 units; the 200-
+    // unit slice starts exactly on the pair's second half.
+    const text = `${"a".repeat(198)}\u{1D11E}${"a".repeat(199)}`;
+    const tail = contextTail(text);
+    expect(tail).toBe("a".repeat(199));
   });
 });

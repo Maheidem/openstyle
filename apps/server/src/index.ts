@@ -12,6 +12,7 @@ import { authMiddleware, generateAuthToken, setAuthToken } from "./lib/auth.js";
 import { formatError } from "./lib/format-error.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
 import { startMeetingRetentionSweep } from "./lib/meetings/retention.js";
+import { maybeStartAlignerDownload } from "./lib/mlx-asr/aligner.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -208,6 +209,12 @@ export async function startServer(
 
   startHistoryRetentionSweep();
   startMeetingRetentionSweep();
+  // I4b (specs/meeting-transcription-v2.md §3.6 step 1): at server start,
+  // when a meeting exists, the aligner download starts in the background
+  // (once per process, Apple silicon + MLX + diarization on only). The
+  // meeting job starts it again if the server booted before the first
+  // meeting job.
+  maybeStartAlignerDownload();
 
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ noServer: true });

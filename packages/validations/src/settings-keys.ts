@@ -28,6 +28,13 @@ export const SETTINGS_KEYS = {
   llmCleanup: "llm_cleanup",
   llmParameterPresets: "llm_parameter_presets",
   llmTaskAssignments: "llm_task_assignments",
+  /**
+   * I1 (specs/meeting-transcription-v2.md §3.1): the previous-chunk
+   * context for meeting transcription. Decision (owner, 2026-10-07):
+   * OFF by default — only the value `"true"` turns it on; a missing row
+   * or `"false"` means off.
+   */
+  meetingAsrContext: "meeting_asr_context",
   meetingDiarizationEnabled: "meeting_diarization_enabled",
   meetingEnhanceAutoRun: "meeting_enhance_auto_run",
   /**

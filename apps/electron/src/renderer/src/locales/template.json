@@ -762,7 +762,10 @@
       "label": "Meeting transcription",
       "sameAsDictation": "Same as dictation",
       "reloadNote": "A different local model reloads when you dictate.",
-      "notConfigured": "This model is not in your configured list."
+      "notConfigured": "This model is not in your configured list.",
+      "asrTimingReady": "Word timing for speaker changes: ready",
+      "asrTimingDownloading": "Word timing for speaker changes: downloading {{percent}} %",
+      "asrTimingUnavailable": "Word timing for speaker changes: not available on this Mac"
     },
     "picker": {
       "transcription": "Transcription",
@@ -968,6 +971,8 @@
     "diarizationUnavailable": "Speaker labels aren't available in this build.",
     "enhanceAutoLabel": "Auto Enhance",
     "enhanceAutoHint": "Right after a meeting transcribes, clean up its transcript automatically with your default LLM.",
+    "asrContextLabel": "Use previous text as context",
+    "asrContextHint": "Can fix technical terms, can also change names. Off by default.",
     "enhancePromptTitle": "Enhance transcripts automatically?",
     "enhancePromptDesc": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically. The meeting text goes to your default LLM: {{model}} ({{scope}}).",
     "enhancePromptNoLlm": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically with your default LLM.",

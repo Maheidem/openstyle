@@ -48,6 +48,28 @@ export interface MlxAsrModelDef {
   custom?: { revision: string; files: CustomMlxFile[] };
 }
 
+/**
+ * The forced-aligner helper model (specs/meeting-transcription-v2.md
+ * section 3.6): word times for speaker-cut alignment. It is RESOLVABLE by
+ * `getMlxAsrModel` (the worker and download path need it) but is never in
+ * `MLX_ASR_MODELS`, so it never appears in the ASR picker or the catalog.
+ * The 11 supported languages come from the repo's `config.json`
+ * (`support_languages`, checked 2026-10-07); Portuguese is one of them.
+ */
+export const MLX_ALIGNER_MODEL_ID = "qwen3-forced-aligner-0.6b-8bit";
+
+export const MLX_ALIGNER_MODEL: MlxAsrModelDef = {
+  id: MLX_ALIGNER_MODEL_ID,
+  hfId: "mlx-community/Qwen3-ForcedAligner-0.6B-8bit",
+  family: "qwen3-asr",
+  displayName: "Qwen3 Forced Aligner (helper)",
+  sizeBytes: 1_200_000_000,
+  ramRequired: "~2 GB",
+  speed: "Fast",
+  quality: "Helper",
+  quantized: true,
+};
+
 /** App catalog → passed to the worker as `--model <hfId>`. Any mlx-audio STT repo works. */
 export const MLX_ASR_MODELS: MlxAsrModelDef[] = [
   {
@@ -130,7 +152,7 @@ export function getMlxAsrModel(id: string): MlxAsrModelDef | undefined {
   return (
     MLX_ASR_MODELS.find((m) => m.id === id) ??
     LEGACY_MLX_ASR_MODELS.find((m) => m.id === id) ??
-    customResolver(id)
+    (id === MLX_ALIGNER_MODEL_ID ? MLX_ALIGNER_MODEL : customResolver(id))
   );
 }
 

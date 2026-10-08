@@ -11,7 +11,11 @@ import {
   MLX_KEEP_ALIVE_DEFAULT_MINUTES,
 } from "@openstyle/validations";
 import { readSetting } from "../db.js";
-import { getMlxAsrModel, hfRepoCacheDir } from "./constants.js";
+import {
+  getMlxAsrModel,
+  hfRepoCacheDir,
+  MLX_ALIGNER_MODEL_ID,
+} from "./constants.js";
 import { hasRemoteCode } from "./custom-models.js";
 import {
   describeMlxSetupBlocker,
@@ -30,6 +34,15 @@ import {
 const log = createAppLogger("mlx-asr");
 const START_TIMEOUT_MS = 120_000;
 const TRANSCRIBE_TIMEOUT_MS = 300_000;
+/** One forced-aligner call (specs/meeting-transcription-v2.md §3.6 step 4). */
+const ALIGN_TIMEOUT_MS = 10_000;
+
+/** One aligned word span; start/end in seconds relative to the audio start. */
+export interface MlxAlignedWord {
+  text: string;
+  start: number;
+  end: number;
+}
 
 interface WorkerResponse {
   id?: number;
@@ -37,10 +50,11 @@ interface WorkerResponse {
   text?: string;
   error?: string;
   model?: string;
+  words?: MlxAlignedWord[];
 }
 
 interface PendingRequest {
-  resolve: (text: string) => void;
+  resolve: (value: string | MlxAlignedWord[]) => void;
   reject: (err: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
@@ -172,6 +186,95 @@ export async function transcribeWithMlxAsr(opts: {
     await unlink(audioPath).catch(() => undefined);
     if (!opts.deferUnload) scheduleUnload();
   }
+}
+
+export async function alignWithMlxAsr(opts: {
+  /** The aligner model (default: the helper aligner, 3.6). */
+  modelId?: string;
+  audio: Uint8Array;
+  /** Set for raw 16-bit PCM audio. Leave unset for a WAV file. */
+  pcmSampleRate?: number;
+  /** The text to align against the audio (the chunk's own transcription). */
+  text: string;
+  /** The aligner's language name (e.g. "English", "Portuguese"). */
+  language?: string;
+  /** Per-call timeout in ms (default 10 s, 3.6 step 4). */
+  timeoutMs?: number;
+  deferUnload?: boolean;
+}): Promise<MlxAlignedWord[]> {
+  const modelId = opts.modelId ?? MLX_ALIGNER_MODEL_ID;
+  await ensureMlxServerRunning(modelId);
+
+  const isPcm = opts.pcmSampleRate !== undefined;
+  const dir = join(tmpdir(), "openstyle-mlx-asr");
+  await mkdir(dir, { recursive: true });
+  const audioPath = join(dir, `${randomUUID()}.${isPcm ? "pcm" : "wav"}`);
+  await writeFile(audioPath, opts.audio);
+
+  try {
+    return await sendAlignRequest({
+      audioPath,
+      ...(isPcm
+        ? { audioFormat: "pcm_s16le", sampleRate: opts.pcmSampleRate }
+        : {}),
+      text: opts.text,
+      language: opts.language,
+      timeoutMs: opts.timeoutMs ?? ALIGN_TIMEOUT_MS,
+    });
+  } finally {
+    await unlink(audioPath).catch(() => undefined);
+    if (!opts.deferUnload) scheduleUnload();
+  }
+}
+
+function sendAlignRequest(opts: {
+  audioPath: string;
+  audioFormat?: "wav" | "pcm_s16le";
+  sampleRate?: number;
+  text: string;
+  language?: string;
+  timeoutMs: number;
+}): Promise<MlxAlignedWord[]> {
+  clearUnloadTimer();
+
+  const proc = workerProcess;
+  if (!proc?.stdin || !workerReady) {
+    return Promise.reject(new Error("mlx-asr worker is not running"));
+  }
+
+  const id = nextRequestId++;
+  const payload = {
+    id,
+    type: "align",
+    audio_path: opts.audioPath,
+    audio_format: opts.audioFormat ?? "wav",
+    sample_rate: opts.sampleRate,
+    text: opts.text,
+    language: opts.language,
+  };
+
+  return new Promise<MlxAlignedWord[]>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error("MLX ASR alignment timed out."));
+    }, opts.timeoutMs);
+
+    pending.set(id, {
+      resolve: resolve as (v: string | MlxAlignedWord[]) => void,
+      reject,
+      timeout,
+    });
+    proc.stdin?.write(`${JSON.stringify(payload)}\n`, (err) => {
+      if (!err) return;
+      const req = pending.get(id);
+      if (!req) return;
+      pending.delete(id);
+      clearTimeout(req.timeout);
+      req.reject(
+        new Error(`Failed to write to mlx-asr worker: ${err.message}`),
+      );
+    });
+  });
 }
 
 interface WorkerLaunchCandidate {
@@ -369,7 +472,7 @@ function handleWorkerLine(line: string): void {
   const req = pending.get(message.id);
   if (!req) return;
 
-  if (message.type && message.type !== "final") {
+  if (message.type && message.type !== "final" && message.type !== "aligned") {
     return;
   }
 
@@ -377,6 +480,17 @@ function handleWorkerLine(line: string): void {
   clearTimeout(req.timeout);
   if (message.error) {
     req.reject(new Error(message.error));
+    return;
+  }
+  if (message.type === "aligned") {
+    req.resolve(
+      (message.words ?? []).filter(
+        (w) =>
+          typeof w.text === "string" &&
+          Number.isFinite(w.start) &&
+          Number.isFinite(w.end),
+      ),
+    );
     return;
   }
   req.resolve(message.text ?? "");
@@ -413,7 +527,11 @@ function sendTranscribeRequest(opts: {
       reject(new Error("MLX ASR inference timed out."));
     }, TRANSCRIBE_TIMEOUT_MS);
 
-    pending.set(id, { resolve, reject, timeout });
+    pending.set(id, {
+      resolve: resolve as (v: string | MlxAlignedWord[]) => void,
+      reject,
+      timeout,
+    });
     proc.stdin?.write(`${JSON.stringify(payload)}\n`, (err) => {
       if (!err) return;
       const req = pending.get(id);

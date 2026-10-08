@@ -10,6 +10,7 @@
   },
   "ignoreBinaries": [
     "cmake",
+    "ffmpeg",
     "install_name_tool",
     "make",
     "objdump",

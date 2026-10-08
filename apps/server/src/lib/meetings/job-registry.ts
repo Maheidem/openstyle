@@ -19,6 +19,14 @@ export interface MeetingJobProgress {
    * job, which owns its blob outright — a transcribe job's blob is replaced
    * wholesale by `TranscriberDeps.onProgress`, so it never carries this. */
   queued?: { ahead: number; sinceMs: number } | null;
+  /**
+   * The coarse phase of a transcribe job (specs/meeting-transcription-v2.md
+   * §3.4): `"diarizing"` while the diarizer runs before the first chunk,
+   * so the UI does not show 0 of 0 with no explanation. Absent (or
+   * anything else) means the chunk-transcription phase, whose `done`/
+   * `total` are the chunk counters.
+   */
+  phase?: "diarizing" | "transcribing";
 }
 
 /** What kind of job holds a meeting's slot. Transcription jobs (a full

@@ -1,12 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
   collapseAsrLineBreaks,
+  isContextEcho,
   isVocabLeak,
   sanitizeTranscriptText,
   stripThinkingBlocks,
   stripTrailingDuplicate,
   stripVocabLeak,
+  wordEndsSentence,
 } from "./text.js";
+
+describe("wordEndsSentence (phase 4f, §3.6 decision)", () => {
+  it("flags period, question and exclamation ends (ASCII and curly)", () => {
+    expect(wordEndsSentence("here.")).toBe(true);
+    expect(wordEndsSentence("ready?")).toBe(true);
+    expect(wordEndsSentence("ok!")).toBe(true);
+    expect(wordEndsSentence("stop.")).toBe(true);
+    expect(wordEndsSentence("there?\u2019")).toBe(true); // trailing apostrophe
+    expect(wordEndsSentence("“oh,”")).toBe(false); // quotes only
+    expect(wordEndsSentence("here")).toBe(false);
+    expect(wordEndsSentence("")).toBe(false);
+  });
+});
 
 describe("stripThinkingBlocks", () => {
   it("returns text with no think tags byte-identically", () => {
@@ -229,5 +244,69 @@ describe("stripVocabLeak", () => {
   it("is a no-op on empty input", () => {
     expect(stripVocabLeak("", vocabTerms)).toBe("");
     expect(stripVocabLeak("   ", vocabTerms)).toBe("   ");
+  });
+});
+
+// Phase 3b (specs/meeting-transcription-v2.md §3.1): the previous-chunk
+// context echo guard.
+describe("isContextEcho", () => {
+  const context =
+    "and so the quarter close plan is to ship the lane change first";
+
+  it("flags a contiguous run of the context", () => {
+    expect(isContextEcho("the quarter close plan is to ship", context)).toBe(
+      true,
+    );
+    expect(isContextEcho(context, context)).toBe(true);
+    // Case- and punctuation-normalized.
+    expect(isContextEcho("Quarter close plan is to ship!", context)).toBe(true);
+  });
+
+  it("flags a start with 4 or more of the last words of the context", () => {
+    expect(
+      isContextEcho("ship the lane change first and then we go home", context),
+    ).toBe(true);
+    // Three of the last words is not enough — real speech that happens to
+    // rhyme with the context's tail must pass.
+    expect(isContextEcho("lane change first is done", context)).toBe(false);
+  });
+
+  it("flags a close paraphrase (similarity >= 0.8)", () => {
+    expect(
+      isContextEcho(
+        "and so the quarter close plan is to ship the lane change",
+        context,
+      ),
+    ).toBe(true);
+  });
+
+  it("passes unrelated speech", () => {
+    expect(isContextEcho("hello can you repeat the question", context)).toBe(
+      false,
+    );
+    expect(isContextEcho("ship it", context)).toBe(false);
+  });
+
+  it("is a no-op for short results (< 3 words) and an empty context", () => {
+    expect(isContextEcho("the quarter", context)).toBe(false);
+    expect(isContextEcho(context, "")).toBe(false);
+  });
+
+  it("flags a close paraphrase by similarity alone (no contiguous run, no tail start)", () => {
+    const ctx = "one two three four five six seven eight nine ten";
+    // Nine of the ten words, one substitution: Jaccard 9/11 >= 0.8. Not a
+    // contiguous run (the substitution breaks it) and not a tail start.
+    const text = "one two three four five six seven eight nine eleven";
+    expect(isContextEcho(text, ctx)).toBe(true);
+  });
+
+  it("matches word-aligned: no mid-word substring, no partial-word tail prefix", () => {
+    const ctx = "xab cdef ghij klmn opqr";
+    // "ab cdef" straddles the xab/cdef boundary of the context — a string
+    // substring, not a word run: not an echo.
+    expect(isContextEcho("ab cdef ghij", ctx)).toBe(false);
+    // Starts with the 4-word tail but its first word is a LONGER word
+    // (opqrabc): a word-aligned match must reject the partial word.
+    expect(isContextEcho("cdef ghij klmn opqrabc zzz", ctx)).toBe(false);
   });
 });
