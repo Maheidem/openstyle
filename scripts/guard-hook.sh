@@ -150,8 +150,15 @@ while IFS= read -r seg; do
   # Rule b: writes, deletes and moves under the owner's paths.
   if [[ $seg =~ $PROTECTED_RE ]]; then
     case "$word" in
-      rm | rmdir | unlink | shred | trash | touch | mkdir | truncate | chmod | chown | chflags | ln | mv | tee | dd | xattr | defaults)
+      rm | rmdir | unlink | shred | trash | touch | mkdir | truncate | chmod | chown | chflags | ln | mv | tee | dd | xattr)
         block "rule b" "'$word' on a protected path (owner app data, model cache or installed app)."
+        ;;
+      defaults)
+        # 'defaults read' / 'read-type' only read the plist (e.g. the app
+        # version in Info.plist); every other subcommand can write.
+        if ! [[ $seg =~ defaults[[:space:]]+(read|read-type)([[:space:]]|$) ]]; then
+          block "rule b" "'defaults' write on a protected path; only 'defaults read' is allowed."
+        fi
         ;;
       cp | rsync | ditto | install | scp)
         last=$(awk '{print $NF}' <<<"$seg")

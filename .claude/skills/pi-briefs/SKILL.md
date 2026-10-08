@@ -48,6 +48,7 @@ FINAL ANSWER: <what to return>; Simplified Technical English; metrics only for p
 7. Always add the FULL test suite of each changed package to VERIFY (`pnpm vitest run` in `apps/server` and `apps/electron`), not only the files the spec names. On 2026-10-06 a child ran 4 named files; an old registry test in a fifth file failed.
 9. CI runs the server tests on Linux. A test must not depend on Apple silicon: `getDefaultModels()` swaps an MLX voice default to `local-whisper` there. Also run `pnpm run typecheck:tests` in `apps/server`; CI does not run it, so errors there stay hidden.
 8. UI proof screenshots of meeting pages use a fictional meeting or an element crop (see the meeting-benchmarks skill).
+10. Do not leave a tuning choice (a threshold, a cut-off, a weight) open in the brief. Give the value, or tell the child to measure a small grid, report it with `ask_parent`, and wait. On 2026-10-08 the PR #38 child (silence gate) spent its 90-minute box on threshold grids and committed nothing. The trade-off was the owner's to choose. With the value given, a Claude agent finished the PR in 5 minutes.
 
 ## Watch the child
 
