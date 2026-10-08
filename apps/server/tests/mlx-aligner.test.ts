@@ -2,7 +2,7 @@
  * I4b (specs/meeting-transcription-v2.md §3.6): the aligner helper's
  * language mapping and the automatic-download gate.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import {
   _resetAlignerDownloadFlag,
@@ -11,6 +11,18 @@ import {
   maybeStartAlignerDownload,
   shouldStartAlignerDownload,
 } from "../src/lib/mlx-asr/aligner.js";
+
+// The gate's platform inputs are host-dependent (Apple silicon + MLX
+// runtime); force them on so the once-flag test is platform-neutral
+// (Linux CI has neither). Everything else in those modules stays real.
+vi.mock("../src/lib/mlx-asr/constants.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/mlx-asr/constants.js")>()),
+  isAppleSiliconMac: () => true,
+}));
+vi.mock("../src/lib/mlx-asr/server.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/mlx-asr/server.js")>()),
+  canRunMlxAsr: () => true,
+}));
 
 describe("aligner language mapping (I4b, §3.6)", () => {
   it("maps the app's codes to the aligner's 11 names", () => {

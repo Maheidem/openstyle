@@ -134,8 +134,14 @@ interface MeetingsTestOverrides {
   /** I4b: force/forbid the aligner gate in tests (default: the real check).
    * `isAlignerModelReady` and `isAppleSiliconMac` are the other two gate
    * inputs; both are true on this Mac, so a test that wants the fallback
-   * passes `alignerReady: false` (or vice versa). */
+   * passes `alignerReady: false` (or vice versa). The align tests pass the
+   * two platform inputs explicitly so they run on Linux CI too. */
   alignerReady?: boolean;
+  /** I4b: the gate's `isAppleSiliconMac()` input (default: the real check;
+   * the align tests pass true so they are platform-neutral). */
+  appleSilicon?: boolean;
+  /** I4b: the gate's `canRunMlxAsr()` input (default: the real check). */
+  canRunMlx?: boolean;
   /** I4b: the automatic-download trigger (default: the real one). */
   startAlignerDownload?: () => boolean;
   /** Injected into both the pre-flight probe and the real diarization pass
@@ -866,8 +872,8 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     const plan = decideAlignPlan({
       hasTurns: (diarSegments?.length ?? 0) > 0,
       language: resolvedLanguage,
-      appleSilicon: isAppleSiliconMac(),
-      canRun: canRunMlxAsr(),
+      appleSilicon: testOverrides.appleSilicon ?? isAppleSiliconMac(),
+      canRun: testOverrides.canRunMlx ?? canRunMlxAsr(),
       alignerReady: testOverrides.alignerReady ?? isAlignerModelReady(),
     });
     if (plan.mode === "cut") {

@@ -1,5 +1,4 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -15,6 +14,7 @@ import {
   segmentWavFile,
   splitAlignedChunk,
 } from "../src/lib/meetings/segmenter.js";
+import { buildWav } from "./helpers/wav.js";
 
 const SAMPLE_RATE = 16_000;
 
@@ -670,38 +670,40 @@ describe("gap coverage across speaker cuts (council fix, 2026-10-07)", () => {
   });
 });
 
+/**
+ * The "speech" clip for the turn tests, synthesized in JS (the old version
+ * was generated with `ffmpeg -f lavfi`, and Linux CI has no ffmpeg).
+ * Same shape: a quiet noise bed (so the adaptive noise floor calibrates) with
+ * a 440 Hz tone on top from 2 s on — continuous "speech", one VAD opening.
+ * 10 s, 16 kHz, mono, PCM16.
+ */
+function synthToneWav(dir: string): string {
+  const rate = 16_000;
+  const frames = 10 * rate;
+  const pcm = Buffer.alloc(frames * 2);
+  let seed = 0x1234567;
+  for (let i = 0; i < frames; i += 1) {
+    // xorshift32 — deterministic across hosts.
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    seed >>>= 0;
+    const noise = (seed / 0xffffffff) * 2 - 1;
+    const tone =
+      i >= 2 * rate ? Math.sin((2 * Math.PI * 440 * i) / rate) * 0.8 : 0;
+    const v = Math.max(-1, Math.min(1, noise * 0.005 + tone));
+    pcm.writeInt16LE(Math.round(v * 32767), i * 2);
+  }
+  const wavPath = join(dir, "tone.wav");
+  writeFileSync(wavPath, buildWav({ sampleRate: rate, data: pcm }));
+  return wavPath;
+}
+
 describe("segmentPcm with diarizer turns (I4, §3.4)", () => {
   it("a 10 s clip with turns 0-4 s and 4-10 s gives exactly 2 chunks, cut within 300 ms of 4 s", async () => {
-    // Generated with `ffmpeg -f lavfi`: 10 s of 440 Hz tone at -20 dBFS
-    // (continuous speech, one VAD opening), 16 kHz mono PCM16.
     const dir = mkdtempSync(join(tmpdir(), "seg-turns-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-    const wavPath = join(dir, "tone.wav");
-    // A quiet pink-noise bed (so the adaptive noise floor calibrates) with
-    // a 440 Hz tone on top from 2 s on (continuous "speech").
-    execFileSync("ffmpeg", [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      "anoisesrc=d=10:r=16000:c=pink:a=0.005",
-      "-f",
-      "lavfi",
-      "-i",
-      "sine=frequency=440:duration=8:sample_rate=16000,volume=0.8",
-      "-filter_complex",
-      "[1:a]adelay=2000|2000[t];[0:a][t]amix=inputs=2:duration=first:weights=1 1",
-      "-ar",
-      "16000",
-      "-ac",
-      "1",
-      "-c:a",
-      "pcm_s16le",
-      wavPath,
-    ]);
+    const wavPath = synthToneWav(dir);
     const channel = readWavPcm16(wavPath);
     expect(channel).not.toBeNull();
     const segments = segmentPcm(channel!.pcm, channel!.sampleRate, undefined, [
@@ -719,32 +721,7 @@ describe("segmentPcm with diarizer turns (I4, §3.4)", () => {
     // Regression guard for the argument: no turns in, no speaker out.
     const dir = mkdtempSync(join(tmpdir(), "seg-noturns-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-    const wavPath = join(dir, "tone.wav");
-    // A quiet pink-noise bed (so the adaptive noise floor calibrates) with
-    // a 440 Hz tone on top from 2 s on (continuous "speech").
-    execFileSync("ffmpeg", [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      "anoisesrc=d=10:r=16000:c=pink:a=0.005",
-      "-f",
-      "lavfi",
-      "-i",
-      "sine=frequency=440:duration=8:sample_rate=16000,volume=0.8",
-      "-filter_complex",
-      "[1:a]adelay=2000|2000[t];[0:a][t]amix=inputs=2:duration=first:weights=1 1",
-      "-ar",
-      "16000",
-      "-ac",
-      "1",
-      "-c:a",
-      "pcm_s16le",
-      wavPath,
-    ]);
+    const wavPath = synthToneWav(dir);
     const segments = segmentWavFile(wavPath);
     expect(segments!.length).toBeGreaterThanOrEqual(1);
     // No turns in: no part may carry a speaker.

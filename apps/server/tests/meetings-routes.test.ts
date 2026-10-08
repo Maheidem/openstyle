@@ -1014,6 +1014,116 @@ describe("POST /api/meetings/:id/cancel-transcribe", () => {
   });
 });
 
+describe("POST /api/meetings/:id/cancel-transcribe — with a failed chunk (the Electron E2E staging)", () => {
+  // Mirror of apps/electron/tests/meeting-cancel-transcribe.test.ts: a
+  // system-channel-only 2-burst meeting (2 chunks, one serial lane — phase
+  // 3a means a single-channel meeting can never have two chunks in flight).
+  // Chunk 1 burns all its attempts (failed segment persisted), chunk 2
+  // parks in flight; the cancel lands with one failed + one in-flight
+  // chunk. Proves the data contract the E2E's UI assertions rest on: the
+  // partial transcript survives, segment_counts carries the failed chunk,
+  // and /retry-failed re-runs it.
+  let e2eAudioDir: string;
+
+  beforeAll(() => {
+    e2eAudioDir = mkdtempSync(join(tmpdir(), "meeting-cancel-e2e-"));
+    writeFileSync(join(e2eAudioDir, "system.wav"), buildMultiBurstWav(2));
+    writeFileSync(
+      join(e2eAudioDir, "sync.json"),
+      JSON.stringify({
+        meetingId: "m1",
+        sampleRate: SAMPLE_RATE,
+        micT0: 1000,
+        systemT0: 1000,
+        syncMarkers: [],
+        epochs: [],
+      }),
+    );
+  });
+
+  afterAll(() => {
+    rmSync(e2eAudioDir, { recursive: true, force: true });
+  });
+
+  it("keeps the partial transcript, counts the failed chunk, and retry-failed re-runs it", async () => {
+    let calls = 0;
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => {
+        const n = ++calls;
+        // Chunk 1 burns both attempts (fakeDeps: maxAttempts 2); chunk 2
+        // (call 3 — the lane is serial) parks until release.
+        if (n <= 2) throw new Error("forced 500 for the cancel test");
+        await gate;
+        return { text: "kept partial transcript" };
+      }),
+    });
+    insertMeeting("m1", "recorded", e2eAudioDir);
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    await waitForMicrotasks(() => calls >= 3);
+
+    try {
+      // One chunk failed (persisted), one in flight — the E2E's cancel
+      // point.
+      const mid = await getMeeting("m1");
+      expect(mid.job).toMatchObject({ done: 1, failed: 1, total: 2 });
+
+      const cancel = await postEmpty(app, "/api/meetings/m1/cancel-transcribe");
+      expect(cancel.status).toBe(202);
+    } finally {
+      release();
+    }
+
+    const done = await waitForTerminalStatusNoRealTimers("m1");
+    expect(done.status).toBe("failed");
+    expect(done.error).toBe("Cancelled by user");
+    expect(done.job).toBeNull();
+    // Both segments kept: the ok one (kept partial transcript) and the
+    // failed one — so the UI's "Retry 1 failed" has something real to
+    // retry.
+    expect(done.segment_counts).toEqual({ total: 2, failed: 1 });
+
+    const rows = getDb()
+      .prepare(
+        `SELECT status, text FROM meeting_segments WHERE meeting_id = 'm1' ORDER BY idx`,
+      )
+      .all() as Array<{ status: string; text: string }>;
+    expect(rows).toEqual([
+      { status: "failed", text: "" },
+      { status: "ok", text: "kept partial transcript" },
+    ]);
+
+    // The merged transcript carries only the ok segment.
+    const tRes = await app.request("/api/meetings/m1/transcript");
+    const { segments } = (await tRes.json()) as {
+      segments: Array<{ text: string }>;
+    };
+    expect(segments.map((s) => s.text)).toEqual(["kept partial transcript"]);
+
+    // The retry route re-runs exactly the failed chunk; on success its row
+    // flips to ok and the stale failure error clears.
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({
+        text: "recovered chunk",
+      })),
+    });
+    const retry = await postEmpty(app, "/api/meetings/m1/retry-failed");
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual({ ok: true, retried: 1, failed: 0 });
+
+    const after = await getMeeting("m1");
+    expect(after.error).toBeNull();
+    expect(after.segment_counts).toEqual({ total: 2, failed: 0 });
+    const t2 = await app.request("/api/meetings/m1/transcript");
+    const seg2 = (
+      (await t2.json()) as { segments: Array<{ text: string }> }
+    ).segments.map((s) => s.text);
+    expect(seg2.sort()).toEqual(["kept partial transcript", "recovered chunk"]);
+  });
+});
+
 describe("POST /api/meetings/:id/cancel-transcribe — during retry-failed", () => {
   beforeAll(() => {
     cancelAudioDir = mkdtempSync(join(tmpdir(), "meeting-cancel-retry-"));
@@ -3563,6 +3673,10 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
         }),
       },
       alignerReady: true,
+      // The gate's platform inputs, forced so the align tests run on any
+      // host (Linux CI has no Apple silicon / MLX runtime).
+      appleSilicon: true,
+      canRunMlx: true,
       alignChunk,
       startAlignerDownload: () => false,
       ...extra,
