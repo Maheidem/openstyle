@@ -93,6 +93,9 @@ export function sanitizeTranscriptText(text: string): string {
   return stripTrailingDuplicate(cleaned);
 }
 
+/** Trailing closing quotes/apostrophes that never decide a sentence end. */
+const CLOSING_QUOTE = /["\u201d'\u2019\u00bb\u203a]/;
+
 /**
  * Whether a word token ends a sentence: it ends in one of `. ? !` after
  * dropping trailing closing quotes (spec 3.6, Decision (owner,
@@ -104,10 +107,53 @@ export function wordEndsSentence(word: string): boolean {
   const w = word.trim();
   if (w.length === 0) return false;
   let end = w.length - 1;
-  while (end >= 0 && /["\u201d'\u2019\u00bb\u203a]/.test(w.charAt(end))) {
+  while (end >= 0 && CLOSING_QUOTE.test(w.charAt(end))) {
     end -= 1;
   }
   return end >= 0 && ".?!".includes(w.charAt(end));
+}
+
+/**
+ * The Portuguese tag questions that end a CLAUSE but not the TURN
+ * (spec 3.6, 2.14.1): "…sabe?", "…tá?". A cut snapped onto one lands
+ * inside one speaker's own explanation, so the cut rule must not treat
+ * them as sentence ends. Compared lowercase with accents as written
+ * (ASR text carries both "tá" and "ta"), after stripping the same
+ * closing quotes wordEndsSentence ignores.
+ */
+const TAG_QUESTION_WORDS = new Set([
+  "sabe",
+  "tá",
+  "ta",
+  "né",
+  "ne",
+  "certo",
+  "entendeu",
+  "viu",
+  "beleza",
+  "ok",
+]);
+
+/**
+ * Whether a word token ends a TURN for the §3.6 cut rule (2.14.1): it
+ * ends a sentence (wordEndsSentence) AND it is not a Portuguese tag
+ * question ending in "?" (sabe? tá? né? — the same speaker continues).
+ * Every other sentence end still ends a turn, including an English
+ * question ("Are you?"). wordEndsSentence keeps its own meaning for
+ * the other callers.
+ */
+export function wordEndsTurn(word: string): boolean {
+  const w = word.trim();
+  if (w.length === 0) return false;
+  if (!wordEndsSentence(w)) return false;
+  let end = w.length - 1;
+  while (end >= 0 && CLOSING_QUOTE.test(w.charAt(end))) {
+    end -= 1;
+  }
+  // A period or exclamation mark always ends the turn; only a "?" can
+  // be a tag question.
+  if (end < 0 || w.charAt(end) !== "?") return true;
+  return !TAG_QUESTION_WORDS.has(w.slice(0, end).toLowerCase());
 }
 
 /** Lowercase, strip punctuation, collapse whitespace. */

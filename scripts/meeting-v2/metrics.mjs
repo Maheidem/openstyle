@@ -149,18 +149,34 @@ for (const s of segments) {
 }
 const textHash = hash.digest("hex");
 
-// wordEndsSentence as in packages/stt/src/text.ts (spec 3.6, Decision
-// owner 2026-10-07): ends in . ? ! after dropping trailing closing
-// quotes. The cut snap rule makes this the expected state of every
-// kept cut, so badCutRatio should be 0.
-function wordEndsSentence(word) {
+// wordEndsTurn as in packages/stt/src/text.ts (spec 3.6, Decision
+// owner 2026-10-07, extended for 2.14.1): ends in . ? ! after dropping
+// trailing closing quotes, EXCEPT a Portuguese tag question ("sabe?",
+// "tá?", ...) that ends in "?" — those do not end a turn. The cut snap
+// rule makes this the expected state of every kept cut, so badCutRatio
+// should be 0.
+const TAG_QUESTION_WORDS = new Set([
+  "sabe",
+  "tá",
+  "ta",
+  "né",
+  "ne",
+  "certo",
+  "entendeu",
+  "viu",
+  "beleza",
+  "ok",
+]);
+function wordEndsTurn(word) {
   const w = word.trim();
   if (w.length === 0) return false;
   let end = w.length - 1;
   while (end >= 0 && /["\u201d'\u2019\u00bb\u203a]/.test(w.charAt(end))) {
     end -= 1;
   }
-  return end >= 0 && ".?!".includes(w.charAt(end));
+  if (end < 0 || !".?!".includes(w.charAt(end))) return false;
+  if (w.charAt(end) !== "?") return true;
+  return !TAG_QUESTION_WORDS.has(w.slice(0, end).toLowerCase());
 }
 
 // normalizeText as in packages/stt/src/text.ts: lower case, no punctuation.
@@ -470,7 +486,7 @@ if (r0dPath && existsSync(r0dPath)) {
           .split(/\s+/)
           .filter((t) => t.length > 0);
         const last = leftTokens[leftTokens.length - 1] ?? "";
-        if (!wordEndsSentence(last)) badCuts += 1;
+        if (!wordEndsTurn(last)) badCuts += 1;
       }
       let punct0 = 0;
       for (const ch of c.text) {
