@@ -121,6 +121,9 @@ export function wordEndsSentence(word: string): boolean {
  * (ASR text carries both "tá" and "ta"), after stripping the same
  * closing quotes wordEndsSentence ignores.
  */
+// Council round 5 (owner, 2026-10-08): "beleza" is NOT a tag question —
+// at 9742105a #148 it is a hand-off question (speaker 6 asks, speaker 1
+// answers), so it ends the turn and the cut after it is kept.
 const TAG_QUESTION_WORDS = new Set([
   "sabe",
   "tá",
@@ -130,7 +133,6 @@ const TAG_QUESTION_WORDS = new Set([
   "certo",
   "entendeu",
   "viu",
-  "beleza",
   "ok",
 ]);
 

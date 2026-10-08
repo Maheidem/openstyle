@@ -155,6 +155,8 @@ const textHash = hash.digest("hex");
 // "tá?", ...) that ends in "?" — those do not end a turn. The cut snap
 // rule makes this the expected state of every kept cut, so badCutRatio
 // should be 0.
+// Council round 5 (owner, 2026-10-08): "beleza" removed — it is a
+// hand-off question at 9742105a #148, so it ends the turn.
 const TAG_QUESTION_WORDS = new Set([
   "sabe",
   "tá",
@@ -164,7 +166,6 @@ const TAG_QUESTION_WORDS = new Set([
   "certo",
   "entendeu",
   "viu",
-  "beleza",
   "ok",
 ]);
 function wordEndsTurn(word) {

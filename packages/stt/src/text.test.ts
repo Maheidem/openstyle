@@ -35,11 +35,15 @@ describe("wordEndsTurn (2.14.1, §3.6 council round 4)", () => {
       "certo?",
       "entendeu?",
       "viu?",
-      "beleza?",
       "ok?",
     ]) {
       expect(wordEndsTurn(w)).toBe(false);
     }
+  });
+
+  it("still ends a turn on 'beleza?' (council round 5: a hand-off question, not a tag)", () => {
+    expect(wordEndsTurn("beleza?")).toBe(true);
+    expect(wordEndsTurn("Beleza?")).toBe(true);
   });
 
   it("compares lowercase with accents as written, closing quotes stripped", () => {

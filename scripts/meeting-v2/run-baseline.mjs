@@ -8,7 +8,9 @@
 // R4 = phase 4, diarization on and context off so it compares with
 // R0d; R4f = the sentence-end cut snap (Decision, owner 2026-10-07,
 // spec 3.6), R4g = the 2.14.1 cut fix: tag questions do not end a
-// turn and same-speaker parts merge, same treatment as R4d/R4e/R4f)
+// turn and same-speaker parts merge, R4h = council round 5: "beleza"
+// removed from the tag list (it is a hand-off question), same
+// treatment as R4d/R4e/R4f/R4g)
 // of the pipeline against the scratch profile. Starts its own isolated
 // server (never port 4649), transcribes the copied meeting, measures the
 // wall time from the POST /transcribe reply to status = transcribed, stops
@@ -50,7 +52,7 @@ const diarizerSecondsRaw = arg("diarizer-seconds");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f|R4g [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f|R4g|R4h [options]",
   );
   process.exit(2);
 }
@@ -68,10 +70,11 @@ if (
   runName !== "R4d" &&
   runName !== "R4e" &&
   runName !== "R4f" &&
-  runName !== "R4g"
+  runName !== "R4g" &&
+  runName !== "R4h"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f or R4g, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g or R4h, got: ${runName}`,
   );
   process.exit(2);
 }
@@ -87,7 +90,8 @@ const diarizationOn =
   runName === "R4d" ||
   runName === "R4e" ||
   runName === "R4f" ||
-  runName === "R4g";
+  runName === "R4g" ||
+  runName === "R4h";
 // The previous-chunk context setting (owner decision 2026-10-07):
 // R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
 // had context on — the setting did not exist yet); every other run
@@ -342,7 +346,8 @@ try {
         runName === "R4d" ||
         runName === "R4e" ||
         runName === "R4f" ||
-        runName === "R4g"
+        runName === "R4g" ||
+        runName === "R4h"
       ) {
         const r0d = join(
           scratch,
