@@ -29,10 +29,10 @@ bash scripts/branch-status.sh
 - A SessionStart hook runs it for every new session in this repo. Fix every `!!` line before you start new work.
 - A handoff includes its output.
 
-## Close-out checklist (after a merge)
+## Close-out (right after the merge)
 
-- `git switch main && git pull --ff-only`
-- Check that nothing was lost, then delete. After a squash merge `git cherry` shows every branch commit as `+` (false alarm), so compare diffs instead:
-  `h=$(gh pr view <n> --json headRefOid --jq .headRefOid); mb=$(git merge-base $h <squash>^); diff <(git diff $mb $h) <(git diff <squash>^ <squash>) && git branch -D <branch>`
-- `git worktree remove ../openstyle-<topic>` if you used one. Do the close-out right after the merge, not later: on 2026-10-08 a merged branch and its worktree were left behind and branch-status flagged them.
-- `bash scripts/branch-status.sh` shows 0 problems for that branch.
+```bash
+bash scripts/branch-closeout.sh <pr-number>
+```
+
+It proves the PR's changes equal the merge commit (safe after squash merges; it refuses on an empty diff), then removes the branch's worktree and deletes the local branch, and fast-forwards main. Then `bash scripts/branch-status.sh` must show 0 problems. Do it right after the merge: on 2026-10-08 a merged branch and its worktree were left behind.
