@@ -18,6 +18,31 @@ The owner runs the installed Openstyle app every day. Every live test must run n
 7. Give every `curl` a timeout (`timeout 30 curl ...`). A hook blocks a `curl` with no timeout.
 8. Do not push, merge or change GitHub settings. The coordinating agent does outward actions.
 
+## Enforced by the guard hook
+
+A PreToolUse hook (`scripts/guard-hook.sh`, registered in `.claude/settings.json`) blocks these Bash commands and file writes. It prints one line with the rule letter and exits 2.
+
+| Rule | Blocks | Allowed look-alikes |
+|---|---|---|
+| a | A network client (curl, wget, node, fetch, python...) to `127.0.0.1:4649` or `localhost:4649` | `grep "localhost:4649"`, `lsof -iTCP:4649`, other ports |
+| b | Write, delete or move under `~/.cache/freestyle`, `~/.cache/huggingface`, `~/Library/Application Support/Openstyle`, `/Applications/Openstyle.app` (rm, mv, touch, `>`, `sed -i`, `find -delete`, `cp`/`rsync` into them, `sqlite3` without `-readonly`, Write/Edit tools) | `ls`, `cat`, `du`, `stat`, `sqlite3 -readonly`, `cp` out of them, the same paths under `/tmp` |
+| c | `say` without `-o`/`--output-file`, any `afplay` | `say -v <voice> -o <file> "text"` |
+| d | `pkill`, `killall`, `kill $(pgrep ... Openstyle)` | `kill <pid>` |
+| e | A request to `127.0.0.1:8123/v1/audio/transcriptions` or `/v1/chat/completions` with a model other than `Qwen3-ASR` or `Qwen3.8-27B` (a prefix like `server/srv_x/` is allowed), or with no visible model | `GET /v1/models` |
+| f | `osascript` that names Openstyle, `open -a Openstyle`, `open /Applications/Openstyle.app` | other `open` and `osascript` calls |
+
+The hook does not parse quotes. A separator inside a quoted string can make an extra check, so a rare false block is possible. Rewrite the command; do not disable the hook. Test the table with `bash scripts/guard-hook.test.sh` (CI runs it in the Lint job).
+
+To start a test server or app, use `scripts/isolated-env.sh`:
+
+```bash
+source scripts/isolated-env.sh /tmp/<task-name> [<dev-mlx-worker-path>]
+cd apps/electron && PORT=4651 HOST=127.0.0.1 OPENSTYLE_AUTH_TOKEN=$TOKEN \
+  isolated_run nohup node ../server/dist/startup.js > /tmp/<task-name>/server.log 2>&1 &
+```
+
+It exports `OPENSTYLE_USER_DATA`, `OPENSTYLE_DB_PATH`, `HF_HOME`, `HUGGINGFACE_HUB_CACHE` and (with the 2nd argument) `OPENSTYLE_MLX_ASR_WORKER`, all in the scratch folder. `isolated_run` sets `HOME` to a scratch home for one command, because the server refreshes the managed worker under `homedir()` before each worker start, also when `OPENSTYLE_MLX_ASR_WORKER` is set (`apps/server/src/lib/mlx-asr/server.ts:401`). It refuses a scratch folder outside `/tmp` or `/private/tmp`.
+
 ## 1. Build
 
 ```bash
