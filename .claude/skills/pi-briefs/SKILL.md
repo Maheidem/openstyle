@@ -65,3 +65,7 @@ The landing-page screen captures on 2026-10-06 ran 44 minutes and used 13.7 mill
 - The brief had no time box.
 
 The fix: give the proven commands (see the live-testing skill), set a time box, and hand stuck work to a Claude agent.
+
+## Branches
+
+A pi child never creates, pushes, merges or deletes a branch. The coordinator creates the branch with a draft PR (see `.claude/skills/branch-lifecycle/SKILL.md`) and names it in the brief: "work on branch X, commit there, never push". The coordinator pushes the child's commits.
