@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.14.0
+
+### Improvements ⚡
+
+- Speaker detection is now on by default for meetings. To turn it off, use the speakers switch in the Meetings settings.
+- Speaker detection now runs before transcription. Each part of the transcript belongs to one speaker, so a reply or a question from another person gets its own label.
+- On Apple silicon, when a speaker changes in the middle of a part, Openstyle finds the word times and splits the text at the end of a sentence. No words are lost at the split, and the punctuation stays.
+  - This uses a word timing model (about 1.2 GB). Openstyle downloads it in the background the first time you transcribe a meeting with speaker detection on. Models > Meeting transcription shows its status.
+  - Until the download is done, meetings use the previous method.
+  - Everything runs on your Mac.
+- Meetings transcribe the microphone and the system audio at the same time, in two parallel lanes.
+- New setting in the Meetings settings: "Use previous text as context". It can fix technical terms, but it can also change names, so it is off by default.
+
+### Known issues 🐞
+
+- In Portuguese, a short tag question such as "sabe?" or "tá?" can start a new speaker part too early. A fix is planned for the next version.
+
+### Upgrade notes 📌
+
+- The app adds one table to its database to store the speaker turns of each meeting.
+
 ## 2.13.0
 
 ### Improvements ⚡
