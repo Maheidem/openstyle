@@ -470,6 +470,8 @@ Done when:
 - `D` is recorded for the default decision (4.3).
 - Synthetic clips (generated with `ffmpeg -f lavfi`, fake diarizer turns in test): a 10 s clip with turns at 0-4 s and 4-10 s must give exactly 2 chunks, cut within 300 ms of 4 s.
 
+**Council round 4 and release decision (owner, 2026-10-07).** Claude SHIP (26 better / 1 worse), pi SHIP (28 / 0), Codex FIX-FIRST (25 / 3) on the five R4f compare files. All agree: no word lost or duplicated, punctuation kept, all round-3 worst cases fixed or invalid. The owner released 2.14.0 with 2 of 3 SHIP. Known issue for 2.14.1: Portuguese tag questions ("sabe?", "tá?", "né?") end with "?" but do not end a turn, so a cut can land inside one speaker's explanation (9742105a #125, 9ad10a3c #59). Planned fix: do not treat tag questions as sentence ends, and merge neighboring parts that have the same speaker (a24a70ec #20).
+
 ### Phase 4b: forced alignment at speaker cuts (I4b)
 
 Files: `scripts/mlx_asr_server.py` (`align` message), `lib/mlx-asr/server.ts` (aligner worker, `alignWithMlx`), `lib/mlx-asr/models.ts` or the catalog (helper model entry), `lib/meetings/transcriber.ts` and `lib/meetings/segmenter.ts` (align-then-split path, the sentence-end cut rule, fallback), `routes/meetings.ts`, `pages/models/meeting-model-row.tsx` (status line), the download trigger (auto, background), locales, `scripts/meeting-v2/metrics.mjs` (`edgeWordsLost`, `edgeWordsAdded`, `punctRatio`, `splitLabelDistinct`, `badCutRatio`), `run-baseline.mjs` (R4d/R4e/R4f).
