@@ -286,7 +286,8 @@ Follow `.claude/skills/live-testing/SKILL.md`. Quiet mode only
    settings page keeps the Chromium id. To map it, main asks the settings
    renderer for the device label of `mic_device_id`
    (`enumerateDevices()`), and the helper picks the input with the same
-   name. No match: use the default input and log a warning. See Open questions.
+   name. No match: use the default input and log a warning. Decided by the owner on 2026-10-09 (section 5).
+   "System default" follows the macOS default input.
 3. `meeting-recorder.ts`: replace the capture window with the helper.
    Both `T0` values come from the helper's first IOProc callback, so the
    journal records the same `T0` for both channels. Keep `sync.json` in
@@ -303,7 +304,7 @@ clock, and the tap runs on the aggregate's clock, so the result is still
 two clocks. One aggregate device with both inputs is the Core Audio way to
 get one clock. If the aggregate approach fails in the spike (step 1 of
 Proof), fall back to AVAudioEngine for the mic and keep `SYNC` markers for
-both channels.
+both channels. The owner confirmed this on 2026-10-09.
 
 ### Scope decision: dictation capture stays in the renderer
 
@@ -612,7 +613,7 @@ byte for byte. The existing sha512 check then proves the result.
 - A wrong offset gives a bad zip. The sha512 check catches it, then the
   fallback does a full download. Cost: time, not a broken app.
 - Deleting old `updates/` folders deletes data the owner may not expect.
-  It is only update zips. See Open questions.
+  It is only update zips. The owner approved the deletion on 2026-10-09.
 
 ### Proof
 
@@ -686,8 +687,7 @@ byte for byte. The existing sha512 check then proves the result.
   returns more rows, never fewer, for 3+ characters.
 - Today `%` and `_` typed in the search box act as `LIKE` wildcards. With
   FTS5 they are plain characters.
-- See Open questions: the owner must accept these two differences, or the
-  query must add a `LIKE` re-check to keep exact results.
+- The owner accepted both differences on 2026-10-09. No LIKE re-check.
 
 ### Risks
 
@@ -736,18 +736,23 @@ byte for byte. The existing sha512 check then proves the result.
 
 ## 5. Open questions
 
-1. **Item 7 behavior differences.** Accept that FTS5 search finds
-   non-ASCII case variants and treats `%`/`_` as plain text? Or add a
-   `LIKE` re-check to keep today's exact results?
-2. **Item 6 disk cleanup.** Delete old `updates/<version>` folders (5.1 GB
-   on the owner's Mac)? This removes files that no current code reads.
-3. **Item 3 device mapping.** Map the Chromium mic id to Core Audio by
-   device name, or store the Core Audio UID as a new setting? A new
-   setting is a settings change.
-4. **Item 3 helper approach.** The spec chooses one aggregate device (one
-   clock) over the AVAudioEngine approach named in the brief. Confirm.
-5. **Item 2 orphan children.** If the forced-kill test shows an orphan
+### Decided (owner, 2026-10-09)
+
+1. **Item 7:** accept the FTS5 differences (non-ASCII case folding; `%` and
+   `_` are plain text). No `LIKE` re-check.
+2. **Item 6:** yes. After a successful start on a new version, delete every
+   `updates/<version>` folder except the current version.
+3. **Item 3:** keep today's Settings mic picker unchanged ("System default"
+   plus each mic). "System default" follows the macOS default input. A
+   chosen mic maps to Core Audio by device name. No match: use the default
+   input and log a warning. No new setting.
+4. **Item 3:** use one Core Audio aggregate device (one clock).
+   AVAudioEngine is only the fallback if the spike fails.
+
+### Still open
+
+1. **Item 2 orphan children.** If the forced-kill test shows an orphan
    whisper.cpp server, which fix is acceptable: a PID file swept at boot,
    or a process group kill from main?
-6. **Item 3 TCC attribution** for a mic opened in a child helper of an
+2. **Item 3 TCC attribution** for a mic opened in a child helper of an
    ad-hoc app. Only the spike on the owner's Mac can settle this.
