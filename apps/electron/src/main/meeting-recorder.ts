@@ -518,9 +518,15 @@ export class MeetingRecorder {
    * 'interrupted'; any row left in 'transcribing' (the in-process server died
    * mid-job, so the job is gone for good) is marked 'failed' with a named
    * cause — its partial transcript survives and stays retryable. Call once
-   * after the server is reachable.
+   * after the server is reachable. After a restart of the server process, pass
+   * `transcribingOnly`: the jobs died with the old process, but a live
+   * recording is still running in this process and stays untouched.
    */
-  async sweepOrphans(): Promise<void> {
+  async sweepOrphans({
+    transcribingOnly = false,
+  }: {
+    transcribingOnly?: boolean;
+  } = {}): Promise<void> {
     let orphans: { id: string; status: string; audio_dir: string | null }[] =
       [];
     try {
@@ -532,6 +538,7 @@ export class MeetingRecorder {
     }
 
     for (const orphan of orphans) {
+      if (transcribingOnly && orphan.status !== "transcribing") continue;
       // A quit mid-transcription leaves no recorder state to repair (the
       // WAVs were finalized when the recording stopped) — the row just
       // flips to 'failed'. The server endpoint is strict: only valid from

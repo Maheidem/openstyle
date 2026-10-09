@@ -27,6 +27,7 @@ import {
   resetToneConfiguration,
 } from "./resets";
 import { selfUpdater } from "./self-updater";
+import { stopServerHost } from "./server-host";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
 import { showSettingsWindow } from "./windows/settings-window";
 
@@ -42,8 +43,11 @@ export function restartAndUpdate(): void {
     // goes through normal before-quit cleanup instead of being mistaken for
     // the updater's own quit.
     void selfUpdater
-      .installUpdate(() => {
+      .installUpdate(async () => {
         state.isUpdaterQuitting = true;
+        // Wait for the server process to stop. The quit that follows does not
+        // wait, and the server process stops its speech child servers first.
+        await stopServerHost(2000).catch(() => {});
       })
       .catch((err) => {
         state.updateDownloadState = "idle";

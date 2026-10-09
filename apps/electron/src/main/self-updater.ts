@@ -183,12 +183,15 @@ class SelfUpdater extends EventEmitter {
    * Extract, verify, atomically swap the app bundle, remove quarantine, and
    * relaunch. `onBeforeQuit` is called immediately before `app.quit()` — the
    * caller uses it to flip whatever "let this quit through" flag its
-   * `before-quit` handler checks. It's called this late (not up front)
-   * because extraction/swap here can take several seconds and we don't want
+   * `before-quit` handler checks. It can return a promise: the install waits
+   * for it, so the caller can stop child processes first. It's called this
+   * late (not up front) because extraction/swap here can take several seconds and we don't want
    * a manual Cmd+Q during that window falling into the "quit is expected"
    * branch and skipping normal cleanup / preventDefault.
    */
-  async installUpdate(onBeforeQuit?: () => void): Promise<void> {
+  async installUpdate(
+    onBeforeQuit?: () => void | Promise<void>,
+  ): Promise<void> {
     if (!this.downloadedZipPath || !this.downloadedVersion) {
       throw new Error("No downloaded update to install");
     }
@@ -230,7 +233,7 @@ class SelfUpdater extends EventEmitter {
     await removeQuarantine(currentBundle);
     await cleanupBackup(stagingDir); // remove leftover extraction dir (e.g. __MACOSX)
 
-    onBeforeQuit?.();
+    await onBeforeQuit?.();
     relaunch(currentBundle);
   }
 }

@@ -25,7 +25,8 @@ if (!proc.resourcesPath && process.env.OPENSTYLE_RESOURCES_PATH) {
 }
 
 if (process.env.OPENSTYLE_LOGS_DIR) {
-  enableFileLogging(process.env.OPENSTYLE_LOGS_DIR);
+  // Its own file. Main writes openstyle.log. Two processes must not rotate one file.
+  enableFileLogging(process.env.OPENSTYLE_LOGS_DIR, "openstyle-server.log");
 }
 const log = createAppLogger("server-host");
 

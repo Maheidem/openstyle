@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
 import { createAppLogger } from "@openstyle/utils";
 import { DEFAULT_SERVER_PORT } from "@openstyle/validations";
-import { app, type UtilityProcess, utilityProcess } from "electron";
-import { broadcastServerChanged } from "./main-state";
+import { app, dialog, type UtilityProcess, utilityProcess } from "electron";
+import { broadcastServerChanged, state } from "./main-state";
 import { probeServerHealth, setServerPort } from "./server-target";
 
 const log = createAppLogger("electron");
@@ -41,6 +41,8 @@ interface HostState {
   // Allow a random port when the asked port is busy. Off for a pinned test port.
   allowFallback: boolean;
   hasBeenReady: boolean;
+  // An MLX prefetch that arrived while no child ran. The next "ready" sends it.
+  pendingPrefetchVersion: string | null;
   env: Record<string, string>;
   exited: Promise<void> | null;
   onFirstSettled: (() => void) | null;
@@ -56,6 +58,7 @@ const host: HostState = {
   port: DEFAULT_SERVER_PORT,
   allowFallback: true,
   hasBeenReady: false,
+  pendingPrefetchVersion: null,
   env: {},
   exited: null,
   onFirstSettled: null,
@@ -73,8 +76,8 @@ function pipeLines(
   stream: NodeJS.ReadableStream | null | undefined,
   target: NodeJS.WriteStream,
 ): void {
-  // The child writes its own log file. Its console output only goes to the
-  // console of main. That avoids two writers for each line of the log file.
+  // The child writes its own log file (openstyle-server.log). Its console
+  // output only goes to the console of main.
   stream?.on("data", (chunk: Buffer) => target.write(chunk));
 }
 
@@ -91,8 +94,18 @@ function handleMessage(message: ChildMessage): void {
       host.port = message.port;
       setServerPort(message.port);
       log.info(`Server running on http://localhost:${message.port}`);
+      const isRestart = host.hasBeenReady;
       host.hasBeenReady = true;
       if (portChanged) broadcastServerChanged();
+      if (isRestart) {
+        // Transcription jobs died with the old process. Mark them failed now,
+        // not at the next launch. A live recording stays untouched.
+        void state.meetingRecorder?.sweepOrphans({ transcribingOnly: true });
+      }
+      if (host.pendingPrefetchVersion) {
+        send({ type: "prefetch-mlx", version: host.pendingPrefetchVersion });
+        host.pendingPrefetchVersion = null;
+      }
       settleFirstStart();
       break;
     }
@@ -139,6 +152,27 @@ function spawnChild(): void {
   pipeLines(child.stderr, process.stderr);
 }
 
+// The server stays down after the give-up. Tell the user, and offer a relaunch.
+// A test run (OPENSTYLE_E2E) shows no dialog.
+function offerRelaunch(): void {
+  if (process.env.OPENSTYLE_E2E === "1") return;
+  void dialog
+    .showMessageBox({
+      type: "error",
+      title: "Openstyle",
+      message: "The Openstyle server stopped and could not restart.",
+      detail: "Relaunch Openstyle to use dictation and meetings again.",
+      buttons: ["Relaunch", "Close"],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    .then(({ response }) => {
+      if (response !== 0) return;
+      app.relaunch();
+      app.quit();
+    });
+}
+
 function scheduleRestart(): void {
   const now = Date.now();
   host.restartTimes = host.restartTimes.filter(
@@ -150,6 +184,7 @@ function scheduleRestart(): void {
         RESTART_WINDOW_MS / 1000
       } s. Giving up.`,
     );
+    offerRelaunch();
     return;
   }
   const delay = RESTART_BACKOFF_MS[host.restartTimes.length];
@@ -288,5 +323,8 @@ export async function requestModelCacheDirs(): Promise<string[]> {
 
 /** Start the download of the MLX runtime for an app release. No result. */
 export function prefetchMlxRuntime(version: string): void {
-  send({ type: "prefetch-mlx", version });
+  // No child runs (restart in progress): the next "ready" sends it.
+  if (!send({ type: "prefetch-mlx", version })) {
+    host.pendingPrefetchVersion = version;
+  }
 }

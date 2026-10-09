@@ -63,10 +63,6 @@ export function registerQuitHandlers(): void {
     }
     stopHotkeyRecorderProcess();
     globalShortcut.unregisterAll();
-    if (state.httpServer) {
-      state.httpServer.close();
-      state.httpServer = null;
-    }
     return serverStopped;
   }
 

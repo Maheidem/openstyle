@@ -99,11 +99,6 @@ export async function factoryReset(): Promise<void> {
       globalShortcut.unregisterAll();
     }
 
-    if (state.httpServer) {
-      state.httpServer.close();
-      state.httpServer = null;
-    }
-
     const userData = app.getPath("userData");
     for (const f of [
       "settings.json",

@@ -26,8 +26,6 @@ export interface RemixAnchor {
 }
 
 export interface MainState {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  httpServer: any;
   mainWindow: BrowserWindow | null;
   settingsWindow: BrowserWindow | null;
   tray: Tray | null;
@@ -83,7 +81,6 @@ export interface MainState {
 }
 
 export const state: MainState = {
-  httpServer: null,
   mainWindow: null,
   settingsWindow: null,
   tray: null,
