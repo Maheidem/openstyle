@@ -11,6 +11,7 @@ import {
 } from "./binary.js";
 import { WHISPER_SERVER_PORT } from "./constants.js";
 import { getDownloadedModelPath } from "./models.js";
+import { removeWhisperPidFile, writeWhisperPidFile } from "./pid-file.js";
 
 const log = createAppLogger("whisper");
 const serverLog = createAppLogger("whisper-server");
@@ -39,6 +40,7 @@ function stopServerOnExit(): void {
   } catch {
     // best effort during process teardown
   }
+  removeWhisperPidFile(proc.pid);
 }
 
 process.once("exit", stopServerOnExit);
@@ -202,6 +204,8 @@ async function doStart(modelId: string): Promise<void> {
   });
 
   serverProcess = proc;
+  writeWhisperPidFile(proc.pid);
+  proc.once("close", () => removeWhisperPidFile(proc.pid));
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;

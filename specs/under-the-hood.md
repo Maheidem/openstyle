@@ -750,11 +750,14 @@ byte for byte. The existing sha512 check then proves the result.
    input and log a warning. No new setting.
 4. **Item 3:** use one Core Audio aggregate device (one clock).
    AVAudioEngine is only the fallback if the spike fails.
+5. **Item 2 orphan children:** use a PID file. The server writes
+   `whisper-server.pid` next to the database when it starts whisper-server.
+   At boot, the server process reads the file. It kills the PID only when
+   the PID is alive and its command name is `whisper-server`. Then it
+   deletes the file. Code: `apps/server/src/lib/whisper/pid-file.ts`. A
+   process group kill from main is not used.
 
 ### Still open
 
-1. **Item 2 orphan children.** If the forced-kill test shows an orphan
-   whisper.cpp server, which fix is acceptable: a PID file swept at boot,
-   or a process group kill from main?
-2. **Item 3 TCC attribution** for a mic opened in a child helper of an
+1. **Item 3 TCC attribution** for a mic opened in a child helper of an
    ad-hoc app. Only the spike on the owner's Mac can settle this.
