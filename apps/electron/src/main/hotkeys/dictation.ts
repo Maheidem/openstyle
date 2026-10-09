@@ -24,6 +24,7 @@ import {
 } from "../remix/hotkey";
 import { getServerSettings, waitForServerReady } from "../server-target";
 import { showPill } from "../windows/pill-window";
+import { startNativeRetry } from "./native-retry";
 import {
   clearHotkeyStuckWatchdog,
   HOTKEY_STUCK_TIMEOUT_MS,
@@ -216,6 +217,13 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
 /** Electron globalShortcut rejects some combos (e.g. Alt+Super on Linux). */
 const LINUX_GLOBAL_SHORTCUT_FALLBACK = "F9";
 
+/** The accelerator the toggle fallback holds now, or null when none. */
+let fallbackShortcut: string | null = null;
+/** Cancels the pending native retry for the dictation listener. */
+let cancelDictationRetry: (() => void) | null = null;
+/** The last error text from the dictation listener. */
+let lastNativeError = "";
+
 function registerGlobalShortcutToggle(accel: string): string | null {
   const onToggle = (): void => {
     if (!state.hotkeyPressed) {
@@ -240,6 +248,7 @@ function registerGlobalShortcutToggle(accel: string): string | null {
             `globalShortcut does not support "${accel}"; using "${candidate}" instead.`,
           );
         }
+        fallbackShortcut = candidate;
         return candidate;
       }
     } catch (err) {
@@ -249,6 +258,77 @@ function registerGlobalShortcutToggle(accel: string): string | null {
     }
   }
   return null;
+}
+
+function createDictationListener(accel: string): NativeKeyListener {
+  const listener = new NativeKeyListener({
+    hotkey: accel,
+    onKeyDown: () => handleDictationHotkeyDown(),
+    onKeyUp: () => handleDictationHotkeyUp(),
+    onError: (error) => {
+      lastNativeError = error;
+      hotkeyLog.error(`Native key listener error: ${error}`);
+    },
+    onReady: () => {
+      hotkeyLog.debug(`Native key listener ready for "${accel}"`);
+    },
+    onPermanentFailure: () => {
+      if (state.keyListener !== listener) return;
+      hotkeyLog.error(
+        "Native key listener permanently failed; falling back to Electron globalShortcut (toggle mode).",
+      );
+      listener.stop();
+      state.keyListener = null;
+      if (state.hotkeyPressed) {
+        state.hotkeyPressed = false;
+        clearHotkeyStuckWatchdog();
+        sendHotkeyUp();
+      }
+      const registeredAccel = registerGlobalShortcutToggle(accel);
+      if (registeredAccel) {
+        notifyHotkeyDegraded(accel, lastNativeError);
+      } else {
+        const errorPayload = {
+          message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Openstyle or pick a different combination in Settings.`,
+        };
+        broadcastToWindows("hotkey:error", errorPayload);
+      }
+      startDictationRetry(accel);
+    },
+  });
+  return listener;
+}
+
+/**
+ * Keep the toggle fallback and try the native listener again every 60 s.
+ * On READY the fallback goes away and hold mode works again.
+ */
+function startDictationRetry(accel: string): void {
+  cancelDictationRetry?.();
+  cancelDictationRetry = startNativeRetry({
+    label: "Dictation",
+    attempt: async () => {
+      const listener = createDictationListener(accel);
+      state.keyListener = listener;
+      const started = await listener.start();
+      if (started && state.keyListener === listener) return true;
+      listener.stop();
+      if (state.keyListener === listener) state.keyListener = null;
+      return false;
+    },
+    onRecovered: () => {
+      cancelDictationRetry = null;
+      if (fallbackShortcut) globalShortcut.unregister(fallbackShortcut);
+      fallbackShortcut = null;
+      if (state.hotkeyPressed) {
+        state.hotkeyPressed = false;
+        clearHotkeyStuckWatchdog();
+        sendHotkeyUp();
+      }
+      state.accessibilityConfirmed = true;
+      hotkeyDegradedNotified = false;
+    },
+  });
 }
 
 export function scheduleHotkeyRegistration(hotkey?: string): void {
@@ -270,6 +350,9 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     activeDictationLanguage = null;
     clearHotkeyStuckWatchdog();
     globalShortcut.unregisterAll();
+    fallbackShortcut = null;
+    cancelDictationRetry?.();
+    cancelDictationRetry = null;
 
     if (!hotkey) {
       // Unreachable server yields no map; registration falls back to the
@@ -285,41 +368,8 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     state.currentHotkeyAccel = accel;
 
     // Try native key listener binary first (all platforms)
-    let nativeError = "";
-    const listener = new NativeKeyListener({
-      hotkey: accel,
-      onKeyDown: () => handleDictationHotkeyDown(),
-      onKeyUp: () => handleDictationHotkeyUp(),
-      onError: (error) => {
-        nativeError = error;
-        hotkeyLog.error(`Native key listener error: ${error}`);
-      },
-      onReady: () => {
-        hotkeyLog.debug(`Native key listener ready for "${accel}"`);
-      },
-      onPermanentFailure: () => {
-        if (state.keyListener !== listener) return;
-        hotkeyLog.error(
-          "Native key listener permanently failed; falling back to Electron globalShortcut (toggle mode).",
-        );
-        listener.stop();
-        state.keyListener = null;
-        if (state.hotkeyPressed) {
-          state.hotkeyPressed = false;
-          clearHotkeyStuckWatchdog();
-          sendHotkeyUp();
-        }
-        const registeredAccel = registerGlobalShortcutToggle(accel);
-        if (registeredAccel) {
-          notifyHotkeyDegraded(accel, nativeError);
-        } else {
-          const errorPayload = {
-            message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Openstyle or pick a different combination in Settings.`,
-          };
-          broadcastToWindows("hotkey:error", errorPayload);
-        }
-      },
-    });
+    lastNativeError = "";
+    const listener = createDictationListener(accel);
     state.keyListener = listener;
 
     const started = await listener.start();
@@ -354,24 +404,93 @@ async function registerHotkey(hotkey?: string): Promise<void> {
         // "grant Accessibility" prompt during onboarding, and leave paste
         // silently broken in the notarized prod build. Only the native key
         // listener starting (above) is real proof of Accessibility.
-        notifyHotkeyDegraded(accel, nativeError);
+        notifyHotkeyDegraded(accel, lastNativeError);
       } else {
         let message = `Could not register hotkey "${accel}". Try a different key combination in Settings.`;
         if (
           process.platform === "linux" &&
-          nativeError.includes("No accessible input devices")
+          lastNativeError.includes("No accessible input devices")
         ) {
           message = `Hotkey "${accel}" requires access to input devices. Run: sudo usermod -aG input $USER — then log out and back in.`;
         }
         const errorPayload = { message };
         broadcastToWindows("hotkey:error", errorPayload);
       }
+      startDictationRetry(accel);
     }
   } catch (err) {
     hotkeyLog.error(
       `registerHotkey failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/** Cancels the pending native retry for each language hotkey. */
+const languageRetries = new Map<string, () => void>();
+
+function cancelLanguageRetry(lang: string): void {
+  languageRetries.get(lang)?.();
+  languageRetries.delete(lang);
+}
+
+/** End the session this language hotkey started, if it is still held. */
+function releaseLanguageSession(lang: string): void {
+  if (activeDictationLanguage !== lang) return;
+  activeDictationLanguage = null;
+  if (state.hotkeyPressed) {
+    state.hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
+    sendHotkeyUp();
+  }
+}
+
+function createLanguageListener(
+  lang: string,
+  accel: string,
+): NativeKeyListener {
+  const listener = new NativeKeyListener({
+    hotkey: accel,
+    onKeyDown: () => handleDictationHotkeyDown(lang),
+    onKeyUp: () => handleDictationHotkeyUp(lang),
+    onError: (error) =>
+      hotkeyLog.error(`Language hotkey listener error (${lang}): ${error}`),
+    onPermanentFailure: () => {
+      if (state.languageKeyListeners.get(lang) !== listener) return;
+      hotkeyLog.error(
+        `Language hotkey listener for "${lang}" permanently failed; retrying every 60 s.`,
+      );
+      listener.stop();
+      state.languageKeyListeners.delete(lang);
+      releaseLanguageSession(lang);
+      startLanguageRetry(lang, accel);
+    },
+  });
+  return listener;
+}
+
+/** Try the native listener again every 60 s. No fallback exists for a language hotkey. */
+function startLanguageRetry(lang: string, accel: string): void {
+  cancelLanguageRetry(lang);
+  languageRetries.set(
+    lang,
+    startNativeRetry({
+      label: `Language hotkey "${lang}"`,
+      attempt: async () => {
+        const listener = createLanguageListener(lang, accel);
+        state.languageKeyListeners.set(lang, listener);
+        const started = await listener.start();
+        if (started && state.languageKeyListeners.get(lang) === listener) {
+          return true;
+        }
+        listener.stop();
+        if (state.languageKeyListeners.get(lang) === listener) {
+          state.languageKeyListeners.delete(lang);
+        }
+        return false;
+      },
+      onRecovered: () => languageRetries.delete(lang),
+    }),
+  );
 }
 
 /**
@@ -390,17 +509,11 @@ async function registerLanguageHotkeys(
   );
 
   for (const lang of toRemove) {
+    cancelLanguageRetry(lang);
     state.languageKeyListeners.get(lang)?.stop();
     state.languageKeyListeners.delete(lang);
     state.languageHotkeyAccels.delete(lang);
-    if (activeDictationLanguage === lang) {
-      activeDictationLanguage = null;
-      if (state.hotkeyPressed) {
-        state.hotkeyPressed = false;
-        clearHotkeyStuckWatchdog();
-        sendHotkeyUp();
-      }
-    }
+    releaseLanguageSession(lang);
   }
 
   for (const [lang, hotkey] of toAdd) {
@@ -421,30 +534,8 @@ async function registerLanguageHotkeys(
       continue;
     }
 
-    const listener = new NativeKeyListener({
-      hotkey: normalized,
-      onKeyDown: () => handleDictationHotkeyDown(lang),
-      onKeyUp: () => handleDictationHotkeyUp(lang),
-      onError: (error) =>
-        hotkeyLog.error(`Language hotkey listener error (${lang}): ${error}`),
-      onPermanentFailure: () => {
-        if (state.languageKeyListeners.get(lang) !== listener) return;
-        hotkeyLog.error(
-          `Language hotkey listener for "${lang}" permanently failed; disabled.`,
-        );
-        listener.stop();
-        state.languageKeyListeners.delete(lang);
-        state.languageHotkeyAccels.delete(lang);
-        if (activeDictationLanguage === lang) {
-          activeDictationLanguage = null;
-          if (state.hotkeyPressed) {
-            state.hotkeyPressed = false;
-            clearHotkeyStuckWatchdog();
-            sendHotkeyUp();
-          }
-        }
-      },
-    });
+    cancelLanguageRetry(lang);
+    const listener = createLanguageListener(lang, normalized);
     state.languageKeyListeners.set(lang, listener);
     state.languageHotkeyAccels.set(lang, normalized);
 
@@ -457,11 +548,11 @@ async function registerLanguageHotkeys(
     }
     if (!started) {
       hotkeyLog.warn(
-        `Language hotkey listener unavailable for "${lang}"; disabled.`,
+        `Language hotkey listener unavailable for "${lang}"; retrying every 60 s.`,
       );
       listener.stop();
       state.languageKeyListeners.delete(lang);
-      state.languageHotkeyAccels.delete(lang);
+      startLanguageRetry(lang, normalized);
     }
   }
 }

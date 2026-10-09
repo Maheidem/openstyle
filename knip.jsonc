@@ -19,6 +19,7 @@
     "pkg-config",
     "powershell",
     "powershell.exe",
+    "ps",
     "python3",
     "security"
   ],

@@ -7,6 +7,7 @@ import { getDefaultRemixHotkey } from "../../shared/remix";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 import { getFrontmostContext } from "../active-window";
 import { isValidAccelerator, normalizeAccelerator } from "../hotkey-utils";
+import { startNativeRetry } from "../hotkeys/native-retry";
 import {
   clearHotkeyStuckWatchdog,
   clearRemixStuckWatchdog,
@@ -117,8 +118,57 @@ export function scheduleRemixHotkeyRegistration(hotkey?: string): void {
   });
 }
 
+function createRemixListener(accel: string): NativeKeyListener {
+  const listener = new NativeKeyListener({
+    hotkey: accel,
+    onKeyDown: handleRemixHotkeyDown,
+    onKeyUp: handleRemixHotkeyUp,
+    onError: (error) => {
+      hotkeyLog.error(`Remix key listener error: ${error}`);
+    },
+    onReady: () => {
+      hotkeyLog.debug(`Remix key listener ready for "${accel}"`);
+    },
+    onPermanentFailure: () => {
+      if (state.remixKeyListener !== listener) return;
+      hotkeyLog.error(
+        "Remix key listener permanently failed; retrying every 60 s.",
+      );
+      listener.stop();
+      state.remixKeyListener = null;
+      startRemixRetry(accel);
+    },
+  });
+  return listener;
+}
+
+/** Cancels the pending native retry for the remix listener. */
+let cancelRemixRetry: (() => void) | null = null;
+
+/** Try the native listener again every 60 s. No fallback exists for Remix. */
+function startRemixRetry(accel: string): void {
+  cancelRemixRetry?.();
+  cancelRemixRetry = startNativeRetry({
+    label: "Remix",
+    attempt: async () => {
+      const listener = createRemixListener(accel);
+      state.remixKeyListener = listener;
+      const started = await listener.start();
+      if (started && state.remixKeyListener === listener) return true;
+      listener.stop();
+      if (state.remixKeyListener === listener) state.remixKeyListener = null;
+      return false;
+    },
+    onRecovered: () => {
+      cancelRemixRetry = null;
+    },
+  });
+}
+
 /** Start the remix native listener. No globalShortcut fallback (needs hold/tap). */
 async function registerRemixHotkey(hotkey?: string): Promise<void> {
+  cancelRemixRetry?.();
+  cancelRemixRetry = null;
   if (state.remixKeyListener) {
     state.remixKeyListener.stop();
     state.remixKeyListener = null;
@@ -143,23 +193,7 @@ async function registerRemixHotkey(hotkey?: string): Promise<void> {
 
   state.currentRemixAccel = accel;
 
-  const listener = new NativeKeyListener({
-    hotkey: accel,
-    onKeyDown: handleRemixHotkeyDown,
-    onKeyUp: handleRemixHotkeyUp,
-    onError: (error) => {
-      hotkeyLog.error(`Remix key listener error: ${error}`);
-    },
-    onReady: () => {
-      hotkeyLog.debug(`Remix key listener ready for "${accel}"`);
-    },
-    onPermanentFailure: () => {
-      if (state.remixKeyListener !== listener) return;
-      hotkeyLog.error("Remix key listener permanently failed; remix off.");
-      listener.stop();
-      state.remixKeyListener = null;
-    },
-  });
+  const listener = createRemixListener(accel);
   state.remixKeyListener = listener;
 
   const started = await listener.start();
@@ -169,10 +203,11 @@ async function registerRemixHotkey(hotkey?: string): Promise<void> {
   }
   if (!started) {
     hotkeyLog.warn(
-      `Remix key listener unavailable for "${accel}"; remix are off.`,
+      `Remix key listener unavailable for "${accel}"; retrying every 60 s.`,
     );
     listener.stop();
     state.remixKeyListener = null;
+    startRemixRetry(accel);
   }
 }
 
