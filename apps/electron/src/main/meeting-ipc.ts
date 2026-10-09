@@ -2,8 +2,9 @@
  * Meeting Mode IPC handlers: record control, mic chunk intake, system-audio
  * probe and reveal-in-Finder. The handler bodies come from the `whenReady`
  * block in `index.ts`. The channel names and return values are the same.
- * `index.ts` still builds the `MeetingRecorder`. This file reads it through
- * `getMeetingRecorder`, because `index.ts` sets it after boot.
+ * `ipc/core-ipc.ts` builds the deps. `main-state.ts` holds the
+ * `MeetingRecorder`. This file reads it through `getMeetingRecorder`,
+ * because the recorder is set after boot.
  */
 
 import { existsSync } from "node:fs";

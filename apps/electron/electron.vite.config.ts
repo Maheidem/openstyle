@@ -30,7 +30,7 @@ const mkVisualizer = (name: string) =>
 // emitted `./assets/…`. A hard reload of a nested route (`app://renderer/
 // settings/models`) makes the browser resolve those against the CURRENT PATH —
 // `app://renderer/settings/assets/index-*.js`. That URL carries an extension,
-// so `registerAppProtocol()`'s extension-less SPA fallback (src/main/index.ts)
+// so `registerAppProtocol()`'s extension-less SPA fallback (src/main/app-protocol.ts)
 // does not catch it, no such file exists, and `net.fetch` fails
 // `net::ERR_UNEXPECTED`. React never mounts: a blank window. Depth-1 routes
 // (`/today`, `/remix`, `/meetings`) survived only because the fallback served
