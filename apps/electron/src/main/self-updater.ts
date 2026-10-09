@@ -5,15 +5,22 @@
 
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { createAppLogger } from "@openstyle/utils";
 import { app } from "electron";
 import {
+  assembleZip,
   cleanupBackup,
+  type DownloadProgress,
   downloadAndVerify,
   extractZip,
   fetchLatestManifest,
   findAppBundle,
+  loadBlockmap,
+  planDelta,
   probeWritable,
+  pruneUpdateFolders,
   readBundleVersion,
   removeQuarantine,
   sanityCheckBundle,
@@ -22,8 +29,96 @@ import {
   sweepOldBackups,
 } from "./self-updater-core";
 
-const MANIFEST_URL =
-  "https://github.com/Maheidem/openstyle/releases/latest/download/latest-mac.yml";
+const log = createAppLogger("electron");
+
+// Only the E2E harness may point the updater at a local feed.
+const RELEASES_URL =
+  (process.env.OPENSTYLE_E2E === "1" &&
+    process.env.OPENSTYLE_E2E_RELEASES_URL) ||
+  "https://github.com/Maheidem/openstyle/releases";
+const MANIFEST_URL = `${RELEASES_URL}/latest/download/latest-mac.yml`;
+
+// Above this share of the zip, a delta saves too little. Download it all.
+const MAX_DELTA_FRACTION = 0.7;
+
+/** Yield the bytes `start..endInclusive` of `url`. GitHub accepts one range per request. */
+async function* fetchRange(
+  url: string,
+  start: number,
+  endInclusive: number,
+): AsyncGenerator<Uint8Array> {
+  const res = await fetch(url, {
+    headers: { Range: `bytes=${start}-${endInclusive}` },
+    redirect: "follow",
+  });
+  if (res.status !== 206 || !res.body) {
+    throw new Error(`Range request for ${url} failed: HTTP ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    if (value) yield value;
+  }
+}
+
+/**
+ * Try to build `destPath` from the cached zip of the running version plus the
+ * changed byte ranges. Returns false when a delta is not possible or fails.
+ * The caller then downloads the whole zip.
+ */
+async function downloadDelta(
+  zipUrl: string,
+  newVersion: string,
+  expectedSha512: string,
+  destPath: string,
+  onProgress: (p: DownloadProgress) => void,
+): Promise<boolean> {
+  const currentVersion = app.getVersion();
+  const zipName = zipUrl.split("/").pop() ?? "";
+  const oldZipName = zipName.replace(newVersion, currentVersion);
+  const oldZipPath = join(
+    app.getPath("userData"),
+    "updates",
+    currentVersion,
+    oldZipName,
+  );
+  if (oldZipName === zipName || !existsSync(oldZipPath)) return false;
+
+  try {
+    const [oldMap, newMap] = await Promise.all([
+      loadBlockmap(
+        `${RELEASES_URL}/download/${currentVersion}/${oldZipName}.blockmap`,
+      ),
+      loadBlockmap(`${zipUrl}.blockmap`),
+    ]);
+    const plan = planDelta(oldMap, newMap);
+    if (plan.bytesToFetch > plan.bytesTotal * MAX_DELTA_FRACTION) {
+      log.info(
+        `Delta update skipped: ${plan.bytesToFetch} of ${plan.bytesTotal} bytes changed`,
+      );
+      return false;
+    }
+    const { sha512 } = await assembleZip(
+      oldZipPath,
+      plan,
+      (start, end) => fetchRange(zipUrl, start, end),
+      destPath,
+      onProgress,
+    );
+    if (sha512 !== expectedSha512) throw new Error("sha512 mismatch");
+    log.info(
+      `Delta update: fetched ${plan.bytesToFetch} of ${plan.bytesTotal} bytes`,
+    );
+    return true;
+  } catch (err) {
+    log.warn(
+      `Delta update failed, using full download: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    rmSync(destPath, { force: true });
+    return false;
+  }
+}
 
 // Both downloadUpdate() and installUpdate() report failures by rejecting
 // their returned promise — there's no separate "error" event to listen for.
@@ -66,14 +161,22 @@ class SelfUpdater extends EventEmitter {
     // redirects this to the real tagged asset URL either way.
     const zipUrl = entry.url.startsWith("http")
       ? entry.url
-      : `https://github.com/Maheidem/openstyle/releases/latest/download/${entry.url}`;
+      : `${RELEASES_URL}/latest/download/${entry.url}`;
 
     const destDir = join(app.getPath("userData"), "updates", manifest.version);
     const destPath = join(destDir, entry.url.split("/").pop() ?? "update.zip");
 
-    await downloadAndVerify(zipUrl, entry.sha512, destPath, (p) => {
-      this.emit("progress", p);
-    });
+    const onProgress = (p: DownloadProgress) => this.emit("progress", p);
+    const usedDelta = await downloadDelta(
+      zipUrl,
+      manifest.version,
+      entry.sha512,
+      destPath,
+      onProgress,
+    );
+    if (!usedDelta) {
+      await downloadAndVerify(zipUrl, entry.sha512, destPath, onProgress);
+    }
 
     this.downloadedZipPath = destPath;
     this.downloadedVersion = manifest.version;
@@ -158,6 +261,18 @@ export async function sweepSelfUpdaterBackups(): Promise<void> {
   if (!app.isPackaged || process.platform !== "darwin") return;
   const bundle = findAppBundle(app.getPath("exe"));
   if (bundle) await sweepOldBackups(bundle);
+}
+
+/**
+ * Call once at startup. Deletes the downloaded zips of every version except
+ * the running one. The running version's zip is the base for the next delta.
+ */
+export async function pruneSelfUpdaterDownloads(): Promise<void> {
+  if (!app.isPackaged || process.platform !== "darwin") return;
+  await pruneUpdateFolders(
+    join(app.getPath("userData"), "updates"),
+    app.getVersion(),
+  );
 }
 
 export const selfUpdater = new SelfUpdater();

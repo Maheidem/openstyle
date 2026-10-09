@@ -63,7 +63,10 @@ import {
 import { registerQuitHandlers } from "./quit";
 import { updateRemixBar } from "./remix/bar-window";
 import { registerRemixIpc } from "./remix/ipc";
-import { sweepSelfUpdaterBackups } from "./self-updater";
+import {
+  pruneSelfUpdaterDownloads,
+  sweepSelfUpdaterBackups,
+} from "./self-updater";
 import { startServerHost } from "./server-host";
 import { registerUpdater } from "./updater";
 import {
@@ -215,6 +218,8 @@ app.whenReady().then(async () => {
   // Clean up any .old-<ts> app bundle backup left behind if a previous
   // self-update's post-swap cleanup didn't get to run (see self-updater.ts).
   void sweepSelfUpdaterBackups();
+  // Delete cached update zips of older versions (keeps the delta base).
+  void pruneSelfUpdaterDownloads();
 
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.openstyle.app");

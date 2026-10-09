@@ -14,6 +14,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  createReadStream,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -22,9 +23,10 @@ import {
   rmdirSync,
   rmSync,
 } from "node:fs";
-import { readdir, rm } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { gunzip } from "node:zlib";
 
 const execFileAsync = promisify(execFile);
 
@@ -201,6 +203,208 @@ export async function downloadAndVerify(
       `sha512 mismatch for ${url}: expected ${expectedSha512Base64}, got ${actual}`,
     );
   }
+}
+
+// ---- Delta updates --------------------------------------------------------
+// electron-builder publishes `<zip>.blockmap`: a gzip JSON list of chunk
+// checksums. We compare the blockmap of the installed zip with the blockmap of
+// the new zip. Chunks that exist in both are copied from the cached old zip.
+// Only the other chunks are fetched, one HTTP range per request. The sha512 of
+// the result must equal the sha512 in latest-mac.yml, so a wrong copy is
+// always detected.
+
+export interface BlockmapChunk {
+  offset: number;
+  size: number;
+  checksum: string;
+}
+
+export type Blockmap = BlockmapChunk[];
+
+export type DeltaOp =
+  | { type: "copy"; oldOffset: number; size: number }
+  | { type: "fetch"; newOffset: number; size: number };
+
+export interface DeltaPlan {
+  ops: DeltaOp[];
+  bytesToFetch: number;
+  bytesTotal: number;
+}
+
+/**
+ * Parse an electron-builder blockmap. `source` is the file content, a path to
+ * a blockmap file, or an http(s) URL. Returns every chunk in file order.
+ */
+export async function loadBlockmap(source: string | Buffer): Promise<Blockmap> {
+  let raw: Buffer;
+  if (typeof source !== "string") {
+    raw = source;
+  } else if (/^https?:\/\//.test(source)) {
+    const res = await fetch(source, { redirect: "follow" });
+    if (!res.ok)
+      throw new Error(`Failed to fetch ${source}: HTTP ${res.status}`);
+    raw = Buffer.from(await res.arrayBuffer());
+  } else {
+    raw = await readFile(source);
+  }
+  const json = await new Promise<Buffer>((resolve, reject) => {
+    gunzip(raw, (err, out) => (err ? reject(err) : resolve(out)));
+  });
+  const parsed = JSON.parse(json.toString("utf8")) as {
+    files?: { offset: number; checksums: string[]; sizes: number[] }[];
+  };
+  if (!parsed.files?.length) throw new Error("blockmap: no files listed");
+
+  const chunks: Blockmap = [];
+  for (const file of parsed.files) {
+    if (file.checksums.length !== file.sizes.length) {
+      throw new Error("blockmap: checksums and sizes differ in length");
+    }
+    let offset = file.offset;
+    file.checksums.forEach((checksum, i) => {
+      chunks.push({ offset, size: file.sizes[i], checksum });
+      offset += file.sizes[i];
+    });
+  }
+  return chunks;
+}
+
+/**
+ * For each chunk of the new zip, in order, pick a copy from the old zip or a
+ * fetch from the new zip. Neighbouring ops of the same kind become one op.
+ */
+export function planDelta(oldMap: Blockmap, newMap: Blockmap): DeltaPlan {
+  const oldChunks = new Map<string, BlockmapChunk>();
+  for (const c of oldMap) {
+    const key = `${c.checksum}:${c.size}`;
+    if (!oldChunks.has(key)) oldChunks.set(key, c);
+  }
+
+  const ops: DeltaOp[] = [];
+  let bytesToFetch = 0;
+  let bytesTotal = 0;
+  for (const c of newMap) {
+    bytesTotal += c.size;
+    const old = oldChunks.get(`${c.checksum}:${c.size}`);
+    const last = ops[ops.length - 1];
+    if (old) {
+      if (last?.type === "copy" && last.oldOffset + last.size === old.offset) {
+        last.size += c.size;
+      } else {
+        ops.push({ type: "copy", oldOffset: old.offset, size: c.size });
+      }
+    } else {
+      bytesToFetch += c.size;
+      if (last?.type === "fetch" && last.newOffset + last.size === c.offset) {
+        last.size += c.size;
+      } else {
+        ops.push({ type: "fetch", newOffset: c.offset, size: c.size });
+      }
+    }
+  }
+  return { ops, bytesToFetch, bytesTotal };
+}
+
+type RangeBody = Buffer | AsyncIterable<Uint8Array>;
+
+/**
+ * Build the new zip at `destPath` by following `plan`. `fetchRange` returns
+ * the bytes `start..endInclusive` of the new zip. The sha512 (base64) is
+ * computed while writing. The caller compares it with the published value.
+ * `onProgress` counts only the fetched bytes.
+ */
+export async function assembleZip(
+  oldZipPath: string,
+  plan: DeltaPlan,
+  fetchRange: (
+    start: number,
+    endInclusive: number,
+  ) => Promise<RangeBody> | RangeBody,
+  destPath: string,
+  onProgress?: (p: DownloadProgress) => void,
+): Promise<{ sha512: string; bytesFetched: number }> {
+  mkdirSync(dirname(destPath), { recursive: true });
+  const hash = createHash("sha512");
+  const out = createWriteStream(destPath);
+  let bytesFetched = 0;
+  let lastEmitMs = 0;
+
+  const write = async (chunk: Uint8Array): Promise<void> => {
+    hash.update(chunk);
+    if (!out.write(chunk)) {
+      await new Promise<void>((resolve) => out.once("drain", resolve));
+    }
+  };
+
+  try {
+    for (const op of plan.ops) {
+      let written = 0;
+      if (op.type === "copy") {
+        const src = createReadStream(oldZipPath, {
+          start: op.oldOffset,
+          end: op.oldOffset + op.size - 1,
+        });
+        for await (const chunk of src) {
+          await write(chunk as Buffer);
+          written += (chunk as Buffer).byteLength;
+        }
+      } else {
+        const body = await fetchRange(op.newOffset, op.newOffset + op.size - 1);
+        const parts = Buffer.isBuffer(body) ? [body] : body;
+        for await (const chunk of parts) {
+          await write(chunk);
+          written += chunk.byteLength;
+          bytesFetched += chunk.byteLength;
+          // Throttle like downloadAndVerify: the caller sends each one over IPC.
+          const now = Date.now();
+          if (now - lastEmitMs >= 200 || bytesFetched === plan.bytesToFetch) {
+            lastEmitMs = now;
+            onProgress?.({
+              percent: Math.min(100, (bytesFetched / plan.bytesToFetch) * 100),
+              transferred: bytesFetched,
+              total: plan.bytesToFetch,
+            });
+          }
+        }
+      }
+      if (written !== op.size) {
+        throw new Error(
+          `Delta ${op.type}: expected ${op.size} bytes, got ${written}`,
+        );
+      }
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      out.end((err: unknown) => (err ? reject(err) : resolve()));
+    });
+  }
+  return { sha512: hash.digest("base64"), bytesFetched };
+}
+
+/**
+ * Delete every direct subfolder of `updatesDir` except `keepVersion`. Each
+ * folder holds one downloaded release zip. The folder of the running version
+ * stays: it is the base for the next delta update. Best-effort.
+ */
+export async function pruneUpdateFolders(
+  updatesDir: string,
+  keepVersion: string,
+): Promise<void> {
+  let entries: { name: string; isDirectory(): boolean }[];
+  try {
+    entries = await readdir(updatesDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  await Promise.all(
+    entries
+      .filter((e) => e.isDirectory() && e.name !== keepVersion)
+      .map((e) =>
+        rm(join(updatesDir, e.name), { recursive: true, force: true }).catch(
+          () => {},
+        ),
+      ),
+  );
 }
 
 /**
