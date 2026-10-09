@@ -149,6 +149,8 @@ Then watch Build & Test the same way as step 3 above.
 
 ### F2. Publish manually from the green run's artifacts
 
+Never upload a local `build:mac` output. A local build can carry the "Openstyle Dev" signature, which differs from the CI signature, and the update check can fail.
+
 ```bash
 mkdir -p /tmp/release-<version>
 gh run download <runId> --repo Maheidem/openstyle -D /tmp/release-<version>

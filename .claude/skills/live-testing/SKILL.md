@@ -19,6 +19,27 @@ The owner runs the installed Openstyle app every day. Every live test must run n
 8. Do not push, merge or change GitHub settings. The coordinating agent does outward actions.
 9. Launch a local app or E2E run only in quiet mode (`OPENSTYLE_E2E=1`, section 4). Prefer CI for the full E2E suite.
 
+## Privacy dialogs and the dev identity
+
+Every dev binary is ad-hoc signed: the native helpers, the fluidaudio-diarize helper, ffmpeg, `Electron.app` in `node_modules` and `dist/mac-arm64/Openstyle.app`. macOS can only identify an ad-hoc binary by its code hash or its path. Each rebuild or new copy gets a new identity, so macOS asks for the Privacy permissions again. The responsible app for these requests is the parent that started them (Claude Code), so the dialogs also appear on the owner's screen.
+
+The fix is a stable local identity named "Openstyle Dev". The owner creates it once. macOS asks for the login password once:
+
+```bash
+! bash scripts/dev-signing-setup.sh
+```
+
+Never run this script from an agent. Do not run `security`, `codesign`, `tccutil` or any Keychain command by hand. The project scripts (`compile:native`, `download:ffmpeg`, `sign:dev`, `build:mac`, `build:unpack`) run `security find-identity` and `codesign` after the setup. Only the owner runs `sign:dev` after the setup.
+
+After the setup:
+- `compile:native`, `download:ffmpeg`, `build:mac` and `build:unpack` sign local builds with the identity. `pnpm --filter @openstyle/electron sign:dev` signs `Electron.app` (also done by `dev` and `test:e2e`). Run `sign:dev` outside `isolated_run`: the scratch `HOME` has no keychain, and `sign:dev` exits with an error there. The documented direct `playwright` command skips `sign:dev`: run `sign:dev` first. `turbo` can restore cached ad-hoc binaries: the signing variables are part of the cache key; use `turbo --force` if in doubt.
+- The step does nothing when `CI` is set, when `OPENSTYLE_DEV_SIGN=0`, or when the identity does not exist. `OPENSTYLE_DEV_SIGN_IDENTITY` selects another identity.
+- Run a binary that is ad-hoc signed again, and the old grants do not apply. Grant the permissions once in System Settings.
+
+Open point (not proven): the TCC log names Claude Code as the responsible app for these requests. A stable signature on the child binary may not change the grant that macOS checks. Before you rely on the fix, prove it on one binary: sign it, run it, and read the TCC log for `Sub:` and `Responsible:`. If the responsible app stays Claude Code, run local real-app tests from a separate parent app.
+
+Rule: a local real-app run (launch, e2e, site capture) needs the dev identity first. If `security find-identity -v -p codesigning` shows no "Openstyle Dev", do not run the app locally. Run the e2e suite in CI only.
+
 ## Enforced by the guard hook
 
 A PreToolUse hook (`scripts/guard-hook.sh`, registered in `.claude/settings.json`) blocks these Bash commands and file writes. It prints one line with the rule letter and exits 2.

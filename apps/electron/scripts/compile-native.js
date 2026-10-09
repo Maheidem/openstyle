@@ -23,6 +23,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { devSign } from "./dev-sign.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -134,6 +135,7 @@ function compileMacOS() {
     if (ok) {
       chmodSync(out, 0o755);
       console.log(`  -> ${out}`);
+      devSign([out]); // local builds only, see dev-sign.mjs
     } else {
       failures.push(bin.name);
       console.warn(
@@ -195,6 +197,7 @@ function compileFluidAudioDiarizer() {
   copyFileSync(builtBin, out);
   chmodSync(out, 0o755);
   console.log(`  -> ${out}`);
+  devSign([out]); // local builds only, see dev-sign.mjs
 }
 
 // ---------------------------------------------------------------------------
