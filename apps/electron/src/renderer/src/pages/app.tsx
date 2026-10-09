@@ -1,38 +1,13 @@
-import { REMIX_PRESETS } from "@openstyle/validations";
-import { AlertCardBody } from "@renderer/components/alert-card-body";
-import { OpenstyleMark } from "@renderer/components/openstyle-mark";
-import {
-  REMIX_CHAT_STRIP,
-  REMIX_CHAT_SURFACE,
-} from "@renderer/components/remix-chat-surface";
+import { REMIX_CHAT_STRIP } from "@renderer/components/remix-chat-surface";
 import { useLatchedValue } from "@renderer/hooks/use-latched-value";
-import {
-  apiFetch,
-  getApiBase,
-  getClient,
-  getServerToken,
-  isRemoteServer,
-  refreshApiBase,
-} from "@renderer/lib/api";
+import { getClient, refreshApiBase } from "@renderer/lib/api";
 import {
   applyNeedsAppContextForCleanup,
-  getNeedsAppContextForCleanup,
   refreshNeedsAppContextForCleanup,
 } from "@renderer/lib/cleanup-app-context";
-import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
-import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
-import {
-  BATCH_TRANSCRIBE_TIMEOUT_MS,
-  postTranscribe,
-} from "@renderer/lib/transcribe-client";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Recorder } from "@renderer/lib/recorder";
+import type { Streamer } from "@renderer/lib/streamer";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   normalizeAudioPlaybackMode,
   resolveAudioPlaybackMode,
@@ -41,277 +16,50 @@ import {
   normalizePillCancelMode,
   type PillCancelMode,
 } from "../../../shared/pill-cancel";
-import {
-  REMIX_HOLD_THRESHOLD_MS,
-  type RemixSelectionPayload,
-} from "../../../shared/remix";
+import type { RemixSelectionPayload } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 import {
-  CANCEL_SIZE,
-  CANCELLED_MS,
-  CHECK_PATH_LENGTH,
-  DELIVERED_TOTAL_MS,
-  INK,
-  QUIET_MS,
-  STATUS_GAP,
-  SVG_HEIGHT,
-} from "./pill-motion";
-import { PILL_STYLES } from "./pill-styles";
+  BAR_CENTER,
+  BAR_COLOR,
+  BAR_WIDTH,
+  BAR_X_POSITIONS,
+  BARS,
+  type BarMode,
+  BLUR,
+  CLOSE_STEP_MS,
+  type Deferred,
+  ELAPSED_AFTER_MS,
+  FAILURE_CARD_MS,
+  LIVE,
+  PILL_CARD_WIDTH,
+  type PillExit,
+  type PillNotice,
+  type PillState,
+  REMIX_WARNING_MS,
+  type RemixSession,
+  SURFACE,
+  SURFACE_BORDER,
+  SVG_WIDTH,
+  type TranscribeResult,
+  VIEW_LATCH_MS,
+  WARMING_AFTER_MS,
+  WARMING_LABEL,
+} from "./pill/constants";
+import type { PillShared } from "./pill/pill-shared";
+import { PillView } from "./pill/pill-view";
+import { useDictationSession } from "./pill/use-dictation-session";
+import { usePillDismiss } from "./pill/use-pill-dismiss";
+import { useRemixHotkeys, useRemixSession } from "./pill/use-remix-session";
+import { useStreamer } from "./pill/use-streamer";
+import { useTranscriptionQueue } from "./pill/use-transcription-queue";
+import { useWaveform } from "./pill/use-waveform";
+import { SVG_HEIGHT } from "./pill-motion";
 import {
-  getAudioPlaybackMode,
-  getOutputMode,
-  playTone,
   setAudioPlaybackMode,
   setOutputMode,
   setSoundEnabled,
 } from "./pill-tones";
-import {
-  BAR_NOISE_FLOOR,
-  type BarJitter,
-  barHeightFor,
-  easeBars,
-  nextJitter,
-} from "./pill-waveform";
-
-// Lazy: keep Motion/agent chat out of the dictation entry chunk.
-const RemixChat = lazy(() =>
-  import("@renderer/components/remix-chat").then((mod) => ({
-    default: mod.RemixChat,
-  })),
-);
-
-const BARS = 10;
-const RISE = 0.55;
-const FALL = 0.22;
-/** Bar thickness; also the height of a bar at rest (drawn as a round dot). */
-const BAR_WIDTH = 2.5;
-/**
- * Horizontal pitch between bars — fixed, so the row's density never changes.
- * The waveform's width follows from it and from BARS, and the difference
- * against PILL_CORE_WIDTH is the margin the row sits in: dropping a bar makes
- * the row narrower and the capsule's edges roomier, rather than spreading the
- * remaining bars further apart.
- */
-const BAR_PITCH = 6;
-const SVG_WIDTH = BARS * BAR_PITCH;
-const BAR_X_POSITIONS = Array.from(
-  { length: BARS },
-  (_, index) => BAR_PITCH * (index + 0.5),
-);
-const BAR_CENTER = (BARS - 1) / 2;
-/**
- * How long each bar represents while recording. Every interval the sampled
- * levels hand off one slot to the left; the bars themselves never move.
- */
-const SAMPLE_MS = 75;
-/** Frequency band summed to get the voice level, in Hz. */
-const VOICE_MIN_HZ = 80;
-const VOICE_MAX_HZ = 4000;
-/**
- * Per-frame easing for the live recording waveform. Both are deliberately
- * close to 1: this row is a level meter, and the eye reads any lag between a
- * syllable and the bar answering it as the app being slow. What smoothing is
- * left is only there to keep single-frame FFT noise from flickering the row —
- * everything below ~0.6 starts to feel like the waveform is trailing you.
- */
-const LEVEL_RISE = 0.8;
-const LEVEL_FALL = 0.78;
-/**
- * The analyser's own exponential smoothing across FFT frames. This one is
- * upstream of everything else, so its lag is paid twice over — once on the way
- * up and once on the way down. Low enough to stay out of the way; not zero,
- * which would put raw bin noise straight into the bars.
- */
-const ANALYSER_SMOOTHING = 0.15;
-
-type PillState =
-  | "idle"
-  | "initializing"
-  | "recording"
-  | "transcribing"
-  | "error";
-
-/**
- * Every notice here is something having gone wrong, which is the whole bar for
- * showing one: a cold cloud session that is merely slow gets no mark at all,
- * because the pill appears on every single dictation and a spinner that cries
- * wolf on the happy path is just noise over the user's work. The first two are
- * recoveries in progress (a turning ring); the rest are stalled (an alert
- * ring).
- */
-type PillNotice = "reconnecting" | "retrying" | "unavailable" | null;
-
-/** The waveform is either live, settling, or showing transcription progress. */
-type BarMode = "listening" | "settling" | "speaking";
-
-/** Visual treatment for a completed, cancelled, or empty session. */
-type PillExit = "delivered" | "cancelled" | "quiet";
-
-/** Easing of the settle phase — slower than the meter, symmetric. */
-const SETTLE_EASE = 0.24;
-/** How long the row takes to come to rest before the sweep starts. */
-const SETTLE_MS = 180;
-/** Stillness between your voice ending and the machine starting. */
-const HANDOVER_BEAT_MS = 120;
-
-const CHECK_SIZE = 16;
-
-const CLOSE_STEP_MS = 18;
-
-const SILENCE_MS = 1600;
-const FLAT_EASE = 0.14;
-const ELAPSED_AFTER_MS = 60_000;
-
-/**
- * T1-3 / UX-01 (specs/lean-audit-2026-09.md §3): after handover, a cold local
- * model pays spawn + model-load before the first result — 5–90 s where
- * "working" is indistinguishable from "hung". The status slot names that
- * wait, but only once it has actually been long enough to be worth a mark
- * (the handover sweep itself is the "working" signal for the first moments).
- */
-const WARMING_AFTER_MS = 3_000;
-/** Carried by the status slot's word channels (tooltip + live region) — the
- * same treatment "Retrying" gets; see the warming effect below for why it is
- * not rendered as visible capsule text. */
-const WARMING_LABEL = "Warming up local model…";
-
-/** Names the cause instead of surfacing a raw TimeoutError (UX-A5: this is
- * the one error string this change adds — the rest of the batch error copy
- * stays as is). */
-const LOCAL_MODEL_TIMEOUT_MSG =
-  "Local model didn't respond — it may still be starting. Try again.";
-
-/** How long a closing card keeps its last content, in ms. */
-const VIEW_LATCH_MS = 320;
-
-const PILL_HEIGHT = 30;
-/**
- * The capsule's fixed core — the cancel slot and the waveform. Status that has
- * to be disclosed (the aside) is appended *outside* this, and grows the capsule
- * by exactly its own width, so the waveform never shifts or shrinks to make
- * room for a label.
- *
- * Wide enough to hold the waveform with an even margin either side at rest,
- * and to still contain it once the cancel button has opened (which costs the
- * row a net BAR_PITCH * CANCEL_HIDDEN_BARS less than the slot it takes).
- */
-const PILL_CORE_WIDTH = 96;
-/** The expanded card, in the space `window.api.setPillExpanded` opens up. */
-const PILL_CARD_WIDTH = 300;
-/**
- * How long a warning stays up before dismissing itself. The remix warning
- * is a dead end — nothing to do but read it — so it leaves quickly. The
- * dictation failure card can carry a Retry, and a button that vanishes while
- * you are deciding is worse than one that lingers.
- */
-const REMIX_WARNING_MS = 4500;
-const FAILURE_CARD_MS = 9000;
-/**
- * The cancel button lives at the left end of the capsule, and its space is
- * only taken while it's on screen. Opening it widens its slot to CANCEL_SLOT
- * (the disc plus a gap) and narrows the waveform's viewport by exactly
- * CANCEL_HIDDEN_BARS bars' worth, so the capsule's width never changes — the
- * two oldest samples make way and the rest of the row slides across.
- */
-const CANCEL_SLOT = 23;
-const CANCEL_HIDDEN_BARS = 2;
-const CANCEL_HIDDEN_SPAN = CANCEL_HIDDEN_BARS * BAR_PITCH;
-/** Per-frame easing of the open/close amount; ~95% of the way in ~230ms. */
-const CANCEL_EASE = 0.2;
-
-/** The status mark is the same size as the cancel mark. */
-const STATUS_SIZE = CANCEL_SIZE;
-
-/**
- * The pill floats over arbitrary application windows, so it commits to a
- * single dark treatment in both themes rather than following the app theme —
- * a light pill reads as a blown-out blob over dark editors.
- */
-const SURFACE = "rgba(25, 24, 26, 0.98)";
-const SURFACE_BORDER = "1px solid rgba(255, 255, 255, 0.10)";
-const BLUR = "blur(20px) saturate(120%)";
-/** Error/warning glyph only — kept off the live-coral token so a failure
- * never reads as "recording" (the same fence `--destructive` observes
- * app-wide). Dark-mode destructive red, for contrast on the always-dark
- * surface. */
-const ALERT = "#F87171";
-/** Live/recording accent — bars and dot while actively capturing audio. */
-const LIVE = "#E4574D";
-/**
- * The waveform is solid at full opacity in every state — level is expressed
- * by bar height alone, so nothing here is dimmed to encode it. Color is the
- * one channel that *does* vary: cream normally, live coral while actively
- * recording, so the capsule's one "is this really listening" signal reads at
- * a glance.
- */
-const BAR_COLOR = "#FFFFFF";
-
-const pillInnerStyle: React.CSSProperties = {
-  height: PILL_HEIGHT,
-  borderRadius: PILL_HEIGHT / 2,
-  background: SURFACE,
-  border: SURFACE_BORDER,
-  backdropFilter: BLUR,
-  WebkitBackdropFilter: BLUR,
-  cursor: "grab",
-  WebkitAppRegion: "drag",
-} as React.CSSProperties;
-
-interface TranscribeResult {
-  raw: string;
-  cleaned: string;
-  error?: string;
-  providerCategory?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Remix
-// ---------------------------------------------------------------------------
-
-/**
- * Where a remix run has got to.
- *
- * The two ways in share a single hotkey and therefore a single opening state:
- * the moment it goes down we don't yet know whether this is a tap (show the
- * list) or a hold (record an instruction), so `capturing` optimistically does
- * both — the card is up and the mic is running — and the key going up decides
- * which of the two the user meant.
- */
-type RemixPhase = "capturing" | "listening" | "running" | "chat" | "error";
-
-interface RemixSession {
-  id: number;
-  phase: RemixPhase;
-  /** The captured selection; null until the copy comes back. */
-  selection: string | null;
-  /** What is being applied, shown while `running`. */
-  label?: string;
-  transcript?: string;
-  title?: string;
-  body?: string;
-  /** A spoken or typed instruction the chat card sends on open. */
-  initialInstruction?: string | null;
-  /**
-   * The chat collapsed to its one-line activity strip. Voice runs start here
-   * — the user asked for something to happen, not for a chat window — and
-   * hovering the strip is what opens the full conversation.
-   */
-  minimized?: boolean;
-}
-
-/** A promise that something else resolves. Used to await the selection. */
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-}
+import type { BarJitter } from "./pill-waveform";
 
 export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
@@ -494,1614 +242,141 @@ export default function AppPage(): React.JSX.Element {
   // replay it once the pending commit resolves.
   const pendingReRecordRef = useRef(false);
 
-  const isTranscriptionIdle = useCallback(
-    (): boolean =>
-      queueRef.current.length === 0 &&
-      !drainingRef.current &&
-      streamResolverRef.current === null,
-    [],
-  );
-
-  // ---- Queue drain ----
-  // biome-ignore lint/correctness/useExhaustiveDependencies: drainQueue only reads refs plus hidePill, which is declared later in this component, so adding it to the deps array would reference it before initialization (TDZ). The empty array is intentional.
-  const drainQueue = useCallback(async () => {
-    if (drainingRef.current) {
-      drainAgainRef.current = true;
-      return;
-    }
-    drainingRef.current = true;
-
-    try {
-      while (recordingActiveRef.current && pillActiveRef.current) {
-        await new Promise((r) => setTimeout(r, 100));
-      }
-
-      if (!pillActiveRef.current || queueRef.current.length === 0) {
-        return;
-      }
-
-      const batch = [...queueRef.current];
-      queueRef.current = [];
-
-      const results = await Promise.all(batch);
-
-      if (!pillActiveRef.current) {
-        return;
-      }
-
-      // A dictation is deliverable only when it has text.
-      const isDeliverable = (r: TranscribeResult): boolean => !!r.raw.trim();
-
-      if (
-        recordingActiveRef.current ||
-        wantsMicRef.current ||
-        queueRef.current.length > 0
-      ) {
-        const resolved = results
-          .filter(isDeliverable)
-          .map((r) => Promise.resolve(r));
-        queueRef.current = [...resolved, ...queueRef.current];
-        return;
-      }
-
-      const nonEmpty = results.filter(isDeliverable);
-      if (nonEmpty.length === 0) {
-        const errMsg = results.find((r) => r.error)?.error;
-        if (errMsg) {
-          failedTranscriptionErrorRef.current = errMsg;
-          setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
-          setPillNotice("unavailable");
-          setPillState("error");
-        } else if (wantsMicRef.current) {
-          // Re-record may have resolved the in-flight stream with an empty
-          // result; a new recording is starting — keep the pill visible.
-          return;
-        } else {
-          dismissPill("quiet");
-        }
-        return;
-      }
-
-      let finalText: string;
-
-      if (nonEmpty.length === 1) {
-        finalText = nonEmpty[0].cleaned.trim() || nonEmpty[0].raw.trim();
-      } else {
-        const combined = nonEmpty.map((r) => r.raw).join(" ");
-        try {
-          const res = await getClient().api["post-process"].$post({
-            json: {
-              text: combined,
-              appContext: appContextRef.current,
-            },
-          });
-          if (!pillActiveRef.current) {
-            return;
-          }
-          if (res.ok) {
-            const data = await res.json();
-            finalText = data.cleaned || combined;
-          } else {
-            finalText = combined;
-          }
-        } catch {
-          finalText = combined;
-        }
-      }
-
-      if (!pillActiveRef.current) {
-        return;
-      }
-
-      if (recordingActiveRef.current || queueRef.current.length > 0) {
-        queueRef.current = [
-          Promise.resolve({ raw: finalText, cleaned: finalText }),
-          ...queueRef.current,
-        ];
-        return;
-      }
-
-      let delivered = false;
-
-      try {
-        if (finalText.trim()) {
-          const delivery =
-            getOutputMode() === "clipboard"
-              ? window.api.copyText(finalText)
-              : window.api.pasteText(finalText);
-
-          // Start the exit when delivery is dispatched; pasteText resolves later.
-          delivered = true;
-          dismissPill("delivered");
-
-          await delivery;
-        }
-      } catch (err) {
-        console.error("[pill] paste/copy failed:", err);
-      }
-      window.api.sendTranscriptionDone();
-
-      if (
-        !recordingActiveRef.current &&
-        queueRef.current.length === 0 &&
-        pillActiveRef.current
-      ) {
-        dismissPill(delivered ? "delivered" : "quiet");
-      }
-    } finally {
-      drainingRef.current = false;
-      if (drainAgainRef.current) {
-        drainAgainRef.current = false;
-        void drainQueue();
-      } else if (
-        pillActiveRef.current &&
-        stateRef.current === "transcribing" &&
-        !wantsMicRef.current &&
-        !recordingActiveRef.current &&
-        isTranscriptionIdle()
-      ) {
-        dismissPill("quiet");
-      }
-    }
-  }, []);
-
-  // Queue one transcription and start the drain. The caller increments
-  // pendingCount before it builds `p`. The decrement must run in `finally` so
-  // that it runs on every path. If a path skips the decrement, the badge
-  // count grows and never returns to 0. `after` runs when `p` has settled.
-  const enqueue = useCallback(
-    (p: Promise<TranscribeResult>, after?: () => void): void => {
-      queueRef.current.push(
-        p.finally(() => {
-          setPendingCount((count) => Math.max(0, count - 1));
-          after?.();
-        }),
-      );
-      void drainQueue();
-    },
-    [drainQueue],
-  );
-
-  // ---- REST fallback (full recorded WAV kept by the streamer) ----
-  const restFallbackTranscribe = useCallback(
-    (
-      errorMsg: string,
-      language: string | null,
-    ): Promise<TranscribeResult> | null => {
-      const wavBlob = streamerRef.current?.getWavBlob() ?? null;
-      if (!wavBlob) return null;
-      return postTranscribe(wavBlob, {
-        durationMs: lastRecordingDurationRef.current,
-        language,
-        appContext: appContextRef.current,
-        skipPostProcess: queueRef.current.length > 0 || drainingRef.current,
-        // Same 360s bound as the batch path in commitRecording — this is
-        // also what the failure card's Retry re-posts through, so a wedged
-        // local server can't turn Retry back into an infinite sweep.
-        timeoutMs: BATCH_TRANSCRIBE_TIMEOUT_MS,
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            return { raw: "", cleaned: "", error: errorMsg };
-          }
-          const data = (await res.json()) as {
-            raw?: string;
-            cleaned?: string;
-            provider_category?: string;
-          };
-          return {
-            raw: (data.raw || "").trim(),
-            cleaned: (data.cleaned || data.raw || "").trim(),
-            providerCategory: data.provider_category,
-          };
-        })
-        .catch(() => ({ raw: "", cleaned: "", error: errorMsg }));
-    },
-    [],
-  );
-
-  const resolveStreamingWithFallback = useCallback(
-    (message: string): boolean => {
-      const resolver = streamResolverRef.current;
-      if (!resolver) return false;
-      streamResolverRef.current = null;
-      const language = streamLanguageRef.current;
-      streamLanguageRef.current = null;
-      setPillNotice("retrying");
-      const fallback = restFallbackTranscribe(message, language);
-      if (fallback) {
-        void fallback.then(resolver);
-      } else {
-        resolver({ raw: "", cleaned: "", error: message });
-      }
-      return true;
-    },
-    [restFallbackTranscribe, setPillNotice],
-  );
-
-  // ---- Streamer (lazy singleton, only created when streaming is enabled) ----
-  // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
-  const getStreamer = useCallback((): Streamer => {
-    if (!streamerRef.current) {
-      streamerRef.current = new Streamer(getApiBase(), getServerToken(), {
-        onConfig: (config) => {
-          // Only update support for *future* sessions. The per-session decision
-          // (recordingSessionUsesTransportRef) is latched once in startRecording
-          // and must never be mutated mid-session: a config arriving after the
-          // first recording has already committed to the batch path would flip
-          // commit to the streaming path, which captured no audio → "No audio
-          // captured". This is the first-dictation-after-restart failure.
-          supportsSessionTransportRef.current = config.sessionTransport;
-          if (config.providerCategory) {
-            providerCategoryRef.current = config.providerCategory;
-          }
-        },
-        onReady: () => {
-          if (pillNoticeRef.current === "reconnecting") {
-            setPillNotice(null);
-          }
-        },
-        onConnectionState: (connectionState: StreamerConnectionState) => {
-          if (
-            connectionState === "reconnecting" ||
-            connectionState === "disconnected"
-          ) {
-            if (
-              resolveStreamingWithFallback(
-                "Connection interrupted while transcribing",
-              )
-            ) {
-              return;
-            }
-            if (
-              pillActiveRef.current &&
-              recordingSessionUsesTransportRef.current
-            ) {
-              setPillNotice("reconnecting");
-            }
-          }
-          // A reconnected socket is not yet a working session — the notice
-          // stays up until `onReady` says the session is live again, so the
-          // mark doesn't blink off and on in the middle of one recovery.
-        },
-        onFinal: (text) => {
-          setPillNotice(null);
-          const resolver = streamResolverRef.current;
-          if (!resolver) return;
-          streamResolverRef.current = null;
-          const language = streamLanguageRef.current;
-          streamLanguageRef.current = null;
-          // A short clip can stream to a live provider that finalizes before it
-          // has recognized any words (a cold Soniox session, say), so
-          // the streaming final comes back empty even though audio was captured.
-          // Salvage via the batch REST path with the recorded WAV the streamer
-          // still has buffered — the same clip transcribes fine one-shot. If no
-          // WAV exists (genuine silence) the empty result stands.
-          if (!text.trim()) {
-            const fallback = restFallbackTranscribe("", language);
-            if (fallback) {
-              void fallback.then(resolver);
-              return;
-            }
-          }
-          resolver({ raw: text, cleaned: text });
-        },
-        onError: (msg, code) => {
-          const resolver = streamResolverRef.current;
-          if (resolver) {
-            resolveStreamingWithFallback(msg);
-            return;
-          }
-          if (wantsMicRef.current && recordingSessionUsesTransportRef.current) {
-            streamSessionErrorRef.current = { message: msg, code };
-            return;
-          }
-          if (!pillActiveRef.current) return;
-          failedTranscriptionErrorRef.current = msg;
-          setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
-          setPillNotice("unavailable");
-          setPillState("error");
-        },
-      });
-    }
-    return streamerRef.current;
-  }, []);
-
-  // ---- Bar animation loop ----
-  // The bar elements are created once per mount and only ever have their
-  // geometry rewritten, so grab them as the SVG mounts and let the draw loop
-  // iterate a plain array instead of querying the DOM 60 times a second.
-  // The flatline is not part of the bar buffer.
-  const captureBarLines = useCallback((svg: SVGSVGElement | null) => {
-    // Only ever *set* on attach, never cleared on detach. The waveform moves
-    // between two surfaces — the capsule and the remix card — and a detach
-    // that ran after the new element's attach would blank this and leave the
-    // visible row frozen. Holding a detached element instead is harmless: the
-    // draw loop writes attributes nobody renders until the next attach lands.
-    // Scope to `[data-bars] line` so the sibling flatline is left out of the
-    // buffer the draw loop iterates.
-    if (svg)
-      barLinesRef.current = Array.from(
-        svg.querySelectorAll<SVGLineElement>("[data-bars] line"),
-      );
-  }, []);
-
-  // One frame: work out what the bars should be aiming at, ease them toward
-  // it, then draw. Runs at 60fps for the whole time the pill is up, so
-  // everything here reuses buffers rather than allocating.
-  const runBars = useCallback(() => {
-    const mode = barModeRef.current;
-    if (!mode) return;
-
-    const now = performance.now();
-    const targets = targetsRef.current;
-    const bars = barsRef.current;
-    // Only the live waveform eases symmetrically; the generated patterns keep
-    // the snappier rise and gentler fall.
-    let rise = RISE;
-    let fall = FALL;
-
-    if (mode === "settling") {
-      // Let the last live sample settle before switching to the sweep.
-      rise = SETTLE_EASE;
-      fall = SETTLE_EASE;
-    } else if (mode === "speaking") {
-      // Transcribing: a single soft bump sweeping left to right on a loop,
-      // with a pause between passes. Reads as progress rather than as audio.
-      const t = (now - modeStartRef.current) / 1000;
-      const SWEEP = 1.15; // seconds of travel
-      const GAP = 0.35; // seconds of rest between passes
-      const head = ((t % (SWEEP + GAP)) / SWEEP) * (BARS + 4) - 2;
-      for (let i = 0; i < BARS; i++) {
-        const d = i - head;
-        targets[i] = 0.08 + 0.72 * Math.exp(-(d * d) / 3.2);
-      }
-    } else {
-      const analyser = analyserNodeRef.current;
-      const data = freqDataRef.current;
-      // The analyser is torn down a frame or two before the mode switches off
-      // "listening" on commit. Keep the loop running and the bars frozen
-      // until it does — never bail out of the rAF chain here.
-      if (!analyser || !data) {
-        rafRef.current = requestAnimationFrame(runBars);
-        return;
-      }
-
-      rise = LEVEL_RISE;
-      fall = LEVEL_FALL;
-      analyser.getByteFrequencyData(data);
-
-      const { startBin, endBin, levelDivisor } = voiceBandRef.current;
-      let sum = 0;
-      for (let i = startBin; i < endBin; i++) sum += data[i];
-      const voiceLevel = sum / levelDivisor;
-
-      // The bars hold still; only their values travel. Every SAMPLE_MS each
-      // sampled level hands off one slot to the left and the rightmost bar
-      // takes the newest sample, so a loud moment reads as moving
-      // right-to-left across a stationary row.
-      const sample = sampleRef.current;
-      // Peak-hold stays in raw level space; the response curve and this
-      // sample's jitter are applied at hand-off, so both land once per sample
-      // rather than being recomputed every frame. Note what this value is now
-      // *not* used for: the newest bar. See below.
-      sample.peak = Math.max(sample.peak, voiceLevel);
-
-      let elapsed = now - sample.lastSampleAt;
-      // A long stall (window occluded, GC pause) shouldn't replay every
-      // missed hand-off — jump straight to the present instead.
-      if (elapsed > SAMPLE_MS * BARS) {
-        sample.lastSampleAt = now;
-        elapsed = 0;
-      }
-      while (elapsed >= SAMPLE_MS) {
-        // Shift left by hand rather than via shift()/push(), which would
-        // reallocate the backing store on every hand-off.
-        for (let i = 0; i < BARS - 1; i++) targets[i] = targets[i + 1];
-        // The window that just closed is written as its *peak*, over the
-        // second-newest slot — overwriting the live value the shift just moved
-        // there. History is what peak-hold is for: once a bar has stopped
-        // being the live one, it should show the loudest thing that happened
-        // while it was, so a syllable can't fall between two frames.
-        targets[BARS - 2] = barHeightFor(sample.peak, sample.jitter);
-        sample.peak = voiceLevel;
-        sample.jitter = nextJitter();
-        sample.lastSampleAt += SAMPLE_MS;
-        elapsed -= SAMPLE_MS;
-      }
-
-      // The newest slot, by contrast, tracks the live level and nothing else.
-      // Drawing it from the peak-hold is what made both ends of a word feel
-      // late: the bar could only fall at the next hand-off, up to a full
-      // SAMPLE_MS after you had actually stopped. Now the right-hand bar is a
-      // meter — it rises and falls with your voice, this frame — and only
-      // becomes a peak once it hands off and joins the history.
-      targets[BARS - 1] = barHeightFor(voiceLevel, sample.jitter);
-
-      // A sustained floor means the mic may be muted or disconnected.
-      if (voiceLevel > BAR_NOISE_FLOOR) {
-        silentSinceRef.current = now;
-        flatTargetRef.current = 0;
-      } else if (
-        silentSinceRef.current > 0 &&
-        now - silentSinceRef.current > SILENCE_MS
-      ) {
-        flatTargetRef.current = 1;
-      }
-      const wantsSilent = flatTargetRef.current === 1;
-      if (wantsSilent !== micSilentRef.current) {
-        micSilentRef.current = wantsSilent;
-        setMicSilent(wantsSilent);
-      }
-
-      // The dashboard's own visualisation is calibrated against the original
-      // linear scale, so the level broadcast over IPC stays on it.
-      if (now - lastIpcTimeRef.current >= 100) {
-        lastIpcTimeRef.current = now;
-        window.api?.sendAudioLevel(Math.min(1, voiceLevel * 2.8));
-      }
-    }
-
-    // Ease toward the targets so a hand-off is a smooth morph between
-    // neighbouring heights rather than a visible step.
-    easeBars(bars, targets, rise, fall);
-
-    // Advance the cancel button's open/close on the same clock as the bars.
-    const open =
-      cancelOpenRef.current +
-      (cancelTargetRef.current - cancelOpenRef.current) * CANCEL_EASE;
-    cancelOpenRef.current = open;
-
-    // Ease the flatline on the same clock as the bars.
-    const flat =
-      flatAmountRef.current +
-      (flatTargetRef.current - flatAmountRef.current) * FLAT_EASE;
-    flatAmountRef.current = flat;
-    const flatline = flatlineRef.current;
-    if (flatline) {
-      if (flat > 0.002) {
-        const half = (SVG_WIDTH / 2 - 2) * flat;
-        flatline.setAttribute("opacity", String(flat * 0.5));
-        flatline.setAttribute("x1", String(SVG_WIDTH / 2 - half));
-        flatline.setAttribute("x2", String(SVG_WIDTH / 2 + half));
-      } else {
-        flatline.setAttribute("opacity", "0");
-      }
-    }
-
-    const lines = barLinesRef.current;
-    for (let i = 0; i < lines.length; i++) {
-      const val = bars[i] ?? 0;
-      // A bar never fully collapses: at rest it is exactly as tall as it is
-      // wide, so the round caps leave a row of evenly spaced dots.
-      const h = Math.max(BAR_WIDTH, val * SVG_HEIGHT);
-      const line = lines[i];
-      line.setAttribute("y1", String((SVG_HEIGHT + h) / 2));
-      line.setAttribute("y2", String((SVG_HEIGHT - h) / 2));
-      // Fade the oldest bars for the cancel slot and the whole row for silence.
-      const structural = i < CANCEL_HIDDEN_BARS && open > 0 ? 1 - open : 1;
-      line.style.opacity = String(structural * (1 - 0.55 * flat));
-    }
-
-    // Writing these lays out the capsule, so only do it while the value is
-    // actually moving — a settled button costs nothing.
-    if (Math.abs(open - lastCancelWriteRef.current) > 0.002) {
-      lastCancelWriteRef.current = open;
-      const slot = cancelSlotRef.current;
-      const clip = waveClipRef.current;
-      if (slot) {
-        slot.style.width = `${CANCEL_SLOT * open}px`;
-        slot.style.opacity = String(open);
-        slot.style.transform = `scale(${0.72 + 0.28 * open})`;
-        // Don't let a disc that is still fading in swallow a click.
-        slot.style.pointerEvents = open > 0.5 ? "auto" : "none";
-      }
-      if (clip) clip.style.width = `${SVG_WIDTH - CANCEL_HIDDEN_SPAN * open}px`;
-    }
-
-    rafRef.current = requestAnimationFrame(runBars);
-  }, []);
-
-  // ---- Visualization control ----
-  const startBarAnimation = useCallback(
-    (mode: BarMode) => {
-      cancelAnimationFrame(rafRef.current);
-      const now = performance.now();
-      barModeRef.current = mode;
-      modeStartRef.current = now;
-      // Every mode now writes the shared target buffer, so clear it on the
-      // way in. This also means a re-record starts from a flat row instead of
-      // inheriting the previous dictation's waveform.
-      targetsRef.current.fill(0);
-      // The pill remounts each time it is shown, so start the button at its
-      // resting state rather than animating it open, and force the first
-      // style write against the fresh elements.
-      cancelOpenRef.current = cancelTargetRef.current;
-      lastCancelWriteRef.current = -1;
-      // Silence only applies while the analyser is live.
-      silentSinceRef.current = mode === "listening" ? now : 0;
-      flatTargetRef.current = 0;
-      if (mode !== "listening") flatAmountRef.current = 0;
-      if (micSilentRef.current) {
-        micSilentRef.current = false;
-        setMicSilent(false);
-      }
-      sampleRef.current = {
-        lastSampleAt: now,
-        peak: 0,
-        jitter: nextJitter(),
-      };
-      rafRef.current = requestAnimationFrame(runBars);
-    },
-    [runBars],
-  );
-
-  const startListening = useCallback(
-    (stream: MediaStream) => {
-      if (
-        !analyserCtxRef.current ||
-        analyserCtxRef.current.state === "closed"
-      ) {
-        analyserCtxRef.current = new AudioContext();
-      }
-      const ctx = analyserCtxRef.current;
-      try {
-        audioSourceRef.current?.disconnect();
-      } catch {}
-      try {
-        analyserNodeRef.current?.disconnect();
-      } catch {}
-
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
-      source.connect(analyser);
-      audioSourceRef.current = source;
-      analyserNodeRef.current = analyser;
-      freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
-
-      // Resolve the voice band to bin indices once, here, rather than on
-      // every frame of the draw loop.
-      const binWidth = ctx.sampleRate / analyser.fftSize;
-      const startBin = Math.max(0, Math.floor(VOICE_MIN_HZ / binWidth));
-      const endBin = Math.min(
-        analyser.frequencyBinCount,
-        Math.ceil(VOICE_MAX_HZ / binWidth),
-      );
-      voiceBandRef.current = {
-        startBin,
-        endBin,
-        levelDivisor: Math.max(1, endBin - startBin) * 255,
-      };
-
-      startBarAnimation("listening");
-    },
-    [startBarAnimation],
-  );
-
-  const retryFailedTranscription = useCallback(() => {
-    if (stateRef.current !== "error") return;
-    // Not one of the four call sites §6 of the spec threads dictationLanguage
-    // through — this is a manual "Retry" click on the error card, reached only
-    // while `state === "error"`, i.e. no `startRecording` has run since the
-    // failed attempt (a fresh hotkey press from "error" starts a new recording
-    // and leaves this state entirely, taking the Retry button with it). So
-    // recordingLanguageRef.current is still exactly the language that failed
-    // attempt was pinned to.
-    const retry = restFallbackTranscribe(
-      failedTranscriptionErrorRef.current || "Transcription failed",
-      recordingLanguageRef.current,
-    );
-    if (!retry) {
-      setCanRetry(false);
-      return;
-    }
-    setCanRetry(false);
-    setPillNotice("retrying");
-    setPillState("transcribing");
-    // The draw loop is parked while the card is up (see the card effect), so
-    // the capsule needs its sweep started again rather than resumed.
-    startBarAnimation("speaking");
-    setPendingCount((count) => count + 1);
-    enqueue(retry);
-  }, [
-    enqueue,
-    restFallbackTranscribe,
+  const shared: PillShared = {
+    setPillState,
     setPillNotice,
-    setPillState,
-    startBarAnimation,
-  ]);
-
-  /** Give the live waveform a short settle beat before the progress sweep. */
-  const handoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startHandover = useCallback(() => {
-    startBarAnimation("settling");
-    if (handoverTimerRef.current) clearTimeout(handoverTimerRef.current);
-    handoverTimerRef.current = setTimeout(() => {
-      handoverTimerRef.current = null;
-      if (barModeRef.current === "settling") startBarAnimation("speaking");
-    }, SETTLE_MS + HANDOVER_BEAT_MS);
-  }, [startBarAnimation]);
-
-  const stopVisualization = useCallback(() => {
-    if (handoverTimerRef.current) {
-      clearTimeout(handoverTimerRef.current);
-      handoverTimerRef.current = null;
-    }
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = 0;
-    barModeRef.current = null;
-    try {
-      audioSourceRef.current?.disconnect();
-    } catch {}
-    try {
-      analyserNodeRef.current?.disconnect();
-    } catch {}
-    audioSourceRef.current = null;
-    analyserNodeRef.current = null;
-    freqDataRef.current = null;
-    barsRef.current.fill(0);
-    targetsRef.current.fill(0);
-    sampleRef.current = {
-      lastSampleAt: 0,
-      peak: 0,
-      jitter: { scale: 1, trim: 0 },
-    };
-    silentSinceRef.current = 0;
-    flatAmountRef.current = 0;
-    flatTargetRef.current = 0;
-    micSilentRef.current = false;
-  }, []);
-
-  // ---- Hide pill ----
-  /**
-   * Put every scrap of dictation state back to rest, without touching the pill
-   * window itself. Split out of `hidePill` for the one caller that needs the
-   * window left standing: the remix chord taking over a dictation that the
-   * shared home key started a few milliseconds earlier, where the pill is
-   * about to be reused for the remix card.
-   */
-  const resetDictation = useCallback(() => {
-    setPillNotice(null);
-    setCanRetry(false);
-    setPillLanguageLabel(null);
-    setPillState("idle");
-    setPendingCount(0);
-    wantsMicRef.current = false;
-    pillActiveRef.current = false;
-    queueRef.current = [];
-    drainingRef.current = false;
-    drainAgainRef.current = false;
-    recordingActiveRef.current = false;
-    streamResolverRef.current = null;
-    streamSessionErrorRef.current = null;
-    pendingReRecordRef.current = false;
-    // Hiding removes the hovered element before onMouseLeave can fire. Reset
-    // its transient reveal state so the next session does not inherit an open
-    // cancel button; the "always" preference remains pinned open.
-    hoveredRef.current = false;
-    cancelTargetRef.current = cancelModeRef.current === "always" ? 1 : 0;
-    cancelOpenRef.current = cancelTargetRef.current;
-    lastCancelWriteRef.current = -1;
-    setExiting(null);
-    exitingRef.current = null;
-    // So the next session's `initializing` frames can't read a stale clock.
-    startTimeRef.current = 0;
-    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-    exitTimerRef.current = null;
-    stopVisualization();
-  }, [setPillNotice, stopVisualization, setPillState]);
-
-  const hidePill = useCallback(() => {
-    resetDictation();
-    window.api.hidePill();
-  }, [resetDictation]);
-
-  /** Hide after the selected exit; modal/error paths still call hidePill(). */
-  const dismissPill = useCallback(
-    (kind: PillExit) => {
-      if (!pillActiveRef.current || exitingRef.current) return;
-      exitingRef.current = kind;
-      recordingActiveRef.current = false;
-      wantsMicRef.current = false;
-      setExiting(kind);
-
-      if (kind !== "delivered") {
-        exitTimerRef.current = setTimeout(
-          hidePill,
-          kind === "cancelled" ? CANCELLED_MS : QUIET_MS,
-        );
-        return;
-      }
-
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-      barModeRef.current = null;
-      if (flatlineRef.current) flatlineRef.current.setAttribute("opacity", "0");
-      exitTimerRef.current = setTimeout(hidePill, DELIVERED_TOTAL_MS);
-    },
-    [hidePill],
-  );
-
-  const resumeTranscribingOrHide = useCallback(() => {
-    if (isTranscriptionIdle()) {
-      dismissPill("quiet");
-    } else {
-      setPillState("transcribing");
-      startBarAnimation("speaking");
-      void drainQueue();
-    }
-  }, [
-    dismissPill,
-    setPillState,
-    startBarAnimation,
-    drainQueue,
-    isTranscriptionIdle,
-  ]);
-
-  // Restore the system volume, but only after any in-flight duck has settled
-  // so the restore can't be a no-op that leaves the volume stuck low.
-  const restoreSystemAudioSafely = useCallback(async (): Promise<void> => {
-    try {
-      await duckingPromiseRef.current;
-      await window.api?.restoreSystemAudio();
-    } catch {}
-  }, []);
-
-  // ---- Start recording ----
-  const startRecording = useCallback(
-    async (forReRecord = false) => {
-      if (wantsMicRef.current) {
-        return;
-      }
-      if (exitingRef.current) {
-        if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-        exitTimerRef.current = null;
-        exitingRef.current = null;
-        setExiting(null);
-      }
-      wantsMicRef.current = true;
-      pillActiveRef.current = true;
-      pendingCommitRef.current = false;
-      streamSessionErrorRef.current = null;
-      lastRecordingDurationRef.current = 0;
-      // Capture the pinned language once, here, into a value that travels
-      // with this one recording — never re-read pinnedLanguageRef after this
-      // point (see the ref's own comment for why: a delayed REST fallback
-      // must not inherit a later dictation's pin).
-      recordingLanguageRef.current = pinnedLanguageRef.current;
-      setPillLanguageLabel(
-        recordingLanguageRef.current
-          ? recordingLanguageRef.current.toUpperCase()
-          : null,
-      );
-      setPillNotice(null);
-      setCanRetry(false);
-      setElapsedLabel(null);
-      setMicSilent(false);
-
-      // Warm the pipeline while the user is speaking so submission doesn't pay
-      // startup latency: the local ASR server (whisper/mlx) model load and the
-      // cloud cleanup LLM connection (e.g. Groq TLS handshake). Fire-and-forget:
-      // the server decides what needs warming (no-op where nothing applies), and
-      // lazy start at submission remains the fallback if this doesn't land.
-      // T1-3 (UX-01): the response also says whether a *cold* local server had
-      // to be spawned — latched per recording so the pill can name the
-      // post-handover wait as "warming" only when a model load is genuinely
-      // in flight (never for an already-warm server, never for cloud).
-      setColdLocalModel(false);
-      void getClient()
-        .api.transcribe["pre-warm"].$post()
-        .then(async (res) => {
-          const body = (await res.json().catch(() => null)) as {
-            warming?: string | null;
-            cold?: boolean;
-          } | null;
-          if (body?.warming && body.cold) setColdLocalModel(true);
-        })
-        .catch(() => {});
-
-      appContextRef.current = null;
-      // Streaming is always active — prime the streamer's context.
-      try {
-        getStreamer().setContext(null);
-      } catch {}
-
-      // Whether cleanup routing needs the frontmost app is read from the cache
-      // primed at mount and kept fresh by the `cleanup-context-changed` IPC —
-      // no per-recording GET /api/settings on this hot path.
-      if (getNeedsAppContextForCleanup()) {
-        void window.api
-          ?.getFrontmostApp()
-          .then((app) => {
-            if (!wantsMicRef.current) return;
-            appContextRef.current = app;
-            try {
-              getStreamer().setContext(app);
-            } catch {}
-          })
-          .catch(() => {
-            if (!wantsMicRef.current) return;
-            appContextRef.current = null;
-            try {
-              getStreamer().setContext(null);
-            } catch {}
-          });
-      }
-
-      // Keep initializing as bookkeeping; the waveform starts at rest.
-      setPillState("initializing");
-      startBarAnimation("listening");
-
-      // Play the start cue immediately, before ducking lowers the system
-      // volume — otherwise the tone is attenuated to DUCKED_VOLUME and is
-      // effectively inaudible.
-      playTone("start");
-
-      // Duck/pause system audio concurrently with mic acquisition. The pause
-      // path can spawn a slow media-control subprocess; awaiting it before
-      // getUserMedia is what made the "initializing" state drag on. Restores
-      // go through restoreSystemAudioSafely(), which waits on this promise so a
-      // cancel can't race the duck.
-      const playbackMode = getAudioPlaybackMode();
-      duckingPromiseRef.current =
-        playbackMode !== "off"
-          ? window.api?.prepareSystemAudio(playbackMode).catch(() => {})
-          : undefined;
-
-      try {
-        recordingSessionUsesTransportRef.current =
-          supportsSessionTransportRef.current;
-
-        // When session transport is active the streamer handles audio capture
-        // directly — we only need the raw mic stream for the analyser. When
-        // it's not (batch path), start the MediaRecorder so we get a WAV.
-        const rec = recorderRef.current;
-        const acquirePromise = recordingSessionUsesTransportRef.current
-          ? rec.acquireStream()
-          : rec.start();
-        const micGen = rec.generation();
-        const stream = await acquirePromise;
-
-        if (!wantsMicRef.current) {
-          rec.discard(micGen);
-          void restoreSystemAudioSafely();
-          streamerRef.current?.cancel();
-          if (forReRecord) {
-            resumeTranscribingOrHide();
-          }
-          return;
-        }
-        if (pendingCommitRef.current) {
-          pendingCommitRef.current = false;
-          wantsMicRef.current = false;
-          rec.discard(micGen);
-          void restoreSystemAudioSafely();
-          streamerRef.current?.cancel();
-          if (forReRecord) {
-            resumeTranscribingOrHide();
-          } else {
-            dismissPill("quiet");
-          }
-          return;
-        }
-
-        setPillState("recording");
-        recordingActiveRef.current = true;
-        startTimeRef.current = Date.now();
-
-        startListening(stream);
-        try {
-          await getStreamer().startCapture(
-            stream,
-            recordingLanguageRef.current,
-          );
-        } catch {}
-      } catch (err) {
-        if (err instanceof RecorderSupersededError) return;
-        pendingCommitRef.current = false;
-        recorderRef.current.releaseStream();
-        void restoreSystemAudioSafely();
-        hidePill();
-        window.api.showErrorDialog(
-          "Recording Failed",
-          err instanceof Error ? err.message : "Mic access denied",
-        );
-      }
-    },
-    [
-      startBarAnimation,
-      startListening,
-      hidePill,
-      dismissPill,
-      getStreamer,
-      setPillNotice,
-      setPillState,
-      resumeTranscribingOrHide,
-      restoreSystemAudioSafely,
-    ],
-  );
-
-  // Replay a re-record press that arrived while a commit was finalizing (see
-  // the hotkey-down handler). Only when nothing else has already taken the mic.
-  const replayPendingReRecord = useCallback((): void => {
-    if (pendingReRecordRef.current && !wantsMicRef.current) {
-      pendingReRecordRef.current = false;
-      void startRecording(true);
-    }
-  }, [startRecording]);
-
-  // ---- Commit recording ----
-  const commitRecording = useCallback(async () => {
-    // Read once, here, into a local that travels with every request this
-    // commit can produce — recordingLanguageRef itself is only ever written
-    // at the top of startRecording, so by the time a *later* recording could
-    // overwrite it, this commit's requests must already have closed over
-    // this local value (see recordingLanguageRef's own comment).
-    const dictationLanguage = recordingLanguageRef.current;
-    wantsMicRef.current = false;
-    recordingActiveRef.current = false;
-
-    // Restore the system volume first, then play the stop cue so it isn't
-    // muted by ducking. Fire-and-forget so the transcription pipeline below
-    // isn't blocked on the restore. This runs on every commit path, so the
-    // branches below don't restore again. Gate on whether this session ducked
-    // (not the current mode setting, which can change mid-recording) so a
-    // toggle to "off" while recording can't strand the volume low.
-    void (async () => {
-      if (duckingPromiseRef.current) {
-        await restoreSystemAudioSafely();
-      }
-      playTone("stop");
-    })();
-
-    try {
-      audioSourceRef.current?.disconnect();
-    } catch {}
-    try {
-      analyserNodeRef.current?.disconnect();
-    } catch {}
-    audioSourceRef.current = null;
-    analyserNodeRef.current = null;
-    freqDataRef.current = null;
-
-    const recordingDuration = Date.now() - startTimeRef.current;
-    lastRecordingDurationRef.current = recordingDuration;
-    if (recordingDuration < 250) {
-      recorderRef.current.discard();
-      streamerRef.current?.cancel();
-      resumeTranscribingOrHide();
-      return;
-    }
-
-    setPillState("transcribing");
-    startHandover();
-
-    // Streaming session transport path: the streamer already has the audio —
-    // commit it over the WebSocket and wait for the server's final message.
-    if (recordingSessionUsesTransportRef.current && streamerRef.current) {
-      recorderRef.current.discard();
-
-      const streamError = streamSessionErrorRef.current;
-      streamSessionErrorRef.current = null;
-
-      const transportFailure =
-        streamError?.message ??
-        (!streamerRef.current.isConnected()
-          ? "Connection interrupted while recording"
-          : null);
-      if (transportFailure) {
-        streamerRef.current.cancel();
-        setPillNotice("retrying");
-        setPendingCount((count) => count + 1);
-        const fallback =
-          restFallbackTranscribe(transportFailure, dictationLanguage) ??
-          Promise.resolve({
-            raw: "",
-            cleaned: "",
-            error: transportFailure,
-          });
-        enqueue(fallback, replayPendingReRecord);
-        return;
-      }
-
-      // A cold cloud session at commit time is just latency, not a fault: the
-      // sweeping waveform already says the dictation is being worked on, and
-      // the commit timeout below is what turns a genuinely stuck session into
-      // something the user is told about.
-      setPendingCount((c) => c + 1);
-      const transcribePromise = new Promise<TranscribeResult>((resolve) => {
-        streamResolverRef.current = resolve;
-        streamLanguageRef.current = dictationLanguage;
-        // Server-side commit timeouts fire at 12s; if no final arrived by
-        // 15s the stream is dead — salvage via REST with the recorded WAV.
-        setTimeout(() => {
-          if (streamResolverRef.current === resolve) {
-            streamResolverRef.current = null;
-            streamLanguageRef.current = null;
-            const fallback = restFallbackTranscribe(
-              "Transcription timed out",
-              dictationLanguage,
-            );
-            if (fallback) {
-              void fallback.then(resolve);
-            } else {
-              resolve({
-                raw: "",
-                cleaned: "",
-                error: "Transcription timed out",
-              });
-            }
-          }
-        }, 15_000);
-      });
-      streamerRef.current.commit();
-      enqueue(transcribePromise, replayPendingReRecord);
-      return;
-    }
-
-    // startCapture() also runs for the batch path so the analyser and a
-    // retryable PCM copy stay available. Stop that auxiliary capture now;
-    // otherwise it remains logically active until the next dictation.
-    streamerRef.current?.cancel();
-    const wavBlob = recorderRef.current.isRecording()
-      ? await recorderRef.current.stop()
-      : null;
-    recorderRef.current.releaseStream();
-
-    if (!pillActiveRef.current) {
-      return;
-    }
-
-    if (!wavBlob) {
-      if (isTranscriptionIdle()) {
-        hidePill();
-        window.api.showErrorDialog(
-          "Recording Failed",
-          "No audio captured. Try recording again.",
-        );
-      } else {
-        resumeTranscribingOrHide();
-      }
-      return;
-    }
-
-    const isSubsequent = queueRef.current.length > 0 || drainingRef.current;
-    // Read before the await below: the app context can change while
-    // the server check runs.
-    const appContext = appContextRef.current;
-
-    const serverOk = await refreshApiBase();
-    if (!serverOk) {
-      failedTranscriptionErrorRef.current = isRemoteServer()
-        ? `Cannot reach the server at ${getApiBase()}`
-        : `Cannot reach Openstyle server at ${getApiBase()}`;
-      setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
-      setPillNotice("unavailable");
-      setPillState("error");
-      return;
-    }
-
-    setPendingCount((c) => c + 1);
-    const transcribePromise: Promise<TranscribeResult> = postTranscribe(
-      wavBlob,
-      {
-        durationMs: recordingDuration,
-        language: dictationLanguage,
-        appContext,
-        skipPostProcess: isSubsequent,
-        // T1-4 / UX-02: bound the batch wait so a wedged local ASR server
-        // can't keep the sweep up forever. Transcription is deliberately
-        // outside the server's TIMEOUT_PREFIXES, so without this nothing
-        // ever fails the request client-side. 360s minimum — see
-        // BATCH_TRANSCRIBE_TIMEOUT_MS.
-        timeoutMs: BATCH_TRANSCRIBE_TIMEOUT_MS,
-      },
-    )
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            error?: string;
-            detail?: string;
-          } | null;
-          const msg =
-            body?.detail ||
-            body?.error ||
-            `Transcription failed (${res.status})`;
-          return { raw: "", cleaned: "", error: msg };
-        }
-        const data = (await res.json()) as {
-          raw?: string;
-          cleaned?: string;
-          provider_category?: string;
-        };
-        return {
-          raw: (data.raw || "").trim(),
-          cleaned: (data.cleaned || data.raw || "").trim(),
-          providerCategory: data.provider_category,
-        };
-      })
-      .catch((err) => {
-        // The bound fired: name the likely cause rather than surfacing a raw
-        // TimeoutError. AbortSignal.timeout rejects with a DOMException
-        // whose name is "TimeoutError" (an AbortError would mean something
-        // else cancelled the fetch, which nothing on this path does).
-        if (err instanceof Error && err.name === "TimeoutError") {
-          return { raw: "", cleaned: "", error: LOCAL_MODEL_TIMEOUT_MSG };
-        }
-        const msg = err instanceof Error ? err.message : "Transcription failed";
-        const hint =
-          msg.includes("fetch") || msg.includes("Failed")
-            ? isRemoteServer()
-              ? ` (${getApiBase()} unreachable — check Settings → Network)`
-              : ` (${getApiBase()} unreachable — quit and reopen the app)`
-            : "";
-        return { raw: "", cleaned: "", error: `${msg}${hint}` };
-      });
-
-    enqueue(transcribePromise);
-  }, [
-    hidePill,
-    enqueue,
-    startHandover,
-    setPillState,
-    resumeTranscribingOrHide,
-    isTranscriptionIdle,
-    restoreSystemAudioSafely,
-    restFallbackTranscribe,
-    replayPendingReRecord,
-    setPillNotice,
-  ]);
-
-  // ---- Cancel ----
-  const cancelRecording = useCallback(() => {
-    recorderRef.current.discard();
-    void restoreSystemAudioSafely();
-    streamerRef.current?.cancel();
-    dismissPill("cancelled");
-  }, [dismissPill, restoreSystemAudioSafely]);
-
-  // ---- Remix ----
-  // A remix is not a dictation: it never enters the transcription queue,
-  // and its result replaces a selection rather than being inserted at a
-  // cursor. What it does share is the
-  // pill — the surface, the waveform, and the mic behind it.
-
-  const clearRemixHoldTimer = useCallback(() => {
-    if (remixHoldTimerRef.current) {
-      clearTimeout(remixHoldTimerRef.current);
-      remixHoldTimerRef.current = null;
-    }
-  }, []);
-
-  /** Stop the remix mic capture and release its stream, if one is open. */
-  const releaseRemixMic = useCallback(() => {
-    if (remixMicGenRef.current !== null) {
-      recorderRef.current.discard(remixMicGenRef.current);
-      remixMicGenRef.current = null;
-    }
-  }, []);
-
-  /** Tear the session down. `hide` is false only when an error card stays up. */
-  // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
-  const getRemixStreamer = useCallback((): Streamer => {
-    if (!remixStreamerRef.current) {
-      remixStreamerRef.current = new Streamer(getApiBase(), getServerToken(), {
-        onConfig: (config) => {
-          remixTransportRef.current = config.sessionTransport;
-        },
-        onPartial: (text) => {
-          if (remixRef.current && text) patchRemix({ transcript: text });
-        },
-        onFinal: (text) => {
-          if (remixRef.current && text.trim()) {
-            patchRemix({ transcript: text });
-          }
-          remixFinalRef.current?.resolve(text);
-          remixFinalRef.current = null;
-        },
-        onError: () => {
-          remixFinalRef.current?.resolve("");
-          remixFinalRef.current = null;
-        },
-      });
-    }
-    return remixStreamerRef.current;
-  }, []);
-
-  /** Destroy the remix streamer. The next remix creates a new one. */
-  const destroyRemixStreamer = useCallback(() => {
-    remixStreamerRef.current?.destroy();
-    remixStreamerRef.current = null;
-    remixTransportRef.current = false;
-  }, []);
-
-  const endRemix = useCallback(
-    (options: { hide?: boolean } = {}) => {
-      if (!remixRef.current) return;
-      clearRemixHoldTimer();
-      remixRunningRef.current = false;
-      // Resolve any pending await so a run blocked on the selection unwinds
-      // instead of hanging on a session that no longer exists.
-      remixSelectionRef.current?.resolve(null);
-      remixSelectionRef.current = null;
-      remixFinalRef.current?.resolve("");
-      remixFinalRef.current = null;
-      remixContextRef.current = null;
-      releaseRemixMic();
-      remixStreamerRef.current?.cancel();
-      window.api?.setRemixRouteKeys(false);
-      setRemix(null);
-      stopVisualization();
-      if (options.hide !== false) window.api?.hidePill();
-    },
-    [clearRemixHoldTimer, setRemix, stopVisualization, releaseRemixMic],
-  );
-
-  const closeRemix = useCallback(() => endRemix(), [endRemix]);
-  const expandRemixChat = useCallback(() => {
-    if (remixRef.current?.minimized !== false) {
-      patchRemix({ minimized: false });
-    }
-  }, [patchRemix]);
-  const minimizeRemixChat = useCallback(() => {
-    if (remixRef.current && remixRef.current.minimized !== true) {
-      patchRemix({ minimized: true });
-    }
-  }, [patchRemix]);
-
-  /**
-   * Show a failure and leave the card up. Unlike the phases above this one
-   * outlives the keypress: it waits for Escape, the Dismiss button, another
-   * press of the hotkey — or the REMIX_WARNING_MS timeout, whichever lands
-   * first.
-   */
-  const failRemix = useCallback(
-    (title: string, body: string) => {
-      clearRemixHoldTimer();
-      remixRunningRef.current = false;
-      releaseRemixMic();
-      remixStreamerRef.current?.cancel();
-      window.api?.setRemixRouteKeys(false);
-      stopVisualization();
-      setRemix({
-        id: remixRef.current?.id ?? ++remixSeqRef.current,
-        phase: "error",
-        selection: null,
-        title,
-        body,
-      });
-    },
-    [clearRemixHoldTimer, setRemix, stopVisualization, releaseRemixMic],
-  );
-
-  /**
-   * Send the edited text back to the app the selection came from.
-   *
-   * The paste is the commit point: main hides the pill from inside it, so the
-   * card is gone by the time the text lands and the user never sees the pill
-   * sitting over their own document mid-replace.
-   */
-  const deliverRemixResult = useCallback(
-    async (text: string) => {
-      const sessionId = remixRef.current?.id;
-      const pasted = await window.api.pasteRemixResult(text);
-      if (remixRef.current?.id !== sessionId) return;
-      if (!pasted) {
-        failRemix(
-          "Couldn't replace the text",
-          "The edit is on your clipboard — paste it yourself.",
-        );
-        return;
-      }
-      endRemix({ hide: false });
-    },
-    [endRemix, failRemix],
-  );
-
-  /**
-   * Run one remix over the captured selection.
-   *
-   * Waits on the selection rather than requiring it: the copy is still in
-   * flight for the first ~100ms of every session, which is well inside the
-   * time it takes to tap a number key.
-   */
-  /**
-   * The selection, once the copy has answered — or null, having already put
-   * the refusal on screen.
-   *
-   * Every path into a remix goes through here, because a remix without a
-   * selection has no subject: there is nothing to edit, nothing to paste over,
-   * and nothing worth spending a transcription or a model call on. Waiting
-   * rather than requiring is deliberate — the copy is still in flight for the
-   * first fraction of a second of every session.
-   */
-  const requireSelection = useCallback(
-    async (sessionId: number): Promise<string | null> => {
-      const selection = await (remixSelectionRef.current?.promise ??
-        Promise.resolve(remixRef.current?.selection ?? null));
-      if (remixRef.current?.id !== sessionId) return null;
-      if (!selection) {
-        failRemix(
-          "Nothing selected",
-          "Highlight some text in any app first, then press the hotkey.",
-        );
-        return null;
-      }
-      return selection;
-    },
-    [failRemix],
-  );
-
-  const runRemix = useCallback(
-    async (options: {
-      remixId?: string;
-      instruction?: string;
-      label: string;
-    }) => {
-      if (remixRunningRef.current) return;
-      const session = remixRef.current;
-      if (!session) return;
-      remixRunningRef.current = true;
-      patchRemix({ phase: "running", label: options.label });
-      startBarAnimation("speaking");
-
-      const selection = await requireSelection(session.id);
-      if (!selection) return;
-
-      try {
-        const res = await apiFetch("/api/remix/transform", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: selection,
-            remixId: options.remixId,
-            instruction: options.instruction,
-            appName: remixContextRef.current?.appName ?? null,
-          }),
-        });
-        if (remixRef.current?.id !== session.id) return;
-
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            error?: string;
-            detail?: string;
-          } | null;
-          failRemix(
-            "Remix failed",
-            body?.detail || `The model couldn't run that (${res.status}).`,
-          );
-          return;
-        }
-
-        const data = (await res.json()) as { text?: string };
-        const edited = (data.text ?? "").trim();
-        if (remixRef.current?.id !== session.id) return;
-        if (!edited) {
-          failRemix("Remix failed", "The model returned nothing.");
-          return;
-        }
-        await deliverRemixResult(edited);
-      } catch (err) {
-        if (remixRef.current?.id !== session.id) return;
-        failRemix(
-          "Remix failed",
-          err instanceof Error ? err.message : "Something went wrong.",
-        );
-      }
-    },
-    [
-      deliverRemixResult,
-      failRemix,
-      patchRemix,
-      requireSelection,
-      startBarAnimation,
-    ],
-  );
-
-  /**
-   * Hand the session over to the chat card (the agent lane). Everything the
-   * glanceable card was doing stops — mic, waveform, idle timers, the claimed
-   * route digits — because the card is now a conversation, not a prompt.
-   */
-  const openRemixChat = useCallback(
-    (instruction: string | null, options: { minimized?: boolean } = {}) => {
-      clearRemixHoldTimer();
-      remixRunningRef.current = false;
-      releaseRemixMic();
-      stopVisualization();
-      window.api?.setRemixRouteKeys(false);
-      patchRemix({
-        phase: "chat",
-        initialInstruction: instruction,
-        minimized: options.minimized === true,
-      });
-    },
-    [clearRemixHoldTimer, patchRemix, stopVisualization, releaseRemixMic],
-  );
-
-  /**
-   * Transcribe the held instruction, then hand it to the agent lane.
-   *
-   * This goes through the one-shot REST path rather than the streaming session
-   * the dictation flow uses. An instruction is a second or two of speech whose
-   * text is never pasted anywhere — partials buy nothing, and the streaming
-   * session belongs to dictation, which may well have one in flight.
-   *
-   * Unlike a preset, a spoken instruction does not require a selection: with
-   * nothing highlighted the agent writes at the cursor, answers in chat, or
-   * uses the clipboard.
-   */
-  const runSpokenRemix = useCallback(async () => {
-    const session = remixRef.current;
-    if (!session) return;
-    const micGen = remixMicGenRef.current;
-    const durationMs = Math.round(performance.now() - remixDownAtRef.current);
-    patchRemix({ phase: "running", label: "Transcribing…" });
-    startBarAnimation("speaking");
-    // The dictation stop cue, at the same moment: the held instruction has
-    // been committed. Remix never ducks system audio, so no restore first.
-    void playTone("stop");
-
-    const streamer = remixStreamerRef.current;
-    let finalPromise: Promise<string> | null = null;
-    let final: Deferred<string> | null = null;
-    if (streamer?.isConnected() && remixTransportRef.current) {
-      final = deferred<string>();
-      remixFinalRef.current = final;
-      streamer.commit();
-      finalPromise = Promise.race([
-        final.promise,
-        new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000)),
-      ]);
-    } else {
-      streamer?.cancel();
-    }
-
-    // Wait for the capture to land — the chat card needs the anchor even
-    // when the selection itself comes back empty.
-    await (remixSelectionRef.current?.promise ?? Promise.resolve(null));
-    if (remixRef.current?.id !== session.id) return;
-
-    let wav: Blob | null = null;
-    try {
-      wav = recorderRef.current.isRecording()
-        ? await recorderRef.current.stop(micGen ?? undefined)
-        : null;
-    } catch {
-      wav = null;
-    }
-    recorderRef.current.releaseStream(micGen ?? undefined);
-    if (remixRef.current?.id !== session.id) return;
-
-    let instruction = "";
-    if (finalPromise) {
-      instruction = (await finalPromise).trim();
-      if (remixFinalRef.current === final) remixFinalRef.current = null;
-      if (remixRef.current?.id !== session.id) return;
-    }
-
-    if (!instruction && wav) {
-      try {
-        const res = await postTranscribe(wav, {
-          durationMs,
-          skipPostProcess: true,
-        });
-        if (remixRef.current?.id !== session.id) return;
-        if (res.ok) {
-          const data = (await res.json()) as { raw?: string; cleaned?: string };
-          instruction = (data.raw || data.cleaned || "").trim();
-        }
-      } catch {
-        instruction = "";
-      }
-    }
-
-    if (remixRef.current?.id !== session.id) return;
-    if (!instruction) {
-      failRemix(
-        "Didn't catch that",
-        "Nothing came through — hold the hotkey and say what to do.",
-      );
-      return;
-    }
-    // A spoken run opens minimized: the user asked for something to be done,
-    // not for a window. The strip narrates the run; hovering it opens the
-    // full conversation.
-    openRemixChat(instruction, { minimized: true });
-  }, [failRemix, openRemixChat, patchRemix, startBarAnimation]);
-
-  const beginRemix = useCallback(() => {
-    // A dictation owns the pill while it is up. Rather than fight over it,
-    // remix stands down — the user can press again a moment later.
-    if (stateRef.current !== "idle" || pillActiveRef.current) {
-      window.api?.setRemixRouteKeys(false);
-      return;
-    }
-    // A second press while an error card is up means "try again", so tear the
-    // old session down first rather than merging into it.
-    if (remixRef.current) endRemix({ hide: false });
-
-    remixDownAtRef.current = performance.now();
-    remixSelectionRef.current = deferred<string | null>();
-    setRemix({
-      id: ++remixSeqRef.current,
-      phase: "capturing",
-      selection: null,
-    });
-
-    // Once the press has outlived the tap threshold it can only be a hold, so
-    // the card commits to that reading rather than waiting for the release —
-    // the user is already talking by then and should be able to see it.
-    clearRemixHoldTimer();
-    remixHoldTimerRef.current = setTimeout(() => {
-      remixHoldTimerRef.current = null;
-      if (remixRef.current?.phase === "capturing") {
-        patchRemix({ phase: "listening" });
-        // The same audio cue dictation gives on recording start — played at
-        // the hold threshold so a tap (which opens the chat) stays silent.
-        void playTone("start");
-      }
-    }, REMIX_HOLD_THRESHOLD_MS);
-
-    // The mic starts now, before we know this is a hold: a recording that only
-    // began once the threshold had passed would clip the first syllable off
-    // every spoken remix.
-    const rec = recorderRef.current;
-    const startPromise = rec.start();
-    const micGen = rec.generation();
-    remixMicGenRef.current = micGen;
-    void startPromise
-      .then((stream) => {
-        const session = remixRef.current;
-        const owned =
-          session &&
-          remixMicGenRef.current === micGen &&
-          micGen === rec.generation();
-        if (!owned) {
-          rec.discard(micGen);
-          if (remixMicGenRef.current === micGen) remixMicGenRef.current = null;
-          return;
-        }
-        if (session.phase === "capturing" || session.phase === "listening") {
-          startListening(stream);
-          void getRemixStreamer().startCapture(stream);
-        }
-      })
-      .catch((err) => {
-        if (err instanceof RecorderSupersededError) return;
-        // No mic is survivable — the preset list doesn't need one. Show the
-        // idle bars so the card doesn't look broken, and let the footer's own
-        // copy be the only thing that mentions speaking.
-        if (remixRef.current) startBarAnimation("listening");
-      });
-  }, [
-    clearRemixHoldTimer,
-    endRemix,
-    getRemixStreamer,
-    patchRemix,
+    setCanRetry,
+    setPillLanguageLabel,
+    setPendingCount,
+    setMicSilent,
+    setElapsedLabel,
+    setColdLocalModel,
+    setExiting,
     setRemix,
+    patchRemix,
+    stateRef,
+    pillNoticeRef,
+    supportsSessionTransportRef,
+    recordingSessionUsesTransportRef,
+    providerCategoryRef,
+    streamSessionErrorRef,
+    failedTranscriptionErrorRef,
+    lastRecordingDurationRef,
+    pinnedLanguageRef,
+    recordingLanguageRef,
+    streamLanguageRef,
+    remixRef,
+    remixDownAtRef,
+    remixSeqRef,
+    remixMicGenRef,
+    remixSelectionRef,
+    remixContextRef,
+    remixRunningRef,
+    remixHoldTimerRef,
+    remixStreamerRef,
+    remixTransportRef,
+    remixFinalRef,
+    recorderRef,
+    streamerRef,
+    analyserCtxRef,
+    audioSourceRef,
+    analyserNodeRef,
+    barsRef,
+    barLinesRef,
+    cancelOpenRef,
+    cancelTargetRef,
+    lastCancelWriteRef,
+    cancelSlotRef,
+    waveClipRef,
+    flatlineRef,
+    silentSinceRef,
+    flatAmountRef,
+    flatTargetRef,
+    micSilentRef,
+    exitTimerRef,
+    exitingRef,
+    hoveredRef,
+    cancelModeRef,
+    targetsRef,
+    sampleRef,
+    rafRef,
+    startTimeRef,
+    wantsMicRef,
+    recordingActiveRef,
+    appContextRef,
+    pendingCommitRef,
+    pillActiveRef,
+    duckingPromiseRef,
+    barModeRef,
+    modeStartRef,
+    lastIpcTimeRef,
+    freqDataRef,
+    voiceBandRef,
+    queueRef,
+    drainingRef,
+    streamResolverRef,
+    drainAgainRef,
+    pendingReRecordRef,
+  };
+
+  const {
+    captureBarLines,
     startBarAnimation,
     startListening,
-  ]);
-
-  const finishRemixPress = useCallback(() => {
-    clearRemixHoldTimer();
-    const session = remixRef.current;
-    if (!session) return;
-    if (session.phase !== "capturing" && session.phase !== "listening") return;
-
-    const heldMs = performance.now() - remixDownAtRef.current;
-    if (heldMs < REMIX_HOLD_THRESHOLD_MS) {
-      // A tap. Throw the fragment of audio away and open the chat card — the
-      // ChatGPT-style input, with the presets as chips inside it.
-      remixStreamerRef.current?.cancel();
-      openRemixChat(null);
-      return;
-    }
-    void runSpokenRemix();
-  }, [clearRemixHoldTimer, openRemixChat, runSpokenRemix]);
+    startHandover,
+    stopVisualization,
+  } = useWaveform(shared);
+  const { resetDictation, hidePill, dismissPill } = usePillDismiss({
+    ...shared,
+    stopVisualization,
+  });
+  const {
+    isTranscriptionIdle,
+    drainQueue,
+    enqueue,
+    restFallbackTranscribe,
+    resolveStreamingWithFallback,
+    retryFailedTranscription,
+  } = useTranscriptionQueue({ ...shared, dismissPill, startBarAnimation });
+  const { getStreamer } = useStreamer({
+    ...shared,
+    resolveStreamingWithFallback,
+    restFallbackTranscribe,
+  });
+  const {
+    restoreSystemAudioSafely,
+    startRecording,
+    commitRecording,
+    cancelRecording,
+  } = useDictationSession({
+    ...shared,
+    startBarAnimation,
+    startListening,
+    startHandover,
+    hidePill,
+    dismissPill,
+    getStreamer,
+    drainQueue,
+    isTranscriptionIdle,
+    enqueue,
+    restFallbackTranscribe,
+  });
+  const {
+    releaseRemixMic,
+    destroyRemixStreamer,
+    endRemix,
+    closeRemix,
+    expandRemixChat,
+    minimizeRemixChat,
+    runRemix,
+    beginRemix,
+    finishRemixPress,
+  } = useRemixSession({
+    ...shared,
+    stopVisualization,
+    startBarAnimation,
+    startListening,
+  });
 
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {
@@ -2287,84 +562,15 @@ export default function AppPage(): React.JSX.Element {
     setPillNotice,
   ]);
 
-  // ---- Remix hotkey handlers ----
-  useEffect(() => {
-    const removeDown = window.api.onRemixDown(beginRemix);
-    const removeUp = window.api.onRemixUp(finishRemixPress);
-    const removeSelection = window.api.onRemixSelection((payload) => {
-      if (!remixRef.current) return;
-      remixContextRef.current = payload;
-      remixSelectionRef.current?.resolve(payload.text);
-      // A null selection is no longer a dead end: presets still require one
-      // (and say so when picked), but a spoken or typed request goes to the
-      // agent, which can write at the cursor or answer in chat instead.
-      patchRemix({ selection: payload.text });
-    });
-    // A route shortcut: the chord plus a digit. It answers the question the
-    // microphone was open to ask, so the recording is dropped on the spot.
-    // The selection may still be in flight — the copy waits for the chord to
-    // be released — and `runRemix` waits for it, which is why pressing a
-    // digit mid-hold works without the card having to say anything.
-    const removeRoute = window.api.onRemixRoute((index) => {
-      const preset = REMIX_PRESETS[index];
-      const phase = remixRef.current?.phase;
-      if (
-        !preset ||
-        !phase ||
-        phase === "running" ||
-        phase === "chat" ||
-        phase === "error"
-      ) {
-        return;
-      }
-      releaseRemixMic();
-      void runRemix({ remixId: preset.id, label: preset.label });
-    });
-
-    // The persistent bar was hovered: open the chat card fresh. The capture
-    // is already in flight (main kicked it off before sending this).
-    const removeOpenChat = window.api.onRemixOpenChat(() => {
-      if (stateRef.current !== "idle" || pillActiveRef.current) return;
-      if (remixRef.current) {
-        patchRemix({ phase: "chat", minimized: false });
-        return;
-      }
-      remixSelectionRef.current = deferred<string | null>();
-      setRemix({
-        id: ++remixSeqRef.current,
-        phase: "chat",
-        selection: null,
-        initialInstruction: null,
-        minimized: false,
-      });
-    });
-
-    // A dictation began on the shared home key and this chord is taking over.
-    const removeSupersede = window.api.onRemixSupersede(() => {
-      if (stateRef.current === "idle" && !pillActiveRef.current) return;
-      recorderRef.current.discard();
-      void restoreSystemAudioSafely();
-      streamerRef.current?.cancel();
-      resetDictation();
-    });
-    return () => {
-      removeDown();
-      removeUp();
-      removeSelection();
-      removeRoute();
-      removeOpenChat();
-      removeSupersede();
-    };
-  }, [
+  useRemixHotkeys({
+    ...shared,
     beginRemix,
     finishRemixPress,
-    patchRemix,
+    runRemix,
+    releaseRemixMic,
     resetDictation,
     restoreSystemAudioSafely,
-    runRemix,
-    setRemix,
-    releaseRemixMic,
-  ]);
+  });
 
   // ---- Warnings see themselves out ----
   // A warning has said everything it has to say the moment it is read. Leaving
@@ -2845,404 +1051,51 @@ export default function AppPage(): React.JSX.Element {
   }, [expandRemixChat]);
 
   return (
-    <div className="relative h-screen w-screen select-none overflow-hidden">
-      <style>{PILL_STYLES}</style>
-
-      {(state !== "idle" || showRemixCard) && (
-        <>
-          <span className="sr-only" role="status" aria-live="polite">
-            {accessibleStatus}
-          </span>
-
-          {/* ---- Capsule ---- */}
-          <div className={layerClass} aria-hidden={cardOpen}>
-            {/* The capsule is a status indicator, not a control, so an
-                interactive role would misdescribe it. These handlers only
-                reveal the cancel button, which is a real <button> with its own
-                label, and the same action is on Escape — nothing here is
-                pointer-only. */}
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
-            <div
-              className="pill-surface pill-capsule inline-flex items-center"
-              data-show={!showCard && entered}
-              data-exit={exiting ?? undefined}
-              onMouseEnter={handlePillEnter}
-              onMouseLeave={handlePillLeave}
-              style={{
-                ...pillInnerStyle,
-                ...riseBy(10),
-                transformOrigin,
-                marginBottom: pillAlign === "end" ? 8 : 0,
-                marginTop: pillAlign === "start" ? 8 : 0,
-              }}
-            >
-              {/* The fixed core: the cancel slot's width is driven by the draw
-                  loop, from zero (closed) to CANCEL_SLOT — the disc plus the
-                  gap to the waveform — and the waveform gives up exactly that
-                  much, so the core's own width never changes. */}
-              <span
-                className="inline-flex items-center justify-center"
-                style={{ width: PILL_CORE_WIDTH, flexShrink: 0 }}
-              >
-                <span
-                  ref={cancelSlotRef}
-                  className="inline-flex items-center justify-start"
-                  style={
-                    {
-                      // Width alone carries the layout, so no padding — it
-                      // would be added on top of the animated width.
-                      width: 0,
-                      height: CANCEL_SIZE,
-                      opacity: 0,
-                      flexShrink: 0,
-                      // Grow out of the capsule's left edge rather than from
-                      // the slot's centre, and don't clip the disc while it
-                      // scales.
-                      transformOrigin: "left center",
-                      pointerEvents: "none",
-                      WebkitAppRegion: "no-drag",
-                    } as React.CSSProperties
-                  }
-                >
-                  <button
-                    type="button"
-                    className="pill-cancel inline-flex items-center justify-center"
-                    onClick={cancelRecording}
-                    // The pill window has no i18n provider (only the dashboard
-                    // does), and no other string in it is translated. Not worth
-                    // pulling the i18next runtime in for one label.
-                    aria-label="Cancel dictation"
-                    style={{
-                      width: CANCEL_SIZE,
-                      height: CANCEL_SIZE,
-                      padding: 0,
-                      flexShrink: 0,
-                      cursor: "default",
-                    }}
-                  >
-                    <svg
-                      className="pill-cancel-glyph"
-                      width={CANCEL_SIZE}
-                      height={CANCEL_SIZE}
-                      viewBox="0 0 16 16"
-                      aria-hidden="true"
-                      style={{ opacity: 0.6 }}
-                    >
-                      {/* Larger and thinner than it was inside the disc: with
-                          no chip to give it presence, the mark carries
-                          itself. */}
-                      <path
-                        d="M4.7 4.7 11.3 11.3 M11.3 4.7 4.7 11.3"
-                        stroke={INK}
-                        strokeWidth={1.5}
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                </span>
-
-                {!showRemixCard &&
-                  pillLanguageLabel &&
-                  (state === "recording" || state === "transcribing") && (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 600,
-                        letterSpacing: "0.02em",
-                        color: waveColor,
-                        opacity: 0.85,
-                        marginInlineStart: 4,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {pillLanguageLabel}
-                    </span>
-                  )}
-                {!showRemixCard && waveform}
-              </span>
-
-              {/* The delivered mark, centred on the capsule rather than inside
-                  the waveform's clip: it takes the place the row occupied, at
-                  the row's own centre, and is not subject to the clip that
-                  hides retiring samples. */}
-              <span className="pill-check" aria-hidden="true">
-                <svg
-                  width={CHECK_SIZE}
-                  height={CHECK_SIZE}
-                  viewBox="0 0 16 16"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M4.1 8.5 6.8 11.2 11.9 5.2"
-                    fill="none"
-                    stroke={BAR_COLOR}
-                    strokeWidth={1.9}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{
-                      strokeDasharray: CHECK_PATH_LENGTH,
-                      strokeDashoffset: CHECK_PATH_LENGTH,
-                    }}
-                  />
-                </svg>
-              </span>
-
-              {/* Status, outside the core: the capsule grows to the right by
-                  one mark's width and nothing else moves. The words are in
-                  the tooltip — and in the live region above — so the glyph
-                  itself doesn't have to spell anything out. */}
-              <span
-                className="pill-status inline-flex items-center justify-end"
-                data-open={wantsStatus}
-                title={status.label ?? undefined}
-                aria-hidden="true"
-                style={
-                  {
-                    height: STATUS_SIZE,
-                    WebkitAppRegion: "no-drag",
-                  } as React.CSSProperties
-                }
-              >
-                <span
-                  className="pill-status-mark inline-flex items-center justify-center"
-                  style={{
-                    width: STATUS_SIZE,
-                    height: STATUS_SIZE,
-                    marginRight: STATUS_GAP,
-                    flexShrink: 0,
-                  }}
-                >
-                  {status.label ? (
-                    status.isAlert ? (
-                      <svg
-                        width={STATUS_SIZE}
-                        height={STATUS_SIZE}
-                        viewBox="0 0 16 16"
-                      >
-                        <title>{status.label}</title>
-                        <circle
-                          cx="8"
-                          cy="8"
-                          r="5.6"
-                          fill="none"
-                          stroke={ALERT}
-                          strokeWidth={1.4}
-                        />
-                        <path
-                          d="M8 5.1v3.3"
-                          stroke={ALERT}
-                          strokeWidth={1.4}
-                          strokeLinecap="round"
-                        />
-                        <circle cx="8" cy="10.7" r="0.8" fill={ALERT} />
-                      </svg>
-                    ) : (
-                      <svg
-                        className="pill-spinner"
-                        width={STATUS_SIZE}
-                        height={STATUS_SIZE}
-                        viewBox="0 0 16 16"
-                      >
-                        <title>{status.label}</title>
-                        {/* The track keeps the mark the same weight as the
-                            cancel one even where the arc isn't drawn. */}
-                        <circle
-                          cx="8"
-                          cy="8"
-                          r="5.6"
-                          fill="none"
-                          stroke={INK}
-                          strokeOpacity={0.18}
-                          strokeWidth={1.4}
-                        />
-                        <path
-                          d="M8 2.4a5.6 5.6 0 0 1 5.6 5.6"
-                          fill="none"
-                          stroke={INK}
-                          strokeOpacity={0.8}
-                          strokeWidth={1.4}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    )
-                  ) : (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 600,
-                        lineHeight: 1,
-                        letterSpacing: "0.01em",
-                        color: "rgba(245, 241, 228, 0.6)",
-                      }}
-                    >
-                      {status.count}
-                    </span>
-                  )}
-                </span>
-              </span>
-            </div>
-          </div>
-
-          {/* ---- Failure card ---- */}
-          <div className={layerClass} aria-hidden={!errorCardOpen}>
-            <div
-              className="pill-surface pill-card"
-              data-show={errorCardOpen && !exiting}
-              style={{
-                ...cardSurfaceStyle,
-                padding: "13px 15px 12px",
-                ...(errorCardOpen ? { WebkitAppRegion: "drag" } : {}),
-              }}
-            >
-              <AlertCardBody
-                title={card.title}
-                body={card.body}
-                lineClamp={2}
-                onDismiss={() => dismissPill("cancelled")}
-                onRetry={card.canRetry ? retryFailedTranscription : undefined}
-                ink={INK}
-                alert={ALERT}
-              />
-            </div>
-          </div>
-
-          {/* ---- Remix card ---- */}
-          {/* Same surface and the same place on screen as the failure card, so
-              the two read as one object the pill can turn into rather than as
-              two unrelated popups. The dictation card and the chat are
-              separate layers: a phase flip animates one out while the other
-              rises, and each holds its last content while it leaves. */}
-          <div className={layerClass} aria-hidden={!(remixOpen && !viewIsChat)}>
-            {/* The card surface is a container, not a control — these handlers
-                only arm/disarm the window's hover hit-rect; every real action
-                inside is its own labeled <button>. */}
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
-            <div
-              ref={cardSurfaceRef}
-              className="pill-surface pill-card"
-              data-show={remixOpen && !viewIsChat}
-              onMouseEnter={disarmHotRect}
-              onMouseLeave={rearmHotRect}
-              style={{
-                ...cardSurfaceStyle,
-                // The anchored edge gets the capsule's inset — (PILL_HEIGHT -
-                // SVG_HEIGHT) / 2 — so the waveform lands exactly where it sat
-                // a moment ago. The far edge is free to be roomier.
-                padding:
-                  pillAlign === "start"
-                    ? `${(PILL_HEIGHT - SVG_HEIGHT) / 2}px 14px 13px`
-                    : `13px 14px ${(PILL_HEIGHT - SVG_HEIGHT) / 2}px`,
-                ...(remixOpen && !viewIsChat
-                  ? { WebkitAppRegion: "drag" }
-                  : {}),
-              }}
-            >
-              {cardView?.phase === "error" ? (
-                <AlertCardBody
-                  title={cardView.title}
-                  body={cardView.body}
-                  lineClamp={3}
-                  onDismiss={() => endRemix()}
-                  ink={INK}
-                  alert={ALERT}
-                />
-              ) : (
-                <div className="pill-remix-body" data-anchor={pillAlign}>
-                  <div
-                    className="pill-remix-brand pill-rise pill-rise-1"
-                    aria-hidden="true"
-                  >
-                    <OpenstyleMark size={15} />
-                    <span>Remix</span>
-                  </div>
-
-                  <div
-                    className="pill-remix-transcript pill-rise pill-rise-2"
-                    data-empty={!remixTranscript}
-                  >
-                    <span>{remixTranscript || remixHint}</span>
-                  </div>
-
-                  {/* The waveform, at the size and the spot it occupies in the
-                      capsule — the box grows around it rather than replacing
-                      it, so the bars never jump when the card takes over. Only
-                      ever mounted here while a remix is up: a second copy in
-                      the tree would take the ref the draw loop writes through,
-                      and the visible row would sit still. */}
-                  <div className="pill-remix-wave">
-                    {showRemixCard && waveform}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ---- Remix chat ---- */}
-          {/* Its own object: either the one-line activity strip (a capsule)
-              or the full conversation (a tall card holding an input and a
-              scroll area), morphing between the two under the pointer —
-              always inside room the window already holds, so the morph is
-              never clipped or resized mid-flight. */}
-          <div className={layerClass} aria-hidden={!(remixOpen && viewIsChat)}>
-            {/* Same as the card surface above: hover only arms/disarms the
-                window's hit-rect; the chat's controls are real buttons. */}
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
-            <div
-              ref={chatSurfaceRef}
-              className="pill-surface pill-card pill-chat-morph"
-              data-show={remixOpen && viewIsChat}
-              onMouseEnter={disarmHotRect}
-              onMouseLeave={rearmHotRect}
-              style={{
-                ...cardSurfaceStyle,
-                ...(chatMiniVisual
-                  ? {
-                      width: REMIX_CHAT_STRIP.width,
-                      height: remixMiniHeight,
-                      // A grown strip is a card, not a capsule — a 999px
-                      // radius on a tall box reads as a lozenge.
-                      borderRadius:
-                        remixMiniHeight > REMIX_CHAT_STRIP.height ? 18 : 999,
-                      padding: 0,
-                      overflow: "hidden",
-                    }
-                  : {
-                      width: REMIX_CHAT_SURFACE.width,
-                      height: REMIX_CHAT_SURFACE.height,
-                      borderRadius: 18,
-                      padding: 0,
-                      overflow: "hidden",
-                    }),
-              }}
-            >
-              {chatView && (
-                <Suspense fallback={null}>
-                  <RemixChat
-                    context={
-                      remixContextRef.current ?? {
-                        text: chatView.selection,
-                        appName: null,
-                        windowTitle: null,
-                        capturedAt: Date.now(),
-                      }
-                    }
-                    initialInstruction={chatView.initialInstruction ?? null}
-                    minimized={chatMiniVisual}
-                    anchor={{
-                      v: pillAlign === "start" ? "top" : "bottom",
-                      h: pillSide === "right" ? "right" : "center",
-                    }}
-                    onExpand={expandRemixChat}
-                    onMinimize={minimizeRemixChat}
-                    onClose={closeRemix}
-                    onMiniHeightChange={setRemixMiniHeight}
-                  />
-                </Suspense>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <PillView
+      state={state}
+      showRemixCard={showRemixCard}
+      accessibleStatus={accessibleStatus}
+      layerClass={layerClass}
+      cardOpen={cardOpen}
+      showCard={showCard}
+      entered={entered}
+      exiting={exiting}
+      handlePillEnter={handlePillEnter}
+      handlePillLeave={handlePillLeave}
+      riseBy={riseBy}
+      transformOrigin={transformOrigin}
+      pillAlign={pillAlign}
+      pillSide={pillSide}
+      cancelSlotRef={cancelSlotRef}
+      cancelRecording={cancelRecording}
+      pillLanguageLabel={pillLanguageLabel}
+      waveColor={waveColor}
+      waveform={waveform}
+      wantsStatus={wantsStatus}
+      status={status}
+      errorCardOpen={errorCardOpen}
+      cardSurfaceStyle={cardSurfaceStyle}
+      card={card}
+      dismissPill={dismissPill}
+      retryFailedTranscription={retryFailedTranscription}
+      remixOpen={remixOpen}
+      viewIsChat={viewIsChat}
+      cardSurfaceRef={cardSurfaceRef}
+      chatSurfaceRef={chatSurfaceRef}
+      disarmHotRect={disarmHotRect}
+      rearmHotRect={rearmHotRect}
+      cardView={cardView}
+      endRemix={endRemix}
+      remixTranscript={remixTranscript}
+      remixHint={remixHint}
+      chatMiniVisual={chatMiniVisual}
+      remixMiniHeight={remixMiniHeight}
+      chatView={chatView}
+      remixContextRef={remixContextRef}
+      expandRemixChat={expandRemixChat}
+      minimizeRemixChat={minimizeRemixChat}
+      closeRemix={closeRemix}
+      setRemixMiniHeight={setRemixMiniHeight}
+    />
   );
 }
