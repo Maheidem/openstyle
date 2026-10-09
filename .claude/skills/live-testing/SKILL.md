@@ -34,6 +34,7 @@ Never run this script from an agent. Do not run `security`, `codesign`, `tccutil
 After the setup:
 - `compile:native`, `download:ffmpeg`, `build:mac` and `build:unpack` sign local builds with the identity. `pnpm --filter @openstyle/electron sign:dev` signs `Electron.app` (also done by `dev` and `test:e2e`). Run `sign:dev` outside `isolated_run`: the scratch `HOME` has no keychain, and `sign:dev` exits with an error there. The documented direct `playwright` command skips `sign:dev`: run `sign:dev` first. `turbo` can restore cached ad-hoc binaries: the signing variables are part of the cache key; use `turbo --force` if in doubt.
 - The step does nothing when `CI` is set, when `OPENSTYLE_DEV_SIGN=0`, or when the identity does not exist. `OPENSTYLE_DEV_SIGN_IDENTITY` selects another identity.
+- Local builds without the identity (`OPENSTYLE_DEV_SIGN=0`) set `CSC_IDENTITY_AUTO_DISCOVERY=false`. Export it yourself too. Without it, electron-builder finds "Openstyle Dev" in the login keychain and signs with it.
 - Run a binary that is ad-hoc signed again, and the old grants do not apply. Grant the permissions once in System Settings.
 
 Proven 2026-10-09 (TCC log, `/usr/bin/log show --predicate 'subsystem == "com.apple.TCC"'`; bare `log` is a zsh builtin; only `AUTHREQ_PROMPTING` means a dialog was shown):

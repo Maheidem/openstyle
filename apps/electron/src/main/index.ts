@@ -112,7 +112,7 @@ if (quietE2E) {
 
 const log = createAppLogger("electron");
 
-// Persist all logs (this process + the in-process server) to a single rotating
+// Persist all logs (this process + the server process) to a single rotating
 // file so users can share diagnostics. `app.getPath("logs")` resolves to
 // ~/Library/Logs/Openstyle (macOS), %APPDATA%\Openstyle\logs (Windows), or
 // ~/.config/Openstyle/logs (Linux). enableFileLogging() is order-independent:
@@ -247,7 +247,7 @@ app.whenReady().then(async () => {
 
   createAppWindow();
 
-  // Meeting Mode boot tasks, deferred until the in-process server is up:
+  // Meeting Mode boot tasks, deferred until the server process is up:
   // cache the feature flag for the tray and sweep meetings a crash left in
   // 'recording' (finalize WAV headers, mark 'interrupted') or 'transcribing'
   // (job died with the process — mark 'failed', partial transcript kept).

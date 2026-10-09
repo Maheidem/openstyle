@@ -2,7 +2,6 @@
 // Registers the updater IPC handlers.
 // Wires update events only when the app is not in development.
 import { is } from "@electron-toolkit/utils";
-import { prefetchManagedMlxRuntimeForAppRelease } from "@openstyle/server";
 import { createAppLogger } from "@openstyle/utils";
 import { app, ipcMain, shell } from "electron";
 import { autoUpdater } from "electron-updater";
@@ -18,6 +17,7 @@ import {
   showMoveToApplicationsDialog,
 } from "./permission-dialogs";
 import { selfUpdater } from "./self-updater";
+import { prefetchMlxRuntime } from "./server-host";
 
 const log = createAppLogger("electron");
 
@@ -146,13 +146,7 @@ export function registerUpdater(): void {
         updateCheckTimer = null;
       }
       rebuildMenus();
-      void prefetchManagedMlxRuntimeForAppRelease(info.version).catch((err) => {
-        log.warn(
-          `Failed to stage MLX runtime for ${info.version}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
+      prefetchMlxRuntime(info.version);
     });
 
     autoUpdater.on("error", (err) => {

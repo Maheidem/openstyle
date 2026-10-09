@@ -123,8 +123,14 @@ function runBuilder(args) {
   const extra = identity
     ? [`-c.mac.identity=${identity}`, "-c.mac.notarize=false"]
     : [];
+  // Without dev signing, stop electron-builder from finding the
+  // "Openstyle Dev" identity in the keychain. A caller value wins.
+  const env = identity
+    ? process.env
+    : { CSC_IDENTITY_AUTO_DISCOVERY: "false", ...process.env };
   const r = spawnSync("electron-builder", [...args, ...extra], {
     stdio: "inherit",
+    env,
     shell: process.platform === "win32", // electron-builder is a .cmd file there
   });
   if (r.error) console.error(`  ERROR: electron-builder: ${r.error.message}`);

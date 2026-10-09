@@ -50,6 +50,7 @@
       "entry": [
         "electron.vite.config.ts",
         "src/main/index.ts",
+        "src/server-host/entry.ts",
         "src/preload/index.ts",
         "src/renderer/src/dashboard.tsx",
         "src/renderer/src/meeting-capture.ts",

@@ -4,7 +4,6 @@
  */
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { closeDb, stopMlxServer, stopWhisperServer } from "@openstyle/server";
 import { createAppLogger } from "@openstyle/utils";
 import { app, dialog, globalShortcut } from "electron";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
@@ -18,6 +17,7 @@ import { state } from "./main-state";
 import { updateRemixBar } from "./remix/bar-window";
 import { cancelRemixRetries } from "./remix/hotkey";
 import { getDashboardURL } from "./renderer-urls";
+import { stopServerHost } from "./server-host";
 import { putServerSetting } from "./server-target";
 import {
   createSettingsWindow,
@@ -85,8 +85,8 @@ export async function factoryReset(): Promise<void> {
   if (response !== 1) return;
 
   try {
-    await stopWhisperServer().catch(() => {});
-    await stopMlxServer().catch(() => {});
+    // The server host closes the DB and stops the child servers.
+    await stopServerHost(5000).catch(() => {});
 
     cancelDictationRetries();
     cancelRemixRetries();
@@ -98,10 +98,6 @@ export async function factoryReset(): Promise<void> {
     if (process.platform === "win32") {
       globalShortcut.unregisterAll();
     }
-
-    try {
-      closeDb();
-    } catch {}
 
     if (state.httpServer) {
       state.httpServer.close();

@@ -75,6 +75,12 @@ export default defineConfig({
       externalizeDeps: false,
       sourcemap: analyze,
       rollupOptions: {
+        // Two entries. "server-process" is the utility process that runs the
+        // server (src/server-host/entry.ts). Main forks out/main/server-process.js.
+        input: {
+          index: resolve("src/main/index.ts"),
+          "server-process": resolve("src/server-host/entry.ts"),
+        },
         external: ["electron", "bufferutil", "utf-8-validate"],
         plugins: analyze ? [mkVisualizer("main")] : [],
       },

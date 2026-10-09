@@ -2,7 +2,6 @@
 // Register once at startup. Cleanup stops native children, listeners and timers.
 // A normal quit ends the process with app.exit(0) in a finally block.
 
-import { stopMlxServer, stopWhisperServer } from "@openstyle/server";
 import { createAppLogger } from "@openstyle/utils";
 import { app, globalShortcut } from "electron";
 import {
@@ -12,6 +11,7 @@ import {
 import { state, stopHotkeyRecorderProcess } from "./main-state";
 import { stopLinuxPasteHelper } from "./paste";
 import { cancelRemixRetries } from "./remix/hotkey";
+import { stopServerHost } from "./server-host";
 import { showSettingsWindow } from "./windows/settings-window";
 
 const log = createAppLogger("electron");
@@ -33,14 +33,14 @@ export function registerQuitHandlers(): void {
   // Stop every native child process and timer. The before-quit handler runs
   // this on a normal quit and on an updater quit. A normal quit then calls
   // app.exit(0), which skips will-quit.
-  function cleanupBeforeQuit(): void {
+  // It returns a promise that settles when the server host has stopped.
+  function cleanupBeforeQuit(): Promise<void> {
     // Finalize any in-flight meeting recording's WAV headers before the process
     // exits; the boot-time orphan sweep settles the DB row next launch.
     state.meetingRecorder?.stopSync();
     state.audioPlaybackController.restoreSync();
     stopLinuxPasteHelper();
-    stopWhisperServer().catch(() => {});
-    stopMlxServer().catch(() => {});
+    const serverStopped = stopServerHost(3000).catch(() => {});
     cancelDictationRetries();
     cancelRemixRetries();
     cancelLanguageRetries();
@@ -67,6 +67,7 @@ export function registerQuitHandlers(): void {
       state.httpServer.close();
       state.httpServer = null;
     }
+    return serverStopped;
   }
 
   // A signal ends the process with no "exit" event unless a handler runs.
@@ -75,10 +76,11 @@ export function registerQuitHandlers(): void {
   process.on("SIGINT", () => app.quit());
   process.on("SIGTERM", () => app.quit());
 
-  app.on("before-quit", (event) => {
+  app.on("before-quit", async (event) => {
     if (state.isUpdaterQuitting) {
       try {
-        cleanupBeforeQuit();
+        // The updater quit cannot wait. The server host stops in the background.
+        void cleanupBeforeQuit();
       } catch (err) {
         log.warn(
           `cleanup before updater quit failed: ${
@@ -96,7 +98,7 @@ export function registerQuitHandlers(): void {
     // listener already torn down, a dead child process), the app would otherwise
     // stay alive forever with no windows, which is what a hung quit looks like.
     try {
-      cleanupBeforeQuit();
+      await cleanupBeforeQuit();
     } catch (err) {
       log.warn(
         `cleanup before quit failed: ${
