@@ -25,6 +25,7 @@ import {
 } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { finished } from "node:stream/promises";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 
@@ -164,6 +165,9 @@ export async function downloadAndVerify(
 
   const reader = res.body.getReader();
   const fileStream = createWriteStream(destPath);
+  // Without an "error" listener, a disk error is an uncaught exception. The
+  // write callback below already rejects with the same error.
+  fileStream.on("error", () => {});
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -231,16 +235,26 @@ export interface DeltaPlan {
   bytesTotal: number;
 }
 
+// A stalled connection must not hang the update for ever. A timeout makes the
+// delta fail, and the caller then falls back to the full download.
+const NETWORK_TIMEOUT_MS = 30_000;
+
 /**
  * Parse an electron-builder blockmap. `source` is the file content, a path to
  * a blockmap file, or an http(s) URL. Returns every chunk in file order.
  */
-export async function loadBlockmap(source: string | Buffer): Promise<Blockmap> {
+export async function loadBlockmap(
+  source: string | Buffer,
+  timeoutMs = NETWORK_TIMEOUT_MS,
+): Promise<Blockmap> {
   let raw: Buffer;
   if (typeof source !== "string") {
     raw = source;
   } else if (/^https?:\/\//.test(source)) {
-    const res = await fetch(source, { redirect: "follow" });
+    const res = await fetch(source, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     if (!res.ok)
       throw new Error(`Failed to fetch ${source}: HTTP ${res.status}`);
     raw = Buffer.from(await res.arrayBuffer());
@@ -308,6 +322,59 @@ export function planDelta(oldMap: Blockmap, newMap: Blockmap): DeltaPlan {
 type RangeBody = Buffer | AsyncIterable<Uint8Array>;
 
 /**
+ * Yield the bytes `start..endInclusive` of `url`. GitHub accepts one range
+ * per request. The request fails when the server sends nothing for
+ * `idleTimeoutMs`. Time that the caller spends between two chunks does not
+ * count.
+ */
+export async function* fetchRange(
+  url: string,
+  start: number,
+  endInclusive: number,
+  idleTimeoutMs = NETWORK_TIMEOUT_MS,
+): AsyncGenerator<Uint8Array> {
+  const controller = new AbortController();
+  const withTimeout = async <T>(wait: Promise<T>): Promise<T> => {
+    const timer = setTimeout(() => controller.abort(), idleTimeoutMs);
+    try {
+      return await wait;
+    } catch (err) {
+      if (controller.signal.aborted) {
+        throw new Error(
+          `Range request for ${url} timed out after ${idleTimeoutMs} ms`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const res = await withTimeout(
+    fetch(url, {
+      headers: { Range: `bytes=${start}-${endInclusive}` },
+      redirect: "follow",
+      signal: controller.signal,
+    }),
+  );
+  if (res.status !== 206 || !res.body) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`Range request for ${url} failed: HTTP ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await withTimeout(reader.read());
+      if (done) return;
+      if (value) yield value;
+    }
+  } finally {
+    // Close the connection when the caller stops early or an error occurs.
+    await reader.cancel().catch(() => {});
+  }
+}
+
+/**
  * Build the new zip at `destPath` by following `plan`. `fetchRange` returns
  * the bytes `start..endInclusive` of the new zip. The sha512 (base64) is
  * computed while writing. The caller compares it with the published value.
@@ -326,13 +393,32 @@ export async function assembleZip(
   mkdirSync(dirname(destPath), { recursive: true });
   const hash = createHash("sha512");
   const out = createWriteStream(destPath);
+  // Keep the first stream error (for example ENOSPC). Without an "error"
+  // listener, Node raises an uncaught exception in the main process.
+  let streamError: Error | null = null;
+  out.on("error", (err) => {
+    streamError ??= err;
+  });
   let bytesFetched = 0;
   let lastEmitMs = 0;
 
   const write = async (chunk: Uint8Array): Promise<void> => {
+    if (streamError) throw streamError;
     hash.update(chunk);
     if (!out.write(chunk)) {
-      await new Promise<void>((resolve) => out.once("drain", resolve));
+      // A destroyed stream never emits "drain", so also wait for "error".
+      await new Promise<void>((resolve) => {
+        const wake = () => {
+          out.off("drain", wake);
+          out.off("error", wake);
+          out.off("close", wake);
+          resolve();
+        };
+        out.once("drain", wake);
+        out.once("error", wake);
+        out.once("close", wake);
+      });
+      if (streamError) throw streamError;
     }
   };
 
@@ -373,11 +459,13 @@ export async function assembleZip(
         );
       }
     }
-  } finally {
-    await new Promise<void>((resolve, reject) => {
-      out.end((err: unknown) => (err ? reject(err) : resolve()));
-    });
+  } catch (err) {
+    out.destroy();
+    throw err;
   }
+  // Wait until the data is on disk. This rejects when the stream failed.
+  out.end();
+  await finished(out);
   return { sha512: hash.digest("base64"), bytesFetched };
 }
 

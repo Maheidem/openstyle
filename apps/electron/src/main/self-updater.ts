@@ -16,6 +16,7 @@ import {
   downloadAndVerify,
   extractZip,
   fetchLatestManifest,
+  fetchRange,
   findAppBundle,
   loadBlockmap,
   planDelta,
@@ -40,27 +41,6 @@ const MANIFEST_URL = `${RELEASES_URL}/latest/download/latest-mac.yml`;
 
 // Above this share of the zip, a delta saves too little. Download it all.
 const MAX_DELTA_FRACTION = 0.7;
-
-/** Yield the bytes `start..endInclusive` of `url`. GitHub accepts one range per request. */
-async function* fetchRange(
-  url: string,
-  start: number,
-  endInclusive: number,
-): AsyncGenerator<Uint8Array> {
-  const res = await fetch(url, {
-    headers: { Range: `bytes=${start}-${endInclusive}` },
-    redirect: "follow",
-  });
-  if (res.status !== 206 || !res.body) {
-    throw new Error(`Range request for ${url} failed: HTTP ${res.status}`);
-  }
-  const reader = res.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    if (value) yield value;
-  }
-}
 
 /**
  * Try to build `destPath` from the cached zip of the running version plus the
@@ -126,6 +106,7 @@ async function downloadDelta(
 class SelfUpdater extends EventEmitter {
   private downloadedZipPath: string | null = null;
   private downloadedVersion: string | null = null;
+  private downloadInFlight: Promise<void> | null = null;
 
   /**
    * Returns why self-update isn't available right now, or null when it is.
@@ -147,7 +128,18 @@ class SelfUpdater extends EventEmitter {
     return bundle;
   }
 
-  async downloadUpdate(): Promise<void> {
+  /**
+   * Download the newest release zip. A second call while a download runs
+   * returns the same promise, so two callers never write the same file.
+   */
+  downloadUpdate(): Promise<void> {
+    this.downloadInFlight ??= this.runDownload().finally(() => {
+      this.downloadInFlight = null;
+    });
+    return this.downloadInFlight;
+  }
+
+  private async runDownload(): Promise<void> {
     const reason = this.unavailableReason();
     if (reason) throw new Error(`Self-update unavailable: ${reason}`);
 

@@ -1,10 +1,23 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assembleZip, loadBlockmap, planDelta } from "./self-updater-core";
+import {
+  assembleZip,
+  fetchRange,
+  loadBlockmap,
+  planDelta,
+} from "./self-updater-core";
 
 // Fixture rules: no binary files in git. Every test builds its own bytes.
 // A blockmap describes a file as chunks. Each chunk has a checksum and a size.
@@ -240,5 +253,92 @@ describe("self-updater delta core", () => {
 
     expect(result.sha512).not.toBe(sha512(newData));
     expect(readFileSync(dest).equals(newData)).toBe(false);
+  });
+
+  it("a write stream error rejects assembleZip and does not hang", async () => {
+    // The destination is a folder, so the open fails with EISDIR. The chunk is
+    // larger than the stream buffer, so assembleZip must stop waiting for drain.
+    const newData = Buffer.alloc(1024 * 1024, "N");
+    const old = writeOld("wfail-old.zip", Buffer.alloc(8, "O"), [8]);
+    const newMap = await loadBlockmap(
+      buildBlockmap(split(newData, [newData.byteLength])),
+    );
+    const plan = planDelta(await loadBlockmap(old.map), newMap);
+    const destDir = join(dir, "wfail-dest");
+    mkdirSync(destDir);
+
+    const server = rangeServer(newData);
+    await expect(
+      assembleZip(old.path, plan, server.fetchRange, destDir),
+    ).rejects.toThrow(/EISDIR/);
+  });
+
+  describe("network timeouts", () => {
+    let http: Server;
+    let base: string;
+
+    beforeAll(async () => {
+      http = createServer((req, res) => {
+        if (req.url === "/stall") return; // never answers
+        if (req.url === "/stall-body") {
+          res.writeHead(206, { "content-length": "100" });
+          res.write("abc"); // then stops
+          return;
+        }
+        if (req.url === "/range-ignored") {
+          res.writeHead(200);
+          res.end("whole file");
+          return;
+        }
+        res.writeHead(206);
+        res.end("0123456789");
+      });
+      await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
+      base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
+    });
+
+    afterAll(async () => {
+      http.closeAllConnections();
+      await new Promise<void>((r) => http.close(() => r()));
+    });
+
+    it("loadBlockmap fails when the server never answers", async () => {
+      await expect(loadBlockmap(`${base}/stall`, 150)).rejects.toThrow();
+    });
+
+    it("fetchRange fails when the server never answers", async () => {
+      const read = async () => {
+        for await (const _ of fetchRange(`${base}/stall`, 0, 9, 150)) {
+          // no data
+        }
+      };
+      await expect(read()).rejects.toThrow(/timed out/);
+    });
+
+    it("fetchRange fails when the body stalls", async () => {
+      const read = async () => {
+        for await (const _ of fetchRange(`${base}/stall-body`, 0, 99, 150)) {
+          // first chunk arrives, then the server stops
+        }
+      };
+      await expect(read()).rejects.toThrow(/timed out/);
+    });
+
+    it("fetchRange rejects a server that ignores Range", async () => {
+      const read = async () => {
+        for await (const _ of fetchRange(`${base}/range-ignored`, 0, 9)) {
+          // no data
+        }
+      };
+      await expect(read()).rejects.toThrow(/HTTP 200/);
+    });
+
+    it("fetchRange returns the bytes of a normal range", async () => {
+      const parts: Buffer[] = [];
+      for await (const c of fetchRange(`${base}/ok`, 0, 9)) {
+        parts.push(Buffer.from(c));
+      }
+      expect(Buffer.concat(parts).toString()).toBe("0123456789");
+    });
   });
 });
