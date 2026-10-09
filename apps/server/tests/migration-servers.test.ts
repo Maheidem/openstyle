@@ -88,7 +88,7 @@ describe("own_servers migration (schema 36)", () => {
     const version = d
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(37);
+    expect(version.version).toBe(38);
   });
 
   it("creates the table when the DB has no settings table at all", () => {

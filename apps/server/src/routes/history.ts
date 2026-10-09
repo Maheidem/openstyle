@@ -51,18 +51,29 @@ const history = new Hono()
       end_date = null,
     } = c.req.valid("query");
     const search = rawSearch?.trim() || "";
+    // The trigram index cannot match fewer than 3 characters. Short terms
+    // keep the LIKE scan. Longer terms use FTS5, with the term as one phrase.
+    const useFts = Array.from(search).length >= 3;
     const pattern = `%${search}%`;
+    const ftsPhrase = `"${search.replaceAll('"', '""')}"`;
 
     const dates = dateRangeWhere(start_date, end_date);
     const { items, total } = queryPage<HistoryRow>(getDb(), {
       table: "transcription_history",
       where: [
-        ...(search
-          ? ["(raw_text LIKE ? OR cleaned_text LIKE ? OR voice_model LIKE ?)"]
-          : []),
+        ...(useFts
+          ? [
+              "id IN (SELECT rowid FROM transcription_history_fts WHERE transcription_history_fts MATCH ?)",
+            ]
+          : search
+            ? ["(raw_text LIKE ? OR cleaned_text LIKE ? OR voice_model LIKE ?)"]
+            : []),
         ...dates.where,
       ],
-      params: [...(search ? [pattern, pattern, pattern] : []), ...dates.params],
+      params: [
+        ...(useFts ? [ftsPhrase] : search ? [pattern, pattern, pattern] : []),
+        ...dates.params,
+      ],
       orderColumns: ALLOWED_ORDER_COLUMNS,
       orderBy,
       limit,

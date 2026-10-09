@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 37;
+const SCHEMA_VERSION = 38;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -948,6 +948,50 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         PRIMARY KEY (meeting_id, idx)
       )
     `);
+  }
+
+  if (currentVersion < 38 && tableExists(db, "transcription_history")) {
+    // History search with FTS5 (specs/under-the-hood.md, item 7). The trigram
+    // tokenizer matches any substring of 3 or more characters. The table has
+    // no copy of the text: it reads the columns from `transcription_history`.
+    // The triggers keep the index in step with every insert, update and
+    // delete. The 'rebuild' command fills the index from the existing rows.
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS transcription_history_fts USING fts5(
+        raw_text,
+        cleaned_text,
+        voice_model,
+        content='transcription_history',
+        content_rowid='id',
+        tokenize='trigram'
+      )
+    `);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS transcription_history_fts_ai
+      AFTER INSERT ON transcription_history BEGIN
+        INSERT INTO transcription_history_fts(rowid, raw_text, cleaned_text, voice_model)
+        VALUES (new.id, new.raw_text, new.cleaned_text, new.voice_model);
+      END
+    `);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS transcription_history_fts_ad
+      AFTER DELETE ON transcription_history BEGIN
+        INSERT INTO transcription_history_fts(transcription_history_fts, rowid, raw_text, cleaned_text, voice_model)
+        VALUES ('delete', old.id, old.raw_text, old.cleaned_text, old.voice_model);
+      END
+    `);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS transcription_history_fts_au
+      AFTER UPDATE ON transcription_history BEGIN
+        INSERT INTO transcription_history_fts(transcription_history_fts, rowid, raw_text, cleaned_text, voice_model)
+        VALUES ('delete', old.id, old.raw_text, old.cleaned_text, old.voice_model);
+        INSERT INTO transcription_history_fts(rowid, raw_text, cleaned_text, voice_model)
+        VALUES (new.id, new.raw_text, new.cleaned_text, new.voice_model);
+      END
+    `);
+    db.exec(
+      `INSERT INTO transcription_history_fts(transcription_history_fts) VALUES('rebuild')`,
+    );
   }
 
   // Upsert schema version
