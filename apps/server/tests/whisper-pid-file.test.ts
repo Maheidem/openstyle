@@ -1,5 +1,6 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdtempSync,
@@ -80,7 +81,7 @@ afterAll(() => {
 describe("whisper-server PID file", () => {
   it("writes the PID next to the database", () => {
     writeWhisperPidFile(4242);
-    expect(readFileSync(pidFile, "utf8")).toBe("4242");
+    expect(readFileSync(pidFile, "utf8")).toBe(`4242 ${process.pid}`);
   });
 
   it("removes the file only for the PID that wrote it", () => {
@@ -121,6 +122,37 @@ describeUnix("sweepStaleWhisperServer", () => {
     await waitForExit(stale);
     expect(stale.signalCode).toBe("SIGTERM");
     expect(existsSync(pidFile)).toBe(false);
+  });
+
+  it("keeps the file and kills nothing when the owner is alive", () => {
+    const stale = startSleeper(join(dir, "whisper-server"));
+    const owner = startSleeper("/bin/sleep");
+    writeFileSync(pidFile, `${stale.pid} ${owner.pid}`);
+    sweepStaleWhisperServer();
+    expect(isAlive(stale.pid as number)).toBe(true);
+    expect(stale.signalCode).toBeNull();
+    expect(existsSync(pidFile)).toBe(true);
+  });
+
+  it("kills the whisper-server when the owner is dead", async () => {
+    const stale = startSleeper(join(dir, "whisper-server"));
+    const gone = spawn("/bin/sleep", ["0"], { stdio: "ignore" });
+    await waitForExit(gone);
+    writeFileSync(pidFile, `${stale.pid} ${gone.pid}`);
+    sweepStaleWhisperServer();
+    await waitForExit(stale);
+    expect(stale.signalCode).toBe("SIGTERM");
+    expect(existsSync(pidFile)).toBe(false);
+  });
+
+  it("does not throw when the file cannot be removed", () => {
+    writeFileSync(pidFile, "not-a-pid");
+    chmodSync(dir, 0o555);
+    try {
+      expect(() => sweepStaleWhisperServer()).not.toThrow();
+    } finally {
+      chmodSync(dir, 0o755);
+    }
   });
 
   it("does not kill a live process with another name", () => {

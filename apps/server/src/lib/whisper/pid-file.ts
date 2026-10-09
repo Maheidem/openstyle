@@ -18,11 +18,14 @@ function pidFilePath(): string | null {
 // The PID file lets the next server process find a whisper-server that the
 // last one left behind. The exit hook in server.ts does not run when the
 // server process gets SIGKILL.
+// The file holds "<whisper PID> <owner PID>". The owner is the server
+// process that started the whisper-server. The sweep uses it to find out
+// if that server process is still alive.
 export function writeWhisperPidFile(pid: number | undefined): void {
   const path = pidFilePath();
   if (!path || pid === undefined) return;
   try {
-    writeFileSync(path, String(pid));
+    writeFileSync(path, `${pid} ${process.pid}`);
   } catch (err) {
     log.warn(`Could not write ${PID_FILE_NAME}: ${(err as Error).message}`);
   }
@@ -34,7 +37,9 @@ export function removeWhisperPidFile(pid: number | undefined): void {
   const path = pidFilePath();
   if (!path || pid === undefined) return;
   try {
-    if (readFileSync(path, "utf8").trim() !== String(pid)) return;
+    if (readFileSync(path, "utf8").trim().split(/\s+/)[0] !== String(pid)) {
+      return;
+    }
     rmSync(path, { force: true });
   } catch {
     // No file. Nothing to remove.
@@ -55,11 +60,24 @@ function processName(pid: number): string | null {
   }
 }
 
+// True when a process with this PID exists. EPERM means it exists but
+// belongs to another user.
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 /**
  * Kill a whisper-server that a dead server process left behind.
  * Call it once at server boot, before any new whisper-server starts.
  * It kills the PID in the file only when that PID is alive and its command
- * name is whisper-server. It always deletes the file.
+ * name is whisper-server. It deletes the file, with one exception: when the
+ * owner server process is still alive, another app instance uses this data
+ * directory. Then it keeps the file and kills nothing.
  */
 export function sweepStaleWhisperServer(): void {
   const path = pidFilePath();
@@ -71,9 +89,28 @@ export function sweepStaleWhisperServer(): void {
   } catch {
     return;
   }
-  rmSync(path, { force: true });
 
-  const pid = Number.parseInt(raw.trim(), 10);
+  const [pidText, ownerText] = raw.trim().split(/\s+/);
+  const pid = Number.parseInt(pidText ?? "", 10);
+  const owner = Number.parseInt(ownerText ?? "", 10);
+  if (
+    Number.isInteger(owner) &&
+    owner > 1 &&
+    owner !== process.pid &&
+    isProcessAlive(owner)
+  ) {
+    log.info(
+      `Kept ${PID_FILE_NAME}: its owner (PID ${owner}) is still running`,
+    );
+    return;
+  }
+
+  try {
+    rmSync(path, { force: true });
+  } catch (err) {
+    log.warn(`Could not remove ${PID_FILE_NAME}: ${(err as Error).message}`);
+  }
+
   if (!Number.isInteger(pid) || pid <= 1) {
     log.warn(`Ignored ${PID_FILE_NAME}: it holds no valid PID`);
     return;
