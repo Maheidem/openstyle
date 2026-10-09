@@ -19,6 +19,7 @@ import { registerAppSettingsIpc } from "../app-settings-ipc";
 import { registerDiskUsageIpc } from "../disk-usage";
 import { HotkeyRecorder } from "../hotkey-recorder";
 import {
+  cancelDictationRetries,
   handleDictationHotkeyDown,
   handleDictationHotkeyUp,
   scheduleHotkeyRegistration,
@@ -44,6 +45,7 @@ import {
 } from "../permission-dialogs";
 import { registerPermissionsIpc } from "../permissions-ipc";
 import { updateRemixBar } from "../remix/bar-window";
+import { cancelRemixRetries } from "../remix/hotkey";
 import {
   getServerPort,
   getServerToken,
@@ -265,6 +267,9 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
   ipcMain.on("hotkey-record:start", () => {
+    // A pending retry must not restart a listener that this recorder parks.
+    cancelDictationRetries();
+    cancelRemixRetries();
     // Park remix listener while recording a hotkey.
     if (state.remixKeyListener) {
       state.remixKeyListener.stop();

@@ -5,8 +5,13 @@
 import { stopMlxServer, stopWhisperServer } from "@openstyle/server";
 import { createAppLogger } from "@openstyle/utils";
 import { app, globalShortcut } from "electron";
+import {
+  cancelDictationRetries,
+  cancelLanguageRetries,
+} from "./hotkeys/dictation";
 import { state, stopHotkeyRecorderProcess } from "./main-state";
 import { stopLinuxPasteHelper } from "./paste";
+import { cancelRemixRetries } from "./remix/hotkey";
 import { showSettingsWindow } from "./windows/settings-window";
 
 const log = createAppLogger("electron");
@@ -36,6 +41,9 @@ export function registerQuitHandlers(): void {
     stopLinuxPasteHelper();
     stopWhisperServer().catch(() => {});
     stopMlxServer().catch(() => {});
+    cancelDictationRetries();
+    cancelRemixRetries();
+    cancelLanguageRetries();
     if (state.keyListener) {
       state.keyListener.stop();
       state.keyListener = null;

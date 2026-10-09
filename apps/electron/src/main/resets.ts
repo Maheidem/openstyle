@@ -8,10 +8,15 @@ import { closeDb, stopMlxServer, stopWhisperServer } from "@openstyle/server";
 import { createAppLogger } from "@openstyle/utils";
 import { app, dialog, globalShortcut } from "electron";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
+import {
+  cancelDictationRetries,
+  cancelLanguageRetries,
+} from "./hotkeys/dictation";
 import * as linuxAutostart from "./linux-autostart";
 import { clearSettingsCache, writeSettings } from "./local-settings";
 import { state } from "./main-state";
 import { updateRemixBar } from "./remix/bar-window";
+import { cancelRemixRetries } from "./remix/hotkey";
 import { getDashboardURL } from "./renderer-urls";
 import { putServerSetting } from "./server-target";
 import {
@@ -83,6 +88,9 @@ export async function factoryReset(): Promise<void> {
     await stopWhisperServer().catch(() => {});
     await stopMlxServer().catch(() => {});
 
+    cancelDictationRetries();
+    cancelRemixRetries();
+    cancelLanguageRetries();
     if (state.keyListener) {
       state.keyListener.stop();
       state.keyListener = null;

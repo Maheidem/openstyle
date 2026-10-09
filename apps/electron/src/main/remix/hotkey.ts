@@ -118,13 +118,18 @@ export function scheduleRemixHotkeyRegistration(hotkey?: string): void {
   });
 }
 
-function createRemixListener(accel: string): NativeKeyListener {
+/** `quiet` is true while a retry attempt starts the listener (debug log only). */
+function createRemixListener(
+  accel: string,
+  quiet: () => boolean = () => false,
+): NativeKeyListener {
   const listener = new NativeKeyListener({
     hotkey: accel,
     onKeyDown: handleRemixHotkeyDown,
     onKeyUp: handleRemixHotkeyUp,
     onError: (error) => {
-      hotkeyLog.error(`Remix key listener error: ${error}`);
+      if (quiet()) hotkeyLog.debug(`Remix key listener error: ${error}`);
+      else hotkeyLog.error(`Remix key listener error: ${error}`);
     },
     onReady: () => {
       hotkeyLog.debug(`Remix key listener ready for "${accel}"`);
@@ -151,9 +156,12 @@ function startRemixRetry(accel: string): void {
   cancelRemixRetry = startNativeRetry({
     label: "Remix",
     attempt: async () => {
-      const listener = createRemixListener(accel);
+      let attempting = true;
+      const listener = createRemixListener(accel, () => attempting);
       state.remixKeyListener = listener;
-      const started = await listener.start();
+      const started = await listener.start().finally(() => {
+        attempting = false;
+      });
       if (started && state.remixKeyListener === listener) return true;
       listener.stop();
       if (state.remixKeyListener === listener) state.remixKeyListener = null;
@@ -163,6 +171,12 @@ function startRemixRetry(accel: string): void {
       cancelRemixRetry = null;
     },
   });
+}
+
+/** Cancel the pending native retry of the Remix listener. */
+export function cancelRemixRetries(): void {
+  cancelRemixRetry?.();
+  cancelRemixRetry = null;
 }
 
 /** Start the remix native listener. No globalShortcut fallback (needs hold/tap). */

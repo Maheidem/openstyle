@@ -120,14 +120,14 @@ test("dictation helper is retried after a permanent failure and hold mode return
       .toBe(1);
     expect(helperPids(appPid, "Fn")).toEqual([]);
 
-    // 3. While the helper cannot start, each retry fails and the fallback stays.
+    // 3. While the helper cannot start, each retry fails and the fallback
+    // stays. A failed retry logs at debug level only, so the log gets no new
+    // error line. Step 4 proves that the retries run.
     const errorsBefore = count("Key listener process error");
-    await expect
-      .poll(() => count("Key listener process error"), {
-        timeout: RETRY_MS * 4,
-      })
-      .toBeGreaterThan(errorsBefore);
+    await new Promise((done) => setTimeout(done, RETRY_MS * 2 + 1_000));
+    expect(count("Key listener process error")).toBe(errorsBefore);
     expect(count("Dictation key listener recovered")).toBe(0);
+    expect(helperPids(appPid, "Fn")).toEqual([]);
 
     // 4. The helper works again. The next retry restores hold mode.
     chmodSync(HELPER, helperMode & 0o777);

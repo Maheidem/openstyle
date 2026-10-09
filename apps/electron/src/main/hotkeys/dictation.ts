@@ -260,14 +260,23 @@ function registerGlobalShortcutToggle(accel: string): string | null {
   return null;
 }
 
-function createDictationListener(accel: string): NativeKeyListener {
+/**
+ * `quiet` is true while a retry attempt starts the listener. The first
+ * failure of an outage is already logged at error level, so a failed retry
+ * logs at debug level.
+ */
+function createDictationListener(
+  accel: string,
+  quiet: () => boolean = () => false,
+): NativeKeyListener {
   const listener = new NativeKeyListener({
     hotkey: accel,
     onKeyDown: () => handleDictationHotkeyDown(),
     onKeyUp: () => handleDictationHotkeyUp(),
     onError: (error) => {
       lastNativeError = error;
-      hotkeyLog.error(`Native key listener error: ${error}`);
+      if (quiet()) hotkeyLog.debug(`Native key listener error: ${error}`);
+      else hotkeyLog.error(`Native key listener error: ${error}`);
     },
     onReady: () => {
       hotkeyLog.debug(`Native key listener ready for "${accel}"`);
@@ -308,9 +317,12 @@ function startDictationRetry(accel: string): void {
   cancelDictationRetry = startNativeRetry({
     label: "Dictation",
     attempt: async () => {
-      const listener = createDictationListener(accel);
+      let attempting = true;
+      const listener = createDictationListener(accel, () => attempting);
       state.keyListener = listener;
-      const started = await listener.start();
+      const started = await listener.start().finally(() => {
+        attempting = false;
+      });
       if (started && state.keyListener === listener) return true;
       listener.stop();
       if (state.keyListener === listener) state.keyListener = null;
@@ -320,6 +332,8 @@ function startDictationRetry(accel: string): void {
       cancelDictationRetry = null;
       if (fallbackShortcut) globalShortcut.unregister(fallbackShortcut);
       fallbackShortcut = null;
+      // Hold mode has no toggle state. A toggle recording that the fallback
+      // started ends here, once, when the native listener returns.
       if (state.hotkeyPressed) {
         state.hotkeyPressed = false;
         clearHotkeyStuckWatchdog();
@@ -329,6 +343,17 @@ function startDictationRetry(accel: string): void {
       hotkeyDegradedNotified = false;
     },
   });
+}
+
+/** Cancel the pending native retry of the dictation listener. */
+export function cancelDictationRetries(): void {
+  cancelDictationRetry?.();
+  cancelDictationRetry = null;
+}
+
+/** Cancel the pending native retry of every language hotkey. */
+export function cancelLanguageRetries(): void {
+  for (const lang of [...languageRetries.keys()]) cancelLanguageRetry(lang);
 }
 
 export function scheduleHotkeyRegistration(hotkey?: string): void {
@@ -447,13 +472,17 @@ function releaseLanguageSession(lang: string): void {
 function createLanguageListener(
   lang: string,
   accel: string,
+  quiet: () => boolean = () => false,
 ): NativeKeyListener {
   const listener = new NativeKeyListener({
     hotkey: accel,
     onKeyDown: () => handleDictationHotkeyDown(lang),
     onKeyUp: () => handleDictationHotkeyUp(lang),
-    onError: (error) =>
-      hotkeyLog.error(`Language hotkey listener error (${lang}): ${error}`),
+    onError: (error) => {
+      const text = `Language hotkey listener error (${lang}): ${error}`;
+      if (quiet()) hotkeyLog.debug(text);
+      else hotkeyLog.error(text);
+    },
     onPermanentFailure: () => {
       if (state.languageKeyListeners.get(lang) !== listener) return;
       hotkeyLog.error(
@@ -476,9 +505,12 @@ function startLanguageRetry(lang: string, accel: string): void {
     startNativeRetry({
       label: `Language hotkey "${lang}"`,
       attempt: async () => {
-        const listener = createLanguageListener(lang, accel);
+        let attempting = true;
+        const listener = createLanguageListener(lang, accel, () => attempting);
         state.languageKeyListeners.set(lang, listener);
-        const started = await listener.start();
+        const started = await listener.start().finally(() => {
+          attempting = false;
+        });
         if (started && state.languageKeyListeners.get(lang) === listener) {
           return true;
         }
