@@ -36,9 +36,20 @@ After the setup:
 - The step does nothing when `CI` is set, when `OPENSTYLE_DEV_SIGN=0`, or when the identity does not exist. `OPENSTYLE_DEV_SIGN_IDENTITY` selects another identity.
 - Run a binary that is ad-hoc signed again, and the old grants do not apply. Grant the permissions once in System Settings.
 
-Open point (not proven): the TCC log names Claude Code as the responsible app for these requests. A stable signature on the child binary may not change the grant that macOS checks. Before you rely on the fix, prove it on one binary: sign it, run it, and read the TCC log for `Sub:` and `Responsible:`. If the responsible app stays Claude Code, run local real-app tests from a separate parent app.
+Proven 2026-10-09 (TCC log, `/usr/bin/log show --predicate 'subsystem == "com.apple.TCC"'`; bare `log` is a zsh builtin; only `AUTHREQ_PROMPTING` means a dialog was shown):
+- Every process that Claude Code starts (dev Electron, Playwright, native helpers) asks macOS as Claude Code. Subject and responsible app are `com.anthropic.claude-code`, path `/Users/maheidem/.local/share/claude/versions/<version>`.
+- Signing a helper with "Openstyle Dev" did NOT change this. Accessibility, ListenEvent and PostEvent stayed at authValue=0.
+- The owner granted Claude Code (that versions path) Accessibility and Input Monitoring in Privacy & Security. Then the helper printed only `READY`, the log showed authValue=2, and no dialog appeared.
+- Microphone and Screen & System Audio Recording are NOT granted to Claude Code.
+- On this macOS (Darwin 27) the Accessibility list is not labelled "Accessibility" in Privacy & Security.
+- Not proven: a Claude Code update changes the versions path, so the grant may need to be added again.
+- The Way 2 code (`dev-sign.mjs`, `scripts/dev-signing-setup.sh`) stays. It has no effect for runs that Claude Code starts. It may matter only if the app starts through its own launcher (untested).
 
-Rule: a local real-app run (launch, e2e, site capture) needs the dev identity first. If `security find-identity -v -p codesigning` shows no "Openstyle Dev", do not run the app locally. Run the e2e suite in CI only.
+Rules for a local real-app run (launch, e2e, site capture):
+1. Before the run, check that the current Claude Code path has the grant.
+2. Use quiet mode only (`OPENSTYLE_E2E=1`).
+3. Tests that touch the microphone or system audio are CI-only, unless the owner says go.
+4. Stop at once at any Privacy dialog and report it.
 
 ## Enforced by the guard hook
 

@@ -56,7 +56,7 @@ At 2026-10-09, `gh pr list --head feat/under-the-hood` returned no PR.
 | 6 | 3. Native meeting capture | Largest risk. Needs the owner for a real-meeting check and the meeting benchmark. Last, so it cannot block the other items. |
 | - | 1. Developer ID | Deferred. No work on this branch. |
 
-**Testing on the owner's Mac.** Local real-app runs need the "Openstyle Dev" signing identity, or they raise macOS Privacy dialogs. The owner runs `bash scripts/dev-signing-setup.sh` once. Without the identity, run e2e in CI only. Open point: the TCC log names Claude Code as the responsible app, so the signature may not stop all dialogs. Prove it on one binary first (see the skill section). See `.claude/skills/live-testing/SKILL.md`, section "Privacy dialogs and the dev identity".
+**Testing on the owner's Mac.** Proven 2026-10-09: macOS checks Claude Code (`com.anthropic.claude-code`, path `~/.local/share/claude/versions/<version>`) for every process that Claude Code starts. The "Openstyle Dev" signature did not change this. After the owner granted Claude Code Accessibility and Input Monitoring, the helper ran with authValue=2 and no dialog. Microphone and Screen & System Audio Recording are not granted: those tests stay CI-only. Not proven: a Claude Code update may change the path and need a new grant. The Way 2 code stays; it has no effect for runs that Claude Code starts. Rules: check the grant first, quiet mode only, stop at any Privacy dialog. See `.claude/skills/live-testing/SKILL.md`, section "Privacy dialogs and the dev identity".
 
 ---
 
