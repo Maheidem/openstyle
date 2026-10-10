@@ -111,8 +111,44 @@ It needs `gh`, `jq` and about 300 MB in `/tmp`; a full run takes about
   one with push/release rights on `Maheidem/openstyle`, not the work
   account. Check with `gh auth status` if pushes/releases get rejected.
 - **Ad-hoc-signed builds re-prompt TCC permissions after every update.**
-  Expected until CI has Developer ID signing + notarization creds — not a
-  regression to chase.
+  Expected until CI signs with a fixed certificate (see "Release signing
+  (self-signed)" below) or a Developer ID. Not a regression to chase.
+
+## Release signing (self-signed)
+
+The macOS job in `.github/workflows/build.yml` signs the app with the
+self-signed certificate "Openstyle Release". Craft publishes the assets of the
+release-branch Build & Test run, so this job signs the published files.
+
+- **Secrets** (repository Actions secrets): `MAC_RELEASE_CERT_P12` (base64 of
+  the PKCS#12 file) and `MAC_RELEASE_CERT_PASSWORD` (its password).
+- **One-time setup, by the owner:** `bash scripts/release-cert-setup.sh`. It
+  creates the certificate, saves the identity in the owner's login keychain as
+  a backup (no trust), and stores both secrets. It refuses to replace
+  existing secrets without `--force`. An agent never runs it.
+- **Secret empty** (forks, or before the setup): the job keeps the ad-hoc build
+  and prints one notice line. The job log of "Prepare release signing identity"
+  and "Build electron (macOS)" shows which path ran.
+- **Secret set:** the job imports the key into a temporary keychain, trusts the
+  certificate for code signing on the runner, and builds with
+  `-c.mac.identity="Openstyle Release" -c.mac.notarize=false`. The step
+  "Verify release signature" fails the job unless the app and
+  `Contents/Resources/bin/macos-key-listener` show
+  `Authority=Openstyle Release` and the designated requirement of each contains
+  `certificate leaf`. Do not remove this check: with an identity that it cannot
+  find, electron-builder falls back to ad-hoc on arm64 and does not fail.
+- **First signed update:** the identity changes from ad-hoc to the certificate,
+  so macOS asks for the Privacy permissions once more. Later updates keep
+  them. Say this in the changelog of that release. The self-updater does not
+  compare signatures (`apps/electron/src/main/self-updater.ts:192-238`).
+- **Key loss:** the secrets cannot be read back from GitHub. If the key is lost,
+  nobody can sign with the same identity. Users must then grant the permissions
+  once more. Keep the export of the keychain backup in a password manager (the
+  setup script prints the export command).
+- **Rollback:** deleting the `MAC_RELEASE_CERT_P12` secret returns builds to
+  ad-hoc at once.
+- **Developer ID** (Apple notarization) stays deferred. See
+  `specs/under-the-hood.md`, item 1.
 
 ## Final verification checklist
 

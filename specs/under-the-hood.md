@@ -71,8 +71,9 @@ ready. Do not start it on this branch.
 - The installed app is ad-hoc signed. Command
   `codesign -dv /Applications/Openstyle.app` prints `Signature=adhoc`,
   `TeamIdentifier=not set`, `flags=0x10002(adhoc,runtime)`.
-- CI builds without signing secrets on purpose
-  (`.github/workflows/build.yml:310-316`).
+- CI builds without Apple signing secrets on purpose. Since the branch
+  `chore/self-signed-release` it can sign with a self-signed certificate (see
+  "Alternative" below); without that secret the build stays ad-hoc.
 - `electron-builder.yml:60` sets `notarize: true`. Unverified: how
   electron-builder 26 acts on this key with no Apple credentials. CI passes
   today, so it does not fail the build.
@@ -115,6 +116,34 @@ with no clear error.
 - [ ] `codesign -dv --verbose=4` on the app and each helper shows the Team ID.
 - [ ] `spctl -a -vv` on the app prints `source=Notarized Developer ID`.
 - [ ] An update from signed N to signed N+1 shows zero TCC dialogs.
+
+### Alternative: fixed self-signed certificate (proven 2026-10-10)
+
+**Status: in progress on branch `chore/self-signed-release`.** It does not
+need the Developer ID. It does not notarize, so Gatekeeper rules stay as they
+are today.
+
+- Proven by the owner on a Mac: two builds that are signed with the same
+  self-signed certificate keep their TCC grants. The designated requirement
+  is the identifier plus the certificate leaf hash. An ad-hoc build loses the
+  grants on every update.
+- The owner chose a new certificate "Openstyle Release", separate from the
+  local "Openstyle Dev" certificate (`scripts/dev-signing-setup.sh`).
+- `scripts/release-cert-setup.sh` creates it once and stores the GitHub
+  secrets `MAC_RELEASE_CERT_P12` and `MAC_RELEASE_CERT_PASSWORD`.
+- `.github/workflows/build.yml`, job "Build (macOS)", signs with it when the
+  secret is set, and checks `Authority` and the designated requirement.
+  With no secret, the ad-hoc build stays.
+- The self-updater does not compare signatures
+  (`apps/electron/src/main/self-updater.ts:192-238`), so the update from an
+  ad-hoc build to a signed build installs. macOS asks for the permissions
+  once more at that update.
+- Risk: if the key is lost, users grant the permissions once more.
+- Not proven yet: a CI run with the secret set. The first run after the
+  owner's setup proves it.
+- This does not replace the plan above. The hardened runtime is already on
+  (`flags=0x10002(adhoc,runtime)`). The signatures of the helpers and the
+  notarization steps wait for the Developer ID.
 
 ---
 

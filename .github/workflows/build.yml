@@ -253,6 +253,7 @@ jobs:
     needs: [changes, lint, typecheck, test-server]
     if: needs.changes.outputs.run_electron == 'true'
     runs-on: macos-14
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -307,17 +308,151 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_16.2.app
           swift --version
 
-      # Ad-hoc signed, not notarized. There is no Apple Developer account
-      # behind this fork, and passing empty CSC_LINK/APPLE_* secrets makes
-      # electron-builder fail rather than fall back. What CI asserts here is
-      # that the app packages cleanly on a clean machine.
+      # Release signing (specs/under-the-hood.md, item 1, "Alternative").
+      # When the secret MAC_RELEASE_CERT_P12 is set, this job signs the app
+      # with the self-signed certificate "Openstyle Release". macOS keeps the
+      # Privacy (TCC) permissions between two builds with the same identifier
+      # and the same certificate. The owner creates the secrets once with
+      # scripts/release-cert-setup.sh. When the secret is empty (forks, or
+      # before the owner runs the script), this job keeps the ad-hoc build.
+      # Not notarized in both cases: there is no Apple Developer account, and
+      # empty CSC_LINK/APPLE_* secrets make electron-builder fail instead of
+      # falling back.
+      - name: Prepare release signing identity
+        id: signing
+        timeout-minutes: 5
+        shell: bash
+        env:
+          RELEASE_CERT_P12: ${{ secrets.MAC_RELEASE_CERT_P12 }}
+          RELEASE_CERT_PASSWORD: ${{ secrets.MAC_RELEASE_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RELEASE_CERT_P12" ]; then
+            echo "::notice::MAC_RELEASE_CERT_P12 is empty. This build stays ad-hoc signed (no release signing)."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$RELEASE_CERT_PASSWORD" ]; then
+            echo "::error::MAC_RELEASE_CERT_P12 is set but MAC_RELEASE_CERT_PASSWORD is empty."
+            exit 1
+          fi
+
+          dir="$RUNNER_TEMP/release-signing"
+          kc="$dir/release-signing.keychain-db"
+          mkdir -p "$dir"
+          chmod 700 "$dir"
+          printf '%s' "$RELEASE_CERT_P12" | base64 -D > "$dir/identity.p12"
+          # Take the certificate out of the p12, for the trust setting.
+          /usr/bin/openssl pkcs12 -in "$dir/identity.p12" \
+            -passin env:RELEASE_CERT_PASSWORD -nokeys -clcerts |
+            /usr/bin/openssl x509 -out "$dir/cert.pem"
+
+          # Temporary keychain that holds the signing key for this job only.
+          kc_pass="$(/usr/bin/openssl rand -hex 16)"
+          echo "::add-mask::$kc_pass"
+          security create-keychain -p "$kc_pass" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kc_pass" "$kc"
+          security import "$dir/identity.p12" -k "$kc" -P "$RELEASE_CERT_PASSWORD" -T /usr/bin/codesign > /dev/null
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kc_pass" "$kc" > /dev/null
+
+          # Put the temporary keychain first in the search list, and make it the default.
+          keychains=("$kc")
+          while IFS= read -r line; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line//\"/}"
+            if [ -n "$line" ]; then keychains+=("$line"); fi
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "${keychains[@]}"
+          security default-keychain -d user -s "$kc"
+
+          # A self-signed certificate is valid for code signing only when it is trusted.
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$dir/cert.pem"
+
+          ids="$(security find-identity -v -p codesigning)"
+          echo "$ids"
+          if ! grep -qF '"Openstyle Release"' <<<"$ids"; then
+            echo "::error::The identity Openstyle Release is not valid after the import."
+            exit 1
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      # electron-builder 26 skips signing in pull request builds (it reads
+      # GITHUB_BASE_REF) unless CSC_FOR_PULL_REQUEST is true. An empty value
+      # also counts as true, so the variable is set only in the signed branch.
+      # With an identity that it cannot find, electron-builder falls back to
+      # ad-hoc for arm64 and does not fail. The step "Verify release
+      # signature" below catches that case.
       - name: Build electron (macOS)
         working-directory: apps/electron
-        run: pnpm run build:mac
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          if [ "$SIGNED" = "true" ]; then
+            echo "Release signing path: identity Openstyle Release, notarization off."
+            export CSC_FOR_PULL_REQUEST=true
+            pnpm run build:mac -c.mac.identity="Openstyle Release" -c.mac.notarize=false
+          else
+            echo "Ad-hoc path: no release signing identity."
+            pnpm run build:mac
+          fi
 
       - name: Verify native binaries in package
         working-directory: apps/electron
         run: node scripts/verify-native-binaries.mjs
+
+      - name: Verify release signature
+        if: steps.signing.outputs.signed == 'true'
+        working-directory: apps/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=""
+          for candidate in dist/mac*/Openstyle.app; do
+            app="$candidate"
+            break
+          done
+          if [ ! -d "$app" ]; then
+            echo "::error::No Openstyle.app found under dist/mac*."
+            exit 1
+          fi
+          helper="$app/Contents/Resources/bin/macos-key-listener"
+          for target in "$app" "$helper"; do
+            echo "== codesign -dv --verbose=4 $target"
+            details="$(codesign -dv --verbose=4 "$target" 2>&1)"
+            echo "$details"
+            if ! grep -qxF 'Authority=Openstyle Release' <<<"$details"; then
+              echo "::error::$target is not signed by Openstyle Release."
+              exit 1
+            fi
+            echo "== codesign -d -r- $target"
+            requirement="$(codesign -d -r- "$target" 2>&1)"
+            echo "$requirement"
+            if ! grep -qF 'certificate leaf' <<<"$requirement"; then
+              echo "::error::The designated requirement of $target has no certificate leaf."
+              exit 1
+            fi
+          done
+
+          echo "== codesign --verify --deep --strict --verbose=2 $app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+          # The hardened runtime must stay on: the flags value includes 0x10000.
+          app_details="$(codesign -dv "$app" 2>&1)"
+          flags_hex="$(sed -n 's/.*flags=\(0x[0-9a-fA-F]*\).*/\1/p' <<<"$app_details" | head -n 1)"
+          if [ -z "$flags_hex" ] || (( (flags_hex & 0x10000) == 0 )); then
+            echo "::error::$app has no hardened runtime flag (flags=${flags_hex:-none})."
+            exit 1
+          fi
+          echo "Hardened runtime flag is on (flags=$flags_hex)."
+
+          # The entitlement that lets the app load helpers with another signature.
+          entitlements="$(codesign -d --entitlements - "$app" 2>&1)"
+          if ! grep -qF 'com.apple.security.cs.disable-library-validation' <<<"$entitlements"; then
+            echo "::error::$app lacks the entitlement com.apple.security.cs.disable-library-validation."
+            exit 1
+          fi
+          echo "Entitlement disable-library-validation is present."
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -330,6 +465,23 @@ jobs:
             apps/electron/dist/latest*.yml
             apps/electron/dist/*.blockmap
           if-no-files-found: error
+
+      - name: Remove release signing material
+        if: always()
+        timeout-minutes: 2
+        continue-on-error: true
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/release-signing"
+          if [ ! -d "$dir" ]; then
+            echo "No release signing material on this runner."
+            exit 0
+          fi
+          # The runner is ephemeral, so the certificate trust is not removed here.
+          # "sudo security remove-trusted-cert" waits for an authorization on a
+          # headless runner and hangs the job.
+          security delete-keychain "$dir/release-signing.keychain-db" || true
+          rm -rf "$dir"
 
   build-windows:
     name: Build (Windows)
