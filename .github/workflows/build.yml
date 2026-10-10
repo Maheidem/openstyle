@@ -468,6 +468,8 @@ jobs:
 
       - name: Remove release signing material
         if: always()
+        timeout-minutes: 2
+        continue-on-error: true
         shell: bash
         run: |
           dir="$RUNNER_TEMP/release-signing"
@@ -475,10 +477,10 @@ jobs:
             echo "No release signing material on this runner."
             exit 0
           fi
+          # The runner is ephemeral, so the certificate trust is not removed here.
+          # "sudo security remove-trusted-cert" waits for an authorization on a
+          # headless runner and hangs the job.
           security delete-keychain "$dir/release-signing.keychain-db" || true
-          if [ -f "$dir/cert.pem" ]; then
-            sudo security remove-trusted-cert -d "$dir/cert.pem" || true
-          fi
           rm -rf "$dir"
 
   build-windows:
