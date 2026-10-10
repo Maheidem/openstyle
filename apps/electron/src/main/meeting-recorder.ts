@@ -1,10 +1,14 @@
 /**
  * Meeting Recorder
  *
- * Owns a dual-channel meeting recording session:
- *   - mic:    a hidden BrowserWindow running the PCM AudioWorklet capture
- *             (meeting-capture.html), streaming 16 kHz mono PCM16 over IPC.
- *   - system: the macos-system-audio helper via SystemAudioCapture.
+ * Owns a dual-channel meeting recording session. It has two capture paths:
+ *   - native (first choice): the macos-meeting-capture helper records the mic
+ *             and the system audio on one Core Audio clock. Both channels
+ *             arrive as 16 kHz mono PCM16 frames on its stdout.
+ *   - fallback: used when the native helper fails to start.
+ *     - mic:    a hidden BrowserWindow running the PCM AudioWorklet capture
+ *               (meeting-capture.html), streaming PCM16 over IPC.
+ *     - system: the macos-system-audio helper via SystemAudioCapture.
  *
  * Both channels append into their own WAV file under
  * `<userData>/meetings/<id>/` (mic.wav / system.wav). Wallclock anchors,
@@ -34,6 +38,7 @@ import {
 import { app, type BrowserWindow, powerMonitor } from "electron";
 import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
+import { MeetingCaptureHelper } from "./meeting-capture-helper";
 import {
   isSystemAudioCaptureSupported,
   type SyncMarker,
@@ -51,6 +56,13 @@ const FLUSH_INTERVAL_MS = 5000;
 const MIN_FREE_BYTES = 2 * 1024 ** 3;
 /** Mic RMS is forwarded to the UI at the same cadence as system LEVELs. */
 const LEVEL_INTERVAL_MS = 200;
+/**
+ * The native helper must print READY within this time, or the recorder
+ * stops waiting. A mic permission prompt can delay READY, so a late READY
+ * is not an error. Only an error or an exit before this time starts the
+ * fallback.
+ */
+const NATIVE_START_WINDOW_MS = 5000;
 
 export type MeetingRecorderStatus = "idle" | "recording" | "finalizing";
 
@@ -154,6 +166,11 @@ export interface MeetingRecorderDeps {
    * meeting-capture.html. Owned (and closed) by the recorder.
    */
   createCaptureWindow: () => BrowserWindow;
+  /**
+   * Return the device label for a Chromium mic device id. It asks an open
+   * renderer. It returns null when no renderer can answer.
+   */
+  resolveMicLabel: (deviceId: string) => Promise<string | null>;
   /** Broadcast a `meeting:level` event to interested renderer windows. */
   broadcastLevel: (event: MeetingLevelEvent) => void;
   /** Broadcast a `meeting:status` change to interested renderer windows. */
@@ -171,6 +188,7 @@ export class MeetingRecorder {
   private systemWav: WavWriter | null = null;
   private systemCapture: SystemAudioCapture | null = null;
   private captureWindow: BrowserWindow | null = null;
+  private nativeCapture: MeetingCaptureHelper | null = null;
   private journal: SyncJournal | null = null;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private maxDurationTimer: ReturnType<typeof setTimeout> | null = null;
@@ -198,6 +216,11 @@ export class MeetingRecorder {
   get captureWebContentsId(): number | null {
     if (!this.captureWindow || this.captureWindow.isDestroyed()) return null;
     return this.captureWindow.webContents.id;
+  }
+
+  /** True while the recording with this id is running. */
+  private isRecording(meetingId: string): boolean {
+    return this._status === "recording" && this.meetingId === meetingId;
   }
 
   private setStatus(status: MeetingRecorderStatus): void {
@@ -300,40 +323,17 @@ export class MeetingRecorder {
     };
     this.setStatus("recording");
 
-    // System channel.
-    this.systemCapture = new SystemAudioCapture({
-      onData: (chunk) => this.handleSystemChunk(chunk),
-      onLevel: (rms) => {
-        if (this.meetingId) {
-          this.deps.broadcastLevel({
-            meetingId: this.meetingId,
-            source: "system",
-            rms,
-          });
-        }
-      },
-      onSync: (marker) => {
-        this.journal?.syncMarkers.push(marker);
-        void this.writeJournal();
-      },
-      onError: (error) => {
-        // System audio failing doesn't abort the meeting — the mic channel
-        // keeps recording. Remember the fault for the stop row.
-        log.error(`System channel error: ${error}`);
-        this.lastError = this.lastError ?? `system: ${error}`;
-      },
-    });
-    this.systemCapture.start();
-
-    // Mic channel: hidden capture window streaming worklet chunks over IPC.
-    try {
-      this.captureWindow = this.deps.createCaptureWindow();
-      this.captureWindow.on("closed", () => {
-        this.captureWindow = null;
-      });
-    } catch (err) {
-      log.error(`Failed to create mic capture window: ${errorMessage(err)}`);
-      this.lastError = this.lastError ?? "mic: capture window failed";
+    // Capture sources: the native helper first, then the fallback path.
+    const nativeStarted = await this.startNativeCapture(id);
+    // The user may stop the recording while the capture helper starts.
+    if (!this.isRecording(id)) return id;
+    if (nativeStarted) {
+      log.info("Meeting capture path: native (macos-meeting-capture)");
+    } else {
+      log.info(
+        "Meeting capture path: fallback (hidden capture window + macos-system-audio)",
+      );
+      this.startFallbackCapture();
     }
 
     // Periodic PCM flush.
@@ -371,6 +371,156 @@ export class MeetingRecorder {
     await this.writeJournal();
     log.info(`Meeting recording started: ${id}`);
     return id;
+  }
+
+  /**
+   * Read the chosen mic and return its Core Audio device name. Return null
+   * for "System default" or when the name is unknown. The helper then uses
+   * the default input.
+   */
+  private async resolveMicName(): Promise<string | null> {
+    let deviceId = "";
+    try {
+      const res = await this.api(`/settings/${SETTINGS_KEYS.micDeviceId}`);
+      if (res.ok) {
+        deviceId = ((await res.json()) as { value?: string }).value ?? "";
+      }
+    } catch {
+      // unset or unreachable: use the default input
+    }
+    if (!deviceId || deviceId === "default") return null;
+    let label: string | null = null;
+    try {
+      label = await this.deps.resolveMicLabel(deviceId);
+    } catch (err) {
+      log.warn(`Mic label lookup failed: ${errorMessage(err)}`);
+    }
+    if (!label) {
+      log.warn(
+        "No open renderer gave a label for the chosen mic. Using the default input.",
+      );
+    }
+    return label;
+  }
+
+  /**
+   * Start the native helper. Resolve true when it is running (READY, or no
+   * error within NATIVE_START_WINDOW_MS). Resolve false when the helper is
+   * missing, fails to spawn, exits before READY or prints ERR_* before
+   * READY. In that case the helper is stopped and the caller starts the
+   * fallback path.
+   */
+  private async startNativeCapture(meetingId: string): Promise<boolean> {
+    const micName = await this.resolveMicName();
+    // The user may stop the recording while the label lookup runs.
+    if (!this.isRecording(meetingId)) return false;
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => settle(true), NATIVE_START_WINDOW_MS);
+      const settle = (ok: boolean): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      };
+
+      const capture = new MeetingCaptureHelper({
+        micName,
+        onFrame: (channel, pcm) => this.handleNativeFrame(channel, pcm),
+        onReady: () => settle(true),
+        onLevel: (rms) => this.broadcastLevel("system", rms),
+        onLevelMic: (rms) => this.broadcastLevel("mic", rms),
+        onSync: (marker) => {
+          this.journal?.syncMarkers.push(marker);
+          void this.writeJournal();
+        },
+        onError: (error) => {
+          if (!settled) {
+            log.warn(`Native meeting capture failed to start: ${error}`);
+            settle(false);
+            return;
+          }
+          // After start, a fault does not abort the meeting. Keep the audio
+          // that exists and remember the fault for the stop row.
+          log.error(`Capture error: ${error}`);
+          this.lastError = this.lastError ?? `capture: ${error}`;
+        },
+      });
+      this.nativeCapture = capture;
+
+      if (!capture.start()) {
+        // start() has called onError, so settle(false) ran already.
+        settle(false);
+      }
+    }).then((ok) => {
+      if (!ok) {
+        this.nativeCapture?.stop();
+        this.nativeCapture = null;
+      }
+      return ok;
+    });
+  }
+
+  /** Today's path: system helper plus the hidden mic capture window. */
+  private startFallbackCapture(): void {
+    // System channel.
+    this.systemCapture = new SystemAudioCapture({
+      onData: (chunk) => this.handleSystemChunk(chunk),
+      onLevel: (rms) => this.broadcastLevel("system", rms),
+      onSync: (marker) => {
+        this.journal?.syncMarkers.push(marker);
+        void this.writeJournal();
+      },
+      onError: (error) => {
+        // System audio failing doesn't abort the meeting — the mic channel
+        // keeps recording. Remember the fault for the stop row.
+        log.error(`System channel error: ${error}`);
+        this.lastError = this.lastError ?? `system: ${error}`;
+      },
+    });
+    this.systemCapture.start();
+
+    // Mic channel: hidden capture window streaming worklet chunks over IPC.
+    try {
+      this.captureWindow = this.deps.createCaptureWindow();
+      this.captureWindow.on("closed", () => {
+        this.captureWindow = null;
+      });
+    } catch (err) {
+      log.error(`Failed to create mic capture window: ${errorMessage(err)}`);
+      this.lastError = this.lastError ?? "mic: capture window failed";
+    }
+  }
+
+  private broadcastLevel(source: "mic" | "system", rms: number): void {
+    if (!this.meetingId) return;
+    this.deps.broadcastLevel({ meetingId: this.meetingId, source, rms });
+  }
+
+  /**
+   * One frame from the native helper. Both channels share one clock, so
+   * the first frame stamps the same T0 for both channels.
+   */
+  private handleNativeFrame(channel: "M" | "S", pcm: Buffer): void {
+    if (this._status !== "recording" || !this.journal) return;
+    if (pcm.length === 0) return;
+    if (this.journal.micT0 === null && this.journal.systemT0 === null) {
+      const t0 = Date.now();
+      this.journal.micT0 = t0;
+      this.journal.systemT0 = t0;
+      void this.writeJournal();
+    }
+    if (channel === "M") {
+      // The helper sends LEVEL_MIC lines, so no RMS is computed here.
+      if (!this.micWav) return;
+      this.micWav.append(pcm);
+      this.journal.micSamples += Math.floor(pcm.length / BYTES_PER_SAMPLE);
+    } else {
+      if (!this.systemWav) return;
+      this.systemWav.append(pcm);
+      this.journal.systemSamples += Math.floor(pcm.length / BYTES_PER_SAMPLE);
+    }
   }
 
   /** Mic PCM16 chunk delivered from the capture window over IPC. */
@@ -422,6 +572,8 @@ export class MeetingRecorder {
       this.resumeListener = null;
     }
 
+    this.nativeCapture?.stop();
+    this.nativeCapture = null;
     this.systemCapture?.stop();
     this.systemCapture = null;
     if (this.captureWindow && !this.captureWindow.isDestroyed()) {

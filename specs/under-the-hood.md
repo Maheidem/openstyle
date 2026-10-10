@@ -300,6 +300,27 @@ Follow `.claude/skills/live-testing/SKILL.md`. Quiet mode only
 5. Keep `macos-system-audio` as a fallback for one release: if the new
    helper fails to start, run today's path. Remove it in a later change.
 
+**Status (2026-10-09, branch `feat/under-the-hood`).** Steps 1 to 3 and 5
+are in code. Step 4 is not done, on purpose.
+
+- **Fallback decision.** Today's path stays as a runtime fallback. The
+  recorder tries `macos-meeting-capture` first. If the binary is missing,
+  the helper exits before `READY`, or it prints `ERR_*` before `READY`, the
+  recorder starts the old path (hidden capture window plus
+  `macos-system-audio`). The old path is deleted in a later release, after
+  the helper proves itself in real use. This is why step 4 waits and why
+  `meeting-capture` still appears in the code.
+- **Not a CI gate.** `verify-native-binaries.mjs` does not list the new
+  helper. The helper is optional because of the fallback. It is in the
+  packaged app (`Contents/Resources/bin/macos-meeting-capture`).
+- **Checked without audio.** The helper compiles. The frame parser has unit
+  tests. Nobody ran the helper binary, because it opens the microphone.
+- **Still open (code).** A recorder test for the shared `T0` and for the
+  fallback. `meeting-recorder.ts` has no test file yet.
+- **Still open (owner).** The 10-minute spike on one clock. The TCC check
+  on an ad-hoc build. One real 30-minute meeting. The benchmark run on that
+  meeting. The council verdict.
+
 **Decision: aggregate device, not AVAudioEngine.** The brief named
 AVAudioEngine. An AVAudioEngine input node runs on the mic device's own
 clock, and the tap runs on the aggregate's clock, so the result is still

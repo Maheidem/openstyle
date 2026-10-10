@@ -34,6 +34,7 @@ import {
 } from "../main-state";
 import { registerMeetingImportIpc } from "../meeting-import";
 import { registerMeetingIpc } from "../meeting-ipc";
+import { resolveMicLabel } from "../meeting-mic-label";
 import { MeetingRecorder } from "../meeting-recorder";
 import { buildTrayContextMenu } from "../menus";
 import { notifyImportComplete, notifyPasteFailed } from "../notifications";
@@ -138,6 +139,9 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
   state.meetingRecorder = new MeetingRecorder({
     serverFetch,
     createCaptureWindow: createMeetingCaptureWindow,
+    // The Settings page has the mic permission, so ask it first.
+    resolveMicLabel: (deviceId) =>
+      resolveMicLabel(deviceId, [state.settingsWindow, state.mainWindow]),
     broadcastLevel: (event) => {
       broadcastToWindows("meeting:level", event);
     },

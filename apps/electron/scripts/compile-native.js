@@ -117,6 +117,16 @@ function compileMacOS() {
       minTarget: "14.2",
     },
     {
+      // Mic + system audio on one clock (specs/under-the-hood.md, Item 3).
+      // Same target and frameworks as macos-system-audio. The mic is a
+      // sub-device of the aggregate device, and Core Audio needs no extra
+      // framework for that.
+      name: "macos-meeting-capture",
+      src: "macos-meeting-capture.swift",
+      frameworks: ["CoreAudio", "AudioToolbox", "AVFAudio", "Foundation"],
+      minTarget: "14.2",
+    },
+    {
       name: "macos-ax",
       src: "macos-ax.swift",
       frameworks: ["ApplicationServices", "Carbon", "Foundation"],
