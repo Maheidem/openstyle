@@ -89,7 +89,8 @@ if ((${#found[@]} > 0)) && ((force == 0)); then
   exit 1
 fi
 
-if security find-identity -p codesigning | grep -qF "\"${NAME}\""; then
+ids="$(security find-identity -p codesigning)"
+if grep -qF "\"${NAME}\"" <<<"${ids}"; then
   echo "Note: your login keychain already has an identity named \"${NAME}\"."
   echo "The new one has the same name. Tell them apart by the SHA-1 fingerprint below."
 fi
@@ -140,12 +141,19 @@ security import "${work}/identity.p12" -k "${KEYCHAIN}" -P "${P12_PASS}" \
 
 # Step 3: store the secrets. gh reads the value from stdin: it is never echoed.
 echo "Storing the GitHub secrets on ${REPO}..."
-if ! { base64 <"${work}/identity.p12" | tr -d '\n' |
-  gh_owner secret set "${SECRET_P12}" --repo "${REPO}" &&
-  printf '%s' "${P12_PASS}" |
-  gh_owner secret set "${SECRET_PASS}" --repo "${REPO}"; }; then
-  echo "ERROR: gh could not store the secrets. The keychain backup stays." >&2
+if ! base64 <"${work}/identity.p12" | tr -d '\n' |
+  gh_owner secret set "${SECRET_P12}" --repo "${REPO}"; then
+  echo "ERROR: gh could not store ${SECRET_P12}. The keychain backup stays." >&2
   echo "To remove it before you retry:" >&2
+  echo "  security delete-identity -Z ${fingerprint} -t" >&2
+  exit 1
+fi
+if ! printf '%s' "${P12_PASS}" |
+  gh_owner secret set "${SECRET_PASS}" --repo "${REPO}"; then
+  echo "ERROR: gh stored ${SECRET_P12} but could not store ${SECRET_PASS}." >&2
+  echo "The two secrets on ${REPO} may now be mismatched (new file, old password)." >&2
+  echo "Run this script again with --force to replace both secrets." >&2
+  echo "The keychain backup of this run stays. Remove it first if you retry:" >&2
   echo "  security delete-identity -Z ${fingerprint} -t" >&2
   exit 1
 fi

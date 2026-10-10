@@ -141,8 +141,9 @@ are today.
 - Risk: if the key is lost, users grant the permissions once more.
 - Not proven yet: a CI run with the secret set. The first run after the
   owner's setup proves it.
-- This does not replace the plan above. The hardened runtime, the helpers'
-  signatures and the notarization steps wait for the Developer ID.
+- This does not replace the plan above. The hardened runtime is already on
+  (`flags=0x10002(adhoc,runtime)`). The signatures of the helpers and the
+  notarization steps wait for the Developer ID.
 
 ---
 

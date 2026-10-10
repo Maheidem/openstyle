@@ -253,6 +253,7 @@ jobs:
     needs: [changes, lint, typecheck, test-server]
     if: needs.changes.outputs.run_electron == 'true'
     runs-on: macos-14
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -319,6 +320,7 @@ jobs:
       # falling back.
       - name: Prepare release signing identity
         id: signing
+        timeout-minutes: 5
         shell: bash
         env:
           RELEASE_CERT_P12: ${{ secrets.MAC_RELEASE_CERT_P12 }}
@@ -342,7 +344,7 @@ jobs:
           printf '%s' "$RELEASE_CERT_P12" | base64 -D > "$dir/identity.p12"
           # Take the certificate out of the p12, for the trust setting.
           /usr/bin/openssl pkcs12 -in "$dir/identity.p12" \
-            -passin env:RELEASE_CERT_PASSWORD -nokeys -clcerts 2>/dev/null |
+            -passin env:RELEASE_CERT_PASSWORD -nokeys -clcerts |
             /usr/bin/openssl x509 -out "$dir/cert.pem"
 
           # Temporary keychain that holds the signing key for this job only.
@@ -367,8 +369,9 @@ jobs:
           # A self-signed certificate is valid for code signing only when it is trusted.
           sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$dir/cert.pem"
 
-          security find-identity -v -p codesigning
-          if ! security find-identity -v -p codesigning | grep -qF '"Openstyle Release"'; then
+          ids="$(security find-identity -v -p codesigning)"
+          echo "$ids"
+          if ! grep -qF '"Openstyle Release"' <<<"$ids"; then
             echo "::error::The identity Openstyle Release is not valid after the import."
             exit 1
           fi
@@ -430,6 +433,26 @@ jobs:
               exit 1
             fi
           done
+
+          echo "== codesign --verify --deep --strict --verbose=2 $app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+          # The hardened runtime must stay on: the flags value includes 0x10000.
+          app_details="$(codesign -dv "$app" 2>&1)"
+          flags_hex="$(sed -n 's/.*flags=\(0x[0-9a-fA-F]*\).*/\1/p' <<<"$app_details" | head -n 1)"
+          if [ -z "$flags_hex" ] || (( (flags_hex & 0x10000) == 0 )); then
+            echo "::error::$app has no hardened runtime flag (flags=${flags_hex:-none})."
+            exit 1
+          fi
+          echo "Hardened runtime flag is on (flags=$flags_hex)."
+
+          # The entitlement that lets the app load helpers with another signature.
+          entitlements="$(codesign -d --entitlements - "$app" 2>&1)"
+          if ! grep -qF 'com.apple.security.cs.disable-library-validation' <<<"$entitlements"; then
+            echo "::error::$app lacks the entitlement com.apple.security.cs.disable-library-validation."
+            exit 1
+          fi
+          echo "Entitlement disable-library-validation is present."
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4

@@ -145,6 +145,8 @@ release-branch Build & Test run, so this job signs the published files.
   nobody can sign with the same identity. Users must then grant the permissions
   once more. Keep the export of the keychain backup in a password manager (the
   setup script prints the export command).
+- **Rollback:** deleting the `MAC_RELEASE_CERT_P12` secret returns builds to
+  ad-hoc at once.
 - **Developer ID** (Apple notarization) stays deferred. See
   `specs/under-the-hood.md`, item 1.
 
