@@ -181,6 +181,7 @@ function loadSyncData(audioDir: string): SyncData | undefined {
       micT0?: number | null;
       systemT0?: number | null;
       syncMarkers?: Array<{ wallclockMs?: number; totalSamples?: number }>;
+      sharedClock?: boolean;
     };
     if (!Number.isFinite(j.sampleRate)) return undefined;
     const sync: SyncData = {
@@ -194,7 +195,10 @@ function loadSyncData(audioDir: string): SyncData | undefined {
     if (typeof j.systemT0 === "number") {
       sync.epochs?.push({ channel: "system", t0WallclockMs: j.systemT0 });
     }
-    for (const m of j.syncMarkers ?? []) {
+    // One native helper recorded both channels on one clock. They cannot
+    // drift apart. A correction of one channel would only create an offset.
+    const markers = j.sharedClock === true ? [] : (j.syncMarkers ?? []);
+    for (const m of markers) {
       if (
         typeof m.wallclockMs === "number" &&
         typeof m.totalSamples === "number"

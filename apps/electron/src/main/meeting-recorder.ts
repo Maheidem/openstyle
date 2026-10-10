@@ -39,6 +39,7 @@ import { app, type BrowserWindow, powerMonitor } from "electron";
 import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { MeetingCaptureHelper } from "./meeting-capture-helper";
+import { silenceGapSamples } from "./meeting-capture-protocol";
 import {
   isSystemAudioCaptureSupported,
   type SyncMarker,
@@ -73,8 +74,8 @@ export interface MeetingLevelEvent {
 }
 
 interface SyncEpoch {
-  /** Why this epoch was stamped ("start" | "resume"). */
-  reason: "start" | "resume";
+  /** Why this epoch was stamped. "fallback": the native helper stopped. */
+  reason: "start" | "resume" | "fallback";
   wallclockMs: number;
   micSamples: number;
   systemSamples: number;
@@ -88,8 +89,15 @@ interface SyncJournal {
   systemT0: number | null;
   micSamples: number;
   systemSamples: number;
-  /** 60 s wallclock/sample markers from the system helper. */
+  /** 60 s wallclock/sample markers (system sample count). */
   syncMarkers: SyncMarker[];
+  /**
+   * True when the native helper records both channels on one clock. The
+   * channels cannot drift apart, so the merge skips the drift correction.
+   */
+  sharedClock: boolean;
+  /** Frames that the native helper dropped (ring buffer overrun). */
+  droppedFrames: number;
   /** New timeline anchors: recording start + every powerMonitor resume. */
   epochs: SyncEpoch[];
 }
@@ -195,6 +203,13 @@ export class MeetingRecorder {
   private lastMicLevelAt = 0;
   private lastError: string | null = null;
   private resumeListener: (() => void) | null = null;
+  /**
+   * Set when the native helper fails after start and the fallback takes
+   * over. The first fallback chunk of a channel then pads the gap with
+   * silence, so the channel stays aligned with the other one.
+   */
+  private micNeedsPad = false;
+  private systemNeedsPad = false;
 
   constructor(deps: MeetingRecorderDeps) {
     this.deps = deps;
@@ -302,6 +317,8 @@ export class MeetingRecorder {
     this.meetingDir = dir;
     this.startedAt = startedAt;
     this.lastError = null;
+    this.micNeedsPad = false;
+    this.systemNeedsPad = false;
     this.micWav = new WavWriter(join(dir, MIC_WAV));
     this.systemWav = new WavWriter(join(dir, SYSTEM_WAV));
     this.journal = {
@@ -312,6 +329,8 @@ export class MeetingRecorder {
       micSamples: 0,
       systemSamples: 0,
       syncMarkers: [],
+      sharedClock: false,
+      droppedFrames: 0,
       epochs: [
         {
           reason: "start",
@@ -374,11 +393,12 @@ export class MeetingRecorder {
   }
 
   /**
-   * Read the chosen mic and return its Core Audio device name. Return null
-   * for "System default" or when the name is unknown. The helper then uses
-   * the default input.
+   * Read the chosen mic and return its Core Audio device name. Return
+   * `{ micName: null }` for "System default". Return null when a mic is
+   * chosen but its name is unknown. The recorder must then use the old path,
+   * which opens the exact device id. It must not use another mic in silence.
    */
-  private async resolveMicName(): Promise<string | null> {
+  private async resolveMicName(): Promise<{ micName: string | null } | null> {
     let deviceId = "";
     try {
       const res = await this.api(`/settings/${SETTINGS_KEYS.micDeviceId}`);
@@ -388,7 +408,7 @@ export class MeetingRecorder {
     } catch {
       // unset or unreachable: use the default input
     }
-    if (!deviceId || deviceId === "default") return null;
+    if (!deviceId || deviceId === "default") return { micName: null };
     let label: string | null = null;
     try {
       label = await this.deps.resolveMicLabel(deviceId);
@@ -397,23 +417,26 @@ export class MeetingRecorder {
     }
     if (!label) {
       log.warn(
-        "No open renderer gave a label for the chosen mic. Using the default input.",
+        "No open renderer gave a label for the chosen mic. Using the old capture path.",
       );
+      return null;
     }
-    return label;
+    return { micName: label };
   }
 
   /**
    * Start the native helper. Resolve true when it is running (READY, or no
-   * error within NATIVE_START_WINDOW_MS). Resolve false when the helper is
-   * missing, fails to spawn, exits before READY or prints ERR_* before
-   * READY. In that case the helper is stopped and the caller starts the
-   * fallback path.
+   * error within NATIVE_START_WINDOW_MS). Resolve false when the chosen mic
+   * has no known name, or the helper is missing, fails to spawn, exits
+   * before READY or prints ERR_* before READY. In that case the helper is
+   * stopped and the caller starts the fallback path. A fault after the
+   * start also starts the fallback path (see failOverToFallback).
    */
   private async startNativeCapture(meetingId: string): Promise<boolean> {
-    const micName = await this.resolveMicName();
+    const mic = await this.resolveMicName();
     // The user may stop the recording while the label lookup runs.
     if (!this.isRecording(meetingId)) return false;
+    if (!mic) return false;
 
     return new Promise<boolean>((resolve) => {
       let settled = false;
@@ -426,7 +449,7 @@ export class MeetingRecorder {
       };
 
       const capture = new MeetingCaptureHelper({
-        micName,
+        micName: mic.micName,
         onFrame: (channel, pcm) => this.handleNativeFrame(channel, pcm),
         onReady: () => settle(true),
         onLevel: (rms) => this.broadcastLevel("system", rms),
@@ -435,16 +458,27 @@ export class MeetingRecorder {
           this.journal?.syncMarkers.push(marker);
           void this.writeJournal();
         },
+        onOverrun: (count) => {
+          // The count is the total so far. A dropped frame shifts one
+          // channel against the other, so the journal keeps the count.
+          if (!this.journal) return;
+          this.journal.droppedFrames = Math.max(
+            this.journal.droppedFrames,
+            count,
+          );
+          void this.writeJournal();
+        },
         onError: (error) => {
           if (!settled) {
             log.warn(`Native meeting capture failed to start: ${error}`);
             settle(false);
             return;
           }
-          // After start, a fault does not abort the meeting. Keep the audio
-          // that exists and remember the fault for the stop row.
           log.error(`Capture error: ${error}`);
           this.lastError = this.lastError ?? `capture: ${error}`;
+          // The helper goes on with the system channel after a mic loss.
+          // Any other fault leaves empty audio, so the fallback takes over.
+          if (error !== "ERR_MIC_LOST") this.failOverToFallback(capture);
         },
       });
       this.nativeCapture = capture;
@@ -454,22 +488,77 @@ export class MeetingRecorder {
         settle(false);
       }
     }).then((ok) => {
-      if (!ok) {
+      if (ok) {
+        if (this.journal) this.journal.sharedClock = true;
+      } else {
         this.nativeCapture?.stop();
         this.nativeCapture = null;
+        // The helper can print SYNC before it fails. Those markers do not
+        // belong to the fallback path.
+        if (this.journal) this.journal.syncMarkers = [];
       }
       return ok;
     });
   }
 
-  /** Today's path: system helper plus the hidden mic capture window. */
-  private startFallbackCapture(): void {
+  /**
+   * The native helper failed after it started. Start the old path. The
+   * audio that exists stays. Each channel gets silence for the gap when its
+   * first fallback chunk arrives. If the fallback cannot start, the
+   * recording stops as failed.
+   */
+  private failOverToFallback(capture: MeetingCaptureHelper): void {
+    if (this._status !== "recording" || this.nativeCapture !== capture) return;
+    log.warn("Native meeting capture failed after start. Using the fallback.");
+    capture.stop();
+    this.nativeCapture = null;
+    this.micNeedsPad = true;
+    this.systemNeedsPad = true;
+    this.journal?.epochs.push({
+      reason: "fallback",
+      wallclockMs: Date.now(),
+      micSamples: this.journal.micSamples,
+      systemSamples: this.journal.systemSamples,
+    });
+    if (!this.startFallbackCapture()) {
+      void this.stop("failed", "capture: native helper and fallback failed");
+      return;
+    }
+    void this.writeJournal();
+  }
+
+  /**
+   * Append silence so that the channel is as long as the wallclock says,
+   * measured from the shared T0. `untilMs` is the wallclock of the first
+   * sample of the next chunk.
+   */
+  private padChannel(channel: "mic" | "system", untilMs: number): void {
+    const journal = this.journal;
+    const wav = channel === "mic" ? this.micWav : this.systemWav;
+    const t0 = channel === "mic" ? journal?.micT0 : journal?.systemT0;
+    if (!journal || !wav || t0 === null || t0 === undefined) return;
+    const have = channel === "mic" ? journal.micSamples : journal.systemSamples;
+    const gap = silenceGapSamples(t0, untilMs, have, SAMPLE_RATE);
+    if (gap === 0) return;
+    wav.append(Buffer.alloc(gap * BYTES_PER_SAMPLE));
+    if (channel === "mic") journal.micSamples += gap;
+    else journal.systemSamples += gap;
+  }
+
+  /**
+   * Today's path: system helper plus the hidden mic capture window. Returns
+   * false when the mic capture window cannot be created.
+   */
+  private startFallbackCapture(): boolean {
     // System channel.
     this.systemCapture = new SystemAudioCapture({
       onData: (chunk) => this.handleSystemChunk(chunk),
       onLevel: (rms) => this.broadcastLevel("system", rms),
       onSync: (marker) => {
-        this.journal?.syncMarkers.push(marker);
+        // After a native start, the markers of the native helper count from
+        // another origin. The merge ignores all markers then.
+        if (!this.journal || this.journal.sharedClock) return;
+        this.journal.syncMarkers.push(marker);
         void this.writeJournal();
       },
       onError: (error) => {
@@ -490,7 +579,9 @@ export class MeetingRecorder {
     } catch (err) {
       log.error(`Failed to create mic capture window: ${errorMessage(err)}`);
       this.lastError = this.lastError ?? "mic: capture window failed";
+      return false;
     }
+    return true;
   }
 
   private broadcastLevel(source: "mic" | "system", rms: number): void {
@@ -531,6 +622,10 @@ export class MeetingRecorder {
       this.journal.micT0 = Date.now();
       void this.writeJournal();
     }
+    if (this.micNeedsPad) {
+      this.micNeedsPad = false;
+      this.padChannel("mic", Date.now() - chunkDurationMs(chunk));
+    }
     this.micWav.append(chunk);
     this.journal.micSamples += Math.floor(chunk.length / BYTES_PER_SAMPLE);
 
@@ -552,6 +647,10 @@ export class MeetingRecorder {
     if (this.journal.systemT0 === null) {
       this.journal.systemT0 = Date.now();
       void this.writeJournal();
+    }
+    if (this.systemNeedsPad) {
+      this.systemNeedsPad = false;
+      this.padChannel("system", Date.now() - chunkDurationMs(chunk));
     }
     this.systemWav.append(chunk);
     this.journal.systemSamples += Math.floor(chunk.length / BYTES_PER_SAMPLE);
@@ -729,6 +828,11 @@ export class MeetingRecorder {
       }
     }
   }
+}
+
+/** Duration of a PCM16 chunk in ms. */
+function chunkDurationMs(chunk: Buffer): number {
+  return (chunk.length / BYTES_PER_SAMPLE / SAMPLE_RATE) * 1000;
 }
 
 /** RMS (0..1) of a PCM16 little-endian buffer. */

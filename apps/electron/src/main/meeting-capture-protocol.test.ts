@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   createFrameParser,
   type MeetingCaptureChannel,
+  parseSyncFields,
+  silenceGapSamples,
 } from "./meeting-capture-protocol";
 
 /** Builds one wire frame: channel byte, uint32 LE length, payload. */
@@ -154,5 +156,50 @@ describe("createFrameParser", () => {
     expect(frames[0].channel).toBe("S");
     expect(frames[0].pcm.length).toBe(size);
     expect(frames[0].pcm.equals(payload)).toBe(true);
+  });
+});
+
+describe("parseSyncFields", () => {
+  it("returns the wallclock and the system count (third number)", () => {
+    expect(parseSyncFields("1700000000000 960000 1440000")).toEqual({
+      wallclockMs: 1700000000000,
+      totalSamples: 1440000,
+    });
+  });
+
+  it("keeps counting the system channel after the mic count stops", () => {
+    const before = parseSyncFields("1000 800 800");
+    const after = parseSyncFields("61000 800 960800");
+    expect(before?.totalSamples).toBe(800);
+    expect(after?.totalSamples).toBe(960800);
+  });
+
+  it("rejects a line with only two numbers", () => {
+    expect(parseSyncFields("1700000000000 960000")).toBeNull();
+  });
+
+  it("rejects a line with a non-numeric field", () => {
+    expect(parseSyncFields("1700000000000 abc 100")).toBeNull();
+    expect(parseSyncFields("1700000000000 100 xyz")).toBeNull();
+  });
+
+  it("rejects a line with extra numbers", () => {
+    expect(parseSyncFields("1 2 3 4")).toBeNull();
+  });
+});
+
+describe("silenceGapSamples", () => {
+  it("returns the samples that the gap needs", () => {
+    // 10 s since T0 = 160000 samples. The channel holds 8 s = 128000.
+    expect(silenceGapSamples(1000, 11000, 128000, 16000)).toBe(32000);
+  });
+
+  it("returns 0 when the channel is long enough already", () => {
+    expect(silenceGapSamples(1000, 11000, 160000, 16000)).toBe(0);
+    expect(silenceGapSamples(1000, 11000, 170000, 16000)).toBe(0);
+  });
+
+  it("returns 0 when the next chunk starts before T0", () => {
+    expect(silenceGapSamples(5000, 4000, 0, 16000)).toBe(0);
   });
 });

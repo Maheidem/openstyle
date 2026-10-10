@@ -10,9 +10,12 @@
  *
  * Arguments:
  *   --mic default           use the macOS default input device
- *   --mic-name "<name>"     use the input device with this exact name
- *                           (no match: use the default input device and
- *                           print WARN_MIC_NOT_FOUND)
+ *   --mic-name "<name>"     use the input device with this name. An exact
+ *                           name wins. Else the names must match after the
+ *                           helper drops a "Default - " prefix and trailing
+ *                           "(...)" tags like "(Built-in)". If no single
+ *                           device matches, print ERR_MIC_NOT_FOUND and exit.
+ *                           The helper never uses another mic in silence.
  *
  * stdout: binary frames. Each frame is:
  *   1 byte   channel: 'M' = mic, 'S' = system audio
@@ -20,7 +23,6 @@
  *   N bytes  payload: PCM16, little-endian, mono, 16 kHz
  *
  * stderr: text protocol lines:
- *   WARN_MIC_NOT_FOUND <name>      - name did not match, default input used
  *   DEVICE <uid> <name>            - the mic that was opened
  *   READY                          - capturing started
  *   LEVEL <rms>                    - system audio, rms 0..1, every 200 ms
@@ -35,8 +37,9 @@
  *                                    helper rebuilds the aggregate device
  *                                    without the mic. The S channel goes on.
  *   ERR_UNSUPPORTED_OS / ERR_ARGS / ERR_MIC_NOT_AVAILABLE /
- *   ERR_MIC_FORMAT / ERR_TAP_CREATE <code> / ERR_AGG_CREATE <code> /
- *   ERR_AGG_STREAMS <count> / ERR_START <code>
+ *   ERR_MIC_NOT_FOUND <name> / ERR_MIC_FORMAT / ERR_TAP_CREATE <code> /
+ *   ERR_AGG_CREATE <code> / ERR_AGG_STREAMS <count> /
+ *   ERR_FORMAT_UNSTABLE / ERR_START <code>
  *                                  - fatal errors, then exit non-zero
  *
  * Compile:
@@ -113,6 +116,14 @@ final class RingBuffer {
         return true
     }
 
+    /// Drops all queued bytes. Call only when no IO runs and no reader runs.
+    func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        head = 0
+        tail = 0
+    }
+
     func read(maxBytes: Int) -> Data {
         lock.lock()
         defer { lock.unlock() }
@@ -171,6 +182,15 @@ final class ChannelPipe {
         converter = conv
         outputFormat = out
         return true
+    }
+
+    /// Forget the counts and the level. Call only when no IO runs.
+    func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        produced = 0
+        levelSumSquares = 0
+        levelSampleCount = 0
     }
 
     func sampleCount() -> Int64 {
@@ -345,8 +365,9 @@ func inputStreamFormats(_ device: AudioObjectID) -> [AudioStreamBasicDescription
         var address = propertyAddress(kAudioStreamPropertyVirtualFormat)
         var format = AudioStreamBasicDescription()
         var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        // A skipped stream would shift the stream order. Report no formats.
         guard AudioObjectGetPropertyData(stream, &address, 0, nil, &size, &format) == noErr
-        else { continue }
+        else { return [] }
         formats.append(format)
     }
     return formats
@@ -406,18 +427,36 @@ func micChoice(for device: AudioObjectID) -> MicChoice? {
     return MicChoice(id: device, uid: uid, name: name)
 }
 
-/// `name == nil` means the macOS default input. A name that matches no input
-/// device falls back to the default input and prints a warning.
-func chooseMic(name: String?) -> MicChoice? {
-    if let wanted = name {
-        for device in allDeviceIDs() {
-            if let choice = micChoice(for: device), choice.name == wanted {
-                return choice
-            }
-        }
-        emitError("WARN_MIC_NOT_FOUND \(wanted.replacingOccurrences(of: "\n", with: " "))")
+/// Drops a "Default - " prefix and trailing "(...)" tags, like "(Built-in)".
+/// Chromium can add them to the Core Audio name.
+func normalizedMicName(_ name: String) -> String {
+    var text = name.trimmingCharacters(in: .whitespaces)
+    if text.hasPrefix("Default - ") { text = String(text.dropFirst("Default - ".count)) }
+    while text.hasSuffix(")"), let open = text.lastIndex(of: "(") {
+        let head = String(text[..<open]).trimmingCharacters(in: .whitespaces)
+        if head.isEmpty { break }
+        text = head
     }
-    return micChoice(for: defaultInputDevice())
+    return text
+}
+
+/// `name == nil` means the macOS default input. A name must match one input
+/// device. No match, or more than one match (for example two identical USB
+/// mics), prints ERR_MIC_NOT_FOUND and exits. The app then uses its old path
+/// with the exact device id.
+func chooseMic(name: String?) -> MicChoice? {
+    guard let wanted = name else { return micChoice(for: defaultInputDevice()) }
+    let choices = allDeviceIDs().compactMap { micChoice(for: $0) }
+    var matches = choices.filter { $0.name == wanted }
+    if matches.isEmpty {
+        let wantedNormalized = normalizedMicName(wanted)
+        matches = choices.filter { normalizedMicName($0.name) == wantedNormalized }
+    }
+    guard matches.count == 1 else {
+        emitError("ERR_MIC_NOT_FOUND \(wanted.replacingOccurrences(of: "\n", with: " "))")
+        exit(2)
+    }
+    return matches[0]
 }
 
 // MARK: - Arguments
@@ -655,7 +694,9 @@ func startAggregate(micUID: String?) -> Int32 {
         let list = UnsafeMutableAudioBufferListPointer(
             UnsafeMutablePointer(mutating: inInputData)
         )
-        guard list.count > 0 else { return }
+        // With a mic, the list holds the mic streams, then the tap. A shorter
+        // list would label the mic buffer as the system channel.
+        guard list.count >= (micActive ? 2 : 1) else { return }
 
         // The first call marks T0 for both channels. The SYNC line runs on the
         // convert queue, so its counts cover all earlier buffers.
@@ -666,7 +707,7 @@ func startAggregate(micUID: String?) -> Int32 {
         }
 
         // Copy the input data off the realtime thread, then convert async.
-        if micActive, list.count >= 2, let format = micFormat,
+        if micActive, let format = micFormat,
             let copy = copyInput(list[0], format: format, bytesPerFrame: micBytesPerFrame)
         {
             convertQueue.async { micPipe.handle(copy) }
@@ -692,6 +733,53 @@ func startAggregate(micUID: String?) -> Int32 {
         return 3
     }
     return 0
+}
+
+// MARK: - Format Check
+
+func sameFormat(_ a: AudioStreamBasicDescription, _ b: AudioStreamBasicDescription) -> Bool {
+    a.mSampleRate == b.mSampleRate && a.mChannelsPerFrame == b.mChannelsPerFrame
+        && a.mBytesPerFrame == b.mBytesPerFrame
+}
+
+/// A Bluetooth headset can change its sample rate when input starts. The
+/// IOProc copies bytes with the format that startAggregate read, so a changed
+/// format would give audio at the wrong speed. Wait a short time, then read
+/// the formats again and compare them.
+func formatsAreStable() -> Bool {
+    usleep(300_000)
+    let now = inputStreamFormats(aggregateID)
+    let expectedStreams = micActive ? 2 : 1
+    guard now.count >= expectedStreams, let last = now.last,
+        let system = systemFormat,
+        sameFormat(last, system.streamDescription.pointee)
+    else { return false }
+    if micActive {
+        guard let mic = micFormat, sameFormat(now[0], mic.streamDescription.pointee)
+        else { return false }
+    }
+    return true
+}
+
+/// Starts the aggregate device and checks that the formats stay the same.
+/// If they change, it builds the device again with the new formats. Frames
+/// that were made with the old formats are dropped (no reader runs yet).
+func startAggregateStable(micUID: String?) -> Int32 {
+    var code = startAggregate(micUID: micUID)
+    var attempt = 0
+    while code == 0 && !formatsAreStable() {
+        attempt += 1
+        if attempt > 2 {
+            emitError("ERR_FORMAT_UNSTABLE")
+            return 2
+        }
+        stopAggregate()
+        ring.clear()
+        micPipe.reset()
+        systemPipe.reset()
+        code = startAggregate(micUID: micUID)
+    }
+    return code
 }
 
 // MARK: - Mic Loss
@@ -761,7 +849,7 @@ guard tapStatus == noErr, tapID != kAudioObjectUnknown else {
     exit(2)
 }
 
-let startCode = startAggregate(micUID: mic.uid)
+let startCode = startAggregateStable(micUID: mic.uid)
 guard startCode == 0 else {
     teardown()
     exit(startCode)

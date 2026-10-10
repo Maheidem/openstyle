@@ -8,11 +8,12 @@
  *   READY                          capture running, samples flow soon
  *   LEVEL <rms>                    ~200 ms RMS level of the system channel
  *   LEVEL_MIC <rms>                ~200 ms RMS level of the mic channel
- *   SYNC <wallclock_ms> <samples>  wallclock/sample-count marker every 60 s
+ *   SYNC <wallclock_ms> <mic_samples> <system_samples>
+ *                                  wallclock/sample-count marker every 60 s
  *   OVERRUN <n>                    ring-buffer overruns (dropped frames)
  *   DEVICE <uid> <name>            the mic that the helper opened
- *   WARN_MIC_NOT_FOUND <name>      the name did not match; default input used
- *   ERR_*                          fatal error
+ *   ERR_*                          fatal error (ERR_MIC_LOST is not fatal:
+ *                                  the system channel goes on)
  *
  * The class has the same shape as SystemAudioCapture (the old system-only
  * helper). The recorder uses this class first and falls back to the old
@@ -24,6 +25,7 @@ import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   createFrameParser,
   type MeetingCaptureChannel,
+  parseSyncFields,
 } from "./meeting-capture-protocol";
 import { getNativeBinaryPath } from "./native-binary";
 import {
@@ -37,7 +39,11 @@ const log = createAppLogger("meeting-capture");
 const KILL_GRACE_MS = 3000;
 
 interface MeetingCaptureHelperOptions {
-  /** Core Audio device name of the mic, or null for the default input. */
+  /**
+   * Core Audio device name of the mic, or null for the default input. When
+   * the name matches no single device, the helper prints ERR_MIC_NOT_FOUND
+   * and exits. It never uses another mic in silence.
+   */
   micName: string | null;
   /** One decoded frame: PCM16 (16 kHz mono) for one channel. */
   onFrame: (channel: MeetingCaptureChannel, pcm: Buffer) => void;
@@ -46,7 +52,7 @@ interface MeetingCaptureHelperOptions {
   onLevel?: (rms: number) => void;
   /** ~200 ms RMS level of the mic channel, 0..1. */
   onLevelMic?: (rms: number) => void;
-  /** 60 s wallclock/sample-count markers for merge-time drift correction. */
+  /** 60 s wallclock/sample-count markers. `totalSamples` counts the system channel. */
   onSync?: (marker: SyncMarker) => void;
   onOverrun?: (count: number) => void;
   /** Fatal helper errors: ERR_* lines, spawn failures, exits, bad frames. */
@@ -173,13 +179,8 @@ export class MeetingCaptureHelper {
       return;
     }
     if (line.startsWith("SYNC ")) {
-      const [wallclockMs, totalSamples] = line
-        .slice(5)
-        .split(/\s+/)
-        .map(Number);
-      if (Number.isFinite(wallclockMs) && Number.isFinite(totalSamples)) {
-        this.options.onSync?.({ wallclockMs, totalSamples });
-      }
+      const marker = parseSyncFields(line.slice(5));
+      if (marker) this.options.onSync?.(marker);
       return;
     }
     if (line.startsWith("OVERRUN ")) {
@@ -190,10 +191,6 @@ export class MeetingCaptureHelper {
     }
     if (line.startsWith("DEVICE ")) {
       log.info(`Mic opened: ${line.slice(7)}`);
-      return;
-    }
-    if (line.startsWith("WARN_MIC_NOT_FOUND")) {
-      log.warn(`Mic not found, the helper used the default input: ${line}`);
       return;
     }
     if (line.startsWith("ERR_")) {

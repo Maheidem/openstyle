@@ -103,3 +103,42 @@ export function createFrameParser(
     },
   };
 }
+
+/**
+ * Parses the numbers of a `SYNC <wallclock_ms> <mic_samples> <system_samples>`
+ * line (the text after "SYNC "). The marker carries the system count. The mic
+ * count stops after a mic loss, and the system count goes on. Returns null
+ * when the line has fewer than three finite numbers.
+ */
+export function parseSyncFields(
+  fields: string,
+): { wallclockMs: number; totalSamples: number } | null {
+  const [wallclockMs, micSamples, systemSamples, ...extra] = fields
+    .trim()
+    .split(/\s+/)
+    .map(Number);
+  if (
+    extra.length > 0 ||
+    !Number.isFinite(wallclockMs) ||
+    !Number.isFinite(micSamples) ||
+    !Number.isFinite(systemSamples)
+  ) {
+    return null;
+  }
+  return { wallclockMs, totalSamples: systemSamples };
+}
+
+/**
+ * Number of silent samples that a channel needs so that it is as long as the
+ * wallclock says. The channel started at `t0Ms`. It holds `haveSamples`. The
+ * next chunk starts at `untilMs`. Returns 0 when no padding is needed.
+ */
+export function silenceGapSamples(
+  t0Ms: number,
+  untilMs: number,
+  haveSamples: number,
+  sampleRate: number,
+): number {
+  const wanted = Math.round(((untilMs - t0Ms) / 1000) * sampleRate);
+  return Math.max(0, wanted - haveSamples);
+}
