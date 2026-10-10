@@ -151,6 +151,18 @@ export class NativeKeyListener {
   start(): Promise<boolean> {
     if (this.destroyed) return Promise.resolve(false);
 
+    // A new helper process starts with no key held. Clear the state of the
+    // old process so a restart cannot leave a modifier or hotkey stuck.
+    const wasActive = this.macHotkeyActive;
+    this.macModState.clear();
+    this.macFlagState.clear();
+    this.macFnDown = false;
+    this.macHotkeyActive = false;
+    this.cancelMacSoloFnDown();
+    // The old process can die while the hotkey is held. Its key-up never
+    // arrives, so tell the consumer now.
+    if (wasActive) this.options.onKeyUp();
+
     const binaryName = KEY_LISTENER_BINARY_NAMES[process.platform];
     if (!binaryName) {
       this.options.onError?.(`Unsupported platform: ${process.platform}`);

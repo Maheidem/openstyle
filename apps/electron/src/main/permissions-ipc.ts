@@ -1,7 +1,7 @@
 /**
  * Permission and onboarding IPC handlers. The handler bodies come from the
  * `whenReady` block in `index.ts`. The channel names and return values are
- * the same. State that lives in `index.ts` reaches this file through the
+ * the same. `ipc/core-ipc.ts` builds the deps. State from `main-state.ts` reaches this file through the
  * `deps` functions.
  */
 

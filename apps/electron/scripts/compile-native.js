@@ -23,6 +23,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { devSign } from "./dev-sign.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -116,6 +117,16 @@ function compileMacOS() {
       minTarget: "14.2",
     },
     {
+      // Mic + system audio on one clock (specs/under-the-hood.md, Item 3).
+      // Same target and frameworks as macos-system-audio. The mic is a
+      // sub-device of the aggregate device, and Core Audio needs no extra
+      // framework for that.
+      name: "macos-meeting-capture",
+      src: "macos-meeting-capture.swift",
+      frameworks: ["CoreAudio", "AudioToolbox", "AVFAudio", "Foundation"],
+      minTarget: "14.2",
+    },
+    {
       name: "macos-ax",
       src: "macos-ax.swift",
       frameworks: ["ApplicationServices", "Carbon", "Foundation"],
@@ -134,6 +145,7 @@ function compileMacOS() {
     if (ok) {
       chmodSync(out, 0o755);
       console.log(`  -> ${out}`);
+      devSign([out]); // local builds only, see dev-sign.mjs
     } else {
       failures.push(bin.name);
       console.warn(
@@ -195,6 +207,7 @@ function compileFluidAudioDiarizer() {
   copyFileSync(builtBin, out);
   chmodSync(out, 0o755);
   console.log(`  -> ${out}`);
+  devSign([out]); // local builds only, see dev-sign.mjs
 }
 
 // ---------------------------------------------------------------------------

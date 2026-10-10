@@ -37,6 +37,7 @@ import { cpus, homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { devSign } from "./dev-sign.mjs";
 import { fetchToFile } from "./lib/fetch.mjs";
 
 const FFMPEG_VERSION = "9.0.1";
@@ -294,6 +295,7 @@ async function main() {
   if (!FORCE && ffmpegWorks(OUT_BIN)) {
     console.log(`ffmpeg already present at ${OUT_BIN}`);
     console.log(`  ${ffmpegVersionLine(OUT_BIN)}`);
+    devSign([OUT_BIN]); // local builds only, see dev-sign.mjs
     return;
   }
 
@@ -312,6 +314,7 @@ async function main() {
   }
 
   installFromCache();
+  devSign([OUT_BIN]); // local builds only, see dev-sign.mjs
   console.log(`Installed ffmpeg to ${OUT_BIN}`);
   console.log(`  ${ffmpegVersionLine(OUT_BIN)}`);
 }

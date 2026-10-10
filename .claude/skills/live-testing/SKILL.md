@@ -19,6 +19,39 @@ The owner runs the installed Openstyle app every day. Every live test must run n
 8. Do not push, merge or change GitHub settings. The coordinating agent does outward actions.
 9. Launch a local app or E2E run only in quiet mode (`OPENSTYLE_E2E=1`, section 4). Prefer CI for the full E2E suite.
 
+## Privacy dialogs and the dev identity
+
+Every dev binary is ad-hoc signed: the native helpers, the fluidaudio-diarize helper, ffmpeg, `Electron.app` in `node_modules` and `dist/mac-arm64/Openstyle.app`. macOS can only identify an ad-hoc binary by its code hash or its path. Each rebuild or new copy gets a new identity, so macOS asks for the Privacy permissions again. The responsible app for these requests is the parent that started them (Claude Code), so the dialogs also appear on the owner's screen.
+
+The fix is a stable local identity named "Openstyle Dev". The owner creates it once. macOS asks for the login password once:
+
+```bash
+! bash scripts/dev-signing-setup.sh
+```
+
+Never run this script from an agent. Do not run `security`, `codesign`, `tccutil` or any Keychain command by hand. The project scripts (`compile:native`, `download:ffmpeg`, `sign:dev`, `build:mac`, `build:unpack`) run `security find-identity` and `codesign` after the setup. Only the owner runs `sign:dev` after the setup.
+
+After the setup:
+- `compile:native`, `download:ffmpeg`, `build:mac` and `build:unpack` sign local builds with the identity. `pnpm --filter @openstyle/electron sign:dev` signs `Electron.app` (also done by `dev` and `test:e2e`). Run `sign:dev` outside `isolated_run`: the scratch `HOME` has no keychain, and `sign:dev` exits with an error there. The documented direct `playwright` command skips `sign:dev`: run `sign:dev` first. `turbo` can restore cached ad-hoc binaries: the signing variables are part of the cache key; use `turbo --force` if in doubt.
+- The step does nothing when `CI` is set, when `OPENSTYLE_DEV_SIGN=0`, or when the identity does not exist. `OPENSTYLE_DEV_SIGN_IDENTITY` selects another identity.
+- Local builds without the identity (`OPENSTYLE_DEV_SIGN=0`) set `CSC_IDENTITY_AUTO_DISCOVERY=false`. Export it yourself too. Without it, electron-builder finds "Openstyle Dev" in the login keychain and signs with it.
+- Run a binary that is ad-hoc signed again, and the old grants do not apply. Grant the permissions once in System Settings.
+
+Proven 2026-10-09 (TCC log, `/usr/bin/log show --predicate 'subsystem == "com.apple.TCC"'`; bare `log` is a zsh builtin; only `AUTHREQ_PROMPTING` means a dialog was shown):
+- Every process that Claude Code starts (dev Electron, Playwright, native helpers) asks macOS as Claude Code. Subject and responsible app are `com.anthropic.claude-code`, path `/Users/maheidem/.local/share/claude/versions/<version>`.
+- Signing a helper with "Openstyle Dev" did NOT change this. Accessibility, ListenEvent and PostEvent stayed at authValue=0.
+- The owner granted Claude Code (that versions path) Accessibility and Input Monitoring in Privacy & Security. Then the helper printed only `READY`, the log showed authValue=2, and no dialog appeared.
+- Microphone and Screen & System Audio Recording are NOT granted to Claude Code.
+- On this macOS (Darwin 27) the Accessibility list is not labelled "Accessibility" in Privacy & Security.
+- Not proven: a Claude Code update changes the versions path, so the grant may need to be added again.
+- The Way 2 code (`dev-sign.mjs`, `scripts/dev-signing-setup.sh`) stays. It has no effect for runs that Claude Code starts. It may matter only if the app starts through its own launcher (untested).
+
+Rules for a local real-app run (launch, e2e, site capture):
+1. Before the run, check that the current Claude Code path has the grant.
+2. Use quiet mode only (`OPENSTYLE_E2E=1`).
+3. Tests that touch the microphone or system audio are CI-only, unless the owner says go.
+4. Stop at once at any Privacy dialog and report it.
+
 ## Enforced by the guard hook
 
 A PreToolUse hook (`scripts/guard-hook.sh`, registered in `.claude/settings.json`) blocks these Bash commands and file writes. It prints one line with the rule letter and exits 2.

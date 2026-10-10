@@ -2,7 +2,7 @@
  * App-level IPC handlers: server target, log folder, external links, error
  * dialog and the launch-time settings. The handler bodies come from the
  * `whenReady` block in `index.ts`. The channel names and return values are
- * the same. State that lives in `index.ts` reaches this file through the
+ * the same. `ipc/core-ipc.ts` builds the deps. State from `main-state.ts` reaches this file through the
  * `deps` functions.
  */
 
@@ -117,7 +117,7 @@ export function registerAppSettingsIpc({
 
   ipcMain.on("settings:set-auto-update", (_event, enabled: boolean) => {
     // autoDownload stays false in all cases (see the updater setup in
-    // index.ts). This setting only controls whether periodic update checks run.
+    // updater.ts). This setting only controls whether periodic update checks run.
     writeSettings({ autoUpdate: enabled });
   });
 

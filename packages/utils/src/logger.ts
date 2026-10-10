@@ -29,6 +29,9 @@ const registry = new Set<winston.Logger>();
 // already applied at the logger level, and a single write stream avoids the
 // size-rotation races that independent transports to the same file would hit.
 let fileTransport: winston.transport | null = null;
+// The name of the main log file. A second process can use its own name, so two
+// processes never rotate the same file.
+let logFile = LOG_FILE;
 
 // Initialised from the env var so the standalone server (and tests) can opt in
 // without code changes; the Electron app calls `enableFileLogging()` instead.
@@ -42,7 +45,7 @@ function getFileTransport(dir: string): winston.transport | null {
   try {
     fs.mkdirSync(dir, { recursive: true });
     fileTransport = new winston.transports.File({
-      filename: path.join(dir, LOG_FILE),
+      filename: path.join(dir, logFile),
       maxsize: MAX_SIZE,
       maxFiles: MAX_FILES,
       tailable: true,
@@ -88,7 +91,9 @@ export function createAppLogger(namespace: string): winston.Logger {
 }
 
 /**
- * Persist logs to `<dir>/openstyle.log` (size-rotated, tailable). Attaches the
+ * Persist logs to `<dir>/<file>` (size-rotated, tailable). `file` defaults to
+ * `openstyle.log`. A process that shares the directory with another process
+ * passes its own file name. Attaches the
  * shared file transport to every logger created so far and every one created
  * afterwards, so the call is order-independent — it works whether loggers were
  * built before or after the log directory became known. Idempotent.
@@ -96,9 +101,10 @@ export function createAppLogger(namespace: string): winston.Logger {
  * The trace log shares the directory resolved here but is built lazily on its
  * first write (see {@link traceLog}), so it needs nothing extra from callers.
  */
-export function enableFileLogging(dir: string): void {
-  if (logDir === dir && fileTransport) return;
+export function enableFileLogging(dir: string, file = LOG_FILE): void {
+  if (logDir === dir && logFile === file && fileTransport) return;
   logDir = dir;
+  logFile = file;
   for (const logger of registry) attachFileTransport(logger, dir);
 }
 

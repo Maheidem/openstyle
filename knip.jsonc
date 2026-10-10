@@ -10,6 +10,7 @@
   },
   "ignoreBinaries": [
     "cmake",
+    "codesign",
     "ffmpeg",
     "install_name_tool",
     "make",
@@ -18,7 +19,9 @@
     "pkg-config",
     "powershell",
     "powershell.exe",
-    "python3"
+    "ps",
+    "python3",
+    "security"
   ],
   "ignoreFiles": [
     // Static marketing site: loaded from site/index.html, which knip does
@@ -47,6 +50,7 @@
       "entry": [
         "electron.vite.config.ts",
         "src/main/index.ts",
+        "src/server-host/entry.ts",
         "src/preload/index.ts",
         "src/renderer/src/dashboard.tsx",
         "src/renderer/src/meeting-capture.ts",

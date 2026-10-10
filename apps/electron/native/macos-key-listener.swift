@@ -116,6 +116,20 @@ let cliArgs = parseCLIArgs()
 let suppressedMouseButtons = cliArgs.mouseButtons
 let suppressHotkey = cliArgs.hotkey.map(parseHotkey)
 
+/// With a hotkey argument, the helper writes only the lines that main acts on.
+/// With no hotkey argument (the hotkey recorder), it writes every line.
+let filterOutput = suppressHotkey != nil
+
+/// The last FLAGS value written. Used only when filterOutput is true.
+var lastSentFlags: String?
+
+/// True when the helper must write KEY_DOWN/KEY_UP for this key code.
+func shouldEmitKey(_ code: UInt16) -> Bool {
+    guard filterOutput else { return true }
+    guard let target = suppressHotkey?.targetKeyCode else { return false }
+    return code == target
+}
+
 let rightModifiers: [(UInt16, NSEvent.ModifierFlags, String)] = [
     (61, .option, "RightOption"),
     (54, .command, "RightCommand"),
@@ -147,9 +161,19 @@ func modifierNames(control: Bool, option: Bool, shift: Bool, command: Bool) -> S
     return parts.joined(separator: ",")
 }
 
+/// Write a FLAGS line. With a hotkey argument, skip it when the flag set
+/// is the same as the last one written.
+func emitFlagsNames(_ names: String) {
+    if filterOutput {
+        if names == lastSentFlags { return }
+        lastSentFlags = names
+    }
+    emit("FLAGS:" + names)
+}
+
 func emitFlags(_ flags: NSEvent.ModifierFlags) {
     let mods = flags.intersection(modifierMask)
-    emit("FLAGS:" + modifierNames(
+    emitFlagsNames(modifierNames(
         control: mods.contains(.control), option: mods.contains(.option),
         shift: mods.contains(.shift), command: mods.contains(.command)))
 }
@@ -269,7 +293,7 @@ func nameToKeyCode(_ name: String) -> UInt16? {
 }
 
 func emitFlagsFromCGEvent(_ flags: CGEventFlags) {
-    emit("FLAGS:" + modifierNames(
+    emitFlagsNames(modifierNames(
         control: flags.contains(.maskControl), option: flags.contains(.maskAlternate),
         shift: flags.contains(.maskShift), command: flags.contains(.maskCommand)))
 }
@@ -291,8 +315,11 @@ func emitMouseEvent(_ type: CGEventType, _ event: CGEvent) -> Bool {
     let buttonNumber = Int(event.getIntegerValueField(.mouseEventButtonNumber))
     guard let buttonName = mouseButtonName(buttonNumber) else { return false }
 
-    emit(type == .otherMouseDown ? "MOUSE_BUTTON_DOWN:\(buttonName)" : "MOUSE_BUTTON_UP:\(buttonName)")
-    return suppressedMouseButtons.contains(buttonName)
+    let isSuppressed = suppressedMouseButtons.contains(buttonName)
+    if isSuppressed || !filterOutput {
+        emit(type == .otherMouseDown ? "MOUSE_BUTTON_DOWN:\(buttonName)" : "MOUSE_BUTTON_UP:\(buttonName)")
+    }
+    return isSuppressed
 }
 
 let mouseEventMask =
@@ -384,7 +411,7 @@ keyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event i
         return
     }
     emitFlags(event.modifierFlags)
-    guard let name = keyCodeToName(event.keyCode) else { return }
+    guard shouldEmitKey(event.keyCode), let name = keyCodeToName(event.keyCode) else { return }
     emit("KEY_DOWN:\(name)")
 }
 
@@ -423,7 +450,7 @@ let keyEventTap = CGEvent.tapCreate(
             return Unmanaged.passUnretained(event)
         }
 
-        if type == .keyUp {
+        if type == .keyUp && shouldEmitKey(keyCode) {
             emit("KEY_UP:\(name)")
         }
 

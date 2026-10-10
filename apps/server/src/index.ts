@@ -24,6 +24,7 @@ import {
   isTrustedRendererOrigin,
   trustedOriginMiddleware,
 } from "./lib/trusted-origin.js";
+import { sweepStaleWhisperServer } from "./lib/whisper/pid-file.js";
 import routes from "./routes";
 
 const httpLog = createAppLogger("http");
@@ -204,6 +205,10 @@ export async function startServer(
   // Install the global network dispatcher (corporate proxy + custom CA) before
   // anything issues a fetch, so model downloads and cloud/API calls honor it.
   configureNetwork();
+
+  // A forced kill of the last server process can leave a whisper-server
+  // running. End it before this process can start a new one.
+  sweepStaleWhisperServer();
 
   const app = createApp();
 
