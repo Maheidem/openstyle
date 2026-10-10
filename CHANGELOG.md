@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.15.1
+
+### Improvements ⚡
+
+- Openstyle is now signed with a fixed certificate. After this update, macOS asks once more for some permissions (Microphone, Accessibility, Input Monitoring, System Audio Recording). Later updates keep them.
+
+### Known issues 🐞
+
+- On a first install, macOS still warns about an unidentified developer. Use right-click > Open once. The app is not yet notarized by Apple.
+
 ## 2.15.0
 
 ### New Features ✨
