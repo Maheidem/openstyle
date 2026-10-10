@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.15.0
+
+### New Features ✨
+
+- Updates are now smaller. Openstyle downloads only the parts that changed (about 14 MB instead of about 133 MB). If anything goes wrong, it downloads the full update instead. Old update downloads are cleaned up.
+- Meeting recording now captures your microphone and the system audio together in one native helper, on one clock. If the helper cannot start, Openstyle uses the previous method.
+
+### Improvements ⚡
+
+- The local server runs in its own process. It restarts by itself after a crash.
+- Hotkeys: the key listener sends far fewer events. It recovers by itself after a failure.
+- History search is faster for large histories.
+
+### Known issues 🐞
+
+- After an update, macOS can still ask again for some permissions. The app is not yet signed with a Developer ID.
+
 ## 2.14.2
 
 ### Improvements ⚡
