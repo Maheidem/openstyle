@@ -3821,6 +3821,71 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     expect(alignCalls).toBe(1);
   });
 
+  it("stops the align pass when the meeting is cancelled during the dictation wait", async () => {
+    // Dictation stays active. The user cancels during the wait. The wait
+    // ends, no align call runs, and the pass ends with the transcribed
+    // rows kept. The cancel path then skips the auto Enhance.
+    const dir = makeAudioDir();
+    __resetDictationIdleStateForTests();
+    beginDictation();
+    let dictationEnded = false;
+    const endOnce = () => {
+      if (dictationEnded) return;
+      dictationEnded = true;
+      endDictation();
+    };
+    onTestFinished(() => {
+      endOnce();
+      __resetDictationIdleStateForTests();
+    });
+    let alignCalls = 0;
+    let polls = 0;
+    let cancelStatus = 0;
+    __setMeetingsTestOverrides(
+      alignOverrides(
+        async () => {
+          alignCalls++;
+          return [];
+        },
+        {
+          alignDictationWait: {
+            idleMs: 0,
+            pollMs: 1,
+            sleep: async () => {
+              polls++;
+              if (polls === 2) {
+                cancelStatus = (
+                  await postEmpty(app, "/api/meetings/m1/cancel-transcribe")
+                ).status;
+              }
+              // Safety stop: a missing abort would loop here for ever.
+              if (polls >= 50) endOnce();
+            },
+          },
+        },
+      ),
+    );
+    insertMeeting("m1", "recorded", dir);
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m1");
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+
+    expect(cancelStatus).toBe(202);
+    expect(polls).toBe(2);
+    expect(alignCalls).toBe(0);
+    expect(done.status).toBe("transcribed");
+    const rows = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM meeting_segments WHERE meeting_id = ? AND source = 'system'",
+      )
+      .get("m1") as { n: number };
+    expect(rows.n).toBeGreaterThan(0);
+  });
+
   it("keeps the ASR punctuation and case in the stored parts (§3.6 review)", async () => {
     // The stored part text must come from the ORIGINAL ASR tokens (the
     // aligner's words are normalized): the parts keep punctuation and

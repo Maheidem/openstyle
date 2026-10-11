@@ -555,10 +555,14 @@ async function runAlignPass(
         // An align call loads the aligner into the single MLX worker. That
         // evicts a local MLX dictation model, so yield to live dictation
         // before EACH call, like the transcriber does before a reload.
-        await waitForDictationIdle({
+        // A cancel ends the wait and the pass: the chunks not yet aligned
+        // keep their transcribed rows and phase 4 labels (the fallback).
+        const aborted = await waitForDictationIdle({
           isDictationActive,
+          shouldAbort: () => isCancelRequested(id),
           ...testOverrides.alignDictationWait,
         });
+        if (aborted || isCancelRequested(id)) break;
         const t0 = Date.now();
         let words: MlxAlignedWord[];
         try {
