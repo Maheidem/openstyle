@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.15.2
+
+### Bug Fixes 🐛
+
+- A meeting no longer slows down a dictation that uses a local MLX model. The meeting now waits while you dictate. Cancel works while the meeting waits.
+
+### Improvements ⚡
+
+- This is the second release signed with the fixed certificate. If you update from 2.15.1, macOS keeps your Privacy permissions and shows no new dialogs. If you update from 2.15.0 or older, macOS asks once.
+
 ## 2.15.1
 
 ### Improvements ⚡
