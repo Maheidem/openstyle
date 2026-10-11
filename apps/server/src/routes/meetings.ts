@@ -21,7 +21,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { parseWavHeader, sliceWav, type WavInfo } from "../lib/audio/wav.js";
 import { getDb, withTransaction } from "../lib/db.js";
-import { isDictationActive } from "../lib/dictation-activity.js";
+import {
+  isDictationActive,
+  type WaitForDictationIdleOptions,
+  waitForDictationIdle,
+} from "../lib/dictation-activity.js";
 import { extractContextTerms } from "../lib/meetings/context-terms.js";
 import {
   applyDiarization,
@@ -133,6 +137,10 @@ interface MeetingsTestOverrides {
     text: string,
     language: string,
   ) => Promise<MlxAlignedWord[]>;
+  /** The align pass's dictation-idle wait: timing knobs only (idle window,
+   * poll, clock, sleep), so route tests do not wait out the real 15 s
+   * window. The activity source stays the real `isDictationActive`. */
+  alignDictationWait?: Omit<WaitForDictationIdleOptions, "isDictationActive">;
   /** I4b: force/forbid the aligner gate in tests (default: the real check).
    * `isAlignerModelReady` and `isAppleSiliconMac` are the other two gate
    * inputs; both are true on this Mac, so a test that wants the fallback
@@ -544,6 +552,17 @@ async function runAlignPass(
       for (const r of systemResults) {
         if (r.status !== "ok" || !r.text.trim()) continue;
         if (!isMixedChunk(r.startMs, r.endMs, turns)) continue;
+        // An align call loads the aligner into the single MLX worker. That
+        // evicts a local MLX dictation model, so yield to live dictation
+        // before EACH call, like the transcriber does before a reload.
+        // A cancel ends the wait and the pass: the chunks not yet aligned
+        // keep their transcribed rows and phase 4 labels (the fallback).
+        const aborted = await waitForDictationIdle({
+          isDictationActive,
+          shouldAbort: () => isCancelRequested(id),
+          ...testOverrides.alignDictationWait,
+        });
+        if (aborted || isCancelRequested(id)) break;
         const t0 = Date.now();
         let words: MlxAlignedWord[];
         try {

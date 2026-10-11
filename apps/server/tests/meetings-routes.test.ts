@@ -20,6 +20,11 @@ import {
 } from "vitest";
 import createApp from "../src/index.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
+import {
+  __resetDictationIdleStateForTests,
+  beginDictation,
+  endDictation,
+} from "../src/lib/dictation-activity.js";
 import type { DiarizeDeps } from "../src/lib/meetings/diarize.js";
 import type { EnhanceMeetingOptions } from "../src/lib/meetings/enhance.js";
 import {
@@ -3756,6 +3761,129 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     const mic = rows.filter((r) => r.source === "mic");
     expect(mic).toHaveLength(1);
     expect(mic[0]!.speaker_label).toBeNull();
+  });
+
+  it("waits for dictation to be idle before the align call", async () => {
+    // An align call loads the aligner into the single MLX worker, which
+    // evicts a local MLX dictation model. While dictation is active, no
+    // align call may start. Dictation ends after three polls. Then the
+    // call runs.
+    const dir = makeAudioDir();
+    __resetDictationIdleStateForTests();
+    beginDictation();
+    let dictationEnded = false;
+    const endOnce = () => {
+      if (dictationEnded) return;
+      dictationEnded = true;
+      endDictation();
+    };
+    onTestFinished(() => {
+      endOnce();
+      __resetDictationIdleStateForTests();
+    });
+    let alignCalls = 0;
+    let polls = 0;
+    const callsSeenWhileWaiting: number[] = [];
+    __setMeetingsTestOverrides(
+      alignOverrides(
+        async () => {
+          alignCalls++;
+          return [
+            { text: "left.", start: 0.5, end: 1.5 },
+            { text: "right.", start: 5.0, end: 6.0 },
+          ];
+        },
+        {
+          alignDictationWait: {
+            idleMs: 0,
+            pollMs: 1,
+            sleep: async () => {
+              polls++;
+              callsSeenWhileWaiting.push(alignCalls);
+              if (polls >= 3) endOnce();
+            },
+          },
+        },
+      ),
+    );
+    insertMeeting("m1", "recorded", dir);
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m1");
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+
+    expect(polls).toBeGreaterThanOrEqual(3);
+    expect(callsSeenWhileWaiting.every((n) => n === 0)).toBe(true);
+    expect(alignCalls).toBe(1);
+  });
+
+  it("stops the align pass when the meeting is cancelled during the dictation wait", async () => {
+    // Dictation stays active. The user cancels during the wait. The wait
+    // ends, no align call runs, and the pass ends with the transcribed
+    // rows kept. The cancel path then skips the auto Enhance.
+    const dir = makeAudioDir();
+    __resetDictationIdleStateForTests();
+    beginDictation();
+    let dictationEnded = false;
+    const endOnce = () => {
+      if (dictationEnded) return;
+      dictationEnded = true;
+      endDictation();
+    };
+    onTestFinished(() => {
+      endOnce();
+      __resetDictationIdleStateForTests();
+    });
+    let alignCalls = 0;
+    let polls = 0;
+    let cancelStatus = 0;
+    __setMeetingsTestOverrides(
+      alignOverrides(
+        async () => {
+          alignCalls++;
+          return [];
+        },
+        {
+          alignDictationWait: {
+            idleMs: 0,
+            pollMs: 1,
+            sleep: async () => {
+              polls++;
+              if (polls === 2) {
+                cancelStatus = (
+                  await postEmpty(app, "/api/meetings/m1/cancel-transcribe")
+                ).status;
+              }
+              // Safety stop: a missing abort would loop here for ever.
+              if (polls >= 50) endOnce();
+            },
+          },
+        },
+      ),
+    );
+    insertMeeting("m1", "recorded", dir);
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m1");
+
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+
+    expect(cancelStatus).toBe(202);
+    expect(polls).toBe(2);
+    expect(alignCalls).toBe(0);
+    expect(done.status).toBe("transcribed");
+    const rows = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM meeting_segments WHERE meeting_id = ? AND source = 'system'",
+      )
+      .get("m1") as { n: number };
+    expect(rows.n).toBeGreaterThan(0);
   });
 
   it("keeps the ASR punctuation and case in the stored parts (§3.6 review)", async () => {

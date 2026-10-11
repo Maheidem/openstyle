@@ -54,6 +54,8 @@ export interface WaitForDictationIdleOptions {
   idleMs?: number;
   /** Poll interval while waiting out active dictation (ms). Default 500ms. */
   pollMs?: number;
+  /** Checked on each loop pass. When it returns true, the wait ends at once. */
+  shouldAbort?: () => boolean;
   /** Injected for tests. */
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -70,24 +72,25 @@ const defaultSleep = (ms: number) =>
  */
 export async function waitForDictationIdle(
   opts: WaitForDictationIdleOptions = {},
-): Promise<void> {
+): Promise<boolean> {
   const isActive = opts.isDictationActive;
-  if (!isActive) return;
+  if (!isActive) return false;
   const idleMs = opts.idleMs ?? 15_000;
   const pollMs = opts.pollMs ?? 500;
   const now = opts.now ?? Date.now;
   const sleep = opts.sleep ?? defaultSleep;
 
   for (;;) {
+    if (opts.shouldAbort?.()) return true;
     if (isActive()) {
       lastActiveAt = now();
       await sleep(pollMs);
       continue;
     }
     // Never observed active: no need to wait out the idle window.
-    if (lastActiveAt === Number.NEGATIVE_INFINITY) return;
+    if (lastActiveAt === Number.NEGATIVE_INFINITY) return false;
     const idleFor = now() - lastActiveAt;
-    if (idleFor >= idleMs) return;
+    if (idleFor >= idleMs) return false;
     await sleep(Math.min(pollMs, idleMs - idleFor));
   }
 }
