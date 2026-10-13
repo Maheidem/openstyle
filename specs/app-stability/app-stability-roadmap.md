@@ -1,9 +1,30 @@
 # App Stability Roadmap — PR by PR
 
+**Status:** Mostly shipped. This file is history, not a live backlog. Checked against `main` at `fdc6de9` (2026-10-13): 12 of 20 PRs shipped in full (PR 1 to 9, 11 to 13), 4 shipped in part (PR 10, 14, 15, 17), 4 are open (PR 16, 18, 19, 20). The list of open work is in "Status by PR" below.
 **Date:** 2026-07-02
 **Source:** [`app-stability-audit.md`](app-stability-audit.md) — finding references (e.g. "§3.5") point there.
 
 Ordering principle: ship-safety first (PR 1 makes every later PR trustworthy), then every-session correctness bugs, then platform parity, then efficiency/polish. Each PR is scoped to be independently reviewable and revertible. Sizes: **S** < ~150 lines, **M** < ~500, **L** = larger or needs real-device testing.
+
+---
+
+## Status by PR
+
+Checked 2026-10-13. Each line cites a commit or a `path:line` on `main`.
+
+| PR | State | Evidence |
+|----|-------|----------|
+| 1 to 6 | Shipped | Commit `1c273c6` (#384). Examples: `linux-key-listener.c:26` (ioctl include), `compile-native.js:487` (CI exit), `dictionary-replacements.ts:206` (literal replacer), `volume-ducker.ts:74` (crash recovery of ducked volume). |
+| 7 to 9 | Shipped | Commit `389ebeb` (#386). Examples: `whisper/server.ts:94` (idle unload), `whisper/models.ts:232` (sha256 check), `whisper/constants.ts:160` (unsupported arch message). For PR 9, `README.md:54` states the support scope (macOS, Apple Silicon only). It is not a full platform matrix. |
+| 10 | Part | Commit `389ebeb` (#386). Shipped: Wayland sway provider (`active-window.ts:270`, `swaymsg`) and GNOME provider (`active-window.ts:285-294`, `gdbus` call to `org.gnome.Shell.Introspect`). Open: the KDE KWin provider. No `kwin` or `kde` code is in `apps/electron/src` or `apps/server/src`. |
+| 11 to 13 | Shipped | Commit `389ebeb` (#386). Examples: `windows-fast-paste.c:31` (layout-aware key), `hotkey-defaults.ts` (no Super default). |
+| 14 | Part | Swift dedup shipped: `macos-key-listener.swift:166-171` (`lastSentFlags`, commit `10c4a20`). Open: `key-listener.ts:422` and `:454` still call `parseHotkeyParts` for each event. |
+| 15 | Part | Index shipped: `schema.ts:662`. Retention shipped: `history-store.ts:35-47`, commit `0644fc9`. Open: date filters still wrap the column in `date()` (`list-query.ts:62`, `list-query.ts:66`, `history.ts:130`). |
+| 16 | Open | `updater.ts:26` keeps the 5 minute interval. `updater.ts` has no `.deb` install check. |
+| 17 | Part | Token fetch timeout shipped: `elevenlabs.ts:45` and `:51` (commit `8e5d9f3`). Open: no connect timeout in `routes/stream.ts` (only `onReady` at `:306`). No "provider timed out" message found in `apps/server/src`. |
+| 18 | Open | `linux-terminal-focus.ts:86-113` still walks up to 20 ancestors with 3 `xdotool` calls each. `exec-util.ts:40` runs `command -v` on every call (no cache). The `mic-listener` part has no target: commit `2b9c048` removed that file. |
+| 19 | Open | No Windows signing step in `.github/workflows/build.yml` (`build-windows` starts at `:486`). The `.msi` glob and the plugin `installer.ts` no longer exist (commit `6211514` removed plugins). |
+| 20 | Open | The only Playwright step is in the Linux job (`build.yml:199-201`, `xvfb-run`). No test asserts `getNativeBinaryPath()` for each platform. |
 
 ---
 
