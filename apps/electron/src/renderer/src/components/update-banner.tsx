@@ -88,9 +88,10 @@ export function UpdateBanner({
           type="button"
           // downloadUpdate() fires the updater:download IPC message. On a
           // packaged macOS build the main process downloads, verifies, and
-          // installs the update itself (see self-updater.ts) — ad-hoc
-          // signing makes Squirrel.Mac's own download+install path reject
-          // the result, so we replace it entirely there. Anywhere self-update
+          // installs the update itself (see self-updater.ts). Squirrel.Mac
+          // rejected the ad-hoc-signed builds before 2.15.1, and it is
+          // unverified whether it accepts builds signed with the "Openstyle
+          // Release" certificate, so we replace it there. Anywhere self-update
           // can't run (dev builds, other platforms, or after it errors out)
           // the same click instead opens the GitHub releases page for a
           // manual download, which is why the label switches to "View

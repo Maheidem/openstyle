@@ -85,11 +85,10 @@ export function registerUpdater(): void {
     // validation"). Since 2.15.1, CI signs with the self-signed certificate
     // "Openstyle Release". It is unverified whether Squirrel.Mac accepts
     // updates signed with that certificate, so we still use electron-updater
-    // only to *check* the release feed. On
-    // macOS, downloading and installing goes through selfUpdater (see
-    // self-updater.ts) instead of Squirrel.Mac; other platforms open the
-    // releases page. autoDownload is always false, so electron-updater never
-    // itself downloads the update artifact.
+    // only to *check* the release feed. On macOS, downloading and installing
+    // goes through selfUpdater (see self-updater.ts) instead of Squirrel.Mac;
+    // other platforms open the releases page. autoDownload is always false,
+    // so electron-updater never itself downloads the update artifact.
     autoUpdater.autoDownload = false;
     // Honour the same preference on quit. Upstream hardcoded this to true, so a
     // single manual "Check for Updates" could stage a release that then
