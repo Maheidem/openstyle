@@ -80,8 +80,8 @@ export function resolveLanguageOverride(
 
 /**
  * Whether translate mode is enabled. Translate mode only applies when exactly
- * one language is resolved (the cloud enforces the same rule); with zero or
- * multiple languages there is no single target to enforce, so translate is off.
+ * one language is resolved; with zero or multiple languages there is no single
+ * target to enforce, so translate is off.
  * Pass `languages` when the caller already read the stored list.
  */
 export function getTranslateModeSetting(

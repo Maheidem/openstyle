@@ -198,8 +198,8 @@ export function LanguageMultiPickerDialog({
  * Renders each selected language as a pill with a remove (×) affordance, plus
  * an "add" button that opens a searchable popover to toggle languages on/off.
  * An empty selection means auto-detect and shows a hint pill. The number of
- * languages is capped at {@link MAX_LANGUAGES} (cloud parity); once reached, the
- * add button is disabled.
+ * languages is capped at {@link MAX_LANGUAGES} to keep the STT hints focused;
+ * once reached, the add button is disabled.
  */
 export function LanguageMultiSelect({
   values,
