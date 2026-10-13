@@ -227,6 +227,7 @@
               <span class="meta-sep" aria-hidden="true">&middot;</span>
             </span>
             <span>For Macs with Apple silicon</span>
+            <a class="link-inline hero-meta-help" href="#first-launch">First launch help</a>
           </p>
         </div>
         <div class="hero-demo">
@@ -524,6 +525,33 @@
         </p>
         <p class="speed-caption">
           Measured October 2026 with Openstyle 2.10, warm model.
+        </p>
+      </section>
+      <section class="section" id="first-launch" aria-labelledby="first-launch-title">
+        <h2 class="section-title" id="first-launch-title">First launch</h2>
+        <p class="launch-text">
+          Apple has not notarized Openstyle. On the first launch, macOS warns
+          that the developer is unidentified. You open the app once to allow
+          it:
+        </p>
+        <ol class="launch-steps">
+          <li>
+            Drag Openstyle to Applications. Right-click the app, choose
+            <strong>Open</strong>, then choose <strong>Open</strong> again.
+          </li>
+          <li>
+            If macOS shows no Open button, go to System Settings, Privacy
+            &amp; Security, and choose <strong>Open Anyway</strong>.
+          </li>
+          <li>
+            Or run this command in Terminal:
+            <code class="launch-code">xattr -cr /Applications/Openstyle.app</code>
+          </li>
+        </ol>
+        <p class="launch-text">
+          You do this once. Openstyle updates itself from inside the app and
+          does not show the warning again. A new .dmg that you download in a
+          browser shows the warning again.
         </p>
       </section>
       <section class="section" id="faq" aria-labelledby="faq-title">
