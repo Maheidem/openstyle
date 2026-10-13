@@ -93,9 +93,9 @@ Examples:
 
 ```
 fix: prevent duplicate settings requests
-feat(plugins): add update checks
+feat(meetings): add summary templates
 docs: clarify local development setup
-refactor(server): simplify plugin loading
+refactor(server): simplify settings loading
 ```
 
 A CI check validates PR titles automatically. If it fails, edit your PR title to match the format above — no need to open a new PR.
