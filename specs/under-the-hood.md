@@ -68,7 +68,10 @@ ready. Do not start it on this branch.
 
 ### Current state
 
-- The installed app is ad-hoc signed. Command
+- A build is ad-hoc signed only when the CI secret `MAC_RELEASE_CERT_P12` is
+  empty (`.github/workflows/build.yml:313-331`). A release build is signed
+  with the self-signed certificate "Openstyle Release" (since 2.15.1,
+  AGENTS.md:41). For an ad-hoc build, command
   `codesign -dv /Applications/Openstyle.app` prints `Signature=adhoc`,
   `TeamIdentifier=not set`, `flags=0x10002(adhoc,runtime)`.
 - CI builds without Apple signing secrets on purpose. Since the branch
@@ -81,8 +84,12 @@ ready. Do not start it on this branch.
   have no Team ID (`apps/electron/build/entitlements.mac.plist:11-18`).
 - Squirrel.Mac rejects ad-hoc updates, so a custom self-updater installs
   updates (`apps/electron/src/main/self-updater-core.ts:5-12`).
-- Each update changes the ad-hoc identity. macOS then asks again for 3-4
-  TCC permissions (`specs/lean-audit-2026-09.md:143-144`, AGENTS.md:41).
+- Each update of an ad-hoc build (empty secret) changes the identity. macOS
+  then asks again for 3-4 TCC permissions
+  (`specs/lean-audit-2026-09.md:143-144`). Signed builds keep the grants:
+  the update from 2.15.1 to 2.15.2 kept them (AGENTS.md:41;
+  `CHANGELOG.md:11`). An update from 2.15.0 or older asks once
+  (AGENTS.md:41).
 - Helpers that ship in `resources/bin/darwin-arm64` (local `ls`): `ffmpeg`,
   `fluidaudio-diarize`, `macos-ax`, `macos-fast-paste`,
   `macos-key-listener`, `macos-media-control`, `macos-output-volume`,
