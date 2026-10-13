@@ -126,7 +126,8 @@ with no clear error.
 
 ### Alternative: fixed self-signed certificate (proven 2026-10-10)
 
-**Status: in progress on branch `chore/self-signed-release`.** It does not
+**Status: shipped in 2.15.1. CI signs the macOS build with the certificate
+"Openstyle Release" when the secret `MAC_RELEASE_CERT_P12` is set.** It does not
 need the Developer ID. It does not notarize, so Gatekeeper rules stay as they
 are today.
 
@@ -146,8 +147,8 @@ are today.
   ad-hoc build to a signed build installs. macOS asks for the permissions
   once more at that update.
 - Risk: if the key is lost, users grant the permissions once more.
-- Not proven yet: a CI run with the secret set. The first run after the
-  owner's setup proves it.
+- Proven: CI runs with the secret signed 2.15.1 and 2.15.2. The update from
+  2.15.1 to 2.15.2 kept the TCC grants (2026-10-13).
 - This does not replace the plan above. The hardened runtime is already on
   (`flags=0x10002(adhoc,runtime)`). The signatures of the helpers and the
   notarization steps wait for the Developer ID.
