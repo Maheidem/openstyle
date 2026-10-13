@@ -111,6 +111,7 @@ describe("MeetingRecorder capture start", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     rmSync(mocks.userData, { recursive: true, force: true });
   });
 
@@ -120,15 +121,20 @@ describe("MeetingRecorder capture start", () => {
 
     helper.options.onReady?.();
     const meetingId = await started;
+    // Fake only Date. The recorder timers and vi.waitFor need real timers.
+    // The clock moves between the two frames, so a T0 for each channel differs.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_700_000_000_000);
     // The first frame is a system frame. The mic channel gets the same T0.
     helper.options.onFrame("S", FRAME);
+    vi.setSystemTime(1_700_000_000_500);
     helper.options.onFrame("M", FRAME);
+    vi.useRealTimers();
     await recorder.stop();
 
     const journal = readJournal(meetingId);
-    expect(journal.micT0).not.toBeNull();
-    expect(journal.systemT0).not.toBeNull();
-    expect(journal.micT0).toBe(journal.systemT0);
+    expect(journal.systemT0).toBe(1_700_000_000_000);
+    expect(journal.micT0).toBe(1_700_000_000_000);
     expect(journal.sharedClock).toBe(true);
     // The native path does not start the fallback.
     expect(createCaptureWindow).not.toHaveBeenCalled();
