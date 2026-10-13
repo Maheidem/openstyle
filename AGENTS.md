@@ -94,6 +94,8 @@ Releases: use the release skill at `.claude/skills/release/SKILL.md`. The automa
 
 Every branch is born with a pushed draft PR (Goal, Spec, Owner, Done when). At most 2 open PRs. Only the coordinator creates, pushes and merges branches; pi children and subagents never do. `main` is protected: PR + green `CI Status`, squash only, auto-merge, branch deleted on merge. Run `bash scripts/branch-status.sh` at session start and before new work; fix every `!!` line first. Details: `.claude/skills/branch-lifecycle/SKILL.md`.
 
+Work is tracked in the GitHub Project (https://github.com/users/Maheidem/projects/1). Each branch links its issue. New follow-ups go in as issues.
+
 ## Agent skills (`.claude/skills/`)
 
 Repeatable procedures live as skills. Check them before you start a task; do not rediscover a proven method.

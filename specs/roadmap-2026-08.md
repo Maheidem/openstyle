@@ -1,3 +1,5 @@
+> Note: Work is tracked in the GitHub Project (https://github.com/users/Maheidem/projects/1). This file stays as background and history. Add new items as issues.
+
 <!-- Produced 2026-08-26 by multi-agent research: repo signals + competitor + tech-frontier + user-demand sweeps -->
 
 # Openstyle Product Roadmap Recommendation — Post-2.3.0
