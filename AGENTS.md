@@ -14,7 +14,7 @@ Openstyle is a local-first dictation **and meeting-notes** app — a fork of `fr
 - `packages/stt` — provider-agnostic STT + text/cleanup utilities on the Vercel AI SDK; used only by `apps/server`.
 - `packages/utils` — shared utils incl. the logger (`src/logger.ts`).
 - `packages/validations` — shared Zod schemas; gives the Hono RPC client type safety with no codegen.
-- `packages/sdk` — small shared package. It exports only `OutputMode` (`apps/electron/src/main/index.ts`), `parseAppContext`, `AppContextPayload` and the `AppContext` type (`apps/server/src/lib/streaming/transcribe-bias.ts`, `lib/editor/app-context.ts`). The plugin contract (`Plugin`, hooks, registry, loader) is deleted. Do not delete the package without relocating those exports.
+- `packages/sdk` — small shared package. It exports only `OutputMode` (`apps/electron/src/main/ipc/core-ipc.ts`), `parseAppContext`, `AppContextPayload` and the `AppContext` type (`apps/server/src/lib/streaming/transcribe-bias.ts`, `lib/editor/app-context.ts`). The plugin contract (`Plugin`, hooks, registry, loader) is deleted. Do not delete the package without relocating those exports.
 - `plugins/`, `templates/`, `packages/create-openstyle-plugin` and the `build-plugins` CI job are deleted.
 
 **Dictation pipeline** (hotkey → delivered text):
