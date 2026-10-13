@@ -344,8 +344,9 @@ are in code. Step 4 is not done, on purpose.
   packaged app (`Contents/Resources/bin/macos-meeting-capture`).
 - **Checked without audio.** The helper compiles. The frame parser has unit
   tests. Nobody ran the helper binary, because it opens the microphone.
-- **Still open (code).** A recorder test for the shared `T0` and for the
-  fallback. `meeting-recorder.ts` has no test file yet.
+- **Done (code).** `meeting-recorder.test.ts` tests the shared `T0` and the
+  fallback. The mocks replace the helper, so the tests do not prove the real
+  helper.
 - **Still open (owner).** The 10-minute spike on one clock. The TCC check
   on an ad-hoc build. One real 30-minute meeting. The benchmark run on that
   meeting. The council verdict.
@@ -400,8 +401,8 @@ The proof needs the owner for one step. Synthetic audio must be silent
 2. **TCC check on an ad-hoc build:** build `--dir`, run the helper from the
    packaged app. The owner confirms that no new TCC dialog appears beyond
    the expected microphone one. (Owner step, not quiet: it shows a dialog.)
-3. **Unit tests:** recorder tests for the framed protocol and the journal
-   (`T0` equal for both channels).
+3. **Unit tests (done):** recorder tests for the framed protocol and the
+   journal (`T0` equal for both channels) are in `meeting-recorder.test.ts`.
 4. **Real meeting (owner):** record one 30-minute meeting with the packaged
    branch build. Check: both channels, no echo of "Me" lines in "Them",
    silent-mic gate still drops noise-floor chunks, no "Okay." rows.
