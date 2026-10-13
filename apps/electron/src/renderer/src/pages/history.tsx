@@ -446,7 +446,7 @@ export default function HistoryPage(): React.JSX.Element {
           size="icon-sm"
           onClick={() => setPage((p) => Math.max(0, p - 1))}
           disabled={page === 0}
-          aria-label="Previous page"
+          aria-label={t("history.prevPage")}
         >
           <ChevronLeft />
         </Button>
@@ -458,7 +458,7 @@ export default function HistoryPage(): React.JSX.Element {
           size="icon-sm"
           onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
           disabled={page >= totalPages - 1}
-          aria-label="Next page"
+          aria-label={t("history.nextPage")}
         >
           <ChevronRight />
         </Button>
@@ -699,7 +699,11 @@ const FiltersModal = memo(function FiltersModal({
                 >
                   <CalendarDays data-icon="inline-start" />
                   <span className="truncate">
-                    {formatRangeLabel(startDate, endDate)}
+                    {formatRangeLabel(
+                      startDate,
+                      endDate,
+                      t("history.selectDate"),
+                    )}
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -1177,8 +1181,8 @@ const FeedItem = memo(function FeedItem({
             variant="ghost"
             size="icon-xs"
             onClick={copyText}
-            title="Copy text"
-            aria-label="Copy text"
+            title={t("history.copyText")}
+            aria-label={t("history.copyText")}
           >
             {copied ? <Check className="text-primary" /> : <Copy />}
           </Button>
@@ -1187,8 +1191,8 @@ const FeedItem = memo(function FeedItem({
             size="icon-xs"
             onClick={() => onDelete(entry.id)}
             className="hover:text-destructive"
-            title="Delete"
-            aria-label="Delete"
+            title={t("history.delete")}
+            aria-label={t("history.delete")}
           >
             <Trash2 />
           </Button>
@@ -1271,18 +1275,16 @@ function DiffText({
   );
 }
 
-// Mockup artboard 01 names this page "Transcriptions" with a fixed English
-// subtitle — the "history"/"today" i18n namespaces have no matching keys
-// (only "History" as a bare title), so this hardcodes the copy the same way
-// help.tsx's PageHeader call already does, rather than touching en.json.
+// The title reuses the sidebar label, so both always show the same name.
 function TranscriptionsPageHeader(): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="mb-7">
       <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
-        Transcriptions
+        {t("shell.nav.today")}
       </h1>
       <p className="text-muted-foreground mt-1 max-w-[480px] text-[13px] leading-[1.5]">
-        Everything you've dictated, in one searchable place.
+        {t("history.subtitle")}
       </p>
     </div>
   );

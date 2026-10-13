@@ -38,18 +38,22 @@ export function parseLocalDate(value: string): Date | undefined {
   return new Date(year, month - 1, day);
 }
 
-export function formatRangeDate(value: string): string {
-  if (!value) return "Select";
+export function formatRangeDate(value: string, placeholder: string): string {
+  if (!value) return placeholder;
   const date = parseLocalDate(value);
-  if (!date) return "Select";
+  if (!date) return placeholder;
   const day = date.getDate();
   const month = date.toLocaleDateString(undefined, { month: "short" });
   const year = date.getFullYear();
   return `${day} ${month}, ${year}`;
 }
 
-export function formatRangeLabel(start: string, end: string): string {
-  return `${formatRangeDate(start)} - ${formatRangeDate(end)}`;
+export function formatRangeLabel(
+  start: string,
+  end: string,
+  placeholder: string,
+): string {
+  return `${formatRangeDate(start, placeholder)} - ${formatRangeDate(end, placeholder)}`;
 }
 
 /** Get a date key for grouping: "Today", "Yesterday", or "Day, Mon DD" */
