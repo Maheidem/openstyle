@@ -63,12 +63,15 @@ Download the latest `.dmg` (Apple Silicon) from the
 [Releases page](https://github.com/Maheidem/openstyle/releases) and drag it
 to Applications.
 
-The build is ad-hoc signed, not notarized, so macOS will warn on first
-launch. Right-click the app and choose Open, or clear the quarantine flag:
+The build is signed with a fixed self-signed certificate (since 2.15.1) and
+is not notarized by Apple, so macOS warns on first launch. Right-click the app
+and choose Open, or clear the quarantine flag:
 
 ```bash
 xattr -cr /Applications/Openstyle.app
 ```
+
+You do this once. Updates do not show the warning again.
 
 ## Build from source
 

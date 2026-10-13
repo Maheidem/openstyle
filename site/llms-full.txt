@@ -46,9 +46,13 @@ You choose where your voice goes:
 1. Download the latest .dmg (Apple Silicon) from the
    https://github.com/Maheidem/openstyle/releases page and drag it to
    Applications.
-2. The build is ad-hoc signed, not notarized, so macOS will warn on first
-   launch. Right-click the app and choose Open, or run:
+2. First launch: Apple has not notarized the app, so macOS warns that the
+   developer is unidentified. Right-click the app, choose Open, then choose
+   Open again. If macOS shows no Open button, go to System Settings, Privacy
+   & Security, and choose Open Anyway. Or run this command in Terminal:
    xattr -cr /Applications/Openstyle.app
+3. You do this once. Updates do not show the warning again, because the app
+   is signed with a fixed certificate since version 2.15.1.
 
 ## Performance
 

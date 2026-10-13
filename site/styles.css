@@ -589,6 +589,38 @@ img {
   color: var(--slate);
 }
 
+/* First launch */
+
+.launch-text {
+  margin: 0 0 14px;
+  max-width: 60ch;
+  font-size: 16px;
+}
+
+.launch-steps {
+  margin: 0 0 14px;
+  padding-left: 22px;
+  max-width: 60ch;
+  font-size: 16px;
+}
+
+.launch-steps li {
+  margin-bottom: 8px;
+}
+
+.launch-code {
+  display: block;
+  margin-top: 8px;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
 /* FAQ */
 
 .faq-list {
