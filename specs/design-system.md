@@ -90,7 +90,8 @@ blue/coral fences that didn't have a prior equivalent.
    at all (`.content h2.page-title` is single-color `var(--ink)`), so the
    retirement is correct, not a regression to paper over — but the now-redundant
    inner `<span className="display text-primary">` wrapper at these 7 call sites
-   should be flattened into the parent heading during the screen pass:
+   should be flattened into the parent heading during the screen pass
+   (done, see "Follow-up items: status"):
    `dictionary.tsx:420`, `settings.tsx:811`, `vocabulary.tsx:568`,
    `meetings.tsx:1180`, `models/page-chrome.tsx:42`, `onboarding.tsx:945`.
    (`models/pair-card.tsx:150` uses `text-muted-foreground` instead of
@@ -268,13 +269,13 @@ These items were out of scope for the foundation pass. Status checked 2026-10-13
   `pages/meetings/shared.tsx:51-55`, `pages/meetings/recording.tsx:248`,
   `pages/remix.tsx:302`, `components/ui/progress.tsx:21`,
   `pages/models/model-list.tsx:631`. Tokens: `globals.css:115-116`.
-- **Done**: Active-nav icon color. `shell.tsx:149` uses `text-sidebar-primary`
+- **Done**: Active-nav icon color. `shell.tsx:145` uses `text-sidebar-primary`
   (`globals.css:93`, `#2563EB`, blue). The fix is a dedicated class on the
   `isActive` branch, as this doc proposed. It does not use an `--accent-blue`
   token: that token does not exist in `globals.css`.
 - **Done**: Apply `--accent-passive-tint`/`-ink` to speaker chips.
   `pages/history.tsx:1166`, `pages/meetings/speakers.tsx:229-230`,
-  `pages/meetings/detail.tsx:835`. `remix-chat.tsx` renders no speaker labels, so
+  `pages/meetings/detail.tsx:838`. `remix-chat.tsx` renders no speaker labels, so
   nothing is left to change there.
 - **Done**: Pill shape for toggles, segmented controls and switches.
   `components/ui/switch.tsx:17`, `components/ui/toggle.tsx:7` and
