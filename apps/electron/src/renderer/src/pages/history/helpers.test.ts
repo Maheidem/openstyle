@@ -1,3 +1,4 @@
+import { SUPPORTED_LANGUAGES } from "@renderer/i18n";
 import { describe, expect, it } from "vitest";
 import { getDayPickerLocale } from "./day-picker-locale";
 import {
@@ -7,8 +8,8 @@ import {
   getDateGroup,
 } from "./helpers";
 
-// 15:45 UTC. The checks compare the style of the text, not the hour value,
-// so the result does not depend on the time zone.
+// 15:45 UTC. The checks compare the style of the text, not the hour or day
+// value, so the result does not depend on the time zone.
 const AFTERNOON = "2020-03-15T15:45:00";
 
 describe("formatClock", () => {
@@ -37,9 +38,12 @@ describe("formatRangeDate and formatRangeLabel", () => {
 
 describe("getDateGroup", () => {
   it("gives text in the app language for an old date", () => {
-    expect(getDateGroup("2020-03-15T12:00:00", "en")).toMatch(/Sun/);
-    expect(getDateGroup("2020-03-15T12:00:00", "pt")).toMatch(/dom/);
-    expect(getDateGroup("2020-03-15T12:00:00", "pt")).toMatch(/mar/);
+    const en = getDateGroup("2020-03-15T12:00:00", "en");
+    const pt = getDateGroup("2020-03-15T12:00:00", "pt");
+    expect(en).toMatch(/(Sun|Mon|Tue|Wed|Thu|Fri|Sat)/);
+    expect(pt).toMatch(/(dom|seg|ter|qua|qui|sex|s[áa]b)/);
+    expect(pt).toMatch(/mar/);
+    expect(pt).not.toBe(en);
   });
 
   it("keeps the Today and Yesterday values for every language", () => {
@@ -61,5 +65,13 @@ describe("getDayPickerLocale", () => {
     expect(getDayPickerLocale("pt-BR").code).toBe("pt-BR");
     expect(getDayPickerLocale("xx").code).toBe("en-US");
     expect(getDayPickerLocale(undefined).code).toBe("en-US");
+  });
+
+  it("has a day picker locale for every app language", () => {
+    expect(SUPPORTED_LANGUAGES.length).toBeGreaterThan(1);
+    for (const lang of SUPPORTED_LANGUAGES) {
+      if (lang === "en") continue;
+      expect(getDayPickerLocale(lang).code, lang).not.toBe("en-US");
+    }
   });
 });
