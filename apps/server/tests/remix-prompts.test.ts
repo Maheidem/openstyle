@@ -4,7 +4,7 @@ import {
   remixTransformSchema,
 } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
-import type { z } from "zod";
+import type { z } from "zod/v3";
 import {
   buildRemixAgentSystem,
   buildRemixPrompt,

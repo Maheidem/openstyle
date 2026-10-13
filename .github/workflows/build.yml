@@ -120,6 +120,10 @@ jobs:
         working-directory: apps/electron
         run: pnpm run typecheck:tests
 
+      - name: Typecheck server (tests)
+        working-directory: apps/server
+        run: pnpm run typecheck:tests
+
   test-server:
     name: Test (Server API)
     needs: [changes]
