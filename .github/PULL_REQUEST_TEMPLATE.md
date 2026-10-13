@@ -3,7 +3,7 @@
 
   PR title must follow Conventional Commits, e.g.:
     fix: prevent duplicate settings requests
-    feat(plugins): add update checks
+    feat(meetings): add summary templates
   Allowed types: feat, fix, docs, chore, refactor, test, ci, build, perf, style, revert
   It's used for the squash commit and the release changelog. A CI check enforces this.
 -->
