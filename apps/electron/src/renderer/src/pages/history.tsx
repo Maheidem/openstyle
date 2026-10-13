@@ -57,11 +57,11 @@ import {
   X,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { type DateRange, DayPicker } from "react-day-picker";
+import { type DateRange, DayPicker, type Locale } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
-import { getDayPickerLocale } from "./history/day-picker-locale";
+import { enUS, loadDayPickerLocale } from "./history/day-picker-locale";
 import {
   formatClock,
   formatCost,
@@ -664,6 +664,21 @@ const FiltersModal = memo(function FiltersModal({
 }): React.JSX.Element {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
+  // English shows until the locale chunk of the app language loads.
+  const [dayPickerLocale, setDayPickerLocale] = useState<Locale>(enUS);
+  useEffect(() => {
+    let cancelled = false;
+    loadDayPickerLocale(lang)
+      .then((locale) => {
+        if (!cancelled) setDayPickerLocale(locale);
+      })
+      .catch(() => {
+        if (!cancelled) setDayPickerLocale(enUS);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
   const selectedDateRange: DateRange = {
     from: parseLocalDate(startDate),
     to: parseLocalDate(endDate),
@@ -719,7 +734,7 @@ const FiltersModal = memo(function FiltersModal({
               >
                 <DayPicker
                   mode="range"
-                  locale={getDayPickerLocale(lang)}
+                  locale={dayPickerLocale}
                   numberOfMonths={2}
                   selected={selectedDateRange}
                   onSelect={onSelectRange}

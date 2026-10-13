@@ -8,7 +8,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { getDayPickerLocale } from "./day-picker-locale";
+import { loadDayPickerLocale } from "./day-picker-locale";
 import {
   formatClock,
   formatRangeDate,
@@ -117,21 +117,21 @@ describe("getDateGroup", () => {
   });
 });
 
-describe("getDayPickerLocale", () => {
-  it("maps app languages and falls back to English", () => {
-    expect(getDayPickerLocale("pt").code).toBe("pt-BR");
-    expect(getDayPickerLocale("de").code).toBe("de");
-    expect(getDayPickerLocale("en").code).toBe("en-US");
-    expect(getDayPickerLocale("pt-BR").code).toBe("pt-BR");
-    expect(getDayPickerLocale("xx").code).toBe("en-US");
-    expect(getDayPickerLocale(undefined).code).toBe("en-US");
+describe("loadDayPickerLocale", () => {
+  it("maps app languages and falls back to English", async () => {
+    expect((await loadDayPickerLocale("pt")).code).toBe("pt-BR");
+    expect((await loadDayPickerLocale("de")).code).toBe("de");
+    expect((await loadDayPickerLocale("en")).code).toBe("en-US");
+    expect((await loadDayPickerLocale("pt-BR")).code).toBe("pt-BR");
+    expect((await loadDayPickerLocale("xx")).code).toBe("en-US");
+    expect((await loadDayPickerLocale(undefined)).code).toBe("en-US");
   });
 
-  it("has a day picker locale for every app language", () => {
+  it("has a day picker locale for every app language", async () => {
     expect(SUPPORTED_LANGUAGES.length).toBeGreaterThan(1);
     for (const lang of SUPPORTED_LANGUAGES) {
       if (lang === "en") continue;
-      expect(getDayPickerLocale(lang).code, lang).not.toBe("en-US");
+      expect((await loadDayPickerLocale(lang)).code, lang).not.toBe("en-US");
     }
   });
 });
