@@ -665,8 +665,10 @@ const FiltersModal = memo(function FiltersModal({
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
   // English shows until the locale chunk of the app language loads.
+  // The chunk loads when the Filters dialog opens, not when History mounts.
   const [dayPickerLocale, setDayPickerLocale] = useState<Locale>(enUS);
   useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     loadDayPickerLocale(lang)
       .then((locale) => {
@@ -678,7 +680,7 @@ const FiltersModal = memo(function FiltersModal({
     return () => {
       cancelled = true;
     };
-  }, [lang]);
+  }, [lang, open]);
   const selectedDateRange: DateRange = {
     from: parseLocalDate(startDate),
     to: parseLocalDate(endDate),
