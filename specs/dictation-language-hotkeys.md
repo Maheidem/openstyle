@@ -240,7 +240,7 @@ const languageOverride = c.req
   ?.trim()
   .toLowerCase();
 // `languages` is already normalized lowercase (normalizeLanguageList,
-// cloud-config.ts:28-42); match case here rather than assuming the header
+// language-list.ts:28-42); match case here rather than assuming the header
 // arrives pre-normalized.
 const effectiveLanguages =
   languageOverride && languages.includes(languageOverride)
@@ -848,7 +848,7 @@ One row per configured language, following the existing remix-hotkey row's
 exact shape (`settings.tsx:1140-1194`: idle state = `Button` with
 `KeyComboDisplay` + "Change"; recording state = draft chip + Cancel). Because
 the row count is dynamic (up to `MAX_LANGUAGES = 5`, `packages/validations/
-src/cloud-config.ts:4`) and each row needs its own `useHotkeyRecorder`
+src/language-list.ts:4`) and each row needs its own `useHotkeyRecorder`
 instance (a hook, so it can't be called in a loop body), extract a
 `LanguageHotkeyRow` component — one per language, mapped over `languages`:
 

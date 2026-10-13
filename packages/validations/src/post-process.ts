@@ -1,5 +1,5 @@
 import { z } from "zod/v3";
-import { languageListSchema } from "./cloud-config.js";
+import { languageListSchema } from "./language-list.js";
 
 // Multi-segment post-processing (LLM cleanup) of an assembled transcript.
 export const postProcessSchema = z.object({
