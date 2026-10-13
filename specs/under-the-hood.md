@@ -88,8 +88,8 @@ ready. Do not start it on this branch.
   then asks again for 3-4 TCC permissions
   (`specs/lean-audit-2026-09.md:143-144`). Signed builds keep the grants:
   the update from 2.15.1 to 2.15.2 kept them (AGENTS.md:41;
-  `.github/workflows/build.yml:313-331`). Only the switch from 2.15.0 to
-  2.15.1 asked again.
+  `CHANGELOG.md:11`). An update from 2.15.0 or older asks once
+  (AGENTS.md:41).
 - Helpers that ship in `resources/bin/darwin-arm64` (local `ls`): `ffmpeg`,
   `fluidaudio-diarize`, `macos-ax`, `macos-fast-paste`,
   `macos-key-listener`, `macos-media-control`, `macos-output-volume`,
