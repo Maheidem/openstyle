@@ -74,9 +74,9 @@ ready. Do not start it on this branch.
   AGENTS.md:41). For an ad-hoc build, command
   `codesign -dv /Applications/Openstyle.app` prints `Signature=adhoc`,
   `TeamIdentifier=not set`, `flags=0x10002(adhoc,runtime)`.
-- CI builds without Apple signing secrets on purpose. Since the branch
-  `chore/self-signed-release` it can sign with a self-signed certificate (see
-  "Alternative" below); without that secret the build stays ad-hoc.
+- CI builds without Apple signing secrets on purpose. Since 2.15.1 it signs
+  with a self-signed certificate (see "Alternative" below); without that
+  secret the build stays ad-hoc.
 - `electron-builder.yml:60` sets `notarize: true`. Unverified: how
   electron-builder 26 acts on this key with no Apple credentials. CI passes
   today, so it does not fail the build.
