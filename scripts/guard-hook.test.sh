@@ -89,6 +89,29 @@ allow|Bash|osascript -e 'display notification "done"'
 allow|Bash|open https://github.com/Maheidem/openstyle
 allow|Bash|pnpm --filter @openstyle/electron test
 allow|Bash|git commit -m "docs: guard notes"
+block|Bash|gh pr list --repo Maheidem/openstyle
+allow|Bash|GH_TOKEN="$(gh auth token -u Maheidem)" gh pr list --repo Maheidem/openstyle
+allow|Bash|GH_TOKEN=$(gh auth token -u Maheidem) gh pr list
+allow|Bash|GH_TOKEN="$(gh auth token -u Maheidem)" rtk gh pr list
+allow|Bash|cd /tmp && GH_TOKEN="$(gh auth token -u Maheidem)" gh run list | head
+allow|Bash|gh auth status
+allow|Bash|gh auth token -u Maheidem
+allow|Bash|gh auth token -h github.com -u Maheidem
+allow|Bash|gh auth token -u Maheidem -h github.com
+allow|Bash|gh --version
+allow|Bash|gh help
+block|Bash|gh auth token
+block|Bash|gh auth token -u SomeoneElse
+block|Bash|rtk gh issue list
+block|Bash|git status && gh run list
+block|Bash|echo $(gh pr list)
+block|Bash|GH_TOKEN="$(gh auth token -u Maheidem)" gh pr list && gh pr view 1
+block|Bash|GH_TOKEN="$(gh auth token -u Maheidem)" gh pr list; gh run list
+block|Bash|GH_TOKEN="$(gh auth token -u Other)" gh pr list
+block|Bash|GH_TOKEN=abc gh pr list
+allow|Bash|rg "gh pr" specs
+allow|Bash|git commit -m "docs: use gh pr list"
+allow|Bash|echo gh pr list
 block|Write|~/.cache/freestyle/x.txt
 block|Edit|~/Library/Application Support/Openstyle/settings.json
 block|MultiEdit|~/.cache/huggingface/token
