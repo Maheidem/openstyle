@@ -166,3 +166,68 @@ Local RAG over dictation/meeting history (sqlite-vec) plus local MCP exposure, p
 
 **3.0 — "Context-aware dictation."**
 Per-app model+prompt profiles (Power Mode parity with VoiceInk) and opt-in, nothing-persisted screen-context formatting (superwhisper Super Mode parity), shipped together with an explicit privacy design and public write-up — turning the feature that could otherwise repeat the Wispr Flow accessibility-tree story into the opposite: proof that reading screen context doesn't require logging it. Gate this release on the privacy design being done, not on the calendar.
+---
+
+## 6. Meeting connections (discussion 2026-10-13)
+
+**Goal:** connect Openstyle meetings to calendar data and to meeting platforms, with no hosted bot. The local-first rule stays. The rejection of hosted calendar bots in section 4 (`specs/roadmap-2026-08.md:153`) stays in force.
+
+### Current state (verified 2026-10-13)
+
+- Openstyle records meetings without a bot. It uses the local microphone and a global system-audio process tap in one process (`apps/electron/native/macos-meeting-capture.swift:841`, `CATapDescription(stereoGlobalTapButExcludeProcesses:)`).
+- No calendar code exists. A search of `apps/*/src` and `apps/electron/native/*.swift` finds no EventKit use and no calendar integration. The only matches are comments about a pasted invitee list.
+- No meeting detection exists. The user starts recording by hand.
+- The `meetings` table has `title` (`apps/server/src/lib/schema.ts:762`) and a free-text `context` column (`apps/server/src/lib/schema.ts:869`). It has no attendee, no calendar event ID and no meeting link field.
+- Speaker naming already reads the `context` field (`apps/server/src/lib/meetings/enhance-prompt.ts:83-90`). The owner pastes the calendar invitee list there today (`apps/server/src/lib/meetings/context-terms.ts:3-4`).
+
+### Tier 1: calendar through macOS EventKit
+
+**What it is:** a read of the accounts already in the macOS Calendar app. It needs no OAuth and no account setup in Openstyle.
+**Permission:** only the Calendars permission. The usage string is `NSCalendarsFullAccessUsageDescription` (macOS 14 and later).
+**Data:** event title, start and end time, and attendees (name, email).
+**Unverified:** the meeting link field (URL or notes). The behavior of Exchange and Google accounts for attendees and links.
+**Build:**
+1. One Swift helper next to `apps/electron/native/macos-ax.swift`.
+2. A usage string in `extendInfo` in `apps/electron/electron-builder.yml:56-59`.
+3. A check whether a calendars entitlement is needed under hardened runtime. `apps/electron/build/entitlements.mac.plist` has no calendars key today. This is unverified.
+
+**Main value:** attendee names feed speaker naming. The user no longer pastes the invitee list by hand.
+**Effort:** S-M.
+**Sources:** https://developer.apple.com/documentation/eventkit/accessing-the-event-store , https://developer.apple.com/documentation/eventkit/ekparticipant (field details unverified).
+
+### Tier 1b: direct calendar APIs (optional, not now)
+
+- Microsoft Graph `Calendars.Read` needs no admin consent (https://learn.microsoft.com/en-us/graph/permissions-reference).
+- Google calendar scopes are sensitive. They need brand verification: domain, privacy policy and demo video (https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification).
+- Google apps in "Testing" status that are not verified expire tokens after 7 days (https://support.google.com/cloud/answer/15549945).
+- These paths add OAuth, token storage and review work. Tier 1 gives most of the value without them.
+
+### Tier 1.5: meeting detection and a "Record?" prompt
+
+**Signals:** a calendar event is running now, the microphone is in use (`kAudioDevicePropertyDeviceIsRunningSomewhere`) and a Zoom or Teams process is running.
+**Limits:**
+- The signal for a Bluetooth microphone is unreliable.
+- A muted call may not show microphone use.
+- Meet in a browser needs a window or URL signal. This may need the Screen Recording permission.
+
+**Source:** https://developer.apple.com/forums/thread/741026 (limits not tested in Openstyle: unverified).
+**Depends on:** Tier 1.
+
+### Tier 2: platform data without a bot
+
+This path is mostly closed for a normal participant.
+
+- **Teams:** Graph access to transcripts can be disabled by admins and is reported off by default. Recordings are for the organizer only (https://learn.microsoft.com/en-us/graph/api/calltranscript-get , https://learn.microsoft.com/en-us/graph/api/callrecording-get).
+- **Google Meet:** artifacts go to the organizer's Drive. Transcripts need a paid Workspace plan. `drive.meet.readonly` is a restricted scope (https://developers.google.com/workspace/meet/api/guides/artifacts , https://developers.google.com/workspace/meet/api/guides/authenticate-authorize).
+- **Zoom cloud recording:** needs a paid plan and host or admin scopes (https://developers.zoom.us/docs/api/meetings/#tag/cloud-recording).
+- **Zoom RTMS:** streams without a bot, but it shows a disclosure to all participants and needs admin enablement (https://developers.zoom.us/docs/rtms/meetings/ux-overview/).
+- **Competitors:** Granola, Notion, tl;dv desktop and Jamie use local capture, as Openstyle does.
+
+### Decision and order
+
+1. Tier 1: calendar through EventKit.
+2. Tier 1.5: meeting detection and the "Record?" prompt.
+3. Cross-meeting voiceprints (ranked item 3 in section 2 of this file, `specs/roadmap-2026-08.md:50`).
+4. Platform APIs (Tier 1b and Tier 2) only as an optional extra, for meetings the user organizes.
+
+Hosted calendar bots stay rejected (section 4).
