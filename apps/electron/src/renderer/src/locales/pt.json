@@ -290,7 +290,12 @@
     "openStats": "Mostrar estatísticas",
     "closeStats": "Ocultar estatísticas",
     "resizeStats": "Redimensionar o painel",
-    "changeHotkey": "Mudar atalho"
+    "changeHotkey": "Mudar atalho",
+    "prevPage": "Página anterior",
+    "nextPage": "Próxima página",
+    "copyText": "Copiar texto",
+    "delete": "Excluir",
+    "subtitle": "Tudo o que você ditou, em um só lugar pesquisável."
   },
   "dictionary": {
     "title": "Atalhos",

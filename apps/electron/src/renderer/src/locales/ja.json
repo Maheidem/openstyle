@@ -290,7 +290,12 @@
     "openStats": "統計を表示",
     "closeStats": "統計を非表示",
     "resizeStats": "パネルのサイズを変更",
-    "changeHotkey": "ホットキーを変更"
+    "changeHotkey": "ホットキーを変更",
+    "prevPage": "前のページ",
+    "nextPage": "次のページ",
+    "copyText": "テキストをコピー",
+    "delete": "削除",
+    "subtitle": "音声入力した内容がすべて、検索できる1か所に。"
   },
   "dictionary": {
     "title": "ショートカット",

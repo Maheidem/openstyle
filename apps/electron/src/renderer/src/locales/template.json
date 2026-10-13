@@ -371,7 +371,12 @@
     "openStats": "Show stats",
     "closeStats": "Hide stats",
     "resizeStats": "Resize stats panel",
-    "changeHotkey": "Change hotkey"
+    "changeHotkey": "Change hotkey",
+    "prevPage": "Previous page",
+    "nextPage": "Next page",
+    "copyText": "Copy text",
+    "delete": "Delete",
+    "subtitle": "Everything you've dictated, in one searchable place."
   },
   "dictionary": {
     "title": "Shortcuts",

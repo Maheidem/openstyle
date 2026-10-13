@@ -290,7 +290,12 @@
     "openStats": "Mostrar estadísticas",
     "closeStats": "Ocultar estadísticas",
     "resizeStats": "Redimensionar el panel",
-    "changeHotkey": "Cambiar atajo"
+    "changeHotkey": "Cambiar atajo",
+    "prevPage": "Página anterior",
+    "nextPage": "Página siguiente",
+    "copyText": "Copiar texto",
+    "delete": "Eliminar",
+    "subtitle": "Todo lo que has dictado, en un solo lugar donde buscar."
   },
   "dictionary": {
     "title": "Atajos",

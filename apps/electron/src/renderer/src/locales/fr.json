@@ -290,7 +290,12 @@
     "openStats": "Afficher les statistiques",
     "closeStats": "Masquer les statistiques",
     "resizeStats": "Redimensionner le panneau",
-    "changeHotkey": "Changer le raccourci"
+    "changeHotkey": "Changer le raccourci",
+    "prevPage": "Page précédente",
+    "nextPage": "Page suivante",
+    "copyText": "Copier le texte",
+    "delete": "Supprimer",
+    "subtitle": "Tout ce que vous avez dicté, réuni dans un seul endroit consultable."
   },
   "dictionary": {
     "title": "Raccourcis",

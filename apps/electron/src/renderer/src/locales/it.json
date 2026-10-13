@@ -290,7 +290,12 @@
     "openStats": "Mostra statistiche",
     "closeStats": "Nascondi statistiche",
     "resizeStats": "Ridimensiona il pannello",
-    "changeHotkey": "Cambia scorciatoia"
+    "changeHotkey": "Cambia scorciatoia",
+    "prevPage": "Pagina precedente",
+    "nextPage": "Pagina successiva",
+    "copyText": "Copia testo",
+    "delete": "Elimina",
+    "subtitle": "Tutto ciò che hai dettato, in un unico posto in cui cercare."
   },
   "dictionary": {
     "title": "Scorciatoie",

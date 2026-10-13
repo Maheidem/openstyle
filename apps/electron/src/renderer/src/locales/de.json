@@ -290,7 +290,12 @@
     "openStats": "Statistiken anzeigen",
     "closeStats": "Statistiken ausblenden",
     "resizeStats": "Statistikleiste anpassen",
-    "changeHotkey": "Tastenkombination ändern"
+    "changeHotkey": "Tastenkombination ändern",
+    "prevPage": "Vorherige Seite",
+    "nextPage": "Nächste Seite",
+    "copyText": "Text kopieren",
+    "delete": "Löschen",
+    "subtitle": "Alles, was du diktiert hast, an einem durchsuchbaren Ort."
   },
   "dictionary": {
     "title": "Kurzbefehle",
