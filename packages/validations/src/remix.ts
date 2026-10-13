@@ -195,14 +195,14 @@ export const REMIX_CLIENT_TOOLS = {
   },
   set_clipboard_image: {
     description:
-      "Download an image onto the user's clipboard. Returns { ok }. Follow with paste to insert it into the document. Failure: 'fetch-failed' (the URL didn't serve a usable image — try the next image_search result; if none work, give the user the URL in chat instead).",
+      "Download an image onto the user's clipboard. Returns { ok }. Follow with paste to insert it into the document. Failure: 'fetch-failed' (the URL did not serve a usable image; give the user the URL in chat instead).",
     inputSchema: z.object({
       url: z
         .string()
         .url()
         .max(2_000)
         .describe(
-          "A direct image-file URL — use imageUrl from image_search results, NOT sourceUrl (which is the webpage the image came from).",
+          "A direct image-file URL (the image file itself, not the webpage that shows it).",
         ),
     }),
   },

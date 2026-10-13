@@ -925,8 +925,6 @@ const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
     doing: "Reading your clipboard…",
     done: "Read your clipboard",
   },
-  web_search: { doing: "Searching the web…", done: "Searched the web" },
-  image_search: { doing: "Searching images…", done: "Searched images" },
 };
 
 function toolLabels(name: string): { doing: string; done: string } {
