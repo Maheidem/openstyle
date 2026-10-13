@@ -223,6 +223,10 @@ img {
   color: var(--line);
 }
 
+.hero-meta-help {
+  flex-basis: 100%;
+}
+
 .hero-props {
   display: flex;
   align-items: center;

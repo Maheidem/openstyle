@@ -71,7 +71,9 @@ and choose Open, or clear the quarantine flag:
 xattr -cr /Applications/Openstyle.app
 ```
 
-You do this once. Updates do not show the warning again.
+You do this once. Openstyle updates itself from inside the app and does not
+show the warning again. A new `.dmg` that you download in a browser shows the
+warning again.
 
 ## Build from source
 
