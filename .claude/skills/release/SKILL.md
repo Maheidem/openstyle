@@ -110,9 +110,11 @@ It needs `gh`, `jq` and about 300 MB in `/tmp`; a full run takes about
 - **gh auth account split.** The active `gh` account must be the personal
   one with push/release rights on `Maheidem/openstyle`, not the work
   account. Check with `gh auth status` if pushes/releases get rejected.
-- **Ad-hoc-signed builds re-prompt TCC permissions after every update.**
-  Expected until CI signs with a fixed certificate (see "Release signing
-  (self-signed)" below) or a Developer ID. Not a regression to chase.
+- **CI builds are signed with the self-signed certificate "Openstyle Release"
+  (since 2.15.1).** Updates keep the TCC grants (proven 2026-10-13, 2.15.1 to
+  2.15.2). The re-prompt happens only when the secret is empty and the job
+  keeps the ad-hoc build. The first update that changes the identity prompts
+  once. See "Release signing (self-signed)" below.
 
 ## Release signing (self-signed)
 
