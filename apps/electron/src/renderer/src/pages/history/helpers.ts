@@ -67,7 +67,8 @@ export function getDateGroup(iso: string, lang?: string): string {
   const now = new Date();
   const entryDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const diffDays = Math.floor(
+  // Both dates are local midnights. A clock change makes a day 23 or 25 hours, so round.
+  const diffDays = Math.round(
     (today.getTime() - entryDate.getTime()) / 86400_000,
   );
   if (diffDays === 0) return "Today";
