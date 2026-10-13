@@ -36,7 +36,9 @@ const log = createAppLogger("electron");
 export function restartAndUpdate(): void {
   if (process.platform === "darwin" && selfUpdater.isReadyToInstall) {
     // Self-update path (see self-updater.ts): quitAndInstall() would hand
-    // this off to Squirrel.Mac, which rejects our ad-hoc-signed downloads.
+    // this off to Squirrel.Mac. Squirrel.Mac rejected the ad-hoc-signed
+    // builds before 2.15.1. It is unverified whether it accepts builds
+    // signed with the "Openstyle Release" certificate.
     // Extraction/swap can take a few seconds, so isUpdaterQuitting is only
     // set right before installUpdate() actually calls app.quit() (via the
     // onBeforeQuit callback) — not here — so a manual quit mid-install still

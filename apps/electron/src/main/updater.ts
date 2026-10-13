@@ -80,14 +80,15 @@ export function registerUpdater(): void {
 
   if (!is.dev) {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
-    // Every build is ad-hoc signed (no paid Apple Developer identity yet).
-    // Squirrel.Mac deterministically rejects ad-hoc-signed updates AFTER
-    // downloading them ("Code signature ... did not pass validation"), so we
-    // still use electron-updater only to *check* the release feed. On
-    // macOS, downloading and installing goes through selfUpdater (see
-    // self-updater.ts) instead of Squirrel.Mac; other platforms open the
-    // releases page. autoDownload is always false, so electron-updater never
-    // itself downloads the (Squirrel-incompatible) update artifact.
+    // Builds before 2.15.1 were ad-hoc signed, and Squirrel.Mac rejected
+    // their updates AFTER downloading them ("Code signature ... did not pass
+    // validation"). Since 2.15.1, CI signs with the self-signed certificate
+    // "Openstyle Release". It is unverified whether Squirrel.Mac accepts
+    // updates signed with that certificate, so we still use electron-updater
+    // only to *check* the release feed. On macOS, downloading and installing
+    // goes through selfUpdater (see self-updater.ts) instead of Squirrel.Mac;
+    // other platforms open the releases page. autoDownload is always false,
+    // so electron-updater never itself downloads the update artifact.
     autoUpdater.autoDownload = false;
     // Honour the same preference on quit. Upstream hardcoded this to true, so a
     // single manual "Check for Updates" could stage a release that then
@@ -183,9 +184,9 @@ export function registerUpdater(): void {
   }
 
   ipcMain.on("updater:download", () => {
-    // Every build is ad-hoc signed, so Squirrel.Mac would reject a download
-    // done through electron-updater's own downloadUpdate() (see the
-    // autoDownload=false comment above). On a packaged macOS build we
+    // Squirrel.Mac is not used for the install (see the autoDownload=false
+    // comment above), so electron-updater's own downloadUpdate() is not
+    // called. On a packaged macOS build we
     // instead download + verify the release zip ourselves via selfUpdater
     // (self-updater.ts) and skip Squirrel entirely. Everywhere else (dev
     // builds, other platforms, or if self-update can't run here) we fall

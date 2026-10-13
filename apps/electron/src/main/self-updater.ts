@@ -1,7 +1,7 @@
-// Electron glue for the macOS self-updater. All ad-hoc-signed-build reasoning
-// lives in self-updater-core.ts's header comment; this file wires that pure
-// logic into the running app: paths, IPC-facing events, and the
-// download -> extract -> swap -> relaunch sequence.
+// Electron glue for the macOS self-updater. The reason for the self-updater
+// (signing history, Squirrel.Mac) is in the self-updater-core.ts header
+// comment. This file wires that pure logic into the running app: paths,
+// IPC-facing events, and the download -> extract -> swap -> relaunch sequence.
 
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";

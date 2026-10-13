@@ -2,14 +2,18 @@
 // be exercised directly (e.g. `tsx self-updater-core.ts`) outside the packaged
 // app. `self-updater.ts` wires this into Electron (paths, events, IPC).
 //
-// Why this exists: every Openstyle build is ad-hoc signed (no paid Apple
-// Developer identity yet). Squirrel.Mac — electron-updater's macOS install
-// mechanism — deterministically rejects ad-hoc-signed updates after
-// downloading them ("Code signature ... did not pass validation"). This
-// module replaces that path on macOS: download the release zip ourselves,
-// verify its sha512 against the published `latest-mac.yml`, extract with the
-// system `ditto` (preserves the xattr/symlink layout code signing depends on
-// — a JS unzip library does not), and atomically swap the app bundle.
+// Why this exists: the builds before 2.15.1 were ad-hoc signed, and
+// Squirrel.Mac (the electron-updater install mechanism on macOS) rejected
+// their updates after the download ("Code signature ... did not pass
+// validation"). Since 2.15.1, CI signs the release build with the
+// self-signed certificate "Openstyle Release" (no notarization, no Developer
+// ID). No test is on record that shows whether Squirrel.Mac accepts an
+// update that is signed with this certificate. This is unverified, so the
+// self-updater stays. This module replaces that path on macOS: download the
+// release zip ourselves, verify its sha512 against the published
+// `latest-mac.yml`, extract with the system `ditto` (preserves the
+// xattr/symlink layout code signing depends on — a JS unzip library does
+// not), and atomically swap the app bundle.
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
