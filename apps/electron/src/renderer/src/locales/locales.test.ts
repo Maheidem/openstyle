@@ -117,6 +117,29 @@ describe("locale files", () => {
       "models.taskProfiles.presetSaveFailed",
       "models.taskProfiles.presetDeleteFailed",
     ],
+    // Keys introduced by the history page translation work (issue #83) and the
+    // history keys that were still English in six locales. The page shows them
+    // on a primary surface, so every locale carries them.
+    "history-i18n": [
+      "history.prevPage",
+      "history.nextPage",
+      "history.copyText",
+      "history.delete",
+      "history.subtitle",
+      "history.selectDate",
+      "history.dateRangeLabel",
+      "history.viewLabel",
+      "history.diffToggle",
+      "history.diffToggleDesc",
+      "history.aiEditToggle",
+      "history.aiEditToggleDesc",
+      "history.nerdToggle",
+      "history.nerdToggleDesc",
+      "history.nerdWpm",
+      "history.nerdTok",
+      "history.nerdCompute",
+      "history.dismissHero",
+    ],
     // Keys introduced by the `meeting_summary_timeout_seconds` setting — the one
     // knob that decides whether a local inference engine gets to finish a
     // summary at all. Settings → Data, so every locale carries them, and the

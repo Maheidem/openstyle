@@ -295,7 +295,20 @@
     "nextPage": "Próxima página",
     "copyText": "Copiar texto",
     "delete": "Excluir",
-    "subtitle": "Tudo o que você ditou, em um só lugar pesquisável."
+    "subtitle": "Tudo o que você ditou, em um só lugar pesquisável.",
+    "dateRangeLabel": "Período",
+    "viewLabel": "Visualização",
+    "diffToggle": "Modo de diferenças",
+    "diffToggleDesc": "Destaca o que a limpeza com IA alterou",
+    "aiEditToggle": "Edições de IA",
+    "aiEditToggleDesc": "Mostra o texto limpo em vez da transcrição original",
+    "nerdToggle": "Estatísticas para nerds",
+    "nerdToggleDesc": "Mostra tokens, latência e palavras por minuto",
+    "nerdWpm": "{{n}} ppm",
+    "nerdTok": "{{in}}→{{out}} tok",
+    "nerdCompute": "{{label}} de computação",
+    "dismissHero": "Dispensar",
+    "selectDate": "Selecionar"
   },
   "dictionary": {
     "title": "Atalhos",

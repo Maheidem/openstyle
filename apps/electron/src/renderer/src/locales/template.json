@@ -376,7 +376,8 @@
     "nextPage": "Next page",
     "copyText": "Copy text",
     "delete": "Delete",
-    "subtitle": "Everything you've dictated, in one searchable place."
+    "subtitle": "Everything you've dictated, in one searchable place.",
+    "selectDate": "Select"
   },
   "dictionary": {
     "title": "Shortcuts",

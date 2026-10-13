@@ -699,7 +699,11 @@ const FiltersModal = memo(function FiltersModal({
                 >
                   <CalendarDays data-icon="inline-start" />
                   <span className="truncate">
-                    {formatRangeLabel(startDate, endDate)}
+                    {formatRangeLabel(
+                      startDate,
+                      endDate,
+                      t("history.selectDate"),
+                    )}
                   </span>
                 </Button>
               </PopoverTrigger>

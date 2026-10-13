@@ -295,7 +295,20 @@
     "nextPage": "次のページ",
     "copyText": "テキストをコピー",
     "delete": "削除",
-    "subtitle": "音声入力した内容がすべて、検索できる1か所に。"
+    "subtitle": "音声入力した内容がすべて、検索できる1か所に。",
+    "dateRangeLabel": "期間",
+    "viewLabel": "表示",
+    "diffToggle": "差分モード",
+    "diffToggleDesc": "AIによる整形で変更された箇所をハイライトします",
+    "aiEditToggle": "AI編集",
+    "aiEditToggleDesc": "元の文字起こしの代わりに整形後のテキストを表示します",
+    "nerdToggle": "詳細統計",
+    "nerdToggleDesc": "トークン数、レイテンシ、1分あたりの単語数を表示します",
+    "nerdWpm": "{{n}} 語/分",
+    "nerdTok": "{{in}}→{{out}} トークン",
+    "nerdCompute": "計算 {{label}}",
+    "dismissHero": "閉じる",
+    "selectDate": "選択"
   },
   "dictionary": {
     "title": "ショートカット",

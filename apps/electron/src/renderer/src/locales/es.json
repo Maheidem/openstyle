@@ -295,7 +295,20 @@
     "nextPage": "Página siguiente",
     "copyText": "Copiar texto",
     "delete": "Eliminar",
-    "subtitle": "Todo lo que has dictado, en un solo lugar donde buscar."
+    "subtitle": "Todo lo que has dictado, en un solo lugar donde buscar.",
+    "dateRangeLabel": "Rango de fechas",
+    "viewLabel": "Vista",
+    "diffToggle": "Modo de diferencias",
+    "diffToggleDesc": "Resalta lo que cambió la limpieza con IA",
+    "aiEditToggle": "Ediciones de IA",
+    "aiEditToggleDesc": "Muestra el texto limpio en lugar de la transcripción original",
+    "nerdToggle": "Estadísticas para nerds",
+    "nerdToggleDesc": "Muestra tokens, latencia y palabras por minuto",
+    "nerdWpm": "{{n}} ppm",
+    "nerdTok": "{{in}}→{{out}} tok",
+    "nerdCompute": "{{label}} de cómputo",
+    "dismissHero": "Descartar",
+    "selectDate": "Elegir"
   },
   "dictionary": {
     "title": "Atajos",
