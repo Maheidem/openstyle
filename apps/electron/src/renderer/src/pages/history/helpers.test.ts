@@ -1,5 +1,13 @@
 import { SUPPORTED_LANGUAGES } from "@renderer/i18n";
-import { describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { getDayPickerLocale } from "./day-picker-locale";
 import {
   formatClock,
@@ -46,14 +54,66 @@ describe("getDateGroup", () => {
     expect(pt).not.toBe(en);
   });
 
-  it("keeps the Today and Yesterday values for every language", () => {
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 86400_000);
-    const iso = (d: Date): string => d.toISOString().slice(0, 19);
-    for (const lang of ["en", "pt", "de", undefined]) {
-      expect(getDateGroup(iso(now), lang)).toBe("Today");
-      expect(getDateGroup(iso(yesterday), lang)).toBe("Yesterday");
-    }
+  describe("with a fixed clock and time zone", () => {
+    const originalTz = process.env.TZ;
+
+    beforeAll(() => {
+      process.env.TZ = "America/New_York";
+    });
+
+    afterAll(() => {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // The input is a UTC string without the "Z", like the server sends it.
+    const utc = (d: Date): string => d.toISOString().slice(0, 19);
+
+    it("keeps the Today and Yesterday values for every language", () => {
+      const now = new Date(2026, 5, 15, 12, 0, 0);
+      vi.useFakeTimers();
+      vi.setSystemTime(now);
+      const yesterday = new Date(2026, 5, 14, 12, 0, 0);
+      for (const lang of ["en", "pt", "de", undefined]) {
+        expect(getDateGroup(utc(now), lang)).toBe("Today");
+        expect(getDateGroup(utc(yesterday), lang)).toBe("Yesterday");
+      }
+    });
+
+    it("gives Yesterday on the day after a spring clock change (23 hour day)", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 2, 9, 12, 0, 0));
+      expect(getDateGroup("2026-03-08T17:00:00", "en")).toBe("Yesterday");
+      expect(getDateGroup(utc(new Date(2026, 2, 9, 8, 0, 0)), "en")).toBe(
+        "Today",
+      );
+    });
+
+    it("gives Yesterday on the day after an autumn clock change (25 hour day)", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 10, 2, 12, 0, 0));
+      expect(getDateGroup(utc(new Date(2026, 10, 1, 12, 0, 0)), "en")).toBe(
+        "Yesterday",
+      );
+      expect(getDateGroup(utc(new Date(2026, 10, 2, 8, 0, 0)), "en")).toBe(
+        "Today",
+      );
+    });
+
+    it("gives the weekday text for two days ago across a clock change", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 2, 9, 12, 0, 0));
+      expect(getDateGroup(utc(new Date(2026, 2, 7, 12, 0, 0)), "en")).toMatch(
+        /Sat/,
+      );
+    });
   });
 });
 
