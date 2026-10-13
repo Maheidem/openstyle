@@ -109,7 +109,14 @@ command_word() {
 
 # Split on ; && || | & newlines $( and backticks. Quotes are not parsed, so a
 # separator inside a quoted string makes an extra segment. That only adds checks.
-segments=$(perl -pe 's/\$\(|`|&&|\|\||[;|]/\n/g; s/(^|[^>])&(?!>)/$1\n/g' <<<"$cmd")
+#
+# Rule g (gh profile): the GH_TOKEN="$(gh auth token -u Maheidem)" prefix is
+# first replaced by a marker. The marker keeps the prefix in the same segment
+# as the gh call it belongs to. A prefix on one gh call does not cover a
+# second gh call in a later segment.
+GH_MARK='__OPENSTYLE_GH_OK__=1'
+seg_cmd=$(perl -pe 's/GH_TOKEN=("?)\$\(gh auth token(?: -h github\.com)? -u Maheidem(?: -h github\.com)?\)\1/__OPENSTYLE_GH_OK__=1/g' <<<"$cmd")
+segments=$(perl -pe 's/\$\(|`|&&|\|\||[;|]/\n/g; s/(^|[^>])&(?!>)/$1\n/g' <<<"$seg_cmd")
 
 while IFS= read -r seg; do
   [[ -z ${seg//[[:space:]]/} ]] && continue
@@ -124,6 +131,29 @@ while IFS= read -r seg; do
       ;;
     afplay)
       block "rule c" "audio playback (afplay) plays through the owner's speakers."
+      ;;
+    # Rule g: every gh call runs as the Maheidem profile (owner rule 2026-10-13).
+    # Known limits of this simple parser:
+    # - A quoted ; | && or $( makes an extra segment. A quoted text that then
+    #   starts with "gh " can block by mistake. Use a file for such text.
+    # - Lines inside a heredoc are checked like command lines.
+    # - Only a prefix in the same segment counts. "export GH_TOKEN=...; gh x"
+    #   is blocked. A gh call in "bash -c" or a script file is not parsed here.
+    # - A mention in the arguments of another command (rg "gh pr") is allowed
+    #   because the command word is not gh.
+    gh)
+      if [[ $seg =~ (^|[[:space:]])gh[[:space:]]+auth[[:space:]]+status([[:space:]]|$) ||
+        $seg =~ (^|[[:space:]])gh[[:space:]]+(--version|help)([[:space:]]|$) ||
+        $seg =~ (^|[[:space:]])gh[[:space:]]+auth[[:space:]]+token[[:space:]]+((-h|--hostname)[[:space:]]+github\.com[[:space:]]+)?(-u|--user)[[:space:]]+Maheidem([[:space:]]|\)|$) ]]; then
+        : # always allowed
+      elif [[ $seg == *"$GH_MARK"* ]] &&
+        ! [[ ${seg%%"$GH_MARK"*} =~ (^|[[:space:]])gh([[:space:]]|$) ]]; then
+        : # prefixed
+      else
+        # Own message: the live-testing skill does not apply to this rule.
+        echo "BLOCKED by guard hook (rule g): Openstyle uses the Maheidem gh profile. Prefix the command with GH_TOKEN=\"\$(gh auth token -u Maheidem)\"." >&2
+        exit 2
+      fi
       ;;
     # Rule d: kill by name.
     pkill | killall)
