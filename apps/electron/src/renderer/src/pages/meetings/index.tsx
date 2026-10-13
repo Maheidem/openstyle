@@ -34,7 +34,7 @@ import {
 import { StatusBadge } from "./shared";
 
 export default function MeetingsPage(): React.JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const recorder = useRecorder();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -237,7 +237,7 @@ export default function MeetingsPage(): React.JSX.Element {
                     </span>
                     <span className="flex min-w-0 items-center justify-between gap-2">
                       <span className="mono text-muted-foreground/70 min-w-0 truncate text-[10px]">
-                        {formatTimestamp(m.started_at)} ·{" "}
+                        {formatTimestamp(m.started_at, i18n.language)} ·{" "}
                         {formatClockDuration(m.duration_ms)}
                       </span>
                       <StatusBadge status={m.status} />
