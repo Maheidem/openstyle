@@ -1,5 +1,14 @@
 # Freestyle Remix — Technical Spec
 
+**Status:** Stale. This file is a pre-fork design from the cloud era. Do not use it as a current spec. It describes `main` @ `f529a40`, the `cloud` repo and a Drive product spec. Commit `2a8c252` ("fork: remove Freestyle Cloud", 2026-08-19) removed the cloud. The agent loop (section 4, `POST /v2/remix`) and the cloud proxy branch of `POST /api/remix` (section 5) no longer exist. Today the agent loop runs in the local server: `runRemixAgentLocally()` in `apps/server/src/lib/remix-agent.ts:65` through the route `apps/server/src/routes/remix/agent.ts`. Read the current code for the real design:
+- `apps/server/src/lib/remix-agent.ts`, `remix-store.ts`, `remix-transform.ts` (agent loop, local thread and run storage, transform lane)
+- `apps/server/src/routes/remix/` (HTTP routes)
+- `packages/validations/src/remix.ts` (wire contracts)
+- `apps/electron/src/main/remix/` (hotkey, bar window, IPC)
+- `apps/electron/src/renderer/src/pages/remix.tsx` and `components/remix-chat.tsx` (UI)
+
+**Checked:** 2026-10-13 on `main` @ `fdc6de9`.
+
 Implementation spec for the Remix AI writing agent, grounded in the codebase as
 of `main` @ `f529a40` (desktop) and the current `cloud` repo. Companion to the
 product spec ("Freestyle Remix Product Spec — Revised Draft" in Drive).

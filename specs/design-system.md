@@ -1,8 +1,11 @@
 # Design system — reskin foundation
 
-Status: foundation landed (tokens, fonts, base component shapes). Screen-by-screen
-application to individual pages is a follow-up pass — see "What's NOT done yet"
-at the bottom.
+Status: foundation landed (tokens, fonts, base component shapes). The screen pass
+is mostly done: of the 8 follow-up items, 5 are done, 2 are open and 1 is dropped. See "Follow-up
+items: status" at the bottom (checked 2026-10-13 on `main` @ `fdc6de9`). Token values
+in this file are the 2026-08 values; `apps/electron/src/renderer/src/globals.css`
+is the source of truth. The `--chart-1..5` ramp described below no longer exists
+in `globals.css` (see "Follow-up items: status").
 
 Reference mockups: [`specs/design/reskin-mockups.html`](design/reskin-mockups.html)
 (approved direction, copied verbatim from the design exploration — do not edit,
@@ -155,7 +158,7 @@ Two colors are load-bearing signals in this system and must not leak into decora
     both in the solid and `html.glass` variants, and in the
     `prefers-reduced-transparency` fallback. This is the actual selected-nav
     surface used by `shell.tsx`'s `NavLink`.
-  - **Known gap, deferred to the screen pass**: `shell.tsx`'s active-nav icon color
+  - **Known gap (fixed later, see "Follow-up items: status")**: `shell.tsx`'s active-nav icon color
     (`isActive ? "text-primary" : "text-muted-foreground"`) reads `--primary`,
     which this pass sets to ink (`#1D2129`), not blue. The mockup wants the active
     nav icon to be `--accent-blue`. Fixing this by changing `--primary` globally
@@ -256,30 +259,39 @@ and a code comment).
 `apps/electron/src/renderer/src/fonts.css` was rewritten 1:1 in the same
 `@font-face` shape as before, just swapping which families the rules declare.
 
-## What's NOT done yet (explicitly out of scope for this foundation pass)
+## Follow-up items: status
 
-Per the task's item 5, individual page/screen files were **not** touched for their
-old-palette hex leftovers — see the leftovers list in the task's return payload.
-Additionally, out of scope for this pass and left for the screen pass:
+These items were out of scope for the foundation pass. Status checked 2026-10-13 on
+`main` @ `fdc6de9`. Paths are under `apps/electron/src/renderer/src/`.
 
-- Wiring `--live`/`--live-tint` into any actual recording/live UI.
-- Fixing `shell.tsx`'s active-nav icon color (currently reads `--primary`, wants
-  `--accent-blue`) — see "Known gap" under Accent discipline above.
-- Applying `--accent-passive-tint`/`--accent-passive-ink` to identity/diarization
-  speaker chips in `remix-chat.tsx`, `history.tsx`, or wherever transcript speaker
-  labels render.
-- Pill/shape treatment for toggles, segmented controls, and switches beyond
-  `components/ui/button.tsx` (task item 4 named only `button.tsx`).
-- A shared `--shadow-card` token for the mockup's single soft shadow.
-- The invented `--chart-1..5` speaker ramp has not been validated against a real
-  diarization screen.
-- The 7 now-redundant `<span className="display text-primary">` inner spans left
-  over from the retired two-tone headline treatment (list above, under "Font
-  decisions" item 1) — flattening these into their parent heading is cosmetic
-  cleanup, not a correctness fix, so it was left for the screen pass rather than
-  bundled into a token-only foundation change.
-- Consolidating `button.tsx`'s now-near-duplicate `default`/`ink` variants (see
-  Shape & shadow above).
+- **Done**: Wire `--live`/`--live-tint` into recording/live UI. Consumers:
+  `pages/meetings/shared.tsx:51-55`, `pages/meetings/recording.tsx:248`,
+  `pages/remix.tsx:302`, `components/ui/progress.tsx:21`,
+  `pages/models/model-list.tsx:631`. Tokens: `globals.css:115-116`.
+- **Done**: Active-nav icon color. `shell.tsx:149` uses `text-sidebar-primary`
+  (`globals.css:93`, `#2563EB`, blue). The fix is a dedicated class on the
+  `isActive` branch, as this doc proposed. It does not use an `--accent-blue`
+  token: that token does not exist in `globals.css`.
+- **Done**: Apply `--accent-passive-tint`/`-ink` to speaker chips.
+  `pages/history.tsx:1166`, `pages/meetings/speakers.tsx:229-230`,
+  `pages/meetings/detail.tsx:835`. `remix-chat.tsx` renders no speaker labels, so
+  nothing is left to change there.
+- **Done**: Pill shape for toggles, segmented controls and switches.
+  `components/ui/switch.tsx:17`, `components/ui/toggle.tsx:7` and
+  `components/ui/segmented-control.tsx:48,60` use `rounded-full`. Tabs
+  (`components/ui/tabs.tsx:25,63`) use `rounded-lg`/`rounded-md` and are not pills.
+- **Open**: A shared `--shadow-card` token. `globals.css` has no such token. Only
+  `--glass-shadow` exists (`globals.css:106`, `:163`).
+- **Dropped (token removed)**: The `--chart-1..5` speaker ramp. The tokens have zero
+  consumers and are no longer in `globals.css`
+  (`grep -rn -e "--chart" apps/electron/src` finds only a comment at
+  `globals.css:137`). `specs/roadmap-2026-08.md:143` recorded them as dead. The
+  token tables above that list `--chart-1..5` are history.
+- **Done**: Flatten the 7 redundant `<span className="display text-primary">`
+  heading spans. Only one `display text-primary` span is left, a stat number at
+  `pages/history.tsx:877`, not a heading.
+- **Open**: Merge the near-duplicate `default` and `ink` variants of
+  `components/ui/button.tsx`. Both variants still exist (`button.tsx:11-12`).
 
 ## Verification performed
 
