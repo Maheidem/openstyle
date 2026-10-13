@@ -61,6 +61,7 @@ import { type DateRange, DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import { getDayPickerLocale } from "./history/day-picker-locale";
 import {
   formatClock,
   formatCost,
@@ -89,7 +90,8 @@ const PAGE_SIZE = 20;
 const EMPTY_DAYS: DayActivity[] = [];
 
 export default function HistoryPage(): React.JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   // The filter dialog is transient UI, not persisted state.
@@ -269,7 +271,7 @@ export default function HistoryPage(): React.JSX.Element {
     const out: { label: string; items: HistoryEntry[] }[] = [];
     let cur = "";
     for (const e of entries) {
-      const label = getDateGroup(e.created_at);
+      const label = getDateGroup(e.created_at, lang);
       if (label !== cur) {
         out.push({ label, items: [] });
         cur = label;
@@ -277,7 +279,7 @@ export default function HistoryPage(): React.JSX.Element {
       out[out.length - 1].items.push(e);
     }
     return out;
-  }, [entries]);
+  }, [entries, lang]);
 
   // Overall speaking speed for the active date range, from the server
   // aggregates (words over spoken-audio minutes).
@@ -660,7 +662,8 @@ const FiltersModal = memo(function FiltersModal({
   onNerdModeChange: (value: boolean) => void;
   onShowTutorialChange: (value: boolean) => void;
 }): React.JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   const selectedDateRange: DateRange = {
     from: parseLocalDate(startDate),
     to: parseLocalDate(endDate),
@@ -703,6 +706,7 @@ const FiltersModal = memo(function FiltersModal({
                       startDate,
                       endDate,
                       t("history.selectDate"),
+                      lang,
                     )}
                   </span>
                 </Button>
@@ -715,6 +719,7 @@ const FiltersModal = memo(function FiltersModal({
               >
                 <DayPicker
                   mode="range"
+                  locale={getDayPickerLocale(lang)}
                   numberOfMonths={2}
                   selected={selectedDateRange}
                   onSelect={onSelectRange}
@@ -1114,7 +1119,7 @@ const FeedItem = memo(function FeedItem({
   showAiEdits: boolean;
   nerdMode: boolean;
 }): React.JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { copied, copy } = useCopyToClipboard();
   const hasAiEdit =
     !!entry.cleaned_text && entry.cleaned_text.trim() !== entry.raw_text.trim();
@@ -1162,7 +1167,7 @@ const FeedItem = memo(function FeedItem({
     <div className="group px-1.5 py-3.5">
       <div className="mb-2 flex items-center gap-2.5">
         <span className="text-foreground shrink-0 text-[11px] font-medium">
-          {formatClock(entry.created_at)}
+          {formatClock(entry.created_at, i18n.language)}
         </span>
         <span className="bg-muted-foreground/50 h-[3px] w-[3px] shrink-0 rounded-full" />
         <Tooltip>
