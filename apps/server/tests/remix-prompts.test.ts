@@ -1,10 +1,16 @@
-import { REMIX_PRESETS, remixTransformSchema } from "@openstyle/validations";
+import {
+  REMIX_CLIENT_TOOLS,
+  REMIX_PRESETS,
+  remixTransformSchema,
+} from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
 import {
   buildRemixAgentSystem,
   buildRemixPrompt,
   sanitizeEmbeddedContent,
 } from "../src/lib/editor/remix-prompts.js";
+import { remixClientTools } from "../src/lib/remix-agent.js";
 
 describe("remix prompt assembly", () => {
   it("wraps the selection in tags and keeps the instruction outside them", () => {
@@ -100,6 +106,24 @@ describe("remix agent context assembly", () => {
     expect(system).not.toContain("web_search");
     expect(system).not.toContain("image_search");
     expect(system).not.toContain("## Search");
+  });
+
+  it("names no search tool in any client tool description or argument", () => {
+    // The tool() declarations go to the model on every remix call. A stale
+    // "image_search result" hint names a result the model can never get.
+    const stale = /image_search|web_search|search result/;
+    const declared = remixClientTools();
+    for (const [name, def] of Object.entries(REMIX_CLIENT_TOOLS)) {
+      expect(declared[name]?.description, name).toBe(def.description);
+      expect(def.description, name).not.toMatch(stale);
+      const shape = (def.inputSchema as z.ZodObject<z.ZodRawShape>).shape;
+      for (const [key, field] of Object.entries(shape)) {
+        expect(field.description ?? "", `${name}.${key}`).not.toMatch(stale);
+      }
+    }
+    expect(REMIX_CLIENT_TOOLS.set_clipboard_image.description).toContain(
+      "give the user the URL in chat",
+    );
   });
 
   it("neutralizes closing tags smuggled into any embedded field", () => {
