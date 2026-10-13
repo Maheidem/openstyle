@@ -64,7 +64,7 @@ export function MeetingDetailView({
   onBack: () => void;
   onDeleted: () => void;
 }): React.JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -466,7 +466,7 @@ export function MeetingDetailView({
         <div className="min-w-0 flex-1">
           <EditableTitle id={id} title={meeting.title} onRenamed={invalidate} />
           <div className="text-muted-foreground text-[11px]">
-            {formatTimestamp(meeting.started_at)} ·{" "}
+            {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
             {formatClockDuration(meeting.duration_ms)}
           </div>
           <MeetingContextField

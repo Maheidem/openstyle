@@ -41,10 +41,13 @@ export function formatClockDuration(ms: number | null): string {
     : `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-/** Short local date and time, for example "Oct 3, 2:15 PM". Empty for no value. */
-export function formatTimestamp(ms: number | null): string {
+/**
+ * Short local date and time, for example "Oct 3, 2:15 PM". Empty for no value.
+ * Pass the app language (`i18n.language`) so month names follow the UI language.
+ */
+export function formatTimestamp(ms: number | null, lang?: string): string {
   if (!ms) return "";
-  return new Date(ms).toLocaleString(undefined, {
+  return new Date(ms).toLocaleString(lang, {
     month: "short",
     day: "numeric",
     hour: "numeric",
