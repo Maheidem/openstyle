@@ -1,9 +1,9 @@
-export function formatClock(iso: string): string {
+/** Clock time in the given app language. The language decides the 12/24 hour style. */
+export function formatClock(iso: string, lang?: string): string {
   return new Date(`${iso}Z`)
-    .toLocaleTimeString(undefined, {
+    .toLocaleTimeString(lang, {
       hour: "numeric",
       minute: "2-digit",
-      hour12: true,
     })
     .toLowerCase();
 }
@@ -38,12 +38,16 @@ export function parseLocalDate(value: string): Date | undefined {
   return new Date(year, month - 1, day);
 }
 
-export function formatRangeDate(value: string, placeholder: string): string {
+export function formatRangeDate(
+  value: string,
+  placeholder: string,
+  lang?: string,
+): string {
   if (!value) return placeholder;
   const date = parseLocalDate(value);
   if (!date) return placeholder;
   const day = date.getDate();
-  const month = date.toLocaleDateString(undefined, { month: "short" });
+  const month = date.toLocaleDateString(lang, { month: "short" });
   const year = date.getFullYear();
   return `${day} ${month}, ${year}`;
 }
@@ -52,12 +56,13 @@ export function formatRangeLabel(
   start: string,
   end: string,
   placeholder: string,
+  lang?: string,
 ): string {
-  return `${formatRangeDate(start, placeholder)} - ${formatRangeDate(end, placeholder)}`;
+  return `${formatRangeDate(start, placeholder, lang)} - ${formatRangeDate(end, placeholder, lang)}`;
 }
 
 /** Get a date key for grouping: "Today", "Yesterday", or "Day, Mon DD" */
-export function getDateGroup(iso: string): string {
+export function getDateGroup(iso: string, lang?: string): string {
   const d = new Date(`${iso}Z`);
   const now = new Date();
   const entryDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -67,7 +72,7 @@ export function getDateGroup(iso: string): string {
   );
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString(lang, {
     weekday: "short",
     month: "short",
     day: "numeric",
