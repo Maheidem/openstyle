@@ -95,7 +95,7 @@ export default function AppPage(): React.JSX.Element {
     message: string;
     code?: string;
   } | null>(null);
-  const failedTranscriptionErrorRef = useRef("Transcription failed");
+  const failedTranscriptionErrorRef = useRef("");
   const lastRecordingDurationRef = useRef(0);
 
   // ---- Per-language dictation hotkeys (specs/dictation-language-hotkeys.md) ----
@@ -733,7 +733,7 @@ export default function AppPage(): React.JSX.Element {
   const wantsStatus = !showCard && !exiting && !!(statusLabel || statusCount);
 
   const cardTitle = t("pill.cardTitle");
-  const cardBody = failedTranscriptionErrorRef.current;
+  const cardBody = failedTranscriptionErrorRef.current || cardTitle;
 
   const status = {
     label: statusLabel,
