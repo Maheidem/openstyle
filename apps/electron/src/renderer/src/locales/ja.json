@@ -286,6 +286,13 @@
     "groupYesterday": "昨日",
     "tutorialToggle": "チュートリアルカード",
     "tutorialToggleDesc": "上部に押して話して離すデモを表示",
+    "tutorial": {
+      "sentence": "<key/>を<press>押して</press>、<speak>話して</speak>、<release>離します</release>。",
+      "ready": "準備完了",
+      "listening": "聞き取り中…",
+      "pasted": "アプリに貼り付けました",
+      "sample": "会議を明日の10時に延期します。"
+    },
     "clearDates": "クリア",
     "openStats": "統計を表示",
     "closeStats": "統計を非表示",

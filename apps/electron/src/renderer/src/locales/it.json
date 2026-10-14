@@ -286,6 +286,13 @@
     "groupYesterday": "Ieri",
     "tutorialToggle": "Scheda tutorial",
     "tutorialToggleDesc": "Mostra la demo premi-parla-rilascia in alto",
+    "tutorial": {
+      "sentence": "<press>Premi</press> <key/>, <speak>parla</speak> e <release>rilascia</release>.",
+      "ready": "Pronto",
+      "listening": "In ascolto…",
+      "pasted": "Incollato nella tua app",
+      "sample": "Sposto la riunione a domani alle dieci."
+    },
     "clearDates": "Cancella",
     "openStats": "Mostra statistiche",
     "closeStats": "Nascondi statistiche",

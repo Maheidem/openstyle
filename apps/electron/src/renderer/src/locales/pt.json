@@ -286,6 +286,13 @@
     "groupYesterday": "Ontem",
     "tutorialToggle": "Cartão de tutorial",
     "tutorialToggleDesc": "Mostrar a demo pressionar-falar-soltar no topo",
+    "tutorial": {
+      "sentence": "<press>Pressione</press> <key/>, <speak>fale</speak> e <release>solte</release>.",
+      "ready": "Pronto",
+      "listening": "Ouvindo…",
+      "pasted": "Colado no seu app",
+      "sample": "Vou adiar a reunião para amanhã às dez."
+    },
     "clearDates": "Limpar",
     "openStats": "Mostrar estatísticas",
     "closeStats": "Ocultar estatísticas",

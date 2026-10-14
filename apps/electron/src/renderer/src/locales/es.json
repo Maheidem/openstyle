@@ -286,6 +286,13 @@
     "groupYesterday": "Ayer",
     "tutorialToggle": "Tarjeta de tutorial",
     "tutorialToggleDesc": "Mostrar la demo de pulsar-hablar-soltar arriba",
+    "tutorial": {
+      "sentence": "<press>Pulsa</press> <key/>, <speak>habla</speak> y <release>suelta</release>.",
+      "ready": "Listo",
+      "listening": "Escuchando…",
+      "pasted": "Pegado en tu app",
+      "sample": "Muevo la reunión a mañana a las diez."
+    },
     "clearDates": "Borrar",
     "openStats": "Mostrar estadísticas",
     "closeStats": "Ocultar estadísticas",

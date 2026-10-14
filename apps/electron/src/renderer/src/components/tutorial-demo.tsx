@@ -3,6 +3,7 @@ import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 import { Keycap, StepWord, Wave } from "./hotkey-demo";
@@ -24,12 +25,11 @@ const PHASE_STEPS: ReadonlyArray<readonly [DemoPhase, number]> = [
   ["result", 2400],
 ];
 
-const SAMPLE_TRANSCRIPT = "Pushing the meeting to tomorrow at ten.";
-
 // Platform-aware default, mirrored from the main process via the preload.
 const DEFAULT_HOTKEY = window.api?.defaultHotkey ?? getDefaultHotkey();
 
 export function TutorialDemo(): React.JSX.Element {
+  const { t } = useTranslation();
   const [phase, setPhase] = useState<DemoPhase>("idle");
   const [hotkeyTokens, setHotkeyTokens] = useState<string[]>(() =>
     formatAcceleratorKeys(DEFAULT_HOTKEY),
@@ -130,21 +130,31 @@ export function TutorialDemo(): React.JSX.Element {
       {/* Instructional sentence */}
       <div className="select-none text-center">
         <div className="display text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
-          <StepWord active={phase === "idle"}>Press</StepWord>{" "}
-          <span className="inline-block align-middle">
-            {hotkeyTokens.map((tok, i) => (
-              <span key={`${tok}-${i}`} className="inline-block align-middle">
-                {i > 0 && (
-                  <span className="text-muted-foreground mx-1 text-[16px]">
-                    +
-                  </span>
-                )}
-                <Keycap pressed={pressed} label={tok} />
-              </span>
-            ))}
-          </span>{" "}
-          <StepWord active={pressed}>, speak,</StepWord>{" "}
-          <StepWord active={showResult}>release.</StepWord>
+          <Trans
+            i18nKey="history.tutorial.sentence"
+            components={{
+              press: <StepWord active={phase === "idle"} />,
+              speak: <StepWord active={pressed} />,
+              release: <StepWord active={showResult} />,
+              key: (
+                <span className="inline-block align-middle">
+                  {hotkeyTokens.map((tok, i) => (
+                    <span
+                      key={`${tok}-${i}`}
+                      className="inline-block align-middle"
+                    >
+                      {i > 0 && (
+                        <span className="text-muted-foreground mx-1 text-[16px]">
+                          +
+                        </span>
+                      )}
+                      <Keycap pressed={pressed} label={tok} />
+                    </span>
+                  ))}
+                </span>
+              ),
+            }}
+          />
         </div>
       </div>
 
@@ -180,10 +190,10 @@ export function TutorialDemo(): React.JSX.Element {
             )}
           >
             {phase === "idle"
-              ? "Ready"
+              ? t("history.tutorial.ready")
               : pressed
-                ? "Listening…"
-                : "Pasted to your app"}
+                ? t("history.tutorial.listening")
+                : t("history.tutorial.pasted")}
           </span>
         </div>
 
@@ -198,7 +208,7 @@ export function TutorialDemo(): React.JSX.Element {
           }}
         >
           <span className="display text-foreground text-[17px] leading-[1.4]">
-            "{SAMPLE_TRANSCRIPT}"
+            "{t("history.tutorial.sample")}"
           </span>
         </div>
       </div>

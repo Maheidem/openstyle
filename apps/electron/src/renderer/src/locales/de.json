@@ -286,6 +286,13 @@
     "groupYesterday": "Gestern",
     "tutorialToggle": "Tutorial-Karte",
     "tutorialToggleDesc": "Drücken-Sprechen-Loslassen-Demo oben anzeigen",
+    "tutorial": {
+      "sentence": "<key/> <press>drücken</press>, <speak>sprechen</speak>, <release>loslassen</release>.",
+      "ready": "Bereit",
+      "listening": "Hört zu…",
+      "pasted": "In Ihre App eingefügt",
+      "sample": "Ich verschiebe das Meeting auf morgen um zehn Uhr."
+    },
     "clearDates": "Löschen",
     "openStats": "Statistiken anzeigen",
     "closeStats": "Statistiken ausblenden",

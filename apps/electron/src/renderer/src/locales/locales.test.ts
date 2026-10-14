@@ -200,6 +200,16 @@ describe("locale files", () => {
       // honest about (a completed pass that found nothing), not the default.
       "meetings.enhanceNoneCorrected",
     ],
+    // Keys introduced by the translated History tutorial demo (issue #112):
+    // the press-speak-release sentence, the three status labels and the sample
+    // transcript. The card is the first thing on the History page.
+    "history-tutorial": [
+      "history.tutorial.sentence",
+      "history.tutorial.ready",
+      "history.tutorial.listening",
+      "history.tutorial.pasted",
+      "history.tutorial.sample",
+    ],
   };
 
   describe.each(Object.entries(KEY_GROUPS))("%s keys", (_name, keys) => {
@@ -238,4 +248,36 @@ describe("locale files", () => {
       }
     });
   }
+
+  // The tutorial sentence is rendered by <Trans> (tutorial-demo.tsx). Each
+  // tag maps to one highlighted word or the keycap, so a translation must use
+  // every tag exactly once. A missing tag drops a highlight; a repeated tag
+  // renders the keycap or word twice.
+  const SENTENCE_TAGS = [
+    "<press>",
+    "</press>",
+    "<speak>",
+    "</speak>",
+    "<release>",
+    "</release>",
+    "<key/>",
+  ];
+  it.each([
+    "template.json",
+    ...localeFiles,
+  ])("%s tutorial sentence uses each tag exactly once", (file) => {
+    const sentence = flatten(load(file))["history.tutorial.sentence"];
+    for (const tag of SENTENCE_TAGS) {
+      expect(
+        sentence.split(tag).length - 1,
+        `${file} sentence must contain ${tag} exactly once`,
+      ).toBe(1);
+    }
+    // Tags are well-formed and non-empty: <tag>word</tag>.
+    for (const name of ["press", "speak", "release"]) {
+      expect(sentence, `${file} <${name}> needs a word`).toMatch(
+        new RegExp(`<${name}>[^<]+</${name}>`),
+      );
+    }
+  });
 });
