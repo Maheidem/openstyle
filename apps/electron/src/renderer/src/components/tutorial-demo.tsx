@@ -129,7 +129,9 @@ export function TutorialDemo(): React.JSX.Element {
     <div className="border-border bg-card flex flex-col items-center gap-5 rounded-[16px] border px-7 py-7">
       {/* Instructional sentence */}
       <div className="select-none text-center">
-        <div className="display text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
+        {/* isolate + the -z-10 keycap: the pressed keycap halo paints behind the
+              comma that follows it. keep-all stops Japanese wrapping inside a phrase. */}
+        <div className="display text-foreground isolate text-[34px] leading-[1.1] font-normal tracking-tight text-balance [word-break:keep-all]">
           <Trans
             i18nKey="history.tutorial.sentence"
             components={{
@@ -137,7 +139,7 @@ export function TutorialDemo(): React.JSX.Element {
               speak: <StepWord active={pressed} />,
               release: <StepWord active={showResult} />,
               key: (
-                <span className="inline-block align-middle">
+                <span className="relative -z-10 inline-block align-middle">
                   {hotkeyTokens.map((tok, i) => (
                     <span
                       key={`${tok}-${i}`}
