@@ -77,10 +77,13 @@
   --secondary-foreground: #1D2129;
   --muted: #EEF0F2;
   --muted-foreground: #6B7280;
-  /* Lower-contrast than --muted-foreground: section-eyebrow labels and
-     similar de-emphasized caps. See specs/design/reskin-mockups.html's
-     --muted-soft token (#9AA1AC), consumed here for the first time. */
-  --muted-soft: #9AA1AC;
+  /* Signed off by the owner on 2026-10-14 (issue #149). The mockup value
+     (#9AA1AC, specs/design/reskin-mockups.html) has 2.43 contrast on the
+     page, so this value is darker. Contrast: 4.51 on the page (#F6F7F9),
+     4.83 on a card (#FFFFFF). It now equals --muted-foreground, so
+     section-eyebrow labels differ from descriptions only by caps, bold,
+     11px and tracking. */
+  --muted-soft: #6B7280;
   --accent: #E5E7EB;
   --accent-foreground: #1D2129;
   --destructive: #DC2626;
