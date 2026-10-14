@@ -12,6 +12,7 @@ import {
 } from "@renderer/components/ui/dialog";
 import { Slider } from "@renderer/components/ui/slider";
 import { Cpu } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 function mlxKeepAliveDescription(minutes: number): string {
   if (minutes === MLX_KEEP_ALIVE_ALWAYS) {
@@ -41,6 +42,7 @@ export function MlxWarmingDialog({
   onChange: (minutes: number) => void;
   onClose: () => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   // The slider gets one extra step past the max minutes to represent "Always on".
   const alwaysPos = MLX_KEEP_ALIVE_MAX_MINUTES + 1;
   const sliderPos =
@@ -70,7 +72,7 @@ export function MlxWarmingDialog({
             min={0}
             max={alwaysPos}
             step={1}
-            aria-label="MLX ASR keep-alive"
+            aria-label={t("models.mlxKeepAlive")}
           />
           <div className="text-muted-foreground mt-2 flex justify-between text-[11px]">
             <span>Cold start (unload)</span>

@@ -3,6 +3,7 @@ import {
   InputGroupButton,
 } from "@renderer/components/ui/input-group";
 import { Eye, EyeOff } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 /**
  * Trailing show/hide ("eye") toggle for a secret `InputGroupInput`. Render it
@@ -12,18 +13,21 @@ import { Eye, EyeOff } from "lucide-react";
 function RevealToggle({
   revealed,
   onToggle,
-  label = "value",
+  label,
 }: {
   revealed: boolean;
   onToggle: () => void;
-  /** Noun used in the aria-label, e.g. "API key" → "Show API key". */
+  /** Translated noun used in the aria-label, e.g. "API key" → "Show API key". Defaults to a generic "value". */
   label?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <InputGroupAddon align="inline-end">
       <InputGroupButton
         size="icon-xs"
-        aria-label={revealed ? `Hide ${label}` : `Show ${label}`}
+        aria-label={t(revealed ? "common.reveal.hide" : "common.reveal.show", {
+          label: label ?? t("common.reveal.value"),
+        })}
         onClick={onToggle}
       >
         {revealed ? <EyeOff /> : <Eye />}

@@ -1961,7 +1961,7 @@ function ServerConnection(): React.JSX.Element {
           <RevealToggle
             revealed={showToken}
             onToggle={() => setShowToken((v) => !v)}
-            label="token"
+            label={t("common.reveal.token")}
           />
         )}
       </InputGroup>

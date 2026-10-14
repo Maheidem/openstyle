@@ -17,7 +17,19 @@
     "viewRelease": "Ver Lançamento",
     "saving": "Salvando...",
     "restartAndUpdate": "Reiniciar e Atualizar",
-    "voiceWaveform": "Forma de onda da voz"
+    "voiceWaveform": "Forma de onda da voz",
+    "close": "Fechar",
+    "edit": "Editar",
+    "delete": "Excluir",
+    "previousPage": "Página anterior",
+    "nextPage": "Próxima página",
+    "reveal": {
+      "show": "Mostrar {{label}}",
+      "hide": "Ocultar {{label}}",
+      "value": "valor",
+      "apiKey": "chave de API",
+      "token": "token"
+    }
   },
   "languageNames": {
     "en": "Inglês",
@@ -365,7 +377,8 @@
     "emptyDesc": "Adicione nomes próprios, marcas ou termos incomuns.",
     "noResults": "nada corresponde a \"{{search}}\".",
     "noTerms": "sem termos — adicione um para começar.",
-    "failedToSave": "Falha ao salvar."
+    "failedToSave": "Falha ao salvar.",
+    "selectEntry": "Selecionar {{term}}"
   },
   "tone": {
     "title": "Tom",
@@ -645,6 +658,17 @@
       "deletePresetTitle": "Excluir predefinição?",
       "deletePresetMsg": "<b>{{name}}</b> é usada por {{tasks}}. Excluí-la faz essas tarefas voltarem para Auto.",
       "deletePresetNoTasksMsg": "<b>{{name}}</b> não é usada por nenhuma tarefa agora. Excluí-la a remove definitivamente."
+    },
+    "loading": "Carregando modelos",
+    "mlxKeepAlive": "Tempo de permanência do MLX ASR",
+    "picker": {
+      "backToSimple": "Voltar à visualização simples"
+    },
+    "removeDownloaded": "Remover o modelo baixado do disco",
+    "modal": {
+      "addApiKey": "Adicionar chave de API",
+      "chooseVoice": "Escolher um modelo de voz",
+      "pickLlm": "Escolher um modelo LLM"
     }
   },
   "shell": {
@@ -659,7 +683,8 @@
       "remix": "Remix",
       "meetings": "Reuniões",
       "import": "Importar"
-    }
+    },
+    "githubRepo": "Repositório do GitHub"
   },
   "remixPage": {
     "stats": {
@@ -889,5 +914,19 @@
       "noAccess": "Não foi possível acessar este arquivo",
       "notFound": "Arquivo não encontrado"
     }
+  },
+  "pill": {
+    "cancelDictation": "Cancelar ditado"
+  },
+  "remixBar": {
+    "open": "Abrir o Openstyle Remix"
+  },
+  "remixChat": {
+    "newThread": "Iniciar uma nova conversa",
+    "closeEsc": "Fechar (Esc)",
+    "message": "Mensagem para o Remix",
+    "stop": "Parar",
+    "send": "Enviar",
+    "conversation": "Conversa do Remix"
   }
 }

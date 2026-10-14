@@ -493,8 +493,9 @@ function SkeletonLine({
 }
 
 function ModelsLoadingSkeleton(): React.JSX.Element {
+  const { t } = useTranslation();
   return (
-    <div className="space-y-6" role="status" aria-label="Loading models">
+    <div className="space-y-6" role="status" aria-label={t("models.loading")}>
       <style>{`
         @keyframes shimmer {
           100% { transform: translateX(100%); }

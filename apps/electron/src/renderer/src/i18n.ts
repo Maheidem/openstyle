@@ -48,6 +48,8 @@ const localeBackend: BackendModule = {
   },
 };
 
+const LANGUAGE_STORAGE_KEY = "freestyle_ui_language";
+
 export const SUPPORTED_LANGUAGES = supportedLanguages;
 
 export async function initI18n(): Promise<void> {
@@ -63,7 +65,7 @@ export async function initI18n(): Promise<void> {
       detection: {
         order: ["localStorage", "navigator"],
         caches: ["localStorage"],
-        lookupLocalStorage: "freestyle_ui_language",
+        lookupLocalStorage: LANGUAGE_STORAGE_KEY,
       },
       interpolation: {
         escapeValue: false,
@@ -72,6 +74,15 @@ export async function initI18n(): Promise<void> {
         useSuspense: false,
       },
     });
+
+  // The pill, bar and dashboard are separate windows that share this
+  // localStorage entry. A language change in one fires `storage` in the
+  // others, so an open pill follows the Settings choice without a restart.
+  window.addEventListener("storage", (event) => {
+    if (event.key === LANGUAGE_STORAGE_KEY && event.newValue) {
+      void i18n.changeLanguage(event.newValue);
+    }
+  });
 }
 
 export default i18n;
