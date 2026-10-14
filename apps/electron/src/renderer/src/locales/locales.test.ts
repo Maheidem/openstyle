@@ -405,6 +405,7 @@ describe("locale files", () => {
       "remixChat.stepFailed",
       "remixChat.toolsRanOne",
       "remixChat.toolsRanMany",
+      "settings.sections.network",
     ],
   };
 

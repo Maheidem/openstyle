@@ -137,6 +137,7 @@
       "display": "Affichage",
       "permissions": "Permissions",
       "data": "Données",
+      "network": "Réseau",
       "remix": "Remix"
     },
     "application": {
