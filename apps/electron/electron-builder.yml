@@ -57,6 +57,7 @@ mac:
     NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     NSAppleEventsUsageDescription: Openstyle uses Apple Events to paste transcribed text into the focused application.
     NSAudioCaptureUsageDescription: Openstyle records system audio during meetings you choose to record.
+    NSCalendarsFullAccessUsageDescription: Openstyle reads your calendar events to link meetings to them. It never writes to your calendar.
   notarize: true
   extraResources:
     - from: "../../scripts/mlx_asr_server.py"

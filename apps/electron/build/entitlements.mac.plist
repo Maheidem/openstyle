@@ -19,5 +19,9 @@
     <true/>
     <key>com.apple.security.automation.apple-events</key>
     <true/>
+    <!-- Calendar read for meeting links. Without it macOS denies Calendars
+         with no dialog (hardened runtime). -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
   </dict>
 </plist>
