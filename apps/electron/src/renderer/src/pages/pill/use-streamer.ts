@@ -1,6 +1,7 @@
 // biome-ignore-all lint/correctness/useExhaustiveDependencies: refs, setters and callbacks come in through deps and keep one identity for the life of AppPage. The dependency lists stay as they were before the move.
 import { getApiBase, getServerToken } from "@renderer/lib/api";
 import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
+import i18n from "i18next";
 import { useCallback } from "react";
 import type { TranscribeResult } from "./constants";
 import type { PillShared } from "./pill-shared";
@@ -77,7 +78,7 @@ export function useStreamer(deps: UseStreamerDeps) {
           ) {
             if (
               resolveStreamingWithFallback(
-                "Connection interrupted while transcribing",
+                i18n.t("pill.error.connectionLostTranscribing"),
               )
             ) {
               return;

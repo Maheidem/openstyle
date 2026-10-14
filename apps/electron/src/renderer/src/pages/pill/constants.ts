@@ -90,12 +90,6 @@ export const ELAPSED_AFTER_MS = 60_000;
  */
 export const WARMING_AFTER_MS = 3_000;
 
-/** Names the cause instead of surfacing a raw TimeoutError (UX-A5: this is
- * the one error string this change adds — the rest of the batch error copy
- * stays as is). */
-export const LOCAL_MODEL_TIMEOUT_MSG =
-  "Local model didn't respond — it may still be starting. Try again.";
-
 /** How long a closing card keeps its last content, in ms. */
 export const VIEW_LATCH_MS = 320;
 

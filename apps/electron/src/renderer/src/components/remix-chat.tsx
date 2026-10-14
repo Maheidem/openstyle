@@ -1124,7 +1124,11 @@ function ToolActivity({
       label: (
         <ToolStepLabel
           part={part}
-          label={failed ? `${labels.done} — didn't work` : labels.done}
+          label={
+            failed
+              ? i18n.t("remixChat.stepFailed", { label: labels.done })
+              : labels.done
+          }
         />
       ),
       status: finished ? "complete" : "active",
@@ -1135,7 +1139,10 @@ function ToolActivity({
   const inFlight = parts.find((part) => !isToolFinished(part));
 
   // Override step summary ("Thought for Ns") — these are document tools.
-  const summary = `Ran ${parts.length} ${parts.length === 1 ? "tool" : "tools"}`;
+  const summary =
+    parts.length === 1
+      ? i18n.t("remixChat.toolsRanOne")
+      : i18n.t("remixChat.toolsRanMany", { count: parts.length });
   const activeLabel = inFlight
     ? toolLabels(getToolOrDynamicToolName(inFlight)).doing
     : undefined;

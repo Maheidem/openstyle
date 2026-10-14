@@ -998,7 +998,26 @@
       "failedTitle": "Falha no Remix",
       "modelCouldntRun": "O modelo não conseguiu executar isso ({{status}}).",
       "returnedNothing": "O modelo não retornou nada.",
-      "somethingWrong": "Algo deu errado."
+      "somethingWrong": "Algo deu errado.",
+      "couldntReplaceTitle": "Não foi possível substituir o texto",
+      "couldntReplaceBody": "A edição está na sua área de transferência — cole você mesmo.",
+      "didntCatchTitle": "Não entendi",
+      "didntCatchBody": "Nada foi captado — segure o atalho e diga o que fazer."
+    },
+    "error": {
+      "timedOut": "A transcrição expirou",
+      "connectionLostRecording": "Conexão interrompida durante a gravação",
+      "connectionLostTranscribing": "Conexão interrompida durante a transcrição",
+      "failed": "Falha na transcrição",
+      "failedStatus": "Falha na transcrição ({{status}})",
+      "localModelTimeout": "O modelo local não respondeu — talvez ainda esteja iniciando. Tente novamente.",
+      "cannotReachRemote": "Não foi possível acessar o servidor em {{url}}",
+      "cannotReachLocal": "Não foi possível acessar o servidor do Openstyle em {{url}}",
+      "hintRemote": "{{url}} inacessível — verifique {{settings}} → {{network}}",
+      "hintLocal": "{{url}} inacessível — feche e abra o app novamente",
+      "recordingFailedTitle": "Falha na gravação",
+      "micDenied": "Acesso ao microfone negado",
+      "noAudioCaptured": "Nenhum áudio capturado. Tente gravar novamente."
     }
   },
   "remixBar": {
@@ -1090,7 +1109,10 @@
         "doing": "Lendo a sua área de transferência…",
         "done": "Área de transferência lida"
       }
-    }
+    },
+    "stepFailed": "{{label}} — não funcionou",
+    "toolsRanOne": "Executou 1 ferramenta",
+    "toolsRanMany": "Executou {{count}} ferramentas"
   },
   "errorBoundary": {
     "eyebrow": "Algo deu errado",

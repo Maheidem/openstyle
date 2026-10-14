@@ -999,7 +999,26 @@
       "failedTitle": "Remix に失敗しました",
       "modelCouldntRun": "モデルがこれを実行できませんでした（{{status}}）。",
       "returnedNothing": "モデルから結果が返りませんでした。",
-      "somethingWrong": "問題が発生しました。"
+      "somethingWrong": "問題が発生しました。",
+      "couldntReplaceTitle": "テキストを置き換えられませんでした",
+      "couldntReplaceBody": "編集内容はクリップボードにあります。自分で貼り付けてください。",
+      "didntCatchTitle": "聞き取れませんでした",
+      "didntCatchBody": "何も届きませんでした。ホットキーを押したまま、やりたいことを話してください。"
+    },
+    "error": {
+      "timedOut": "文字起こしがタイムアウトしました",
+      "connectionLostRecording": "録音中に接続が中断されました",
+      "connectionLostTranscribing": "文字起こし中に接続が中断されました",
+      "failed": "文字起こしに失敗しました",
+      "failedStatus": "文字起こしに失敗しました ({{status}})",
+      "localModelTimeout": "ローカルモデルが応答しませんでした。起動中の可能性があります。もう一度お試しください。",
+      "cannotReachRemote": "{{url}} のサーバーに接続できません",
+      "cannotReachLocal": "{{url}} の Openstyle サーバーに接続できません",
+      "hintRemote": "{{url}} に接続できません。{{settings}} → {{network}} を確認してください",
+      "hintLocal": "{{url}} に接続できません。アプリを終了して開き直してください",
+      "recordingFailedTitle": "録音に失敗しました",
+      "micDenied": "マイクへのアクセスが拒否されました",
+      "noAudioCaptured": "音声が録音されませんでした。もう一度録音してください。"
     }
   },
   "remixBar": {
@@ -1091,7 +1110,10 @@
         "doing": "クリップボードを読み取り中…",
         "done": "クリップボードを読み取りました"
       }
-    }
+    },
+    "stepFailed": "{{label}} — うまくいきませんでした",
+    "toolsRanOne": "1 件のツールを実行しました",
+    "toolsRanMany": "{{count}} 件のツールを実行しました"
   },
   "errorBoundary": {
     "eyebrow": "問題が発生しました",

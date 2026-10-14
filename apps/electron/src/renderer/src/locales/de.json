@@ -999,7 +999,26 @@
       "failedTitle": "Remix fehlgeschlagen",
       "modelCouldntRun": "Das Modell konnte das nicht ausführen ({{status}}).",
       "returnedNothing": "Das Modell hat nichts zurückgegeben.",
-      "somethingWrong": "Etwas ist schiefgelaufen."
+      "somethingWrong": "Etwas ist schiefgelaufen.",
+      "couldntReplaceTitle": "Text konnte nicht ersetzt werden",
+      "couldntReplaceBody": "Die Änderung liegt in Ihrer Zwischenablage — fügen Sie sie selbst ein.",
+      "didntCatchTitle": "Nicht verstanden",
+      "didntCatchBody": "Es kam nichts an — halten Sie die Tastenkombination gedrückt und sagen Sie, was zu tun ist."
+    },
+    "error": {
+      "timedOut": "Zeitüberschreitung bei der Transkription",
+      "connectionLostRecording": "Verbindung während der Aufnahme unterbrochen",
+      "connectionLostTranscribing": "Verbindung während der Transkription unterbrochen",
+      "failed": "Transkription fehlgeschlagen",
+      "failedStatus": "Transkription fehlgeschlagen ({{status}})",
+      "localModelTimeout": "Das lokale Modell hat nicht geantwortet — es startet möglicherweise noch. Versuchen Sie es erneut.",
+      "cannotReachRemote": "Server unter {{url}} nicht erreichbar",
+      "cannotReachLocal": "Openstyle-Server unter {{url}} nicht erreichbar",
+      "hintRemote": "{{url}} nicht erreichbar — prüfen Sie {{settings}} → {{network}}",
+      "hintLocal": "{{url}} nicht erreichbar — beenden Sie die App und öffnen Sie sie erneut",
+      "recordingFailedTitle": "Aufnahme fehlgeschlagen",
+      "micDenied": "Mikrofonzugriff verweigert",
+      "noAudioCaptured": "Kein Audio aufgenommen. Versuchen Sie die Aufnahme erneut."
     }
   },
   "remixBar": {
@@ -1091,7 +1110,10 @@
         "doing": "Lese Ihre Zwischenablage…",
         "done": "Zwischenablage gelesen"
       }
-    }
+    },
+    "stepFailed": "{{label}} — hat nicht funktioniert",
+    "toolsRanOne": "1 Werkzeug ausgeführt",
+    "toolsRanMany": "{{count}} Werkzeuge ausgeführt"
   },
   "errorBoundary": {
     "eyebrow": "Etwas ist schiefgelaufen",

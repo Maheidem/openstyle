@@ -4,6 +4,7 @@ import {
   BATCH_TRANSCRIBE_TIMEOUT_MS,
   postTranscribe,
 } from "@renderer/lib/transcribe-client";
+import i18n from "i18next";
 import { useCallback } from "react";
 import { getOutputMode } from "../pill-tones";
 import type { BarMode, PillExit, TranscribeResult } from "./constants";
@@ -292,7 +293,7 @@ export function useTranscriptionQueue(deps: UseTranscriptionQueueDeps) {
     // recordingLanguageRef.current is still exactly the language that failed
     // attempt was pinned to.
     const retry = restFallbackTranscribe(
-      failedTranscriptionErrorRef.current || "Transcription failed",
+      failedTranscriptionErrorRef.current || i18n.t("pill.error.failed"),
       recordingLanguageRef.current,
     );
     if (!retry) {

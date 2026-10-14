@@ -999,7 +999,26 @@
       "failedTitle": "Falló Remix",
       "modelCouldntRun": "El modelo no pudo ejecutar eso ({{status}}).",
       "returnedNothing": "El modelo no devolvió nada.",
-      "somethingWrong": "Algo salió mal."
+      "somethingWrong": "Algo salió mal.",
+      "couldntReplaceTitle": "No se pudo reemplazar el texto",
+      "couldntReplaceBody": "La edición está en tu portapapeles — pégala tú mismo.",
+      "didntCatchTitle": "No te he entendido",
+      "didntCatchBody": "No llegó nada — mantén pulsado el atajo y di qué hacer."
+    },
+    "error": {
+      "timedOut": "La transcripción agotó el tiempo de espera",
+      "connectionLostRecording": "Conexión interrumpida durante la grabación",
+      "connectionLostTranscribing": "Conexión interrumpida durante la transcripción",
+      "failed": "Falló la transcripción",
+      "failedStatus": "Falló la transcripción ({{status}})",
+      "localModelTimeout": "El modelo local no respondió — puede que aún se esté iniciando. Inténtalo de nuevo.",
+      "cannotReachRemote": "No se pudo conectar con el servidor en {{url}}",
+      "cannotReachLocal": "No se pudo conectar con el servidor de Openstyle en {{url}}",
+      "hintRemote": "{{url}} no es accesible — revisa {{settings}} → {{network}}",
+      "hintLocal": "{{url}} no es accesible — cierra la app y ábrela de nuevo",
+      "recordingFailedTitle": "Falló la grabación",
+      "micDenied": "Acceso al micrófono denegado",
+      "noAudioCaptured": "No se capturó audio. Intenta grabar de nuevo."
     }
   },
   "remixBar": {
@@ -1091,7 +1110,10 @@
         "doing": "Leyendo tu portapapeles…",
         "done": "Portapapeles leído"
       }
-    }
+    },
+    "stepFailed": "{{label}} — no funcionó",
+    "toolsRanOne": "Ejecutó 1 herramienta",
+    "toolsRanMany": "Ejecutó {{count}} herramientas"
   },
   "errorBoundary": {
     "eyebrow": "Algo salió mal",

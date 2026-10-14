@@ -382,6 +382,30 @@ describe("locale files", () => {
       "remixChat.tools.get_clipboard.doing",
       "remixChat.tools.get_clipboard.done",
     ],
+    // #157: pill error text (card body, live region, native dialogs) and the
+    // Remix step labels. The pill and the Remix bar run initI18n().
+    "pill-errors-remix-steps-i18n": [
+      "pill.error.timedOut",
+      "pill.error.connectionLostRecording",
+      "pill.error.connectionLostTranscribing",
+      "pill.error.failed",
+      "pill.error.failedStatus",
+      "pill.error.localModelTimeout",
+      "pill.error.cannotReachRemote",
+      "pill.error.cannotReachLocal",
+      "pill.error.hintRemote",
+      "pill.error.hintLocal",
+      "pill.error.recordingFailedTitle",
+      "pill.error.micDenied",
+      "pill.error.noAudioCaptured",
+      "pill.remix.couldntReplaceTitle",
+      "pill.remix.couldntReplaceBody",
+      "pill.remix.didntCatchTitle",
+      "pill.remix.didntCatchBody",
+      "remixChat.stepFailed",
+      "remixChat.toolsRanOne",
+      "remixChat.toolsRanMany",
+    ],
   };
 
   describe.each(Object.entries(KEY_GROUPS))("%s keys", (_name, keys) => {
