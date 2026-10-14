@@ -1204,7 +1204,26 @@
       "failedTitle": "Remix failed",
       "modelCouldntRun": "The model couldn't run that ({{status}}).",
       "returnedNothing": "The model returned nothing.",
-      "somethingWrong": "Something went wrong."
+      "somethingWrong": "Something went wrong.",
+      "couldntReplaceTitle": "Couldn't replace the text",
+      "couldntReplaceBody": "The edit is on your clipboard — paste it yourself.",
+      "didntCatchTitle": "Didn't catch that",
+      "didntCatchBody": "Nothing came through — hold the hotkey and say what to do."
+    },
+    "error": {
+      "timedOut": "Transcription timed out",
+      "connectionLostRecording": "Connection interrupted while recording",
+      "connectionLostTranscribing": "Connection interrupted while transcribing",
+      "failed": "Transcription failed",
+      "failedStatus": "Transcription failed ({{status}})",
+      "localModelTimeout": "Local model didn't respond — it may still be starting. Try again.",
+      "cannotReachRemote": "Cannot reach the server at {{url}}",
+      "cannotReachLocal": "Cannot reach Openstyle server at {{url}}",
+      "hintRemote": "{{url}} unreachable — check {{settings}} → {{network}}",
+      "hintLocal": "{{url}} unreachable — quit and reopen the app",
+      "recordingFailedTitle": "Recording Failed",
+      "micDenied": "Mic access denied",
+      "noAudioCaptured": "No audio captured. Try recording again."
     }
   },
   "remixBar": {
@@ -1296,7 +1315,10 @@
         "doing": "Reading your clipboard…",
         "done": "Read your clipboard"
       }
-    }
+    },
+    "stepFailed": "{{label}} — didn't work",
+    "toolsRanOne": "Ran 1 tool",
+    "toolsRanMany": "Ran {{count}} tools"
   },
   "errorBoundary": {
     "eyebrow": "Something went wrong",

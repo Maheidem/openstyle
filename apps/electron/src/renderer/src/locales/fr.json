@@ -137,6 +137,7 @@
       "display": "Affichage",
       "permissions": "Permissions",
       "data": "Données",
+      "network": "Réseau",
       "remix": "Remix"
     },
     "application": {
@@ -999,7 +1000,26 @@
       "failedTitle": "Échec de Remix",
       "modelCouldntRun": "Le modèle n'a pas pu exécuter cela ({{status}}).",
       "returnedNothing": "Le modèle n'a rien renvoyé.",
-      "somethingWrong": "Un problème est survenu."
+      "somethingWrong": "Un problème est survenu.",
+      "couldntReplaceTitle": "Impossible de remplacer le texte",
+      "couldntReplaceBody": "La modification est dans votre presse-papiers — collez-la vous-même.",
+      "didntCatchTitle": "Je n'ai pas compris",
+      "didntCatchBody": "Rien n'est arrivé — maintenez le raccourci et dites ce qu'il faut faire."
+    },
+    "error": {
+      "timedOut": "La transcription a expiré",
+      "connectionLostRecording": "Connexion interrompue pendant l'enregistrement",
+      "connectionLostTranscribing": "Connexion interrompue pendant la transcription",
+      "failed": "Échec de la transcription",
+      "failedStatus": "Échec de la transcription ({{status}})",
+      "localModelTimeout": "Le modèle local n'a pas répondu — il est peut-être encore en cours de démarrage. Réessayez.",
+      "cannotReachRemote": "Impossible de joindre le serveur à l'adresse {{url}}",
+      "cannotReachLocal": "Impossible de joindre le serveur Openstyle à l'adresse {{url}}",
+      "hintRemote": "{{url}} injoignable — vérifiez {{settings}} → {{network}}",
+      "hintLocal": "{{url}} injoignable — quittez l'app et rouvrez-la",
+      "recordingFailedTitle": "Échec de l'enregistrement",
+      "micDenied": "Accès au microphone refusé",
+      "noAudioCaptured": "Aucun son capturé. Essayez de réenregistrer."
     }
   },
   "remixBar": {
@@ -1091,7 +1111,10 @@
         "doing": "Lecture de votre presse-papiers…",
         "done": "Presse-papiers lu"
       }
-    }
+    },
+    "stepFailed": "{{label}} — n'a pas fonctionné",
+    "toolsRanOne": "1 outil exécuté",
+    "toolsRanMany": "{{count}} outils exécutés"
   },
   "errorBoundary": {
     "eyebrow": "Un problème est survenu",

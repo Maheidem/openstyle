@@ -210,8 +210,8 @@ export function useRemixSession(deps: UseRemixSessionDeps) {
       if (remixRef.current?.id !== sessionId) return;
       if (!pasted) {
         failRemix(
-          "Couldn't replace the text",
-          "The edit is on your clipboard — paste it yourself.",
+          i18n.t("pill.remix.couldntReplaceTitle"),
+          i18n.t("pill.remix.couldntReplaceBody"),
         );
         return;
       }
@@ -427,8 +427,8 @@ export function useRemixSession(deps: UseRemixSessionDeps) {
     if (remixRef.current?.id !== session.id) return;
     if (!instruction) {
       failRemix(
-        "Didn't catch that",
-        "Nothing came through — hold the hotkey and say what to do.",
+        i18n.t("pill.remix.didntCatchTitle"),
+        i18n.t("pill.remix.didntCatchBody"),
       );
       return;
     }

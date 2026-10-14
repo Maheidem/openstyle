@@ -137,6 +137,7 @@
       "display": "Display",
       "permissions": "Autorizzazioni",
       "data": "Dati",
+      "network": "Rete",
       "remix": "Remix"
     },
     "application": {
@@ -998,7 +999,26 @@
       "failedTitle": "Remix non riuscito",
       "modelCouldntRun": "Il modello non è riuscito a eseguirlo ({{status}}).",
       "returnedNothing": "Il modello non ha restituito nulla.",
-      "somethingWrong": "Qualcosa è andato storto."
+      "somethingWrong": "Qualcosa è andato storto.",
+      "couldntReplaceTitle": "Impossibile sostituire il testo",
+      "couldntReplaceBody": "La modifica è negli appunti — incollala tu.",
+      "didntCatchTitle": "Non ho capito",
+      "didntCatchBody": "Non è arrivato nulla — tieni premuto il tasto di scelta rapida e di' cosa fare."
+    },
+    "error": {
+      "timedOut": "La trascrizione è scaduta",
+      "connectionLostRecording": "Connessione interrotta durante la registrazione",
+      "connectionLostTranscribing": "Connessione interrotta durante la trascrizione",
+      "failed": "Trascrizione non riuscita",
+      "failedStatus": "Trascrizione non riuscita ({{status}})",
+      "localModelTimeout": "Il modello locale non ha risposto — forse si sta ancora avviando. Riprova.",
+      "cannotReachRemote": "Impossibile raggiungere il server all'indirizzo {{url}}",
+      "cannotReachLocal": "Impossibile raggiungere il server di Openstyle all'indirizzo {{url}}",
+      "hintRemote": "{{url}} non raggiungibile — controlla {{settings}} → {{network}}",
+      "hintLocal": "{{url}} non raggiungibile — chiudi e riapri l'app",
+      "recordingFailedTitle": "Registrazione non riuscita",
+      "micDenied": "Accesso al microfono negato",
+      "noAudioCaptured": "Nessun audio acquisito. Prova a registrare di nuovo."
     }
   },
   "remixBar": {
@@ -1090,7 +1110,10 @@
         "doing": "Lettura dei tuoi appunti…",
         "done": "Appunti letti"
       }
-    }
+    },
+    "stepFailed": "{{label}} — non ha funzionato",
+    "toolsRanOne": "Eseguito 1 strumento",
+    "toolsRanMany": "Eseguiti {{count}} strumenti"
   },
   "errorBoundary": {
     "eyebrow": "Qualcosa è andato storto",

@@ -12,14 +12,10 @@ import {
   BATCH_TRANSCRIBE_TIMEOUT_MS,
   postTranscribe,
 } from "@renderer/lib/transcribe-client";
+import i18n from "i18next";
 import { useCallback } from "react";
 import { getAudioPlaybackMode, playTone } from "../pill-tones";
-import {
-  type BarMode,
-  LOCAL_MODEL_TIMEOUT_MSG,
-  type PillExit,
-  type TranscribeResult,
-} from "./constants";
+import type { BarMode, PillExit, TranscribeResult } from "./constants";
 import type { PillShared } from "./pill-shared";
 
 export type UseDictationSessionDeps = Pick<
@@ -305,8 +301,8 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
         void restoreSystemAudioSafely();
         hidePill();
         window.api.showErrorDialog(
-          "Recording Failed",
-          err instanceof Error ? err.message : "Mic access denied",
+          i18n.t("pill.error.recordingFailedTitle"),
+          err instanceof Error ? err.message : i18n.t("pill.error.micDenied"),
         );
       }
     },
@@ -389,7 +385,7 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
       const transportFailure =
         streamError?.message ??
         (!streamerRef.current.isConnected()
-          ? "Connection interrupted while recording"
+          ? i18n.t("pill.error.connectionLostRecording")
           : null);
       if (transportFailure) {
         streamerRef.current.cancel();
@@ -421,7 +417,7 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
             streamResolverRef.current = null;
             streamLanguageRef.current = null;
             const fallback = restFallbackTranscribe(
-              "Transcription timed out",
+              i18n.t("pill.error.timedOut"),
               dictationLanguage,
             );
             if (fallback) {
@@ -430,7 +426,7 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
               resolve({
                 raw: "",
                 cleaned: "",
-                error: "Transcription timed out",
+                error: i18n.t("pill.error.timedOut"),
               });
             }
           }
@@ -458,8 +454,8 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
       if (isTranscriptionIdle()) {
         hidePill();
         window.api.showErrorDialog(
-          "Recording Failed",
-          "No audio captured. Try recording again.",
+          i18n.t("pill.error.recordingFailedTitle"),
+          i18n.t("pill.error.noAudioCaptured"),
         );
       } else {
         resumeTranscribingOrHide();
@@ -475,8 +471,8 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
     const serverOk = await refreshApiBase();
     if (!serverOk) {
       failedTranscriptionErrorRef.current = isRemoteServer()
-        ? `Cannot reach the server at ${getApiBase()}`
-        : `Cannot reach Openstyle server at ${getApiBase()}`;
+        ? i18n.t("pill.error.cannotReachRemote", { url: getApiBase() })
+        : i18n.t("pill.error.cannotReachLocal", { url: getApiBase() });
       setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
       setPillNotice("unavailable");
       setPillState("error");
@@ -508,7 +504,7 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
           const msg =
             body?.detail ||
             body?.error ||
-            `Transcription failed (${res.status})`;
+            i18n.t("pill.error.failedStatus", { status: res.status });
           return { raw: "", cleaned: "", error: msg };
         }
         const data = (await res.json()) as {
@@ -528,14 +524,23 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
         // whose name is "TimeoutError" (an AbortError would mean something
         // else cancelled the fetch, which nothing on this path does).
         if (err instanceof Error && err.name === "TimeoutError") {
-          return { raw: "", cleaned: "", error: LOCAL_MODEL_TIMEOUT_MSG };
+          return {
+            raw: "",
+            cleaned: "",
+            error: i18n.t("pill.error.localModelTimeout"),
+          };
         }
-        const msg = err instanceof Error ? err.message : "Transcription failed";
+        const msg =
+          err instanceof Error ? err.message : i18n.t("pill.error.failed");
         const hint =
           msg.includes("fetch") || msg.includes("Failed")
             ? isRemoteServer()
-              ? ` (${getApiBase()} unreachable — check Settings → Network)`
-              : ` (${getApiBase()} unreachable — quit and reopen the app)`
+              ? ` (${i18n.t("pill.error.hintRemote", {
+                  url: getApiBase(),
+                  settings: i18n.t("settings.title"),
+                  network: i18n.t("settings.sections.network"),
+                })})`
+              : ` (${i18n.t("pill.error.hintLocal", { url: getApiBase() })})`
             : "";
         return { raw: "", cleaned: "", error: `${msg}${hint}` };
       });
