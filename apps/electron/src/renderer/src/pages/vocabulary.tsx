@@ -403,7 +403,7 @@ export default function VocabularyPage(): React.JSX.Element {
                     <Input
                       type="text"
                       {...register("term")}
-                      placeholder='e.g. "Nguyen" or "account number"'
+                      placeholder={t("vocabulary.termPlaceholder")}
                       aria-invalid={!!formErrors.term}
                     />
                   </FormField>
@@ -414,14 +414,13 @@ export default function VocabularyPage(): React.JSX.Element {
                     <Input
                       type="text"
                       {...register("notes")}
-                      placeholder='e.g. "client name", "Korean"'
+                      placeholder={t("vocabulary.notesPlaceholder")}
                       aria-invalid={!!formErrors.notes}
                     />
                   </FormField>
                 </div>
                 <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
-                  Multi-word phrases work on Nova 3, OpenAI, and Groq. Nova 2
-                  boosts single words. Scribe v1 does not use vocabulary bias.
+                  {t("vocabulary.biasNote")}
                 </p>
                 {formError && (
                   <p className="text-destructive mt-3 text-xs">{formError}</p>

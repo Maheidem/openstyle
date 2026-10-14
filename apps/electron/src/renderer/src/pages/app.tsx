@@ -8,6 +8,7 @@ import {
 import { Recorder } from "@renderer/lib/recorder";
 import type { Streamer } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   normalizeAudioPlaybackMode,
   resolveAudioPlaybackMode,
@@ -43,7 +44,6 @@ import {
   type TranscribeResult,
   VIEW_LATCH_MS,
   WARMING_AFTER_MS,
-  WARMING_LABEL,
 } from "./pill/constants";
 import type { PillShared } from "./pill/pill-shared";
 import { PillView } from "./pill/pill-view";
@@ -62,6 +62,7 @@ import {
 import type { BarJitter } from "./pill-waveform";
 
 export default function AppPage(): React.JSX.Element {
+  const { t } = useTranslation();
   const [state, setState] = useState<PillState>("idle");
   const stateRef = useRef<PillState>("idle");
   const setPillState = useCallback((next: PillState) => {
@@ -710,13 +711,13 @@ export default function AppPage(): React.JSX.Element {
   const statusLabel = showCard
     ? null
     : pillNotice === "reconnecting"
-      ? "Reconnecting"
+      ? t("pill.status.reconnecting")
       : pillNotice === "retrying"
-        ? "Retrying"
+        ? t("pill.status.retrying")
         : pillNotice === "unavailable"
-          ? "Unavailable"
+          ? t("pill.status.unavailable")
           : warming
-            ? WARMING_LABEL
+            ? t("pill.status.warming")
             : null;
   const statusIsAlert = pillNotice === "unavailable";
 
@@ -731,7 +732,7 @@ export default function AppPage(): React.JSX.Element {
       : elapsedLabel;
   const wantsStatus = !showCard && !exiting && !!(statusLabel || statusCount);
 
-  const cardTitle = "Transcription failed";
+  const cardTitle = t("pill.cardTitle");
   const cardBody = failedTranscriptionErrorRef.current;
 
   const status = {
@@ -746,11 +747,13 @@ export default function AppPage(): React.JSX.Element {
     : remix.phase === "error"
       ? `${remix.title}. ${remix.body}`
       : remix.phase === "running"
-        ? `Applying ${remix.label ?? "remix"}`
+        ? t("pill.remix.applying", {
+            label: remix.label ?? t("pill.remix.applyingFallback"),
+          })
         : remix.phase === "listening" || remix.phase === "capturing"
-          ? "Listening for a remix"
+          ? t("pill.remix.listening")
           : remix?.phase === "chat"
-            ? "Remix chat"
+            ? t("pill.remix.chat")
             : "Remix";
 
   const accessibleStatus = remixStatus
@@ -758,16 +761,16 @@ export default function AppPage(): React.JSX.Element {
     : showErrorCard
       ? `${cardTitle}. ${cardBody}`
       : exiting === "delivered"
-        ? "Dictation delivered"
+        ? t("pill.status.delivered")
         : (statusLabel ??
           (micSilent
-            ? "No audio from your microphone"
+            ? t("pill.status.noAudio")
             : state === "initializing"
-              ? "Preparing microphone"
+              ? t("pill.status.preparingMic")
               : state === "recording"
-                ? "Listening"
+                ? t("pill.status.listening")
                 : state === "transcribing"
-                  ? "Transcribing"
+                  ? t("pill.status.transcribing")
                   : ""));
 
   // ---- Room for the card ----
@@ -997,8 +1000,8 @@ export default function AppPage(): React.JSX.Element {
   const remixTranscript = cardView?.transcript?.trim() ?? "";
   const remixHint =
     cardView?.phase === "running"
-      ? (cardView.label ?? "Working…")
-      : "Listening…";
+      ? (cardView.label ?? t("pill.remix.working"))
+      : t("pill.remix.hintListening");
 
   // ---- Hot-rect pass-through ----
   // The held remix room is mostly empty when only the strip or the dictation

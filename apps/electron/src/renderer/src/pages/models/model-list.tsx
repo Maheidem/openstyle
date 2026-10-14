@@ -96,7 +96,7 @@ interface VoiceHandlers {
   onClose: () => void;
 }
 
-function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
+function buildVoiceRows(m: UseModels, h: VoiceHandlers, t: TFunction): Row[] {
   const recommendedKey = recommendedVoiceKey(m.voiceItems);
   const rows = m.voiceItems.map((it): Row => {
     if (it.kind === "local") {
@@ -111,7 +111,7 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
         key: it.key,
         name: it.name,
         source: "local",
-        meta: `${it.note ?? "On-device"}${sizeNote}`,
+        meta: `${it.note ?? t("models.onDevice")}${sizeNote}`,
         recommended: it.key === recommendedKey,
         custom: it.custom,
         selected: it.selected && status === "ready",
@@ -286,12 +286,16 @@ export function ModelList({
     group === "server"
       ? buildServerRows(m, type, t, onPickServerModel)
       : type === "voice"
-        ? buildVoiceRows(m, {
-            onPickCloud,
-            onPickLocalVoice,
-            onRequestDeleteLocal,
-            onClose,
-          })
+        ? buildVoiceRows(
+            m,
+            {
+              onPickCloud,
+              onPickLocalVoice,
+              onRequestDeleteLocal,
+              onClose,
+            },
+            t,
+          )
         : buildLlmRows(m, { onPickCloud, onClose });
 
   const q = search.toLowerCase();
@@ -388,7 +392,7 @@ export function ModelList({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search models…"
+            placeholder={t("models.list.searchPlaceholder")}
             className="placeholder:text-muted-foreground/70 text-[12.5px]"
           />
         </InputGroup>
@@ -444,7 +448,7 @@ export function ModelList({
           >
             {group === "server"
               ? t("models.servers.showAll", { count: hiddenCount })
-              : `Show all models (${hiddenCount} more) →`}
+              : t("models.list.showAll", { count: hiddenCount })}
           </Button>
         )}
       </div>
@@ -510,7 +514,7 @@ function ModelRow({
               variant="secondary"
               className="shrink-0 text-[10px] font-semibold"
             >
-              Recommended
+              {t("models.list.recommended")}
             </Badge>
           )}
           {row.custom && (
@@ -536,7 +540,9 @@ function ModelRow({
               <>
                 {row.meta}
                 {row.meta && " "}
-                <span className="text-muted-foreground/70">via</span>{" "}
+                <span className="text-muted-foreground/70">
+                  {t("models.list.via")}
+                </span>{" "}
                 {row.gateway}
               </>
             ) : (
@@ -561,14 +567,14 @@ function ModelRow({
       <div className="flex shrink-0 items-center gap-1.5 justify-self-end">
         {row.selected ? (
           <span className="text-primary text-[11px] font-semibold">
-            Selected
+            {t("models.list.selected")}
           </span>
         ) : local ? (
           <>
             {status === "ready" && (
               <>
                 <Button variant="ink" size="sm" onClick={row.onSelect}>
-                  Use
+                  {t("models.list.use")}
                 </Button>
                 {deleteButton}
               </>
@@ -577,7 +583,7 @@ function ModelRow({
               <>
                 <Button variant="outline" size="sm" onClick={row.onDownload}>
                   <Download data-icon="inline-start" />
-                  Download
+                  {t("models.list.download")}
                 </Button>
                 {/* A custom row leaves the list on delete, so a failed or cancelled add can be removed. */}
                 {row.custom && deleteButton}
@@ -586,7 +592,7 @@ function ModelRow({
             {downloading && (
               <Button variant="outline" size="sm" onClick={row.onCancel}>
                 <X data-icon="inline-start" />
-                Cancel
+                {t("common.cancel")}
               </Button>
             )}
             {status === "error" && (
@@ -596,7 +602,7 @@ function ModelRow({
                 )}
                 <Button variant="outline" size="sm" onClick={row.onRetry}>
                   <RefreshCw data-icon="inline-start" />
-                  Retry
+                  {t("models.list.retry")}
                 </Button>
                 {row.custom && deleteButton}
               </>
@@ -604,12 +610,12 @@ function ModelRow({
           </>
         ) : row.hasKey ? (
           <Button variant="ink" size="sm" onClick={row.onSelect}>
-            Use
+            {t("models.list.use")}
           </Button>
         ) : (
           <Button variant="outline" size="sm" onClick={row.onSelect}>
             <Key data-icon="inline-start" />
-            Add key
+            {t("models.list.addKey")}
           </Button>
         )}
       </div>
@@ -622,6 +628,7 @@ function DownloadProgress({
 }: {
   state?: WhisperModelDownloadState;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const p = state?.downloadProgress;
   return (
     <div className="mt-2 space-y-1">
@@ -646,8 +653,8 @@ function DownloadProgress({
         ) : (
           <span>
             {state?.phase === "building_binary"
-              ? "Preparing runtime…"
-              : "Verifying…"}
+              ? t("models.list.preparingRuntime")
+              : t("models.list.verifying")}
           </span>
         )}
       </div>
@@ -669,7 +676,7 @@ function ListEmptyState({
   if (group === "builtin") {
     return (
       <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
-        No on-device transcription models on this device.
+        {t("models.list.noBuiltin")}
       </p>
     );
   }
@@ -679,14 +686,14 @@ function ListEmptyState({
     if (hasHidden) return null;
     return (
       <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
-        {hasServers ? "No models match." : t("models.servers.noServer")}
+        {hasServers ? t("models.list.noMatch") : t("models.servers.noServer")}
       </p>
     );
   }
 
   return (
     <p className="text-muted-foreground px-5 py-10 text-center text-[13px]">
-      No models match.
+      {t("models.list.noMatch")}
     </p>
   );
 }

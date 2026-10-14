@@ -16,6 +16,7 @@ import {
   type ToolUIPart,
   type UIMessage,
 } from "ai";
+import i18n from "i18next";
 import { domMax, LazyMotion } from "motion/react";
 import type React from "react";
 import {
@@ -78,6 +79,7 @@ export interface RemixChatProps {
 }
 
 export function RemixChat(props: RemixChatProps): React.JSX.Element {
+  const { t } = useTranslation();
   const [thread, setThread] = useState<ThreadState | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   // State (not props) so "New" can clear it without a remount re-sending.
@@ -137,23 +139,34 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
 
   if (loadFailed) {
     if (props.minimized) {
-      return <MiniStrip text="Remix couldn't open" onEnter={props.onExpand} />;
+      return (
+        <MiniStrip
+          text={t("remixChat.miniCouldntOpen")}
+          onEnter={props.onExpand}
+        />
+      );
     }
     return (
       <div style={{ padding: 14, fontSize: 12.5, color: INK_DIM }}>
         <style>{REMIX_CHAT_CSS}</style>
-        Couldn't open Remix. Is the Openstyle server running?
+        {t("remixChat.couldntOpen")}
       </div>
     );
   }
   if (!thread) {
     if (props.minimized) {
-      return <MiniStrip text="Opening Remix…" busy onEnter={props.onExpand} />;
+      return (
+        <MiniStrip
+          text={t("remixChat.opening")}
+          busy
+          onEnter={props.onExpand}
+        />
+      );
     }
     return (
       <div style={{ padding: 14, fontSize: 12.5, color: INK_FAINT }}>
         <style>{REMIX_CHAT_CSS}</style>
-        Opening Remix…
+        {t("remixChat.opening")}
       </div>
     );
   }
@@ -380,7 +393,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         });
       },
       onError: (err) => {
-        setNotice(err.message || "Remix failed.");
+        setNotice(err.message || i18n.t("remixChat.failed"));
       },
       onFinish: ({ messages: finished }) => {
         void apiFetch("/api/remix/thread/sync", {
@@ -588,7 +601,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     const id = ++actionSeqRef.current;
     setActions((rows) => [
       ...rows,
-      { id, label: preset.label, status: "running" },
+      { id, label: presetLabel(preset), status: "running" },
     ]);
     const settle = (patch: Partial<ActionRow>): void =>
       setActions((rows) =>
@@ -609,10 +622,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       }
       const data = (await res.json()) as { text?: string };
       const edited = (data.text ?? "").trim();
-      if (!edited) throw new Error("The model returned nothing.");
+      if (!edited) throw new Error(i18n.t("remixChat.returnedNothing"));
       const delivered = await window.api.remixPasteText(edited);
       if (!delivered.ok) {
-        throw new Error("Couldn't replace it — nothing was changed.");
+        throw new Error(i18n.t("remixChat.couldntReplace"));
       }
 
       contextRef.current = { ...contextRef.current, text: edited };
@@ -620,7 +633,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     } catch (err) {
       settle({
         status: "failed",
-        detail: err instanceof Error ? err.message : "Something went wrong.",
+        detail:
+          err instanceof Error
+            ? err.message
+            : i18n.t("remixChat.somethingWrong"),
       });
     }
   }, []);
@@ -633,7 +649,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         await refreshContext();
         const selection = contextRef.current.text;
         if (!selection) {
-          setNotice("Nothing is highlighted — select some text first.");
+          setNotice(i18n.t("remixChat.nothingHighlighted"));
           return;
         }
         await runPresetTransform(preset);
@@ -756,8 +772,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             {messages.length === 0 && actions.length === 0 && !busy && (
               <div className="remix-chat-empty">
                 {liveContext.text
-                  ? "Say or type what to do with your selection."
-                  : "Nothing selected — ask me to write, research, or answer."}
+                  ? t("remixChat.emptyWithSelection")
+                  : t("remixChat.emptyNoSelection")}
               </div>
             )}
             {actions.map((action) => (
@@ -767,10 +783,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                 data-failed={action.status === "failed"}
               >
                 {action.status === "running"
-                  ? `${action.label}…`
+                  ? t("remixChat.actionRunning", { label: action.label })
                   : action.status === "done"
-                    ? `${action.label} — replaced your text`
-                    : `${action.label} failed — ${action.detail ?? ""}`}
+                    ? t("remixChat.actionDone", { label: action.label })
+                    : t("remixChat.actionFailed", {
+                        label: action.label,
+                        detail: action.detail ?? "",
+                      })}
               </div>
             ))}
             {messages.map((message) => (
@@ -778,7 +797,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             ))}
             {busy && !narrating && (
               <ThinkingShimmer className="remix-chat-busy">
-                Thinking…
+                {t("remixChat.thinking")}
               </ThinkingShimmer>
             )}
           </MessageScroller>
@@ -798,7 +817,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                   className="remix-chat-chip"
                   onClick={() => void runPreset(preset)}
                 >
-                  {preset.label}
+                  {presetLabel(preset)}
                 </button>
               ))}
             </div>
@@ -811,7 +830,9 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               rows={1}
               value={input}
               aria-label={t("remixChat.message")}
-              placeholder={busy ? "Working…" : "Message Remix…"}
+              placeholder={
+                busy ? t("remixChat.working") : t("remixChat.placeholder")
+              }
               onChange={(e) => {
                 setInput(e.target.value);
                 const el = e.currentTarget;
@@ -879,7 +900,9 @@ async function errorFromResponse(res: Response): Promise<Error> {
   const body = (await res.json().catch(() => null)) as {
     detail?: string;
   } | null;
-  return new Error(body?.detail || `Remix failed (${res.status}).`);
+  return new Error(
+    body?.detail || i18n.t("remixChat.statusFailed", { status: res.status }),
+  );
 }
 
 async function createThread(): Promise<ThreadState> {
@@ -888,51 +911,44 @@ async function createThread(): Promise<ThreadState> {
   return (await res.json()) as ThreadState;
 }
 
+function presetLabel(preset: RemixPreset): string {
+  return i18n.t(`remixChat.presets.${preset.id}`, {
+    defaultValue: preset.label,
+  });
+}
+
 function isToolFinished(part: ToolUIPart | DynamicToolUIPart): boolean {
   return part.state === "output-available" || part.state === "output-error";
 }
 
-const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
-  get_context: {
-    doing: "Looking at your screen…",
-    done: "Checked your screen",
-  },
-  read_document: {
-    doing: "Reading the document…",
-    done: "Read the document",
-  },
-  select_all: { doing: "Selecting everything…", done: "Selected everything" },
-  select_text: {
-    doing: "Selecting in your document…",
-    done: "Moved your selection",
-  },
-  collapse_selection: {
-    doing: "Placing the cursor…",
-    done: "Placed the cursor",
-  },
-  copy: { doing: "Reading your selection…", done: "Read your selection" },
-  set_clipboard: {
-    doing: "Preparing text…",
-    done: "Put text on your clipboard",
-  },
-  set_clipboard_image: {
-    doing: "Fetching an image…",
-    done: "Put an image on your clipboard",
-  },
-  paste: { doing: "Pasting…", done: "Pasted into your document" },
-  undo: { doing: "Undoing…", done: "Undid the last edit" },
-  redo: { doing: "Redoing…", done: "Redid the edit" },
-  press_key: { doing: "Pressing a key…", done: "Pressed a key" },
-  get_clipboard: {
-    doing: "Reading your clipboard…",
-    done: "Read your clipboard",
-  },
-};
+/** Tool names that have a translated "doing" and "done" label. */
+const KNOWN_TOOLS = new Set([
+  "get_context",
+  "read_document",
+  "select_all",
+  "select_text",
+  "collapse_selection",
+  "copy",
+  "set_clipboard",
+  "set_clipboard_image",
+  "paste",
+  "undo",
+  "redo",
+  "press_key",
+  "get_clipboard",
+]);
 
 function toolLabels(name: string): { doing: string; done: string } {
-  return (
-    TOOL_LABELS[name] ?? { doing: `Running ${name}…`, done: `Ran ${name}` }
-  );
+  if (KNOWN_TOOLS.has(name)) {
+    return {
+      doing: i18n.t(`remixChat.tools.${name}.doing`),
+      done: i18n.t(`remixChat.tools.${name}.done`),
+    };
+  }
+  return {
+    doing: i18n.t("remixChat.toolRunning", { name }),
+    done: i18n.t("remixChat.toolRan", { name }),
+  };
 }
 
 function latestActivity(messages: UIMessage[], busy: boolean): string {
@@ -947,12 +963,14 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
       }
       if (isTextUIPart(part) && part.text.trim()) {
         const line = part.text.trim().split("\n")[0] ?? "";
-        if (message.role === "user") return busy ? "Thinking…" : `“${line}”`;
+        if (message.role === "user") {
+          return busy ? i18n.t("remixChat.thinking") : `“${line}”`;
+        }
         return line;
       }
     }
   }
-  return busy ? "Thinking…" : "Openstyle Remix";
+  return busy ? i18n.t("remixChat.thinking") : "Openstyle Remix";
 }
 
 const MessageRow = memo(function MessageRow({
@@ -1027,6 +1045,7 @@ function ToolStepLabel({
   part: ToolUIPart | DynamicToolUIPart;
   label: string;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const finished = isToolFinished(part);
   return (
@@ -1059,11 +1078,15 @@ function ToolStepLabel({
       <AgentDisclosure open={open}>
         {/* Spans: AgentActivity puts labels in a <span>; block tags would be invalid. */}
         <span className="remix-chat-step-body">
-          <span className="remix-chat-step-key">Input</span>
+          <span className="remix-chat-step-key">
+            {t("remixChat.stepInput")}
+          </span>
           <span className="remix-chat-step-pre">{pretty(part.input)}</span>
           {finished && (
             <>
-              <span className="remix-chat-step-key">Output</span>
+              <span className="remix-chat-step-key">
+                {t("remixChat.stepOutput")}
+              </span>
               <span className="remix-chat-step-pre">
                 {pretty(
                   part.state === "output-error" ? part.errorText : part.output,

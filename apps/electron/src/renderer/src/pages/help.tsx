@@ -165,10 +165,7 @@ export default function HelpPage(): React.JSX.Element {
 
   return (
     <PageShell>
-      <PageHeader
-        title="Help"
-        subtitle="Documentation and ways to contribute to Openstyle."
-      />
+      <PageHeader title={t("help.title")} subtitle={t("help.subtitle")} />
 
       <section className="mb-8">
         <Eyebrow text={t("help.hotkeys.eyebrow")} />
@@ -231,25 +228,25 @@ export default function HelpPage(): React.JSX.Element {
       </section>
 
       <section className="mb-8">
-        <Eyebrow text="Get help" />
+        <Eyebrow text={t("help.getHelp.eyebrow")} />
         <div className="mt-3 grid grid-cols-1 gap-3">
           <HelpCard
             href={LINKS.newIssue}
             icon={Bug}
-            title="Report an issue"
-            desc="Found a bug or have a feature request? Open a GitHub issue."
+            title={t("help.getHelp.reportTitle")}
+            desc={t("help.getHelp.reportDesc")}
           />
         </div>
       </section>
 
       <section className="mb-8">
-        <Eyebrow text="Contributing" />
+        <Eyebrow text={t("help.contributing.eyebrow")} />
         <div className="mt-3">
           <HelpCard
             href={LINKS.contributing}
             icon={Heart}
-            title="Contribute to Openstyle"
-            desc="PRs are welcome. Start with CONTRIBUTING.md for local setup."
+            title={t("help.contributing.cardTitle")}
+            desc={t("help.contributing.cardDesc")}
           />
         </div>
       </section>

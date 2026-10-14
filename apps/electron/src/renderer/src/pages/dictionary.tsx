@@ -424,7 +424,9 @@ const EntryRow = memo(function EntryRow({
         {entry.value}
       </span>
       <span className="mono text-muted-foreground text-right text-[11px] max-[900px]:text-left">
-        {entry.usage_count > 0 ? `${entry.usage_count}× used` : "—"}
+        {entry.usage_count > 0
+          ? t("dictionary.usedCount", { count: entry.usage_count })
+          : "—"}
       </span>
       <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-[900px]:row-span-2 max-[900px]:opacity-100">
         <Button

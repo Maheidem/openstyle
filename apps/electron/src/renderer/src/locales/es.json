@@ -29,7 +29,8 @@
       "value": "valor",
       "apiKey": "clave de API",
       "token": "token"
-    }
+    },
+    "done": "Listo"
   },
   "languageNames": {
     "en": "English",
@@ -195,7 +196,13 @@
       "needsModifier": "Los atajos necesitan una tecla modificadora o botón lateral del ratón",
       "languageHotkey": "Dictar en {{language}}",
       "languageHotkeyDesc": "Opcional: fija este dictado en {{language}}, omitiendo la detección automática.",
-      "languageHotkeyConflict": "Esta combinación ya está en uso. Elige otra."
+      "languageHotkeyConflict": "Esta combinación ya está en uso. Elige otra.",
+      "backgroundAudio": "Audio en segundo plano",
+      "backgroundAudioDesc": "Atenuar baja el volumen. Pausar pausa el contenido actual y baja el volumen.",
+      "backgroundAudioDescLinux": "Atenuar baja el volumen del sistema. Pausar pausa el contenido MPRIS y baja el volumen.",
+      "backgroundAudioOff": "Desactivado",
+      "backgroundAudioDuck": "Atenuar",
+      "backgroundAudioPause": "Pausar"
     },
     "display": {
       "theme": "Tema",
@@ -241,7 +248,6 @@
       "enhanceTimeoutReset": "Restablecer a {{seconds}} segundos",
       "enhanceTimeoutSaveFailed": "No se pudo guardar — el servidor sigue con {{value}} segundos",
       "enhanceTimeoutStripped": "Solo dígitos: se omite {{dropped}}, el campo muestra {{value}}",
-
       "history": "Historial de transcripciones",
       "historyDesc": "Elimina permanentemente todas las sesiones guardadas — esto no se puede deshacer.",
       "clearHistory": "Borrar historial",
@@ -353,7 +359,8 @@
     "emptyDesc": "Agrega una frase que dices seguido, como <example>mi dirección</example> — y Openstyle la expande en el texto.",
     "noResults": "Nada coincide con \"{{search}}\".",
     "noEntries": "Sin entradas — agrega una para comenzar.",
-    "failedToSave": "Error al guardar la entrada."
+    "failedToSave": "Error al guardar la entrada.",
+    "usedCount": "usado {{count}}×"
   },
   "vocabulary": {
     "title": "Vocabulario",
@@ -379,7 +386,10 @@
     "noTerms": "Sin términos — agrega uno para comenzar.",
     "failedToSave": "Error al guardar la entrada.",
     "importFailed": "Importación fallida — el archivo debe ser JSON válido.",
-    "selectEntry": "Seleccionar {{term}}"
+    "selectEntry": "Seleccionar {{term}}",
+    "termPlaceholder": "p. ej.: «Nguyen» o «número de cuenta»",
+    "notesPlaceholder": "p. ej.: «nombre del cliente», «coreano»",
+    "biasNote": "Las frases de varias palabras funcionan con Nova 3, OpenAI y Groq. Nova 2 refuerza palabras sueltas. Scribe v1 no usa sesgo de vocabulario."
   },
   "tone": {
     "title": "Tono",
@@ -669,7 +679,39 @@
     "modal": {
       "addApiKey": "Añadir clave de API",
       "chooseVoice": "Elegir un modelo de voz",
-      "pickLlm": "Elegir un modelo LLM"
+      "pickLlm": "Elegir un modelo LLM",
+      "keyTitle": "Añade tu clave de API de {{provider}}",
+      "keyNeeded": "<model>{{name}}</model> necesita una clave de {{provider}} para funcionar.",
+      "keyNew": "Introduce una nueva clave de API para {{provider}}.",
+      "keyPlaceholder": "sk-…",
+      "keyStoredNote": "Guardada en el llavero · nunca registrada",
+      "keyGet": "Obtener una clave de {{provider}} ↗",
+      "keyChecking": "Verificando…",
+      "keySaveUse": "Guardar y usar"
+    },
+    "list": {
+      "searchPlaceholder": "Buscar modelos…",
+      "showAll": "Mostrar todos los modelos ({{count}} más) →",
+      "selected": "Seleccionado",
+      "use": "Usar",
+      "download": "Descargar",
+      "retry": "Reintentar",
+      "recommended": "Recomendado",
+      "via": "vía",
+      "addKey": "Añadir clave",
+      "preparingRuntime": "Preparando el entorno de ejecución…",
+      "verifying": "Verificando…",
+      "noBuiltin": "No hay modelos de transcripción en el dispositivo en este equipo.",
+      "noMatch": "Ningún modelo coincide."
+    },
+    "mlx": {
+      "title": "Precalentamiento del modelo",
+      "coldStart": "Inicio en frío (descargar)",
+      "alwaysOn": "Siempre activo",
+      "descAlways": "Mantiene el modelo cargado en memoria en todo momento, hasta que cierres Openstyle. Es el uso repetido más rápido, pero usa más RAM.",
+      "descCold": "Descarga el modelo de la memoria después de cada transcripción. Usa menos RAM, pero el siguiente dictado espera una recarga completa.",
+      "descOneMinute": "Mantiene el modelo en memoria durante aproximadamente 1 minuto después de terminar de dictar, para que los dictados seguidos sigan siendo rápidos.",
+      "descMinutes": "Mantiene el modelo cargado en memoria hasta {{minutes}} minutos después del dictado. Uso repetido más rápido, con más RAM mientras está caliente."
     }
   },
   "shell": {
@@ -876,6 +918,18 @@
     },
     "navigate": {
       "eyebrow": "Navegar"
+    },
+    "title": "Ayuda",
+    "subtitle": "Documentación y formas de contribuir a Openstyle.",
+    "getHelp": {
+      "eyebrow": "Obtener ayuda",
+      "reportTitle": "Informar de un problema",
+      "reportDesc": "¿Encontraste un error o tienes una idea para una función? Abre un issue en GitHub."
+    },
+    "contributing": {
+      "eyebrow": "Contribuir",
+      "cardTitle": "Contribuir a Openstyle",
+      "cardDesc": "Los PR son bienvenidos. Empieza con CONTRIBUTING.md para la configuración local."
     }
   },
   "import": {
@@ -917,7 +971,36 @@
     }
   },
   "pill": {
-    "cancelDictation": "Cancelar el dictado"
+    "cancelDictation": "Cancelar el dictado",
+    "dismiss": "Descartar",
+    "retry": "Reintentar",
+    "cardTitle": "Falló la transcripción",
+    "status": {
+      "reconnecting": "Reconectando",
+      "retrying": "Reintentando",
+      "unavailable": "No disponible",
+      "warming": "Calentando el modelo local…",
+      "delivered": "Dictado entregado",
+      "noAudio": "No hay audio de tu micrófono",
+      "preparingMic": "Preparando el micrófono",
+      "listening": "Escuchando",
+      "transcribing": "Transcribiendo"
+    },
+    "remix": {
+      "applying": "Aplicando {{label}}",
+      "applyingFallback": "remix",
+      "listening": "Escuchando un remix",
+      "chat": "Chat de Remix",
+      "working": "Trabajando…",
+      "hintListening": "Escuchando…",
+      "transcribing": "Transcribiendo…",
+      "nothingSelectedTitle": "Nada seleccionado",
+      "nothingSelectedBody": "Primero resalta algo de texto en cualquier app y luego pulsa el atajo.",
+      "failedTitle": "Falló Remix",
+      "modelCouldntRun": "El modelo no pudo ejecutar eso ({{status}}).",
+      "returnedNothing": "El modelo no devolvió nada.",
+      "somethingWrong": "Algo salió mal."
+    }
   },
   "remixBar": {
     "open": "Abrir Openstyle Remix"
@@ -928,6 +1011,96 @@
     "message": "Mensaje para Remix",
     "stop": "Detener",
     "send": "Enviar",
-    "conversation": "Conversación de Remix"
+    "conversation": "Conversación de Remix",
+    "placeholder": "Mensaje para Remix…",
+    "working": "Trabajando…",
+    "miniCouldntOpen": "No se pudo abrir Remix",
+    "couldntOpen": "No se pudo abrir Remix. ¿Está en marcha el servidor de Openstyle?",
+    "opening": "Abriendo Remix…",
+    "emptyWithSelection": "Di o escribe qué hacer con tu selección.",
+    "emptyNoSelection": "Nada seleccionado — pídeme que escriba, investigue o responda.",
+    "thinking": "Pensando…",
+    "stepInput": "Entrada",
+    "stepOutput": "Salida",
+    "failed": "Falló Remix.",
+    "statusFailed": "Falló Remix ({{status}}).",
+    "somethingWrong": "Algo salió mal.",
+    "returnedNothing": "El modelo no devolvió nada.",
+    "couldntReplace": "No se pudo reemplazar — no se cambió nada.",
+    "nothingHighlighted": "No hay nada resaltado — selecciona primero algo de texto.",
+    "actionRunning": "{{label}}…",
+    "actionDone": "{{label}} — texto reemplazado",
+    "actionFailed": "{{label}} falló — {{detail}}",
+    "toolRunning": "Ejecutando {{name}}…",
+    "toolRan": "{{name}} ejecutado",
+    "presets": {
+      "fix": "Corregir",
+      "formal": "Formal",
+      "markdown": "Markdown"
+    },
+    "tools": {
+      "get_context": {
+        "doing": "Mirando tu pantalla…",
+        "done": "Pantalla revisada"
+      },
+      "read_document": {
+        "doing": "Leyendo el documento…",
+        "done": "Documento leído"
+      },
+      "select_all": {
+        "doing": "Seleccionando todo…",
+        "done": "Todo seleccionado"
+      },
+      "select_text": {
+        "doing": "Seleccionando en tu documento…",
+        "done": "Selección movida"
+      },
+      "collapse_selection": {
+        "doing": "Colocando el cursor…",
+        "done": "Cursor colocado"
+      },
+      "copy": {
+        "doing": "Leyendo tu selección…",
+        "done": "Selección leída"
+      },
+      "set_clipboard": {
+        "doing": "Preparando el texto…",
+        "done": "Texto puesto en el portapapeles"
+      },
+      "set_clipboard_image": {
+        "doing": "Obteniendo una imagen…",
+        "done": "Imagen puesta en el portapapeles"
+      },
+      "paste": {
+        "doing": "Pegando…",
+        "done": "Pegado en tu documento"
+      },
+      "undo": {
+        "doing": "Deshaciendo…",
+        "done": "Última edición deshecha"
+      },
+      "redo": {
+        "doing": "Rehaciendo…",
+        "done": "Edición rehecha"
+      },
+      "press_key": {
+        "doing": "Pulsando una tecla…",
+        "done": "Tecla pulsada"
+      },
+      "get_clipboard": {
+        "doing": "Leyendo tu portapapeles…",
+        "done": "Portapapeles leído"
+      }
+    }
+  },
+  "errorBoundary": {
+    "eyebrow": "Algo salió mal",
+    "title": "Openstyle encontró un error inesperado.",
+    "body": "El error se registró para diagnóstico. Recargar suele solucionarlo — si sigue ocurriendo, comparte tus registros desde Ajustes → Datos.",
+    "reload": "Recargar"
+  },
+  "notFound": {
+    "title": "Página no encontrada",
+    "goToApp": "Ir a la app"
   }
 }
