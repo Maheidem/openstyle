@@ -1,5 +1,6 @@
 import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
 // Hotkey demo parts: the press hook, keycap, step word and waveform. The
@@ -134,6 +135,36 @@ export function Keycap({
   );
 }
 
+// The keycap group plus the punctuation that follows it in the translation
+// (<key>,</key>). Both sit in one nowrap box, so the comma never wraps onto a
+// line of its own. The keycaps are -z-10: with `isolate` on the sentence, the
+// pressed halo paints behind the comma. <Trans> injects the children.
+export function KeyGroup({
+  tokens,
+  pressed,
+  children,
+}: {
+  tokens: string[];
+  pressed: boolean;
+  children?: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <span className="inline-block align-middle whitespace-nowrap">
+      <span className="relative -z-10 inline-block align-middle">
+        {tokens.map((tok, i) => (
+          <span key={`${tok}-${i}`} className="inline-block align-middle">
+            {i > 0 && (
+              <span className="text-muted-foreground mx-1 text-[16px]">+</span>
+            )}
+            <Keycap pressed={pressed} label={tok} />
+          </span>
+        ))}
+      </span>
+      {children}
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Wave — SVG polyline. While `pressed`, redraws on requestAnimationFrame
 // using a sine-envelope × harmonics formula; otherwise renders a flat line.
@@ -149,6 +180,7 @@ export function Wave({
   getLiveLevel: () => number | null;
   height?: number;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const W = 520;
   const H = height;
   const polyRef = useRef<SVGPolylineElement>(null);
@@ -216,7 +248,7 @@ export function Wave({
       preserveAspectRatio="none"
       className="block"
       role="img"
-      aria-label="Voice waveform"
+      aria-label={t("common.voiceWaveform")}
     >
       <polyline
         ref={polyRef}

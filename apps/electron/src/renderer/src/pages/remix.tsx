@@ -1,5 +1,5 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
-import { Keycap, StepWord, Wave } from "@renderer/components/hotkey-demo";
+import { KeyGroup, StepWord, Wave } from "@renderer/components/hotkey-demo";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
@@ -9,7 +9,7 @@ import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Globe } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { getDefaultRemixHotkey } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
@@ -269,22 +269,18 @@ function RemixDemo({ hotkey }: { hotkey: string }): React.JSX.Element {
   return (
     <div className="border-border bg-card flex flex-col items-center gap-5 rounded-[16px] border px-7 py-7">
       <div className="select-none text-center">
-        <div className="display text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
-          <StepWord active={phase === "idle"}>Hold</StepWord>{" "}
-          <span className="inline-block align-middle">
-            {tokens.map((tok, i) => (
-              <span key={`${tok}-${i}`} className="inline-block align-middle">
-                {i > 0 && (
-                  <span className="text-muted-foreground mx-1 text-[16px]">
-                    +
-                  </span>
-                )}
-                <Keycap pressed={pressed} label={tok} />
-              </span>
-            ))}
-          </span>{" "}
-          <StepWord active={pressed}>, speak,</StepWord>{" "}
-          <StepWord active={showResult}>release.</StepWord>
+        {/* isolate + the -z-10 keycap: the pressed keycap halo paints behind the
+              comma that follows it. keep-all stops Japanese wrapping inside a phrase. */}
+        <div className="display text-foreground isolate text-[34px] leading-[1.1] font-normal tracking-tight text-balance [word-break:keep-all]">
+          <Trans
+            i18nKey="remixPage.demo.sentence"
+            components={{
+              press: <StepWord active={phase === "idle"} />,
+              speak: <StepWord active={pressed} />,
+              release: <StepWord active={showResult} />,
+              key: <KeyGroup tokens={tokens} pressed={pressed} />,
+            }}
+          />
         </div>
       </div>
 

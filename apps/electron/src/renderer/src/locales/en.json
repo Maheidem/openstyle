@@ -19,7 +19,8 @@
     "downloading": "Downloading…",
     "downloadUpdate": "Download Update",
     "restartAndUpdate": "Restart & Update",
-    "noResults": "No results found"
+    "noResults": "No results found",
+    "voiceWaveform": "Voice waveform"
   },
   "languageNames": {
     "en": "English",
@@ -903,6 +904,7 @@
       }
     },
     "demo": {
+      "sentence": "<press>Hold</press> <key>,</key> <speak>speak,</speak> <release>release.</release>",
       "statusReady": "Ready",
       "statusListening": "Listening…",
       "statusDone": "Rewritten in place"

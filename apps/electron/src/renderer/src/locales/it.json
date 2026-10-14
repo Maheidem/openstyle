@@ -16,7 +16,8 @@
     "manage": "Gestisci",
     "viewRelease": "Visualizza Versione",
     "saving": "Salvataggio...",
-    "restartAndUpdate": "Riavvia e Aggiorna"
+    "restartAndUpdate": "Riavvia e Aggiorna",
+    "voiceWaveform": "Forma d'onda della voce"
   },
   "languageNames": {
     "en": "Inglese",
@@ -698,6 +699,7 @@
       }
     },
     "demo": {
+      "sentence": "<press>Tieni premuto</press> <key>,</key> <speak>parla</speak> <release>e rilascia.</release>",
       "statusReady": "Pronto",
       "statusListening": "In ascolto…",
       "statusDone": "Riscritto sul posto"
