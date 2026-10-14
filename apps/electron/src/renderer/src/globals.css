@@ -133,11 +133,11 @@
   --secondary-foreground: #E8E9EB;
   --muted: #2A2D33;
   --muted-foreground: #8B8F98;
-  /* Invented: the mockup only specifies a light value for --muted-soft.
-     Derived the same way design-system.md's --chart ramp was: lower
-     contrast than --muted-foreground, same neutral hue, sitting between
-     it and --border. Flag for design sign-off if it reads too dim. */
-  --muted-soft: #6B6F78;
+  /* Signed off by the owner on 2026-10-13 (issue #88). The mockup has only
+     a light value for --muted-soft, so this dark value is derived. It sits
+     between --muted-foreground (#8B8F98) and --border. Contrast: 4.54 on
+     the page (#17181B), 4.12 on a card (#1F2126). */
+  --muted-soft: #7C818B;
   --accent: #2A2D33;
   --accent-foreground: #E8E9EB;
   --destructive: #F87171;
