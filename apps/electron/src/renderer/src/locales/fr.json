@@ -26,9 +26,9 @@
     "reveal": {
       "show": "Afficher {{label}}",
       "hide": "Masquer {{label}}",
-      "value": "valeur",
-      "apiKey": "clé API",
-      "token": "jeton"
+      "value": "la valeur",
+      "apiKey": "la clé API",
+      "token": "le jeton"
     }
   },
   "languageNames": {
