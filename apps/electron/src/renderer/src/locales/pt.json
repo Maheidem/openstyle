@@ -16,7 +16,8 @@
     "manage": "Gerenciar",
     "viewRelease": "Ver Lançamento",
     "saving": "Salvando...",
-    "restartAndUpdate": "Reiniciar e Atualizar"
+    "restartAndUpdate": "Reiniciar e Atualizar",
+    "voiceWaveform": "Forma de onda da voz"
   },
   "languageNames": {
     "en": "Inglês",
@@ -698,6 +699,7 @@
       }
     },
     "demo": {
+      "sentence": "<press>Segure</press> <key>,</key> <speak>fale</speak> <release>e solte.</release>",
       "statusReady": "Pronto",
       "statusListening": "Ouvindo…",
       "statusDone": "Reescrito no lugar"

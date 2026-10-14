@@ -16,7 +16,8 @@
     "manage": "管理",
     "viewRelease": "リリースを表示",
     "saving": "保存中...",
-    "restartAndUpdate": "再起動して更新"
+    "restartAndUpdate": "再起動して更新",
+    "voiceWaveform": "音声波形"
   },
   "languageNames": {
     "en": "English",
@@ -699,6 +700,7 @@
       }
     },
     "demo": {
+      "sentence": "<key>を</key><press>押し続けて、</press><speak>話して、</speak><release>離します。</release>",
       "statusReady": "準備完了",
       "statusListening": "聞き取り中…",
       "statusDone": "その場で書き直し完了"

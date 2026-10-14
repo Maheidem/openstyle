@@ -16,7 +16,8 @@
     "manage": "Gérer",
     "viewRelease": "Voir la Version",
     "saving": "Enregistrement…",
-    "restartAndUpdate": "Redémarrer et Mettre à jour"
+    "restartAndUpdate": "Redémarrer et Mettre à jour",
+    "voiceWaveform": "Forme d'onde de la voix"
   },
   "languageNames": {
     "en": "English",
@@ -699,6 +700,7 @@
       }
     },
     "demo": {
+      "sentence": "<press>Maintenez</press> <key>,</key> <speak>parlez</speak> <release>puis relâchez.</release>",
       "statusReady": "Prêt",
       "statusListening": "À l'écoute…",
       "statusDone": "Réécrit sur place"

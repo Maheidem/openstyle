@@ -16,7 +16,8 @@
     "manage": "Verwalten",
     "viewRelease": "Release ansehen",
     "saving": "Wird gespeichert…",
-    "restartAndUpdate": "Neu starten und aktualisieren"
+    "restartAndUpdate": "Neu starten und aktualisieren",
+    "voiceWaveform": "Sprachwellenform"
   },
   "languageNames": {
     "en": "English",
@@ -699,6 +700,7 @@
       }
     },
     "demo": {
+      "sentence": "<key/> <press>gedrückt halten,</press> <speak>sprechen,</speak> <release>loslassen.</release>",
       "statusReady": "Bereit",
       "statusListening": "Höre zu…",
       "statusDone": "An Ort und Stelle neu geschrieben"

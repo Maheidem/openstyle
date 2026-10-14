@@ -210,6 +210,10 @@ describe("locale files", () => {
       "history.tutorial.pasted",
       "history.tutorial.sample",
     ],
+    // Keys introduced by the translated Remix demo (issue #151): the
+    // hold-speak-release sentence and the waveform aria-label that the History,
+    // Remix and onboarding demos share.
+    "remix-demo": ["remixPage.demo.sentence", "common.voiceWaveform"],
   };
 
   describe.each(Object.entries(KEY_GROUPS))("%s keys", (_name, keys) => {
@@ -249,10 +253,11 @@ describe("locale files", () => {
     });
   }
 
-  // The tutorial sentence is rendered by <Trans> (tutorial-demo.tsx). Each
-  // tag maps to one highlighted word or the keycap, so a translation must use
-  // every tag exactly once. A missing tag drops a highlight; a repeated tag
-  // renders the keycap or word twice.
+  // The demo sentences are rendered by <Trans> (tutorial-demo.tsx for the
+  // History card, remix.tsx for the Remix page). Each tag maps to one
+  // highlighted word or the keycap, so a translation must use every tag exactly
+  // once. A missing tag drops a highlight; a repeated tag renders the keycap or
+  // word twice.
   const SENTENCE_TAGS = [
     "<press>",
     "</press>",
@@ -261,30 +266,36 @@ describe("locale files", () => {
     "<release>",
     "</release>",
   ];
-  it.each([
-    "template.json",
-    ...localeFiles,
-  ])("%s tutorial sentence uses each tag exactly once", (file) => {
-    const sentence = flatten(load(file))["history.tutorial.sentence"];
-    for (const tag of SENTENCE_TAGS) {
+  const SENTENCE_KEYS = [
+    "history.tutorial.sentence",
+    "remixPage.demo.sentence",
+  ];
+  describe.each(SENTENCE_KEYS)("%s", (key) => {
+    it.each([
+      "template.json",
+      ...localeFiles,
+    ])("%s sentence uses each tag exactly once", (file) => {
+      const sentence = flatten(load(file))[key];
+      for (const tag of SENTENCE_TAGS) {
+        expect(
+          sentence.split(tag).length - 1,
+          `${file} sentence must contain ${tag} exactly once`,
+        ).toBe(1);
+      }
+      // The keycap group is <key/> or <key>punctuation</key>, exactly once.
       expect(
-        sentence.split(tag).length - 1,
-        `${file} sentence must contain ${tag} exactly once`,
+        sentence.split("<key").length - 1,
+        `${file} sentence must contain <key> exactly once`,
       ).toBe(1);
-    }
-    // The keycap group is <key/> or <key>punctuation</key>, exactly once.
-    expect(
-      sentence.split("<key").length - 1,
-      `${file} sentence must contain <key> exactly once`,
-    ).toBe(1);
-    expect(sentence, `${file} <key> is malformed`).toMatch(
-      /<key\/>|<key>[^<]+<\/key>/,
-    );
-    // Tags are well-formed and non-empty: <tag>word</tag>.
-    for (const name of ["press", "speak", "release"]) {
-      expect(sentence, `${file} <${name}> needs a word`).toMatch(
-        new RegExp(`<${name}>[^<]+</${name}>`),
+      expect(sentence, `${file} <key> is malformed`).toMatch(
+        /<key\/>|<key>[^<]+<\/key>/,
       );
-    }
+      // Tags are well-formed and non-empty: <tag>word</tag>.
+      for (const name of ["press", "speak", "release"]) {
+        expect(sentence, `${file} <${name}> needs a word`).toMatch(
+          new RegExp(`<${name}>[^<]+</${name}>`),
+        );
+      }
+    });
   });
 });
