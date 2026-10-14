@@ -127,6 +127,7 @@ const settingsSectionIds = [
   "application",
   "display",
   "permissions",
+  "meetings",
   "data",
   "network",
 ] as const;
@@ -198,6 +199,9 @@ export default function SettingsPage(): React.JSX.Element {
   const [pillCancel, setPillCancel] = useState<PillCancelMode>("hover");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [historyPaused, setHistoryPaused] = useState(false);
+  // Link meetings to calendar events (specs/calendar-eventkit.md).
+  const [calendarEnabled, setCalendarEnabled] = useState(false);
+  const [calendarDenied, setCalendarDenied] = useState(false);
   const [historyRetention, setHistoryRetention] = useState<
     "never" | "7" | "30" | "custom"
   >("never");
@@ -297,6 +301,8 @@ export default function SettingsPage(): React.JSX.Element {
   // read via the existing meeting:status IPC — cheap, no side effect.
   const [systemAudioSupported, setSystemAudioSupported] = useState(false);
   const showSystemAudioRow = meetingsEnabled && systemAudioSupported;
+  // The calendar link needs Meeting Mode and EventKit (macOS only).
+  const showMeetingsSection = meetingsEnabled && IS_MAC;
   // macOS has no preflight API for this TCC permission (see
   // system-audio-probe.ts): the only way to learn anything is to briefly run
   // the real capture pipeline. 'silent' is indeterminate (denied OR simply
@@ -413,6 +419,26 @@ export default function SettingsPage(): React.JSX.Element {
     void putSetting(SETTINGS_KEYS.hotkey, accelerator);
   }, []);
 
+  // Turning it on asks macOS for Calendars access. If macOS does not grant
+  // full access, the toggle goes back off. Turning it off reads nothing.
+  const handleCalendarToggle = useCallback(async (enabled: boolean) => {
+    setCalendarDenied(false);
+    if (!enabled) {
+      setCalendarEnabled(false);
+      await putSetting(SETTINGS_KEYS.calendarEnabled, "false");
+      return;
+    }
+    setCalendarEnabled(true);
+    const status = await window.api?.calendarRequest?.();
+    if (status !== "fullAccess") {
+      setCalendarEnabled(false);
+      setCalendarDenied(true);
+      await putSetting(SETTINGS_KEYS.calendarEnabled, "false");
+      return;
+    }
+    await putSetting(SETTINGS_KEYS.calendarEnabled, "true");
+  }, []);
+
   const handleRemixBarToggle = useCallback((enabled: boolean) => {
     setRemixBarEnabled(enabled);
     putSetting(SETTINGS_KEYS.remixBarEnabled, String(enabled))
@@ -463,6 +489,7 @@ export default function SettingsPage(): React.JSX.Element {
     setPillCancel(normalizePillCancelMode(s[SETTINGS_KEYS.pillCancelButton]));
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
     if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
+    if (s[SETTINGS_KEYS.calendarEnabled] === "true") setCalendarEnabled(true);
     if (s[SETTINGS_KEYS.advancedMode] === "true") setAdvancedMode(true);
 
     const retentionDays = parseRetentionDays(
@@ -772,7 +799,11 @@ export default function SettingsPage(): React.JSX.Element {
           </div>
         </div>
 
-        <SettingsSidebar active={activeSection} onSelect={selectSection} />
+        <SettingsSidebar
+          active={activeSection}
+          onSelect={selectSection}
+          showMeetings={showMeetingsSection}
+        />
 
         <div className="min-h-0 max-w-[694px] overflow-y-auto px-1 -mx-1">
           <h2 className="display text-foreground mb-6 text-[26px] font-medium tracking-[-0.02em]">
@@ -1238,6 +1269,38 @@ export default function SettingsPage(): React.JSX.Element {
               )}
             </SettingsPanel>
           )}
+          {activeSection === "meetings" && showMeetingsSection && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.meetings.useCalendar")}
+                desc={t("settings.meetings.useCalendarDesc")}
+                last
+              >
+                <div className="flex flex-col items-start gap-2">
+                  <Switch
+                    checked={calendarEnabled}
+                    onCheckedChange={(v) => void handleCalendarToggle(v)}
+                    aria-label={t("settings.meetings.useCalendar")}
+                  />
+                  {calendarDenied && (
+                    <div className="flex flex-col items-start gap-2">
+                      <p className="text-muted-foreground text-[12.5px]">
+                        {t("settings.meetings.calendarDenied")}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.api?.calendarOpenSettings?.()}
+                      >
+                        {t("settings.meetings.openSystemSettings")}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Row>
+            </SettingsPanel>
+          )}
+
           {activeSection === "data" && (
             <SettingsPanel>
               <Row
@@ -1406,32 +1469,36 @@ function DiskUsageLine(): React.JSX.Element {
 function SettingsSidebar({
   active,
   onSelect,
+  showMeetings,
 }: {
   active: SettingsSectionId;
   onSelect: (id: SettingsSectionId) => void;
+  showMeetings: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
   return (
     <nav className="border-border flex h-full min-h-0 shrink-0 gap-1 overflow-x-auto pb-1 min-[900px]:flex-col min-[900px]:overflow-visible min-[900px]:border-r min-[900px]:pr-4 min-[900px]:pb-0">
-      {visibleSettingsSectionIds.map((id) => {
-        const isActive = id === active;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onSelect(id)}
-            className={cn(
-              "shrink-0 rounded-[7px] border px-2.5 py-1.5 text-left text-[13px] transition-colors min-[900px]:w-full",
-              isActive
-                ? "border-border bg-card text-foreground font-medium"
-                : "text-muted-foreground hover:bg-card/50 border-transparent font-normal",
-            )}
-          >
-            {t(`settings.sections.${id}`)}
-          </button>
-        );
-      })}
+      {visibleSettingsSectionIds
+        .filter((id) => id !== "meetings" || showMeetings)
+        .map((id) => {
+          const isActive = id === active;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onSelect(id)}
+              className={cn(
+                "shrink-0 rounded-[7px] border px-2.5 py-1.5 text-left text-[13px] transition-colors min-[900px]:w-full",
+                isActive
+                  ? "border-border bg-card text-foreground font-medium"
+                  : "text-muted-foreground hover:bg-card/50 border-transparent font-normal",
+              )}
+            >
+              {t(`settings.sections.${id}`)}
+            </button>
+          );
+        })}
     </nav>
   );
 }

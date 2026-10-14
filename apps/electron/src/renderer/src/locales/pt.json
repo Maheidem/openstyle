@@ -136,6 +136,7 @@
       "recording": "Transcrição",
       "display": "Exibição",
       "permissions": "Permissões",
+      "meetings": "Reuniões",
       "data": "Dados",
       "network": "Rede",
       "remix": "Remix"
@@ -229,6 +230,12 @@
       "systemAudio": "Áudio do sistema",
       "systemAudioDesc": "Necessário para capturar os outros participantes ao gravar uma reunião. O macOS não tem como verificar essa permissão com antecedência.",
       "systemAudioUnknownNote": "Silêncio não significa necessariamente negado. Pode ser que nada estivesse tocando durante a verificação."
+    },
+    "meetings": {
+      "useCalendar": "Usar meu calendário",
+      "useCalendarDesc": "Vincula cada gravação de reunião ao evento do calendário que está em andamento. O Openstyle apenas lê eventos. Ele nunca altera seu calendário. O macOS pede permissão quando você ativa esta opção.",
+      "calendarDenied": "O Openstyle não tem acesso ao seu calendário. Permita o acesso em Ajustes do Sistema e depois ative esta opção novamente.",
+      "openSystemSettings": "Abrir Ajustes do Sistema"
     },
     "data": {
       "pauseHistory": "Pausar histórico",
@@ -902,7 +909,17 @@
     "summaryStaleNames": "Os nomes dos interlocutores mudaram desde que este resumo foi gerado — Resumir novamente para incluí-los.",
     "close": "Fechar",
     "speakerUnidentified": "Não identificado",
-    "contextPlaceholder": "Adicionar contexto para esta reunião…"
+    "contextPlaceholder": "Adicionar contexto para esta reunião…",
+    "calendar": {
+      "linked": "Evento do calendário",
+      "change": "Alterar",
+      "unlink": "Desvincular",
+      "noEventsToday": "Nenhum evento hoje",
+      "attendees": "Participantes: {{count}}",
+      "joinLink": "Link da reunião",
+      "pickTitle": "Eventos de hoje",
+      "link": "Vincular evento do calendário"
+    }
   },
   "help": {
     "hotkeys": {

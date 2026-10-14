@@ -160,6 +160,7 @@
       "recording": "Transcription",
       "display": "Display",
       "permissions": "Permissions",
+      "meetings": "Meetings",
       "data": "Data",
       "network": "Network",
       "remix": "Remix"
@@ -270,6 +271,12 @@
       "systemAudio": "System audio",
       "systemAudioDesc": "Required to capture the other participants when you record a meeting. macOS provides no way to check this permission in advance.",
       "systemAudioUnknownNote": "Silent isn't necessarily denied. Nothing may have been playing during the check."
+    },
+    "meetings": {
+      "useCalendar": "Use my calendar",
+      "useCalendarDesc": "Link each meeting recording to the calendar event that is running. Openstyle only reads events. It never changes your calendar. macOS asks for permission when you turn this on.",
+      "calendarDenied": "Openstyle has no access to your calendar. Allow access in System Settings, then turn this on again.",
+      "openSystemSettings": "Open System Settings"
     },
     "data": {
       "pauseHistory": "Pause history",
@@ -1122,7 +1129,17 @@
     "summaryStaleNames": "Speaker names changed since this summary was generated — Resummarize to include them.",
     "close": "Close",
     "speakerUnidentified": "Unidentified",
-    "contextPlaceholder": "Add context for this meeting…"
+    "contextPlaceholder": "Add context for this meeting…",
+    "calendar": {
+      "linked": "Calendar event",
+      "change": "Change",
+      "unlink": "Unlink",
+      "noEventsToday": "No events today",
+      "attendees": "Attendees: {{count}}",
+      "joinLink": "Meeting link",
+      "pickTitle": "Today's events",
+      "link": "Link calendar event"
+    }
   },
   "help": {
     "hotkeys": {

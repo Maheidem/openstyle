@@ -136,6 +136,7 @@
       "recording": "Transkription",
       "display": "Anzeige",
       "permissions": "Berechtigungen",
+      "meetings": "Besprechungen",
       "data": "Daten",
       "network": "Netzwerk",
       "remix": "Remix"
@@ -229,6 +230,12 @@
       "systemAudio": "Systemaudio",
       "systemAudioDesc": "Erforderlich, um die anderen Teilnehmer aufzuzeichnen, wenn Sie ein Meeting aufnehmen. macOS bietet keine Möglichkeit, diese Berechtigung vorab zu prüfen.",
       "systemAudioUnknownNote": "Stille bedeutet nicht zwangsläufig eine Ablehnung. Möglicherweise wurde während der Prüfung einfach nichts wiedergegeben."
+    },
+    "meetings": {
+      "useCalendar": "Meinen Kalender verwenden",
+      "useCalendarDesc": "Verknüpft jede Besprechungsaufnahme mit dem Kalendertermin, der gerade läuft. Openstyle liest Termine nur. Dein Kalender wird nie geändert. macOS fragt nach der Berechtigung, wenn du dies aktivierst.",
+      "calendarDenied": "Openstyle hat keinen Zugriff auf deinen Kalender. Erlaube den Zugriff in den Systemeinstellungen und aktiviere dies dann erneut.",
+      "openSystemSettings": "Systemeinstellungen öffnen"
     },
     "data": {
       "pauseHistory": "Verlauf pausieren",
@@ -903,7 +910,17 @@
     "summaryStaleNames": "Sprechernamen haben sich seit der Erstellung dieser Zusammenfassung geändert – erneut zusammenfassen, um sie einzubeziehen.",
     "close": "Schließen",
     "speakerUnidentified": "Nicht identifiziert",
-    "contextPlaceholder": "Kontext für dieses Meeting hinzufügen…"
+    "contextPlaceholder": "Kontext für dieses Meeting hinzufügen…",
+    "calendar": {
+      "linked": "Kalendertermin",
+      "change": "Ändern",
+      "unlink": "Verknüpfung lösen",
+      "noEventsToday": "Heute keine Termine",
+      "attendees": "Teilnehmer: {{count}}",
+      "joinLink": "Meeting-Link",
+      "pickTitle": "Termine von heute",
+      "link": "Kalendertermin verknüpfen"
+    }
   },
   "help": {
     "hotkeys": {

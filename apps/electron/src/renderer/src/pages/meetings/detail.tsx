@@ -27,7 +27,7 @@ import {
   formatClockMs,
   formatTimestamp,
 } from "@renderer/lib/format";
-import { queryKeys } from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -45,6 +45,8 @@ import {
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
+import { CalendarCard } from "./calendar-card";
 import {
   EditableTitle,
   MeetingContextField,
@@ -171,6 +173,10 @@ export function MeetingDetailView({
   const hasConfirmedSpeakerState = (speakersData?.speakers ?? []).some(
     (s) => s.displayName !== null || s.mergedInto !== null,
   );
+
+  const { data: appSettings } = useQuery(settingsQueryOptions());
+  const calendarEnabled =
+    appSettings?.[SETTINGS_KEYS.calendarEnabled] === "true";
 
   const invalidate = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
@@ -472,6 +478,12 @@ export function MeetingDetailView({
           <MeetingContextField
             id={id}
             context={meeting.context}
+            onChanged={invalidate}
+          />
+          <CalendarCard
+            id={id}
+            calendar={meeting.calendar}
+            enabled={calendarEnabled}
             onChanged={invalidate}
           />
         </div>
