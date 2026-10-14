@@ -287,7 +287,7 @@
     "tutorialToggle": "Tarjeta de tutorial",
     "tutorialToggleDesc": "Mostrar la demo de pulsar-hablar-soltar arriba",
     "tutorial": {
-      "sentence": "<press>Pulsa</press> <key/>, <speak>habla</speak> y <release>suelta</release>.",
+      "sentence": "<press>Pulsa</press> <key>,</key> <speak>habla</speak> <release>y suelta.</release>",
       "ready": "Listo",
       "listening": "Escuchando…",
       "pasted": "Pegado en tu app",

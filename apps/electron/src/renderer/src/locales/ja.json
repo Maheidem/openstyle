@@ -287,7 +287,7 @@
     "tutorialToggle": "チュートリアルカード",
     "tutorialToggleDesc": "上部に押して話して離すデモを表示",
     "tutorial": {
-      "sentence": "<key/>を<press>押して</press>、<speak>話して</speak>、<release>離します</release>。",
+      "sentence": "<key>を</key><press>押して、</press><speak>話して、</speak><release>離します。</release>",
       "ready": "準備完了",
       "listening": "聞き取り中…",
       "pasted": "アプリに貼り付けました",

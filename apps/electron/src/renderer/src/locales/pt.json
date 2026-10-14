@@ -287,7 +287,7 @@
     "tutorialToggle": "Cartão de tutorial",
     "tutorialToggleDesc": "Mostrar a demo pressionar-falar-soltar no topo",
     "tutorial": {
-      "sentence": "<press>Pressione</press> <key/>, <speak>fale</speak> e <release>solte</release>.",
+      "sentence": "<press>Pressione</press> <key>,</key> <speak>fale</speak> <release>e solte.</release>",
       "ready": "Pronto",
       "listening": "Ouvindo…",
       "pasted": "Colado no seu app",

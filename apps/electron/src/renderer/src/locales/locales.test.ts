@@ -260,7 +260,6 @@ describe("locale files", () => {
     "</speak>",
     "<release>",
     "</release>",
-    "<key/>",
   ];
   it.each([
     "template.json",
@@ -273,6 +272,14 @@ describe("locale files", () => {
         `${file} sentence must contain ${tag} exactly once`,
       ).toBe(1);
     }
+    // The keycap group is <key/> or <key>punctuation</key>, exactly once.
+    expect(
+      sentence.split("<key").length - 1,
+      `${file} sentence must contain <key> exactly once`,
+    ).toBe(1);
+    expect(sentence, `${file} <key> is malformed`).toMatch(
+      /<key\/>|<key>[^<]+<\/key>/,
+    );
     // Tags are well-formed and non-empty: <tag>word</tag>.
     for (const name of ["press", "speak", "release"]) {
       expect(sentence, `${file} <${name}> needs a word`).toMatch(

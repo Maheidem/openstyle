@@ -28,6 +28,36 @@ const PHASE_STEPS: ReadonlyArray<readonly [DemoPhase, number]> = [
 // Platform-aware default, mirrored from the main process via the preload.
 const DEFAULT_HOTKEY = window.api?.defaultHotkey ?? getDefaultHotkey();
 
+// The keycap group plus the punctuation that follows it in the translation
+// (<key>,</key>). Both sit in one nowrap box, so the comma never wraps onto a
+// line of its own. The keycaps are -z-10: with `isolate` on the sentence, the
+// pressed halo paints behind the comma. <Trans> injects the children.
+function KeyGroup({
+  tokens,
+  pressed,
+  children,
+}: {
+  tokens: string[];
+  pressed: boolean;
+  children?: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <span className="inline-block align-middle whitespace-nowrap">
+      <span className="relative -z-10 inline-block align-middle">
+        {tokens.map((tok, i) => (
+          <span key={`${tok}-${i}`} className="inline-block align-middle">
+            {i > 0 && (
+              <span className="text-muted-foreground mx-1 text-[16px]">+</span>
+            )}
+            <Keycap pressed={pressed} label={tok} />
+          </span>
+        ))}
+      </span>
+      {children}
+    </span>
+  );
+}
+
 export function TutorialDemo(): React.JSX.Element {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<DemoPhase>("idle");
@@ -138,23 +168,7 @@ export function TutorialDemo(): React.JSX.Element {
               press: <StepWord active={phase === "idle"} />,
               speak: <StepWord active={pressed} />,
               release: <StepWord active={showResult} />,
-              key: (
-                <span className="relative -z-10 inline-block align-middle">
-                  {hotkeyTokens.map((tok, i) => (
-                    <span
-                      key={`${tok}-${i}`}
-                      className="inline-block align-middle"
-                    >
-                      {i > 0 && (
-                        <span className="text-muted-foreground mx-1 text-[16px]">
-                          +
-                        </span>
-                      )}
-                      <Keycap pressed={pressed} label={tok} />
-                    </span>
-                  ))}
-                </span>
-              ),
+              key: <KeyGroup tokens={hotkeyTokens} pressed={pressed} />,
             }}
           />
         </div>

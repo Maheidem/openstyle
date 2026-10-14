@@ -287,9 +287,9 @@
     "tutorialToggle": "Carte tutoriel",
     "tutorialToggleDesc": "Afficher la démo appuyer-parler-relâcher en haut",
     "tutorial": {
-      "sentence": "<press>Appuyez</press> sur <key/>, <speak>parlez</speak> puis <release>relâchez</release>.",
+      "sentence": "<press>Appuyez sur</press> <key>,</key> <speak>parlez</speak> <release>puis relâchez.</release>",
       "ready": "Prêt",
-      "listening": "Écoute…",
+      "listening": "À l'écoute…",
       "pasted": "Collé dans votre app",
       "sample": "Je décale la réunion à demain, dix heures."
     },

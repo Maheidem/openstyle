@@ -287,7 +287,7 @@
     "tutorialToggle": "Scheda tutorial",
     "tutorialToggleDesc": "Mostra la demo premi-parla-rilascia in alto",
     "tutorial": {
-      "sentence": "<press>Premi</press> <key/>, <speak>parla</speak> e <release>rilascia</release>.",
+      "sentence": "<press>Premi</press> <key>,</key> <speak>parla</speak> <release>e rilascia.</release>",
       "ready": "Pronto",
       "listening": "In ascolto…",
       "pasted": "Incollato nella tua app",
