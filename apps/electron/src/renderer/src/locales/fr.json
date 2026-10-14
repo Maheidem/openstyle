@@ -701,7 +701,7 @@
       "addKey": "Ajouter une clé",
       "preparingRuntime": "Préparation de l'environnement d'exécution…",
       "verifying": "Vérification…",
-      "noBuiltin": "Aucun modèle de transcription sur l'appareil n'est disponible sur cet appareil.",
+      "noBuiltin": "Aucun modèle de transcription local n'est disponible sur cet appareil.",
       "noMatch": "Aucun modèle ne correspond."
     },
     "mlx": {

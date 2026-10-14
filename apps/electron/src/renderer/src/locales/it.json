@@ -700,7 +700,7 @@
       "addKey": "Aggiungi chiave",
       "preparingRuntime": "Preparazione dell'ambiente di esecuzione…",
       "verifying": "Verifica in corso…",
-      "noBuiltin": "Nessun modello di trascrizione sul dispositivo è disponibile su questo dispositivo.",
+      "noBuiltin": "Nessun modello di trascrizione locale è disponibile su questo dispositivo.",
       "noMatch": "Nessun modello corrisponde."
     },
     "mlx": {
