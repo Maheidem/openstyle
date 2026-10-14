@@ -1,11 +1,14 @@
+import { initI18n } from "@renderer/i18n";
 import type React from "react";
 import { useCallback, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { useTranslation } from "react-i18next";
 
 // Dwell so the dock/bottom edge isn't a tripwire for accidental opens.
 const HOVER_DWELL_MS = 300;
 
 function RemixBar(): React.JSX.Element {
+  const { t } = useTranslation();
   const [hot, setHot] = useState(false);
   const dwellRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -39,7 +42,7 @@ function RemixBar(): React.JSX.Element {
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
       onClick={open}
-      aria-label="Open Openstyle Remix"
+      aria-label={t("remixBar.open")}
       tabIndex={-1}
     >
       <style>{`
@@ -81,4 +84,9 @@ function RemixBar(): React.JSX.Element {
 }
 
 const container = document.getElementById("root");
-if (container) createRoot(container).render(<RemixBar />);
+// Load the active language first so the label renders translated. Mount even
+// if loading fails (the label then falls back to the key).
+if (container) {
+  const mount = () => createRoot(container).render(<RemixBar />);
+  void initI18n().then(mount, mount);
+}

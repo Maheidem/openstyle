@@ -362,7 +362,7 @@ export default function DictionaryPage(): React.JSX.Element {
                       size="icon-sm"
                       onClick={() => setPage((p) => Math.max(0, p - 1))}
                       disabled={page === 0}
-                      aria-label="Previous page"
+                      aria-label={t("common.previousPage")}
                     >
                       <ChevronLeft />
                     </Button>
@@ -376,7 +376,7 @@ export default function DictionaryPage(): React.JSX.Element {
                         setPage((p) => Math.min(totalPages - 1, p + 1))
                       }
                       disabled={page >= totalPages - 1}
-                      aria-label="Next page"
+                      aria-label={t("common.nextPage")}
                     >
                       <ChevronRight />
                     </Button>
@@ -406,6 +406,7 @@ const EntryRow = memo(function EntryRow({
   onEdit: (entry: DictionaryEntry) => void;
   onDelete: (id: number) => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -430,8 +431,8 @@ const EntryRow = memo(function EntryRow({
           variant="ghost"
           size="icon-sm"
           onClick={() => onEdit(entry)}
-          title="Edit"
-          aria-label="Edit"
+          title={t("common.edit")}
+          aria-label={t("common.edit")}
         >
           <Pencil />
         </Button>
@@ -440,8 +441,8 @@ const EntryRow = memo(function EntryRow({
           size="icon-sm"
           onClick={() => onDelete(entry.id)}
           className="hover:text-destructive"
-          title="Delete"
-          aria-label="Delete"
+          title={t("common.delete")}
+          aria-label={t("common.delete")}
         >
           <Trash2 />
         </Button>

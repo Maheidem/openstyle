@@ -1,6 +1,7 @@
 import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/utils";
 import { Check, ChevronRight, type LucideIcon, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export const PICKER_MODAL_BODY = "space-y-5 px-6 py-6";
 
@@ -13,6 +14,7 @@ export function PickerModalHeader({
   title: string;
   onClose: () => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <header className="border-border flex shrink-0 items-center gap-3 border-b px-6 py-4">
       <Icon className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
@@ -24,7 +26,7 @@ export function PickerModalHeader({
         size="icon-sm"
         onClick={onClose}
         className="shrink-0"
-        aria-label="Close"
+        aria-label={t("common.close")}
       >
         <X />
       </Button>

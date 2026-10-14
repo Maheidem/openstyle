@@ -27,6 +27,7 @@ import {
 } from "@renderer/lib/models";
 import { AlertTriangle, Key, Loader2, X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ModelList } from "./model-list";
 import type { ServerView } from "./server-roles";
@@ -110,9 +111,10 @@ export function ModelModal({
   onBack: () => void;
   onSaveKey: (key: string) => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   if (modal.kind === "key") {
     return (
-      <Backdrop onClose={onClose} label="Add API key">
+      <Backdrop onClose={onClose} label={t("models.modal.addApiKey")}>
         <KeyStep
           provider={modal.provider}
           modelName={modal.modelName}
@@ -131,7 +133,9 @@ export function ModelModal({
     <Backdrop
       onClose={onClose}
       label={
-        modal.type === "voice" ? "Choose a voice model" : "Pick an LLM model"
+        modal.type === "voice"
+          ? t("models.modal.chooseVoice")
+          : t("models.modal.pickLlm")
       }
     >
       <ModelList
@@ -171,6 +175,7 @@ function KeyStep({
   onClose: () => void;
   onSave: (key: string) => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const [value, setValue] = useState("");
   const [show, setShow] = useState(false);
   const providerLabel = displayProviderName(provider);
@@ -202,7 +207,7 @@ function KeyStep({
           variant="ghost"
           size="icon-sm"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t("common.close")}
         >
           <X />
         </Button>
@@ -231,7 +236,7 @@ function KeyStep({
           <RevealToggle
             revealed={show}
             onToggle={() => setShow(!show)}
-            label="API key"
+            label={t("common.reveal.apiKey")}
           />
         </InputGroup>
         {error && (

@@ -18,7 +18,19 @@
     "saving": "Saving…",
     "restartAndUpdate": "Restart & Update",
     "noResults": "No results found",
-    "voiceWaveform": "Voice waveform"
+    "voiceWaveform": "Voice waveform",
+    "close": "Close",
+    "edit": "Edit",
+    "delete": "Delete",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "reveal": {
+      "show": "Show {{label}}",
+      "hide": "Hide {{label}}",
+      "value": "value",
+      "apiKey": "API key",
+      "token": "token"
+    }
   },
   "languageNames": {
     "en": "English",
@@ -441,7 +453,8 @@
     "cancelSelection": "Cancel",
     "selectedCount": "{{count}} selected",
     "deleteSelected": "Delete selected",
-    "deleteSelectedFailed": "Failed to delete selected terms."
+    "deleteSelectedFailed": "Failed to delete selected terms.",
+    "selectEntry": "Select {{term}}"
   },
   "tone": {
     "title": "Tone",
@@ -798,7 +811,8 @@
       "browseBuiltIn": "Browse the models that Openstyle runs",
       "browseOwnServer": "Browse the models of your own server",
       "browseCloud": "Browse the models of cloud providers",
-      "openModelSource": "Open model source"
+      "openModelSource": "Open model source",
+      "backToSimple": "Back to simple view"
     },
     "servers": {
       "title": "Servers",
@@ -835,6 +849,14 @@
       "noticeDesc": "The model that you selected for transcription runs on your own server. It is not a speech-to-text model, so dictation fails until you pick another one.",
       "noticeAction": "Open Models",
       "noticeDismiss": "Dismiss"
+    },
+    "loading": "Loading models",
+    "mlxKeepAlive": "MLX ASR keep-alive",
+    "removeDownloaded": "Remove downloaded model from disk",
+    "modal": {
+      "addApiKey": "Add API key",
+      "chooseVoice": "Choose a voice model",
+      "pickLlm": "Pick an LLM model"
     }
   },
   "shell": {
@@ -849,7 +871,8 @@
       "remix": "Remix",
       "meetings": "Meetings",
       "import": "Import"
-    }
+    },
+    "githubRepo": "GitHub repo"
   },
   "remixPage": {
     "stats": {
@@ -1096,5 +1119,19 @@
       "noAccess": "Could not access this file",
       "notFound": "File not found"
     }
+  },
+  "pill": {
+    "cancelDictation": "Cancel dictation"
+  },
+  "remixBar": {
+    "open": "Open Openstyle Remix"
+  },
+  "remixChat": {
+    "newThread": "Start a new thread",
+    "closeEsc": "Close (Esc)",
+    "message": "Message Remix",
+    "stop": "Stop",
+    "send": "Send",
+    "conversation": "Remix conversation"
   }
 }

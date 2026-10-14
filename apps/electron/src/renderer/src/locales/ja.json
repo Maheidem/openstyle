@@ -17,7 +17,19 @@
     "viewRelease": "リリースを表示",
     "saving": "保存中...",
     "restartAndUpdate": "再起動して更新",
-    "voiceWaveform": "音声波形"
+    "voiceWaveform": "音声波形",
+    "close": "閉じる",
+    "edit": "編集",
+    "delete": "削除",
+    "previousPage": "前のページ",
+    "nextPage": "次のページ",
+    "reveal": {
+      "show": "{{label}}を表示",
+      "hide": "{{label}}を非表示",
+      "value": "値",
+      "apiKey": "APIキー",
+      "token": "トークン"
+    }
   },
   "languageNames": {
     "en": "English",
@@ -366,7 +378,8 @@
     "noResults": "「{{search}}」に一致するものはありません。",
     "noTerms": "用語がありません — 追加して開始してください。",
     "failedToSave": "エントリーの保存に失敗しました。",
-    "importFailed": "インポートに失敗しました — ファイルは有効な JSON である必要があります。"
+    "importFailed": "インポートに失敗しました — ファイルは有効な JSON である必要があります。",
+    "selectEntry": "{{term}}を選択"
   },
   "tone": {
     "title": "トーン",
@@ -646,6 +659,17 @@
       "deletePresetTitle": "プリセットを削除しますか？",
       "deletePresetMsg": "<b>{{name}}</b> は {{tasks}} で使用されています。削除するとこれらのタスクは Auto に戻ります。",
       "deletePresetNoTasksMsg": "<b>{{name}}</b> は現在どのタスクでも使用されていません。削除すると完全に削除されます。"
+    },
+    "loading": "モデルを読み込み中",
+    "mlxKeepAlive": "MLX ASRの保持時間",
+    "picker": {
+      "backToSimple": "シンプル表示に戻る"
+    },
+    "removeDownloaded": "ダウンロード済みのモデルをディスクから削除",
+    "modal": {
+      "addApiKey": "APIキーを追加",
+      "chooseVoice": "音声モデルを選択",
+      "pickLlm": "LLMモデルを選択"
     }
   },
   "shell": {
@@ -660,7 +684,8 @@
       "remix": "Remix",
       "meetings": "ミーティング",
       "import": "インポート"
-    }
+    },
+    "githubRepo": "GitHubリポジトリ"
   },
   "remixPage": {
     "stats": {
@@ -890,5 +915,19 @@
       "noAccess": "このファイルにアクセスできませんでした",
       "notFound": "ファイルが見つかりません"
     }
+  },
+  "pill": {
+    "cancelDictation": "音声入力をキャンセル"
+  },
+  "remixBar": {
+    "open": "Openstyle Remixを開く"
+  },
+  "remixChat": {
+    "newThread": "新しい会話を開始",
+    "closeEsc": "閉じる (Esc)",
+    "message": "Remixにメッセージ",
+    "stop": "停止",
+    "send": "送信",
+    "conversation": "Remixの会話"
   }
 }

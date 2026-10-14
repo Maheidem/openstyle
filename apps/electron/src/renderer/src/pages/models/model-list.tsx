@@ -351,7 +351,7 @@ export function ModelList({
             size="sm"
             onClick={() => setView("tiers")}
             className="shrink-0 gap-1.5"
-            aria-label="Back to simple view"
+            aria-label={t("models.picker.backToSimple")}
           >
             <ArrowLeft data-icon="inline-start" />
             {type === "voice" ? <Mic /> : <Sparkles />}
@@ -375,7 +375,7 @@ export function ModelList({
             size="icon-sm"
             onClick={onClose}
             className="shrink-0"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X />
           </Button>
@@ -482,8 +482,8 @@ function ModelRow({
       onClick={row.onDelete}
       disabled={row.deleting}
       className="text-muted-foreground hover:text-destructive"
-      aria-label="Remove downloaded model from disk"
-      title="Remove downloaded model from disk"
+      aria-label={t("models.removeDownloaded")}
+      title={t("models.removeDownloaded")}
     >
       {row.deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
     </Button>

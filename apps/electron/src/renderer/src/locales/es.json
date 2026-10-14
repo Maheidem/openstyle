@@ -17,7 +17,19 @@
     "viewRelease": "Ver Lanzamiento",
     "saving": "Guardando…",
     "restartAndUpdate": "Reiniciar y Actualizar",
-    "voiceWaveform": "Forma de onda de la voz"
+    "voiceWaveform": "Forma de onda de la voz",
+    "close": "Cerrar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "previousPage": "Página anterior",
+    "nextPage": "Página siguiente",
+    "reveal": {
+      "show": "Mostrar {{label}}",
+      "hide": "Ocultar {{label}}",
+      "value": "valor",
+      "apiKey": "clave de API",
+      "token": "token"
+    }
   },
   "languageNames": {
     "en": "English",
@@ -366,7 +378,8 @@
     "noResults": "Nada coincide con \"{{search}}\".",
     "noTerms": "Sin términos — agrega uno para comenzar.",
     "failedToSave": "Error al guardar la entrada.",
-    "importFailed": "Importación fallida — el archivo debe ser JSON válido."
+    "importFailed": "Importación fallida — el archivo debe ser JSON válido.",
+    "selectEntry": "Seleccionar {{term}}"
   },
   "tone": {
     "title": "Tono",
@@ -646,6 +659,17 @@
       "deletePresetTitle": "¿Eliminar preset?",
       "deletePresetMsg": "<b>{{name}}</b> lo usan {{tasks}}. Al eliminarlo, esas tareas vuelven a Auto.",
       "deletePresetNoTasksMsg": "<b>{{name}}</b> no lo usa ninguna tarea ahora mismo. Al eliminarlo se borrará definitivamente."
+    },
+    "loading": "Cargando modelos",
+    "mlxKeepAlive": "Tiempo de permanencia de MLX ASR",
+    "picker": {
+      "backToSimple": "Volver a la vista simple"
+    },
+    "removeDownloaded": "Quitar el modelo descargado del disco",
+    "modal": {
+      "addApiKey": "Añadir clave de API",
+      "chooseVoice": "Elegir un modelo de voz",
+      "pickLlm": "Elegir un modelo LLM"
     }
   },
   "shell": {
@@ -660,7 +684,8 @@
       "remix": "Remix",
       "meetings": "Reuniones",
       "import": "Importar"
-    }
+    },
+    "githubRepo": "Repositorio de GitHub"
   },
   "remixPage": {
     "stats": {
@@ -890,5 +915,19 @@
       "noAccess": "No se pudo acceder a este archivo",
       "notFound": "Archivo no encontrado"
     }
+  },
+  "pill": {
+    "cancelDictation": "Cancelar el dictado"
+  },
+  "remixBar": {
+    "open": "Abrir Openstyle Remix"
+  },
+  "remixChat": {
+    "newThread": "Iniciar una nueva conversación",
+    "closeEsc": "Cerrar (Esc)",
+    "message": "Mensaje para Remix",
+    "stop": "Detener",
+    "send": "Enviar",
+    "conversation": "Conversación de Remix"
   }
 }

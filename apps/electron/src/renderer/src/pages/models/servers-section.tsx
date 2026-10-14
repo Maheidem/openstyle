@@ -182,7 +182,7 @@ function AddServerForm({
         <RevealToggle
           revealed={showKey}
           onToggle={() => setShowKey(!showKey)}
-          label="API key"
+          label={t("common.reveal.apiKey")}
         />
       </InputGroup>
       {error && (

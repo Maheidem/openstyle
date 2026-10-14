@@ -214,6 +214,39 @@ describe("locale files", () => {
     // hold-speak-release sentence and the waveform aria-label that the History,
     // Remix and onboarding demos share.
     "remix-demo": ["remixPage.demo.sentence", "common.voiceWaveform"],
+    // Keys introduced by the translated aria-label and title strings (issue
+    // #153): icon buttons, dialogs and sliders that a screen reader or a
+    // tooltip reads aloud. A missing key shows the English text in every
+    // language, so every locale carries them.
+    "aria-title-i18n": [
+      "common.close",
+      "common.edit",
+      "common.delete",
+      "common.previousPage",
+      "common.nextPage",
+      "common.reveal.show",
+      "common.reveal.hide",
+      "common.reveal.value",
+      "common.reveal.apiKey",
+      "common.reveal.token",
+      "shell.githubRepo",
+      "vocabulary.selectEntry",
+      "models.loading",
+      "models.mlxKeepAlive",
+      "models.picker.backToSimple",
+      "models.removeDownloaded",
+      "models.modal.addApiKey",
+      "models.modal.chooseVoice",
+      "models.modal.pickLlm",
+      "pill.cancelDictation",
+      "remixBar.open",
+      "remixChat.newThread",
+      "remixChat.closeEsc",
+      "remixChat.message",
+      "remixChat.stop",
+      "remixChat.send",
+      "remixChat.conversation",
+    ],
   };
 
   describe.each(Object.entries(KEY_GROUPS))("%s keys", (_name, keys) => {

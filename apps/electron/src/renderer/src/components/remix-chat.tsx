@@ -27,6 +27,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RemixSelectionPayload } from "../../../shared/remix";
@@ -225,6 +226,7 @@ const MINI_SETTLED_DISMISS_MS = 3000;
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const { thread, minimized, anchor, onExpand, onMinimize, onClose } = props;
+  const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [actions, setActions] = useState<ActionRow[]>([]);
@@ -701,8 +703,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                   stop();
                   props.onNewThread();
                 }}
-                aria-label="Start a new thread"
-                title="Start a new thread"
+                aria-label={t("remixChat.newThread")}
+                title={t("remixChat.newThread")}
               >
                 <svg
                   width="13"
@@ -725,8 +727,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                   stop();
                   onClose();
                 }}
-                aria-label="Close"
-                title="Close (Esc)"
+                aria-label={t("common.close")}
+                title={t("remixChat.closeEsc")}
               >
                 <svg
                   width="11"
@@ -748,7 +750,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           <MessageScroller
             className="remix-chat-scroll"
             busy={busy}
-            label="Remix conversation"
+            label={t("remixChat.conversation")}
             contentClassName="remix-chat-thread"
           >
             {messages.length === 0 && actions.length === 0 && !busy && (
@@ -808,7 +810,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               className="remix-chat-input"
               rows={1}
               value={input}
-              aria-label="Message Remix"
+              aria-label={t("remixChat.message")}
               placeholder={busy ? "Working…" : "Message Remix…"}
               onChange={(e) => {
                 setInput(e.target.value);
@@ -828,8 +830,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                 type="button"
                 className="remix-chat-send"
                 onClick={() => stop()}
-                aria-label="Stop"
-                title="Stop"
+                aria-label={t("remixChat.stop")}
+                title={t("remixChat.stop")}
               >
                 <svg
                   width="12"
@@ -846,8 +848,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                 className="remix-chat-send"
                 disabled={!input.trim()}
                 onClick={submit}
-                aria-label="Send"
-                title="Send"
+                aria-label={t("remixChat.send")}
+                title={t("remixChat.send")}
               >
                 <svg
                   width="14"

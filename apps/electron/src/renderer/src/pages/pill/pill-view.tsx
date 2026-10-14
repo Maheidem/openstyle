@@ -13,6 +13,7 @@ import {
   type SetStateAction,
   Suspense,
 } from "react";
+import { useTranslation } from "react-i18next";
 import type { RemixSelectionPayload } from "../../../../shared/remix";
 import {
   CANCEL_SIZE,
@@ -135,6 +136,7 @@ export function PillView({
   closeRemix,
   setRemixMiniHeight,
 }: PillViewProps): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="relative h-screen w-screen select-none overflow-hidden">
       <style>{PILL_STYLES}</style>
@@ -199,10 +201,7 @@ export function PillView({
                     type="button"
                     className="pill-cancel inline-flex items-center justify-center"
                     onClick={cancelRecording}
-                    // The pill window has no i18n provider (only the dashboard
-                    // does), and no other string in it is translated. Not worth
-                    // pulling the i18next runtime in for one label.
-                    aria-label="Cancel dictation"
+                    aria-label={t("pill.cancelDictation")}
                     style={{
                       width: CANCEL_SIZE,
                       height: CANCEL_SIZE,

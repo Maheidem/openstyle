@@ -278,7 +278,7 @@ export default function AppShell(): React.JSX.Element {
             href={LINKS.repo}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="GitHub repo"
+            aria-label={t("shell.githubRepo")}
             className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
           >
             <GitHubMark className="h-3.5 w-3.5" />

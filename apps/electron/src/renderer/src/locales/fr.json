@@ -17,7 +17,19 @@
     "viewRelease": "Voir la Version",
     "saving": "Enregistrement…",
     "restartAndUpdate": "Redémarrer et Mettre à jour",
-    "voiceWaveform": "Forme d'onde de la voix"
+    "voiceWaveform": "Forme d'onde de la voix",
+    "close": "Fermer",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "previousPage": "Page précédente",
+    "nextPage": "Page suivante",
+    "reveal": {
+      "show": "Afficher {{label}}",
+      "hide": "Masquer {{label}}",
+      "value": "la valeur",
+      "apiKey": "la clé API",
+      "token": "le jeton"
+    }
   },
   "languageNames": {
     "en": "English",
@@ -366,7 +378,8 @@
     "noResults": "Rien ne correspond à « {{search}} ».",
     "noTerms": "Aucun terme — ajoutez-en un pour commencer.",
     "failedToSave": "Échec de l'enregistrement de l'entrée.",
-    "importFailed": "Importation échouée — le fichier doit être du JSON valide."
+    "importFailed": "Importation échouée — le fichier doit être du JSON valide.",
+    "selectEntry": "Sélectionner {{term}}"
   },
   "tone": {
     "title": "Ton",
@@ -646,6 +659,17 @@
       "deletePresetTitle": "Supprimer ce préréglage ?",
       "deletePresetMsg": "<b>{{name}}</b> est utilisé par {{tasks}}. Le supprimer ramène ces tâches à Auto.",
       "deletePresetNoTasksMsg": "<b>{{name}}</b> n'est utilisé par aucune tâche pour le moment. Le supprimer l'enlève définitivement."
+    },
+    "loading": "Chargement des modèles",
+    "mlxKeepAlive": "Durée de maintien de MLX ASR",
+    "picker": {
+      "backToSimple": "Retour à la vue simple"
+    },
+    "removeDownloaded": "Supprimer le modèle téléchargé du disque",
+    "modal": {
+      "addApiKey": "Ajouter une clé API",
+      "chooseVoice": "Choisir un modèle vocal",
+      "pickLlm": "Choisir un modèle LLM"
     }
   },
   "shell": {
@@ -660,7 +684,8 @@
       "remix": "Remix",
       "meetings": "Réunions",
       "import": "Importer"
-    }
+    },
+    "githubRepo": "Dépôt GitHub"
   },
   "remixPage": {
     "stats": {
@@ -890,5 +915,19 @@
       "noAccess": "Impossible d'accéder à ce fichier",
       "notFound": "Fichier introuvable"
     }
+  },
+  "pill": {
+    "cancelDictation": "Annuler la dictée"
+  },
+  "remixBar": {
+    "open": "Ouvrir Openstyle Remix"
+  },
+  "remixChat": {
+    "newThread": "Démarrer une nouvelle conversation",
+    "closeEsc": "Fermer (Échap)",
+    "message": "Message à Remix",
+    "stop": "Arrêter",
+    "send": "Envoyer",
+    "conversation": "Conversation Remix"
   }
 }
