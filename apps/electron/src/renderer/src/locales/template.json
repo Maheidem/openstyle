@@ -30,7 +30,8 @@
       "value": "value",
       "apiKey": "API key",
       "token": "token"
-    }
+    },
+    "done": "Done"
   },
   "languageNames": {
     "en": "English",
@@ -232,7 +233,13 @@
       "needsModifier": "Hotkeys need a modifier or side mouse button",
       "languageHotkey": "Dictate in {{language}}",
       "languageHotkeyDesc": "Optional — pins this dictation to {{language}}, skipping auto-detect.",
-      "languageHotkeyConflict": "This combination is already in use. Pick a different one."
+      "languageHotkeyConflict": "This combination is already in use. Pick a different one.",
+      "backgroundAudio": "Background audio",
+      "backgroundAudioDesc": "Duck lowers volume. Pause pauses current media and lowers volume.",
+      "backgroundAudioDescLinux": "Duck lowers system volume. Pause pauses MPRIS media and lowers volume.",
+      "backgroundAudioOff": "Off",
+      "backgroundAudioDuck": "Duck",
+      "backgroundAudioPause": "Pause"
     },
     "display": {
       "theme": "Theme",
@@ -422,7 +429,8 @@
     "emptyDesc": "Add a phrase you say often, like <example>my address</example> — and Openstyle expands it inline.",
     "noResults": "nothing matches \"{{search}}\".",
     "noEntries": "no entries — add one to start.",
-    "failedToSave": "Failed to save entry."
+    "failedToSave": "Failed to save entry.",
+    "usedCount": "{{count}}× used"
   },
   "vocabulary": {
     "title": "Vocabulary",
@@ -454,7 +462,10 @@
     "selectedCount": "{{count}} selected",
     "deleteSelected": "Delete selected",
     "deleteSelectedFailed": "Failed to delete selected terms.",
-    "selectEntry": "Select {{term}}"
+    "selectEntry": "Select {{term}}",
+    "termPlaceholder": "e.g. \"Nguyen\" or \"account number\"",
+    "notesPlaceholder": "e.g. \"client name\", \"Korean\"",
+    "biasNote": "Multi-word phrases work on Nova 3, OpenAI, and Groq. Nova 2 boosts single words. Scribe v1 does not use vocabulary bias."
   },
   "tone": {
     "title": "Tone",
@@ -856,7 +867,39 @@
     "modal": {
       "addApiKey": "Add API key",
       "chooseVoice": "Choose a voice model",
-      "pickLlm": "Pick an LLM model"
+      "pickLlm": "Pick an LLM model",
+      "keyTitle": "Add your {{provider}} API key",
+      "keyNeeded": "<model>{{name}}</model> needs a {{provider}} key to run.",
+      "keyNew": "Enter a new API key for {{provider}}.",
+      "keyPlaceholder": "sk-…",
+      "keyStoredNote": "Stored in keychain · never logged",
+      "keyGet": "Get a {{provider}} key ↗",
+      "keyChecking": "Checking…",
+      "keySaveUse": "Save & use"
+    },
+    "list": {
+      "searchPlaceholder": "Search models…",
+      "showAll": "Show all models ({{count}} more) →",
+      "selected": "Selected",
+      "use": "Use",
+      "download": "Download",
+      "retry": "Retry",
+      "recommended": "Recommended",
+      "via": "via",
+      "addKey": "Add key",
+      "preparingRuntime": "Preparing runtime…",
+      "verifying": "Verifying…",
+      "noBuiltin": "No on-device transcription models on this device.",
+      "noMatch": "No models match."
+    },
+    "mlx": {
+      "title": "Model warming",
+      "coldStart": "Cold start (unload)",
+      "alwaysOn": "Always on",
+      "descAlways": "Keep the model loaded in memory at all times, until you quit Openstyle. Fastest repeat use, uses the most RAM.",
+      "descCold": "Unload the model from memory after each transcription. Uses less RAM, but the next dictation waits for a full reload.",
+      "descOneMinute": "Keep the model in memory for about 1 minute after you finish dictating, so quick follow-ups stay fast.",
+      "descMinutes": "Keep the model loaded in memory for up to {{minutes}} minutes after dictation. Faster repeat use, more RAM while warm."
     }
   },
   "shell": {
@@ -1080,6 +1123,18 @@
     },
     "navigate": {
       "eyebrow": "Navigate"
+    },
+    "title": "Help",
+    "subtitle": "Documentation and ways to contribute to Openstyle.",
+    "getHelp": {
+      "eyebrow": "Get help",
+      "reportTitle": "Report an issue",
+      "reportDesc": "Found a bug or have a feature request? Open a GitHub issue."
+    },
+    "contributing": {
+      "eyebrow": "Contributing",
+      "cardTitle": "Contribute to Openstyle",
+      "cardDesc": "PRs are welcome. Start with CONTRIBUTING.md for local setup."
     }
   },
   "import": {
@@ -1121,7 +1176,36 @@
     }
   },
   "pill": {
-    "cancelDictation": "Cancel dictation"
+    "cancelDictation": "Cancel dictation",
+    "dismiss": "Dismiss",
+    "retry": "Retry",
+    "cardTitle": "Transcription failed",
+    "status": {
+      "reconnecting": "Reconnecting",
+      "retrying": "Retrying",
+      "unavailable": "Unavailable",
+      "warming": "Warming up local model…",
+      "delivered": "Dictation delivered",
+      "noAudio": "No audio from your microphone",
+      "preparingMic": "Preparing microphone",
+      "listening": "Listening",
+      "transcribing": "Transcribing"
+    },
+    "remix": {
+      "applying": "Applying {{label}}",
+      "applyingFallback": "remix",
+      "listening": "Listening for a remix",
+      "chat": "Remix chat",
+      "working": "Working…",
+      "hintListening": "Listening…",
+      "transcribing": "Transcribing…",
+      "nothingSelectedTitle": "Nothing selected",
+      "nothingSelectedBody": "Highlight some text in any app first, then press the hotkey.",
+      "failedTitle": "Remix failed",
+      "modelCouldntRun": "The model couldn't run that ({{status}}).",
+      "returnedNothing": "The model returned nothing.",
+      "somethingWrong": "Something went wrong."
+    }
   },
   "remixBar": {
     "open": "Open Openstyle Remix"
@@ -1132,6 +1216,96 @@
     "message": "Message Remix",
     "stop": "Stop",
     "send": "Send",
-    "conversation": "Remix conversation"
+    "conversation": "Remix conversation",
+    "placeholder": "Message Remix…",
+    "working": "Working…",
+    "miniCouldntOpen": "Remix couldn't open",
+    "couldntOpen": "Couldn't open Remix. Is the Openstyle server running?",
+    "opening": "Opening Remix…",
+    "emptyWithSelection": "Say or type what to do with your selection.",
+    "emptyNoSelection": "Nothing selected — ask me to write, research, or answer.",
+    "thinking": "Thinking…",
+    "stepInput": "Input",
+    "stepOutput": "Output",
+    "failed": "Remix failed.",
+    "statusFailed": "Remix failed ({{status}}).",
+    "somethingWrong": "Something went wrong.",
+    "returnedNothing": "The model returned nothing.",
+    "couldntReplace": "Couldn't replace it — nothing was changed.",
+    "nothingHighlighted": "Nothing is highlighted — select some text first.",
+    "actionRunning": "{{label}}…",
+    "actionDone": "{{label}} — replaced your text",
+    "actionFailed": "{{label}} failed — {{detail}}",
+    "toolRunning": "Running {{name}}…",
+    "toolRan": "Ran {{name}}",
+    "presets": {
+      "fix": "Fix",
+      "formal": "Formal",
+      "markdown": "Markdown"
+    },
+    "tools": {
+      "get_context": {
+        "doing": "Looking at your screen…",
+        "done": "Checked your screen"
+      },
+      "read_document": {
+        "doing": "Reading the document…",
+        "done": "Read the document"
+      },
+      "select_all": {
+        "doing": "Selecting everything…",
+        "done": "Selected everything"
+      },
+      "select_text": {
+        "doing": "Selecting in your document…",
+        "done": "Moved your selection"
+      },
+      "collapse_selection": {
+        "doing": "Placing the cursor…",
+        "done": "Placed the cursor"
+      },
+      "copy": {
+        "doing": "Reading your selection…",
+        "done": "Read your selection"
+      },
+      "set_clipboard": {
+        "doing": "Preparing text…",
+        "done": "Put text on your clipboard"
+      },
+      "set_clipboard_image": {
+        "doing": "Fetching an image…",
+        "done": "Put an image on your clipboard"
+      },
+      "paste": {
+        "doing": "Pasting…",
+        "done": "Pasted into your document"
+      },
+      "undo": {
+        "doing": "Undoing…",
+        "done": "Undid the last edit"
+      },
+      "redo": {
+        "doing": "Redoing…",
+        "done": "Redid the edit"
+      },
+      "press_key": {
+        "doing": "Pressing a key…",
+        "done": "Pressed a key"
+      },
+      "get_clipboard": {
+        "doing": "Reading your clipboard…",
+        "done": "Read your clipboard"
+      }
+    }
+  },
+  "errorBoundary": {
+    "eyebrow": "Something went wrong",
+    "title": "Openstyle hit an unexpected error.",
+    "body": "The error was logged for diagnostics. Reloading usually fixes it — if it keeps happening, share your logs from Settings → Data.",
+    "reload": "Reload"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "goToApp": "Go to App"
   }
 }

@@ -11,20 +11,21 @@ import {
   DialogTitle,
 } from "@renderer/components/ui/dialog";
 import { Slider } from "@renderer/components/ui/slider";
+import type { TFunction } from "i18next";
 import { Cpu } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-function mlxKeepAliveDescription(minutes: number): string {
+function mlxKeepAliveDescription(minutes: number, t: TFunction): string {
   if (minutes === MLX_KEEP_ALIVE_ALWAYS) {
-    return "Keep the model loaded in memory at all times, until you quit Openstyle. Fastest repeat use, uses the most RAM.";
+    return t("models.mlx.descAlways");
   }
   if (minutes === 0) {
-    return "Unload the model from memory after each transcription. Uses less RAM, but the next dictation waits for a full reload.";
+    return t("models.mlx.descCold");
   }
   if (minutes === 1) {
-    return "Keep the model in memory for about 1 minute after you finish dictating, so quick follow-ups stay fast.";
+    return t("models.mlx.descOneMinute");
   }
-  return `Keep the model loaded in memory for up to ${minutes} minutes after dictation. Faster repeat use, more RAM while warm.`;
+  return t("models.mlx.descMinutes", { minutes });
 }
 
 // ---------------------------------------------------------------------------
@@ -53,12 +54,12 @@ export function MlxWarmingDialog({
         <DialogHeader>
           <div className="flex min-w-0 items-center gap-2.5">
             <Cpu className="text-primary h-4 w-4 shrink-0" />
-            <DialogTitle>Model warming</DialogTitle>
+            <DialogTitle>{t("models.mlx.title")}</DialogTitle>
           </div>
         </DialogHeader>
 
         <p className="text-muted-foreground text-[12.5px] leading-relaxed">
-          {mlxKeepAliveDescription(keepAliveMinutes)}
+          {mlxKeepAliveDescription(keepAliveMinutes, t)}
         </p>
 
         <div>
@@ -75,8 +76,8 @@ export function MlxWarmingDialog({
             aria-label={t("models.mlxKeepAlive")}
           />
           <div className="text-muted-foreground mt-2 flex justify-between text-[11px]">
-            <span>Cold start (unload)</span>
-            <span>Always on</span>
+            <span>{t("models.mlx.coldStart")}</span>
+            <span>{t("models.mlx.alwaysOn")}</span>
           </div>
         </div>
 
@@ -88,7 +89,7 @@ export function MlxWarmingDialog({
 
         <DialogFooter>
           <Button variant="ink" size="sm" onClick={onClose}>
-            Done
+            {t("common.done")}
           </Button>
         </DialogFooter>
       </DialogContent>

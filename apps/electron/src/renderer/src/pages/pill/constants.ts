@@ -89,10 +89,6 @@ export const ELAPSED_AFTER_MS = 60_000;
  * (the handover sweep itself is the "working" signal for the first moments).
  */
 export const WARMING_AFTER_MS = 3_000;
-/** Carried by the status slot's word channels (tooltip + live region) — the
- * same treatment "Retrying" gets; see the warming effect below for why it is
- * not rendered as visible capsule text. */
-export const WARMING_LABEL = "Warming up local model…";
 
 /** Names the cause instead of surfacing a raw TimeoutError (UX-A5: this is
  * the one error string this change adds — the rest of the batch error copy

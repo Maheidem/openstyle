@@ -1,4 +1,5 @@
 import { reportError } from "@renderer/lib/report-error";
+import i18n from "i18next";
 import { Component, type ReactNode } from "react";
 
 interface ErrorBoundaryProps {
@@ -39,21 +40,20 @@ export class ErrorBoundary extends Component<
     return (
       <div className="bg-background text-foreground flex h-screen w-screen flex-col items-center justify-center gap-5 p-10 text-center">
         <span className="mono text-muted-foreground text-[11px] tracking-[0.16em] uppercase">
-          Something went wrong
+          {i18n.t("errorBoundary.eyebrow")}
         </span>
         <h1 className="display text-foreground m-0 max-w-[28rem] text-[24px] leading-tight font-normal">
-          Openstyle hit an unexpected error.
+          {i18n.t("errorBoundary.title")}
         </h1>
         <p className="text-muted-foreground m-0 max-w-[26rem] text-[13px] leading-relaxed">
-          The error was logged for diagnostics. Reloading usually fixes it — if
-          it keeps happening, share your logs from Settings → Data.
+          {i18n.t("errorBoundary.body")}
         </p>
         <button
           type="button"
           onClick={() => window.location.reload()}
           className="border-border text-foreground hover:bg-secondary mt-1 rounded-md border px-4 py-2 text-[13px] font-medium transition-colors"
         >
-          Reload
+          {i18n.t("errorBoundary.reload")}
         </button>
       </div>
     );

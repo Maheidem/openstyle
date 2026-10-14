@@ -4,6 +4,7 @@ import { apiFetch, getApiBase, getServerToken } from "@renderer/lib/api";
 import { RecorderSupersededError } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
 import { postTranscribe } from "@renderer/lib/transcribe-client";
+import i18n from "i18next";
 import { useCallback, useEffect } from "react";
 import { REMIX_HOLD_THRESHOLD_MS } from "../../../../shared/remix";
 import { playTone } from "../pill-tones";
@@ -243,8 +244,8 @@ export function useRemixSession(deps: UseRemixSessionDeps) {
       if (remixRef.current?.id !== sessionId) return null;
       if (!selection) {
         failRemix(
-          "Nothing selected",
-          "Highlight some text in any app first, then press the hotkey.",
+          i18n.t("pill.remix.nothingSelectedTitle"),
+          i18n.t("pill.remix.nothingSelectedBody"),
         );
         return null;
       }
@@ -288,8 +289,9 @@ export function useRemixSession(deps: UseRemixSessionDeps) {
             detail?: string;
           } | null;
           failRemix(
-            "Remix failed",
-            body?.detail || `The model couldn't run that (${res.status}).`,
+            i18n.t("pill.remix.failedTitle"),
+            body?.detail ||
+              i18n.t("pill.remix.modelCouldntRun", { status: res.status }),
           );
           return;
         }
@@ -298,15 +300,20 @@ export function useRemixSession(deps: UseRemixSessionDeps) {
         const edited = (data.text ?? "").trim();
         if (remixRef.current?.id !== session.id) return;
         if (!edited) {
-          failRemix("Remix failed", "The model returned nothing.");
+          failRemix(
+            i18n.t("pill.remix.failedTitle"),
+            i18n.t("pill.remix.returnedNothing"),
+          );
           return;
         }
         await deliverRemixResult(edited);
       } catch (err) {
         if (remixRef.current?.id !== session.id) return;
         failRemix(
-          "Remix failed",
-          err instanceof Error ? err.message : "Something went wrong.",
+          i18n.t("pill.remix.failedTitle"),
+          err instanceof Error
+            ? err.message
+            : i18n.t("pill.remix.somethingWrong"),
         );
       }
     },
@@ -357,7 +364,7 @@ export function useRemixSession(deps: UseRemixSessionDeps) {
     if (!session) return;
     const micGen = remixMicGenRef.current;
     const durationMs = Math.round(performance.now() - remixDownAtRef.current);
-    patchRemix({ phase: "running", label: "Transcribing…" });
+    patchRemix({ phase: "running", label: i18n.t("pill.remix.transcribing") });
     startBarAnimation("speaking");
     // The dictation stop cue, at the same moment: the held instruction has
     // been committed. Remix never ducks system audio, so no restore first.
@@ -586,7 +593,12 @@ export function useRemixHotkeys(deps: UseRemixHotkeysDeps): void {
         return;
       }
       releaseRemixMic();
-      void runRemix({ remixId: preset.id, label: preset.label });
+      void runRemix({
+        remixId: preset.id,
+        label: i18n.t(`remixChat.presets.${preset.id}`, {
+          defaultValue: preset.label,
+        }),
+      });
     });
 
     // The persistent bar was hovered: open the chat card fresh. The capture

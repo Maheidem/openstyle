@@ -116,9 +116,9 @@ const themeOptions = [
 ] as const;
 
 const audioPlaybackOptions = [
-  { value: "off", label: "Off", icon: VolumeOff },
-  { value: "duck", label: "Duck", icon: Volume2 },
-  { value: "pause", label: "Pause", icon: Pause },
+  { value: "off", icon: VolumeOff },
+  { value: "duck", icon: Volume2 },
+  { value: "pause", icon: Pause },
 ] as const;
 
 const settingsSectionIds = [
@@ -1049,17 +1049,23 @@ export default function SettingsPage(): React.JSX.Element {
 
               {supportsBackgroundAudio ? (
                 <Row
-                  label="Background audio"
+                  label={t("settings.recording.backgroundAudio")}
                   desc={
                     IS_LINUX
-                      ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
-                      : "Duck lowers volume. Pause pauses current media and lowers volume."
+                      ? t("settings.recording.backgroundAudioDescLinux")
+                      : t("settings.recording.backgroundAudioDesc")
                   }
                   last
                 >
                   <SegmentedControl
                     size="sm"
-                    options={audioPlaybackOptions}
+                    options={audioPlaybackOptions.map((o) => ({
+                      value: o.value,
+                      label: t(
+                        `settings.recording.backgroundAudio${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`,
+                      ),
+                      icon: o.icon,
+                    }))}
                     value={audioPlaybackMode}
                     onValueChange={handleAudioPlaybackModeChange}
                   />

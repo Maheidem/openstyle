@@ -29,7 +29,8 @@
       "value": "値",
       "apiKey": "APIキー",
       "token": "トークン"
-    }
+    },
+    "done": "完了"
   },
   "languageNames": {
     "en": "English",
@@ -195,7 +196,13 @@
       "needsModifier": "ホットキーには修飾キーまたはマウスのサイドボタンが必要です",
       "languageHotkey": "{{language}}で音声入力",
       "languageHotkeyDesc": "任意 — この音声入力を{{language}}に固定し、自動検出をスキップします。",
-      "languageHotkeyConflict": "この組み合わせはすでに使用されています。別の組み合わせを選んでください。"
+      "languageHotkeyConflict": "この組み合わせはすでに使用されています。別の組み合わせを選んでください。",
+      "backgroundAudio": "バックグラウンド音声",
+      "backgroundAudioDesc": "「音量を下げる」は音量を下げます。「一時停止」は再生中のメディアを一時停止し、音量を下げます。",
+      "backgroundAudioDescLinux": "「音量を下げる」はシステム音量を下げます。「一時停止」は MPRIS メディアを一時停止し、音量を下げます。",
+      "backgroundAudioOff": "オフ",
+      "backgroundAudioDuck": "音量を下げる",
+      "backgroundAudioPause": "一時停止"
     },
     "display": {
       "theme": "テーマ",
@@ -241,7 +248,6 @@
       "enhanceTimeoutReset": "{{seconds}}秒にリセット",
       "enhanceTimeoutSaveFailed": "保存できませんでした — サーバーは現在{{value}}秒です",
       "enhanceTimeoutStripped": "数字のみ — {{dropped}} を除外し、{{value}}と表示",
-
       "history": "文字起こし履歴",
       "historyDesc": "保存されたすべてのセッションを完全に削除します。この操作は取り消せません。",
       "clearHistory": "履歴を消去",
@@ -353,7 +359,8 @@
     "emptyDesc": "よく使うフレーズ（例：<example>自分の住所</example>）を追加すると、Openstyle が入力時にそれを展開します。",
     "noResults": "「{{search}}」に一致するものはありません。",
     "noEntries": "エントリーがありません — 追加して開始してください。",
-    "failedToSave": "エントリーの保存に失敗しました。"
+    "failedToSave": "エントリーの保存に失敗しました。",
+    "usedCount": "{{count}}回使用"
   },
   "vocabulary": {
     "title": "ボキャブラリー",
@@ -379,7 +386,10 @@
     "noTerms": "用語がありません — 追加して開始してください。",
     "failedToSave": "エントリーの保存に失敗しました。",
     "importFailed": "インポートに失敗しました — ファイルは有効な JSON である必要があります。",
-    "selectEntry": "{{term}}を選択"
+    "selectEntry": "{{term}}を選択",
+    "termPlaceholder": "例：「Nguyen」や「口座番号」",
+    "notesPlaceholder": "例：「顧客名」「韓国語」",
+    "biasNote": "複数の単語からなるフレーズは、Nova 3、OpenAI、Groq で使えます。Nova 2 は単語単位で強調されます。Scribe v1 では語彙バイアスは使われません。"
   },
   "tone": {
     "title": "トーン",
@@ -669,7 +679,39 @@
     "modal": {
       "addApiKey": "APIキーを追加",
       "chooseVoice": "音声モデルを選択",
-      "pickLlm": "LLMモデルを選択"
+      "pickLlm": "LLMモデルを選択",
+      "keyTitle": "{{provider}} の API キーを追加",
+      "keyNeeded": "<model>{{name}}</model> を実行するには {{provider}} のキーが必要です。",
+      "keyNew": "{{provider}} の新しい API キーを入力してください。",
+      "keyPlaceholder": "sk-…",
+      "keyStoredNote": "キーチェーンに保存 · ログには記録されません",
+      "keyGet": "{{provider}} のキーを取得 ↗",
+      "keyChecking": "確認中…",
+      "keySaveUse": "保存して使用"
+    },
+    "list": {
+      "searchPlaceholder": "モデルを検索…",
+      "showAll": "すべてのモデルを表示（他 {{count}} 件）→",
+      "selected": "選択中",
+      "use": "使用",
+      "download": "ダウンロード",
+      "retry": "再試行",
+      "recommended": "おすすめ",
+      "via": "経由",
+      "addKey": "キーを追加",
+      "preparingRuntime": "ランタイムを準備中…",
+      "verifying": "検証中…",
+      "noBuiltin": "このデバイスには、オンデバイスの文字起こしモデルがありません。",
+      "noMatch": "一致するモデルがありません。"
+    },
+    "mlx": {
+      "title": "モデルのウォームアップ",
+      "coldStart": "コールドスタート（アンロード）",
+      "alwaysOn": "常にオン",
+      "descAlways": "Openstyle を終了するまで、モデルを常にメモリに読み込んだままにします。繰り返しの使用が最も速くなりますが、RAM を最も多く使います。",
+      "descCold": "文字起こしのたびにモデルをメモリからアンロードします。RAM の使用量は少なくなりますが、次の音声入力ではモデルの再読み込みを待つことになります。",
+      "descOneMinute": "音声入力が終わってから約 1 分間はモデルをメモリに保持し、続けての入力も速く処理できるようにします。",
+      "descMinutes": "音声入力のあと最大 {{minutes}} 分間、モデルをメモリに読み込んだままにします。繰り返しの使用が速くなりますが、ウォーム状態の間は RAM を多く使います。"
     }
   },
   "shell": {
@@ -876,6 +918,18 @@
     },
     "navigate": {
       "eyebrow": "ナビゲーション"
+    },
+    "title": "ヘルプ",
+    "subtitle": "ドキュメントと、Openstyle に貢献する方法です。",
+    "getHelp": {
+      "eyebrow": "サポートを受ける",
+      "reportTitle": "問題を報告する",
+      "reportDesc": "バグを見つけた場合や機能のリクエストがある場合は、GitHub で issue を作成してください。"
+    },
+    "contributing": {
+      "eyebrow": "貢献する",
+      "cardTitle": "Openstyle に貢献する",
+      "cardDesc": "プルリクエストを歓迎します。ローカル環境の設定は CONTRIBUTING.md から始めてください。"
     }
   },
   "import": {
@@ -917,7 +971,36 @@
     }
   },
   "pill": {
-    "cancelDictation": "音声入力をキャンセル"
+    "cancelDictation": "音声入力をキャンセル",
+    "dismiss": "閉じる",
+    "retry": "再試行",
+    "cardTitle": "文字起こしに失敗しました",
+    "status": {
+      "reconnecting": "再接続中",
+      "retrying": "再試行中",
+      "unavailable": "利用できません",
+      "warming": "ローカルモデルをウォームアップ中…",
+      "delivered": "音声入力を送信しました",
+      "noAudio": "マイクから音声が入力されていません",
+      "preparingMic": "マイクを準備中",
+      "listening": "聞き取り中",
+      "transcribing": "文字起こし中"
+    },
+    "remix": {
+      "applying": "{{label}} を適用中",
+      "applyingFallback": "リミックス",
+      "listening": "リミックスの指示を聞き取り中",
+      "chat": "Remix チャット",
+      "working": "処理中…",
+      "hintListening": "聞き取り中…",
+      "transcribing": "文字起こし中…",
+      "nothingSelectedTitle": "何も選択されていません",
+      "nothingSelectedBody": "まずアプリ内のテキストを選択してから、ホットキーを押してください。",
+      "failedTitle": "Remix に失敗しました",
+      "modelCouldntRun": "モデルがこれを実行できませんでした（{{status}}）。",
+      "returnedNothing": "モデルから結果が返りませんでした。",
+      "somethingWrong": "問題が発生しました。"
+    }
   },
   "remixBar": {
     "open": "Openstyle Remixを開く"
@@ -928,6 +1011,96 @@
     "message": "Remixにメッセージ",
     "stop": "停止",
     "send": "送信",
-    "conversation": "Remixの会話"
+    "conversation": "Remixの会話",
+    "placeholder": "Remix にメッセージ…",
+    "working": "処理中…",
+    "miniCouldntOpen": "Remix を開けませんでした",
+    "couldntOpen": "Remix を開けませんでした。Openstyle サーバーは起動していますか？",
+    "opening": "Remix を開いています…",
+    "emptyWithSelection": "選択した内容をどうするか、話すか入力してください。",
+    "emptyNoSelection": "何も選択されていません。文章の作成、調査、回答などを依頼してください。",
+    "thinking": "考え中…",
+    "stepInput": "入力",
+    "stepOutput": "出力",
+    "failed": "Remix に失敗しました。",
+    "statusFailed": "Remix に失敗しました（{{status}}）。",
+    "somethingWrong": "問題が発生しました。",
+    "returnedNothing": "モデルから結果が返りませんでした。",
+    "couldntReplace": "置き換えられませんでした。何も変更されていません。",
+    "nothingHighlighted": "テキストが選択されていません。先にテキストを選択してください。",
+    "actionRunning": "{{label}}…",
+    "actionDone": "{{label}} — テキストを置き換えました",
+    "actionFailed": "{{label}} に失敗しました — {{detail}}",
+    "toolRunning": "{{name}} を実行中…",
+    "toolRan": "{{name}} を実行しました",
+    "presets": {
+      "fix": "修正",
+      "formal": "フォーマル",
+      "markdown": "Markdown"
+    },
+    "tools": {
+      "get_context": {
+        "doing": "画面を確認中…",
+        "done": "画面を確認しました"
+      },
+      "read_document": {
+        "doing": "ドキュメントを読み取り中…",
+        "done": "ドキュメントを読み取りました"
+      },
+      "select_all": {
+        "doing": "すべてを選択中…",
+        "done": "すべてを選択しました"
+      },
+      "select_text": {
+        "doing": "ドキュメント内で選択中…",
+        "done": "選択範囲を移動しました"
+      },
+      "collapse_selection": {
+        "doing": "カーソルを配置中…",
+        "done": "カーソルを配置しました"
+      },
+      "copy": {
+        "doing": "選択範囲を読み取り中…",
+        "done": "選択範囲を読み取りました"
+      },
+      "set_clipboard": {
+        "doing": "テキストを準備中…",
+        "done": "テキストをクリップボードに置きました"
+      },
+      "set_clipboard_image": {
+        "doing": "画像を取得中…",
+        "done": "画像をクリップボードに置きました"
+      },
+      "paste": {
+        "doing": "貼り付け中…",
+        "done": "ドキュメントに貼り付けました"
+      },
+      "undo": {
+        "doing": "元に戻し中…",
+        "done": "最後の編集を元に戻しました"
+      },
+      "redo": {
+        "doing": "やり直し中…",
+        "done": "編集をやり直しました"
+      },
+      "press_key": {
+        "doing": "キーを押しています…",
+        "done": "キーを押しました"
+      },
+      "get_clipboard": {
+        "doing": "クリップボードを読み取り中…",
+        "done": "クリップボードを読み取りました"
+      }
+    }
+  },
+  "errorBoundary": {
+    "eyebrow": "問題が発生しました",
+    "title": "Openstyle で予期しないエラーが発生しました。",
+    "body": "エラーは診断用に記録されました。通常は再読み込みで解決します。繰り返し発生する場合は、設定 → データ からログを共有してください。",
+    "reload": "再読み込み"
+  },
+  "notFound": {
+    "title": "ページが見つかりません",
+    "goToApp": "アプリに移動"
   }
 }

@@ -29,7 +29,8 @@
       "value": "Wert",
       "apiKey": "API-Schlüssel",
       "token": "Token"
-    }
+    },
+    "done": "Fertig"
   },
   "languageNames": {
     "en": "English",
@@ -195,7 +196,13 @@
       "needsModifier": "Tastenkombinationen benötigen eine Modifikatortaste oder Maustaste",
       "languageHotkey": "Auf {{language}} diktieren",
       "languageHotkeyDesc": "Optional — legt dieses Diktat auf {{language}} fest und überspringt die automatische Erkennung.",
-      "languageHotkeyConflict": "Diese Kombination wird bereits verwendet. Wählen Sie eine andere."
+      "languageHotkeyConflict": "Diese Kombination wird bereits verwendet. Wählen Sie eine andere.",
+      "backgroundAudio": "Hintergrundaudio",
+      "backgroundAudioDesc": "„Leiser“ senkt die Lautstärke. „Pause“ pausiert die aktuelle Wiedergabe und senkt die Lautstärke.",
+      "backgroundAudioDescLinux": "„Leiser“ senkt die Systemlautstärke. „Pause“ pausiert MPRIS-Medien und senkt die Lautstärke.",
+      "backgroundAudioOff": "Aus",
+      "backgroundAudioDuck": "Leiser",
+      "backgroundAudioPause": "Pause"
     },
     "display": {
       "theme": "Design",
@@ -241,7 +248,6 @@
       "enhanceTimeoutReset": "Auf {{seconds}} Sekunden zurücksetzen",
       "enhanceTimeoutSaveFailed": "Speichern fehlgeschlagen — der Server hat weiterhin {{value}} Sekunden",
       "enhanceTimeoutStripped": "Nur Ziffern — {{dropped}} entfernt, das Feld zeigt {{value}}",
-
       "history": "Transkriptionsverlauf",
       "historyDesc": "Alle gespeicherten Sitzungen dauerhaft löschen — dies kann nicht rückgängig gemacht werden.",
       "clearHistory": "Verlauf löschen",
@@ -353,7 +359,8 @@
     "emptyDesc": "Fügen Sie eine häufig verwendete Phrase hinzu, wie <example>meine Adresse</example> — und Openstyle erweitert sie inline.",
     "noResults": "nichts entspricht \"{{search}}\".",
     "noEntries": "keine Einträge — fügen Sie einen hinzu.",
-    "failedToSave": "Eintrag konnte nicht gespeichert werden."
+    "failedToSave": "Eintrag konnte nicht gespeichert werden.",
+    "usedCount": "{{count}}× verwendet"
   },
   "vocabulary": {
     "title": "Vokabular",
@@ -379,7 +386,10 @@
     "noTerms": "keine Begriffe — fügen Sie einen hinzu.",
     "failedToSave": "Eintrag konnte nicht gespeichert werden.",
     "importFailed": "Import fehlgeschlagen — die Datei muss gültiges JSON sein.",
-    "selectEntry": "{{term}} auswählen"
+    "selectEntry": "{{term}} auswählen",
+    "termPlaceholder": "z. B. „Nguyen“ oder „Kontonummer“",
+    "notesPlaceholder": "z. B. „Kundenname“, „Koreanisch“",
+    "biasNote": "Mehrwortphrasen funktionieren mit Nova 3, OpenAI und Groq. Nova 2 verstärkt einzelne Wörter. Scribe v1 nutzt keine Vokabular-Gewichtung."
   },
   "tone": {
     "title": "Ton",
@@ -669,7 +679,39 @@
     "modal": {
       "addApiKey": "API-Schlüssel hinzufügen",
       "chooseVoice": "Sprachmodell auswählen",
-      "pickLlm": "LLM-Modell auswählen"
+      "pickLlm": "LLM-Modell auswählen",
+      "keyTitle": "{{provider}}-API-Schlüssel hinzufügen",
+      "keyNeeded": "<model>{{name}}</model> braucht einen {{provider}}-Schlüssel, um zu laufen.",
+      "keyNew": "Geben Sie einen neuen API-Schlüssel für {{provider}} ein.",
+      "keyPlaceholder": "sk-…",
+      "keyStoredNote": "Im Schlüsselbund gespeichert · nie protokolliert",
+      "keyGet": "{{provider}}-Schlüssel erhalten ↗",
+      "keyChecking": "Wird geprüft…",
+      "keySaveUse": "Speichern und verwenden"
+    },
+    "list": {
+      "searchPlaceholder": "Modelle durchsuchen…",
+      "showAll": "Alle Modelle anzeigen ({{count}} weitere) →",
+      "selected": "Ausgewählt",
+      "use": "Verwenden",
+      "download": "Herunterladen",
+      "retry": "Erneut versuchen",
+      "recommended": "Empfohlen",
+      "via": "über",
+      "addKey": "Schlüssel hinzufügen",
+      "preparingRuntime": "Laufzeitumgebung wird vorbereitet…",
+      "verifying": "Wird überprüft…",
+      "noBuiltin": "Auf diesem Gerät gibt es keine Transkriptionsmodelle für die lokale Ausführung.",
+      "noMatch": "Keine passenden Modelle."
+    },
+    "mlx": {
+      "title": "Modell-Vorwärmung",
+      "coldStart": "Kaltstart (entladen)",
+      "alwaysOn": "Immer an",
+      "descAlways": "Hält das Modell dauerhaft im Speicher, bis Sie Openstyle beenden. Schnellste wiederholte Nutzung, aber höchster RAM-Bedarf.",
+      "descCold": "Entlädt das Modell nach jeder Transkription aus dem Speicher. Braucht weniger RAM, aber das nächste Diktat wartet auf ein vollständiges Neuladen.",
+      "descOneMinute": "Hält das Modell nach dem Diktat etwa 1 Minute im Speicher, damit schnelle Folgediktate schnell bleiben.",
+      "descMinutes": "Hält das Modell nach dem Diktat bis zu {{minutes}} Minuten im Speicher. Schnellere wiederholte Nutzung, mehr RAM im aufgewärmten Zustand."
     }
   },
   "shell": {
@@ -876,6 +918,18 @@
     },
     "navigate": {
       "eyebrow": "Navigation"
+    },
+    "title": "Hilfe",
+    "subtitle": "Dokumentation und Möglichkeiten, zu Openstyle beizutragen.",
+    "getHelp": {
+      "eyebrow": "Hilfe erhalten",
+      "reportTitle": "Problem melden",
+      "reportDesc": "Fehler gefunden oder Funktionswunsch? Eröffnen Sie ein GitHub-Issue."
+    },
+    "contributing": {
+      "eyebrow": "Mitwirken",
+      "cardTitle": "Zu Openstyle beitragen",
+      "cardDesc": "Pull Requests sind willkommen. Beginnen Sie mit CONTRIBUTING.md für die lokale Einrichtung."
     }
   },
   "import": {
@@ -917,7 +971,36 @@
     }
   },
   "pill": {
-    "cancelDictation": "Diktat abbrechen"
+    "cancelDictation": "Diktat abbrechen",
+    "dismiss": "Schließen",
+    "retry": "Erneut versuchen",
+    "cardTitle": "Transkription fehlgeschlagen",
+    "status": {
+      "reconnecting": "Verbindung wird wiederhergestellt",
+      "retrying": "Neuer Versuch",
+      "unavailable": "Nicht verfügbar",
+      "warming": "Lokales Modell wird aufgewärmt…",
+      "delivered": "Diktat übermittelt",
+      "noAudio": "Kein Audio von Ihrem Mikrofon",
+      "preparingMic": "Mikrofon wird vorbereitet",
+      "listening": "Höre zu",
+      "transcribing": "Transkribiere"
+    },
+    "remix": {
+      "applying": "{{label}} wird angewendet",
+      "applyingFallback": "Remix",
+      "listening": "Warte auf einen Remix",
+      "chat": "Remix-Chat",
+      "working": "Arbeite…",
+      "hintListening": "Höre zu…",
+      "transcribing": "Transkribiere…",
+      "nothingSelectedTitle": "Nichts ausgewählt",
+      "nothingSelectedBody": "Markieren Sie zuerst Text in einer beliebigen App und drücken Sie dann die Tastenkombination.",
+      "failedTitle": "Remix fehlgeschlagen",
+      "modelCouldntRun": "Das Modell konnte das nicht ausführen ({{status}}).",
+      "returnedNothing": "Das Modell hat nichts zurückgegeben.",
+      "somethingWrong": "Etwas ist schiefgelaufen."
+    }
   },
   "remixBar": {
     "open": "Openstyle Remix öffnen"
@@ -928,6 +1011,96 @@
     "message": "Nachricht an Remix",
     "stop": "Stopp",
     "send": "Senden",
-    "conversation": "Remix-Unterhaltung"
+    "conversation": "Remix-Unterhaltung",
+    "placeholder": "Nachricht an Remix…",
+    "working": "Arbeite…",
+    "miniCouldntOpen": "Remix konnte nicht geöffnet werden",
+    "couldntOpen": "Remix konnte nicht geöffnet werden. Läuft der Openstyle-Server?",
+    "opening": "Remix wird geöffnet…",
+    "emptyWithSelection": "Sagen oder tippen Sie, was mit Ihrer Auswahl geschehen soll.",
+    "emptyNoSelection": "Nichts ausgewählt — bitten Sie mich zu schreiben, zu recherchieren oder zu antworten.",
+    "thinking": "Denke nach…",
+    "stepInput": "Eingabe",
+    "stepOutput": "Ausgabe",
+    "failed": "Remix fehlgeschlagen.",
+    "statusFailed": "Remix fehlgeschlagen ({{status}}).",
+    "somethingWrong": "Etwas ist schiefgelaufen.",
+    "returnedNothing": "Das Modell hat nichts zurückgegeben.",
+    "couldntReplace": "Ersetzen nicht möglich — es wurde nichts geändert.",
+    "nothingHighlighted": "Nichts ist markiert — markieren Sie zuerst Text.",
+    "actionRunning": "{{label}}…",
+    "actionDone": "{{label}} — Text ersetzt",
+    "actionFailed": "{{label}} fehlgeschlagen — {{detail}}",
+    "toolRunning": "{{name}} wird ausgeführt…",
+    "toolRan": "{{name}} ausgeführt",
+    "presets": {
+      "fix": "Korrigieren",
+      "formal": "Formell",
+      "markdown": "Markdown"
+    },
+    "tools": {
+      "get_context": {
+        "doing": "Schaue auf Ihren Bildschirm…",
+        "done": "Bildschirm geprüft"
+      },
+      "read_document": {
+        "doing": "Lese das Dokument…",
+        "done": "Dokument gelesen"
+      },
+      "select_all": {
+        "doing": "Wähle alles aus…",
+        "done": "Alles ausgewählt"
+      },
+      "select_text": {
+        "doing": "Wähle in Ihrem Dokument aus…",
+        "done": "Auswahl verschoben"
+      },
+      "collapse_selection": {
+        "doing": "Setze den Cursor…",
+        "done": "Cursor gesetzt"
+      },
+      "copy": {
+        "doing": "Lese Ihre Auswahl…",
+        "done": "Auswahl gelesen"
+      },
+      "set_clipboard": {
+        "doing": "Bereite Text vor…",
+        "done": "Text in die Zwischenablage gelegt"
+      },
+      "set_clipboard_image": {
+        "doing": "Rufe ein Bild ab…",
+        "done": "Bild in die Zwischenablage gelegt"
+      },
+      "paste": {
+        "doing": "Füge ein…",
+        "done": "In Ihr Dokument eingefügt"
+      },
+      "undo": {
+        "doing": "Mache rückgängig…",
+        "done": "Letzte Änderung rückgängig gemacht"
+      },
+      "redo": {
+        "doing": "Stelle wieder her…",
+        "done": "Änderung wiederhergestellt"
+      },
+      "press_key": {
+        "doing": "Drücke eine Taste…",
+        "done": "Taste gedrückt"
+      },
+      "get_clipboard": {
+        "doing": "Lese Ihre Zwischenablage…",
+        "done": "Zwischenablage gelesen"
+      }
+    }
+  },
+  "errorBoundary": {
+    "eyebrow": "Etwas ist schiefgelaufen",
+    "title": "In Openstyle ist ein unerwarteter Fehler aufgetreten.",
+    "body": "Der Fehler wurde zur Diagnose protokolliert. Ein Neuladen behebt ihn meist — tritt er weiter auf, teilen Sie Ihre Protokolle unter Einstellungen → Daten.",
+    "reload": "Neu laden"
+  },
+  "notFound": {
+    "title": "Seite nicht gefunden",
+    "goToApp": "Zur App"
   }
 }

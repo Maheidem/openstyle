@@ -1,4 +1,5 @@
 import type React from "react";
+import { useTranslation } from "react-i18next";
 
 interface AlertCardBodyProps {
   title: string | undefined;
@@ -27,6 +28,7 @@ export function AlertCardBody({
   ink,
   alert,
 }: AlertCardBodyProps): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <>
       <div className="flex items-start" style={{ gap: 10 }}>
@@ -94,7 +96,7 @@ export function AlertCardBody({
           className="pill-action pill-action-ghost"
           onClick={onDismiss}
         >
-          Dismiss
+          {t("pill.dismiss")}
         </button>
         {onRetry && (
           <button
@@ -102,7 +104,7 @@ export function AlertCardBody({
             className="pill-action pill-action-primary"
             onClick={onRetry}
           >
-            Retry
+            {t("pill.retry")}
           </button>
         )}
       </div>

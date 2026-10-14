@@ -27,7 +27,7 @@ import {
 } from "@renderer/lib/models";
 import { AlertTriangle, Key, Loader2, X } from "lucide-react";
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 
 import { ModelList } from "./model-list";
 import type { ServerView } from "./server-roles";
@@ -188,18 +188,23 @@ function KeyStep({
         </div>
         <div className="flex-1">
           <h3 className="text-foreground m-0 text-[17px] font-semibold">
-            Add your {providerLabel} API key
+            {t("models.modal.keyTitle", { provider: providerLabel })}
           </h3>
           <p className="text-muted-foreground mt-1 text-[13px] leading-relaxed">
             {modelName ? (
-              <>
-                <span className="text-foreground/80 font-medium">
-                  {modelName}
-                </span>{" "}
-                needs a {providerLabel} key to run.
-              </>
+              <Trans
+                i18nKey="models.modal.keyNeeded"
+                values={{ provider: providerLabel, name: modelName }}
+                components={{
+                  model: (
+                    <span className="text-foreground/80 font-medium">
+                      {modelName}
+                    </span>
+                  ),
+                }}
+              />
             ) : (
-              <>Enter a new API key for {providerLabel}.</>
+              t("models.modal.keyNew", { provider: providerLabel })
             )}
           </p>
         </div>
@@ -228,7 +233,7 @@ function KeyStep({
             type={show ? "text" : "password"}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="sk-…"
+            placeholder={t("models.modal.keyPlaceholder")}
             aria-invalid={!!error}
             autoFocus
             className="mono"
@@ -247,7 +252,7 @@ function KeyStep({
         )}
         <div className="flex items-center justify-between">
           <p className="text-muted-foreground text-[11px] font-medium">
-            Stored in keychain · never logged
+            {t("models.modal.keyStoredNote")}
           </p>
           {PROVIDER_KEY_URLS[provider] && (
             <a
@@ -256,7 +261,7 @@ function KeyStep({
               rel="noreferrer"
               className="text-primary text-[12px] underline underline-offset-2"
             >
-              Get a {providerLabel} key ↗
+              {t("models.modal.keyGet", { provider: providerLabel })}
             </a>
           )}
         </div>
@@ -266,7 +271,7 @@ function KeyStep({
             size="sm"
             onClick={canGoBack ? onBack : onClose}
           >
-            {canGoBack ? "Back" : "Cancel"}
+            {canGoBack ? t("common.back") : t("common.cancel")}
           </Button>
           <Button
             type="submit"
@@ -277,10 +282,10 @@ function KeyStep({
             {saving ? (
               <span className="flex items-center gap-1.5">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Checking…
+                {t("models.modal.keyChecking")}
               </span>
             ) : (
-              "Save & use"
+              t("models.modal.keySaveUse")
             )}
           </Button>
         </div>
@@ -296,7 +301,7 @@ function KeyStep({
 export function ConfirmDialog({
   title,
   message,
-  confirmLabel = "Delete",
+  confirmLabel,
   onCancel,
   onConfirm,
 }: {
@@ -306,6 +311,7 @@ export function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <AlertDialog open onOpenChange={(o) => !o && onCancel()}>
       <AlertDialogContent>
@@ -314,9 +320,9 @@ export function ConfirmDialog({
           <AlertDialogDescription>{message}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={onConfirm}>
-            {confirmLabel}
+            {confirmLabel ?? t("common.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
