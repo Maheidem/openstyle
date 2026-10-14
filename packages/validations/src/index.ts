@@ -7,6 +7,7 @@ export * from "./export.js";
 export * from "./import-limits.js";
 export * from "./language-list.js";
 export * from "./llm-task-profiles.js";
+export * from "./meeting-calendar.js";
 export * from "./meeting-files.js";
 export * from "./meeting-types.js";
 export * from "./mlx-keep-alive.js";

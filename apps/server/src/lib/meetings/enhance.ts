@@ -95,6 +95,11 @@ export interface EnhanceMeetingOptions {
    * polled job blob (the same seam shape as Summarize's onProgress).
    */
   onProgress?: (p: { done: number; total: number }) => void;
+  /**
+   * Names of the linked calendar event's attendees (specs/calendar-eventkit.md).
+   * Names only, never emails. Empty or unset keeps the prompt byte-identical.
+   */
+  attendeeNames?: string[];
 }
 
 export interface EnhanceMeetingResult {
@@ -418,6 +423,7 @@ export async function enhanceMeetingTranscript(
     speakerLabels,
     meetingTitle,
     meetingContext,
+    options.attendeeNames ?? [],
   );
   const chunks = chunkForEnhance(withIds, contextBudgetTokens);
   // Pass accounting (see EnhanceMeetingResult): fail-closed per chunk stays,

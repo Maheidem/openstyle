@@ -1,3 +1,5 @@
+import type { CalendarEvent } from "./meeting-calendar.js";
+
 // Response types for the meetings API. The server builds these shapes, the
 // Electron main process passes them on, and the renderer reads them. This
 // file has no runtime code. Use `import type` to read it.
@@ -29,6 +31,8 @@ export interface MeetingDetail extends MeetingListItem {
    * editable anytime. Feeds both the naming prompt and the summarize
    * prompt. NULL means unset. */
   context: string | null;
+  /** The linked calendar event, or null (specs/calendar-eventkit.md). */
+  calendar: CalendarEvent | null;
   job: {
     done: number;
     total: number;

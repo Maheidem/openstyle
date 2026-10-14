@@ -1,3 +1,4 @@
+import type { CalendarEvent } from "@openstyle/validations";
 import { getDb } from "../db.js";
 
 export interface MeetingRow {
@@ -21,6 +22,51 @@ export interface MeetingRow {
   context: string | null;
   error: string | null;
   created_at: number | null;
+  /** Linked calendar event (specs/calendar-eventkit.md). All NULL when the
+   * meeting is not linked. `calendar_attendees` is a JSON array. */
+  calendar_event_id: string | null;
+  calendar_title: string | null;
+  calendar_start: number | null;
+  calendar_end: number | null;
+  calendar_url: string | null;
+  calendar_attendees: string | null;
+}
+
+/** Attendees of the linked event. A bad or missing JSON value gives []. */
+export function parseAttendees(
+  row: Pick<MeetingRow, "calendar_attendees">,
+): CalendarEvent["attendees"] {
+  if (!row.calendar_attendees) return [];
+  try {
+    const parsed: unknown = JSON.parse(row.calendar_attendees);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((a) => {
+      if (!a || typeof a !== "object") return [];
+      const { name, email, isOrganizer } = a as Record<string, unknown>;
+      return [
+        {
+          name: typeof name === "string" ? name : "",
+          email: typeof email === "string" ? email : "",
+          isOrganizer: isOrganizer === true,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** The linked event as the API shows it, or null when not linked. */
+export function toCalendarEvent(row: MeetingRow): CalendarEvent | null {
+  if (!row.calendar_event_id) return null;
+  return {
+    id: row.calendar_event_id,
+    title: row.calendar_title ?? "",
+    start: row.calendar_start ?? 0,
+    end: row.calendar_end ?? 0,
+    url: row.calendar_url,
+    attendees: parseAttendees(row),
+  };
 }
 
 /** One `meetings` row by id, or undefined when no row has that id. */

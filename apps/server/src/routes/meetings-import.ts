@@ -71,7 +71,7 @@ import {
 } from "../lib/audio/multipart-stream.js";
 import { readWavInfo, wavDurationMs } from "../lib/audio/wav.js";
 import { getDb } from "../lib/db.js";
-import { getMeetingRow } from "../lib/meetings/store.js";
+import { getMeetingRow, toCalendarEvent } from "../lib/meetings/store.js";
 
 const log = createAppLogger("meetings-import");
 
@@ -311,6 +311,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       return c.json(
         {
           ...row,
+          calendar: row ? toCalendarEvent(row) : null,
           job: null,
           job_error: null,
           segment_counts: { total: 0, failed: 0 },
