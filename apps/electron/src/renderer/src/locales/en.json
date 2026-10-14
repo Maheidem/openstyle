@@ -343,6 +343,13 @@
     "nerdToggleDesc": "Show tokens, latency and words per minute",
     "tutorialToggle": "Tutorial card",
     "tutorialToggleDesc": "Show the press-speak-release demo at the top",
+    "tutorial": {
+      "sentence": "<press>Press</press> <key>,</key> <speak>speak,</speak> <release>release.</release>",
+      "ready": "Ready",
+      "listening": "Listening…",
+      "pasted": "Pasted to your app",
+      "sample": "Pushing the meeting to tomorrow at ten."
+    },
     "nerdWpm": "{{n}} wpm",
     "nerdTok": "{{in}}→{{out}} tok",
     "nerdCompute": "{{label}} compute",

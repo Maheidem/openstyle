@@ -286,6 +286,13 @@
     "groupYesterday": "Hier",
     "tutorialToggle": "Carte tutoriel",
     "tutorialToggleDesc": "Afficher la démo appuyer-parler-relâcher en haut",
+    "tutorial": {
+      "sentence": "<press>Appuyez sur</press> <key>,</key> <speak>parlez</speak> <release>puis relâchez.</release>",
+      "ready": "Prêt",
+      "listening": "À l'écoute…",
+      "pasted": "Collé dans votre app",
+      "sample": "Je décale la réunion à demain, dix heures."
+    },
     "clearDates": "Effacer",
     "openStats": "Afficher les statistiques",
     "closeStats": "Masquer les statistiques",

@@ -79,7 +79,8 @@ export function StepWord({
   children,
 }: {
   active: boolean;
-  children: React.ReactNode;
+  // Optional: <Trans> injects the translated text as the children.
+  children?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <span
