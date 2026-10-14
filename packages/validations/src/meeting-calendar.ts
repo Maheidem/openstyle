@@ -24,3 +24,11 @@ export const calendarEventSchema = z.object({
 
 export type CalendarAttendee = z.infer<typeof calendarAttendeeSchema>;
 export type CalendarEvent = z.infer<typeof calendarEventSchema>;
+
+/** macOS Calendars permission, as the `macos-calendar` helper reports it. */
+export type CalendarAuthStatus =
+  | "notDetermined"
+  | "restricted"
+  | "denied"
+  | "fullAccess"
+  | "writeOnly";

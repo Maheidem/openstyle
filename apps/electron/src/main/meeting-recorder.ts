@@ -28,6 +28,7 @@ import { mkdir, readdir, stat, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
+  type CalendarEvent,
   DEFAULT_MEETING_MAX_DURATION_HOURS,
   MEETINGS_DIR_NAME,
   MIC_WAV,
@@ -183,6 +184,11 @@ export interface MeetingRecorderDeps {
   broadcastLevel: (event: MeetingLevelEvent) => void;
   /** Broadcast a `meeting:status` change to interested renderer windows. */
   broadcastStatus: (status: MeetingRecorderStatus) => void;
+  /**
+   * The calendar event that runs now, or null (specs/calendar-eventkit.md).
+   * It returns null at once when the user has not turned on the calendar.
+   */
+  findCurrentEvent: () => Promise<CalendarEvent | null>;
 }
 
 export class MeetingRecorder {
@@ -305,9 +311,21 @@ export class MeetingRecorder {
     await mkdir(dir, { recursive: true });
 
     const startedAt = Date.now();
+    // A calendar problem never stops a recording.
+    let calendar: CalendarEvent | null = null;
+    try {
+      calendar = await this.deps.findCurrentEvent();
+    } catch {
+      calendar = null;
+    }
     const res = await this.api("/meetings/start", {
       method: "POST",
-      body: { id, audio_dir: dir, started_at: startedAt },
+      body: {
+        id,
+        audio_dir: dir,
+        started_at: startedAt,
+        ...(calendar ? { calendar } : {}),
+      },
     });
     if (!res.ok) {
       throw new Error(`Failed to create meeting row (HTTP ${res.status})`);

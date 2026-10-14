@@ -16,6 +16,8 @@ import {
   getWindowsFrontmostApp,
 } from "../active-window";
 import { registerAppSettingsIpc } from "../app-settings-ipc";
+import { autoLinkCurrentEvent, isCalendarEnabled } from "../calendar";
+import { registerCalendarIpc } from "../calendar-ipc";
 import { registerDiskUsageIpc } from "../disk-usage";
 import { HotkeyRecorder } from "../hotkey-recorder";
 import {
@@ -142,6 +144,10 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     // The Settings page has the mic permission, so ask it first.
     resolveMicLabel: (deviceId) =>
       resolveMicLabel(deviceId, [state.settingsWindow, state.mainWindow]),
+    // Links the running calendar event. Returns null while the calendar
+    // toggle is off, before any helper starts.
+    findCurrentEvent: () =>
+      autoLinkCurrentEvent({ isEnabled: () => isCalendarEnabled(serverFetch) }),
     broadcastLevel: (event) => {
       broadcastToWindows("meeting:level", event);
     },
@@ -153,6 +159,8 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
       }
     },
   });
+
+  registerCalendarIpc({ serverFetch });
 
   registerMeetingIpc({
     getMeetingRecorder: () => state.meetingRecorder,

@@ -1,5 +1,9 @@
 import { electronAPI } from "@electron-toolkit/preload";
-import type { MeetingImportResult } from "@openstyle/validations";
+import type {
+  CalendarAuthStatus,
+  CalendarEvent,
+  MeetingImportResult,
+} from "@openstyle/validations";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   ActiveAudioPlaybackMode,
@@ -90,6 +94,17 @@ const api = {
   /** Open System Settings > Privacy > Screen & System Audio Recording. */
   openAudioCaptureSettings: (): void =>
     ipcRenderer.send("meeting:open-audio-capture-settings"),
+  /** Calendar link (specs/calendar-eventkit.md). Permission status, no dialog. */
+  calendarStatus: (): Promise<CalendarAuthStatus | null> =>
+    ipcRenderer.invoke("calendar:status"),
+  /** Shows the macOS Calendars dialog. Call it when the toggle goes on. */
+  calendarRequest: (): Promise<CalendarAuthStatus | null> =>
+    ipcRenderer.invoke("calendar:request"),
+  /** Today's events for the "Change" picker. [] while the toggle is off. */
+  calendarListToday: (): Promise<CalendarEvent[]> =>
+    ipcRenderer.invoke("calendar:list-today"),
+  /** Open System Settings > Privacy > Calendars. */
+  calendarOpenSettings: (): void => ipcRenderer.send("calendar:open-settings"),
   /** Reveal a meeting's audio directory in Finder. False when unavailable. */
   revealMeetingInFinder: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("meeting:reveal-in-finder", id),

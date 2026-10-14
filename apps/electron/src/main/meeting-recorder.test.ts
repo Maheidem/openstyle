@@ -73,10 +73,16 @@ function fakeCaptureWindow() {
   };
 }
 
-function createRecorder() {
+function createRecorder(
+  extra: {
+    serverFetch?: MeetingRecorderDeps["serverFetch"];
+    findCurrentEvent?: MeetingRecorderDeps["findCurrentEvent"];
+  } = {},
+) {
   const createCaptureWindow = vi.fn(fakeCaptureWindow);
   const recorder = new MeetingRecorder({
-    serverFetch: async () => new Response("{}"),
+    serverFetch: extra.serverFetch ?? (async () => new Response("{}")),
+    findCurrentEvent: extra.findCurrentEvent ?? (async () => null),
     createCaptureWindow:
       createCaptureWindow as unknown as MeetingRecorderDeps["createCaptureWindow"],
     resolveMicLabel: async () => null,
@@ -189,5 +195,85 @@ describe("MeetingRecorder capture start", () => {
     expect(readJournal(meetingId).epochs.map((e) => e.reason)).toEqual([
       "start",
     ]);
+  });
+});
+
+describe("MeetingRecorder calendar link", () => {
+  beforeEach(() => {
+    mocks.userData = mkdtempSync(join(tmpdir(), "openstyle-recorder-test-"));
+    mocks.helpers.length = 0;
+    mocks.systemCaptures.length = 0;
+  });
+
+  afterEach(() => {
+    rmSync(mocks.userData, { recursive: true, force: true });
+  });
+
+  /** The JSON body of the POST /meetings/start call. */
+  function startBody(calls: { path: string; body: unknown }[]) {
+    return calls.find((c) => c.path === "/meetings/start")?.body as Record<
+      string,
+      unknown
+    >;
+  }
+
+  function recordingFetch(calls: { path: string; body: unknown }[]) {
+    return async (path: string, init?: RequestInit) => {
+      calls.push({
+        path,
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return new Response("{}");
+    };
+  }
+
+  const EVENT = {
+    id: "evt-1",
+    title: "Fictional sync",
+    start: 1_700_000_000_000,
+    end: 1_700_003_600_000,
+    url: null,
+    attendees: [{ name: "Ana", email: "ana@example.test", isOrganizer: true }],
+  };
+
+  it("sends the found event in the start body", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    const { recorder } = createRecorder({
+      serverFetch: recordingFetch(calls),
+      findCurrentEvent: async () => EVENT,
+    });
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onReady?.();
+    await started;
+    expect(startBody(calls).calendar).toEqual(EVENT);
+    await recorder.stop();
+  });
+
+  it("sends no calendar field when no event is found", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    const { recorder } = createRecorder({
+      serverFetch: recordingFetch(calls),
+    });
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onReady?.();
+    await started;
+    expect("calendar" in startBody(calls)).toBe(false);
+    await recorder.stop();
+  });
+
+  it("still records when the calendar lookup throws", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    const { recorder } = createRecorder({
+      serverFetch: recordingFetch(calls),
+      findCurrentEvent: async () => {
+        throw new Error("helper crashed");
+      },
+    });
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onReady?.();
+    await started;
+    expect("calendar" in startBody(calls)).toBe(false);
+    expect(recorder.status).toBe("recording");
+    await recorder.stop();
   });
 });
