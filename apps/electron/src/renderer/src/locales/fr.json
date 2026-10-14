@@ -235,7 +235,10 @@
       "useCalendar": "Utiliser mon calendrier",
       "useCalendarDesc": "Associe chaque enregistrement de réunion à l'événement du calendrier en cours. Openstyle lit seulement les événements. Il ne modifie jamais votre calendrier. macOS demande l'autorisation quand vous activez cette option.",
       "calendarDenied": "Openstyle n'a pas accès à votre calendrier. Autorisez l'accès dans les Réglages Système, puis activez à nouveau cette option.",
-      "openSystemSettings": "Ouvrir les Réglages Système"
+      "openSystemSettings": "Ouvrir les Réglages Système",
+      "calendarRestricted": "La politique de votre Mac bloque l'accès au calendrier. Openstyle ne peut pas la modifier.",
+      "calendarUnavailable": "Openstyle n'a pas pu joindre le calendrier. La demande a peut-être expiré, ou ce Mac utilise une version de macOS antérieure à la 14. Réessayez.",
+      "calendarSaveFailed": "Openstyle n'a pas pu enregistrer ce réglage. Le calendrier reste désactivé."
     },
     "data": {
       "pauseHistory": "Suspendre l'historique",
@@ -919,7 +922,8 @@
       "attendees": "Participants : {{count}}",
       "joinLink": "Lien de la réunion",
       "pickTitle": "Événements du jour",
-      "link": "Associer un événement du calendrier"
+      "link": "Associer un événement du calendrier",
+      "actionFailed": "La modification a échoué. Réessayez."
     }
   },
   "help": {

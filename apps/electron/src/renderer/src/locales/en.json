@@ -276,7 +276,10 @@
       "useCalendar": "Use my calendar",
       "useCalendarDesc": "Link each meeting recording to the calendar event that is running. Openstyle only reads events. It never changes your calendar. macOS asks for permission when you turn this on.",
       "calendarDenied": "Openstyle has no access to your calendar. Allow access in System Settings, then turn this on again.",
-      "openSystemSettings": "Open System Settings"
+      "openSystemSettings": "Open System Settings",
+      "calendarRestricted": "Your Mac policy blocks calendar access. Openstyle cannot change this.",
+      "calendarUnavailable": "Openstyle could not reach the calendar. The request may have timed out, or this Mac may run a macOS version older than 14. Try again.",
+      "calendarSaveFailed": "Openstyle could not save this setting. The calendar stays off."
     },
     "data": {
       "pauseHistory": "Pause history",
@@ -1138,7 +1141,8 @@
       "attendees": "Attendees: {{count}}",
       "joinLink": "Meeting link",
       "pickTitle": "Today's events",
-      "link": "Link calendar event"
+      "link": "Link calendar event",
+      "actionFailed": "The change did not work. Try again."
     }
   },
   "help": {

@@ -235,7 +235,10 @@
       "useCalendar": "Usar meu calendário",
       "useCalendarDesc": "Vincula cada gravação de reunião ao evento do calendário que está em andamento. O Openstyle apenas lê eventos. Ele nunca altera seu calendário. O macOS pede permissão quando você ativa esta opção.",
       "calendarDenied": "O Openstyle não tem acesso ao seu calendário. Permita o acesso em Ajustes do Sistema e depois ative esta opção novamente.",
-      "openSystemSettings": "Abrir Ajustes do Sistema"
+      "openSystemSettings": "Abrir Ajustes do Sistema",
+      "calendarRestricted": "A política do seu Mac bloqueia o acesso ao calendário. O Openstyle não pode alterar isso.",
+      "calendarUnavailable": "O Openstyle não conseguiu acessar o calendário. A solicitação pode ter expirado, ou este Mac usa um macOS anterior ao 14. Tente novamente.",
+      "calendarSaveFailed": "O Openstyle não conseguiu salvar esta configuração. O calendário continua desativado."
     },
     "data": {
       "pauseHistory": "Pausar histórico",
@@ -918,7 +921,8 @@
       "attendees": "Participantes: {{count}}",
       "joinLink": "Link da reunião",
       "pickTitle": "Eventos de hoje",
-      "link": "Vincular evento do calendário"
+      "link": "Vincular evento do calendário",
+      "actionFailed": "A alteração não funcionou. Tente novamente."
     }
   },
   "help": {

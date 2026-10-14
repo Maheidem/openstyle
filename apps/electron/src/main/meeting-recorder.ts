@@ -56,6 +56,8 @@ const WAV_HEADER_BYTES = 44;
 const FLUSH_INTERVAL_MS = 5000;
 /** Refuse to start a recording with less than 2 GB free on the volume. */
 const MIN_FREE_BYTES = 2 * 1024 ** 3;
+// The most the recording start waits for the calendar lookup.
+const CALENDAR_LOOKUP_MAX_MS = 1500;
 /** Mic RMS is forwarded to the UI at the same cadence as system LEVELs. */
 const LEVEL_INTERVAL_MS = 200;
 /**
@@ -310,14 +312,21 @@ export class MeetingRecorder {
     const dir = join(userData, MEETINGS_DIR_NAME, id);
     await mkdir(dir, { recursive: true });
 
-    const startedAt = Date.now();
-    // A calendar problem never stops a recording.
+    // A calendar problem never stops a recording, and a slow calendar never
+    // delays it for long. The wait ends before startedAt is read, so the
+    // timeline stays aligned with the audio.
     let calendar: CalendarEvent | null = null;
     try {
-      calendar = await this.deps.findCurrentEvent();
+      calendar = await Promise.race([
+        this.deps.findCurrentEvent(),
+        new Promise<null>((resolve) => {
+          setTimeout(() => resolve(null), CALENDAR_LOOKUP_MAX_MS).unref?.();
+        }),
+      ]);
     } catch {
       calendar = null;
     }
+    const startedAt = Date.now();
     const res = await this.api("/meetings/start", {
       method: "POST",
       body: {

@@ -69,6 +69,24 @@ export function toCalendarEvent(row: MeetingRow): CalendarEvent | null {
   };
 }
 
+/**
+ * The row without the six calendar columns. List and detail responses use it,
+ * so raw attendee JSON (with emails) never leaves the server. The detail
+ * response adds the `calendar` object instead.
+ */
+export function omitCalendarColumns(row: MeetingRow) {
+  const {
+    calendar_event_id: _id,
+    calendar_title: _title,
+    calendar_start: _start,
+    calendar_end: _end,
+    calendar_url: _url,
+    calendar_attendees: _attendees,
+    ...rest
+  } = row;
+  return rest;
+}
+
 /** One `meetings` row by id, or undefined when no row has that id. */
 export function getMeetingRow(id: string): MeetingRow | undefined {
   return getDb().prepare("SELECT * FROM meetings WHERE id = ?").get(id) as

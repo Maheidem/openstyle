@@ -235,7 +235,10 @@
       "useCalendar": "カレンダーを使う",
       "useCalendarDesc": "ミーティングの録音を、現在進行中のカレンダーの予定に関連付けます。Openstyle は予定を読み取るだけで、カレンダーを変更することはありません。オンにすると macOS が許可を求めます。",
       "calendarDenied": "Openstyle はカレンダーにアクセスできません。システム設定でアクセスを許可してから、もう一度オンにしてください。",
-      "openSystemSettings": "システム設定を開く"
+      "openSystemSettings": "システム設定を開く",
+      "calendarRestricted": "お使いのMacのポリシーがカレンダーへのアクセスをブロックしています。Openstyleでは変更できません。",
+      "calendarUnavailable": "Openstyleがカレンダーに接続できませんでした。リクエストがタイムアウトしたか、このMacのmacOSがバージョン14より古い可能性があります。もう一度お試しください。",
+      "calendarSaveFailed": "この設定を保存できませんでした。カレンダーはオフのままです。"
     },
     "data": {
       "pauseHistory": "履歴を一時停止",
@@ -919,7 +922,8 @@
       "attendees": "参加者: {{count}}",
       "joinLink": "ミーティングのリンク",
       "pickTitle": "今日の予定",
-      "link": "カレンダーの予定を関連付ける"
+      "link": "カレンダーの予定を関連付ける",
+      "actionFailed": "変更できませんでした。もう一度お試しください。"
     }
   },
   "help": {

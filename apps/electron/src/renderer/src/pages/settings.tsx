@@ -201,7 +201,9 @@ export default function SettingsPage(): React.JSX.Element {
   const [historyPaused, setHistoryPaused] = useState(false);
   // Link meetings to calendar events (specs/calendar-eventkit.md).
   const [calendarEnabled, setCalendarEnabled] = useState(false);
-  const [calendarDenied, setCalendarDenied] = useState(false);
+  const [calendarProblem, setCalendarProblem] = useState<
+    "denied" | "restricted" | "unavailable" | "saveFailed" | null
+  >(null);
   const [historyRetention, setHistoryRetention] = useState<
     "never" | "7" | "30" | "custom"
   >("never");
@@ -422,7 +424,7 @@ export default function SettingsPage(): React.JSX.Element {
   // Turning it on asks macOS for Calendars access. If macOS does not grant
   // full access, the toggle goes back off. Turning it off reads nothing.
   const handleCalendarToggle = useCallback(async (enabled: boolean) => {
-    setCalendarDenied(false);
+    setCalendarProblem(null);
     if (!enabled) {
       setCalendarEnabled(false);
       await putSetting(SETTINGS_KEYS.calendarEnabled, "false");
@@ -432,11 +434,22 @@ export default function SettingsPage(): React.JSX.Element {
     const status = await window.api?.calendarRequest?.();
     if (status !== "fullAccess") {
       setCalendarEnabled(false);
-      setCalendarDenied(true);
+      setCalendarProblem(
+        status === "restricted"
+          ? "restricted"
+          : status == null
+            ? "unavailable"
+            : "denied",
+      );
       await putSetting(SETTINGS_KEYS.calendarEnabled, "false");
       return;
     }
-    await putSetting(SETTINGS_KEYS.calendarEnabled, "true");
+    // Access is granted. If the save fails, the recorder would never link,
+    // so the toggle goes back off and says so.
+    if (!(await putSetting(SETTINGS_KEYS.calendarEnabled, "true"))) {
+      setCalendarEnabled(false);
+      setCalendarProblem("saveFailed");
+    }
   }, []);
 
   const handleRemixBarToggle = useCallback((enabled: boolean) => {
@@ -489,7 +502,17 @@ export default function SettingsPage(): React.JSX.Element {
     setPillCancel(normalizePillCancelMode(s[SETTINGS_KEYS.pillCancelButton]));
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
     if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
-    if (s[SETTINGS_KEYS.calendarEnabled] === "true") setCalendarEnabled(true);
+    if (s[SETTINGS_KEYS.calendarEnabled] === "true") {
+      setCalendarEnabled(true);
+      // The user may have removed the grant in System Settings since.
+      void window.api
+        ?.calendarStatus?.()
+        .then((status) => {
+          if (status === "fullAccess" || status == null) return;
+          setCalendarProblem(status === "restricted" ? "restricted" : "denied");
+        })
+        .catch(() => {});
+    }
     if (s[SETTINGS_KEYS.advancedMode] === "true") setAdvancedMode(true);
 
     const retentionDays = parseRetentionDays(
@@ -1282,18 +1305,28 @@ export default function SettingsPage(): React.JSX.Element {
                     onCheckedChange={(v) => void handleCalendarToggle(v)}
                     aria-label={t("settings.meetings.useCalendar")}
                   />
-                  {calendarDenied && (
+                  {calendarProblem && (
                     <div className="flex flex-col items-start gap-2">
                       <p className="text-muted-foreground text-[12.5px]">
-                        {t("settings.meetings.calendarDenied")}
+                        {t(
+                          calendarProblem === "denied"
+                            ? "settings.meetings.calendarDenied"
+                            : calendarProblem === "restricted"
+                              ? "settings.meetings.calendarRestricted"
+                              : calendarProblem === "unavailable"
+                                ? "settings.meetings.calendarUnavailable"
+                                : "settings.meetings.calendarSaveFailed",
+                        )}
                       </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.api?.calendarOpenSettings?.()}
-                      >
-                        {t("settings.meetings.openSystemSettings")}
-                      </Button>
+                      {calendarProblem === "denied" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.api?.calendarOpenSettings?.()}
+                        >
+                          {t("settings.meetings.openSystemSettings")}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

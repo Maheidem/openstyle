@@ -76,6 +76,7 @@ import { resolveSpeakerNames } from "../lib/meetings/speaker-names.js";
 import {
   getMeetingRow,
   type MeetingRow,
+  omitCalendarColumns,
   parseAttendees,
   toCalendarEvent,
 } from "../lib/meetings/store.js";
@@ -1332,7 +1333,10 @@ const meetings = new Hono()
         "SELECT * FROM meetings ORDER BY created_at DESC, id DESC LIMIT 200",
       )
       .all() as unknown as MeetingRow[];
-    return c.json({ items: rows, total: rows.length });
+    return c.json({
+      items: rows.map(omitCalendarColumns),
+      total: rows.length,
+    });
   })
   // Boot-time orphan sweep: rows a crash/force-quit left in 'recording'
   // (recorder died mid-session) or 'transcribing' (the in-process server
@@ -2233,7 +2237,7 @@ const meetings = new Hono()
         }
       | undefined;
     return c.json({
-      ...row,
+      ...omitCalendarColumns(row),
       calendar: toCalendarEvent(row),
       /** Live job progress, or null when no job is running. `kind` names the
        * holder so the renderer can tell a cancellable summarize job from a

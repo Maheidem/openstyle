@@ -8,10 +8,11 @@
  */
 
 import { createAppLogger } from "@openstyle/utils";
-import type {
-  CalendarAttendee,
-  CalendarAuthStatus,
-  CalendarEvent,
+import {
+  CALENDAR_MAX_ATTENDEES,
+  type CalendarAttendee,
+  type CalendarAuthStatus,
+  type CalendarEvent,
 } from "@openstyle/validations";
 import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
@@ -151,23 +152,26 @@ export async function listEvents(
 }
 
 /**
- * Pick the event that runs now. All-day events never match. An event with a
- * meeting link or several attendees wins over a plain one. Then the latest
- * start wins. The id breaks the last tie, so the result is stable.
+ * Pick the event that runs now. All-day events never match. An event that
+ * already started wins over one that starts within the next 5 minutes. Then
+ * an event with a meeting link or several attendees wins over a plain one.
+ * Then the latest start wins. The id breaks the last tie, so the result is
+ * stable.
  */
 export function pickCurrentEvent(
   events: ListedEvent[],
   now: number,
 ): ListedEvent | null {
   const rank = (e: ListedEvent) => (e.url || e.attendees.length > 1 ? 1 : 0);
-  const running = events.filter(
-    (e) => !e.isAllDay && e.start <= now + START_EARLY_MS && e.end > now,
-  );
-  running.sort(
-    (a, b) =>
-      rank(b) - rank(a) || b.start - a.start || a.id.localeCompare(b.id),
-  );
-  return running[0] ?? null;
+  const order = (a: ListedEvent, b: ListedEvent) =>
+    rank(b) - rank(a) || b.start - a.start || a.id.localeCompare(b.id);
+  const candidates = events.filter((e) => !e.isAllDay && e.end > now);
+  const started = candidates.filter((e) => e.start <= now).sort(order);
+  if (started[0]) return started[0];
+  const soon = candidates
+    .filter((e) => e.start > now && e.start <= now + START_EARLY_MS)
+    .sort(order);
+  return soon[0] ?? null;
 }
 
 /** Start and end (epoch ms) of the local day that holds `now`. */
@@ -199,14 +203,14 @@ export interface CalendarDeps {
 
 /**
  * Today's events (not all-day), sorted by start. Returns [] when the setting
- * is off, before the helper starts. Returns [] when access is not granted.
+ * is off, before the helper starts. Returns [] when access is not granted
+ * (one helper call: the `events` answer carries the status).
  */
 export async function listTodayEvents(
   deps: CalendarDeps,
 ): Promise<ListedEvent[]> {
   if (!(await deps.isEnabled())) return [];
   const run = deps.run ?? defaultRunner;
-  if ((await calendarAuthStatus(run)) !== "fullAccess") return [];
   const { from, to } = todayWindow((deps.now ?? Date.now)());
   const events = await listEvents(from, to, run);
   const list = (events ?? [])
@@ -214,6 +218,25 @@ export async function listTodayEvents(
     .sort((a, b) => a.start - b.start);
   log.info(`calendar: ${list.length} events today`);
   return list;
+}
+
+const MAX_TITLE_CHARS = 512;
+const MAX_NAME_CHARS = 200;
+const MAX_EMAIL_CHARS = 320;
+const MAX_URL_CHARS = 2048;
+
+/** Fit an event to the server limits, so a huge invite never fails a start. */
+export function clampEvent(event: CalendarEvent): CalendarEvent {
+  return {
+    ...event,
+    title: event.title.slice(0, MAX_TITLE_CHARS),
+    url: event.url && event.url.length <= MAX_URL_CHARS ? event.url : null,
+    attendees: event.attendees.slice(0, CALENDAR_MAX_ATTENDEES).map((a) => ({
+      name: a.name.slice(0, MAX_NAME_CHARS),
+      email: a.email.slice(0, MAX_EMAIL_CHARS),
+      isOrganizer: a.isOrganizer,
+    })),
+  };
 }
 
 /**
@@ -233,7 +256,7 @@ export async function autoLinkCurrentEvent(
     log.info(
       `calendar: linked a running event (link ${event.url ? "yes" : "no"}, attendees ${event.attendees.length})`,
     );
-    return event;
+    return clampEvent(event);
   } catch {
     return null;
   }

@@ -8,12 +8,15 @@ vi.mock("./native-binary", () => ({ getNativeBinaryPath: () => null }));
 const {
   autoLinkCurrentEvent,
   calendarAuthStatus,
+  clampEvent,
   listEvents,
   listTodayEvents,
   pickCurrentEvent,
   todayWindow,
 } = await import("./calendar");
 type ListedEvent = import("./calendar").ListedEvent;
+
+const { calendarEventSchema } = await import("@openstyle/validations");
 
 const NOW = Date.UTC(2026, 9, 14, 15, 0, 0);
 const MIN = 60 * 1000;
@@ -68,6 +71,21 @@ describe("pickCurrentEvent", () => {
     expect(pickCurrentEvent([plain, group], NOW)?.id).toBe("group");
   });
 
+  it("an event in progress wins over one that starts in 4 minutes", () => {
+    const running = ev({
+      id: "running",
+      start: NOW - 56 * MIN,
+      end: NOW + 4 * MIN,
+    });
+    const next = ev({
+      id: "next",
+      start: NOW + 4 * MIN,
+      end: NOW + 34 * MIN,
+      url: "https://meet.example.test/n",
+    });
+    expect(pickCurrentEvent([next, running], NOW)?.id).toBe("running");
+  });
+
   it("with equal rank, the latest start wins", () => {
     const early = ev({ id: "early", start: NOW - 30 * MIN });
     const late = ev({ id: "late", start: NOW - 5 * MIN });
@@ -79,6 +97,25 @@ describe("pickCurrentEvent", () => {
     const b = ev({ id: "b" });
     expect(pickCurrentEvent([b, a], NOW)?.id).toBe("a");
     expect(pickCurrentEvent([a, b], NOW)?.id).toBe("a");
+  });
+});
+
+describe("clampEvent", () => {
+  it("fits a huge invite to the server limits", () => {
+    const big = clampEvent({
+      id: "e",
+      title: "t".repeat(2000),
+      start: 1,
+      end: 2,
+      url: `https://x.example/${"u".repeat(3000)}`,
+      attendees: Array.from({ length: 300 }, () => ({
+        name: "n".repeat(500),
+        email: "e".repeat(500),
+        isOrganizer: false,
+      })),
+    });
+    expect(calendarEventSchema.safeParse(big).success).toBe(true);
+    expect(big.attendees).toHaveLength(200);
   });
 });
 
@@ -133,9 +170,9 @@ describe("autoLinkCurrentEvent", () => {
     expect(result?.url).toBe("https://meet.example.test/x");
     expect(result?.attendees).toHaveLength(1);
     expect(result).not.toHaveProperty("isAllDay");
-    // It reads the status and the events. It never requests access.
+    // One helper call: the events answer carries the status.
     const commands = run.mock.calls.map((c) => c[0][0]);
-    expect(commands).toEqual(["status", "events"]);
+    expect(commands).toEqual(["events"]);
   });
 
   it("returns null and reads no events when access is not fullAccess", async () => {
@@ -147,7 +184,7 @@ describe("autoLinkCurrentEvent", () => {
         now: () => NOW,
       });
       expect(result).toBeNull();
-      expect(run.mock.calls.map((c) => c[0][0])).toEqual(["status"]);
+      expect(run.mock.calls.map((c) => c[0][0])).toEqual(["events"]);
     }
   });
 

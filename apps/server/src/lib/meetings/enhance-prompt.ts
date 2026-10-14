@@ -55,12 +55,25 @@ ${OUTPUT_CONTRACT_BLOCK}`;
 const MAX_ATTENDEE_NAMES = 40;
 const MAX_ATTENDEE_NAME_CHARS = 80;
 
+/**
+ * An invitee sets their own display name, so treat it as untrusted text:
+ * drop control characters, quotes and brackets, then limit the length.
+ */
+function cleanAttendeeName(name: string): string {
+  return name
+    .replace(/[\p{Cc}\p{Cf}"'`<>{}[\]\\]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_ATTENDEE_NAME_CHARS);
+}
+
 /** One sentence that lists the invitee names. Empty when there are none. */
 function buildAttendeeLine(attendeeNames: string[]): string {
   const names = attendeeNames
-    .map((n) => n.replace(/\s+/g, " ").trim().slice(0, MAX_ATTENDEE_NAME_CHARS))
+    .map(cleanAttendeeName)
     .filter((n) => n.length > 0)
-    .slice(0, MAX_ATTENDEE_NAMES);
+    .slice(0, MAX_ATTENDEE_NAMES)
+    .map((n) => `"${n}"`);
   if (names.length === 0) return "";
   return ` The calendar invitee names for this meeting are: ${names.join(", ")}. An invitee is only a candidate. Being invited is not evidence that a label is that person. The two evidence rules below still apply.`;
 }

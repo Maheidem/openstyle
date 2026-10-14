@@ -34,11 +34,13 @@ function EventPicker({
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[] | null>(null);
+  const [failed, setFailed] = useState(false);
 
   const handleOpenChange = useCallback((next: boolean) => {
     setOpen(next);
     if (next) {
       setEvents(null);
+      setFailed(false);
       void (window.api?.calendarListToday?.() ?? Promise.resolve([]))
         .then(setEvents)
         .catch(() => setEvents([]));
@@ -47,13 +49,14 @@ function EventPicker({
 
   const pick = useCallback(
     async (event: CalendarEvent) => {
-      const res = await getClient().api.meetings[":id"].calendar.$put({
-        param: { id },
-        json: event,
-      });
-      if (res.ok) {
+      const res = await getClient()
+        .api.meetings[":id"].calendar.$put({ param: { id }, json: event })
+        .catch(() => null);
+      if (res?.ok) {
         setOpen(false);
         onChanged();
+      } else {
+        setFailed(true);
       }
     },
     [id, onChanged],
@@ -66,6 +69,11 @@ function EventPicker({
         <div className="text-muted-foreground text-[11px] font-medium">
           {t("meetings.calendar.pickTitle")}
         </div>
+        {failed && (
+          <div className="text-destructive py-1 text-[12px]" role="alert">
+            {t("meetings.calendar.actionFailed")}
+          </div>
+        )}
         {events === null ? null : events.length === 0 ? (
           <div className="text-muted-foreground py-2 text-[12.5px]">
             {t("meetings.calendar.noEventsToday")}
@@ -73,7 +81,7 @@ function EventPicker({
         ) : (
           <ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
             {events.map((e) => (
-              <li key={e.id}>
+              <li key={`${e.id}@${e.start}`}>
                 <button
                   type="button"
                   onClick={() => void pick(e)}
@@ -114,11 +122,18 @@ export function CalendarCard({
 }): React.JSX.Element | null {
   const { t, i18n } = useTranslation();
 
+  const [unlinkFailed, setUnlinkFailed] = useState(false);
+
   const unlink = useCallback(async () => {
-    const res = await getClient().api.meetings[":id"].calendar.$delete({
-      param: { id },
-    });
-    if (res.ok) onChanged();
+    const res = await getClient()
+      .api.meetings[":id"].calendar.$delete({ param: { id } })
+      .catch(() => null);
+    if (res?.ok) {
+      setUnlinkFailed(false);
+      onChanged();
+    } else {
+      setUnlinkFailed(true);
+    }
   }, [id, onChanged]);
 
   if (!calendar) {
@@ -169,6 +184,11 @@ export function CalendarCard({
               <Link2 className="h-3 w-3" />
               {t("meetings.calendar.joinLink")}
             </button>
+          )}
+          {unlinkFailed && (
+            <span className="text-destructive" role="alert">
+              {t("meetings.calendar.actionFailed")}
+            </span>
           )}
         </div>
       </div>

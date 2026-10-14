@@ -22,9 +22,11 @@ export function registerCalendarIpc({
 }: {
   serverFetch: ServerFetch;
 }): void {
-  // Never shows a dialog. It starts the helper, so the Settings screen calls
-  // it only after the user turned the toggle on.
-  ipcMain.handle("calendar:status", () => calendarAuthStatus());
+  // Never shows a dialog. It answers null and starts no helper while the
+  // setting is off.
+  ipcMain.handle("calendar:status", async () =>
+    (await isCalendarEnabled(serverFetch)) ? calendarAuthStatus() : null,
+  );
 
   // The only call that shows the macOS dialog.
   ipcMain.handle("calendar:request", () => requestCalendarAccess());

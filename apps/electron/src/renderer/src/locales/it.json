@@ -235,7 +235,10 @@
       "useCalendar": "Usa il mio calendario",
       "useCalendarDesc": "Collega ogni registrazione di riunione all'evento del calendario in corso. Openstyle legge solo gli eventi. Non modifica mai il tuo calendario. macOS chiede il permesso quando attivi questa opzione.",
       "calendarDenied": "Openstyle non ha accesso al tuo calendario. Consenti l'accesso in Impostazioni di Sistema, poi attiva di nuovo questa opzione.",
-      "openSystemSettings": "Apri Impostazioni di Sistema"
+      "openSystemSettings": "Apri Impostazioni di Sistema",
+      "calendarRestricted": "Il criterio del tuo Mac blocca l'accesso al calendario. Openstyle non può cambiarlo.",
+      "calendarUnavailable": "Openstyle non è riuscito a raggiungere il calendario. La richiesta potrebbe essere scaduta, oppure questo Mac usa una versione di macOS precedente alla 14. Riprova.",
+      "calendarSaveFailed": "Openstyle non è riuscito a salvare questa impostazione. Il calendario resta disattivato."
     },
     "data": {
       "pauseHistory": "Metti in pausa la cronologia",
@@ -918,7 +921,8 @@
       "attendees": "Partecipanti: {{count}}",
       "joinLink": "Link della riunione",
       "pickTitle": "Eventi di oggi",
-      "link": "Collega evento del calendario"
+      "link": "Collega evento del calendario",
+      "actionFailed": "La modifica non è riuscita. Riprova."
     }
   },
   "help": {

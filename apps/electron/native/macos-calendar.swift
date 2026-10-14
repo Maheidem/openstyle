@@ -22,8 +22,11 @@
  * [{name, email, isOrganizer}]. The notes text is used only to find the
  * meeting link. It is never printed.
  *
- * Meeting link patterns (first match wins; notes, then url, then location):
+ * Meeting link patterns (first match wins; notes, then url, then location).
+ * The match uses the URL host and path, not a substring:
  *   meet.google.com, teams.microsoft.com/l/meetup-join, zoom.us/j, webex.com
+ * Trailing punctuation is trimmed. Outlook safelinks are unwrapped.
+ * Cancelled events, declined events, rooms, resources and the user are skipped.
  *
  * Exit codes:
  *   0 - success, for every authorization state
@@ -60,14 +63,36 @@ func printJSON(_ obj: Any) {
     print(text)
 }
 
-let platforms: [(host: String, name: String)] = [
-    ("meet.google.com", "meet"),
-    ("teams.microsoft.com/l/meetup-join", "teams"),
-    ("zoom.us/j", "zoom"),
-    ("webex.com", "webex"),
+struct Platform {
+    let name: String
+    let matches: (_ host: String, _ path: String) -> Bool
+}
+
+let platforms: [Platform] = [
+    Platform(name: "meet") { h, _ in h == "meet.google.com" },
+    Platform(name: "teams") { h, p in h == "teams.microsoft.com" && p.hasPrefix("/l/meetup-join") },
+    Platform(name: "zoom") { h, p in (h == "zoom.us" || h.hasSuffix(".zoom.us")) && p.hasPrefix("/j/") },
+    Platform(name: "webex") { h, p in (h == "webex.com" || h.hasSuffix(".webex.com")) && (p.hasPrefix("/meet/") || p.hasPrefix("/join/") || p.hasPrefix("/wbxmjs/")) },
 ]
 
 let urlRegex = try! NSRegularExpression(pattern: "https?://[^\\s<>\"')\\]]+", options: [])
+
+/// Match one URL against the platforms by host and path.
+func platformOf(_ candidate: String) -> String? {
+    guard let comps = URLComponents(string: candidate), let host = comps.host?.lowercased() else { return nil }
+    let path = comps.path.lowercased()
+    for p in platforms where p.matches(host, path) { return p.name }
+    return nil
+}
+
+/// Outlook safelinks wrap the real URL in a `url` query item.
+func unwrapSafeLink(_ candidate: String) -> String {
+    guard let comps = URLComponents(string: candidate),
+        let host = comps.host?.lowercased(), host.hasSuffix("safelinks.protection.outlook.com"),
+        let inner = comps.queryItems?.first(where: { $0.name == "url" })?.value
+    else { return candidate }
+    return inner
+}
 
 /// First meeting link in `text`, with its platform name.
 func findMeetingLink(in text: String?) -> (url: String, platform: String)? {
@@ -75,11 +100,10 @@ func findMeetingLink(in text: String?) -> (url: String, platform: String)? {
     let range = NSRange(text.startIndex..., in: text)
     for m in urlRegex.matches(in: text, options: [], range: range) {
         guard let r = Range(m.range, in: text) else { continue }
-        let candidate = String(text[r])
-        let lower = candidate.lowercased()
-        for p in platforms where lower.contains(p.host) {
-            return (candidate, p.name)
-        }
+        var candidate = String(text[r])
+        while let last = candidate.last, ".,;:!?".contains(last) { candidate.removeLast() }
+        candidate = unwrapSafeLink(candidate)
+        if let name = platformOf(candidate) { return (candidate, name) }
     }
     return nil
 }
@@ -96,6 +120,8 @@ func attendeeList(_ ev: EKEvent) -> [[String: Any]] {
     var out: [[String: Any]] = []
     var seen = Set<String>()
     func add(_ p: EKParticipant, isOrganizer: Bool) {
+        // Rooms, resources and the user are not people to name.
+        if p.participantType == .resource || p.participantType == .room || p.isCurrentUser { return }
         let email = emailOf(p)
         let name = p.name ?? ""
         let key = email.isEmpty ? "n:" + name.lowercased() : "e:" + email.lowercased()
@@ -174,7 +200,14 @@ case "events":
     if status == "fullAccess" {
         let iso = ISO8601DateFormatter()
         let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
-        events = store.events(matching: predicate).map { eventObject($0, iso: iso) }
+        events = store.events(matching: predicate)
+            .filter { ev in
+                if ev.status == .canceled { return false }
+                // Skip an event the user declined.
+                let me = ev.attendees?.first(where: { $0.isCurrentUser })
+                return me?.participantStatus != .declined
+            }
+            .map { eventObject($0, iso: iso) }
     }
     printJSON(["status": status, "events": events])
 default:
