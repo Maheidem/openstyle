@@ -64,7 +64,18 @@ IPC: `calendar:status`, `calendar:request`, `calendar:list-today`, `calendar:ope
 
 ## Speaker naming
 
-`buildEnhanceSystemPrompt` takes optional `attendeeNames`. With an empty list the prompt stays byte-identical. With names, one sentence is added: the invitee names are candidates only, and an invitation is not evidence of who spoke. The two evidence rules stay. Limit: 40 names, 80 characters each. The prompt never gets emails.
+The attendee names never reach the LLM prompt. With or without a linked event, the enhance and speaker-suggestion prompts are byte-identical to `main` (tested).
+
+A pure code step runs after the LLM suggestions, before the rows are saved (`lib/meetings/speaker-spelling.ts`, `fixNameSpelling`). For each suggested name of kind `name`:
+
+- It compares the first name with each attendee's first name, ignoring case. Exact match wins; else a one-letter edit distance counts (first names of 4 letters or more only).
+- If the suggestion has more than a first name, the rest must equal the attendee's rest.
+- Exactly one candidate at the winning level: the name becomes that attendee's full name (cleaned: control characters, quotes and brackets removed, 80 characters). Two or more candidates, or none: no change.
+- It never adds a name to a label with no suggestion. It never changes the evidence or the kind. It is deterministic.
+
+The enhance result and the route answer carry `namesRespelled` (a count) when the step changed a name.
+
+Why: council rounds r9 and r9b showed that the list in the prompt made chunks fail and moved names to wrong people. A wrong confident name is worse than no name. A lost self-introduced name is worse still.
 
 ## Privacy rules
 
@@ -74,8 +85,8 @@ IPC: `calendar:status`, `calendar:request`, `calendar:list-today`, `calendar:ope
 
 ## Test plan
 
-- Unit: `pickCurrentEvent`, `autoLinkCurrentEvent` (setting off runs no helper), recorder start, schema v39 migration, routes, prompt.
-- Live proof with the built `.app` started by `open` (the app is its own TCC responsible process): toggle off means no helper; toggle on means one Calendars dialog and events read (counts); link card, Change and Unlink on screen (also in pt); the speaker naming request holds the attendee names (fake model server).
+- Unit: `pickCurrentEvent`, `autoLinkCurrentEvent` (setting off runs no helper), recorder start, schema v39 migration, routes, prompt byte-identical with attendees, `fixNameSpelling` (exact, first name, typo, ambiguous, no suggestion, empty list).
+- Live proof with the built `.app` started by `open` (the app is its own TCC responsible process): toggle off means no helper; toggle on means one Calendars dialog and events read (counts); link card, Change and Unlink on screen (also in pt); the speaker naming request does not hold the attendee names (fake model server) and the saved name is the attendee's spelling.
 
 ## Not proven (stated up front)
 

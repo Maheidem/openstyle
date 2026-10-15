@@ -32,7 +32,6 @@ export function buildEnhanceSystemPrompt(
   speakerLabels: string[] = [],
   meetingTitle: string | undefined = undefined,
   meetingContext: string | undefined = undefined,
-  attendeeNames: string[] = [],
 ): string {
   const languageLine = language
     ? `The transcript's spoken language is "${language}" (ISO code). Every corrected segment you return must stay in that language.`
@@ -45,37 +44,10 @@ export function buildEnhanceSystemPrompt(
     speakerLabels,
     meetingTitle,
     meetingContext,
-    attendeeNames,
   );
   return `You clean up a speech-to-text meeting transcript. The transcript is a two-party conversation where "Me" is the user of this app and "Them" is the other participant. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine}${vocabBlock}${speakerBlock}
 
 ${OUTPUT_CONTRACT_BLOCK}`;
-}
-
-const MAX_ATTENDEE_NAMES = 40;
-const MAX_ATTENDEE_NAME_CHARS = 80;
-
-/**
- * An invitee sets their own display name, so treat it as untrusted text:
- * drop control characters, quotes and brackets, then limit the length.
- */
-function cleanAttendeeName(name: string): string {
-  return name
-    .replace(/[\p{Cc}\p{Cf}"'`<>{}[\]\\]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, MAX_ATTENDEE_NAME_CHARS);
-}
-
-/** One sentence that lists the invitee names. Empty when there are none. */
-function buildAttendeeLine(attendeeNames: string[]): string {
-  const names = attendeeNames
-    .map(cleanAttendeeName)
-    .filter((n) => n.length > 0)
-    .slice(0, MAX_ATTENDEE_NAMES)
-    .map((n) => `"${n}"`);
-  if (names.length === 0) return "";
-  return ` The calendar invitee names for this meeting are: ${names.join(", ")}. This list is only a hint. A direct self-introduction in the transcript ("I am X", "my name is X", "this is X") is strong evidence: use that name even if X is not on the list. The list may confirm or fix the spelling of a name that the transcript supports. Never name a label only because a name is on the list. The two evidence rules below still apply.`;
 }
 
 /**
@@ -102,7 +74,6 @@ function buildSpeakerSuggestionBlock(
   speakerLabels: string[],
   meetingTitle: string | undefined,
   meetingContext: string | undefined,
-  attendeeNames: string[],
 ): string {
   if (speakerLabels.length === 0) return "";
   const labelList = speakerLabels.map((n) => `Them ${n}`).join(", ");
@@ -117,12 +88,9 @@ function buildSpeakerSuggestionBlock(
   const contextLine = meetingContext?.trim()
     ? ` Additional context for this meeting, provided by the user: "${meetingContext.trim()}"`
     : "";
-  // Calendar invitees (specs/calendar-eventkit.md): names only. An invitee is
-  // a hint, never evidence. A transcript self-introduction always wins. The two evidence rules below still govern.
-  const attendeeLine = buildAttendeeLine(attendeeNames);
   return `
 
-This transcript has diarized speaker labels for the other participant(s): ${labelList}. Alongside your text corrections, try to identify who each label is.${titleLine}${contextLine}${attendeeLine}
+This transcript has diarized speaker labels for the other participant(s): ${labelList}. Alongside your text corrections, try to identify who each label is.${titleLine}${contextLine}
 
 Only two kinds of evidence ever qualify a label for a "name":
 1. SELF-IDENTIFY — the label's OWN line states their own name ("This is Ana", "Ana here", "My name's Ana", "Ana speaking").

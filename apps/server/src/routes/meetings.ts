@@ -2186,6 +2186,7 @@ const meetings = new Hono()
         ok: true,
         correctedCount: result.correctedCount,
         speakerSuggestions: result.speakerSuggestions,
+        namesRespelled: result.namesRespelled ?? 0,
         chunksAttempted: result.chunksAttempted,
         chunksSucceeded: result.chunksSucceeded,
         chunksFailed: result.chunksFailed,

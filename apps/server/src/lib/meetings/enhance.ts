@@ -37,6 +37,7 @@ import {
   estimateTokens,
 } from "./llm-call.js";
 import { type MergedSegment, speakerDisplayLabel } from "./merge.js";
+import { fixNameSpelling } from "./speaker-spelling.js";
 
 const log = createAppLogger("meeting-enhance");
 
@@ -97,7 +98,8 @@ export interface EnhanceMeetingOptions {
   onProgress?: (p: { done: number; total: number }) => void;
   /**
    * Names of the linked calendar event's attendees (specs/calendar-eventkit.md).
-   * Names only, never emails. Empty or unset keeps the prompt byte-identical.
+   * Names only, never emails. They never reach the LLM prompt. A code step
+   * after the LLM uses them to fix the spelling of a suggested name.
    */
   attendeeNames?: string[];
 }
@@ -107,6 +109,8 @@ export interface EnhanceMeetingResult {
   /** Distinct labels for which a name suggestion was persisted this run
    *  (specs/meeting-speaker-naming.md §5.3). */
   speakerSuggestions: number;
+  /** Suggested names whose spelling the attendee list fixed this run. */
+  namesRespelled?: number;
   // --- Honest pass accounting -------------------------------------------------
   // The fix for "a dead engine reports a clean transcript": correctedCount was
   // the only signal the route had, so a pass in which EVERY chunk timed out
@@ -423,7 +427,6 @@ export async function enhanceMeetingTranscript(
     speakerLabels,
     meetingTitle,
     meetingContext,
-    options.attendeeNames ?? [],
   );
   const chunks = chunkForEnhance(withIds, contextBudgetTokens);
   // Pass accounting (see EnhanceMeetingResult): fail-closed per chunk stays,
@@ -635,7 +638,17 @@ export async function enhanceMeetingTranscript(
   // Save in a separate transaction from the corrections above. A failed
   // name-suggestion write must not roll back text corrections that are already
   // committed, and the reverse is also true. The two writes fail on their own.
+  let namesRespelled = 0;
   if (nameProposals.size > 0) {
+    const attendeeNames = options.attendeeNames ?? [];
+    for (const p of nameProposals.values()) {
+      if (p.kind !== "name") continue;
+      const fixed = fixNameSpelling(p.name, attendeeNames);
+      if (fixed !== p.name) {
+        p.name = fixed;
+        namesRespelled++;
+      }
+    }
     const db = getDb();
     const now = Date.now();
     // Never writes `confirmed_at` (specs/meeting-speaker-naming.md §9.2 real
@@ -671,6 +684,7 @@ export async function enhanceMeetingTranscript(
   return {
     correctedCount: corrections.size,
     speakerSuggestions: nameProposals.size,
+    ...(namesRespelled > 0 ? { namesRespelled } : {}),
     chunksAttempted,
     chunksSucceeded,
     chunksFailed,
