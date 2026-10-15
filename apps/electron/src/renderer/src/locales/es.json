@@ -136,6 +136,7 @@
       "recording": "Transcripción",
       "display": "Pantalla",
       "permissions": "Permisos",
+      "meetings": "Reuniones",
       "data": "Datos",
       "network": "Red",
       "remix": "Remix"
@@ -229,6 +230,15 @@
       "systemAudio": "Audio del sistema",
       "systemAudioDesc": "Necesario para capturar a los demás participantes al grabar una reunión. macOS no permite comprobar este permiso de antemano.",
       "systemAudioUnknownNote": "El silencio no significa necesariamente que se haya denegado: puede que simplemente no hubiera nada reproduciéndose durante la comprobación."
+    },
+    "meetings": {
+      "useCalendar": "Usar mi calendario",
+      "useCalendarDesc": "Vincula cada grabación de reunión con el evento del calendario que está en curso. Openstyle solo lee eventos. Nunca cambia tu calendario. macOS pide permiso cuando activas esta opción.",
+      "calendarDenied": "Openstyle no tiene acceso a tu calendario. Permite el acceso en Ajustes del Sistema y luego activa esta opción de nuevo.",
+      "openSystemSettings": "Abrir Ajustes del Sistema",
+      "calendarRestricted": "La política de tu Mac bloquea el acceso al calendario. Openstyle no puede cambiar esto.",
+      "calendarUnavailable": "Openstyle no pudo acceder al calendario. Puede que la solicitud haya caducado, o que este Mac use una versión de macOS anterior a la 14. Inténtalo de nuevo.",
+      "calendarSaveFailed": "Openstyle no pudo guardar este ajuste. El calendario sigue desactivado."
     },
     "data": {
       "pauseHistory": "Pausar historial",
@@ -903,7 +913,18 @@
     "summaryStaleNames": "Los nombres de los interlocutores cambiaron desde que se generó este resumen. Vuelve a resumir para incluirlos.",
     "close": "Cerrar",
     "speakerUnidentified": "Sin identificar",
-    "contextPlaceholder": "Añade contexto para esta reunión…"
+    "contextPlaceholder": "Añade contexto para esta reunión…",
+    "calendar": {
+      "linked": "Evento del calendario",
+      "change": "Cambiar",
+      "unlink": "Desvincular",
+      "noEventsToday": "No hay eventos hoy",
+      "attendees": "Asistentes: {{count}}",
+      "joinLink": "Enlace de la reunión",
+      "pickTitle": "Eventos de hoy",
+      "link": "Vincular evento del calendario",
+      "actionFailed": "El cambio no funcionó. Inténtalo de nuevo."
+    }
   },
   "help": {
     "hotkeys": {

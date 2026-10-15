@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 38;
+const SCHEMA_VERSION = 39;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -992,6 +992,18 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     db.exec(
       `INSERT INTO transcription_history_fts(transcription_history_fts) VALUES('rebuild')`,
     );
+  }
+
+  if (currentVersion < 39 && tableExists(db, "meetings")) {
+    // Calendar link (specs/calendar-eventkit.md). One linked event per
+    // meeting, so columns, not a table. `calendar_attendees` holds a JSON
+    // array of {name, email, isOrganizer}. Old rows keep NULL.
+    db.exec(`ALTER TABLE meetings ADD COLUMN calendar_event_id TEXT`);
+    db.exec(`ALTER TABLE meetings ADD COLUMN calendar_title TEXT`);
+    db.exec(`ALTER TABLE meetings ADD COLUMN calendar_start INTEGER`);
+    db.exec(`ALTER TABLE meetings ADD COLUMN calendar_end INTEGER`);
+    db.exec(`ALTER TABLE meetings ADD COLUMN calendar_url TEXT`);
+    db.exec(`ALTER TABLE meetings ADD COLUMN calendar_attendees TEXT`);
   }
 
   // Upsert schema version

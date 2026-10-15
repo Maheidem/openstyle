@@ -17,6 +17,7 @@ const EXPECTED = {
     "macos-fast-paste",
     "macos-output-volume",
     "macos-media-control",
+    "macos-calendar",
     // SwiftPM package (specs/meeting-diarization.md §3); compile-native.js
     // builds it warn-only so a broken Swift toolchain doesn't block the
     // other seven binaries, which means nothing else fails CI if it's

@@ -11,6 +11,8 @@ import { zValidator } from "@hono/zod-validator";
 import { isVocabLeak, TERMS_MARKER } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
+  type CalendarEvent,
+  calendarEventSchema,
   MEETINGS_DIR_NAME,
   type MeetingDetail,
   MIC_WAV,
@@ -71,7 +73,13 @@ import {
   splitAlignedChunk,
 } from "../lib/meetings/segmenter.js";
 import { resolveSpeakerNames } from "../lib/meetings/speaker-names.js";
-import { getMeetingRow, type MeetingRow } from "../lib/meetings/store.js";
+import {
+  getMeetingRow,
+  type MeetingRow,
+  omitCalendarColumns,
+  parseAttendees,
+  toCalendarEvent,
+} from "../lib/meetings/store.js";
 import {
   summarizeJobPlan,
   summarizeMeeting,
@@ -1089,6 +1097,7 @@ async function runEnhanceJob(
         // §3.2 step 4: the same per-meeting flag cancel-transcribe sets,
         // polled between chunks — finished chunks survive a cancel.
         shouldStop: () => isCancelRequested(id),
+        attendeeNames: attendeeNamesOf(meetingRow),
       },
     );
     if (
@@ -1247,7 +1256,31 @@ const startSchema = z.object({
   title: z.string().max(512).optional(),
   audio_dir: z.string().max(4096),
   started_at: z.number().int(),
+  // The event the app matched at start (specs/calendar-eventkit.md).
+  calendar: calendarEventSchema.optional(),
 });
+
+/** Attendee names for the naming prompt. Names only, never emails. */
+function attendeeNamesOf(row: MeetingRow | undefined): string[] {
+  if (!row) return [];
+  return parseAttendees(row)
+    .map((a) => a.name)
+    .filter((n) => n.trim().length > 0);
+}
+
+/** SQL values for the six calendar columns. */
+function calendarColumnValues(
+  event: CalendarEvent | null,
+): (string | number | null)[] {
+  return [
+    event?.id ?? null,
+    event?.title ?? null,
+    event?.start ?? null,
+    event?.end ?? null,
+    event?.url ?? null,
+    event ? JSON.stringify(event.attendees) : null,
+  ];
+}
 
 const renameSchema = z
   .object({
@@ -1300,7 +1333,10 @@ const meetings = new Hono()
         "SELECT * FROM meetings ORDER BY created_at DESC, id DESC LIMIT 200",
       )
       .all() as unknown as MeetingRow[];
-    return c.json({ items: rows, total: rows.length });
+    return c.json({
+      items: rows.map(omitCalendarColumns),
+      total: rows.length,
+    });
   })
   // Boot-time orphan sweep: rows a crash/force-quit left in 'recording'
   // (recorder died mid-session) or 'transcribing' (the in-process server
@@ -1340,13 +1376,63 @@ const meetings = new Hono()
     return c.json({ enabled, status, error });
   })
   .post("/start", zValidator("json", startSchema), (c) => {
-    const { id, title, audio_dir, started_at } = c.req.valid("json");
+    const { id, title, audio_dir, started_at, calendar } = c.req.valid("json");
     const db = getDb();
+    // An empty title takes the event title (owner decision 3).
+    const finalTitle = title?.trim() ? title : calendar?.title.trim() || null;
     db.prepare(
-      `INSERT INTO meetings (id, title, started_at, status, audio_dir, created_at)
-       VALUES (?, ?, ?, 'recording', ?, ?)`,
-    ).run(id, title ?? null, started_at, audio_dir, Date.now());
+      `INSERT INTO meetings (id, title, started_at, status, audio_dir, created_at,
+         calendar_event_id, calendar_title, calendar_start, calendar_end,
+         calendar_url, calendar_attendees)
+       VALUES (?, ?, ?, 'recording', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      finalTitle,
+      started_at,
+      audio_dir,
+      Date.now(),
+      ...calendarColumnValues(calendar ?? null),
+    );
     return c.json({ ok: true, id });
+  })
+  // Link or change the calendar event of a meeting. The title follows the
+  // event only when it is empty or still holds the previous event's title.
+  .put("/:id/calendar", zValidator("json", calendarEventSchema), (c) => {
+    const id = c.req.param("id");
+    const event = c.req.valid("json");
+    const row = getMeetingRow(id);
+    if (!row) return c.json({ error: "Not found" }, 404);
+    const inherited = !row.title?.trim() || row.title === row.calendar_title;
+    const title = inherited ? event.title.trim() || null : row.title;
+    getDb()
+      .prepare(
+        `UPDATE meetings SET title = ?, calendar_event_id = ?, calendar_title = ?,
+           calendar_start = ?, calendar_end = ?, calendar_url = ?,
+           calendar_attendees = ?
+         WHERE id = ?`,
+      )
+      .run(title, ...calendarColumnValues(event), id);
+    return c.json({ ok: true, title });
+  })
+  // Unlink. A title that only came from the event goes back to empty. A
+  // title the user typed stays.
+  .delete("/:id/calendar", (c) => {
+    const id = c.req.param("id");
+    const row = getMeetingRow(id);
+    if (!row) return c.json({ error: "Not found" }, 404);
+    const title =
+      row.calendar_title !== null && row.title === row.calendar_title
+        ? null
+        : row.title;
+    getDb()
+      .prepare(
+        `UPDATE meetings SET title = ?, calendar_event_id = NULL,
+           calendar_title = NULL, calendar_start = NULL, calendar_end = NULL,
+           calendar_url = NULL, calendar_attendees = NULL
+         WHERE id = ?`,
+      )
+      .run(title, id);
+    return c.json({ ok: true, title });
   })
   // Rename a meeting and/or set its transcription language (Phase A2's
   // editable language chip). Runs whichever UPDATEs the body actually
@@ -2048,7 +2134,10 @@ const meetings = new Hono()
         // Kind "enhance" is cancellable (job-registry.ts), so this pass
         // honors the same flag as the auto-run job: a cancel between
         // chunks stops it, and finished chunks keep their corrections.
-        { shouldStop: () => isCancelRequested(id) },
+        {
+          shouldStop: () => isCancelRequested(id),
+          attendeeNames: attendeeNamesOf(row),
+        },
       );
       // A pass in which EVERY chunk failed is not a success. Fail-closed per
       // chunk stays (one bad chunk must never kill a meeting), but until now
@@ -2097,6 +2186,7 @@ const meetings = new Hono()
         ok: true,
         correctedCount: result.correctedCount,
         speakerSuggestions: result.speakerSuggestions,
+        namesRespelled: result.namesRespelled ?? 0,
         chunksAttempted: result.chunksAttempted,
         chunksSucceeded: result.chunksSucceeded,
         chunksFailed: result.chunksFailed,
@@ -2148,7 +2238,8 @@ const meetings = new Hono()
         }
       | undefined;
     return c.json({
-      ...row,
+      ...omitCalendarColumns(row),
+      calendar: toCalendarEvent(row),
       /** Live job progress, or null when no job is running. `kind` names the
        * holder so the renderer can tell a cancellable summarize job from a
        * non-cancellable diarize/enhance pass without a second round-trip. */

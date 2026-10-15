@@ -34,6 +34,7 @@
     // imported by any entry.
     "scripts/meeting-v2/compare.mts",
     "scripts/meeting-v2/dump-chunks.mjs",
+    "scripts/meeting-v2/dump-speakers.mjs",
     "scripts/meeting-v2/dump-turns.mjs",
     "scripts/meeting-v2/measure-diarizer.mjs",
     "scripts/meeting-v2/metrics.mjs",

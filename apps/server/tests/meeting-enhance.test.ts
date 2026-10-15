@@ -331,6 +331,75 @@ describe("enhanceMeetingTranscript", () => {
   });
 });
 
+describe("attendee names fix the spelling in code, never in the prompt (specs/calendar-eventkit.md)", () => {
+  const segments = [
+    seg("m1:system:0", "Them", "hello, this is Brunno", 0, 1000, "1"),
+  ];
+  const respond = (name: string, kind?: string) => () => ({
+    text: JSON.stringify({
+      speakers: {
+        "1": { name, evidence: "this is Brunno", ...(kind ? { kind } : {}) },
+      },
+    }),
+  });
+
+  it("the system and user prompts are byte-identical with attendees present", async () => {
+    const without = fakeLlm(respond("Brunno"));
+    await runEnhance(segments, { llm: without, language: "en" });
+    resetMeetingTables();
+    const withNames = fakeLlm(respond("Brunno"));
+    await runEnhance(segments, {
+      llm: withNames,
+      language: "en",
+      options: { attendeeNames: ["Ana Souza", "Bruno Lima"] },
+    });
+    expect(withNames.requests[0].system).toBe(without.requests[0].system);
+    expect(withNames.requests[0].prompt).toBe(without.requests[0].prompt);
+    expect(withNames.requests[0].system).not.toContain("Bruno Lima");
+  });
+
+  it("replaces a typo with the attendee's full name and keeps evidence and kind", async () => {
+    const llm = fakeLlm(respond("Brunno"));
+    const result = await runEnhance(segments, {
+      llm,
+      language: "en",
+      options: { attendeeNames: ["Ana Souza", "Bruno Lima"] },
+    });
+    expect(result.namesRespelled).toBe(1);
+    const row = speakerRow<{
+      suggested_name: string;
+      suggested_evidence: string;
+      suggested_kind: string;
+    }>("1", "suggested_name, suggested_evidence, suggested_kind");
+    expect(row.suggested_name).toBe("Bruno Lima");
+    expect(row.suggested_evidence).toBe("this is Brunno");
+    expect(row.suggested_kind).toBe("name");
+  });
+
+  it("does not respell a role", async () => {
+    const llm = fakeLlm(respond("Brunno", "role"));
+    const result = await runEnhance(segments, {
+      llm,
+      language: "en",
+      options: { attendeeNames: ["Bruno Lima"] },
+    });
+    expect(result.namesRespelled).toBeUndefined();
+  });
+
+  it("adds no name to a label without a suggestion", async () => {
+    const llm = fakeLlm(() => ({ text: "{}" }));
+    const result = await runEnhance(segments, {
+      llm,
+      language: "en",
+      options: { attendeeNames: ["Ana Souza", "Bruno Lima"] },
+    });
+    expect(result.speakerSuggestions).toBe(0);
+    expect(
+      getDb().prepare("SELECT count(*) AS n FROM meeting_speakers").get(),
+    ).toEqual({ n: 0 });
+  });
+});
+
 describe("enhanceMeetingTranscript speaker name suggestions (specs/meeting-speaker-naming.md §5.3)", () => {
   // Regression test (advisor-flagged, §5.3): speakerLabels must be derived
   // from the structured `speakerLabel` field, never by re-parsing the

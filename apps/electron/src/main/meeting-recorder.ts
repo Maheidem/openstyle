@@ -28,6 +28,7 @@ import { mkdir, readdir, stat, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
+  type CalendarEvent,
   DEFAULT_MEETING_MAX_DURATION_HOURS,
   MEETINGS_DIR_NAME,
   MIC_WAV,
@@ -55,6 +56,8 @@ const WAV_HEADER_BYTES = 44;
 const FLUSH_INTERVAL_MS = 5000;
 /** Refuse to start a recording with less than 2 GB free on the volume. */
 const MIN_FREE_BYTES = 2 * 1024 ** 3;
+// The most the recording start waits for the calendar lookup.
+const CALENDAR_LOOKUP_MAX_MS = 1500;
 /** Mic RMS is forwarded to the UI at the same cadence as system LEVELs. */
 const LEVEL_INTERVAL_MS = 200;
 /**
@@ -183,6 +186,11 @@ export interface MeetingRecorderDeps {
   broadcastLevel: (event: MeetingLevelEvent) => void;
   /** Broadcast a `meeting:status` change to interested renderer windows. */
   broadcastStatus: (status: MeetingRecorderStatus) => void;
+  /**
+   * The calendar event that runs now, or null (specs/calendar-eventkit.md).
+   * It returns null at once when the user has not turned on the calendar.
+   */
+  findCurrentEvent: () => Promise<CalendarEvent | null>;
 }
 
 export class MeetingRecorder {
@@ -304,10 +312,29 @@ export class MeetingRecorder {
     const dir = join(userData, MEETINGS_DIR_NAME, id);
     await mkdir(dir, { recursive: true });
 
+    // A calendar problem never stops a recording, and a slow calendar never
+    // delays it for long. The wait ends before startedAt is read, so the
+    // timeline stays aligned with the audio.
+    let calendar: CalendarEvent | null = null;
+    try {
+      calendar = await Promise.race([
+        this.deps.findCurrentEvent(),
+        new Promise<null>((resolve) => {
+          setTimeout(() => resolve(null), CALENDAR_LOOKUP_MAX_MS).unref?.();
+        }),
+      ]);
+    } catch {
+      calendar = null;
+    }
     const startedAt = Date.now();
     const res = await this.api("/meetings/start", {
       method: "POST",
-      body: { id, audio_dir: dir, started_at: startedAt },
+      body: {
+        id,
+        audio_dir: dir,
+        started_at: startedAt,
+        ...(calendar ? { calendar } : {}),
+      },
     });
     if (!res.ok) {
       throw new Error(`Failed to create meeting row (HTTP ${res.status})`);

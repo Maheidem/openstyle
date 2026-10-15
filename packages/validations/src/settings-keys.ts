@@ -35,6 +35,12 @@ export const SETTINGS_KEYS = {
    * or `"false"` means off.
    */
   meetingAsrContext: "meeting_asr_context",
+  /**
+   * Link meetings to calendar events (specs/calendar-eventkit.md). OFF by
+   * default (owner decision): only the value `"true"` turns it on. While it
+   * is off, nothing reads the calendar.
+   */
+  calendarEnabled: "calendar_enabled",
   meetingDiarizationEnabled: "meeting_diarization_enabled",
   meetingEnhanceAutoRun: "meeting_enhance_auto_run",
   /**

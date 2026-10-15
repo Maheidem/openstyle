@@ -4,7 +4,7 @@ import { initSchema } from "../src/lib/schema.js";
 import { createVersionedDb } from "./helpers/schema-db.js";
 
 // The current schema head. Raise it when you add a migration.
-const EXPECTED_SCHEMA_VERSION = 38;
+const EXPECTED_SCHEMA_VERSION = 39;
 
 // Old table shapes, as they existed before each migration.
 const MEETINGS_V29 = `
@@ -401,6 +401,43 @@ describe("schema v29 (meetings)", () => {
     expect(row.suggested_name).toBe("Ana");
     expect(row.suggested_kind).toBeNull();
     expect(row.confirmed_at).toBeNull();
+  });
+
+  it("migrates a v38 database to v39 with nullable calendar columns and no data loss", () => {
+    const db = createVersionedDb(38, `${MEETINGS_V31}`, { settings: false });
+    db.prepare(
+      "INSERT INTO meetings (id, title, status, created_at) VALUES ('m1', 'Old', 'transcribed', ?)",
+    ).run(Date.now());
+
+    initSchema(db);
+
+    const version = db
+      .prepare("SELECT version FROM schema_version WHERE id = 1")
+      .get() as { version: number };
+    expect(version.version).toBe(EXPECTED_SCHEMA_VERSION);
+
+    const cols = (
+      db.prepare("PRAGMA table_info(meetings)").all() as {
+        name: string;
+        notnull: number;
+      }[]
+    ).filter((c) => c.name.startsWith("calendar_"));
+    expect(cols.map((c) => c.name).sort()).toEqual([
+      "calendar_attendees",
+      "calendar_end",
+      "calendar_event_id",
+      "calendar_start",
+      "calendar_title",
+      "calendar_url",
+    ]);
+    expect(cols.every((c) => c.notnull === 0)).toBe(true);
+
+    const row = db
+      .prepare("SELECT * FROM meetings WHERE id = 'm1'")
+      .get() as Record<string, unknown>;
+    expect(row.title).toBe("Old");
+    expect(row.calendar_event_id).toBeNull();
+    expect(row.calendar_attendees).toBeNull();
   });
 
   it("enforces the status CHECK and cascades segment/summary deletes", () => {
