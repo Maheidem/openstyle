@@ -274,7 +274,7 @@
       "proxy": "Proxy-URL",
       "proxyDesc": "Senden Sie Downloads und API-Anfragen über diesen Proxy (z. B. http://proxy.corp:8080). Überschreibt HTTP_PROXY / HTTPS_PROXY.",
       "proxyPlaceholder": "http://proxy.example.com:8080",
-      "caCert": "Eigene CA-Zertifikate",
+      "caCert": "Eigenes CA-Zertifikat",
       "caCertDesc": "Pfad zu einem PEM-Zertifikatsbündel, dem für TLS vertraut wird, zusätzlich zum System-Speicher. Überschreibt NODE_EXTRA_CA_CERTS.",
       "caCertPlaceholder": "/path/to/corporate-ca.pem",
       "save": "Speichern",
