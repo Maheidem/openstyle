@@ -536,17 +536,32 @@ export default function SettingsPage(): React.JSX.Element {
     setAudioPlaybackMode(resolveAudioPlaybackMode(s));
   }, [settingsQuery.data, applySummaryTimeout, applyEnhanceTimeout]);
 
-  // Load available audio input devices
+  // Load available audio input devices. Probe the OS microphone status
+  // first: only when it is already granted do we run getUserMedia (which
+  // otherwise triggers the macOS privacy prompt on first open). Without
+  // permission, enumerateDevices still lists inputs with visible labels.
   useEffect(() => {
     (async () => {
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => {
-          for (const t of s.getTracks()) t.stop();
-        });
+        let granted = false;
+        try {
+          granted = (await window.api?.checkMicPermission()) === "granted";
+        } catch {
+          granted = false;
+        }
+        if (granted) {
+          await navigator.mediaDevices
+            .getUserMedia({ audio: true })
+            .then((s) => {
+              for (const t of s.getTracks()) t.stop();
+            });
+        }
         const allDevices = await navigator.mediaDevices.enumerateDevices();
         setDevices(
           allDevices
-            .filter((d) => d.kind === "audioinput")
+            .filter(
+              (d) => d.kind === "audioinput" && (granted || d.label !== ""),
+            )
             .map((d) => ({
               deviceId: d.deviceId,
               label: d.label || `Microphone ${d.deviceId.slice(0, 8)}`,
