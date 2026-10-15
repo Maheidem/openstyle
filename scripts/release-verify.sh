@@ -135,8 +135,12 @@ if [ "$(uname -sm)" != "Darwin arm64" ]; then
   skip "worker align check (needs macOS arm64)"
   finish
 fi
-if ! ls -d "$ALIGNER_HF_HOME/hub/models--${ALIGNER_MODEL//\//--}/snapshots/"* >/dev/null 2>&1; then
-  skip "worker align check ($ALIGNER_MODEL not in $ALIGNER_HF_HOME; not downloaded on purpose)"
+model_dir="$ALIGNER_HF_HOME/hub/models--${ALIGNER_MODEL//\//--}"
+if [ ! -f "$model_dir/refs/main" ] ||
+  ! revision=$(cat "$model_dir/refs/main") ||
+  [ ! -f "$model_dir/snapshots/$revision/model.safetensors" ] ||
+  [ ! -s "$model_dir/snapshots/$revision/model.safetensors" ]; then
+  skip "worker align check ($ALIGNER_MODEL not usable in $ALIGNER_HF_HOME: missing or empty; not downloaded on purpose)"
   finish
 fi
 if ! download "$worker_tar"; then
