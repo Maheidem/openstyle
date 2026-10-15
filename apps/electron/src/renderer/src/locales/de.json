@@ -921,6 +921,7 @@
     "speakersDialogDesc": "Namen bestätigen oder doppelte Cluster zusammenführen. Wird nie automatisch übernommen – du entscheidest, was gespeichert wird.",
     "speakerSegments": "{{n}} Segmente",
     "speakerNamePlaceholder": "Unbenannt",
+    "speakerNamePickHint": "Geben Sie einen Namen ein oder wählen Sie einen Teilnehmer aus",
     "speakerSuggested": "Vorgeschlagen",
     "speakerRoleGuess": "Rollenvermutung",
     "speakerEvidence": "Beleg: „{{evidence}}“",

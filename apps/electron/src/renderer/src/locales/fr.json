@@ -921,6 +921,7 @@
     "speakersDialogDesc": "Confirmez les noms ou fusionnez les groupes en double. Jamais appliqué automatiquement : c'est vous qui choisissez ce qui est enregistré.",
     "speakerSegments": "{{n}} segments",
     "speakerNamePlaceholder": "Sans nom",
+    "speakerNamePickHint": "Saisissez un nom ou sélectionnez une personne participante",
     "speakerSuggested": "Suggéré",
     "speakerRoleGuess": "Rôle supposé",
     "speakerEvidence": "Preuve : « {{evidence}} »",

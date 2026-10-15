@@ -65,6 +65,7 @@ describe("locale files", () => {
   // for all groups: the key exists and keeps the placeholders of en.json. The
   // comment above each group says why the group exists.
   const KEY_GROUPS: Record<string, string[]> = {
+    "speaker-attendee-picker": ["meetings.speakerNamePickHint"],
     // Keys introduced by the cancel-transcribe work — every locale must carry
     // them (they render on a primary surface, not an optional one).
     "cancel-transcribe": [

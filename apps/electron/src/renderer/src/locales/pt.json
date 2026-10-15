@@ -920,6 +920,7 @@
     "speakersDialogDesc": "Confirme nomes ou combine clusters duplicados. Nunca é aplicado automaticamente — você decide o que salvar.",
     "speakerSegments": "{{n}} segmentos",
     "speakerNamePlaceholder": "Sem nome",
+    "speakerNamePickHint": "Digite um nome ou escolha um participante",
     "speakerSuggested": "Sugerido",
     "speakerRoleGuess": "Suposição de função",
     "speakerEvidence": "Evidência: \"{{evidence}}\"",

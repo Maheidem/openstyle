@@ -921,6 +921,7 @@
     "speakersDialogDesc": "名前を確定するか、重複したクラスターを統合します。自動的には適用されません — 保存する内容はあなたが選びます。",
     "speakerSegments": "{{n}}件のセグメント",
     "speakerNamePlaceholder": "名前未設定",
+    "speakerNamePickHint": "名前を入力するか、参加者を選択してください",
     "speakerSuggested": "提案",
     "speakerRoleGuess": "役割の推測",
     "speakerEvidence": "根拠: 「{{evidence}}」",

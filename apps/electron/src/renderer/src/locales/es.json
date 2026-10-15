@@ -921,6 +921,7 @@
     "speakersDialogDesc": "Confirma nombres o combina clústeres duplicados. Nunca se aplica automáticamente: tú decides qué guardar.",
     "speakerSegments": "{{n}} segmentos",
     "speakerNamePlaceholder": "Sin nombre",
+    "speakerNamePickHint": "Escribe un nombre o elige un asistente",
     "speakerSuggested": "Sugerido",
     "speakerRoleGuess": "Rol supuesto",
     "speakerEvidence": "Evidencia: \"{{evidence}}\"",
