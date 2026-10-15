@@ -24,7 +24,7 @@ The project pins pi to `Desktop/qwen3.8-27b@adaptive`. This is a smaller local m
 
 ```
 SCOPE: <bug fix | feature | measurement | screenshots>, in one line. Approach is decided | your call.
-READ FIRST: <.claude/skills/live-testing/SKILL.md, specs/<spec>.md section N, file:line of the code to change>
+READ FIRST: <specs/<spec>.md section N, file:line of the code to change>. MANDATORY when the child runs the app, the server or an E2E spec: ".claude/skills/live-testing/SKILL.md first, and follow it", plus the recipe steps of its "UI proof of a meetings screen" section
 REPO / GIT: branch <name>; commit there only; never push or merge; commit trailers:
   Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
   Claude-Session: <session url>
@@ -38,6 +38,8 @@ FINAL ANSWER: <what to return>; Simplified Technical English; metrics only for p
 ```
 
 ## Rules for good briefs
+
+0. A brief that runs the app must name the live-testing skill and require the TCC dialog check before and after each run (see live-testing, UI proof step 9). If a privacy dialog appears, the child stops and reports the service. It never clicks through. On 2026-10-15 a brief without this line gave the owner privacy pop-ups.
 
 1. Put every known fact in the brief. Do not make the child find a route, an env var or a working command again. When a mechanism already worked in this project, give the command, not the question.
 2. Give one deliverable per child. Split a long task into phases that each have their own verify step.

@@ -189,9 +189,26 @@ rm -rf "$S"                          # keep only the evidence the task asks for
 git status --short                   # no stray files
 ```
 
+## UI proof of a meetings screen (proven 2026-10-15, PR #172)
+
+A throwaway Playwright spec proved the Speakers dialog with fictional data in 18 s and showed no privacy dialog. Use this recipe; do not discover it again.
+
+1. Name the spec `apps/electron/tests/zz-proof-<topic>.test.ts`. Playwright only finds `*.test.ts`. Delete it at the end. Never commit it.
+2. Build first: `cd apps/electron && OPENSTYLE_DEV_SIGN=0 CSC_IDENTITY_AUTO_DISCOVERY=false pnpm run build`.
+3. Launch only with `launchOpenstyle()` from `tests/helpers/e2e-app.ts`. It sets `OPENSTYLE_E2E=1` and an isolated profile. Never start the app another way.
+4. Before launch, write `config.freestyle.json` with `{"version":1,"flags":{"meetings":true}}` into the isolated profile, as `tests/meeting-import.test.ts` does. Without it the Meetings page is hidden.
+5. Set `meeting_enhance_prompt_seen` to `"true"` with `PUT /api/settings/...` on the isolated server. Otherwise a one-time dialog covers the meeting list.
+6. Seed with `POST /api/meetings/start` (it accepts a `calendar` object), then sqlite3 on the ISOLATED DB for status and segments. Use fictional names only.
+7. Open `app://renderer/meetings` with `page.goto` and click the meeting title. The detail view has no route of its own.
+8. Run: `cd apps/electron && OPENSTYLE_DEV_SIGN=0 CSC_IDENTITY_AUTO_DISCOVERY=false timeout 600 pnpm exec playwright test tests/zz-proof-<topic>.test.ts`.
+9. Dialog check before and after the run. It must print 0 new lines:
+   `/usr/bin/log show --last 10m --predicate 'subsystem == "com.apple.TCC"' --style compact | grep -c AUTHREQ_PROMPTING`
+   If a privacy dialog appears, stop at once. Do not click it. Report the service name.
+10. Never start a recording, the mic or system audio in a proof.
+
 ## For pi children
 
-pi children start without skills or context files (`--no-skills --no-context-files`). The coordinating agent must write this line in every pi brief that runs the app or the server: "Read `.claude/skills/live-testing/SKILL.md` first and follow it."
+pi children start without skills or context files (`--no-skills --no-context-files`). The coordinating agent must write this line in every pi brief that runs the app, the server or an E2E spec: "Read `.claude/skills/live-testing/SKILL.md` first and follow it." On 2026-10-15 a brief left the line out. The pi child launched the app without the recipe, failed twice, and the owner saw privacy pop-ups. For a UI proof, also paste the recipe steps above into the brief.
 
 ## The owner's oMLX server (127.0.0.1:8123)
 
