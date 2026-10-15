@@ -189,6 +189,16 @@ rm -rf "$S"                          # keep only the evidence the task asks for
 git status --short                   # no stray files
 ```
 
+## Test Runner app (stable Privacy identity)
+
+**Spike pending — not yet proven.** This small signed app starts local test commands with a stable Privacy identity, instead of Claude Code's changing identity.
+
+Build from the repo root: `node scripts/test-runner/build.mjs`.
+
+The owner grants it once in System Settings > Privacy & Security > Accessibility and Input Monitoring: add `~/Applications/Openstyle Test Runner.app` to both lists.
+
+Every local app run, E2E spec or UI proof must run through `scripts/test-runner/run.sh <cwd> -- <command> [args...]`, never directly from the agent shell. This overrides direct run commands above. Keep quiet mode and isolation. The owner and coordinator will run the spike later.
+
 ## UI proof of a meetings screen (proven 2026-10-15, PR #172)
 
 A throwaway Playwright spec proved the Speakers dialog with fictional data in 18 s and showed no privacy dialog. Use this recipe; do not discover it again.
@@ -200,7 +210,7 @@ A throwaway Playwright spec proved the Speakers dialog with fictional data in 18
 5. Set `meeting_enhance_prompt_seen` to `"true"` with `PUT /api/settings/...` on the isolated server. Otherwise a one-time dialog covers the meeting list.
 6. Seed with `POST /api/meetings/start` (it accepts a `calendar` object), then sqlite3 on the ISOLATED DB for status and segments. Use fictional names only.
 7. Open `app://renderer/meetings` with `page.goto` and click the meeting title. The detail view has no route of its own.
-8. Run: `cd apps/electron && OPENSTYLE_DEV_SIGN=0 CSC_IDENTITY_AUTO_DISCOVERY=false timeout 600 pnpm exec playwright test tests/zz-proof-<topic>.test.ts`.
+8. Run from the repo root: `OPENSTYLE_DEV_SIGN=0 CSC_IDENTITY_AUTO_DISCOVERY=false scripts/test-runner/run.sh "$PWD/apps/electron" -- timeout 600 pnpm exec playwright test tests/zz-proof-<topic>.test.ts`.
 9. Dialog check before and after the run. It must print 0 new lines:
    `/usr/bin/log show --last 10m --predicate 'subsystem == "com.apple.TCC"' --style compact | grep -c AUTHREQ_PROMPTING`
    If a privacy dialog appears, stop at once. Do not click it. Report the service name.
