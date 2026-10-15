@@ -75,7 +75,7 @@ function buildAttendeeLine(attendeeNames: string[]): string {
     .slice(0, MAX_ATTENDEE_NAMES)
     .map((n) => `"${n}"`);
   if (names.length === 0) return "";
-  return ` The calendar invitee names for this meeting are: ${names.join(", ")}. An invitee is only a candidate. Being invited is not evidence that a label is that person. The two evidence rules below still apply.`;
+  return ` The calendar invitee names for this meeting are: ${names.join(", ")}. This list is only a hint. A direct self-introduction in the transcript ("I am X", "my name is X", "this is X") is strong evidence: use that name even if X is not on the list. The list may confirm or fix the spelling of a name that the transcript supports. Never name a label only because a name is on the list. The two evidence rules below still apply.`;
 }
 
 /**
@@ -118,7 +118,7 @@ function buildSpeakerSuggestionBlock(
     ? ` Additional context for this meeting, provided by the user: "${meetingContext.trim()}"`
     : "";
   // Calendar invitees (specs/calendar-eventkit.md): names only. An invitee is
-  // a candidate, never evidence. The two evidence rules below still govern.
+  // a hint, never evidence. A transcript self-introduction always wins. The two evidence rules below still govern.
   const attendeeLine = buildAttendeeLine(attendeeNames);
   return `
 

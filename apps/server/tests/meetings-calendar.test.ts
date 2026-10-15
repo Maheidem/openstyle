@@ -220,13 +220,18 @@ describe("speaker naming reads the attendee names", () => {
     expect(JSON.stringify(seen?.attendeeNames)).not.toContain("@");
   });
 
-  it("the prompt lists the names and says an invitee is a candidate", () => {
+  it("the prompt lists the names and says a self-introduction wins", () => {
     const p = buildEnhanceSystemPrompt("en", [], ["1"], undefined, undefined, [
       "Ana Souza",
       "Bruno Lima",
     ]);
     expect(p).toContain('"Ana Souza", "Bruno Lima"');
-    expect(p).toContain("only a candidate");
+    expect(p).toContain("only a hint");
+    expect(p).toContain("use that name even if X is not on the list");
+    expect(p).toContain("confirm or fix the spelling");
+    expect(p).toContain(
+      "Never name a label only because a name is on the list",
+    );
     expect(p).not.toContain("@");
   });
 
