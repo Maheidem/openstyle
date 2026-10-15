@@ -29,6 +29,8 @@
     "site/main.js",
     // Run by hand (scripts/site-captures/README.md), not imported anywhere.
     "scripts/site-captures/*.mjs",
+    // Built manually for the stable local Privacy identity.
+    "scripts/test-runner/**",
     // Meeting transcription v2 proof scripts (specs/meeting-transcription-v2.md
     // phases 0a/0b): run manually against the isolated scratch profile, not
     // imported by any entry.

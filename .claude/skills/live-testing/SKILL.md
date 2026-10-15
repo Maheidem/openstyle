@@ -189,6 +189,20 @@ rm -rf "$S"                          # keep only the evidence the task asks for
 git status --short                   # no stray files
 ```
 
+## Test Runner app (stable Privacy identity)
+
+**Proven 2026-10-15 (PR #175).** This small app, signed with "Openstyle Dev", starts local test commands. macOS then checks the runner (`com.openstyle.test-runner`), not Claude Code. Claude Code's own grant breaks on every Claude Code update, because it is bound to the versions path.
+
+Proof (TCC log, `AUTHREQ_PROMPTING` count): `tests/app.test.ts` through the runner passed 10/10 three times. Run 1 showed 1 prompt (Documents folder, subject `com.openstyle.test-runner`; the owner allowed it). Run 2: 0 prompts. Run 3, after a rebuild and re-sign of the runner: 0 prompts (designated requirement unchanged: `certificate leaf = H"0671…"`).
+
+Build from the repo root: `node scripts/test-runner/build.mjs`.
+
+Grants: macOS asks the owner once per service for "Openstyle Test Runner". Granted so far: Documents folder. A spec that starts the native key or paste helpers may ask once for Input Monitoring or Accessibility; tell the owner before such a run. Microphone and system-audio tests stay CI-only.
+
+Every local app run, E2E spec or UI proof must run through `scripts/test-runner/run.sh <cwd> -- <command> [args...]`, never directly from the agent shell. This overrides direct run commands above. Keep quiet mode and isolation.
+
+Before and after each run, count `AUTHREQ_PROMPTING` in the TCC log (UI proof step 9). Stop at the first unexpected prompt.
+
 ## UI proof of a meetings screen (proven 2026-10-15, PR #172)
 
 A throwaway Playwright spec proved the Speakers dialog with fictional data in 18 s and showed no privacy dialog. Use this recipe; do not discover it again.
@@ -200,7 +214,7 @@ A throwaway Playwright spec proved the Speakers dialog with fictional data in 18
 5. Set `meeting_enhance_prompt_seen` to `"true"` with `PUT /api/settings/...` on the isolated server. Otherwise a one-time dialog covers the meeting list.
 6. Seed with `POST /api/meetings/start` (it accepts a `calendar` object), then sqlite3 on the ISOLATED DB for status and segments. Use fictional names only.
 7. Open `app://renderer/meetings` with `page.goto` and click the meeting title. The detail view has no route of its own.
-8. Run: `cd apps/electron && OPENSTYLE_DEV_SIGN=0 CSC_IDENTITY_AUTO_DISCOVERY=false timeout 600 pnpm exec playwright test tests/zz-proof-<topic>.test.ts`.
+8. Run from the repo root: `OPENSTYLE_DEV_SIGN=0 CSC_IDENTITY_AUTO_DISCOVERY=false scripts/test-runner/run.sh "$PWD/apps/electron" -- timeout 600 pnpm exec playwright test tests/zz-proof-<topic>.test.ts`.
 9. Dialog check before and after the run. It must print 0 new lines:
    `/usr/bin/log show --last 10m --predicate 'subsystem == "com.apple.TCC"' --style compact | grep -c AUTHREQ_PROMPTING`
    If a privacy dialog appears, stop at once. Do not click it. Report the service name.
