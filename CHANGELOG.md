@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.17.0
+
+### New Features ✨
+
+- On the Speakers screen of a meeting that is linked to a calendar event, the name box of each speaker suggests the event's attendee names. Pick a name or type one. Openstyle shows names only, never email addresses.
+
+### Known issues 🐞
+
+- If macOS sends your sound to a Bluetooth headset, it can make the headset microphone the temporary input. A meeting with "System default" as its microphone then records with the headset microphone, and the system audio of the meeting is damaged (#169, #170). Until the fix, choose your microphone by name in the meeting microphone setting.
+- On a first install, macOS warns about an unidentified developer. Right-click Openstyle and select Open once. Apple has not notarized Openstyle.
+
 ## 2.16.0
 
 ### New Features ✨
