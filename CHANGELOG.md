@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.16.0
+
+### New Features ✨
+
+- Meetings can link to your calendar. Turn on Settings > Meetings > "Use my calendar". macOS asks once for Calendars access. Openstyle only reads your calendar. It never writes to it.
+- When you start a meeting recording, Openstyle links the calendar event that runs now. The meeting gets the event title, the attendees and the meeting link. On the meeting screen you can change the event or unlink it.
+- For a linked meeting, the invitee list fixes the spelling of speaker names that people say in the meeting. It never gives a name that nobody said.
+
+### Improvements ⚡
+
+- More of the app is translated into all 8 languages: Help, Dictionary, Vocabulary, Models, the Network settings, the pill status and error messages, Remix, the tutorial demo, and the screen-reader labels and tooltips.
+- History and Meetings show dates and times in the app language. The calendar loads its language only when you open it.
+- Small section labels have better contrast in light mode and in dark mode.
+
+### Bug Fixes 🐛
+
+- On a new install, opening Settings no longer asks for Microphone access.
+- History shows "Yesterday" correctly after a spring clock change.
+
+### Known issues 🐞
+
+- On a first install, macOS warns about an unidentified developer. Right-click Openstyle and select Open once, or use System Settings > Privacy & Security > Open Anyway. Apple has not notarized Openstyle.
+- When you paste a long invite list into a meeting's context, some parts of the meeting cleanup can fail and speaker names can be lost (#163).
+
 ## 2.15.2
 
 ### Bug Fixes 🐛
