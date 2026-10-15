@@ -191,13 +191,17 @@ git status --short                   # no stray files
 
 ## Test Runner app (stable Privacy identity)
 
-**Spike pending — not yet proven.** This small signed app starts local test commands with a stable Privacy identity, instead of Claude Code's changing identity.
+**Proven 2026-10-15 (PR #175).** This small app, signed with "Openstyle Dev", starts local test commands. macOS then checks the runner (`com.openstyle.test-runner`), not Claude Code. Claude Code's own grant breaks on every Claude Code update, because it is bound to the versions path.
+
+Proof (TCC log, `AUTHREQ_PROMPTING` count): `tests/app.test.ts` through the runner passed 10/10 three times. Run 1 showed 1 prompt (Documents folder, subject `com.openstyle.test-runner`; the owner allowed it). Run 2: 0 prompts. Run 3, after a rebuild and re-sign of the runner: 0 prompts (designated requirement unchanged: `certificate leaf = H"0671…"`).
 
 Build from the repo root: `node scripts/test-runner/build.mjs`.
 
-The owner grants it once in System Settings > Privacy & Security > Accessibility and Input Monitoring: add `~/Applications/Openstyle Test Runner.app` to both lists.
+Grants: macOS asks the owner once per service for "Openstyle Test Runner". Granted so far: Documents folder. A spec that starts the native key or paste helpers may ask once for Input Monitoring or Accessibility; tell the owner before such a run. Microphone and system-audio tests stay CI-only.
 
-Every local app run, E2E spec or UI proof must run through `scripts/test-runner/run.sh <cwd> -- <command> [args...]`, never directly from the agent shell. This overrides direct run commands above. Keep quiet mode and isolation. The owner and coordinator will run the spike later.
+Every local app run, E2E spec or UI proof must run through `scripts/test-runner/run.sh <cwd> -- <command> [args...]`, never directly from the agent shell. This overrides direct run commands above. Keep quiet mode and isolation.
+
+Before and after each run, count `AUTHREQ_PROMPTING` in the TCC log (UI proof step 9). Stop at the first unexpected prompt.
 
 ## UI proof of a meetings screen (proven 2026-10-15, PR #172)
 
