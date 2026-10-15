@@ -1100,6 +1100,7 @@
     "speakersDialogDesc": "Confirm names or merge duplicate clusters. Never applied automatically — you choose what to save.",
     "speakerSegments": "{{n}} segments",
     "speakerNamePlaceholder": "Unnamed",
+    "speakerNamePickHint": "Type a name or pick an attendee",
     "speakerSuggested": "Suggested",
     "speakerRoleGuess": "Role guess",
     "speakerEvidence": "Evidence: \"{{evidence}}\"",

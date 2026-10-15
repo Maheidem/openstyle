@@ -1,3 +1,4 @@
+import type { CalendarEvent } from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -18,7 +19,7 @@ import {
 } from "@renderer/components/ui/select";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SpeakerRow, SpeakersResponse } from "./types";
 
@@ -59,17 +60,37 @@ export function computeMergeHints(speakers: SpeakerRow[]): Map<string, string> {
   return hints;
 }
 
+/** Names only: never fall back to attendee email addresses. */
+export function attendeeNameOptions(
+  calendar: CalendarEvent | null | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const attendee of calendar?.attendees ?? []) {
+    const name = attendee.name.trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
+}
+
 export function SpeakerRowEditor({
   meetingId,
   row,
   speakers,
   mergeHintTarget,
+  attendeeNames,
+  attendeeListId,
   onSaved,
 }: {
   meetingId: string;
   row: SpeakerRow;
   speakers: SpeakerRow[];
   mergeHintTarget: SpeakerRow | undefined;
+  attendeeNames: string[];
+  attendeeListId: string;
   onSaved: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -141,7 +162,12 @@ export function SpeakerRowEditor({
             ref={inputRef}
             value={name}
             maxLength={80}
-            placeholder={t("meetings.speakerNamePlaceholder")}
+            list={attendeeNames.length > 0 ? attendeeListId : undefined}
+            placeholder={t(
+              attendeeNames.length > 0
+                ? "meetings.speakerNamePickHint"
+                : "meetings.speakerNamePlaceholder",
+            )}
             onChange={(e) => setName(e.target.value)}
             onBlur={() => void commitName()}
             onKeyDown={(e) => {
@@ -252,6 +278,7 @@ export function SpeakersDialog({
   open,
   onOpenChange,
   data,
+  attendeeNames,
   onSaved,
 }: {
   id: string;
@@ -261,10 +288,12 @@ export function SpeakersDialog({
    * naming.md §7.3): §7.4's re-diarize confirmation needs this data whether
    * or not the dialog is open, so the dialog is a consumer, not the owner. */
   data: SpeakersResponse | undefined;
+  attendeeNames: string[];
   onSaved: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
+  const attendeeListId = useId();
   const speakers = data?.speakers ?? [];
   const unlabeledCount = data?.unlabeledCount ?? 0;
   const mergeHints = computeMergeHints(speakers);
@@ -280,6 +309,14 @@ export function SpeakersDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {attendeeNames.length > 0 && (
+          <datalist id={attendeeListId}>
+            {attendeeNames.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        )}
+
         {speakers.length === 0 && unlabeledCount === 0 ? (
           <p className="text-muted-foreground py-6 text-center text-[12.5px]">
             {t("meetings.speakerEmptyState")}
@@ -292,6 +329,8 @@ export function SpeakersDialog({
                 meetingId={id}
                 row={row}
                 speakers={speakers}
+                attendeeNames={attendeeNames}
+                attendeeListId={attendeeListId}
                 mergeHintTarget={
                   mergeHints.has(row.label)
                     ? byLabel.get(mergeHints.get(row.label) as string)

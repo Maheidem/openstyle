@@ -54,7 +54,7 @@ import {
 } from "./fields";
 import { SummaryInstructionsPopover } from "./settings-popovers";
 import { CopyButton, StatusBadge, segmentSpeakerLabel } from "./shared";
-import { SpeakersDialog } from "./speakers";
+import { attendeeNameOptions, SpeakersDialog } from "./speakers";
 import type { EnhanceNote, SpeakersResponse, TranscriptSegment } from "./types";
 
 export function MeetingDetailView({
@@ -946,6 +946,7 @@ export function MeetingDetailView({
         open={speakersOpen}
         onOpenChange={setSpeakersOpen}
         data={speakersData}
+        attendeeNames={attendeeNameOptions(meeting.calendar)}
         onSaved={() => {
           void queryClient.invalidateQueries({
             queryKey: queryKeys.meetings.speakers(id),
