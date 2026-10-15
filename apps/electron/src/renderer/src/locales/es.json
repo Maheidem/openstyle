@@ -269,6 +269,31 @@
       "diskUsageLoading": "Midiendo el audio de las reuniones y los modelos locales…",
       "manage": "Administrar…"
     },
+    "network": {
+      "intro": "Para redes gestionadas o corporativas. Enruta las descargas de modelos y las solicitudes en la nube a través de un proxy y confía en una autoridad de certificación personalizada. Déjalo en blanco para usar los valores predeterminados del sistema o las variables de entorno de proxy estándar.",
+      "proxy": "URL del proxy",
+      "proxyDesc": "Envía las descargas y las solicitudes de API a través de este proxy (p. ej. http://proxy.corp:8080). Sustituye HTTP_PROXY / HTTPS_PROXY.",
+      "proxyPlaceholder": "http://proxy.example.com:8080",
+      "caCert": "Certificado CA personalizado",
+      "caCertDesc": "Ruta a un bundle de certificados PEM al que confiar para TLS, además del almacén del sistema. Sustituye NODE_EXTRA_CA_CERTS.",
+      "caCertPlaceholder": "/path/to/corporate-ca.pem",
+      "save": "Guardar",
+      "saved": "Guardado",
+      "invalidProxy": "Introduce una URL válida de http://, https:// o socks://, o déjala en blanco.",
+      "invalidCaCert": "Introduce una ruta de archivo de certificado válida, o déjala en blanco.",
+      "envNote": "La aplicación también respeta HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS y SSL_CERT_FILE del entorno.",
+      "server": "Servidor",
+      "serverDesc": "Usa el servidor local integrado o conéctate a un servidor de Openstyle autoalojado.",
+      "serverTokenPlaceholder": "Token de acceso (opcional)",
+      "usingLocal": "Usando el servidor local integrado",
+      "testConnection": "Probar",
+      "resetToLocal": "Restablecer a local",
+      "statusTesting": "Probando…",
+      "statusOk": "Conectado",
+      "statusUnreachable": "No se pudo conectar a ese servidor",
+      "statusUnauthorized": "Token de acceso inválido o ausente"
+    },
+
     "remix": {
       "hotkey": "Atajo de Remix",
       "hotkeyDesc": "Mantenlo pulsado y di qué cambiar, o tócalo para las rutas rápidas.",

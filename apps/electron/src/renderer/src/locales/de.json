@@ -269,6 +269,31 @@
       "diskUsageLoading": "Besprechungsaudio und lokale Modelle werden gemessen…",
       "manage": "Verwalten…"
     },
+    "network": {
+      "intro": "Für verwaltete oder Unternehmensnetzwerke. Leiten Sie Modell-Downloads und Cloud-Anfragen über einen Proxy um und vertrauen Sie einer eigenen Zertifizierungsstelle. Leer lassen, um Ihre Systemstandards oder die Standard-Proxy-Umgebungsvariablen zu verwenden.",
+      "proxy": "Proxy-URL",
+      "proxyDesc": "Senden Sie Downloads und API-Anfragen über diesen Proxy (z. B. http://proxy.corp:8080). Überschreibt HTTP_PROXY / HTTPS_PROXY.",
+      "proxyPlaceholder": "http://proxy.example.com:8080",
+      "caCert": "Eigenes CA-Zertifikat",
+      "caCertDesc": "Pfad zu einem PEM-Zertifikatsbündel, dem für TLS vertraut wird, zusätzlich zum System-Speicher. Überschreibt NODE_EXTRA_CA_CERTS.",
+      "caCertPlaceholder": "/path/to/corporate-ca.pem",
+      "save": "Speichern",
+      "saved": "Gespeichert",
+      "invalidProxy": "Geben Sie eine gültige http://-, https://- oder socks://-URL ein oder lassen Sie das Feld leer.",
+      "invalidCaCert": "Geben Sie einen gültigen Zertifikatdateipfad ein oder lassen Sie das Feld leer.",
+      "envNote": "Die App beachtet außerdem HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS und SSL_CERT_FILE aus der Umgebung.",
+      "server": "Server",
+      "serverDesc": "Verwenden Sie den integrierten lokalen Server oder verbinden Sie sich mit einem selbst gehosteten Openstyle-Server.",
+      "serverTokenPlaceholder": "Zugangstoken (optional)",
+      "usingLocal": "Der integrierte lokale Server wird verwendet",
+      "testConnection": "Testen",
+      "resetToLocal": "Auf lokal zurücksetzen",
+      "statusTesting": "Wird getestet…",
+      "statusOk": "Verbunden",
+      "statusUnreachable": "Der Server konnte nicht erreicht werden",
+      "statusUnauthorized": "Ungültiges oder fehlendes Zugangstoken"
+    },
+
     "remix": {
       "hotkey": "Remix-Tastenkombination",
       "hotkeyDesc": "Halten Sie sie gedrückt und sagen Sie, was geändert werden soll — oder tippen Sie kurz für die Schnellrouten.",

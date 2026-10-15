@@ -269,6 +269,31 @@
       "diskUsageLoading": "Medindo o áudio das reuniões e os modelos locais…",
       "manage": "Gerenciar…"
     },
+    "network": {
+      "intro": "Para redes gerenciadas ou corporativas. Encaminhe os downloads de modelos e as solicitações na nuvem por um proxy e confie em uma autoridade de certificação personalizada. Deixe em branco para usar os padrões do sistema ou as variáveis de ambiente de proxy padrão.",
+      "proxy": "URL do proxy",
+      "proxyDesc": "Envie os downloads e as solicitações de API por este proxy (ex.: http://proxy.corp:8080). Substitui HTTP_PROXY / HTTPS_PROXY.",
+      "proxyPlaceholder": "http://proxy.example.com:8080",
+      "caCert": "Certificado CA personalizado",
+      "caCertDesc": "Caminho para um pacote de certificados PEM em que confiar para TLS, além do armazenamento do sistema. Substitui NODE_EXTRA_CA_CERTS.",
+      "caCertPlaceholder": "/path/to/corporate-ca.pem",
+      "save": "Salvar",
+      "saved": "Salvo",
+      "invalidProxy": "Digite uma URL válida http://, https:// ou socks://, ou deixe em branco.",
+      "invalidCaCert": "Digite um caminho de arquivo de certificado válido, ou deixe em branco.",
+      "envNote": "O app também respeita HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS e SSL_CERT_FILE do ambiente.",
+      "server": "Servidor",
+      "serverDesc": "Use o servidor local integrado ou conecte-se a um servidor Openstyle auto-hospedado.",
+      "serverTokenPlaceholder": "Token de acesso (opcional)",
+      "usingLocal": "Usando o servidor local integrado",
+      "testConnection": "Testar",
+      "resetToLocal": "Redefinir para local",
+      "statusTesting": "Testando…",
+      "statusOk": "Conectado",
+      "statusUnreachable": "Não foi possível conectar a esse servidor",
+      "statusUnauthorized": "Token de acesso inválido ou ausente"
+    },
+
     "remix": {
       "hotkey": "Atalho do Remix",
       "hotkeyDesc": "Segure e diga o que mudar, ou toque para as rotas rápidas.",

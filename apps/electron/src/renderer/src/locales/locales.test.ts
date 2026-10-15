@@ -407,6 +407,32 @@ describe("locale files", () => {
       "remixChat.toolsRanMany",
       "settings.sections.network",
     ],
+    // Keys introduced by the Settings → Network panel (issue #160). The panel
+    // is a primary surface in Settings, so every locale carries them.
+    "settings-network-i18n": [
+      "settings.network.intro",
+      "settings.network.proxy",
+      "settings.network.proxyDesc",
+      "settings.network.proxyPlaceholder",
+      "settings.network.caCert",
+      "settings.network.caCertDesc",
+      "settings.network.caCertPlaceholder",
+      "settings.network.save",
+      "settings.network.saved",
+      "settings.network.invalidProxy",
+      "settings.network.invalidCaCert",
+      "settings.network.envNote",
+      "settings.network.server",
+      "settings.network.serverDesc",
+      "settings.network.serverTokenPlaceholder",
+      "settings.network.usingLocal",
+      "settings.network.testConnection",
+      "settings.network.resetToLocal",
+      "settings.network.statusTesting",
+      "settings.network.statusOk",
+      "settings.network.statusUnreachable",
+      "settings.network.statusUnauthorized",
+    ],
   };
 
   describe.each(Object.entries(KEY_GROUPS))("%s keys", (_name, keys) => {
