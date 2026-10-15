@@ -269,6 +269,31 @@
       "diskUsageLoading": "議事録音声とローカルモデルを計測しています…",
       "manage": "管理…"
     },
+    "network": {
+      "intro": "管理ネットワークや企業ネットワーク向け。モデルのダウンロードやクラウドリクエストをプロキシ経由で転送し、カスタム証明書発行機関を信頼します。空欄にすると、システムのデフォルトまたは標準のプロキシ環境変数が使用されます。",
+      "proxy": "プロキシURL",
+      "proxyDesc": "ダウンロードとAPIリクエストをこのプロキシ経由で送信します（例：http://proxy.corp:8080）。HTTP_PROXY / HTTPS_PROXYをオーバーライドします。",
+      "proxyPlaceholder": "http://proxy.example.com:8080",
+      "caCert": "カスタムCA証明書",
+      "caCertDesc": "TLS用に信頼するPEM証明書バンドルへのパス（システムストアとは別に使用されます）。NODE_EXTRA_CA_CERTSをオーバーライドします。",
+      "caCertPlaceholder": "/path/to/corporate-ca.pem",
+      "save": "保存",
+      "saved": "保存しました",
+      "invalidProxy": "有効なhttp://、https://、またはsocks://のURLを入力するか、空欄にしてください。",
+      "invalidCaCert": "有効な証明書ファイルのパスを入力するか、空欄にしてください。",
+      "envNote": "アプリは環境変数のHTTP_PROXY、HTTPS_PROXY、NO_PROXY、NODE_EXTRA_CA_CERTS、SSL_CERT_FILEも尊重します。",
+      "server": "サーバー",
+      "serverDesc": "組み込みのローカルサーバーを使用するか、セルフホスト型のOpenstyleサーバーに接続します。",
+      "serverTokenPlaceholder": "アクセストークン（任意）",
+      "usingLocal": "組み込みのローカルサーバーを使用中",
+      "testConnection": "テスト",
+      "resetToLocal": "ローカルにリセット",
+      "statusTesting": "テスト中…",
+      "statusOk": "接続済み",
+      "statusUnreachable": "そのサーバーに接続できません",
+      "statusUnauthorized": "アクセストークンが無効または未入力"
+    },
+
     "remix": {
       "hotkey": "Remixホットキー",
       "hotkeyDesc": "押しながら変更内容を話すか、軽く押してクイックルートを表示します。",

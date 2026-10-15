@@ -269,6 +269,31 @@
       "diskUsageLoading": "Mesure de l'audio des réunions et des modèles locaux…",
       "manage": "Gérer…"
     },
+    "network": {
+      "intro": "Pour les réseaux gérés ou d'entreprise. Routez les téléchargements de modèles et les requêtes cloud via un proxy et faites confiance à une autorité de certification personnalisée. Laissez vide pour utiliser les valeurs par défaut de votre système ou les variables d'environnement proxy standard.",
+      "proxy": "URL du proxy",
+      "proxyDesc": "Envoyez les téléchargements et les requêtes API via ce proxy (p. ex. http://proxy.corp:8080). Remplace HTTP_PROXY / HTTPS_PROXY.",
+      "proxyPlaceholder": "http://proxy.example.com:8080",
+      "caCert": "Certificat CA personnalisé",
+      "caCertDesc": "Chemin vers un bundle de certificats PEM à faire confiance pour TLS, en plus du magasin du système. Remplace NODE_EXTRA_CA_CERTS.",
+      "caCertPlaceholder": "/path/to/corporate-ca.pem",
+      "save": "Enregistrer",
+      "saved": "Enregistré",
+      "invalidProxy": "Saisissez une URL http://, https:// ou socks:// valide, ou laissez vide.",
+      "invalidCaCert": "Saisissez un chemin de fichier de certificat valide, ou laissez vide.",
+      "envNote": "L'application prend également en compte HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS et SSL_CERT_FILE de l'environnement.",
+      "server": "Serveur",
+      "serverDesc": "Utilisez le serveur local intégré ou connectez-vous à un serveur Openstyle auto-hébergé.",
+      "serverTokenPlaceholder": "Jeton d'accès (facultatif)",
+      "usingLocal": "Utilisation du serveur local intégré",
+      "testConnection": "Tester",
+      "resetToLocal": "Réinitialiser en local",
+      "statusTesting": "Test en cours…",
+      "statusOk": "Connecté",
+      "statusUnreachable": "Impossible de joindre ce serveur",
+      "statusUnauthorized": "Jeton d'accès invalide ou manquant"
+    },
+
     "remix": {
       "hotkey": "Raccourci Remix",
       "hotkeyDesc": "Maintenez-le et dites quoi changer, ou tapez-le pour les routes rapides.",
