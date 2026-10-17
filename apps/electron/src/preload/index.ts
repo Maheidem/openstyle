@@ -11,6 +11,10 @@ import type {
 } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { ImportAudioResult } from "../shared/import-types";
+import type {
+  ConfirmedDevices,
+  MeetingDevicePlan,
+} from "../shared/meeting-devices";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import {
   normalizePillCancelMode,
@@ -75,11 +79,22 @@ const api = {
   /** Fatal mic-capture error from the hidden capture window. */
   meetingCaptureError: (message: string): void =>
     ipcRenderer.send("meeting:capture-error", message),
-  startMeetingRecording: (): Promise<{
+  /**
+   * Start a recording. When the devices differ from the previous meeting,
+   * it returns `devices` and does not start. Call it again with the
+   * confirmed device keys (`planKeys`).
+   */
+  startMeetingRecording: (
+    confirmed?: ConfirmedDevices,
+  ): Promise<{
     ok: boolean;
     id?: string;
     error?: string;
-  }> => ipcRenderer.invoke("meeting:start"),
+    devices?: MeetingDevicePlan;
+  }> => ipcRenderer.invoke("meeting:start", confirmed),
+  /** The mic and output that the next recording uses, or null. */
+  getMeetingDevices: (): Promise<MeetingDevicePlan | null> =>
+    ipcRenderer.invoke("meeting:devices"),
   stopMeetingRecording: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("meeting:stop"),
   getMeetingStatus: (): Promise<{

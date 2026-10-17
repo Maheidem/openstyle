@@ -11,8 +11,13 @@ import { serverFetch } from "../server-target";
  * meeting-capture entry (PCM AudioWorklet -> `meeting:mic-chunk` IPC). The
  * configured mic device id is a server-owned setting, so the URL is resolved
  * asynchronously after creation; capture starts on page load.
+ *
+ * `micLabel` is the name of the mic that replaces a transient Bluetooth
+ * default input (#169). The page then opens the device with that label.
  */
-export function createMeetingCaptureWindow(): BrowserWindow {
+export function createMeetingCaptureWindow(
+  micLabel?: string | null,
+): BrowserWindow {
   const win = new BrowserWindow({
     width: 1,
     height: 1,
@@ -27,18 +32,20 @@ export function createMeetingCaptureWindow(): BrowserWindow {
   });
 
   void (async () => {
-    let deviceParam = "";
+    const params = new URLSearchParams();
+    if (micLabel) params.set("label", micLabel);
     try {
       const res = await serverFetch(`/settings/${SETTINGS_KEYS.micDeviceId}`);
       if (res.ok) {
         const { value } = (await res.json()) as { value?: string };
-        if (value) deviceParam = `?device=${encodeURIComponent(value)}`;
+        if (value) params.set("device", value);
       }
     } catch {
       // no configured device — use the default mic
     }
+    const query = params.size > 0 ? `?${params.toString()}` : "";
     if (!win.isDestroyed()) {
-      void win.loadURL(`${getMeetingCaptureURL()}${deviceParam}`);
+      void win.loadURL(`${getMeetingCaptureURL()}${query}`);
     }
   })();
 
