@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.17.1
+
+### Bug Fixes 🐛
+
+- Meetings now shows on a new install. Before, the Meetings page and the "Start meeting recording" menu item stayed hidden, also with advanced mode on. When you open Meetings for the first time, macOS can ask for Screen & System Audio Recording access.
+
+### Known issues 🐞
+
+- If macOS sends your sound to a Bluetooth headset, it can make the headset microphone the temporary input. A meeting with "System default" as its microphone then records with the headset microphone, and the system audio of the meeting is damaged (#169, #170). Until the fix, choose your microphone by name in the meeting microphone setting.
+- On a first install, macOS warns about an unidentified developer. Right-click Openstyle and select Open once. Apple has not notarized Openstyle.
+
 ## 2.17.0
 
 ### New Features ✨
