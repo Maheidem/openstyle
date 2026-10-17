@@ -37,10 +37,25 @@ import {
   SYSTEM_WAV,
 } from "@openstyle/validations";
 import { app, type BrowserWindow, powerMonitor } from "electron";
+import type {
+  ConfirmedDevices,
+  MeetingDevicePlan,
+} from "../shared/meeting-devices";
 import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
-import { MeetingCaptureHelper } from "./meeting-capture-helper";
+import {
+  MeetingCaptureHelper,
+  type MicRequest,
+} from "./meeting-capture-helper";
 import { silenceGapSamples } from "./meeting-capture-protocol";
+import {
+  type DeviceSnapshot,
+  needsConfirmation,
+  parseDeviceMemory,
+  planMeetingDevices,
+  rememberDefaultInput,
+  rememberMeeting,
+} from "./meeting-devices";
 import {
   isSystemAudioCaptureSupported,
   type SyncMarker,
@@ -169,6 +184,27 @@ function buildWavHeader(dataBytes: number): Buffer {
   return header;
 }
 
+/**
+ * The devices differ from the previous meeting, and the user has not
+ * confirmed them. The caller shows the plan and starts again with the keys.
+ */
+export class MeetingDevicesChangedError extends Error {
+  constructor(readonly plan: MeetingDevicePlan) {
+    super("The meeting audio devices changed. Confirm them to record.");
+    this.name = "MeetingDevicesChangedError";
+  }
+}
+
+/**
+ * The devices of a new recording. `mic` is the request for the native
+ * helper. `undefined` means: use the fallback path, which opens the exact
+ * Chromium device id.
+ */
+interface PreparedDevices {
+  plan: MeetingDevicePlan | null;
+  mic: MicRequest | undefined;
+}
+
 export interface MeetingRecorderDeps {
   /** Fetch bound to the in-process/configured Openstyle server (adds auth). */
   serverFetch: ServerFetch;
@@ -176,12 +212,14 @@ export interface MeetingRecorderDeps {
    * Create the hidden mic-capture BrowserWindow (show:false) loading
    * meeting-capture.html. Owned (and closed) by the recorder.
    */
-  createCaptureWindow: () => BrowserWindow;
+  createCaptureWindow: (micLabel?: string | null) => BrowserWindow;
   /**
    * Return the device label for a Chromium mic device id. It asks an open
    * renderer. It returns null when no renderer can answer.
    */
   resolveMicLabel: (deviceId: string) => Promise<string | null>;
+  /** The Core Audio devices, or null when the list is not available. */
+  listAudioDevices: () => Promise<DeviceSnapshot | null>;
   /** Broadcast a `meeting:level` event to interested renderer windows. */
   broadcastLevel: (event: MeetingLevelEvent) => void;
   /** Broadcast a `meeting:status` change to interested renderer windows. */
@@ -218,6 +256,13 @@ export class MeetingRecorder {
    */
   private micNeedsPad = false;
   private systemNeedsPad = false;
+  /** The devices of the running recording. */
+  private devices: PreparedDevices | null = null;
+  /**
+   * True while start() runs. The status stays "idle" while start() waits for
+   * the device list, so a second start() needs this flag to be refused.
+   */
+  private starting = false;
 
   constructor(deps: MeetingRecorderDeps) {
     this.deps = deps;
@@ -281,13 +326,104 @@ export class MeetingRecorder {
     return hours * 60 * 60 * 1000;
   }
 
-  /** Start a recording. Throws with a user-facing message on refusal. */
-  async start(): Promise<string> {
-    if (this._status !== "idle") {
+  private async readSetting(key: string): Promise<string | null> {
+    try {
+      const res = await this.api(`/settings/${key}`);
+      if (!res.ok) return null;
+      return ((await res.json()) as { value?: string }).value ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async writeSetting(key: string, value: string): Promise<void> {
+    try {
+      await this.api(`/settings/${key}`, { method: "PUT", body: { value } });
+    } catch (err) {
+      log.warn(`Failed to save ${key}: ${errorMessage(err)}`);
+    }
+  }
+
+  /**
+   * Decide the mic and read the output device (issue #169). It also
+   * remembers the macOS default input when it is not a transient Bluetooth
+   * default. It opens no audio device.
+   */
+  private async prepareDevices(): Promise<PreparedDevices> {
+    const chosen = await this.resolveMicName();
+    // No label for the chosen mic: the fallback opens the exact device id.
+    if (!chosen) return { plan: null, mic: undefined };
+    const byName: MicRequest = chosen.micName ? { name: chosen.micName } : null;
+    let snapshot: DeviceSnapshot | null = null;
+    try {
+      snapshot = await this.deps.listAudioDevices();
+    } catch (err) {
+      log.warn(`Audio device list failed: ${errorMessage(err)}`);
+    }
+    // No device list: keep the old start path.
+    if (!snapshot) return { plan: null, mic: byName };
+    const raw = await this.readSetting(SETTINGS_KEYS.meetingAudioDevices);
+    const memory = rememberDefaultInput(parseDeviceMemory(raw), snapshot);
+    const next = JSON.stringify(memory);
+    if (next !== raw) {
+      await this.writeSetting(SETTINGS_KEYS.meetingAudioDevices, next);
+    }
+    const plan = planMeetingDevices({
+      snapshot,
+      chosenMicName: chosen.micName,
+      memory,
+    });
+    if (plan.skippedInput) {
+      log.warn(
+        `Skipped the transient Bluetooth default input "${plan.skippedInput.name}". Using "${plan.input?.name}".`,
+      );
+    }
+    return { plan, mic: plan.input ? { uid: plan.input.uid } : byName };
+  }
+
+  /** The devices that the next recording uses, or null when unknown. */
+  async previewDevices(): Promise<MeetingDevicePlan | null> {
+    return (await this.prepareDevices()).plan;
+  }
+
+  /** Save the devices of a recording that started. */
+  private async rememberMeetingDevices(plan: MeetingDevicePlan): Promise<void> {
+    const raw = await this.readSetting(SETTINGS_KEYS.meetingAudioDevices);
+    const memory = rememberMeeting(parseDeviceMemory(raw), plan);
+    await this.writeSetting(
+      SETTINGS_KEYS.meetingAudioDevices,
+      JSON.stringify(memory),
+    );
+  }
+
+  /**
+   * Start a recording. Throws with a user-facing message on refusal. Throws
+   * MeetingDevicesChangedError when the devices differ from the previous
+   * meeting and `confirmed` does not hold the same devices.
+   */
+  async start(confirmed?: ConfirmedDevices | null): Promise<string> {
+    if (this._status !== "idle" || this.starting) {
       throw new Error("A meeting recording is already in progress");
     }
+    // Set the flag before the first await. Clear it on every exit.
+    this.starting = true;
+    try {
+      return await this.startRecording(confirmed);
+    } finally {
+      this.starting = false;
+    }
+  }
+
+  private async startRecording(
+    confirmed?: ConfirmedDevices | null,
+  ): Promise<string> {
     if (!isSystemAudioCaptureSupported()) {
       throw new Error("Meeting recording requires macOS 14.4 or later");
+    }
+
+    const devices = await this.prepareDevices();
+    if (devices.plan && needsConfirmation(devices.plan, confirmed)) {
+      throw new MeetingDevicesChangedError(devices.plan);
     }
 
     const userData = app.getPath("userData");
@@ -346,6 +482,7 @@ export class MeetingRecorder {
     this.lastError = null;
     this.micNeedsPad = false;
     this.systemNeedsPad = false;
+    this.devices = devices;
     this.micWav = new WavWriter(join(dir, MIC_WAV));
     this.systemWav = new WavWriter(join(dir, SYSTEM_WAV));
     this.journal = {
@@ -370,7 +507,7 @@ export class MeetingRecorder {
     this.setStatus("recording");
 
     // Capture sources: the native helper first, then the fallback path.
-    const nativeStarted = await this.startNativeCapture(id);
+    const nativeStarted = await this.startNativeCapture(id, devices.mic);
     // The user may stop the recording while the capture helper starts.
     if (!this.isRecording(id)) return id;
     if (nativeStarted) {
@@ -415,6 +552,7 @@ export class MeetingRecorder {
     powerMonitor.on("resume", this.resumeListener);
 
     await this.writeJournal();
+    if (devices.plan) await this.rememberMeetingDevices(devices.plan);
     log.info(`Meeting recording started: ${id}`);
     return id;
   }
@@ -453,17 +591,19 @@ export class MeetingRecorder {
 
   /**
    * Start the native helper. Resolve true when it is running (READY, or no
-   * error within NATIVE_START_WINDOW_MS). Resolve false when the chosen mic
-   * has no known name, or the helper is missing, fails to spawn, exits
-   * before READY or prints ERR_* before READY. In that case the helper is
-   * stopped and the caller starts the fallback path. A fault after the
-   * start also starts the fallback path (see failOverToFallback).
+   * error within NATIVE_START_WINDOW_MS). Resolve false when `mic` is
+   * undefined (the chosen mic has no known name), or the helper is missing,
+   * fails to spawn, exits before READY or prints ERR_* before READY. In
+   * that case the helper is stopped and the caller starts the fallback
+   * path. A fault after the start also starts the fallback path (see
+   * failOverToFallback).
    */
-  private async startNativeCapture(meetingId: string): Promise<boolean> {
-    const mic = await this.resolveMicName();
-    // The user may stop the recording while the label lookup runs.
+  private async startNativeCapture(
+    meetingId: string,
+    mic: MicRequest | undefined,
+  ): Promise<boolean> {
     if (!this.isRecording(meetingId)) return false;
-    if (!mic) return false;
+    if (mic === undefined) return false;
 
     return new Promise<boolean>((resolve) => {
       let settled = false;
@@ -476,7 +616,7 @@ export class MeetingRecorder {
       };
 
       const capture = new MeetingCaptureHelper({
-        micName: mic.micName,
+        mic,
         onFrame: (channel, pcm) => this.handleNativeFrame(channel, pcm),
         onReady: () => settle(true),
         onLevel: (rms) => this.broadcastLevel("system", rms),
@@ -599,7 +739,11 @@ export class MeetingRecorder {
 
     // Mic channel: hidden capture window streaming worklet chunks over IPC.
     try {
-      this.captureWindow = this.deps.createCaptureWindow();
+      // A skipped transient default must not come back in the fallback.
+      const plan = this.devices?.plan;
+      this.captureWindow = this.deps.createCaptureWindow(
+        plan?.skippedInput ? plan.inputName : null,
+      );
       this.captureWindow.on("closed", () => {
         this.captureWindow = null;
       });
@@ -757,6 +901,7 @@ export class MeetingRecorder {
     this.meetingId = null;
     this.meetingDir = null;
     this.journal = null;
+    this.devices = null;
     this.setStatus("idle");
     log.info(`Meeting recording stopped: ${meetingId} (${status})`);
   }

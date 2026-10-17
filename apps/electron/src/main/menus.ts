@@ -15,6 +15,7 @@ import {
 import { autoUpdater } from "electron-updater";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { refreshMeetingsFlag, state } from "./main-state";
+import { MeetingDevicesChangedError } from "./meeting-recorder";
 import {
   isRunningFromReadOnlyLocation,
   READ_ONLY_UPDATE_RE,
@@ -169,6 +170,12 @@ export function buildTrayContextMenu(): Menu {
                 label: "Start meeting recording",
                 click: (): void => {
                   void state.meetingRecorder?.start().catch((err) => {
+                    // The Meetings page shows the devices and asks the
+                    // user to confirm them, in the app language (#169).
+                    if (err instanceof MeetingDevicesChangedError) {
+                      showSettingsWindow("/meetings?confirmStart=1");
+                      return;
+                    }
                     log.error(`Meeting start failed: ${String(err)}`);
                     dialog.showErrorBox(
                       "Meeting recording",

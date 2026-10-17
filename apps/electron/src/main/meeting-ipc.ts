@@ -14,7 +14,11 @@ import { createAppLogger } from "@openstyle/utils";
 import { MEETINGS_DIR_NAME } from "@openstyle/validations";
 import { app, ipcMain, shell } from "electron";
 import type { hc } from "hono/client";
-import type { MeetingRecorder } from "./meeting-recorder";
+import type { ConfirmedDevices } from "../shared/meeting-devices";
+import {
+  MeetingDevicesChangedError,
+  type MeetingRecorder,
+} from "./meeting-recorder";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
 import {
   openAudioCaptureSettings,
@@ -33,15 +37,32 @@ export function registerMeetingIpc({
   getMeetingRecorder,
   serverClient,
 }: RegisterMeetingIpcOptions): void {
-  ipcMain.handle("meeting:start", async () => {
+  ipcMain.handle("meeting:start", async (_event, confirmed: unknown) => {
     try {
-      const id = await getMeetingRecorder()!.start();
+      const id = await getMeetingRecorder()!.start(
+        parseConfirmedDevices(confirmed),
+      );
       return { ok: true, id };
     } catch (err) {
+      if (err instanceof MeetingDevicesChangedError) {
+        return { ok: false, devices: err.plan };
+      }
       return {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       };
+    }
+  });
+
+  // The devices that the next recording uses. It opens no audio device.
+  ipcMain.handle("meeting:devices", async () => {
+    const meetingRecorder = getMeetingRecorder();
+    if (!meetingRecorder || meetingRecorder.status !== "idle") return null;
+    try {
+      return await meetingRecorder.previewDevices();
+    } catch (err) {
+      log.warn(`Meeting device preview failed: ${String(err)}`);
+      return null;
     }
   });
 
@@ -119,4 +140,16 @@ export function registerMeetingIpc({
       return false;
     }
   });
+}
+
+/** Accept only `{ input, output }` with string-or-null values. */
+function parseConfirmedDevices(value: unknown): ConfirmedDevices | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Record<string, unknown>;
+  const key = (x: unknown): string | null | undefined =>
+    typeof x === "string" ? x : x === null ? null : undefined;
+  const input = key(v.input);
+  const output = key(v.output);
+  if (input === undefined || output === undefined) return null;
+  return { input, output };
 }
