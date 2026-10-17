@@ -23,6 +23,12 @@ const mocks = vi.hoisted(() => ({
     start: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
   }[],
+  log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock("@openstyle/utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@openstyle/utils")>()),
+  createAppLogger: () => mocks.log,
 }));
 
 vi.mock("electron", () => ({
@@ -275,5 +281,45 @@ describe("MeetingRecorder calendar link", () => {
     expect("calendar" in startBody(calls)).toBe(false);
     expect(recorder.status).toBe("recording");
     await recorder.stop();
+  });
+});
+
+describe("MeetingRecorder track length check (issue #170)", () => {
+  beforeEach(() => {
+    mocks.userData = mkdtempSync(join(tmpdir(), "openstyle-recorder-test-"));
+    mocks.helpers.length = 0;
+    mocks.systemCaptures.length = 0;
+    mocks.log.warn.mockClear();
+  });
+
+  afterEach(() => {
+    rmSync(mocks.userData, { recursive: true, force: true });
+  });
+
+  /** Record `micFrames` and `systemFrames` frames of 100 ms, then stop. */
+  async function recordFrames(micFrames: number, systemFrames: number) {
+    const { recorder } = createRecorder();
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onReady?.();
+    await started;
+    for (let i = 0; i < micFrames; i++) helper.options.onFrame("M", FRAME);
+    for (let i = 0; i < systemFrames; i++) helper.options.onFrame("S", FRAME);
+    await recorder.stop();
+  }
+
+  const trackWarnings = () =>
+    mocks.log.warn.mock.calls.filter(([line]) =>
+      String(line).startsWith("Track length check failed"),
+    );
+
+  it("logs a warning when the system track is 1/3 of the mic track", async () => {
+    await recordFrames(600, 200); // 60 s mic, 20 s system
+    expect(trackWarnings()).toHaveLength(1);
+    expect(String(trackWarnings()[0][0])).toContain("system/mic = 0.333");
+  });
+
+  it("logs nothing when both tracks have the same length", async () => {
+    await recordFrames(600, 600);
+    expect(trackWarnings()).toHaveLength(0);
   });
 });

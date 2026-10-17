@@ -724,6 +724,19 @@ export function MeetingDetailView({
           </InlineNotice>
         )}
 
+      {/* Issue #170: the server compares the sample counts of the two tracks
+          in sync.json. A ratio outside 0.95..1.05 means one track ran at the
+          wrong speed, so the transcript can be wrong. */}
+      {meeting.track_ratio_warning !== null && (
+        <InlineNotice tone="destructive" icon={AlertTriangle}>
+          <span data-testid="meeting-track-ratio-warning">
+            {t("meetings.trackRatioWarning", {
+              percent: Math.round(meeting.track_ratio_warning * 100),
+            })}
+          </span>
+        </InlineNotice>
+      )}
+
       {diarizeResult && !actionError && (
         <InlineNotice tone="neutral" icon={Users}>
           <span>

@@ -865,6 +865,7 @@
     "cancellingSummarize": "Wird abgebrochen…",
     "summarizeCancelled": "Zusammenfassung abgebrochen — das Transkript bleibt unverändert.",
     "cancelledKeptTranscript": "Abgebrochen — das Teiltranskript bleibt erhalten ({{n}} von {{total}} Segmenten transkribiert)",
+    "trackRatioWarning": "Die Systemaudio-Spur hat {{percent}} % der Länge der Mikrofonspur. Beide Spuren müssen gleich lang sein. Eine Spur lief mit falscher Geschwindigkeit, daher kann das Transkript falsch sein. Ein Bluetooth-Headset im Anrufmodus kann die Ursache sein.",
     "copyTranscript": "Transkript kopieren",
     "copySummary": "Zusammenfassung kopieren",
     "tabTranscript": "Transkript",

@@ -1029,6 +1029,7 @@
     "cancellingEnhance": "Cancelling…",
     "summarizeCancelled": "Summary cancelled — your transcript is unchanged.",
     "cancelledKeptTranscript": "Cancelled — partial transcript kept ({{n}} of {{total}} segments transcribed)",
+    "trackRatioWarning": "The system audio track has {{percent}}% of the length of the microphone track. The two tracks must have the same length. One track ran at the wrong speed, so the transcript can be wrong. A Bluetooth headset in call mode can cause this.",
     "copyTranscript": "Copy transcript",
     "copySummary": "Copy summary",
     "tabTranscript": "Transcript",

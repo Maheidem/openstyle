@@ -865,6 +865,7 @@
     "cancellingSummarize": "Annulation…",
     "summarizeCancelled": "Résumé annulé — la transcription est inchangée.",
     "cancelledKeptTranscript": "Annulé — transcription partielle conservée ({{n}} sur {{total}} segments transcrits)",
+    "trackRatioWarning": "La piste audio système a {{percent}} % de la durée de la piste du micro. Les deux pistes doivent avoir la même durée. Une piste a tourné à la mauvaise vitesse, la transcription peut donc être fausse. Un casque Bluetooth en mode appel peut en être la cause.",
     "copyTranscript": "Copier la transcription",
     "copySummary": "Copier le résumé",
     "tabTranscript": "Transcription",

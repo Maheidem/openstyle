@@ -864,6 +864,7 @@
     "cancellingSummarize": "Annullamento…",
     "summarizeCancelled": "Riepilogo annullato: la trascrizione è invariata.",
     "cancelledKeptTranscript": "Annullato: la trascrizione parziale è stata conservata ({{n}} di {{total}} segmenti trascritti)",
+    "trackRatioWarning": "La traccia dell'audio di sistema ha il {{percent}}% della durata della traccia del microfono. Le due tracce devono avere la stessa durata. Una traccia è stata registrata alla velocità sbagliata, quindi la trascrizione può essere errata. Una cuffia Bluetooth in modalità chiamata può causare questo problema.",
     "copyTranscript": "Copia trascrizione",
     "copySummary": "Copia riepilogo",
     "tabTranscript": "Trascrizione",

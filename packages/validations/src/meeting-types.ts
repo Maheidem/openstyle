@@ -56,6 +56,10 @@ export interface MeetingDetail extends MeetingListItem {
    * transcript-integrity banner (§6 constraint 3). */
   job_error: string | null;
   segment_counts: { total: number; failed: number };
+  /** `systemSamples / micSamples` from `sync.json` when it is outside
+   * 0.95..1.05 (issue #170), else null. A value means that one track ran at
+   * the wrong speed, so the transcript can be wrong. */
+  track_ratio_warning: number | null;
   summary: {
     markdown: string | null;
     llm_provider: string | null;

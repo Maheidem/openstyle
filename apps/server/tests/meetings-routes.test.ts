@@ -4093,3 +4093,48 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     expect(startCalls).toHaveLength(1);
   });
 });
+
+describe("GET /api/meetings/:id — track ratio guard (issue #170)", () => {
+  function meetingWithCounts(
+    id: string,
+    status: string,
+    micSeconds: number,
+    systemSeconds: number,
+  ): void {
+    const dir = mkdtempSync(join(tmpdir(), "meeting-ratio-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(
+      join(dir, "sync.json"),
+      JSON.stringify({
+        meetingId: id,
+        sampleRate: SAMPLE_RATE,
+        micSamples: Math.round(micSeconds * SAMPLE_RATE),
+        systemSamples: Math.round(systemSeconds * SAMPLE_RATE),
+      }),
+    );
+    insertMeeting(id, status, dir);
+  }
+
+  it("returns the ratio when the system track is 1/3 of the mic track", async () => {
+    meetingWithCounts("ratio-bad", "recorded", 2329.8, 776.6);
+    const body = await getMeeting("ratio-bad");
+    expect(body.track_ratio_warning).toBeCloseTo(0.3333, 3);
+  });
+
+  it("returns null when both tracks have the same length", async () => {
+    meetingWithCounts("ratio-ok", "recorded", 600, 600);
+    expect((await getMeeting("ratio-ok")).track_ratio_warning).toBeNull();
+  });
+
+  it("returns null while the meeting still records", async () => {
+    meetingWithCounts("ratio-live", "recording", 600, 200);
+    expect((await getMeeting("ratio-live")).track_ratio_warning).toBeNull();
+  });
+
+  it("returns null when sync.json is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "meeting-ratio-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    insertMeeting("ratio-nofile", "recorded", dir);
+    expect((await getMeeting("ratio-nofile")).track_ratio_warning).toBeNull();
+  });
+});

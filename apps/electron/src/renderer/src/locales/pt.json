@@ -864,6 +864,7 @@
     "cancellingSummarize": "A cancelar…",
     "summarizeCancelled": "Resumo cancelado — a transcrição ficou intacta.",
     "cancelledKeptTranscript": "Cancelado — a transcrição parcial foi mantida ({{n}} de {{total}} segmentos transcritos)",
+    "trackRatioWarning": "A faixa de áudio do sistema tem {{percent}}% da duração da faixa do microfone. As duas faixas devem ter a mesma duração. Uma faixa foi gravada na velocidade errada, então a transcrição pode estar errada. Um headset Bluetooth no modo de chamada pode causar isso.",
     "copyTranscript": "Copiar transcrição",
     "copySummary": "Copiar resumo",
     "tabTranscript": "Transcrição",

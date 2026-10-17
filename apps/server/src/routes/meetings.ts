@@ -18,6 +18,7 @@ import {
   MIC_WAV,
   SYNC_JSON,
   SYSTEM_WAV,
+  trackRatioWarning,
 } from "@openstyle/validations";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -230,6 +231,30 @@ function loadSyncData(audioDir: string): SyncData | undefined {
     return sync;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Issue #170 guard: `systemSamples / micSamples` from `sync.json` when it is
+ * outside 0.95..1.05, else null. A recording that runs, a missing file or a
+ * broken file gives null. The recorder writes the final counts at stop.
+ */
+function loadTrackRatioWarning(row: {
+  status: string;
+  audio_dir: string | null;
+}): number | null {
+  if (!row.audio_dir || row.status === "recording") return null;
+  try {
+    const j = JSON.parse(
+      readFileSync(join(row.audio_dir, SYNC_JSON), "utf8"),
+    ) as {
+      micSamples?: unknown;
+      systemSamples?: unknown;
+      sampleRate?: unknown;
+    };
+    return trackRatioWarning(j.micSamples, j.systemSamples, j.sampleRate);
+  } catch {
+    return null;
   }
 }
 
@@ -2249,6 +2274,7 @@ const meetings = new Hono()
        * on purpose. See `job-registry.ts`. */
       job_error: getJobFailure(id) ?? null,
       segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
+      track_ratio_warning: loadTrackRatioWarning(row),
       summary: summary ?? null,
     } satisfies MeetingDetail);
   })

@@ -865,6 +865,7 @@
     "cancellingSummarize": "Cancelando…",
     "summarizeCancelled": "Resumen cancelado: la transcripción no se ha modificado.",
     "cancelledKeptTranscript": "Cancelado: se conservó la transcripción parcial ({{n}} de {{total}} segmentos transcritos)",
+    "trackRatioWarning": "La pista de audio del sistema tiene el {{percent}} % de la duración de la pista del micrófono. Las dos pistas deben durar lo mismo. Una pista se grabó a una velocidad incorrecta, por lo que la transcripción puede ser incorrecta. Un auricular Bluetooth en modo de llamada puede causar esto.",
     "copyTranscript": "Copiar transcripción",
     "copySummary": "Copiar resumen",
     "tabTranscript": "Transcripción",
