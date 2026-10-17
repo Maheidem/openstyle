@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { SYSTEM_REPAIR_TMP } from "@openstyle/validations";
 import {
   afterAll,
   afterEach,
@@ -2983,6 +2984,8 @@ describe("meeting audio retention sweep", () => {
     const oldDir = makeMeetingDir("old");
     // Kept by an issue #170 track repair. It is audio too.
     writeFileSync(join(oldDir, "system.original.wav"), buildWav(100, 50));
+    // Left by a track repair that stopped half way.
+    writeFileSync(join(oldDir, SYSTEM_REPAIR_TMP), buildWav(100, 50));
     const freshDir = makeMeetingDir("fresh");
     insertMeeting("old", "summarized", oldDir, Date.now() - 40 * DAY_MS);
     insertMeeting("fresh", "recorded", freshDir, Date.now() - 1 * DAY_MS);
@@ -2992,6 +2995,7 @@ describe("meeting audio retention sweep", () => {
     expect(existsSync(join(oldDir, "mic.wav"))).toBe(false);
     expect(existsSync(join(oldDir, "system.wav"))).toBe(false);
     expect(existsSync(join(oldDir, "system.original.wav"))).toBe(false);
+    expect(existsSync(join(oldDir, SYSTEM_REPAIR_TMP))).toBe(false);
     expect(existsSync(join(freshDir, "mic.wav"))).toBe(true);
 
     const oldRow = await getMeeting("old");

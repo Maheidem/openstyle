@@ -865,7 +865,7 @@
     "cancellingSummarize": "Annulation…",
     "summarizeCancelled": "Résumé annulé — la transcription est inchangée.",
     "cancelledKeptTranscript": "Annulé — transcription partielle conservée ({{n}} sur {{total}} segments transcrits)",
-    "trackRatioWarning": "La piste audio système a {{percent}} % de la durée de la piste du micro. Les deux pistes doivent avoir la même durée. Une piste a tourné à la mauvaise vitesse, la transcription peut donc être fausse. Un casque Bluetooth en mode appel peut en être la cause.",
+    "trackRatioWarning": "La piste audio système a {{percent}} % de la durée de la piste du micro. Les deux pistes devraient avoir la même durée. L'audio système peut être lu à la mauvaise vitesse, et la transcription peut être fausse.",
     "trackRepaired": "Openstyle a corrigé la vitesse de la piste audio système. Elle a été enregistrée à {{recorded}} kHz, mais lue comme {{read}} kHz. La qualité sonore de cette piste peut être plus faible, car l'ancienne conversion n'a gardé que le son en dessous d'environ {{bandwidth}} kHz.",
     "trackRepairPending": "La piste audio système a été enregistrée à {{recorded}} kHz, mais lue comme {{read}} kHz : sa vitesse est donc fausse. Openstyle la corrige lors de la transcription de la réunion. La qualité sonore de cette piste peut être plus faible, car l'ancienne conversion n'a gardé que le son en dessous d'environ {{bandwidth}} kHz.",
     "copyTranscript": "Copier la transcription",

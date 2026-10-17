@@ -1,13 +1,16 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SYSTEM_REPAIR_TMP } from "@openstyle/validations";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createResampler } from "../src/lib/audio/resample.js";
 import {
@@ -317,7 +320,7 @@ describe("repairSystemTrack", () => {
       readFileSync(join(dir, "system.original.wav")).equals(originalBytes),
     ).toBe(true);
     expect(readFileSync(join(dir, "sync.json"), "utf8")).toBe(syncText);
-    expect(existsSync(join(dir, "system.wav.repair-tmp"))).toBe(false);
+    expect(existsSync(join(dir, SYSTEM_REPAIR_TMP))).toBe(false);
   });
 
   it("repairs 44.1 kHz read as 48 kHz", () => {
@@ -356,6 +359,26 @@ describe("repairSystemTrack", () => {
     expect(Math.abs(systemMs - micMs) / micMs).toBeLessThan(0.005);
   });
 
+  it("deletes a stale temp file at the start of a repair", () => {
+    const dir = tempDir();
+    writeSqueezedMeeting(dir, {
+      seconds: 70,
+      actualRate: 16000,
+      assumedRate: 48000,
+    });
+    // An earlier repair stopped half way and left a partial temp file. It is
+    // read-only, so a write to the same path would fail.
+    const stale = join(dir, SYSTEM_REPAIR_TMP);
+    writeFileSync(stale, Buffer.alloc(4096, 7));
+    chmodSync(stale, 0o444);
+
+    expect(repairSystemTrack(dir)).not.toBeNull();
+    expect(existsSync(stale)).toBe(false);
+    const micMs = wavDurationMs(readWavInfo(join(dir, "mic.wav")));
+    const systemMs = wavDurationMs(readWavInfo(join(dir, "system.wav")));
+    expect(Math.abs(systemMs - micMs) / micMs).toBeLessThan(0.005);
+  });
+
   it("leaves the track as it was after a failure, shows the warning, and repairs on the next run", () => {
     const dir = tempDir();
     writeSqueezedMeeting(dir, {
@@ -365,7 +388,7 @@ describe("repairSystemTrack", () => {
     });
     const before = readFileSync(join(dir, "system.wav"));
     // A directory in the place of the temp file makes the write fail.
-    mkdirSync(join(dir, "system.wav.repair-tmp"));
+    mkdirSync(join(dir, SYSTEM_REPAIR_TMP));
 
     expect(() => repairSystemTrack(dir)).toThrow();
     expect(readFileSync(join(dir, "system.wav")).equals(before)).toBe(true);
@@ -376,7 +399,7 @@ describe("repairSystemTrack", () => {
     expect(state.repair).toBeNull();
     expect(state.ratioWarning).toBeCloseTo(1 / 3, 3);
 
-    rmSync(join(dir, "system.wav.repair-tmp"), { recursive: true });
+    rmSync(join(dir, SYSTEM_REPAIR_TMP), { recursive: true });
     expect(repairSystemTrack(dir)).not.toBeNull();
     const fixed = readJournal(dir);
     expect(fixed.repairError).toBeUndefined();

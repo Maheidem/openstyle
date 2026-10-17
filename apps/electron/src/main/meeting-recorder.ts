@@ -876,7 +876,7 @@ function logTrackRatio(journal: SyncJournal): void {
   log.warn(
     `Track length check failed for ${journal.meetingId}: system/mic = ${ratio.toFixed(3)} ` +
       `(allowed ${TRACK_RATIO_MIN}-${TRACK_RATIO_MAX}; mic ${journal.micSamples}, ` +
-      `system ${journal.systemSamples} samples). One track ran at the wrong speed.`,
+      `system ${journal.systemSamples} samples). The two tracks should have the same length.`,
   );
 }
 

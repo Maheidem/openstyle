@@ -1029,7 +1029,7 @@
     "cancellingEnhance": "Cancelling…",
     "summarizeCancelled": "Summary cancelled — your transcript is unchanged.",
     "cancelledKeptTranscript": "Cancelled — partial transcript kept ({{n}} of {{total}} segments transcribed)",
-    "trackRatioWarning": "The system audio track has {{percent}}% of the length of the microphone track. The two tracks must have the same length. One track ran at the wrong speed, so the transcript can be wrong. A Bluetooth headset in call mode can cause this.",
+    "trackRatioWarning": "The system audio track has {{percent}}% of the length of the microphone track. The two tracks should have the same length. The system audio can play at the wrong speed, and the transcript can be wrong.",
     "trackRepaired": "Openstyle corrected the speed of the system audio track. It was recorded at {{recorded}} kHz but read as {{read}} kHz. The sound quality of this track can be lower, because the old conversion kept only the audio below about {{bandwidth}} kHz.",
     "trackRepairPending": "The system audio track was recorded at {{recorded}} kHz but read as {{read}} kHz, so it has the wrong speed. Openstyle corrects it when it transcribes the meeting. The sound quality of this track can be lower, because the old conversion kept only the audio below about {{bandwidth}} kHz.",
     "copyTranscript": "Copy transcript",

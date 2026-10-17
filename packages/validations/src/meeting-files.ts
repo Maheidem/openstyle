@@ -20,14 +20,20 @@ export const SYSTEM_WAV = "system.wav";
  */
 export const SYSTEM_ORIGINAL_WAV = "system.original.wav";
 
+/**
+ * Temp file of the track repair. The server writes the new system track
+ * here, then renames it to `system.wav`. A repair that stops half way can
+ * leave it behind. The next repair and the audio retention sweep delete it.
+ */
+export const SYSTEM_REPAIR_TMP = "system.wav.repair-tmp";
+
 /** Clock-drift journal written by the recorder. Imported meetings do not have it. */
 export const SYNC_JSON = "sync.json";
 
 /**
- * The system track must have about as many samples as the mic track. Both
- * channels come from one clock, so a ratio outside this band means that one
- * channel ran at the wrong speed (issue #170: a 16 kHz Bluetooth call-mode
- * stream converted as 48 kHz gave 0.333).
+ * The system track and the mic track must have the same length. The app
+ * measures the ratio `systemSamples / micSamples` only, and it cannot know
+ * the cause of a ratio outside this band. Issue #170 had a ratio of 0.333.
  */
 export const TRACK_RATIO_MIN = 0.95;
 export const TRACK_RATIO_MAX = 1.05;

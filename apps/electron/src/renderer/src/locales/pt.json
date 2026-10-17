@@ -864,7 +864,7 @@
     "cancellingSummarize": "A cancelar…",
     "summarizeCancelled": "Resumo cancelado — a transcrição ficou intacta.",
     "cancelledKeptTranscript": "Cancelado — a transcrição parcial foi mantida ({{n}} de {{total}} segmentos transcritos)",
-    "trackRatioWarning": "A faixa de áudio do sistema tem {{percent}}% da duração da faixa do microfone. As duas faixas devem ter a mesma duração. Uma faixa foi gravada na velocidade errada, então a transcrição pode estar errada. Um headset Bluetooth no modo de chamada pode causar isso.",
+    "trackRatioWarning": "A faixa de áudio do sistema tem {{percent}}% da duração da faixa do microfone. As duas faixas devem ter a mesma duração. O áudio do sistema pode tocar na velocidade errada, e a transcrição pode estar errada.",
     "trackRepaired": "O Openstyle corrigiu a velocidade da faixa de áudio do sistema. Ela foi gravada a {{recorded}} kHz, mas lida como {{read}} kHz. A qualidade do som desta faixa pode ser menor, porque a conversão antiga manteve só o áudio abaixo de cerca de {{bandwidth}} kHz.",
     "trackRepairPending": "A faixa de áudio do sistema foi gravada a {{recorded}} kHz, mas lida como {{read}} kHz, por isso está na velocidade errada. O Openstyle corrige isso quando transcreve a reunião. A qualidade do som desta faixa pode ser menor, porque a conversão antiga manteve só o áudio abaixo de cerca de {{bandwidth}} kHz.",
     "copyTranscript": "Copiar transcrição",

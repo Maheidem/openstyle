@@ -865,7 +865,7 @@
     "cancellingSummarize": "Wird abgebrochen…",
     "summarizeCancelled": "Zusammenfassung abgebrochen — das Transkript bleibt unverändert.",
     "cancelledKeptTranscript": "Abgebrochen — das Teiltranskript bleibt erhalten ({{n}} von {{total}} Segmenten transkribiert)",
-    "trackRatioWarning": "Die Systemaudio-Spur hat {{percent}} % der Länge der Mikrofonspur. Beide Spuren müssen gleich lang sein. Eine Spur lief mit falscher Geschwindigkeit, daher kann das Transkript falsch sein. Ein Bluetooth-Headset im Anrufmodus kann die Ursache sein.",
+    "trackRatioWarning": "Die Systemaudio-Spur hat {{percent}} % der Länge der Mikrofonspur. Beide Spuren sollten gleich lang sein. Das Systemaudio kann mit falscher Geschwindigkeit abgespielt werden, und das Transkript kann falsch sein.",
     "trackRepaired": "Openstyle hat die Geschwindigkeit der Systemaudio-Spur korrigiert. Sie wurde mit {{recorded}} kHz aufgenommen, aber als {{read}} kHz gelesen. Die Tonqualität dieser Spur kann geringer sein, weil die alte Umwandlung nur den Ton unter etwa {{bandwidth}} kHz behalten hat.",
     "trackRepairPending": "Die Systemaudio-Spur wurde mit {{recorded}} kHz aufgenommen, aber als {{read}} kHz gelesen, daher hat sie die falsche Geschwindigkeit. Openstyle korrigiert sie, wenn es das Meeting transkribiert. Die Tonqualität dieser Spur kann geringer sein, weil die alte Umwandlung nur den Ton unter etwa {{bandwidth}} kHz behalten hat.",
     "copyTranscript": "Transkript kopieren",

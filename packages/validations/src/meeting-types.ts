@@ -57,9 +57,9 @@ export interface MeetingDetail extends MeetingListItem {
   job_error: string | null;
   segment_counts: { total: number; failed: number };
   /** `systemSamples / micSamples` from `sync.json` when it is outside
-   * 0.95..1.05 (issue #170) and the server cannot repair it, else null. A
-   * value means that one track ran at the wrong speed, so the transcript can
-   * be wrong. */
+   * 0.95..1.05 (issue #170) and the server cannot repair it, else null. The
+   * two tracks should have the same length. With a value, the system audio
+   * can play at the wrong speed and the transcript can be wrong. */
   track_ratio_warning: number | null;
   /** Issue #170: the system track has a known sample-rate mismatch. It was
    * recorded at `toRate` Hz but read as `fromRate` Hz. `repaired` is true

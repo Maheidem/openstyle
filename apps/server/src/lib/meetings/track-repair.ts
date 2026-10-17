@@ -35,6 +35,7 @@ import { join } from "node:path";
 import {
   SYNC_JSON,
   SYSTEM_ORIGINAL_WAV,
+  SYSTEM_REPAIR_TMP,
   SYSTEM_WAV,
   trackRatioWarning,
 } from "@openstyle/validations";
@@ -250,6 +251,14 @@ export function repairSystemTrack(audioDir: string): TrackRepair | null {
 
   const systemPath = join(audioDir, SYSTEM_WAV);
   const originalPath = join(audioDir, SYSTEM_ORIGINAL_WAV);
+  const tempPath = join(audioDir, SYSTEM_REPAIR_TMP);
+  // An earlier repair that stopped half way can leave the temp file. It is
+  // not a source of audio, so delete it before this repair starts.
+  try {
+    unlinkSync(tempPath);
+  } catch {
+    // Not there.
+  }
   const sourcePath = existsSync(originalPath) ? originalPath : systemPath;
   let info: ReturnType<typeof readWavInfo>;
   try {
@@ -271,7 +280,6 @@ export function repairSystemTrack(audioDir: string): TrackRepair | null {
 
   // Output = input × fromRate / toRate: 48000 -> 16000 makes it 3 times longer.
   const resampler = createResampler(source.pcm, plan.fromRate, plan.toRate);
-  const tempPath = join(audioDir, `${SYSTEM_WAV}.repair-tmp`);
   const tempSync = `${syncPath}.repair-tmp`;
   let replaced = false;
   try {

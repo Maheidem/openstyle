@@ -730,11 +730,13 @@ export function MeetingDetailView({
         )}
 
       {/* Issue #170: the server compares the sample counts of the two tracks
-          in sync.json. A ratio outside 0.95..1.05 means one track ran at the
-          wrong speed, so the transcript can be wrong. When the ratio is a
-          known sample-rate mismatch, the server repairs the system track at
-          the start of a transcription, and the page shows a note instead. */}
-      {meeting.track_ratio_warning !== null && (
+          in sync.json. The two tracks should have the same length. With a
+          ratio outside 0.95..1.05, the system audio can play at the wrong
+          speed and the transcript can be wrong. When the ratio is a known
+          sample-rate mismatch, the server repairs the system track at the
+          start of a transcription, and the page shows a note instead. The
+          field can be undefined (a server without it), so test the type. */}
+      {typeof meeting.track_ratio_warning === "number" && (
         <InlineNotice tone="destructive" icon={AlertTriangle}>
           <span data-testid="meeting-track-ratio-warning">
             {t("meetings.trackRatioWarning", {
