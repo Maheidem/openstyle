@@ -20,13 +20,14 @@
  * path when this one fails to start.
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   createFrameParser,
   type MeetingCaptureChannel,
   parseSyncFields,
 } from "./meeting-capture-protocol";
+import { type DeviceSnapshot, parseDeviceSnapshot } from "./meeting-devices";
 import { getNativeBinaryPath } from "./native-binary";
 import {
   isSystemAudioCaptureSupported,
@@ -37,14 +38,19 @@ const log = createAppLogger("meeting-capture");
 
 /** Grace period between SIGTERM and SIGKILL when stopping the helper. */
 const KILL_GRACE_MS = 3000;
+/** The device list reads properties only. It must not delay a start. */
+const LIST_TIMEOUT_MS = 3000;
+
+/** The mic that the helper opens. */
+export type MicRequest = { uid: string } | { name: string } | null;
 
 interface MeetingCaptureHelperOptions {
   /**
-   * Core Audio device name of the mic, or null for the default input. When
-   * the name matches no single device, the helper prints ERR_MIC_NOT_FOUND
-   * and exits. It never uses another mic in silence.
+   * The Core Audio UID or device name of the mic, or null for the default
+   * input. When no single device matches, the helper prints
+   * ERR_MIC_NOT_FOUND and exits. It never uses another mic in silence.
    */
-  micName: string | null;
+  mic: MicRequest;
   /** One decoded frame: PCM16 (16 kHz mono) for one channel. */
   onFrame: (channel: MeetingCaptureChannel, pcm: Buffer) => void;
   onReady?: () => void;
@@ -88,9 +94,12 @@ export class MeetingCaptureHelper {
       return false;
     }
 
-    const args = this.options.micName
-      ? ["--mic-name", this.options.micName]
-      : ["--mic", "default"];
+    const mic = this.options.mic;
+    const args = !mic
+      ? ["--mic", "default"]
+      : "uid" in mic
+        ? ["--mic-uid", mic.uid]
+        : ["--mic-name", mic.name];
 
     try {
       this.process = spawn(binaryPath, args, {
@@ -229,4 +238,30 @@ export class MeetingCaptureHelper {
     // Do not keep the app alive only to send the SIGKILL.
     this.killTimer.unref?.();
   }
+}
+
+/**
+ * List the audio devices with `macos-meeting-capture --list-devices`. The
+ * helper reads Core Audio properties only and starts no IO, so the mic stays
+ * closed. Return null when the helper is missing, fails or prints a bad line.
+ */
+export function listAudioDevices(): Promise<DeviceSnapshot | null> {
+  if (!isSystemAudioCaptureSupported()) return Promise.resolve(null);
+  const binaryPath = getNativeBinaryPath("macos-meeting-capture");
+  if (!binaryPath) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile(
+      binaryPath,
+      ["--list-devices"],
+      { timeout: LIST_TIMEOUT_MS },
+      (err, stdout) => {
+        if (err) {
+          log.warn(`Audio device list failed: ${errorMessage(err)}`);
+          resolve(null);
+          return;
+        }
+        resolve(parseDeviceSnapshot(stdout.trim()));
+      },
+    );
+  });
 }

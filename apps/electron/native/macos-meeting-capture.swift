@@ -16,6 +16,14 @@
  *                           "(...)" tags like "(Built-in)". If no single
  *                           device matches, print ERR_MIC_NOT_FOUND and exit.
  *                           The helper never uses another mic in silence.
+ *   --mic-uid "<uid>"       use the input device with this Core Audio UID.
+ *                           If it is not there, print ERR_MIC_NOT_FOUND and
+ *                           exit.
+ *   --list-devices          print one JSON line on stdout and exit. The line
+ *                           holds the default input, the default output and
+ *                           all input and output devices (uid, name and
+ *                           transport type). This mode opens no audio IO.
+ *                           On a failure it prints ERR_LIST and exits 2.
  *
  * stdout: binary frames. Each frame is:
  *   1 byte   channel: 'M' = mic, 'S' = system audio
@@ -341,10 +349,11 @@ func allDeviceIDs() -> [AudioObjectID] {
 }
 
 func inputStreamIDs(_ device: AudioObjectID) -> [AudioStreamID] {
-    var address = propertyAddress(
-        kAudioDevicePropertyStreams,
-        scope: kAudioObjectPropertyScopeInput
-    )
+    streamIDs(device, scope: kAudioObjectPropertyScopeInput)
+}
+
+func streamIDs(_ device: AudioObjectID, scope: AudioObjectPropertyScope) -> [AudioStreamID] {
+    var address = propertyAddress(kAudioDevicePropertyStreams, scope: scope)
     var size: UInt32 = 0
     guard
         AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr,
@@ -374,7 +383,11 @@ func inputStreamFormats(_ device: AudioObjectID) -> [AudioStreamBasicDescription
 }
 
 func defaultInputDevice() -> AudioObjectID {
-    var address = propertyAddress(kAudioHardwarePropertyDefaultInputDevice)
+    defaultDevice(kAudioHardwarePropertyDefaultInputDevice)
+}
+
+func defaultDevice(_ selector: AudioObjectPropertySelector) -> AudioObjectID {
+    var address = propertyAddress(selector)
     var device = AudioObjectID(kAudioObjectUnknown)
     var size = UInt32(MemoryLayout<AudioObjectID>.size)
     guard AudioObjectGetPropertyData(systemObject, &address, 0, nil, &size, &device) == noErr
@@ -459,38 +472,104 @@ func chooseMic(name: String?) -> MicChoice? {
     return matches[0]
 }
 
+/// The transport type as a four-character code, for example "blue" for
+/// kAudioDeviceTransportTypeBluetooth (AudioHardwareBase.h).
+func transportCode(_ device: AudioObjectID) -> String {
+    var address = propertyAddress(kAudioDevicePropertyTransportType)
+    var value: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr,
+        value != 0
+    else { return "" }
+    let bytes = [24, 16, 8, 0].map { UInt8((value >> UInt32($0)) & 0xFF) }
+    return String(decoding: bytes, as: UTF8.self)
+}
+
+/// Prints the device list as one JSON line on stdout. It reads properties
+/// only. It starts no IO, so it does not use the microphone.
+func listDevices() {
+    func entry(_ device: AudioObjectID) -> [String: String]? {
+        guard let uid = stringProperty(device, kAudioDevicePropertyDeviceUID) else { return nil }
+        let name = stringProperty(device, kAudioObjectPropertyName) ?? uid
+        return ["uid": uid, "name": name, "transport": transportCode(device)]
+    }
+    func uid(_ device: AudioObjectID) -> Any {
+        guard device != AudioObjectID(kAudioObjectUnknown) else { return NSNull() }
+        return stringProperty(device, kAudioDevicePropertyDeviceUID) ?? NSNull()
+    }
+    let devices = allDeviceIDs()
+    let result: [String: Any] = [
+        "defaultInput": uid(defaultDevice(kAudioHardwarePropertyDefaultInputDevice)),
+        "defaultOutput": uid(defaultDevice(kAudioHardwarePropertyDefaultOutputDevice)),
+        "inputs": devices.filter { !inputStreamIDs($0).isEmpty }.compactMap(entry),
+        "outputs": devices.filter {
+            !streamIDs($0, scope: kAudioObjectPropertyScopeOutput).isEmpty
+        }.compactMap(entry),
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: result) else {
+        emitError("ERR_LIST")
+        exit(2)
+    }
+    FileHandle.standardOutput.write(data)
+    FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+}
+
+/// The input device with this UID. No such input prints ERR_MIC_NOT_FOUND
+/// and exits.
+func chooseMic(uid: String) -> MicChoice {
+    guard let choice = micChoice(for: deviceForUID(uid)) else {
+        emitError("ERR_MIC_NOT_FOUND \(uid.replacingOccurrences(of: "\n", with: " "))")
+        exit(2)
+    }
+    return choice
+}
+
 // MARK: - Arguments
 
-/// Returns the wanted mic name, or nil for the default input.
-func parseArguments() -> String? {
+enum MicRequest {
+    case systemDefault
+    case name(String)
+    case uid(String)
+    case listDevices
+}
+
+/// Returns the wanted mic, or the list mode.
+func parseArguments() -> MicRequest {
     var args = Array(CommandLine.arguments.dropFirst())
-    var name: String?
+    var request = MicRequest.systemDefault
+    func value() -> String {
+        guard !args.isEmpty else {
+            emitError("ERR_ARGS")
+            exit(64)
+        }
+        let next = args.removeFirst()
+        guard !next.isEmpty else {
+            emitError("ERR_ARGS")
+            exit(64)
+        }
+        return next
+    }
     while !args.isEmpty {
         let arg = args.removeFirst()
         switch arg {
         case "--mic":
-            guard !args.isEmpty, args.removeFirst() == "default" else {
+            guard value() == "default" else {
                 emitError("ERR_ARGS")
                 exit(64)
             }
         case "--mic-name":
-            guard !args.isEmpty else {
-                emitError("ERR_ARGS")
-                exit(64)
-            }
-            let value = args.removeFirst()
-            guard !value.isEmpty else {
-                emitError("ERR_ARGS")
-                exit(64)
-            }
-            name = value
+            request = .name(value())
+        case "--mic-uid":
+            request = .uid(value())
+        case "--list-devices":
+            request = .listDevices
         default:
             emitError("ERR_ARGS")
             exit(64)
         }
     }
     // No argument at all also means the default input.
-    return name
+    return request
 }
 
 // MARK: - Cleanup
@@ -822,9 +901,22 @@ func watchMic(_ device: AudioObjectID) {
 
 setupSignalHandlers()
 
-let wantedMicName = parseArguments()
+let micRequest = parseArguments()
 
-guard let mic = chooseMic(name: wantedMicName) else {
+let chosenMic: MicChoice?
+switch micRequest {
+case .listDevices:
+    listDevices()
+    exit(0)
+case .systemDefault:
+    chosenMic = chooseMic(name: nil)
+case .name(let name):
+    chosenMic = chooseMic(name: name)
+case .uid(let uid):
+    chosenMic = chooseMic(uid: uid)
+}
+
+guard let mic = chosenMic else {
     emitError("ERR_MIC_NOT_AVAILABLE")
     exit(2)
 }

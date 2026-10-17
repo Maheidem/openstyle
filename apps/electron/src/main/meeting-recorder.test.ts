@@ -7,6 +7,7 @@ import type { MeetingRecorderDeps } from "./meeting-recorder";
 
 /** The options that the recorder passes to the native helper. */
 interface FakeHelperOptions {
+  mic: { uid: string } | { name: string } | null;
   onFrame: (channel: "M" | "S", pcm: Buffer) => void;
   onReady?: () => void;
   onError?: (error: string) => void;
@@ -59,7 +60,9 @@ vi.mock("./system-audio-capture", () => ({
 }));
 
 // Import after the mocks, so the recorder gets the fakes.
-const { MeetingRecorder } = await import("./meeting-recorder");
+const { MeetingRecorder, MeetingDevicesChangedError } = await import(
+  "./meeting-recorder"
+);
 
 /** 100 ms of silence: 16 kHz mono PCM16. */
 const FRAME = Buffer.alloc(3200);
@@ -77,6 +80,7 @@ function createRecorder(
   extra: {
     serverFetch?: MeetingRecorderDeps["serverFetch"];
     findCurrentEvent?: MeetingRecorderDeps["findCurrentEvent"];
+    listAudioDevices?: MeetingRecorderDeps["listAudioDevices"];
   } = {},
 ) {
   const createCaptureWindow = vi.fn(fakeCaptureWindow);
@@ -86,6 +90,7 @@ function createRecorder(
     createCaptureWindow:
       createCaptureWindow as unknown as MeetingRecorderDeps["createCaptureWindow"],
     resolveMicLabel: async () => null,
+    listAudioDevices: extra.listAudioDevices ?? (async () => null),
     broadcastLevel: vi.fn(),
     broadcastStatus: vi.fn(),
   });
@@ -274,6 +279,122 @@ describe("MeetingRecorder calendar link", () => {
     await started;
     expect("calendar" in startBody(calls)).toBe(false);
     expect(recorder.status).toBe("recording");
+    await recorder.stop();
+  });
+});
+
+describe("MeetingRecorder audio devices (#169)", () => {
+  const yeti = { uid: "usb-yeti", name: "Yeti", transport: "usb " };
+  const sonyIn = { uid: "58-18:input", name: "WH-1000XM6", transport: "blue" };
+  const sonyOut = {
+    uid: "58-18:output",
+    name: "WH-1000XM6",
+    transport: "blue",
+  };
+  const speakers = { uid: "spk", name: "Speakers", transport: "bltn" };
+  /** macOS made the headset mic the default after the output went to it. */
+  const transient = {
+    defaultInput: sonyIn.uid,
+    defaultOutput: sonyOut.uid,
+    inputs: [yeti, sonyIn],
+    outputs: [speakers, sonyOut],
+  };
+
+  beforeEach(() => {
+    mocks.userData = mkdtempSync(join(tmpdir(), "openstyle-recorder-test-"));
+    mocks.helpers.length = 0;
+    mocks.systemCaptures.length = 0;
+  });
+
+  afterEach(() => {
+    rmSync(mocks.userData, { recursive: true, force: true });
+  });
+
+  /** A server fake that keeps settings in a map. */
+  function settingsFetch(settings: Map<string, string>) {
+    return async (path: string, init?: RequestInit) => {
+      const key = path.startsWith("/settings/") ? path.slice(10) : null;
+      if (key && init?.method === "PUT") {
+        settings.set(key, JSON.parse(init.body as string).value);
+      }
+      if (key && settings.has(key)) {
+        return new Response(JSON.stringify({ value: settings.get(key) }));
+      }
+      return new Response("{}");
+    };
+  }
+
+  const lastMeetingWith = (output: { uid: string; name: string }) =>
+    JSON.stringify({
+      userDefaultInputUid: yeti.uid,
+      lastMeeting: { input: { uid: yeti.uid, name: yeti.name }, output },
+    });
+
+  it("opens the user's mic, not the transient headset mic", async () => {
+    const settings = new Map([
+      ["meeting_audio_devices", lastMeetingWith(sonyOut)],
+    ]);
+    const { recorder } = createRecorder({
+      serverFetch: settingsFetch(settings),
+      listAudioDevices: async () => transient,
+    });
+    const { started, helper } = await startWithHelper(recorder);
+    expect(helper.options.mic).toEqual({ uid: yeti.uid });
+    helper.options.onReady?.();
+    await started;
+    await recorder.stop();
+  });
+
+  it("refuses to start when the devices changed, then starts after the confirmation", async () => {
+    const settings = new Map([
+      ["meeting_audio_devices", lastMeetingWith(speakers)],
+    ]);
+    const { recorder } = createRecorder({
+      serverFetch: settingsFetch(settings),
+      listAudioDevices: async () => transient,
+    });
+
+    const error = await recorder.start().catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(MeetingDevicesChangedError);
+    const plan = (error as InstanceType<typeof MeetingDevicesChangedError>)
+      .plan;
+    expect(plan.input?.uid).toBe(yeti.uid);
+    expect(plan.output?.uid).toBe(sonyOut.uid);
+    expect(plan.skippedInput?.uid).toBe(sonyIn.uid);
+    expect(recorder.status).toBe("idle");
+    expect(mocks.helpers).toHaveLength(0);
+
+    const started = recorder.start({ input: yeti.uid, output: sonyOut.uid });
+    await vi.waitFor(() => expect(mocks.helpers).toHaveLength(1));
+    mocks.helpers[0].options.onReady?.();
+    await started;
+    await recorder.stop();
+    // The new devices are now the devices of the last meeting.
+    const stored = JSON.parse(settings.get("meeting_audio_devices") ?? "{}");
+    expect(stored.lastMeeting.output.uid).toBe(sonyOut.uid);
+  });
+
+  it("opens the replacement mic in the fallback window too", async () => {
+    const settings = new Map([
+      ["meeting_audio_devices", lastMeetingWith(sonyOut)],
+    ]);
+    const { recorder, createCaptureWindow } = createRecorder({
+      serverFetch: settingsFetch(settings),
+      listAudioDevices: async () => transient,
+    });
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onError?.("ERR_START -1");
+    await started;
+    await recorder.stop();
+    expect(createCaptureWindow).toHaveBeenCalledWith(yeti.name);
+  });
+
+  it("keeps the old path when the device list is not available", async () => {
+    const { recorder } = createRecorder();
+    const { started, helper } = await startWithHelper(recorder);
+    expect(helper.options.mic).toBeNull();
+    helper.options.onReady?.();
+    await started;
     await recorder.stop();
   });
 });

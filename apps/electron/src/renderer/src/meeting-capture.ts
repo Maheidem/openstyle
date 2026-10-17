@@ -15,8 +15,27 @@
 import { openMicStream } from "./lib/mic-stream";
 import { getPCMProcessorUrl } from "./lib/pcm-processor";
 
+/**
+ * The Chromium id of the mic with this Core Audio name, or null. Chromium
+ * can add a "Default - " prefix or a "(...)" tag to the name.
+ */
+async function deviceIdForLabel(label: string): Promise<string | null> {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const found = devices.find(
+    (d) =>
+      d.kind === "audioinput" &&
+      d.deviceId !== "default" &&
+      (d.label === label || d.label.startsWith(`${label} (`)),
+  );
+  return found?.deviceId ?? null;
+}
+
 async function startCapture(): Promise<void> {
-  const deviceId = new URLSearchParams(window.location.search).get("device");
+  const params = new URLSearchParams(window.location.search);
+  const label = params.get("label");
+  // A label replaces a transient Bluetooth default input (#169).
+  const deviceId =
+    (label ? await deviceIdForLabel(label) : null) ?? params.get("device");
 
   const stream = await openMicStream(deviceId);
 
