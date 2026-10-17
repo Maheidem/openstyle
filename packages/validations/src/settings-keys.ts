@@ -36,6 +36,12 @@ export const SETTINGS_KEYS = {
    */
   meetingAsrContext: "meeting_asr_context",
   /**
+   * Issue #169: JSON memory of the meeting audio devices. It holds the last
+   * macOS default input that was not a transient Bluetooth default, and the
+   * mic and output of the last recording. Main reads and writes it.
+   */
+  meetingAudioDevices: "meeting_audio_devices",
+  /**
    * Link meetings to calendar events (specs/calendar-eventkit.md). OFF by
    * default (owner decision): only the value `"true"` turns it on. While it
    * is off, nothing reads the calendar.

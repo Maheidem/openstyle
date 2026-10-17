@@ -319,6 +319,9 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
           job: null,
           job_error: null,
           segment_counts: { total: 0, failed: 0 },
+          // An import has no mic track and no sync.json.
+          track_ratio_warning: null,
+          track_repair: null,
           summary: null,
         },
         201,

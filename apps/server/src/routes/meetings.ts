@@ -85,6 +85,10 @@ import {
   summarizeMeeting,
 } from "../lib/meetings/summarize.js";
 import {
+  repairSystemTrack,
+  trackRepairState,
+} from "../lib/meetings/track-repair.js";
+import {
   type ChunkResult,
   createDefaultTranscriberDeps,
   type MeetingSttModelOverride,
@@ -231,6 +235,33 @@ function loadSyncData(audioDir: string): SyncData | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Issue #170: what the meeting page shows for the two tracks, from
+ * `sync.json`. A repair (done, or to do at the next transcription) gives the
+ * info note. A bad ratio without a repair gives the warning. A recording
+ * that runs, a missing file or a broken file gives neither. The recorder
+ * writes the final counts at stop.
+ */
+function loadTrackState(row: {
+  status: string;
+  audio_dir: string | null;
+}): Pick<MeetingDetail, "track_ratio_warning" | "track_repair"> {
+  const none = { track_ratio_warning: null, track_repair: null };
+  if (!row.audio_dir || row.status === "recording") return none;
+  let journal: unknown;
+  try {
+    journal = JSON.parse(readFileSync(join(row.audio_dir, SYNC_JSON), "utf8"));
+  } catch {
+    return none;
+  }
+  if (journal === null || typeof journal !== "object") return none;
+  const state = trackRepairState(journal as Record<string, unknown>);
+  return {
+    track_ratio_warning: state.ratioWarning,
+    track_repair: state.repair,
+  };
 }
 
 interface SegmentRow {
@@ -816,6 +847,22 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     db.prepare(
       "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
     ).run(config.providerId, config.modelId, id);
+
+    // Issue #170: repair a system track with a known sample-rate mismatch
+    // before the diarizer and the segmenter read system.wav. A failure keeps
+    // the track as it was, and the meeting page shows the warning.
+    try {
+      const repair = repairSystemTrack(audioDir);
+      if (repair) {
+        log.info(
+          `meeting ${id}: repaired the system track (recorded at ${repair.toRate} Hz, read as ${repair.fromRate} Hz; original kept as system.original.wav)`,
+        );
+      }
+    } catch (err) {
+      log.warn(
+        `meeting ${id}: system track repair failed: ${errorMessage(err)}`,
+      );
+    }
 
     // I4: diarize BEFORE transcription, so the system track can be cut at
     // speaker changes. Active only when the setting is on (default-on per
@@ -2249,6 +2296,7 @@ const meetings = new Hono()
        * on purpose. See `job-registry.ts`. */
       job_error: getJobFailure(id) ?? null,
       segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
+      ...loadTrackState(row),
       summary: summary ?? null,
     } satisfies MeetingDetail);
   })

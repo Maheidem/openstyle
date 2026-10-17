@@ -394,6 +394,21 @@ Recommendation: do not move dictation capture (`lib/recorder.ts`,
 - **Device mapping by name** fails for two devices with the same name.
 - **Bluetooth mics** at 16 or 24 kHz in an aggregate device: drift
   compensation must hold for a 2-hour meeting (Unverified).
+  Seen on 2026-10-15 (issue #170): with a headset mic in call mode, the
+  system track had exactly 1/3 of the mic samples. The helper took the rate
+  of the tap stream (48 kHz) for buffers that ran at the device rate
+  (16 kHz). Fix: the helper converts both channels from the nominal rate of
+  the aggregate device, rebuilds the device when a rate or format changes,
+  and logs `FORMAT <device> <mic> <system>`. `macos-meeting-capture
+  --self-test` checks the conversion without audio (the macOS CI job runs
+  it). The meeting page warns when `systemSamples / micSamples` in
+  `sync.json` is outside 0.95 to 1.05. When that ratio is within 0.1 % of
+  a factor between two common rates (for example 16000/48000) and every
+  60 s SYNC interval shows the same factor, the server resamples
+  `system.wav` at the start of the transcription
+  (`apps/server/src/lib/meetings/track-repair.ts`). It keeps
+  `system.original.wav` and records the repair in `sync.json`. The page then
+  shows an info note.
 - **Device loss mid-meeting:** today Chromium ends the track. The helper
   must report it on stderr and the recorder must keep the system channel.
 

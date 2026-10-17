@@ -1,5 +1,13 @@
 import { Button } from "@renderer/components/ui/button";
 import { Card } from "@renderer/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
 import { Progress } from "@renderer/components/ui/progress";
 import { formatClockMs } from "@renderer/lib/format";
 import { queryKeys } from "@renderer/lib/query";
@@ -14,6 +22,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  type MeetingDevicePlan,
+  planKeys,
+} from "../../../../shared/meeting-devices";
 import type { RecorderStatus } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -86,12 +98,39 @@ export function useRecorder(): {
   start: () => Promise<void>;
   stop: () => Promise<void>;
   error: string | null;
+  /** The devices that the next recording uses (#169), or null. */
+  devices: MeetingDevicePlan | null;
+  /** Changed devices that wait for the user to confirm them. */
+  pendingDevices: MeetingDevicePlan | null;
+  confirmDevices: () => Promise<void>;
+  dismissDevices: () => void;
 } {
   const [status, setStatus] = useState<RecorderStatus>("idle");
   const [supported, setSupported] = useState(false);
   const [meetingId, setMeetingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [devices, setDevices] = useState<MeetingDevicePlan | null>(null);
+  const [pendingDevices, setPendingDevices] =
+    useState<MeetingDevicePlan | null>(null);
   const queryClient = useQueryClient();
+
+  // Show the devices before a recording starts. Read them again when the
+  // window gets focus, because the user can change them in macOS.
+  useEffect(() => {
+    if (!supported || status !== "idle") return;
+    let cancelled = false;
+    const load = (): void => {
+      void window.api?.getMeetingDevices?.().then((plan) => {
+        if (!cancelled) setDevices(plan ?? null);
+      });
+    };
+    load();
+    window.addEventListener("focus", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", load);
+    };
+  }, [supported, status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,24 +155,190 @@ export function useRecorder(): {
     };
   }, [queryClient]);
 
-  const start = useCallback(async () => {
-    setError(null);
-    const result = await window.api?.startMeetingRecording?.();
-    if (result?.ok) {
-      setMeetingId(result.id ?? null);
-      setStatus("recording");
-      void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
-    } else if (result?.error) {
-      setError(result.error);
-    }
-  }, [queryClient]);
+  const startWith = useCallback(
+    async (plan?: MeetingDevicePlan) => {
+      setError(null);
+      const result = await window.api?.startMeetingRecording?.(
+        plan ? planKeys(plan) : undefined,
+      );
+      if (result?.devices) {
+        // The devices changed since the last meeting. Ask first.
+        setDevices(result.devices);
+        setPendingDevices(result.devices);
+        return;
+      }
+      setPendingDevices(null);
+      if (result?.ok) {
+        setMeetingId(result.id ?? null);
+        setStatus("recording");
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.meetings.all,
+        });
+      } else if (result?.error) {
+        setError(result.error);
+      }
+    },
+    [queryClient],
+  );
+
+  const start = useCallback(() => startWith(), [startWith]);
+  const confirmDevices = useCallback(
+    () => (pendingDevices ? startWith(pendingDevices) : Promise.resolve()),
+    [pendingDevices, startWith],
+  );
+  const dismissDevices = useCallback(() => setPendingDevices(null), []);
 
   const stop = useCallback(async () => {
     await window.api?.stopMeetingRecording?.();
     void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
   }, [queryClient]);
 
-  return { status, supported, meetingId, start, stop, error };
+  return {
+    status,
+    supported,
+    meetingId,
+    start,
+    stop,
+    error,
+    devices,
+    pendingDevices,
+    confirmDevices,
+    dismissDevices,
+  };
+}
+
+/** The mic and output names of a plan, for the record card. */
+function DeviceSummary({
+  plan,
+  className,
+}: {
+  plan: MeetingDevicePlan;
+  className?: string;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const unknown = t("meetings.devicesUnknown");
+  return (
+    <div
+      className={cn(
+        "text-muted-foreground flex min-w-0 flex-col gap-0.5 text-[10.5px] leading-[1.4]",
+        className,
+      )}
+      data-testid="meeting-devices"
+    >
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Mic className="h-3 w-3 shrink-0" />
+        <span className="truncate">
+          {t("meetings.devicesMic", { name: plan.inputName ?? unknown })}
+        </span>
+      </span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <MonitorSpeaker className="h-3 w-3 shrink-0" />
+        <span className="truncate">
+          {t("meetings.devicesOutput", {
+            name: plan.output?.name ?? unknown,
+          })}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Ask the user to confirm the devices when they differ from the previous
+ * meeting (#169). Cancel starts nothing.
+ */
+function DeviceConfirmDialog({
+  recorder,
+}: {
+  recorder: ReturnType<typeof useRecorder>;
+}): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const plan = recorder.pendingDevices;
+  if (!plan) return null;
+  const unknown = t("meetings.devicesUnknown");
+  const rows: {
+    icon: React.ReactNode;
+    label: string;
+    now: string;
+    before: string;
+  }[] = [
+    {
+      icon: <Mic className="text-muted-foreground h-3.5 w-3.5 shrink-0" />,
+      label: t("meetings.micLevel"),
+      now: plan.inputName ?? unknown,
+      before: plan.previous?.input?.name ?? unknown,
+    },
+    {
+      icon: (
+        <MonitorSpeaker className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+      ),
+      label: t("meetings.devicesOutputLabel"),
+      now: plan.output?.name ?? unknown,
+      before: plan.previous?.output?.name ?? unknown,
+    },
+  ];
+  return (
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next && !busy) recorder.dismissDevices();
+      }}
+    >
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{t("meetings.devicesChangedTitle")}</DialogTitle>
+          <DialogDescription>
+            {t("meetings.devicesChangedDesc")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2.5 text-[12.5px]">
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-start gap-2.5">
+              <span className="mt-0.5">{row.icon}</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-foreground font-medium">
+                  {row.label}: {row.now}
+                </div>
+                {row.before !== row.now && (
+                  <div className="text-muted-foreground text-[11.5px]">
+                    {t("meetings.devicesPrevious", { name: row.before })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {plan.skippedInput && (
+            <p className="text-muted-foreground m-0 text-[11.5px] leading-[1.5]">
+              {t("meetings.devicesSkipped", { name: plan.skippedInput.name })}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => recorder.dismissDevices()}
+          >
+            {t("meetings.cancel")}
+          </Button>
+          <Button
+            variant="ink"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void recorder.confirmDevices().finally(() => setBusy(false));
+            }}
+          >
+            <Mic data-icon="inline-start" />
+            {t("meetings.devicesConfirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function LevelMeter({
@@ -234,6 +439,10 @@ export function RecordingCard({
             {t("meetings.notSupported")}
           </p>
         )}
+        {!finalizing && recorder.supported && recorder.devices && (
+          <DeviceSummary plan={recorder.devices} className="mt-1.5" />
+        )}
+        <DeviceConfirmDialog recorder={recorder} />
       </div>
     );
   }
@@ -281,6 +490,9 @@ export function RecordingCard({
                   {recorder.error}
                 </p>
               )}
+              {recorder.supported && recorder.devices && !finalizing && (
+                <DeviceSummary plan={recorder.devices} className="mt-1.5" />
+              )}
             </div>
           )}
         </div>
@@ -308,6 +520,7 @@ export function RecordingCard({
           </Button>
         )}
       </div>
+      <DeviceConfirmDialog recorder={recorder} />
     </Card>
   );
 }

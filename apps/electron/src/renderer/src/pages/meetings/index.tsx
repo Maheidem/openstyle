@@ -11,7 +11,7 @@ import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Navigate } from "react-router";
+import { Navigate, useSearchParams } from "react-router";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 import { MeetingDetailView } from "./detail";
 import { EnhancePromptDialog } from "./enhance-prompt-dialog";
@@ -37,6 +37,17 @@ export default function MeetingsPage(): React.JSX.Element {
   const { t, i18n } = useTranslation();
   const recorder = useRecorder();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // The tray opens `?confirmStart=1` when the devices changed since the
+  // last meeting (#169). Start here, so the confirm dialog shows.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const confirmStart = searchParams.get("confirmStart") === "1";
+  const { start: startRecording, supported, status } = recorder;
+  useEffect(() => {
+    if (!confirmStart || !supported || status !== "idle") return;
+    setSearchParams({}, { replace: true });
+    void startRecording();
+  }, [confirmStart, supported, status, setSearchParams, startRecording]);
 
   // Import affordance (specs/meeting-import.md §4.5), shared by both layouts
   // (only one renders at a time). On success the new meeting is selected —

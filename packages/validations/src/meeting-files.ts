@@ -13,5 +13,61 @@ export const MIC_WAV = "mic.wav";
 /** System audio channel ("Them"). Imported meetings have only this file. */
 export const SYSTEM_WAV = "system.wav";
 
+/**
+ * The system track as it was recorded, kept when the server repairs a
+ * sample-rate mismatch of `system.wav` (issue #170). The audio retention
+ * sweep deletes it with the other WAV files.
+ */
+export const SYSTEM_ORIGINAL_WAV = "system.original.wav";
+
+/**
+ * Temp file of the track repair. The server writes the new system track
+ * here, then renames it to `system.wav`. A repair that stops half way can
+ * leave it behind. The next repair and the audio retention sweep delete it.
+ */
+export const SYSTEM_REPAIR_TMP = "system.wav.repair-tmp";
+
 /** Clock-drift journal written by the recorder. Imported meetings do not have it. */
 export const SYNC_JSON = "sync.json";
+
+/**
+ * The system track and the mic track must have the same length. The app
+ * measures the ratio `systemSamples / micSamples` only, and it cannot know
+ * the cause of a ratio outside this band. Issue #170 had a ratio of 0.333.
+ */
+export const TRACK_RATIO_MIN = 0.95;
+export const TRACK_RATIO_MAX = 1.05;
+
+/** Shorter recordings are not checked. The start of each channel can vary. */
+const TRACK_RATIO_MIN_SECONDS = 30;
+
+/**
+ * Returns `systemSamples / micSamples` when the ratio is outside
+ * TRACK_RATIO_MIN..TRACK_RATIO_MAX. Returns null when the ratio is good, or
+ * when it cannot be checked: a count is missing or 0, or both tracks are
+ * shorter than 30 s. The values come from `sync.json`.
+ */
+export function trackRatioWarning(
+  micSamples: unknown,
+  systemSamples: unknown,
+  sampleRate: unknown,
+): number | null {
+  if (
+    typeof micSamples !== "number" ||
+    typeof systemSamples !== "number" ||
+    typeof sampleRate !== "number" ||
+    !(micSamples > 0) ||
+    !(systemSamples > 0) ||
+    !(sampleRate > 0)
+  ) {
+    return null;
+  }
+  if (
+    Math.max(micSamples, systemSamples) <
+    TRACK_RATIO_MIN_SECONDS * sampleRate
+  ) {
+    return null;
+  }
+  const ratio = systemSamples / micSamples;
+  return ratio < TRACK_RATIO_MIN || ratio > TRACK_RATIO_MAX ? ratio : null;
+}

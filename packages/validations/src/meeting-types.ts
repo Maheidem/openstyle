@@ -56,6 +56,17 @@ export interface MeetingDetail extends MeetingListItem {
    * transcript-integrity banner (§6 constraint 3). */
   job_error: string | null;
   segment_counts: { total: number; failed: number };
+  /** `systemSamples / micSamples` from `sync.json` when it is outside
+   * 0.95..1.05 (issue #170) and the server cannot repair it, else null. The
+   * two tracks should have the same length. With a value, the system audio
+   * can play at the wrong speed and the transcript can be wrong. */
+  track_ratio_warning: number | null;
+  /** Issue #170: the system track has a known sample-rate mismatch. It was
+   * recorded at `toRate` Hz but read as `fromRate` Hz. `repaired` is true
+   * when the server has resampled `system.wav` (the original stays as
+   * `system.original.wav`), false when the next transcription repairs it.
+   * Null when there is no such mismatch. */
+  track_repair: { fromRate: number; toRate: number; repaired: boolean } | null;
   summary: {
     markdown: string | null;
     llm_provider: string | null;

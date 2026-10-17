@@ -34,6 +34,7 @@ import {
   state,
   stopHotkeyRecorderProcess,
 } from "../main-state";
+import { listAudioDevices } from "../meeting-capture-helper";
 import { registerMeetingImportIpc } from "../meeting-import";
 import { registerMeetingIpc } from "../meeting-ipc";
 import { resolveMicLabel } from "../meeting-mic-label";
@@ -144,6 +145,7 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     // The Settings page has the mic permission, so ask it first.
     resolveMicLabel: (deviceId) =>
       resolveMicLabel(deviceId, [state.settingsWindow, state.mainWindow]),
+    listAudioDevices,
     // Links the running calendar event. Returns null while the calendar
     // toggle is off, before any helper starts.
     findCurrentEvent: () =>

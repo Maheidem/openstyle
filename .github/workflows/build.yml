@@ -401,6 +401,20 @@ jobs:
             pnpm run build:mac
           fi
 
+      # Issue #170: the meeting helper converts the system audio at the rate
+      # of the device. --self-test sends synthetic buffers through the real
+      # format and conversion code. It opens no device, mic or tap, so it
+      # needs no Privacy permission. A non-zero exit fails this job. The
+      # binary comes from compile:native in the step above.
+      - name: Self-test meeting capture helper
+        working-directory: apps/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          helper="resources/bin/darwin-$(node -p process.arch)/macos-meeting-capture"
+          test -x "$helper"
+          "$helper" --self-test
+
       - name: Verify native binaries in package
         working-directory: apps/electron
         run: node scripts/verify-native-binaries.mjs

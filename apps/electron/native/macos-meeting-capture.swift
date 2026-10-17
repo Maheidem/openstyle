@@ -16,6 +16,14 @@
  *                           "(...)" tags like "(Built-in)". If no single
  *                           device matches, print ERR_MIC_NOT_FOUND and exit.
  *                           The helper never uses another mic in silence.
+ *   --mic-uid "<uid>"       use the input device with this Core Audio UID.
+ *                           If it is not there, print ERR_MIC_NOT_FOUND and
+ *                           exit.
+ *   --list-devices          print one JSON line on stdout and exit. The line
+ *                           holds the default input, the default output and
+ *                           all input and output devices (uid, name and
+ *                           transport type). This mode opens no audio IO.
+ *                           On a failure it prints ERR_LIST and exits 2.
  *
  * stdout: binary frames. Each frame is:
  *   1 byte   channel: 'M' = mic, 'S' = system audio
@@ -32,6 +40,11 @@
  *                                    then every 60 s, and after a rebuild.
  *                                    The counts are 16 kHz samples that the
  *                                    helper produced for each channel.
+ *   FORMAT <device_hz> <mic_stream_hz> <system_stream_hz>
+ *                                  - after each start or rebuild of the
+ *                                    aggregate device. The helper converts
+ *                                    both channels from <device_hz>. A
+ *                                    stream rate of 0 means no mic.
  *   OVERRUN <n>                    - ring buffer dropped n frames
  *   ERR_MIC_LOST                   - the mic went away while running. The
  *                                    helper rebuilds the aggregate device
@@ -47,6 +60,12 @@
  *     -target arm64-apple-macos14.2 \
  *     -framework CoreAudio -framework AudioToolbox -framework AVFAudio \
  *     -framework Foundation
+ *
+ * Self-test (opens no device, no mic and no tap):
+ *   macos-meeting-capture --self-test
+ *   It sends synthetic IOProc buffers through the real format and conversion
+ *   code. It prints one SELFTEST line per case on stdout. It exits 1 when a
+ *   checked case gives a ratio outside 1.0 +/- 0.01 (issue #170).
  */
 
 @preconcurrency import AVFAudio
@@ -295,6 +314,9 @@ var micBytesPerFrame: UInt32 = 0
 var systemFormat: AVAudioFormat?
 var systemBytesPerFrame: UInt32 = 0
 var needSync = false
+// Listens for rate and format changes of the running aggregate device.
+var formatListener: AudioObjectPropertyListenerBlock?
+var formatListenerTargets: [(AudioObjectID, AudioObjectPropertyAddress)] = []
 
 // Mic that this run opened.
 var micDeviceUID = ""
@@ -341,10 +363,11 @@ func allDeviceIDs() -> [AudioObjectID] {
 }
 
 func inputStreamIDs(_ device: AudioObjectID) -> [AudioStreamID] {
-    var address = propertyAddress(
-        kAudioDevicePropertyStreams,
-        scope: kAudioObjectPropertyScopeInput
-    )
+    streamIDs(device, scope: kAudioObjectPropertyScopeInput)
+}
+
+func streamIDs(_ device: AudioObjectID, scope: AudioObjectPropertyScope) -> [AudioStreamID] {
+    var address = propertyAddress(kAudioDevicePropertyStreams, scope: scope)
     var size: UInt32 = 0
     guard
         AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr,
@@ -374,7 +397,11 @@ func inputStreamFormats(_ device: AudioObjectID) -> [AudioStreamBasicDescription
 }
 
 func defaultInputDevice() -> AudioObjectID {
-    var address = propertyAddress(kAudioHardwarePropertyDefaultInputDevice)
+    defaultDevice(kAudioHardwarePropertyDefaultInputDevice)
+}
+
+func defaultDevice(_ selector: AudioObjectPropertySelector) -> AudioObjectID {
+    var address = propertyAddress(selector)
     var device = AudioObjectID(kAudioObjectUnknown)
     var size = UInt32(MemoryLayout<AudioObjectID>.size)
     guard AudioObjectGetPropertyData(systemObject, &address, 0, nil, &size, &device) == noErr
@@ -459,44 +486,111 @@ func chooseMic(name: String?) -> MicChoice? {
     return matches[0]
 }
 
+/// The transport type as a four-character code, for example "blue" for
+/// kAudioDeviceTransportTypeBluetooth (AudioHardwareBase.h).
+func transportCode(_ device: AudioObjectID) -> String {
+    var address = propertyAddress(kAudioDevicePropertyTransportType)
+    var value: UInt32 = 0
+    var size = UInt32(MemoryLayout<UInt32>.size)
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr,
+        value != 0
+    else { return "" }
+    let bytes = [24, 16, 8, 0].map { UInt8((value >> UInt32($0)) & 0xFF) }
+    return String(decoding: bytes, as: UTF8.self)
+}
+
+/// Prints the device list as one JSON line on stdout. It reads properties
+/// only. It starts no IO, so it does not use the microphone.
+func listDevices() {
+    func entry(_ device: AudioObjectID) -> [String: String]? {
+        guard let uid = stringProperty(device, kAudioDevicePropertyDeviceUID) else { return nil }
+        let name = stringProperty(device, kAudioObjectPropertyName) ?? uid
+        return ["uid": uid, "name": name, "transport": transportCode(device)]
+    }
+    func uid(_ device: AudioObjectID) -> Any {
+        guard device != AudioObjectID(kAudioObjectUnknown) else { return NSNull() }
+        return stringProperty(device, kAudioDevicePropertyDeviceUID) ?? NSNull()
+    }
+    let devices = allDeviceIDs()
+    let result: [String: Any] = [
+        "defaultInput": uid(defaultDevice(kAudioHardwarePropertyDefaultInputDevice)),
+        "defaultOutput": uid(defaultDevice(kAudioHardwarePropertyDefaultOutputDevice)),
+        "inputs": devices.filter { !inputStreamIDs($0).isEmpty }.compactMap(entry),
+        "outputs": devices.filter {
+            !streamIDs($0, scope: kAudioObjectPropertyScopeOutput).isEmpty
+        }.compactMap(entry),
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: result) else {
+        emitError("ERR_LIST")
+        exit(2)
+    }
+    FileHandle.standardOutput.write(data)
+    FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+}
+
+/// The input device with this UID. No such input prints ERR_MIC_NOT_FOUND
+/// and exits.
+func chooseMic(uid: String) -> MicChoice {
+    guard let choice = micChoice(for: deviceForUID(uid)) else {
+        emitError("ERR_MIC_NOT_FOUND \(uid.replacingOccurrences(of: "\n", with: " "))")
+        exit(2)
+    }
+    return choice
+}
+
 // MARK: - Arguments
 
-/// Returns the wanted mic name, or nil for the default input.
-func parseArguments() -> String? {
+enum MicRequest {
+    case systemDefault
+    case name(String)
+    case uid(String)
+    case listDevices
+}
+
+/// Returns the wanted mic, or the list mode.
+func parseArguments() -> MicRequest {
     var args = Array(CommandLine.arguments.dropFirst())
-    var name: String?
+    var request = MicRequest.systemDefault
+    func value() -> String {
+        guard !args.isEmpty else {
+            emitError("ERR_ARGS")
+            exit(64)
+        }
+        let next = args.removeFirst()
+        guard !next.isEmpty else {
+            emitError("ERR_ARGS")
+            exit(64)
+        }
+        return next
+    }
     while !args.isEmpty {
         let arg = args.removeFirst()
         switch arg {
         case "--mic":
-            guard !args.isEmpty, args.removeFirst() == "default" else {
+            guard value() == "default" else {
                 emitError("ERR_ARGS")
                 exit(64)
             }
         case "--mic-name":
-            guard !args.isEmpty else {
-                emitError("ERR_ARGS")
-                exit(64)
-            }
-            let value = args.removeFirst()
-            guard !value.isEmpty else {
-                emitError("ERR_ARGS")
-                exit(64)
-            }
-            name = value
+            request = .name(value())
+        case "--mic-uid":
+            request = .uid(value())
+        case "--list-devices":
+            request = .listDevices
         default:
             emitError("ERR_ARGS")
             exit(64)
         }
     }
     // No argument at all also means the default input.
-    return name
+    return request
 }
 
 // MARK: - Cleanup
 
 /// Stops IO and destroys the aggregate device. The tap stays.
 func stopAggregate() {
+    unwatchFormats()
     if aggregateID != kAudioObjectUnknown {
         if let procID = ioProcID {
             AudioDeviceStop(aggregateID, procID)
@@ -596,11 +690,86 @@ func copyInput(
     return copy
 }
 
-func audioFormat(_ description: AudioStreamBasicDescription) -> AVAudioFormat? {
+func nominalSampleRate(_ device: AudioObjectID) -> Double {
+    var address = propertyAddress(kAudioDevicePropertyNominalSampleRate)
+    var rate: Float64 = 0
+    var size = UInt32(MemoryLayout<Float64>.size)
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &rate) == noErr
+    else { return 0 }
+    return rate
+}
+
+/// The format of one IOProc input buffer. All streams of one device share
+/// one IO cycle and one buffer frame size, so each buffer holds frames at the
+/// nominal rate of the device. The tap stream can report another rate. The
+/// data of issue #170 fits this case: with a Bluetooth headset mic in call
+/// mode (16 kHz), the system track had exactly 1/3 of the mic samples, so
+/// 16 kHz buffers were converted as 48 kHz buffers. So the device rate wins.
+/// The FORMAT line logs both rates. `deviceRate <= 0` (rate unknown) keeps
+/// the stream rate.
+func ioBufferFormat(
+    _ description: AudioStreamBasicDescription,
+    deviceRate: Double
+) -> AVAudioFormat? {
     var copy = description
     // The IOProc copies one buffer per stream. That needs interleaved data.
     guard copy.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0 else { return nil }
+    if deviceRate > 0 { copy.mSampleRate = deviceRate }
     return AVAudioFormat(streamDescription: &copy)
+}
+
+/// The formats that the IOProc must use, read from the aggregate device now.
+struct IOFormats {
+    let deviceRate: Double
+    let system: AVAudioFormat
+    let systemBytesPerFrame: UInt32
+    let systemStreamRate: Double
+    let mic: AVAudioFormat?
+    let micBytesPerFrame: UInt32
+    let micStreamRate: Double
+}
+
+/// Order of the input streams: the sub-device streams first, the tap last.
+/// Returns nil when a stream is missing or has a format the IOProc cannot use.
+func readIOFormats(withMic: Bool) -> IOFormats? {
+    let formats = inputStreamFormats(aggregateID)
+    guard formats.count >= (withMic ? 2 : 1), let systemDescription = formats.last,
+        systemDescription.mBytesPerFrame > 0
+    else { return nil }
+    let deviceRate = nominalSampleRate(aggregateID)
+    guard let system = ioBufferFormat(systemDescription, deviceRate: deviceRate)
+    else { return nil }
+    var mic: AVAudioFormat?
+    if withMic {
+        guard formats[0].mBytesPerFrame > 0,
+            let micInput = ioBufferFormat(formats[0], deviceRate: deviceRate)
+        else { return nil }
+        mic = micInput
+    }
+    return IOFormats(
+        deviceRate: deviceRate,
+        system: system,
+        systemBytesPerFrame: systemDescription.mBytesPerFrame,
+        systemStreamRate: systemDescription.mSampleRate,
+        mic: mic,
+        micBytesPerFrame: withMic ? formats[0].mBytesPerFrame : 0,
+        micStreamRate: withMic ? formats[0].mSampleRate : 0
+    )
+}
+
+func sameIOFormat(
+    _ a: AVAudioFormat?, _ aBytes: UInt32,
+    _ b: AVAudioFormat?, _ bBytes: UInt32
+) -> Bool {
+    guard let a = a, let b = b else { return a == nil && b == nil }
+    return a.sampleRate == b.sampleRate && a.channelCount == b.channelCount
+        && aBytes == bBytes
+}
+
+/// True when the IOProc runs with the formats that the device has now.
+func formatsMatch(_ now: IOFormats) -> Bool {
+    sameIOFormat(now.system, now.systemBytesPerFrame, systemFormat, systemBytesPerFrame)
+        && sameIOFormat(now.mic, now.micBytesPerFrame, micActive ? micFormat : nil, micBytesPerFrame)
 }
 
 /// Creates the aggregate device, sets up the converters, starts the IOProc.
@@ -653,36 +822,39 @@ func startAggregate(micUID: String?) -> Int32 {
         formats = inputStreamFormats(aggregateID)
         polls += 1
     }
-    guard formats.count >= expectedStreams, let systemDescription = formats.last else {
+    guard formats.count >= expectedStreams else {
         emitError("ERR_AGG_STREAMS \(formats.count)")
         return 2
     }
 
-    guard let systemInput = audioFormat(systemDescription),
-        systemDescription.mBytesPerFrame > 0,
-        systemPipe.configure(inputFormat: systemInput)
-    else {
+    guard let io = readIOFormats(withMic: micUID != nil) else {
+        // Tell a bad mic format from a bad tap format.
+        let tapOK = micUID != nil && readIOFormats(withMic: false) != nil
+        emitError(tapOK ? "ERR_MIC_FORMAT" : "ERR_TAP_CREATE -2")
+        return 2
+    }
+    guard systemPipe.configure(inputFormat: io.system) else {
         emitError("ERR_TAP_CREATE -2")
         return 2
     }
-    systemFormat = systemInput
-    systemBytesPerFrame = systemDescription.mBytesPerFrame
+    systemFormat = io.system
+    systemBytesPerFrame = io.systemBytesPerFrame
 
     if micUID != nil {
-        guard let micInput = audioFormat(formats[0]),
-            formats[0].mBytesPerFrame > 0,
-            micPipe.configure(inputFormat: micInput)
-        else {
+        guard let micInput = io.mic, micPipe.configure(inputFormat: micInput) else {
             emitError("ERR_MIC_FORMAT")
             return 2
         }
         micFormat = micInput
-        micBytesPerFrame = formats[0].mBytesPerFrame
+        micBytesPerFrame = io.micBytesPerFrame
         micActive = true
     } else {
         micFormat = nil
         micActive = false
     }
+    emitError(
+        "FORMAT \(Int(io.deviceRate)) \(Int(io.micStreamRate)) \(Int(io.systemStreamRate))"
+    )
 
     needSync = true
     let ioStatus = AudioDeviceCreateIOProcIDWithBlock(
@@ -732,15 +904,11 @@ func startAggregate(micUID: String?) -> Int32 {
         emitError("ERR_START \(startStatus)")
         return 3
     }
+    watchFormats()
     return 0
 }
 
 // MARK: - Format Check
-
-func sameFormat(_ a: AudioStreamBasicDescription, _ b: AudioStreamBasicDescription) -> Bool {
-    a.mSampleRate == b.mSampleRate && a.mChannelsPerFrame == b.mChannelsPerFrame
-        && a.mBytesPerFrame == b.mBytesPerFrame
-}
 
 /// A Bluetooth headset can change its sample rate when input starts. The
 /// IOProc copies bytes with the format that startAggregate read, so a changed
@@ -748,17 +916,77 @@ func sameFormat(_ a: AudioStreamBasicDescription, _ b: AudioStreamBasicDescripti
 /// the formats again and compare them.
 func formatsAreStable() -> Bool {
     usleep(300_000)
-    let now = inputStreamFormats(aggregateID)
-    let expectedStreams = micActive ? 2 : 1
-    guard now.count >= expectedStreams, let last = now.last,
-        let system = systemFormat,
-        sameFormat(last, system.streamDescription.pointee)
-    else { return false }
-    if micActive {
-        guard let mic = micFormat, sameFormat(now[0], mic.streamDescription.pointee)
-        else { return false }
+    guard let now = readIOFormats(withMic: micActive) else { return false }
+    return formatsMatch(now)
+}
+
+/// The device rate or a stream format can change while the helper records,
+/// for example when the output route changes. Then the helper builds the
+/// aggregate device again with the new formats. The sample counts go on.
+/// The SYNC line after the rebuild marks the new start.
+func checkFormatsStillValid() {
+    guard running, aggregateID != kAudioObjectUnknown else { return }
+    // A lost mic has its own path: it builds a device with the tap only.
+    checkMicStillPresent()
+    // nil: a stream is missing during the change. A later call checks again.
+    guard let now = readIOFormats(withMic: micActive), !formatsMatch(now) else { return }
+    let withMic = micActive
+    stopAggregate()
+    let status = startAggregate(micUID: withMic ? micDeviceUID : nil)
+    if status != 0 {
+        teardown()
+        exit(status)
     }
-    return true
+}
+
+// One change (for example a Bluetooth profile switch) sends many
+// notifications. Check once, 300 ms after the last one. Main queue only.
+var formatCheckGeneration = 0
+
+func scheduleFormatCheck() {
+    formatCheckGeneration += 1
+    let generation = formatCheckGeneration
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        guard generation == formatCheckGeneration else { return }
+        checkFormatsStillValid()
+    }
+}
+
+func watchFormats() {
+    unwatchFormats()
+    let block: AudioObjectPropertyListenerBlock = { _, _ in scheduleFormatCheck() }
+    var targets: [(AudioObjectID, AudioObjectPropertyAddress)] = [
+        (aggregateID, propertyAddress(kAudioDevicePropertyNominalSampleRate)),
+        (
+            aggregateID,
+            propertyAddress(
+                kAudioDevicePropertyStreamConfiguration,
+                scope: kAudioObjectPropertyScopeInput
+            )
+        ),
+    ]
+    for stream in inputStreamIDs(aggregateID) {
+        targets.append((stream, propertyAddress(kAudioStreamPropertyVirtualFormat)))
+    }
+    for (object, address) in targets {
+        var target = address
+        if AudioObjectAddPropertyListenerBlock(object, &target, DispatchQueue.main, block)
+            == noErr
+        {
+            formatListenerTargets.append((object, address))
+        }
+    }
+    formatListener = block
+}
+
+func unwatchFormats() {
+    guard let block = formatListener else { return }
+    for (object, address) in formatListenerTargets {
+        var target = address
+        AudioObjectRemovePropertyListenerBlock(object, &target, DispatchQueue.main, block)
+    }
+    formatListenerTargets = []
+    formatListener = nil
 }
 
 /// Starts the aggregate device and checks that the formats stay the same.
@@ -780,6 +1008,117 @@ func startAggregateStable(micUID: String?) -> Int32 {
         code = startAggregate(micUID: micUID)
     }
     return code
+}
+
+// MARK: - Self-Test
+
+/// Sends synthetic IOProc buffers through ioBufferFormat, copyInput and
+/// ChannelPipe, the same code that the IOProc uses. Opens no device.
+/// Ratio = produced 16 kHz samples / expected 16 kHz samples.
+func runSelfTest() -> Int32 {
+    // One part of a case. A new part configures the pipe again, as a rebuild
+    // of the aggregate device does. The sample count goes on.
+    struct Part {
+        let streamRate: Double  // what the tap stream reports
+        let deviceRate: Double  // nominal rate of the device (0 = unknown)
+        let realRate: Double  // rate of the frames in each buffer
+        let seconds: Double
+    }
+    struct Case {
+        let name: String
+        let parts: [Part]
+        let checked: Bool
+    }
+    let cases = [
+        // Issue #170: Bluetooth headset mic in call mode.
+        Case(name: "bt-call-16k", parts: [Part(streamRate: 48000, deviceRate: 16000, realRate: 16000, seconds: 10)], checked: true),
+        Case(name: "usb-mic-48k", parts: [Part(streamRate: 48000, deviceRate: 48000, realRate: 48000, seconds: 10)], checked: true),
+        Case(name: "device-24k", parts: [Part(streamRate: 48000, deviceRate: 24000, realRate: 24000, seconds: 10)], checked: true),
+        // A rate change while the helper records, then a rebuild.
+        Case(
+            name: "change-48k-to-16k",
+            parts: [
+                Part(streamRate: 48000, deviceRate: 48000, realRate: 48000, seconds: 5),
+                Part(streamRate: 48000, deviceRate: 16000, realRate: 16000, seconds: 5),
+            ],
+            checked: true
+        ),
+        // The old code: stream rate only. Shows the bug, not checked.
+        Case(name: "old-stream-rate", parts: [Part(streamRate: 48000, deviceRate: 0, realRate: 16000, seconds: 10)], checked: false),
+    ]
+    let framesPerBuffer = 512
+    let channels: UInt32 = 2
+    let bytesPerFrame = channels * UInt32(MemoryLayout<Float32>.size)
+    var samples = [Float32](repeating: 0, count: framesPerBuffer * Int(channels))
+    var failed = false
+    for c in cases {
+        let pipe = ChannelPipe(tag: systemTag)
+        var expected: Double = 0
+        var configured = true
+        for part in c.parts {
+            let description = AudioStreamBasicDescription(
+                mSampleRate: part.streamRate,
+                mFormatID: kAudioFormatLinearPCM,
+                mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+                mBytesPerPacket: bytesPerFrame,
+                mFramesPerPacket: 1,
+                mBytesPerFrame: bytesPerFrame,
+                mChannelsPerFrame: channels,
+                mBitsPerChannel: 32,
+                mReserved: 0
+            )
+            guard let format = ioBufferFormat(description, deviceRate: part.deviceRate),
+                pipe.configure(inputFormat: format)
+            else {
+                configured = false
+                break
+            }
+            let bufferCount = Int(part.seconds * part.realRate) / framesPerBuffer
+            var frameIndex = 0
+            for _ in 0..<bufferCount {
+                for i in 0..<framesPerBuffer {
+                    let phase = 2 * Double.pi * 440 * Double(frameIndex) / part.realRate
+                    let value = Float32(0.5 * sin(phase))
+                    samples[i * 2] = value
+                    samples[i * 2 + 1] = value
+                    frameIndex += 1
+                }
+                samples.withUnsafeMutableBytes { raw in
+                    let source = AudioBuffer(
+                        mNumberChannels: channels,
+                        mDataByteSize: UInt32(raw.count),
+                        mData: raw.baseAddress
+                    )
+                    if let copy = copyInput(source, format: format, bytesPerFrame: bytesPerFrame) {
+                        pipe.handle(copy)
+                    }
+                }
+                ring.clear()
+            }
+            expected += Double(bufferCount * framesPerBuffer) * outputSampleRate / part.realRate
+        }
+        guard configured else {
+            print("SELFTEST \(c.name) no-format FAIL")
+            failed = true
+            continue
+        }
+        let ratio = Double(pipe.sampleCount()) / expected
+        let pass = abs(ratio - 1) <= 0.01
+        let verdict = c.checked ? (pass ? "PASS" : "FAIL") : "INFO"
+        if c.checked && !pass { failed = true }
+        let rates = c.parts.map {
+            "\(Int($0.streamRate))/\(Int($0.deviceRate))/\(Int($0.realRate))"
+        }.joined(separator: ">")
+        print(
+            "SELFTEST \(c.name) stream/device/real=\(rates) produced=\(pipe.sampleCount()) "
+                + String(format: "expected=%.0f ratio=%.4f ", expected, ratio) + verdict
+        )
+    }
+    return failed ? 1 : 0
+}
+
+if CommandLine.arguments.dropFirst().first == "--self-test" {
+    exit(runSelfTest())
 }
 
 // MARK: - Mic Loss
@@ -822,9 +1161,22 @@ func watchMic(_ device: AudioObjectID) {
 
 setupSignalHandlers()
 
-let wantedMicName = parseArguments()
+let micRequest = parseArguments()
 
-guard let mic = chooseMic(name: wantedMicName) else {
+let chosenMic: MicChoice?
+switch micRequest {
+case .listDevices:
+    listDevices()
+    exit(0)
+case .systemDefault:
+    chosenMic = chooseMic(name: nil)
+case .name(let name):
+    chosenMic = chooseMic(name: name)
+case .uid(let uid):
+    chosenMic = chooseMic(uid: uid)
+}
+
+guard let mic = chosenMic else {
     emitError("ERR_MIC_NOT_AVAILABLE")
     exit(2)
 }
