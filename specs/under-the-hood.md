@@ -400,8 +400,15 @@ Recommendation: do not move dictation capture (`lib/recorder.ts`,
   (16 kHz). Fix: the helper converts both channels from the nominal rate of
   the aggregate device, rebuilds the device when a rate or format changes,
   and logs `FORMAT <device> <mic> <system>`. `macos-meeting-capture
-  --self-test` checks the conversion without audio. The meeting page warns
-  when `systemSamples / micSamples` in `sync.json` is outside 0.95 to 1.05.
+  --self-test` checks the conversion without audio (the macOS CI job runs
+  it). The meeting page warns when `systemSamples / micSamples` in
+  `sync.json` is outside 0.95 to 1.05. When that ratio is within 0.1 % of
+  a factor between two common rates (for example 16000/48000) and every
+  60 s SYNC interval shows the same factor, the server resamples
+  `system.wav` at the start of the transcription
+  (`apps/server/src/lib/meetings/track-repair.ts`). It keeps
+  `system.original.wav` and records the repair in `sync.json`. The page then
+  shows an info note.
 - **Device loss mid-meeting:** today Chromium ends the track. The helper
   must report it on stderr and the recorder must keep the system channel.
 

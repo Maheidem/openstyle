@@ -66,9 +66,13 @@ describe("locale files", () => {
   // comment above each group says why the group exists.
   const KEY_GROUPS: Record<string, string[]> = {
     "speaker-attendee-picker": ["meetings.speakerNamePickHint"],
-    // The track length warning (issue #170) tells the user that the
-    // transcript can be wrong, so every locale carries it.
-    "track-ratio-warning": ["meetings.trackRatioWarning"],
+    // The track length warning and the track repair notes (issue #170) tell
+    // the user that the transcript can be wrong, so every locale carries them.
+    "track-ratio-warning": [
+      "meetings.trackRatioWarning",
+      "meetings.trackRepaired",
+      "meetings.trackRepairPending",
+    ],
     // Keys introduced by the cancel-transcribe work — every locale must carry
     // them (they render on a primary surface, not an optional one).
     "cancel-transcribe": [

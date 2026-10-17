@@ -67,6 +67,11 @@ export function MeetingDetailView({
   onDeleted: () => void;
 }): React.JSX.Element {
   const { t, i18n } = useTranslation();
+  // A rate in kHz with one decimal at most ("16", "44.1"), in the UI language.
+  const formatKhz = (hz: number): string =>
+    new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(
+      hz / 1000,
+    );
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -726,13 +731,44 @@ export function MeetingDetailView({
 
       {/* Issue #170: the server compares the sample counts of the two tracks
           in sync.json. A ratio outside 0.95..1.05 means one track ran at the
-          wrong speed, so the transcript can be wrong. */}
+          wrong speed, so the transcript can be wrong. When the ratio is a
+          known sample-rate mismatch, the server repairs the system track at
+          the start of a transcription, and the page shows a note instead. */}
       {meeting.track_ratio_warning !== null && (
         <InlineNotice tone="destructive" icon={AlertTriangle}>
           <span data-testid="meeting-track-ratio-warning">
             {t("meetings.trackRatioWarning", {
               percent: Math.round(meeting.track_ratio_warning * 100),
             })}
+          </span>
+        </InlineNotice>
+      )}
+      {meeting.track_repair && (
+        <InlineNotice
+          tone="neutral"
+          icon={AudioLines}
+          iconClassName="text-muted-foreground"
+        >
+          <span data-testid="meeting-track-repair-note">
+            {t(
+              meeting.track_repair.repaired
+                ? "meetings.trackRepaired"
+                : "meetings.trackRepairPending",
+              {
+                recorded: formatKhz(meeting.track_repair.toRate),
+                read: formatKhz(meeting.track_repair.fromRate),
+                // The old conversion cut at 8 kHz of the rate it assumed,
+                // which is 8 kHz × toRate / fromRate in real time.
+                bandwidth: formatKhz(
+                  8000 *
+                    Math.min(
+                      1,
+                      meeting.track_repair.toRate /
+                        meeting.track_repair.fromRate,
+                    ),
+                ),
+              },
+            )}
           </span>
         </InlineNotice>
       )}

@@ -865,6 +865,8 @@
     "summarizeCancelled": "Riepilogo annullato: la trascrizione è invariata.",
     "cancelledKeptTranscript": "Annullato: la trascrizione parziale è stata conservata ({{n}} di {{total}} segmenti trascritti)",
     "trackRatioWarning": "La traccia dell'audio di sistema ha il {{percent}}% della durata della traccia del microfono. Le due tracce devono avere la stessa durata. Una traccia è stata registrata alla velocità sbagliata, quindi la trascrizione può essere errata. Una cuffia Bluetooth in modalità chiamata può causare questo problema.",
+    "trackRepaired": "Openstyle ha corretto la velocità della traccia dell'audio di sistema. È stata registrata a {{recorded}} kHz, ma letta come {{read}} kHz. La qualità audio di questa traccia può essere inferiore, perché la vecchia conversione ha mantenuto solo l'audio sotto circa {{bandwidth}} kHz.",
+    "trackRepairPending": "La traccia dell'audio di sistema è stata registrata a {{recorded}} kHz, ma letta come {{read}} kHz, quindi ha la velocità sbagliata. Openstyle la corregge quando trascrive la riunione. La qualità audio di questa traccia può essere inferiore, perché la vecchia conversione ha mantenuto solo l'audio sotto circa {{bandwidth}} kHz.",
     "copyTranscript": "Copia trascrizione",
     "copySummary": "Copia riepilogo",
     "tabTranscript": "Trascrizione",

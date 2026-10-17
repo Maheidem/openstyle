@@ -13,6 +13,13 @@ export const MIC_WAV = "mic.wav";
 /** System audio channel ("Them"). Imported meetings have only this file. */
 export const SYSTEM_WAV = "system.wav";
 
+/**
+ * The system track as it was recorded, kept when the server repairs a
+ * sample-rate mismatch of `system.wav` (issue #170). The audio retention
+ * sweep deletes it with the other WAV files.
+ */
+export const SYSTEM_ORIGINAL_WAV = "system.original.wav";
+
 /** Clock-drift journal written by the recorder. Imported meetings do not have it. */
 export const SYNC_JSON = "sync.json";
 

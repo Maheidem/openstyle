@@ -866,6 +866,8 @@
     "summarizeCancelled": "要約をキャンセルしました — 文字起こしは変更されていません。",
     "cancelledKeptTranscript": "キャンセルしました — 途中までの文字起こしは保存されています（{{total}}セグメント中{{n}}を文字起こし済み）",
     "trackRatioWarning": "システム音声トラックの長さはマイクトラックの{{percent}}%です。2つのトラックは同じ長さである必要があります。一方のトラックが誤った速度で録音されたため、文字起こしが正しくない可能性があります。通話モードの Bluetooth ヘッドセットが原因の場合があります。",
+    "trackRepaired": "Openstyle がシステム音声トラックの速度を補正しました。このトラックは {{recorded}} kHz で録音されましたが、{{read}} kHz として読み込まれていました。以前の変換では約 {{bandwidth}} kHz 未満の音声しか残っていないため、このトラックの音質は低い可能性があります。",
+    "trackRepairPending": "システム音声トラックは {{recorded}} kHz で録音されましたが、{{read}} kHz として読み込まれたため、速度が正しくありません。Openstyle はミーティングを文字起こしするときに補正します。以前の変換では約 {{bandwidth}} kHz 未満の音声しか残っていないため、このトラックの音質は低い可能性があります。",
     "copyTranscript": "文字起こしをコピー",
     "copySummary": "要約をコピー",
     "tabTranscript": "文字起こし",

@@ -4,6 +4,7 @@ import {
   MIC_WAV,
   parseMeetingRetentionDays,
   SETTINGS_KEYS,
+  SYSTEM_ORIGINAL_WAV,
   SYSTEM_WAV,
 } from "@openstyle/validations";
 import { createDailySweep } from "../daily-sweep.js";
@@ -12,7 +13,8 @@ import { getDb, readSetting } from "../db.js";
 /**
  * Meeting audio retention: the WAV files are the heavy part of a meeting
  * (transcripts and summaries are a few KB of DB rows), so the sweep deletes
- * only mic.wav/system.wav once a meeting is older than
+ * only mic.wav/system.wav (and system.original.wav, kept by an issue #170
+ * track repair) once a meeting is older than
  * `meeting_retention_days` and nulls `audio_dir` as the "audio is gone"
  * marker. DB rows (segments + summaries) are kept forever.
  *
@@ -49,7 +51,8 @@ export function purgeExpiredMeetingAudio(): number {
 
   let purged = 0;
   for (const row of rows) {
-    for (const name of [MIC_WAV, SYSTEM_WAV]) {
+    // SYSTEM_ORIGINAL_WAV exists only after an issue #170 track repair.
+    for (const name of [MIC_WAV, SYSTEM_WAV, SYSTEM_ORIGINAL_WAV]) {
       try {
         unlinkSync(join(row.audio_dir, name));
       } catch {
