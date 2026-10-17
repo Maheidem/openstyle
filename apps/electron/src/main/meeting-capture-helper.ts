@@ -253,7 +253,9 @@ export function listAudioDevices(): Promise<DeviceSnapshot | null> {
     execFile(
       binaryPath,
       ["--list-devices"],
-      { timeout: LIST_TIMEOUT_MS },
+      // The helper ignores SIGTERM and runs this command on its main queue.
+      // The default kill signal would not end a stuck helper, so use SIGKILL.
+      { timeout: LIST_TIMEOUT_MS, killSignal: "SIGKILL" },
       (err, stdout) => {
         if (err) {
           log.warn(`Audio device list failed: ${errorMessage(err)}`);

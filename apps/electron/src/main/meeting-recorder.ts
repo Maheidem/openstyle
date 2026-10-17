@@ -258,6 +258,11 @@ export class MeetingRecorder {
   private systemNeedsPad = false;
   /** The devices of the running recording. */
   private devices: PreparedDevices | null = null;
+  /**
+   * True while start() runs. The status stays "idle" while start() waits for
+   * the device list, so a second start() needs this flag to be refused.
+   */
+  private starting = false;
 
   constructor(deps: MeetingRecorderDeps) {
     this.deps = deps;
@@ -397,9 +402,21 @@ export class MeetingRecorder {
    * meeting and `confirmed` does not hold the same devices.
    */
   async start(confirmed?: ConfirmedDevices | null): Promise<string> {
-    if (this._status !== "idle") {
+    if (this._status !== "idle" || this.starting) {
       throw new Error("A meeting recording is already in progress");
     }
+    // Set the flag before the first await. Clear it on every exit.
+    this.starting = true;
+    try {
+      return await this.startRecording(confirmed);
+    } finally {
+      this.starting = false;
+    }
+  }
+
+  private async startRecording(
+    confirmed?: ConfirmedDevices | null,
+  ): Promise<string> {
     if (!isSystemAudioCaptureSupported()) {
       throw new Error("Meeting recording requires macOS 14.4 or later");
     }

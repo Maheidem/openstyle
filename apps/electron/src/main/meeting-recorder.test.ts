@@ -389,6 +389,59 @@ describe("MeetingRecorder audio devices (#169)", () => {
     expect(createCaptureWindow).toHaveBeenCalledWith(yeti.name);
   });
 
+  it("refuses a second start() while the first one waits for the device list", async () => {
+    const startCalls: string[] = [];
+    let releaseList: (snapshot: typeof transient) => void = () => {};
+    const list = new Promise<typeof transient>((resolve) => {
+      releaseList = resolve;
+    });
+    const { recorder } = createRecorder({
+      serverFetch: async (path: string) => {
+        if (path === "/meetings/start") startCalls.push(path);
+        return new Response("{}");
+      },
+      listAudioDevices: () => list,
+    });
+
+    // The status stays "idle" while the first call waits for the list.
+    const first = recorder.start();
+    expect(recorder.status).toBe("idle");
+    await expect(recorder.start()).rejects.toThrow(
+      "A meeting recording is already in progress",
+    );
+
+    releaseList(transient);
+    await vi.waitFor(() => expect(mocks.helpers).toHaveLength(1));
+    mocks.helpers[0].options.onReady?.();
+    await first;
+    expect(startCalls).toHaveLength(1);
+    expect(mocks.helpers).toHaveLength(1);
+    // The refusal does not stop the recording of the first call.
+    expect(recorder.status).toBe("recording");
+    await recorder.stop();
+
+    // The flag is clear again: a new start() works.
+    const again = recorder.start();
+    await vi.waitFor(() => expect(mocks.helpers).toHaveLength(2));
+    mocks.helpers[1].options.onReady?.();
+    await again;
+    await recorder.stop();
+  });
+
+  it("clears the start flag when the first start() fails", async () => {
+    const { recorder } = createRecorder({
+      serverFetch: async () => new Response("{}", { status: 500 }),
+    });
+    await expect(recorder.start()).rejects.toThrow(
+      "Failed to create meeting row (HTTP 500)",
+    );
+    expect(recorder.status).toBe("idle");
+    // A failed start() must not block the next one with "already in progress".
+    await expect(recorder.start()).rejects.toThrow(
+      "Failed to create meeting row (HTTP 500)",
+    );
+  });
+
   it("keeps the old path when the device list is not available", async () => {
     const { recorder } = createRecorder();
     const { started, helper } = await startWithHelper(recorder);

@@ -112,6 +112,22 @@ describe("planMeetingDevices with System default", () => {
     expect(plan.input).toEqual(yeti);
   });
 
+  it("prefers the remembered default input over the mic of the last meeting", () => {
+    const plan = planMeetingDevices({
+      snapshot: snapshot(sonyIn, sonyOut),
+      chosenMicName: null,
+      memory: {
+        userDefaultInputUid: yeti.uid,
+        lastMeeting: {
+          input: { uid: builtInMic.uid, name: builtInMic.name },
+          output: { uid: speakers.uid, name: speakers.name },
+        },
+      },
+    });
+    expect(plan.input).toEqual(yeti);
+    expect(plan.skippedInput).toEqual(sonyIn);
+  });
+
   it("uses the built-in mic, not a virtual device, when nothing is remembered", () => {
     const plan = planMeetingDevices({
       snapshot: snapshot(sonyIn, sonyOut),
