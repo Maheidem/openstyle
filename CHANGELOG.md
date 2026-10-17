@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.17.2
+
+### Bug Fixes 🐛
+
+- Meetings with a Bluetooth headset: when your sound goes to the headset and the meeting microphone is "System default", Openstyle no longer records with the headset microphone that macOS selects for a short time. It uses your usual microphone. The record card shows the microphone and the output, and Openstyle asks you to confirm them when they are not the same as in your last meeting (#169).
+- The system audio of a meeting now records at the correct speed when a Bluetooth headset is in call mode (#170).
+- When the system audio track of a meeting does not have the same length as the microphone track, the meeting page tells you. When the length matches a known sample-rate error, Openstyle corrects the speed when it transcribes the meeting and keeps the original file (#170).
+- Two fast clicks on Start no longer start two recordings.
+
+### Known issues 🐞
+
+- On a first install, macOS warns about an unidentified developer. Right-click Openstyle and select Open once. Apple has not notarized Openstyle.
+
 ## 2.17.1
 
 ### Bug Fixes 🐛
