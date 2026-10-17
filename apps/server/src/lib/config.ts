@@ -54,6 +54,12 @@ function resolveConfigPath(): string | null {
   return configPath;
 }
 
+/**
+ * Flags that are on when the config file does not set them. An explicit
+ * `false` in the file still turns them off.
+ */
+const DEFAULT_FLAGS: Record<string, boolean> = { meetings: true };
+
 function defaultConfig(): OpenstyleConfig {
   return { version: CONFIG_VERSION, flags: {} };
 }
@@ -103,9 +109,9 @@ function saveConfig(config: OpenstyleConfig): void {
   }
 }
 
-/** Read a single flag (defaults to `false` if unset). */
+/** Read a single flag (defaults to `DEFAULT_FLAGS`, else `false`, if unset). */
 export function getFlag(key: string): boolean {
-  return loadConfig().flags[key] === true;
+  return (loadConfig().flags[key] ?? DEFAULT_FLAGS[key]) === true;
 }
 
 /** Set a flag and persist to disk. */
@@ -115,8 +121,8 @@ export function setFlag(key: string, value: boolean): void {
   saveConfig(config);
 }
 
-/** Return the full config object (clone). */
+/** Return the full config object (clone), with `DEFAULT_FLAGS` filled in. */
 export function getConfig(): OpenstyleConfig {
   const config = loadConfig();
-  return { ...config, flags: { ...config.flags } };
+  return { ...config, flags: { ...DEFAULT_FLAGS, ...config.flags } };
 }

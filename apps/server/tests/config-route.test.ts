@@ -8,6 +8,25 @@ function putFlag(key: string, body: unknown) {
   return jsonRequest(app, "PUT", `/api/config/flags/${key}`, body);
 }
 
+describe("meetings flag default (#179)", () => {
+  it("is on when unset and stays off after an explicit false", async () => {
+    const before = (await (await app.request("/api/config")).json()) as {
+      flags: Record<string, boolean>;
+    };
+    expect(before.flags.meetings).toBe(true);
+    const flag = await app.request("/api/config/flags/meetings");
+    expect(await flag.json()).toEqual({ key: "meetings", value: true });
+
+    expect((await putFlag("meetings", { value: false })).status).toBe(200);
+    const after = (await (await app.request("/api/config")).json()) as {
+      flags: Record<string, boolean>;
+    };
+    expect(after.flags.meetings).toBe(false);
+    const off = await app.request("/api/config/flags/meetings");
+    expect(await off.json()).toEqual({ key: "meetings", value: false });
+  });
+});
+
 describe("/api/config/flags/:key", () => {
   it("sets a boolean flag and reflects it in GET /api/config", async () => {
     const put = await putFlag("streaming_audio", { value: true });
