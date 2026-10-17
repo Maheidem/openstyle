@@ -35,6 +35,9 @@ import {
   parseMeetingMaxDurationHours,
   SYNC_JSON,
   SYSTEM_WAV,
+  TRACK_RATIO_MAX,
+  TRACK_RATIO_MIN,
+  trackRatioWarning,
 } from "@openstyle/validations";
 import { app, type BrowserWindow, powerMonitor } from "electron";
 import type {
@@ -880,6 +883,7 @@ export class MeetingRecorder {
     }
 
     await this.writeJournal();
+    if (this.journal) logTrackRatio(this.journal);
 
     const endedAt = Date.now();
     if (meetingId) {
@@ -1000,6 +1004,25 @@ export class MeetingRecorder {
       }
     }
   }
+}
+
+/**
+ * Issue #170 guard: the system track must be about as long as the mic track.
+ * The server reads the same counts from sync.json, and the meeting page then
+ * shows a warning.
+ */
+function logTrackRatio(journal: SyncJournal): void {
+  const ratio = trackRatioWarning(
+    journal.micSamples,
+    journal.systemSamples,
+    journal.sampleRate,
+  );
+  if (ratio === null) return;
+  log.warn(
+    `Track length check failed for ${journal.meetingId}: system/mic = ${ratio.toFixed(3)} ` +
+      `(allowed ${TRACK_RATIO_MIN}-${TRACK_RATIO_MAX}; mic ${journal.micSamples}, ` +
+      `system ${journal.systemSamples} samples). The two tracks should have the same length.`,
+  );
 }
 
 /** Duration of a PCM16 chunk in ms. */

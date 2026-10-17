@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { SYSTEM_REPAIR_TMP } from "@openstyle/validations";
 import {
   afterAll,
   afterEach,
@@ -19,6 +20,7 @@ import {
   vi,
 } from "vitest";
 import createApp from "../src/index.js";
+import { readWavInfo, wavDurationMs } from "../src/lib/audio/wav.js";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import {
   __resetDictationIdleStateForTests,
@@ -40,6 +42,7 @@ import {
   insertSystemSegment,
   resetMeetingTables,
 } from "./helpers/meetings-db.js";
+import { writeSqueezedMeeting } from "./helpers/squeezed-meeting.js";
 import { buildWav as buildBaseWav } from "./helpers/wav.js";
 
 const app = createApp();
@@ -2979,6 +2982,10 @@ describe("meeting audio retention sweep", () => {
 
   it("deletes only expired WAV files, keeps rows, nulls audio_dir", async () => {
     const oldDir = makeMeetingDir("old");
+    // Kept by an issue #170 track repair. It is audio too.
+    writeFileSync(join(oldDir, "system.original.wav"), buildWav(100, 50));
+    // Left by a track repair that stopped half way.
+    writeFileSync(join(oldDir, SYSTEM_REPAIR_TMP), buildWav(100, 50));
     const freshDir = makeMeetingDir("fresh");
     insertMeeting("old", "summarized", oldDir, Date.now() - 40 * DAY_MS);
     insertMeeting("fresh", "recorded", freshDir, Date.now() - 1 * DAY_MS);
@@ -2987,6 +2994,8 @@ describe("meeting audio retention sweep", () => {
 
     expect(existsSync(join(oldDir, "mic.wav"))).toBe(false);
     expect(existsSync(join(oldDir, "system.wav"))).toBe(false);
+    expect(existsSync(join(oldDir, "system.original.wav"))).toBe(false);
+    expect(existsSync(join(oldDir, SYSTEM_REPAIR_TMP))).toBe(false);
     expect(existsSync(join(freshDir, "mic.wav"))).toBe(true);
 
     const oldRow = await getMeeting("old");
@@ -4091,5 +4100,148 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     const done = await waitForNoJob("m1");
     expect(done.status).toBe("transcribed");
     expect(startCalls).toHaveLength(1);
+  });
+});
+
+describe("GET /api/meetings/:id — track ratio guard (issue #170)", () => {
+  function meetingWithCounts(
+    id: string,
+    status: string,
+    micSeconds: number,
+    systemSeconds: number,
+  ): void {
+    const dir = mkdtempSync(join(tmpdir(), "meeting-ratio-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(
+      join(dir, "sync.json"),
+      JSON.stringify({
+        meetingId: id,
+        sampleRate: SAMPLE_RATE,
+        micSamples: Math.round(micSeconds * SAMPLE_RATE),
+        systemSamples: Math.round(systemSeconds * SAMPLE_RATE),
+      }),
+    );
+    insertMeeting(id, status, dir);
+  }
+
+  it("returns the ratio when the system track is 1/3 of the mic track", async () => {
+    meetingWithCounts("ratio-bad", "recorded", 2329.8, 776.6);
+    const body = await getMeeting("ratio-bad");
+    expect(body.track_ratio_warning).toBeCloseTo(0.3333, 3);
+  });
+
+  it("returns null when both tracks have the same length", async () => {
+    meetingWithCounts("ratio-ok", "recorded", 600, 600);
+    expect((await getMeeting("ratio-ok")).track_ratio_warning).toBeNull();
+  });
+
+  it("returns null while the meeting still records", async () => {
+    meetingWithCounts("ratio-live", "recording", 600, 200);
+    expect((await getMeeting("ratio-live")).track_ratio_warning).toBeNull();
+  });
+
+  it("returns null when sync.json is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "meeting-ratio-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    insertMeeting("ratio-nofile", "recorded", dir);
+    expect((await getMeeting("ratio-nofile")).track_ratio_warning).toBeNull();
+  });
+});
+
+describe("POST /api/meetings/:id/transcribe — system track repair (issue #170)", () => {
+  it("repairs a 1/3 system track before the pipeline reads it, and only once", async () => {
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({
+        text: "the quarterly numbers look great",
+      })),
+    });
+    const dir = mkdtempSync(join(tmpdir(), "meeting-repair-route-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const counts = writeSqueezedMeeting(dir, {
+      seconds: 66,
+      actualRate: 16000,
+      assumedRate: 48000,
+    });
+    const originalBytes = readFileSync(join(dir, "system.wav"));
+    insertMeeting("repair-1", "recorded", dir);
+
+    // Before the transcription: the next run repairs it. No warning.
+    const before = await getMeeting("repair-1");
+    expect(before.track_repair).toEqual({
+      fromRate: 48000,
+      toRate: 16000,
+      repaired: false,
+    });
+    expect(before.track_ratio_warning).toBeNull();
+
+    expect(
+      (await postEmpty(app, "/api/meetings/repair-1/transcribe")).status,
+    ).toBe(202);
+    const done = await waitForTerminalStatus("repair-1");
+    expect(done.status).toBe("transcribed");
+    expect(done.track_repair).toEqual({
+      fromRate: 48000,
+      toRate: 16000,
+      repaired: true,
+    });
+    expect(done.track_ratio_warning).toBeNull();
+
+    // The repaired track is as long as the mic track, within 0.5 %.
+    const micMs = wavDurationMs(readWavInfo(join(dir, "mic.wav")));
+    const systemMs = wavDurationMs(readWavInfo(join(dir, "system.wav")));
+    expect(Math.abs(systemMs - micMs) / micMs).toBeLessThan(0.005);
+    // The original stays, byte for byte.
+    expect(
+      readFileSync(join(dir, "system.original.wav")).equals(originalBytes),
+    ).toBe(true);
+    // sync.json has the corrected count and the repair record.
+    const journal = JSON.parse(readFileSync(join(dir, "sync.json"), "utf8"));
+    expect(journal.systemSamples).toBe(counts.systemSamples * 3);
+    expect(journal.repair).toMatchObject({
+      fromRate: 48000,
+      toRate: 16000,
+      originalSystemSamples: counts.systemSamples,
+    });
+
+    // A second transcription changes nothing on disk.
+    const systemBytes = readFileSync(join(dir, "system.wav"));
+    const syncText = readFileSync(join(dir, "sync.json"), "utf8");
+    expect(
+      (await postEmpty(app, "/api/meetings/repair-1/transcribe")).status,
+    ).toBe(202);
+    const again = await waitForTerminalStatus("repair-1");
+    expect(again.status).toBe("transcribed");
+    expect(readFileSync(join(dir, "system.wav")).equals(systemBytes)).toBe(
+      true,
+    );
+    expect(
+      readFileSync(join(dir, "system.original.wav")).equals(originalBytes),
+    ).toBe(true);
+    expect(readFileSync(join(dir, "sync.json"), "utf8")).toBe(syncText);
+  });
+
+  it("keeps the warning and the files for a bad ratio that no rate pair explains", async () => {
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: fakeDeps(async () => ({ text: "hello" })),
+    });
+    const dir = mkdtempSync(join(tmpdir(), "meeting-repair-route-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    // 0.8 is 6.7 % away from the nearest rate factor (0.75).
+    writeSqueezedMeeting(dir, {
+      seconds: 66,
+      actualRate: 38400,
+      assumedRate: 48000,
+    });
+    const before = readFileSync(join(dir, "system.wav"));
+    insertMeeting("repair-2", "recorded", dir);
+
+    expect(
+      (await postEmpty(app, "/api/meetings/repair-2/transcribe")).status,
+    ).toBe(202);
+    const done = await waitForTerminalStatus("repair-2");
+    expect(done.track_repair).toBeNull();
+    expect(done.track_ratio_warning).toBeCloseTo(0.8, 3);
+    expect(readFileSync(join(dir, "system.wav")).equals(before)).toBe(true);
+    expect(existsSync(join(dir, "system.original.wav"))).toBe(false);
   });
 });

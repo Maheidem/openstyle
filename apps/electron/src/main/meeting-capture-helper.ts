@@ -12,6 +12,9 @@
  *                                  wallclock/sample-count marker every 60 s
  *   OVERRUN <n>                    ring-buffer overruns (dropped frames)
  *   DEVICE <uid> <name>            the mic that the helper opened
+ *   FORMAT <device_hz> <mic_hz> <system_hz>
+ *                                  rates at each start or rebuild of the
+ *                                  aggregate device (logged)
  *   ERR_*                          fatal error (ERR_MIC_LOST is not fatal:
  *                                  the system channel goes on)
  *
@@ -200,6 +203,12 @@ export class MeetingCaptureHelper {
     }
     if (line.startsWith("DEVICE ")) {
       log.info(`Mic opened: ${line.slice(7)}`);
+      return;
+    }
+    if (line.startsWith("FORMAT ")) {
+      // "<device_hz> <mic_stream_hz> <system_stream_hz>". Kept in the app
+      // log, so a wrong-rate report (issue #170) shows the real rates.
+      log.info(`Capture rates (device mic system, Hz): ${line.slice(7)}`);
       return;
     }
     if (line.startsWith("ERR_")) {
