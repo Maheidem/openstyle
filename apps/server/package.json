@@ -32,6 +32,9 @@
     "@hono/node-server": "^2.0.4",
     "@hono/zod-validator": "^0.8.0",
     "@huggingface/hub": "^2.13.0",
+    "@langchain/core": "1.2.18",
+    "@langchain/langgraph": "1.5.1",
+    "@langchain/langgraph-checkpoint": "1.2.0",
     "@openstyle/stt": "workspace:*",
     "ai": "catalog:",
     "diff": "^8.0.4",
@@ -43,6 +46,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@langchain/langgraph-checkpoint-validation": "1.2.0",
     "@openstyle/sdk": "workspace:*",
     "@openstyle/utils": "workspace:*",
     "@openstyle/validations": "workspace:*",
