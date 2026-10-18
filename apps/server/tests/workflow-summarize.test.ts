@@ -326,13 +326,13 @@ describe("summarize: the text of the lines (4.5 Inputs)", () => {
           ? sum()
           : okReply(
               JSON.stringify({
-                corrections: [{ id: a?.id, text: `${a?.text} fresh` }],
+                corrections: [{ id: a?.id, text: `${a?.text} about` }],
               }),
             ),
       { stages: ["enhance", "summarize"] },
     );
     const summaryReq = r.requests.find(isSingle);
-    expect(summaryReq?.user).toContain(`Me: ${a?.text} fresh`);
+    expect(summaryReq?.user).toContain(`Me: ${a?.text} about`);
     expect(summaryReq?.user).toContain(`Me: ${b?.text}`);
     expect(summaryReq?.user).not.toContain("STALE");
   });

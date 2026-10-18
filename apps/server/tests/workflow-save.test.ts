@@ -130,7 +130,7 @@ const enhanced = (id: string) =>
 
 /** The segment text plus one word: a fix that keeps the 4.2.3 overlap guard quiet. */
 const fx = (f: MeetingFixture, id: string) =>
-  `${f.segments.find((s) => s.id === id)?.text} fixed`;
+  `${f.segments.find((s) => s.id === id)?.text} about`;
 
 describe("save: corrections (SW1) and speakers (SW2)", () => {
   it("writes the corrections and the suggestion, and the links", async () => {
