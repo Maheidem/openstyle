@@ -19,6 +19,48 @@ type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
 export interface LlmTaskContext {
   task: string;
   sampling: Record<string, unknown>;
+  /**
+   * Keys the LLM gateway forces onto the body after the sampling merge
+   * (specs/meeting-enhance-agentic.md 5.5.2). Only the `server` entry reads it.
+   */
+  gatewayOverrides?: GatewayOverrides;
+  /**
+   * Extra top-level body keys for a gateway (OpenRouter): the routing
+   * requirement and the reasoning switch. Only the `openrouter` entry reads it.
+   */
+  bodyExtra?: Record<string, unknown>;
+  /**
+   * Called with the parsed request body exactly as it goes on the wire, after
+   * every merge. The gateway reads it for the param ledger. Only the wrappers
+   * above call it; it never throws into the request.
+   */
+  onRequestBody?: (body: unknown) => void;
+}
+
+/** One group of body keys that the gateway sets or removes. */
+export interface GatewayOverridePart {
+  /** Top-level keys to set. */
+  set?: Record<string, unknown>;
+  /** Keys to write into `chat_template_kwargs`. */
+  chatTemplateKwargs?: Record<string, unknown>;
+  /** Top-level keys to delete. */
+  remove?: readonly string[];
+  /** Keys to delete from `chat_template_kwargs`. */
+  removeChatTemplateKwargs?: readonly string[];
+}
+
+/**
+ * Rank 1 of the precedence in 5.5.2. `force` always wins (the length route).
+ * `bounded` wins over the task seed but not over a key the user preset sets
+ * (`presetSet`). Applied after the sampling merge.
+ */
+export interface GatewayOverrides {
+  force?: GatewayOverridePart;
+  bounded?: GatewayOverridePart;
+  presetSet?: {
+    topLevel?: readonly string[];
+    chatTemplateKwargs?: readonly string[];
+  };
 }
 
 /**
@@ -112,6 +154,7 @@ export function groqCleanupProviderOptions(
 export function mergeSamplingIntoBody(
   body: string,
   sampling: CleanupSampling,
+  gatewayOverrides?: GatewayOverrides,
 ): string {
   try {
     const parsed: unknown = JSON.parse(body);
@@ -137,9 +180,69 @@ export function mergeSamplingIntoBody(
           : sampling.max_tokens;
     }
 
+    if (gatewayOverrides) applyGatewayOverrides(merged, gatewayOverrides);
+
     return JSON.stringify(merged);
   } catch {
     return body;
+  }
+}
+
+/**
+ * Second pass of the merge (5.5.2): the gateway keys beat the user preset.
+ * `bounded` first, and it skips a key the preset sets; `force` last, and it
+ * never skips.
+ */
+function applyGatewayOverrides(
+  merged: Record<string, unknown>,
+  overrides: GatewayOverrides,
+): void {
+  const topSkip = new Set(overrides.presetSet?.topLevel ?? []);
+  const kwargsSkip = new Set(overrides.presetSet?.chatTemplateKwargs ?? []);
+
+  const apply = (
+    part: GatewayOverridePart,
+    skipTop: ReadonlySet<string>,
+    skipKwargs: ReadonlySet<string>,
+  ): void => {
+    for (const [key, value] of Object.entries(part.set ?? {})) {
+      if (!skipTop.has(key)) merged[key] = value;
+    }
+    for (const key of part.remove ?? []) {
+      if (!skipTop.has(key)) delete merged[key];
+    }
+    const kwargsInput = merged.chat_template_kwargs;
+    const kwargs: Record<string, unknown> =
+      typeof kwargsInput === "object" &&
+      kwargsInput !== null &&
+      !Array.isArray(kwargsInput)
+        ? { ...(kwargsInput as Record<string, unknown>) }
+        : {};
+    for (const [key, value] of Object.entries(part.chatTemplateKwargs ?? {})) {
+      if (!skipKwargs.has(key)) kwargs[key] = value;
+    }
+    for (const key of part.removeChatTemplateKwargs ?? []) {
+      if (!skipKwargs.has(key)) delete kwargs[key];
+    }
+    if (Object.keys(kwargs).length > 0) merged.chat_template_kwargs = kwargs;
+    else delete merged.chat_template_kwargs;
+  };
+
+  const none = new Set<string>();
+  if (overrides.bounded) apply(overrides.bounded, topSkip, kwargsSkip);
+  if (overrides.force) apply(overrides.force, none, none);
+}
+
+/** Parse a request body for the ledger hook. Never throws. */
+function reportBody(
+  body: unknown,
+  onRequestBody: ((body: unknown) => void) | undefined,
+): void {
+  if (!onRequestBody || typeof body !== "string") return;
+  try {
+    onRequestBody(JSON.parse(body));
+  } catch {
+    // Reporting only: a bad body or a throwing hook never fails the request.
   }
 }
 
@@ -152,19 +255,61 @@ export function mergeSamplingIntoBody(
  * merge — this is the only place that sees the body exactly as it goes on the
  * wire, sampling params included. With no sampling configured the body is
  * passed through byte-for-byte and only the trace is written.
+ *
+ * `opts` carries the gateway's second pass and its body hook; without them the
+ * behavior is the one dictation cleanup relies on.
  */
 export function createSamplingFetch(
   sampling: CleanupSampling,
+  opts: {
+    gatewayOverrides?: GatewayOverrides;
+    onRequestBody?: (body: unknown) => void;
+  } = {},
 ): typeof globalThis.fetch {
-  const hasSampling = Object.keys(sampling).length > 0;
+  const merges =
+    Object.keys(sampling).length > 0 || opts.gatewayOverrides !== undefined;
   return (input, init) => {
-    if (!hasSampling || typeof init?.body !== "string") {
+    if (!merges || typeof init?.body !== "string") {
+      reportBody(init?.body, opts.onRequestBody);
       return traceLlmFetch(input, init);
     }
-    return traceLlmFetch(input, {
-      ...init,
-      body: mergeSamplingIntoBody(init.body, sampling),
-    });
+    const body = mergeSamplingIntoBody(
+      init.body,
+      sampling,
+      opts.gatewayOverrides,
+    );
+    reportBody(body, opts.onRequestBody);
+    return traceLlmFetch(input, { ...init, body });
+  };
+}
+
+/**
+ * A `fetch` wrapper that adds top-level keys to the body (OpenRouter routing
+ * and reasoning). The keys win over what the SDK built. Anything that is not a
+ * JSON object is sent untouched.
+ */
+function createExtraBodyFetch(
+  extra: Record<string, unknown>,
+  onRequestBody: ((body: unknown) => void) | undefined,
+): typeof globalThis.fetch {
+  return (input, init) => {
+    let body = init?.body;
+    if (typeof body === "string") {
+      try {
+        const parsed: unknown = JSON.parse(body);
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          !Array.isArray(parsed)
+        ) {
+          body = JSON.stringify({ ...parsed, ...extra });
+        }
+      } catch {
+        // Send the body as it is.
+      }
+    }
+    reportBody(body, onRequestBody);
+    return globalThis.fetch(input, { ...init, body });
   };
 }
 
@@ -218,11 +363,20 @@ const PROVIDERS: LlmProvider[] = [
     // `openrouter/<vendor>/<model>` and stripped to `<vendor>/<model>` before
     // being handed to the gateway (see `PROVIDER_PREFIXED_CHAT_MODELS`).
     providerId: "openrouter",
-    createModel: async (modelId, apiKey) => {
+    createModel: async (modelId, apiKey, taskContext) => {
       const { createOpenAI } = await import("@ai-sdk/openai");
       return createOpenAI({
         apiKey,
         baseURL: "https://openrouter.ai/api/v1",
+        // Only the LLM gateway passes `bodyExtra`; dictation keeps the plain client.
+        ...(taskContext?.bodyExtra
+          ? {
+              fetch: createExtraBodyFetch(
+                taskContext.bodyExtra,
+                taskContext.onRequestBody,
+              ),
+            }
+          : {}),
       }).chat(modelId);
     },
   },
@@ -270,6 +424,14 @@ const PROVIDERS: LlmProvider[] = [
         // With no sampling configured it forwards the body untouched.
         fetch: createSamplingFetch(
           (taskContext?.sampling ?? {}) as CleanupSampling,
+          {
+            ...(taskContext?.gatewayOverrides
+              ? { gatewayOverrides: taskContext.gatewayOverrides }
+              : {}),
+            ...(taskContext?.onRequestBody
+              ? { onRequestBody: taskContext.onRequestBody }
+              : {}),
+          },
         ),
       }).chat(target.model);
     },

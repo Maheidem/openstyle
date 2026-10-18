@@ -506,7 +506,10 @@ function safeActive(isActive: () => boolean): boolean {
 export async function withLlmLane<T>(
   provider: string,
   modelId: string,
-  opts: Pick<AcquireLlmLaneArgs, "cls" | "taskId" | "shouldStop" | "onQueued">,
+  opts: Pick<
+    AcquireLlmLaneArgs,
+    "cls" | "taskId" | "shouldStop" | "onQueued" | "signal"
+  >,
   fn: () => Promise<T>,
 ): Promise<T> {
   const { key: lane, limit } = await llmLaneKeyForProvider(provider, modelId);
