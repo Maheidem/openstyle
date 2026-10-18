@@ -1,6 +1,6 @@
 ---
 name: council
-description: Judge a meeting quality change (transcript output) with a three-judge council — Claude (coordinator), pi (local model), Codex (cloud, owner-approved per data set). Release only on consensus. Use before releasing any meeting quality change, after the compare.mts files exist.
+description: Judge a meeting quality change (transcript output) with a three-judge council — Claude (coordinator), pi (pin `openai-codex/gpt-6.1-sol`), Codex (cloud, owner-approved per data set). Release only on consensus. Use before releasing any meeting quality change, after the compare.mts files exist.
 ---
 
 # Council (three judges for meeting quality changes)
@@ -11,7 +11,7 @@ The script is `scripts/council.sh` (PR #36). Round state lives in `/tmp/meeting-
 
 ## Procedure
 
-1. **The compare files must come from `scripts/meeting-v2/compare.mts`** (one word: `pnpm meeting:compare ...`). It self-checks both sides against the stored dumps and exits non-zero on a mismatch. Never judge a hand-edited file or a copy-edited per-run compare script (that is how the 2026-10-07 false findings happened — see the meeting-benchmarks skill, "Compare tools must check themselves").
+1. **The compare files must come from `scripts/meeting-v2/compare.mts`** (one word: `pnpm meeting:compare ...`). For Enhance arms use `scripts/meeting-v2/compare-speakers.mts` (`pnpm meeting:compare-speakers --x <dump> --y <dump> --x-name <A> --y-name <B> --out <file.md>`) instead. It reads the `dump-speakers.mjs` format, which holds `enhanced_text` and the `meeting_speakers` rows. `compare.mts` reads the `dump-chunks.mjs` format, which has neither. Both tools self-check both sides against the stored dumps and exits non-zero on a mismatch. Never judge a hand-edited file or a copy-edited per-run compare script (that is how the 2026-10-07 false findings happened — see the meeting-benchmarks skill, "Compare tools must check themselves").
 2. **Prepare the round** (one round per quality change, e.g. `r4h-test`, `r5`):
    ```bash
    bash scripts/council.sh prepare <round> <compare-file>...
@@ -23,8 +23,9 @@ The script is `scripts/council.sh` (PR #36). Round state lives in `/tmp/meeting-
    ```
    with the per-region reasoning under it.
    - **Claude is the coordinator and writes its own verdict BEFORE reading the pi or Codex verdict files.** Reading the others first is how independent judges stop being independent.
-   - **pi** is the local model: hand it `brief-pi.md` (via the pi-briefs skill). It reads the compare files on the owner's Mac.
+   - **pi** runs on the pin `openai-codex/gpt-6.1-sol`. Run `pi_list_agents` with `doctor` first and record the pin. Hand it `brief-pi.md` (via the pi-briefs skill). It reads the compare files on the owner's Mac.
    - **Codex sends the meeting text to the cloud.** The owner must approve it per data set BEFORE the coordinator sends the compare files. No data set is sent without that approval.
+   - 2026-10-17, issue #185 only: this per-data-set approval rule does not apply to the benchmark meetings `ca70f895`, `2943c36a` and `9243bea0`. The owner stated on 2026-10-17 that these three are safe for the cloud judges (spec `specs/meeting-enhance-agentic.md` 11.8, row 10). pi and Codex may read their compare files with no question. Any other meeting still needs the owner's approval. WP11 removes this line.
 4. **Collect:**
    ```bash
    bash scripts/council.sh collect <round>

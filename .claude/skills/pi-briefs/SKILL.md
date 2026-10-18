@@ -1,15 +1,15 @@
 ---
 name: pi-briefs
-description: How to delegate Openstyle work to pi children (the local model via pi-delegate) so they finish fast and correctly. Use before every pi_agent or pi_send_message that starts a task, and when a pi child is slow or stuck.
+description: How to delegate Openstyle work to pi children (pi via pi-delegate) so they finish fast and correctly. Use before every pi_agent or pi_send_message that starts a task, and when a pi child is slow or stuck.
 ---
 
 # Writing pi briefs
 
-The project pins pi to `Desktop/qwen3.8-27b@adaptive`. This is a smaller local model. It does well on a narrow task with exact steps. It does badly on an open task, and it loses time when it must find a known fact again.
+The project pins pi to `openai-codex/gpt-6.1-sol` (corrected 2026-10-17; the old pin `Desktop/qwen3.8-27b@adaptive` is gone). Run `pi_list_agents` with `doctor` to read the live pin. A narrow task with exact steps still finishes faster and more safely than an open task, and a child loses time when it must find a known fact again.
 
 ## Setup facts
 
-- The pin file must list `extensions: @maheidem/model-discovery`. The `Desktop`, `local-mac` and `mac-m3` providers come from that extension. Without it the child fails with `Unknown provider "Desktop"`.
+- Only if the pin names a `Desktop`, `local-mac` or `mac-m3` provider: the pin file must list `extensions: @maheidem/model-discovery`. Without it the child fails with `Unknown provider "Desktop"`. The `openai-codex` pin does not need it.
 - pi children are lean. They do not load skills, `AGENTS.md`, `CLAUDE.md` or `.lore.md`. The brief must tell the child which files to read.
 - A hook refuses a brief that names the pin file or the orchestrator config file by path. Write "the pi pin file" and "the orchestrator config file".
 - Tell the child not to open image files with its read tool. On 2026-10-06 a turn ended with `stopReason "error"` right after the child read two WebP images. The likely cause is that the endpoint does not take image input. This is not confirmed. The coordinator looks at screenshots; the child reports file names, sizes and `sips -g pixelWidth -g pixelHeight` output. A failed turn keeps the images in its session, so start a new generation (`pi_agent` with the same name) instead of resuming.

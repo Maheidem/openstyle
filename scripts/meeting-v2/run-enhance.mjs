@@ -8,9 +8,11 @@
 //
 // Old arm: POST /enhance holds the request open and answers 200 (or 502 when
 // every chunk failed) with the counts in the body. New arm: the route answers
-// 202 and the run is read by polling GET /api/meetings/<id> until the job
-// ends. New-arm counts come from the last job progress and from the database
-// (UNVERIFIED until WP5b: WP10b may fix this branch in its first round).
+// 202 { ok, id, runId }. The script polls GET /api/meetings/<id> until the job
+// is null, then reads the run with GET /api/meetings/<id>/llm-runs?run_id=<runId>
+// (chunk steps, typed failure kinds, correctedCount) and sums the tokens from
+// llm_calls of the run in the scratch database. Checked on the candidate build
+// in WP10b.
 //
 // Writes, in <out-dir> (default $SCRATCH/enhance/<run>-<id8>/):
 //   metrics-enhance.json  numbers only
@@ -24,8 +26,9 @@
 //     [--port 4790] [--server-repo <dir>] [--out-dir <dir>] [--timeout-sec 7200]
 //
 // --summarize: old arm posts /summarize after Enhance (the old path does not
-// chain). New arm already summarizes in the same run; the script waits for
-// it and reads the summary. Either way it then runs
+// chain). New arm: the Enhance run already holds the summarize stage. If the
+// meeting has no summary after the run, the script posts /summarize (202 with
+// a runId) and waits for that run too. Either way it then runs
 // `pnpm meeting:check-summary` and merges the numbers.
 //
 // Exit codes: 0 ok; 1 run failed or a check failed; 2 usage.
@@ -296,6 +299,32 @@ try {
   if (!healthy) throw new Error(`server not healthy; log: ${logPath}`);
 
   // --- Enhance --------------------------------------------------------
+  const runIds = [];
+  /** Wait for a 202 run: job slot empty, then run record no longer running. */
+  async function waitForRun(label, startBody) {
+    if (typeof startBody?.runId !== "string")
+      throw new Error(`${label} 202 answer has no runId`);
+    runIds.push(startBody.runId);
+    const end = await waitForJobEnd(deadline);
+    if (!end.ended) throw new Error(`timed out waiting for ${label}`);
+    // The slot can be empty between two stages of one run: the run record
+    // decides.
+    for (;;) {
+      const r = await call(
+        "GET",
+        `/api/meetings/${meetingId}/llm-runs?run_id=${startBody.runId}`,
+        deadline - performance.now(),
+        `${label} run record`,
+      );
+      if (r.status !== 200) throw new Error(`run record answered ${r.status}`);
+      const run = r.body?.runs?.[0];
+      if (run && run.status !== "running") return { end, run };
+      if (performance.now() >= deadline)
+        throw new Error(`timed out waiting for ${label} run record`);
+      await sleep(1000);
+    }
+  }
+  const newRuns = [];
   const post = await call(
     "POST",
     `/api/meetings/${meetingId}/enhance`,
@@ -306,10 +335,10 @@ try {
   const body = post.body ?? {};
   let progress = null;
   if (post.status === 202) {
-    const end = await waitForJobEnd(deadline);
-    if (!end.ended) throw new Error("timed out waiting for the job");
-    progress = end.progress;
-    metrics.jobFailed = end.jobError !== null;
+    const done = await waitForRun("the job", body);
+    progress = done.end.progress;
+    metrics.jobFailed = done.run.status === "failed";
+    newRuns.push(done.run);
   } else if (post.status !== 200 && post.status !== 502) {
     throw new Error(`POST /enhance answered ${post.status}`);
   }
@@ -332,27 +361,34 @@ try {
       metrics.summarizeSeconds =
         Math.round((performance.now() - s0) / 100) / 10;
       metrics.summarizeFailed = end.jobError !== null;
-    } else if (metrics.jobFailed !== true) {
-      // New arm: Enhance may release the job slot before the chained
-      // Summarize claims it, so an empty slot is not proof. Wait for the
-      // summary row itself. UNVERIFIED until WP5b (WP10b may fix this).
-      let hasSummary = false;
-      while (performance.now() < deadline) {
-        const res = await call(
-          "GET",
-          `/api/meetings/${meetingId}`,
+    } else if (post.status === 202) {
+      // New arm: the Enhance run holds the summarize stage. When the meeting
+      // still has no summary row, start the Summarize route and wait for it.
+      const has = new DatabaseSync(dbPath, { readOnly: true });
+      const n = has
+        .prepare(
+          "SELECT COUNT(*) AS n FROM meeting_summaries WHERE meeting_id = ?",
+        )
+        .get(meetingId).n;
+      has.close();
+      if (n === 0) {
+        const s0 = performance.now();
+        const sp = await call(
+          "POST",
+          `/api/meetings/${meetingId}/summarize`,
           deadline - performance.now(),
-          "summary poll",
+          "summarize",
         );
-        if (res.status === 200 && res.body?.summary) {
-          hasSummary = true;
-          break;
-        }
-        if (res.status === 200 && res.body?.job_error) break;
-        await sleep(2000);
+        if (sp.status !== 202)
+          throw new Error(`POST /summarize answered ${sp.status}`);
+        const done = await waitForRun("the summary", sp.body);
+        newRuns.push(done.run);
+        metrics.summarizeSeconds =
+          Math.round((performance.now() - s0) / 100) / 10;
+        metrics.summarizeFailed = done.run.status === "failed";
+      } else {
+        metrics.summarizeFailed = false;
       }
-      if (!hasSummary && performance.now() >= deadline)
-        throw new Error("timed out waiting for the summary");
     }
   }
 
@@ -410,18 +446,35 @@ try {
       failureReasons[body.reason] += 1;
     }
   } else {
-    // New arm: job progress and database. UNVERIFIED until WP5b.
-    const total = progress?.total ?? 0;
-    const failed = progress?.failed ?? 0;
+    // New arm: the run records (chunk steps) and the database.
+    const chunkSteps = newRuns
+      .flatMap((r) => r.steps ?? [])
+      .filter((st) => st.key.startsWith("chunk:"));
+    // GET llm-runs?run_id= holds all steps, so the chunk steps give the
+    // total. The job progress counts every unit (speakers, summary too), so
+    // it is only a fallback.
+    const bad = chunkSteps.filter(
+      (st) => st.status === "failed" || st.status === "partial",
+    );
+    const enhanceRun = newRuns.find((r) => r.kind === "enhance");
+    const total =
+      chunkSteps.length > 0 ? chunkSteps.length : (progress?.total ?? 0);
     metrics.chunksAttempted = total;
-    metrics.chunksFailed = failed;
-    metrics.chunksSucceeded = Math.max(0, total - failed);
-    metrics.correctedCount = corrected;
+    metrics.chunksFailed = bad.length;
+    metrics.chunksSucceeded = Math.max(0, total - bad.length);
+    metrics.correctedCount = enhanceRun?.correctedCount ?? corrected;
     metrics.speakerSuggestions = suggestions;
-    metrics.speakerSuggestionsBody = null;
+    metrics.speakerSuggestionsBody = enhanceRun?.suggestionCount ?? null;
     metrics.namesRespelled = null;
-    metrics.partial = failed > 0;
+    metrics.partial = bad.length > 0;
     metrics.stoppedEarly = false;
+    metrics.runStatus = newRuns.map((r) => r.status);
+    for (const st of bad) {
+      const k = st.errorKind ?? "unknown";
+      failureReasons[k] = (failureReasons[k] ?? 0) + 1;
+      const n = Number(st.key.slice("chunk:".length));
+      if (Number.isInteger(n)) failedChunks.push(n);
+    }
   }
   if (arm === "old") {
     const typed =
@@ -429,10 +482,44 @@ try {
     failureReasons.unknown = Math.max(0, metrics.chunksFailed - typed);
     metrics.failureReasons = failureReasons;
   } else {
-    // The new arm prints none of the old log lines. Typed reasons come from
-    // the run's failure records once WP5b defines them. UNVERIFIED until
-    // WP5b: null keeps check-enhance-metrics.mjs from a false untypedFailures.
-    metrics.failureReasons = null;
+    // Typed kinds come from the failed steps; a step with no kind counts as
+    // unknown, which check-enhance-metrics.mjs reports as untyped.
+    metrics.failureReasons = {
+      unknown: 0,
+      ...Object.fromEntries(
+        Object.entries(failureReasons).filter(
+          ([k, n]) => n > 0 || k === "unknown",
+        ),
+      ),
+    };
+    // Tokens: sum of the llm_calls rows of the run(s) in the scratch database
+    // (the old path stores none).
+    const tdb = new DatabaseSync(dbPath, { readOnly: true });
+    const q = tdb.prepare(
+      `SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens),0) AS i,
+              COALESCE(SUM(output_tokens),0) AS o, COALESCE(SUM(reasoning_tokens),0) AS r
+       FROM llm_calls WHERE run_id = ?`,
+    );
+    const tok = {
+      calls: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+    };
+    for (const id of runIds) {
+      const row = q.get(id);
+      tok.calls += row.calls;
+      tok.inputTokens += row.i;
+      tok.outputTokens += row.o;
+      tok.reasoningTokens += row.r;
+    }
+    tdb.close();
+    metrics.runIds = runIds;
+    metrics.calls = tok.calls;
+    metrics.tokens = tok.inputTokens + tok.outputTokens + tok.reasoningTokens;
+    metrics.inputTokens = tok.inputTokens;
+    metrics.outputTokens = tok.outputTokens;
+    metrics.reasoningTokens = tok.reasoningTokens;
   }
   metrics.failedChunks = [...new Set(failedChunks)].sort((a, b) => a - b);
 
