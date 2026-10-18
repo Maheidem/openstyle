@@ -5,7 +5,9 @@
 //                     substring of any segment `text` of the same dump
 //                     (a kept suggestion with no quote counts too)
 //   untypedFailures   failed chunks with no typed reason, read from the
-//                     metrics-enhance.json that sits beside each dump
+//                     metrics-enhance.json that sits beside each dump.
+//                     null when any run has failureReasons null (the new
+//                     arm until WP5b defines typed failure records)
 //   namedRuns         per label, in how many of the dumps it has a kept name
 //
 // Self-check ("Compare tools must check themselves", meeting-benchmarks
@@ -61,10 +63,14 @@ function measure(paths) {
     hallucinatedKept += bad;
     hallucinatedKeptPerRun.push(bad);
     const m = readJson(join(dirname(p), "metrics-enhance.json"));
-    const typed = Object.entries(m.failureReasons ?? {})
-      .filter(([k]) => k !== "unknown")
-      .reduce((a, [, n]) => a + n, 0);
-    untypedFailures += Math.max(0, m.chunksFailed - typed);
+    if (m.failureReasons == null) {
+      untypedFailures = null;
+    } else if (untypedFailures !== null) {
+      const typed = Object.entries(m.failureReasons)
+        .filter(([k]) => k !== "unknown")
+        .reduce((a, [, n]) => a + n, 0);
+      untypedFailures += Math.max(0, m.chunksFailed - typed);
+    }
   }
   return {
     runs: paths.length,
@@ -99,12 +105,14 @@ function remeasure(paths) {
     runs: paths.length,
     hallucinatedKept: perRun.reduce((a, b) => a + b, 0),
     hallucinatedKeptPerRun: perRun,
-    untypedFailures: all.reduce((a, { m }) => {
-      const typed = Object.keys(m.failureReasons ?? {})
-        .filter((k) => k !== "unknown")
-        .reduce((x, k) => x + m.failureReasons[k], 0);
-      return a + Math.max(0, m.chunksFailed - typed);
-    }, 0),
+    untypedFailures: all.some(({ m }) => m.failureReasons == null)
+      ? null
+      : all.reduce((a, { m }) => {
+          const typed = Object.keys(m.failureReasons)
+            .filter((k) => k !== "unknown")
+            .reduce((x, k) => x + m.failureReasons[k], 0);
+          return a + Math.max(0, m.chunksFailed - typed);
+        }, 0),
     namedRuns: Object.fromEntries(
       labels.map((l) => [
         l,

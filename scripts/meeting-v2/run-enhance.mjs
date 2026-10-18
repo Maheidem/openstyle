@@ -178,7 +178,7 @@ async function stopServer() {
 
 /** node:http, not fetch: the old /enhance holds the request open for minutes
  *  and fetch cuts a response header wait at 5 minutes. */
-function call(method, path) {
+function call(method, path, timeoutMs, what = "request") {
   return new Promise((resolveCall, reject) => {
     const req = http.request(
       {
@@ -203,6 +203,14 @@ function call(method, path) {
       },
     );
     req.on("error", reject);
+    if (timeoutMs !== undefined) {
+      // Destroy the request at the run deadline so the finally block runs.
+      const timer = setTimeout(
+        () => req.destroy(new Error(`timed out waiting for ${what}`)),
+        Math.max(1, timeoutMs),
+      );
+      req.on("close", () => clearTimeout(timer));
+    }
     req.end();
   });
 }
@@ -263,7 +271,12 @@ try {
   if (!healthy) throw new Error(`server not healthy; log: ${logPath}`);
 
   // --- Enhance --------------------------------------------------------
-  const post = await call("POST", `/api/meetings/${meetingId}/enhance`);
+  const post = await call(
+    "POST",
+    `/api/meetings/${meetingId}/enhance`,
+    deadline - performance.now(),
+    "enhance",
+  );
   metrics.httpStatus = post.status;
   const body = post.body ?? {};
   let progress = null;
@@ -281,7 +294,12 @@ try {
   if (summarize) {
     if (arm === "old") {
       const s0 = performance.now();
-      const sp = await call("POST", `/api/meetings/${meetingId}/summarize`);
+      const sp = await call(
+        "POST",
+        `/api/meetings/${meetingId}/summarize`,
+        deadline - performance.now(),
+        "summarize",
+      );
       if (sp.status !== 202)
         throw new Error(`POST /summarize answered ${sp.status}`);
       const end = await waitForJobEnd(deadline);
@@ -289,6 +307,22 @@ try {
       metrics.summarizeSeconds =
         Math.round((performance.now() - s0) / 100) / 10;
       metrics.summarizeFailed = end.jobError !== null;
+    } else if (metrics.jobFailed !== true) {
+      // New arm: Enhance may release the job slot before the chained
+      // Summarize claims it, so an empty slot is not proof. Wait for the
+      // summary row itself. UNVERIFIED until WP5b (WP10b may fix this).
+      let hasSummary = false;
+      while (performance.now() < deadline) {
+        const res = await call("GET", `/api/meetings/${meetingId}`);
+        if (res.status === 200 && res.body?.summary) {
+          hasSummary = true;
+          break;
+        }
+        if (res.status === 200 && res.body?.job_error) break;
+        await sleep(2000);
+      }
+      if (!hasSummary && performance.now() >= deadline)
+        throw new Error("timed out waiting for the summary");
     }
   }
 
@@ -355,10 +389,17 @@ try {
     metrics.partial = failed > 0;
     metrics.stoppedEarly = false;
   }
-  const typed =
-    failureReasons.timeout + failureReasons.parse + failureReasons.provider;
-  failureReasons.unknown = Math.max(0, metrics.chunksFailed - typed);
-  metrics.failureReasons = failureReasons;
+  if (arm === "old") {
+    const typed =
+      failureReasons.timeout + failureReasons.parse + failureReasons.provider;
+    failureReasons.unknown = Math.max(0, metrics.chunksFailed - typed);
+    metrics.failureReasons = failureReasons;
+  } else {
+    // The new arm prints none of the old log lines. Typed reasons come from
+    // the run's failure records once WP5b defines them. UNVERIFIED until
+    // WP5b: null keeps check-enhance-metrics.mjs from a false untypedFailures.
+    metrics.failureReasons = null;
+  }
   metrics.failedChunks = [...new Set(failedChunks)].sort((a, b) => a - b);
 
   const after = readFingerprints();
