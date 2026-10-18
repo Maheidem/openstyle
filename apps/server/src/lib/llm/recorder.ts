@@ -117,6 +117,14 @@ function isForeignKeyError(err: unknown): boolean {
   return err instanceof Error && /FOREIGN KEY/i.test(err.message);
 }
 
+/** Delete the checkpoint rows of one thread (a run id). */
+function deleteThreadRows(db: DatabaseSync, threadId: string): void {
+  db.prepare("DELETE FROM llm_checkpoint_writes WHERE thread_id = ?").run(
+    threadId,
+  );
+  db.prepare("DELETE FROM llm_checkpoints WHERE thread_id = ?").run(threadId);
+}
+
 interface CallRow {
   id: number;
   attempt: number;
@@ -138,24 +146,44 @@ export function createLlmRecorder(db: DatabaseSync): LlmRecorder {
   return {
     startRun(r) {
       try {
-        db.prepare(
-          `INSERT INTO llm_runs
-             (id, scope, scope_id, meeting_id, kind, started_by, status,
-              graph_version, input_hash, resume_count, result_json,
-              lost_records, error_kind, error_detail,
-              started_at, updated_at, finished_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'running', ?, NULL, 0, NULL, 0, NULL, NULL, ?, ?, NULL)`,
-        ).run(
-          r.id,
-          r.scope,
-          r.scopeId,
-          r.scope === "meeting" ? r.scopeId : null,
-          r.kind,
-          r.startedBy,
-          r.graphVersion,
-          r.startedAt,
-          r.startedAt,
-        );
+        const insert = () => {
+          db.prepare(
+            `INSERT INTO llm_runs
+               (id, scope, scope_id, meeting_id, kind, started_by, status,
+                graph_version, input_hash, resume_count, result_json,
+                lost_records, error_kind, error_detail,
+                started_at, updated_at, finished_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'running', ?, NULL, 0, NULL, 0, NULL, NULL, ?, ?, NULL)`,
+          ).run(
+            r.id,
+            r.scope,
+            r.scopeId,
+            r.scope === "meeting" ? r.scopeId : null,
+            r.kind,
+            r.startedBy,
+            r.graphVersion,
+            r.startedAt,
+            r.startedAt,
+          );
+          // A new run replaces an older interrupted run of the same stages:
+          // the screen offers Resume first, so a start is the user's choice to
+          // begin again (3.4.2 step 2). The checkpoints go with it.
+          const older = db
+            .prepare(
+              `SELECT id FROM llm_runs
+                WHERE scope = ? AND scope_id = ? AND kind = ?
+                  AND status = 'interrupted' AND id <> ?`,
+            )
+            .all(r.scope, r.scopeId, r.kind, r.id) as { id: string }[];
+          for (const { id } of older) {
+            db.prepare(
+              "UPDATE llm_runs SET status = 'cancelled', updated_at = ?, finished_at = ? WHERE id = ?",
+            ).run(r.startedAt, r.startedAt, id);
+            deleteThreadRows(db, id);
+          }
+        };
+        if (db.isTransaction) insert();
+        else withTransaction(db, insert);
         return "ok";
       } catch (err) {
         if (isForeignKeyError(err)) {
@@ -433,6 +461,209 @@ export function createLlmRecorder(db: DatabaseSync): LlmRecorder {
         log.warn(`sweepInterrupted failed: ${String(err)}`);
         return 0;
       }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Run administration for the runner (specs/meeting-enhance-agentic.md 3.4.6,
+// 3.4.7). Reads of the run row, the boot sweep and the checkpoint tables. It
+// is a separate interface from `LlmRecorder`: the call path never needs it, and
+// a test recorder for a node test need not implement it. Like the recorder it
+// never throws.
+// ---------------------------------------------------------------------------
+
+/** A run row as the runner reads it. */
+export interface RunRow {
+  id: string;
+  scope: LlmScope;
+  scopeId: string;
+  kind: LlmRunKind;
+  startedBy: "auto" | "button";
+  status: LlmRunStatus;
+  graphVersion: number;
+  inputHash: string | null;
+  resumeCount: number;
+  errorKind: string | null;
+  errorDetail: string | null;
+}
+
+interface RunDbRow {
+  id: string;
+  scope: string;
+  scope_id: string;
+  kind: string;
+  started_by: string;
+  status: string;
+  graph_version: number;
+  input_hash: string | null;
+  resume_count: number;
+  error_kind: string | null;
+  error_detail: string | null;
+}
+
+function toRunRow(r: RunDbRow): RunRow {
+  return {
+    id: r.id,
+    scope: r.scope as LlmScope,
+    scopeId: r.scope_id,
+    kind: r.kind as LlmRunKind,
+    startedBy: r.started_by as "auto" | "button",
+    status: r.status as LlmRunStatus,
+    graphVersion: r.graph_version,
+    inputHash: r.input_hash,
+    resumeCount: r.resume_count,
+    errorKind: r.error_kind,
+    errorDetail: r.error_detail,
+  };
+}
+
+const RUN_COLUMNS = `id, scope, scope_id, kind, started_by, status,
+  graph_version, input_hash, resume_count, error_kind, error_detail`;
+
+export interface RunAdmin {
+  /** Null when no row exists. */
+  getRun(id: string): RunRow | null;
+  /** `interrupted` runs with no failure and fewer than `maxResumes` resumes. Oldest first. */
+  listAutoResumable(maxResumes: number): RunRow[];
+  hasCheckpoint(runId: string): boolean;
+  /** Delete the checkpoint rows of the thread (3.4.6 step 5). */
+  deleteCheckpoints(runId: string): void;
+  /** Close the step rows still `running`. */
+  closeOpenSteps(
+    runId: string,
+    status: "cancelled" | "interrupted" | "failed",
+    err?: { kind: string; detail: string },
+  ): void;
+  /**
+   * The boot sweep (3.4.7). A `running` run with a checkpoint becomes
+   * `interrupted`. One without becomes `failed` with
+   * `interrupted_before_checkpoint`. Synchronous SQL only.
+   */
+  sweepOrphans(): { interrupted: number; failed: number };
+}
+
+export function createRunAdmin(db: DatabaseSync): RunAdmin {
+  return {
+    getRun(id) {
+      try {
+        const row = db
+          .prepare(`SELECT ${RUN_COLUMNS} FROM llm_runs WHERE id = ?`)
+          .get(id) as RunDbRow | undefined;
+        return row ? toRunRow(row) : null;
+      } catch (err) {
+        log.warn(`getRun failed (run ${id}): ${String(err)}`);
+        return null;
+      }
+    },
+
+    listAutoResumable(maxResumes) {
+      try {
+        const rows = db
+          .prepare(
+            `SELECT ${RUN_COLUMNS} FROM llm_runs
+              WHERE status = 'interrupted' AND error_kind IS NULL
+                AND resume_count < ?
+              ORDER BY started_at, id`,
+          )
+          .all(maxResumes) as unknown as RunDbRow[];
+        return rows.map(toRunRow);
+      } catch (err) {
+        log.warn(`listAutoResumable failed: ${String(err)}`);
+        return [];
+      }
+    },
+
+    hasCheckpoint(runId) {
+      try {
+        return (
+          db
+            .prepare(
+              "SELECT 1 AS one FROM llm_checkpoints WHERE thread_id = ? LIMIT 1",
+            )
+            .get(runId) !== undefined
+        );
+      } catch (err) {
+        log.warn(`hasCheckpoint failed (run ${runId}): ${String(err)}`);
+        return false;
+      }
+    },
+
+    deleteCheckpoints(runId) {
+      try {
+        deleteThreadRows(db, runId);
+      } catch (err) {
+        log.warn(`deleteCheckpoints failed (run ${runId}): ${String(err)}`);
+      }
+    },
+
+    closeOpenSteps(runId, status, err) {
+      try {
+        db.prepare(
+          `UPDATE llm_run_steps
+              SET status = ?, error_kind = ?, error_detail = ?, finished_at = ?
+            WHERE run_id = ? AND status = 'running'`,
+        ).run(
+          status,
+          err?.kind ?? null,
+          capOrNull(err?.detail),
+          Date.now(),
+          runId,
+        );
+      } catch (e) {
+        log.warn(`closeOpenSteps failed (run ${runId}): ${String(e)}`);
+      }
+    },
+
+    sweepOrphans() {
+      const out = { interrupted: 0, failed: 0 };
+      try {
+        const sweep = () => {
+          const now = Date.now();
+          const running = db
+            .prepare("SELECT id FROM llm_runs WHERE status = 'running'")
+            .all() as { id: string }[];
+          for (const { id } of running) {
+            const has =
+              db
+                .prepare(
+                  "SELECT 1 AS one FROM llm_checkpoints WHERE thread_id = ? LIMIT 1",
+                )
+                .get(id) !== undefined;
+            if (has) {
+              db.prepare(
+                `UPDATE llm_run_steps SET status = 'interrupted', finished_at = ?
+                  WHERE run_id = ? AND status = 'running'`,
+              ).run(now, id);
+              db.prepare(
+                `UPDATE llm_runs SET status = 'interrupted', updated_at = ?, finished_at = ?
+                  WHERE id = ?`,
+              ).run(now, now, id);
+              out.interrupted += 1;
+            } else {
+              db.prepare(
+                `UPDATE llm_run_steps
+                    SET status = 'failed', error_kind = 'interrupted_before_checkpoint',
+                        finished_at = ?
+                  WHERE run_id = ? AND status = 'running'`,
+              ).run(now, id);
+              db.prepare(
+                `UPDATE llm_runs
+                    SET status = 'failed', error_kind = 'interrupted_before_checkpoint',
+                        error_detail = 'The app stopped before the first checkpoint.',
+                        updated_at = ?, finished_at = ?
+                  WHERE id = ?`,
+              ).run(now, now, id);
+              out.failed += 1;
+            }
+          }
+        };
+        if (db.isTransaction) sweep();
+        else withTransaction(db, sweep);
+      } catch (err) {
+        log.warn(`sweepOrphans failed: ${String(err)}`);
+      }
+      return out;
     },
   };
 }

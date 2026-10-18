@@ -1,14 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   claimJob,
-  clearJobFailure,
   getJob,
-  getJobFailure,
   hasJob,
   isCancelRequested,
   releaseJob,
   requestCancel,
-  setJobFailure,
+  setJobKind,
   setProgress,
   updateProgress,
 } from "../src/lib/meetings/job-registry.js";
@@ -18,7 +16,6 @@ const progress = () => ({ done: 0, total: 0, failed: 0 });
 afterEach(() => {
   releaseJob("m1");
   releaseJob("m2");
-  clearJobFailure("m1");
 });
 
 describe("job registry claim and release", () => {
@@ -109,13 +106,29 @@ describe("job registry cancel", () => {
   });
 });
 
-describe("job registry failures", () => {
-  it("keeps a failure after the slot is released until it is cleared", () => {
-    claimJob("m1", "summarize", progress());
-    setJobFailure("m1", "boom");
+describe("job registry controller and kind", () => {
+  it("aborts the controller of the job on a cancel", () => {
+    const controller = new AbortController();
+    claimJob("m1", "enhance", progress(), controller);
+    expect(controller.signal.aborted).toBe(false);
+    expect(requestCancel("m1")).toBe(true);
+    expect(controller.signal.aborted).toBe(true);
+  });
+
+  it("drops the controller with the slot, so a later cancel aborts nothing", () => {
+    const controller = new AbortController();
+    claimJob("m1", "enhance", progress(), controller);
     releaseJob("m1");
-    expect(getJobFailure("m1")).toBe("boom");
-    clearJobFailure("m1");
-    expect(getJobFailure("m1")).toBeUndefined();
+    claimJob("m1", "enhance", progress());
+    requestCancel("m1");
+    expect(controller.signal.aborted).toBe(false);
+  });
+
+  it("changes the kind of a held slot with setJobKind and ignores a free slot", () => {
+    claimJob("m1", "enhance", progress());
+    setJobKind("m1", "summarize");
+    expect(getJob("m1")?.kind).toBe("summarize");
+    setJobKind("m2", "summarize");
+    expect(hasJob("m2")).toBe(false);
   });
 });

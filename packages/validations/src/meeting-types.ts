@@ -137,3 +137,32 @@ export interface SpeakerVerdict {
   /** conflict_lost: the call of the winner. */
   winnerCallId: number | null;
 }
+
+/**
+ * The 202 body of `POST /api/meetings/:id/enhance`, `POST /:id/summarize` and
+ * `POST /:id/runs/:runId/resume` (specs/meeting-enhance-agentic.md 3.4.2).
+ * `id` is the meeting id. `runId` is the run that was started or resumed.
+ */
+export interface StartRunResponse {
+  ok: true;
+  id: string;
+  runId: string;
+}
+
+/**
+ * Why a resume is refused, one value for each guard of 3.4.7 in guard order.
+ * Guards 4 and 6 also set the run to `failed`.
+ */
+export type ResumeConflictReason =
+  | "meeting_status"
+  | "job_running"
+  | "not_interrupted"
+  | "graph_changed"
+  | "no_checkpoint"
+  | "transcript_changed";
+
+/** The 409 body of the resume route. `error` is one English line. */
+export interface ResumeConflict {
+  error: string;
+  reason: ResumeConflictReason;
+}
