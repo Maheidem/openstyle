@@ -1018,10 +1018,55 @@
     "enhanceResult": "Corrected {{n}} segments.",
     "enhanceNoneCorrected": "No segments needed correction.",
     "enhancePartial": "Partial pass — {{failed}} of {{attempted}} chunks could not be corrected and kept their original text.",
-    "enhanceFailedTimeout": "Enhance timed out before your model answered, so nothing was corrected. Raise the enhance timeout in Settings → Data, then retry.",
-    "enhanceFailedParse": "Enhance failed — the model’s reply could not be read as corrections, so nothing was changed.",
-    "enhanceFailedProvider": "Enhance failed — your model could not be reached, so nothing was changed.",
     "retryEnhance": "Retry Enhance",
+    "llmRun": {
+      "enhance": {
+        "failed": "Enhance failed.",
+        "partial": "Enhance finished with errors. {{failed}} of {{total}} steps failed.",
+        "interrupted": "Enhance stopped when Openstyle closed."
+      },
+      "summarize": {
+        "failed": "Summarize failed.",
+        "partial": "Summarize finished with errors. {{failed}} of {{total}} steps failed.",
+        "interrupted": "Summarize stopped when Openstyle closed."
+      },
+      "line": "{{where}}: {{reason}}",
+      "node": {
+        "correctChunk": "Corrections",
+        "identifySpeakers": "Speakers",
+        "summarize": "Summary",
+        "save": "Saving"
+      },
+      "chunks": "chunks {{list}}",
+      "resume": "Resume",
+      "startAgain": "Start again",
+      "startAgainDiscards": "Start again. This discards the finished work of the stopped run."
+    },
+    "llmError": {
+      "length": "The model reached its output limit.",
+      "content_filter": "The provider blocked the answer.",
+      "unexpected_tool_calls": "The model tried to call a tool.",
+      "abnormal_stop": "The model stopped for an unknown reason.",
+      "reasoning_leak": "The model put its reasoning in the answer.",
+      "schema": "The answer did not match the required format.",
+      "provider_timeout": "The model did not answer in time. Raise the timeout in Settings, then retry.",
+      "provider_rate_limited": "The provider limited the requests.",
+      "provider_unavailable": "The model could not be reached.",
+      "provider_auth": "The provider refused the key.",
+      "provider_invalid_request": "The provider refused the request.",
+      "model_mismatch": "The server answered with another model.",
+      "model_unavailable": "Openstyle cannot use the chosen model. Check Settings > Models, then try again.",
+      "deadline_exceeded": "The summary took longer than its time limit.",
+      "budget_exceeded": "The meeting is too long for the summary limit of 24 calls.",
+      "empty_input": "The meeting has no text to process.",
+      "save_failed": "Openstyle could not save the result.",
+      "internal": "Openstyle stopped the run because of an internal error.",
+      "interrupted_before_checkpoint": "Openstyle closed before the run saved any progress. Start again.",
+      "graph_changed": "Openstyle was updated while the run was stopped. Start again.",
+      "transcript_changed": "The transcript changed while the run was stopped. Start again.",
+      "cancelled": "The run was cancelled.",
+      "unknown": "An unknown error occurred."
+    },
     "showEnhancedLabel": "Show enhanced transcript",
     "showingEnhanced": "Enhanced",
     "showingRaw": "Raw",

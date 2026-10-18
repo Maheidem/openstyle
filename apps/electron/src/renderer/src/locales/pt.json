@@ -837,10 +837,55 @@
     "enhanceResult": "{{n}} segmentos corrigidos.",
     "enhanceNoneCorrected": "Nenhum segmento precisou de correção.",
     "enhancePartial": "Passagem parcial — {{failed}} de {{attempted}} trechos não puderam ser corrigidos e mantiveram o texto original.",
-    "enhanceFailedTimeout": "O aprimoramento expirou antes do seu modelo responder, então nada foi corrigido. Aumente o tempo limite do aprimoramento em Configurações › Dados e tente de novo.",
-    "enhanceFailedParse": "Aprimoramento falhou — a resposta do modelo não pôde ser lida como correções, então nada foi alterado.",
-    "enhanceFailedProvider": "Aprimoramento falhou — seu modelo não pôde ser acessado, então nada foi alterado.",
     "retryEnhance": "Tentar aprimorar novamente",
+    "llmRun": {
+      "enhance": {
+        "failed": "O aprimoramento falhou.",
+        "partial": "O aprimoramento terminou com erros. {{failed}} de {{total}} etapas falharam.",
+        "interrupted": "O aprimoramento parou quando o Openstyle foi fechado."
+      },
+      "summarize": {
+        "failed": "O resumo falhou.",
+        "partial": "O resumo terminou com erros. {{failed}} de {{total}} etapas falharam.",
+        "interrupted": "O resumo parou quando o Openstyle foi fechado."
+      },
+      "line": "{{where}}: {{reason}}",
+      "node": {
+        "correctChunk": "Correções",
+        "identifySpeakers": "Interlocutores",
+        "summarize": "Resumo",
+        "save": "Salvamento"
+      },
+      "chunks": "trechos {{list}}",
+      "resume": "Retomar",
+      "startAgain": "Começar de novo",
+      "startAgainDiscards": "Começar de novo. Isso descarta o trabalho já concluído da execução parada."
+    },
+    "llmError": {
+      "length": "O modelo atingiu o limite de saída.",
+      "content_filter": "O provedor bloqueou a resposta.",
+      "unexpected_tool_calls": "O modelo tentou chamar uma ferramenta.",
+      "abnormal_stop": "O modelo parou por um motivo desconhecido.",
+      "reasoning_leak": "O modelo colocou o raciocínio na resposta.",
+      "schema": "A resposta não seguiu o formato exigido.",
+      "provider_timeout": "O modelo não respondeu a tempo. Aumente o tempo limite em Configurações e tente de novo.",
+      "provider_rate_limited": "O provedor limitou as solicitações.",
+      "provider_unavailable": "Não foi possível conectar ao modelo.",
+      "provider_auth": "O provedor recusou a chave.",
+      "provider_invalid_request": "O provedor recusou a solicitação.",
+      "model_mismatch": "O servidor respondeu com outro modelo.",
+      "model_unavailable": "O Openstyle não pode usar o modelo escolhido. Verifique Configurações › Modelos e tente de novo.",
+      "deadline_exceeded": "O resumo levou mais tempo que o seu limite de tempo.",
+      "budget_exceeded": "A reunião é longa demais para o limite de resumo de 24 chamadas.",
+      "empty_input": "A reunião não tem texto para processar.",
+      "save_failed": "O Openstyle não conseguiu salvar o resultado.",
+      "internal": "O Openstyle parou a execução por causa de um erro interno.",
+      "interrupted_before_checkpoint": "O Openstyle foi fechado antes de a execução salvar qualquer progresso. Comece de novo.",
+      "graph_changed": "O Openstyle foi atualizado enquanto a execução estava parada. Comece de novo.",
+      "transcript_changed": "A transcrição mudou enquanto a execução estava parada. Comece de novo.",
+      "cancelled": "A execução foi cancelada.",
+      "unknown": "Ocorreu um erro desconhecido."
+    },
     "showEnhancedLabel": "Mostrar transcrição aprimorada",
     "showingEnhanced": "Aprimorada",
     "showingRaw": "Original",

@@ -837,10 +837,55 @@
     "enhanceResult": "{{n}} segmenti corretti.",
     "enhanceNoneCorrected": "Nessun segmento ha richiesto correzioni.",
     "enhancePartial": "Passaggio parziale — {{failed}} blocchi su {{attempted}} non hanno potuto essere corretti e mantengono il testo originale.",
-    "enhanceFailedTimeout": "Il miglioramento è scaduto prima della risposta del modello, quindi non è stato corretto nulla. Aumenta il timeout del miglioramento in Impostazioni › Dati e riprova.",
-    "enhanceFailedParse": "Miglioramento non riuscito — la risposta del modello non è stata letta come correzioni, quindi nulla è stato modificato.",
-    "enhanceFailedProvider": "Miglioramento non riuscito — il modello non era raggiungibile, quindi nulla è stato modificato.",
     "retryEnhance": "Riprova miglioramento",
+    "llmRun": {
+      "enhance": {
+        "failed": "Il miglioramento è fallito.",
+        "partial": "Il miglioramento è terminato con errori. {{failed}} passaggi su {{total}} sono falliti.",
+        "interrupted": "Il miglioramento si è fermato alla chiusura di Openstyle."
+      },
+      "summarize": {
+        "failed": "Il riepilogo è fallito.",
+        "partial": "Il riepilogo è terminato con errori. {{failed}} passaggi su {{total}} sono falliti.",
+        "interrupted": "Il riepilogo si è fermato alla chiusura di Openstyle."
+      },
+      "line": "{{where}}: {{reason}}",
+      "node": {
+        "correctChunk": "Correzioni",
+        "identifySpeakers": "Partecipanti",
+        "summarize": "Riepilogo",
+        "save": "Salvataggio"
+      },
+      "chunks": "blocchi {{list}}",
+      "resume": "Riprendi",
+      "startAgain": "Ricomincia",
+      "startAgainDiscards": "Ricomincia. Il lavoro già terminato dell’esecuzione interrotta viene scartato."
+    },
+    "llmError": {
+      "length": "Il modello ha raggiunto il limite di output.",
+      "content_filter": "Il provider ha bloccato la risposta.",
+      "unexpected_tool_calls": "Il modello ha provato a chiamare uno strumento.",
+      "abnormal_stop": "Il modello si è fermato per un motivo sconosciuto.",
+      "reasoning_leak": "Il modello ha messo il suo ragionamento nella risposta.",
+      "schema": "La risposta non rispettava il formato richiesto.",
+      "provider_timeout": "Il modello non ha risposto in tempo. Aumenta il timeout in Impostazioni e riprova.",
+      "provider_rate_limited": "Il provider ha limitato le richieste.",
+      "provider_unavailable": "Il modello non era raggiungibile.",
+      "provider_auth": "Il provider ha rifiutato la chiave.",
+      "provider_invalid_request": "Il provider ha rifiutato la richiesta.",
+      "model_mismatch": "Il server ha risposto con un altro modello.",
+      "model_unavailable": "Openstyle non può usare il modello scelto. Controlla Impostazioni › Modelli e riprova.",
+      "deadline_exceeded": "Il riepilogo ha superato il suo limite di tempo.",
+      "budget_exceeded": "La riunione è troppo lunga per il limite di riepilogo di 24 chiamate.",
+      "empty_input": "La riunione non ha testo da elaborare.",
+      "save_failed": "Openstyle non ha potuto salvare il risultato.",
+      "internal": "Openstyle ha fermato l’esecuzione a causa di un errore interno.",
+      "interrupted_before_checkpoint": "Openstyle si è chiuso prima che l’esecuzione salvasse alcun progresso. Ricomincia.",
+      "graph_changed": "Openstyle è stato aggiornato mentre l’esecuzione era ferma. Ricomincia.",
+      "transcript_changed": "La trascrizione è cambiata mentre l’esecuzione era ferma. Ricomincia.",
+      "cancelled": "L’esecuzione è stata annullata.",
+      "unknown": "Si è verificato un errore sconosciuto."
+    },
     "showEnhancedLabel": "Mostra trascrizione migliorata",
     "showingEnhanced": "Migliorata",
     "showingRaw": "Originale",
