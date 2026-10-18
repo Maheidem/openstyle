@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { RunningServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
+import { getDb } from "../src/lib/db.js";
 
 // Exercises the real startServer() entrypoint end-to-end (a real bind + real
 // HTTP requests), not just the authMiddleware/cors() pieces in isolation —
@@ -125,5 +126,31 @@ describe("startServer() — non-loopback bind, no explicit token", () => {
       headers: { Authorization: `Bearer ${running.token}` },
     });
     expect(withToken.status).toBe(200);
+  });
+});
+
+describe("startServer() — LLM run sweep", () => {
+  it("marks running runs and running steps interrupted at start", async () => {
+    const db = getDb();
+    db.prepare(
+      `INSERT INTO llm_runs (id, scope, scope_id, kind, status, started_by,
+         graph_version, resume_count, lost_records, started_at, updated_at)
+       VALUES ('sweep-r', 'test', 'sweep-s', 'enhance', 'running', 'button', 1, 0, 0, 1, 1)`,
+    ).run();
+    db.prepare(
+      `INSERT INTO llm_run_steps (run_id, step_key, node, seq, status, attempts, started_at)
+       VALUES ('sweep-r', 'prepare', 'prepare', 1, 'running', 0, 1)`,
+    ).run();
+
+    running = await startServer({ host: "127.0.0.1", port: 0 });
+
+    expect(
+      db.prepare("SELECT status FROM llm_runs WHERE id = 'sweep-r'").get(),
+    ).toEqual({ status: "interrupted" });
+    expect(
+      db
+        .prepare("SELECT status FROM llm_run_steps WHERE run_id = 'sweep-r'")
+        .get(),
+    ).toEqual({ status: "interrupted" });
   });
 });

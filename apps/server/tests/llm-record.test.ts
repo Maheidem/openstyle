@@ -224,9 +224,14 @@ describe.each<LlmScope>([
       verdict: null,
     };
     rec.linkCall(call?.id as number, [link]);
+    db.prepare("UPDATE llm_call_links SET created_at = 1").run();
     rec.linkCall(call?.id as number, [
       { ...link, appliedText: "hello world!" },
     ]);
+    // A replay refreshes created_at, so the 7.8 order stays by last write.
+    expect(
+      count("SELECT count(*) AS c FROM llm_call_links WHERE created_at > 1"),
+    ).toBe(1);
     expect(count("SELECT count(*) AS c FROM llm_call_links")).toBe(1);
     const row = db.prepare("SELECT * FROM llm_call_links").get() as Record<
       string,

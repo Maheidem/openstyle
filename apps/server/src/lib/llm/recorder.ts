@@ -391,7 +391,8 @@ export function createLlmRecorder(db: DatabaseSync): LlmRecorder {
              ON CONFLICT(call_id, target_type, target_id, seq) DO UPDATE SET
                outcome = excluded.outcome, reason = excluded.reason,
                applied_text = excluded.applied_text,
-               verdict_json = excluded.verdict_json`,
+               verdict_json = excluded.verdict_json,
+               created_at = excluded.created_at`,
           ).run(
             callId,
             l.targetType,

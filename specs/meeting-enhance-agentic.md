@@ -2772,7 +2772,7 @@ Two routes go in a new sibling router `S/routes/meetings-runs.ts` (3.1, 11.4). T
 
 **GET /api/meetings/:id/llm-calls**: `call_id`; `run_id` + `step_key` (attempts of one step); `target_type` (`segment`|`speaker`|`summary`) + `target_id` (optional for `summary`); `failed="1"`; `detail` (`summary` default | `full`); `limit` (1 to 50, default 20; `full` max 10).
 1. Exactly one selector: `call_id`; or `run_id`+`step_key`; or `target_type`+`target_id`; or `run_id` alone; or `failed`; or none. A mixed query gets 400.
-2. `detail=full` needs one of the first three selectors, else 400 with a message.
+2. `detail=full` needs one of the first three selectors, else 400 with a message. `detail=full` with `limit` above 10 also answers 400 (the route does not clamp).
 3. A `summary` target returns the calls of the run that made the current summary. A `speaker` target returns the proposal calls of the producing run with that label's links. A `segment` target returns at most one call. All use 7.8.
 4. No record: `200` with `{ "calls": [] }`. Unknown meeting: 404. A run of another scope never appears (the reader filters on `scope` and `scope_id`). Query values are strings; the schema coerces numbers.
 
