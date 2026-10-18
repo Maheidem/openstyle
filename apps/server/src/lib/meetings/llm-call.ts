@@ -16,14 +16,7 @@ import type { LlmTaskId } from "@openstyle/validations";
 import { withLlmLane } from "../llm/lane.js";
 import { getModelCostCached } from "../model-registry.js";
 
-/**
- * Rough token estimate (~4 chars/token), mirroring `@openstyle/stt`
- * tokens.ts. Shared by every meeting feature that chunks a transcript to a
- * token budget (`summarize.ts`, `enhance.ts`).
- */
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
+export { estimateTokens } from "./workflow/chunking.js";
 
 /** One chat-completion request issued through the default model. */
 export interface ChatCallRequest {
