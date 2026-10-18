@@ -318,6 +318,30 @@ interface LedgerInput {
   maxOutputTokens: number;
 }
 
+/**
+ * Keys the SDK puts in a chat request body itself. A failed call has no SDK
+ * body, so this set splits the wire body the same way a successful call does.
+ */
+const KNOWN_SDK_BODY_KEYS = [
+  "model",
+  "messages",
+  "temperature",
+  "top_p",
+  "max_tokens",
+  "max_completion_tokens",
+  "response_format",
+  "stream",
+  "stream_options",
+  "stop",
+  "seed",
+  "frequency_penalty",
+  "presence_penalty",
+  "reasoning_effort",
+  "tools",
+  "tool_choice",
+  "user",
+];
+
 function buildLedger(i: LedgerInput): LlmParamsLedger {
   const sdk = asObject(i.sdkBody);
   const wire = asObject(i.wireBody);
@@ -328,9 +352,9 @@ function buildLedger(i: LedgerInput): LlmParamsLedger {
   if (wire) {
     capturedFrom = "wire";
     const fields = requestFields(wire);
-    const sdkKeys = new Set(Object.keys(sdk ?? {}));
+    const sdkKeys = new Set(sdk ? Object.keys(sdk) : KNOWN_SDK_BODY_KEYS);
     for (const [key, v] of Object.entries(fields)) {
-      if (sdkKeys.has(key) || sdkKeys.size === 0) topLevel[key] = v;
+      if (sdkKeys.has(key)) topLevel[key] = v;
       else extraBody[key] = v;
     }
   } else if (sdk) {
@@ -599,6 +623,7 @@ export async function callStructured<T>(
   };
   const warnings = [...profile.warnings];
   const wire = reasoningWire(profile);
+  warnings.push(...wire.warnings);
   let jsonSchema: unknown;
   try {
     resolved = await resolveTaskCall(profile.taskId, {

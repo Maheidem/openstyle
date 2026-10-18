@@ -573,6 +573,31 @@ describe("W10, timeout and cancel on a held socket", () => {
     expect(records[0]?.errorKind).toBe("provider_timeout");
   });
 
+  it("a timed-out server call keeps chat_template_kwargs in extraBody", async () => {
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() =>
+      AbortSignal.abort(new DOMException("timeout", "TimeoutError")),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+          if (init?.signal?.aborted)
+            reject(new DOMException("aborted", "AbortError"));
+        }),
+    );
+    const { input, records } = await makeInput(await serverProfile());
+    await fails(callStructured(input));
+    const ledger = records[0]?.params;
+    expect(ledger?.capturedFrom).toBe("wire");
+    expect(ledger?.extraBody.chat_template_kwargs).toEqual({
+      enable_thinking: false,
+    });
+    expect(ledger?.topLevel.chat_template_kwargs).toBeUndefined();
+    expect(ledger?.topLevel.model).toBe(MODEL);
+  });
+
   it("the user signal first is CancelledError in_flight", async () => {
     const seen = stubFetch([heldSocket()]);
     vi.spyOn(globalThis, "fetch").mockImplementation(
@@ -1063,5 +1088,50 @@ describe("5.5.2, precedence of the gateway keys over a preset", () => {
     expect(
       JSON.parse(mergeSamplingIntoBody(body, { max_tokens: 50 })).max_tokens,
     ).toBe(100);
+  });
+});
+
+describe("W16, wire warnings reach the ledger", () => {
+  it("Gemini 3 with reasoning off records that thinking cannot be turned off", async () => {
+    getDb()
+      .prepare("INSERT OR REPLACE INTO api_keys (provider, key) VALUES (?, ?)")
+      .run("google", "key-google");
+    seedDefaultLlm("google", "google/gemini-3-pro");
+    stubFetch([
+      () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: { role: "model", parts: [{ text: VALID }] },
+                finishReason: "STOP",
+                index: 0,
+              },
+            ],
+            usageMetadata: {
+              promptTokenCount: 40,
+              candidatesTokenCount: 9,
+              totalTokenCount: 49,
+            },
+          }),
+          { status: 200, headers: jsonHeaders },
+        ),
+    ]);
+    const base = await resolveCallProfile({
+      taskId: "meetingEnhance",
+      step: "correctChunk",
+      maxReasoningTokens: 0,
+    });
+    const { input, records } = await makeInput({
+      ...base,
+      structured: "json_schema",
+    });
+    const result = await callStructured(input);
+    expect(result.paramsLedger.warnings).toContain(
+      "reasoning cannot be turned off: thinkingLevel low",
+    );
+    expect(records[0]?.params.warnings).toContain(
+      "reasoning cannot be turned off: thinkingLevel low",
+    );
   });
 });

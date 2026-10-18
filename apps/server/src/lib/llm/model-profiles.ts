@@ -45,9 +45,9 @@ export interface ReasoningPlan {
   /**
    * The wire value that turns reasoning off, read from models.dev at resolve
    * time (OpenAI `reasoningEffort`). null: none listed, so nothing is sent.
-   * An addition to the shape of 5.1, so a call never reads the registry again.
+   * An optional addition to the shape of 5.1, so a call never reads the registry again.
    */
-  offValue: string | null;
+  offValue?: string | null;
 }
 
 /** Plain data, no API key. Lives in the graph state. */
