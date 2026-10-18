@@ -8,8 +8,7 @@
  *
  * Usage: macos-fast-paste [key]
  *   key — the letter to chord with Command. Defaults to "v" (paste), so
- *         existing callers that pass no argument are unaffected. Commands
- *         pass "c" to copy the focused app's selection.
+ *         callers that pass no argument paste.
  *
  * Exit codes:
  *   0 - success

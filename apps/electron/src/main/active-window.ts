@@ -31,7 +31,7 @@ export function getOpenstyleAppExclusions(): Set<string> {
   return new Set(
     // "Freestyle" is the old app name. A user who upgrades from the old build
     // can still have it installed or have a stale window open. Keep it
-    // excluded from remix targeting.
+    // excluded from window targeting.
     [app.name, "Freestyle", "Electron"]
       .map((name) => name?.trim().toLowerCase())
       .filter((name): name is string => Boolean(name)),
@@ -462,37 +462,4 @@ export async function getFocusedWindowDisplay(): Promise<Electron.Display | null
   const bounds = await getFocusedWindowBounds();
   if (!bounds) return null;
   return screen.getDisplayMatching(bounds);
-}
-
-export interface FrontmostContext {
-  appName: string | null;
-  windowTitle: string | null;
-  url: string | null;
-}
-
-export async function getFrontmostContext(): Promise<FrontmostContext> {
-  try {
-    let raw: string | null = null;
-    if (process.platform === "darwin") raw = await getMacFrontmostApp();
-    else if (process.platform === "win32") raw = await getWindowsFrontmostApp();
-    else if (process.platform === "linux") raw = await getLinuxFrontmostApp();
-    if (!raw) return { appName: null, windowTitle: null, url: null };
-    try {
-      const parsed = JSON.parse(raw) as {
-        app?: string;
-        windowTitle?: string;
-        title?: string;
-        url?: string;
-      };
-      return {
-        appName: parsed.app?.trim() || null,
-        windowTitle: parsed.windowTitle?.trim() || parsed.title?.trim() || null,
-        url: parsed.url?.trim() || null,
-      };
-    } catch {
-      return { appName: raw.trim() || null, windowTitle: null, url: null };
-    }
-  } catch {
-    return { appName: null, windowTitle: null, url: null };
-  }
 }

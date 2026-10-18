@@ -122,7 +122,7 @@ async function waitForWindow(app, pred, what, ms = 30000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 const isPill = (u) => u.includes("pill");
-const isDashboard = (u) => u && !u.includes("pill") && !u.includes("bar.html");
+const isDashboard = (u) => u && !u.includes("pill");
 
 async function closeApp(app) {
   const proc = app.process();

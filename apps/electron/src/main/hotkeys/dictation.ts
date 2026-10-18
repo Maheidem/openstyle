@@ -18,10 +18,6 @@ import {
   getMissingDictationPermission,
   showRequiredPermissionDialog,
 } from "../permission-dialogs";
-import {
-  applyRemixSettings,
-  scheduleRemixHotkeyRegistration,
-} from "../remix/hotkey";
 import { getServerSettings, waitForServerReady } from "../server-target";
 import { showPill } from "../windows/pill-window";
 import { startNativeRetry } from "./native-retry";
@@ -58,7 +54,6 @@ export function registerHotkeyIpc(): void {
     if (accel !== state.currentHotkeyAccel)
       scheduleHotkeyRegistration(configured);
     // Wait for server settings — don't spawn a listener just to tear it down.
-    applyRemixSettings(settings);
     applyLanguageHotkeySettings(settings);
   });
 
@@ -67,14 +62,6 @@ export function registerHotkeyIpc(): void {
     state.hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
     scheduleHotkeyRegistration(state.currentHotkeyAccel ?? undefined);
-  });
-
-  // Remix: the settings UI writes the setting, then tells us to re-read it.
-  ipcMain.on("remix-hotkey:reload", () => {
-    void getServerSettings().then((settings) => {
-      if (!settings) return;
-      applyRemixSettings(settings);
-    });
   });
 
   // Language hotkeys: the settings UI pushes the whole map directly (no
@@ -409,8 +396,6 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     if (started) {
       state.accessibilityConfirmed = true;
       hotkeyDegradedNotified = false;
-      // Dictation hotkey moved — re-resolve remix (may free or steal a chord).
-      if (state.remixInitialized) scheduleRemixHotkeyRegistration();
     } else {
       hotkeyLog.warn(
         "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
@@ -556,7 +541,6 @@ async function registerLanguageHotkeys(
 
     const taken = isLanguageHotkeyTaken(normalized, {
       dictationAccel: state.currentHotkeyAccel,
-      remixAccel: state.currentRemixAccel,
       claimedLanguageAccels: state.languageHotkeyAccels.values(),
     });
     if (taken) {

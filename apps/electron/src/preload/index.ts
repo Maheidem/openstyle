@@ -20,16 +20,6 @@ import {
   normalizePillCancelMode,
   type PillCancelMode,
 } from "../shared/pill-cancel";
-import {
-  getDefaultRemixHotkey,
-  type RemixContextResult,
-  type RemixCopyResult,
-  type RemixPrimitiveResult,
-  type RemixReadDocumentResult,
-  type RemixRecapturePayload,
-  type RemixSelectionPayload,
-  type RemixSelectResult,
-} from "../shared/remix";
 
 // Build an `on*` member for one main-to-renderer channel. `A` is the payload
 // tuple the callback receives. Pass it by hand: the compiler cannot infer it.
@@ -49,7 +39,6 @@ const api = {
   platform: process.platform as string,
   isE2E: (process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1",
   defaultHotkey: getDefaultHotkey(),
-  defaultRemixHotkey: getDefaultRemixHotkey(),
   pasteText: (text: string): Promise<void> =>
     ipcRenderer.invoke("paste:text", text),
   copyText: (text: string): Promise<void> =>
@@ -62,16 +51,8 @@ const api = {
   hidePill: (): void => ipcRenderer.send("pill:hide"),
   // Ask the pill window to grow around the capsule (or shrink back) so the
   // expanded status card has somewhere to render.
-  setPillExpanded: (
-    expanded: boolean,
-    expansion?: "card" | "remix-chat",
-  ): void => ipcRenderer.send("pill:set-expanded", expanded, expansion),
-  // The held remix room shows only a small surface — keep the window
-  // click-through outside this rect (null restores full interactivity).
-  setPillHotRect: (
-    rect: { x: number; y: number; width: number; height: number } | null,
-  ): void => ipcRenderer.send("pill:set-hot-rect", rect),
-  onPillHotEnter: listen("pill:hot-enter"),
+  setPillExpanded: (expanded: boolean): void =>
+    ipcRenderer.send("pill:set-expanded", expanded),
   // --- Meeting Mode ---
   /** Mic PCM16 chunk from the hidden capture window's AudioWorklet. */
   meetingSendMicChunk: (chunk: ArrayBuffer): void =>
@@ -180,92 +161,6 @@ const api = {
   updateLanguageHotkeys: (map: Record<string, string>): void =>
     ipcRenderer.send("language-hotkeys:update", map),
   onHotkeyUp: listen("hotkey:up"),
-  // --- Remix ---
-  reloadRemixHotkey: (): void => ipcRenderer.send("remix-hotkey:reload"),
-  /** Replace the user's selection with the remix's result. */
-  pasteRemixResult: (text: string): Promise<boolean> =>
-    ipcRenderer.invoke("remix:paste", text),
-  onRemixDown: listen("remix:down"),
-  onRemixUp: listen("remix:up"),
-  /** The captured selection plus the anchor it was captured in. */
-  onRemixSelection: (
-    callback: (payload: RemixSelectionPayload) => void,
-  ): (() => void) => {
-    const handler = (_: unknown, payload: RemixSelectionPayload): void =>
-      callback(
-        payload ?? {
-          text: null,
-          appName: null,
-          windowTitle: null,
-          capturedAt: Date.now(),
-        },
-      );
-    ipcRenderer.on("remix:selection", handler);
-    return () => ipcRenderer.removeListener("remix:selection", handler);
-  },
-  /** Re-read the selection + frontmost app (fast-lane preset refresh). */
-  remixRecapture: (): Promise<RemixRecapturePayload> =>
-    ipcRenderer.invoke("remix:recapture"),
-  // --- Remix primitives (the agent's tools; workflow lives in its prompt) ---
-  remixGetContext: (): Promise<RemixContextResult> =>
-    ipcRenderer.invoke("remix:get-context"),
-  remixReadDocument: (): Promise<RemixReadDocumentResult> =>
-    ipcRenderer.invoke("remix:read-document"),
-  remixSelectAll: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:select-all"),
-  remixSelectText: (
-    text: string,
-    occurrence?: number,
-  ): Promise<RemixSelectResult> =>
-    ipcRenderer.invoke("remix:select-text", text, occurrence),
-  remixCollapseSelection: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:collapse-selection"),
-  remixCopy: (): Promise<RemixCopyResult> => ipcRenderer.invoke("remix:copy"),
-  remixSetClipboard: (text: string): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:set-clipboard", text),
-  remixSetClipboardImage: (url: string): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:set-clipboard-image", url),
-  remixPasteClipboard: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:paste-clipboard"),
-  remixUndo: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:undo"),
-  remixRedo: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:redo"),
-  remixPressKey: (key: string, times?: number): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:press-key", key, times),
-  remixGetClipboard: (): Promise<RemixCopyResult> =>
-    ipcRenderer.invoke("remix:get-clipboard"),
-  /** Fast-lane replace for the preset chips; clipboard preserved. */
-  remixPasteText: (text: string): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:paste-text", text),
-  /** The chat card's input needs the keyboard; focusability follows it. */
-  setRemixChatFocus: (focus: boolean): void =>
-    ipcRenderer.send("remix:set-chat-focus", focus),
-  /**
-   * Release (or re-claim) the digit route shortcuts. The chat card holds no
-   * routes, so keeping Control+1..3 claimed for its whole lifetime would take
-   * them from the rest of the system.
-   */
-  setRemixRouteKeys: (open: boolean): void =>
-    ipcRenderer.send("remix:set-route-keys", open),
-  /** The persistent bar was hovered; main opens the chat. */
-  remixBarHover: (): void => ipcRenderer.send("remix:bar-hover"),
-  /** Onboarding practice: allow Remix to target our own window while true. */
-  setRemixPracticeTarget: (active: boolean): void =>
-    ipcRenderer.send("remix:set-practice-target", active),
-  /** Remix delivered text into the practice draft (paste succeeded). */
-  onRemixPracticeDelivered: listen("remix:practice-delivered"),
-  /** Main wants the chat card open (bar hover) — no instruction attached. */
-  onRemixOpenChat: listen("remix:open-chat"),
-  /** A route shortcut (chord + digit) fired; zero-based index. */
-  onRemixRoute: listen<[index: number]>("remix:route"),
-  /**
-   * A dictation started on the shared home key and the remix chord is
-   * taking over. Drop the recording but leave the pill window alone — the
-   * remix card is about to use it.
-   */
-  onRemixSupersede: listen("remix:supersede"),
-
   onPillCancel: listen("pill:cancel"),
   checkMicPermission: (): Promise<string> =>
     ipcRenderer.invoke("permissions:check-mic"),

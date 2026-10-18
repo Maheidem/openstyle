@@ -48,8 +48,6 @@ import {
   openMicrophoneSettings,
 } from "../permission-dialogs";
 import { registerPermissionsIpc } from "../permissions-ipc";
-import { updateRemixBar } from "../remix/bar-window";
-import { cancelRemixRetries } from "../remix/hotkey";
 import {
   getServerPort,
   getServerToken,
@@ -63,7 +61,6 @@ import {
   hidePill,
   resolveAppWindowPosition,
   setPillExpanded,
-  setPillHotRect,
   setProgrammaticPosition,
 } from "../windows/pill-window";
 
@@ -209,34 +206,8 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
   });
 
   // IPC: the renderer needs (or no longer needs) room for the status card.
-  ipcMain.on(
-    "pill:set-expanded",
-    (_event, expanded: boolean, expansion?: unknown) => {
-      setPillExpanded(
-        expanded === true,
-        expansion === "remix-chat" ? expansion : "card",
-      );
-    },
-  );
-
-  // null = fully interactive; otherwise click-through outside the rect.
-  ipcMain.on("pill:set-hot-rect", (_event, rect: unknown) => {
-    if (rect === null) {
-      setPillHotRect(null);
-      return;
-    }
-    if (typeof rect !== "object" || rect === null) return;
-    const { x, y, width, height } = rect as Record<string, unknown>;
-    if (
-      typeof x !== "number" ||
-      typeof y !== "number" ||
-      typeof width !== "number" ||
-      typeof height !== "number" ||
-      ![x, y, width, height].every(Number.isFinite)
-    ) {
-      return;
-    }
-    setPillHotRect({ x, y, width, height });
+  ipcMain.on("pill:set-expanded", (_event, expanded: boolean) => {
+    setPillExpanded(expanded === true, "card");
   });
 
   // IPC: fan out per-frame audio levels from the pill to other windows
@@ -268,9 +239,6 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     openMicrophoneSettings,
     completeOnboarding: () => {
       writeSettings({ onboardingComplete: true });
-      state.remixPracticeTarget = false;
-      state.remixBarHeldForOnboarding = false;
-      updateRemixBar();
     },
   });
 
@@ -283,13 +251,6 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
   ipcMain.on("hotkey-record:start", () => {
     // A pending retry must not restart a listener that this recorder parks.
     cancelDictationRetries();
-    cancelRemixRetries();
-    // Park remix listener while recording a hotkey.
-    if (state.remixKeyListener) {
-      state.remixKeyListener.stop();
-      state.remixKeyListener = null;
-      state.remixPressed = false;
-    }
     // Pause the active hotkey listener so it doesn't fire during recording
     if (state.keyListener) {
       state.keyListener.stop();

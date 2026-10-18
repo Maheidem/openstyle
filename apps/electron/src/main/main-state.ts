@@ -8,7 +8,7 @@
  * local variable.
  *
  * This module must have no side effects when it loads. `index.ts` sets
- * `quietE2E` and `remixBarHeldForOnboarding` after the user-data override.
+ * `quietE2E` after the user-data override.
  */
 import type { BrowserWindow, Tray } from "electron";
 import { AudioPlaybackController } from "./audio-control/controller";
@@ -17,13 +17,6 @@ import type { HotkeyRecorder } from "./hotkey-recorder";
 import type { NativeKeyListener } from "./key-listener";
 import type { MeetingRecorder } from "./meeting-recorder";
 import { serverFetch } from "./server-target";
-
-export interface RemixAnchor {
-  appName: string | null;
-  windowTitle: string | null;
-  url: string | null;
-  capturedAt: number;
-}
 
 export interface MainState {
   mainWindow: BrowserWindow | null;
@@ -37,18 +30,10 @@ export interface MainState {
   hotkeyPressed: boolean;
   currentHotkeyAccel: string | null;
   hotkeyRecorder: HotkeyRecorder | null;
-  /** Own listener process — native binaries only take one accelerator each. */
-  remixKeyListener: NativeKeyListener | null;
-  remixPressed: boolean;
   /** Per-language dictation hotkeys: lang code -> its native listener. */
   languageKeyListeners: Map<string, NativeKeyListener>;
   /** Lang code -> normalized accelerator currently registered for it. */
   languageHotkeyAccels: Map<string, string>;
-  currentRemixAccel: string | null;
-  /** False until server settings are read once (don't spawn on defaults). */
-  remixInitialized: boolean;
-  /** Onboarding practice: allow Remix to target Openstyle's own window. */
-  remixPracticeTarget: boolean;
   audioPlaybackController: AudioPlaybackController;
   /** Meeting Mode recorder (created on whenReady; darwin >= 14.4 only). */
   meetingRecorder: MeetingRecorder | null;
@@ -59,14 +44,6 @@ export interface MainState {
    * template must be built synchronously.
    */
   meetingsFlagEnabled: boolean;
-  /** Last document Remix captured (app, window, url, time). */
-  remixAnchor: RemixAnchor | null;
-  remixBarWindow: BrowserWindow | null;
-  remixBarEnabled: boolean;
-  /** Held during onboarding; `index.ts` seeds it from settings at start. */
-  remixBarHeldForOnboarding: boolean;
-  remixBarFollowTimer: NodeJS.Timeout | null;
-  lastPillHideAt: number;
   /**
    * Resolves once a freshly-created pill window has finished loading and is
    * visible.  `null` when no deferred show is in progress.
@@ -75,7 +52,6 @@ export interface MainState {
   isUpdaterQuitting: boolean;
   updateDownloadState: UpdateDownloadState;
   hotkeyStuckTimer: NodeJS.Timeout | null;
-  remixStuckTimer: NodeJS.Timeout | null;
   /** Quiet E2E mode. `index.ts` sets it once, right after it computes it. */
   quietE2E: boolean;
 }
@@ -89,27 +65,15 @@ export const state: MainState = {
   hotkeyPressed: false,
   currentHotkeyAccel: null,
   hotkeyRecorder: null,
-  remixKeyListener: null,
-  remixPressed: false,
   languageKeyListeners: new Map<string, NativeKeyListener>(),
   languageHotkeyAccels: new Map<string, string>(),
-  currentRemixAccel: null,
-  remixInitialized: false,
-  remixPracticeTarget: false,
   audioPlaybackController: new AudioPlaybackController(),
   meetingRecorder: null,
   meetingsFlagEnabled: false,
-  remixAnchor: null,
-  remixBarWindow: null,
-  remixBarEnabled: true,
-  remixBarHeldForOnboarding: false,
-  remixBarFollowTimer: null,
-  lastPillHideAt: 0,
   pillReadyPromise: null,
   isUpdaterQuitting: false,
   updateDownloadState: "idle",
   hotkeyStuckTimer: null,
-  remixStuckTimer: null,
   quietE2E: false,
 };
 

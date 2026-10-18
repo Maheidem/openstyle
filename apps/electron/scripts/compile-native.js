@@ -127,11 +127,6 @@ function compileMacOS() {
       minTarget: "14.2",
     },
     {
-      name: "macos-ax",
-      src: "macos-ax.swift",
-      frameworks: ["ApplicationServices", "Carbon", "Foundation"],
-    },
-    {
       // Calendar read for meeting links (specs/calendar-eventkit.md).
       // requestFullAccessToEvents needs a 14.0 deployment target.
       name: "macos-calendar",

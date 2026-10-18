@@ -10,7 +10,6 @@ import {
 } from "./hotkeys/dictation";
 import { state, stopHotkeyRecorderProcess } from "./main-state";
 import { stopLinuxPasteHelper } from "./paste";
-import { cancelRemixRetries } from "./remix/hotkey";
 import { stopServerHost } from "./server-host";
 import { showSettingsWindow } from "./windows/settings-window";
 
@@ -42,25 +41,16 @@ export function registerQuitHandlers(): void {
     stopLinuxPasteHelper();
     const serverStopped = stopServerHost(3000).catch(() => {});
     cancelDictationRetries();
-    cancelRemixRetries();
     cancelLanguageRetries();
     if (state.keyListener) {
       state.keyListener.stop();
       state.keyListener = null;
-    }
-    if (state.remixKeyListener) {
-      state.remixKeyListener.stop();
-      state.remixKeyListener = null;
     }
     for (const listener of state.languageKeyListeners.values()) {
       listener.stop();
     }
     state.languageKeyListeners.clear();
     state.languageHotkeyAccels.clear();
-    if (state.remixBarFollowTimer) {
-      clearInterval(state.remixBarFollowTimer);
-      state.remixBarFollowTimer = null;
-    }
     stopHotkeyRecorderProcess();
     globalShortcut.unregisterAll();
     return serverStopped;

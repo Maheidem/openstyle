@@ -14,8 +14,6 @@ import {
 import * as linuxAutostart from "./linux-autostart";
 import { clearSettingsCache, writeSettings } from "./local-settings";
 import { state } from "./main-state";
-import { updateRemixBar } from "./remix/bar-window";
-import { cancelRemixRetries } from "./remix/hotkey";
 import { getDashboardURL } from "./renderer-urls";
 import { stopServerHost } from "./server-host";
 import { putServerSetting } from "./server-target";
@@ -29,8 +27,6 @@ const log = createAppLogger("electron");
 
 export function resetOnboarding(): void {
   writeSettings({ onboardingComplete: false });
-  state.remixBarHeldForOnboarding = true;
-  updateRemixBar();
   showSettingsWindow("/onboarding");
 }
 
@@ -89,7 +85,6 @@ export async function factoryReset(): Promise<void> {
     await stopServerHost(5000).catch(() => {});
 
     cancelDictationRetries();
-    cancelRemixRetries();
     cancelLanguageRetries();
     if (state.keyListener) {
       state.keyListener.stop();

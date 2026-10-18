@@ -1,5 +1,5 @@
 // Retry for a native key listener that failed for good. The caller keeps
-// its fallback while this runs. One shared rule for the dictation, Remix
+// its fallback while this runs. One shared rule for the dictation
 // and language listeners.
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 

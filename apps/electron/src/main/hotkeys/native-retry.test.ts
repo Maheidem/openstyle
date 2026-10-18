@@ -73,7 +73,7 @@ describe("startNativeRetry", () => {
       .mockRejectedValueOnce(new Error("spawn failed"))
       .mockResolvedValueOnce(true);
     const onRecovered = vi.fn();
-    startNativeRetry({ label: "Remix", attempt, onRecovered });
+    startNativeRetry({ label: "Dictation", attempt, onRecovered });
     await vi.advanceTimersByTimeAsync(NATIVE_RETRY_INTERVAL_MS);
     expect(onRecovered).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(NATIVE_RETRY_INTERVAL_MS);
