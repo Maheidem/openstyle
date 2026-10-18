@@ -13,6 +13,7 @@
 // It also scans out/main/chunks and fails on `commonjsRequire(`. The bundler
 // writes that stub for a dynamic require(variable) it could not resolve. The
 // stub throws at run time in the packaged app, where no node_modules exist.
+// It also fails on a raw require(variable) that survives into a chunk.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
@@ -31,6 +32,16 @@ const optionalDirs = new Set(["out/main/chunks"]);
 
 const requirePattern = /require\(\s*(["'])([^"'\n]+)\1\s*\)/g;
 const dynamicRequirePattern = /commonjsRequire\(/g;
+// A raw require(variable): the bundler left a call whose argument is not a
+// string literal. It would fail at run time in the packaged app.
+const variableRequirePattern = /(?<![\w$.])require\(\s*[^"'\s)]/g;
+
+// True when the match sits inside a string literal on its line (an odd number
+// of quotes of one kind before it), e.g. prose in a bundled library's message.
+function insideString(source, index) {
+  const prefix = source.slice(source.lastIndexOf("\n", index) + 1, index);
+  return ['"', "'", "`"].some((q) => prefix.split(q).length % 2 === 0);
+}
 
 let checked = 0;
 const violations = [];
@@ -51,6 +62,10 @@ for (const dir of outDirs) {
     const source = readFileSync(join(dir, file), "utf8");
     for (const _ of source.matchAll(dynamicRequirePattern)) {
       violations.push(`${dir}/${file}: commonjsRequire( (dynamic require)`);
+    }
+    for (const m of source.matchAll(variableRequirePattern)) {
+      if (insideString(source, m.index)) continue;
+      violations.push(`${dir}/${file}: require(variable) (dynamic require)`);
     }
     for (const match of source.matchAll(requirePattern)) {
       const specifier = match[2];
