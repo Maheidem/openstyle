@@ -246,19 +246,18 @@ export function blankFacts(a: {
 /**
  * Turn a model setup error into the typed error. The four throw sites keep
  * their plain `Error` (`task-profiles.ts`, `providers.ts`, `registry.ts`); the
- * reason comes from their message. Any other setup fault is reported as
- * `no_model` and keeps its text in `detail`.
+ * reason comes from their message. An error that matches none of the four
+ * messages is a bug, not a setup fault: it is returned unchanged.
  */
-export function modelUnavailableFrom(
-  err: unknown,
-  facts: CallFacts,
-): ModelUnavailableError {
+export function modelUnavailableFrom(err: unknown, facts: CallFacts): unknown {
   if (err instanceof ModelUnavailableError) return err;
   const text = err instanceof Error ? err.message : String(err);
-  let reason: ModelUnavailableReason = "no_model";
+  let reason: ModelUnavailableReason;
   if (/Unsupported provider/i.test(text)) reason = "unsupported_provider";
   else if (/No API key/i.test(text)) reason = "no_api_key";
   else if (/not in your list/i.test(text)) reason = "server_removed";
+  else if (/No AI model is set up/i.test(text)) reason = "no_model";
+  else return err;
   return new ModelUnavailableError({
     message: `No usable AI model (${reason}). Check Settings > Models.`,
     facts,

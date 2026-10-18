@@ -722,6 +722,19 @@ describe("HE13 to HE16, cancel, deadline, setup", () => {
     expect((e2 as ModelUnavailableError).reason).toBe("no_api_key");
   });
 
+  it("HE15b: an unknown setup error is not a ModelUnavailableError", async () => {
+    const { input } = setup([okReply(VALID)]);
+    const err = await fails(
+      callStructured({
+        ...input,
+        createModel: async () => {
+          throw new TypeError("boom");
+        },
+      }),
+    );
+    expect(err).not.toBeInstanceOf(ModelUnavailableError);
+  });
+
   it("HE15c: resolveCallProfile with no model set up is ModelUnavailableError no_model", async () => {
     const err = await fails(
       resolveCallProfile({

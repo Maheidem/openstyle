@@ -78,7 +78,7 @@ export interface LlmProvider {
    * Build (or return a cached) chat model. `modelId` is already stripped of the
    * provider prefix for prefixed providers; `apiKey` is `"local"` for local
    * providers. `taskContext` (§8.1) carries the resolver's per-task sampling
-   * params; only the `server` entry reads it.
+   * params; only the `server` and `openrouter` entries read it.
    */
   createModel(
     modelId: string,
@@ -309,7 +309,7 @@ function createExtraBodyFetch(
       }
     }
     reportBody(body, onRequestBody);
-    return globalThis.fetch(input, { ...init, body });
+    return traceLlmFetch(input, { ...init, body });
   };
 }
 

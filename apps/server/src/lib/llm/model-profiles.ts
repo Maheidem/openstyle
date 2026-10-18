@@ -324,14 +324,19 @@ function buildReasoning(
   facts: RegistryFacts | null,
 ): ReasoningPlan {
   const shortId = stripModelPrefix(provider, modelId);
-  const plan = (p: Partial<ReasoningPlan> & Pick<ReasoningPlan, "control">) => {
+  const plan = (
+    p: Partial<ReasoningPlan> &
+      Pick<ReasoningPlan, "control"> & { minBudgetTokens?: number },
+  ) => {
     const bounded = mode === "bounded" && p.control !== "none";
     const level = bounded
       ? (p.boundedLevel ?? boundedLevelFor(maxReasoningTokens))
       : null;
     return {
       mode: bounded ? "bounded" : "off",
-      budgetTokens: bounded ? maxReasoningTokens : 0,
+      budgetTokens: bounded
+        ? Math.max(p.minBudgetTokens ?? 0, maxReasoningTokens)
+        : 0,
       countsInMaxOutput: p.countsInMaxOutput ?? true,
       maxBudgetTokens: p.maxBudgetTokens ?? null,
       boundedLevel:
@@ -351,7 +356,12 @@ function buildReasoning(
     case "anthropic":
       return anthropicAdaptive(shortId)
         ? plan({ control: "effort", countsInMaxOutput: false })
-        : plan({ control: "budget_tokens", countsInMaxOutput: false });
+        : // The wire budget has a floor of 1024; the plan must equal the wire.
+          plan({
+            control: "budget_tokens",
+            countsInMaxOutput: false,
+            minBudgetTokens: 1024,
+          });
     case "google":
       return isGemini3(shortId)
         ? plan({ control: "effort" })

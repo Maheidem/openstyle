@@ -836,7 +836,16 @@ export async function callStructured<T>(
         const queuedMs = Date.now() - laneStart;
         if (input.stopped?.()) throw queued();
 
-        input.sink.startAttempt({ runId: input.runId, stepKey: input.unitKey });
+        try {
+          input.sink.startAttempt({
+            runId: input.runId,
+            stepKey: input.unitKey,
+          });
+        } catch {
+          log.warn(
+            `attempt start write failed (${input.step} ${input.unitKey})`,
+          );
+        }
         const startedAt = Date.now();
         const wireStart = startedAt;
         const timeoutSignal = AbortSignal.timeout(resolved.timeoutMs);
