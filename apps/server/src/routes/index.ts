@@ -12,7 +12,6 @@ import meetingsImport from "./meetings-import.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
 import postProcessRoute from "./post-process-route.js";
-import remixRoute from "./remix/index.js";
 import servers from "./servers.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
@@ -50,7 +49,6 @@ const apiRouter = new Hono()
   .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
-  .route("/remix", remixRoute)
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);
 

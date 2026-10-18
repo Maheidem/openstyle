@@ -42,8 +42,6 @@ const TIMEOUT_PREFIXES = [
   "/api/history",
   "/api/models",
   "/api/servers",
-  "/api/remix/thread",
-  "/api/remix/runs",
 ];
 
 /** Build the Hono app. */

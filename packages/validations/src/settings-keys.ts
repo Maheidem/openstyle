@@ -14,8 +14,6 @@ export const SETTINGS_KEYS = {
   cleanupPersonalTone: "cleanup_personal_tone",
   cleanupSampling: "cleanup_sampling",
   cleanupWorkTone: "cleanup_work_tone",
-  remixHotkey: "remix_hotkey",
-  remixBarEnabled: "remix_bar_enabled",
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
   historyPaused: "history_paused",

@@ -422,25 +422,21 @@ describe.each(
 
 describe("the two knobs are independent", () => {
   it("keeps the other tasks on their code-defined profile timeouts", () => {
-    // Only cleanup and remix stay code-defined. Both meeting tasks are
+    // Only cleanup stays code-defined. Both meeting tasks are
     // user-bounded now.
     expect(LLM_TASK_PROFILES.cleanup.timeoutMs).toBe(20_000);
-    expect(LLM_TASK_PROFILES.remix.timeoutMs).toBe(30_000);
     expect(LLM_TASK_PROFILES.meetingEnhance.timeoutMs).toBe(
       meetingEnhanceTimeoutMs(undefined),
     );
     expect(LLM_TASK_PROFILES.meetingEnhance.timeoutMs).toBe(600_000);
   });
 
-  it("leaves cleanup/remix on their code-defined timeouts and gives enhance its own", async () => {
+  it("leaves cleanup on its code-defined timeout and gives enhance its own", async () => {
     writeSetting(MEETING_SUMMARY_TIMEOUT_SETTING_KEY, "1800");
-    // cleanup/remix carry an "auto" output budget, so they need the caller's
+    // cleanup carries an "auto" output budget, so it needs the caller's
     // number. It does not matter here: only timeoutMs is under test.
     expect((await resolveTaskCall("cleanup", ENHANCE_BUDGET)).timeoutMs).toBe(
       20_000,
-    );
-    expect((await resolveTaskCall("remix", ENHANCE_BUDGET)).timeoutMs).toBe(
-      30_000,
     );
     // Enhance ignores the SUMMARY knob — it has its own. Unset here, so its
     // 600 s default: not the old hard-coded 60 s, not summarize's 1800 s.

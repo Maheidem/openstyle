@@ -135,9 +135,9 @@ const rows: [string, string, number, string | null][] = [
   ["llm_task_assignments", '"str"', 400, "Invalid task assignments setting"],
   [
     "llm_task_assignments",
-    '{"remix":{"mode":"nope"}}',
+    '{"meetingEnhance":{"mode":"nope"}}',
     400,
-    'Invalid assignment for task "remix"',
+    'Invalid assignment for task "meetingEnhance"',
   ],
   ["network_proxy_url", "http://proxy:3128", 200, null],
   ["network_proxy_url", "nonsense", 400, URL_PROXY],

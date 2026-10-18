@@ -121,9 +121,11 @@ describe("parseLlmTaskAssignments", () => {
   it("drops a known task key whose entry itself fails its schema", () => {
     const value = JSON.stringify({
       cleanup: { mode: "not-a-real-mode" },
-      remix: { mode: "auto" },
+      meetingEnhance: { mode: "auto" },
     });
-    expect(parseLlmTaskAssignments(value)).toEqual({ remix: { mode: "auto" } });
+    expect(parseLlmTaskAssignments(value)).toEqual({
+      meetingEnhance: { mode: "auto" },
+    });
   });
 
   it("keeps a full preset/custom/modelOverride assignment intact", () => {

@@ -21,7 +21,7 @@ import { applyWhisperRetentionPolicy } from "../lib/whisper/server.js";
 // credential-shaped there so a casual read of the bulk listing never returns a secret in the clear.
 //
 // A plain substring match on "key" would also catch `hotkey` / `hotkey_mode`
-// / `remix_hotkey` — real, non-secret settings the Settings UI displays
+// — real, non-secret settings the Settings UI displays
 // directly (settings.tsx reads `s[SETTINGS_KEYS.hotkey]` straight off this
 // endpoint) — and redacting those would show a placeholder instead of the
 // user's configured hotkey. Matching whole underscore-delimited segments

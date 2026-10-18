@@ -89,13 +89,6 @@ describe("LLM_TASK_PROFILES (§3.2)", () => {
       maxOutputTokens: "auto",
       timeoutMs: 20_000,
     });
-    expect(LLM_TASK_PROFILES.remix).toEqual({
-      id: "remix",
-      reasoningEnabled: false,
-      temperature: 0,
-      maxOutputTokens: "auto",
-      timeoutMs: 30_000,
-    });
     expect(LLM_TASK_PROFILES.meetingSummarize).toEqual({
       id: "meetingSummarize",
       reasoningEnabled: false,
@@ -392,7 +385,7 @@ describe("resolveTaskCall — §12.7 legacy cleanup_sampling fallback", () => {
         `INSERT INTO settings (key, value, updated_at) VALUES ('cleanup_sampling', ?, datetime('now'))`,
       )
       .run(JSON.stringify({ temperature: 0.3 }));
-    const resolved = await resolveTaskCall("remix", {
+    const resolved = await resolveTaskCall("meetingEnhance", {
       autoMaxOutputTokens: 512,
     });
     expect(resolved.samplingParams).toEqual({

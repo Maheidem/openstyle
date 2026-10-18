@@ -1,14 +1,13 @@
 import { z } from "zod/v3";
 
 /**
- * The four LLM call sites this app has today (specs/llm-task-profiles.md §2).
+ * The three LLM call sites this app has today (specs/llm-task-profiles.md §2).
  * A task id is an engineering identity, not something a preset assignment can
  * redefine — the code-defined nature (reasoning on/off, output budget shape)
  * lives in `apps/server/src/lib/llm/task-profiles.ts`'s `LLM_TASK_PROFILES`.
  */
 export const LLM_TASK_IDS = [
   "cleanup",
-  "remix",
   "meetingSummarize",
   "meetingEnhance",
 ] as const;

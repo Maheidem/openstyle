@@ -279,7 +279,7 @@ describe("own_servers migration (schema 36)", () => {
             mode: "auto",
             modelOverride: { provider: "local-llm", model_id: "local-llm/m" },
           },
-          remix: {
+          meetingEnhance: {
             mode: "auto",
             modelOverride: { provider: "openai", model_id: "gpt-4o-mini" },
           },
@@ -301,7 +301,7 @@ describe("own_servers migration (schema 36)", () => {
             model_id: `server/${server?.id}/m`,
           },
         },
-        remix: {
+        meetingEnhance: {
           mode: "auto",
           modelOverride: { provider: "openai", model_id: "gpt-4o-mini" },
         },
