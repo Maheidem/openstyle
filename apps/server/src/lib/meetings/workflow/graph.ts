@@ -29,6 +29,8 @@ export function buildGraph(deps: WorkflowDeps) {
   };
 
   /** Edge rule 4: after a node, a cancel or a stop sends the graph to `save`. */
+  const afterCorrect = (state: WorkflowStateType) =>
+    stopped(state.runId) ? "save" : "identifySpeakers";
   const afterIdentify = (state: WorkflowStateType) =>
     stopped(state.runId) ? "save" : "verifyEvidence";
   const afterVerify = (state: WorkflowStateType) => {
@@ -98,7 +100,7 @@ export function buildGraph(deps: WorkflowDeps) {
     .addNode("save", makeSaveNode(deps))
     .addEdge(START, "prepare")
     .addConditionalEdges("prepare", afterPrepare)
-    .addEdge("correctChunk", "identifySpeakers")
+    .addConditionalEdges("correctChunk", afterCorrect)
     .addConditionalEdges("identifySpeakers", afterIdentify)
     .addConditionalEdges("verifyEvidence", afterVerify)
     .addEdge("summarize", "save")

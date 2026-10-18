@@ -318,10 +318,8 @@ describe("identifySpeakers in the graph", () => {
     });
     const a = await run(solo, () => speakers());
     expect(a.identifyRequests).toHaveLength(0);
-    expect(a.finalState.identify).toMatchObject({
-      status: "skipped",
-      skipReason: "no_labels",
-    });
+    expect(a.finalState.identify?.status).toBe("skipped");
+    expect(a.recorder.steps.get("candidates")?.errorDetail).toBe("no_labels");
     expect(a.finalState.verify?.status).toBe("skipped");
 
     const named = seedFixtureMeeting({
@@ -338,10 +336,10 @@ describe("identifySpeakers in the graph", () => {
     }
     const b = await run(named, () => speakers());
     expect(b.identifyRequests).toHaveLength(0);
-    expect(b.finalState.identify).toMatchObject({
-      status: "skipped",
-      skipReason: "all_confirmed",
-    });
+    expect(b.finalState.identify?.status).toBe("skipped");
+    expect(b.recorder.steps.get("candidates")?.errorDetail).toBe(
+      "all_confirmed",
+    );
   });
 });
 

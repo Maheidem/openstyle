@@ -101,7 +101,12 @@ export interface NodeSpec<S extends { runId: string }, R> {
   /** The typed failed result of the node. null for "prepare": its fault is rethrown. */
   failed: ((state: S, f: NodeFailure) => R) | null;
   /** For "save" it reads the SaveResult (4.6). */
-  outcome: (r: R) => { status: NodeStatus; failure: NodeFailure | null };
+  outcome: (r: R) => {
+    status: NodeStatus;
+    failure: NodeFailure | null;
+    /** Why a node skipped itself. It goes to the step row detail. */
+    skipDetail?: string | null;
+  };
 }
 
 /**
@@ -155,7 +160,9 @@ export function guardNode<S extends { runId: string }, R>(
         stepStatusOf(out.status),
         out.failure
           ? { kind: out.failure.kind, detail: out.failure.message }
-          : undefined,
+          : out.skipDetail
+            ? { kind: "skipped", detail: out.skipDetail }
+            : undefined,
       );
     }
     return result;
@@ -210,15 +217,16 @@ export function createBreaker(): (
   ctx: RunContext,
   kind: FailureKind | null,
 ) => void {
-  const streaks = new Map<string, { kind: FailureKind; n: number }>();
+  // Keyed by the context object, so the entry goes with the run's context.
+  const streaks = new WeakMap<RunContext, { kind: FailureKind; n: number }>();
   return (ctx, kind) => {
     if (kind === null) {
-      streaks.delete(ctx.runId);
+      streaks.delete(ctx);
       return;
     }
-    const cur = streaks.get(ctx.runId);
+    const cur = streaks.get(ctx);
     const n = cur?.kind === kind ? cur.n + 1 : 1;
-    streaks.set(ctx.runId, { kind, n });
+    streaks.set(ctx, { kind, n });
     if (n >= BREAKER_N) ctx.stopRun(kind);
   };
 }

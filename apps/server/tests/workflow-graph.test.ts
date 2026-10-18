@@ -30,6 +30,7 @@ import { okReply, reply, type ScriptStep } from "./helpers/fake-model.js";
 import {
   chatReply,
   errorReply,
+  type FakeRecorder,
   makeFakeRecorder,
   makeTestDeps,
   makeTestRunContext,
@@ -501,8 +502,10 @@ describe("GR18: a run-wide stop", () => {
     expect(statuses.filter((s) => s === "skipped").length).toBe(
       statuses.length - 1,
     );
-    expect(r.finalState.identify?.status).toBe("skipped");
-    // The router sends a stopped run from identifySpeakers straight to save.
+    // The router sends a stopped run from correctChunk straight to save.
+    expect(r.finalState.identify).toBeNull();
+    expect((deps.recorder as FakeRecorder).steps.has("candidates")).toBe(false);
+    expect(r.ctx.startedNodes).not.toContain("identifySpeakers");
     expect(r.finalState.verify).toBeNull();
     expect(r.finalState.saved).toMatchObject({
       sw1: "none",

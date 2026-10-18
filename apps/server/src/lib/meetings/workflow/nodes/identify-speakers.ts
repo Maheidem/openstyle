@@ -146,18 +146,25 @@ const EMPTY_STATS: CandidateStats = {
   droppedByBudget: 0,
 };
 
+/**
+ * Why a result was skipped. The reason is not part of the result contract
+ * (spec 4.3); it goes to the step row detail only.
+ */
+const skipReasons = new WeakMap<IdentifySpeakersResult, string>();
+
 function skipped(
-  skipReason: IdentifySpeakersResult["skipReason"],
+  skipReason: "no_labels" | "all_confirmed" | null,
   candidates: CandidateStats = EMPTY_STATS,
 ): IdentifySpeakersResult {
-  return {
+  const result: IdentifySpeakersResult = {
     status: "skipped",
-    skipReason,
     proposals: [],
     shown: [],
     candidates,
     failures: [],
   };
+  if (skipReason) skipReasons.set(result, skipReason);
+  return result;
 }
 
 export function failedIdentifyResult(
@@ -165,7 +172,6 @@ export function failedIdentifyResult(
 ): IdentifySpeakersResult {
   return {
     status: "failed",
-    skipReason: null,
     proposals: [],
     shown: [],
     candidates: EMPTY_STATS,
@@ -274,6 +280,7 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
       outcome: (r) => ({
         status: r.status,
         failure: r.failures[0] ?? null,
+        skipDetail: skipReasons.get(r) ?? null,
       }),
     },
     run,
@@ -319,7 +326,6 @@ function resultFromLeaves(
   }
   return {
     status: foldStatus(statuses),
-    skipReason: null,
     proposals,
     shown,
     candidates,

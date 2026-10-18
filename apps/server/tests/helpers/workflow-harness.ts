@@ -135,6 +135,7 @@ type StepRow = {
   attempts: number;
   seq: number;
   errorKind: string | null;
+  errorDetail: string | null;
 };
 
 export type FakeRecorder = LlmRecorder & {
@@ -166,6 +167,7 @@ export function makeFakeRecorder(): FakeRecorder {
         attempts: cur?.attempts ?? 0,
         seq: cur?.seq ?? seq,
         errorKind: null,
+        errorDetail: null,
       });
     },
     startAttempt({ stepKey }) {
@@ -178,6 +180,7 @@ export function makeFakeRecorder(): FakeRecorder {
       if (!cur) return;
       cur.status = status;
       cur.errorKind = err?.kind ?? null;
+      cur.errorDetail = err?.detail ?? null;
     },
     recordCall(c) {
       const id = calls.length + 1;

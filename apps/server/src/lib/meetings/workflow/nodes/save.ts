@@ -269,7 +269,8 @@ export function makeSaveNode(deps: WorkflowDeps) {
       const row = deps.db
         .prepare("SELECT audio_dir FROM meetings WHERE id = ?")
         .get(meetingId) as { audio_dir: string | null } | undefined;
-      if (row?.audio_dir) writeTranscriptMarkdown(meetingId, row.audio_dir);
+      if (row?.audio_dir)
+        writeTranscriptMarkdown(meetingId, row.audio_dir, deps.db);
     } else {
       gone(r);
     }

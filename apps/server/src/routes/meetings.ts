@@ -264,6 +264,7 @@ function runningJobMessage(kind: MeetingJobKind | null): string {
       return "Speaker identification is already running";
     case "retry-failed":
       return "Retrying failed chunks is already running";
+    case "transcribe":
     default:
       return "Transcription is already running";
   }

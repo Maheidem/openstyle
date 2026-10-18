@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { createAppLogger } from "@openstyle/utils";
 import { SYNC_JSON } from "@openstyle/validations";
 import { getDb } from "../db.js";
@@ -88,8 +89,9 @@ export interface SegmentRow {
 export function loadMergedTranscript(
   meetingId: string,
   audioDir: string | null,
+  db: DatabaseSync = getDb(),
 ): MergedSegment[] {
-  const rows = getDb()
+  const rows = db
     .prepare(
       `SELECT id, source, start_ms, end_ms, text, status, speaker_label, enhanced_text
        FROM meeting_segments WHERE meeting_id = ? ORDER BY idx, start_ms, id`,
@@ -122,7 +124,7 @@ export function loadMergedTranscript(
   // change to mergeTranscript's own pure contract. Every consumer of this
   // function — transcript UI, Enhance input, Summarize input, markdown
   // export — goes through here, so this one call covers all of them.
-  const speakerRows = getDb()
+  const speakerRows = db
     .prepare(
       "SELECT speaker_label, display_name, merged_into FROM meeting_speakers WHERE meeting_id = ?",
     )
@@ -157,9 +159,10 @@ export function loadMergedTranscript(
 export function writeTranscriptMarkdown(
   meetingId: string,
   audioDir: string,
+  db: DatabaseSync = getDb(),
 ): void {
   try {
-    const merged = loadMergedTranscript(meetingId, audioDir);
+    const merged = loadMergedTranscript(meetingId, audioDir, db);
     writeFileSync(
       join(audioDir, "transcript.md"),
       formatTranscriptMarkdown(merged),

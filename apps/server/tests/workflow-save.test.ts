@@ -936,7 +936,6 @@ const chunk = (status: NodeStatus, chunkIndex = 0) => ({
 });
 const identify = (status: NodeStatus) => ({
   status,
-  skipReason: null,
   proposals: [],
   shown: [],
   candidates: {

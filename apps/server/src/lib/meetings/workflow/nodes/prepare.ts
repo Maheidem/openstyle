@@ -78,7 +78,7 @@ export function makePrepareNode(deps: WorkflowDeps) {
       // P1, P2: the loader and the hash read one database state, in one
       // synchronous block (P11).
       const merged = deps
-        .loadTranscript(state.meetingId, row.audio_dir)
+        .loadTranscript(state.meetingId, row.audio_dir, deps.db)
         .filter((s) => Boolean(s.id) && s.text.trim().length > 0);
       const hash = inputHash(
         loadHashRows(deps.db, state.meetingId),

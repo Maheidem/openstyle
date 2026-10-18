@@ -222,8 +222,6 @@ export interface CandidateStats {
 export interface IdentifySpeakersResult {
   /** foldStatus over its units. partial: some halves failed (4.3.6). */
   status: NodeStatus;
-  /** Why the node did not call the model, when it did not. */
-  skipReason: "no_labels" | "all_confirmed" | null;
   /** From the units that succeeded. */
   proposals: SpeakerProposal[];
   /** The lines each call showed (4.4.2 check 2). */
