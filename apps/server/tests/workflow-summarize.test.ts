@@ -602,34 +602,20 @@ describe("cancel and stop", () => {
 
 // --- tokens, model and cost (10.6, cases a to e) -----------------------------
 
-function usageModel(
-  modelId: string,
-  steps: ScriptStep[],
-  served?: string | null,
-) {
+/** A scripted model that reports 1000 input and 200 output tokens for each call. */
+function usageModel(modelId: string, steps: ScriptStep[]): MockLanguageModelV4 {
   const base = scriptedModel(modelId, steps);
-  const original = base.model.doGenerate;
-  base.model.doGenerate = async (o: Parameters<typeof original>[0]) => {
-    const r = await (
-      original as (o: unknown) => Promise<Record<string, unknown>>
-    )(o);
-    return {
-      ...r,
-      usage: {
-        inputTokens: {
-          total: 1000,
-          noCache: 1000,
-          cacheRead: 0,
-          cacheWrite: 0,
-        },
-        outputTokens: { total: 200, text: 200, reasoning: 0 },
-      },
-      ...(served === undefined
-        ? {}
-        : { response: served === null ? {} : { modelId: served } }),
-    };
-  };
-  return base.model as MockLanguageModelV4;
+  const original = base.model.doGenerate as unknown as (
+    o: unknown,
+  ) => PromiseLike<Record<string, unknown>>;
+  base.model.doGenerate = (async (o: unknown) => ({
+    ...(await original(o)),
+    usage: {
+      inputTokens: { total: 1000, noCache: 1000, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 200, text: 200, reasoning: 0 },
+    },
+  })) as unknown as typeof base.model.doGenerate;
+  return base.model;
 }
 
 function useOpenAi(): void {
