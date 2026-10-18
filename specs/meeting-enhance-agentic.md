@@ -1,6 +1,6 @@
 # Technical Spec: Meeting Enhance v3 (generic LLM platform, agentic workflow, structured output, LLM inspector)
 
-**Status:** Draft. Round-2 owner decisions of 2026-10-17 are applied (see 1.1). The owner must still approve the spec as a whole. No question blocks the build. Q18 (12.2), the tracing waiver of the council rounds, has a default answer (yes, one waiver). WP10b applies the default, unless the owner writes another answer in the Q18 row before the spec PR merges.
+**Status:** Approved by the owner on 2026-10-17. Build starts with wave 1 (section 11).
 **Author:** Claude Code coordinator, with Sonnet writers.
 **Date:** 2026-10-17
 **Tracking:** Umbrella issue #185. Draft PR #186. Origin issue #163.
