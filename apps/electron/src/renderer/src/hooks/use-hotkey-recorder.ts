@@ -340,12 +340,12 @@ export interface UseHotkeyRecorderOptions {
    * recorder, but only "dictation" hands the captured accelerator back to
    * `stopHotkeyRecording`, which is what re-registers *the primary dictation*
    * listener with it — the one binding `stopHotkeyRecording(accel)` is
-   * hard-wired to apply. Every other target ("remix", "language") stops the
+   * hard-wired to apply. The "language" target stops the
    * recorder with no accelerator and owns persisting + re-registering its own
    * binding entirely through `onRecord` instead, so recording one can never
    * overwrite a different hotkey.
    */
-  target?: "dictation" | "remix" | "language";
+  target?: "dictation" | "language";
   /**
    * Rejects a completed combo (e.g. it's already the other feature's hotkey).
    * A blocked combo is not handed to `onRecord`; the previously registered
@@ -477,8 +477,8 @@ export function useHotkeyRecorder(
     clearWarningTimer();
     onRecordRef.current(accel);
     // Re-register the global listener with the new accelerator (single IPC),
-    // but only for the primary dictation hotkey. Every other target (remix,
-    // language) only stops the recorder here: main re-reads that binding from
+    // but only for the primary dictation hotkey. The language target
+    // only stops the recorder here: main re-reads that binding from
     // settings/its own IPC channel, so re-registering is `onRecord`'s job —
     // it is the only caller that knows when the write has actually landed.
     window.api?.stopHotkeyRecording(

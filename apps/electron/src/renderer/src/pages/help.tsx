@@ -13,7 +13,6 @@ import { IS_MAC } from "@renderer/lib/platform";
 import { configQueryOptions, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { getDefaultHotkey } from "@shared/hotkey-defaults";
-import { getDefaultRemixHotkey } from "@shared/remix";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
 import { Bug, ExternalLink, Heart } from "lucide-react";
@@ -57,13 +56,9 @@ function HelpCard({
 }
 
 // ---------------------------------------------------------------------------
-// Hotkeys — 4 static, read-only rows mirroring the recorder UI in Settings
+// Hotkeys — 2 static, read-only rows mirroring the recorder UI in Settings
 // (settings.tsx), but display-only: no recording affordance here.
 // ---------------------------------------------------------------------------
-
-function KbdSep({ label }: { label: string }): React.JSX.Element {
-  return <span className="text-muted-foreground text-[10px]">{label}</span>;
-}
 
 function HotkeyRow({
   label,
@@ -95,16 +90,6 @@ function HotkeyRow({
 }
 
 /**
- * Quick-route chord: mirrors REMIX_ROUTE_MODIFIER / REMIX_ROUTE_DIGITS in
- * main/index.ts (Control on macOS, Control+Alt elsewhere; digits 1-3).
- * Not exported from main for the renderer to import, so the platform branch
- * is duplicated here rather than pulled in — see the return summary.
- */
-const QUICK_ROUTE_MODIFIER_ACCEL = IS_MAC ? "Control" : "Control+Alt";
-const QUICK_ROUTE_FIRST_DIGIT = "1";
-const QUICK_ROUTE_LAST_DIGIT = "3";
-
-/**
  * Mirrors shell.tsx's STATIC_NAV order + labelKeys + visibility gates (icons
  * omitted — the mockup's nav-shortcut-item has no icon, only label + kbd),
  * since that list isn't exported for reuse. Gating matches shell.tsx
@@ -119,7 +104,6 @@ const NAV_SHORTCUT_ITEMS: {
   }) => boolean;
 }[] = [
   { labelKey: "shell.nav.today" },
-  { labelKey: "shell.nav.remix" },
   { labelKey: "shell.nav.meetings", hidden: (ctx) => !ctx.meetingsEnabled },
   { labelKey: "shell.nav.vocabulary" },
   { labelKey: "shell.nav.dictionary" },
@@ -140,10 +124,6 @@ export default function HelpPage(): React.JSX.Element {
     settings?.[SETTINGS_KEYS.hotkey] ??
     window.api?.defaultHotkey ??
     getDefaultHotkey();
-  const remixHotkey =
-    settings?.[SETTINGS_KEYS.remixHotkey] ??
-    window.api?.defaultRemixHotkey ??
-    getDefaultRemixHotkey();
 
   // Same visibility gates shell.tsx uses to filter+renumber its Cmd+N list.
   const advancedMode = settings?.[SETTINGS_KEYS.advancedMode] === "true";
@@ -175,26 +155,6 @@ export default function HelpPage(): React.JSX.Element {
             desc={t("help.hotkeys.hotkeyDesc")}
           >
             <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-          </HotkeyRow>
-
-          <HotkeyRow
-            label={t("help.hotkeys.remixLabel")}
-            desc={t("help.hotkeys.remixDesc")}
-          >
-            <KeyComboDisplay keys={formatAcceleratorKeys(remixHotkey)} />
-          </HotkeyRow>
-
-          <HotkeyRow
-            label={t("help.hotkeys.quickRoutesLabel")}
-            desc={t("help.hotkeys.quickRoutesDesc")}
-          >
-            <KeyComboDisplay
-              keys={formatAcceleratorKeys(QUICK_ROUTE_MODIFIER_ACCEL)}
-            />
-            <KbdSep label="+" />
-            <KeyBadge label={QUICK_ROUTE_FIRST_DIGIT} />
-            <KbdSep label="–" />
-            <KeyBadge label={QUICK_ROUTE_LAST_DIGIT} />
           </HotkeyRow>
 
           <HotkeyRow

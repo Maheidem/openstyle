@@ -1,26 +1,11 @@
 import { AlertCardBody } from "@renderer/components/alert-card-body";
-import { OpenstyleMark } from "@renderer/components/openstyle-mark";
-import {
-  REMIX_CHAT_STRIP,
-  REMIX_CHAT_SURFACE,
-} from "@renderer/components/remix-chat-surface";
-import {
-  type CSSProperties,
-  type Dispatch,
-  lazy,
-  type ReactNode,
-  type RefObject,
-  type SetStateAction,
-  Suspense,
-} from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import type { RemixSelectionPayload } from "../../../../shared/remix";
 import {
   CANCEL_SIZE,
   CHECK_PATH_LENGTH,
   INK,
   STATUS_GAP,
-  SVG_HEIGHT,
 } from "../pill-motion";
 import { PILL_STYLES } from "../pill-styles";
 import {
@@ -28,28 +13,17 @@ import {
   BAR_COLOR,
   CHECK_SIZE,
   PILL_CORE_WIDTH,
-  PILL_HEIGHT,
   type PillExit,
   type PillState,
   pillInnerStyle,
-  type RemixSession,
   STATUS_SIZE,
 } from "./constants";
 
-// Lazy: keep Motion/agent chat out of the dictation entry chunk.
-const RemixChat = lazy(() =>
-  import("@renderer/components/remix-chat").then((mod) => ({
-    default: mod.RemixChat,
-  })),
-);
-
 export interface PillViewProps {
   state: PillState;
-  showRemixCard: boolean;
   accessibleStatus: string;
   layerClass: string;
-  cardOpen: boolean;
-  showCard: boolean;
+  showErrorCard: boolean;
   entered: boolean;
   exiting: PillExit | null;
   handlePillEnter: () => void;
@@ -70,33 +44,13 @@ export interface PillViewProps {
   card: { title: string; body: string; canRetry: boolean };
   dismissPill: (kind: PillExit) => void;
   retryFailedTranscription: () => void;
-  remixOpen: boolean;
-  viewIsChat: boolean;
-  cardSurfaceRef: RefObject<HTMLDivElement | null>;
-  chatSurfaceRef: RefObject<HTMLDivElement | null>;
-  disarmHotRect: () => void;
-  rearmHotRect: () => void;
-  cardView: RemixSession | null;
-  endRemix: (options?: { hide?: boolean }) => void;
-  remixTranscript: string;
-  remixHint: string;
-  chatMiniVisual: boolean;
-  remixMiniHeight: number;
-  chatView: RemixSession | null;
-  remixContextRef: RefObject<RemixSelectionPayload | null>;
-  expandRemixChat: () => void;
-  minimizeRemixChat: () => void;
-  closeRemix: () => void;
-  setRemixMiniHeight: Dispatch<SetStateAction<number>>;
 }
 
 export function PillView({
   state,
-  showRemixCard,
   accessibleStatus,
   layerClass,
-  cardOpen,
-  showCard,
+  showErrorCard,
   entered,
   exiting,
   handlePillEnter,
@@ -117,38 +71,20 @@ export function PillView({
   card,
   dismissPill,
   retryFailedTranscription,
-  remixOpen,
-  viewIsChat,
-  cardSurfaceRef,
-  chatSurfaceRef,
-  disarmHotRect,
-  rearmHotRect,
-  cardView,
-  endRemix,
-  remixTranscript,
-  remixHint,
-  chatMiniVisual,
-  remixMiniHeight,
-  chatView,
-  remixContextRef,
-  expandRemixChat,
-  minimizeRemixChat,
-  closeRemix,
-  setRemixMiniHeight,
 }: PillViewProps): React.JSX.Element {
   const { t } = useTranslation();
   return (
     <div className="relative h-screen w-screen select-none overflow-hidden">
       <style>{PILL_STYLES}</style>
 
-      {(state !== "idle" || showRemixCard) && (
+      {state !== "idle" && (
         <>
           <span className="sr-only" role="status" aria-live="polite">
             {accessibleStatus}
           </span>
 
           {/* ---- Capsule ---- */}
-          <div className={layerClass} aria-hidden={cardOpen}>
+          <div className={layerClass} aria-hidden={errorCardOpen}>
             {/* The capsule is a status indicator, not a control, so an
                 interactive role would misdescribe it. These handlers only
                 reveal the cancel button, which is a real <button> with its own
@@ -157,7 +93,7 @@ export function PillView({
             {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
             <div
               className="pill-surface pill-capsule inline-flex items-center"
-              data-show={!showCard && entered}
+              data-show={!showErrorCard && entered}
               data-exit={exiting ?? undefined}
               onMouseEnter={handlePillEnter}
               onMouseLeave={handlePillLeave}
@@ -231,8 +167,7 @@ export function PillView({
                   </button>
                 </span>
 
-                {!showRemixCard &&
-                  pillLanguageLabel &&
+                {pillLanguageLabel &&
                   (state === "recording" || state === "transcribing") && (
                     <span
                       style={{
@@ -248,7 +183,7 @@ export function PillView({
                       {pillLanguageLabel}
                     </span>
                   )}
-                {!showRemixCard && waveform}
+                {waveform}
               </span>
 
               {/* The delivered mark, centred on the capsule rather than inside
@@ -393,142 +328,6 @@ export function PillView({
                 ink={INK}
                 alert={ALERT}
               />
-            </div>
-          </div>
-
-          {/* ---- Remix card ---- */}
-          {/* Same surface and the same place on screen as the failure card, so
-              the two read as one object the pill can turn into rather than as
-              two unrelated popups. The dictation card and the chat are
-              separate layers: a phase flip animates one out while the other
-              rises, and each holds its last content while it leaves. */}
-          <div className={layerClass} aria-hidden={!(remixOpen && !viewIsChat)}>
-            {/* The card surface is a container, not a control — these handlers
-                only arm/disarm the window's hover hit-rect; every real action
-                inside is its own labeled <button>. */}
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
-            <div
-              ref={cardSurfaceRef}
-              className="pill-surface pill-card"
-              data-show={remixOpen && !viewIsChat}
-              onMouseEnter={disarmHotRect}
-              onMouseLeave={rearmHotRect}
-              style={{
-                ...cardSurfaceStyle,
-                // The anchored edge gets the capsule's inset — (PILL_HEIGHT -
-                // SVG_HEIGHT) / 2 — so the waveform lands exactly where it sat
-                // a moment ago. The far edge is free to be roomier.
-                padding:
-                  pillAlign === "start"
-                    ? `${(PILL_HEIGHT - SVG_HEIGHT) / 2}px 14px 13px`
-                    : `13px 14px ${(PILL_HEIGHT - SVG_HEIGHT) / 2}px`,
-                ...(remixOpen && !viewIsChat
-                  ? { WebkitAppRegion: "drag" }
-                  : {}),
-              }}
-            >
-              {cardView?.phase === "error" ? (
-                <AlertCardBody
-                  title={cardView.title}
-                  body={cardView.body}
-                  lineClamp={3}
-                  onDismiss={() => endRemix()}
-                  ink={INK}
-                  alert={ALERT}
-                />
-              ) : (
-                <div className="pill-remix-body" data-anchor={pillAlign}>
-                  <div
-                    className="pill-remix-brand pill-rise pill-rise-1"
-                    aria-hidden="true"
-                  >
-                    <OpenstyleMark size={15} />
-                    <span>Remix</span>
-                  </div>
-
-                  <div
-                    className="pill-remix-transcript pill-rise pill-rise-2"
-                    data-empty={!remixTranscript}
-                  >
-                    <span>{remixTranscript || remixHint}</span>
-                  </div>
-
-                  {/* The waveform, at the size and the spot it occupies in the
-                      capsule — the box grows around it rather than replacing
-                      it, so the bars never jump when the card takes over. Only
-                      ever mounted here while a remix is up: a second copy in
-                      the tree would take the ref the draw loop writes through,
-                      and the visible row would sit still. */}
-                  <div className="pill-remix-wave">
-                    {showRemixCard && waveform}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ---- Remix chat ---- */}
-          {/* Its own object: either the one-line activity strip (a capsule)
-              or the full conversation (a tall card holding an input and a
-              scroll area), morphing between the two under the pointer —
-              always inside room the window already holds, so the morph is
-              never clipped or resized mid-flight. */}
-          <div className={layerClass} aria-hidden={!(remixOpen && viewIsChat)}>
-            {/* Same as the card surface above: hover only arms/disarms the
-                window's hit-rect; the chat's controls are real buttons. */}
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
-            <div
-              ref={chatSurfaceRef}
-              className="pill-surface pill-card pill-chat-morph"
-              data-show={remixOpen && viewIsChat}
-              onMouseEnter={disarmHotRect}
-              onMouseLeave={rearmHotRect}
-              style={{
-                ...cardSurfaceStyle,
-                ...(chatMiniVisual
-                  ? {
-                      width: REMIX_CHAT_STRIP.width,
-                      height: remixMiniHeight,
-                      // A grown strip is a card, not a capsule — a 999px
-                      // radius on a tall box reads as a lozenge.
-                      borderRadius:
-                        remixMiniHeight > REMIX_CHAT_STRIP.height ? 18 : 999,
-                      padding: 0,
-                      overflow: "hidden",
-                    }
-                  : {
-                      width: REMIX_CHAT_SURFACE.width,
-                      height: REMIX_CHAT_SURFACE.height,
-                      borderRadius: 18,
-                      padding: 0,
-                      overflow: "hidden",
-                    }),
-              }}
-            >
-              {chatView && (
-                <Suspense fallback={null}>
-                  <RemixChat
-                    context={
-                      remixContextRef.current ?? {
-                        text: chatView.selection,
-                        appName: null,
-                        windowTitle: null,
-                        capturedAt: Date.now(),
-                      }
-                    }
-                    initialInstruction={chatView.initialInstruction ?? null}
-                    minimized={chatMiniVisual}
-                    anchor={{
-                      v: pillAlign === "start" ? "top" : "bottom",
-                      h: pillSide === "right" ? "right" : "center",
-                    }}
-                    onExpand={expandRemixChat}
-                    onMinimize={minimizeRemixChat}
-                    onClose={closeRemix}
-                    onMiniHeightChange={setRemixMiniHeight}
-                  />
-                </Suspense>
-              )}
             </div>
           </div>
         </>

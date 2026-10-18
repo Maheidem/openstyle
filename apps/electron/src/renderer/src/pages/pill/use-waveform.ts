@@ -95,7 +95,7 @@ export function useWaveform(deps: UseWaveformDeps) {
   // The flatline is not part of the bar buffer.
   const captureBarLines = useCallback((svg: SVGSVGElement | null) => {
     // Only ever *set* on attach, never cleared on detach. The waveform moves
-    // between two surfaces — the capsule and the remix card — and a detach
+    // between two surfaces and a detach
     // that ran after the new element's attach would blank this and leave the
     // visible row frozen. Holding a detached element instead is harmless: the
     // draw loop writes attributes nobody renders until the next attach lands.

@@ -7,8 +7,7 @@ import { cn } from "@renderer/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Coach strip — the keycap sentence, status dot, and live waveform shared by
-// onboarding's draft and remix steps. Extracted from tutorial-demo.tsx and
-// parameterized by which key events drive it (dictation vs remix hotkey).
+// onboarding's draft step. Extracted from tutorial-demo.tsx.
 // ---------------------------------------------------------------------------
 
 export function CoachStrip({

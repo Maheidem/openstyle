@@ -15,7 +15,6 @@ import { HotkeyRebindControl, StepHeading } from "./shared";
 // ---------------------------------------------------------------------------
 export function DraftStep({
   hotkey,
-  remixHotkey,
   onHotkeyRecorded,
   localModel,
   onDownloadLocal,
@@ -25,9 +24,9 @@ export function DraftStep({
   onBodyChange,
   onBack,
   onContinue,
+  isLastStep,
 }: {
   hotkey: string;
-  remixHotkey: string;
   onHotkeyRecorded: (accelerator: string) => void;
   localModel: VoiceItem | undefined;
   onDownloadLocal: () => void;
@@ -38,9 +37,11 @@ export function DraftStep({
   onBodyChange: (text: string) => void;
   onBack: () => void;
   onContinue: () => void;
+  // True when Meeting Mode is off: no Enhance step follows this one.
+  isLastStep: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const { phase, getLiveLevel } = useCoachPress("dictation");
+  const { phase, getLiveLevel } = useCoachPress();
 
   const statusLabel =
     phase === "pressed"
@@ -74,15 +75,13 @@ export function DraftStep({
         </div>
 
         <div className="flex justify-center lg:justify-end">
-          <EmailDraft body={body} onBodyChange={onBodyChange} stage="dictate" />
+          <EmailDraft body={body} onBodyChange={onBodyChange} />
         </div>
       </div>
 
       <HotkeyRebindControl
         hotkey={hotkey}
         target="dictation"
-        conflictHotkey={remixHotkey}
-        conflictNotice={t("settings.recording.conflict")}
         onRecorded={onHotkeyRecorded}
       />
 
@@ -113,7 +112,9 @@ export function DraftStep({
               onClick={onContinue}
               disabled={!!blockedReason || !body.trim()}
             >
-              {t("common.continue")}
+              {isLastStep
+                ? t("onboarding.tutorial.finish")
+                : t("common.continue")}
               <ArrowRight data-icon="inline-end" />
             </Button>
           </div>

@@ -2,15 +2,12 @@ import type { Recorder } from "@renderer/lib/recorder";
 import type { Streamer } from "@renderer/lib/streamer";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { PillCancelMode } from "../../../../shared/pill-cancel";
-import type { RemixSelectionPayload } from "../../../../shared/remix";
 import type { BarJitter } from "../pill-waveform";
 import type {
   BarMode,
-  Deferred,
   PillExit,
   PillNotice,
   PillState,
-  RemixSession,
   TranscribeResult,
 } from "./constants";
 
@@ -25,8 +22,6 @@ export interface PillShared {
   setElapsedLabel: Dispatch<SetStateAction<string | null>>;
   setColdLocalModel: Dispatch<SetStateAction<boolean>>;
   setExiting: Dispatch<SetStateAction<PillExit | null>>;
-  setRemix: (next: RemixSession | null) => void;
-  patchRemix: (patch: Partial<RemixSession>) => void;
 
   stateRef: RefObject<PillState>;
   pillNoticeRef: RefObject<PillNotice>;
@@ -39,17 +34,6 @@ export interface PillShared {
   pinnedLanguageRef: RefObject<string | null>;
   recordingLanguageRef: RefObject<string | null>;
   streamLanguageRef: RefObject<string | null>;
-  remixRef: RefObject<RemixSession | null>;
-  remixDownAtRef: RefObject<number>;
-  remixSeqRef: RefObject<number>;
-  remixMicGenRef: RefObject<number | null>;
-  remixSelectionRef: RefObject<Deferred<string | null> | null>;
-  remixContextRef: RefObject<RemixSelectionPayload | null>;
-  remixRunningRef: RefObject<boolean>;
-  remixHoldTimerRef: RefObject<ReturnType<typeof setTimeout> | null>;
-  remixStreamerRef: RefObject<Streamer | null>;
-  remixTransportRef: RefObject<boolean>;
-  remixFinalRef: RefObject<Deferred<string> | null>;
   recorderRef: RefObject<Recorder>;
   streamerRef: RefObject<Streamer | null>;
   analyserCtxRef: RefObject<AudioContext | null>;

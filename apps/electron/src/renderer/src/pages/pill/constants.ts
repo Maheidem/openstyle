@@ -90,9 +90,6 @@ export const ELAPSED_AFTER_MS = 60_000;
  */
 export const WARMING_AFTER_MS = 3_000;
 
-/** How long a closing card keeps its last content, in ms. */
-export const VIEW_LATCH_MS = 320;
-
 export const PILL_HEIGHT = 30;
 /**
  * The capsule's fixed core — the cancel slot and the waveform. Status that has
@@ -108,12 +105,10 @@ export const PILL_CORE_WIDTH = 96;
 /** The expanded card, in the space `window.api.setPillExpanded` opens up. */
 export const PILL_CARD_WIDTH = 300;
 /**
- * How long a warning stays up before dismissing itself. The remix warning
- * is a dead end — nothing to do but read it — so it leaves quickly. The
- * dictation failure card can carry a Retry, and a button that vanishes while
- * you are deciding is worse than one that lingers.
+ * How long the failure card stays up before dismissing itself. It can carry a
+ * Retry, and a button that vanishes while you are deciding is worse than one
+ * that lingers.
  */
-export const REMIX_WARNING_MS = 4500;
 export const FAILURE_CARD_MS = 9000;
 /**
  * The cancel button lives at the left end of the capsule, and its space is
@@ -171,58 +166,4 @@ export interface TranscribeResult {
   cleaned: string;
   error?: string;
   providerCategory?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Remix
-// ---------------------------------------------------------------------------
-
-/**
- * Where a remix run has got to.
- *
- * The two ways in share a single hotkey and therefore a single opening state:
- * the moment it goes down we don't yet know whether this is a tap (show the
- * list) or a hold (record an instruction), so `capturing` optimistically does
- * both — the card is up and the mic is running — and the key going up decides
- * which of the two the user meant.
- */
-export type RemixPhase =
-  | "capturing"
-  | "listening"
-  | "running"
-  | "chat"
-  | "error";
-
-export interface RemixSession {
-  id: number;
-  phase: RemixPhase;
-  /** The captured selection; null until the copy comes back. */
-  selection: string | null;
-  /** What is being applied, shown while `running`. */
-  label?: string;
-  transcript?: string;
-  title?: string;
-  body?: string;
-  /** A spoken or typed instruction the chat card sends on open. */
-  initialInstruction?: string | null;
-  /**
-   * The chat collapsed to its one-line activity strip. Voice runs start here
-   * — the user asked for something to happen, not for a chat window — and
-   * hovering the strip is what opens the full conversation.
-   */
-  minimized?: boolean;
-}
-
-/** A promise that something else resolves. Used to await the selection. */
-export interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-}
-
-export function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
 }

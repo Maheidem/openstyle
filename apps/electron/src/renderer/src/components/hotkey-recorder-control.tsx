@@ -53,7 +53,7 @@ export function HotkeyRecorderControl({
   noticeSide = "right",
 }: {
   accelerator?: string;
-  target?: "dictation" | "remix" | "language";
+  target?: "dictation" | "language";
   isBlocked: (accelerator: string) => boolean;
   onRecorded: (accelerator: string) => void;
   onClear?: () => void;

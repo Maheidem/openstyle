@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
 // Hotkey demo parts: the press hook, keycap, step word and waveform. The
-// tutorial demo, the remix demo and the coach strip of onboarding share them.
+// tutorial demo and the coach strip of onboarding share them.
 // ---------------------------------------------------------------------------
 
 export type CoachPhase = "idle" | "pressed" | "result";
@@ -16,10 +16,10 @@ const RESULT_HOLD_MS = 2400;
  * amplitude lives in a ref (the pill broadcasts it at 60Hz) and is read by
  * Wave inside its RAF loop, so no re-render per frame.
  */
-export function useCoachPress(
-  source: "dictation" | "remix",
-  handlers?: { onDown?: () => void; onUp?: () => void },
-): { phase: CoachPhase; getLiveLevel: () => number | null } {
+export function useCoachPress(handlers?: {
+  onDown?: () => void;
+  onUp?: () => void;
+}): { phase: CoachPhase; getLiveLevel: () => number | null } {
   const [phase, setPhase] = useState<CoachPhase>("idle");
   const audioLevelRef = useRef(0);
   const livePressRef = useRef(false);
@@ -30,11 +30,7 @@ export function useCoachPress(
   onUpRef.current = handlers?.onUp;
 
   useEffect(() => {
-    const subscribeDown =
-      source === "remix" ? window.api?.onRemixDown : window.api?.onHotkeyDown;
-    const subscribeUp =
-      source === "remix" ? window.api?.onRemixUp : window.api?.onHotkeyUp;
-    const removeDown = subscribeDown?.(() => {
+    const removeDown = window.api?.onHotkeyDown(() => {
       livePressRef.current = true;
       audioLevelRef.current = 0;
       if (timeoutRef.current !== null) {
@@ -44,7 +40,7 @@ export function useCoachPress(
       setPhase("pressed");
       onDownRef.current?.();
     });
-    const removeUp = subscribeUp?.(() => {
+    const removeUp = window.api?.onHotkeyUp(() => {
       livePressRef.current = false;
       setPhase("result");
       onUpRef.current?.();

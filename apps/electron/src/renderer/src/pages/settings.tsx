@@ -100,7 +100,6 @@ import {
   normalizePillCancelMode,
   type PillCancelMode,
 } from "../../../shared/pill-cancel";
-import { getDefaultRemixHotkey } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 import { sanitizeDigits } from "./settings-numeric-commit";
 import { useTimeoutSetting } from "./use-timeout-setting";
@@ -123,7 +122,6 @@ const audioPlaybackOptions = [
 
 const settingsSectionIds = [
   "recording",
-  "remix",
   "application",
   "display",
   "permissions",
@@ -183,10 +181,6 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.defaultHotkey ?? getDefaultHotkey(),
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
-  const [remixBarEnabled, setRemixBarEnabled] = useState(true);
-  const [remixHotkey, setRemixHotkey] = useState(
-    window.api?.defaultRemixHotkey ?? getDefaultRemixHotkey(),
-  );
   const [languages, setLanguages] = useState<string[]>([]);
   // Language code -> bound accelerator. Only languages with a bound hotkey
   // appear as keys (specs/dictation-language-hotkeys.md §7).
@@ -452,22 +446,6 @@ export default function SettingsPage(): React.JSX.Element {
     }
   }, []);
 
-  const handleRemixBarToggle = useCallback((enabled: boolean) => {
-    setRemixBarEnabled(enabled);
-    putSetting(SETTINGS_KEYS.remixBarEnabled, String(enabled))
-      .then(() => window.api?.reloadRemixHotkey())
-      .catch(() => {});
-  }, []);
-
-  // The remix listener re-reads its accelerator from the server rather than
-  // being handed one, so the reload has to wait for the write to land.
-  const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
-    setRemixHotkey(accelerator);
-    putSetting(SETTINGS_KEYS.remixHotkey, accelerator)
-      .then(() => window.api?.reloadRemixHotkey())
-      .catch(() => {});
-  }, []);
-
   const queryClient = useQueryClient();
 
   // All persisted settings in one request (replaces ~10 individual GETs).
@@ -486,9 +464,6 @@ export default function SettingsPage(): React.JSX.Element {
       setSelectedDevice(s[SETTINGS_KEYS.micDeviceId]);
     if (s[SETTINGS_KEYS.hotkey]) setHotkey(s[SETTINGS_KEYS.hotkey]);
     if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
-    if (s[SETTINGS_KEYS.remixHotkey])
-      setRemixHotkey(s[SETTINGS_KEYS.remixHotkey]);
-    setRemixBarEnabled(s[SETTINGS_KEYS.remixBarEnabled] !== "false");
     setLanguages(parseLanguagesSetting(s));
     if (s[SETTINGS_KEYS.languageHotkeys]) {
       try {
@@ -940,13 +915,12 @@ export default function SettingsPage(): React.JSX.Element {
                 <HotkeyRecorderControl
                   accelerator={hotkey}
                   isBlocked={(accel) =>
-                    acceleratorsEqual(accel, remixHotkey) ||
                     Object.values(languageHotkeys).some((a) =>
                       acceleratorsEqual(accel, a),
                     )
                   }
                   onRecorded={handleHotkeyRecorded}
-                  // isBlocked covers remix AND every bound language hotkey
+                  // isBlocked covers every bound language hotkey
                   // (§7/§8 closed the reverse direction too), so the notice
                   // can no longer name one specific binding: generic copy,
                   // same reasoning as the language row's own conflict message.
@@ -1064,7 +1038,6 @@ export default function SettingsPage(): React.JSX.Element {
                     value={languageHotkeys[code]}
                     isBlocked={(accel) =>
                       acceleratorsEqual(accel, hotkey) ||
-                      acceleratorsEqual(accel, remixHotkey) ||
                       languages.some(
                         (other) =>
                           other !== code &&
@@ -1140,47 +1113,6 @@ export default function SettingsPage(): React.JSX.Element {
                   />
                 </Row>
               ) : null}
-            </SettingsPanel>
-          )}
-
-          {activeSection === "remix" && (
-            <SettingsPanel>
-              <Row
-                label={t("settings.remix.hotkey")}
-                desc={
-                  remixHotkey === hotkey
-                    ? t("settings.remix.conflict")
-                    : t("settings.remix.hotkeyDesc")
-                }
-              >
-                <HotkeyRecorderControl
-                  accelerator={remixHotkey}
-                  target="remix"
-                  isBlocked={(accel) =>
-                    acceleratorsEqual(accel, hotkey) ||
-                    Object.values(languageHotkeys).some((a) =>
-                      acceleratorsEqual(accel, a),
-                    )
-                  }
-                  onRecorded={handleRemixHotkeyRecorded}
-                  // isBlocked covers dictation AND every bound language
-                  // hotkey, so the notice is generic copy.
-                  conflictNotice={t(
-                    "settings.recording.languageHotkeyConflict",
-                  )}
-                />
-              </Row>
-
-              <Row
-                label={t("settings.remix.bar")}
-                desc={t("settings.remix.barDesc")}
-                last
-              >
-                <Switch
-                  checked={remixBarEnabled}
-                  onCheckedChange={handleRemixBarToggle}
-                />
-              </Row>
             </SettingsPanel>
           )}
 

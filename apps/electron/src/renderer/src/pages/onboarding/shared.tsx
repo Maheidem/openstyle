@@ -1,7 +1,6 @@
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { Button } from "@renderer/components/ui/button";
 import {
-  acceleratorsEqual,
   comboDisplayKeys,
   formatAcceleratorKeys,
   keyDisplayLabel,
@@ -20,21 +19,16 @@ export function StepHeading({ title }: { title: string }): React.JSX.Element {
 
 // ---------------------------------------------------------------------------
 // Hotkey rebind — a single minimal control, shared by the draft (dictation
-// hotkey) and remix (remix hotkey) steps.
+// hotkey) step.
 // ---------------------------------------------------------------------------
 export function HotkeyRebindControl({
   hotkey,
   target,
-  conflictHotkey,
-  conflictNotice,
   onRecorded,
   onStartRecording,
 }: {
   hotkey: string;
-  target: "dictation" | "remix";
-  /** The other feature's hotkey — recording it here is refused. */
-  conflictHotkey?: string;
-  conflictNotice?: string;
+  target: "dictation";
   onRecorded: (accelerator: string) => void;
   onStartRecording?: () => void;
 }): React.JSX.Element {
@@ -45,14 +39,10 @@ export function HotkeyRebindControl({
     capturedCombo,
     canSaveRecording,
     needsModifierOrMouseButton,
-    blockedNotice,
     startRecording,
     cancelRecording,
   } = useHotkeyRecorder(onRecorded, {
     target,
-    isBlocked: conflictHotkey
-      ? (accel) => acceleratorsEqual(accel, conflictHotkey)
-      : undefined,
   });
 
   const liveKeys = liveModifiers.map(keyDisplayLabel);
@@ -81,11 +71,6 @@ export function HotkeyRebindControl({
               {t("common.change")}
             </span>
           </Button>
-          {blockedNotice && conflictNotice && (
-            <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] left-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-              {conflictNotice}
-            </div>
-          )}
         </div>
       ) : (
         <div className="border-primary bg-accent inline-flex items-center gap-3 rounded-[10px] border px-3.5 py-2.5">

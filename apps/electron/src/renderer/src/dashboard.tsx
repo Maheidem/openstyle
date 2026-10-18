@@ -29,7 +29,6 @@ const HelpPage = lazy(() => import("@renderer/pages/help"));
 const ImportPage = lazy(() => import("@renderer/pages/import"));
 const ModelsPage = lazy(() => import("@renderer/pages/models"));
 const MeetingsPage = lazy(() => import("@renderer/pages/meetings"));
-const RemixPage = lazy(() => import("@renderer/pages/remix"));
 const SettingsPage = lazy(() => import("@renderer/pages/settings"));
 const TonePage = lazy(() => import("@renderer/pages/tone"));
 const VocabularyPage = lazy(() => import("@renderer/pages/vocabulary"));
@@ -98,7 +97,6 @@ function mount(): void {
                       <Route element={<AppShell />}>
                         <Route path="/today" element={<HistoryPage />} />
                         <Route element={<PagePad />}>
-                          <Route path="/remix" element={<RemixPage />} />
                           <Route path="/meetings" element={<MeetingsPage />} />
                           <Route path="/import" element={<ImportPage />} />
                           <Route path="/settings" element={<SettingsPage />} />

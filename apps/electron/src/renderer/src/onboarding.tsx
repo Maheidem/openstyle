@@ -22,24 +22,18 @@ import {
   type LinuxSetup,
   PermissionsStep,
 } from "@renderer/pages/onboarding/permissions-step";
-import { RemixStep } from "@renderer/pages/onboarding/remix-step";
 import { useOnboardingModel } from "@renderer/pages/onboarding/use-onboarding-model";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
-import { getDefaultRemixHotkey } from "../../shared/remix";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 
-type Step = "permissions" | "language" | "draft" | "remix" | "enhance";
+type Step = "permissions" | "language" | "draft" | "enhance";
 
 const DEFAULT_HOTKEY =
   (typeof window !== "undefined" && window.api?.defaultHotkey) ||
   getDefaultHotkey();
-
-const DEFAULT_REMIX_HOTKEY =
-  (typeof window !== "undefined" && window.api?.defaultRemixHotkey) ||
-  getDefaultRemixHotkey();
 
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -69,7 +63,7 @@ export default function OnboardingPage(): React.JSX.Element {
   // The auto-Enhance onboarding step only makes sense when Meeting Mode is
   // on — the same `flags?.meetings === true` gate the app shell uses to show
   // the Meetings nav item (shell.tsx). When the flag is off there is no
-  // Meetings feature to turn on, so onboarding finishes right after remix.
+  // Meetings feature to turn on, so onboarding finishes right after the draft step.
   const { data: config } = useQuery(configQueryOptions());
   const meetingsEnabled = config?.flags?.meetings === true;
 
@@ -87,27 +81,16 @@ export default function OnboardingPage(): React.JSX.Element {
     return guess === "auto" ? [] : [guess];
   });
 
-  // Hotkey recorder state (draft step); the remix hotkey lives here too so
-  // each step can refuse a combo already taken by the other.
+  // Hotkey recorder state (draft step).
   const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
-  const [remixHotkey, setRemixHotkey] = useState(DEFAULT_REMIX_HOTKEY);
 
-  // The practice email body, lifted so it survives the draft→remix step
+  // The practice email body, lifted so it survives the draft→enhance step
   // transition (and Back).
   const [draftBody, setDraftBody] = useState("");
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
     void putSetting(SETTINGS_KEYS.hotkey, accelerator);
-  }, []);
-
-  // Like Settings: main re-reads the remix accelerator from settings, so the
-  // listener reload has to wait for the write to land.
-  const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
-    setRemixHotkey(accelerator);
-    putSetting(SETTINGS_KEYS.remixHotkey, accelerator)
-      .then(() => window.api?.reloadRemixHotkey())
-      .catch(() => {});
   }, []);
 
   // Load permissions
@@ -133,8 +116,6 @@ export default function OnboardingPage(): React.JSX.Element {
   useEffect(() => {
     const value = settingsData?.[SETTINGS_KEYS.hotkey];
     if (value) setHotkey(value);
-    const remixValue = settingsData?.[SETTINGS_KEYS.remixHotkey];
-    if (remixValue) setRemixHotkey(remixValue);
   }, [settingsData]);
 
   const requestMic = useCallback(async () => {
@@ -266,7 +247,6 @@ export default function OnboardingPage(): React.JSX.Element {
         {step === "draft" && (
           <DraftStep
             hotkey={hotkey}
-            remixHotkey={remixHotkey}
             onHotkeyRecorded={handleHotkeyRecorded}
             localModel={model.localModel}
             onDownloadLocal={model.download}
@@ -277,23 +257,12 @@ export default function OnboardingPage(): React.JSX.Element {
             onBack={() => {
               setStep("language");
             }}
-            onContinue={() => setStep("remix")}
-          />
-        )}
-
-        {step === "remix" && (
-          <RemixStep
-            body={draftBody}
-            onBodyChange={setDraftBody}
-            remixHotkey={remixHotkey}
-            dictationHotkey={hotkey}
-            onRemixHotkeyRecorded={handleRemixHotkeyRecorded}
-            onBack={() => setStep("draft")}
-            onFinish={() => {
-              // Meeting Mode flag off → no Enhance step, finish as before.
+            onContinue={() => {
+              // Meeting Mode flag off → no Enhance step, finish here.
               if (meetingsEnabled) setStep("enhance");
               else finishSetup();
             }}
+            isLastStep={!meetingsEnabled}
           />
         )}
 
@@ -301,7 +270,7 @@ export default function OnboardingPage(): React.JSX.Element {
           <EnhanceStep
             model={enhanceModel}
             onChoose={(choice) => void handleEnhanceChoice(choice)}
-            onBack={() => setStep("remix")}
+            onBack={() => setStep("draft")}
           />
         )}
       </div>
