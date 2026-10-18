@@ -3,7 +3,11 @@ import type {
   EvidenceType,
   SpeakerVerdict,
 } from "@openstyle/validations";
-import { fixNameSpelling } from "../../speaker-spelling.js";
+import {
+  distanceAtMostOne,
+  fixNameSpelling,
+  MIN_FUZZY_FIRST_NAME,
+} from "../../speaker-spelling.js";
 import type { WorkflowDeps } from "../context.js";
 import type { WorkflowStateType } from "../state.js";
 import {
@@ -61,6 +65,38 @@ export function looksSelfIdentifying(
     `${B}(${SELF_INTRO_CUES_EN})\\s+${n}${E}|${B}${n}\\s+(here|speaking)${E}`,
     "u",
   ).test(quoteNorm);
+}
+
+/**
+ * The part of a proposed name that the quote holds, or null. The calendar lists
+ * full names, but people say only the first name. So the full name, the name
+ * with the attendee spelling, or the first name alone (at a word boundary)
+ * passes. A first name of 4 letters or more also passes with one letter off
+ * ("Harris" in the quote for a proposed "Haris"). Returns the text as written
+ * in the quote.
+ */
+export function nameMatchInQuote(
+  quoteNorm: string,
+  nameNorm: string,
+  attendeeNames: readonly string[],
+): string | null {
+  const fixedNorm = normalizeForMatch(
+    fixNameSpelling(nameNorm, [...attendeeNames]),
+  );
+  const variants = [...new Set([nameNorm, fixedNorm])];
+  for (const v of variants) if (containsWord(quoteNorm, v)) return v;
+  for (const v of variants) {
+    const first = v.split(" ")[0] ?? "";
+    if (first && containsWord(quoteNorm, first)) return first;
+  }
+  const first = nameNorm.split(" ")[0] ?? "";
+  if (first.length >= MIN_FUZZY_FIRST_NAME) {
+    for (const w of quoteNorm.match(/[\p{L}\p{N}']+/gu) ?? []) {
+      if (w.length >= MIN_FUZZY_FIRST_NAME && distanceAtMostOne(first, w) === 1)
+        return w;
+    }
+  }
+  return null;
 }
 
 // --- 4.4.2 Per-proposal checks ----------------------------------------------
@@ -170,7 +206,12 @@ function judge(
   if (p.kind === "name") {
     const nameNorm = normalizeForMatch(name);
     // 7
-    if (!containsWord(quoteNorm, nameNorm)) {
+    const matched = nameMatchInQuote(
+      quoteNorm,
+      nameNorm,
+      prepared.attendeeNames,
+    );
+    if (!matched) {
       return drop(
         p,
         name,
@@ -183,7 +224,7 @@ function judge(
     // 8
     if (
       evidenceType === "self_introduction" &&
-      !looksSelfIdentifying(quoteNorm, nameNorm)
+      !looksSelfIdentifying(quoteNorm, matched)
     ) {
       return drop(
         p,

@@ -206,6 +206,76 @@ describe("verifyEvidence: one test for each drop reason (4.4.2)", () => {
     expect(banana.verdicts[0]?.reason).toBe("name_not_in_quote");
   });
 
+  it("7 passes with the spoken first name; the full name stays in the result", () => {
+    const r = verifyEvidence(
+      prepared([seg("x", "2", "Hi everyone, I am Milana.", 100)], {
+        attendeeNames: ["Milana Marjanovic"],
+      }),
+      [
+        prop({
+          segmentId: "x",
+          quote: "I am Milana",
+          label: "2",
+          name: "Milana Marjanovic",
+        }),
+      ],
+      [{ unitKey: "candidates", segmentIds: ["x"] }],
+    );
+    expect(r.verdicts[0]).toMatchObject({
+      status: "kept",
+      proposedName: "Milana Marjanovic",
+      finalName: "Milana Marjanovic",
+    });
+    expect(r.suggestions[0]?.name).toBe("Milana Marjanovic");
+  });
+
+  it("7 passes one letter off: quote Harris, proposal Haris", () => {
+    const r = verifyEvidence(
+      prepared([seg("x", "2", "Hi, this is Harris from sales.", 100)], {
+        attendeeNames: ["Haris Kovac"],
+      }),
+      [
+        prop({
+          segmentId: "x",
+          quote: "this is Harris",
+          label: "2",
+          name: "Haris",
+        }),
+      ],
+      [{ unitKey: "candidates", segmentIds: ["x"] }],
+    );
+    expect(r.verdicts[0]?.status).toBe("kept");
+    expect(r.suggestions[0]?.name).toBe("Haris Kovac");
+  });
+
+  it("7 still fails when the quote holds neither the name nor its first name", () => {
+    const r = verify([
+      prop({
+        segmentId: "a",
+        quote: "this is Ana",
+        label: "2",
+        name: "Milana Marjanovic",
+      }),
+    ]);
+    expect(r.verdicts[0]?.reason).toBe("name_not_in_quote");
+  });
+
+  it("8 still fails for a third-person mention of the first name", () => {
+    const r = verifyEvidence(
+      prepared([seg("x", "2", "I asked Milana about it yesterday.", 100)]),
+      [
+        prop({
+          segmentId: "x",
+          quote: "I asked Milana about it",
+          label: "2",
+          name: "Milana Marjanovic",
+        }),
+      ],
+      [{ unitKey: "candidates", segmentIds: ["x"] }],
+    );
+    expect(r.verdicts[0]?.reason).toBe("not_self_introduction");
+  });
+
   it("8 not_self_introduction: the label's own line only greets a name", () => {
     const r = verifyEvidence(
       prepared([seg("x", "2", "Hello Marcus, how are you today.", 100)]),

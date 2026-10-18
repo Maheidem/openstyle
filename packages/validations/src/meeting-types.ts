@@ -114,7 +114,9 @@ export type CorrectionDropReason =
   | "empty_text"
   | "unchanged"
   | "format_only"
-  | "deletes_words";
+  | "deletes_words"
+  | "too_different"
+  | "meaning_flip";
 
 export interface SpeakerVerdict {
   unitKey: string;

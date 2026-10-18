@@ -87,6 +87,22 @@ function wordsOf(text: string): string[] {
     .filter(Boolean);
 }
 
+/** lcs[i][j]: length of the longest common subsequence of the two suffixes. */
+function lcsTable(a: string[], b: string[]): number[][] {
+  const lcs = Array.from({ length: a.length + 1 }, () =>
+    new Array<number>(b.length + 1).fill(0),
+  );
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lcs[i]![j] =
+        a[i] === b[j]
+          ? lcs[i + 1]![j + 1]! + 1
+          : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+    }
+  }
+  return lcs;
+}
+
 /**
  * True when the word diff of old to new has a pure deletion: a gap between two
  * matched words (or the text ends) that loses old words and gains no new word.
@@ -95,18 +111,7 @@ function wordsOf(text: string): string[] {
 function deletesWords(oldWords: string[], newWords: string[]): boolean {
   const n = oldWords.length;
   const m = newWords.length;
-  // lcs[i][j]: length of the longest common subsequence of the two suffixes.
-  const lcs = Array.from({ length: n + 1 }, () =>
-    new Array<number>(m + 1).fill(0),
-  );
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      lcs[i]![j] =
-        oldWords[i] === newWords[j]
-          ? lcs[i + 1]![j + 1]! + 1
-          : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
-    }
-  }
+  const lcs = lcsTable(oldWords, newWords);
   let i = 0;
   let j = 0;
   let removed = 0;
@@ -131,6 +136,38 @@ function deletesWords(oldWords: string[], newWords: string[]): boolean {
     }
   }
   return closeGap();
+}
+
+/** A correction may add at most this many words net. */
+const MAX_NET_ADDED_WORDS = 3;
+/** Share of the original words that must stay, in order. */
+const MIN_WORD_OVERLAP = 0.5;
+
+/** True when the new text adds many words or keeps too little of the old text. */
+function tooDifferent(oldWords: string[], newWords: string[]): boolean {
+  if (newWords.length - oldWords.length > MAX_NET_ADDED_WORDS) return true;
+  if (oldWords.length === 0) return false;
+  const kept = lcsTable(oldWords, newWords)[0]![0]!;
+  return kept / oldWords.length < MIN_WORD_OVERLAP;
+}
+
+/** Negation words: not, no, never, nothing, none, nobody, and any n't word. */
+const NEGATION_WORDS = new Set([
+  "not",
+  "no",
+  "never",
+  "nothing",
+  "none",
+  "nobody",
+]);
+
+function negationCount(text: string): number {
+  const words = text
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02bc]/g, "'")
+    .match(/[\p{L}']+/gu);
+  return (words ?? []).filter((w) => NEGATION_WORDS.has(w) || w.endsWith("n't"))
+    .length;
 }
 
 /** 4.2.3: the code checks after the parse. */
@@ -178,6 +215,16 @@ export function checkCorrections(
     }
     if (deletesWords(oldWords, newWords)) {
       drop("deletes_words");
+      return;
+    }
+    // Text copied in from a neighbour segment, or a rewrite.
+    if (tooDifferent(oldWords, newWords)) {
+      drop("too_different");
+      return;
+    }
+    // A fix must not turn a statement into its opposite.
+    if (negationCount(original.text) !== negationCount(text)) {
+      drop("meaning_flip");
       return;
     }
     corrections.push({ id: entry.id, text, seq, callId });
