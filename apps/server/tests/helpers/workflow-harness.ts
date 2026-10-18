@@ -49,7 +49,7 @@ export const instantSleep: WorkflowDeps["sleep"] = (_ms, signal) =>
 export interface TestRunContext extends RunContext {
   /** Set the flag that isCancelled() reads, and abort the signal. */
   cancel(): void;
-  /** Set the flag that isStopped() reads. */
+  /** Set the flag that isStopped() reads. A cancel does not set it (3.4.5). */
   stop(kind: FailureKind): void;
   /** onNodeStart calls, in order. */
   readonly startedNodes: NodeId[];
@@ -94,7 +94,7 @@ export function makeTestRunContext(
     meetingId: o.meetingId ?? "fixture-meeting",
     signal,
     isCancelled: () => cancelled,
-    isStopped: () => stoppedKind !== null || cancelled,
+    isStopped: () => stoppedKind !== null,
     stopRun(kind) {
       stoppedKind ??= kind;
     },
