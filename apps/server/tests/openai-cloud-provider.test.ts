@@ -12,7 +12,7 @@ vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ai")>();
   return {
     ...actual,
-    experimental_transcribe: vi.fn(async () => ({
+    transcribe: vi.fn(async () => ({
       text: "mock transcript",
       segments: undefined,
       durationInSeconds: undefined,

@@ -163,7 +163,7 @@ async function runCase(
   );
   const result = await generateText({
     model,
-    system,
+    instructions: system,
     prompt,
     temperature: 0,
     maxOutputTokens: maxOutputTokensForCleanup(testCase.input),

@@ -124,7 +124,7 @@ export async function postProcess(
   try {
     const result = await generateText({
       model: params.model,
-      system: params.system,
+      instructions: params.system,
       prompt,
       temperature: params.temperature ?? 0,
       ...(params.topP !== undefined ? { topP: params.topP } : {}),

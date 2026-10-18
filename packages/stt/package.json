@@ -44,13 +44,13 @@
     }
   },
   "peerDependencies": {
-    "@ai-sdk/provider-utils": "^4.0.0",
-    "ai": "^6.0.0"
+    "@ai-sdk/provider-utils": "^5.0.0",
+    "ai": "^7.0.0"
   },
   "devDependencies": {
-    "@ai-sdk/provider-utils": "^4.0.27",
+    "@ai-sdk/provider-utils": "catalog:",
     "@types/node": "catalog:",
-    "ai": "^6.0.191",
+    "ai": "catalog:",
     "pkgroll": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

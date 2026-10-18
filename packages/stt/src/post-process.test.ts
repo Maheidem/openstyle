@@ -1,16 +1,16 @@
+import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { postProcess } from "./post-process.js";
 
 function fakeModel(doGenerate: (opts?: unknown) => unknown) {
-  return {
-    specificationVersion: "v3",
+  return new MockLanguageModelV4({
     provider: "test",
     modelId: "fake-model",
-    doGenerate,
-  } as never;
+    doGenerate: doGenerate as never,
+  });
 }
 
-// Provider spec v3 result. `generateText` flattens `unified` onto the result
+// Provider spec v4 result. `generateText` flattens `unified` onto the result
 // as a plain string.
 function textResult(
   text: string,

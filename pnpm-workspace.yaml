@@ -14,7 +14,9 @@ packageExtensions:
     dependencies:
       zod: "^4.4.3"
 catalog:
+  "@ai-sdk/provider-utils": "5.0.62"
   "@types/node": "^22.19.1"
+  "ai": "7.0.143"
   hono: "^4.12.22"
   pkgroll: "^2.27.0"
   react: "^19.2.1"

@@ -1,4 +1,4 @@
-import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
+import type { GroqLanguageModelChatOptions } from "@ai-sdk/groq";
 import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
 import { parseServerModelId, SERVER_PROVIDER_ID } from "@openstyle/validations";
@@ -72,7 +72,7 @@ export interface LlmProvider {
 export function groqCleanupProviderOptions(
   modelId: string,
   reasoningEnabled: boolean,
-): { groq: GroqLanguageModelOptions } | undefined {
+): { groq: GroqLanguageModelChatOptions } | undefined {
   const shortId = stripModelPrefix("groq", modelId);
 
   switch (shortId) {
@@ -201,8 +201,8 @@ const PROVIDERS: LlmProvider[] = [
   {
     providerId: "google",
     createModel: async (modelId, apiKey) => {
-      const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
-      return createGoogleGenerativeAI({ apiKey }).chat(modelId);
+      const { createGoogle } = await import("@ai-sdk/google");
+      return createGoogle({ apiKey }).chat(modelId);
     },
   },
   {
