@@ -71,6 +71,17 @@ const noEnd = {
 const isIdentify = (r: RecordedRequest) => r.system.includes("diarized labels");
 const NONE = okReply('{"corrections":[]}');
 const EMPTY_SPEAKERS = okReply('{"speakers":[]}');
+const isSummary = (r: RecordedRequest) =>
+  r.system.includes("You summarize meeting transcripts");
+const SUMMARY = okReply(
+  JSON.stringify({
+    overview: "A planning call.",
+    keyPoints: [],
+    decisions: [],
+    actionItems: [],
+    openQuestions: [],
+  }),
+);
 const corr = (...pairs: [string, string][]) =>
   okReply(
     JSON.stringify({ corrections: pairs.map(([id, text]) => ({ id, text })) }),
@@ -732,7 +743,8 @@ describe("GR25: step rows and the run context", () => {
       deps,
       meetingId: f.meeting.id,
       stages: ["enhance", "summarize"],
-      script: (req) => (isIdentify(req) ? EMPTY_SPEAKERS : NONE),
+      script: (req) =>
+        isIdentify(req) ? EMPTY_SPEAKERS : isSummary(req) ? SUMMARY : NONE,
     });
     const steps = [...recorder.steps.entries()].map(([key, v]) => ({
       key,
@@ -746,6 +758,7 @@ describe("GR25: step rows and the run context", () => {
         "chunk:2",
         "prepare",
         "save",
+        "single",
         "verify",
       ].sort(),
     );
@@ -754,7 +767,7 @@ describe("GR25: step rows and the run context", () => {
     const bySeq = [...steps].sort((a, b) => a.seq - b.seq).map((s) => s.key);
     expect(bySeq[0]).toBe("prepare");
     expect(bySeq.slice(1, 4).sort()).toEqual(["chunk:0", "chunk:1", "chunk:2"]);
-    expect(bySeq.slice(4)).toEqual(["candidates", "verify", "save"]);
+    expect(bySeq.slice(4)).toEqual(["candidates", "verify", "single", "save"]);
     // Every call of the three chunks counted an attempt on its step row.
     expect(steps.find((s) => s.key === "chunk:0")?.attempts).toBe(1);
     // (b) onNodeStart: once for each node run, in node order.
@@ -768,7 +781,7 @@ describe("GR25: step rows and the run context", () => {
       "summarize",
       "save",
     ]);
-    expect(r.finalState.summary?.status).toBe("skipped");
+    expect(r.finalState.summary?.status).toBe("ok");
   });
 
   it("a node that throws a plain Error closes its row failed with kind internal; for prepare the error is rethrown", async () => {
@@ -914,7 +927,7 @@ describe("GR25: step rows and the run context", () => {
 });
 
 describe("edges", () => {
-  it("a summarize-only run goes prepare, summarize, save and sends no call", async () => {
+  it("a summarize-only run goes prepare, summarize, save and sends one summary call", async () => {
     const f = seedFixtureMeeting({
       chunks: 2,
       speakers: 3,
@@ -926,14 +939,14 @@ describe("edges", () => {
       deps,
       meetingId: f.meeting.id,
       stages: ["summarize"],
-      script: [NONE],
+      script: [SUMMARY],
     });
-    expect(r.requests).toHaveLength(0);
+    expect(r.requests).toHaveLength(1);
     expect(r.ctx.startedNodes).toEqual(["prepare", "summarize", "save"]);
     expect(r.finalState.corrections).toEqual([]);
     expect(r.finalState.identify).toBeNull();
-    expect(r.finalState.summary?.status).toBe("skipped"); // WP5a ships a stub (SUMMARIZE_IS_STUB)
-    expect(r.finalState.saved?.wroteAny).toBe(false);
+    expect(r.finalState.summary?.status).toBe("ok");
+    expect(r.finalState.saved?.wroteAny).toBe(true);
   });
 
   it("a cancel before the graph starts sends the run from prepare straight to save", async () => {
