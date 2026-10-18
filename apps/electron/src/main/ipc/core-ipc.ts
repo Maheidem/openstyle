@@ -207,7 +207,7 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
 
   // IPC: the renderer needs (or no longer needs) room for the status card.
   ipcMain.on("pill:set-expanded", (_event, expanded: boolean) => {
-    setPillExpanded(expanded === true, "card");
+    setPillExpanded(expanded === true);
   });
 
   // IPC: fan out per-frame audio levels from the pill to other windows
