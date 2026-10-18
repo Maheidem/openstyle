@@ -1745,7 +1745,7 @@ const meetings = new Hono()
         // neither), i.e. a human explicitly confirmed a name or a merge —
         // exactly the "confirmed change" `latestSpeakerUpdate` (§9.2) must
         // track, as opposed to Enhance's suggestion-only upsert
-        // (enhance.ts), which never touches this column.
+        // (the Enhance workflow), which never touches this column.
         db.prepare(
           `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, merged_into, updated_at, confirmed_at)
            VALUES (?, ?, ?, ?, ?, ?)
@@ -1851,10 +1851,6 @@ const meetings = new Hono()
        * holder so the renderer can tell a cancellable summarize job from a
        * non-cancellable diarize/enhance pass without a second round-trip. */
       job: getJob(id),
-      /** Always null. The renderer reads a failure from the run record
-       * (`GET /:id/llm-runs?latest=1`). The field leaves with the renderer
-       * switch (specs/meeting-enhance-agentic.md 3.4.6 step 6). */
-      job_error: null,
       segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
       ...loadTrackState(row),
       summary: summary ?? null,

@@ -19,7 +19,7 @@
  *    physical box and must collapse into ONE lane. Keying on a setting name
  *    or a provider id would silently create two lanes and one GPU (§5.1).
  * 2. **Acquired and released PER CALL, never per job.** A Summarize run is
- *    N map calls plus a reduce, executed sequentially in `summarize.ts`; held
+ *    N map calls plus a reduce, executed sequentially by the summarize node; held
  *    per job it would block an interactive cleanup for the entire run. Held
  *    per call, the queue drains between chunks (§5.2).
  * 3. **No mid-call preemption.** Once a background call is on the wire it

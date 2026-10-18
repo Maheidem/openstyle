@@ -118,7 +118,7 @@ function classifySelector(q: CallsQuery): Selection {
 const meetingsRuns = new Hono()
   // Resume an interrupted run (specs/meeting-enhance-agentic.md 3.4.2, 3.4.7).
   // 202 with the run id, 404 for an unknown meeting or run, 409 with the reason
-  // of the guard that refused it.
+  // of the guard that refused it, 500 for a fault while it loads the run.
   .post("/:id/runs/:runId/resume", async (c) => {
     const id = c.req.param("id");
     const result = await resumeRun(
@@ -132,7 +132,9 @@ const meetingsRuns = new Hono()
         202,
       );
     }
-    if (result.status === 404) return c.json({ error: result.error }, 404);
+    if (result.status !== 409) {
+      return c.json({ error: result.error }, result.status);
+    }
     return c.json(result.conflict, 409);
   })
   .get("/:id/llm-runs", zValidator("query", runsQuerySchema), (c) => {

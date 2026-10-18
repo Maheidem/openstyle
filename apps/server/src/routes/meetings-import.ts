@@ -308,7 +308,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       );
       // Fresh-import response in the exact GET /:id shape so the renderer
       // drops it into its MeetingDetail type with no second fetch. job/
-      // job_error/segment_counts/summary are definitionally empty for a new
+      // segment_counts/summary are definitionally empty for a new
       // row — the DB row alone doesn't carry them, so construct them here.
       // (`meetings-import-route.test.ts` asserts this shape with toEqual
       // against GET /:id, so a new GET field must land here too.)
@@ -317,7 +317,6 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
           ...(row ? omitCalendarColumns(row) : row),
           calendar: row ? toCalendarEvent(row) : null,
           job: null,
-          job_error: null,
           segment_counts: { total: 0, failed: 0 },
           // An import has no mic track and no sync.json.
           track_ratio_warning: null,

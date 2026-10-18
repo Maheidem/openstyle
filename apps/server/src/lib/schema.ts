@@ -884,7 +884,7 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // entries now carry a `kind` alongside `name`/`evidence` — "name" when
     // grounded in self-identifying or addressed-as evidence, "role" for a
     // role/descriptor guess explicitly marked as not a confirmed name
-    // (enhance-prompt.ts's speaker-suggestion block). NULL for rows written
+    // (the speaker-suggestion block of the identify-speakers node). NULL for rows written
     // before this migration, or when the LLM omitted the field — treated as
     // "name" at read time for backward compatibility, matching the
     // pre-hardening contract.

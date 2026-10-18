@@ -8,7 +8,11 @@ import { getDb } from "../src/lib/db.js";
 import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
 import { __clearModeCacheForTests } from "../src/lib/llm/model-profiles.js";
 import { createLlmRecorder } from "../src/lib/llm/recorder.js";
-import { claimJob, releaseJob } from "../src/lib/meetings/job-registry.js";
+import {
+  claimJob,
+  hasJob,
+  releaseJob,
+} from "../src/lib/meetings/job-registry.js";
 import { SUMMARIZE_IS_STUB } from "../src/lib/meetings/workflow/nodes/summarize.js";
 import {
   BOOT_PROBE_TRIES,
@@ -368,6 +372,24 @@ describe("GR11: one test for each resume guard", () => {
       status: 409,
       conflict: { reason: "no_checkpoint" },
     });
+    expect(runRow(runId).status).toBe("interrupted");
+  });
+
+  it("a fault while it loads the graph answers 500 and frees the slot", async () => {
+    const f = seedMeeting(2);
+    const h = runnerHarness();
+    const runId = await interrupt(f.meeting.id, h);
+    const graphModule = await import("../src/lib/meetings/workflow/graph.js");
+    vi.spyOn(graphModule, "buildGraph").mockImplementation(() => {
+      throw new Error("graph load fault");
+    });
+    const res = await resumeRun(f.meeting.id, runId, h.deps);
+    expect(res).toMatchObject({
+      ok: false,
+      status: 500,
+      error: "The run could not be resumed",
+    });
+    expect(hasJob(f.meeting.id)).toBe(false);
     expect(runRow(runId).status).toBe("interrupted");
   });
 
