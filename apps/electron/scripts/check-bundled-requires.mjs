@@ -9,6 +9,10 @@
 // Run after `electron-vite build` (CI runs it in the test-electron job right
 // after the build step; locally: node scripts/check-bundled-requires.mjs).
 // Pass --quiet to only print violations.
+//
+// It also scans out/main/chunks and fails on `commonjsRequire(`. The bundler
+// writes that stub for a dynamic require(variable) it could not resolve. The
+// stub throws at run time in the packaged app, where no node_modules exist.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
@@ -21,9 +25,12 @@ import { join } from "node:path";
 const ALLOWED_EXTERNALS = new Set(["electron", "bufferutil", "utf-8-validate"]);
 
 const quiet = process.argv.includes("--quiet");
-const outDirs = ["out/main", "out/preload"];
+const outDirs = ["out/main", "out/preload", "out/main/chunks"];
+// Directories that may be absent (a build with no code-split chunks).
+const optionalDirs = new Set(["out/main/chunks"]);
 
 const requirePattern = /require\(\s*(["'])([^"'\n]+)\1\s*\)/g;
+const dynamicRequirePattern = /commonjsRequire\(/g;
 
 let checked = 0;
 const violations = [];
@@ -33,6 +40,7 @@ for (const dir of outDirs) {
   try {
     files = readdirSync(dir).filter((f) => f.endsWith(".js"));
   } catch {
+    if (optionalDirs.has(dir)) continue;
     console.error(
       `error: ${dir} not found — run \`pnpm run build\` (electron-vite build) first`,
     );
@@ -41,6 +49,10 @@ for (const dir of outDirs) {
 
   for (const file of files) {
     const source = readFileSync(join(dir, file), "utf8");
+    for (const _ of source.matchAll(dynamicRequirePattern)) {
+      checked++;
+      violations.push(`${dir}/${file}: commonjsRequire( (dynamic require)`);
+    }
     for (const match of source.matchAll(requirePattern)) {
       const specifier = match[2];
       checked++;
@@ -69,6 +81,6 @@ if (violations.length > 0) {
 
 if (!quiet) {
   console.log(
-    `ok: ${checked} require() call(s) in out/{main,preload} — all Electron, Node builtins, relative chunks, or allowlisted externals`,
+    `ok: ${checked} require() call(s) in out/{main,preload,main/chunks} — all Electron, Node builtins, relative chunks, or allowlisted externals`,
   );
 }
