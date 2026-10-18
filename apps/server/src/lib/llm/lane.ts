@@ -501,7 +501,7 @@ function safeActive(isActive: () => boolean): boolean {
  * This resolves the lane key, acquires the lease, runs `fn` and releases the
  * lease in `finally`. A throw from `fn` still frees the slot. Use it for calls
  * that finish inside `fn`. A call whose result is a stream that outlives `fn`
- * must use {@link acquireLlmLane} with {@link releaseLeaseOnResponseBodyEnd}.
+ * must use {@link acquireLlmLane} and release the lease itself.
  */
 export async function withLlmLane<T>(
   provider: string,

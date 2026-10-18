@@ -109,6 +109,16 @@ describe("parseLlmTaskAssignments", () => {
     });
   });
 
+  it("skips a legacy remix key and keeps the other tasks", () => {
+    const value = JSON.stringify({
+      remix: { mode: "auto" },
+      cleanup: { mode: "auto" },
+    });
+    expect(parseLlmTaskAssignments(value)).toEqual({
+      cleanup: { mode: "auto" },
+    });
+  });
+
   it("returns {} on malformed JSON, non-object JSON, and missing/empty input", () => {
     expect(parseLlmTaskAssignments("{not json")).toEqual({});
     expect(parseLlmTaskAssignments("[1,2,3]")).toEqual({});
