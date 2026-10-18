@@ -1,7 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { type LlmStepStatus, serverModelId } from "@openstyle/validations";
 import type { MockLanguageModelV4 } from "ai/test";
-import { vi } from "vitest";
 import { getDb } from "../../src/lib/db.js";
 import type { CallRecord } from "../../src/lib/llm/call-record.js";
 import { callStructured } from "../../src/lib/llm/gateway.js";
@@ -529,16 +528,28 @@ export function errorReply(status: number, body = "{}"): Response {
   return new Response(body, { status, headers: jsonHeaders });
 }
 
+let realFetch: typeof globalThis.fetch | null = null;
+
+/** Put the real `fetch` back. Call it in `afterEach` after `stubFetch`. */
+export function restoreFetch(): void {
+  if (realFetch) globalThis.fetch = realFetch;
+  realFetch = null;
+}
+
 /**
  * Stub `globalThis.fetch`. The handler gets each chat request and its index
  * among the chat requests. A models.dev read is a network fault. Call
- * `vi.restoreAllMocks()` after the test.
+ * `restoreFetch()` after the test.
  */
 export function stubFetch(
   handler: (r: SeenRequest, n: number) => Response | Promise<Response>,
 ): SeenRequest[] {
   const seen: SeenRequest[] = [];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+  realFetch ??= globalThis.fetch;
+  globalThis.fetch = (async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+  ) => {
     const raw = init?.body;
     let body: Record<string, unknown> | null = null;
     if (typeof raw === "string") {
@@ -557,7 +568,7 @@ export function stubFetch(
     if (r.url.includes("models.dev")) throw new TypeError("fetch failed");
     seen.push(r);
     return handler(r, seen.length - 1);
-  });
+  }) as typeof fetch;
   return seen;
 }
 

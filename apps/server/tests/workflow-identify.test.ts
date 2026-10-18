@@ -20,6 +20,7 @@ import {
   makeTestDeps,
   type RecordedRequest,
   resetWorkflowTables,
+  restoreFetch,
   runScriptedGraph,
   seedFixtureMeeting,
   seedTestModel,
@@ -47,6 +48,7 @@ const proposal = (
 
 afterEach(() => {
   vi.restoreAllMocks();
+  restoreFetch();
 });
 
 beforeEach(() => {

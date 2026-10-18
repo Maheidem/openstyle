@@ -35,6 +35,7 @@ import {
   makeTestRunContext,
   type RecordedRequest,
   resetWorkflowTables,
+  restoreFetch,
   runScriptedGraph,
   seedFixtureMeeting,
   seedTestModel,
@@ -93,6 +94,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  restoreFetch();
 });
 
 // --- GR1 to GR3 -----------------------------------------------------------------
@@ -578,7 +580,7 @@ describe("GR19: two units, one node run", () => {
 });
 
 describe("GR21 (a): faults", () => {
-  it("no API key: model_unavailable, 0 requests, the run is failed", async () => {
+  it("no API key: model_unavailable, 0 requests, the other units are skipped, the run is failed", async () => {
     getDb().exec("DELETE FROM model_configs WHERE type = 'llm'");
     getDb().exec("DELETE FROM api_keys");
     getDb()
@@ -587,34 +589,32 @@ describe("GR21 (a): faults", () => {
       )
       .run();
     const f = seedFixtureMeeting({
-      chunks: 2,
+      chunks: 6,
       speakers: 1,
       meetingId: "m-nokey",
     });
+    sizeFixtureSegments(getDb(), f, 300);
     const seen = stubFetch(() => chatReply('{"corrections":[]}'));
     const { deps } = makeTestDeps();
-    let error: unknown = null;
-    let finalState: FinalState | null = null;
-    try {
-      finalState = (
-        await runScriptedGraph({
-          deps,
-          meetingId: f.meeting.id,
-          stages: ["enhance"],
-        })
-      ).finalState as FinalState;
-    } catch (e) {
-      error = e;
-    }
+    const r = await runScriptedGraph({
+      deps,
+      meetingId: f.meeting.id,
+      stages: ["enhance"],
+    });
     expect(seen).toHaveLength(0);
-    if (error) {
-      // prepare fails the run (3.4.3 rule 3).
-      expect((error as { kind?: string }).kind).toBe("model_unavailable");
-    } else {
-      const failure = finalState?.corrections[0]?.units[0]?.failure;
-      expect(failure?.kind).toBe("model_unavailable");
-      expect(deriveRunStatus(finalState as FinalState, noEnd)).toBe("failed");
-    }
+    const statuses = r.finalState.corrections.map((c) => c.status);
+    expect(statuses).toHaveLength(6);
+    // The first super-step starts WORKFLOW_FANOUT_CAP tasks at once. Each fails
+    // before the lane, so none sends a request. Units that start later are skipped.
+    const failedCount = statuses.filter((s) => s === "failed").length;
+    expect(failedCount).toBeGreaterThanOrEqual(1);
+    expect(failedCount).toBeLessThanOrEqual(3);
+    expect(statuses.slice(3).every((s) => s === "skipped")).toBe(true);
+    const failed = r.finalState.corrections.find((c) => c.status === "failed");
+    expect(failed?.units[0]?.failure?.kind).toBe("model_unavailable");
+    expect(r.ctx.stoppedKind).toBe("model_unavailable");
+    expect(r.finalState.saved?.wroteAny).toBe(false);
+    expect(deriveRunStatus(r.finalState as FinalState, noEnd)).toBe("failed");
   });
 
   it("a plain Error in one correctChunk task is internal; the graph reaches save; the run is partial", async () => {
@@ -910,6 +910,87 @@ describe("GR25: step rows and the run context", () => {
   });
 });
 
+describe("edges", () => {
+  it("a summarize-only run goes prepare, summarize, save and sends no call", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 2,
+      speakers: 3,
+      selfIntroduction: true,
+      meetingId: "m-sum-only",
+    });
+    const { deps } = makeTestDeps();
+    const r = await runScriptedGraph({
+      deps,
+      meetingId: f.meeting.id,
+      stages: ["summarize"],
+      script: [NONE],
+    });
+    expect(r.requests).toHaveLength(0);
+    expect(r.ctx.startedNodes).toEqual(["prepare", "summarize", "save"]);
+    expect(r.finalState.corrections).toEqual([]);
+    expect(r.finalState.identify).toBeNull();
+    expect(r.finalState.summary?.status).toBe("skipped"); // WP5a ships a stub (SUMMARIZE_IS_STUB)
+    expect(r.finalState.saved?.wroteAny).toBe(false);
+  });
+
+  it("a cancel before the graph starts sends the run from prepare straight to save", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 2,
+      speakers: 3,
+      selfIntroduction: true,
+      meetingId: "m-cancel-early",
+    });
+    const ctx = makeTestRunContext({ meetingId: f.meeting.id });
+    ctx.cancel();
+    const { deps } = makeTestDeps();
+    const r = await runScriptedGraph({
+      deps,
+      meetingId: f.meeting.id,
+      stages: ["enhance"],
+      script: [NONE],
+      ctx,
+    });
+    expect(r.requests).toHaveLength(0);
+    expect(r.ctx.startedNodes).toEqual(["prepare", "save"]);
+    expect(
+      deriveRunStatus(r.finalState as FinalState, {
+        ...noEnd,
+        cancelled: true,
+      }),
+    ).toBe("cancelled");
+  });
+
+  it("the errorHandler backstop records an internal failure and goes to save when guardNode itself fails", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 1,
+      speakers: 3,
+      selfIntroduction: true,
+      meetingId: "m-backstop",
+    });
+    const recorder = makeFakeRecorder();
+    const startStep = recorder.startStep.bind(recorder);
+    recorder.startStep = (runId, step) => {
+      // A fault outside the try of guardNode: the step row cannot open.
+      if (step.key === "candidates") throw new Error("recorder broke");
+      startStep(runId, step);
+    };
+    const { deps } = makeTestDeps({ recorder });
+    const r = await runScriptedGraph({
+      deps,
+      meetingId: f.meeting.id,
+      stages: ["enhance"],
+      script: (req) => (isIdentify(req) ? EMPTY_SPEAKERS : NONE),
+    });
+    expect(r.finalState.identify).toMatchObject({ status: "failed" });
+    expect(r.finalState.identify?.failures[0]).toMatchObject({
+      kind: "internal",
+      node: "identifySpeakers",
+    });
+    expect(r.finalState.verify).toBeNull(); // the handler went straight to save
+    expect(r.finalState.saved).not.toBeNull();
+  });
+});
+
 // --- 10.5.4: stability and no attendee -------------------------------------------
 
 describe("10.5.4: the wire", () => {
@@ -938,6 +1019,7 @@ describe("10.5.4: the wire", () => {
   it("two different meetings put the same JSON schemas on the wire; every request is strict", async () => {
     const a = await wireRun("m-stab-a", true);
     vi.restoreAllMocks();
+    restoreFetch();
     resetWorkflowTables();
     seedTestModel();
     const b = await wireRun("m-stab-b", false);

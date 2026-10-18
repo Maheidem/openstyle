@@ -386,6 +386,65 @@ describe("save: corrections (SW1) and speakers (SW2)", () => {
   });
 });
 
+describe("save: the #163 replay", () => {
+  it("chunk 0 ends length: the speaker suggestion of the other chunks is written, with its link", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 3,
+      speakers: 3,
+      selfIntroduction: true,
+      meetingId: "m-163-save",
+    });
+    const { sizeFixtureSegments } = await import(
+      "./helpers/workflow-harness.js"
+    );
+    sizeFixtureSegments(getDb(), f, 300);
+    const intro = f.segments.find((s) => s.text.includes("Morgan Ellis"));
+    const chunk0 = new Set(f.segmentIdsByChunk[0]);
+    const r = await graphRun(f, (req) => {
+      if (isIdentify(req)) {
+        return okReply(
+          JSON.stringify({
+            speakers: [
+              {
+                segmentId: intro?.id,
+                quote: "I am Morgan Ellis",
+                label: intro?.speakerLabel,
+                kind: "name",
+                name: "Morgan Ellis",
+              },
+            ],
+          }),
+        );
+      }
+      const first = /\[([^\]]+)\]/.exec(req.user)?.[1] ?? "";
+      return chunk0.has(first)
+        ? { unified: "length", raw: "length", text: '{"corrections":[' }
+        : okReply('{"corrections":[]}');
+    });
+    expect(r.finalState.saved).toMatchObject({
+      sw1: "ok",
+      sw2: "ok",
+      wroteAny: true,
+    });
+    expect(r.finalState.corrections[0]?.status).toBe("failed");
+    const row = getDb()
+      .prepare(
+        "SELECT suggested_name, suggested_evidence FROM meeting_speakers WHERE meeting_id = ? AND speaker_label = ?",
+      )
+      .get(f.meeting.id, intro?.speakerLabel as string) as {
+      suggested_name: string;
+      suggested_evidence: string;
+    };
+    expect(row).toEqual({
+      suggested_name: "Morgan Ellis",
+      suggested_evidence: "I am Morgan Ellis",
+    });
+    expect(
+      findSpeakerRunId(getDb(), f.meeting.id, intro?.speakerLabel as string),
+    ).toBe(r.ctx.runId);
+  });
+});
+
 // --- save: faults ----------------------------------------------------------------
 
 /** A database whose `UPDATE meeting_segments` statement fails. */
