@@ -153,7 +153,7 @@ OPENSTYLE_EVIDENCE_DIR="$S/screens" \
 pnpm --filter @openstyle/electron test:e2e tests/<suite>.test.ts
 ```
 
-The first window can be the pill (`pill.html`) or the remix bar (`bar.html`). Use `waitForDashboardWindow` from the same helper to get the main window.
+The first window can be the pill (`pill.html`). Use `waitForDashboardWindow` from the same helper to get the main window.
 
 ### Run Electron E2E on this Mac (quiet mode only)
 

@@ -44,7 +44,7 @@ export interface LlmTaskProfile {
   temperature: number;
   /**
    * Output budget. A concrete number, or `"auto"` to keep the task's own
-   * existing per-call heuristic (cleanup/Remix scale off input length,
+   * existing per-call heuristic (cleanup scales off input length,
    * Enhance scales off chunk size) instead of a fixed constant.
    */
   maxOutputTokens: number | "auto";
@@ -85,13 +85,6 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
     temperature: 0,
     maxOutputTokens: "auto",
     timeoutMs: 20_000,
-  },
-  remix: {
-    id: "remix",
-    reasoningEnabled: false,
-    temperature: 0,
-    maxOutputTokens: "auto",
-    timeoutMs: 30_000,
   },
   meetingSummarize: {
     id: "meetingSummarize",
@@ -141,9 +134,9 @@ export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
  * their own task, and fold out-of-bounds or unset values back to the default
  * defensively.
  *
- * `cleanup` and `remix` deliberately keep their code-defined timeouts: they are
- * interactive (dictation cleanup, Remix edits), where a long window is a worse
- * failure than a fast error.
+ * `cleanup` deliberately keeps its code-defined timeout: it is interactive
+ * (dictation cleanup), where a long window is a worse failure than a fast
+ * error.
  *
  * Adding a third meeting task? It needs a branch here AND its key in
  * `apps/electron/src/shared/settings-keys.ts` AND a route branch in

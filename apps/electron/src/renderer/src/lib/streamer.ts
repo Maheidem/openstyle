@@ -32,7 +32,7 @@ export interface StreamerCallbacks {
   onFinal: (text: string) => void;
   onError: (message: string, code?: string) => void;
   onReady?: () => void;
-  /** Live partial transcript. Only the remix card consumes this today. */
+  /** Live partial transcript. The server sends these; no screen shows them today. */
   onPartial?: (text: string) => void;
   onConnectionState?: (state: StreamerConnectionState) => void;
   onConfig: (config: {

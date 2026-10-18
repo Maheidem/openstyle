@@ -58,7 +58,6 @@
         "src/renderer/src/dashboard.tsx",
         "src/renderer/src/meeting-capture.ts",
         "src/renderer/src/components/pill.tsx",
-        "src/renderer/src/components/remix-bar.tsx",
         "tests/**/*.ts",
         "scripts/**/*.{js,mjs}"
       ],

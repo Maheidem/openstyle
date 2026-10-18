@@ -33,7 +33,7 @@ const mkVisualizer = (name: string) =>
 // so `registerAppProtocol()`'s extension-less SPA fallback (src/main/app-protocol.ts)
 // does not catch it, no such file exists, and `net.fetch` fails
 // `net::ERR_UNEXPECTED`. React never mounts: a blank window. Depth-1 routes
-// (`/today`, `/remix`, `/meetings`) survived only because the fallback served
+// (`/today`, `/meetings`) survived only because the fallback served
 // index.html from the ROOT, where `./assets/` happens to resolve.
 //
 // Why this layer and not `registerAppProtocol`: rescuing a nested `*.js`/
@@ -53,7 +53,7 @@ const mkVisualizer = (name: string) =>
 // permits `/` (same file, :555), so this does not even warn.
 //
 // Safe because nothing loads these files over `file://`: every window goes
-// through `app://` (getDashboardURL / getPillURL / getRemixBarURL /
+// through `app://` (getDashboardURL / getPillURL /
 // getMeetingCaptureURL) and dev uses ELECTRON_RENDERER_URL.
 const rendererRootBaseUrl: Plugin = {
   name: "openstyle:renderer-root-base",
@@ -124,7 +124,6 @@ export default defineConfig({
         input: {
           index: resolve("src/renderer/index.html"),
           pill: resolve("src/renderer/pill.html"),
-          bar: resolve("src/renderer/bar.html"),
           "meeting-capture": resolve("src/renderer/meeting-capture.html"),
         },
         plugins: analyze ? [mkVisualizer("renderer")] : [],

@@ -5,7 +5,7 @@ import {
   Smile,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
@@ -14,8 +14,8 @@ import { useTranslation } from "react-i18next";
 // frame (white surface, Gmail blue, Roboto-ish stack): it reads as a
 // depiction of another app, like a screenshot. Everything outside stays ours.
 //
-// The body is an UNCONTROLLED contenteditable: dictation and the Remix agent
-// mutate it through real OS-level pastes (including inline images), so React
+// The body is an UNCONTROLLED contenteditable: dictation mutates it through
+// real OS-level pastes (including inline images), so React
 // never writes it back after the one-time hydration — `onInput` only syncs
 // the text out for gating/analytics.
 // ---------------------------------------------------------------------------
@@ -25,79 +25,31 @@ const GMAIL_FONT = "'Google Sans', Roboto, 'Helvetica Neue', Arial, sans-serif";
 export interface EmailDraftProps {
   body: string;
   onBodyChange: (text: string) => void;
-  stage: "dictate" | "remix";
-  /** Non-null switches the body to a read-only, script-driven surface
-   * (the no-LLM fallback's automated remix preview). */
-  scriptedBody?: string | null;
-  /** Keep the whole body selected — the remix step's mode. The hotkey's
-   * selection capture then copies the highlighted text and the agent's
-   * paste replaces it in place. */
-  highlightBody?: boolean;
-  /** Bump to re-highlight after an external mutation (a remix delivery). */
-  highlightSignal?: number;
 }
 
 export function EmailDraft({
   body,
   onBodyChange,
-  stage,
-  scriptedBody = null,
-  highlightBody = false,
-  highlightSignal = 0,
 }: EmailDraftProps): React.JSX.Element {
   const { t } = useTranslation();
   const bodyRef = useRef<HTMLDivElement>(null);
-  const scripted = scriptedBody !== null;
 
-  const selectBody = useCallback(() => {
-    const el = bodyRef.current;
-    if (!el) return;
-    el.focus();
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  }, []);
-
-  // Hydrate once on mount — the lifted body survives the draft→remix step
+  // Hydrate once on mount — the lifted body survives the draft→enhance step
   // transition; after this the DOM owns the content.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only hydration
   useEffect(() => {
     const el = bodyRef.current;
     if (el && body && !el.innerText.trim()) el.innerText = body;
-    if (scripted) return;
-    if (highlightBody) selectBody();
-    else if (stage === "dictate") el?.focus();
+    el?.focus();
   }, []);
 
+  // When the window regains focus, dictation must land in the draft, so give
+  // the body the focus back.
   useEffect(() => {
-    const el = bodyRef.current;
-    if (el && scriptedBody !== null) el.innerText = scriptedBody;
-  }, [scriptedBody]);
-
-  // Keep the draft highlighted: on entering highlight mode and after each
-  // delivery (delayed so the injected paste has landed first), so the next
-  // remix pass edits the whole current text again.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: highlightSignal exists purely to re-run this effect on each delivery
-  useEffect(() => {
-    if (!highlightBody || scripted) return;
-    const timeout = window.setTimeout(selectBody, 350);
-    return () => window.clearTimeout(timeout);
-  }, [highlightBody, highlightSignal, scripted, selectBody]);
-
-  // When the window regains focus mid-remix (e.g. after the pill's chat card
-  // is dismissed), the agent's injected keystrokes must land in the draft —
-  // same reason main blurs the pill before injecting.
-  useEffect(() => {
-    if (scripted) return;
-    const refocus = (): void => {
-      if (highlightBody) selectBody();
-      else bodyRef.current?.focus();
-    };
+    const refocus = (): void => bodyRef.current?.focus();
     window.addEventListener("focus", refocus);
     return () => window.removeEventListener("focus", refocus);
-  }, [scripted, highlightBody, selectBody]);
+  }, []);
 
   return (
     <div
@@ -140,9 +92,9 @@ export function EmailDraft({
       {/* biome-ignore lint/a11y/useSemanticElements: a textarea silently drops image pastes; the third beat lands an inline photo, and real Gmail compose is contenteditable too. */}
       <div
         ref={bodyRef}
-        contentEditable={!scripted}
+        contentEditable
         suppressContentEditableWarning
-        tabIndex={scripted ? -1 : 0}
+        tabIndex={0}
         role="textbox"
         aria-multiline="true"
         aria-label={t("onboarding.draft.bodyAria")}

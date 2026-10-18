@@ -79,9 +79,6 @@ export const queryKeys = {
     list: (page: number, search: string) =>
       ["vocabulary", page, search] as const,
   },
-
-  /** Remix practice runs. */
-  remixRuns: ["remix", "runs"] as const,
 } as const;
 
 /**

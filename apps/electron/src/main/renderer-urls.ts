@@ -12,10 +12,6 @@ export function getPillURL(): string {
   return rendererUrl("/pill.html");
 }
 
-export function getRemixBarURL(): string {
-  return rendererUrl("/bar.html");
-}
-
 export function getMeetingCaptureURL(): string {
   return rendererUrl("/meeting-capture.html");
 }

@@ -126,9 +126,9 @@ export function mergeSamplingIntoBody(
 
     // max_tokens is a floor, not a cap. The user sets it to give a thinking
     // model room to reason; the caller computes it from the input length. Every
-    // server path shares this fetch, and Remix legitimately needs a bigger
-    // budget than cleanup and has no truncation fallback -- a literal override
-    // tuned for cleanup would silently cut its rewrites short.
+    // server path shares this fetch, and a task can need a bigger budget than
+    // cleanup -- a literal override tuned for cleanup would silently cut its
+    // output short.
     if (typeof sampling.max_tokens === "number") {
       const computed = (parsed as { max_tokens?: unknown }).max_tokens;
       merged.max_tokens =

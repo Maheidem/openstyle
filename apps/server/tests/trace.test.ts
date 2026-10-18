@@ -293,8 +293,8 @@ describe("createSamplingFetch tracing", () => {
     expect(trace).toContain('"min_p": 0.05');
   });
 
-  // The riskiest thing the trace could break: Remix streams through this same
-  // fetch, and the clone tees the body. Drive a real `streamText` through the
+  // The riskiest thing the trace could break: streaming responses pass through
+  // this same fetch, and the clone tees the body. Drive a real `streamText` through the
   // real provider wiring and assert the SDK still assembles the whole stream.
   it("does not break the SDK's consumption of a streamed response", async () => {
     const { insertOwnServer } = await import("../src/lib/own-servers.js");

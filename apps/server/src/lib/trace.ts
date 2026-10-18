@@ -4,7 +4,7 @@ import { traceLog } from "@openstyle/utils";
 
 /**
  * Raw request/response tracing for the two boundaries a dictation crosses: the
- * STT call and the cleanup/Remix LLM call. Entries go to
+ * STT call and the cleanup LLM call. Entries go to
  * `<logs>/openstyle-trace.log` (see `traceLog`), never to `openstyle.log`.
  *
  * Always on, and structurally incapable of breaking a dictation: every public

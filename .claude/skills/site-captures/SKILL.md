@@ -56,7 +56,6 @@ Dashboard shots are 1280x800 at 2x, dark theme.
 
 - The data must look like a real team's day. Do not mention capture automation, fake data or this tooling in any visible text.
 - Use the owner's real setup style for model labels: Parakeet or Qwen3-ASR for voice, and Qwen3.8-27B on an own server for the LLM. At most one row shows a cloud LLM.
-- Do not show Remix (see the project memory note: Remix is not ready for the spotlight).
 - Keep one Portuguese row in the history.
 
 ## After a run

@@ -68,10 +68,7 @@ export function usePillDismiss(deps: UsePillDismissDeps) {
   // ---- Hide pill ----
   /**
    * Put every scrap of dictation state back to rest, without touching the pill
-   * window itself. Split out of `hidePill` for the one caller that needs the
-   * window left standing: the remix chord taking over a dictation that the
-   * shared home key started a few milliseconds earlier, where the pill is
-   * about to be reused for the remix card.
+   * window itself.
    */
   const resetDictation = useCallback(() => {
     setPillNotice(null);
@@ -135,5 +132,5 @@ export function usePillDismiss(deps: UsePillDismissDeps) {
     [hidePill],
   );
 
-  return { resetDictation, hidePill, dismissPill };
+  return { hidePill, dismissPill };
 }

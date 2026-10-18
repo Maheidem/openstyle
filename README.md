@@ -31,7 +31,6 @@ Kept from upstream:
 
 - On-device transcription with local Whisper and local MLX speech models
 - Bring-your-own-key access to third-party providers, configured by you
-- Remix, the in-place rewriting agent
 - Vocabulary, dictionary, and per-app tone settings
 
 Thanks to the Freestyle authors and contributors for the original work.
@@ -41,8 +40,6 @@ Thanks to the Freestyle authors and contributors for the original work.
 - **Dictation** — hold the hotkey, speak, release, and the text lands at your
   cursor. Optional AI cleanup fixes grammar and punctuation and strips filler
   words.
-- **Remix** — highlight text and say what to change. It rewrites in place. With
-  nothing highlighted it writes from scratch.
 - **On-device models** — local Whisper and local MLX speech models, downloaded
   once and run on your machine.
 - **Translation** — speak one language, paste another.

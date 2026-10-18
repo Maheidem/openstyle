@@ -1,18 +1,13 @@
-// Pill window: the small floating window that shows dictation and remix status.
-// It owns the window position, click-through state and expansion.
+// Pill window: the small floating window that shows dictation status.
+// It owns the window position and expansion.
 // Other modules call the exported functions. This file must not import
-// dictation, remix/hotkey or notifications. That import would make a cycle.
+// dictation or notifications. That import would make a cycle.
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
-import { createAppLogger } from "@openstyle/utils";
 import { BrowserWindow, globalShortcut, screen, shell } from "electron";
 import icon from "../../../resources/icon.png?asset";
 import { getFocusedWindowDisplay } from "../active-window";
-import {
-  clearHotkeyStuckWatchdog,
-  clearRemixStuckWatchdog,
-  setRemixRouteKeys,
-} from "../hotkeys/stuck-release";
+import { clearHotkeyStuckWatchdog } from "../hotkeys/stuck-release";
 import { readSettings, writeSettings } from "../local-settings";
 import { broadcastToWindows, state } from "../main-state";
 import {
@@ -21,10 +16,7 @@ import {
   presetPositionForDisplay,
   resolveCustomPosition,
 } from "../pill-position";
-import { updateRemixBar } from "../remix/bar-window";
 import { getPillURL } from "../renderer-urls";
-
-const hotkeyLog = createAppLogger("hotkey");
 
 /**
  * The window is grown to this while the renderer shows its expanded status
@@ -34,67 +26,6 @@ const hotkeyLog = createAppLogger("hotkey");
  */
 const PILL_CARD_WIDTH = 340;
 const PILL_CARD_HEIGHT = 144;
-/** Held for the whole remix session so mid-morph setBounds doesn't blink. */
-const PILL_CHAT_WIDTH = 440;
-const PILL_CHAT_HEIGHT = 600;
-
-type PillExpansion = "card" | "remix-chat";
-
-function pillExpansionSize(expansion: PillExpansion): {
-  width: number;
-  height: number;
-} {
-  if (expansion === "remix-chat") {
-    return { width: PILL_CHAT_WIDTH, height: PILL_CHAT_HEIGHT };
-  }
-  return { width: PILL_CARD_WIDTH, height: PILL_CARD_HEIGHT };
-}
-
-// Hot-rect: click-through except the reported surface; poll flips interactivity.
-
-type PillHotRect = { x: number; y: number; width: number; height: number };
-let pillHotRect: PillHotRect | null = null;
-let pillHotPollTimer: NodeJS.Timeout | null = null;
-
-function stopPillHotPoll(): void {
-  if (pillHotPollTimer) {
-    clearInterval(pillHotPollTimer);
-    pillHotPollTimer = null;
-  }
-}
-
-export function setPillHotRect(rect: PillHotRect | null): void {
-  // Tests drive the surfaces with synthetic DOM events; the machine's real
-  // cursor must not be able to flip interactivity under them.
-  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") return;
-  pillHotRect = rect;
-  const win = state.mainWindow;
-  if (!win || win.isDestroyed()) return;
-  if (!rect) {
-    stopPillHotPoll();
-    win.setIgnoreMouseEvents(false);
-    return;
-  }
-  win.setIgnoreMouseEvents(true, { forward: process.platform !== "linux" });
-  if (pillHotPollTimer) return;
-  pillHotPollTimer = setInterval(() => {
-    const w = state.mainWindow;
-    const hot = pillHotRect;
-    if (!w || w.isDestroyed() || !hot || !w.isVisible()) return;
-    const bounds = w.getBounds();
-    const cursor = screen.getCursorScreenPoint();
-    const inside =
-      cursor.x >= bounds.x + hot.x &&
-      cursor.x <= bounds.x + hot.x + hot.width &&
-      cursor.y >= bounds.y + hot.y &&
-      cursor.y <= bounds.y + hot.y + hot.height;
-    if (!inside) return;
-    pillHotRect = null;
-    stopPillHotPoll();
-    w.setIgnoreMouseEvents(false);
-    w.webContents.send("pill:hot-enter");
-  }, 120);
-}
 
 // Tracks the exact coordinates of the last programmatic setPosition call.
 // The move listener compares reported coords against this target and ignores
@@ -124,8 +55,6 @@ function markProgrammaticTarget(x: number, y: number): void {
  * the expand started, even if the anchor preference changed in between.
  */
 let pillExpandOffset = { dx: 0, dy: 0 };
-/** Which expanded size `pillExpandOffset` was computed for. */
-let pillExpansion: PillExpansion = "card";
 
 export function setProgrammaticPosition(
   win: BrowserWindow,
@@ -160,21 +89,21 @@ function getPillAnchor(): { side: "center" | "right"; edge: "top" | "bottom" } {
  * edge fixed on screen. The renderer drives this: it asks for the room a beat
  * before it animates the card in, and gives it back once the card is gone.
  */
-export function setPillExpanded(
-  expanded: boolean,
-  expansion: PillExpansion = "card",
-): void {
+export function setPillExpanded(expanded: boolean): void {
   const win = state.mainWindow;
   if (!win || win.isDestroyed()) return;
   const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
   // No-op if already collapsed/same size; re-run on size change to keep anchor.
   if (expanded === isExpanded && !expanded) return;
-  if (expanded && isExpanded && expansion === pillExpansion) {
-    const size = pillExpansionSize(expansion);
+  if (expanded && isExpanded) {
     const bounds = win.getBounds();
-    if (bounds.width === size.width && bounds.height === size.height) return;
+    if (
+      bounds.width === PILL_CARD_WIDTH &&
+      bounds.height === PILL_CARD_HEIGHT
+    ) {
+      return;
+    }
   }
-  if (expanded) pillExpansion = expansion;
 
   const previousOffset = pillExpandOffset;
   const [x, y] = win.getPosition();
@@ -182,7 +111,8 @@ export function setPillExpanded(
 
   if (expanded) {
     const { side, edge } = getPillAnchor();
-    const { width, height } = pillExpansionSize(expansion);
+    const width = PILL_CARD_WIDTH;
+    const height = PILL_CARD_HEIGHT;
     pillExpandOffset = {
       dx:
         side === "right"
@@ -207,8 +137,6 @@ export function setPillExpanded(
       height: APP_HEIGHT,
     };
     pillExpandOffset = { dx: 0, dy: 0 };
-    // The collapsed capsule is a plain interactive window again.
-    setPillHotRect(null);
   }
 
   markProgrammaticTarget(target.x, target.y);
@@ -407,25 +335,8 @@ export function createAppWindow(): void {
 
   state.mainWindow.loadURL(getPillURL());
 
-  // Dev: mirror remix tool-executor console into the main log; optional pill DevTools.
+  // Dev: optional pill DevTools.
   if (is.dev) {
-    // Electron has shipped this event with both positional args and a
-    // details object across versions; accept either shape.
-    state.mainWindow.webContents.on(
-      "console-message",
-      (_event, level, message) => {
-        const second = level as unknown;
-        const text =
-          typeof message === "string"
-            ? message
-            : second !== null &&
-                typeof second === "object" &&
-                "message" in second
-              ? String((second as { message: unknown }).message)
-              : null;
-        if (text?.startsWith("[remix]")) hotkeyLog.info(text);
-      },
-    );
     if (
       (process.env.OPENSTYLE_PILL_DEVTOOLS ??
         process.env.FREESTYLE_PILL_DEVTOOLS) === "1"
@@ -438,8 +349,6 @@ export function createAppWindow(): void {
 export function showPill(): void {
   // Already waiting for a freshly-created pill to finish loading.
   if (state.pillReadyPromise) return;
-
-  state.remixBarWindow?.hide();
 
   if (!state.mainWindow) {
     createAppWindow();
@@ -472,7 +381,6 @@ export function showPill(): void {
         const { x, y } = resolveAppWindowPosition();
         setProgrammaticPosition(state.mainWindow, x, y);
         state.mainWindow.showInactive();
-        updateRemixBar();
         updatePillEscape();
         anchorPillToFocusedDisplay();
         resolve();
@@ -485,7 +393,6 @@ export function showPill(): void {
     const { x, y } = resolveAppWindowPosition();
     setProgrammaticPosition(state.mainWindow, x, y);
     state.mainWindow.showInactive();
-    updateRemixBar();
   }
   updatePillEscape();
   anchorPillToFocusedDisplay();
@@ -525,9 +432,7 @@ function anchorPillToFocusedDisplay(): void {
 }
 
 function updatePillEscape(): void {
-  const chatLike = pillExpansion === "remix-chat";
-  const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
-  if (state.mainWindow?.isVisible() && !(chatLike && isExpanded)) {
+  if (state.mainWindow?.isVisible()) {
     if (!globalShortcut.isRegistered("Escape")) {
       globalShortcut.register("Escape", () => {
         if (state.mainWindow?.isVisible()) {
@@ -545,7 +450,6 @@ function updatePillEscape(): void {
 export function hidePill(): void {
   if (state.mainWindow?.isVisible()) {
     state.mainWindow.hide();
-    state.lastPillHideAt = Date.now();
   }
   // The next session starts as a bare capsule, so give the extra room back
   // now — the renderer's own collapse only runs when it animates a card away.
@@ -555,14 +459,10 @@ export function hidePill(): void {
   // holding the dictation key.
   state.hotkeyPressed = false;
   clearHotkeyStuckWatchdog();
-  state.remixPressed = false;
-  clearRemixStuckWatchdog();
-  setRemixRouteKeys(false);
-  // Chat may have set focusable; clear it when hiding.
+  // Reset focusable when hiding.
   try {
     state.mainWindow?.setFocusable(false);
   } catch {}
-  updateRemixBar();
   // Unregister Escape shortcut when pill is hidden
   try {
     globalShortcut.unregister("Escape");

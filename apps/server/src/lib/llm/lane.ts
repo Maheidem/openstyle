@@ -501,7 +501,7 @@ function safeActive(isActive: () => boolean): boolean {
  * This resolves the lane key, acquires the lease, runs `fn` and releases the
  * lease in `finally`. A throw from `fn` still frees the slot. Use it for calls
  * that finish inside `fn`. A call whose result is a stream that outlives `fn`
- * must use {@link acquireLlmLane} with {@link releaseLeaseOnResponseBodyEnd}.
+ * must use {@link acquireLlmLane} and release the lease itself.
  */
 export async function withLlmLane<T>(
   provider: string,
@@ -516,62 +516,6 @@ export async function withLlmLane<T>(
   } finally {
     lease.release();
   }
-}
-
-/**
- * Release `lease` exactly when `response`'s body is done — consumed, errored,
- * or cancelled — and hand back an otherwise identical Response.
- *
- * Exists for the Remix agent loop (spec §5.2's honest cost): the SDK owns the
- * tool loop there (`stopWhen: stepCountIs(REMIX_MAX_STEPS)`,
- * `remix-agent.ts:24`, `:97`), so "per call" is unavoidably one lease across
- * up to 16 model round-trips. Releasing the moment `toUIMessageStreamResponse`
- * returns would be a lie — nothing has been generated yet — and wiring the
- * SDK's `onFinish`/`onAbort` is weaker than watching the byte stream, because
- * a client that hangs up is exactly the case that must not leak the slot.
- * Coarse hurts background latency, not typing latency: Remix is `interactive`
- * and wins the queue anyway.
- */
-export function releaseLeaseOnResponseBodyEnd(
-  response: Response,
-  lease: LaneLease,
-): Response {
-  if (!response.body) {
-    lease.release();
-    return response;
-  }
-  const reader = response.body.getReader();
-  let settled = false;
-  const done = (): void => {
-    if (settled) return;
-    settled = true;
-    lease.release();
-  };
-  const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const chunk = await reader.read();
-        if (chunk.done) {
-          done();
-          controller.close();
-        } else {
-          controller.enqueue(chunk.value);
-        }
-      } catch (err) {
-        done();
-        controller.error(err);
-      }
-    },
-    cancel(reason) {
-      done();
-      return reader.cancel(reason);
-    },
-  });
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
 }
 
 const defaultSleep = (ms: number): Promise<void> =>

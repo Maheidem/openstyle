@@ -28,18 +28,11 @@ export function isTrustedRendererOrigin(origin: string | undefined): boolean {
   }
 }
 
-const PROTECTED_READ_PREFIXES = ["/api/remix"];
-
 export const trustedOriginMiddleware: MiddlewareHandler = async (c, next) => {
   const isMutation = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
   const isWebSocket = c.req.header("upgrade")?.toLowerCase() === "websocket";
-  const isProtectedRead =
-    c.req.method !== "OPTIONS" &&
-    PROTECTED_READ_PREFIXES.some(
-      (prefix) => c.req.path === prefix || c.req.path.startsWith(`${prefix}/`),
-    );
   if (
-    (isMutation || isWebSocket || isProtectedRead) &&
+    (isMutation || isWebSocket) &&
     !isTrustedRendererOrigin(c.req.header("origin"))
   ) {
     return c.json({ error: "Forbidden" }, 403);

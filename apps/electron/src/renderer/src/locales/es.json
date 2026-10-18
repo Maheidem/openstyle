@@ -105,22 +105,6 @@
       "instructionPrefix": "Haz clic en el correo, mantén",
       "instructionSuffix": "y di, palabra por palabra:",
       "sayText": "Feliz cumpleaños, Sam — el viernes llevo tarta."
-    },
-    "remix": {
-      "statusReady": "Listo",
-      "statusListening": "Escuchando…",
-      "statusWorking": "Remezclando…",
-      "statusRemixed": "Remezclado.",
-      "doneNote": "El borrador se reescribió en su sitio. Prueba otra instrucción — o termina cuando quieras.",
-      "fallbackNote": "Remix necesita un modelo asistente — añade uno en Ajustes cuando quieras.",
-      "sampleDraft": "Feliz cumpleaños, Sam. Espero que tengas un gran día — el viernes llevo tarta.",
-      "sampleSignoff": "Qué ganas de celebrarte esta semana.\n\nUn abrazo,\n{{name}}",
-      "fallbackName": "Alex",
-      "title": "Ahora remézclalo",
-      "highlightNote": "Tu borrador ya está resaltado — déjalo resaltado y no hagas clic en el correo.",
-      "instructionPrefix": "Mantén",
-      "instructionSuffix": "y di, palabra por palabra:",
-      "sayText": "Hazlo más cálido y fírmalo de parte de {{name}}."
     }
   },
   "settings": {
@@ -138,8 +122,7 @@
       "permissions": "Permisos",
       "meetings": "Reuniones",
       "data": "Datos",
-      "network": "Red",
-      "remix": "Remix"
+      "network": "Red"
     },
     "application": {
       "autoUpdate": "Actualizaciones automáticas",
@@ -194,7 +177,6 @@
       "outputModeClipboard": "Copiar al portapapeles",
       "sound": "Retroalimentación de sonido",
       "soundDesc": "Campanillas suaves al inicio y al final de la grabación.",
-      "conflict": "Este ya es tu atajo de Remix. Elige otra combinación.",
       "needsModifier": "Los atajos necesitan una tecla modificadora o botón lateral del ratón",
       "languageHotkey": "Dictar en {{language}}",
       "languageHotkeyDesc": "Opcional: fija este dictado en {{language}}, omitiendo la detección automática.",
@@ -292,14 +274,6 @@
       "statusOk": "Conectado",
       "statusUnreachable": "No se pudo conectar a ese servidor",
       "statusUnauthorized": "Token de acceso inválido o ausente"
-    },
-
-    "remix": {
-      "hotkey": "Atajo de Remix",
-      "hotkeyDesc": "Mantenlo pulsado y di qué cambiar, o tócalo para las rutas rápidas.",
-      "conflict": "Este ya es tu atajo de dictado. Elige otra combinación.",
-      "bar": "Barra de Remix",
-      "barDesc": "Mantén una pequeña barra en la parte inferior de la pantalla. Pasa el cursor para abrir Remix."
     }
   },
   "today": {
@@ -659,10 +633,6 @@
         "name": "Limpieza",
         "desc": "Reescrituras rápidas mientras dictas."
       },
-      "remix": {
-        "name": "Remix",
-        "desc": "Ediciones rápidas y el agente del lienzo."
-      },
       "meetingSummarize": {
         "name": "Resumen de reunión",
         "desc": "Resúmenes extensos después de que termina una reunión."
@@ -759,63 +729,10 @@
       "models": "Modelos",
       "settings": "Ajustes",
       "help": "Ayuda",
-      "remix": "Remix",
       "meetings": "Reuniones",
       "import": "Importar"
     },
     "githubRepo": "Repositorio de GitHub"
-  },
-  "remixPage": {
-    "stats": {
-      "remixes": "remixes ejecutados",
-      "apps": "apps remezcladas",
-      "lastRemix": "último remix",
-      "firstHint": "Mantén las teclas sobre un texto para ejecutar el primero.",
-      "heading": "Uso"
-    },
-    "hotkey": {
-      "change": "Cambiar atajo"
-    },
-    "tips": {
-      "heading": "Conviene saber",
-      "highlight": "Resalta una frase para remezclar solo esa parte — sin selección, Remix lee todo el campo.",
-      "tap": "Toca el atajo (en vez de mantenerlo) para las rutas rápidas (Control+1–3).",
-      "followUp": "¿No quedó bien? Escribe una corrección en la tarjeta de chat — mantiene el hilo."
-    },
-    "examples": {
-      "groups": {
-        "everyday": "Escritura diaria",
-        "work": "Trabajo y estudios",
-        "web": "Con la web"
-      },
-      "quotes": {
-        "email": "Hazlo más cálido y la mitad de largo — sueno como un abogado.",
-        "tone": "Esto lo escribí enfadado. Hazlo firme pero educado.",
-        "social": "Dale chispa y déjalo en menos de 280 caracteres.",
-        "format": "Convierte estos puntos en un párrafo para el informe.",
-        "translate": "Pásalo al inglés, pero deja mi despedida en español.",
-        "notes": "Convierte estas notas caóticas en una lista ordenada, agrupada por temas.",
-        "commit": "Reescribe este mensaje de commit para que explique el porqué, no el qué.",
-        "espresso": "Añade un dato curioso sobre el espresso, y una foto de un pour-over.",
-        "mla": "Convierte las citas de este ensayo al formato MLA.",
-        "legal": "Reescribe esta cláusula del contrato en lenguaje llano que un cliente entienda.",
-        "medical": "Contrasta estas afirmaciones con WebMD y marca lo que no cuadre."
-      }
-    },
-    "demo": {
-      "sentence": "<press>Mantén</press> <key>,</key> <speak>habla</speak> <release>y suelta.</release>",
-      "statusReady": "Listo",
-      "statusListening": "Escuchando…",
-      "statusDone": "Reescrito en su sitio"
-    },
-    "how": {
-      "heading": "Cómo usarlo",
-      "step1": "Resalta con el cursor el texto que quieres cambiar.",
-      "step2Prefix": "Mantén",
-      "step2Suffix": "y di el cambio en voz alta.",
-      "step3": "Remix lo reescribe en su sitio. Deshacer lo recupera si cambias de idea.",
-      "more": "¿Sin resaltar? Remix lee todo el campo en el que estás. También puede buscar en la web datos y fuentes, y pegar imágenes directamente en tu borrador."
-    }
   },
   "meetings": {
     "titleAccent": "Reuniones",
@@ -969,10 +886,6 @@
       "eyebrow": "Atajos de teclado",
       "hotkeyLabel": "Atajo de teclado",
       "hotkeyDesc": "Mantén el atajo para grabar, suéltalo para transcribir.",
-      "remixLabel": "Atajo de Remix",
-      "remixDesc": "Mantenlo pulsado y di qué cambiar, o tócalo para las rutas rápidas.",
-      "quickRoutesLabel": "Rutas rápidas",
-      "quickRoutesDesc": "Toca el atajo en vez de mantenerlo pulsado para las rutas rápidas con un solo toque.",
       "cancelLabel": "Cancelar",
       "cancelDesc": "Escape también cancela siempre."
     },
@@ -1046,25 +959,6 @@
       "listening": "Escuchando",
       "transcribing": "Transcribiendo"
     },
-    "remix": {
-      "applying": "Aplicando {{label}}",
-      "applyingFallback": "remix",
-      "listening": "Escuchando un remix",
-      "chat": "Chat de Remix",
-      "working": "Trabajando…",
-      "hintListening": "Escuchando…",
-      "transcribing": "Transcribiendo…",
-      "nothingSelectedTitle": "Nada seleccionado",
-      "nothingSelectedBody": "Primero resalta algo de texto en cualquier app y luego pulsa el atajo.",
-      "failedTitle": "Falló Remix",
-      "modelCouldntRun": "El modelo no pudo ejecutar eso ({{status}}).",
-      "returnedNothing": "El modelo no devolvió nada.",
-      "somethingWrong": "Algo salió mal.",
-      "couldntReplaceTitle": "No se pudo reemplazar el texto",
-      "couldntReplaceBody": "La edición está en tu portapapeles — pégala tú mismo.",
-      "didntCatchTitle": "No te he entendido",
-      "didntCatchBody": "No llegó nada — mantén pulsado el atajo y di qué hacer."
-    },
     "error": {
       "timedOut": "La transcripción agotó el tiempo de espera",
       "connectionLostRecording": "Conexión interrumpida durante la grabación",
@@ -1080,100 +974,6 @@
       "micDenied": "Acceso al micrófono denegado",
       "noAudioCaptured": "No se capturó audio. Intenta grabar de nuevo."
     }
-  },
-  "remixBar": {
-    "open": "Abrir Openstyle Remix"
-  },
-  "remixChat": {
-    "newThread": "Iniciar una nueva conversación",
-    "closeEsc": "Cerrar (Esc)",
-    "message": "Mensaje para Remix",
-    "stop": "Detener",
-    "send": "Enviar",
-    "conversation": "Conversación de Remix",
-    "placeholder": "Mensaje para Remix…",
-    "working": "Trabajando…",
-    "miniCouldntOpen": "No se pudo abrir Remix",
-    "couldntOpen": "No se pudo abrir Remix. ¿Está en marcha el servidor de Openstyle?",
-    "opening": "Abriendo Remix…",
-    "emptyWithSelection": "Di o escribe qué hacer con tu selección.",
-    "emptyNoSelection": "Nada seleccionado — pídeme que escriba, investigue o responda.",
-    "thinking": "Pensando…",
-    "stepInput": "Entrada",
-    "stepOutput": "Salida",
-    "failed": "Falló Remix.",
-    "statusFailed": "Falló Remix ({{status}}).",
-    "somethingWrong": "Algo salió mal.",
-    "returnedNothing": "El modelo no devolvió nada.",
-    "couldntReplace": "No se pudo reemplazar — no se cambió nada.",
-    "nothingHighlighted": "No hay nada resaltado — selecciona primero algo de texto.",
-    "actionRunning": "{{label}}…",
-    "actionDone": "{{label}} — texto reemplazado",
-    "actionFailed": "{{label}} falló — {{detail}}",
-    "toolRunning": "Ejecutando {{name}}…",
-    "toolRan": "{{name}} ejecutado",
-    "presets": {
-      "fix": "Corregir",
-      "formal": "Formal",
-      "markdown": "Markdown"
-    },
-    "tools": {
-      "get_context": {
-        "doing": "Mirando tu pantalla…",
-        "done": "Pantalla revisada"
-      },
-      "read_document": {
-        "doing": "Leyendo el documento…",
-        "done": "Documento leído"
-      },
-      "select_all": {
-        "doing": "Seleccionando todo…",
-        "done": "Todo seleccionado"
-      },
-      "select_text": {
-        "doing": "Seleccionando en tu documento…",
-        "done": "Selección movida"
-      },
-      "collapse_selection": {
-        "doing": "Colocando el cursor…",
-        "done": "Cursor colocado"
-      },
-      "copy": {
-        "doing": "Leyendo tu selección…",
-        "done": "Selección leída"
-      },
-      "set_clipboard": {
-        "doing": "Preparando el texto…",
-        "done": "Texto puesto en el portapapeles"
-      },
-      "set_clipboard_image": {
-        "doing": "Obteniendo una imagen…",
-        "done": "Imagen puesta en el portapapeles"
-      },
-      "paste": {
-        "doing": "Pegando…",
-        "done": "Pegado en tu documento"
-      },
-      "undo": {
-        "doing": "Deshaciendo…",
-        "done": "Última edición deshecha"
-      },
-      "redo": {
-        "doing": "Rehaciendo…",
-        "done": "Edición rehecha"
-      },
-      "press_key": {
-        "doing": "Pulsando una tecla…",
-        "done": "Tecla pulsada"
-      },
-      "get_clipboard": {
-        "doing": "Leyendo tu portapapeles…",
-        "done": "Portapapeles leído"
-      }
-    },
-    "stepFailed": "{{label}} — no funcionó",
-    "toolsRanOne": "Ejecutó 1 herramienta",
-    "toolsRanMany": "Ejecutó {{count}} herramientas"
   },
   "errorBoundary": {
     "eyebrow": "Algo salió mal",

@@ -61,8 +61,6 @@ import {
   showRequiredPermissionDialog,
 } from "./permission-dialogs";
 import { registerQuitHandlers } from "./quit";
-import { updateRemixBar } from "./remix/bar-window";
-import { registerRemixIpc } from "./remix/ipc";
 import {
   pruneSelfUpdaterDownloads,
   sweepSelfUpdaterBackups,
@@ -132,9 +130,6 @@ try {
 // OPENSTYLE_DB_PATH (set from userData further down). Runs after the
 // OPENSTYLE_USER_DATA override above so E2E profiles are never touched.
 migrateLegacyUserData();
-
-// Seed the Remix bar hold flag after the user-data override and migration.
-state.remixBarHeldForOnboarding = readSettings().onboardingComplete !== true;
 
 // Global crash handlers — without these, errors in the main process vanish
 // silently (no console in a packaged app). Log, then for a truly uncaught
@@ -259,8 +254,6 @@ app.whenReady().then(async () => {
   // Onboarding already has dedicated permission cards. Existing users instead
   // get one actionable warning once a user-facing window can be shown.
   void isOnboardingActive().then((onboardingActive) => {
-    state.remixBarHeldForOnboarding = onboardingActive;
-    updateRemixBar();
     const warning = startupPermissionWarning(
       process.platform,
       onboardingActive,
@@ -295,8 +288,6 @@ app.whenReady().then(async () => {
   registerSystemIpc();
 
   registerHotkeyIpc();
-
-  registerRemixIpc();
 });
 
 registerQuitHandlers();

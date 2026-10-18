@@ -10,7 +10,6 @@ import {
   PILL_SHADOW,
   QUIET_MS,
   STATUS_SLOT,
-  SVG_HEIGHT,
 } from "./pill-motion";
 
 /** The CSS for the pill, rendered in a style element by the pill page. */
@@ -57,93 +56,6 @@ export const PILL_STYLES = `
               filter 220ms ease;
             pointer-events: auto;
           }
-          /* Contents follow the surface in, a beat behind and staggered, so
-             the card assembles rather than appearing whole. Small distances
-             only: this should register as depth, not as a sequence. */
-          .pill-rise {
-            opacity: 0;
-            transform: translateY(5px);
-            transition: opacity 160ms ease, transform 160ms ease;
-          }
-          .pill-surface[data-show="true"] .pill-rise {
-            opacity: 1;
-            transform: none;
-            transition: opacity 240ms ease,
-              transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
-          }
-          .pill-surface[data-show="true"] .pill-rise-1 { transition-delay: 50ms; }
-          .pill-surface[data-show="true"] .pill-rise-2 { transition-delay: 95ms; }
-
-          /* The chat surface morphs between the one-line strip and the full
-             card, so size and shape join the transition — hover-expand should
-             read as the strip growing into the conversation, not as one
-             surface being swapped for another. */
-          .pill-card.pill-chat-morph,
-          .pill-card.pill-chat-morph[data-show="true"] {
-            transition: opacity 180ms ease,
-              transform 380ms cubic-bezier(0.22, 1.12, 0.36, 1),
-              filter 220ms ease,
-              width 320ms cubic-bezier(0.3, 0.9, 0.3, 1),
-              height 320ms cubic-bezier(0.3, 0.9, 0.3, 1),
-              border-radius 320ms cubic-bezier(0.3, 0.9, 0.3, 1);
-          }
-
-          /* ---- Remix card ---- */
-
-          /* A column whose order follows the anchored edge, so the waveform
-             always ends up against the edge that stays still while the window
-             grows — which is what lets the bars hold their position on screen
-             as the capsule becomes the box. */
-          .pill-remix-body {
-            display: flex;
-            flex-direction: column;
-            gap: 9px;
-          }
-          .pill-remix-body[data-anchor="start"] {
-            flex-direction: column-reverse;
-          }
-
-          /* The bars keep the capsule's own width and height. Only the room
-             around them changes. */
-          .pill-remix-wave {
-            display: flex;
-            justify-content: center;
-            height: ${SVG_HEIGHT}px;
-          }
-
-          .pill-remix-brand {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            font-size: 12.5px;
-            font-weight: 600;
-            letter-spacing: 0.01em;
-            color: rgba(245, 241, 228, 0.92);
-          }
-          .pill-remix-brand svg { color: rgba(245, 241, 228, 0.85); }
-
-          .pill-remix-transcript {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            overflow: hidden;
-            min-height: 16px;
-            max-height: 47px;
-            font-size: 11.5px;
-            line-height: 1.35;
-            color: rgba(245, 241, 228, 0.72);
-          }
-          .pill-remix-transcript span {
-            white-space: normal;
-            overflow-wrap: break-word;
-          }
-          .pill-remix-transcript[data-empty="true"] {
-            justify-content: center;
-            align-items: center;
-            color: rgba(245, 241, 228, 0.42);
-          }
-
           /* The capsule keeps its enter/exit motion on the shared .pill-surface
              summon above; .pill-capsule only carries the completion states
              (delivered / cancelled / quiet) and the hover lift, so it must not
@@ -317,14 +229,8 @@ export const PILL_STYLES = `
               transform: none !important;
               filter: none !important;
             }
-            .pill-rise,
-            .pill-surface[data-show="true"] .pill-rise {
-              transform: none !important;
-              transition-delay: 0ms !important;
-            }
             .pill-surface,
             .pill-surface[data-show="true"],
-            .pill-rise,
             .pill-capsule[data-exit],
             .pill-card,
             .pill-card[data-show="true"],

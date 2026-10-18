@@ -58,9 +58,9 @@ export async function launchOpenstyle(options: {
 }
 
 /**
- * Wait for a window whose URL is neither the pill nor the remix bar.
- * That is the dashboard or onboarding window. The pill (pill.html) and the
- * remix bar (bar.html) are auxiliary windows and can appear first.
+ * Wait for a window whose URL is not the pill.
+ * That is the dashboard or onboarding window. The pill (pill.html) is an
+ * auxiliary window and can appear first.
  */
 export async function waitForDashboardWindow(
   electronApp: ElectronApplication,
@@ -71,11 +71,7 @@ export async function waitForDashboardWindow(
   while (Date.now() < deadline) {
     for (const win of electronApp.windows()) {
       const url = win.url();
-      if (
-        !url.includes("pill") &&
-        !url.includes("bar.html") &&
-        url.length > 0
-      ) {
+      if (!url.includes("pill") && url.length > 0) {
         await win.waitForLoadState("domcontentloaded");
         return win;
       }

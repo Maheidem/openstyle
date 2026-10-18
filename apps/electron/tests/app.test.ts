@@ -129,7 +129,7 @@ test("dashboard renders content", async () => {
 
 // Runs LAST among the dashboard tests: completing onboarding changes the
 // window's route, which the earlier tests must not inherit.
-test("onboarding flow reaches the draft and remix steps and completes", async () => {
+test("onboarding flow reaches the draft and enhance steps and completes", async () => {
   const page = dashboardPage;
 
   // Permissions step, now first — E2E bypasses the OS grants.
@@ -148,15 +148,8 @@ test("onboarding flow reaches the draft and remix steps and completes", async ()
   await expect(continueButton).toBeEnabled();
   await continueButton.click();
 
-  // Remix step — renders the non-interactive scripted variant under E2E.
-  await page
-    .getByText("Remix needs an assistant model", { exact: false })
-    .waitFor({ state: "visible", timeout: 15_000 });
-
-  await page.getByRole("button", { name: "Start using Openstyle" }).click();
-
-  // Enhance step (specs/meeting-transcription-v2.md §3.2) — the new final
-  // step before /today. Skip it: it must not write the auto-run setting.
+  // Enhance step (specs/meeting-transcription-v2.md §3.2) — the final step
+  // before /today. Skip it: it must not write the auto-run setting.
   await page.getByTestId("onboarding-enhance-skip").click();
   await page.waitForURL(/\/today/, { timeout: 15_000 });
 
@@ -174,16 +167,4 @@ test("onboarding flow reaches the draft and remix steps and completes", async ()
   }, embeddedServerUrl(app!));
   expect(seenStatus.status).toBe(200);
   expect(seenStatus.value).toBe("true");
-
-  // Practice-target mode must be off once onboarding is done.
-  const practiceTarget = await page.evaluate(() =>
-    (
-      window as unknown as {
-        electron: {
-          ipcRenderer: { invoke: (channel: string) => Promise<boolean> };
-        };
-      }
-    ).electron.ipcRenderer.invoke("e2e:remix-practice-target"),
-  );
-  expect(practiceTarget).toBe(false);
 });

@@ -98,14 +98,7 @@ async function buildSettingsWindow(initialPath?: string): Promise<void> {
       stopHotkeyRecorderProcess();
       scheduleHotkeyRegistration(state.currentHotkeyAccel ?? undefined);
     }
-    state.remixPracticeTarget = false;
     state.settingsWindow = null;
-  });
-
-  // Backstop: a full-page navigation tears the onboarding renderer down
-  // without running its unmount cleanup.
-  state.settingsWindow.webContents.on("did-navigate", () => {
-    state.remixPracticeTarget = false;
   });
 
   state.settingsWindow.on("enter-full-screen", () => {

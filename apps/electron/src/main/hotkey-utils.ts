@@ -137,21 +137,18 @@ export function diffLanguageHotkeys(
 
 /**
  * Whether a normalized accelerator is already claimed by the default
- * dictation hotkey, the remix hotkey, or another already-registered language
- * hotkey. Dictation and remix win on a clash; so does every language hotkey
- * already claimed — same "first writer wins, log and skip" shape
- * `registerRemixHotkey` uses against the dictation hotkey (index.ts).
+ * dictation hotkey or another already-registered language hotkey. Dictation
+ * wins on a clash; so does every language hotkey already claimed — "first
+ * writer wins, log and skip".
  */
 export function isLanguageHotkeyTaken(
   normalized: string,
   opts: {
     dictationAccel: string | null;
-    remixAccel: string | null;
     claimedLanguageAccels: Iterable<string>;
   },
 ): boolean {
   if (normalized === opts.dictationAccel) return true;
-  if (normalized === opts.remixAccel) return true;
   for (const claimed of opts.claimedLanguageAccels) {
     if (normalized === claimed) return true;
   }

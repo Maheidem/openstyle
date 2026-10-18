@@ -10,10 +10,10 @@ const MAX_FILES = 5; // keep ~10 MB of history (size-rotated, tailable)
 
 // The raw request/response trace lives in its own file so full bodies never
 // drown the diagnostics log. Measured against a real oMLX setup: one dictation
-// (STT request/response + cleanup request/response) writes ~8.6 KB, and one
-// Remix agent turn ~31 KB — the system prompts dominate both. So 5 MB × 3 is
-// roughly 1,800 dictations or 500 agent turns of history: days of real use to
-// look back over, with a hard ~15 MB ceiling on the directory.
+// (STT request/response + cleanup request/response) writes ~8.6 KB — the
+// system prompt dominates. So 5 MB × 3 is roughly 1,800 dictations of
+// history: days of real use to look back over, with a hard ~15 MB ceiling on
+// the directory.
 const TRACE_FILE = "openstyle-trace.log";
 const TRACE_MAX_SIZE = 5 * 1024 * 1024; // 5 MB per file
 const TRACE_MAX_FILES = 3; // keep ~15 MB of history (size-rotated, tailable)

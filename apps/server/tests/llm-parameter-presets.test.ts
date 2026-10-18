@@ -109,6 +109,16 @@ describe("parseLlmTaskAssignments", () => {
     });
   });
 
+  it("skips an unknown task key and keeps the other tasks", () => {
+    const value = JSON.stringify({
+      retiredTask: { mode: "auto" },
+      cleanup: { mode: "auto" },
+    });
+    expect(parseLlmTaskAssignments(value)).toEqual({
+      cleanup: { mode: "auto" },
+    });
+  });
+
   it("returns {} on malformed JSON, non-object JSON, and missing/empty input", () => {
     expect(parseLlmTaskAssignments("{not json")).toEqual({});
     expect(parseLlmTaskAssignments("[1,2,3]")).toEqual({});
@@ -121,9 +131,11 @@ describe("parseLlmTaskAssignments", () => {
   it("drops a known task key whose entry itself fails its schema", () => {
     const value = JSON.stringify({
       cleanup: { mode: "not-a-real-mode" },
-      remix: { mode: "auto" },
+      meetingEnhance: { mode: "auto" },
     });
-    expect(parseLlmTaskAssignments(value)).toEqual({ remix: { mode: "auto" } });
+    expect(parseLlmTaskAssignments(value)).toEqual({
+      meetingEnhance: { mode: "auto" },
+    });
   });
 
   it("keeps a full preset/custom/modelOverride assignment intact", () => {

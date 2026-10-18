@@ -183,15 +183,13 @@ describe("tasksUsingPreset", () => {
   it("finds every task pinned to the preset and ignores auto/custom modes", () => {
     const assignments: LlmTaskAssignments = {
       cleanup: { mode: "preset", presetId: ALPHA.id },
-      remix: { mode: "preset", presetId: BETA.id },
-      meetingSummarize: { mode: "preset", presetId: ALPHA.id },
+      meetingSummarize: { mode: "preset", presetId: BETA.id },
       meetingEnhance: { mode: "custom", params: { temperature: 0.1 } },
     };
-    expect(tasksUsingPreset(assignments, ALPHA.id)).toEqual([
-      "cleanup",
+    expect(tasksUsingPreset(assignments, ALPHA.id)).toEqual(["cleanup"]);
+    expect(tasksUsingPreset(assignments, BETA.id)).toEqual([
       "meetingSummarize",
     ]);
-    expect(tasksUsingPreset(assignments, BETA.id)).toEqual(["remix"]);
     expect(tasksUsingPreset({}, ALPHA.id)).toEqual([]);
     // A custom-mode assignment carrying the same id is not a preset use.
     expect(
@@ -208,8 +206,7 @@ describe("removePresetAndReassign", () => {
     const assignments: LlmTaskAssignments = {
       cleanup: { mode: "preset", presetId: ALPHA.id },
       meetingEnhance: { mode: "preset", presetId: ALPHA.id },
-      remix: { mode: "preset", presetId: BETA.id },
-      meetingSummarize: { mode: "auto" },
+      meetingSummarize: { mode: "preset", presetId: BETA.id },
     };
     const result = removePresetAndReassign(
       [ALPHA, BETA],
@@ -222,7 +219,7 @@ describe("removePresetAndReassign", () => {
     expect(result.assignments.cleanup).toEqual({ mode: "auto" });
     expect(result.assignments.meetingEnhance).toEqual({ mode: "auto" });
     expect(result.assignments.cleanup?.presetId).toBeUndefined();
-    expect(result.assignments.remix).toEqual({
+    expect(result.assignments.meetingSummarize).toEqual({
       mode: "preset",
       presetId: BETA.id,
     });
@@ -245,7 +242,7 @@ describe("removePresetAndReassign", () => {
           modelOverride: override,
         },
         // A custom-mode assignment for another task must survive verbatim.
-        remix: {
+        meetingEnhance: {
           mode: "custom",
           params: { temperature: 0.1 },
           modelOverride: override,
@@ -259,7 +256,7 @@ describe("removePresetAndReassign", () => {
     });
     expect(result.assignments.cleanup?.modelOverride).toBe(override);
     expect(result.assignments.cleanup?.presetId).toBeUndefined();
-    expect(result.assignments.remix).toEqual({
+    expect(result.assignments.meetingEnhance).toEqual({
       mode: "custom",
       params: { temperature: 0.1 },
       modelOverride: override,
@@ -269,16 +266,16 @@ describe("removePresetAndReassign", () => {
   it("leaves non-matching assignments byte-identical (same object identity)", () => {
     const assignments: LlmTaskAssignments = {
       cleanup: { mode: "preset", presetId: ALPHA.id },
-      remix: { mode: "preset", presetId: BETA.id },
+      meetingEnhance: { mode: "preset", presetId: BETA.id },
     };
     const result = removePresetAndReassign(
       [ALPHA, BETA],
       assignments,
       ALPHA.id,
     );
-    expect(result.assignments.remix).toBe(assignments.remix);
-    expect(JSON.stringify(result.assignments.remix)).toBe(
-      JSON.stringify(assignments.remix),
+    expect(result.assignments.meetingEnhance).toBe(assignments.meetingEnhance);
+    expect(JSON.stringify(result.assignments.meetingEnhance)).toBe(
+      JSON.stringify(assignments.meetingEnhance),
     );
     expect(assignments.cleanup).toEqual({ mode: "preset", presetId: ALPHA.id });
   });
@@ -286,7 +283,7 @@ describe("removePresetAndReassign", () => {
   it("is a no-op on presets and assignments when nothing uses the id", () => {
     const assignments: LlmTaskAssignments = {
       cleanup: { mode: "preset", presetId: ALPHA.id, modelOverride: undefined },
-      remix: { mode: "auto" },
+      meetingEnhance: { mode: "auto" },
     };
     const result = removePresetAndReassign(
       [ALPHA],
@@ -349,14 +346,16 @@ describe("isDanglingAssignment", () => {
   it("names the id of a preset that was deleted under a live assignment", () => {
     const assignments: LlmTaskAssignments = {
       cleanup: { mode: "preset", presetId: "user_ghost" },
-      remix: { mode: "preset", presetId: ALPHA.id },
+      meetingSummarize: { mode: "preset", presetId: ALPHA.id },
       meetingEnhance: { mode: "custom", params: {} },
     };
     expect(
       isDanglingAssignment(assignments.cleanup ?? { mode: "auto" }, [ALPHA]),
     ).toBe(true);
     expect(
-      isDanglingAssignment(assignments.remix ?? { mode: "auto" }, [ALPHA]),
+      isDanglingAssignment(assignments.meetingSummarize ?? { mode: "auto" }, [
+        ALPHA,
+      ]),
     ).toBe(false);
     // Built-ins resolve without ever being stored (§4.2).
     expect(

@@ -105,22 +105,6 @@
       "instructionPrefix": "Clicca nell'email, tieni premuto",
       "instructionSuffix": "e di', parola per parola:",
       "sayText": "Buon compleanno, Sam — venerdì porto la torta."
-    },
-    "remix": {
-      "statusReady": "Pronto",
-      "statusListening": "In ascolto…",
-      "statusWorking": "Remix in corso…",
-      "statusRemixed": "Remixata.",
-      "doneNote": "La bozza si è riscritta da sola. Prova un'altra istruzione — o concludi quando vuoi.",
-      "fallbackNote": "Remix ha bisogno di un modello assistente — aggiungine uno nelle Impostazioni quando vuoi.",
-      "sampleDraft": "Buon compleanno, Sam. Spero tu passi una bella giornata — venerdì porto la torta.",
-      "sampleSignoff": "Non vedo l'ora di festeggiarti questa settimana.\n\nCon affetto,\n{{name}}",
-      "fallbackName": "Alex",
-      "title": "Ora remixala",
-      "highlightNote": "La tua bozza è già evidenziata — lasciala evidenziata e non cliccare nell'email.",
-      "instructionPrefix": "Tieni premuti",
-      "instructionSuffix": "e di', parola per parola:",
-      "sayText": "Rendila più calorosa e firmala da parte di {{name}}."
     }
   },
   "settings": {
@@ -138,8 +122,7 @@
       "permissions": "Autorizzazioni",
       "meetings": "Riunioni",
       "data": "Dati",
-      "network": "Rete",
-      "remix": "Remix"
+      "network": "Rete"
     },
     "application": {
       "autoUpdate": "Aggiornamenti automatici",
@@ -194,7 +177,6 @@
       "outputModeClipboard": "Copia negli appunti",
       "sound": "Feedback sonoro",
       "soundDesc": "Suoni leggeri all'inizio e alla fine della registrazione.",
-      "conflict": "Questa è già la tua scorciatoia Remix. Scegli un'altra combinazione.",
       "needsModifier": "Le scorciatoie necessitano di un tasto modificatore",
       "languageHotkey": "Detta in {{language}}",
       "languageHotkeyDesc": "Facoltativo: blocca questa dettatura su {{language}}, saltando il rilevamento automatico.",
@@ -292,14 +274,6 @@
       "statusOk": "Connesso",
       "statusUnreachable": "Impossibile raggiungere quel server",
       "statusUnauthorized": "Token di accesso non valido o mancante"
-    },
-
-    "remix": {
-      "hotkey": "Scorciatoia Remix",
-      "hotkeyDesc": "Tienila premuta e di' cosa cambiare, oppure toccala per le route rapide.",
-      "conflict": "Questa è già la tua scorciatoia di dettatura. Scegli un'altra combinazione.",
-      "bar": "Barra Remix",
-      "barDesc": "Mostra una piccola barra in fondo allo schermo. Passaci sopra per aprire Remix."
     }
   },
   "today": {
@@ -658,10 +632,6 @@
         "name": "Pulizia",
         "desc": "Riscritture rapide mentre detti."
       },
-      "remix": {
-        "name": "Remix",
-        "desc": "Modifiche rapide e l'agente della lavagna."
-      },
       "meetingSummarize": {
         "name": "Riepilogo riunione",
         "desc": "Riepiloghi estesi dopo la fine di una riunione."
@@ -758,63 +728,10 @@
       "models": "Modelli",
       "settings": "Impostazioni",
       "help": "Aiuto",
-      "remix": "Remix",
       "meetings": "Riunioni",
       "import": "Importa"
     },
     "githubRepo": "Repository GitHub"
-  },
-  "remixPage": {
-    "stats": {
-      "remixes": "remix eseguiti",
-      "apps": "app remixate",
-      "lastRemix": "ultimo remix",
-      "firstHint": "Tieni premuti i tasti su un testo per eseguire il primo.",
-      "heading": "Utilizzo"
-    },
-    "hotkey": {
-      "change": "Cambia scorciatoia"
-    },
-    "tips": {
-      "heading": "Da sapere",
-      "highlight": "Evidenzia una frase per remixare solo quella parte — senza selezione, Remix legge tutto il campo.",
-      "tap": "Tocca la scorciatoia (invece di tenerla premuta) per le route rapide (Control+1–3).",
-      "followUp": "Non è perfetto? Scrivi una correzione nella scheda chat — il filo resta."
-    },
-    "examples": {
-      "groups": {
-        "everyday": "Scrittura quotidiana",
-        "work": "Lavoro e studio",
-        "web": "Con il web"
-      },
-      "quotes": {
-        "email": "Rendila più calorosa e lunga la metà — sembro un avvocato.",
-        "tone": "L'ho scritto arrabbiato. Rendilo fermo ma educato.",
-        "social": "Rendilo più incisivo e portalo sotto i 280 caratteri.",
-        "format": "Trasforma questi punti elenco in un paragrafo per il report.",
-        "translate": "Passala in inglese, ma lascia i miei saluti in italiano.",
-        "notes": "Trasforma questi appunti disordinati in un elenco pulito, raggruppato per tema.",
-        "commit": "Riscrivi questo messaggio di commit perché spieghi il perché, non il cosa.",
-        "espresso": "Aggiungi una curiosità sull'espresso, e una foto di un pour-over.",
-        "mla": "Converti le citazioni di questo saggio nel formato MLA.",
-        "legal": "Riscrivi questa clausola del contratto in un linguaggio chiaro che un cliente possa capire.",
-        "medical": "Verifica queste affermazioni su WebMD e segnala ciò che non torna."
-      }
-    },
-    "demo": {
-      "sentence": "<press>Tieni premuto</press> <key>,</key> <speak>parla</speak> <release>e rilascia.</release>",
-      "statusReady": "Pronto",
-      "statusListening": "In ascolto…",
-      "statusDone": "Riscritto sul posto"
-    },
-    "how": {
-      "heading": "Come si usa",
-      "step1": "Evidenzia con il cursore il testo da modificare.",
-      "step2Prefix": "Tieni premuto",
-      "step2Suffix": "e di' la modifica ad alta voce.",
-      "step3": "Remix lo riscrive sul posto. Annulla lo ripristina se cambi idea.",
-      "more": "Niente di evidenziato? Remix legge tutto il campo in cui ti trovi. Può anche cercare sul web fatti e fonti, e incollare immagini direttamente nella bozza."
-    }
   },
   "meetings": {
     "titleAccent": "Riunioni",
@@ -968,10 +885,6 @@
       "eyebrow": "Scorciatoie",
       "hotkeyLabel": "Scorciatoia",
       "hotkeyDesc": "Tieni premuto per registrare, rilascia per trascrivere.",
-      "remixLabel": "Scorciatoia Remix",
-      "remixDesc": "Tienila premuta e di' cosa cambiare, oppure toccala per le route rapide.",
-      "quickRoutesLabel": "Route rapide",
-      "quickRoutesDesc": "Premi brevemente la scorciatoia invece di tenerla premuta per le route rapide con un tocco.",
       "cancelLabel": "Annulla",
       "cancelDesc": "Anche Esc annulla sempre."
     },
@@ -1045,25 +958,6 @@
       "listening": "In ascolto",
       "transcribing": "Trascrizione in corso"
     },
-    "remix": {
-      "applying": "Applicazione di {{label}}",
-      "applyingFallback": "remix",
-      "listening": "In ascolto di un remix",
-      "chat": "Chat di Remix",
-      "working": "Elaborazione…",
-      "hintListening": "In ascolto…",
-      "transcribing": "Trascrizione…",
-      "nothingSelectedTitle": "Nessuna selezione",
-      "nothingSelectedBody": "Evidenzia prima del testo in una qualsiasi app, poi premi la scorciatoia.",
-      "failedTitle": "Remix non riuscito",
-      "modelCouldntRun": "Il modello non è riuscito a eseguirlo ({{status}}).",
-      "returnedNothing": "Il modello non ha restituito nulla.",
-      "somethingWrong": "Qualcosa è andato storto.",
-      "couldntReplaceTitle": "Impossibile sostituire il testo",
-      "couldntReplaceBody": "La modifica è negli appunti — incollala tu.",
-      "didntCatchTitle": "Non ho capito",
-      "didntCatchBody": "Non è arrivato nulla — tieni premuto il tasto di scelta rapida e di' cosa fare."
-    },
     "error": {
       "timedOut": "La trascrizione è scaduta",
       "connectionLostRecording": "Connessione interrotta durante la registrazione",
@@ -1079,100 +973,6 @@
       "micDenied": "Accesso al microfono negato",
       "noAudioCaptured": "Nessun audio acquisito. Prova a registrare di nuovo."
     }
-  },
-  "remixBar": {
-    "open": "Apri Openstyle Remix"
-  },
-  "remixChat": {
-    "newThread": "Avvia una nuova conversazione",
-    "closeEsc": "Chiudi (Esc)",
-    "message": "Messaggio a Remix",
-    "stop": "Interrompi",
-    "send": "Invia",
-    "conversation": "Conversazione di Remix",
-    "placeholder": "Messaggio a Remix…",
-    "working": "Elaborazione…",
-    "miniCouldntOpen": "Impossibile aprire Remix",
-    "couldntOpen": "Impossibile aprire Remix. Il server di Openstyle è in esecuzione?",
-    "opening": "Apertura di Remix…",
-    "emptyWithSelection": "Di' o scrivi cosa fare con la tua selezione.",
-    "emptyNoSelection": "Nessuna selezione — chiedimi di scrivere, cercare o rispondere.",
-    "thinking": "Sto pensando…",
-    "stepInput": "Input",
-    "stepOutput": "Output",
-    "failed": "Remix non riuscito.",
-    "statusFailed": "Remix non riuscito ({{status}}).",
-    "somethingWrong": "Qualcosa è andato storto.",
-    "returnedNothing": "Il modello non ha restituito nulla.",
-    "couldntReplace": "Impossibile sostituire — non è stato modificato nulla.",
-    "nothingHighlighted": "Nessun testo evidenziato — seleziona prima del testo.",
-    "actionRunning": "{{label}}…",
-    "actionDone": "{{label}} — testo sostituito",
-    "actionFailed": "{{label}} non riuscito — {{detail}}",
-    "toolRunning": "Esecuzione di {{name}}…",
-    "toolRan": "{{name}} eseguito",
-    "presets": {
-      "fix": "Correggi",
-      "formal": "Formale",
-      "markdown": "Markdown"
-    },
-    "tools": {
-      "get_context": {
-        "doing": "Sto guardando il tuo schermo…",
-        "done": "Schermo controllato"
-      },
-      "read_document": {
-        "doing": "Lettura del documento…",
-        "done": "Documento letto"
-      },
-      "select_all": {
-        "doing": "Selezione di tutto…",
-        "done": "Tutto selezionato"
-      },
-      "select_text": {
-        "doing": "Selezione nel tuo documento…",
-        "done": "Selezione spostata"
-      },
-      "collapse_selection": {
-        "doing": "Posizionamento del cursore…",
-        "done": "Cursore posizionato"
-      },
-      "copy": {
-        "doing": "Lettura della tua selezione…",
-        "done": "Selezione letta"
-      },
-      "set_clipboard": {
-        "doing": "Preparazione del testo…",
-        "done": "Testo messo negli appunti"
-      },
-      "set_clipboard_image": {
-        "doing": "Recupero di un'immagine…",
-        "done": "Immagine messa negli appunti"
-      },
-      "paste": {
-        "doing": "Incollo…",
-        "done": "Incollato nel tuo documento"
-      },
-      "undo": {
-        "doing": "Annullamento…",
-        "done": "Ultima modifica annullata"
-      },
-      "redo": {
-        "doing": "Ripristino…",
-        "done": "Modifica ripristinata"
-      },
-      "press_key": {
-        "doing": "Pressione di un tasto…",
-        "done": "Tasto premuto"
-      },
-      "get_clipboard": {
-        "doing": "Lettura dei tuoi appunti…",
-        "done": "Appunti letti"
-      }
-    },
-    "stepFailed": "{{label}} — non ha funzionato",
-    "toolsRanOne": "Eseguito 1 strumento",
-    "toolsRanMany": "Eseguiti {{count}} strumenti"
   },
   "errorBoundary": {
     "eyebrow": "Qualcosa è andato storto",
