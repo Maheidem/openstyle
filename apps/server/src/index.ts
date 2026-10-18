@@ -9,8 +9,10 @@ import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
 import { authMiddleware, generateAuthToken, setAuthToken } from "./lib/auth.js";
+import { getDb } from "./lib/db.js";
 import { formatError } from "./lib/format-error.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
+import { createLlmRecorder } from "./lib/llm/recorder.js";
 import { startMeetingRetentionSweep } from "./lib/meetings/retention.js";
 import { maybeStartAlignerDownload } from "./lib/mlx-asr/aligner.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
@@ -212,6 +214,8 @@ export async function startServer(
 
   startHistoryRetentionSweep();
   startMeetingRetentionSweep();
+  // A killed process leaves `running` LLM runs. Mark them `interrupted`.
+  createLlmRecorder(getDb()).sweepInterrupted();
   // I4b (specs/meeting-transcription-v2.md §3.6 step 1): at server start,
   // when a meeting exists, the aligner download starts in the background
   // (once per process, Apple silicon + MLX + diarization on only). The
