@@ -12,7 +12,11 @@ import {
   estimateTokens,
   formatEnhanceLine,
 } from "../src/lib/meetings/workflow/chunking.js";
-import type { CorrectUnitResult } from "../src/lib/meetings/workflow/types.js";
+import { checkCorrections } from "../src/lib/meetings/workflow/nodes/correct-chunk.js";
+import type {
+  CorrectUnitResult,
+  PreparedSegment,
+} from "../src/lib/meetings/workflow/types.js";
 import { okReply, reply, type ScriptStep } from "./helpers/fake-model.js";
 import type { MeetingFixture } from "./helpers/meeting-fixture.js";
 import {
@@ -266,7 +270,7 @@ describe("correctChunk: the length route (4.0.6)", () => {
     const r = await run(f, (req) => {
       if (req.n === 0) return LENGTH_CUT;
       return req.user.includes(`[${ids[0]}]`)
-        ? corr([ids[0] as string, "Half one is new."])
+        ? corr([ids[0] as string, "Fixed half."])
         : reply("content-filter", "content_filter", "");
     });
     expect(r.requests).toHaveLength(3);
@@ -275,7 +279,7 @@ describe("correctChunk: the length route (4.0.6)", () => {
     expect(chunk?.units.map((u) => u.status)).toEqual(["ok", "failed"]);
     expect(chunk?.units[1]?.failure?.kind).toBe("content_filter");
     // The good half is saved. The segments of the failed half keep their old text.
-    expect(enhanced(ids[0] as string)).toBe("Half one is new.");
+    expect(enhanced(ids[0] as string)).toBe("Fixed half.");
     expect(enhanced(ids[1] as string)).toBeNull(); // ok unit, no correction: reset to NULL (N6)
     expect(enhanced(ids[2] as string)).toBe("OLD");
     expect(r.recorder.steps.get("chunk:0")?.status).toBe("partial");
@@ -321,5 +325,71 @@ describe("correctChunk: the length route (4.0.6)", () => {
     ]);
     expect(r.finalState.corrections[0]?.status).toBe("partial");
     expect(units(r)[1]?.failure?.kind).toBe("provider_unavailable");
+  });
+});
+
+// The 4.2.3 word guard (checks 6 and 7): pure, so it runs on plain segments.
+describe("checkCorrections word guard", () => {
+  const seg = (text: string) =>
+    ({ id: "s1", displayLabel: "Me", text }) as PreparedSegment;
+  const check = (oldText: string, newText: string) => {
+    const r = checkCorrections(
+      [{ id: "s1", text: newText }],
+      [seg(oldText)],
+      7,
+    );
+    return {
+      kept: r.corrections.map((c) => c.text),
+      reasons: r.dropped.map((d) => d.reason),
+    };
+  };
+
+  it("drops a case or punctuation change as format_only", () => {
+    expect(
+      check("we ship it on friday", "We ship it on Friday.").reasons,
+    ).toEqual(["format_only"]);
+  });
+
+  it("drops a filler removal as deletes_words", () => {
+    expect(check("so um we ship it", "so we ship it").reasons).toEqual([
+      "deletes_words",
+    ]);
+  });
+
+  it("drops a repeated-word removal as deletes_words", () => {
+    expect(check("we ship the the build", "we ship the build").reasons).toEqual(
+      ["deletes_words"],
+    );
+  });
+
+  it("drops a correction that fixes a word and also deletes one", () => {
+    expect(
+      check("we use string lit today um", "we use Streamlit today").reasons,
+    ).toEqual(["deletes_words"]);
+  });
+
+  it("keeps a two-to-one replacement (a split word joined)", () => {
+    expect(check("we use string lit today", "we use Streamlit today")).toEqual({
+      kept: ["we use Streamlit today"],
+      reasons: [],
+    });
+  });
+
+  it("keeps a one-to-one fix and an added short word", () => {
+    expect(check("be said and sent", "be saved and sent").reasons).toEqual([]);
+    expect(
+      check("we look and understand", "we look at and understand").kept,
+    ).toEqual(["we look at and understand"]);
+  });
+
+  it("records the call id and seq of a guard drop", () => {
+    const r = checkCorrections(
+      [{ id: "s1", text: "Same words." }],
+      [seg("same words")],
+      7,
+    );
+    expect(r.dropped).toEqual([
+      { id: "s1", reason: "format_only", seq: 0, callId: 7 },
+    ]);
   });
 });

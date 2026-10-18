@@ -489,7 +489,7 @@ describe("save: faults (GR21 a)", () => {
   async function stateWithCorrections(f: MeetingFixture) {
     const a = f.segments[0]?.id as string;
     const b = f.segments[1]?.id as string;
-    const r = await graphRun(f, () => corr([a, "New A."], [b, "New B."]));
+    const r = await graphRun(f, () => corr([a, "Zed A."], [b, "Zed B."]));
     // Roll back to the old text, so a second save can write again.
     getDb()
       .prepare(
@@ -514,7 +514,7 @@ describe("save: faults (GR21 a)", () => {
     const out = await makeSaveNode(deps)(r.finalState);
     expect(out.saved.sw1).toBe("ok");
     expect(out.saved.failures).toEqual([]);
-    expect(enhanced(a)).toBe("New A.");
+    expect(enhanced(a)).toBe("Zed A.");
   });
 
   it("a write that throws twice is save_failed; a rolled-back SW1 leaves no link; the other writes stay", async () => {

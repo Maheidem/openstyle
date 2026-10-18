@@ -78,8 +78,63 @@ export function failedCorrectResult(
   };
 }
 
+/** Lowercase words without punctuation: the unit of the 4.2.3 word checks. */
+function wordsOf(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]/gu, "")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * True when the word diff of old to new has a pure deletion: a gap between two
+ * matched words (or the text ends) that loses old words and gains no new word.
+ * N old words that become M new words is a replacement and is not a deletion.
+ */
+function deletesWords(oldWords: string[], newWords: string[]): boolean {
+  const n = oldWords.length;
+  const m = newWords.length;
+  // lcs[i][j]: length of the longest common subsequence of the two suffixes.
+  const lcs = Array.from({ length: n + 1 }, () =>
+    new Array<number>(m + 1).fill(0),
+  );
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i]![j] =
+        oldWords[i] === newWords[j]
+          ? lcs[i + 1]![j + 1]! + 1
+          : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  let removed = 0;
+  let added = 0;
+  const closeGap = () => {
+    const pure = removed > 0 && added === 0;
+    removed = 0;
+    added = 0;
+    return pure;
+  };
+  while (i < n || j < m) {
+    if (i < n && j < m && oldWords[i] === newWords[j]) {
+      if (closeGap()) return true;
+      i++;
+      j++;
+    } else if (j >= m || (i < n && lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) {
+      removed++;
+      i++;
+    } else {
+      added++;
+      j++;
+    }
+  }
+  return closeGap();
+}
+
 /** 4.2.3: the code checks after the parse. */
-function checkCorrections(
+export function checkCorrections(
   raw: { id: string; text: string }[],
   segments: readonly PreparedSegment[],
   callId: number | null,
@@ -112,6 +167,17 @@ function checkCorrections(
     }
     if (text === original.text.trim()) {
       drop("unchanged");
+      return;
+    }
+    // 4.2.2 policy: a case or punctuation change, or a lost word, is no fix.
+    const oldWords = wordsOf(original.text);
+    const newWords = wordsOf(text);
+    if (oldWords.join(" ") === newWords.join(" ")) {
+      drop("format_only");
+      return;
+    }
+    if (deletesWords(oldWords, newWords)) {
+      drop("deletes_words");
       return;
     }
     corrections.push({ id: entry.id, text, seq, callId });

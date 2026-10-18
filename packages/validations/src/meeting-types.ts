@@ -112,7 +112,9 @@ export type CorrectionDropReason =
   | "unknown_id"
   | "duplicate_id"
   | "empty_text"
-  | "unchanged";
+  | "unchanged"
+  | "format_only"
+  | "deletes_words";
 
 export interface SpeakerVerdict {
   unitKey: string;
