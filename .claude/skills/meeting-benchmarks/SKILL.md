@@ -25,7 +25,7 @@ Pick them by length only. Do not read their text.
 - Long (final run): `9243bea0-567f-443b-bf3b-9980f69993fd` (3580 s)
 - Issue #163 meeting (8 chunks; the old Enhance path fails 2 of 8): `ca70f895-ebe9-47e3-b663-eeb2c7bd97a6`
 
-2026-10-17 (issue #185 only): the owner allows the pi and Codex judges to read the compare files of these three meetings, with no per-data-set question. WP11 removes this line.
+2026-10-17 (issue #185 only): the owner allows the pi and Codex judges to read the compare files of these three meetings, with no per-data-set question. This covers the judges only. The Enhance and Summary runs stay on the local model. WP11 removes this line.
 
 ## Commands
 
@@ -73,6 +73,10 @@ pnpm meeting:check-summary --db <db> --meeting <id> --arm <old|new> --out <metri
 ```
 
 `run-enhance.mjs` prints counts, durations, hashes, ids and paths only. `dump.json` holds private text: never print or commit it. `check-enhance-metrics.mjs` reads `metrics-enhance.json` from the folder of each dump, so keep both files together. `check-enhance-metrics.mjs` re-reads its dumps and its output and exits 1 on a mismatch. It reports `untypedFailures` as null when a run has `failureReasons` null (new arm until WP5b). `check-summary.mts` exits 0 (pass), 1 (a check failed) or 2 (wrong usage, unreadable database or no summary row); with `--arm old` it only measures.
+
+`speakerSuggestions` is the database count of `meeting_speakers` rows with a non-empty `suggested_name`, in both arms. Start from a transcribed copy that holds no preset suggestion, or the count includes them. The old arm also writes the response value as `speakerSuggestionsBody`. Compare arms on `speakerSuggestions` only.
+
+The new arm always needs `--summarize`. Without it the script stops the server when the Enhance job slot is empty, and the chained Summarize can still be running. Counts and the dump are then read mid-run.
 
 The new-arm branch of `run-enhance.mjs` (202 route, job progress) is UNVERIFIED until the WP5b build exists. WP10b fixes it in the first round if it is wrong.
 

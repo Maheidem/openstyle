@@ -155,6 +155,21 @@ server.on("exit", () => {
   serverExited = true;
 });
 
+// A signal skips the finally block: kill the server here so it does not keep
+// the port and the scratch database.
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, () => {
+    if (!serverExited && server.pid != null) {
+      try {
+        process.kill(server.pid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
+    process.exit(1);
+  });
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function stopServer() {
@@ -220,7 +235,12 @@ async function waitForJobEnd(deadline) {
   let progress = null;
   let seenJob = false;
   while (performance.now() < deadline) {
-    const res = await call("GET", `/api/meetings/${meetingId}`);
+    const res = await call(
+      "GET",
+      `/api/meetings/${meetingId}`,
+      deadline - performance.now(),
+      "job poll",
+    );
     if (res.status === 200) {
       const job = res.body?.job ?? null;
       if (job) {
@@ -231,7 +251,12 @@ async function waitForJobEnd(deadline) {
       } else {
         // Job not visible yet or already over: give it one more poll.
         await sleep(500);
-        const again = await call("GET", `/api/meetings/${meetingId}`);
+        const again = await call(
+          "GET",
+          `/api/meetings/${meetingId}`,
+          deadline - performance.now(),
+          "job poll",
+        );
         if (!again.body?.job)
           return {
             ended: true,
@@ -313,7 +338,12 @@ try {
       // summary row itself. UNVERIFIED until WP5b (WP10b may fix this).
       let hasSummary = false;
       while (performance.now() < deadline) {
-        const res = await call("GET", `/api/meetings/${meetingId}`);
+        const res = await call(
+          "GET",
+          `/api/meetings/${meetingId}`,
+          deadline - performance.now(),
+          "summary poll",
+        );
         if (res.status === 200 && res.body?.summary) {
           hasSummary = true;
           break;
@@ -364,7 +394,10 @@ try {
     metrics.chunksSucceeded = body.chunksSucceeded ?? 0;
     metrics.chunksFailed = body.chunksFailed ?? 0;
     metrics.correctedCount = body.correctedCount ?? corrected;
-    metrics.speakerSuggestions = body.speakerSuggestions ?? suggestions;
+    // Same method in both arms: the database count. The body value is kept
+    // apart, because it counts only this run's proposals.
+    metrics.speakerSuggestions = suggestions;
+    metrics.speakerSuggestionsBody = body.speakerSuggestions ?? null;
     metrics.namesRespelled = body.namesRespelled ?? 0;
     metrics.partial = body.partial ?? false;
     metrics.stoppedEarly = body.stopped_early ?? false;
@@ -385,6 +418,7 @@ try {
     metrics.chunksSucceeded = Math.max(0, total - failed);
     metrics.correctedCount = corrected;
     metrics.speakerSuggestions = suggestions;
+    metrics.speakerSuggestionsBody = null;
     metrics.namesRespelled = null;
     metrics.partial = failed > 0;
     metrics.stoppedEarly = false;
