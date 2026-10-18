@@ -10,7 +10,7 @@
 
 const MAX_NAME_CHARS = 80;
 /** A first name must have at least this many letters for a one-letter typo fix. */
-const MIN_FUZZY_FIRST_NAME = 4;
+export const MIN_FUZZY_FIRST_NAME = 4;
 
 /** An attendee sets their own display name, so treat it as untrusted text. */
 function cleanName(name: string): string {
@@ -22,7 +22,7 @@ function cleanName(name: string): string {
 }
 
 /** Edit distance, capped: returns 2 for any distance above 1. */
-function distanceAtMostOne(a: string, b: string): 0 | 1 | 2 {
+export function distanceAtMostOne(a: string, b: string): 0 | 1 | 2 {
   if (a === b) return 0;
   if (Math.abs(a.length - b.length) > 1) return 2;
   let i = 0;
