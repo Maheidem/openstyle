@@ -30,9 +30,9 @@ export interface MeetingJobProgress {
 }
 
 /** What kind of job holds a meeting's slot. Transcription jobs (a full
- * re-transcribe or a retry-failed pass), the async Summarize job and the
- * Enhance passes (the in-request /enhance and the auto-run job behind the
- * status flip, specs/meeting-transcription-v2.md §3.2) are cancellable via
+ * re-transcribe or a retry-failed pass) and the workflow runs (Enhance, which
+ * chains into Summarize, and Summarize alone; both from the button and the
+ * auto-run after the status flip) are cancellable via
  * POST /:id/cancel-transcribe; the diarize pass claims the same concurrency
  * slot (shared-ANE-resource exclusion) but is a bounded, in-request
  * local-model run that ignores the cancellation flag. */
@@ -61,16 +61,10 @@ const jobKinds = new Map<string, MeetingJobKind>();
  * cleared together with the slot when the job releases it. */
 const cancellations = new Set<string>();
 
-/** Which kind of job last failed for a meeting, and why. It lives beside the
- * slot because the job blob is deleted in the `finally` of the job. A renderer
- * that polls every second can miss a final `job.error` in the gap between the
- * last running poll and the deletion. The `meetings.error` column is not
- * available for these failures (spec §6 constraint 3), because it is the
- * *chunk-failure* banner. The entry stays until the next claim of the same
- * slot or until a successful run clears it. Because of this, a re-summarize
- * never shows an old failure. The map size is at most the number of meetings
- * that failed to summarize in this process. */
-const failures = new Map<string, string>();
+/** The soft-cancel controller of the job that passed one to `claimJob`. The
+ * workflow runner passes it so a cancel also stops an in-flight model call
+ * (specs/meeting-enhance-agentic.md 3.4.5). */
+const controllers = new Map<string, AbortController>();
 
 /** True when a job holds the slot for this meeting. */
 export function hasJob(id: string): boolean {
@@ -82,18 +76,28 @@ export function claimJob(
   id: string,
   kind: MeetingJobKind,
   progress: MeetingJobProgress,
+  controller?: AbortController,
 ): boolean {
   if (jobs.has(id)) return false;
   jobs.set(id, progress);
   jobKinds.set(id, kind);
+  if (controller) controllers.set(id, controller);
   return true;
 }
 
-/** Free the slot with its kind and its cancel flag. */
+/** Free the slot with its kind, its cancel flag and its controller. */
 export function releaseJob(id: string): void {
   jobs.delete(id);
   jobKinds.delete(id);
   cancellations.delete(id);
+  controllers.delete(id);
+}
+
+/** Change the kind of the job that holds the slot. A chained run starts as
+ * `enhance` and becomes `summarize` when its Summarize stage starts (3.6).
+ * No-op when no job holds the slot. */
+export function setJobKind(id: string, kind: MeetingJobKind): void {
+  if (jobs.has(id)) jobKinds.set(id, kind);
 }
 
 /** Replace the progress blob wholesale. */
@@ -132,21 +136,10 @@ export function requestCancel(id: string): boolean {
   const kind = jobKinds.get(id);
   if (!kind || !CANCELLABLE_KINDS.has(kind)) return false;
   cancellations.add(id);
+  controllers.get(id)?.abort(new DOMException("Cancelled", "AbortError"));
   return true;
 }
 
 export function isCancelRequested(id: string): boolean {
   return cancellations.has(id);
-}
-
-export function setJobFailure(id: string, text: string): void {
-  failures.set(id, text);
-}
-
-export function getJobFailure(id: string): string | undefined {
-  return failures.get(id);
-}
-
-export function clearJobFailure(id: string): void {
-  failures.delete(id);
 }
