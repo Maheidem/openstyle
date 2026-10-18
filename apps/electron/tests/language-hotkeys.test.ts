@@ -71,17 +71,6 @@ test("isLanguageHotkeyTaken: clashes with the default dictation hotkey", () => {
   expect(
     isLanguageHotkeyTaken("Alt+P", {
       dictationAccel: "Alt+P",
-      remixAccel: null,
-      claimedLanguageAccels: [],
-    }),
-  ).toBe(true);
-});
-
-test("isLanguageHotkeyTaken: clashes with the remix hotkey", () => {
-  expect(
-    isLanguageHotkeyTaken("Alt+R", {
-      dictationAccel: "Alt+D",
-      remixAccel: "Alt+R",
       claimedLanguageAccels: [],
     }),
   ).toBe(true);
@@ -91,7 +80,6 @@ test("isLanguageHotkeyTaken: clashes with an already-claimed language hotkey", (
   expect(
     isLanguageHotkeyTaken("Alt+P", {
       dictationAccel: "Alt+D",
-      remixAccel: "Alt+R",
       claimedLanguageAccels: ["Alt+P"],
     }),
   ).toBe(true);
@@ -101,7 +89,6 @@ test("isLanguageHotkeyTaken: free accelerator is not taken", () => {
   expect(
     isLanguageHotkeyTaken("Alt+P", {
       dictationAccel: "Alt+D",
-      remixAccel: "Alt+R",
       claimedLanguageAccels: ["Alt+E"],
     }),
   ).toBe(false);

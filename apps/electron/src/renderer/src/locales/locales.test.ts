@@ -218,10 +218,6 @@ describe("locale files", () => {
       "history.tutorial.pasted",
       "history.tutorial.sample",
     ],
-    // Keys introduced by the translated Remix demo (issue #151): the
-    // hold-speak-release sentence and the waveform aria-label that the History,
-    // Remix and onboarding demos share.
-    "remix-demo": ["remixPage.demo.sentence", "common.voiceWaveform"],
     // Keys introduced by the translated aria-label and title strings (issue
     // #153): icon buttons, dialogs and sliders that a screen reader or a
     // tooltip reads aloud. A missing key shows the English text in every
@@ -247,16 +243,10 @@ describe("locale files", () => {
       "models.modal.chooseVoice",
       "models.modal.pickLlm",
       "pill.cancelDictation",
-      "remixBar.open",
-      "remixChat.newThread",
-      "remixChat.closeEsc",
-      "remixChat.message",
-      "remixChat.stop",
-      "remixChat.send",
-      "remixChat.conversation",
+      "common.voiceWaveform",
     ],
     // Keys introduced by the translated fixed English visible strings and
-    // placeholders (issue #155): the Help page, the Remix chat, the Models page
+    // placeholders (issue #155): the Help page, the Models page
     // lists and dialogs, the pill status words, the error boundary and the
     // 404 page. Every locale carries them, or a user sees English in the
     // middle of a translated screen.
@@ -326,73 +316,10 @@ describe("locale files", () => {
       "pill.status.preparingMic",
       "pill.status.listening",
       "pill.status.transcribing",
-      "pill.remix.applying",
-      "pill.remix.applyingFallback",
-      "pill.remix.listening",
-      "pill.remix.chat",
-      "pill.remix.working",
-      "pill.remix.hintListening",
-      "pill.remix.transcribing",
-      "pill.remix.nothingSelectedTitle",
-      "pill.remix.nothingSelectedBody",
-      "pill.remix.failedTitle",
-      "pill.remix.modelCouldntRun",
-      "pill.remix.returnedNothing",
-      "pill.remix.somethingWrong",
-      "remixChat.placeholder",
-      "remixChat.working",
-      "remixChat.miniCouldntOpen",
-      "remixChat.couldntOpen",
-      "remixChat.opening",
-      "remixChat.emptyWithSelection",
-      "remixChat.emptyNoSelection",
-      "remixChat.thinking",
-      "remixChat.stepInput",
-      "remixChat.stepOutput",
-      "remixChat.failed",
-      "remixChat.statusFailed",
-      "remixChat.somethingWrong",
-      "remixChat.returnedNothing",
-      "remixChat.couldntReplace",
-      "remixChat.nothingHighlighted",
-      "remixChat.actionRunning",
-      "remixChat.actionDone",
-      "remixChat.actionFailed",
-      "remixChat.toolRunning",
-      "remixChat.toolRan",
-      "remixChat.presets.fix",
-      "remixChat.presets.formal",
-      "remixChat.presets.markdown",
-      "remixChat.tools.get_context.doing",
-      "remixChat.tools.get_context.done",
-      "remixChat.tools.read_document.doing",
-      "remixChat.tools.read_document.done",
-      "remixChat.tools.select_all.doing",
-      "remixChat.tools.select_all.done",
-      "remixChat.tools.select_text.doing",
-      "remixChat.tools.select_text.done",
-      "remixChat.tools.collapse_selection.doing",
-      "remixChat.tools.collapse_selection.done",
-      "remixChat.tools.copy.doing",
-      "remixChat.tools.copy.done",
-      "remixChat.tools.set_clipboard.doing",
-      "remixChat.tools.set_clipboard.done",
-      "remixChat.tools.set_clipboard_image.doing",
-      "remixChat.tools.set_clipboard_image.done",
-      "remixChat.tools.paste.doing",
-      "remixChat.tools.paste.done",
-      "remixChat.tools.undo.doing",
-      "remixChat.tools.undo.done",
-      "remixChat.tools.redo.doing",
-      "remixChat.tools.redo.done",
-      "remixChat.tools.press_key.doing",
-      "remixChat.tools.press_key.done",
-      "remixChat.tools.get_clipboard.doing",
-      "remixChat.tools.get_clipboard.done",
     ],
-    // #157: pill error text (card body, live region, native dialogs) and the
-    // Remix step labels. The pill and the Remix bar run initI18n().
-    "pill-errors-remix-steps-i18n": [
+    // #157: pill error text (card body, live region, native dialogs). The
+    // pill runs initI18n().
+    "pill-errors-i18n": [
       "pill.error.timedOut",
       "pill.error.connectionLostRecording",
       "pill.error.connectionLostTranscribing",
@@ -406,13 +333,6 @@ describe("locale files", () => {
       "pill.error.recordingFailedTitle",
       "pill.error.micDenied",
       "pill.error.noAudioCaptured",
-      "pill.remix.couldntReplaceTitle",
-      "pill.remix.couldntReplaceBody",
-      "pill.remix.didntCatchTitle",
-      "pill.remix.didntCatchBody",
-      "remixChat.stepFailed",
-      "remixChat.toolsRanOne",
-      "remixChat.toolsRanMany",
       "settings.sections.network",
     ],
     // Keys introduced by the Settings → Network panel (issue #160). The panel
@@ -491,7 +411,7 @@ describe("locale files", () => {
   });
 
   // The demo sentences are rendered by <Trans> (tutorial-demo.tsx for the
-  // History card, remix.tsx for the Remix page). Each tag maps to one
+  // History card). Each tag maps to one
   // highlighted word or the keycap, so a translation must use every tag exactly
   // once. A missing tag drops a highlight; a repeated tag renders the keycap or
   // word twice.
@@ -503,10 +423,7 @@ describe("locale files", () => {
     "<release>",
     "</release>",
   ];
-  const SENTENCE_KEYS = [
-    "history.tutorial.sentence",
-    "remixPage.demo.sentence",
-  ];
+  const SENTENCE_KEYS = ["history.tutorial.sentence"];
   describe.each(SENTENCE_KEYS)("%s", (key) => {
     it.each([
       "template.json",

@@ -105,22 +105,6 @@
       "instructionPrefix": "メール本文をクリックし、",
       "instructionSuffix": "を押しながら、次のとおりに言ってみましょう:",
       "sayText": "Samさん、お誕生日おめでとう。金曜日にケーキを持っていきます。"
-    },
-    "remix": {
-      "statusReady": "準備完了",
-      "statusListening": "聞き取り中…",
-      "statusWorking": "リミックス中…",
-      "statusRemixed": "リミックス完了。",
-      "doneNote": "下書きがその場で書き直されました。別の指示を試すか、完了しましょう。",
-      "fallbackNote": "Remixにはアシスタントモデルが必要です — 準備ができたら設定から追加してください。",
-      "sampleDraft": "Samさん、お誕生日おめでとう。素敵な一日になりますように — 金曜日にケーキを持っていきますね。",
-      "sampleSignoff": "今週お祝いできるのを楽しみにしています。\n\n{{name}}",
-      "fallbackName": "アレックス",
-      "title": "次はリミックス",
-      "highlightNote": "下書きはすでに選択されています — そのままにして、メール内をクリックしないでください。",
-      "instructionPrefix": "",
-      "instructionSuffix": "を押しながら、次のとおりに言ってみましょう:",
-      "sayText": "もっと温かい文面にして、最後に{{name}}の名前で締めて"
     }
   },
   "settings": {
@@ -138,8 +122,7 @@
       "permissions": "権限",
       "meetings": "ミーティング",
       "data": "データ",
-      "network": "ネットワーク",
-      "remix": "Remix"
+      "network": "ネットワーク"
     },
     "application": {
       "autoUpdate": "自動アップデート",
@@ -194,7 +177,6 @@
       "outputModeClipboard": "クリップボードにコピー",
       "sound": "サウンドフィードバック",
       "soundDesc": "録音の開始時と終了時に短いチャイム音を鳴らします。",
-      "conflict": "これはすでにRemixのホットキーです。別の組み合わせを選んでください。",
       "needsModifier": "ホットキーには修飾キーまたはマウスのサイドボタンが必要です",
       "languageHotkey": "{{language}}で音声入力",
       "languageHotkeyDesc": "任意 — この音声入力を{{language}}に固定し、自動検出をスキップします。",
@@ -292,14 +274,6 @@
       "statusOk": "接続済み",
       "statusUnreachable": "そのサーバーに接続できません",
       "statusUnauthorized": "アクセストークンが無効または未入力"
-    },
-
-    "remix": {
-      "hotkey": "Remixホットキー",
-      "hotkeyDesc": "押しながら変更内容を話すか、軽く押してクイックルートを表示します。",
-      "conflict": "これはすでに音声入力のホットキーです。別の組み合わせを選んでください。",
-      "bar": "Remixバー",
-      "barDesc": "画面下部に小さなバーを表示します。ホバーするとRemixが開きます。"
     }
   },
   "today": {
@@ -659,10 +633,6 @@
         "name": "クリーンアップ",
         "desc": "口述中の高速な書き直し。"
       },
-      "remix": {
-        "name": "Remix",
-        "desc": "簡単な編集とキャンバスエージェント。"
-      },
       "meetingSummarize": {
         "name": "ミーティング要約",
         "desc": "ミーティング終了後の長文要約。"
@@ -759,63 +729,10 @@
       "models": "モデル",
       "settings": "設定",
       "help": "ヘルプ",
-      "remix": "Remix",
       "meetings": "ミーティング",
       "import": "インポート"
     },
     "githubRepo": "GitHubリポジトリ"
-  },
-  "remixPage": {
-    "stats": {
-      "remixes": "実行したリミックス",
-      "apps": "リミックスしたアプリ",
-      "lastRemix": "最後のリミックス",
-      "firstHint": "テキストの上でキーを押しながら話すと、最初のリミックスを実行できます。",
-      "heading": "利用状況"
-    },
-    "hotkey": {
-      "change": "ホットキーを変更"
-    },
-    "tips": {
-      "heading": "知っておくと便利",
-      "highlight": "文を選択してから実行すると、その部分だけをリミックスします — 選択なしなら入力欄全体を読み取ります。",
-      "tap": "ホットキーを押し続けずに軽く押すと、クイックルート（Control+1〜3）が使えます。",
-      "followUp": "仕上がりがいまいち？チャットカードに続きを入力すれば、文脈を覚えたまま直せます。"
-    },
-    "examples": {
-      "groups": {
-        "everyday": "日常の文章",
-        "work": "仕事と学び",
-        "web": "Webと一緒に"
-      },
-      "quotes": {
-        "email": "もっと温かく、半分の長さにして — 弁護士みたいな文面になってる。",
-        "tone": "怒りながら書いたので、毅然としつつ丁寧な文面にして。",
-        "social": "もっとキャッチーにして、280文字以内に収めて。",
-        "format": "この箇条書きを、レポート用の段落にして。",
-        "translate": "これを英語にして。ただし結びの挨拶は日本語のままで。",
-        "notes": "この散らかったメモを、トピックごとにまとまった箇条書きにして。",
-        "commit": "このコミットメッセージを、何をしたかではなく、なぜかを説明するように書き直して。",
-        "espresso": "エスプレッソの豆知識と、プアオーバーの写真を追加して。",
-        "mla": "このエッセイの引用をMLA形式に変換して。",
-        "legal": "この契約条項を、クライアントにも分かる平易な文章に書き直して。",
-        "medical": "この内容をWebMDでファクトチェックして、怪しい部分に印を付けて。"
-      }
-    },
-    "demo": {
-      "sentence": "<key>を</key><press>押し続けて、</press><speak>話して、</speak><release>離します。</release>",
-      "statusReady": "準備完了",
-      "statusListening": "聞き取り中…",
-      "statusDone": "その場で書き直し完了"
-    },
-    "how": {
-      "heading": "使い方",
-      "step1": "変更したいテキストをカーソルで選択します。",
-      "step2Prefix": "",
-      "step2Suffix": "を押しながら、変更内容を声に出して話します。",
-      "step3": "Remixがその場で書き直します。気が変わったら元に戻せます。",
-      "more": "選択していない場合は、今いる入力欄全体を読み取ります。さらに、Webで事実や出典を検索したり、画像を下書きに直接貼り付けたりもできます。"
-    }
   },
   "meetings": {
     "titleAccent": "ミーティング",
@@ -969,10 +886,6 @@
       "eyebrow": "ホットキー",
       "hotkeyLabel": "ホットキー",
       "hotkeyDesc": "ショートカットを長押しして録音し、離して文字起こしします。",
-      "remixLabel": "Remixホットキー",
-      "remixDesc": "押しながら変更内容を話すか、軽く押してクイックルートを表示します。",
-      "quickRoutesLabel": "クイックルート",
-      "quickRoutesDesc": "ホットキーを押し続けずに軽くタップすると、ワンタップでクイックルートを使えます。",
       "cancelLabel": "キャンセル",
       "cancelDesc": "Escapeキーでもいつでもキャンセルできます。"
     },
@@ -1046,25 +959,6 @@
       "listening": "聞き取り中",
       "transcribing": "文字起こし中"
     },
-    "remix": {
-      "applying": "{{label}} を適用中",
-      "applyingFallback": "リミックス",
-      "listening": "リミックスの指示を聞き取り中",
-      "chat": "Remix チャット",
-      "working": "処理中…",
-      "hintListening": "聞き取り中…",
-      "transcribing": "文字起こし中…",
-      "nothingSelectedTitle": "何も選択されていません",
-      "nothingSelectedBody": "まずアプリ内のテキストを選択してから、ホットキーを押してください。",
-      "failedTitle": "Remix に失敗しました",
-      "modelCouldntRun": "モデルがこれを実行できませんでした（{{status}}）。",
-      "returnedNothing": "モデルから結果が返りませんでした。",
-      "somethingWrong": "問題が発生しました。",
-      "couldntReplaceTitle": "テキストを置き換えられませんでした",
-      "couldntReplaceBody": "編集内容はクリップボードにあります。自分で貼り付けてください。",
-      "didntCatchTitle": "聞き取れませんでした",
-      "didntCatchBody": "何も届きませんでした。ホットキーを押したまま、やりたいことを話してください。"
-    },
     "error": {
       "timedOut": "文字起こしがタイムアウトしました",
       "connectionLostRecording": "録音中に接続が中断されました",
@@ -1080,100 +974,6 @@
       "micDenied": "マイクへのアクセスが拒否されました",
       "noAudioCaptured": "音声が録音されませんでした。もう一度録音してください。"
     }
-  },
-  "remixBar": {
-    "open": "Openstyle Remixを開く"
-  },
-  "remixChat": {
-    "newThread": "新しい会話を開始",
-    "closeEsc": "閉じる (Esc)",
-    "message": "Remixにメッセージ",
-    "stop": "停止",
-    "send": "送信",
-    "conversation": "Remixの会話",
-    "placeholder": "Remix にメッセージ…",
-    "working": "処理中…",
-    "miniCouldntOpen": "Remix を開けませんでした",
-    "couldntOpen": "Remix を開けませんでした。Openstyle サーバーは起動していますか？",
-    "opening": "Remix を開いています…",
-    "emptyWithSelection": "選択した内容をどうするか、話すか入力してください。",
-    "emptyNoSelection": "何も選択されていません。文章の作成、調査、回答などを依頼してください。",
-    "thinking": "考え中…",
-    "stepInput": "入力",
-    "stepOutput": "出力",
-    "failed": "Remix に失敗しました。",
-    "statusFailed": "Remix に失敗しました（{{status}}）。",
-    "somethingWrong": "問題が発生しました。",
-    "returnedNothing": "モデルから結果が返りませんでした。",
-    "couldntReplace": "置き換えられませんでした。何も変更されていません。",
-    "nothingHighlighted": "テキストが選択されていません。先にテキストを選択してください。",
-    "actionRunning": "{{label}}…",
-    "actionDone": "{{label}} — テキストを置き換えました",
-    "actionFailed": "{{label}} に失敗しました — {{detail}}",
-    "toolRunning": "{{name}} を実行中…",
-    "toolRan": "{{name}} を実行しました",
-    "presets": {
-      "fix": "修正",
-      "formal": "フォーマル",
-      "markdown": "Markdown"
-    },
-    "tools": {
-      "get_context": {
-        "doing": "画面を確認中…",
-        "done": "画面を確認しました"
-      },
-      "read_document": {
-        "doing": "ドキュメントを読み取り中…",
-        "done": "ドキュメントを読み取りました"
-      },
-      "select_all": {
-        "doing": "すべてを選択中…",
-        "done": "すべてを選択しました"
-      },
-      "select_text": {
-        "doing": "ドキュメント内で選択中…",
-        "done": "選択範囲を移動しました"
-      },
-      "collapse_selection": {
-        "doing": "カーソルを配置中…",
-        "done": "カーソルを配置しました"
-      },
-      "copy": {
-        "doing": "選択範囲を読み取り中…",
-        "done": "選択範囲を読み取りました"
-      },
-      "set_clipboard": {
-        "doing": "テキストを準備中…",
-        "done": "テキストをクリップボードに置きました"
-      },
-      "set_clipboard_image": {
-        "doing": "画像を取得中…",
-        "done": "画像をクリップボードに置きました"
-      },
-      "paste": {
-        "doing": "貼り付け中…",
-        "done": "ドキュメントに貼り付けました"
-      },
-      "undo": {
-        "doing": "元に戻し中…",
-        "done": "最後の編集を元に戻しました"
-      },
-      "redo": {
-        "doing": "やり直し中…",
-        "done": "編集をやり直しました"
-      },
-      "press_key": {
-        "doing": "キーを押しています…",
-        "done": "キーを押しました"
-      },
-      "get_clipboard": {
-        "doing": "クリップボードを読み取り中…",
-        "done": "クリップボードを読み取りました"
-      }
-    },
-    "stepFailed": "{{label}} — うまくいきませんでした",
-    "toolsRanOne": "1 件のツールを実行しました",
-    "toolsRanMany": "{{count}} 件のツールを実行しました"
   },
   "errorBoundary": {
     "eyebrow": "問題が発生しました",

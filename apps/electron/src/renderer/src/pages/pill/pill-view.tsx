@@ -31,7 +31,6 @@ export interface PillViewProps {
   riseBy: (distance: number) => CSSProperties;
   transformOrigin: string;
   pillAlign: "start" | "end";
-  pillSide: "center" | "right";
   cancelSlotRef: RefObject<HTMLSpanElement | null>;
   cancelRecording: () => void;
   pillLanguageLabel: string | null;
@@ -58,7 +57,6 @@ export function PillView({
   riseBy,
   transformOrigin,
   pillAlign,
-  pillSide,
   cancelSlotRef,
   cancelRecording,
   pillLanguageLabel,

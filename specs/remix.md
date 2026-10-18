@@ -1,11 +1,8 @@
 # Freestyle Remix — Technical Spec
 
-**Status:** Stale. This file is a pre-fork design from the cloud era. Do not use it as a current spec. It describes `main` @ `f529a40`, the `cloud` repo and a Drive product spec. Commit `2a8c252` ("fork: remove Freestyle Cloud", 2026-08-19) removed the cloud. The agent loop (section 4, `POST /v2/remix`) and the cloud proxy branch of `POST /api/remix` (section 5) no longer exist. Today the agent loop runs in the local server: `runRemixAgentLocally()` in `apps/server/src/lib/remix-agent.ts:65` through the route `apps/server/src/routes/remix/agent.ts`. Read the current code for the real design:
-- `apps/server/src/lib/remix-agent.ts`, `remix-store.ts`, `remix-transform.ts` (agent loop, local thread and run storage, transform lane)
-- `apps/server/src/routes/remix/` (HTTP routes)
-- `packages/validations/src/remix.ts` (wire contracts)
-- `apps/electron/src/main/remix/` (hotkey, bar window, IPC)
-- `apps/electron/src/renderer/src/pages/remix.tsx` and `components/remix-chat.tsx` (UI)
+**Status:** RETIRED 2026-10-17. The owner removed the Remix feature (work package WP-R). This file stays as history. Do not use it as a spec. The code it describes no longer exists. Git history keeps the old files. The owner plans to build Remix again on the new platform.
+
+Earlier note (kept for history): this file was already stale before the removal. It is a pre-fork design from the cloud era. It describes `main` @ `f529a40`, the `cloud` repo and a Drive product spec. Commit `2a8c252` ("fork: remove Freestyle Cloud", 2026-08-19) removed the cloud.
 
 **Checked:** 2026-10-13 on `main` @ `fdc6de9`.
 

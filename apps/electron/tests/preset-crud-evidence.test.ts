@@ -137,7 +137,7 @@ const P1 = {
 };
 const P2 = {
   id: `user_${randomUUID()}`,
-  name: "Punchy remix",
+  name: "Punchy edit",
   params: { temperature: 0.7, max_tokens: 1024, top_p: 0.95 },
 };
 const RENAMED = "Careful cleanup v2";
@@ -364,8 +364,7 @@ async function resizeDashboard(width: number, height: number): Promise<void> {
       const win = BrowserWindow.getAllWindows().find(
         (x) =>
           x.webContents.getURL().includes("app://renderer") &&
-          !x.webContents.getURL().includes("pill") &&
-          !x.webContents.getURL().includes("bar.html"),
+          !x.webContents.getURL().includes("pill"),
       );
       win?.setContentSize(w, h);
     },
@@ -456,7 +455,7 @@ test.beforeAll(async () => {
       "llm_task_assignments",
       JSON.stringify({
         cleanup: { mode: "preset", presetId: P1.id },
-        remix: { mode: "preset", presetId: P2.id },
+        meetingEnhance: { mode: "preset", presetId: P2.id },
       }),
     ),
   ).toBe(200);
@@ -591,7 +590,7 @@ test.afterAll(async () => {
       presets: [P1, P2],
       assignments: {
         cleanup: { mode: "preset", presetId: P1.id },
-        remix: { mode: "preset", presetId: P2.id },
+        meetingEnhance: { mode: "preset", presetId: P2.id },
       },
       configuredModels: [
         {
@@ -666,19 +665,19 @@ test("01 collapsed section, advanced mode ON — preset Badge visible in the row
   const sec = section();
   await expect(sec).toBeVisible();
   const cleanupChip = sec.getByText("Careful cleanup", { exact: true }).first();
-  const remixChip = sec.getByText("Punchy remix", { exact: true }).first();
+  const punchyChip = sec.getByText("Punchy edit", { exact: true }).first();
   await expect(cleanupChip).toBeVisible({ timeout: 20_000 });
-  await expect(remixChip).toBeVisible();
+  await expect(punchyChip).toBeVisible();
 
   const rows = await sec
     .getByText(
-      /Fast rewrites while you dictate|Quick edits and the canvas agent|Long-form summaries after a meeting ends|Cleans up transcript text after a meeting/,
+      /Fast rewrites while you dictate|Long-form summaries after a meeting ends|Cleans up transcript text after a meeting/,
     )
     .count();
   record(
     "01",
-    "all four task rows render (cleanup/remix/meetingSummarize/meetingEnhance)",
-    rows === 4,
+    "all three task rows render (cleanup/meetingSummarize/meetingEnhance)",
+    rows === 3,
     `desc rows found=${rows}`,
   );
   record(
@@ -698,7 +697,7 @@ test("01 collapsed section, advanced mode ON — preset Badge visible in the row
     "01",
     "collapsed-baseline",
     "Collapsed section, advanced mode ON",
-    "Models page with the 'Where your models work' section collapsed: four rows; Cleanup shows a 'Careful cleanup' badge, Remix a 'Punchy remix' badge, the meeting rows show plain 'Auto'. No action row.",
+    "Models page with the 'Where your models work' section collapsed: three rows; Cleanup shows a 'Careful cleanup' badge, Enhance a 'Punchy edit' badge, the Summarize row shows plain 'Auto'. No action row.",
     page,
   );
 
@@ -716,7 +715,7 @@ test("02 cleanup row EXPANDED: Params track + full PresetActionRow + Yours badge
   for (const label of [
     "Auto",
     "Careful cleanup",
-    "Punchy remix",
+    "Punchy edit",
     "Qwen thinking",
     "Qwen fast",
     "Custom…",
@@ -795,7 +794,7 @@ test("02 cleanup row EXPANDED: Params track + full PresetActionRow + Yours badge
     "02b",
     "track-single-row-1440",
     "Same row at a 1440px viewport",
-    "The Params track's single-row flex variant at >=1360px: Auto · Qwen thinking · Qwen fast · Careful cleanup (selected) · Punchy remix · Custom… · + New preset on one line, with the action row beneath. Rest of the suite runs at this width.",
+    "The Params track's single-row flex variant at >=1360px: Auto · Qwen thinking · Qwen fast · Careful cleanup (selected) · Punchy edit · Custom… · + New preset on one line, with the action row beneath. Rest of the suite runs at this width.",
     section(),
   );
 });
@@ -1055,7 +1054,7 @@ test("07 Duplicate creates a '… copy' preset in the picker AND in the blob", a
     "07",
     "duplicated-copy",
     "Duplicate — the new '… copy' preset",
-    "Params track now lists 'Careful cleanup v2 copy' (selected) alongside Auto / Qwen thinking / Qwen fast / Punchy remix / Custom… / + New preset; action row shows Yours + Edit params · Rename · Duplicate · Delete.",
+    "Params track now lists 'Careful cleanup v2 copy' (selected) alongside Auto / Qwen thinking / Qwen fast / Punchy edit / Custom… / + New preset; action row shows Yours + Edit params · Rename · Duplicate · Delete.",
     panel(),
   );
 

@@ -293,24 +293,20 @@ export default function AppPage(): React.JSX.Element {
     resolveStreamingWithFallback,
     restFallbackTranscribe,
   });
-  const {
-    restoreSystemAudioSafely,
-    startRecording,
-    commitRecording,
-    cancelRecording,
-  } = useDictationSession({
-    ...shared,
-    startBarAnimation,
-    startListening,
-    startHandover,
-    hidePill,
-    dismissPill,
-    getStreamer,
-    drainQueue,
-    isTranscriptionIdle,
-    enqueue,
-    restFallbackTranscribe,
-  });
+  const { startRecording, commitRecording, cancelRecording } =
+    useDictationSession({
+      ...shared,
+      startBarAnimation,
+      startListening,
+      startHandover,
+      hidePill,
+      dismissPill,
+      getStreamer,
+      drainQueue,
+      isTranscriptionIdle,
+      enqueue,
+      restFallbackTranscribe,
+    });
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {
     const isTop =
@@ -822,7 +818,6 @@ export default function AppPage(): React.JSX.Element {
       riseBy={riseBy}
       transformOrigin={transformOrigin}
       pillAlign={pillAlign}
-      pillSide={pillSide}
       cancelSlotRef={cancelSlotRef}
       cancelRecording={cancelRecording}
       pillLanguageLabel={pillLanguageLabel}

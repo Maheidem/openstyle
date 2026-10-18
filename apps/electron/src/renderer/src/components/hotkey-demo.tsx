@@ -54,7 +54,7 @@ export function useCoachPress(handlers?: {
       removeUp?.();
       if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
     };
-  }, [source]);
+  }, []);
 
   useEffect(() => {
     const remove = window.api?.onAudioLevel((level: number) => {
