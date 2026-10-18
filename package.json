@@ -7,6 +7,7 @@
     "format": "biome check --write .",
     "knip": "knip",
     "meeting:compare": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare.mts",
+    "meeting:check-summary": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/check-summary.mts",
     "meeting:compare-speakers": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare-speakers.mts",
     "test": "turbo test",
     "prepare": "is-ci || husky"
