@@ -1173,6 +1173,8 @@ User prompt: guard sentence and the chunk inside `<transcript>` tags, one line `
 
 #### 4.2.3 Code checks after the parse
 
+Council round r185-4 findings (2026-10-18, WP6 ea829062 and 6f57ac69): the code drops a correction, keeps the original text and records the reason when it is `format_only` (only case or punctuation changes), `deletes_words` (a word diff removes words with no replacement in their place), `too_different` (adds more than 3 words net, or keeps under half of the original words in order: copied text from a neighbour segment), or `meaning_flip` (the count of negation words changes). These join `unchanged` in `CorrectionDropReason`.
+
 For each correction, in order:
 
 1. `id` not in the chunk: drop (`unknown_id` is the new reason label; today a silent `continue`, `M/enhance.ts:530-531`).
@@ -1383,6 +1385,8 @@ Check of 2026-10-17, Node 26.5.0, current functions (`M/enhance.ts:263-265`, `27
 Cause: `\b` without the `u` flag counts only A to Z, digits and underscore as word characters (`M/enhance.ts:277`; https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Word_boundary_assertion). UNVERIFIED: curly apostrophes in the owner's ASR.
 
 #### 4.4.2 Per-proposal checks
+
+Council round r185-4 finding (2026-10-18, WP6 6f57ac69): the model writes the full name from the calendar invite while the quote holds only the spoken first name, so check 7 dropped every self-introduction. Check 7 now passes when the full normalised name is in the quote at a word boundary, or its first word is; a first name of 4 or more letters also passes when a quote word is one letter away (the speaker-spelling rule). Check 8 tests the matched part. The verdict keeps the full proposed name.
 
 Run in order. The first failure decides the verdict. Every proposal gets exactly one verdict.
 
