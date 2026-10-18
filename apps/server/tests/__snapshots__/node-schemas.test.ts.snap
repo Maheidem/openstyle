@@ -1,0 +1,168 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > correct_chunk 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "corrections": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+            },
+            "text": {
+              "type": "string",
+            },
+          },
+          "required": [
+            "id",
+            "text",
+          ],
+          "type": "object",
+        },
+        "type": "array",
+      },
+    },
+    "required": [
+      "corrections",
+    ],
+    "type": "object",
+  },
+  "name": "correct_chunk",
+  "version": 1,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > identify_speakers 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "speakers": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "name",
+                "role",
+              ],
+              "type": "string",
+            },
+            "label": {
+              "type": "string",
+            },
+            "name": {
+              "type": "string",
+            },
+            "quote": {
+              "type": "string",
+            },
+            "segmentId": {
+              "type": "string",
+            },
+          },
+          "required": [
+            "segmentId",
+            "quote",
+            "label",
+            "kind",
+            "name",
+          ],
+          "type": "object",
+        },
+        "type": "array",
+      },
+    },
+    "required": [
+      "speakers",
+    ],
+    "type": "object",
+  },
+  "name": "identify_speakers",
+  "version": 1,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > meeting_summary 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "actionItems": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "due": {
+              "anyOf": [
+                {
+                  "type": "string",
+                },
+                {
+                  "type": "null",
+                },
+              ],
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "type": "string",
+                },
+                {
+                  "type": "null",
+                },
+              ],
+            },
+            "task": {
+              "type": "string",
+            },
+          },
+          "required": [
+            "task",
+            "owner",
+            "due",
+          ],
+          "type": "object",
+        },
+        "type": "array",
+      },
+      "decisions": {
+        "items": {
+          "type": "string",
+        },
+        "type": "array",
+      },
+      "keyPoints": {
+        "items": {
+          "type": "string",
+        },
+        "type": "array",
+      },
+      "openQuestions": {
+        "items": {
+          "type": "string",
+        },
+        "type": "array",
+      },
+      "overview": {
+        "type": "string",
+      },
+    },
+    "required": [
+      "overview",
+      "keyPoints",
+      "decisions",
+      "actionItems",
+      "openQuestions",
+    ],
+    "type": "object",
+  },
+  "name": "meeting_summary",
+  "version": 1,
+}
+`;

@@ -1,0 +1,731 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'anthropic json tool' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "[s1] Me: we shiped on friday",
+            "type": "text",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+    "model": "claude-sonnet-4-6",
+    "system": [
+      {
+        "text": "Fix recognizer errors.",
+        "type": "text",
+      },
+    ],
+    "temperature": 0,
+    "thinking": {
+      "type": "disabled",
+    },
+    "tool_choice": {
+      "disable_parallel_tool_use": true,
+      "type": "any",
+    },
+    "tools": [
+      {
+        "description": "Respond with a JSON object.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "properties": {
+            "corrections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                  },
+                  "text": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "id",
+                  "text",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "corrections",
+          ],
+          "type": "object",
+        },
+        "name": "json",
+      },
+    ],
+  },
+  "url": "https://api.anthropic.com/v1/messages",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'anthropic output_config.format' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "[s1] Me: we shiped on friday",
+            "type": "text",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+    "model": "claude-sonnet-4-6",
+    "output_config": {
+      "format": {
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "properties": {
+            "corrections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                  },
+                  "text": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "id",
+                  "text",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "corrections",
+          ],
+          "type": "object",
+        },
+        "type": "json_schema",
+      },
+    },
+    "system": [
+      {
+        "text": "Fix recognizer errors.",
+        "type": "text",
+      },
+    ],
+    "temperature": 0,
+    "thinking": {
+      "type": "disabled",
+    },
+  },
+  "url": "https://api.anthropic.com/v1/messages",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'google json_object' 1`] = `
+{
+  "body": {
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "[s1] Me: we shiped on friday",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 400,
+      "responseMimeType": "application/json",
+      "temperature": 0,
+      "thinkingConfig": {
+        "thinkingBudget": 0,
+      },
+    },
+    "systemInstruction": {
+      "parts": [
+        {
+          "text": "Fix recognizer errors.
+
+Return one JSON object that matches this JSON Schema. Return no other text.
+{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"corrections":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"}},"required":["id","text"],"additionalProperties":false}}},"required":["corrections"],"additionalProperties":false}",
+        },
+      ],
+    },
+  },
+  "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'google json_schema' 1`] = `
+{
+  "body": {
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "[s1] Me: we shiped on friday",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 400,
+      "responseJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "corrections": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                },
+                "text": {
+                  "type": "string",
+                },
+              },
+              "required": [
+                "id",
+                "text",
+              ],
+              "type": "object",
+            },
+            "type": "array",
+          },
+        },
+        "required": [
+          "corrections",
+        ],
+        "type": "object",
+      },
+      "responseMimeType": "application/json",
+      "temperature": 0,
+      "thinkingConfig": {
+        "thinkingBudget": 0,
+      },
+    },
+    "systemInstruction": {
+      "parts": [
+        {
+          "text": "Fix recognizer errors.",
+        },
+      ],
+    },
+  },
+  "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'groq json_object' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.
+
+Return one JSON object that matches this JSON Schema. Return no other text.
+{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"corrections":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"}},"required":["id","text"],"additionalProperties":false}}},"required":["corrections"],"additionalProperties":false}",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "llama-3.3-70b-versatile",
+    "response_format": {
+      "type": "json_object",
+    },
+    "temperature": 0,
+  },
+  "url": "https://api.groq.com/openai/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'groq strict' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "qwen/qwen3.8-27b",
+    "response_format": {
+      "json_schema": {
+        "name": "correct_chunk",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "properties": {
+            "corrections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                  },
+                  "text": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "id",
+                  "text",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "corrections",
+          ],
+          "type": "object",
+        },
+        "strict": true,
+      },
+      "type": "json_schema",
+    },
+    "temperature": 0,
+  },
+  "url": "https://api.groq.com/openai/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'mistral json_object' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.
+
+Return one JSON object that matches this JSON Schema. Return no other text.
+{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"corrections":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"}},"required":["id","text"],"additionalProperties":false}}},"required":["corrections"],"additionalProperties":false}
+
+You MUST answer with JSON.",
+        "role": "system",
+      },
+      {
+        "content": [
+          {
+            "text": "[s1] Me: we shiped on friday",
+            "type": "text",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+    "model": "mistral-small-latest",
+    "reasoning_effort": "none",
+    "response_format": {
+      "type": "json_object",
+    },
+    "temperature": 0,
+  },
+  "url": "https://api.mistral.ai/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'mistral json_schema' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.",
+        "role": "system",
+      },
+      {
+        "content": [
+          {
+            "text": "[s1] Me: we shiped on friday",
+            "type": "text",
+          },
+        ],
+        "role": "user",
+      },
+    ],
+    "model": "mistral-small-latest",
+    "reasoning_effort": "none",
+    "response_format": {
+      "json_schema": {
+        "name": "correct_chunk",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "properties": {
+            "corrections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                  },
+                  "text": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "id",
+                  "text",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "corrections",
+          ],
+          "type": "object",
+        },
+        "strict": false,
+      },
+      "type": "json_schema",
+    },
+    "temperature": 0,
+  },
+  "url": "https://api.mistral.ai/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'openai json_object' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.
+
+Return one JSON object that matches this JSON Schema. Return no other text.
+{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"corrections":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"}},"required":["id","text"],"additionalProperties":false}}},"required":["corrections"],"additionalProperties":false}",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "gpt-4o-mini",
+    "response_format": {
+      "type": "json_object",
+    },
+    "temperature": 0,
+  },
+  "url": "https://api.openai.com/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'openai prompt_only' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.
+
+Return one JSON object that matches this JSON Schema. Return no other text.
+{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"corrections":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"}},"required":["id","text"],"additionalProperties":false}}},"required":["corrections"],"additionalProperties":false}",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "gpt-4o-mini",
+    "temperature": 0,
+  },
+  "url": "https://api.openai.com/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'openai strict' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "gpt-4o-mini",
+    "response_format": {
+      "json_schema": {
+        "name": "correct_chunk",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "properties": {
+            "corrections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                  },
+                  "text": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "id",
+                  "text",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "corrections",
+          ],
+          "type": "object",
+        },
+        "strict": true,
+      },
+      "type": "json_schema",
+    },
+    "temperature": 0,
+  },
+  "url": "https://api.openai.com/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'openrouter require_parameters' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "meta-llama/llama-3.1-8b-instruct",
+    "provider": {
+      "require_parameters": true,
+    },
+    "reasoning": {
+      "effort": "none",
+    },
+    "response_format": {
+      "json_schema": {
+        "name": "correct_chunk",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "properties": {
+            "corrections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                  },
+                  "text": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "id",
+                  "text",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "corrections",
+          ],
+          "type": "object",
+        },
+        "strict": true,
+      },
+      "type": "json_schema",
+    },
+    "temperature": 0,
+  },
+  "url": "https://openrouter.ai/api/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'server prompt_only' 1`] = `
+{
+  "body": {
+    "chat_template_kwargs": {
+      "enable_thinking": false,
+    },
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.
+
+Return one JSON object that matches this JSON Schema. Return no other text.
+{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"corrections":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"}},"required":["id","text"],"additionalProperties":false}}},"required":["corrections"],"additionalProperties":false}",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "Qwen3.8-27B",
+    "temperature": 0,
+  },
+  "url": "http://127.0.0.1:8123/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'server strict' 1`] = `
+{
+  "body": {
+    "chat_template_kwargs": {
+      "enable_thinking": false,
+    },
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "Qwen3.8-27B",
+    "response_format": {
+      "json_schema": {
+        "name": "correct_chunk",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "properties": {
+            "corrections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                  },
+                  "text": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "id",
+                  "text",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "corrections",
+          ],
+          "type": "object",
+        },
+        "strict": true,
+      },
+      "type": "json_schema",
+    },
+    "temperature": 0,
+  },
+  "url": "http://127.0.0.1:8123/v1/chat/completions",
+}
+`;
+
+exports[`W12, every provider and mode puts its structured-output field on the wire > 'vercel strict' 1`] = `
+{
+  "body": {
+    "max_tokens": 400,
+    "messages": [
+      {
+        "content": "Fix recognizer errors.",
+        "role": "system",
+      },
+      {
+        "content": "[s1] Me: we shiped on friday",
+        "role": "user",
+      },
+    ],
+    "model": "anthropic/claude-haiku-4.5",
+    "response_format": {
+      "json_schema": {
+        "name": "correct_chunk",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "additionalProperties": false,
+          "properties": {
+            "corrections": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                  },
+                  "text": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "id",
+                  "text",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "required": [
+            "corrections",
+          ],
+          "type": "object",
+        },
+        "strict": true,
+      },
+      "type": "json_schema",
+    },
+    "temperature": 0,
+  },
+  "url": "https://ai-gateway.vercel.sh/v1/chat/completions",
+}
+`;
