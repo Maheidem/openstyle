@@ -18,7 +18,7 @@ for a in "$@"; do
   esac
 done
 REPO="${BRANCH_STATUS_REPO:-Maheidem/openstyle}"
-WIP_LIMIT=2
+WIP_LIMIT=4
 STALE_DAYS=2
 now=$(date +%s)
 problems=0
