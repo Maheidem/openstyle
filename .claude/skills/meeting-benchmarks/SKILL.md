@@ -23,6 +23,9 @@ The scripts are in `scripts/meeting-v2/`. They came from `specs/meeting-transcri
 Pick them by length only. Do not read their text.
 - Short (fast loop): `2943c36a-532e-4db9-af09-b5e66f0bdf2d` (425 s)
 - Long (final run): `9243bea0-567f-443b-bf3b-9980f69993fd` (3580 s)
+- Issue #163 meeting (8 chunks; the old Enhance path fails 2 of 8): `ca70f895-ebe9-47e3-b663-eeb2c7bd97a6`
+
+2026-10-17 (issue #185 only): the owner allows the pi and Codex judges to read the compare files of these three meetings, with no per-data-set question. This covers the judges only. The Enhance and Summary runs stay on the local model. WP11 removes this line.
 
 ## Commands
 
@@ -41,6 +44,41 @@ jq -e 'has("wallSeconds") and has("chunks") and has("labeled") and has("termHits
 ```
 
 `run-baseline.mjs` starts its own server from `apps/electron` (so the diarizer resolves), resets the scratch DB, transcribes, and writes `metrics.json` in `/tmp/meeting-v2/baseline/<run>-<meetingId>/`. Each run of a phase gets its own run name (for example `R3b-<id>`).
+
+## Enhance and summary runs (issue #185)
+
+The arm is the server build, not a flag. `--arm old|new` only labels the files. Build the server in the worktree of the arm (`pnpm turbo build --filter=@openstyle/server`) and give that worktree to `--server-repo`.
+
+```bash
+# 1. Transcribe once (steps above), stop the server, then take a copy:
+sqlite3 -readonly /tmp/meeting-v2/test.db ".backup '/tmp/meeting-v2/transcribed.db'"
+
+# 2. One Enhance run (3 per arm and meeting, 6 on the #163 meeting).
+#    Every run starts from a fresh copy of transcribed.db.
+SCRATCH=/tmp/meeting-v2 node scripts/meeting-v2/run-enhance.mjs --meeting <id> --run <name> \
+  --arm old --from-db /tmp/meeting-v2/transcribed.db --summarize --port 4790 \
+  [--server-repo <worktree of the arm>]
+# writes /tmp/meeting-v2/enhance/<name>-<id8>/{metrics-enhance.json,dump.json,server.log,test.db}
+
+# 3. Check the metrics files, then the dumps of one arm (3 runs):
+jq -e 'has("seconds") and has("chunksAttempted") and has("chunksSucceeded") and has("chunksFailed") and has("correctedCount") and has("speakerSuggestions") and has("contextHash")' /tmp/meeting-v2/enhance/*/metrics-enhance.json
+node scripts/meeting-v2/check-enhance-metrics.mjs --dumps <d1> <d2> <d3> --out <m.json>
+
+# 4. Compare two arms (X vs Y). Equal `text` hashes first:
+jq -S '[.segments[].text]' <dump> | shasum
+pnpm meeting:compare-speakers --x <X dump> --y <Y dump> --x-name A --y-name B --out <file.md>
+
+# 5. The summary check alone (run-enhance.mjs --summarize calls it for you):
+pnpm meeting:check-summary --db <db> --meeting <id> --arm <old|new> --out <metrics.json>
+```
+
+`run-enhance.mjs` prints counts, durations, hashes, ids and paths only. `dump.json` holds private text: never print or commit it. `check-enhance-metrics.mjs` reads `metrics-enhance.json` from the folder of each dump, so keep both files together. `check-enhance-metrics.mjs` re-reads its dumps and its output and exits 1 on a mismatch. It reports `untypedFailures` as null when a run has `failureReasons` null (new arm until WP5b). `check-summary.mts` exits 0 (pass), 1 (a check failed) or 2 (wrong usage, unreadable database or no summary row); with `--arm old` it only measures.
+
+`speakerSuggestions` is the database count of `meeting_speakers` rows with a non-empty `suggested_name`, in both arms. Start from a transcribed copy that holds no preset suggestion, or the count includes them. The old arm also writes the response value as `speakerSuggestionsBody`. Compare arms on `speakerSuggestions` only.
+
+The new arm always needs `--summarize`. Without it the script stops the server when the Enhance job slot is empty, and the chained Summarize can still be running. Counts and the dump are then read mid-run.
+
+The new-arm branch of `run-enhance.mjs` (202 route, job progress) is UNVERIFIED until the WP5b build exists. WP10b fixes it in the first round if it is wrong.
 
 ## How to compare runs
 
