@@ -1171,6 +1171,8 @@ System prompt, in order: (1) role: "Me" is the app user; "Them N" or a confirmed
 
 User prompt: guard sentence and the chunk inside `<transcript>` tags, one line `[id] Speaker: text` each (`M/enhance-prompt.ts:119-130`). No title or user context (N4).
 
+Owner decision 2026-10-18 (council round r185-5 split on policy: Claude SHIP on the faithful rule, pi and Codex FIX-FIRST asking for cleanup): "light cleanup". The correction step fixes clear speech-to-text errors and MAY also fix punctuation and capitalization and remove an exact repeated word ("the the"). It still never removes fillers, false starts or any other word, never paraphrases, never fixes grammar or style beyond that, never adds or removes a negation and never copies text from another segment. This replaces the "do not change only capitalization or punctuation" and "do not remove repeats" parts of the rule list above. The `format_only` drop goes away; `deletes_words` allows an immediate exact duplicate. Judge briefs from round r185-6 on state this policy.
+
 #### 4.2.3 Code checks after the parse
 
 Council round r185-4 findings (2026-10-18, WP6 ea829062 and 6f57ac69): the code drops a correction, keeps the original text and records the reason when it is `format_only` (only case or punctuation changes), `deletes_words` (a word diff removes words with no replacement in their place), `too_different` (adds more than 3 words net, or keeps under half of the original words in order: copied text from a neighbour segment), or `meaning_flip` (the count of negation words changes). These join `unchanged` in `CorrectionDropReason`.
