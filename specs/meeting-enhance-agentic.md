@@ -1175,6 +1175,8 @@ Owner decision 2026-10-18 (council round r185-5 split on policy: Claude SHIP on 
 
 #### 4.2.3 Code checks after the parse
 
+Council round r185-6 update 2026-10-18 (WP6 8ef49459): guard `inflection_only` drops a correction when every changed word pair is an inflection of the same word (suffix s, es, ed, d, ing, or one irregular group: be, have, do), after the same normalisation and exact-repeat collapse; a correction that mixes an inflection with any other change is kept. The prompt forbids grammar changes (agreement, tense, number) of a real word that fits, and a real-word swap that the context or vocabulary does not support. Guard order: unchanged, deletes_words, too_different, meaning_flip, inflection_only.
+
 Light-cleanup update 2026-10-18 (WP6 40bf2bb9): `format_only` is no longer emitted (the value stays in the type for stored runs). `deletes_words` drops a pure deletion run unless every deleted word equals the word right before or after it in the original (an exact repeat).
 
 Council round r185-4 findings (2026-10-18, WP6 ea829062 and 6f57ac69): the code drops a correction, keeps the original text and records the reason when it is `format_only` (only case or punctuation changes), `deletes_words` (a word diff removes words with no replacement in their place), `too_different` (adds more than 3 words net, or keeps under half of the original words in order: copied text from a neighbour segment), or `meaning_flip` (the count of negation words changes). These join `unchanged` in `CorrectionDropReason`.
