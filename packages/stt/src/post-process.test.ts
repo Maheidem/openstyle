@@ -1,24 +1,47 @@
+import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { postProcess } from "./post-process.js";
 
-function fakeModel(doGenerate: (opts?: unknown) => unknown) {
-  return {
-    specificationVersion: "v3",
+type DoGenerate = Extract<
+  NonNullable<
+    ConstructorParameters<typeof MockLanguageModelV4>[0]
+  >["doGenerate"],
+  (...args: never[]) => unknown
+>;
+type GenerateResult = Awaited<ReturnType<DoGenerate>>;
+
+function fakeModel(doGenerate: DoGenerate) {
+  return new MockLanguageModelV4({
     provider: "test",
     modelId: "fake-model",
     doGenerate,
-  } as never;
+  });
 }
 
-// Provider spec v3 result. `generateText` flattens `unified` onto the result
+function usageOf(input: number, output: number): GenerateResult["usage"] {
+  return {
+    inputTokens: {
+      total: input,
+      noCache: input,
+      cacheRead: undefined,
+      cacheWrite: undefined,
+    },
+    outputTokens: { total: output, text: output, reasoning: undefined },
+  };
+}
+
+// Provider spec v4 result. `generateText` flattens `unified` onto the result
 // as a plain string.
 function textResult(
   text: string,
-  finishReason = { unified: "stop", raw: "stop" },
-  usage = { inputTokens: { total: 5 }, outputTokens: { total: 7 } },
-) {
+  finishReason: GenerateResult["finishReason"] = {
+    unified: "stop",
+    raw: "stop",
+  },
+  usage = usageOf(5, 7),
+): GenerateResult {
   return {
-    content: [{ type: "text", text }],
+    content: [{ type: "text" as const, text }],
     finishReason,
     usage,
     warnings: [],
@@ -118,7 +141,7 @@ describe("postProcess", () => {
       textResult(
         "The user wants me to clean up a dictated transcript. I need to fix grammar, punctuation, and remove filler words. Let me identify the core message: they were thinking about whether line breaks and n",
         { unified: "length", raw: "length" },
-        { inputTokens: { total: 120 }, outputTokens: { total: 60 } },
+        usageOf(120, 60),
       ),
     );
     const result = await postProcess({

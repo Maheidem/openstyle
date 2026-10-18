@@ -376,7 +376,7 @@ async function runCase(
   const model = getGroqChatModel(MODEL_ID);
   const result = await generateText({
     model,
-    system,
+    instructions: system,
     prompt,
     temperature: 0,
     maxOutputTokens: maxOutputTokensForCleanup(testCase.input),

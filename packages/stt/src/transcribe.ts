@@ -1,6 +1,6 @@
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { TranscriptionModel } from "ai";
-import { experimental_transcribe as aiTranscribe } from "ai";
+import { transcribe as aiTranscribe } from "ai";
 
 /** Audio accepted by the AI SDK transcribe call. */
 export type TranscribeAudio = Uint8Array | ArrayBuffer | string | URL;
