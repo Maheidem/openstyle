@@ -1,8 +1,8 @@
 import { type MergedSegment, speakerDisplayLabel } from "../merge.js";
 
-// Transcript chunking helpers, moved out of `enhance.ts`, `summarize.ts` and
-// `llm-call.ts` with no behavior change (specs/meeting-enhance-agentic.md
-// 11.5, WP5a). The old files import them back until WP5b deletes them.
+// Transcript chunking helpers, moved out of the old Enhance and Summarize
+// modules with no behavior change (specs/meeting-enhance-agentic.md 11.5).
+// WP5b deleted those modules; the workflow nodes import these.
 
 /**
  * Rough token estimate (~4 chars/token), mirroring `@openstyle/stt`

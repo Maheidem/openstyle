@@ -85,7 +85,7 @@ const TASK_ASSIGNMENTS_MESSAGE = "Invalid task assignments setting";
 // flat "true"/"false" strings. A missing row means off / not shown; any
 // other stored value is a 400 so the UI can name the allowed values.
 const ENHANCE_FLAG_MESSAGE = 'Value must be "true" or "false"';
-const checkEnhanceFlag: SettingCheck = (value) =>
+const checkBooleanFlag: SettingCheck = (value) =>
   value === "true" || value === "false" ? null : ENHANCE_FLAG_MESSAGE;
 
 // The PUT must reject a body that is not a JSON object. It must also reject a
@@ -209,13 +209,13 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   ],
   // I2 (specs/meeting-transcription-v2.md §3.2): the auto-run flag and the
   // one-time-prompt-seen flag both take only "true" and "false".
-  ["meeting_enhance_auto_run", checkEnhanceFlag],
-  ["meeting_enhance_prompt_seen", checkEnhanceFlag],
+  ["meeting_enhance_auto_run", checkBooleanFlag],
+  ["meeting_enhance_prompt_seen", checkBooleanFlag],
   // I1 (specs/meeting-transcription-v2.md §3.1): the previous-chunk context
   // flag, off by default (owner decision 2026-10-07) — same contract.
-  ["meeting_asr_context", checkEnhanceFlag],
+  ["meeting_asr_context", checkBooleanFlag],
   // Calendar link (specs/calendar-eventkit.md): off by default, same contract.
-  ["calendar_enabled", checkEnhanceFlag],
+  ["calendar_enabled", checkBooleanFlag],
 ]);
 
 /**
