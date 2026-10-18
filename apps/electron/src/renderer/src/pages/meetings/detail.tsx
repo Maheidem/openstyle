@@ -1098,7 +1098,7 @@ function RunNoticeView({
             ))}
           </ul>
         )}
-        <span className="flex flex-wrap gap-2">
+        <span className="flex min-w-0 flex-wrap gap-2">
           {notice.canResume && (
             <Button
               variant="outline"
@@ -1114,6 +1114,7 @@ function RunNoticeView({
           <Button
             variant="outline"
             size="sm"
+            className="h-auto min-h-7 max-w-full whitespace-normal py-1 text-left"
             onClick={onStartAgain}
             disabled={disabled}
             data-testid={`meetings-${notice.kind}-retry`}
