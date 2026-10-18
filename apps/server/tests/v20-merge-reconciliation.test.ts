@@ -104,8 +104,9 @@ describe("v20 merge reconciliation", () => {
 
     initSchema(db);
 
+    // Migration 20 creates the Remix tables. Migration 40 drops them.
     for (const table of ["remix_threads", "remix_messages", "remix_runs"]) {
-      expect(hasTable(db!, table)).toBe(true);
+      expect(hasTable(db!, table)).toBe(false);
     }
     expect(hostIsPrimaryKey(db!)).toBe(true);
   });
@@ -138,7 +139,7 @@ describe("v20 merge reconciliation", () => {
     expect(version()).toBeGreaterThanOrEqual(20);
 
     initSchema(db);
-    expect(hasTable(db!, "remix_threads")).toBe(true);
+    expect(hasTable(db!, "remix_threads")).toBe(false);
     expect(hasTable(db!, "dismissed_notifications")).toBe(true);
     expect(hostIsPrimaryKey(db!)).toBe(true);
     const session = db
