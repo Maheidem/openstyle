@@ -1,4 +1,4 @@
-import type { MeetingDetail } from "@openstyle/validations";
+import type { LlmRunKind, MeetingDetail } from "@openstyle/validations";
 import { InlineNotice } from "@renderer/components/inline-notice";
 import { Markdown } from "@renderer/components/markdown";
 import {
@@ -27,7 +27,12 @@ import {
   formatClockMs,
   formatTimestamp,
 } from "@renderer/lib/format";
-import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  llmRunsLatestQueryOptions,
+  queryKeys,
+  resumeRun,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -52,10 +57,20 @@ import {
   MeetingContextField,
   MeetingLanguageChip,
 } from "./fields";
+import {
+  enhanceNoteCount,
+  formatChunkList,
+  isSummarizeCancelled,
+  llmErrorKey,
+  nodeLabelKey,
+  noticeTextKey,
+  type RunNotice,
+  runNotice,
+} from "./run-notice";
 import { SummaryInstructionsPopover } from "./settings-popovers";
 import { CopyButton, StatusBadge, segmentSpeakerLabel } from "./shared";
 import { attendeeNameOptions, SpeakersDialog } from "./speakers";
-import type { EnhanceNote, SpeakersResponse, TranscriptSegment } from "./types";
+import type { SpeakersResponse, TranscriptSegment } from "./types";
 
 export function MeetingDetailView({
   id,
@@ -80,18 +95,10 @@ export function MeetingDetailView({
     labeledCount: number;
     speakerCount: number;
   } | null>(null);
-  const [enhanceResult, setEnhanceResult] = useState<EnhanceNote | null>(null);
-  /**
-   * Enhance's third state — the one that used to be missing. When every chunk
-   * fails the route answers 502 with a `reason`, and that reason lands here so
-   * the note reads "Enhance timed out…", NOT "No segments needed correction."
-   * (meeting 9243bea0: three `TimeoutError` chunks, reported as a clean
-   * transcript). Cleared by `runAction` like `enhanceResult`, so it can never
-   * survive into an unrelated action.
-   */
-  const [enhanceFailure, setEnhanceFailure] = useState<null | {
-    reason: "parse" | "provider" | "timeout";
-  }>(null);
+  // The success note of an Enhance run (specs/meeting-enhance-agentic.md 8.9)
+  // shows only for a run that ended after this moment: the page opened, or the
+  // user last started an action. A reload resets it, so the note never lingers.
+  const [noteFloor, setNoteFloor] = useState(() => Date.now());
   const [speakersOpen, setSpeakersOpen] = useState(false);
   const [rediarizeConfirmOpen, setRediarizeConfirmOpen] = useState(false);
   // Per-session viewing preference (Phase C, specs/meeting-transcription-
@@ -179,6 +186,12 @@ export function MeetingDetailView({
     (s) => s.displayName !== null || s.mergedInto !== null,
   );
 
+  // Persisted run status replaces the old component error state (8.9): the
+  // newest run of each kind feeds the failure, interrupted and success notices.
+  const { data: latestRuns } = useQuery(
+    llmRunsLatestQueryOptions(id, hasTranscript),
+  );
+
   const { data: appSettings } = useQuery(settingsQueryOptions());
   const calendarEnabled =
     appSettings?.[SETTINGS_KEYS.calendarEnabled] === "true";
@@ -187,19 +200,28 @@ export function MeetingDetailView({
     void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
   }, [queryClient]);
 
-  // specs/meeting-transcription-v2.md §3.2: when the auto-Enhance job ends
-  // (job.kind flips "enhance" → null) its corrections and speaker
-  // suggestions have just been written, so invalidate this meeting's
-  // transcript (enhanced text), speakers, and the list (the row's badge)
-  // here — the global `refetchOnWindowFocus` is off (lib/query.ts), so
-  // without this the enhanced text would not appear until the meeting was
-  // opened again.
+  // specs/meeting-transcription-v2.md §3.2: when the Enhance stage of a run
+  // ends (job.kind leaves "enhance") its corrections and speaker suggestions
+  // have just been written, so invalidate this meeting's transcript (enhanced
+  // text), speakers, and the list (the row's badge) here — the global
+  // `refetchOnWindowFocus` is off (lib/query.ts), so without this the enhanced
+  // text would not appear until the meeting was opened again. When any run job
+  // ends (Enhance or Summarize, 8.5) the persisted run records change too, so
+  // the run and call queries refetch and the notices follow the new status.
   const prevJobKindRef = useRef<string | null>(null);
   useEffect(() => {
     const kind = meeting?.job?.kind ?? null;
-    const wasEnhance = prevJobKindRef.current === "enhance";
+    const prev = prevJobKindRef.current;
     prevJobKindRef.current = kind;
-    if (wasEnhance && kind !== "enhance") {
+    if ((prev === "enhance" || prev === "summarize") && kind !== prev) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.meetings.llmRunsOf(id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.meetings.llmCallsOf(id),
+      });
+    }
+    if (prev === "enhance" && kind !== "enhance") {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.meetings.transcript(id),
       });
@@ -224,8 +246,7 @@ export function MeetingDetailView({
       // stale "Identified N speakers"/"Corrected N segments" note doesn't
       // linger through an unrelated re-transcribe/summarize click.
       setDiarizeResult(null);
-      setEnhanceResult(null);
-      setEnhanceFailure(null);
+      setNoteFloor(Date.now());
       let result: { ok: boolean; body: T | null } = { ok: false, body: null };
       try {
         const res = await request();
@@ -323,7 +344,7 @@ export function MeetingDetailView({
   }, [meeting, cancelJob]);
   // Cancel a running Summarize job (§5.7). Nothing is destroyed: the
   // transcript and every persisted segment survive, no summary is written,
-  // and the failure lands in `job_error` (not `meetings.error`).
+  // and the run ends `cancelled` in the run record (8.9).
   const cancelSummarize = useCallback(async () => {
     if (meeting?.job?.kind !== "summarize") return;
     await cancelJob();
@@ -360,31 +381,38 @@ export function MeetingDetailView({
     if (hasConfirmedSpeakerState) setRediarizeConfirmOpen(true);
     else void identifySpeakers();
   }, [hasConfirmedSpeakerState, identifySpeakers]);
-  const enhance = useCallback(async () => {
-    const { ok, body } = await runAction<EnhanceNote>("enhance", () =>
-      getClient().api.meetings[":id"].enhance.$post({ param: { id } }),
-    );
-    if (ok && body) {
-      setEnhanceResult(body);
-    } else if (!ok && body) {
-      // A wholly-failed pass is a non-2xx with a machine-readable `reason`.
-      const raw = (body as { reason?: unknown }).reason;
-      // Anything the route didn't classify reads as a provider failure — the
-      // honest default, never "nothing needed correction".
-      setEnhanceFailure({
-        reason:
-          raw === "parse" || raw === "timeout" || raw === "provider"
-            ? raw
-            : "provider",
-      });
-    }
-    // The route only UPDATEs enhanced_text on existing rows — the merged
-    // transcript needs a re-fetch to pick the corrections up, same as
-    // identifySpeakers' invalidate() above.
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.meetings.transcript(id),
-    });
-  }, [id, runAction, queryClient]);
+  // The route answers 202 and starts one run that corrects the transcript and
+  // then summarizes it (specs/meeting-enhance-agentic.md 3.4.2). runAction's
+  // invalidate() refetches the detail, so the poll starts and follows the job;
+  // the notices read the persisted run when it ends (8.9). Any non-2xx answer
+  // (404, 409) lands in the generic action error.
+  const enhance = useCallback(
+    () =>
+      runAction("enhance", () =>
+        getClient().api.meetings[":id"].enhance.$post({ param: { id } }),
+      ),
+    [id, runAction],
+  );
+  // "Resume" of an interrupted run (8.9). A 409 from guard 4 or 6 fails the run
+  // and the refetched notice shows its error kind, so those two add no action
+  // error. The other guards leave the run as it is and show the server's line.
+  const resume = useCallback(
+    async (runId: string) => {
+      setBusy("resume");
+      setActionError(null);
+      setNoteFloor(Date.now());
+      const result = await resumeRun(queryClient, id, runId);
+      if (
+        !result.ok &&
+        result.reason !== "graph_changed" &&
+        result.reason !== "transcript_changed"
+      ) {
+        setActionError(result.error ?? t("meetings.actionFailed"));
+      }
+      setBusy(null);
+    },
+    [id, queryClient, t],
+  );
   const deleteMeeting = useCallback(async () => {
     await getClient().api.meetings[":id"].$delete({ param: { id } });
     invalidate();
@@ -417,12 +445,21 @@ export function MeetingDetailView({
   const jobHoldsSlot = meeting.job !== null;
   const summarizeQueueAhead = meeting.job?.queued?.ahead ?? 0;
   const summarizeQueued = summarizing && meeting.job?.queued != null;
-  // A failed/cancelled Summarize lands in `job_error`, never in `meeting.error`
-  // (§6 constraint 3 — that one is the chunk-failure banner), so it needs its
-  // own surface once the slot is free.
-  const summarizeFailure =
-    !actionError && !summarizing ? (meeting.job_error ?? null) : null;
-  const summarizeCancelled = summarizeFailure === "Cancelled by user";
+  // The newest run of each kind decides its notice (8.9). The persisted run
+  // holds the failure of a Summarize too, so `job_error` is not read.
+  const runOf = (kind: LlmRunKind) =>
+    latestRuns?.runs.find((r) => r.kind === kind);
+  const enhanceNotice = runNotice(runOf("enhance"), jobHoldsSlot);
+  const summarizeNotice = runNotice(runOf("summarize"), jobHoldsSlot);
+  const summarizeCancelled = isSummarizeCancelled(
+    runOf("summarize"),
+    jobHoldsSlot,
+  );
+  const enhanceNote = enhanceNoteCount(
+    runOf("enhance"),
+    jobHoldsSlot,
+    noteFloor,
+  );
   const canTranscribe =
     !transcribing &&
     meeting.status !== "recording" &&
@@ -685,7 +722,7 @@ export function MeetingDetailView({
           neutral note family as the transcribe cancel. A real failure keeps the
           server's own message (it names the provider/model problem), rendered
           like every other action failure on this page. */}
-      {summarizeCancelled && (
+      {summarizeCancelled && !actionError && (
         <InlineNotice
           tone="neutral"
           icon={CircleSlash}
@@ -694,10 +731,21 @@ export function MeetingDetailView({
           <span>{t("meetings.summarizeCancelled")}</span>
         </InlineNotice>
       )}
-      {summarizeFailure && !summarizeCancelled && (
-        <InlineNotice tone="destructive" icon={AlertTriangle}>
-          <span>{summarizeFailure}</span>
-        </InlineNotice>
+      {enhanceNotice && (
+        <RunNoticeView
+          notice={enhanceNotice}
+          disabled={busy !== null}
+          onResume={resume}
+          onStartAgain={enhance}
+        />
+      )}
+      {summarizeNotice && (
+        <RunNoticeView
+          notice={summarizeNotice}
+          disabled={busy !== null}
+          onResume={resume}
+          onStartAgain={summarize}
+        />
       )}
 
       {/* Post-cancel (T1-1): a cancelled job is not an error — every written
@@ -721,13 +769,11 @@ export function MeetingDetailView({
         </InlineNotice>
       )}
 
-      {(meeting.error || actionError) &&
-        !cancelledByUser &&
-        !enhanceFailure && (
-          <InlineNotice tone="destructive" icon={AlertTriangle}>
-            <span>{actionError ?? meeting.error}</span>
-          </InlineNotice>
-        )}
+      {(meeting.error || actionError) && !cancelledByUser && (
+        <InlineNotice tone="destructive" icon={AlertTriangle}>
+          <span>{actionError ?? meeting.error}</span>
+        </InlineNotice>
+      )}
 
       {/* Issue #170: the server compares the sample counts of the two tracks
           in sync.json. The two tracks should have the same length. With a
@@ -787,51 +833,12 @@ export function MeetingDetailView({
         </InlineNotice>
       )}
 
-      {enhanceResult && !actionError && (
+      {enhanceNote !== null && !actionError && (
         <InlineNotice tone="neutral" icon={WandSparkles}>
-          <span>
-            {enhanceResult.correctedCount === 0
+          <span data-testid="meetings-enhance-note">
+            {enhanceNote === 0
               ? t("meetings.enhanceNoneCorrected")
-              : t("meetings.enhanceResult", {
-                  n: enhanceResult.correctedCount,
-                })}
-            {/* A partial pass says so — "corrected 4 segments" on its own
-                hides that the rest of the meeting was never looked at. */}
-            {enhanceResult.partial
-              ? ` ${t("meetings.enhancePartial", {
-                  failed: enhanceResult.chunksFailed ?? 0,
-                  attempted: enhanceResult.chunksAttempted ?? 0,
-                })}`
-              : ""}
-          </span>
-        </InlineNotice>
-      )}
-
-      {/* State three: the pass failed. Destructive card, names the cause, and
-          offers the retry the old no-op message made unnecessary. Nothing was
-          written — a failed chunk never reaches the UPDATE — so the copy says
-          "nothing was changed" rather than hedging. */}
-      {enhanceFailure && (
-        <InlineNotice tone="destructive" icon={AlertTriangle}>
-          <span className="flex min-w-0 flex-col gap-2">
-            <span>
-              {enhanceFailure.reason === "timeout"
-                ? t("meetings.enhanceFailedTimeout")
-                : enhanceFailure.reason === "parse"
-                  ? t("meetings.enhanceFailedParse")
-                  : t("meetings.enhanceFailedProvider")}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="self-start"
-              onClick={() => void enhance()}
-              disabled={busy !== null}
-              data-testid="meetings-enhance-retry"
-            >
-              <WandSparkles data-icon="inline-start" />
-              {t("meetings.retryEnhance")}
-            </Button>
+              : t("meetings.enhanceResult", { n: enhanceNote })}
           </span>
         </InlineNotice>
       )}
@@ -1030,5 +1037,98 @@ export function MeetingDetailView({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+/**
+ * One failure, partial or interrupted notice of a run (specs/meeting-enhance-
+ * agentic.md 8.9): the headline, one line for each node and error kind, and the
+ * buttons. The text of a line never holds prompt text.
+ */
+function RunNoticeView({
+  notice,
+  disabled,
+  onResume,
+  onStartAgain,
+}: {
+  notice: RunNotice;
+  disabled: boolean;
+  onResume: (runId: string) => void;
+  onStartAgain: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const lineText = (line: RunNotice["lines"][number]): string => {
+    const reason = t(llmErrorKey(line.kind));
+    if (line.node === null) return reason;
+    const labelKey = nodeLabelKey(line.node);
+    let where = labelKey ? t(labelKey) : line.node;
+    if (line.chunks.length > 0) {
+      where += `, ${t("meetings.llmRun.chunks", { list: formatChunkList(line.chunks) })}`;
+    }
+    return t("meetings.llmRun.line", { where, reason });
+  };
+  return (
+    <InlineNotice
+      tone={notice.tone}
+      icon={notice.status === "interrupted" ? CircleSlash : AlertTriangle}
+      iconClassName={
+        notice.status === "interrupted" ? "text-muted-foreground" : undefined
+      }
+    >
+      <span
+        className="flex min-w-0 flex-col gap-2"
+        data-testid={`meetings-run-notice-${notice.kind}`}
+        data-run-status={notice.status}
+      >
+        <span>
+          {t(noticeTextKey(notice.kind, notice.status), {
+            failed: notice.failedSteps,
+            total: notice.totalSteps,
+          })}
+        </span>
+        {notice.lines.length > 0 && (
+          <ul className="m-0 list-none space-y-1 p-0">
+            {notice.lines.map((line) => (
+              <li
+                key={`${line.node}:${line.kind}`}
+                data-testid="meetings-run-notice-line"
+              >
+                {lineText(line)}
+              </li>
+            ))}
+          </ul>
+        )}
+        <span className="flex flex-wrap gap-2">
+          {notice.canResume && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onResume(notice.runId)}
+              disabled={disabled}
+              data-testid="meetings-run-resume"
+            >
+              <RefreshCw data-icon="inline-start" />
+              {t("meetings.llmRun.resume")}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onStartAgain}
+            disabled={disabled}
+            data-testid={`meetings-${notice.kind}-retry`}
+          >
+            {notice.kind === "summarize" ? (
+              <Sparkles data-icon="inline-start" />
+            ) : (
+              <WandSparkles data-icon="inline-start" />
+            )}
+            {notice.startAgainDiscards
+              ? t("meetings.llmRun.startAgainDiscards")
+              : t("meetings.llmRun.startAgain")}
+          </Button>
+        </span>
+      </span>
+    </InlineNotice>
   );
 }

@@ -19,20 +19,6 @@ export interface TranscriptSegment {
   speakerName?: string;
 }
 
-/**
- * The 200 body of `POST /api/meetings/:id/enhance`, as the note card reads it
- * (specs/meeting-transcription-quality.md §6). `partial` is the honest middle
- * state — some chunks corrected, some failed and left as raw text. A wholly
- * failed pass is NOT here: that's a 502 with a `reason`, handled by the
- * `enhanceFailure` state.
- */
-export interface EnhanceNote {
-  correctedCount: number;
-  partial?: boolean;
-  chunksAttempted?: number;
-  chunksFailed?: number;
-}
-
 export interface SpeakerRow {
   label: string;
   segmentCount: number;
