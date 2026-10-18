@@ -1,6 +1,7 @@
 /**
  * `GET /api/meetings/:id/llm-runs` and `GET /api/meetings/:id/llm-calls` — the
- * LLM call record of one meeting (specs/meeting-enhance-agentic.md 8.3).
+ * LLM call record of one meeting (specs/meeting-enhance-agentic.md 8.3), and
+ * `POST /api/meetings/:id/runs/:runId/resume` (3.4.2).
  *
  * These are the meeting adapter of a generic record API: each handler checks
  * that the meeting exists, then calls the scope-generic reader
@@ -18,6 +19,7 @@ import { zValidator } from "@hono/zod-validator";
 import type {
   LlmCallsResponse,
   LlmRunListResponse,
+  StartRunResponse,
 } from "@openstyle/validations";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -42,6 +44,8 @@ import {
   speakerStaleCheck,
 } from "../lib/meetings/llm-record-read.js";
 import { getMeetingRow } from "../lib/meetings/store.js";
+import { resumeRun } from "../lib/meetings/workflow/runner.js";
+import { getWorkflowTestDeps } from "./meetings.js";
 
 const DEFAULT_RUNS_LIMIT = 10;
 const DEFAULT_CALLS_LIMIT = 20;
@@ -112,6 +116,25 @@ function classifySelector(q: CallsQuery): Selection {
 }
 
 const meetingsRuns = new Hono()
+  // Resume an interrupted run (specs/meeting-enhance-agentic.md 3.4.2, 3.4.7).
+  // 202 with the run id, 404 for an unknown meeting or run, 409 with the reason
+  // of the guard that refused it.
+  .post("/:id/runs/:runId/resume", async (c) => {
+    const id = c.req.param("id");
+    const result = await resumeRun(
+      id,
+      c.req.param("runId"),
+      getWorkflowTestDeps(),
+    );
+    if (result.ok) {
+      return c.json(
+        { ok: true, id, runId: result.runId } satisfies StartRunResponse,
+        202,
+      );
+    }
+    if (result.status === 404) return c.json({ error: result.error }, 404);
+    return c.json(result.conflict, 409);
+  })
   .get("/:id/llm-runs", zValidator("query", runsQuerySchema), (c) => {
     const id = c.req.param("id");
     if (!getMeetingRow(id)) return c.json({ error: "Not found" }, 404);

@@ -113,13 +113,8 @@ describe("LLM_TASK_PROFILES (§3.2)", () => {
     });
   });
 
-  it("meetingSummarize's flat budget matches summarize.ts's DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS", async () => {
-    const { DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS } = await import(
-      "../src/lib/meetings/summarize.js"
-    );
-    expect(LLM_TASK_PROFILES.meetingSummarize.maxOutputTokens).toBe(
-      DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS,
-    );
+  it("meetingSummarize's flat budget is 4096, the SUMMARY_ANSWER_TOKENS of the Summarize node (spec 4.0.5)", () => {
+    expect(LLM_TASK_PROFILES.meetingSummarize.maxOutputTokens).toBe(4096);
   });
 });
 
