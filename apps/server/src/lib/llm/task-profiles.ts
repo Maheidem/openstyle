@@ -68,17 +68,11 @@ export interface LlmTaskProfile {
  * a 60 s guess (real-world symptom: every enhance chunk timing out 60 s apart
  * while Summarize succeeded on the same engine).
  *
- * `meetingSummarize.maxOutputTokens` is `4096` — the same number as
- * `DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS` (`meetings/summarize.ts:60`), kept as a
- * literal here rather than imported: `summarize.ts` imports `llm-call.ts`,
- * which imports `resolveTaskCall` from this module, so an import in the
- * other direction (this module importing `summarize.ts`) would create a
- * three-module load cycle (`task-profiles.ts` -> `summarize.ts` ->
- * `llm-call.ts` -> `task-profiles.ts`) whose safety depends on module-eval
- * ordering. Both constants are asserted equal in
- * `apps/server/tests/llm-task-profiles.test.ts`, so a future edit to either
- * number without updating the other fails a test instead of drifting
- * silently.
+ * `meetingSummarize.maxOutputTokens` is the literal `4096`. It is the
+ * `SUMMARY_ANSWER_TOKENS` budget of the Summarize node (specs/
+ * meeting-enhance-agentic.md 4.0.5). The node body is still a stub (WP6), so
+ * the constant does not exist in code yet. `llm-task-profiles.test.ts` pins
+ * the literal. WP6 must keep the node constant equal to it.
  */
 export const LLM_TASK_PROFILES: Record<LlmTaskId, LlmTaskProfile> = {
   cleanup: {

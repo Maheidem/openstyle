@@ -7,7 +7,8 @@ import { type MergedSegment, speakerDisplayLabel } from "../merge.js";
 /**
  * Rough token estimate (~4 chars/token), mirroring `@openstyle/stt`
  * tokens.ts. Shared by every meeting feature that chunks a transcript to a
- * token budget (`summarize.ts`, `enhance.ts`).
+ * token budget (the workflow nodes, for example `nodes/identify-speakers.ts`
+ * and `nodes/correct-chunk.ts`).
  */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -59,7 +60,7 @@ export function lineTokensOf(s: EnhanceSegment): number {
 /**
  * Split id-bearing segments into whole-segment chunks bounded by
  * `budgetTokens` (a single oversized segment still becomes its own chunk).
- * Unlike `chunkTranscript` (`summarize.ts`), no overlap is carried between
+ * Unlike `chunkTranscript`, no overlap is carried between
  * chunks — corrections don't need cross-chunk continuity the way
  * summarization does, and carrying one would make a chunk's ids no longer
  * disjoint, breaking the per-chunk `validIds` guard below.

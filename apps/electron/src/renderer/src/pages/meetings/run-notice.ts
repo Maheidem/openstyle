@@ -140,16 +140,40 @@ export function noticeLines(run: LlmRunInfo): NoticeLine[] {
 }
 
 /**
+ * True when a Summarize run is old news: a newer run (by `startedAt`) of any
+ * kind has a Summarize step. A chained Enhance run writes the summary, so it
+ * replaces the result of an earlier Summarize run that failed or stopped.
+ * This goes a little beyond 8.9, which clears a notice only for a newer run
+ * of the same kind.
+ */
+function summarizeSuperseded(
+  run: LlmRunInfo,
+  allRuns: readonly LlmRunInfo[],
+): boolean {
+  return (
+    run.kind === "summarize" &&
+    allRuns.some(
+      (other) =>
+        other.id !== run.id &&
+        other.startedAt > run.startedAt &&
+        other.steps.some((s) => s.node === "summarize"),
+    )
+  );
+}
+
+/**
  * The notice for the newest run of one kind, or null. A notice shows for a
  * `failed`, `partial` or `interrupted` run, and never while a job holds the
  * slot (8.9: the notice clears when a run starts). An interrupted run lists
- * lines only when it has a failure (`errorKind`).
+ * lines only when it has a failure (`errorKind`). A Summarize notice also
+ * hides when a newer run in `allRuns` has a Summarize step.
  */
 export function runNotice(
   run: LlmRunInfo | undefined,
   jobHoldsSlot: boolean,
+  allRuns: readonly LlmRunInfo[] = [],
 ): RunNotice | null {
-  if (!run || jobHoldsSlot) return null;
+  if (!run || jobHoldsSlot || summarizeSuperseded(run, allRuns)) return null;
   if (
     run.status !== "failed" &&
     run.status !== "partial" &&
@@ -190,13 +214,17 @@ export function enhanceNoteCount(
 /**
  * True for a cancelled Summarize run. It drives the neutral text that
  * `summarizeCancelled` holds (8.9, decided 2026-10-17: the renderer reads the
- * run, not `job_error`).
+ * run).
  */
 export function isSummarizeCancelled(
   run: LlmRunInfo | undefined,
   jobHoldsSlot: boolean,
+  allRuns: readonly LlmRunInfo[] = [],
 ): boolean {
   return (
-    !jobHoldsSlot && run?.kind === "summarize" && run.status === "cancelled"
+    !jobHoldsSlot &&
+    run?.kind === "summarize" &&
+    run.status === "cancelled" &&
+    !summarizeSuperseded(run, allRuns)
   );
 }

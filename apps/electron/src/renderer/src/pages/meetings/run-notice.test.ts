@@ -354,3 +354,33 @@ describe("isSummarizeCancelled", () => {
     expect(isSummarizeCancelled(undefined, false)).toBe(false);
   });
 });
+
+describe("a Summarize notice after a newer chained run", () => {
+  const oldSummarize = (status: LlmRunStatus) =>
+    run({ id: "s1", kind: "summarize", status, startedAt: 100 });
+  const chained = (startedAt: number) =>
+    run({
+      id: "e1",
+      kind: "enhance",
+      status: "succeeded",
+      startedAt,
+      steps: [step("summarize", "succeeded", null, 1)],
+    });
+
+  it("hides the failed notice when a newer Enhance run has a Summarize step", () => {
+    const s = oldSummarize("failed");
+    expect(runNotice(s, false, [chained(300), s])).toBeNull();
+    expect(runNotice(s, false, [s])).not.toBeNull();
+  });
+  it("hides the cancelled note the same way", () => {
+    const s = oldSummarize("cancelled");
+    expect(isSummarizeCancelled(s, false, [chained(300), s])).toBe(false);
+    expect(isSummarizeCancelled(s, false, [s])).toBe(true);
+  });
+  it("keeps the notice when the other run is older or has no Summarize step", () => {
+    const s = oldSummarize("failed");
+    expect(runNotice(s, false, [chained(50), s])).not.toBeNull();
+    const noSummary = run({ id: "e2", startedAt: 300, steps: [] });
+    expect(runNotice(s, false, [noSummary, s])).not.toBeNull();
+  });
+});

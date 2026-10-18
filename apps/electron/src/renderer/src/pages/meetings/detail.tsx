@@ -446,14 +446,16 @@ export function MeetingDetailView({
   const summarizeQueueAhead = meeting.job?.queued?.ahead ?? 0;
   const summarizeQueued = summarizing && meeting.job?.queued != null;
   // The newest run of each kind decides its notice (8.9). The persisted run
-  // holds the failure of a Summarize too, so `job_error` is not read.
+  // holds the failure of a Summarize too.
   const runOf = (kind: LlmRunKind) =>
     latestRuns?.runs.find((r) => r.kind === kind);
   const enhanceNotice = runNotice(runOf("enhance"), jobHoldsSlot);
-  const summarizeNotice = runNotice(runOf("summarize"), jobHoldsSlot);
+  const allRuns = latestRuns?.runs ?? [];
+  const summarizeNotice = runNotice(runOf("summarize"), jobHoldsSlot, allRuns);
   const summarizeCancelled = isSummarizeCancelled(
     runOf("summarize"),
     jobHoldsSlot,
+    allRuns,
   );
   const enhanceNote = enhanceNoteCount(
     runOf("enhance"),

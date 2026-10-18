@@ -2045,7 +2045,6 @@ describe("POST /api/meetings/:id/summarize", () => {
       const after = await getMeeting("m1");
       expect(after.status).toBe("summarized");
       expect(after.job).toBeNull();
-      expect(after.job_error).toBeNull();
       const summary = after.summary as { markdown: string };
       expect(summary.markdown).toContain("The team agreed to ship on Friday.");
       const stored = getDb()
@@ -2138,7 +2137,6 @@ describe("POST /api/meetings/:id/summarize", () => {
     expect(res.status).toBe(202);
     await waitForNoJob("m1");
     const after = await getMeeting("m1");
-    expect(after.job_error).toBeNull();
     expect(after.error).toBe("2 of 5 chunks failed");
     expect(after.status).toBe("transcribed");
     expect(after.summary).toBeNull();
@@ -2176,7 +2174,6 @@ describe("POST /api/meetings/:id/summarize", () => {
       expect(cancel.status).toBe(202);
       await waitForNoJob("m1");
       const after = await getMeeting("m1");
-      expect(after.job_error).toBeNull();
       expect(after.summary).toBeNull();
       expect(after.status).toBe("transcribed");
       expect(after.error).toBeNull();
@@ -2933,7 +2930,6 @@ describe("transcribe: auto-run Enhance as its own run", () => {
     const done = await getMeeting("m1");
     expect(done.status).toBe("transcribed");
     expect(done.error).toBeNull(); // the failure is in the run record, not here
-    expect(done.job_error).toBeNull();
     expect((await llmRuns("m1"))[0]).toMatchObject({
       status: "failed",
       errorKind: "model_unavailable",

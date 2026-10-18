@@ -51,10 +51,6 @@ export interface MeetingDetail extends MeetingListItem {
     /** Set while one of the job's LLM calls waits for its lane (§5.5). */
     queued?: { ahead: number; sinceMs: number } | null;
   } | null;
-  /** Canonical failure text of the last background job (Summarize) for this
-   * meeting, or null. This is not the `error` column. That column is the
-   * transcript-integrity banner (§6 constraint 3). */
-  job_error: string | null;
   segment_counts: { total: number; failed: number };
   /** `systemSamples / micSamples` from `sync.json` when it is outside
    * 0.95..1.05 (issue #170) and the server cannot repair it, else null. The

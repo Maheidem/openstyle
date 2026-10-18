@@ -442,7 +442,7 @@ const CONFLICT_TEXT: Record<ResumeConflictReason, string> = {
 
 export type ResumeResult =
   | { ok: true; runId: string }
-  | { ok: false; status: 404; error: string }
+  | { ok: false; status: 404 | 500; error: string }
   | { ok: false; status: 409; conflict: ResumeConflict };
 
 function conflict(reason: ResumeConflictReason): ResumeResult {
@@ -534,7 +534,7 @@ export async function resumeRun(
   } catch (err) {
     log.warn(`meeting ${meetingId}: resume of ${runId} failed: ${String(err)}`);
     releaseJob(meetingId);
-    return { ok: false, status: 404, error: "The run could not be resumed" };
+    return { ok: false, status: 500, error: "The run could not be resumed" };
   }
 }
 
