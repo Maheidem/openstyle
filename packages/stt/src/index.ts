@@ -16,6 +16,7 @@ export {
   stripVocabLeak,
   stripWrappingQuotes,
   TERMS_MARKER,
+  THINK_TAG,
   textSimilarity,
   VOCAB_LEAK_OVERLAP_THRESHOLD,
   wordEndsSentence,

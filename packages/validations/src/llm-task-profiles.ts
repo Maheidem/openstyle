@@ -205,6 +205,25 @@ export const LLM_PRESET_DENYLIST_KEYS = new Set([
 ]);
 
 /**
+ * Keys a preset can never put on the wire for the two meeting tasks
+ * (`meetingEnhance`, `meetingSummarize`) (specs/meeting-enhance-agentic.md
+ * 5.5.3). They would replace the gateway schema or cut the JSON. A separate
+ * set: a change to `LLM_PRESET_DENYLIST_KEYS` would also change dictation
+ * cleanup, where `stop` stays allowed.
+ */
+export const LLM_MEETING_DENYLIST_KEYS = new Set([
+  "response_format",
+  "stop",
+  "guided_json",
+  "guided_regex",
+  "guided_choice",
+  "guided_grammar",
+  "structured_outputs",
+  "grammar",
+  "json_schema",
+]);
+
+/**
  * The safe subset of preset keys mapped onto an ordinary `generateText`/
  * `streamText` call for every mapped-subset-tier provider (`openai`,
  * `anthropic`, `google`, `mistral`, `openrouter`, `vercel`, `groq`) — §7.1,

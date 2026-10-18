@@ -18,6 +18,7 @@ import {
   BUILTIN_LLM_PRESETS,
   DEFAULT_MEETING_ENHANCE_TIMEOUT_SECONDS,
   DEFAULT_MEETING_SUMMARY_TIMEOUT_SECONDS,
+  LLM_MEETING_DENYLIST_KEYS,
   LLM_PRESET_DENYLIST_KEYS,
   llmParameterPresetsSettingSchema,
   MEETING_ENHANCE_TIMEOUT_SETTING_KEY,
@@ -27,6 +28,7 @@ import {
   parseCleanupSampling,
   parseLlmTaskAssignments,
   parseServerModelId,
+  SAFE_SUBSET_KEYS,
   SETTINGS_KEYS,
 } from "@openstyle/validations";
 import { getApiKey } from "../api-keys.js";
@@ -156,6 +158,14 @@ function taskTimeoutMs(taskId: LlmTaskId, profileTimeoutMs: number): number {
   );
 }
 
+/** A preset key that the resolver did not put on the wire. */
+export interface DroppedPresetKey {
+  name: string;
+  value: unknown;
+  /** "denylist": never allowed. "not_in_safe_subset": a cloud provider takes only the safe subset. */
+  reason: "denylist" | "not_in_safe_subset";
+}
+
 export interface ResolvedTaskCall {
   provider: string;
   modelId: string;
@@ -165,10 +175,21 @@ export interface ResolvedTaskCall {
   reasoningEnabled: boolean;
   samplingParams: Record<string, unknown>; // {} in "auto" mode
   timeoutMs: number;
+  /** Preset keys asked for and not sent, for the LLM call ledger. */
+  droppedKeys: DroppedPresetKey[];
+  /** Which assignment mode gave the params. */
+  source: { mode: LlmTaskAssignment["mode"]; presetId?: string };
+  /** Keys the mode-selected params set themselves (after the denylist). */
+  presetKeys: { topLevel: string[]; chatTemplateKwargs: string[] };
 }
 
 export interface ResolveTaskCallOptions {
   autoMaxOutputTokens?: number;
+  /**
+   * Use this model and ignore the task assignment and the app default. A
+   * workflow run pins the model once in `prepare` (specs/meeting-enhance-agentic.md 4.1 P9).
+   */
+  pin?: { provider: string; modelId: string };
 }
 
 /** The app-wide default model, as `getDefaultModels().llm` returns it. */
@@ -238,23 +259,31 @@ function resolveModeParams(
 }
 
 /** §7.4 — strip denylisted keys before either transport tier sees them,
- *  logging what was dropped. */
+ *  logging what was dropped. The meeting tasks also lose the keys of
+ *  `LLM_MEETING_DENYLIST_KEYS` (5.5.3); dictation cleanup keeps them. */
 function stripDenylistedKeys(
+  taskId: LlmTaskId,
   params: Record<string, unknown>,
-): Record<string, unknown> {
-  const dropped: string[] = [];
-  const out: Record<string, unknown> = {};
+): { kept: Record<string, unknown>; dropped: DroppedPresetKey[] } {
+  const meeting = taskId === "meetingEnhance" || taskId === "meetingSummarize";
+  const dropped: DroppedPresetKey[] = [];
+  const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) {
-    if (LLM_PRESET_DENYLIST_KEYS.has(key)) {
-      dropped.push(key);
+    if (
+      LLM_PRESET_DENYLIST_KEYS.has(key) ||
+      (meeting && LLM_MEETING_DENYLIST_KEYS.has(key))
+    ) {
+      dropped.push({ name: key, value, reason: "denylist" });
       continue;
     }
-    out[key] = value;
+    kept[key] = value;
   }
   if (dropped.length > 0) {
-    log.debug(`dropped denylisted preset keys: ${dropped.join(", ")}`);
+    log.debug(
+      `dropped denylisted preset keys: ${dropped.map((d) => d.name).join(", ")}`,
+    );
   }
-  return out;
+  return { kept, dropped };
 }
 
 /** §6.3 — resolve the effective provider/model for a task, validating a
@@ -296,6 +325,46 @@ function resolveEffectiveModel(
   return { provider: override.provider, modelId: override.model_id };
 }
 
+function readTaskAssignment(taskId: LlmTaskId): LlmTaskAssignment {
+  const assignments = parseLlmTaskAssignments(
+    readSetting(SETTINGS_KEYS.llmTaskAssignments),
+  );
+  let assignment = assignments[taskId];
+  if (!assignment && taskId === "cleanup") {
+    // §12.7 — see resolveCleanupLegacyFallback's own comment.
+    assignment = resolveCleanupLegacyFallback() ?? undefined;
+  }
+  return assignment ?? { mode: "auto" };
+}
+
+async function resolveModelFor(
+  taskId: LlmTaskId,
+  assignment: LlmTaskAssignment,
+  pin: { provider: string; modelId: string } | undefined,
+): Promise<{ provider: string; modelId: string }> {
+  if (pin) return { provider: pin.provider, modelId: pin.modelId };
+  const { getDefaultModels } = await import("../providers.js");
+  const fallback = getDefaultModels().llm;
+  if (!fallback) {
+    throw new Error(
+      "No AI model is set up yet. Pick one in Settings > Models.",
+    );
+  }
+  return resolveEffectiveModel(taskId, assignment, fallback);
+}
+
+/**
+ * The provider and model one call for `taskId` would use, with no sampling and
+ * no budget. The model profile (`model-profiles.ts`) calls it once for each
+ * step, in `prepare`, to learn which model to pin.
+ */
+export async function resolveTaskModel(
+  taskId: LlmTaskId,
+  pin?: { provider: string; modelId: string },
+): Promise<{ provider: string; modelId: string }> {
+  return resolveModelFor(taskId, readTaskAssignment(taskId), pin);
+}
+
 /**
  * Resolve everything one LLM call for `taskId` needs: which model, what
  * sampling params (and in what shape for the resolved provider's transport
@@ -310,32 +379,18 @@ export async function resolveTaskCall(
 ): Promise<ResolvedTaskCall> {
   const profile = LLM_TASK_PROFILES[taskId];
 
-  const assignments = parseLlmTaskAssignments(
-    readSetting(SETTINGS_KEYS.llmTaskAssignments),
-  );
-  let assignment = assignments[taskId];
-  if (!assignment && taskId === "cleanup") {
-    // §12.7 — see resolveCleanupLegacyFallback's own comment.
-    assignment = resolveCleanupLegacyFallback() ?? undefined;
-  }
-  assignment ??= { mode: "auto" };
-
-  const { getDefaultModels } = await import("../providers.js");
-  const defaults = getDefaultModels();
-  const fallback = defaults.llm;
-  if (!fallback) {
-    throw new Error(
-      "No AI model is set up yet. Pick one in Settings > Models.",
-    );
-  }
-  const { provider, modelId } = resolveEffectiveModel(
+  const assignment = readTaskAssignment(taskId);
+  const { provider, modelId } = await resolveModelFor(
     taskId,
     assignment,
-    fallback,
+    opts.pin,
   );
 
   const rawParams = resolveModeParams(taskId, assignment); // §6.1 — {} for "auto"
-  const strippedParams = stripDenylistedKeys(rawParams); // §7.4, logs drops
+  const { kept: strippedParams, dropped: deniedKeys } = stripDenylistedKeys(
+    taskId,
+    rawParams,
+  ); // §7.4, logs drops
 
   const isLocal = isLocalProvider(provider);
   // §6.4 — the reasoning seed and a mode-selected `chat_template_kwargs` are
@@ -390,6 +445,25 @@ export async function resolveTaskCall(
       ? strippedParams.max_tokens
       : 0;
 
+  // A cloud provider takes only the safe subset; the rest of the preset is
+  // asked for and not sent. The ledger records each key.
+  const droppedKeys: DroppedPresetKey[] = [...deniedKeys];
+  if (!isLocal) {
+    for (const [key, value] of Object.entries(strippedParams)) {
+      if (!SAFE_SUBSET_KEYS.has(key)) {
+        droppedKeys.push({ name: key, value, reason: "not_in_safe_subset" });
+      }
+    }
+  }
+  const presetKeys = {
+    topLevel: Object.keys(restParams),
+    chatTemplateKwargs:
+      typeof presetChatTemplateKwargs === "object" &&
+      presetChatTemplateKwargs !== null
+        ? Object.keys(presetChatTemplateKwargs)
+        : [],
+  };
+
   return {
     provider,
     modelId,
@@ -399,5 +473,11 @@ export async function resolveTaskCall(
     reasoningEnabled: profile.reasoningEnabled,
     samplingParams,
     timeoutMs: taskTimeoutMs(taskId, profile.timeoutMs),
+    droppedKeys,
+    source: {
+      mode: assignment.mode,
+      ...(assignment.presetId ? { presetId: assignment.presetId } : {}),
+    },
+    presetKeys,
   };
 }
