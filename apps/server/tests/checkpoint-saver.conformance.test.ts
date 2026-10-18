@@ -54,6 +54,7 @@ const initializer = {
   // checkpoint, as the official SQLite saver does (spec 7.11 plans for this).
   // The suite has no other skip hook, so this name borrows the official SQLite
   // skip. It changes no other test: the other skips name MongoDB only.
+  // Spec 10.7 and the PR body must record this method and the one skipped test.
   checkpointerName: "@langchain/langgraph-checkpoint-sqlite",
   createCheckpointer() {
     const handle = openLlmTestDb("llm-conformance-");

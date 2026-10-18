@@ -164,13 +164,19 @@ export class NodeSqliteSaver extends BaseCheckpointSaver {
     parentCheckpointId: string,
   ): Promise<void> {
     const sends = this.stmt(
-      `SELECT type, value FROM llm_checkpoint_writes
-       WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ? AND channel = ?
-       ORDER BY task_path, task_id, idx`,
+      `SELECT task_id, task_path, idx, type, value FROM llm_checkpoint_writes
+       WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ? AND channel = ?`,
     ).all(threadId, ns, parentCheckpointId, TASKS) as unknown as Pick<
       WriteRow,
-      "type" | "value"
+      "task_id" | "task_path" | "idx" | "type" | "value"
     >[];
+    // Sort in JS, as `hydrate` does, so the order never depends on a collation.
+    sends.sort((a, b) =>
+      compareWritesSortKeys(
+        writesSortKey(a.task_path, a.task_id, a.idx),
+        writesSortKey(b.task_path, b.task_id, b.idx),
+      ),
+    );
     const values = await Promise.all(
       sends.map((w) => this.serde.loadsTyped(w.type ?? "json", w.value ?? "")),
     );

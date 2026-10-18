@@ -210,8 +210,9 @@ describe("WP4 spike: LangGraph on NodeSqliteSaver", () => {
     // when the map of running tasks is empty. With a cap of 1 the map is empty
     // after the first task, so the other tasks never start. The run does not
     // fail and `save` does not run. The planned cap is 3 (3.5 rule 2); this
-    // test fails when a LangGraph upgrade fixes the bug, and then the note in
-    // the PR can go.
+    // test fails when a LangGraph upgrade fixes the bug. Then delete this test
+    // and keep the cap 2 and cap 3 guard tests above (SP2 U3). The cap must be
+    // 2 or more.
     ensureTestRun(handle.db, "r2x");
     const probe = newProbe({ yields: 5 });
     const graph = buildSpikeGraph(new NodeSqliteSaver(handle.db), probe, 6);
