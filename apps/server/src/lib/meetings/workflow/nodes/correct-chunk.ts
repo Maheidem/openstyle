@@ -175,6 +175,86 @@ function negationCount(text: string): number {
     .length;
 }
 
+/** Irregular inflection groups. Each group is one word in all its forms. */
+const IRREGULAR_GROUPS: ReadonlySet<string>[] = [
+  new Set(["is", "are", "was", "were", "am", "be", "been"]),
+  new Set(["has", "have", "had"]),
+  new Set(["does", "do", "did"]),
+];
+
+const SUFFIXES = ["es", "ed", "ing", "s", "d"];
+/** A stem must keep at least this many letters after a suffix strip. */
+const MIN_STEM_LENGTH = 3;
+
+function stemsOf(word: string): Set<string> {
+  const stems = new Set([word]);
+  for (const suffix of SUFFIXES) {
+    if (word.endsWith(suffix) && word.length - suffix.length >= MIN_STEM_LENGTH)
+      stems.add(word.slice(0, -suffix.length));
+  }
+  return stems;
+}
+
+/** True when two different words are forms of the same word. */
+function isInflection(a: string, b: string): boolean {
+  if (a === b) return false;
+  if (IRREGULAR_GROUPS.some((g) => g.has(a) && g.has(b))) return true;
+  const stemsB = stemsOf(b);
+  for (const stem of stemsOf(a)) if (stemsB.has(stem)) return true;
+  return false;
+}
+
+/** Collapse exact immediate repeats ("the the" to "the"). */
+function collapseRepeats(words: string[]): string[] {
+  return words.filter((w, i) => w !== words[i - 1]);
+}
+
+/**
+ * True when the two texts differ only in inflections: after the repeat
+ * collapse, every gap of the word alignment is a run of old words that match
+ * the same number of new words one for one, each pair an inflection. Any other
+ * change (a different word, an added or lost word, a split or joined word)
+ * makes the correction a real fix, and the whole correction stays.
+ */
+function inflectionOnly(oldWords: string[], newWords: string[]): boolean {
+  const a = collapseRepeats(oldWords);
+  const b = collapseRepeats(newWords);
+  const lcs = lcsTable(a, b);
+  let i = 0;
+  let j = 0;
+  let removed: string[] = [];
+  let added: string[] = [];
+  let gaps = 0;
+  const closeGap = () => {
+    if (removed.length === 0 && added.length === 0) return true;
+    gaps++;
+    const ok =
+      removed.length === added.length &&
+      removed.every((w, k) => isInflection(w, added[k]!));
+    removed = [];
+    added = [];
+    return ok;
+  };
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      if (!closeGap()) return false;
+      i++;
+      j++;
+    } else if (
+      j >= b.length ||
+      (i < a.length && lcs[i + 1]![j]! >= lcs[i]![j + 1]!)
+    ) {
+      removed.push(a[i]!);
+      i++;
+    } else {
+      added.push(b[j]!);
+      j++;
+    }
+  }
+  if (!closeGap()) return false;
+  return gaps > 0;
+}
+
 /** 4.2.3: the code checks after the parse. */
 export function checkCorrections(
   raw: { id: string; text: string }[],
@@ -227,6 +307,11 @@ export function checkCorrections(
     // A fix must not turn a statement into its opposite.
     if (negationCount(original.text) !== negationCount(text)) {
       drop("meaning_flip");
+      return;
+    }
+    // A change of grammar only (verb agreement, tense, plural) is not a fix.
+    if (inflectionOnly(oldWords, newWords)) {
+      drop("inflection_only");
       return;
     }
     corrections.push({ id: entry.id, text, seq, callId });

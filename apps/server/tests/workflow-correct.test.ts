@@ -338,7 +338,7 @@ describe("correctChunk: the length route (4.0.6)", () => {
   });
 });
 
-// The 4.2.3 word guard (checks 6 and 7): pure, so it runs on plain segments.
+// The 4.2.3 word guard (checks 6 to 9): pure, so it runs on plain segments.
 describe("checkCorrections word guard", () => {
   const seg = (text: string) =>
     ({ id: "s1", displayLabel: "Me", text }) as PreparedSegment;
@@ -439,6 +439,43 @@ describe("checkCorrections word guard", () => {
     expect(
       check("we dont ship the bild", "we dont ship the build").kept,
     ).toEqual(["we dont ship the build"]);
+  });
+
+  it.each([
+    ["knows", "know"],
+    ["represents", "represent"],
+    ["is", "are"],
+    ["leads", "lead"],
+    ["delivered", "deliver"],
+    ["scene", "scenes"],
+    ["result", "results"],
+  ])("drops %s to %s as inflection_only", (from, to) => {
+    expect(check(`so the team ${from} it`, `so the team ${to} it`)).toEqual({
+      kept: [],
+      reasons: ["inflection_only"],
+    });
+  });
+
+  it.each([
+    ["Datedog", "Datadog"],
+    ["Kias", "Kiosks"],
+    ["rug", "RAG"],
+    ["string lit", "Streamlit"],
+    ["time", "team"],
+  ])("keeps the real fix %s to %s", (from, to) => {
+    const r = check(`we use ${from} here`, `we use ${to} here`);
+    expect(r.reasons).toEqual([]);
+    expect(r.kept).toHaveLength(1);
+  });
+
+  it("keeps a correction that mixes an inflection with a real fix", () => {
+    const r = check("it knows Datedog well", "it know Datadog well");
+    expect(r.reasons).toEqual([]);
+    expect(r.kept).toEqual(["it know Datadog well"]);
+  });
+
+  it("does not treat it, its and itself as one word", () => {
+    expect(check("we fix it now", "we fix its now").reasons).toEqual([]);
   });
 
   it("records the call id and seq of a guard drop", () => {
