@@ -50,7 +50,8 @@ export function collapseAsrLineBreaks(text: string): string {
   });
 }
 
-const THINK_TAG = /<\s*\/?\s*think\s*>/i;
+/** Matches an opening or closing think tag. The gateway reuses it to detect a reasoning leak. */
+export const THINK_TAG = /<\s*\/?\s*think\s*>/i;
 const THINK_BLOCK = /<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi;
 const THINK_UNCLOSED = /<\s*think\s*>[\s\S]*$/i;
 const THINK_CLOSE = /<\s*\/\s*think\s*>/gi;
