@@ -50,7 +50,6 @@ for (const dir of outDirs) {
   for (const file of files) {
     const source = readFileSync(join(dir, file), "utf8");
     for (const _ of source.matchAll(dynamicRequirePattern)) {
-      checked++;
       violations.push(`${dir}/${file}: commonjsRequire( (dynamic require)`);
     }
     for (const match of source.matchAll(requirePattern)) {
