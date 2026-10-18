@@ -434,12 +434,12 @@ exports[`stt transcribe wire body (WB12-WB14) > WB12 openai 1`] = `
           "[file audio/wav]",
         ],
         [
-          "language",
-          "en",
-        ],
-        [
           "response_format",
           "verbose_json",
+        ],
+        [
+          "language",
+          "en",
         ],
         [
           "temperature",
@@ -520,10 +520,6 @@ exports[`stt transcribe wire body (WB12-WB14) > WB14 elevenlabs 1`] = `
         [
           "diarize",
           "true",
-        ],
-        [
-          "diarize",
-          "false",
         ],
         [
           "language_code",

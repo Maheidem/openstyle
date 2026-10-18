@@ -356,6 +356,8 @@ describe("stt transcribe wire body (WB12-WB14)", () => {
         headers: jsonHeaders,
       });
 
+  // 2026-10-18, coordinator decision (spec M7): AI SDK v7 sends response_format
+  // before language. Multipart field order has no meaning to the server.
   it("WB12 openai", async () => {
     expect(
       await describeTranscription(
@@ -378,6 +380,9 @@ describe("stt transcribe wire body (WB12-WB14)", () => {
     ).toMatchSnapshot();
   });
 
+  // 2026-10-18, coordinator decision (spec M7): AI SDK v6 sent two
+  // contradictory diarize fields (true and false). v7 sends only diarize=true,
+  // which is what the app asks for. This removes a duplicate field.
   it("WB14 elevenlabs", async () => {
     expect(
       await describeTranscription(
