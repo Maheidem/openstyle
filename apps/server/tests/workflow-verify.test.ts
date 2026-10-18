@@ -103,6 +103,29 @@ describe("verifyEvidence: normalization (4.4.1)", () => {
     expect(
       looksSelfIdentifying(normalizeForMatch("Hi, this is Ana"), "ana"),
     ).toBe(true);
+    // A name that starts a clause, then a comma and a job title.
+    expect(
+      looksSelfIdentifying(
+        normalizeForMatch("So Tom, SVP of kiosks here at Acme"),
+        "tom",
+      ),
+    ).toBe(true);
+    expect(
+      looksSelfIdentifying(normalizeForMatch("Tom, head of sales."), "tom"),
+    ).toBe(true);
+    // A greeting to someone is no introduction.
+    expect(
+      looksSelfIdentifying(normalizeForMatch("Oh, good, Mike."), "mike"),
+    ).toBe(false);
+    expect(
+      looksSelfIdentifying(normalizeForMatch("Hello, Mike and Grace."), "mike"),
+    ).toBe(false);
+    expect(
+      looksSelfIdentifying(
+        normalizeForMatch("Hello, Mike, director of sales"),
+        "mike",
+      ),
+    ).toBe(false);
     // "Thank you, Ana." is no introduction.
     expect(
       looksSelfIdentifying(normalizeForMatch("Thank you, Ana."), "ana"),

@@ -354,10 +354,11 @@ describe("checkCorrections word guard", () => {
     };
   };
 
-  it("drops a case or punctuation change as format_only", () => {
-    expect(
-      check("we ship it on friday", "We ship it on Friday.").reasons,
-    ).toEqual(["format_only"]);
+  it("keeps a case or punctuation change", () => {
+    expect(check("we ship it on friday", "We ship it on Friday.")).toEqual({
+      kept: ["We ship it on Friday."],
+      reasons: [],
+    });
   });
 
   it("drops a filler removal as deletes_words", () => {
@@ -366,10 +367,25 @@ describe("checkCorrections word guard", () => {
     ]);
   });
 
-  it("drops a repeated-word removal as deletes_words", () => {
-    expect(check("we ship the the build", "we ship the build").reasons).toEqual(
-      ["deletes_words"],
+  it("keeps the removal of an exact repeated word", () => {
+    expect(check("we ship the the build", "we ship the build")).toEqual({
+      kept: ["we ship the build"],
+      reasons: [],
+    });
+    expect(check("I I think to to go", "I think to go").reasons).toEqual([]);
+  });
+
+  it("drops a false-start removal as deletes_words", () => {
+    expect(
+      check("we ship the, we release the build", "we release the build")
+        .reasons,
+    ).toEqual(["deletes_words"]);
+    expect(check("yeah yeah we ship it", "yeah we ship it").reasons).toEqual(
+      [],
     );
+    expect(check("we go to the we go home", "we go home").reasons).toEqual([
+      "deletes_words",
+    ]);
   });
 
   it("drops a correction that fixes a word and also deletes one", () => {
@@ -427,12 +443,12 @@ describe("checkCorrections word guard", () => {
 
   it("records the call id and seq of a guard drop", () => {
     const r = checkCorrections(
-      [{ id: "s1", text: "Same words." }],
+      [{ id: "s1", text: "same words" }],
       [seg("same words")],
       7,
     );
     expect(r.dropped).toEqual([
-      { id: "s1", reason: "format_only", seq: 0, callId: 7 },
+      { id: "s1", reason: "unchanged", seq: 0, callId: 7 },
     ]);
   });
 });

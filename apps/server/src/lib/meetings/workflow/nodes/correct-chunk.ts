@@ -104,9 +104,12 @@ function lcsTable(a: string[], b: string[]): number[][] {
 }
 
 /**
- * True when the word diff of old to new has a pure deletion: a gap between two
- * matched words (or the text ends) that loses old words and gains no new word.
- * N old words that become M new words is a replacement and is not a deletion.
+ * True when the word diff of old to new has a pure deletion of a word that is
+ * not an exact repeat: a gap between two matched words (or the text ends) that
+ * loses old words and gains no new word. N old words that become M new words is
+ * a replacement and is not a deletion. A deleted word that equals the word
+ * right before or after it in the original is an immediate duplicate ("the the"
+ * to "the") and is allowed.
  */
 function deletesWords(oldWords: string[], newWords: string[]): boolean {
   const n = oldWords.length;
@@ -114,11 +117,13 @@ function deletesWords(oldWords: string[], newWords: string[]): boolean {
   const lcs = lcsTable(oldWords, newWords);
   let i = 0;
   let j = 0;
-  let removed = 0;
+  let removed: number[] = [];
   let added = 0;
+  const isRepeat = (k: number) =>
+    oldWords[k] === oldWords[k - 1] || oldWords[k] === oldWords[k + 1];
   const closeGap = () => {
-    const pure = removed > 0 && added === 0;
-    removed = 0;
+    const pure = removed.length > 0 && added === 0 && !removed.every(isRepeat);
+    removed = [];
     added = 0;
     return pure;
   };
@@ -128,7 +133,7 @@ function deletesWords(oldWords: string[], newWords: string[]): boolean {
       i++;
       j++;
     } else if (j >= m || (i < n && lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) {
-      removed++;
+      removed.push(i);
       i++;
     } else {
       added++;
@@ -206,13 +211,10 @@ export function checkCorrections(
       drop("unchanged");
       return;
     }
-    // 4.2.2 policy: a case or punctuation change, or a lost word, is no fix.
+    // 4.2.2 policy: a case or punctuation change is a fix. A lost word is not,
+    // except an exact repeat of its neighbour.
     const oldWords = wordsOf(original.text);
     const newWords = wordsOf(text);
-    if (oldWords.join(" ") === newWords.join(" ")) {
-      drop("format_only");
-      return;
-    }
     if (deletesWords(oldWords, newWords)) {
       drop("deletes_words");
       return;

@@ -55,6 +55,14 @@ export function containsWord(textNorm: string, wordNorm: string): boolean {
 const SELF_INTRO_CUES_EN =
   "this is|i'?m|i am|it'?s|it is|my name'?s|my name is";
 
+// A name that starts a clause and is followed by a comma and a job title:
+// "So Tom, SVP of kiosks here". A greeting before the name ("Hello, Mike")
+// is not a start, and a name without a title after the comma is not accepted.
+const CLAUSE_START =
+  "(?:^|[.!?]\\s+)(?:(?:so|ok|okay|alright|well|yeah|and)[,\\s]+)?";
+const TITLE_WORDS =
+  "(?:svp|evp|vp|ceo|cto|cfo|coo|cio|cpo|vice president|president|director|manager|founder|co-founder|chief|engineer|architect|head of|lead of|principal|partner|consultant|analyst|recruiter)";
+
 export function looksSelfIdentifying(
   quoteNorm: string,
   nameNorm: string,
@@ -62,7 +70,7 @@ export function looksSelfIdentifying(
   if (!nameNorm) return false;
   const n = escapeRegExp(nameNorm);
   return new RegExp(
-    `${B}(${SELF_INTRO_CUES_EN})\\s+${n}${E}|${B}${n}\\s+(here|speaking)${E}`,
+    `${B}(${SELF_INTRO_CUES_EN})\\s+${n}${E}|${B}${n}\\s+(here|speaking)${E}|${CLAUSE_START}${n},\\s*${TITLE_WORDS}${E}`,
     "u",
   ).test(quoteNorm);
 }
