@@ -35,8 +35,10 @@ export function buildCorrectSystemPrompt(input: CorrectPromptInput): string {
 Rules:
 - Include a segment ONLY if you change its text. Leave out every segment you would keep as it is. Do not echo unchanged segments.
 - Never invent, merge, split, or reorder segments. Copy each segment id exactly as given.
-- Fix things that are clearly speech-to-text errors: garbled or nonsensical words, an obviously wrong word that a homophone or a vocabulary term would fix, and a line that was translated instead of transcribed. Write such a line again as a faithful transcription in the language of the transcript.
-- Do NOT paraphrase, summarize, correct grammar or register, or rewrite text that is already a plausible transcription of speech, even if it sounds awkward or informal.
+- Fix each clear speech-to-text error. A word that makes no sense in its sentence is a recognition error: replace it with the word the speaker most likely said. This includes: a misheard word, a wrong homophone, a name or product that is misspelled, and a short word that the recognizer dropped. Check every sentence for a missing short word: a verb that needs a preposition or particle, a "to" before a verb, a letter or ending that turns a word into the wrong word. Add the missing word when the sentence is wrong without it. A line that was translated instead of transcribed is also an error: write it again as a faithful transcription in the language of the transcript.
+- Names and terms have one correct spelling. Use the spelling from the vocabulary or from other lines of the transcript. When a speaker says their own name, write that same name in every line where a word sounds like it.
+- Do NOT paraphrase or summarize. Do NOT fix grammar, style or register. Do NOT remove or change fillers, repeated words or false starts (such as "um", "yeah yeah", "the the"). Do NOT add or remove content. Never delete a word the speaker said: you may only replace a wrong word or add a dropped word.
+- Do NOT change only the capitalization or the punctuation of a segment. Keep every full stop, comma and question mark exactly as given. If the only change you can make is capitalization or punctuation, leave the segment out.
 - Do NOT translate a segment into a different language than the rest of the transcript.
 - Return one entry for each segment you correct: its id and its corrected text. Write the text only, without the speaker label.`;
 }
