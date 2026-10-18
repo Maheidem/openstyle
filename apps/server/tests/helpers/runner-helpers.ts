@@ -37,8 +37,19 @@ export const SUMMARY_ANSWER = okReply(
   }),
 );
 
-/** The made-up correction that the default responder returns for a chunk. */
-export const correctionText = (id: string) => `Corrected line for ${id}.`;
+/**
+ * The correction that the default responder returns for a segment: the segment
+ * text plus one word. It passes every correction guard (overlap, deletion,
+ * length, negation).
+ */
+export const correctionText = (id: string) =>
+  `${
+    (
+      getDb()
+        .prepare("SELECT text FROM meeting_segments WHERE id = ?")
+        .get(id) as { text: string }
+    ).text
+  } fixed`;
 
 /**
  * The default answers: one correction for the first segment of a chunk, no
