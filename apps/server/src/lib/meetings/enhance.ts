@@ -34,10 +34,16 @@ import {
   type ChatCallInput,
   type ChatCallResponse,
   defaultChatCallFor,
-  estimateTokens,
 } from "./llm-call.js";
 import { type MergedSegment, speakerDisplayLabel } from "./merge.js";
 import { fixNameSpelling } from "./speaker-spelling.js";
+import {
+  chunkForEnhance,
+  type EnhanceSegment,
+  lineTokensOf,
+} from "./workflow/chunking.js";
+
+export { chunkForEnhance };
 
 const log = createAppLogger("meeting-enhance");
 
@@ -167,53 +173,6 @@ function failureDetail(err: unknown): string {
   const message =
     err instanceof Error ? `${err.name}: ${err.message}` : String(err ?? "");
   return message.slice(0, 200);
-}
-
-interface EnhanceSegment {
-  id: string;
-  speaker: string;
-  text: string;
-  /** Structured diarization label, kept alongside the formatted `speaker`
-   *  display string (specs/meeting-speaker-naming.md §5.1/§5.3) — reading
-   *  the label count for the maxOutputTokens bump below, or the phantom-
-   *  label allowlist, must never re-parse `speaker`'s formatted text: once
-   *  a speaker has a confirmed name, `speaker` renders as e.g. "Ana", not
-   *  "Them 3". Undefined for "Me" segments and undiarized "Them" segments. */
-  speakerLabel?: string;
-}
-
-function lineTokensOf(s: EnhanceSegment): number {
-  return estimateTokens(formatEnhanceLine(s.id, s.speaker, s.text)) + 1; // +1 for the newline
-}
-
-/**
- * Split id-bearing segments into whole-segment chunks bounded by
- * `budgetTokens` (a single oversized segment still becomes its own chunk).
- * Unlike `chunkTranscript` (`summarize.ts`), no overlap is carried between
- * chunks — corrections don't need cross-chunk continuity the way
- * summarization does, and carrying one would make a chunk's ids no longer
- * disjoint, breaking the per-chunk `validIds` guard below.
- */
-export function chunkForEnhance(
-  segments: EnhanceSegment[],
-  budgetTokens: number,
-): EnhanceSegment[][] {
-  const chunks: EnhanceSegment[][] = [];
-  let start = 0;
-  while (start < segments.length) {
-    let used = 0;
-    let end = start;
-    while (
-      end < segments.length &&
-      (end === start || used + lineTokensOf(segments[end]) <= budgetTokens)
-    ) {
-      used += lineTokensOf(segments[end]);
-      end++;
-    }
-    chunks.push(segments.slice(start, end));
-    start = end;
-  }
-  return chunks;
 }
 
 function formatChunk(chunk: EnhanceSegment[]): string {

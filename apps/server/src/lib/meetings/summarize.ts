@@ -29,9 +29,8 @@ import {
   type ChatCallInput,
   type ChatCallResponse,
   defaultChatCallFor,
-  estimateTokens,
 } from "./llm-call.js";
-import { type MergedSegment, speakerDisplayLabel } from "./merge.js";
+import type { MergedSegment } from "./merge.js";
 import {
   buildMeetingSummaryMapPrompt,
   buildMeetingSummaryReducePrompt,
@@ -42,6 +41,14 @@ import {
   withMeetingContext,
   withSummaryInstructions,
 } from "./summary-prompt.js";
+import {
+  chunkTranscript,
+  estimateTokens,
+  formatSegment,
+  overlapTokens,
+} from "./workflow/chunking.js";
+
+export { chunkTranscript };
 
 const log = createAppLogger("meeting-summarize");
 
@@ -75,14 +82,6 @@ export const DEFAULT_SUMMARY_CONTEXT_BUDGET_TOKENS = 8000;
  * far likelier to overrun a modest `--ctx-size` than 7687 + 4096 ≈ 11.8k.
  */
 export const DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS = 4096;
-/**
- * Overlap carried from the tail of one chunk into the head of the next, as a
- * fraction of the chunk budget (capped in tokens). Whole segments only — a
- * chunk never starts or ends mid-segment.
- */
-const OVERLAP_FRACTION = 0.1;
-const OVERLAP_MAX_TOKENS = 400;
-
 /**
  * Hard ceiling on the number of LLM calls one Summarize run may issue
  * (specs/meeting-llm-queue.md §5.8). Derived, not asserted:
@@ -211,15 +210,6 @@ export async function summarizeJobPlan(
   };
 }
 
-/** Overlap budget for one chunk — shared by the chunker and the call-count
- *  math above so the two cannot drift apart. */
-function overlapTokens(budgetTokens: number): number {
-  return Math.min(
-    OVERLAP_MAX_TOKENS,
-    Math.floor(budgetTokens * OVERLAP_FRACTION),
-  );
-}
-
 /** One LLM request issued by the summarizer. */
 export type SummaryLlmRequest = ChatCallInput & {
   /** Which phase of the pipeline this call belongs to. */
@@ -303,59 +293,6 @@ function renderTranscript(segments: readonly MergedSegment[]): string {
     .filter((s) => (s.enhancedText ?? s.text).trim().length > 0)
     .map(formatSegment)
     .join("\n");
-}
-
-/** Format one merged segment as a labeled transcript line. The label rule
- * (named, numbered, or "Unidentified") lives in `speakerDisplayLabel`.
- * I2 (specs/meeting-transcription-v2.md §3.2): renders the enhanced text
- * when present, else the raw text — Enhance can change only some chunks,
- * so one summary can mix enhanced and raw lines. */
-function formatSegment(segment: MergedSegment): string {
-  const text = segment.enhancedText ?? segment.text;
-  return `${speakerDisplayLabel(segment, "Unidentified")}: ${text}`;
-}
-
-/**
- * Split the transcript into chunks of whole segments, each at most
- * `budgetTokens` (a single oversized segment still becomes its own chunk),
- * prepending a token-capped tail of the previous chunk as overlap.
- */
-export function chunkTranscript(
-  segments: readonly MergedSegment[],
-  budgetTokens: number,
-): string[] {
-  const lines = segments.map(formatSegment);
-  const lineTokens = lines.map((l) => estimateTokens(l) + 1); // +1 for the newline
-  const overlapBudget = overlapTokens(budgetTokens);
-
-  const chunks: string[] = [];
-  let index = 0;
-  while (index < lines.length) {
-    // Fresh (non-overlap) segments for this chunk. Always take at least one
-    // so an oversized single segment cannot stall the loop.
-    const freshStart = index;
-    let used = 0;
-    while (
-      index < lines.length &&
-      (index === freshStart || used + lineTokens[index] <= budgetTokens)
-    ) {
-      used += lineTokens[index];
-      index++;
-    }
-
-    // Overlap: trailing whole segments of the previous chunk, newest-last,
-    // within the overlap budget.
-    const overlap: string[] = [];
-    let overlapUsed = 0;
-    for (let j = freshStart - 1; j >= 0; j--) {
-      if (overlapUsed + lineTokens[j] > overlapBudget) break;
-      overlap.unshift(lines[j]);
-      overlapUsed += lineTokens[j];
-    }
-
-    chunks.push([...overlap, ...lines.slice(freshStart, index)].join("\n"));
-  }
-  return chunks;
 }
 
 /**
