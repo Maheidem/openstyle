@@ -3389,6 +3389,8 @@ This matrix is the source of the WP3 test cases (11.5).
 
 #### 10.5.1 Scripted model matrix
 
+Build note 2026-10-18 (WP5a): the "Req" counts follow 5.2.1 and `callUnit` (5.6). A11, A12 and A13 (`pause_turn`) give no retry, so they pin 1 request. A14 and A15 pin 1; the second request with reasoning on is the node's length route, covered by LR4 and LR6. HE14 maps to `provider_unavailable` with retry advice, so it pins 2.
+
 Use `MockLanguageModelV4` from `ai/test` (`doGenerate` takes a function, one result or a list; `doGenerateCalls` records calls: https://unpkg.com/ai@7.0.143/dist/test/index.d.ts:135,142). A result needs `finishReason: { unified, raw }` and V4 usage (`pv:654-666,694-740,746-791`). WP3 builds `T/helpers/fake-model.ts`. No file imports `ai/test` today; the hand-made `v3` model in `packages/stt/src/post-process.test.ts:4-11` stays until WP1. `ai` 6.0.191 has only V3 mocks (https://unpkg.com/ai@6.0.191/dist/test/index.d.ts:53), so gateway tests wait for WP1.
 
 ```ts
