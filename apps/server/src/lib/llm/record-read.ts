@@ -19,7 +19,8 @@ import type {
 // It takes a scope and a scope id as arguments and knows no consumer. A
 // consumer passes its LLM node names and, for stale checks, a callback. A JSON
 // column that does not parse reads as null. A status, outcome or error kind
-// the code does not know reads as "unknown" (7.2 P7).
+// the code does not know reads as "unknown" (7.2 P7). The scope, run kind and
+// link target type pass as stored.
 
 export interface RecordKey {
   scope: LlmScope;
@@ -349,19 +350,6 @@ interface LinkDbRow {
   reason: string | null;
   applied_text: string | null;
   verdict_json: string | null;
-}
-
-/** True when a run of the scope has this id. */
-export function runExists(
-  db: DatabaseSync,
-  key: RecordKey,
-  runId: string,
-): boolean {
-  return !!db
-    .prepare(
-      "SELECT 1 FROM llm_runs WHERE id = ? AND scope = ? AND scope_id = ?",
-    )
-    .get(runId, key.scope, key.scopeId);
 }
 
 function selectCallRows(

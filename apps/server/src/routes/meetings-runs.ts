@@ -29,7 +29,11 @@ import {
   readCalls,
   readRun,
 } from "../lib/llm/record-read.js";
-import { MEETING_LLM_NODES, meetingScope } from "../lib/meetings/llm-record.js";
+import {
+  MEETING_LLM_NODES,
+  MEETING_SUMMARY_NODE,
+  meetingScope,
+} from "../lib/meetings/llm-record.js";
 import {
   findSegmentCallId,
   findSpeakerRunId,
@@ -41,6 +45,8 @@ import { getMeetingRow } from "../lib/meetings/store.js";
 
 const DEFAULT_RUNS_LIMIT = 10;
 const DEFAULT_CALLS_LIMIT = 20;
+// detail=full answers 400 when limit is above this value. It does not clamp.
+// tests/meetings-runs.test.ts pins this rule (limit=11).
 const MAX_FULL_CALLS = 10;
 
 const runsQuerySchema = z.object({
@@ -209,7 +215,7 @@ const meetingsRuns = new Hono()
           selector =
             runId === null
               ? { kind: "ids", callIds: [] }
-              : { kind: "run", runId, nodes: ["summarize"] };
+              : { kind: "run", runId, nodes: [MEETING_SUMMARY_NODE] };
         }
         break;
       }
