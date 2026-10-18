@@ -1175,6 +1175,8 @@ Owner decision 2026-10-18 (council round r185-5 split on policy: Claude SHIP on 
 
 #### 4.2.3 Code checks after the parse
 
+Light-cleanup update 2026-10-18 (WP6 40bf2bb9): `format_only` is no longer emitted (the value stays in the type for stored runs). `deletes_words` drops a pure deletion run unless every deleted word equals the word right before or after it in the original (an exact repeat).
+
 Council round r185-4 findings (2026-10-18, WP6 ea829062 and 6f57ac69): the code drops a correction, keeps the original text and records the reason when it is `format_only` (only case or punctuation changes), `deletes_words` (a word diff removes words with no replacement in their place), `too_different` (adds more than 3 words net, or keeps under half of the original words in order: copied text from a neighbour segment), or `meaning_flip` (the count of negation words changes). These join `unchanged` in `CorrectionDropReason`.
 
 For each correction, in order:
@@ -1387,6 +1389,8 @@ Check of 2026-10-17, Node 26.5.0, current functions (`M/enhance.ts:263-265`, `27
 Cause: `\b` without the `u` flag counts only A to Z, digits and underscore as word characters (`M/enhance.ts:277`; https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Word_boundary_assertion). UNVERIFIED: curly apostrophes in the owner's ASR.
 
 #### 4.4.2 Per-proposal checks
+
+Check 8 update 2026-10-18 (WP6 40bf2bb9): a second accepted pattern. The matched name starts a clause (start of line, after . ! ?, or after so / ok / okay / alright / well / yeah / and) and is followed by a comma and a job title from a fixed list (for example "So Tom, SVP of …"). A greeting before the name, or a comma with no title after it, does not pass.
 
 Council round r185-4 finding (2026-10-18, WP6 6f57ac69): the model writes the full name from the calendar invite while the quote holds only the spoken first name, so check 7 dropped every self-introduction. Check 7 now passes when the full normalised name is in the quote at a word boundary, or its first word is; a first name of 4 or more letters also passes when a quote word is one letter away (the speaker-spelling rule). Check 8 tests the matched part. The verdict keeps the full proposed name.
 
