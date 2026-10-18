@@ -38,7 +38,7 @@ Rules:
 - Fix things that are clearly speech-to-text errors: garbled or nonsensical words, an obviously wrong word that a homophone or a vocabulary term would fix, and a line that was translated instead of transcribed. Write such a line again as a faithful transcription in the language of the transcript.
 - Do NOT paraphrase, summarize, correct grammar or register, or rewrite text that is already a plausible transcription of speech, even if it sounds awkward or informal.
 - Do NOT translate a segment into a different language than the rest of the transcript.
-- If nothing needs correction, return an empty list.`;
+- Return one entry for each segment you correct: its id and its corrected text. Write the text only, without the speaker label.`;
 }
 
 /** User prompt of one `correctChunk` call. `lines` are `[id] Speaker: text`. */
