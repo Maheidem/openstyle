@@ -838,10 +838,55 @@
     "enhanceResult": "{{n}} Segmente korrigiert.",
     "enhanceNoneCorrected": "Keine Segmente mussten korrigiert werden.",
     "enhancePartial": "Teilweiser Lauf — {{failed}} von {{attempted}} Abschnitten konnten nicht korrigiert werden und behalten ihren Originaltext.",
-    "enhanceFailedTimeout": "Die Verbesserung hat das Zeitlimit erreicht, bevor Ihr Modell geantwortet hat — korrigiert wurde nichts. Erhöhen Sie das Zeitlimit für die Verbesserung in den Einstellungen › Daten und versuchen Sie es erneut.",
-    "enhanceFailedParse": "Verbessern fehlgeschlagen — die Antwort Ihres Modells ließ sich nicht als Korrekturen lesen. Es wurde nichts geändert.",
-    "enhanceFailedProvider": "Verbessern fehlgeschlagen — Ihr Modell war nicht erreichbar. Es wurde nichts geändert.",
     "retryEnhance": "Verbesserung erneut versuchen",
+    "llmRun": {
+      "enhance": {
+        "failed": "Verbessern fehlgeschlagen.",
+        "partial": "Verbessern mit Fehlern beendet. {{failed}} von {{total}} Schritten sind fehlgeschlagen.",
+        "interrupted": "Verbessern wurde angehalten, als Openstyle geschlossen wurde."
+      },
+      "summarize": {
+        "failed": "Zusammenfassen fehlgeschlagen.",
+        "partial": "Zusammenfassen mit Fehlern beendet. {{failed}} von {{total}} Schritten sind fehlgeschlagen.",
+        "interrupted": "Zusammenfassen wurde angehalten, als Openstyle geschlossen wurde."
+      },
+      "line": "{{where}}: {{reason}}",
+      "node": {
+        "correctChunk": "Korrekturen",
+        "identifySpeakers": "Sprecher",
+        "summarize": "Zusammenfassung",
+        "save": "Speichern"
+      },
+      "chunks": "Abschnitte {{list}}",
+      "resume": "Fortsetzen",
+      "startAgain": "Neu starten",
+      "startAgainDiscards": "Neu starten. Dabei geht die fertige Arbeit des angehaltenen Laufs verloren."
+    },
+    "llmError": {
+      "length": "Das Modell hat sein Ausgabelimit erreicht.",
+      "content_filter": "Der Anbieter hat die Antwort blockiert.",
+      "unexpected_tool_calls": "Das Modell hat versucht, ein Werkzeug aufzurufen.",
+      "abnormal_stop": "Das Modell hat aus einem unbekannten Grund angehalten.",
+      "reasoning_leak": "Das Modell hat seine Überlegungen in die Antwort geschrieben.",
+      "schema": "Die Antwort entsprach nicht dem verlangten Format.",
+      "provider_timeout": "Das Modell hat nicht rechtzeitig geantwortet. Erhöhen Sie das Zeitlimit in den Einstellungen und versuchen Sie es erneut.",
+      "provider_rate_limited": "Der Anbieter hat die Anfragen begrenzt.",
+      "provider_unavailable": "Das Modell war nicht erreichbar.",
+      "provider_auth": "Der Anbieter hat den Schlüssel abgelehnt.",
+      "provider_invalid_request": "Der Anbieter hat die Anfrage abgelehnt.",
+      "model_mismatch": "Der Server hat mit einem anderen Modell geantwortet.",
+      "model_unavailable": "Openstyle kann das gewählte Modell nicht verwenden. Prüfen Sie Einstellungen › Modelle und versuchen Sie es erneut.",
+      "deadline_exceeded": "Die Zusammenfassung hat ihr Zeitlimit überschritten.",
+      "budget_exceeded": "Das Meeting ist zu lang für das Zusammenfassungslimit von 24 Aufrufen.",
+      "empty_input": "Das Meeting enthält keinen Text zum Verarbeiten.",
+      "save_failed": "Openstyle konnte das Ergebnis nicht speichern.",
+      "internal": "Openstyle hat den Lauf wegen eines internen Fehlers angehalten.",
+      "interrupted_before_checkpoint": "Openstyle wurde geschlossen, bevor der Lauf Fortschritt gespeichert hat. Starten Sie neu.",
+      "graph_changed": "Openstyle wurde aktualisiert, während der Lauf angehalten war. Starten Sie neu.",
+      "transcript_changed": "Das Transkript hat sich geändert, während der Lauf angehalten war. Starten Sie neu.",
+      "cancelled": "Der Lauf wurde abgebrochen.",
+      "unknown": "Ein unbekannter Fehler ist aufgetreten."
+    },
     "showEnhancedLabel": "Verbesserte Abschrift anzeigen",
     "showingEnhanced": "Verbessert",
     "showingRaw": "Original",

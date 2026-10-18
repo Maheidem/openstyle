@@ -838,10 +838,55 @@
     "enhanceResult": "{{n}} segments corrigés.",
     "enhanceNoneCorrected": "Aucun segment n'a nécessité de correction.",
     "enhancePartial": "Passage partiel — {{failed}} segments sur {{attempted}} n’ont pas pu être corrigés et gardent leur texte d’origine.",
-    "enhanceFailedTimeout": "L’amélioration a expiré avant la réponse de votre modèle, rien n’a donc été corrigé. Augmentez le délai d’amélioration dans Réglages › Données, puis réessayez.",
-    "enhanceFailedParse": "Échec de l’amélioration — la réponse du modèle n’a pas pu être lue comme des corrections, rien n’a été modifié.",
-    "enhanceFailedProvider": "Échec de l’amélioration — votre modèle est injoignable, rien n’a été modifié.",
     "retryEnhance": "Relancer l’amélioration",
+    "llmRun": {
+      "enhance": {
+        "failed": "L’amélioration a échoué.",
+        "partial": "L’amélioration s’est terminée avec des erreurs. {{failed}} étapes sur {{total}} ont échoué.",
+        "interrupted": "L’amélioration s’est arrêtée à la fermeture d’Openstyle."
+      },
+      "summarize": {
+        "failed": "Le résumé a échoué.",
+        "partial": "Le résumé s’est terminé avec des erreurs. {{failed}} étapes sur {{total}} ont échoué.",
+        "interrupted": "Le résumé s’est arrêté à la fermeture d’Openstyle."
+      },
+      "line": "{{where}}: {{reason}}",
+      "node": {
+        "correctChunk": "Corrections",
+        "identifySpeakers": "Intervenants",
+        "summarize": "Résumé",
+        "save": "Enregistrement"
+      },
+      "chunks": "segments {{list}}",
+      "resume": "Reprendre",
+      "startAgain": "Recommencer",
+      "startAgainDiscards": "Recommencer. Le travail déjà terminé de l’exécution arrêtée est abandonné."
+    },
+    "llmError": {
+      "length": "Le modèle a atteint sa limite de sortie.",
+      "content_filter": "Le fournisseur a bloqué la réponse.",
+      "unexpected_tool_calls": "Le modèle a essayé d’appeler un outil.",
+      "abnormal_stop": "Le modèle s’est arrêté pour une raison inconnue.",
+      "reasoning_leak": "Le modèle a mis son raisonnement dans la réponse.",
+      "schema": "La réponse ne respectait pas le format demandé.",
+      "provider_timeout": "Le modèle n’a pas répondu à temps. Augmentez le délai dans Réglages, puis réessayez.",
+      "provider_rate_limited": "Le fournisseur a limité les requêtes.",
+      "provider_unavailable": "Le modèle n’était pas joignable.",
+      "provider_auth": "Le fournisseur a refusé la clé.",
+      "provider_invalid_request": "Le fournisseur a refusé la requête.",
+      "model_mismatch": "Le serveur a répondu avec un autre modèle.",
+      "model_unavailable": "Openstyle ne peut pas utiliser le modèle choisi. Vérifiez Réglages › Modèles, puis réessayez.",
+      "deadline_exceeded": "Le résumé a dépassé sa limite de temps.",
+      "budget_exceeded": "La réunion est trop longue pour la limite de résumé de 24 appels.",
+      "empty_input": "La réunion ne contient aucun texte à traiter.",
+      "save_failed": "Openstyle n’a pas pu enregistrer le résultat.",
+      "internal": "Openstyle a arrêté l’exécution à cause d’une erreur interne.",
+      "interrupted_before_checkpoint": "Openstyle s’est fermé avant que l’exécution n’enregistre sa progression. Recommencez.",
+      "graph_changed": "Openstyle a été mis à jour pendant l’arrêt de l’exécution. Recommencez.",
+      "transcript_changed": "La transcription a changé pendant l’arrêt de l’exécution. Recommencez.",
+      "cancelled": "L’exécution a été annulée.",
+      "unknown": "Une erreur inconnue s’est produite."
+    },
     "showEnhancedLabel": "Afficher la transcription améliorée",
     "showingEnhanced": "Améliorée",
     "showingRaw": "Brute",

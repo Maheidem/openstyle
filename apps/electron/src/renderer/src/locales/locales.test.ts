@@ -194,15 +194,51 @@ describe("locale files", () => {
       "settings.data.enhanceTimeoutSaveFailed",
       "settings.data.enhanceTimeoutStripped",
     ],
-    // The three states of an Enhance pass. "No segments needed correction" must
-    // never be the only zero-correction message — every locale carries the
-    // partial pass and the three named failure states, or a dead engine goes
-    // back to reading as a clean transcript in that language.
+    // The states of an Enhance or Summarize run (specs/meeting-enhance-agentic.md
+    // 8.9, 8.10). "No segments needed correction" must never be the only
+    // zero-correction message — every locale carries the partial pass, the
+    // failed and interrupted notices and the text of each error kind, or a dead
+    // engine goes back to reading as a clean transcript in that language.
     "enhance-honesty": [
       "meetings.enhancePartial",
-      "meetings.enhanceFailedTimeout",
-      "meetings.enhanceFailedParse",
-      "meetings.enhanceFailedProvider",
+      "meetings.llmRun.enhance.failed",
+      "meetings.llmRun.enhance.partial",
+      "meetings.llmRun.enhance.interrupted",
+      "meetings.llmRun.summarize.failed",
+      "meetings.llmRun.summarize.partial",
+      "meetings.llmRun.summarize.interrupted",
+      "meetings.llmRun.line",
+      "meetings.llmRun.node.correctChunk",
+      "meetings.llmRun.node.identifySpeakers",
+      "meetings.llmRun.node.summarize",
+      "meetings.llmRun.node.save",
+      "meetings.llmRun.chunks",
+      "meetings.llmRun.resume",
+      "meetings.llmRun.startAgain",
+      "meetings.llmRun.startAgainDiscards",
+      "meetings.llmError.length",
+      "meetings.llmError.content_filter",
+      "meetings.llmError.unexpected_tool_calls",
+      "meetings.llmError.abnormal_stop",
+      "meetings.llmError.reasoning_leak",
+      "meetings.llmError.schema",
+      "meetings.llmError.provider_timeout",
+      "meetings.llmError.provider_rate_limited",
+      "meetings.llmError.provider_unavailable",
+      "meetings.llmError.provider_auth",
+      "meetings.llmError.provider_invalid_request",
+      "meetings.llmError.model_mismatch",
+      "meetings.llmError.model_unavailable",
+      "meetings.llmError.deadline_exceeded",
+      "meetings.llmError.budget_exceeded",
+      "meetings.llmError.empty_input",
+      "meetings.llmError.save_failed",
+      "meetings.llmError.internal",
+      "meetings.llmError.interrupted_before_checkpoint",
+      "meetings.llmError.graph_changed",
+      "meetings.llmError.transcript_changed",
+      "meetings.llmError.cancelled",
+      "meetings.llmError.unknown",
       "meetings.retryEnhance",
       // The no-op message must still exist. It is now only the state it is
       // honest about (a completed pass that found nothing), not the default.

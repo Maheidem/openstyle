@@ -838,10 +838,55 @@
     "enhanceResult": "{{n}}個のセグメントを修正しました。",
     "enhanceNoneCorrected": "修正が必要なセグメントはありませんでした。",
     "enhancePartial": "部分的な処理 — {{attempted}}区切りのうち{{failed}}件を修正できず、元のテキストのまま残っています。",
-    "enhanceFailedTimeout": "モデルが応答する前に強化がタイムアウトしたため、何も修正されませんでした。設定 › データで強化のタイムアウトを延ばしてから再試行してください。",
-    "enhanceFailedParse": "強化に失敗しました — モデルの回答を修正として読み取れなかったため、何も変更されていません。",
-    "enhanceFailedProvider": "強化に失敗しました — モデルに接続できなかったため、何も変更されていません。",
     "retryEnhance": "強化を再試行",
+    "llmRun": {
+      "enhance": {
+        "failed": "強化に失敗しました。",
+        "partial": "強化はエラーありで終了しました。{{total}}ステップのうち{{failed}}ステップが失敗しました。",
+        "interrupted": "Openstyleが終了したため、強化が停止しました。"
+      },
+      "summarize": {
+        "failed": "要約に失敗しました。",
+        "partial": "要約はエラーありで終了しました。{{total}}ステップのうち{{failed}}ステップが失敗しました。",
+        "interrupted": "Openstyleが終了したため、要約が停止しました。"
+      },
+      "line": "{{where}}: {{reason}}",
+      "node": {
+        "correctChunk": "修正",
+        "identifySpeakers": "話者",
+        "summarize": "要約",
+        "save": "保存"
+      },
+      "chunks": "区切り {{list}}",
+      "resume": "再開",
+      "startAgain": "最初からやり直す",
+      "startAgainDiscards": "最初からやり直す。停止した実行の完了済みの作業は破棄されます。"
+    },
+    "llmError": {
+      "length": "モデルが出力の上限に達しました。",
+      "content_filter": "プロバイダーが回答をブロックしました。",
+      "unexpected_tool_calls": "モデルがツールを呼び出そうとしました。",
+      "abnormal_stop": "モデルが不明な理由で停止しました。",
+      "reasoning_leak": "モデルが推論の内容を回答に含めました。",
+      "schema": "回答が必要な形式に一致しませんでした。",
+      "provider_timeout": "モデルが時間内に応答しませんでした。設定でタイムアウトを延ばしてから、再試行してください。",
+      "provider_rate_limited": "プロバイダーがリクエストを制限しました。",
+      "provider_unavailable": "モデルに接続できませんでした。",
+      "provider_auth": "プロバイダーがキーを拒否しました。",
+      "provider_invalid_request": "プロバイダーがリクエストを拒否しました。",
+      "model_mismatch": "サーバーが別のモデルで応答しました。",
+      "model_unavailable": "Openstyleは選択したモデルを使用できません。設定 › モデルを確認してから、もう一度お試しください。",
+      "deadline_exceeded": "要約が制限時間を超えました。",
+      "budget_exceeded": "ミーティングが長すぎるため、要約の上限である24回の呼び出しに収まりません。",
+      "empty_input": "ミーティングに処理するテキストがありません。",
+      "save_failed": "Openstyleは結果を保存できませんでした。",
+      "internal": "内部エラーのため、Openstyleは実行を停止しました。",
+      "interrupted_before_checkpoint": "実行が進捗を保存する前にOpenstyleが終了しました。最初からやり直してください。",
+      "graph_changed": "実行の停止中にOpenstyleが更新されました。最初からやり直してください。",
+      "transcript_changed": "実行の停止中に文字起こしが変更されました。最初からやり直してください。",
+      "cancelled": "実行はキャンセルされました。",
+      "unknown": "不明なエラーが発生しました。"
+    },
     "showEnhancedLabel": "強化後の文字起こしを表示",
     "showingEnhanced": "強化後",
     "showingRaw": "元のテキスト",
