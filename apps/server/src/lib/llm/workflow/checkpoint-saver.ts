@@ -215,7 +215,8 @@ export class NodeSqliteSaver extends BaseCheckpointSaver {
     const threadId = config.configurable?.thread_id;
     const ns = config.configurable?.checkpoint_ns;
     const where: string[] = [];
-    const args: string[] = [];
+    const args: (string | number)[] = [];
+    let sqlLimit = "";
     if (threadId) {
       where.push("thread_id = ?");
       args.push(threadId);
@@ -228,10 +229,20 @@ export class NodeSqliteSaver extends BaseCheckpointSaver {
       where.push("checkpoint_id < ?");
       args.push(before.configurable.checkpoint_id);
     }
-    // The metadata filter runs in JS after the rows load; the limit follows it.
+    // The metadata filter runs in JS after the rows load, so the limit goes
+    // into the SQL only when there is no filter.
+    if (
+      limit !== undefined &&
+      !filter &&
+      Number.isInteger(limit) &&
+      limit >= 0
+    ) {
+      args.push(limit);
+      sqlLimit = " LIMIT ?";
+    }
     const sql = `SELECT ${CHECKPOINT_COLUMNS} FROM llm_checkpoints${
       where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""
-    } ORDER BY checkpoint_id DESC`;
+    } ORDER BY checkpoint_id DESC${sqlLimit}`;
     const rows = this.stmt(sql).all(...args) as unknown as CheckpointRow[];
     let yielded = 0;
     for (const row of rows) {
