@@ -241,6 +241,8 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       price = null;
     }
 
+    // Deviation from spec 4.5.3: PreparedMeeting.summary has no timeout field,
+    // so the job ceiling reads the timeout setting here, not prepared.summary.
     const perCallMs = meetingSummaryTimeoutMs(
       readSettingFrom(deps, MEETING_SUMMARY_TIMEOUT_SETTING_KEY),
     );
@@ -423,15 +425,15 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
     ): Promise<Outcome | "one_chunk"> {
       const chunks = chunkTranscript(segments, chunkBudget);
       if (chunks.length < 2) return "one_chunk";
-      const overLimit = (): Outcome => ({
+      const budgetFailure = (message: string): Outcome => ({
         ok: false,
         status: "failed",
-        failure: failure(
-          "budget_exceeded",
-          null,
-          `The summary needs more than ${MAX_SUMMARIZE_CALLS} calls.`,
-        ),
+        failure: failure("budget_exceeded", null, message),
       });
+      const overLimit = (): Outcome =>
+        budgetFailure(
+          `The summary needs more than ${MAX_SUMMARIZE_CALLS} calls.`,
+        );
       if (made + chunks.length + 1 > MAX_SUMMARIZE_CALLS) {
         return overLimit();
       }
@@ -460,7 +462,9 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
         const groups = groupPartials(current);
         if (groups.length === current.length && current.length > 1) {
           // No pair fits one call: grouping cannot make progress.
-          return overLimit();
+          return budgetFailure(
+            "The context budget cannot hold two partial summaries.",
+          );
         }
         if (
           groups.length > 1 &&
