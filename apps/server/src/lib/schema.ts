@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 39;
+const SCHEMA_VERSION = 40;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -255,6 +255,12 @@ function tableExists(db: DatabaseSync, name: string): boolean {
   return !!(db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
     .get(name) as { name: string } | undefined);
+}
+
+function hasColumn(db: DatabaseSync, table: string, column: string): boolean {
+  return (
+    db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  ).some((col) => col.name === column);
 }
 
 function applyMigrations(db: DatabaseSync, currentVersion: number): void {
@@ -1004,6 +1010,112 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     db.exec(`ALTER TABLE meetings ADD COLUMN calendar_end INTEGER`);
     db.exec(`ALTER TABLE meetings ADD COLUMN calendar_url TEXT`);
     db.exec(`ALTER TABLE meetings ADD COLUMN calendar_attendees TEXT`);
+  }
+
+  if (currentVersion < 40) {
+    // Remix is gone. Children go first. Migration 20 stays as written: it
+    // still creates the three tables on the way up, and this step drops them.
+    db.exec(`
+      DROP TABLE IF EXISTS remix_messages;
+      DROP TABLE IF EXISTS remix_runs;
+      DROP TABLE IF EXISTS remix_threads;
+    `);
+    if (tableExists(db, "settings")) {
+      db.exec(
+        `DELETE FROM settings WHERE key IN ('remix_hotkey', 'remix_bar_enabled', 'remix_enabled')`,
+      );
+    }
+  }
+
+  if (currentVersion < 40 && tableExists(db, "meetings")) {
+    // LLM call record (specs/meeting-enhance-agentic.md 7.4). Six tables, all
+    // scope-generic: a run names its scope (`scope`, `scope_id`). Only
+    // `llm_runs.meeting_id` is a meeting column. It is the cascade root, so a
+    // meeting delete removes the runs, and the other five tables follow. A link
+    // has no FK to a segment, speaker or summary: it stores a string key. No
+    // DEFAULT and no CHECK on enum columns: the recorder writes every column.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS llm_runs (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        meeting_id TEXT REFERENCES meetings(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL, started_by TEXT NOT NULL, status TEXT NOT NULL,
+        graph_version INTEGER NOT NULL, input_hash TEXT, resume_count INTEGER NOT NULL,
+        result_json TEXT,
+        lost_records INTEGER NOT NULL,
+        error_kind TEXT, error_detail TEXT,
+        started_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, finished_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_llm_runs_meeting ON llm_runs(meeting_id, started_at);
+      CREATE INDEX IF NOT EXISTS idx_llm_runs_scope ON llm_runs(scope, scope_id, started_at);
+      CREATE INDEX IF NOT EXISTS idx_llm_runs_open ON llm_runs(status) WHERE status = 'running';
+      CREATE TABLE IF NOT EXISTS llm_run_steps (
+        run_id TEXT NOT NULL REFERENCES llm_runs(id) ON DELETE CASCADE,
+        step_key TEXT NOT NULL,
+        node TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        attempts INTEGER NOT NULL,
+        error_kind TEXT, error_detail TEXT, started_at INTEGER, finished_at INTEGER,
+        PRIMARY KEY (run_id, step_key)
+      );
+      CREATE TABLE IF NOT EXISTS llm_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL REFERENCES llm_runs(id) ON DELETE CASCADE,
+        scope TEXT NOT NULL, scope_id TEXT NOT NULL,
+        step_key TEXT NOT NULL, node TEXT NOT NULL,
+        attempt INTEGER NOT NULL, retry_reason TEXT,
+        provider TEXT, requested_model TEXT, served_model TEXT,
+        messages_json TEXT NOT NULL,
+        schema_name TEXT NOT NULL, schema_version INTEGER NOT NULL, schema_json TEXT NOT NULL,
+        params_json TEXT NOT NULL,
+        raw_text TEXT, parsed_json TEXT,
+        finish_unified TEXT, finish_raw TEXT,
+        input_tokens INTEGER, output_tokens INTEGER, reasoning_tokens INTEGER, cached_tokens INTEGER,
+        reasoning_chars INTEGER, queued_ms INTEGER, latency_ms INTEGER,
+        error_kind TEXT, error_detail TEXT,
+        started_at INTEGER NOT NULL, finished_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_llm_calls_run ON llm_calls(run_id, step_key, attempt);
+      CREATE INDEX IF NOT EXISTS idx_llm_calls_scope ON llm_calls(scope, scope_id, started_at);
+      CREATE TABLE IF NOT EXISTS llm_call_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        call_id INTEGER NOT NULL REFERENCES llm_calls(id) ON DELETE CASCADE,
+        scope TEXT NOT NULL, scope_id TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        outcome TEXT NOT NULL,
+        reason TEXT,
+        applied_text TEXT,
+        verdict_json TEXT, created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_llm_call_links_target ON llm_call_links(scope, scope_id, target_type, target_id);
+      CREATE INDEX IF NOT EXISTS idx_llm_call_links_call ON llm_call_links(call_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_call_links ON llm_call_links(call_id, target_type, target_id, seq);
+      CREATE TABLE IF NOT EXISTS llm_checkpoints (
+        thread_id TEXT NOT NULL REFERENCES llm_runs(id) ON DELETE CASCADE,
+        checkpoint_ns TEXT NOT NULL, checkpoint_id TEXT NOT NULL,
+        parent_checkpoint_id TEXT, type TEXT, checkpoint BLOB, metadata BLOB,
+        PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+      );
+      CREATE TABLE IF NOT EXISTS llm_checkpoint_writes (
+        thread_id TEXT NOT NULL REFERENCES llm_runs(id) ON DELETE CASCADE,
+        checkpoint_ns TEXT NOT NULL, checkpoint_id TEXT NOT NULL,
+        task_id TEXT NOT NULL, idx INTEGER NOT NULL,
+        task_path TEXT NOT NULL, channel TEXT NOT NULL, type TEXT, value BLOB,
+        PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+      );
+    `);
+    // The validated summary object as JSON text. Older rows keep NULL.
+    // ALTER has no IF NOT EXISTS, so test the column first.
+    if (
+      tableExists(db, "meeting_summaries") &&
+      !hasColumn(db, "meeting_summaries", "summary_json")
+    ) {
+      db.exec(`ALTER TABLE meeting_summaries ADD COLUMN summary_json TEXT`);
+    }
   }
 
   // Upsert schema version

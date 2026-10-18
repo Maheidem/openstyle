@@ -86,3 +86,54 @@ export type MeetingImportResult =
       detail?: string;
       code?: string;
     };
+
+// Speaker-name verification (specs/meeting-enhance-agentic.md 4.4, 4.2).
+// `verdict_json` of a speaker link in the LLM call record holds a
+// `SpeakerVerdict`. This is the only declaration of these five types.
+
+export type VerdictStatus = "kept" | "dropped";
+
+export type DropReason =
+  | "unknown_label"
+  | "unknown_segment"
+  | "no_quote"
+  | "quote_too_long"
+  | "quote_not_in_segment"
+  | "empty_name"
+  | "name_not_in_quote"
+  | "not_self_introduction"
+  | "conflict_lost"
+  | "duplicate_same_name";
+
+export type EvidenceType = "self_introduction" | "addressed_as" | "role_detail";
+
+/** Why a correction of an Enhance chunk was not applied. */
+export type CorrectionDropReason =
+  | "unknown_id"
+  | "duplicate_id"
+  | "empty_text"
+  | "unchanged";
+
+export interface SpeakerVerdict {
+  unitKey: string;
+  llmCallId: number | null;
+  /** Copied from the proposal. One verdict per proposal, so (llmCallId, seq) is unique. */
+  seq: number;
+  label: string;
+  proposedKind: "name" | "role";
+  proposedName: string;
+  segmentId: string;
+  quote: string;
+  /** Set by code. Null when dropped before the derivation. */
+  evidenceType: EvidenceType | null;
+  status: VerdictStatus;
+  reason: DropReason | null;
+  /** One line, at most 200 characters. */
+  detail: string | null;
+  /** After the spelling fix. Null when dropped. */
+  finalName: string | null;
+  /** Name before the spelling fix. */
+  respelledFrom: string | null;
+  /** conflict_lost: the call of the winner. */
+  winnerCallId: number | null;
+}
