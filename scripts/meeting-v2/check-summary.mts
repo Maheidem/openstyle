@@ -139,8 +139,12 @@ function sections(lines: string[]): Map<string, string[]> {
   }
   return map;
 }
-const countBullets = (body: string[] | undefined): number =>
-  body ? body.filter((l) => l.startsWith("- ")).length : 0;
+// The new arm renders "- " only. The old model writes "*   " (and "-") bullets.
+const countBullets = (body: string[] | undefined, loose = false): number =>
+  body
+    ? body.filter((l) => (loose ? /^[-*]\s+\S/.test(l) : l.startsWith("- ")))
+        .length
+    : 0;
 
 // --- Read the row -----------------------------------------------------------
 let markdown: string;
@@ -183,9 +187,9 @@ const headingsInOrder =
   expectedHeadings.every((h, i) => headingLines[i] === h);
 
 const counts = {
-  summaryKeyPoints: countBullets(sec.get("## Key Points")),
-  summaryDecisions: countBullets(sec.get("## Decisions")),
-  summaryActionItems: countBullets(sec.get("## Action Items")),
+  summaryKeyPoints: countBullets(sec.get("## Key Points"), arm === "old"),
+  summaryDecisions: countBullets(sec.get("## Decisions"), arm === "old"),
+  summaryActionItems: countBullets(sec.get("## Action Items"), arm === "old"),
   summaryOpenQuestions:
     arm === "new" ? countBullets(sec.get("## Open Questions")) : null,
 };
