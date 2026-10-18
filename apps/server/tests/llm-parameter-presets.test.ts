@@ -109,9 +109,9 @@ describe("parseLlmTaskAssignments", () => {
     });
   });
 
-  it("skips a legacy remix key and keeps the other tasks", () => {
+  it("skips an unknown task key and keeps the other tasks", () => {
     const value = JSON.stringify({
-      remix: { mode: "auto" },
+      retiredTask: { mode: "auto" },
       cleanup: { mode: "auto" },
     });
     expect(parseLlmTaskAssignments(value)).toEqual({
