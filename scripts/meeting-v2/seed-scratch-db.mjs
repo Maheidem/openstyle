@@ -73,8 +73,35 @@ try {
       SELECT id, base_url, api_key, flavor, server_key FROM src.own_servers;
     INSERT OR IGNORE INTO main.model_configs (provider, model_id, model_name, type, is_default)
       SELECT provider, model_id, model_name, type, is_default
-      FROM src.model_configs WHERE is_default = 1 AND type IN ('voice','llm');
+      FROM src.model_configs WHERE is_default = 1 AND type = 'llm';
   `);
+
+  // Voice: the benchmark baseline is Qwen3-ASR on the owner's own server.
+  // When the real default voice row is not provider 'server' (2026-10-19:
+  // local-mlx whisper), copy the server Qwen3-ASR row as the default
+  // instead. setup-scratch.sh still refuses any non-server default.
+  const realVoice = db
+    .prepare(
+      "SELECT provider, model_id, model_name FROM src.model_configs WHERE is_default = 1 AND type = 'voice'",
+    )
+    .get();
+  const voice =
+    realVoice?.provider === "server"
+      ? realVoice
+      : db
+          .prepare(
+            "SELECT provider, model_id, model_name FROM src.model_configs WHERE type = 'voice' AND provider = 'server' AND model_id LIKE 'server/%/Qwen3-ASR' ORDER BY id LIMIT 1",
+          )
+          .get();
+  if (voice) {
+    db.prepare(
+      `INSERT OR IGNORE INTO main.model_configs (provider, model_id, model_name, type, is_default)
+       VALUES (?, ?, ?, 'voice', 1)`,
+    ).run(voice.provider, voice.model_id, voice.model_name);
+  }
+  console.log(
+    `voice row: ${voice?.model_id ?? "none"} (${voice === realVoice ? "real default" : `fallback; real default is ${realVoice?.model_id ?? "none"}`})`,
+  );
 
   // PR #39: the `context` column (free-text per-meeting context — the
   // calendar invitee list) must reach the scratch DB: the context

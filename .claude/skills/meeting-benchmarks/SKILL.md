@@ -26,6 +26,12 @@ Pick them by length only. Do not read their text.
 - Issue #163 meeting (8 chunks; the old Enhance path fails 2 of 8): `ca70f895-ebe9-47e3-b663-eeb2c7bd97a6`
 
 
+## Setup traps (proven 2026-10-19, main `f51f50ed`)
+
+1. After `git pull`, run `pnpm install --frozen-lockfile` before `setup-scratch.sh`. Without it, the migration boot fails with `ERR_MODULE_NOT_FOUND: Cannot find package '@opentelemetry/api'` (WP8 added it in `apps/server/package.json`). The boot also needs a built server (`pnpm turbo build --filter=@openstyle/server`).
+2. The owner's default voice model can be a `local-mlx` model (on 2026-10-19: whisper-large-v3). `seed-scratch-db.mjs` then copies the server `Qwen3-ASR` voice row as the scratch default and prints `voice row: ... (fallback; ...)`. Do not edit the scratch DB by hand. Do not loosen the guard: `setup-scratch.sh` still fails when a default model is not provider `server`.
+3. A stopped server can leave no `-wal`/`-shm` files. Then `sqlite3 -readonly <db> ".backup ..."` fails with `unable to open database file`. Open the file as immutable: `sqlite3 -readonly "file:<db>?immutable=1" ".backup '<out>'"`. Use this only on a DB that no process writes.
+
 ## Commands
 
 ```bash
@@ -49,8 +55,9 @@ jq -e 'has("wallSeconds") and has("chunks") and has("labeled") and has("termHits
 The arm is the server build, not a flag. `--arm old|new` only labels the files. Build the server in the worktree of the arm (`pnpm turbo build --filter=@openstyle/server`) and give that worktree to `--server-repo`.
 
 ```bash
-# 1. Transcribe once (steps above), stop the server, then take a copy:
-sqlite3 -readonly /tmp/meeting-v2/test.db ".backup '/tmp/meeting-v2/transcribed.db'"
+# 1. Transcribe once (steps above), stop the server, then take a copy
+#    (immutable=1: the stopped server can leave no -wal/-shm files, trap 3):
+sqlite3 -readonly "file:/tmp/meeting-v2/test.db?immutable=1" ".backup '/tmp/meeting-v2/transcribed.db'"
 
 # 2. One Enhance run (3 per arm and meeting, 6 on the #163 meeting).
 #    Every run starts from a fresh copy of transcribed.db.
@@ -74,6 +81,8 @@ pnpm meeting:check-summary --db <db> --meeting <id> --arm <old|new> --out <metri
 `run-enhance.mjs` prints counts, durations, hashes, ids and paths only. `dump.json` holds private text: never print or commit it. `check-enhance-metrics.mjs` reads `metrics-enhance.json` from the folder of each dump, so keep both files together. `check-enhance-metrics.mjs` re-reads its dumps and its output and exits 1 on a mismatch. It reports `untypedFailures` as null when a run has `failureReasons` null (new arm until WP5b). `check-summary.mts` exits 0 (pass), 1 (a check failed) or 2 (wrong usage, unreadable database or no summary row); with `--arm old` it only measures.
 
 `speakerSuggestions` is the database count of `meeting_speakers` rows with a non-empty `suggested_name`, in both arms. Start from a transcribed copy that holds no preset suggestion, or the count includes them. The old arm also writes the response value as `speakerSuggestionsBody`. Compare arms on `speakerSuggestions` only.
+
+Repeats show no spread on this setup: on 2026-10-19, 6 of 6 new-arm runs on `ca70f895` were byte-identical (same hashes and tokens).
 
 The new arm always needs `--summarize`. Without it the script stops the server when the Enhance job slot is empty, and the chained Summarize can still be running. Counts and the dump are then read mid-run.
 
