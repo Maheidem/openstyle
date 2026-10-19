@@ -255,6 +255,46 @@ class LoopGuardTests(unittest.TestCase):
         self.assertFalse(mlx_asr_server._is_loop([5] * 47))
         self.assertFalse(mlx_asr_server._is_loop(list(range(24)) + [1, 2, 3, 4] * 6))
 
+    def test_phrase_loop_triggers(self) -> None:
+        # A 5-word phrase of 7 token ids: rule a does not find it.
+        phrase = [11, 12, 13, 14, 15, 16, 17]
+        tokens = list(range(100, 130)) + phrase * 7
+        self.assertGreater(len(set(tokens[-24:])), 3)
+        self.assertTrue(mlx_asr_server._is_loop(tokens))
+        # One phrase copy less than the window (max(48, 4 * 7) = 48) is not a loop.
+        self.assertFalse(mlx_asr_server._is_loop(list(range(100, 160)) + phrase * 6))
+
+    def test_long_period_needs_four_periods(self) -> None:
+        phrase = list(range(200, 240))  # period 40
+        self.assertFalse(mlx_asr_server._is_loop(list(range(10)) + phrase * 3))
+        self.assertTrue(mlx_asr_server._is_loop(list(range(10)) + phrase * 4))
+
+    def test_varied_speech_not_loop(self) -> None:
+        import random
+
+        rng = random.Random(7)
+        vocab = list(range(1, 400))
+        speech = [rng.choice(vocab) for _ in range(400)]
+        for end in range(48, len(speech) + 1):
+            self.assertFalse(mlx_asr_server._is_loop(speech[:end]))
+
+    def test_short_real_repeats_not_loop(self) -> None:
+        no = [5, 6]  # "no," = 2 tokens
+        tokens = [1, 2, 3] + no * 10 + [7, 8, 9]
+        self.assertLess(len(tokens), 48)
+        self.assertFalse(mlx_asr_server._is_loop(tokens))
+        # The same repeat inside longer varied speech is not a loop either.
+        tokens = list(range(100, 140)) + no * 10 + list(range(140, 170))
+        for end in range(48, len(tokens) + 1):
+            self.assertFalse(mlx_asr_server._is_loop(tokens[:end]))
+
+    def test_phrase_loop_breaks_stream_and_retries(self) -> None:
+        phrase = [11, 12, 13, 14, 15, 16, 17]
+        model = FakeQwenModel([list(range(100, 130)) + phrase * 600, [1, 2, 3]])
+        out = self._run(model, 26.2, language="English", context="Acme")
+        self.assertEqual(out, "w1 w2 w3")
+        self.assertEqual(self.logs, ["loop detected; retry without context: ok"])
+
     def test_stream_path_same_text_as_generate(self) -> None:
         stream = [1, 2, 3, 1001, 4, 5, 2, 3, 6]
         gen_model = FakeQwenModel([stream])

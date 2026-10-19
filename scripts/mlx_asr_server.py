@@ -48,8 +48,14 @@ _LANGUAGE_PARAM_ALIASES: tuple[str, ...] = ("language",)
 # 1. Token cap per chunk: ceil(seconds * 10) + 32. Fast speech is about
 #    5.6 Qwen tokens/s (Switchboard 5.2 words/s x 1.08 tokens/word), so the
 #    cap is near 2x fast speech. Whisper uses 224 tokens per 30 s.
-# 2. Online loop stop: a loop forms when the last 24 tokens contain 3 or
-#    fewer unique ids, after at least 48 tokens (mlx-audio-swift e5ba0d3).
+# 2. Online loop stop, after at least 48 tokens. A loop forms when one of
+#    these is true:
+#    a. The last 24 tokens contain 3 or fewer unique ids
+#       (mlx-audio-swift e5ba0d3). This also finds loops that change a
+#       little, for example "a b a a b".
+#    b. The last max(48, 4 * p) tokens repeat with a period p of 1-40
+#       tokens. This finds phrase loops: a 5-word phrase had 6 or more
+#       unique ids in 24 tokens, so rule a did not find it.
 # 3. On a loop, decode the same audio once more without the context prompt.
 # 4. Every final text goes through Qwen's detect_and_fix_repetitions.
 _TOKENS_PER_SECOND_CAP = 10
@@ -57,6 +63,8 @@ _TOKEN_CAP_MARGIN = 32
 _LOOP_WINDOW = 24
 _LOOP_MAX_UNIQUE = 3
 _LOOP_MIN_TOKENS = 48
+_LOOP_MAX_PERIOD = 40
+_LOOP_MIN_PERIODS = 4
 # Qwen3-ASR generate() splits audio longer than this (chunk_duration
 # default) and pads audio shorter than 1 s. The stream path copies only
 # the padding, so it takes audio up to this length.
@@ -317,10 +325,21 @@ def _max_tokens_for(seconds: float) -> int:
     return math.ceil(seconds * _TOKENS_PER_SECOND_CAP) + _TOKEN_CAP_MARGIN
 
 
+def _is_periodic(tokens: list[int], period: int) -> bool:
+    """True when the tail of max(48, 4 * period) tokens repeats with this period."""
+    window = max(_LOOP_MIN_TOKENS, _LOOP_MIN_PERIODS * period)
+    n = len(tokens)
+    if n < window:
+        return False
+    return all(tokens[i] == tokens[i - period] for i in range(n - window + period, n))
+
+
 def _is_loop(tokens: list[int]) -> bool:
     if len(tokens) < _LOOP_MIN_TOKENS:
         return False
-    return len(set(tokens[-_LOOP_WINDOW:])) <= _LOOP_MAX_UNIQUE
+    if len(set(tokens[-_LOOP_WINDOW:])) <= _LOOP_MAX_UNIQUE:
+        return True
+    return any(_is_periodic(tokens, p) for p in range(1, _LOOP_MAX_PERIOD + 1))
 
 
 def detect_and_fix_repetitions(text: str, threshold: int = 20) -> str:
