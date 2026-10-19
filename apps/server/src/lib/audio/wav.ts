@@ -249,18 +249,3 @@ export function sliceWav(
   const data = readPcmRange(fd, info, startMs, endMs);
   return Buffer.concat([wavHeader(info, data.length), data]);
 }
-
-/**
- * Build one in-memory WAV from the PCM of each span, in the given order.
- * The spans are joined with no gap. Used by the meeting VAD gate: only the
- * speech spans of a chunk go to the ASR provider.
- */
-export function sliceWavSpans(
-  fd: number,
-  info: WavInfo,
-  spans: ReadonlyArray<{ startMs: number; endMs: number }>,
-): Uint8Array {
-  const parts = spans.map((s) => readPcmRange(fd, info, s.startMs, s.endMs));
-  const dataBytes = parts.reduce((n, p) => n + p.length, 0);
-  return Buffer.concat([wavHeader(info, dataBytes), ...parts]);
-}

@@ -212,11 +212,14 @@ struct SpeechSpanOut: Codable {
 /// Silero VAD settings for the meeting ASR gate. The values must satisfy
 /// the preconditions of `VadSegmentationConfig.init`. A failed
 /// precondition crashes the process, so the values are checked here first.
-let vadThreshold: Float = 0.5
+/// 0.25, not Silero's usual 0.5: the gate only skips chunks with no span,
+/// so a low threshold keeps weak speech. The 5578edb0 loop window has no
+/// span at any threshold from 0.5 to 0.15 (measured 2026-10-19).
+nonisolated(unsafe) var vadThreshold: Float = 0.25
 let vadMinSpeechDuration: TimeInterval = 0.15
 let vadMinSilenceDuration: TimeInterval = 0.75
 let vadMaxSpeechDuration: TimeInterval = 30.0
-let vadSpeechPadding: TimeInterval = 0.1
+nonisolated(unsafe) var vadSpeechPadding: TimeInterval = 0.1
 
 func runVad(_ path: String, modelsDir: String?) async {
     // No network. The model must come from the bundled models dir.
@@ -287,6 +290,8 @@ func runVad(_ path: String, modelsDir: String?) async {
 var positional: [String] = []
 var modelsDir: String?
 do {
+    // --threshold <0..1> and --padding <seconds> override the VAD defaults
+    // (for tuning; the server does not pass them).
     var rest = ArraySlice(CommandLine.arguments.dropFirst())
     while let arg = rest.first {
         rest = rest.dropFirst()
@@ -297,6 +302,13 @@ do {
             }
             rest = rest.dropFirst()
             modelsDir = value
+        } else if arg == "--threshold" || arg == "--padding" {
+            guard let raw = rest.first, let value = Double(raw) else {
+                emitError("ERR_VAD_FAILED \(arg) requires a number")
+                exit(1)
+            }
+            rest = rest.dropFirst()
+            if arg == "--threshold" { vadThreshold = Float(value) } else { vadSpeechPadding = value }
         } else {
             positional.append(arg)
         }

@@ -291,7 +291,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     expect(md).toMatch(/\[\d+:\d{2}\]/);
   });
 
-  it("VAD gate: skips the mic chunk with no speech span and sends only the system speech span", async () => {
+  it("VAD gate: skips the mic chunk with no speech span and sends the full system chunk", async () => {
     const audioBytes: number[] = [];
     __setMeetingsTestOverrides({
       createTranscriberDeps: async (extras) => ({
@@ -324,7 +324,8 @@ describe("POST /api/meetings/:id/transcribe", () => {
     expect(done.status).toBe("transcribed");
 
     // One provider call (system). 800 ms of 16 kHz s16 mono + 44-byte header.
-    expect(audioBytes).toEqual([44 + 800 * 16 * 2]);
+    // The full 1800 ms system chunk, not only its 800 ms span (round r227).
+    expect(audioBytes).toEqual([44 + 1800 * 16 * 2]);
     const rows = getDb()
       .prepare(
         "SELECT source, status, start_ms, end_ms FROM meeting_segments WHERE meeting_id = 'm1' ORDER BY source",

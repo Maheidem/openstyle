@@ -724,7 +724,7 @@ describe("MeetingTranscriber", () => {
       expect(results[0]!.endMs).toBe(1000);
     });
 
-    it("sends only the joined speech spans; the audio length is the sum of the spans", async () => {
+    it("sends the full chunk audio when the chunk has a speech span", async () => {
       const dir = makeMeetingDir({ mic: 8000, system: 100 });
       const { provider, calls } = makeFakeProvider();
       const t = new MeetingTranscriber(makeDeps(provider));
@@ -740,9 +740,10 @@ describe("MeetingTranscriber", () => {
           },
         ],
       });
-      // 1000 + 2500 ms of 16 kHz s16 mono, plus the 44-byte header.
+      // The full 8000 ms chunk of 16 kHz s16 mono, plus the 44-byte header.
+      // Joining only the spans cut utterance heads (council round r227).
       expect(calls).toHaveLength(1);
-      expect(calls[0]!.bytes).toBe(44 + 3500 * 16 * 2);
+      expect(calls[0]!.bytes).toBe(44 + 8000 * 16 * 2);
       // The chunk keeps its own times.
       expect(results[0]!.startMs).toBe(0);
       expect(results[0]!.endMs).toBe(8000);

@@ -22,12 +22,7 @@ import {
   parseMeetingSttModel,
   SYSTEM_WAV,
 } from "@openstyle/validations";
-import {
-  parseWavHeader,
-  sliceWav,
-  sliceWavSpans,
-  type WavInfo,
-} from "../audio/wav.js";
+import { parseWavHeader, sliceWav, type WavInfo } from "../audio/wav.js";
 import { readSetting } from "../db.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
 import { MLX_ASR_PROVIDER_ID } from "../mlx-asr/constants.js";
@@ -621,12 +616,10 @@ export class MeetingTranscriber {
         });
       }
       try {
-        // VAD gate: only the speech spans, joined. The chunk keeps its
-        // startMs/endMs.
-        const audio =
-          seg.speechSpans !== undefined
-            ? sliceWavSpans(fd, info, seg.speechSpans)
-            : sliceWav(fd, info, seg.startMs, seg.endMs);
+        // VAD gate: the gate only decides skip or send. A chunk with a
+        // speech span sends its full audio. Joining only the spans cut the
+        // first words of utterances (council round r227, 3 of 3 judges).
+        const audio = sliceWav(fd, info, seg.startMs, seg.endMs);
         const result: TranscribeResult = await provider.transcribe({
           audio,
           model: config.modelId,

@@ -1,14 +1,7 @@
-import {
-  closeSync,
-  mkdtempSync,
-  openSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { parseWavHeader, sliceWavSpans } from "../src/lib/audio/wav.js";
 import type { Segment } from "../src/lib/meetings/segmenter.js";
 import {
   attachSpeechSpans,
@@ -159,41 +152,5 @@ describe("detectSpeechSpans", () => {
     expect(
       await detectSpeechSpans(wav, 0, fakeDeps('[{"startMs":"x","endMs":2}]')),
     ).toBeNull();
-  });
-});
-
-describe("sliceWavSpans", () => {
-  it("joins the PCM of each span in order; the length is the sum of the spans", () => {
-    const dir = tempDir();
-    const path = join(dir, "a.wav");
-    const samples = 16_000 * 4;
-    writeFileSync(
-      path,
-      buildWav({
-        samples,
-        fill: (data) => {
-          for (let i = 0; i < samples; i++) data.writeInt16LE(i % 32768, i * 2);
-        },
-      }),
-    );
-    const fd = openSync(path, "r");
-    try {
-      const info = parseWavHeader(fd);
-      const out = Buffer.from(
-        sliceWavSpans(fd, info, [
-          { startMs: 1000, endMs: 1500 },
-          { startMs: 3000, endMs: 3250 },
-        ]),
-      );
-      const outInfo = parseWavHeader(out);
-      // 500 ms + 250 ms at 16 kHz s16 mono.
-      expect(outInfo.dataLength).toBe((8000 + 4000) * 2);
-      expect(out.length).toBe(44 + (8000 + 4000) * 2);
-      // First sample of each part comes from the span start.
-      expect(out.readInt16LE(44)).toBe(16_000 % 32768);
-      expect(out.readInt16LE(44 + 8000 * 2)).toBe(48_000 % 32768);
-    } finally {
-      closeSync(fd);
-    }
   });
 });
