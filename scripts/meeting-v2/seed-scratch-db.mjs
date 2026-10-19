@@ -128,7 +128,9 @@ try {
         SELECT key, value FROM src.settings WHERE key = 'meeting_asr_context';
     `);
     const ctx = db
-      .prepare("SELECT value FROM main.settings WHERE key = 'meeting_asr_context'")
+      .prepare(
+        "SELECT value FROM main.settings WHERE key = 'meeting_asr_context'",
+      )
       .get();
     console.log(`meeting_asr_context: ${ctx?.value ?? "unset"}`);
   }
