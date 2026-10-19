@@ -51,10 +51,6 @@ export interface MeetingDetail extends MeetingListItem {
     /** Set while one of the job's LLM calls waits for its lane (§5.5). */
     queued?: { ahead: number; sinceMs: number } | null;
   } | null;
-  /** Canonical failure text of the last background job (Summarize) for this
-   * meeting, or null. This is not the `error` column. That column is the
-   * transcript-integrity banner (§6 constraint 3). */
-  job_error: string | null;
   segment_counts: { total: number; failed: number };
   /** `systemSamples / micSamples` from `sync.json` when it is outside
    * 0.95..1.05 (issue #170) and the server cannot repair it, else null. The
@@ -141,4 +137,33 @@ export interface SpeakerVerdict {
   respelledFrom: string | null;
   /** conflict_lost: the call of the winner. */
   winnerCallId: number | null;
+}
+
+/**
+ * The 202 body of `POST /api/meetings/:id/enhance`, `POST /:id/summarize` and
+ * `POST /:id/runs/:runId/resume` (specs/meeting-enhance-agentic.md 3.4.2).
+ * `id` is the meeting id. `runId` is the run that was started or resumed.
+ */
+export interface StartRunResponse {
+  ok: true;
+  id: string;
+  runId: string;
+}
+
+/**
+ * Why a resume is refused, one value for each guard of 3.4.7 in guard order.
+ * Guards 4 and 6 also set the run to `failed`.
+ */
+export type ResumeConflictReason =
+  | "meeting_status"
+  | "job_running"
+  | "not_interrupted"
+  | "graph_changed"
+  | "no_checkpoint"
+  | "transcript_changed";
+
+/** The 409 body of the resume route. `error` is one English line. */
+export interface ResumeConflict {
+  error: string;
+  reason: ResumeConflictReason;
 }

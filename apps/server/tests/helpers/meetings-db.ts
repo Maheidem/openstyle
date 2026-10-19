@@ -65,7 +65,7 @@ export function insertSpeaker(
     mergedInto?: string | null;
     /** Real-E2E fix regression coverage: only a genuinely *confirmed*
      * write (routes/meetings.ts's PATCH handler) sets this — a plain
-     * suggestion upsert (enhance.ts) never does. Tests that simulate a
+     * suggestion upsert (the Enhance workflow) never does. Tests that simulate a
      * confirmed row must pass this explicitly; it is NOT inferred from
      * `displayName`/`mergedInto` being set, to keep the two independent
      * the same way the real schema does. */

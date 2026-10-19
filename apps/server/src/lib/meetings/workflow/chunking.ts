@@ -1,13 +1,14 @@
 import { type MergedSegment, speakerDisplayLabel } from "../merge.js";
 
-// Transcript chunking helpers, moved out of `enhance.ts`, `summarize.ts` and
-// `llm-call.ts` with no behavior change (specs/meeting-enhance-agentic.md
-// 11.5, WP5a). The old files import them back until WP5b deletes them.
+// Transcript chunking helpers, moved out of the old Enhance and Summarize
+// modules with no behavior change (specs/meeting-enhance-agentic.md 11.5).
+// WP5b deleted those modules; the workflow nodes import these.
 
 /**
  * Rough token estimate (~4 chars/token), mirroring `@openstyle/stt`
  * tokens.ts. Shared by every meeting feature that chunks a transcript to a
- * token budget (`summarize.ts`, `enhance.ts`).
+ * token budget (the workflow nodes, for example `nodes/identify-speakers.ts`
+ * and `nodes/correct-chunk.ts`).
  */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -59,7 +60,7 @@ export function lineTokensOf(s: EnhanceSegment): number {
 /**
  * Split id-bearing segments into whole-segment chunks bounded by
  * `budgetTokens` (a single oversized segment still becomes its own chunk).
- * Unlike `chunkTranscript` (`summarize.ts`), no overlap is carried between
+ * Unlike `chunkTranscript`, no overlap is carried between
  * chunks — corrections don't need cross-chunk continuity the way
  * summarization does, and carrying one would make a chunk's ids no longer
  * disjoint, breaking the per-chunk `validIds` guard below.

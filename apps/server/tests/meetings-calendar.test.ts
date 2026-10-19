@@ -2,14 +2,29 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CalendarEvent } from "@openstyle/validations";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
-import type { EnhanceMeetingOptions } from "../src/lib/meetings/enhance.js";
 import { parseAttendees } from "../src/lib/meetings/store.js";
 import { __setMeetingsTestOverrides } from "../src/routes/meetings.js";
 import { jsonRequest, postEmpty } from "./helpers/http.js";
 import { insertSegment, resetMeetingTables } from "./helpers/meetings-db.js";
+import { runnerHarness, waitForNoJob } from "./helpers/runner-helpers.js";
+import { seedTestModel } from "./helpers/workflow-harness.js";
+
+vi.mock("../src/lib/model-registry.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/model-registry.js")>()),
+  fetchModelsFromRegistry: vi.fn().mockResolvedValue({}),
+}));
 
 const app = createApp();
 
@@ -185,7 +200,11 @@ describe("parseAttendees", () => {
 });
 
 describe("speaker naming reads the attendee names", () => {
-  it("the enhance route passes names, never emails", async () => {
+  beforeEach(() => {
+    seedTestModel();
+  });
+
+  it("the enhance route runs the workflow and no request holds an attendee name or email", async () => {
     await start({ calendar: EVENT });
     getDb()
       .prepare("UPDATE meetings SET status = 'transcribed' WHERE id = 'm1'")
@@ -199,23 +218,17 @@ describe("speaker naming reads the attendee names", () => {
       endMs: 2000,
       text: "hello there",
     });
-    let seen: EnhanceMeetingOptions | undefined;
-    __setMeetingsTestOverrides({
-      enhance: async (_id, _segs, _lang, _vocab, _title, _ctx, options) => {
-        seen = options;
-        return {
-          correctedCount: 0,
-          speakerSuggestions: 0,
-          chunksAttempted: 1,
-          chunksSucceeded: 1,
-          chunksFailed: 0,
-          stoppedEarly: false,
-        };
-      },
-    });
+    const h = runnerHarness();
+    __setMeetingsTestOverrides({ workflowDeps: h.deps });
     const res = await postEmpty(app, "/api/meetings/m1/enhance");
-    expect(res.status).toBe(200);
-    expect(seen?.attendeeNames).toEqual(["Ana Souza", "Bruno Lima"]);
-    expect(JSON.stringify(seen?.attendeeNames)).not.toContain("@");
+    expect(res.status).toBe(202);
+    await waitForNoJob("m1");
+    expect(h.requests.length).toBeGreaterThan(0);
+    for (const r of h.requests) {
+      const text = `${r.system}\n${r.user}`;
+      expect(text).not.toContain("@");
+      expect(text).not.toContain("Ana Souza");
+      expect(text).not.toContain("Bruno Lima");
+    }
   });
 });

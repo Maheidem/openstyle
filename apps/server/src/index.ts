@@ -9,11 +9,13 @@ import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
 import { authMiddleware, generateAuthToken, setAuthToken } from "./lib/auth.js";
-import { getDb } from "./lib/db.js";
 import { formatError } from "./lib/format-error.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
-import { createLlmRecorder } from "./lib/llm/recorder.js";
 import { startMeetingRetentionSweep } from "./lib/meetings/retention.js";
+import {
+  resumeInterruptedRuns,
+  sweepOrphanRuns,
+} from "./lib/meetings/workflow/runner.js";
 import { maybeStartAlignerDownload } from "./lib/mlx-asr/aligner.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
@@ -214,8 +216,10 @@ export async function startServer(
 
   startHistoryRetentionSweep();
   startMeetingRetentionSweep();
-  // A killed process leaves `running` LLM runs. Mark them `interrupted`.
-  createLlmRecorder(getDb()).sweepInterrupted();
+  // A killed process leaves `running` LLM runs. A run with a checkpoint
+  // becomes `interrupted`, one without becomes `failed` (3.4.7). Synchronous
+  // SQL only: it does not load the graph.
+  sweepOrphanRuns();
   // I4b (specs/meeting-transcription-v2.md §3.6 step 1): at server start,
   // when a meeting exists, the aligner download starts in the background
   // (once per process, Apple silicon + MLX + diarization on only). The
@@ -234,6 +238,8 @@ export async function startServer(
       },
       (info) => {
         resolve({ server, port: info.port, token });
+        // Resume each interrupted run once by itself, in the background.
+        void resumeInterruptedRuns();
       },
     );
     // Reject if the server fails to bind (e.g. EADDRINUSE) before listening.

@@ -1,3 +1,7 @@
+import type {
+  LlmRunListResponse,
+  ResumeConflictReason,
+} from "@openstyle/validations";
 import { QueryClient, queryOptions } from "@tanstack/react-query";
 import { getClient } from "./api";
 import {
@@ -58,6 +62,14 @@ export const queryKeys = {
      * inside the dialog, since §7.4's re-diarize confirmation needs its
      * data whether or not the dialog is currently open. */
     speakers: (id: string) => ["meetings", "speakers", id] as const,
+    /** specs/meeting-enhance-agentic.md 8.5: `GET /:id/llm-runs?latest=1`, the
+     * newest run of each kind. It feeds the run notices (8.9). */
+    llmRunsLatest: (id: string) =>
+      ["meetings", "llm-runs", id, "latest"] as const,
+    /** Prefix of every LLM run query of one meeting (8.5 invalidation). */
+    llmRunsOf: (id: string) => ["meetings", "llm-runs", id] as const,
+    /** Prefix of every LLM call query of one meeting (8.5 invalidation). */
+    llmCallsOf: (id: string) => ["meetings", "llm-calls", id] as const,
   },
 
   history: {
@@ -127,6 +139,81 @@ export function configuredModelsQueryOptions() {
       return (await res.json()) as ConfiguredModel[];
     },
   };
+}
+
+/**
+ * Query options for the newest LLM run of each kind of one meeting
+ * (`GET /api/meetings/:id/llm-runs?latest=1`, specs/meeting-enhance-agentic.md
+ * 8.5). `staleTime` 0: the job-end effect and every action invalidate it, and
+ * the notices must never show a run that a newer one replaced.
+ */
+export function llmRunsLatestQueryOptions(id: string, enabled: boolean) {
+  return queryOptions({
+    queryKey: queryKeys.meetings.llmRunsLatest(id),
+    enabled,
+    staleTime: 0,
+    queryFn: async (): Promise<LlmRunListResponse> => {
+      const res = await getClient().api.meetings[":id"]["llm-runs"].$get({
+        param: { id },
+        query: { latest: "1" },
+      });
+      if (!res.ok) throw new Error("Failed to load the LLM runs");
+      return await res.json();
+    },
+  });
+}
+
+/**
+ * The result of a resume request: a started run, or the refusal. `error` is the
+ * one English line and `reason` the guard of a 409 (`ResumeConflict`); both are
+ * null for any other fault.
+ */
+export type ResumeRunResult =
+  | { ok: true }
+  | { ok: false; error: string | null; reason: ResumeConflictReason | null };
+
+/**
+ * Resume an interrupted run (`POST /api/meetings/:id/runs/:runId/resume`,
+ * specs/meeting-enhance-agentic.md 8.5, 3.4.2). It then refetches the latest
+ * runs and the meeting detail, so the one-second poll starts for a resumed run
+ * and the notice follows a run that a guard failed. A 409 gives the `error`
+ * line of the `ResumeConflict`; any other fault gives `null`.
+ */
+export async function resumeRun(
+  queryClient: QueryClient,
+  id: string,
+  runId: string,
+): Promise<ResumeRunResult> {
+  let result: ResumeRunResult;
+  try {
+    const res = await getClient().api.meetings[":id"].runs[
+      ":runId"
+    ].resume.$post({ param: { id, runId } });
+    if (res.ok) {
+      result = { ok: true };
+    } else {
+      const body = (await res.json().catch(() => null)) as Partial<
+        Record<"error" | "reason", unknown>
+      > | null;
+      result = {
+        ok: false,
+        error: typeof body?.error === "string" ? body.error : null,
+        reason:
+          typeof body?.reason === "string"
+            ? (body.reason as ResumeConflictReason)
+            : null,
+      };
+    }
+  } catch {
+    result = { ok: false, error: null, reason: null };
+  }
+  await Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.meetings.llmRunsLatest(id),
+    }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.meetings.detail(id) }),
+  ]);
+  return result;
 }
 
 /**

@@ -9,10 +9,11 @@ import {
   MEETINGS_DIR_NAME,
   type MeetingDetail,
   MIC_WAV,
+  type StartRunResponse,
   SYNC_JSON,
   SYSTEM_WAV,
 } from "@openstyle/validations";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { parseWavHeader, sliceWav, type WavInfo } from "../lib/audio/wav.js";
 import { getDb, withTransaction } from "../lib/db.js";
@@ -34,26 +35,17 @@ import {
   winnerSpeakerFor,
 } from "../lib/meetings/diarize.js";
 import {
-  enhanceMeetingTranscript,
-  getMeetingEnhanceAutoRunSetting,
-} from "../lib/meetings/enhance.js";
-import {
   claimJob,
-  clearJobFailure,
   getJob,
-  getJobFailure,
   getJobKind,
   hasJob,
   isCancelRequested,
   type MeetingJobKind,
   releaseJob,
   requestCancel,
-  setJobFailure,
   setProgress,
-  updateProgress,
 } from "../lib/meetings/job-registry.js";
 import { resolveMeetingLanguage } from "../lib/meetings/language.js";
-import type { MergedSegment } from "../lib/meetings/merge.js";
 import {
   isMixedChunk,
   segmentWavFile,
@@ -66,10 +58,6 @@ import {
   toCalendarEvent,
 } from "../lib/meetings/store.js";
 import {
-  summarizeJobPlan,
-  summarizeMeeting,
-} from "../lib/meetings/summarize.js";
-import {
   repairSystemTrack,
   trackRepairState,
 } from "../lib/meetings/track-repair.js";
@@ -81,11 +69,15 @@ import {
   type TranscriberDeps,
 } from "../lib/meetings/transcriber.js";
 import {
-  attendeeNamesOf,
   loadMergedTranscript,
   type SegmentRow,
   writeTranscriptMarkdown,
 } from "../lib/meetings/transcript-io.js";
+import {
+  getMeetingEnhanceAutoRunSetting,
+  type RunnerDeps,
+  startRun,
+} from "../lib/meetings/workflow/runner.js";
 import {
   alignerLanguageFor,
   isAlignerModelReady,
@@ -127,12 +119,12 @@ function meetingsRootDir(): string | null {
 }
 
 /**
- * Test seam: the transcriber's dependency factory and the summarizer are
- * swappable so route tests never touch real STT/LLM providers.
+ * Test seam: the transcriber's dependency factory and the workflow
+ * dependencies are swappable so route tests never touch real STT/LLM
+ * providers.
  */
 interface MeetingsTestOverrides {
   createTranscriberDeps?: typeof createDefaultTranscriberDeps;
-  summarize?: typeof summarizeMeeting;
   /** I4b (spec §3.6): the aligner call, injectable so route tests never
    * spawn a worker. Default is the real MLX align path. */
   alignChunk?: (
@@ -164,16 +156,20 @@ interface MeetingsTestOverrides {
    * directly — a single fake deps object exercises the pre-flight check,
    * the real run, and the follow-up count query together. */
   diarizeDeps?: DiarizeDeps;
-  /** Injected LLM-call dependency for POST /:id/enhance and the auto-run call
-   * site inside runTranscribeJob, so route tests never touch a real LLM
-   * provider. */
-  enhance?: typeof enhanceMeetingTranscript;
+  /** Merged into the production workflow dependencies by the runner. It
+   * serves POST /:id/enhance, POST /:id/summarize and the auto-run call site
+   * inside runTranscribeJob, so route tests never touch a real LLM provider. */
+  workflowDeps?: RunnerDeps;
 }
 let testOverrides: MeetingsTestOverrides = {};
 export function __setMeetingsTestOverrides(
   overrides: MeetingsTestOverrides = {},
 ): void {
   testOverrides = overrides;
+}
+/** The workflow dependencies of the test seam, for the sibling run router. */
+export function getWorkflowTestDeps(): RunnerDeps | undefined {
+  return testOverrides.workflowDeps;
 }
 
 // ---------------------------------------------------------------------------
@@ -641,9 +637,9 @@ function storeDiarizerTurns(id: string, turns: DiarizerSegment[]): void {
 
 async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
   const db = getDb();
-  // Set when the auto-run handoff below re-claims the slot as an "enhance"
-  // job (specs/meeting-transcription-v2.md §3.2): the outer finally must
-  // then leave the ENHANCE job's slot alone — runEnhanceJob owns it.
+  // Set when the auto-run handoff below hands the slot to a workflow run
+  // (specs/meeting-enhance-agentic.md 3.4.2): the outer finally must then
+  // leave that run's slot alone. The runner owns it.
   let handedOff = false;
   try {
     // I4b (spec §3.6 step 1): the FIRST meeting job starts the automatic
@@ -896,34 +892,35 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       `meeting ${id}: transcribed ${results.length} chunks (${failed} failed)`,
     );
 
-    // I2 (specs/meeting-transcription-v2.md §3.2): auto-run Enhance as its
-    // own claimed job AFTER the status flip — a long Enhance no longer
-    // hides a finished transcript, and the user can cancel it (kind
-    // "enhance" is cancellable). Release the transcribe slot and re-claim
-    // it as "enhance" in the same tick with no await in between, so no
-    // request can observe the slot free or race the claim. Enhance now
-    // runs after the flip (not before it, as the old Phase C placement
-    // did) precisely so this handoff exists.
+    // Auto-run: one workflow run (Enhance, chained into Summarize) starts
+    // AFTER the status flip, so a long run no longer hides a finished
+    // transcript, and the user can cancel it (specs/meeting-enhance-agentic.md
+    // 3.4.2, 3.6). Release the transcribe slot and start the run in the same
+    // tick with no await in between, so no request can observe the slot free
+    // or race the claim. `startRun` claims the slot before its first await.
     //
-    // A cancel that landed during the diarization pass above already
-    // passed the check at the top of this block: without this re-read it
-    // would be LOST — the status would flip, releaseJob would clear the
-    // cancel flag, and the auto Enhance would run on top of it. Skip the
-    // auto-run when the flag is set: the transcription is finished
-    // (every chunk persisted), so the transcript stands and the flag is
-    // dropped by the release below.
+    // A cancel that landed during the diarization pass above already passed
+    // the check at the top of this block: without this re-read it would be
+    // LOST, because the release below clears the cancel flag. Skip the
+    // auto-run when the flag is set: the transcription is finished (every
+    // chunk persisted), so the transcript stands.
     const cancelled = isCancelRequested(id);
     if (cancelled) {
       log.info(
-        `meeting ${id}: cancel requested after transcription finished — skipping auto Enhance`,
+        `meeting ${id}: cancel requested after transcription finished, skipping auto Enhance`,
       );
     }
     if (getMeetingEnhanceAutoRunSetting() && !cancelled) {
       releaseJob(id);
-      if (claimJob(id, "enhance", { done: 0, total: 0, failed: 0 })) {
-        handedOff = true;
-        void runEnhanceJob(id, audioDir, resolvedLanguage, vocabTerms);
-      }
+      const started = startRun(
+        { meetingId: id, stages: ["enhance", "summarize"], trigger: "auto" },
+        testOverrides.workflowDeps,
+      );
+      if (started.ok) handedOff = true;
+      else
+        log.warn(
+          `meeting ${id}: auto Enhance did not start (${started.reason})`,
+        );
     }
   } catch (err) {
     const message = errorMessage(err);
@@ -938,196 +935,9 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
       // DB unavailable — nothing left to record the failure on.
     }
   } finally {
-    // Skipped when the slot was handed to the auto-run Enhance job, which
-    // releases it in its own finally (step 5 of §3.2).
+    // Skipped when the slot was handed to the auto-run workflow run, which
+    // releases it when it ends (3.4.6).
     if (!handedOff) releaseJob(id);
-  }
-}
-
-/**
- * The background auto-run Enhance job (specs/meeting-transcription-v2.md
- * §3.2). Runs AFTER the status flipped to 'transcribed' and owns the
- * meeting's slot under kind "enhance" — cancellable via
- * POST /:id/cancel-transcribe, with done/total progress in the polled job
- * blob. Same shape as `runSummarizeJob`: never throws, releases the slot
- * (and its kind and its cancellation flag) in a `finally`.
- *
- * A cancelled or failed pass never touches `meetings.status` (it already
- * reads 'transcribed'): finished chunks keep their `enhanced_text`, the
- * rest keep their raw `text` — the same fail-closed rule the old in-job
- * auto-run had, now with a stop seam and progress of its own.
- */
-async function runEnhanceJob(
-  id: string,
-  audioDir: string,
-  language: string | undefined,
-  vocabTerms: string[],
-): Promise<void> {
-  const enhance = testOverrides.enhance ?? enhanceMeetingTranscript;
-  try {
-    const meetingRow = getMeetingRow(id);
-    const result = await enhance(
-      id,
-      loadMergedTranscript(id, audioDir),
-      language,
-      vocabTerms,
-      meetingRow?.title ?? undefined,
-      meetingRow?.context ?? undefined,
-      {
-        onProgress: (p) =>
-          setProgress(id, { done: p.done, total: p.total, failed: 0 }),
-        // §3.2 step 4: the same per-meeting flag cancel-transcribe sets,
-        // polled between chunks — finished chunks survive a cancel.
-        shouldStop: () => isCancelRequested(id),
-        attendeeNames: attendeeNamesOf(meetingRow),
-      },
-    );
-    if (
-      result.chunksAttempted > 0 &&
-      result.chunksSucceeded === 0 &&
-      !result.stoppedEarly
-    ) {
-      // There is no route response here (the job is background), so a
-      // wholly-failed pass is reported in the log only — deliberately NOT
-      // in `meetings.error`, which is the transcription chunk-failure
-      // banner and must keep naming chunks, not an enhance pass.
-      log.warn(
-        `meeting ${id}: enhance auto-run corrected nothing — all ${result.chunksAttempted} chunks failed (${result.firstFailure?.reason ?? "provider"}: ${result.firstFailure?.detail ?? ""})`,
-      );
-    } else if (result.stoppedEarly) {
-      log.info(`meeting ${id}: enhance auto-run cancelled by user`);
-    }
-  } catch (err) {
-    if (getMeetingRow(id) === null) {
-      // The meeting was DELETED mid-pass: DELETE already asked this job
-      // to stop, and whatever threw afterwards (usually the
-      // meeting_speakers foreign key on the suggestion upsert, whose
-      // parent row is gone) is expected. Not an error to report.
-      log.info(
-        `meeting ${id}: enhance auto-run ended because the meeting was deleted`,
-      );
-    } else {
-      // §3.2: a failure is logged and never changes the meeting status —
-      // the fail-closed rule of the old in-job auto-run, kept.
-      log.warn(`meeting ${id}: enhance auto-run failed: ${String(err)}`);
-    }
-  } finally {
-    // §3.2 step 5: rewrite transcript-enhanced.md at the end of EVERY pass
-    // (a cancelled one included, so its finished chunks reach the export),
-    // then release the slot. writeTranscriptMarkdown is best-effort and
-    // never throws. Skipped when the meeting row no longer exists
-    // (deleted mid-pass): there is nothing left to export, and writing
-    // would only log a spurious failure for a gone directory.
-    if (getMeetingRow(id)) writeTranscriptMarkdown(id, audioDir);
-    releaseJob(id);
-  }
-}
-
-/**
- * The background Summarize job for one meeting (specs/meeting-llm-queue.md
- * §5.6). Modelled directly on `runTranscribeJob` above — same shape: never
- * throws, owns its job-registry blob, releases the slot (and its kind and its
- * cancellation flag) in a `finally`.
- *
- * Failures go to `job.error` and the out-of-band job failure store, NEVER to
- * `meetings.error` (spec §6 constraint 3): that column is the chunk-failure /
- * cancel banner the renderer renders as a transcript-integrity warning, and a
- * summarize failure would overwrite it. The `INSERT OR REPLACE` below stays
- * after the calls succeed, so a failed or cancelled run writes no summary and
- * leaves the transcript and every already-persisted segment untouched — there
- * is no partial/echo summary to fail open into (`llm-call.ts` keeps
- * `result.model === null -> throw`).
- */
-async function runSummarizeJob(
-  id: string,
-  merged: MergedSegment[],
-  meetingContext?: string,
-): Promise<void> {
-  const db = getDb();
-  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-  // Set when the ceiling fires. The `finally` clears the shared cancel flag,
-  // so the summarizer needs its own flag to see that it must stop.
-  let deadlineHit = false;
-  try {
-    // §5.8 ceiling, derived before the first call so the bound is in force
-    // for the whole run:
-    //   plannedCalls = min(N + 1, MAX_SUMMARIZE_CALLS)   // N map + 1 reduce
-    //   deadlineMs   = clamp(perCallMs x plannedCalls x slack(1),
-    //                        2 x perCallMs, 4 h)
-    // with perCallMs the `meeting_summary_timeout_seconds` value the calls
-    // themselves will use (default 600 s -> 1,200 s single-pass floor, 14,400
-    // s = the 4 h clamp at the 24-call worst case). Per-call timeouts bound
-    // one generation; nothing else here bounds a run.
-    const plan = await summarizeJobPlan(merged);
-    setProgress(id, { done: 0, total: plan.plannedCalls, failed: 0 });
-
-    const summarize = testOverrides.summarize ?? summarizeMeeting;
-    // Race the run against its own ceiling rather than threading a signal
-    // through the summarizer: the summarizer's per-call timeouts do the
-    // aborting, this only guarantees the job cannot outlive its budget and
-    // hold the lane's slot (and the UI's hope) forever.
-    const summary = await Promise.race([
-      summarize(merged, {
-        ...(meetingContext !== undefined ? { meetingContext } : {}),
-        // §5.7: polled between map chunks, and honoured inside
-        // `acquireLlmLane` — a call still QUEUED when the user cancels never
-        // goes on the wire.
-        shouldStop: () => deadlineHit || isCancelRequested(id),
-        onQueued: (info) =>
-          updateProgress(id, {
-            queued: { ahead: info.ahead, sinceMs: info.waitedMs },
-          }),
-        onProgress: (p) => updateProgress(id, { done: p.done, total: p.total }),
-      }),
-      new Promise<never>((_, reject) => {
-        deadlineTimer = setTimeout(() => {
-          deadlineHit = true;
-          reject(
-            new Error(
-              `Summarize exceeded its ${Math.round(plan.deadlineMs / 1000)}s job ceiling`,
-            ),
-          );
-        }, plan.deadlineMs);
-      }),
-    ]);
-    if (deadlineTimer) clearTimeout(deadlineTimer);
-
-    db.prepare(
-      `INSERT OR REPLACE INTO meeting_summaries
-         (meeting_id, markdown, llm_provider, llm_model, input_tokens,
-          output_tokens, cost_usd, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      id,
-      summary.markdown,
-      summary.llmProvider,
-      summary.llmModel,
-      summary.inputTokens,
-      summary.outputTokens,
-      summary.costUsd,
-      Date.now(),
-    );
-    db.prepare("UPDATE meetings SET status = 'summarized' WHERE id = ?").run(
-      id,
-    );
-    clearJobFailure(id);
-    log.info(
-      `meeting ${id}: summarized (${summary.llmProvider ?? "?"}/${summary.llmModel ?? "?"}, ${summary.inputTokens} in / ${summary.outputTokens} out)`,
-    );
-  } catch (err) {
-    const message = errorMessage(err);
-    // A cancel that landed mid-run reads as a cancellation, not a failure of
-    // the model — same canonical wording as the transcribe job's.
-    const text = isCancelRequested(id) ? "Cancelled by user" : message;
-    setJobFailure(id, text);
-    if (isCancelRequested(id)) {
-      log.info(`meeting ${id}: summarize cancelled by user`);
-    } else {
-      log.error(`meeting ${id}: summarize failed: ${text}`);
-    }
-  } finally {
-    if (deadlineTimer) clearTimeout(deadlineTimer);
-    releaseJob(id);
   }
 }
 
@@ -1198,6 +1008,35 @@ const stopSchema = z.object({
   status: z.enum(["recorded", "failed"]).default("recorded"),
   error: z.string().max(4096).optional(),
 });
+
+/**
+ * Start a workflow run for a button click and answer 202 with the run id
+ * (specs/meeting-enhance-agentic.md 3.4.2). The route made its guards before.
+ * `startRun` claims the job slot before its first await.
+ */
+function startRunResponse(
+  c: Context,
+  id: string,
+  stages: ("enhance" | "summarize")[],
+) {
+  const started = startRun(
+    { meetingId: id, stages, trigger: "button" },
+    testOverrides.workflowDeps,
+  );
+  if (!started.ok) {
+    if (started.reason === "job_running") {
+      return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
+    }
+    if (started.reason === "no_meeting") {
+      return c.json({ error: "Not found" }, 404);
+    }
+    return c.json({ error: "The run could not be started" }, 500);
+  }
+  return c.json(
+    { ok: true, id, runId: started.runId } satisfies StartRunResponse,
+    202,
+  );
+}
 
 const meetings = new Hono()
   .get("/", (c) => {
@@ -1431,10 +1270,6 @@ const meetings = new Hono()
       id,
     );
     claimJob(id, "transcribe", { done: 0, total: 0, failed: 0 });
-    // A full re-transcribe supersedes any earlier background-job failure —
-    // without this, a stale "Summary failed" note would keep rendering next to
-    // a brand-new transcription run.
-    clearJobFailure(id);
     void runTranscribeJob(id, row.audio_dir);
     return c.json({ ok: true, id }, 202);
   })
@@ -1910,7 +1745,7 @@ const meetings = new Hono()
         // neither), i.e. a human explicitly confirmed a name or a merge —
         // exactly the "confirmed change" `latestSpeakerUpdate` (§9.2) must
         // track, as opposed to Enhance's suggestion-only upsert
-        // (enhance.ts), which never touches this column.
+        // (the Enhance workflow), which never touches this column.
         db.prepare(
           `INSERT INTO meeting_speakers (meeting_id, speaker_label, display_name, merged_into, updated_at, confirmed_at)
            VALUES (?, ?, ?, ?, ?, ?)
@@ -1933,12 +1768,10 @@ const meetings = new Hono()
       return c.json({ ok: true });
     },
   )
-  // Summarize the merged transcript. 202 + background job + poll (spec
-  // §5.6): the call used to run in-request, which held an HTTP connection —
-  // and the renderer's whole click — open for up to `calls x 600 s` of local
-  // inference. Same contract as POST /:id/transcribe: claim the shared
-  // concurrency slot before the first await, kick the job, poll GET /:id for
-  // `job` (progress/queued) and for the persisted `summary`.
+  // Summarize the merged transcript. 202 + background run + poll: the run
+  // takes the meeting's job slot before the first await, the renderer polls
+  // GET /:id for `job` (progress, queued) and for the persisted `summary`, and
+  // reads the run record for a failure (specs/meeting-enhance-agentic.md 3.4.2).
   .post("/:id/summarize", (c) => {
     const id = c.req.param("id");
     const row = getMeetingRow(id);
@@ -1946,10 +1779,6 @@ const meetings = new Hono()
     if (row.status !== "transcribed" && row.status !== "summarized") {
       return c.json({ error: "Meeting has no transcript to summarize" }, 409);
     }
-    // Same shared job registry /transcribe, /retry-failed, /diarize and
-    // /enhance check — and the guard that closes spec §2.4: this route used to
-    // check nothing, so two double-clicks ran two map/reduce runs and the
-    // second one's INSERT OR REPLACE clobbered the first.
     if (hasJob(id)) {
       return c.json({ error: "A job is already running" }, 409);
     }
@@ -1957,31 +1786,22 @@ const meetings = new Hono()
     if (merged.length === 0) {
       return c.json({ error: "Transcript is empty" }, 409);
     }
-    // Claim before the first await (the diarize rationale at the same spot in
-    // POST /:id/diarize applies verbatim): `loadMergedTranscript` and every
-    // guard above are synchronous, so nothing can slip between the check above
-    // and this set. Everything the job does afterwards is inside its own
-    // try/finally.
-    claimJob(id, "summarize", { done: 0, total: 0, failed: 0 });
-    clearJobFailure(id);
-    void runSummarizeJob(id, merged, row.context ?? undefined);
-    return c.json({ ok: true, id }, 202);
+    return startRunResponse(c, id, ["summarize"]);
   })
-  // Phase C (specs/meeting-transcription-quality.md §6.4): LLM cleanup pass
-  // over the merged transcript, in-request like /summarize and /diarize —
-  // one bounded LLM call (or a handful, chunked) per meeting, not a
-  // multi-chunk job that needs progress polling. Never destructive: only
-  // ever UPDATEs meeting_segments.enhanced_text on existing rows.
-  .post("/:id/enhance", async (c) => {
+  // LLM cleanup pass (Enhance) over the merged transcript. It starts one
+  // run with the stages `enhance` and `summarize` (3.6). 202 + background run
+  // + poll, like /summarize. Never destructive: only UPDATEs
+  // meeting_segments.enhanced_text on existing rows.
+  .post("/:id/enhance", (c) => {
     const id = c.req.param("id");
     const row = getMeetingRow(id);
     if (!row) return c.json({ error: "Not found" }, 404);
     if (row.status !== "transcribed" && row.status !== "summarized") {
       return c.json({ error: "Meeting has no transcript to enhance" }, 409);
     }
-    // Same shared job registry /transcribe, /retry-failed and /diarize
-    // already check — an enhance pass reading meeting_segments mid-write
-    // from a running transcribe job would see a half-written transcript.
+    // The shared job registry that /transcribe, /retry-failed and /diarize
+    // check: an Enhance run reading meeting_segments mid-write from a running
+    // transcribe job would see a half-written transcript.
     if (hasJob(id)) {
       return c.json({ error: runningJobMessage(getJobKind(id)) }, 409);
     }
@@ -1989,94 +1809,7 @@ const meetings = new Hono()
     if (merged.length === 0) {
       return c.json({ error: "Transcript is empty" }, 409);
     }
-    // Claim the shared concurrency slot before the first await, exactly like
-    // /diarize above (the claim-before-await discipline documented there is
-    // what makes the `hasJob(id)` check real): without it, spec §2.3,
-    // two concurrent POST /:id/enhance both passed the check and both wrote
-    // enhanced_text — and an Enhance reading meeting_segments while a
-    // /transcribe job is mid-write sees a half-written transcript.
-    claimJob(id, "enhance", { done: 0, total: 0, failed: 0 });
-    try {
-      const enhance = testOverrides.enhance ?? enhanceMeetingTranscript;
-      const result = await enhance(
-        id,
-        merged,
-        row.language ?? undefined,
-        loadVocabularyTerms(),
-        row.title ?? undefined,
-        row.context ?? undefined,
-        // Kind "enhance" is cancellable (job-registry.ts), so this pass
-        // honors the same flag as the auto-run job: a cancel between
-        // chunks stops it, and finished chunks keep their corrections.
-        {
-          shouldStop: () => isCancelRequested(id),
-          attendeeNames: attendeeNamesOf(row),
-        },
-      );
-      // A pass in which EVERY chunk failed is not a success. Fail-closed per
-      // chunk stays (one bad chunk must never kill a meeting), but until now
-      // its only visible output was `correctedCount: 0` — which the renderer
-      // reads as "No segments needed correction." On the user's machine that
-      // meant a slow local engine that timed out all three chunks was reported
-      // as a clean transcript. Non-2xx with a machine-readable `reason` is the
-      // honest answer; nothing is written, so there is no partial/echo
-      // `enhanced_text` to undo (a failed chunk never reaches the UPDATE).
-      if (
-        result.chunksAttempted > 0 &&
-        result.chunksSucceeded === 0 &&
-        !result.stoppedEarly
-      ) {
-        const reason = result.firstFailure?.reason ?? "provider";
-        const detail =
-          result.firstFailure?.detail ?? "no chunk produced a usable response";
-        log.error(
-          `meeting ${id}: enhance failed — all ${result.chunksAttempted} chunks failed (${reason}: ${detail})`,
-        );
-        return c.json(
-          {
-            ok: false,
-            error: `Enhance failed: ${reason}`,
-            reason,
-            detail,
-            correctedCount: 0,
-            chunksAttempted: result.chunksAttempted,
-            chunksSucceeded: 0,
-            chunksFailed: result.chunksFailed,
-            partial: false,
-          },
-          502,
-        );
-      }
-      // Skipped when the meeting was deleted mid-pass: the audio dir goes
-      // away with the row, and writing to it would only log a spurious
-      // failure for a meeting that no longer exists.
-      if (row.audio_dir && getMeetingRow(id))
-        writeTranscriptMarkdown(id, row.audio_dir);
-      // `partial` is the second honest state: some chunks corrected, some did
-      // not. The pass is a success but must not read as a complete one.
-      // `stopped_early` distinguishes "the user cancelled it" from "chunks
-      // failed on their own" — the renderer must not call a cancel a failure.
-      return c.json({
-        ok: true,
-        correctedCount: result.correctedCount,
-        speakerSuggestions: result.speakerSuggestions,
-        namesRespelled: result.namesRespelled ?? 0,
-        chunksAttempted: result.chunksAttempted,
-        chunksSucceeded: result.chunksSucceeded,
-        chunksFailed: result.chunksFailed,
-        partial: result.chunksFailed > 0,
-        stopped_early: result.stoppedEarly,
-      });
-    } catch (err) {
-      const message = errorMessage(err);
-      log.error(`meeting ${id}: enhance failed: ${message}`);
-      return c.json({ error: message }, 500);
-    } finally {
-      // Every exit path — success, throw, and any early return added hereafter
-      // — releases the slot. A leaked slot means this meeting can never
-      // transcribe, diarize, summarize or enhance again until the app quits.
-      releaseJob(id);
-    }
+    return startRunResponse(c, id, ["enhance", "summarize"]);
   })
   // Merged, speaker-labeled ("Me"/"Them") transcript.
   .get("/:id/transcript", (c) => {
@@ -2118,10 +1851,6 @@ const meetings = new Hono()
        * holder so the renderer can tell a cancellable summarize job from a
        * non-cancellable diarize/enhance pass without a second round-trip. */
       job: getJob(id),
-      /** Canonical failure of the last background job whose slot this meeting
-       * had (currently only Summarize), or null. Kept out of `meetings.error`
-       * on purpose. See `job-registry.ts`. */
-      job_error: getJobFailure(id) ?? null,
       segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
       ...loadTrackState(row),
       summary: summary ?? null,
@@ -2156,7 +1885,6 @@ const meetings = new Hono()
       }
     }
     db.prepare("DELETE FROM meetings WHERE id = ?").run(id);
-    clearJobFailure(id);
     return c.json({ ok: true });
   });
 

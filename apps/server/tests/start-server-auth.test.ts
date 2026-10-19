@@ -130,27 +130,40 @@ describe("startServer() — non-loopback bind, no explicit token", () => {
 });
 
 describe("startServer() — LLM run sweep", () => {
-  it("marks running runs and running steps interrupted at start", async () => {
+  it("at start a running run with a checkpoint is interrupted and one without fails, with its running steps (3.4.7)", async () => {
     const db = getDb();
+    for (const id of ["sweep-with", "sweep-without"]) {
+      db.prepare(
+        `INSERT INTO llm_runs (id, scope, scope_id, kind, status, started_by,
+           graph_version, resume_count, lost_records, started_at, updated_at)
+         VALUES (?, 'test', ?, 'enhance', 'running', 'button', 1, 0, 0, 1, 1)`,
+      ).run(id, `${id}-scope`);
+      db.prepare(
+        `INSERT INTO llm_run_steps (run_id, step_key, node, seq, status, attempts, started_at)
+         VALUES (?, 'prepare', 'prepare', 1, 'running', 0, 1)`,
+      ).run(id);
+    }
     db.prepare(
-      `INSERT INTO llm_runs (id, scope, scope_id, kind, status, started_by,
-         graph_version, resume_count, lost_records, started_at, updated_at)
-       VALUES ('sweep-r', 'test', 'sweep-s', 'enhance', 'running', 'button', 1, 0, 0, 1, 1)`,
-    ).run();
-    db.prepare(
-      `INSERT INTO llm_run_steps (run_id, step_key, node, seq, status, attempts, started_at)
-       VALUES ('sweep-r', 'prepare', 'prepare', 1, 'running', 0, 1)`,
+      "INSERT INTO llm_checkpoints (thread_id, checkpoint_ns, checkpoint_id) VALUES ('sweep-with', '', 'c1')",
     ).run();
 
     running = await startServer({ host: "127.0.0.1", port: 0 });
 
-    expect(
-      db.prepare("SELECT status FROM llm_runs WHERE id = 'sweep-r'").get(),
-    ).toEqual({ status: "interrupted" });
-    expect(
+    const status = (id: string) =>
       db
-        .prepare("SELECT status FROM llm_run_steps WHERE run_id = 'sweep-r'")
-        .get(),
-    ).toEqual({ status: "interrupted" });
+        .prepare("SELECT status, error_kind FROM llm_runs WHERE id = ?")
+        .get(id);
+    const step = (id: string) =>
+      db.prepare("SELECT status FROM llm_run_steps WHERE run_id = ?").get(id);
+    expect(status("sweep-with")).toEqual({
+      status: "interrupted",
+      error_kind: null,
+    });
+    expect(step("sweep-with")).toEqual({ status: "interrupted" });
+    expect(status("sweep-without")).toEqual({
+      status: "failed",
+      error_kind: "interrupted_before_checkpoint",
+    });
+    expect(step("sweep-without")).toEqual({ status: "failed" });
   });
 });
