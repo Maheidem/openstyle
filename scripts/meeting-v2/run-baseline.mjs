@@ -62,7 +62,7 @@ const hfCache = arg("hf-cache");
 
 if (!meetingId || !runName) {
   console.error(
-    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f|R4g|R4h|R5base|R5sil|R6base|R6ctx|R6ctx2 [options]",
+    "usage: run-baseline.mjs --meeting <id> --run R0|R0d|R3a|R3b|R3b2|R3c-off|R3c-on|R4|R4b|R4c|R4d|R4e|R4f|R4g|R4h|R5base|R5sil|R6base|R6ctx|R6ctx2|R7base|R7rp [options]",
   );
   process.exit(2);
 }
@@ -86,10 +86,12 @@ if (
   runName !== "R5sil" &&
   runName !== "R6base" &&
   runName !== "R6ctx" &&
-  runName !== "R6ctx2"
+  runName !== "R6ctx2" &&
+  runName !== "R7base" &&
+  runName !== "R7rp"
 ) {
   console.error(
-    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g, R4h, R5base, R5sil, R6base, R6ctx or R6ctx2, got: ${runName}`,
+    `--run must be R0, R0d, R3a, R3b, R3b2, R3c-off, R3c-on, R4, R4b, R4c, R4d, R4e, R4f, R4g, R4h, R5base, R5sil, R6base, R6ctx, R6ctx2, R7base or R7rp, got: ${runName}`,
   );
   process.exit(2);
 }
@@ -113,13 +115,22 @@ const diarizationOn =
   runName === "R4e" ||
   runName === "R4f" ||
   runName === "R4g" ||
-  runName === "R4h";
+  runName === "R4h" ||
+  runName === "R7base" ||
+  runName === "R7rp";
 // The previous-chunk context setting (owner decision 2026-10-07):
 // R3c-on sets it to "true", and so do R3b/R3b2 (their recorded runs
 // had context on — the setting did not exist yet); every other run
 // removes the row (off).
+// R7base / R7rp (PR #226, ASR repetition penalty) run the owner's real
+// setup: diarization on, context on. The arms differ only in
+// OPENSTYLE_ASR_REPETITION_PENALTY (0 for R7base) in the caller's env.
 const asrContextOn =
-  runName === "R3c-on" || runName === "R3b" || runName === "R3b2";
+  runName === "R3c-on" ||
+  runName === "R3b" ||
+  runName === "R3b2" ||
+  runName === "R7base" ||
+  runName === "R7rp";
 if (port === 4649) {
   console.error("refusing to use port 4649 (the installed app owns it)");
   process.exit(2);
