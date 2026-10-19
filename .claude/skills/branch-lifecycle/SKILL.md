@@ -1,6 +1,6 @@
 ---
 name: branch-lifecycle
-description: The branch rules for Openstyle - every branch is born with a draft PR, at most 4 open at once, checked at session start, auto-merged on green CI and deleted. Use before creating any branch or worktree, at session start, before a handoff, and when branch-status reports a problem.
+description: The branch rules for Openstyle - every branch is born with a draft PR, at most 2 open at once, checked at session start, auto-merged on green CI and deleted. Use before creating any branch or worktree, at session start, before a handoff, and when branch-status reports a problem.
 ---
 
 # Branch lifecycle
@@ -10,7 +10,7 @@ On 2026-10-08 the owner found trash branches, forgotten branches and lost or dup
 ## Rules (hard)
 
 1. **A branch is born with a draft PR.** Create the branch, push it at once, open a draft PR. The PR body has: Goal, Spec (path + section), Owner (which session or pi child), Done when (a checklist with commands or checks). The body also links its issue with `Closes #n` (or `Refs #n` for partial work). Put new follow-ups in a GitHub issue in the project (https://github.com/users/Maheidem/projects/1). Do not use a Pulse card. Do not leave them only in prose. No local-only branch lives longer than the time to write its first commit.
-2. **WIP limit: 4 open PRs.** To start a fifth, finish or close one. Do not start parallel work to avoid a decision.
+2. **WIP limit: 2 open PRs.** To start a third, finish or close one. Do not start parallel work to avoid a decision.
 3. **One branch per deliverable.** Name it `type/short-topic` (feat, fix, chore, docs, test). Never reuse a merged branch.
 4. **Only the coordinator creates, pushes and merges branches.** pi children and subagents work on the branch they are given and never create, push, merge or delete branches. Their brief names the branch.
 5. **Worktrees only for parallel lanes.** A worktree holds exactly one branch with an open PR. Create it with `git worktree add -b <branch> ../openstyle-<topic> origin/main`. Remove it when its PR merges or closes. No detached worktrees.

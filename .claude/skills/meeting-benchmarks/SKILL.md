@@ -25,7 +25,6 @@ Pick them by length only. Do not read their text.
 - Long (final run): `9243bea0-567f-443b-bf3b-9980f69993fd` (3580 s)
 - Issue #163 meeting (8 chunks; the old Enhance path fails 2 of 8): `ca70f895-ebe9-47e3-b663-eeb2c7bd97a6`
 
-2026-10-17 (issue #185 only): the owner allows the pi and Codex judges to read the compare files of these three meetings, with no per-data-set question. This covers the judges only. The Enhance and Summary runs stay on the local model. WP11 removes this line.
 
 ## Commands
 
@@ -45,7 +44,7 @@ jq -e 'has("wallSeconds") and has("chunks") and has("labeled") and has("termHits
 
 `run-baseline.mjs` starts its own server from `apps/electron` (so the diarizer resolves), resets the scratch DB, transcribes, and writes `metrics.json` in `/tmp/meeting-v2/baseline/<run>-<meetingId>/`. Each run of a phase gets its own run name (for example `R3b-<id>`).
 
-## Enhance and summary runs (issue #185)
+## Enhance and summary runs
 
 The arm is the server build, not a flag. `--arm old|new` only labels the files. Build the server in the worktree of the arm (`pnpm turbo build --filter=@openstyle/server`) and give that worktree to `--server-repo`.
 

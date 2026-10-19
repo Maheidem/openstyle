@@ -25,7 +25,6 @@ The script is `scripts/council.sh` (PR #36). Round state lives in `/tmp/meeting-
    - **Claude is the coordinator and writes its own verdict BEFORE reading the pi or Codex verdict files.** Reading the others first is how independent judges stop being independent.
    - **pi** runs on the pin `openai-codex/gpt-6.1-sol`. Run `pi_list_agents` with `doctor` first and record the pin. Hand it `brief-pi.md` (via the pi-briefs skill). It reads the compare files on the owner's Mac.
    - **Codex sends the meeting text to the cloud.** The owner must approve it per data set BEFORE the coordinator sends the compare files. No data set is sent without that approval.
-   - 2026-10-17, issue #185 only: this per-data-set approval rule does not apply to the benchmark meetings `ca70f895`, `2943c36a` and `9243bea0`. The owner stated on 2026-10-17 that these three are safe for the cloud judges (spec `specs/meeting-enhance-agentic.md` 11.8, row 10). pi and Codex may read their compare files with no question. Any other meeting still needs the owner's approval. WP11 removes this line.
 4. **Collect:**
    ```bash
    bash scripts/council.sh collect <round>

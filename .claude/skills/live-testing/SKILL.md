@@ -19,6 +19,10 @@ The owner runs the installed Openstyle app every day. Every live test must run n
 8. Do not push, merge or change GitHub settings. The coordinating agent does outward actions.
 9. Launch a local app or E2E run only in quiet mode (`OPENSTYLE_E2E=1`, section 4). Prefer CI for the full E2E suite.
 
+## Logs of a packaged build
+
+A packaged build (`build:unpack`) writes its logs to `~/Library/Logs/Openstyle`, the installed app's folder, even with an isolated `OPENSTYLE_USER_DATA`; `HOME` and `OPENSTYLE_LOG_DIR` do not redirect it (found 2026-10-19, issue #218). Use only fictional text in a packaged run, and record the log sizes before the run. Never run the full E2E suite locally: `tests/permission-flow.test.ts` raises a Microphone dialog; run only named spec files (2026-10-18).
+
 ## Privacy dialogs and the dev identity
 
 Every dev binary is ad-hoc signed: the native helpers, the fluidaudio-diarize helper, ffmpeg, `Electron.app` in `node_modules` and `dist/mac-arm64/Openstyle.app`. macOS can only identify an ad-hoc binary by its code hash or its path. Each rebuild or new copy gets a new identity, so macOS asks for the Privacy permissions again. The responsible app for these requests is the parent that started them (Claude Code), so the dialogs also appear on the owner's screen.
