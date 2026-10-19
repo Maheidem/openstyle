@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -42,6 +44,40 @@ class TranscribeKwargsTests(unittest.TestCase):
             out,
             {"language": "en", "system_prompt": "Acme Corp"},
         )
+
+    def test_repetition_penalty_when_named(self) -> None:
+        def generate(
+            audio: str,
+            *,
+            language: str | None = None,
+            repetition_penalty: float | None = None,
+        ) -> object:
+            return None
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OPENSTYLE_ASR_REPETITION_PENALTY", None)
+            out = mlx_asr_server._transcribe_kwargs(
+                generate, language="en", context=None
+            )
+        self.assertEqual(out, {"language": "en", "repetition_penalty": 1.05})
+
+    def test_repetition_penalty_env_override_and_off(self) -> None:
+        def generate(audio: str, *, repetition_penalty: float | None = None) -> object:
+            return None
+
+        with mock.patch.dict(os.environ, {"OPENSTYLE_ASR_REPETITION_PENALTY": "1.1"}):
+            out = mlx_asr_server._transcribe_kwargs(generate, language=None, context=None)
+        self.assertEqual(out, {"repetition_penalty": 1.1})
+        with mock.patch.dict(os.environ, {"OPENSTYLE_ASR_REPETITION_PENALTY": "0"}):
+            out = mlx_asr_server._transcribe_kwargs(generate, language=None, context=None)
+        self.assertEqual(out, {})
+
+    def test_no_repetition_penalty_when_not_named(self) -> None:
+        def generate(audio: str, *, language: str | None = None, **kwargs: object) -> object:
+            return None
+
+        out = mlx_asr_server._transcribe_kwargs(generate, language="en", context=None)
+        self.assertEqual(out, {"language": "en"})
 
     def test_ignores_prompt_when_not_in_signature(self) -> None:
         def generate(audio: str, *, dtype: object = None, **kwargs: object) -> object:

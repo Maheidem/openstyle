@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import multiprocessing
+import os
 import sys
 import threading
 from inspect import Parameter, signature
@@ -35,6 +36,24 @@ _CONTEXT_PARAM_ALIASES: tuple[str, ...] = (
     "context",  # VibeVoice ASR
 )
 _LANGUAGE_PARAM_ALIASES: tuple[str, ...] = ("language",)
+
+# Greedy decoding with no penalty loops on near-silent chunks: a 26 s mic
+# chunk at the noise floor gave one word 4,094 times (meeting 5578edb0,
+# 2026-10-19). 1.05 stopped those loops. Sent only to a generate() that
+# names the parameter. OPENSTYLE_ASR_REPETITION_PENALTY overrides it; 0
+# turns it off.
+_DEFAULT_REPETITION_PENALTY = 1.05
+
+
+def _repetition_penalty() -> float | None:
+    raw = os.environ.get("OPENSTYLE_ASR_REPETITION_PENALTY")
+    if raw is None or not raw.strip():
+        return _DEFAULT_REPETITION_PENALTY
+    try:
+        value = float(raw)
+    except ValueError:
+        return _DEFAULT_REPETITION_PENALTY
+    return value if value > 0 else None
 
 
 def _log(msg: str) -> None:
@@ -231,6 +250,9 @@ def _transcribe_kwargs(
     kwargs: dict[str, Any] = {}
     kwargs.update(_pick_supported_param(fn, _LANGUAGE_PARAM_ALIASES, lang))
     kwargs.update(_pick_supported_param(fn, _CONTEXT_PARAM_ALIASES, prompt))
+    penalty = _repetition_penalty()
+    if penalty is not None and "repetition_penalty" in _function_params(fn):
+        kwargs["repetition_penalty"] = penalty
     return kwargs
 
 

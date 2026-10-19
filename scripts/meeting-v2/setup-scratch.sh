@@ -122,8 +122,13 @@ echo "api_keys: $API_KEYS (want 0)"
 [ "$API_KEYS" = "0" ] || fail=1
 echo "meetings all recorded: $([ "$STATUS_OK" = 1 ] && echo yes || echo NO)"
 [ "$STATUS_OK" = 1 ] || fail=1
-echo "default model providers: $PROVIDERS (want only 'server')"
-[ "$PROVIDERS" = "server," ] || fail=1
+# SEED_VOICE_MODEL_ID may make the voice default local-mlx (still on the Mac).
+echo "default model providers: $PROVIDERS (want only 'server', or 'local-mlx' + 'server')"
+case "$PROVIDERS" in
+  "server,") ;;
+  "local-mlx,server,") [ -n "${SEED_VOICE_MODEL_ID:-}" ] || fail=1 ;;
+  *) fail=1 ;;
+esac
 
 if [ "$fail" -ne 0 ]; then
   echo "phase 0a checks FAILED" >&2
