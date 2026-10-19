@@ -201,7 +201,7 @@ jobs:
         run: node scripts/check-renderer-asset-urls.mjs
 
       - name: Run Electron E2E tests
-        timeout-minutes: 10
+        timeout-minutes: 5
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @openstyle/electron run test:e2e
 
   build-linux:
