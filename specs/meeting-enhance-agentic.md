@@ -3878,7 +3878,7 @@ Data sets: ca70f895 (#163 meeting, diarized, 197 segments), 2943c36a (short), 92
 | r185-7 | 8161d0a0 (ac317903 + 8ef49459) | Claude SHIP 20/19/111; pi FIX-FIRST 69/38/52; Codex FIX-FIRST 83/28/38; CONSENSUS: no | pi and Codex net positive, asked for polish (grammar insertions, recall) |
 | r185-8 | e2e922ba (ac317903 + b41c53aa) | stopped at the gate | 4 of 9 labeled fixes; reverted |
 
-Decision (owner, 2026-10-18): ship the round-7 build on owner override. The merged code equals the measured candidate: after reverting the round-8 commits (WP6 2665eed8, WP5b f6a94b6f), `git diff 8161d0a0 <WP5b HEAD merged with WP6 HEAD> -- apps packages` and `git diff ac317903 <WP5b HEAD> -- apps packages` print nothing. Follow-up: #211. Compare files and verdicts: `/tmp/meeting-v2/council/r185-4` to `r185-7` (local, not committed). The squash SHAs on main and the 11.7 step 8 (c) output follow in a later commit.
+Decision (owner, 2026-10-18): ship the round-7 build on owner override. The merged code equals the measured candidate: after reverting the round-8 commits (WP6 2665eed8, WP5b f6a94b6f), `git diff 8161d0a0 <WP5b HEAD merged with WP6 HEAD> -- apps packages` and `git diff ac317903 <WP5b HEAD> -- apps packages` print nothing. Follow-up: #211. Compare files and verdicts: `/tmp/meeting-v2/council/r185-4` to `r185-7` (local, not committed). Merged on main: WP6 #205 as fcb939c9, WP5b #207 as b6403101. 11.7 step 8 (c) in the rebased WP5b worktree before its merge: `git diff 8161d0a0 HEAD -- apps packages` printed nothing.
 
 ### 10.16 Evidence, who runs what, cleanup
 
