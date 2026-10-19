@@ -14,6 +14,7 @@ import {
   isAdvancedMode,
   isCurrentLink,
   isModelMismatch,
+  linkBadgeKey,
   missingCalls,
   producingCall,
   reduceNeedsDetail,
@@ -114,6 +115,23 @@ describe("verdictTextKey", () => {
     expect(verdictTextKey("conflict_lost")).toBe(
       "meetings.inspector.verdict.conflict_lost",
     );
+  });
+});
+
+describe("verdictTextKey fallback", () => {
+  it("maps an unknown or empty code to the unknown text", () => {
+    expect(verdictTextKey("made_up")).toBe(
+      "meetings.inspector.verdict.unknown",
+    );
+    expect(verdictTextKey("")).toBe("meetings.inspector.verdict.unknown");
+  });
+});
+
+describe("linkBadgeKey", () => {
+  it("gives Kept, Dropped, or no badge", () => {
+    expect(linkBadgeKey("applied")).toBe("meetings.inspector.kept");
+    expect(linkBadgeKey("dropped")).toBe("meetings.inspector.dropped");
+    expect(linkBadgeKey("unknown")).toBeNull();
   });
 });
 

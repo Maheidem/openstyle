@@ -327,11 +327,7 @@ export function LlmCallView({
             {dropped.map((l) => (
               <li key={l.id} className="flex flex-wrap gap-x-2">
                 <span className="mono text-muted-foreground">{l.targetId}</span>
-                <span>
-                  {l.reason
-                    ? t(verdictTextKey(l.reason), { defaultValue: l.reason })
-                    : t("meetings.inspector.stepStatus.unknown")}
-                </span>
+                <span>{t(verdictTextKey(l.reason ?? ""))}</span>
               </li>
             ))}
           </ul>

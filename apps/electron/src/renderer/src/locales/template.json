@@ -1199,7 +1199,8 @@
         "deletes_words": "The correction removed words from the line.",
         "too_different": "The correction changed the line too much.",
         "meaning_flip": "The correction changed the meaning of the line.",
-        "inflection_only": "The correction changed only the grammar of a word."
+        "inflection_only": "The correction changed only the grammar of a word.",
+        "unknown": "No reason is recorded."
       }
     },
     "showEnhancedLabel": "Show enhanced transcript",

@@ -24,6 +24,7 @@ import {
   failureCall,
   failureEntries,
   isCurrentLink,
+  linkBadgeKey,
   missingCalls,
   producingCall,
   reduceNeedsDetail,
@@ -489,13 +490,9 @@ function SpeakerLinkRow({
             {t(`meetings.inspector.kind.${verdict.proposedKind}`)}
           </span>
         )}
-        {link && (
+        {link && linkBadgeKey(link.outcome) && (
           <Badge variant="outline" className="shrink-0">
-            {t(
-              dropped
-                ? "meetings.inspector.dropped"
-                : "meetings.inspector.kept",
-            )}
+            {t(linkBadgeKey(link.outcome) as string)}
           </Badge>
         )}
         {link && isCurrentLink(link, currentSuggestion) && (
@@ -515,9 +512,7 @@ function SpeakerLinkRow({
         </p>
       )}
       {dropped && reason && (
-        <p className="m-0 mt-1">
-          {t(verdictTextKey(reason), { defaultValue: reason })}
-        </p>
+        <p className="m-0 mt-1">{t(verdictTextKey(reason))}</p>
       )}
       {!dropped && verdict?.evidenceType && (
         <p className="m-0 mt-1">{t(verdictTextKey(verdict.evidenceType))}</p>
@@ -708,7 +703,7 @@ const VIEW_TITLE_KEY: Record<InspectorTarget["kind"], string> = {
   summary: "meetings.inspector.viewSummary",
 };
 
-/** Set the scroll padding of the nearest scrolling ancestor, so a row stays above the panel. */
+/** Find the nearest ancestor that scrolls vertically. */
 function scrollParentOf(element: HTMLElement): HTMLElement | null {
   for (let node = element.parentElement; node; node = node.parentElement) {
     const overflowY = getComputedStyle(node).overflowY;

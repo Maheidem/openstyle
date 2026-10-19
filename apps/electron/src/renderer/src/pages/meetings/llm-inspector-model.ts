@@ -1,4 +1,7 @@
 import type {
+  CorrectionDropReason,
+  DropReason,
+  EvidenceType,
   LlmCallSummary,
   LlmLinkInfo,
   LlmParamsLedger,
@@ -19,9 +22,49 @@ export function isAdvancedMode(value: string | null | undefined): boolean {
 
 export { llmErrorKey as errorTextKey } from "./run-notice";
 
-/** The text key of a verdict code or a drop reason: `meetings.inspector.verdict.<code>`. */
+const VERDICT_CODES: ReadonlySet<string> = new Set<
+  DropReason | CorrectionDropReason | EvidenceType
+>([
+  "unknown_label",
+  "unknown_segment",
+  "no_quote",
+  "quote_too_long",
+  "quote_not_in_segment",
+  "empty_name",
+  "name_not_in_quote",
+  "not_self_introduction",
+  "conflict_lost",
+  "duplicate_same_name",
+  "unknown_id",
+  "duplicate_id",
+  "empty_text",
+  "unchanged",
+  "format_only",
+  "deletes_words",
+  "too_different",
+  "meaning_flip",
+  "inflection_only",
+  "self_introduction",
+  "addressed_as",
+  "role_detail",
+]);
+
+/**
+ * The text key of a verdict code or a drop reason:
+ * `meetings.inspector.verdict.<code>`. An unknown code gets the `unknown` text,
+ * so the person never sees a raw internal code.
+ */
 export function verdictTextKey(code: string): string {
-  return `meetings.inspector.verdict.${code}`;
+  return `meetings.inspector.verdict.${VERDICT_CODES.has(code) ? code : "unknown"}`;
+}
+
+/** The badge of a link: Kept, Dropped, or none when the outcome is unknown. */
+export function linkBadgeKey(
+  outcome: LlmLinkInfo["outcome"],
+): "meetings.inspector.kept" | "meetings.inspector.dropped" | null {
+  if (outcome === "applied") return "meetings.inspector.kept";
+  if (outcome === "dropped") return "meetings.inspector.dropped";
+  return null;
 }
 
 /** One name and value pair of the ledger, the value as text. */
