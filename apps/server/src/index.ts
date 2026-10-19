@@ -11,6 +11,7 @@ import { WebSocketServer } from "ws";
 import { authMiddleware, generateAuthToken, setAuthToken } from "./lib/auth.js";
 import { formatError } from "./lib/format-error.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
+import { startTracing } from "./lib/llm/tracing.js";
 import { startMeetingRetentionSweep } from "./lib/meetings/retention.js";
 import {
   resumeInterruptedRuns,
@@ -208,6 +209,10 @@ export async function startServer(
   // anything issues a fetch, so model downloads and cloud/API calls honor it.
   configureNetwork();
 
+  // Opt-in MLflow export of workflow runs. Off unless both OPENSTYLE_MLFLOW_*
+  // variables are set. It never throws (specs/meeting-enhance-agentic.md 9.5).
+  await startTracing(process.env);
+
   // A forced kill of the last server process can leave a whisper-server
   // running. End it before this process can start a new one.
   sweepStaleWhisperServer();
@@ -248,6 +253,7 @@ export async function startServer(
 }
 
 export { closeDb, writeSetting } from "./lib/db.js";
+export { stopTracing } from "./lib/llm/tracing.js";
 export { getLocalModelCacheDirs } from "./lib/local-model-dirs.js";
 export { stopMlxServer } from "./lib/mlx-asr/server.js";
 export { configureNetwork } from "./lib/network.js";

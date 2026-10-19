@@ -58,6 +58,7 @@ import {
 import type { GatewayOverrides, LlmTaskContext } from "./registry.js";
 import { isLocalProvider } from "./registry.js";
 import { type ResolvedTaskCall, resolveTaskCall } from "./task-profiles.js";
+import { getTracing, telemetryFor } from "./tracing.js";
 
 // The LLM gateway (specs/meeting-enhance-agentic.md section 5). One entry
 // point, `callStructured`. One call sends one request and never loops. The
@@ -857,6 +858,7 @@ export async function callStructured<T>(
           sdkResult = await generateText({
             model: wrapped,
             maxRetries: 0,
+            telemetry: telemetryFor(getTracing(), input.step),
             abortSignal,
             instructions,
             messages: messages.map((m) => ({
