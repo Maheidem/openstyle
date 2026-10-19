@@ -122,7 +122,7 @@ export function getFluidAudioDiarizeBinaryPath(): string | null {
  * (a build/packaging gap — compile-native.js failed to fetch it, or this is
  * a checkout that never ran `npm run compile:native`).
  */
-function fluidAudioModelsDirCandidates(): string[] {
+export function fluidAudioModelsDirCandidates(): string[] {
   const proc = process as NodeJS.Process & { resourcesPath?: string };
   const candidates: string[] = [];
   if (proc.resourcesPath) {
@@ -358,13 +358,13 @@ export function assignSpeakerLabels(
 // Pipeline integration (spec §9)
 // ---------------------------------------------------------------------------
 
-type ExecFileFn = (
+export type ExecFileFn = (
   file: string,
   args: string[],
   options: { timeout?: number; maxBuffer?: number },
 ) => Promise<{ stdout: string; stderr: string }>;
 
-const defaultExecFile: ExecFileFn = promisify(execFileCb) as ExecFileFn;
+export const defaultExecFile: ExecFileFn = promisify(execFileCb) as ExecFileFn;
 
 export interface DiarizeDeps {
   /** Resolve the fluidaudio-diarize binary path. Null = not found/built. */

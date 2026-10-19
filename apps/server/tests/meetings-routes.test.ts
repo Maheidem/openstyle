@@ -291,6 +291,60 @@ describe("POST /api/meetings/:id/transcribe", () => {
     expect(md).toMatch(/\[\d+:\d{2}\]/);
   });
 
+  it("VAD gate: skips the mic chunk with no speech span and sends the full system chunk", async () => {
+    const audioBytes: number[] = [];
+    __setMeetingsTestOverrides({
+      createTranscriberDeps: async (extras) => ({
+        ...(await fakeDeps(async () => ({ text: "unused" }))(extras)),
+        getProvider: () => ({
+          providerId: "fake",
+          supportsStreaming: () => false,
+          transcribe: async (o) => {
+            audioBytes.push(o.audio.length);
+            return { text: "hello from the system track" };
+          },
+        }),
+      }),
+      vadDeps: {
+        resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+        resolveModelsDirPath: () => "/fake/resources/models",
+        execFile: async (_file, args) => ({
+          stdout: args[1]?.endsWith("mic.wav")
+            ? "[]"
+            : '[{"startMs":600,"endMs":1400}]',
+          stderr: "",
+        }),
+      },
+    });
+    insertMeeting("m1");
+
+    const res = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(res.status).toBe(202);
+    const done = await waitForTerminalStatus("m1");
+    expect(done.status).toBe("transcribed");
+
+    // One provider call (system). 800 ms of 16 kHz s16 mono + 44-byte header.
+    // The full 1800 ms system chunk, not only its 800 ms span (round r227).
+    expect(audioBytes).toEqual([44 + 1800 * 16 * 2]);
+    const rows = getDb()
+      .prepare(
+        "SELECT source, status, start_ms, end_ms FROM meeting_segments WHERE meeting_id = 'm1' ORDER BY source",
+      )
+      .all() as Array<{
+      source: string;
+      status: string;
+      start_ms: number;
+      end_ms: number;
+    }>;
+    const mic = rows.find((r) => r.source === "mic");
+    const system = rows.find((r) => r.source === "system");
+    expect(mic?.status).toBe("empty");
+    expect(system?.status).toBe("ok");
+    // The stored chunk times are the segment times, not the span times.
+    expect(system!.start_ms).toBeLessThanOrEqual(600);
+    expect(system!.end_ms).toBeGreaterThanOrEqual(1400);
+  });
+
   it("re-transcribe: status flips and segments are wiped synchronously before 202 returns, so a GET /transcript racing right after legitimately returns an empty array", async () => {
     // Server-side precondition for the frontend cache-poisoning bug: POST
     // /:id/transcribe does `UPDATE meetings SET status='transcribing'` then
@@ -334,6 +388,7 @@ describe("POST /api/meetings/:id/transcribe", () => {
     expect(segments).toEqual([]);
 
     release();
+    // Microtask poll: see "re-transcribes only failed chunks".
     const done = await waitForTerminalStatusNoRealTimers("m1");
     expect(done.status).toBe("transcribed");
     const counts = done.segment_counts as { total: number; failed: number };
@@ -501,7 +556,9 @@ describe("POST /api/meetings/:id/retry-failed", () => {
     });
     insertMeeting("m1");
     await postEmpty(app, "/api/meetings/m1/transcribe");
-    const afterFirst = await waitForTerminalStatus("m1");
+    // The job has more async steps (the VAD gate) than one real-timer
+    // poll covers under fake timers: poll on microtasks.
+    const afterFirst = await waitForTerminalStatusNoRealTimers("m1");
     expect(afterFirst.status).toBe("transcribed");
     const firstCounts = afterFirst.segment_counts as { failed: number };
     expect(firstCounts.failed).toBeGreaterThan(0);
@@ -1462,7 +1519,7 @@ describe("POST /api/meetings/:id/transcribe — Phase A1 leak filter", () => {
       .run();
 
     await postEmpty(app, "/api/meetings/m1/transcribe");
-    const done = await waitForTerminalStatus("m1");
+    const done = await waitForTerminalStatusNoRealTimers("m1");
     expect(done.status).toBe("transcribed");
 
     const rows = getDb()

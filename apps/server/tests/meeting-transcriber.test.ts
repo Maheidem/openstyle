@@ -706,6 +706,147 @@ describe("MeetingTranscriber", () => {
     });
   });
 
+  describe("VAD gate (speech spans)", () => {
+    it("skips a chunk with an empty span list on both channels, no provider call", async () => {
+      const dir = makeMeetingDir({ mic: 2000, system: 2000 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        // voicedMs high: the VAD gate wins over the voicedMs gate.
+        micSegments: [
+          { startMs: 0, endMs: 1000, voicedMs: 900, speechSpans: [] },
+        ],
+        systemSegments: [{ startMs: 0, endMs: 1000, speechSpans: [] }],
+      });
+      expect(calls).toHaveLength(0);
+      expect(results.map((r) => r.status)).toEqual(["empty", "empty"]);
+      expect(results[0]!.startMs).toBe(0);
+      expect(results[0]!.endMs).toBe(1000);
+    });
+
+    it("sends the full chunk audio when the chunk has a speech span", async () => {
+      const dir = makeMeetingDir({ mic: 8000, system: 100 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        micSegments: [
+          {
+            startMs: 0,
+            endMs: 8000,
+            speechSpans: [
+              { startMs: 500, endMs: 1500 },
+              { startMs: 4000, endMs: 6500 },
+            ],
+          },
+        ],
+      });
+      // The full 8000 ms chunk of 16 kHz s16 mono, plus the 44-byte header.
+      // Joining only the spans cut utterance heads (council round r227).
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.bytes).toBe(44 + 8000 * 16 * 2);
+      // The chunk keeps its own times.
+      expect(results[0]!.startMs).toBe(0);
+      expect(results[0]!.endMs).toBe(8000);
+    });
+
+    it("keeps the voicedMs gate when VAD data is present (either gate skips)", async () => {
+      const dir = makeMeetingDir({ mic: 2000, system: 100 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        micSegments: [
+          {
+            startMs: 0,
+            endMs: 1000,
+            voicedMs: 10,
+            speechSpans: [{ startMs: 100, endMs: 900 }],
+          },
+        ],
+      });
+      expect(calls).toHaveLength(0);
+      expect(results[0]!.status).toBe("empty");
+    });
+
+    it("uses the speech ms, not the chunk length, for the bias guard", async () => {
+      const dir = makeMeetingDir({ mic: 10_000, system: 100 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      await run(t, dir, {
+        micSegments: [
+          // 6 s chunk, 1 s of speech: under MIN_BIAS_DURATION_MS, no bias.
+          {
+            startMs: 0,
+            endMs: 6000,
+            speechSpans: [{ startMs: 1000, endMs: 2000 }],
+          },
+          // 1 s gap, 3 s of speech: at the threshold, bias sent.
+          {
+            startMs: 6000,
+            endMs: 10_000,
+            speechSpans: [
+              { startMs: 6000, endMs: 7500 },
+              { startMs: 8500, endMs: 10_000 },
+            ],
+          },
+        ],
+      });
+      expect(calls).toHaveLength(2);
+      expect(calls[0]!.bias).toBeNull();
+      expect(calls[1]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+    });
+
+    it("withholds the context when the speech ms is under the guard", async () => {
+      const dir = makeMeetingDir({ mic: 12_000, system: 100 });
+      const { provider } = makeFakeProvider({
+        providerId: "server",
+        texts: ["hello world there", "second chunk text"],
+      });
+      const t = new MeetingTranscriber(
+        makeDeps(provider, {
+          detectAll: () => [{ lang: "en", accuracy: 0.9 }],
+        }),
+      );
+      writeSetting("meeting_asr_context", "true");
+      try {
+        const results = await run(t, dir, {
+          micSegments: [
+            {
+              startMs: 0,
+              endMs: 4000,
+              speechSpans: [{ startMs: 0, endMs: 4000 }],
+            },
+            // 8 s chunk, 1 s of speech: no context.
+            {
+              startMs: 4000,
+              endMs: 12_000,
+              speechSpans: [{ startMs: 5000, endMs: 6000 }],
+            },
+          ],
+        });
+        expect(results[0]!.status).toBe("ok");
+        expect(results[1]!.context).toBeUndefined();
+      } finally {
+        deleteSetting("meeting_asr_context");
+      }
+    });
+
+    it("keeps the old path when speechSpans is undefined (full chunk, voicedMs gate)", async () => {
+      const dir = makeMeetingDir({ mic: 4000, system: 100 });
+      const { provider, calls } = makeFakeProvider();
+      const t = new MeetingTranscriber(makeDeps(provider));
+      const results = await run(t, dir, {
+        micSegments: [
+          { startMs: 0, endMs: 1000, voicedMs: 10 }, // voicedMs gate skips
+          { startMs: 1000, endMs: 4000 }, // full 3 s chunk sent
+        ],
+      });
+      expect(results[0]!.status).toBe("empty");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.bytes).toBe(44 + 3000 * 16 * 2);
+      expect(calls[0]!.bias).toEqual({ kind: "prompt", text: "vocab" });
+    });
+  });
+
   it("throws for an unknown provider", async () => {
     const dir = makeMeetingDir({ mic: 1000, system: 100 });
     const { provider } = makeFakeProvider();
