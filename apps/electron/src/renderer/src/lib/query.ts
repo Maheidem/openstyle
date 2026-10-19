@@ -1,4 +1,5 @@
 import type {
+  LlmCallsResponse,
   LlmRunListResponse,
   ResumeConflictReason,
 } from "@openstyle/validations";
@@ -66,6 +67,13 @@ export const queryKeys = {
      * newest run of each kind. It feeds the run notices (8.9). */
     llmRunsLatest: (id: string) =>
       ["meetings", "llm-runs", id, "latest"] as const,
+    /** 8.5: the Runs view (`runId` omitted, limit 10) or one run with all its
+     * steps. Enabled only in advanced mode, while the panel shows that view. */
+    llmRuns: (id: string, runId?: string) =>
+      ["meetings", "llm-runs", id, runId ?? "all"] as const,
+    /** 8.5: one `llm-calls` query; `selector` is its sorted query string. */
+    llmCalls: (id: string, selector: string) =>
+      ["meetings", "llm-calls", id, selector] as const,
     /** Prefix of every LLM run query of one meeting (8.5 invalidation). */
     llmRunsOf: (id: string) => ["meetings", "llm-runs", id] as const,
     /** Prefix of every LLM call query of one meeting (8.5 invalidation). */
@@ -158,6 +166,78 @@ export function llmRunsLatestQueryOptions(id: string, enabled: boolean) {
         query: { latest: "1" },
       });
       if (!res.ok) throw new Error("Failed to load the LLM runs");
+      return await res.json();
+    },
+  });
+}
+
+/** While the inspector panel is open and a job runs, its queries refetch every 2 s (8.5). */
+const INSPECTOR_POLL_MS = 2000;
+
+/**
+ * Query options for the Runs view (`GET /api/meetings/:id/llm-runs`, limit 10),
+ * or for one run with all its steps when `runId` is set (8.5). Call it only
+ * from the inspector panel, which mounts in advanced mode only.
+ */
+export function llmRunsQueryOptions(
+  id: string,
+  runId: string | undefined,
+  polling: boolean,
+) {
+  return queryOptions({
+    queryKey: queryKeys.meetings.llmRuns(id, runId),
+    staleTime: 0,
+    refetchInterval: polling ? INSPECTOR_POLL_MS : false,
+    queryFn: async (): Promise<LlmRunListResponse> => {
+      const res = await getClient().api.meetings[":id"]["llm-runs"].$get({
+        param: { id },
+        query: runId ? { run_id: runId } : { limit: "10" },
+      });
+      if (!res.ok) throw new Error("Failed to load the LLM runs");
+      return await res.json();
+    },
+  });
+}
+
+/** The query string of one `llm-calls` request (8.3): one selector and its options. */
+export interface LlmCallsSelector {
+  call_id?: string;
+  run_id?: string;
+  step_key?: string;
+  target_type?: "segment" | "speaker" | "summary";
+  target_id?: string;
+  detail?: "summary" | "full";
+}
+
+/** A stable text for a selector, used inside the query key. */
+export function llmCallsSelectorKey(selector: LlmCallsSelector): string {
+  return Object.entries(selector)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("&");
+}
+
+/**
+ * Query options for one `GET /api/meetings/:id/llm-calls` request (8.5). The
+ * renderer asks for one `full` call at a time. Call it only from the inspector
+ * panel, which mounts in advanced mode only.
+ */
+export function llmCallsQueryOptions(
+  id: string,
+  selector: LlmCallsSelector,
+  polling: boolean,
+) {
+  return queryOptions({
+    queryKey: queryKeys.meetings.llmCalls(id, llmCallsSelectorKey(selector)),
+    staleTime: 0,
+    refetchInterval: polling ? INSPECTOR_POLL_MS : false,
+    queryFn: async (): Promise<LlmCallsResponse> => {
+      const res = await getClient().api.meetings[":id"]["llm-calls"].$get({
+        param: { id },
+        query: selector,
+      });
+      if (!res.ok) throw new Error("Failed to load the LLM calls");
       return await res.json();
     },
   });
