@@ -82,6 +82,8 @@ function offAfterWarning(msg: string): Tracing {
  * once, after `configureNetwork()`. It never throws.
  */
 export async function startTracing(env: NodeJS.ProcessEnv): Promise<Tracing> {
+  // A second call (a server restart on a new port) keeps the first provider.
+  if (current.on) return current;
   const base = (env[ENV_URI] ?? "").trim();
   const id = (env[ENV_EXPERIMENT] ?? "").trim();
   if (!base && !id) {

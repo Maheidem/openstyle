@@ -121,6 +121,13 @@ interface CallRow {
   error_kind: string | null;
 }
 
+interface StepRow {
+  step_key: string;
+  status: string;
+  attempts: number;
+  error_kind: string | null;
+}
+
 /**
  * Put the result of a node call on its span (9.6.2, 9.6.3): the join keys to
  * the local record, the last attempt's facts, and ERROR for a failed or
@@ -134,21 +141,37 @@ function describeNode<S extends { runId: string }, R>(
   key: string | null,
   result: R,
 ): void {
+  if (!getTracing().on) return;
   try {
-    const rows = deps.db
-      .prepare(
-        `SELECT id, finish_unified, finish_raw, requested_model, served_model,
-                params_json, error_kind
-           FROM llm_calls
-          WHERE run_id = ? AND node = ?
-            AND (? IS NULL OR step_key = ? OR step_key LIKE ?)
-          ORDER BY id`,
-      )
-      .all(runId, node.id, key, key, `${key ?? ""}/%`) as unknown as CallRow[];
+    // A key names one step row. A key with a "/" suffix names its sub-steps.
+    // null names every row of the node call (summarize).
+    const mine = (stepKey: string) =>
+      key === null || stepKey === key || stepKey.startsWith(`${key}/`);
+    const rows = (
+      deps.db
+        .prepare(
+          `SELECT id, step_key, finish_unified, finish_raw, requested_model,
+                  served_model, params_json, error_kind
+             FROM llm_calls
+            WHERE run_id = ? AND node = ?
+            ORDER BY id`,
+        )
+        .all(runId, node.id) as unknown as (CallRow & { step_key: string })[]
+    ).filter((r) => mine(r.step_key));
+    const steps = (
+      deps.db
+        .prepare(
+          `SELECT step_key, status, attempts, error_kind
+             FROM llm_run_steps
+            WHERE run_id = ? AND node = ?
+            ORDER BY seq`,
+        )
+        .all(runId, node.id) as unknown as StepRow[]
+    ).filter((r) => mine(r.step_key));
     const last = rows[rows.length - 1];
     const out = node.outcome(result);
     setAttrs(span, {
-      attempts: rows.length,
+      attempts: steps.reduce((n, r) => n + r.attempts, 0),
       llm_call_ids: rows.map((r) => String(r.id)),
       finish_reason:
         last?.finish_unified ?? out.failure?.finishReason ?? undefined,
@@ -159,8 +182,12 @@ function describeNode<S extends { runId: string }, R>(
       param_ledger: last?.params_json,
     });
     if (out.status === "failed" || out.status === "partial") {
+      // The step row gets its error_kind when the node closes it, after this
+      // call. So the outcome fills the gap while the row is still open.
       markError(span, {
         kind:
+          steps.find((r) => r.status === "failed" && r.error_kind)
+            ?.error_kind ??
           out.failure?.kind ??
           rows.find((r) => r.error_kind)?.error_kind ??
           out.status,

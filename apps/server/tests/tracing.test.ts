@@ -127,6 +127,7 @@ afterAll(async () => {
 describe("startTracing (test 1)", () => {
   it("stays off with no variable, one variable or a bad scheme, and loads nothing", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    __setTracingForTests(null);
     for (const env of [
       {},
       { OPENSTYLE_MLFLOW_TRACKING_URI: "" },
@@ -145,7 +146,25 @@ describe("startTracing (test 1)", () => {
     warn.mockRestore();
   });
 
+  it("a second startTracing keeps the first provider", async () => {
+    __setTracingForTests(null);
+    const register = vi.spyOn(NodeTracerProvider.prototype, "register");
+    const env = {
+      OPENSTYLE_MLFLOW_TRACKING_URI: "http://127.0.0.1:4871/",
+      OPENSTYLE_MLFLOW_EXPERIMENT_ID: "7",
+    };
+    const a = await startTracing(env);
+    const b = await startTracing(env);
+    expect(a.on).toBe(true);
+    expect(b).toBe(a);
+    expect(register).toHaveBeenCalledTimes(1);
+    const stopped = stopTracing();
+    await vi.advanceTimersByTimeAsync(2100);
+    await stopped;
+  });
+
   it("goes on with both variables, and stopTracing ends it inside its cap", async () => {
+    __setTracingForTests(null);
     const t = await startTracing({
       OPENSTYLE_MLFLOW_TRACKING_URI: "http://127.0.0.1:4871/",
       OPENSTYLE_MLFLOW_EXPERIMENT_ID: "7",
@@ -347,10 +366,9 @@ describe("resume (tests 6, 8)", () => {
 
 describe("privacy (test 4)", () => {
   it("off gives telemetry isEnabled false; on gives the per-call integration", () => {
-    expect(
-      telemetryFor(getTracing().on ? ON : ON, "x").integrations,
-    ).toBeDefined();
+    expect(telemetryFor(ON, "x").integrations).toBeDefined();
     __setTracingForTests(null);
+    expect(getTracing().on).toBe(false);
     expect(telemetryFor(getTracing(), "correctChunk")).toEqual({
       isEnabled: false,
     });
@@ -371,6 +389,21 @@ describe("privacy (test 4)", () => {
     }
   });
 
+  it("a dictation cleanup call exports no span while tracing is on", async () => {
+    const { postProcess } = await import("@openstyle/stt");
+    const { scriptedModel, okReply } = await import("./helpers/fake-model.js");
+    const fake = scriptedModel("dict", [okReply("hello there")]);
+    const res = await postProcess({
+      model: fake.model,
+      text: "hello there",
+      system: "Clean the text.",
+    });
+    expect(fake.calls).toHaveLength(1);
+    expect(res.cleaned).toBe("hello there");
+    const spans = await flush();
+    expect(spans).toHaveLength(0);
+  });
+
   it("the dictation cleanup code in packages/stt has no telemetry hook", () => {
     const dir = join(process.cwd(), "..", "..", "packages", "stt", "src");
     const files = readdirSync(dir).filter((x) => x.endsWith(".ts"));
@@ -378,6 +411,36 @@ describe("privacy (test 4)", () => {
     for (const file of files) {
       const src = readFileSync(join(dir, file), "utf8");
       expect(src, file).not.toMatch(/integrations|registerTelemetry/);
+    }
+  });
+});
+
+// Last in the file: it resets the module cache, and a fresh tracing module
+// would hide the ON object from the graph's later imports.
+describe("startTracing off path (test 1)", () => {
+  it("loads no export module and opens no socket while off", async () => {
+    const loaded: string[] = [];
+    const mods = [
+      "@opentelemetry/sdk-trace-node",
+      "@opentelemetry/exporter-trace-otlp-proto",
+      "@mlflow/vercel",
+      "@ai-sdk/otel",
+    ];
+    vi.resetModules();
+    for (const m of mods) {
+      vi.doMock(m, () => {
+        loaded.push(m);
+        return {};
+      });
+    }
+    try {
+      const fresh = await import("../src/lib/llm/tracing.js");
+      const t = await fresh.startTracing({});
+      expect(t.on).toBe(false);
+      expect(loaded).toEqual([]);
+    } finally {
+      for (const m of mods) vi.doUnmock(m);
+      vi.resetModules();
     }
   });
 });

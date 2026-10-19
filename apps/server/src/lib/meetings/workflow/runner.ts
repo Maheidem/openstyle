@@ -392,6 +392,7 @@ function openRunSpan(
   runId: string,
   meetingId: string,
 ): Span | null {
+  if (!getTracing().on) return null;
   try {
     const run = createRunAdmin(deps.db).getRun(runId);
     if (!run) return null;
