@@ -1,6 +1,6 @@
 # Technical Spec: Meeting Enhance v3 (generic LLM platform, agentic workflow, structured output, LLM inspector)
 
-**Status:** Approved by the owner on 2026-10-17. Build starts with wave 1 (section 11).
+**Status:** Implemented. Approved 2026-10-17; built in WP0 to WP11 (PRs #189 to #217, close-out WP11); council record in 10.15.1 (owner override, round r185-7). Follow-ups: #211, #218.
 **Author:** Claude Code coordinator, with Sonnet writers.
 **Date:** 2026-10-17
 **Tracking:** Umbrella issue #185. Draft PR #186. Origin issue #163.
