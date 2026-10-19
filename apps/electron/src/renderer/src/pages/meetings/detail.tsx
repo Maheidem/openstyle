@@ -233,6 +233,9 @@ export function MeetingDetailView({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.meetings.llmCallsOf(id),
       });
+      // Summarize sets `status` to "summarized" when it ends, also when it
+      // follows Enhance in a chained run, so the list badge refetches here.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.list });
     }
     if (prev === "enhance" && kind !== "enhance") {
       void queryClient.invalidateQueries({
@@ -241,7 +244,6 @@ export function MeetingDetailView({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.meetings.speakers(id),
       });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.list });
     }
   }, [meeting?.job?.kind, queryClient, id]);
 

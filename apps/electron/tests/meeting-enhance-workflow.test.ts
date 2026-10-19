@@ -123,11 +123,35 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
   test.setTimeout(120_000);
   const id = "e2e-happy";
   fake.requests.length = 0;
-  fake.script = goodAnswer(id, (i) => i !== 1);
+  const base = goodAnswer(id, (i) => i !== 1);
+  // Park the summary call: the list card must read Transcribed while the
+  // chained Summarize runs, so the later "Summarized" proves a refetch.
+  fake.script = (req) => (req.step === "meeting_summary" ? "hold" : base(req));
   seedMeeting(env.userDataDir, id, "Happy path sync", defaultSegments(3));
 
   await openMeeting(env.page, "Happy path sync");
+  const card = env.page
+    .locator("aside")
+    .getByRole("button")
+    .filter({ hasText: "Happy path sync" });
   await env.page.getByRole("button", { name: "Enhance", exact: true }).click();
+  await expect.poll(() => fake.heldCount(), { timeout: 30_000 }).toBe(1);
+  await expect(card.getByText("Transcribed", { exact: true })).toBeVisible();
+  // The one-second poll must see the Summarize job before the call ends.
+  await env.page.waitForResponse(async (r) => {
+    if (!r.url().endsWith(`/api/meetings/${id}`)) return false;
+    const body = (await r.json().catch(() => null)) as {
+      job?: { kind?: string } | null;
+    } | null;
+    return body?.job?.kind === "summarize";
+  });
+  // The list refetch that the job change starts has to land before the end.
+  await env.page.waitForResponse(
+    (r) => r.url().endsWith("/api/meetings") && r.request().method() === "GET",
+  );
+  const held = fake.requests.find((r) => r.step === "meeting_summary");
+  if (!held) throw new Error("no summary request");
+  fake.releaseHeld(base(held));
   const run = await waitForRun(env, id, ["succeeded", "partial", "failed"]);
 
   // One run did both jobs. The user clicked once.
@@ -206,6 +230,10 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
     status: string;
   };
   expect(detail.status).toBe("summarized");
+  // #218 item 2: the list card follows the run without a page reload.
+  await expect(card.getByText("Summarized", { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
   // No failure notice after a clean run.
   await expect(env.page.getByTestId("meetings-run-notice-enhance")).toHaveCount(
     0,
