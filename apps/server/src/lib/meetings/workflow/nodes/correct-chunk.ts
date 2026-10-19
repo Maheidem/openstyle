@@ -209,30 +209,35 @@ function collapseRepeats(words: string[]): string[] {
   return words.filter((w, i) => w !== words[i - 1]);
 }
 
-/** One difference of a word alignment: old words that became new words. */
-interface WordGap {
-  removed: string[];
-  added: string[];
-}
-
-/** The gaps between the matched words, after the exact-repeat collapse. */
-function alignGaps(oldWords: string[], newWords: string[]): WordGap[] {
+/**
+ * True when the two texts differ only in inflections: after the repeat
+ * collapse, every gap of the word alignment is a run of old words that match
+ * the same number of new words one for one, each pair an inflection. Any other
+ * change (a different word, an added or lost word, a split or joined word)
+ * makes the correction a real fix, and the whole correction stays.
+ */
+function inflectionOnly(oldWords: string[], newWords: string[]): boolean {
   const a = collapseRepeats(oldWords);
   const b = collapseRepeats(newWords);
   const lcs = lcsTable(a, b);
-  const gaps: WordGap[] = [];
   let i = 0;
   let j = 0;
   let removed: string[] = [];
   let added: string[] = [];
+  let gaps = 0;
   const closeGap = () => {
-    if (removed.length > 0 || added.length > 0) gaps.push({ removed, added });
+    if (removed.length === 0 && added.length === 0) return true;
+    gaps++;
+    const ok =
+      removed.length === added.length &&
+      removed.every((w, k) => isInflection(w, added[k]!));
     removed = [];
     added = [];
+    return ok;
   };
   while (i < a.length || j < b.length) {
     if (i < a.length && j < b.length && a[i] === b[j]) {
-      closeGap();
+      if (!closeGap()) return false;
       i++;
       j++;
     } else if (
@@ -246,86 +251,8 @@ function alignGaps(oldWords: string[], newWords: string[]): WordGap[] {
       j++;
     }
   }
-  closeGap();
-  return gaps;
-}
-
-/**
- * True when the two texts differ only in inflections: after the repeat
- * collapse, every gap of the word alignment is a run of old words that match
- * the same number of new words one for one, each pair an inflection. Any other
- * change (a different word, an added or lost word, a split or joined word)
- * makes the correction a real fix, and the whole correction stays.
- */
-function inflectionOnly(oldWords: string[], newWords: string[]): boolean {
-  const gaps = alignGaps(oldWords, newWords);
-  return (
-    gaps.length > 0 &&
-    gaps.every(
-      (g) =>
-        g.removed.length === g.added.length &&
-        g.removed.every((w, k) => isInflection(w, g.added[k]!)),
-    )
-  );
-}
-
-/** Articles, pronouns and auxiliaries: a closed set. */
-const FUNCTION_WORDS = new Set([
-  "a",
-  "an",
-  "the",
-  "it",
-  "its",
-  "we",
-  "i",
-  "you",
-  "he",
-  "she",
-  "they",
-  "is",
-  "are",
-  "was",
-  "were",
-  "be",
-  "am",
-  "this",
-  "that",
-  "these",
-  "those",
-]);
-
-/** Prepositions: a lost one is a real fix ("look" to "look at"). */
-const PREPOSITIONS = new Set([
-  "at",
-  "to",
-  "on",
-  "in",
-  "of",
-  "for",
-  "with",
-  "about",
-  "from",
-]);
-
-/**
- * True when every new word of the correction (inserted or substituted) is in
- * the closed function-word set. Such a change is a grammar edit, not a fix.
- */
-function functionWordOnly(oldWords: string[], newWords: string[]): boolean {
-  const added = alignGaps(oldWords, newWords).flatMap((g) => g.added);
-  return added.length > 0 && added.every((w) => FUNCTION_WORDS.has(w));
-}
-
-/**
- * True when a run of new words has no old word replaced and holds a content
- * word (not a function word, not a preposition): the model invented it.
- */
-function inventsWords(oldWords: string[], newWords: string[]): boolean {
-  return alignGaps(oldWords, newWords).some(
-    (g) =>
-      g.removed.length === 0 &&
-      g.added.some((w) => !FUNCTION_WORDS.has(w) && !PREPOSITIONS.has(w)),
-  );
+  if (!closeGap()) return false;
+  return gaps > 0;
 }
 
 /** 4.2.3: the code checks after the parse. */
@@ -385,16 +312,6 @@ export function checkCorrections(
     // A change of grammar only (verb agreement, tense, plural) is not a fix.
     if (inflectionOnly(oldWords, newWords)) {
       drop("inflection_only");
-      return;
-    }
-    // Only articles, pronouns or auxiliaries changed: grammar, not a fix.
-    if (functionWordOnly(oldWords, newWords)) {
-      drop("function_word_only");
-      return;
-    }
-    // A run of content words inserted where no old word was replaced.
-    if (inventsWords(oldWords, newWords)) {
-      drop("invented_words");
       return;
     }
     corrections.push({ id: entry.id, text, seq, callId });

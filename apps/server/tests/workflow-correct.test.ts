@@ -90,7 +90,7 @@ const fx = (_f: MeetingFixture, id: string) =>
         .prepare("SELECT text FROM meeting_segments WHERE id = ?")
         .get(id) as { text: string }
     ).text
-  } about`;
+  } fixed`;
 
 describe("correctChunk: answer checks (4.2.3)", () => {
   it("a normal chunk is 1 request; the correction is saved and linked", async () => {
@@ -474,57 +474,8 @@ describe("checkCorrections word guard", () => {
     expect(r.kept).toEqual(["it know Datadog well"]);
   });
 
-  it("does not treat it and itself as one word", () => {
-    expect(check("we fix it now", "we fix itself now").reasons).toEqual([]);
-  });
-
-  it.each([
-    ["we look at it", "we look at the it"],
-    ["we need tool", "we need a tool"],
-    ["we need a tool", "we need an tool"],
-    ["so we ship", "so we ship it"],
-  ])("drops %s to %s as function_word_only", (from, to) => {
-    expect(check(from, to)).toEqual({
-      kept: [],
-      reasons: ["function_word_only"],
-    });
-  });
-
-  it("keeps a lost preposition (look to look at)", () => {
-    expect(check("we look the plan", "we look at the plan").kept).toEqual([
-      "we look at the plan",
-    ]);
-  });
-
-  it("keeps a function-word change that comes with another real change", () => {
-    expect(
-      check("we need tool datedog", "we need a tool Datadog").kept,
-    ).toEqual(["we need a tool Datadog"]);
-  });
-
-  it("drops a pure insertion of a content word as invented_words", () => {
-    expect(check("we ship it", "we ship it tomorrow")).toEqual({
-      kept: [],
-      reasons: ["invented_words"],
-    });
-    expect(check("so talking", "so talking about it today").reasons).toEqual([
-      "invented_words",
-    ]);
-  });
-
-  it("keeps a replacement that adds content words", () => {
-    expect(check("we find to models", "we fine-tune models").reasons).toEqual(
-      [],
-    );
-    expect(check("ours the tool", "use to the tool").reasons).toEqual([]);
-    expect(check("a cloud code demo", "a Claude Code demo").reasons).toEqual(
-      [],
-    );
-  });
-
-  it("keeps an insertion made only of prepositions", () => {
-    expect(check("we talk", "we talk about").reasons).toEqual([]);
-    expect(check("we talk", "we talk about it").reasons).toEqual([]);
+  it("does not treat it, its and itself as one word", () => {
+    expect(check("we fix it now", "we fix its now").reasons).toEqual([]);
   });
 
   it("records the call id and seq of a guard drop", () => {
