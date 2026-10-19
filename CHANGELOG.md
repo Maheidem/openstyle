@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.18.0
+
+### New Features ✨
+
+#### Llm
+
+- Opt-in MLflow tracing of workflow runs (WP8) by @Maheidem in [#215](https://github.com/Maheidem/openstyle/pull/215)
+- Node:sqlite checkpoint saver (WP4) by @Maheidem in [#201](https://github.com/Maheidem/openstyle/pull/201)
+- Gateway, model profiles and typed errors (WP3) by @Maheidem in [#199](https://github.com/Maheidem/openstyle/pull/199)
+- Migration 40 with the scope-generic LLM run and call record by @Maheidem in [#195](https://github.com/Maheidem/openstyle/pull/195)
+
+#### Meetings
+
+- LLM inspector in advanced mode (WP7) by @Maheidem in [#213](https://github.com/Maheidem/openstyle/pull/213)
+- Enhance runner, route and renderer switch, old path removed (WP5b) by @Maheidem in [#207](https://github.com/Maheidem/openstyle/pull/207)
+- Structured summarize node (WP6) by @Maheidem in [#205](https://github.com/Maheidem/openstyle/pull/205)
+- Enhance workflow graph, callUnit and nodes (WP5a) by @Maheidem in [#203](https://github.com/Maheidem/openstyle/pull/203)
+
+### Bug Fixes 🐛
+
+- (meetings) Meeting list shows the new status after a run by @Maheidem in [#221](https://github.com/Maheidem/openstyle/pull/221)
+
+### Documentation 📚
+
+- (meetings) Enhance v3 council round and record (WP10b) by @Maheidem in [#210](https://github.com/Maheidem/openstyle/pull/210)
+- (spec) Meeting Enhance v3 agentic workflow by @Maheidem in [#186](https://github.com/Maheidem/openstyle/pull/186)
+
+### Internal Changes 🔧
+
+#### Meetings
+
+- Enhance v3 E2E specs and whole-feature proofs (WP9) by @Maheidem in [#217](https://github.com/Maheidem/openstyle/pull/217)
+- Enhance benchmark harness and old-path baseline by @Maheidem in [#197](https://github.com/Maheidem/openstyle/pull/197)
+
+#### Other
+
+- Enhance v3 close-out (WP11) by @Maheidem in [#220](https://github.com/Maheidem/openstyle/pull/220)
+- Upgrade the Vercel AI SDK to v7 with no behavior change by @Maheidem in [#193](https://github.com/Maheidem/openstyle/pull/193)
+- Remove the Remix feature by @Maheidem in [#191](https://github.com/Maheidem/openstyle/pull/191)
+- Raise the WIP limit to 4 for the Enhance v3 build by @Maheidem in [#189](https://github.com/Maheidem/openstyle/pull/189)
+
 ## 2.17.2
 
 ### Bug Fixes 🐛
