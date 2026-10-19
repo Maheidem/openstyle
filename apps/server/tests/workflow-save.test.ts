@@ -128,6 +128,10 @@ const enhanced = (id: string) =>
 
 // --- save: SW1, SW2 -------------------------------------------------------------
 
+/** The segment text plus one word: a fix that keeps the 4.2.3 overlap guard quiet. */
+const fx = (f: MeetingFixture, id: string) =>
+  `${f.segments.find((s) => s.id === id)?.text} fixed`;
+
 describe("save: corrections (SW1) and speakers (SW2)", () => {
   it("writes the corrections and the suggestion, and the links", async () => {
     const f = seedFixtureMeeting({
@@ -152,7 +156,7 @@ describe("save: corrections (SW1) and speakers (SW2)", () => {
               ],
             }),
           )
-        : corr([target, "Fixed text."]),
+        : corr([target, fx(f, target)]),
     );
     expect(r.finalState.saved).toMatchObject({
       sw1: "ok",
@@ -164,7 +168,7 @@ describe("save: corrections (SW1) and speakers (SW2)", () => {
     });
     expect(r.finalState.saved?.correctedCount).toBe(1);
     expect(r.finalState.saved?.suggestionCount).toBe(1);
-    expect(enhanced(target)).toBe("Fixed text.");
+    expect(enhanced(target)).toBe(fx(f, target));
     // Read back with separate queries (the call record is the proof of the link).
     expect(findSegmentCallId(getDb(), f.meeting.id, target)).not.toBeNull();
     expect(
@@ -202,7 +206,7 @@ describe("save: corrections (SW1) and speakers (SW2)", () => {
               ],
             }),
           )
-        : corr([target, "Fixed text."]),
+        : corr([target, fx(f, target)]),
     );
     const before = snapshot(f.meeting.id);
     const linkCount = (
@@ -318,7 +322,7 @@ describe("save: corrections (SW1) and speakers (SW2)", () => {
     const a = f.segments[0]?.id as string;
     const b = f.segments[1]?.id as string;
     const r = await graphRun(f, () =>
-      corr([a, "First A."], [b, "B."], [a, "Second A."]),
+      corr([a, fx(f, a)], [b, fx(f, b)], [a, `${fx(f, a)} again`]),
     );
     const links = rows(
       getDb(),
@@ -489,7 +493,7 @@ describe("save: faults (GR21 a)", () => {
   async function stateWithCorrections(f: MeetingFixture) {
     const a = f.segments[0]?.id as string;
     const b = f.segments[1]?.id as string;
-    const r = await graphRun(f, () => corr([a, "New A."], [b, "New B."]));
+    const r = await graphRun(f, () => corr([a, fx(f, a)], [b, fx(f, b)]));
     // Roll back to the old text, so a second save can write again.
     getDb()
       .prepare(
@@ -514,7 +518,7 @@ describe("save: faults (GR21 a)", () => {
     const out = await makeSaveNode(deps)(r.finalState);
     expect(out.saved.sw1).toBe("ok");
     expect(out.saved.failures).toEqual([]);
-    expect(enhanced(a)).toBe("New A.");
+    expect(enhanced(a)).toBe(fx(f, a));
   });
 
   it("a write that throws twice is save_failed; a rolled-back SW1 leaves no link; the other writes stay", async () => {
@@ -541,7 +545,7 @@ describe("save: faults (GR21 a)", () => {
               ],
             }),
           )
-        : corr([target, "Fixed text."]),
+        : corr([target, fx(f, target)]),
     );
     getDb()
       .prepare(
@@ -648,7 +652,7 @@ describe("save: faults (GR21 a)", () => {
                 ],
               }),
             )
-          : corr([target, "Fixed text."]),
+          : corr([target, fx(f, target)]),
       {
         now: () => {
           nowCalls += 1;

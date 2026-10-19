@@ -12,7 +12,11 @@ import {
   estimateTokens,
   formatEnhanceLine,
 } from "../src/lib/meetings/workflow/chunking.js";
-import type { CorrectUnitResult } from "../src/lib/meetings/workflow/types.js";
+import { checkCorrections } from "../src/lib/meetings/workflow/nodes/correct-chunk.js";
+import type {
+  CorrectUnitResult,
+  PreparedSegment,
+} from "../src/lib/meetings/workflow/types.js";
 import { okReply, reply, type ScriptStep } from "./helpers/fake-model.js";
 import type { MeetingFixture } from "./helpers/meeting-fixture.js";
 import {
@@ -78,14 +82,24 @@ const enhanced = (id: string) =>
       .get(id) as { enhanced_text: string | null }
   ).enhanced_text;
 
+/** The segment text plus one word: a fix that keeps the 4.2.3 overlap guard quiet. */
+const fx = (_f: MeetingFixture, id: string) =>
+  `${
+    (
+      getDb()
+        .prepare("SELECT text FROM meeting_segments WHERE id = ?")
+        .get(id) as { text: string }
+    ).text
+  } fixed`;
+
 describe("correctChunk: answer checks (4.2.3)", () => {
   it("a normal chunk is 1 request; the correction is saved and linked", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 1 });
     const id = f.segments[1]?.id as string;
-    const r = await run(f, [corr([id, "The rollout plan is fixed."])]);
+    const r = await run(f, [corr([id, fx(f, id)])]);
     expect(r.requests).toHaveLength(1);
     expect(r.finalState.corrections[0]?.status).toBe("ok");
-    expect(enhanced(id)).toBe("The rollout plan is fixed.");
+    expect(enhanced(id)).toBe(fx(f, id));
     expect(r.finalState.saved?.correctedCount).toBe(1);
     // The prompt asks for corrections only. It has no speaker field and no JSON text (D1).
     const system = r.requests[0]?.system ?? "";
@@ -106,9 +120,9 @@ describe("correctChunk: answer checks (4.2.3)", () => {
     const original = f.segments[3]?.text as string;
     const r = await run(f, [
       corr(
-        [a, "Fixed A."],
-        [b, "Fixed B."],
-        [a, "Second A."], // duplicate_id: the first wins
+        [a, fx(f, a)],
+        [b, fx(f, b)],
+        [a, `${fx(f, a)} again`], // duplicate_id: the first wins
         ["not-a-segment", "x"], // unknown_id
         [c, "   "], // empty_text
         [d, original], // unchanged
@@ -127,14 +141,14 @@ describe("correctChunk: answer checks (4.2.3)", () => {
       ["unchanged", 5],
     ]);
     expect(unit.dropped.every((x) => x.callId === 1)).toBe(true);
-    expect(enhanced(a)).toBe("Fixed A.");
+    expect(enhanced(a)).toBe(fx(f, a));
   });
 
   it("an echoed Speaker prefix is removed", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 1 });
     const id = f.segments[0]?.id as string;
-    const r = await run(f, [corr([id, "Me: A clean sentence."])]);
-    expect(units(r)[0]?.corrections[0]?.text).toBe("A clean sentence.");
+    const r = await run(f, [corr([id, `Me: ${fx(f, id)}`])]);
+    expect(units(r)[0]?.corrections[0]?.text).toBe(fx(f, id));
   });
 });
 
@@ -145,8 +159,8 @@ describe("correctChunk: the length route (4.0.6)", () => {
     const r = await run(f, (req) => {
       if (req.n === 0) return LENGTH_CUT;
       return req.user.includes(`[${s0}]`)
-        ? corr([s0 as string, "First half fixed."])
-        : corr([s2 as string, "Second half fixed."]);
+        ? corr([s0 as string, fx(f, s0 as string)])
+        : corr([s2 as string, fx(f, s2 as string)]);
     });
     expect(r.requests).toHaveLength(3);
     const chunk = r.finalState.corrections[0];
@@ -159,8 +173,8 @@ describe("correctChunk: the length route (4.0.6)", () => {
       f.segmentIdsByChunk[0]?.slice(0, 2),
       f.segmentIdsByChunk[0]?.slice(2),
     ]);
-    expect(enhanced(s0 as string)).toBe("First half fixed.");
-    expect(enhanced(s2 as string)).toBe("Second half fixed.");
+    expect(enhanced(s0 as string)).toBe(fx(f, s0 as string));
+    expect(enhanced(s2 as string)).toBe(fx(f, s2 as string));
     // The halves share the step row of their top key (4.0.7 item 5).
     expect([...r.recorder.steps.keys()]).toEqual([
       "prepare",
@@ -266,7 +280,7 @@ describe("correctChunk: the length route (4.0.6)", () => {
     const r = await run(f, (req) => {
       if (req.n === 0) return LENGTH_CUT;
       return req.user.includes(`[${ids[0]}]`)
-        ? corr([ids[0] as string, "Half one is new."])
+        ? corr([ids[0] as string, fx(f, ids[0] as string)])
         : reply("content-filter", "content_filter", "");
     });
     expect(r.requests).toHaveLength(3);
@@ -275,7 +289,7 @@ describe("correctChunk: the length route (4.0.6)", () => {
     expect(chunk?.units.map((u) => u.status)).toEqual(["ok", "failed"]);
     expect(chunk?.units[1]?.failure?.kind).toBe("content_filter");
     // The good half is saved. The segments of the failed half keep their old text.
-    expect(enhanced(ids[0] as string)).toBe("Half one is new.");
+    expect(enhanced(ids[0] as string)).toBe(fx(f, ids[0] as string));
     expect(enhanced(ids[1] as string)).toBeNull(); // ok unit, no correction: reset to NULL (N6)
     expect(enhanced(ids[2] as string)).toBe("OLD");
     expect(r.recorder.steps.get("chunk:0")?.status).toBe("partial");
@@ -321,5 +335,157 @@ describe("correctChunk: the length route (4.0.6)", () => {
     ]);
     expect(r.finalState.corrections[0]?.status).toBe("partial");
     expect(units(r)[1]?.failure?.kind).toBe("provider_unavailable");
+  });
+});
+
+// The 4.2.3 word guard (checks 6 to 9): pure, so it runs on plain segments.
+describe("checkCorrections word guard", () => {
+  const seg = (text: string) =>
+    ({ id: "s1", displayLabel: "Me", text }) as PreparedSegment;
+  const check = (oldText: string, newText: string) => {
+    const r = checkCorrections(
+      [{ id: "s1", text: newText }],
+      [seg(oldText)],
+      7,
+    );
+    return {
+      kept: r.corrections.map((c) => c.text),
+      reasons: r.dropped.map((d) => d.reason),
+    };
+  };
+
+  it("keeps a case or punctuation change", () => {
+    expect(check("we ship it on friday", "We ship it on Friday.")).toEqual({
+      kept: ["We ship it on Friday."],
+      reasons: [],
+    });
+  });
+
+  it("drops a filler removal as deletes_words", () => {
+    expect(check("so um we ship it", "so we ship it").reasons).toEqual([
+      "deletes_words",
+    ]);
+  });
+
+  it("keeps the removal of an exact repeated word", () => {
+    expect(check("we ship the the build", "we ship the build")).toEqual({
+      kept: ["we ship the build"],
+      reasons: [],
+    });
+    expect(check("I I think to to go", "I think to go").reasons).toEqual([]);
+  });
+
+  it("drops a false-start removal as deletes_words", () => {
+    expect(
+      check("we ship the, we release the build", "we release the build")
+        .reasons,
+    ).toEqual(["deletes_words"]);
+    expect(check("yeah yeah we ship it", "yeah we ship it").reasons).toEqual(
+      [],
+    );
+    expect(check("we go to the we go home", "we go home").reasons).toEqual([
+      "deletes_words",
+    ]);
+  });
+
+  it("drops a correction that fixes a word and also deletes one", () => {
+    expect(
+      check("we use string lit today um", "we use Streamlit today").reasons,
+    ).toEqual(["deletes_words"]);
+  });
+
+  it("keeps a two-to-one replacement (a split word joined)", () => {
+    expect(check("we use string lit today", "we use Streamlit today")).toEqual({
+      kept: ["we use Streamlit today"],
+      reasons: [],
+    });
+  });
+
+  it("keeps a one-to-one fix and an added short word", () => {
+    expect(check("be said and sent", "be saved and sent").reasons).toEqual([]);
+    expect(
+      check("we look and understand", "we look at and understand").kept,
+    ).toEqual(["we look at and understand"]);
+  });
+
+  it("drops text copied from a neighbour as too_different (net words added)", () => {
+    expect(
+      check("we ship it", "we ship it on friday after the review").reasons,
+    ).toEqual(["too_different"]);
+  });
+
+  it("drops a rewrite with low word overlap as too_different", () => {
+    expect(
+      check("the plan is fine today", "a budget was agreed").reasons,
+    ).toEqual(["too_different"]);
+  });
+
+  it("keeps a small replacement with high overlap", () => {
+    expect(
+      check("we use stream lit for it", "we use Streamlit for it").kept,
+    ).toEqual(["we use Streamlit for it"]);
+  });
+
+  it("drops a changed negation count as meaning_flip", () => {
+    expect(
+      check("we do not ship it today", "we do ship it today").reasons,
+    ).toEqual(["deletes_words"]);
+    expect(
+      check("we can ship it today", "we can't ship it today").reasons,
+    ).toEqual(["meaning_flip"]);
+  });
+
+  it("keeps a correction with the same negation count", () => {
+    expect(
+      check("we dont ship the bild", "we dont ship the build").kept,
+    ).toEqual(["we dont ship the build"]);
+  });
+
+  it.each([
+    ["knows", "know"],
+    ["represents", "represent"],
+    ["is", "are"],
+    ["leads", "lead"],
+    ["delivered", "deliver"],
+    ["scene", "scenes"],
+    ["result", "results"],
+  ])("drops %s to %s as inflection_only", (from, to) => {
+    expect(check(`so the team ${from} it`, `so the team ${to} it`)).toEqual({
+      kept: [],
+      reasons: ["inflection_only"],
+    });
+  });
+
+  it.each([
+    ["Datedog", "Datadog"],
+    ["Kias", "Kiosks"],
+    ["rug", "RAG"],
+    ["string lit", "Streamlit"],
+    ["time", "team"],
+  ])("keeps the real fix %s to %s", (from, to) => {
+    const r = check(`we use ${from} here`, `we use ${to} here`);
+    expect(r.reasons).toEqual([]);
+    expect(r.kept).toHaveLength(1);
+  });
+
+  it("keeps a correction that mixes an inflection with a real fix", () => {
+    const r = check("it knows Datedog well", "it know Datadog well");
+    expect(r.reasons).toEqual([]);
+    expect(r.kept).toEqual(["it know Datadog well"]);
+  });
+
+  it("does not treat it, its and itself as one word", () => {
+    expect(check("we fix it now", "we fix its now").reasons).toEqual([]);
+  });
+
+  it("records the call id and seq of a guard drop", () => {
+    const r = checkCorrections(
+      [{ id: "s1", text: "same words" }],
+      [seg("same words")],
+      7,
+    );
+    expect(r.dropped).toEqual([
+      { id: "s1", reason: "unchanged", seq: 0, callId: 7 },
+    ]);
   });
 });
