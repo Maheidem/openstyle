@@ -94,6 +94,14 @@ const ECHO_SIMILARITY_THRESHOLD = 0.7;
 const REPEAT_MIN_RUN = 3;
 
 /**
+ * In-segment loop collapse: a unit of 1 to LOOP_MAX_UNIT_WORDS words repeated
+ * more than LOOP_MAX_REPEATS times in a row inside one segment is a decoder
+ * loop. 8 or fewer repeats ("okay, okay, okay") can be real speech.
+ */
+const LOOP_MAX_UNIT_WORDS = 3;
+const LOOP_MAX_REPEATS = 8;
+
+/**
  * Common whisper hallucinations on silence/noise. Matched against the whole
  * normalized segment text (or, for the phrase-y ones, as a prefix).
  */
@@ -126,6 +134,59 @@ const HALLUCINATION_PREFIXES = [
   "thanks for watching",
   "thank you for watching",
 ];
+
+/**
+ * Collapse a decoder loop INSIDE one segment's text (issue #224): a local
+ * speech model that cannot stop emits one short unit ("oi,") until its output
+ * cap, so one segment holds thousands of copies. A unit of 1 to 3 words that
+ * repeats consecutively more than LOOP_MAX_REPEATS times (compared
+ * normalized: lowercase, punctuation stripped) keeps only its first
+ * occurrence, with its original punctuation. The text before and after the
+ * loop, and its whitespace, stay as they were. Pure and idempotent; one
+ * occurrence always stays, so the text never becomes empty.
+ */
+export function collapseInSegmentLoops(text: string): string {
+  const tokens = [...text.matchAll(/\S+/g)].map((m) => ({
+    start: m.index ?? 0,
+    end: (m.index ?? 0) + m[0].length,
+    norm: normalizeText(m[0]),
+  }));
+  // Text ranges to cut: from the end of the first unit to the end of the loop.
+  const cuts: Array<[number, number]> = [];
+  let i = 0;
+  while (i < tokens.length) {
+    let collapsed = false;
+    for (let len = 1; len <= LOOP_MAX_UNIT_WORDS; len++) {
+      if (i + len > tokens.length) break;
+      // A unit with a punctuation-only word has no words to compare.
+      if (tokens.slice(i, i + len).some((t) => t.norm === "")) continue;
+      let repeats = 1;
+      while (
+        i + (repeats + 1) * len <= tokens.length &&
+        tokens
+          .slice(i, i + len)
+          .every((t, k) => t.norm === tokens[i + repeats * len + k].norm)
+      ) {
+        repeats++;
+      }
+      if (repeats > LOOP_MAX_REPEATS) {
+        cuts.push([tokens[i + len - 1].end, tokens[i + repeats * len - 1].end]);
+        i += repeats * len;
+        collapsed = true;
+        break;
+      }
+    }
+    if (!collapsed) i++;
+  }
+  if (cuts.length === 0) return text;
+  let out = "";
+  let pos = 0;
+  for (const [from, to] of cuts) {
+    out += text.slice(pos, from);
+    pos = to;
+  }
+  return out + text.slice(pos);
+}
 
 /** True when the segment is a known silence hallucination. */
 export function isHallucination(seg: TranscriptSegment): boolean {
@@ -291,7 +352,8 @@ function overlapsWithin(
  * Merge per-channel transcripts into one interleaved, speaker-labeled
  * transcript ordered by (drift-corrected) start time.
  *
- * Pipeline: drift correction → hallucination filter → same-channel repeat
+ * Pipeline: drift correction → in-segment loop collapse → hallucination
+ * filter → same-channel repeat
  * filter → speaker-echo dedup (system audio leaking into the mic: when a Me
  * segment overlaps a Them segment within ±1 s and the texts are >0.7
  * similar, the mic copy is dropped — Them wins) → sort.
@@ -309,11 +371,19 @@ export function mergeTranscript(
   // the investigation's leaks were consecutive near-identical segments —
   // filtering them first removes them before the repeat-collapse (which
   // would otherwise keep one surviving leaked segment) ever sees them.
+  //
+  // The in-segment loop collapse runs first of all, so the filters below see
+  // the clean text (a 4096x "oi," loop would otherwise hide a real word).
   const clean = (segs: TranscriptSegment[]) =>
     filterConsecutiveRepeats(
-      segs.filter(
-        (s) => !isHallucination(s) && !isVocabLeak(s.text, vocabTerms ?? []),
-      ),
+      segs
+        .map((s) => {
+          const text = collapseInSegmentLoops(s.text);
+          return text === s.text ? s : { ...s, text };
+        })
+        .filter(
+          (s) => !isHallucination(s) && !isVocabLeak(s.text, vocabTerms ?? []),
+        ),
     );
 
   const micClean = clean(mic);

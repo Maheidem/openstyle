@@ -1,6 +1,7 @@
 import { isVocabLeak, textSimilarity } from "@openstyle/stt";
 import { describe, expect, it } from "vitest";
 import {
+  collapseInSegmentLoops,
   filterConsecutiveRepeats,
   formatTranscriptMarkdown,
   isHallucination,
@@ -418,5 +419,58 @@ describe("filterConsecutiveRepeats", () => {
     const out = filterConsecutiveRepeats(segs);
     expect(out).toHaveLength(1);
     expect(out[0].startMs).toBe(0);
+  });
+});
+
+describe("collapseInSegmentLoops (issue #224)", () => {
+  it("collapses a 4096x one-word loop to one occurrence", () => {
+    const text = `Olá ${Array(4096).fill("oi,").join(" ")}`;
+    expect(collapseInSegmentLoops(text)).toBe("Olá oi,");
+  });
+
+  it("collapses a 2-word unit loop", () => {
+    const text = Array(20).fill("tudo bem").join(" ");
+    expect(collapseInSegmentLoops(text)).toBe("tudo bem");
+  });
+
+  it("collapses a 3-word unit loop", () => {
+    const text = Array(12).fill("one two three").join(" ");
+    expect(collapseInSegmentLoops(text)).toBe("one two three");
+  });
+
+  it("keeps the text before and after the loop", () => {
+    const text = `so we start. ${Array(50).fill("oi,").join(" ")} and then we end.`;
+    expect(collapseInSegmentLoops(text)).toBe(
+      "so we start. oi, and then we end.",
+    );
+  });
+
+  it("keeps 8 repeats and fewer", () => {
+    const eight = Array(8).fill("oi,").join(" ");
+    expect(collapseInSegmentLoops(eight)).toBe(eight);
+    expect(collapseInSegmentLoops("okay, okay, okay")).toBe("okay, okay, okay");
+    expect(collapseInSegmentLoops("uh huh. uh huh.")).toBe("uh huh. uh huh.");
+  });
+
+  it("collapses 9 repeats", () => {
+    expect(collapseInSegmentLoops(Array(9).fill("oi").join(" "))).toBe("oi");
+  });
+
+  it("leaves mixed real speech untouched", () => {
+    const text =
+      "I think we should ship it, yes yes, but the plan is not final. Yes.";
+    expect(collapseInSegmentLoops(text)).toBe(text);
+  });
+
+  it("compares normalized and keeps the punctuation of the first occurrence", () => {
+    const text = `well Oi! ${Array(10).fill("oi").join(", OI. ")} fim`;
+    expect(collapseInSegmentLoops(text)).toBe("well Oi! fim");
+  });
+
+  it("runs inside mergeTranscript before the other filters", () => {
+    const loop = `ok ${Array(4096).fill("oi,").join(" ")}`;
+    const out = mergeTranscript([seg(0, 26000, loop)], []);
+    expect(out).toHaveLength(1);
+    expect(out[0].text).toBe("ok oi,");
   });
 });
