@@ -1175,7 +1175,7 @@ Owner decision 2026-10-18 (council round r185-5 split on policy: Claude SHIP on 
 
 #### 4.2.3 Code checks after the parse
 
-Council round r185-7 update 2026-10-18 (WP6 b41c53aa): two more guards after `inflection_only`. `function_word_only` drops a correction when every inserted or substituted word is in the set a, an, the, it, its, we, i, you, he, she, they, is, are, was, were, be, am, this, that, these, those (a preposition-only change such as "look" to "look at" is kept). `invented_words` drops a correction with a pure insertion run that holds any word outside that set and outside the prepositions at, to, on, in, of, for, with, about, from (replacements are kept). The prompt now allows fixing a misheard technical term, product or company name when the replacement is in the vocabulary, appears elsewhere in the transcript, or is a well-known term that clearly fits the topic; other real-word swaps and grammar changes stay banned.
+Tried and reverted 2026-10-18 (round r185-8, not shipped; WP6 b41c53aa, reverted by 2665eed8): two more guards after `inflection_only`. `function_word_only` drops a correction when every inserted or substituted word is in the set a, an, the, it, its, we, i, you, he, she, they, is, are, was, were, be, am, this, that, these, those (a preposition-only change such as "look" to "look at" is kept). `invented_words` drops a correction with a pure insertion run that holds any word outside that set and outside the prepositions at, to, on, in, of, for, with, about, from (replacements are kept). The prompt now allows fixing a misheard technical term, product or company name when the replacement is in the vocabulary, appears elsewhere in the transcript, or is a well-known term that clearly fits the topic; other real-word swaps and grammar changes stay banned.
 
 Council round r185-6 update 2026-10-18 (WP6 8ef49459): guard `inflection_only` drops a correction when every changed word pair is an inflection of the same word (suffix s, es, ed, d, ing, or one irregular group: be, have, do), after the same normalisation and exact-repeat collapse; a correction that mixes an inflection with any other change is kept. The prompt forbids grammar changes (agreement, tense, number) of a real word that fits, and a real-word swap that the context or vocabulary does not support. Guard order: unchanged, deletes_words, too_different, meaning_flip, inflection_only.
 
@@ -3862,6 +3862,23 @@ D12 asks for a before and after run on the owner's real meetings, then the counc
 | Summary (automatic checks only) | Five fields (overview, key points, decisions, action items, open questions: 4.5.1). `scripts/meeting-v2/check-summary.mts` (owner WP10a; command and output in 4.5.6) implements the five checks and the Markdown-based counts for the old arm. `run-enhance.mjs --summarize` calls it after each run and adds `summarySections`, `summaryKeyPoints`, `summaryDecisions`, `summaryActionItems`, `summaryOpenQuestions`, `summaryChars`, `summaryRenderMatches` to `metrics-enhance.json`. It prints no text. Gate on the new arm: `pass` true on every data set; key points, decisions and action items not below arm X without a written reason (the old arm has no open-questions section, so no gate there). No owner side-by-side read (decided 10.19). The script is in no commit at `c47cd80d`: UNVERIFIED until WP10a. |
 
 WP10a's `check-enhance-metrics.mjs` makes the numbers no other tool makes: `hallucinatedKept`, `untypedFailures` and `namedRuns` per label. The WP10a card says it re-reads its output and exits 1 on a mismatch, as `compare-speakers.mts` does (11.5; `MB`, "Compare tools must check themselves"); whether it also re-reads the dumps is WP10a's decision. The script is in no commit at `c47cd80d`: UNVERIFIED until WP10a.
+
+#### 10.15.1 Council record for #185 (2026-10-18)
+
+Data sets: ca70f895 (#163 meeting, diarized, 197 segments), 2943c36a (short), 9243bea0 (long). Old arm: main build, 1 run per set (the WP10a baseline dumps were deleted; numbers in #197). New arm: 6 runs on ca70f895, 3 on each other set. Judges: Claude (coordinator, writes first), pi on the pin `openai-codex/gpt-6.1-sol`, Codex. Tracing waiver (Q18 default, one waiver for all #185 rounds): applied; tracing variables unset for real meetings. G3 for ca70f895 reads "not reproduced" on the old path (#197), and the new arm had 0 failed chunks in 6 of 6 runs in every round from r185-4 on; GR5 and the #163 replay tests pass on every candidate.
+
+| Round | Candidate (WP5b + WP6) | Result | Finding and change |
+|---|---|---|---|
+| r185-1 | 88b73031 (c1957a4a + fdbcd441) | stopped at the gate | 0 corrections: the prompt gave an empty list as the easy exit (4.0.4 finding) |
+| r185-2 | d9e491c3 (c1957a4a + b70193af) | stopped at the gate | 13 corrections vs 47 old; too conservative |
+| r185-3 | 798e1a6d (c1957a4a + c0a8fc74) | stopped at the gate | recall up, but 13 word deletions; guard added (format_only, deletes_words) |
+| r185-4 | a3562937 (c1957a4a + ea829062) | FIX-FIRST x3 | cross-segment copy, negation flip, names lost by the full-name check; guards too_different, meaning_flip, first-name check 7 |
+| r185-5 | e06fb390 (c1957a4a + 6f57ac69) | Claude SHIP; pi, Codex FIX-FIRST | judges wanted cleanup; owner decision: light cleanup policy (4.2.2) |
+| r185-6 | 0d57b130 (ac317903 + 8e1ca19c) | Claude SHIP; pi, Codex FIX-FIRST | Codex claim of non-repeat deletions disproven (0 of 121); grammar edits; inflection_only guard |
+| r185-7 | 8161d0a0 (ac317903 + 8ef49459) | Claude SHIP 20/19/111; pi FIX-FIRST 69/38/52; Codex FIX-FIRST 83/28/38; CONSENSUS: no | pi and Codex net positive, asked for polish (grammar insertions, recall) |
+| r185-8 | e2e922ba (ac317903 + b41c53aa) | stopped at the gate | 4 of 9 labeled fixes; reverted |
+
+Decision (owner, 2026-10-18): ship the round-7 build on owner override. The merged code equals the measured candidate: after reverting the round-8 commits (WP6 2665eed8, WP5b f6a94b6f), `git diff 8161d0a0 <WP5b HEAD merged with WP6 HEAD> -- apps packages` and `git diff ac317903 <WP5b HEAD> -- apps packages` print nothing. Follow-up: #211. Compare files and verdicts: `/tmp/meeting-v2/council/r185-4` to `r185-7` (local, not committed). The squash SHAs on main and the 11.7 step 8 (c) output follow in a later commit.
 
 ### 10.16 Evidence, who runs what, cleanup
 
