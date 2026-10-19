@@ -84,6 +84,7 @@ export function SpeakerRowEditor({
   attendeeNames,
   attendeeListId,
   onSaved,
+  onInspect,
 }: {
   meetingId: string;
   row: SpeakerRow;
@@ -92,6 +93,8 @@ export function SpeakerRowEditor({
   attendeeNames: string[];
   attendeeListId: string;
   onSaved: () => void;
+  /** Advanced mode only: opens the Speaker view of the LLM inspector. */
+  onInspect?: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const [name, setName] = useState(row.displayName ?? row.suggestedName ?? "");
@@ -147,8 +150,21 @@ export function SpeakerRowEditor({
         <span className="text-foreground text-[12.5px] font-medium">
           {t("meetings.themNumbered", { n: row.label })}
         </span>
-        <span className="text-muted-foreground text-[11px]">
-          {t("meetings.speakerSegments", { n: row.segmentCount })}
+        <span className="flex items-center gap-2">
+          <span className="text-muted-foreground text-[11px]">
+            {t("meetings.speakerSegments", { n: row.segmentCount })}
+          </span>
+          {onInspect && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              onClick={onInspect}
+              data-testid="meetings-speaker-inspect"
+            >
+              {t("meetings.inspector.inspectSpeaker")}
+            </Button>
+          )}
         </span>
       </div>
       {row.quote && (
@@ -280,6 +296,7 @@ export function SpeakersDialog({
   data,
   attendeeNames,
   onSaved,
+  onInspectSpeaker,
 }: {
   id: string;
   open: boolean;
@@ -290,6 +307,8 @@ export function SpeakersDialog({
   data: SpeakersResponse | undefined;
   attendeeNames: string[];
   onSaved: () => void;
+  /** Advanced mode only. The caller closes this dialog and opens the panel. */
+  onInspectSpeaker?: (label: string) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
@@ -337,6 +356,11 @@ export function SpeakersDialog({
                     : undefined
                 }
                 onSaved={onSaved}
+                onInspect={
+                  onInspectSpeaker
+                    ? () => onInspectSpeaker(row.label)
+                    : undefined
+                }
               />
             ))}
             {unlabeledCount > 0 && (

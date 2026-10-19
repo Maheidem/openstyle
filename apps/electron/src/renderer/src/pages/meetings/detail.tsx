@@ -42,13 +42,14 @@ import {
   CircleSlash,
   FolderOpen,
   RefreshCw,
+  ScanSearch,
   Sparkles,
   Trash2,
   UserCog,
   Users,
   WandSparkles,
 } from "lucide-react";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 import { CalendarCard } from "./calendar-card";
@@ -57,6 +58,8 @@ import {
   MeetingContextField,
   MeetingLanguageChip,
 } from "./fields";
+import { type InspectorTarget, LlmInspectorPanel } from "./llm-inspector";
+import { isAdvancedMode } from "./llm-inspector-model";
 import {
   enhanceNoteCount,
   formatChunkList,
@@ -100,6 +103,10 @@ export function MeetingDetailView({
   // user last started an action. A reload resets it, so the note never lingers.
   const [noteFloor, setNoteFloor] = useState(() => Date.now());
   const [speakersOpen, setSpeakersOpen] = useState(false);
+  // The LLM inspector (specs/meeting-enhance-agentic.md 8.5). It stays in
+  // memory until this view drops (`key={activeId}`); every entry shows only in
+  // advanced mode.
+  const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const [rediarizeConfirmOpen, setRediarizeConfirmOpen] = useState(false);
   // Per-session viewing preference (Phase C, specs/meeting-transcription-
   // quality.md §6.6), not persisted meeting state — a segment Enhance left
@@ -195,6 +202,12 @@ export function MeetingDetailView({
   const { data: appSettings } = useQuery(settingsQueryOptions());
   const calendarEnabled =
     appSettings?.[SETTINGS_KEYS.calendarEnabled] === "true";
+  const advancedMode = isAdvancedMode(
+    appSettings?.[SETTINGS_KEYS.advancedMode],
+  );
+  const selectedSegmentId =
+    inspector?.kind === "segment" ? inspector.segmentId : null;
+  const closeInspector = useCallback(() => setInspector(null), []);
 
   const invalidate = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.all });
@@ -620,6 +633,18 @@ export function MeetingDetailView({
           </Button>
         )}
         <div className="flex-1" />
+        {advancedMode && (
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => setInspector({ kind: "runs" })}
+            aria-label={t("meetings.inspector.title")}
+            title={t("meetings.inspector.title")}
+            data-testid="meetings-inspector-open"
+          >
+            <ScanSearch />
+          </Button>
+        )}
         <SummaryInstructionsPopover />
         <Button
           variant="outline"
@@ -739,6 +764,11 @@ export function MeetingDetailView({
           disabled={busy !== null}
           onResume={resume}
           onStartAgain={enhance}
+          onShowDetails={
+            advancedMode
+              ? () => setInspector({ kind: "run", runId: enhanceNotice.runId })
+              : undefined
+          }
         />
       )}
       {summarizeNotice && (
@@ -747,6 +777,12 @@ export function MeetingDetailView({
           disabled={busy !== null}
           onResume={resume}
           onStartAgain={summarize}
+          onShowDetails={
+            advancedMode
+              ? () =>
+                  setInspector({ kind: "run", runId: summarizeNotice.runId })
+              : undefined
+          }
         />
       )}
 
@@ -891,8 +927,13 @@ export function MeetingDetailView({
                 {transcript.map((seg) => {
                   const label = segmentSpeakerLabel(seg, t);
                   return (
-                    <Fragment
-                      key={`${seg.speaker}-${seg.startMs}-${seg.endMs}`}
+                    <div
+                      key={
+                        seg.id ?? `${seg.speaker}-${seg.startMs}-${seg.endMs}`
+                      }
+                      className="contents"
+                      data-testid="meetings-segment"
+                      data-segment-id={seg.id}
                     >
                       <span className="pt-0.5 text-right leading-none">
                         <span
@@ -920,14 +961,40 @@ export function MeetingDetailView({
                         </span>
                       </span>
                       <p className="text-foreground m-0 text-[13.5px] leading-[1.55]">
-                        {showEnhanced
-                          ? (seg.enhancedText ?? seg.text)
-                          : seg.text}
+                        {advancedMode &&
+                        seg.id &&
+                        seg.enhancedText !== undefined ? (
+                          // The edited text opens the LLM call that made it.
+                          // No aria-label: it would replace the text as the
+                          // accessible name.
+                          <button
+                            type="button"
+                            data-testid="meetings-segment-inspect"
+                            title={t("meetings.inspector.inspectCorrection")}
+                            aria-expanded={selectedSegmentId === seg.id}
+                            onClick={() =>
+                              setInspector({
+                                kind: "segment",
+                                segmentId: seg.id as string,
+                              })
+                            }
+                            className={cn(
+                              "cursor-pointer rounded-sm text-left underline decoration-dotted underline-offset-2",
+                              selectedSegmentId === seg.id && "bg-accent",
+                            )}
+                          >
+                            {showEnhanced ? seg.enhancedText : seg.text}
+                          </button>
+                        ) : showEnhanced ? (
+                          (seg.enhancedText ?? seg.text)
+                        ) : (
+                          seg.text
+                        )}
                       </p>
                       <span className="mono text-muted-foreground/60 pt-0.5 text-[9px] tabular-nums">
                         {formatClockMs(seg.startMs)}
                       </span>
-                    </Fragment>
+                    </div>
                   );
                 })}
               </div>
@@ -963,7 +1030,18 @@ export function MeetingDetailView({
                   <span>{t("meetings.summaryStaleNames")}</span>
                 </InlineNotice>
               )}
-              <div className="mb-3 flex justify-end">
+              <div className="mb-3 flex justify-end gap-2">
+                {advancedMode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setInspector({ kind: "summary" })}
+                    data-testid="meetings-summary-inspect"
+                  >
+                    <ScanSearch data-icon="inline-start" />
+                    {t("meetings.inspector.inspectSummary")}
+                  </Button>
+                )}
                 <CopyButton
                   text={meeting.summary.markdown}
                   label={t("meetings.copySummary")}
@@ -1007,6 +1085,15 @@ export function MeetingDetailView({
         onOpenChange={setSpeakersOpen}
         data={speakersData}
         attendeeNames={attendeeNameOptions(meeting.calendar)}
+        // The dialog is modal, so it closes before the panel opens (8.6).
+        onInspectSpeaker={
+          advancedMode
+            ? (label) => {
+                setSpeakersOpen(false);
+                setInspector({ kind: "speaker", label });
+              }
+            : undefined
+        }
         onSaved={() => {
           void queryClient.invalidateQueries({
             queryKey: queryKeys.meetings.speakers(id),
@@ -1038,6 +1125,37 @@ export function MeetingDetailView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {advancedMode && inspector !== null && (
+        <LlmInspectorPanel
+          meetingId={id}
+          target={inspector}
+          onTarget={setInspector}
+          onClose={closeInspector}
+          polling={jobHoldsSlot}
+          segmentText={
+            inspector.kind === "segment"
+              ? ((transcript ?? []).find((s) => s.id === inspector.segmentId)
+                  ?.text ?? "")
+              : ""
+          }
+          currentSuggestion={
+            inspector.kind === "speaker"
+              ? (speakersData?.speakers.find((s) => s.label === inspector.label)
+                  ?.suggestedName ?? null)
+              : null
+          }
+          summary={
+            meeting.summary
+              ? {
+                  provider: meeting.summary.llm_provider,
+                  model: meeting.summary.llm_model,
+                  costUsd: meeting.summary.cost_usd,
+                }
+              : null
+          }
+        />
+      )}
     </div>
   );
 }
@@ -1052,11 +1170,14 @@ function RunNoticeView({
   disabled,
   onResume,
   onStartAgain,
+  onShowDetails,
 }: {
   notice: RunNotice;
   disabled: boolean;
   onResume: (runId: string) => void;
   onStartAgain: () => void;
+  /** Advanced mode only: opens the Run view of the LLM inspector (8.9). */
+  onShowDetails?: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const lineText = (line: RunNotice["lines"][number]): string => {
@@ -1130,6 +1251,17 @@ function RunNoticeView({
               ? t("meetings.llmRun.startAgainDiscards")
               : t("meetings.llmRun.startAgain")}
           </Button>
+          {onShowDetails && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onShowDetails}
+              data-testid="meetings-run-show-details"
+            >
+              <ScanSearch data-icon="inline-start" />
+              {t("meetings.inspector.showDetails")}
+            </Button>
+          )}
         </span>
       </span>
     </InlineNotice>
