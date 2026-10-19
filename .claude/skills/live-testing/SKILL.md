@@ -99,7 +99,9 @@ echo $! > "$S/server.pid"
 timeout 30 curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/health
 ```
 
-Leave `OPENSTYLE_LOG_DIR` unset, so the request trace does not go to disk.
+Leave `OPENSTYLE_LOG_DIR` unset, so the request trace does not go to disk. Exception (Enhance proof, `specs/meeting-enhance-agentic.md` 10.12 step 1): set `OPENSTYLE_LOG_DIR` to the scratch folder (`$S`) only when every transcript and prompt of the run is fictional text. The log `openstyle-trace.log` then holds full request bodies, and the proof compares them with the LLM inspector. Never set it for a real meeting. Delete the scratch folder at the end.
+
+Order matters: `source scripts/isolated-env.sh` runs `unset OPENSTYLE_LOG_DIR` (`scripts/isolated-env.sh:68`). Set the variable after the `source` line and before the server starts, or put it on the same command line as the server start (`OPENSTYLE_LOG_DIR="$S" ... node ../server/dist/startup.js`). After the first request, check that the file exists: `ls "$S/openstyle-trace.log"`. The file holds the full text of the run, so it is fictional data only.
 
 ### The MLX worker trap
 
