@@ -100,7 +100,7 @@ export async function detectSpeechSpans(
       log.info("vad skipped, silero-vad model missing from bundle");
       return null;
     }
-    const timeoutMs = Math.max(MIN_VAD_TIMEOUT_MS, durationMs / 2);
+    const timeoutMs = Math.ceil(Math.max(MIN_VAD_TIMEOUT_MS, durationMs / 2));
     const { stdout } = await deps.execFile(
       binaryPath,
       ["--vad", wavPath, "--models-dir", modelsDir],

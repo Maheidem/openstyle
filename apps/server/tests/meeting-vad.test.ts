@@ -116,6 +116,18 @@ describe("detectSpeechSpans", () => {
     expect(calls[0]!.timeout).toBe(60_000);
   });
 
+  it("passes an integer timeout for a fractional duration", async () => {
+    // The system track duration can be fractional (425323.125 ms on a real
+    // meeting); execFile throws ERR_OUT_OF_RANGE for a non-integer timeout.
+    const dir = tempDir();
+    const wav = join(dir, "system.wav");
+    writeFileSync(wav, buildWav({ samples: 16 }));
+    const calls: Array<{ args: string[]; timeout?: number }> = [];
+    await detectSpeechSpans(wav, 425_323.125, fakeDeps("[]", calls));
+    expect(calls[0]!.timeout).toBe(212_662);
+    expect(Number.isInteger(calls[0]!.timeout)).toBe(true);
+  });
+
   it("returns null and never throws on any failure", async () => {
     const dir = tempDir();
     const wav = join(dir, "mic.wav");
