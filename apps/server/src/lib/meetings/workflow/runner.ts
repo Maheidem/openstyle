@@ -7,9 +7,16 @@ import type {
   ResumeConflictReason,
 } from "@openstyle/validations";
 import { parseServerModelId } from "@openstyle/validations";
+import type { Span } from "@opentelemetry/api";
 import { getDb } from "../../db.js";
 import type { CallProfile } from "../../llm/model-profiles.js";
 import { createRunAdmin, type RunRow } from "../../llm/recorder.js";
+import {
+  dropRunSpan,
+  endRunSpan,
+  getTracing,
+  startRunSpan,
+} from "../../llm/tracing.js";
 import { createRunRegistry } from "../../llm/workflow/run-registry.js";
 import { hashVariantOf, inputHash, loadHashRows } from "../input-hash.js";
 import {
@@ -285,6 +292,7 @@ async function execute(a: ExecuteArgs): Promise<void> {
   let faultDetail: string | null = null;
   let hardStopped = false;
   let final: FinalState = finalStateOf({}, a.stages ?? []);
+  let span: Span | null = null;
   const onSoft = () => {
     // A node that ignores its signal is a defect. The hard stop is the fallback.
     hardTimer = setTimeout(() => {
@@ -299,6 +307,7 @@ async function execute(a: ExecuteArgs): Promise<void> {
     if (controller.signal.aborted) onSoft();
     else controller.signal.addEventListener("abort", onSoft, { once: true });
 
+    span = openRunSpan(deps, runId, meetingId);
     const graph = a.graph ?? (await loadGraph(deps));
     const config = {
       configurable: { thread_id: runId },
@@ -354,7 +363,16 @@ async function execute(a: ExecuteArgs): Promise<void> {
     );
   } finally {
     try {
-      finish({ a, handle, final, fault, faultKind, faultDetail, hardStopped });
+      finish({
+        a,
+        handle,
+        final,
+        fault,
+        faultKind,
+        faultDetail,
+        hardStopped,
+        span,
+      });
     } catch (err) {
       log.error(
         `meeting ${meetingId}: run ${runId} finish failed: ${String(err)}`,
@@ -368,6 +386,55 @@ async function execute(a: ExecuteArgs): Promise<void> {
   }
 }
 
+/** Open the run span (9.6.1 rule 2). A resume opens a new trace. Never throws. */
+function openRunSpan(
+  deps: WorkflowDeps,
+  runId: string,
+  meetingId: string,
+): Span | null {
+  if (!getTracing().on) return null;
+  try {
+    const run = createRunAdmin(deps.db).getRun(runId);
+    if (!run) return null;
+    return startRunSpan(getTracing(), runId, {
+      scope: run.scope,
+      scopeId: run.scopeId,
+      kind: run.kind,
+      started_by: run.startedBy,
+      resume_count: run.resumeCount,
+      meeting_id: run.scope === SCOPE ? meetingId : undefined,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * End the run span with the final status. An `interrupted` run never ends its
+ * span (9.6.2). A deleted meeting is not a failure. Never throws.
+ */
+function closeRunSpan(
+  span: Span | null,
+  runId: string,
+  status: string,
+  errorKind: string | null,
+): void {
+  if (!span) return;
+  try {
+    if (status === "interrupted") {
+      dropRunSpan(runId);
+      return;
+    }
+    const outcome =
+      status === "succeeded" || status === "partial" || status === "failed"
+        ? status
+        : "cancelled";
+    endRunSpan(span, runId, outcome, errorKind);
+  } catch {
+    // A tracing fault never changes a run (T7).
+  }
+}
+
 /** The steps of 3.4.6: derive the status, write it, close steps, drop checkpoints. */
 function finish(o: {
   a: ExecuteArgs;
@@ -377,6 +444,7 @@ function finish(o: {
   faultKind: string | null;
   faultDetail: string | null;
   hardStopped: boolean;
+  span: Span | null;
 }): void {
   const { a, handle, final, fault, hardStopped } = o;
   const { runId, meetingId, deps, controller } = a;
@@ -390,6 +458,7 @@ function finish(o: {
   }
   if (status === "meeting_deleted") {
     log.info(`meeting ${meetingId}: run ended because the meeting was deleted`);
+    closeRunSpan(o.span, runId, status, null);
     return;
   }
   let errorKind: string | null = null;
@@ -415,6 +484,7 @@ function finish(o: {
     lostRecords: handle?.lostRecords() ?? 0,
     finishedAt: deps.now(),
   });
+  closeRunSpan(o.span, runId, status, errorKind);
   if (hardStopped) admin.closeOpenSteps(runId, "cancelled");
   else if (status === "interrupted") admin.closeOpenSteps(runId, "interrupted");
   else {
@@ -460,6 +530,20 @@ function failRun(
   kind: "graph_changed" | "transcript_changed",
 ): void {
   const admin = createRunAdmin(deps.db);
+  // The run span has no node span; it ends at once with ERROR (9.6.1 rule 5).
+  try {
+    const span = startRunSpan(getTracing(), run.id, {
+      scope: run.scope,
+      scopeId: run.scopeId,
+      kind: run.kind,
+      started_by: run.startedBy,
+      resume_count: run.resumeCount,
+      meeting_id: run.scope === SCOPE ? run.scopeId : undefined,
+    });
+    endRunSpan(span, run.id, "failed", kind);
+  } catch {
+    // T7
+  }
   deps.recorder.finishRun(run.id, "failed", {
     errorKind: kind,
     errorDetail: CONFLICT_TEXT[kind],

@@ -1,4 +1,5 @@
 import type { LlmStepStatus } from "@openstyle/validations";
+import type { Span } from "@opentelemetry/api";
 import type { CallStructuredResult } from "../../llm/gateway.js";
 import {
   CancelledError,
@@ -10,6 +11,7 @@ import {
   type CallProfile,
   withReasoningOff,
 } from "../../llm/model-profiles.js";
+import { getTracing, inNode, markError, setAttrs } from "../../llm/tracing.js";
 import type { RunContext, WorkflowDeps } from "./context.js";
 import {
   BREAKER_N,
@@ -109,6 +111,93 @@ export interface NodeSpec<S extends { runId: string }, R> {
   };
 }
 
+interface CallRow {
+  id: number;
+  finish_unified: string | null;
+  finish_raw: string | null;
+  requested_model: string | null;
+  served_model: string | null;
+  params_json: string;
+  error_kind: string | null;
+}
+
+interface StepRow {
+  step_key: string;
+  status: string;
+  attempts: number;
+  error_kind: string | null;
+}
+
+/**
+ * Put the result of a node call on its span (9.6.2, 9.6.3): the join keys to
+ * the local record, the last attempt's facts, and ERROR for a failed or
+ * partial node. A fault here never changes the node (T7).
+ */
+function describeNode<S extends { runId: string }, R>(
+  span: Span,
+  deps: WorkflowDeps,
+  node: NodeSpec<S, R>,
+  runId: string,
+  key: string | null,
+  result: R,
+): void {
+  if (!getTracing().on) return;
+  try {
+    // A key names one step row. A key with a "/" suffix names its sub-steps.
+    // null names every row of the node call (summarize).
+    const mine = (stepKey: string) =>
+      key === null || stepKey === key || stepKey.startsWith(`${key}/`);
+    const rows = (
+      deps.db
+        .prepare(
+          `SELECT id, step_key, finish_unified, finish_raw, requested_model,
+                  served_model, params_json, error_kind
+             FROM llm_calls
+            WHERE run_id = ? AND node = ?
+            ORDER BY id`,
+        )
+        .all(runId, node.id) as unknown as (CallRow & { step_key: string })[]
+    ).filter((r) => mine(r.step_key));
+    const steps = (
+      deps.db
+        .prepare(
+          `SELECT step_key, status, attempts, error_kind
+             FROM llm_run_steps
+            WHERE run_id = ? AND node = ?
+            ORDER BY seq`,
+        )
+        .all(runId, node.id) as unknown as StepRow[]
+    ).filter((r) => mine(r.step_key));
+    const last = rows[rows.length - 1];
+    const out = node.outcome(result);
+    setAttrs(span, {
+      attempts: steps.reduce((n, r) => n + r.attempts, 0),
+      llm_call_ids: rows.map((r) => String(r.id)),
+      finish_reason:
+        last?.finish_unified ?? out.failure?.finishReason ?? undefined,
+      raw_finish_reason:
+        last?.finish_raw ?? out.failure?.rawFinishReason ?? undefined,
+      model_requested: last?.requested_model ?? undefined,
+      model_served: last?.served_model ?? undefined,
+      param_ledger: last?.params_json,
+    });
+    if (out.status === "failed" || out.status === "partial") {
+      // The step row gets its error_kind when the node closes it, after this
+      // call. So the outcome fills the gap while the row is still open.
+      markError(span, {
+        kind:
+          steps.find((r) => r.status === "failed" && r.error_kind)
+            ?.error_kind ??
+          out.failure?.kind ??
+          rows.find((r) => r.error_kind)?.error_kind ??
+          out.status,
+      });
+    }
+  } catch {
+    // T7: a tracing fault never changes a node.
+  }
+}
+
 /**
  * Wrap a node body. It calls `ctx.onNodeStart`, opens the step row, runs the
  * body, turns any throw into one `internal` failure, and closes the row.
@@ -131,7 +220,17 @@ export function guardNode<S extends { runId: string }, R>(
     }
     let result: R;
     try {
-      result = await fn(state, ctx);
+      result = await inNode(
+        getTracing(),
+        state.runId,
+        node.id,
+        { step_key: key ?? undefined },
+        async (span) => {
+          const r = await fn(state, ctx);
+          describeNode(span, deps, node, state.runId, key, r);
+          return r;
+        },
+      );
     } catch (err) {
       if (node.failed === null) {
         // `prepare`: no data exists to save. The runner ends the run.

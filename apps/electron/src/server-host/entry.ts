@@ -12,6 +12,7 @@ import {
   reconcileUnsupportedMlxVoiceDefault,
   startServer,
   stopMlxServer,
+  stopTracing,
   stopWhisperServer,
 } from "@openstyle/server";
 import { createAppLogger, enableFileLogging } from "@openstyle/utils";
@@ -79,7 +80,11 @@ async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   try {
-    await Promise.allSettled([stopWhisperServer(), stopMlxServer()]);
+    await Promise.allSettled([
+      stopWhisperServer(),
+      stopMlxServer(),
+      stopTracing(),
+    ]);
     const server = running?.server;
     if (server) {
       // Open WebSocket and keep-alive sockets would hold close() open.
