@@ -195,15 +195,15 @@ export function wavHeader(
 }
 
 /**
- * Slice `[startMs, endMs)` from an open WAV file into standalone in-memory
- * WAV bytes. Reads only the slice's bytes at a computed offset.
+ * Read the PCM bytes of `[startMs, endMs)` from an open WAV file. The range
+ * is clamped to the data chunk. Reads only the bytes of the range.
  */
-export function sliceWav(
+function readPcmRange(
   fd: number,
   info: WavInfo,
   startMs: number,
   endMs: number,
-): Uint8Array {
+): Buffer {
   const bytesPerSample = (info.channels * info.bitsPerSample) / 8;
   const clampFrame = (ms: number) =>
     Math.max(
@@ -233,5 +233,34 @@ export function sliceWav(
     if (n <= 0) break;
     read += n;
   }
-  return Buffer.concat([wavHeader(info, read), data.subarray(0, read)]);
+  return data.subarray(0, read);
+}
+
+/**
+ * Slice `[startMs, endMs)` from an open WAV file into standalone in-memory
+ * WAV bytes. Reads only the slice's bytes at a computed offset.
+ */
+export function sliceWav(
+  fd: number,
+  info: WavInfo,
+  startMs: number,
+  endMs: number,
+): Uint8Array {
+  const data = readPcmRange(fd, info, startMs, endMs);
+  return Buffer.concat([wavHeader(info, data.length), data]);
+}
+
+/**
+ * Build one in-memory WAV from the PCM of each span, in the given order.
+ * The spans are joined with no gap. Used by the meeting VAD gate: only the
+ * speech spans of a chunk go to the ASR provider.
+ */
+export function sliceWavSpans(
+  fd: number,
+  info: WavInfo,
+  spans: ReadonlyArray<{ startMs: number; endMs: number }>,
+): Uint8Array {
+  const parts = spans.map((s) => readPcmRange(fd, info, s.startMs, s.endMs));
+  const dataBytes = parts.reduce((n, p) => n + p.length, 0);
+  return Buffer.concat([wavHeader(info, dataBytes), ...parts]);
 }

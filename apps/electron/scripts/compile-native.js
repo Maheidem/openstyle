@@ -40,6 +40,11 @@ const DIARIZATION_MODELS_DIR = join(
   "speaker-diarization",
 );
 
+// Silero VAD model for the meeting ASR gate. Same folder rules as the
+// diarization models above. The helper loads it from
+// `<models>/silero-vad/silero-vad-unified-256ms-v6.2.1.mlmodelc`.
+const VAD_MODELS_DIR = join(ROOT, "resources", "models", "silero-vad");
+
 const platform = process.platform;
 const arch = process.arch;
 const outputDir = join(BIN_DIR, `${platform}-${arch}`);
@@ -159,6 +164,7 @@ function compileMacOS() {
 
   compileFluidAudioDiarizer();
   fetchDiarizationModels();
+  fetchVadModel();
 }
 
 /**
@@ -334,6 +340,54 @@ function fetchDiarizationModels() {
     return;
   }
   console.log(`  -> ${DIARIZATION_MODELS_DIR}`);
+}
+
+// ---------------------------------------------------------------------------
+// Silero VAD model (meeting ASR gate). One .mlmodelc bundle from HuggingFace
+// repo FluidInference/silero-vad-coreml. Its file set is the same five files
+// as MLMODELC_RELATIVE_FILES (checked against the HF API tree 2026-10-19).
+// Idempotent. A failure warns and continues: without the model the server
+// sends every chunk to the ASR provider, as before.
+// ---------------------------------------------------------------------------
+
+const VAD_MLMODELC_NAME = "silero-vad-unified-256ms-v6.2.1.mlmodelc";
+const VAD_HF_BASE_URL =
+  "https://huggingface.co/FluidInference/silero-vad-coreml/resolve/main";
+
+function vadModelPresent(dir) {
+  return MLMODELC_RELATIVE_FILES.every((rel) =>
+    existsSync(join(dir, VAD_MLMODELC_NAME, rel)),
+  );
+}
+
+function fetchVadModel() {
+  console.log("\n[compile:native] Fetching VAD model (silero-vad)...\n");
+
+  if (vadModelPresent(VAD_MODELS_DIR)) {
+    console.log(`  Already present at ${VAD_MODELS_DIR}, skipping.`);
+    return;
+  }
+
+  console.log(`  Downloading from ${VAD_HF_BASE_URL} ...`);
+  let ok = true;
+  for (const rel of MLMODELC_RELATIVE_FILES) {
+    const url = `${VAD_HF_BASE_URL}/${VAD_MLMODELC_NAME}/${rel}`;
+    const dest = join(VAD_MODELS_DIR, VAD_MLMODELC_NAME, rel);
+    ensureDir(dirname(dest));
+    if (!run("curl", ["-fsSL", "--max-time", "300", "-o", dest, url])) {
+      ok = false;
+    }
+  }
+
+  if (!ok || !vadModelPresent(VAD_MODELS_DIR)) {
+    console.warn(
+      "  WARNING: failed to download the VAD model. " +
+        "The meeting VAD gate will be unavailable; Meeting Mode is unaffected.",
+    );
+    rmSync(VAD_MODELS_DIR, { recursive: true, force: true });
+    return;
+  }
+  console.log(`  -> ${VAD_MODELS_DIR}`);
 }
 
 function compileWindows() {

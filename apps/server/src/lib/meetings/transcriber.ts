@@ -22,7 +22,12 @@ import {
   parseMeetingSttModel,
   SYSTEM_WAV,
 } from "@openstyle/validations";
-import { parseWavHeader, sliceWav, type WavInfo } from "../audio/wav.js";
+import {
+  parseWavHeader,
+  sliceWav,
+  sliceWavSpans,
+  type WavInfo,
+} from "../audio/wav.js";
 import { readSetting } from "../db.js";
 import { waitForDictationIdle } from "../dictation-activity.js";
 import { MLX_ASR_PROVIDER_ID } from "../mlx-asr/constants.js";
@@ -40,7 +45,7 @@ import {
 import { WHISPER_PROVIDER_ID } from "../whisper/constants.js";
 import type { DetectAllFn } from "./language.js";
 import { isHallucination } from "./merge.js";
-import { MIN_MIC_VOICED_MS, type Segment } from "./segmenter.js";
+import { MIN_MIC_VOICED_MS, type Segment, totalSpeechMs } from "./segmenter.js";
 
 const log = createAppLogger("meeting-transcriber");
 
@@ -115,6 +120,12 @@ interface ContextCounters {
   echoRetries: number;
   /** PR #38: chunks marked `empty` by the pre-ASR silence gate. */
   silentSkipped: number;
+  /** VAD gate: chunks marked `empty` because they have no speech span. */
+  vadSkipped: number;
+  /** VAD gate: speech ms sent for the chunks that have speech spans. */
+  vadSpeechMsSent: number;
+  /** VAD gate: full chunk ms of the same chunks. */
+  vadChunkMs: number;
 }
 
 export interface TranscriberProgress {
@@ -222,6 +233,16 @@ function retryAfterMsOf(err: unknown): number | undefined {
   return retryAfterMs;
 }
 
+/**
+ * The ms of audio that the provider gets for this segment: the sum of the
+ * VAD speech spans when the segment has VAD data, else the segment length.
+ */
+function audioMsOf(seg: Segment): number {
+  return seg.speechSpans !== undefined
+    ? totalSpeechMs(seg.speechSpans)
+    : seg.endMs - seg.startMs;
+}
+
 const defaultSleep = (ms: number) =>
   new Promise<void>((r) => setTimeout(r, ms));
 
@@ -265,7 +286,7 @@ export class MeetingTranscriber {
   ): Promise<string | null> {
     if (!providerTakesPrompt(config.providerId)) return null;
     if (config.language === undefined) return null;
-    if (seg.endMs - seg.startMs < MIN_BIAS_DURATION_MS) return null;
+    if (audioMsOf(seg) < MIN_BIAS_DURATION_MS) return null;
     if (lane.prevCleanText === null || lane.prevEndMs === null) return null;
     if (seg.startMs - lane.prevEndMs > CONTEXT_GAP_MAX_MS) return null;
     const tail = contextTail(lane.prevCleanText);
@@ -360,6 +381,9 @@ export class MeetingTranscriber {
         contextApplied: 0,
         echoRetries: 0,
         silentSkipped: 0,
+        vadSkipped: 0,
+        vadSpeechMsSent: 0,
+        vadChunkMs: 0,
       };
 
       const runTask = async (
@@ -463,6 +487,19 @@ export class MeetingTranscriber {
           `transcribe: context applied to ${counters.contextApplied} chunk(s), echo retries ${counters.echoRetries}, silent skipped ${counters.silentSkipped}`,
         );
       }
+      // VAD gate report (counts only, never text). Only when VAD data is
+      // present (a retry-failed run or a build with no model has none).
+      const spansOf = (segs: Segment[]) =>
+        segs.reduce((n, sg) => n + (sg.speechSpans?.length ?? 0), 0);
+      if (
+        [...input.micSegments, ...input.systemSegments].some(
+          (sg) => sg.speechSpans !== undefined,
+        )
+      ) {
+        log.info(
+          `transcribe: vad spans mic ${spansOf(input.micSegments)}, system ${spansOf(input.systemSegments)}; vad skipped ${counters.vadSkipped} chunk(s); speech ms sent ${Math.round(counters.vadSpeechMsSent)} of chunk ms ${Math.round(counters.vadChunkMs)}`,
+        );
+      }
       return results;
     } finally {
       for (const fd of opened) {
@@ -487,13 +524,32 @@ export class MeetingTranscriber {
     contextEnabled: boolean,
     counters: ContextCounters,
   ): Promise<ChunkResult> {
+    // VAD gate: a chunk with VAD data and no speech span is silence or
+    // noise. Mark it `empty` and skip the provider call, on both channels.
+    if (seg.speechSpans !== undefined && seg.speechSpans.length === 0) {
+      const skipped: ChunkResult = {
+        source,
+        idx,
+        startMs: seg.startMs,
+        endMs: seg.endMs,
+        text: "",
+        status: "empty",
+      };
+      counters.vadSkipped++;
+      // Same lane rule as the silence gate below: no context across it.
+      this.updateLaneState(lane, skipped, config, seg);
+      return skipped;
+    }
+
     // PR #38: pre-ASR silence gate. A chunk whose speech evidence
     // (voicedMs, set by the segmenter) is under MIN_MIC_VOICED_MS is
     // noise floor plus clicks — the model transcribes that as "Okay."
     // or echoes the bias prompt. Mark it `empty` and skip the provider
     // call entirely. `voicedMs === undefined` (retry-failed rebuilds the
     // segments from the DB) keeps the old behavior: the chunk is sent.
+    // With VAD data the VAD gate above replaces this gate.
     if (
+      seg.speechSpans === undefined &&
       SILENT_SKIP_SOURCES.includes(source) &&
       seg.voicedMs !== undefined &&
       seg.voicedMs < MIN_MIC_VOICED_MS
@@ -515,9 +571,15 @@ export class MeetingTranscriber {
 
     const maxAttempts = this.deps.maxAttempts ?? 3;
     const backoffBase = this.deps.backoffBaseMs ?? 1000;
-    const durationMs = seg.endMs - seg.startMs;
-    // The same constant guards both: below this, neither the vocabulary
-    // bias prompt nor the context is sent (phase 3b, §3.1).
+    // The audio length that the provider gets: the speech ms with VAD
+    // data, else the chunk length. The same constant guards both: below
+    // this, neither the vocabulary bias prompt nor the context is sent
+    // (phase 3b, §3.1).
+    const durationMs = audioMsOf(seg);
+    if (seg.speechSpans !== undefined) {
+      counters.vadSpeechMsSent += durationMs;
+      counters.vadChunkMs += seg.endMs - seg.startMs;
+    }
     const baseBias = durationMs < MIN_BIAS_DURATION_MS ? null : config.bias;
     // Previous-chunk context (phase 3b): lanes only, and only when the
     // `meeting_asr_context` setting is on (owner decision 2026-10-07: off
@@ -559,7 +621,12 @@ export class MeetingTranscriber {
         });
       }
       try {
-        const audio = sliceWav(fd, info, seg.startMs, seg.endMs);
+        // VAD gate: only the speech spans, joined. The chunk keeps its
+        // startMs/endMs.
+        const audio =
+          seg.speechSpans !== undefined
+            ? sliceWavSpans(fd, info, seg.speechSpans)
+            : sliceWav(fd, info, seg.startMs, seg.endMs);
         const result: TranscribeResult = await provider.transcribe({
           audio,
           model: config.modelId,
