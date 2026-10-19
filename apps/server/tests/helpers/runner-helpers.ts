@@ -49,7 +49,7 @@ export const correctionText = (id: string) =>
         .prepare("SELECT text FROM meeting_segments WHERE id = ?")
         .get(id) as { text: string }
     ).text
-  } about`;
+  } fixed`;
 
 /**
  * The default answers: one correction for the first segment of a chunk, no
