@@ -150,8 +150,10 @@ function describeNode<S extends { runId: string }, R>(
     setAttrs(span, {
       attempts: rows.length,
       llm_call_ids: rows.map((r) => String(r.id)),
-      finish_reason: last?.finish_unified ?? out.failure?.finishReason,
-      raw_finish_reason: last?.finish_raw ?? out.failure?.rawFinishReason,
+      finish_reason:
+        last?.finish_unified ?? out.failure?.finishReason ?? undefined,
+      raw_finish_reason:
+        last?.finish_raw ?? out.failure?.rawFinishReason ?? undefined,
       model_requested: last?.requested_model ?? undefined,
       model_served: last?.served_model ?? undefined,
       param_ledger: last?.params_json,
