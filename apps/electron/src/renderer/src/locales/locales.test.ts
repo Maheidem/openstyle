@@ -489,3 +489,58 @@ describe("locale files", () => {
     });
   });
 });
+
+// The LLM inspector shows in advanced mode only (specs/meeting-enhance-agentic.md
+// 8.10 item 2). Its keys live in en.json and template.json; the other locales
+// fall back to English until a translator adds them.
+describe("meetings.inspector keys", () => {
+  const inspectorKeys = (file: string): string[] =>
+    Object.keys(flatten(load(file)))
+      .filter((k) => k.startsWith("meetings.inspector."))
+      .sort();
+
+  it("has the same key set in en.json and template.json", () => {
+    const enKeys = inspectorKeys("en.json");
+    expect(enKeys.length).toBeGreaterThan(0);
+    expect(inspectorKeys("template.json")).toEqual(enKeys);
+  });
+
+  it("has a non-empty text and keeps the placeholders of en.json in template.json", () => {
+    const template = flatten(load("template.json"));
+    for (const key of inspectorKeys("en.json")) {
+      expect(en[key].trim(), `${key} is empty`).not.toBe("");
+      expect(placeholders(template[key]), `${key} placeholders`).toEqual(
+        placeholders(en[key]),
+      );
+    }
+  });
+
+  // Every code that a verdict or a drop can hold has a text (7.5).
+  const VERDICT_CODES = [
+    "self_introduction",
+    "addressed_as",
+    "role_detail",
+    "unknown_label",
+    "unknown_segment",
+    "no_quote",
+    "quote_too_long",
+    "quote_not_in_segment",
+    "empty_name",
+    "name_not_in_quote",
+    "not_self_introduction",
+    "conflict_lost",
+    "duplicate_same_name",
+    "unknown_id",
+    "duplicate_id",
+    "empty_text",
+    "unchanged",
+    "format_only",
+    "deletes_words",
+    "too_different",
+    "meaning_flip",
+    "inflection_only",
+  ];
+  it.each(VERDICT_CODES)("has a verdict text for %s", (code) => {
+    expect(en[`meetings.inspector.verdict.${code}`]).toBeTruthy();
+  });
+});
