@@ -215,11 +215,14 @@ const FILLER =
   "We went through the open items and agreed on the next steps for the team. ";
 
 /**
- * About 2500 characters. Two of them never fit one chunk (1200 tokens,
- * CHUNK_TOKENS_MAX), so each segment is its own chunk.
+ * About 3000 characters, about 765 tokens (estimateTokens is ceil(length / 4)).
+ * Two segments together are above CHUNK_TOKENS_MAX (1200), so each segment is
+ * one chunk. The margin is about 330 tokens. This holds while the fake model
+ * has no context window (chunkSizeFor returns 1200). A test asserts the chunk
+ * count, so a change of the constant fails there with a clear message.
  */
 export function longText(lead: string): string {
-  return `${lead} ${FILLER.repeat(33)}`.trim();
+  return `${lead} ${FILLER.repeat(40)}`.trim();
 }
 
 export interface SeedSegment {
@@ -290,6 +293,35 @@ export function seedMeeting(
         s.label,
       );
     });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Writes one checkpoint row and one checkpoint write row for each run. A
+ * finished run keeps none, so a delete test needs them to prove the cascade.
+ */
+export function seedCheckpointRows(
+  userDataDir: string,
+  runIds: string[],
+): void {
+  const db = new DatabaseSync(join(userDataDir, "freestyle.db"));
+  try {
+    db.exec("PRAGMA busy_timeout = 5000");
+    for (const runId of runIds) {
+      db.prepare(
+        `INSERT INTO llm_checkpoints
+           (thread_id, checkpoint_ns, checkpoint_id, type, checkpoint, metadata)
+         VALUES (?, '', 'cp-1', 'json', x'7b7d', x'7b7d')`,
+      ).run(runId);
+      db.prepare(
+        `INSERT INTO llm_checkpoint_writes
+           (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, task_path,
+            channel, type, value)
+         VALUES (?, '', 'cp-1', 'task-1', 0, '', 'ch', 'json', x'7b7d')`,
+      ).run(runId);
+    }
   } finally {
     db.close();
   }
@@ -382,7 +414,13 @@ export async function bootEnhanceApp(
   } catch {
     await page.waitForLoadState("load", { timeout: 10_000 });
   }
-  // Main's one-shot boot orphan sweep runs 3 s after the server starts.
+  // Main's one-shot boot orphan sweep runs 3 s after startServerHost returns
+  // (src/main/index.ts, the setTimeout of 3000 after createAppWindow). It
+  // sweeps meetings in `recording` or `transcribing`, and the meetings of
+  // these specs are `transcribed`, so it should not touch them. There is no
+  // signal to poll: the sweep logs nothing when it finds nothing. This wait
+  // starts after the window loaded, which is after the server started, so it
+  // is at least 3.5 s after the timer started.
   await new Promise((r) => setTimeout(r, 3500));
 
   const base = embeddedServerUrl(app);

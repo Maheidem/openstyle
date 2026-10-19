@@ -30,6 +30,9 @@ import {
 //   2. a fake `length` answer: the notice shows live and after a reload;
 //   3. SIGKILL of the server process during correctChunk: the run completes
 //      and no finished chunk gets a second request.
+// Left to a follow-up card (10.11.3): the kill during the speaker call, the
+// kill in Summarize with a small budget, and a second kill (the run stays
+// interrupted and shows Resume).
 // ---------------------------------------------------------------------------
 
 const fake = new FakeLlm();
@@ -135,6 +138,12 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
   expect(run.failedStepCount).toBe(0);
   const steps = readStepRows(env.userDataDir, run.id);
   expect(steps.every((s) => s.status === "succeeded")).toBe(true);
+  // One chunk for each segment. If the fixture text or CHUNK_TOKENS_MAX
+  // changes, this fails first and says why the request counts differ.
+  expect(
+    steps.map((s) => s.key).filter((k) => k.startsWith("chunk:")),
+    "chunk steps of the run",
+  ).toEqual(["chunk:0", "chunk:1", "chunk:2"]);
   expect(steps.map((s) => s.key)).toEqual(
     expect.arrayContaining([
       "prepare",
@@ -155,8 +164,9 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
   expect(count("meeting_summary")).toBe(1);
   expect(count("other")).toBe(0);
 
-  // Every body asks for a json_schema answer; reasoning is switched off.
-  for (const req of fake.requests) {
+  // Every body asks for a json_schema answer. The names are literal: the
+  // wire name of each step, not the field that the fake server reads.
+  const names = fake.requests.map((req) => {
     const rf = req.body.response_format as {
       type: string;
       json_schema: { name: string; strict?: boolean };
@@ -164,12 +174,19 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
     expect(rf.type, `request ${req.n} response_format.type`).toBe(
       "json_schema",
     );
-    expect(rf.json_schema.name).toBe(req.step);
     expect(
       req.body.chat_template_kwargs,
       `request ${req.n} chat_template_kwargs`,
     ).toBeDefined();
-  }
+    return rf.json_schema.name;
+  });
+  expect([...names].sort()).toEqual([
+    "correct_chunk",
+    "correct_chunk",
+    "correct_chunk",
+    "identify_speakers",
+    "meeting_summary",
+  ]);
   const correct = fake.requests.find((r) => r.step === "correct_chunk");
   expect(
     (correct?.body.chat_template_kwargs as Record<string, unknown>)
@@ -212,6 +229,12 @@ test("a length answer shows the notice live and after a reload", async () => {
 
   await openMeeting(env.page, "Length sync");
   await env.page.getByRole("button", { name: "Enhance", exact: true }).click();
+  // Live: the notice shows on this page, with no reload, before the test
+  // looks at the stored run.
+  const notice = env.page.getByTestId("meetings-run-notice-enhance");
+  const reason = "The model reached its output limit.";
+  await expect(notice).toBeVisible({ timeout: 60_000 });
+  await expect(notice).toHaveAttribute("data-run-status", "partial");
   const run = await waitForRun(env, id, ["succeeded", "partial", "failed"]);
   expect(run.status).toBe("partial");
   const failed = run.steps.filter((s) => s.status === "failed");
@@ -224,10 +247,6 @@ test("a length answer shows the notice live and after a reload", async () => {
   expect(fake.countFor("correct_chunk", segmentId(id, 0))).toBe(1);
   expect(fake.countFor("correct_chunk", segmentId(id, 2))).toBe(1);
 
-  const notice = env.page.getByTestId("meetings-run-notice-enhance");
-  const reason = "The model reached its output limit.";
-  await expect(notice).toBeVisible({ timeout: 10_000 });
-  await expect(notice).toHaveAttribute("data-run-status", "partial");
   await expect(notice.getByTestId("meetings-run-notice-line")).toHaveCount(1);
   await expect(notice.getByTestId("meetings-run-notice-line")).toContainText(
     reason,
@@ -338,6 +357,14 @@ test.describe("kill and resume", () => {
       ),
     ).toBe(true);
 
+    // One chunk for each segment, or the counts below mean nothing.
+    expect(
+      readStepRows(env.userDataDir, run.id)
+        .map((s) => s.key)
+        .filter((k) => k.startsWith("chunk:")),
+      "chunk steps of the run",
+    ).toEqual(Array.from({ length: chunks }, (_, i) => `chunk:${i}`));
+
     // G6: every finished chunk reached the fake server once, the held one
     // twice.
     for (let i = 0; i < chunks; i++) {
@@ -352,20 +379,25 @@ test.describe("kill and resume", () => {
       fake.requests.filter((r) => r.step === "meeting_summary").length,
     ).toBe(1);
 
-    // No call record is left half written.
+    // A call record is written when the call ends, so the killed call has no
+    // row. Each chunk has exactly one final row; the held chunk's only row is
+    // the one of its second request.
     const db = new DatabaseSync(join(env.userDataDir, "freestyle.db"), {
       readOnly: true,
     });
     try {
       db.exec("PRAGMA busy_timeout = 5000");
-      const open = db
+      const rows = db
         .prepare(
-          `SELECT count(*) AS n FROM llm_calls
-            WHERE scope = 'meeting' AND scope_id = ?
-              AND finish_unified IS NULL AND error_kind IS NULL`,
+          `SELECT step_key AS key, count(*) AS n, max(attempt) AS attempt
+             FROM llm_calls
+            WHERE scope = 'meeting' AND scope_id = ? AND node = 'correctChunk'
+            GROUP BY step_key ORDER BY step_key`,
         )
-        .get(killId) as { n: number };
-      expect(open.n).toBe(0);
+        .all(killId) as Array<{ key: string; n: number; attempt: number }>;
+      expect(rows.map((r) => [r.key, r.n])).toEqual(
+        Array.from({ length: chunks }, (_, i) => [`chunk:${i}`, 1]),
+      );
     } finally {
       db.close();
     }

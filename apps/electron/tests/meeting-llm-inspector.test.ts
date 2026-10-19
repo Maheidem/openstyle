@@ -12,6 +12,7 @@ import {
   RIGHT_WORD,
   readRuns,
   recordRowCounts,
+  seedCheckpointRows,
   seedMeeting,
   segmentId,
   WRONG_WORD,
@@ -23,7 +24,10 @@ import {
 // work package WP9). The gate is the `advanced_mode` setting. With it off the
 // view has no inspector control and sends no request for call records. With it
 // on, the panel of an edited text shows the system message, the user message
-// and the answer that the fake server logged. All text is fictional.
+// and the answer that the fake server logged. The panel of a retried chunk
+// lists both attempts, the panel of a speaker shows a kept and a dropped
+// suggestion, and a meeting delete removes the record, including checkpoints.
+// All text is fictional.
 // ---------------------------------------------------------------------------
 
 const MEETING = "e2e-inspector";
@@ -58,6 +62,11 @@ function lastRequestFor(step: ChatRequest["step"], id: string): ChatRequest {
 const answers = new Map<number, string>();
 
 test.beforeAll(async () => {
+  // A CI retry runs this hook again with the same module state. Start clean,
+  // or a real failure shows up as a different, misleading failure.
+  fake.requests.length = 0;
+  answers.clear();
+  callRecordRequests.length = 0;
   await fake.start();
   // Chunk 0 and 2 get an edit. Chunk 2 first answers with a wrong type, so
   // its step has two attempts (retry on `schema`).
@@ -126,29 +135,60 @@ test.afterAll(async () => {
   await fake.stop();
 });
 
-/** Saves a screenshot when OPENSTYLE_EVIDENCE_DIR is set, at both sizes. */
+/** The content size of every window that is not the pill, by window id. */
+async function contentSizes(): Promise<Array<[number, number, number]>> {
+  return env.app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((win) => !win.webContents.getURL().includes("pill"))
+      .map((win) => {
+        const [w, h] = win.getContentSize();
+        return [win.id, w ?? 0, h ?? 0] as [number, number, number];
+      }),
+  );
+}
+
+/** Sets the content size of one window and waits until the page sees it. */
+async function resizeTo(
+  page: Page,
+  id: number,
+  w: number,
+  h: number,
+): Promise<void> {
+  await env.app.evaluate(
+    ({ BrowserWindow }, size) => {
+      BrowserWindow.fromId(size.id)?.setContentSize(size.w, size.h);
+    },
+    { id, w, h },
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.innerWidth), {
+      message: `window width after resize to ${w}`,
+    })
+    .toBe(w);
+}
+
+/**
+ * Saves a screenshot when OPENSTYLE_EVIDENCE_DIR is set, at both sizes. The
+ * window gets its old size back, so the test steps do not depend on the
+ * variable.
+ */
 async function shoot(page: Page, name: string): Promise<void> {
   const dir = process.env.OPENSTYLE_EVIDENCE_DIR;
   if (!dir) return;
   mkdirSync(dir, { recursive: true });
-  for (const [w, h] of [
-    [1152, 648],
-    [720, 480],
-  ] as const) {
-    await env.app.evaluate(
-      ({ BrowserWindow }, size) => {
-        for (const win of BrowserWindow.getAllWindows()) {
-          if (!win.webContents.getURL().includes("pill")) {
-            win.setSize(size.w, size.h);
-          }
-        }
-      },
-      { w, h },
-    );
-    await page.waitForTimeout(300);
-    await page.screenshot({
-      path: join(dir, `inspector-${name}-${w}x${h}.png`),
-    });
+  const before = await contentSizes();
+  try {
+    for (const [w, h] of [
+      [1152, 648],
+      [720, 480],
+    ] as const) {
+      for (const [id] of before) await resizeTo(page, id, w, h);
+      await page.screenshot({
+        path: join(dir, `inspector-${name}-${w}x${h}.png`),
+      });
+    }
+  } finally {
+    for (const [id, w, h] of before) await resizeTo(page, id, w, h);
   }
 }
 
@@ -275,9 +315,46 @@ test("gate on: the panel shows what the fake server logged", async () => {
     summary?.messages,
   );
   await shoot(env.page, "summary-call");
+  await env.page.getByTestId("meetings-inspector-close").click();
+
+  // The speaker panel of the kept suggestion: its name, its quote, and the
+  // evidence. Label 1 is the speaker that named itself.
+  await env.page.getByRole("button", { name: "Speakers", exact: true }).click();
+  await env.page.getByTestId("meetings-speaker-inspect").first().click();
+  const keptRow = env.page.getByTestId("meetings-inspector-speaker-row");
+  await expect(keptRow).toHaveCount(1, { timeout: 15_000 });
+  await expect(keptRow).toHaveAttribute("data-outcome", "applied");
+  await expect(keptRow).toContainText("Ana");
+  await expect(keptRow).toContainText("This is Ana speaking");
+  await shoot(env.page, "speaker-kept");
+
+  // The dropped suggestion (label 2, a quote that nobody said) has no row in
+  // the Speakers dialog. Its verdict is in the call record of the speaker.
+  const droppedRes = await env.api(
+    "GET",
+    `/meetings/${MEETING}/llm-calls?target_type=speaker&target_id=2&detail=full`,
+  );
+  expect(droppedRes.status).toBe(200);
+  const droppedBody = (await droppedRes.json()) as {
+    calls: Array<{
+      links: Array<{
+        targetId: string;
+        outcome: string;
+        reason: string | null;
+        verdict: { quote: string; proposedName: string } | null;
+      }>;
+    }>;
+  };
+  const dropped = droppedBody.calls
+    .flatMap((c) => c.links)
+    .filter((l) => l.targetId === "2");
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]?.outcome).toBe("dropped");
+  expect(dropped[0]?.reason).toBe("quote_not_in_segment");
+  expect(dropped[0]?.verdict?.quote).toBe("A line that nobody said");
 });
 
-test("gate off again: the controls are gone, and a delete leaves no record", async () => {
+test("gate off, then a reload: the controls are gone, and a delete leaves no record", async () => {
   test.setTimeout(120_000);
   const off = await env.api("PUT", "/settings/advanced_mode", {
     value: "false",
@@ -293,13 +370,17 @@ test("gate off again: the controls are gone, and a delete leaves no record", asy
   // G7: the record exists before the delete and is gone after it.
   const runIds = (await readRuns(env, MEETING)).map((r) => r.id);
   expect(runIds.length).toBe(1);
+  // A finished run keeps no checkpoint. Write one row of each table, so the
+  // cascade of the delete is tested for them too.
+  seedCheckpointRows(env.userDataDir, runIds);
   const before = recordRowCounts(env.userDataDir, MEETING, runIds);
-  // A finished run keeps no checkpoint, so only these four tables hold rows.
   for (const table of [
     "llm_runs",
     "llm_run_steps",
     "llm_calls",
     "llm_call_links",
+    "llm_checkpoints",
+    "llm_checkpoint_writes",
   ] as const) {
     expect(before[table], `${table} before the delete`).toBeGreaterThan(0);
   }
