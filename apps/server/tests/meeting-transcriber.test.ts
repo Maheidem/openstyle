@@ -749,7 +749,7 @@ describe("MeetingTranscriber", () => {
       expect(results[0]!.endMs).toBe(8000);
     });
 
-    it("ignores the voicedMs gate when VAD data is present", async () => {
+    it("keeps the voicedMs gate when VAD data is present (either gate skips)", async () => {
       const dir = makeMeetingDir({ mic: 2000, system: 100 });
       const { provider, calls } = makeFakeProvider();
       const t = new MeetingTranscriber(makeDeps(provider));
@@ -763,8 +763,8 @@ describe("MeetingTranscriber", () => {
           },
         ],
       });
-      expect(calls).toHaveLength(1);
-      expect(results[0]!.status).toBe("ok");
+      expect(calls).toHaveLength(0);
+      expect(results[0]!.status).toBe("empty");
     });
 
     it("uses the speech ms, not the chunk length, for the bias guard", async () => {

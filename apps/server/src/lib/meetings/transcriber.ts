@@ -542,9 +542,10 @@ export class MeetingTranscriber {
     // or echoes the bias prompt. Mark it `empty` and skip the provider
     // call entirely. `voicedMs === undefined` (retry-failed rebuilds the
     // segments from the DB) keeps the old behavior: the chunk is sent.
-    // With VAD data the VAD gate above replaces this gate.
+    // This gate also applies with VAD data: a chunk is skipped when either
+    // gate says skip. Without it, the low VAD threshold let one-word
+    // "Okay."/"Oh." chunks through (council round r227b).
     if (
-      seg.speechSpans === undefined &&
       SILENT_SKIP_SOURCES.includes(source) &&
       seg.voicedMs !== undefined &&
       seg.voicedMs < MIN_MIC_VOICED_MS
