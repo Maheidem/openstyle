@@ -4,6 +4,7 @@ import { getDb } from "./db.js";
 import type { LlmTaskContext } from "./llm/registry.js";
 import { getLlmProvider, isLocalProvider } from "./llm/registry.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
+import { MLX_LLM_PROVIDER_ID } from "./mlx-llm/constants.js";
 import { stripModelPrefix } from "./model-id.js";
 
 const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
@@ -14,6 +15,7 @@ const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "openrouter",
   "vercel",
   "server",
+  MLX_LLM_PROVIDER_ID,
 ]);
 
 function getChatModelId(providerId: string, modelId: string): string {

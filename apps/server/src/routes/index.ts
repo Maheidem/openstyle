@@ -11,6 +11,7 @@ import meetings from "./meetings.js";
 import meetingsImport from "./meetings-import.js";
 import meetingsRuns from "./meetings-runs.js";
 import mlxAsr from "./mlx-asr.js";
+import mlxLlm from "./mlx-llm.js";
 import models from "./models.js";
 import postProcessRoute from "./post-process-route.js";
 import servers from "./servers.js";
@@ -52,7 +53,8 @@ const apiRouter = new Hono()
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
   .route("/whisper", whisper)
-  .route("/mlx-asr", mlxAsr);
+  .route("/mlx-asr", mlxAsr)
+  .route("/mlx-llm", mlxLlm);
 
 const router = new Hono()
   .route("/api", apiRouter)

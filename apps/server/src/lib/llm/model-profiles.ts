@@ -1,5 +1,6 @@
 import { createAppLogger } from "@openstyle/utils";
 import type { LlmTaskId } from "@openstyle/validations";
+import { getMlxLlmModel, MLX_LLM_PROVIDER_ID } from "../mlx-llm/constants.js";
 import { stripModelPrefix } from "../model-id.js";
 import { fetchModelsFromRegistry } from "../model-registry.js";
 import type { LlmStepId, StructuredMode } from "./call-record.js";
@@ -55,7 +56,10 @@ export interface CallProfile {
   taskId: MeetingLlmTaskId;
   provider: string;
   modelId: string;
-  /** models.dev `limit.context` and `limit.output`. null for `server` and when the read fails. */
+  /**
+   * models.dev `limit.context` and `limit.output`, or the catalog limits of a
+   * local MLX LLM. null for `server` and when the read fails.
+   */
   contextWindow: number | null;
   maxOutputTokens: number | null;
   structured: StructuredMode;
@@ -191,6 +195,7 @@ export function modeLadder(provider: string): StructuredMode[] {
     case "mistral":
       return ["json_schema", "json_object", "prompt_only"];
     case "server":
+    case MLX_LLM_PROVIDER_ID:
       return ["json_schema_strict", "prompt_only"];
     default:
       return ["prompt_only"];
@@ -238,6 +243,7 @@ function startMode(
     case "mistral":
       return off ? lowerOnce(provider, "json_schema") : "json_schema";
     case "server":
+    case MLX_LLM_PROVIDER_ID:
       return "json_schema_strict";
     default:
       return off
@@ -349,6 +355,7 @@ function buildReasoning(
 
   switch (provider) {
     case "server":
+    case MLX_LLM_PROVIDER_ID:
       return plan({ control: "template_kwargs" });
     case "openai":
     case "openrouter":
@@ -396,7 +403,7 @@ export interface ReasoningWire {
   providerOptions: Record<string, Record<string, unknown>>;
   /** Top-level body keys for the OpenRouter wrapper. */
   bodyExtra: Record<string, unknown>;
-  /** `server` only: the gateway keys of rank 1 (5.5.2). */
+  /** `server` and `local-mlx-llm` only: the gateway keys of rank 1 (5.5.2). */
   overrides: GatewayOverrides;
   /** True when the provider has no documented control, so nothing is sent. */
   noControl: boolean;
@@ -417,7 +424,8 @@ export function reasoningWire(profile: CallProfile): ReasoningWire {
   const bounded = reasoning.mode === "bounded";
 
   switch (provider) {
-    case "server": {
+    case "server":
+    case MLX_LLM_PROVIDER_ID: {
       if (reasoning.force) {
         wire.overrides.force = {
           chatTemplateKwargs: { enable_thinking: false },
@@ -545,12 +553,15 @@ function buildProfile(
   const warnings: string[] = [];
   if (read.kind === "failed") warnings.push("registry_unavailable");
   const mode = table[a.step] === "bounded" ? "bounded" : "off";
+  // The local MLX LLM has no models.dev entry. Its catalog has the limits.
+  const localDef =
+    base.provider === MLX_LLM_PROVIDER_ID ? getMlxLlmModel(shortId) : undefined;
   return {
     taskId: a.taskId,
     provider: base.provider,
     modelId: base.modelId,
-    contextWindow: facts?.contextWindow ?? null,
-    maxOutputTokens: facts?.maxOutput ?? null,
+    contextWindow: facts?.contextWindow ?? localDef?.contextTokens ?? null,
+    maxOutputTokens: facts?.maxOutput ?? localDef?.maxOutputTokens ?? null,
     structured: startMode(base.provider, shortId, facts),
     reasoning: buildReasoning(
       base.provider,

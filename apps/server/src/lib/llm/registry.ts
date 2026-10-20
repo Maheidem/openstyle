@@ -3,6 +3,7 @@ import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
 import { parseServerModelId, SERVER_PROVIDER_ID } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
+import { MLX_LLM_PROVIDER_ID } from "../mlx-llm/constants.js";
 import { stripModelPrefix } from "../model-id.js";
 import { getOwnServer } from "../own-servers.js";
 import { traceLlmFetch } from "../trace.js";
@@ -13,15 +14,16 @@ type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
 /**
  * Per-task context threaded into `createModel` (specs/llm-task-profiles.md
  * §8.1). `sampling` is the resolver's already-merged verbatim sampling object
- * (§8.3) — only the `server` entry reads it; every other provider ignores
- * the parameter entirely.
+ * (§8.3) — only the `server` and `local-mlx-llm` entries read it; every
+ * other provider ignores the parameter entirely.
  */
 export interface LlmTaskContext {
   task: string;
   sampling: Record<string, unknown>;
   /**
    * Keys the LLM gateway forces onto the body after the sampling merge
-   * (specs/meeting-enhance-agentic.md 5.5.2). Only the `server` entry reads it.
+   * (specs/meeting-enhance-agentic.md 5.5.2). Only the `server` and
+   * `local-mlx-llm` entries read it.
    */
   gatewayOverrides?: GatewayOverrides;
   /**
@@ -72,8 +74,16 @@ export interface GatewayOverrides {
  */
 export interface LlmProvider {
   readonly providerId: string;
-  /** Local endpoints resolve their own credentials rather than a stored key. */
+  /**
+   * No API key and verbatim sampling (the whole preset object goes on the
+   * wire). Set for `server` and `local-mlx-llm`.
+   */
   readonly local?: boolean;
+  /**
+   * The model id names a row in the own-server list (`<serverId>/<model>`).
+   * Set only for `server`. The lane key and the override check read it.
+   */
+  readonly ownServer?: boolean;
   /**
    * Build (or return a cached) chat model. `modelId` is already stripped of the
    * provider prefix for prefixed providers; `apiKey` is `"local"` for local
@@ -313,6 +323,20 @@ function createExtraBodyFetch(
   };
 }
 
+/** The sampling fetch of an OpenAI-style local engine, from the task context. */
+function taskSamplingFetch(
+  taskContext: LlmTaskContext | undefined,
+): typeof globalThis.fetch {
+  return createSamplingFetch((taskContext?.sampling ?? {}) as CleanupSampling, {
+    ...(taskContext?.gatewayOverrides
+      ? { gatewayOverrides: taskContext.gatewayOverrides }
+      : {}),
+    ...(taskContext?.onRequestBody
+      ? { onRequestBody: taskContext.onRequestBody }
+      : {}),
+  });
+}
+
 const PROVIDERS: LlmProvider[] = [
   {
     providerId: "openai",
@@ -398,6 +422,7 @@ const PROVIDERS: LlmProvider[] = [
     // address and the optional key.
     providerId: SERVER_PROVIDER_ID,
     local: true,
+    ownServer: true,
     createModel: async (modelId, _apiKey, taskContext) => {
       const { createOpenAI } = await import("@ai-sdk/openai");
       const target = parseServerModelId(modelId);
@@ -422,18 +447,29 @@ const PROVIDERS: LlmProvider[] = [
         // Always intercepted: this wrapper is what writes the trace log, and
         // it is the only point that sees the final post-merge request body.
         // With no sampling configured it forwards the body untouched.
-        fetch: createSamplingFetch(
-          (taskContext?.sampling ?? {}) as CleanupSampling,
-          {
-            ...(taskContext?.gatewayOverrides
-              ? { gatewayOverrides: taskContext.gatewayOverrides }
-              : {}),
-            ...(taskContext?.onRequestBody
-              ? { onRequestBody: taskContext.onRequestBody }
-              : {}),
-          },
-        ),
+        fetch: taskSamplingFetch(taskContext),
       }).chat(target.model);
+    },
+  },
+  {
+    // The built-in local MLX LLM (specs/local-mlx-llm.md 3.4). The model id
+    // is the catalog id: the caller stripped the `local-mlx-llm/` prefix. The
+    // worker serves an OpenAI-style API on 127.0.0.1, so the transport is the
+    // one of an own server, with the same fetch wrapper.
+    providerId: MLX_LLM_PROVIDER_ID,
+    local: true,
+    createModel: async (modelId, _apiKey, taskContext) => {
+      const { createOpenAI } = await import("@ai-sdk/openai");
+      const { ensureMlxLlmWorker, trackMlxLlmFetch } = await import(
+        "../mlx-llm/server.js"
+      );
+      const { baseURL, hfId } = await ensureMlxLlmWorker(modelId);
+      return createOpenAI({
+        apiKey: "local",
+        baseURL,
+        fetch: trackMlxLlmFetch(taskSamplingFetch(taskContext)),
+        // The worker reports the HF repo id as the served model.
+      }).chat(hfId);
     },
   },
 ];
@@ -456,4 +492,9 @@ export function getLlmProvider(providerId: string): LlmProvider | null {
 /** True when the provider id names a local engine that needs no API key. */
 export function isLocalProvider(providerId: string): boolean {
   return getLlmProvider(providerId)?.local === true;
+}
+
+/** True when the model id of this provider names a row in the own-server list. */
+export function isOwnServerProvider(providerId: string): boolean {
+  return getLlmProvider(providerId)?.ownServer === true;
 }

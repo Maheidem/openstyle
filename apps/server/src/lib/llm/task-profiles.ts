@@ -301,7 +301,7 @@ function resolveEffectiveModel(
     return { provider: fallback.provider, modelId: fallback.model_id };
   }
 
-  if (isLocalProvider(override.provider)) {
+  if (provider.ownServer) {
     const target = parseServerModelId(override.model_id);
     if (!target || !getOwnServer(target.serverId)) {
       log.warn(
@@ -309,7 +309,7 @@ function resolveEffectiveModel(
       );
       return { provider: fallback.provider, modelId: fallback.model_id };
     }
-  } else if (!getApiKey(override.provider)) {
+  } else if (!provider.local && !getApiKey(override.provider)) {
     log.warn(
       `resolveTaskCall("${taskId}"): no stored API key for model override provider "${override.provider}", falling back to the app default`,
     );

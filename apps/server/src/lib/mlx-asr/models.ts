@@ -65,7 +65,8 @@ export interface MlxModelDownloadState {
   errorSourceUrl?: string;
 }
 
-interface ActiveMlxDownload {
+/** Progress and cancel state of one model download. `mlx-llm` uses it too. */
+export interface ActiveMlxDownload {
   controller: AbortController;
   phase: MlxDownloadPhase;
   bytesDownloaded: number;
@@ -120,7 +121,12 @@ function isCustomModelComplete(
 
 export function isMlxModelDownloaded(model: MlxAsrModelDef): boolean {
   if (model.custom) return isCustomModelComplete(model.hfId, model.custom);
-  const snapshotsDir = join(hfRepoCacheDir(model.hfId), "snapshots");
+  return isHfSnapshotPresent(model.hfId);
+}
+
+/** True when the shared HF cache holds a non-empty snapshot of the repo. */
+export function isHfSnapshotPresent(hfId: string): boolean {
+  const snapshotsDir = join(hfRepoCacheDir(hfId), "snapshots");
   if (!existsSync(snapshotsDir)) return false;
 
   try {
@@ -150,26 +156,11 @@ export function getMlxModelStatus(
   }
 
   if (active) {
-    const runtimeProgress =
-      active.phase === "building_binary"
-        ? getMlxRuntimeDownloadStatus().downloadProgress
-        : undefined;
     return {
       ...baseModelState(modelId, model),
       status: "downloading",
       phase: active.phase,
-      downloadProgress:
-        runtimeProgress ??
-        (active.bytesTotal
-          ? {
-              bytesDownloaded: active.bytesDownloaded,
-              bytesTotal: active.bytesTotal,
-              percent: Math.round(
-                (active.bytesDownloaded / active.bytesTotal) * 100,
-              ),
-              speedBps: active.speedBps,
-            }
-          : undefined),
+      downloadProgress: activeDownloadProgress(active),
     };
   }
 
@@ -194,6 +185,116 @@ export function getMlxModelStatus(
   }
 
   return { ...baseModelState(modelId, model), status: "not_downloaded" };
+}
+
+/** The progress of a running download: the runtime phase or the weights phase. */
+export function activeDownloadProgress(
+  active: ActiveMlxDownload,
+): MlxModelDownloadState["downloadProgress"] {
+  if (active.phase === "building_binary") {
+    const runtimeProgress = getMlxRuntimeDownloadStatus().downloadProgress;
+    if (runtimeProgress) return runtimeProgress;
+  }
+  return active.bytesTotal
+    ? {
+        bytesDownloaded: active.bytesDownloaded,
+        bytesTotal: active.bytesTotal,
+        percent: Math.round((active.bytesDownloaded / active.bytesTotal) * 100),
+        speedBps: active.speedBps,
+      }
+    : undefined;
+}
+
+/** A new download state in the runtime phase. */
+export function newActiveMlxDownload(): ActiveMlxDownload {
+  const now = Date.now();
+  return {
+    controller: new AbortController(),
+    phase: "building_binary",
+    bytesDownloaded: 0,
+    bytesTotal: 0,
+    speedBps: 0,
+    lastUpdate: now,
+    lastBytes: 0,
+  };
+}
+
+/**
+ * Make sure the managed MLX worker runtime is installed. On a failure it sets
+ * `active.error` and throws. The speech and the LLM models share the runtime.
+ */
+export async function ensureMlxRuntimeForDownload(
+  active: ActiveMlxDownload,
+): Promise<void> {
+  await updateManagedMlxRuntimeIfNeeded().catch((err) => {
+    console.warn(
+      "[mlx-asr] Failed to refresh managed runtime before model download:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+
+  let blocker = describeMlxSetupBlocker();
+  if (!blocker) return;
+  try {
+    await ensureMlxRuntimeDownloaded();
+    resetPythonProbe();
+  } catch (err) {
+    active.error = describeDownloadError(err);
+    throw err;
+  }
+
+  blocker = describeMlxSetupBlocker();
+  if (blocker) {
+    active.error = blocker;
+    throw new Error(blocker);
+  }
+}
+
+/**
+ * Download the snapshot of `hfId` into the shared HF cache with progress in
+ * `active`: read the file sizes, check the free disk space, then fetch.
+ * `checkTotal` can refuse the download when it knows the total size.
+ * Returns the snapshot folder. The caller handles errors and cancel.
+ */
+export async function downloadHfSnapshot(
+  active: ActiveMlxDownload,
+  hfId: string,
+  checkTotal?: (totalBytes: number) => void,
+): Promise<string> {
+  active.phase = "downloading_model";
+  active.bytesDownloaded = 0;
+  active.bytesTotal = 0;
+  active.speedBps = 0;
+  active.lastUpdate = Date.now();
+  active.lastBytes = 0;
+
+  const repo = { type: "model", name: hfId } as const;
+
+  try {
+    let total = 0;
+    for await (const entry of listFiles({ repo, recursive: true })) {
+      if (entry.type === "file") total += entry.size ?? 0;
+    }
+    active.bytesTotal = total;
+  } catch {
+    active.bytesTotal = 0;
+  }
+
+  checkTotal?.(active.bytesTotal);
+
+  // Fail fast if the model won't fit before streaming gigabytes from HF.
+  if (active.bytesTotal > 0) {
+    await assertEnoughDiskSpace(
+      hfCacheRoot(),
+      active.bytesTotal + DOWNLOAD_FREE_BUFFER_BYTES,
+    );
+  }
+
+  return snapshotDownload({
+    repo,
+    cacheDir: hfCacheRoot(),
+    fetch: progressFetch(active, active.controller.signal),
+  });
 }
 
 /**
@@ -228,41 +329,10 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
     activeDownloads.delete(modelId);
   }
 
-  const now = Date.now();
-  const active: ActiveMlxDownload = {
-    controller: new AbortController(),
-    phase: "building_binary",
-    bytesDownloaded: 0,
-    bytesTotal: 0,
-    speedBps: 0,
-    lastUpdate: now,
-    lastBytes: 0,
-  };
+  const active = newActiveMlxDownload();
   activeDownloads.set(modelId, active);
 
-  await updateManagedMlxRuntimeIfNeeded().catch((err) => {
-    console.warn(
-      "[mlx-asr] Failed to refresh managed runtime before model download:",
-      err instanceof Error ? err.message : String(err),
-    );
-  });
-
-  let blocker = describeMlxSetupBlocker();
-  if (blocker) {
-    try {
-      await ensureMlxRuntimeDownloaded();
-      resetPythonProbe();
-    } catch (err) {
-      active.error = describeDownloadError(err);
-      throw err;
-    }
-
-    blocker = describeMlxSetupBlocker();
-    if (blocker) {
-      active.error = blocker;
-      throw new Error(blocker);
-    }
-  }
+  await ensureMlxRuntimeForDownload(active);
 
   // Cached weights still need the runtime above, but no weight download.
   if (isMlxModelDownloaded(model)) {
@@ -270,46 +340,19 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
     return;
   }
 
-  active.phase = "downloading_model";
-  active.bytesDownloaded = 0;
-  active.bytesTotal = 0;
-  active.speedBps = 0;
-  active.lastUpdate = Date.now();
-  active.lastBytes = 0;
-
-  const repo = { type: "model", name: model.hfId } as const;
-
-  try {
-    let total = 0;
-    for await (const entry of listFiles({ repo, recursive: true })) {
-      if (entry.type === "file") total += entry.size ?? 0;
-    }
-    active.bytesTotal = total;
-  } catch {
-    active.bytesTotal = 0;
-  }
-
   try {
     // The add step checked the size once. The repo can grow before a retry.
-    if (model.custom && active.bytesTotal > MAX_MODEL_BYTES) {
-      throw new Error(
-        "This model is now larger than 8 GiB. It was not downloaded.",
-      );
-    }
-
-    // Fail fast if the model won't fit before streaming gigabytes from HF.
-    if (active.bytesTotal > 0) {
-      await assertEnoughDiskSpace(
-        hfCacheRoot(),
-        active.bytesTotal + DOWNLOAD_FREE_BUFFER_BYTES,
-      );
-    }
-
-    const snapshotDir = await snapshotDownload({
-      repo,
-      cacheDir: hfCacheRoot(),
-      fetch: progressFetch(active, active.controller.signal),
-    });
+    const snapshotDir = await downloadHfSnapshot(
+      active,
+      model.hfId,
+      (totalBytes) => {
+        if (model.custom && totalBytes > MAX_MODEL_BYTES) {
+          throw new Error(
+            "This model is now larger than 8 GiB. It was not downloaded.",
+          );
+        }
+      },
+    );
     if (model.custom) {
       // An old mlx-whisper repo has no processor files. Add them before the
       // scan and the record, so both see them (spec section 14).

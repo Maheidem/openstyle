@@ -171,8 +171,9 @@ export function llmLaneKey(input: string | null | undefined): string {
 }
 
 /**
- * Lane key and concurrency for a provider id and a model id. A local provider
- * (an own server) resolves through the server row that the model id names.
+ * Lane key and concurrency for a provider id and a model id. An own server
+ * resolves through the server row that the model id names. The built-in
+ * local MLX LLM gets the lane `lane:local-mlx-llm` with limit 1.
  * The key is the server root and never a setting name. Known cloud providers
  * use {@link CLOUD_HOSTS}. Any other provider gets its own lane. The limit
  * comes from the provider `local` flag and not from the host name. A local
@@ -184,9 +185,11 @@ export async function llmLaneKeyForProvider(
 ): Promise<{ key: string; limit: number }> {
   let local = false;
   try {
-    const { isLocalProvider } = await import("./registry.js");
+    const { isLocalProvider, isOwnServerProvider } = await import(
+      "./registry.js"
+    );
     local = isLocalProvider(providerId);
-    if (local) {
+    if (isOwnServerProvider(providerId)) {
       const { getOwnServer } = await import("../own-servers.js");
       const target = parseServerModelId(modelId);
       const server = target ? getOwnServer(target.serverId) : null;

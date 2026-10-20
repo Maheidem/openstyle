@@ -7,6 +7,7 @@ import {
   purgeExpiredHistory,
 } from "../lib/history-store.js";
 import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
+import { applyMlxLlmRetentionPolicy } from "../lib/mlx-llm/server.js";
 import {
   CA_CERT_PATH_SETTING,
   configureNetwork,
@@ -56,6 +57,7 @@ const REDACTED_VALUE = "••••••••";
 /** Run after a successful PUT of the key. */
 const SETTING_SIDE_EFFECTS: ReadonlyMap<string, () => void> = new Map([
   [SETTINGS_KEYS.mlxAsrKeepAliveMinutes, applyMlxAsrRetentionPolicy],
+  [SETTINGS_KEYS.mlxLlmKeepAliveMinutes, applyMlxLlmRetentionPolicy],
   [SETTINGS_KEYS.whisperKeepAliveMinutes, applyWhisperRetentionPolicy],
   [HISTORY_RETENTION_SETTING_KEY, purgeExpiredHistory],
 ]);
