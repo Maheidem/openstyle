@@ -89,13 +89,14 @@ export const CORRECT_CHUNK_STEP_SCHEMA: StepSchema<CorrectChunk> = {
  * The `correctChunk` schema of one call: `corrections[].id` is an enum of the
  * ids of the segments that the call shows. Version 2 is the enum shape.
  * Version 3 adds the full-segment description on `text` (FULL_SEGMENT_RULE).
+ * Version 4 adds the "list only the segments that you change" sentence to it.
  */
 export function correctChunkStepSchema(
   ids: readonly string[],
 ): StepSchema<CorrectChunk> {
   return {
     name: CORRECT_CHUNK_STEP_SCHEMA.name,
-    version: 3,
+    version: 4,
     zod: z.object({
       corrections: z.array(
         z.object({
