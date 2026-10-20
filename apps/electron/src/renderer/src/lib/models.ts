@@ -20,6 +20,17 @@ export type MlxModelDef = ApiRes<
   ApiClient["api"]["mlx-asr"]["status"]["$get"]
 >["modelDefinitions"][number];
 
+/** GET /api/mlx-llm/status: the built-in local LLM (specs/local-mlx-llm.md 3.5). */
+export type MlxLlmStatus = ApiRes<
+  ApiClient["api"]["mlx-llm"]["status"]["$get"]
+>;
+
+/** The provider id of the built-in local LLM. */
+export const MLX_LLM_PROVIDER_ID = "local-mlx-llm";
+
+/** The engine of a local model row: whisper.cpp, MLX speech or the MLX LLM. */
+export type LocalEngine = "whisper" | "mlx" | "mlx-llm";
+
 export interface WhisperModelDownloadState {
   model: string;
   fileName?: string;
@@ -119,6 +130,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   vercel: "Vercel AI Gateway",
   "local-whisper": "Local Whisper",
   "local-mlx": "Local MLX",
+  "local-mlx-llm": "Local MLX",
 };
 
 /** Where to create an API key, linked from the key-entry views. */
@@ -378,6 +390,44 @@ export function buildVoiceItems(
   });
 
   return [...whisperLocal, ...mlxLocal, ...cloud];
+}
+
+/** One row of the built-in LLM list (specs/local-mlx-llm.md section 4). */
+export interface LocalLlmItem {
+  key: string;
+  defId: string;
+  name: string;
+  sizeBytes: number;
+  recommended: boolean;
+  selected: boolean;
+  status: WhisperModelDownloadState["status"];
+  state: WhisperModelDownloadState;
+}
+
+/**
+ * The built-in LLM rows. They are empty when the Mac cannot run MLX. A row is
+ * selected only when the default LLM is that model.
+ */
+export function buildLocalLlmItems(
+  status: MlxLlmStatus | null,
+  defaultLlm: { provider: string; model_id: string } | undefined,
+): LocalLlmItem[] {
+  if (!status?.platformSupported) return [];
+  return status.models.map((m) => {
+    const key = `${MLX_LLM_PROVIDER_ID}/${m.model}`;
+    return {
+      key,
+      defId: m.model,
+      name: m.displayName,
+      sizeBytes: m.sizeBytes,
+      recommended: m.recommended,
+      selected:
+        defaultLlm?.provider === MLX_LLM_PROVIDER_ID &&
+        defaultLlm.model_id === key,
+      status: m.status,
+      state: m,
+    };
+  });
 }
 
 export interface ConfiguredModel {

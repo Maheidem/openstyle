@@ -28,14 +28,22 @@ const mocks = vi.hoisted(() => ({
   blocker: "runtime missing" as string | null,
   ensureRuntime: vi.fn(),
   snapshotDownload: vi.fn(),
+  downloadFileToCacheDir: vi.fn(),
   listSize: 2,
+  listEntries: null as null | Array<{ path: string; size: number }>,
 }));
 
 vi.mock("@huggingface/hub", () => ({
-  // The size sum for the progress bar. One small file.
+  // The size sum for the progress bar. One small file, or `listEntries`.
   listFiles: async function* () {
+    if (mocks.listEntries) {
+      for (const e of mocks.listEntries) yield { type: "file", ...e };
+      return;
+    }
     yield { type: "file", path: "config.json", size: mocks.listSize };
   },
+  modelInfo: async () => ({ sha: "sha-1" }),
+  downloadFileToCacheDir: mocks.downloadFileToCacheDir,
   snapshotDownload: mocks.snapshotDownload,
 }));
 
@@ -85,6 +93,7 @@ describe("downloadMlxModel with cached weights", () => {
     );
     mkdirSync(snapshot, { recursive: true });
     writeFileSync(join(snapshot, "config.json"), "{}");
+    writeFileSync(join(snapshot, "model.safetensors"), "w");
     mocks.blocker = "runtime missing";
     mocks.ensureRuntime.mockReset();
     mocks.ensureRuntime.mockImplementation(async () => {
@@ -244,7 +253,7 @@ describe("custom MLX models", () => {
       expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("not_downloaded");
     });
 
-    it("keeps the old any-file rule for a curated model", async () => {
+    it("accepts a curated snapshot with weights and no manifest", async () => {
       const snapshot = join(
         cacheDir,
         "models--mlx-community--parakeet-tdt-0.6b-v3",
@@ -253,6 +262,7 @@ describe("custom MLX models", () => {
       );
       mkdirSync(snapshot, { recursive: true });
       writeFileSync(join(snapshot, "config.json"), "{}");
+      writeFileSync(join(snapshot, "model.safetensors"), "w");
       const { getMlxModelStatus } = await import(
         "../src/lib/mlx-asr/models.js"
       );
@@ -734,5 +744,291 @@ describe("custom MLX models", () => {
         "sensevoice-small",
       );
     });
+  });
+});
+
+/**
+ * A curated repo the way a download leaves it: the expected file list, blobs
+ * and the snapshot symlinks. `stored` is the subset that reached the snapshot.
+ */
+function writeCuratedRepo(
+  cacheDir: string,
+  stored: Record<string, number>,
+  incomplete = false,
+): string {
+  const repoDir = join(cacheDir, "models--mlx-community--SenseVoiceSmall");
+  const snapshotDir = join(repoDir, "snapshots", "sha1");
+  mkdirSync(join(repoDir, "blobs"), { recursive: true });
+  mkdirSync(snapshotDir, { recursive: true });
+  writeFileSync(
+    join(repoDir, "openstyle-expected-files.json"),
+    JSON.stringify({
+      files: [
+        { path: "config.json", size: 2 },
+        { path: "model.safetensors", size: 8 },
+      ],
+    }),
+  );
+  for (const [path, size] of Object.entries(stored)) {
+    const blob = join(repoDir, "blobs", `etag-${path}`);
+    writeFileSync(blob, "");
+    truncateSync(blob, size);
+    symlinkSync(blob, join(snapshotDir, path));
+  }
+  if (incomplete) {
+    writeFileSync(join(repoDir, "blobs", "etag-weights.incomplete"), "par");
+  }
+  return snapshotDir;
+}
+
+describe("curated snapshot completeness and download retries", () => {
+  const SENSE = "sensevoice-small";
+  let cacheDir = "";
+  const originalCache = process.env.HUGGINGFACE_HUB_CACHE;
+
+  beforeEach(() => {
+    cacheDir = mkdtempSync(join(tmpdir(), "mlx-curated-"));
+    process.env.HUGGINGFACE_HUB_CACHE = cacheDir;
+    mocks.blocker = null;
+    mocks.listSize = 2;
+    mocks.snapshotDownload.mockReset();
+    // Fake only the retry waits. The disk check needs real I/O callbacks.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+
+  afterEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    rmSync(cacheDir, { recursive: true, force: true });
+    if (originalCache === undefined) delete process.env.HUGGINGFACE_HUB_CACHE;
+    else process.env.HUGGINGFACE_HUB_CACHE = originalCache;
+  });
+
+  it("is ready when every expected file has its size", async () => {
+    writeCuratedRepo(cacheDir, { "config.json": 2, "model.safetensors": 8 });
+    const { getMlxModelStatus } = await import("../src/lib/mlx-asr/models.js");
+
+    expect(getMlxModelStatus(SENSE)?.status).toBe("ready");
+  });
+
+  it.each([
+    ["the weights are missing", { "config.json": 2 }, false],
+    [
+      "the weights have the wrong size",
+      { "config.json": 2, "model.safetensors": 3 },
+      false,
+    ],
+    [
+      "an .incomplete blob is left",
+      { "config.json": 2, "model.safetensors": 8 },
+      true,
+    ],
+  ])("is not downloaded when %s", async (_name, stored, incomplete) => {
+    writeCuratedRepo(cacheDir, stored, incomplete);
+    const { getMlxModelStatus } = await import("../src/lib/mlx-asr/models.js");
+
+    expect(getMlxModelStatus(SENSE)?.status).toBe("not_downloaded");
+  });
+
+  it("is not downloaded when a snapshot with no manifest has no weights", async () => {
+    const snapshot = join(
+      cacheDir,
+      "models--mlx-community--SenseVoiceSmall",
+      "snapshots",
+      "abc",
+    );
+    mkdirSync(snapshot, { recursive: true });
+    writeFileSync(join(snapshot, "config.json"), "{}");
+    const { getMlxModelStatus } = await import("../src/lib/mlx-asr/models.js");
+
+    expect(getMlxModelStatus(SENSE)?.status).toBe("not_downloaded");
+  });
+
+  /** The undici error of a reset body stream. */
+  function terminated(): Error {
+    return Object.assign(new TypeError("terminated"), {
+      cause: Object.assign(new Error("other side closed"), {
+        code: "UND_ERR_SOCKET",
+      }),
+    });
+  }
+
+  /** Write the files that the mocked `listFiles` expects (config.json, 2 bytes). */
+  function writeDownloadedSnapshot(): string {
+    const repoDir = join(cacheDir, "models--mlx-community--SenseVoiceSmall");
+    const snapshotDir = join(repoDir, "snapshots", "sha1");
+    mkdirSync(snapshotDir, { recursive: true });
+    writeFileSync(join(snapshotDir, "config.json"), "{}");
+    return snapshotDir;
+  }
+
+  /** Run real I/O and fake retry waits until `tries` tries have started. */
+  async function passRetryWaits(tries: number): Promise<void> {
+    for (let i = 0; i < 500; i++) {
+      if (mocks.snapshotDownload.mock.calls.length >= tries) return;
+      await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(500);
+    }
+    throw new Error(`only ${mocks.snapshotDownload.mock.calls.length} tries`);
+  }
+
+  it("tries again after a dropped connection and reads as ready", async () => {
+    mocks.snapshotDownload
+      .mockRejectedValueOnce(terminated())
+      .mockRejectedValueOnce(terminated())
+      .mockImplementationOnce(async () => writeDownloadedSnapshot());
+    const { downloadMlxModel, getMlxModelStatus } = await import(
+      "../src/lib/mlx-asr/models.js"
+    );
+
+    const done = downloadMlxModel(SENSE);
+    await passRetryWaits(3);
+    await done;
+
+    expect(mocks.snapshotDownload).toHaveBeenCalledTimes(3);
+    expect(getMlxModelStatus(SENSE)?.status).toBe("ready");
+  });
+
+  it("reports an error, not ready, when every try drops", async () => {
+    mocks.snapshotDownload.mockImplementation(async () => {
+      // The config arrived. The weights stay a partial blob.
+      const dir = writeDownloadedSnapshot();
+      writeFileSync(join(dir, "..", "..", "blobs", "etag-w.incomplete"), "p");
+      throw terminated();
+    });
+    mkdirSync(
+      join(cacheDir, "models--mlx-community--SenseVoiceSmall", "blobs"),
+      {
+        recursive: true,
+      },
+    );
+    const { downloadMlxModel, getMlxModelStatus, clearMlxDownloadError } =
+      await import("../src/lib/mlx-asr/models.js");
+
+    const done = downloadMlxModel(SENSE).catch((err: Error) => err);
+    await passRetryWaits(4);
+
+    expect(await done).toBeInstanceOf(TypeError);
+    expect(mocks.snapshotDownload).toHaveBeenCalledTimes(4);
+    expect(getMlxModelStatus(SENSE)?.status).toBe("error");
+    // A new status read after the error is cleared still sees the partial blob.
+    clearMlxDownloadError(SENSE);
+    expect(getMlxModelStatus(SENSE)?.status).toBe("not_downloaded");
+  });
+
+  it("does not try again after an error that is not a dropped connection", async () => {
+    mocks.snapshotDownload.mockRejectedValue(new Error("404 Not Found"));
+    const { downloadMlxModel, getMlxModelStatus } = await import(
+      "../src/lib/mlx-asr/models.js"
+    );
+
+    await expect(downloadMlxModel(SENSE)).rejects.toThrow("404");
+
+    expect(mocks.snapshotDownload).toHaveBeenCalledTimes(1);
+    expect(getMlxModelStatus(SENSE)?.status).toBe("error");
+  });
+});
+
+describe("downloadHfSnapshot with allow patterns (LLM text-only files)", () => {
+  // The real file list of mlx-community/Qwen3.5-4B-OptiQ-4bit (HF API tree).
+  const OPTIQ_FILES = [
+    { path: ".gitattributes", size: 1570 },
+    { path: "README.md", size: 5101 },
+    { path: "chat_template.jinja", size: 7756 },
+    { path: "config.json", size: 55537 },
+    { path: "generation_config.json", size: 148 },
+    { path: "kv_config.json", size: 528 },
+    { path: "model.safetensors", size: 3269669552 },
+    { path: "model.safetensors.index.json", size: 99163 },
+    { path: "optiq/mtp.safetensors", size: 86701044 },
+    { path: "optiq_metadata.json", size: 26224 },
+    { path: "optiq_vision.safetensors", size: 667061501 },
+    { path: "preprocessor_config.json", size: 390 },
+    { path: "processor_config.json", size: 1300 },
+    { path: "tokenizer.json", size: 19989343 },
+    { path: "tokenizer_config.json", size: 1135 },
+    { path: "video_preprocessor_config.json", size: 385 },
+  ];
+  const KEPT = OPTIQ_FILES.filter(
+    (f) =>
+      ![
+        ".gitattributes",
+        "README.md",
+        "optiq/mtp.safetensors",
+        "optiq_vision.safetensors",
+      ].includes(f.path),
+  );
+  let cacheDir = "";
+  const originalCache = process.env.HUGGINGFACE_HUB_CACHE;
+
+  beforeEach(() => {
+    cacheDir = mkdtempSync(join(tmpdir(), "mlx-allow-"));
+    process.env.HUGGINGFACE_HUB_CACHE = cacheDir;
+    mocks.snapshotDownload.mockReset();
+    mocks.downloadFileToCacheDir.mockReset();
+    mocks.listEntries = OPTIQ_FILES;
+  });
+
+  afterEach(() => {
+    mocks.listEntries = null;
+    if (originalCache === undefined) delete process.env.HUGGINGFACE_HUB_CACHE;
+    else process.env.HUGGINGFACE_HUB_CACHE = originalCache;
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it("keeps the mlx-lm files and drops README and the optiq extras", async () => {
+    const { filterRepoFiles } = await import("../src/lib/mlx-asr/models.js");
+    const { MLX_LLM_ALLOW_PATTERNS } = await import(
+      "../src/lib/mlx-llm/constants.js"
+    );
+
+    const kept = filterRepoFiles(OPTIQ_FILES, MLX_LLM_ALLOW_PATTERNS);
+
+    expect(kept).toEqual(KEPT);
+    expect(kept.reduce((sum, f) => sum + f.size, 0)).toBe(3_289_851_461);
+  });
+
+  it("fetches only the matching files and writes them into the manifest", async () => {
+    const { downloadHfSnapshot, isHfSnapshotPresent, newActiveMlxDownload } =
+      await import("../src/lib/mlx-asr/models.js");
+    const { MLX_LLM_ALLOW_PATTERNS } = await import(
+      "../src/lib/mlx-llm/constants.js"
+    );
+    const hfId = "mlx-community/Qwen3.5-4B-OptiQ-4bit";
+    const repoDir = join(
+      cacheDir,
+      "models--mlx-community--Qwen3.5-4B-OptiQ-4bit",
+    );
+    const active = newActiveMlxDownload();
+
+    const snapshot = await downloadHfSnapshot(active, hfId, {
+      allowPatterns: MLX_LLM_ALLOW_PATTERNS,
+    });
+
+    expect(mocks.snapshotDownload).not.toHaveBeenCalled();
+    expect(
+      mocks.downloadFileToCacheDir.mock.calls.map((c) => c[0].path),
+    ).toEqual(KEPT.map((f) => f.path));
+    expect(mocks.downloadFileToCacheDir.mock.calls[0][0].revision).toBe(
+      "sha-1",
+    );
+    expect(snapshot).toBe(join(repoDir, "snapshots", "sha-1"));
+    expect(readFileSync(join(repoDir, "refs", "main"), "utf8")).toBe("sha-1");
+    expect(active.bytesTotal).toBe(3_289_851_461);
+    const manifest = JSON.parse(
+      readFileSync(join(repoDir, "openstyle-expected-files.json"), "utf8"),
+    );
+    expect(manifest.files).toEqual(KEPT);
+
+    // The completeness check uses the filtered list: the snapshot is ready
+    // with no optiq file, and not ready with one kept file missing.
+    mkdirSync(snapshot, { recursive: true });
+    for (const f of KEPT.slice(1)) {
+      writeFileSync(join(snapshot, f.path), "");
+      truncateSync(join(snapshot, f.path), f.size);
+    }
+    expect(isHfSnapshotPresent(hfId)).toBe(false);
+    writeFileSync(join(snapshot, KEPT[0].path), "");
+    truncateSync(join(snapshot, KEPT[0].path), KEPT[0].size);
+    expect(isHfSnapshotPresent(hfId)).toBe(true);
   });
 });

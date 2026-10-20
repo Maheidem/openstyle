@@ -144,6 +144,18 @@ describe("correctChunk: answer checks (4.2.3)", () => {
     expect(enhanced(a)).toBe(fx(f, a));
   });
 
+  it("an id in brackets is applied; the id enum of the call is the chunk ids", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 1 });
+    const id = f.segments[1]?.id as string;
+    const r = await run(f, [corr([`[${id}]`, fx(f, id)])]);
+    expect(units(r)[0]?.corrections.map((x) => x.id)).toEqual([id]);
+    expect(enhanced(id)).toBe(fx(f, id));
+    const format = JSON.stringify(r.requests[0]?.responseFormat);
+    expect(format).toContain(
+      `"id":{"enum":${JSON.stringify(f.segmentIdsByChunk[0])}`,
+    );
+  });
+
   it("an echoed Speaker prefix is removed", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 1 });
     const id = f.segments[0]?.id as string;
@@ -357,6 +369,48 @@ describe("checkCorrections word guard", () => {
     };
   };
 
+  it("duplicate_id: a dropped first entry does not block a later fix of the same id", () => {
+    const r = checkCorrections(
+      [
+        { id: "s1", text: "we ship it on friday" },
+        { id: "s1", text: "We ship it on Friday." },
+      ],
+      [seg("we ship it on friday")],
+      7,
+    );
+    expect(r.corrections.map((c) => [c.text, c.seq])).toEqual([
+      ["We ship it on Friday.", 1],
+    ]);
+    expect(r.dropped.map((d) => [d.reason, d.seq])).toEqual([["unchanged", 0]]);
+  });
+
+  it("duplicate_id: of two good entries for one id, the first is applied", () => {
+    const r = checkCorrections(
+      [
+        { id: "s1", text: "We ship it on Friday." },
+        { id: "s1", text: "We ship it on friday." },
+      ],
+      [seg("we ship it on friday")],
+      7,
+    );
+    expect(r.corrections.map((c) => [c.text, c.seq])).toEqual([
+      ["We ship it on Friday.", 0],
+    ]);
+    expect(r.dropped.map((d) => [d.reason, d.seq])).toEqual([
+      ["duplicate_id", 1],
+    ]);
+  });
+
+  it.each([
+    ["the the cat", "the cat", []],
+    ["the, the cat", "the cat", []],
+    ["I- I think", "I think", []],
+    ["um I think", "I think", ["deletes_words"]],
+    ["you know you know it", "you know it", ["deletes_words"]],
+  ])("deletes_words policy: %j to %j drops %j", (oldText, newText, reasons) => {
+    expect(check(oldText, newText).reasons).toEqual(reasons);
+  });
+
   it("keeps a case or punctuation change", () => {
     expect(check("we ship it on friday", "We ship it on Friday.")).toEqual({
       kept: ["We ship it on Friday."],
@@ -477,8 +531,58 @@ describe("checkCorrections word guard", () => {
     expect(r.kept).toEqual(["it know Datadog well"]);
   });
 
+  it.each([
+    [
+      "we moved the data to Tableau today",
+      "we moved the data to tableau today",
+    ],
+    ["so we use RAG for search", "so we use rag for search"],
+  ])("drops %s to %s as lowercases_name", (from, to) => {
+    expect(check(from, to)).toEqual({
+      kept: [],
+      reasons: ["lowercases_name"],
+    });
+  });
+
+  it("keeps a lowercased first word of a sentence", () => {
+    expect(
+      check("So we ship it. So it works", "so we ship it. so it works"),
+    ).toEqual({
+      kept: ["so we ship it. so it works"],
+      reasons: [],
+    });
+  });
+
+  it("keeps a fix that adds a capital letter to a name", () => {
+    expect(check("we use datedog here", "we use Datadog here")).toEqual({
+      kept: ["we use Datadog here"],
+      reasons: [],
+    });
+  });
+
+  it("keeps a word fix next to a name", () => {
+    expect(
+      check("we moved the dada to Tableau", "we moved the data to Tableau"),
+    ).toEqual({ kept: ["we moved the data to Tableau"], reasons: [] });
+  });
+
   it("does not treat it, its and itself as one word", () => {
     expect(check("we fix it now", "we fix its now").reasons).toEqual([]);
+  });
+
+  it("strips surrounding brackets from an id before the unknown_id check", () => {
+    const r = checkCorrections(
+      [
+        { id: "[s1]", text: "the thirsty fix" },
+        { id: "[s9]", text: "x" },
+      ],
+      [seg("the thirsty")],
+      7,
+    );
+    expect(r.corrections.map((c) => c.id)).toEqual(["s1"]);
+    expect(r.dropped).toEqual([
+      { id: "s9", reason: "unknown_id", seq: 1, callId: 7 },
+    ]);
   });
 
   it("records the call id and seq of a guard drop", () => {
@@ -489,6 +593,90 @@ describe("checkCorrections word guard", () => {
     );
     expect(r.dropped).toEqual([
       { id: "s1", reason: "unchanged", seq: 0, callId: 7 },
+    ]);
+  });
+});
+
+// A small local model echoes a speaker label at the start of a correction.
+describe("checkCorrections speaker label", () => {
+  const check = (displayLabel: string, newText: string) => {
+    const r = checkCorrections(
+      [{ id: "s1", text: newText }],
+      [
+        {
+          id: "s1",
+          displayLabel,
+          text: "we ship it on friday",
+        } as PreparedSegment,
+      ],
+      7,
+    );
+    return {
+      kept: r.corrections.map((c) => c.text),
+      reasons: r.dropped.map((d) => d.reason),
+    };
+  };
+  const fixed = "We ship it on Friday.";
+
+  it.each([
+    ["Me", `Me: ${fixed}`],
+    ["Me", `me: ${fixed}`],
+    ["Them 7", `Them 7: ${fixed}`],
+    ["Them 7", `them 7 : ${fixed}`],
+    ["Them 8", `them 9: ${fixed}`],
+    ["Them", `Them: ${fixed}`],
+    ["Them 2", `them:${fixed}`],
+    ["Me", `  ME :  ${fixed}`],
+    ["Ana Silva", `Ana Silva: ${fixed}`],
+    ["Ana Silva", `ana  silva: ${fixed}`],
+  ])("label %s: %s is stripped", (label, text) => {
+    expect(check(label, text)).toEqual({ kept: [fixed], reasons: [] });
+  });
+
+  it.each([
+    ["Me", "me:"],
+    ["Them 7", "them 7:"],
+    ["Them 7", " them: "],
+    ["Ana Silva", "Ana Silva:"],
+  ])("label %s: a label only (%s) is dropped as empty_text", (label, text) => {
+    expect(check(label, text)).toEqual({ kept: [], reasons: ["empty_text"] });
+  });
+
+  it("strips one label only", () => {
+    const r = checkCorrections(
+      [{ id: "s1", text: "Me: Me: we ship it on Friday." }],
+      [
+        {
+          id: "s1",
+          displayLabel: "Me",
+          text: "Me: we ship it on friday",
+        } as PreparedSegment,
+      ],
+      7,
+    );
+    expect(r.corrections.map((c) => c.text)).toEqual([
+      "Me: we ship it on Friday.",
+    ]);
+  });
+
+  it("does not touch a label word inside the text or a word that starts with it", () => {
+    const r = checkCorrections(
+      [
+        { id: "s1", text: "Tell me: we ship it on Friday." },
+        { id: "s2", text: "Meeting: we ship it on Friday." },
+        { id: "s3", text: "Theme: we ship it on Friday." },
+      ],
+      [
+        { id: "s1", displayLabel: "Me", text: "tell me: we ship it on friday" },
+        { id: "s2", displayLabel: "Me", text: "meeting: we ship it on friday" },
+        { id: "s3", displayLabel: "Them", text: "theme: we ship it on friday" },
+      ] as PreparedSegment[],
+      7,
+    );
+    expect(r.corrections.map((c) => c.text)).toEqual([
+      "Tell me: we ship it on Friday.",
+      "Meeting: we ship it on Friday.",
+      "Theme: we ship it on Friday.",
     ]);
   });
 });

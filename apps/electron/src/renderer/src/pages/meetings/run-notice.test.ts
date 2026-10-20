@@ -7,7 +7,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
   chunkNumber,
-  enhanceNoteCount,
+  enhanceNoteOf,
   formatChunkList,
   isSummarizeCancelled,
   llmErrorKey,
@@ -57,6 +57,7 @@ function run(over: Partial<LlmRunInfo> = {}): LlmRunInfo {
     llmStepCount: 0,
     failedStepCount: 0,
     correctedCount: null,
+    droppedCount: null,
     suggestionCount: null,
     lostRecords: 0,
     inputTokens: 0,
@@ -313,7 +314,7 @@ describe("runNotice", () => {
   });
 });
 
-describe("enhanceNoteCount", () => {
+describe("enhanceNoteOf", () => {
   const done = run({
     status: "succeeded",
     finishedAt: 500,
@@ -321,38 +322,63 @@ describe("enhanceNoteCount", () => {
   });
 
   it("gives the corrected count of a run that ended after the page opened", () => {
-    expect(enhanceNoteCount(done, false, 400)).toBe(3);
+    expect(enhanceNoteOf(done, false, 400)).toEqual({
+      key: "enhanceResult",
+      n: 3,
+    });
     expect(
-      enhanceNoteCount(run({ ...done, status: "partial" }), false, 400),
-    ).toBe(3);
+      enhanceNoteOf(run({ ...done, status: "partial" }), false, 400),
+    ).toEqual({ key: "enhanceResult", n: 3 });
   });
 
-  it("gives 0 for a run that corrected nothing", () => {
+  it("says no segment needed correction only when the model suggested nothing", () => {
+    const none = { key: "enhanceNoneCorrected", n: 0 };
     expect(
-      enhanceNoteCount(run({ ...done, correctedCount: 0 }), false, 400),
-    ).toBe(0);
+      enhanceNoteOf(run({ ...done, correctedCount: 0 }), false, 400),
+    ).toEqual(none);
+    expect(
+      enhanceNoteOf(
+        run({ ...done, correctedCount: 0, droppedCount: 0 }),
+        false,
+        400,
+      ),
+    ).toEqual(none);
+  });
+
+  it("says the checks dropped every suggestion when nothing applied but entries came back", () => {
+    expect(
+      enhanceNoteOf(
+        run({ ...done, correctedCount: 0, droppedCount: 5 }),
+        false,
+        400,
+      ),
+    ).toEqual({ key: "enhanceAllDropped", n: 5 });
+    // An applied correction wins over dropped ones.
+    expect(
+      enhanceNoteOf(run({ ...done, droppedCount: 5 }), false, 400),
+    ).toEqual({ key: "enhanceResult", n: 3 });
   });
 
   it("gives null for a run that ended before the page opened", () => {
-    expect(enhanceNoteCount(done, false, 500)).toBeNull();
-    expect(enhanceNoteCount(done, false, 900)).toBeNull();
+    expect(enhanceNoteOf(done, false, 500)).toBeNull();
+    expect(enhanceNoteOf(done, false, 900)).toBeNull();
   });
 
   it("gives null for a failed run, a Summarize run, a busy slot or no count", () => {
     expect(
-      enhanceNoteCount(run({ ...done, status: "failed" }), false, 400),
+      enhanceNoteOf(run({ ...done, status: "failed" }), false, 400),
     ).toBeNull();
     expect(
-      enhanceNoteCount(run({ ...done, kind: "summarize" }), false, 400),
+      enhanceNoteOf(run({ ...done, kind: "summarize" }), false, 400),
     ).toBeNull();
-    expect(enhanceNoteCount(done, true, 400)).toBeNull();
+    expect(enhanceNoteOf(done, true, 400)).toBeNull();
     expect(
-      enhanceNoteCount(run({ ...done, correctedCount: null }), false, 400),
+      enhanceNoteOf(run({ ...done, correctedCount: null }), false, 400),
     ).toBeNull();
     expect(
-      enhanceNoteCount(run({ ...done, finishedAt: null }), false, 400),
+      enhanceNoteOf(run({ ...done, finishedAt: null }), false, 400),
     ).toBeNull();
-    expect(enhanceNoteCount(undefined, false, 400)).toBeNull();
+    expect(enhanceNoteOf(undefined, false, 400)).toBeNull();
   });
 });
 

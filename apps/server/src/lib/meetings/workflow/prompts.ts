@@ -15,6 +15,14 @@ function languageLine(language: string | null): string {
     : "The transcript's spoken language was not pinned; keep each segment's original language when correcting it.";
 }
 
+/**
+ * The contract of `corrections[].text`, shared by the prompt and the schema
+ * description: small local models returned only the changed words (WP7, PR
+ * #228), and the 4.2.3 checks then dropped every entry.
+ */
+export const FULL_SEGMENT_RULE =
+  '"text" is the COMPLETE corrected segment: every word of the segment, with only the errors fixed. Never return only the changed words.';
+
 // ---------------------------------------------------------------------------
 // correctChunk
 // ---------------------------------------------------------------------------
@@ -30,7 +38,7 @@ export function buildCorrectSystemPrompt(input: CorrectPromptInput): string {
     input.vocabTerms.length > 0
       ? `\n\nReference vocabulary (correct spellings of names and terms this speaker uses). Use it ONLY to fix a word that is clearly a mis-transcription of one of them. Never add a term that is not really being referred to:\n${input.vocabTerms.join(", ")}`
       : "";
-  return `You clean up a speech-to-text meeting transcript. "Me" is the user of this app. Another speaker is marked "Them 2", "Them 3" and so on, or by a confirmed name. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine(input.language)}${vocabBlock}
+  return `You clean up a speech-to-text meeting transcript. "Me" is the user of this app. Another speaker is marked "Them 1", "Them 2" and so on, or by a confirmed name. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine(input.language)}${vocabBlock}
 
 Rules:
 - Include a segment ONLY if you change its text. Leave out every segment you would keep as it is. Do not echo unchanged segments.
@@ -40,7 +48,8 @@ Rules:
 - You may also fix punctuation and capitalization (full stops, commas, question marks, capital letters). You may remove a word that the speaker repeated exactly, one after the other ("the the" becomes "the", "I I" becomes "I", "to to" becomes "to").
 - Do NOT paraphrase or summarize. Do NOT fix grammar, style or register. Do NOT remove or change fillers ("um", "uh", "ah", "like", "you know"). Do NOT remove false starts or any other word. Do NOT add or remove content. Do NOT add or remove a negation. Never delete a word the speaker said, except an exact repeat of the word right before or after it. Never copy text from another segment. Do NOT change the grammar of a word that is a real word and fits the sentence: keep its verb agreement, tense, and plural or singular form. Do NOT replace a real word with another real word, unless the context or the vocabulary clearly shows that the speaker said the other word.
 - Do NOT translate a segment into a different language than the rest of the transcript.
-- Return one entry for each segment you correct: its id and its corrected text. Write the text only, without the speaker label.`;
+- Return one entry for each segment you correct: its id and its corrected text. Write the text only, without the speaker label.
+- ${FULL_SEGMENT_RULE} Example. Input line: [seg-7] Them 1: we moved the cluster to cooper netties last week. Output entry: id "seg-7", text "we moved the cluster to Kubernetes last week." Wrong output: text "Kubernetes".`;
 }
 
 /** User prompt of one `correctChunk` call. `lines` are `[id] Speaker: text`. */

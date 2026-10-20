@@ -13,6 +13,7 @@ import {
 import { Progress } from "@renderer/components/ui/progress";
 import type {
   AvailableModel,
+  LocalEngine,
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
 import {
@@ -92,7 +93,7 @@ interface VoiceHandlers {
     name: string,
     engine?: "whisper" | "mlx",
   ) => void;
-  onRequestDeleteLocal: (defId: string, engine?: "whisper" | "mlx") => void;
+  onRequestDeleteLocal: (defId: string, engine?: LocalEngine) => void;
   onClose: () => void;
 }
 
@@ -101,17 +102,13 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers, t: TFunction): Row[] {
   const rows = m.voiceItems.map((it): Row => {
     if (it.kind === "local") {
       const status = it.status ?? "not_downloaded";
-      const sizeNote =
-        status !== "ready" && it.sizeBytes != null
-          ? ` · ${formatBytes(it.sizeBytes)}`
-          : "";
       const defId = it.defId;
       const engine = it.localEngine;
       const row: Row = {
         key: it.key,
         name: it.name,
         source: "local",
-        meta: `${it.note ?? t("models.onDevice")}${sizeNote}`,
+        meta: localMeta(t, status, it.sizeBytes, it.note),
         recommended: it.key === recommendedKey,
         custom: it.custom,
         selected: it.selected && status === "ready",
@@ -153,11 +150,46 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers, t: TFunction): Row[] {
   return rows;
 }
 
+/** The size shows until the model is on disk, as on the voice rows. */
+function localMeta(
+  t: TFunction,
+  status: Row["status"],
+  sizeBytes: number | undefined,
+  note?: string,
+): string {
+  const sizeNote =
+    status !== "ready" && sizeBytes != null
+      ? ` · ${formatBytes(sizeBytes)}`
+      : "";
+  return `${note ?? t("models.onDevice")}${sizeNote}`;
+}
+
 function buildLlmRows(
   m: UseModels,
-  h: { onPickCloud: (model: AvailableModel) => void; onClose: () => void },
+  h: {
+    onPickCloud: (model: AvailableModel) => void;
+    onRequestDeleteLocal: (defId: string, engine?: LocalEngine) => void;
+    onClose: () => void;
+  },
+  t: TFunction,
 ): Row[] {
-  const rows: Row[] = [];
+  // The built-in rows (specs/local-mlx-llm.md section 4) use the voice row.
+  const rows: Row[] = m.localLlmItems.map((it) => ({
+    key: it.key,
+    name: it.name,
+    source: "local",
+    meta: localMeta(t, it.status, it.sizeBytes),
+    recommended: it.recommended,
+    selected: it.selected && it.status === "ready",
+    status: it.status,
+    state: it.state,
+    deleting: m.deletingKeys.has(`mlx-llm:${it.defId}`),
+    onSelect: () => void m.selectLocalLlm(it.defId, it.name).then(h.onClose),
+    onDownload: () => m.downloadLocal(it.defId, "mlx-llm"),
+    onCancel: () => m.cancelLocal(it.defId, "mlx-llm"),
+    onDelete: () => h.onRequestDeleteLocal(it.defId, "mlx-llm"),
+    onRetry: () => void m.retryLocalMlxLlm(it.defId),
+  }));
 
   for (const [providerId, { providerName, models }] of m.llmModelsByProvider) {
     for (const model of models) {
@@ -266,7 +298,7 @@ export function ModelList({
     engine?: "whisper" | "mlx",
   ) => void;
   onPickServerModel: (serverId: string, modelId: string) => void;
-  onRequestDeleteLocal: (defId: string, engine?: "whisper" | "mlx") => void;
+  onRequestDeleteLocal: (defId: string, engine?: LocalEngine) => void;
   onRequestRemoveServer: (server: ServerView) => void;
 }): React.JSX.Element {
   const [search, setSearch] = useState("");
@@ -296,7 +328,7 @@ export function ModelList({
             },
             t,
           )
-        : buildLlmRows(m, { onPickCloud, onClose });
+        : buildLlmRows(m, { onPickCloud, onRequestDeleteLocal, onClose }, t);
 
   const q = search.toLowerCase();
   // Some rows wait behind "Show all models": the models of an own server that
@@ -306,7 +338,7 @@ export function ModelList({
   const isHidden = (r: Row): boolean =>
     group === "server"
       ? r.fits === false && !r.selected
-      : type === "llm" && r.curated !== true;
+      : type === "llm" && r.source === "cloud" && r.curated !== true;
   const filteredRows = rows.filter((r) => {
     if (group === "builtin" && r.source !== "local") return false;
     if (group === "cloud" && r.source !== "cloud") return false;
@@ -431,6 +463,7 @@ export function ModelList({
         ))}
         {visible.length === 0 ? (
           <ListEmptyState
+            role={type}
             group={group}
             hasServers={m.servers.servers.length > 0}
             hasHidden={hiddenCount > 0 || noFitServers.length > 0}
@@ -663,10 +696,12 @@ function DownloadProgress({
 }
 
 function ListEmptyState({
+  role,
   group,
   hasServers,
   hasHidden,
 }: {
+  role: ModelRole;
   group: PickerGroup;
   hasServers: boolean;
   /** Models wait behind "Show all models", or a server has none for the role. */
@@ -676,7 +711,11 @@ function ListEmptyState({
   if (group === "builtin") {
     return (
       <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
-        {t("models.list.noBuiltin")}
+        {t(
+          role === "voice"
+            ? "models.list.noBuiltin"
+            : "models.list.noBuiltinLlm",
+        )}
       </p>
     );
   }

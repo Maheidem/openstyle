@@ -1047,13 +1047,17 @@ describe("10.5.4: the wire", () => {
     return seen;
   }
 
-  it("two different meetings put the same JSON schemas on the wire; every request is strict", async () => {
+  it("two different meetings put the same JSON schemas on the wire, except the per-call enum; every request is strict", async () => {
     const a = await wireRun("m-stab-a", true);
     vi.restoreAllMocks();
     restoreFetch();
     resetWorkflowTables();
     seedTestModel();
     const b = await wireRun("m-stab-b", false);
+    // The id and label enums change with each call (owner decision
+    // 2026-10-20). The rest of the schema stays the same.
+    const withoutEnums = (format: unknown) =>
+      JSON.stringify(format).replace(/"enum":\[[^\]]*\]/g, '"enum":[]');
     const nodeOf = (r: (typeof a)[number]) =>
       systemOf(r).includes("diarized labels")
         ? "identify"
@@ -1064,9 +1068,37 @@ describe("10.5.4: the wire", () => {
       ...new Set(
         seen
           .filter((r) => nodeOf(r) === node)
-          .map((r) => JSON.stringify(r.body?.response_format)),
+          .map((r) => withoutEnums(r.body?.response_format)),
       ),
     ];
+    for (const r of [...a, ...b]) {
+      const text = JSON.stringify(r.body?.response_format);
+      const enums = [...text.matchAll(/"enum":\[([^\]]*)\]/g)].map(
+        (m) => JSON.parse(`[${m[1]}]`) as string[],
+      );
+      // id enum: exactly the ids of the lines in this request.
+      const shown = [...userOf(r).matchAll(/^\[([^\]]+)\] /gm)].map(
+        (m) => m[1],
+      );
+      const node = nodeOf(r);
+      if (node === "identify") {
+        // segmentId enum: the shown ids. label enum: the label numbers that
+        // the system prompt lists. The third enum is the fixed `kind`.
+        const listed = [...systemOf(r).matchAll(/Them (\d+)/g)].map(
+          (m) => m[1],
+        );
+        expect(enums).toHaveLength(3);
+        expect(enums[0]).toEqual(shown);
+        expect(enums[2]).toEqual(["name", "role"]);
+        expect(enums[1]?.every((l) => listed.includes(l))).toBe(true);
+        expect(enums[1]?.length).toBeGreaterThan(0);
+      } else if (node === "tags") {
+        // The tags schema is fixed: it has no per-call enum.
+        expect(enums).toEqual([]);
+      } else {
+        expect(enums).toEqual([shown]);
+      }
+    }
     for (const node of ["correct", "identify", "tags"]) {
       const sa = schemas(a, node);
       const sb = schemas(b, node);

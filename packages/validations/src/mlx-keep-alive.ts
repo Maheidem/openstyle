@@ -1,5 +1,7 @@
 export const MLX_KEEP_ALIVE_DEFAULT_MINUTES = 10;
 export const MLX_KEEP_ALIVE_MAX_MINUTES = 10;
+/** The local LLM worker unloads sooner: its model uses more memory. */
+export const MLX_LLM_KEEP_ALIVE_DEFAULT_MINUTES = 5;
 // Sentinel meaning "always on" (never unload the model). Stored as -1.
 export const MLX_KEEP_ALIVE_ALWAYS = -1;
 

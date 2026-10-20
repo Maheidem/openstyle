@@ -29,6 +29,7 @@ function emptySave(): SaveResult {
     sw3: "none",
     wroteAny: false,
     correctedCount: 0,
+    droppedCount: 0,
     suggestionCount: 0,
     failures: [],
     meetingGone: false,
@@ -160,6 +161,9 @@ export function makeSaveNode(deps: WorkflowDeps) {
         r.sw1 = mergeOutcome(r.sw1, "ok");
         r.wroteAny = true;
         r.correctedCount += applied;
+        r.droppedCount += unit.dropped.filter(
+          (d) => d.reason !== "unchanged",
+        ).length;
       } else {
         r.sw1 = "failed";
         r.failures.push(

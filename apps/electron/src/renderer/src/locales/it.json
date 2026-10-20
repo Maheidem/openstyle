@@ -677,6 +677,7 @@
     },
     "loading": "Caricamento dei modelli",
     "mlxKeepAlive": "Tempo di permanenza di MLX ASR",
+    "mlxLlmKeepAlive": "Tempo di permanenza di MLX LLM",
     "picker": {
       "backToSimple": "Torna alla vista semplice"
     },
@@ -707,6 +708,7 @@
       "preparingRuntime": "Preparazione dell'ambiente di esecuzione…",
       "verifying": "Verifica in corso…",
       "noBuiltin": "Nessun modello di trascrizione locale è disponibile su questo dispositivo.",
+      "noBuiltinLlm": "Nessun modello di IA locale è disponibile su questo dispositivo.",
       "noMatch": "Nessun modello corrisponde."
     },
     "mlx": {
@@ -717,6 +719,13 @@
       "descCold": "Scarica il modello dalla memoria dopo ogni trascrizione. Usa meno RAM, ma la dettatura successiva attende un ricaricamento completo.",
       "descOneMinute": "Mantiene il modello in memoria per circa 1 minuto dopo la fine della dettatura, così le dettature ravvicinate restano veloci.",
       "descMinutes": "Mantiene il modello caricato in memoria fino a {{minutes}} minuti dopo la dettatura. Uso ripetuto più veloce, più RAM finché è caldo."
+    },
+    "mlxLlm": {
+      "title": "Preriscaldamento del modello di IA",
+      "descAlways": "Tiene il modello di IA sempre in memoria, finché non chiudi Openstyle. È il più veloce nell'uso ripetuto, usa più RAM.",
+      "descCold": "Scarica il modello di IA dalla memoria dopo ogni richiesta. Usa meno RAM, ma la pulizia o il riepilogo successivo attende un ricaricamento completo.",
+      "descOneMinute": "Tiene il modello di IA in memoria per circa 1 minuto dopo ogni richiesta, così le richieste successive restano veloci.",
+      "descMinutes": "Tiene il modello di IA in memoria fino a {{minutes}} minuti dopo ogni richiesta. Più veloce nell'uso ripetuto, più RAM mentre è attivo."
     }
   },
   "shell": {
@@ -887,6 +896,7 @@
     "enhancing": "Miglioramento…",
     "enhanceResult": "{{n}} segmenti corretti.",
     "enhanceNoneCorrected": "Nessun segmento ha richiesto correzioni.",
+    "enhanceAllDropped": "Enhance ha suggerito {{n}} modifiche, ma nessuna ha superato i controlli di sicurezza.",
     "enhancePartial": "Passaggio parziale — {{failed}} blocchi su {{attempted}} non hanno potuto essere corretti e mantengono il testo originale.",
     "retryEnhance": "Riprova miglioramento",
     "llmRun": {

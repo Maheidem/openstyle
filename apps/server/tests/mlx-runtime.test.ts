@@ -111,7 +111,7 @@ function deriveBundledVersion(): string {
   );
   return createHash("sha256")
     .update(
-      "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;bundle=onedir",
+      "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;mlx-lm=0.32.2;llguidance=1.9.1;bundle=onedir",
     )
     .update("\0")
     .update(script)
@@ -634,6 +634,10 @@ describe("MLX worker build spec", () => {
     };
     // The spec string names the one-folder bundle, so the script must build one.
     expect(script).toMatch(/--onedir/);
+    // LLM mode loads mlx_lm model code and the llguidance native lib at run
+    // time, so PyInstaller must collect both (probe X2b).
+    expect(script).toMatch(/--collect-all mlx_lm/);
+    expect(script).toMatch(/--collect-all llguidance/);
 
     const spec = [
       `pyinstaller=${pin("PYINSTALLER_VERSION")}`,
@@ -642,6 +646,8 @@ describe("MLX worker build spec", () => {
       `mlx-metal=${pin("MLX_METAL_VERSION")}`,
       `huggingface_hub=${pin("HUGGINGFACE_HUB_VERSION")}`,
       `transformers${pin("TRANSFORMERS_SPEC")}`,
+      `mlx-lm=${pin("MLX_LM_VERSION")}`,
+      `llguidance=${pin("LLGUIDANCE_VERSION")}`,
       "bundle=onedir",
     ].join(";");
 

@@ -63,7 +63,7 @@ import type { MeetingFolder } from "./folders-model";
 import { type InspectorTarget, LlmInspectorPanel } from "./llm-inspector";
 import { isAdvancedMode } from "./llm-inspector-model";
 import {
-  enhanceNoteCount,
+  enhanceNoteOf,
   formatChunkList,
   isSummarizeCancelled,
   llmErrorKey,
@@ -498,11 +498,7 @@ export function MeetingDetailView({
     jobHoldsSlot,
     allRuns,
   );
-  const enhanceNote = enhanceNoteCount(
-    runOf("enhance"),
-    jobHoldsSlot,
-    noteFloor,
-  );
+  const enhanceNote = enhanceNoteOf(runOf("enhance"), jobHoldsSlot, noteFloor);
   const canTranscribe =
     !transcribing &&
     meeting.status !== "recording" &&
@@ -922,9 +918,7 @@ export function MeetingDetailView({
       {enhanceNote !== null && !actionError && (
         <InlineNotice tone="neutral" icon={WandSparkles}>
           <span data-testid="meetings-enhance-note">
-            {enhanceNote === 0
-              ? t("meetings.enhanceNoneCorrected")
-              : t("meetings.enhanceResult", { n: enhanceNote })}
+            {t(`meetings.${enhanceNote.key}`, { n: enhanceNote.n })}
           </span>
         </InlineNotice>
       )}

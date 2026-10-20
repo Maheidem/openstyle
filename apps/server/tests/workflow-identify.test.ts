@@ -4,14 +4,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
+import type { CallProfile } from "../src/lib/llm/model-profiles.js";
 import { __clearModeCacheForTests } from "../src/lib/llm/model-profiles.js";
-import { selectCandidates } from "../src/lib/meetings/workflow/nodes/identify-speakers.js";
+import {
+  appliesSizeLimits,
+  selectCandidates,
+} from "../src/lib/meetings/workflow/nodes/identify-speakers.js";
 import {
   IDENTIFY_ANCHOR_LINES,
   IDENTIFY_MAX_INPUT_TOKENS,
   type PreparedMeeting,
   type PreparedSegment,
 } from "../src/lib/meetings/workflow/types.js";
+import { MLX_LLM_PROVIDER_ID } from "../src/lib/mlx-llm/constants.js";
 import { okReply, reply, type ScriptStep } from "./helpers/fake-model.js";
 import type { MeetingFixture } from "./helpers/meeting-fixture.js";
 import {
@@ -193,6 +198,17 @@ describe("candidate lines (4.3.2)", () => {
   });
 });
 
+describe("schema size limits by provider", () => {
+  const profileOf = (provider: string) => ({ provider }) as CallProfile;
+
+  it("only the local MLX LLM (llguidance) gets the size limits", () => {
+    expect(appliesSizeLimits(profileOf(MLX_LLM_PROVIDER_ID))).toBe(true);
+    for (const p of ["server", "openai", "anthropic", "groq"]) {
+      expect(appliesSizeLimits(profileOf(p))).toBe(false);
+    }
+  });
+});
+
 describe("identifySpeakers in the graph", () => {
   it("a made-up name is proposed, kept, and written as a suggestion; no attendee name is in any request", async () => {
     const f = seedFixtureMeeting({
@@ -213,6 +229,11 @@ describe("identifySpeakers in the graph", () => {
       ),
     );
     expect(r.identifyRequests).toHaveLength(1);
+    // A `server` provider gets the portable schema: no size keyword.
+    const wire = JSON.stringify(r.identifyRequests[0]?.responseFormat);
+    expect(wire).toContain('"speakers"');
+    expect(wire).not.toContain("maxItems");
+    expect(wire).not.toContain("maxLength");
     expect(r.finalState.identify?.status).toBe("ok");
     expect(r.finalState.identify?.proposals[0]).toMatchObject({
       unitKey: "candidates",
@@ -241,6 +262,41 @@ describe("identifySpeakers in the graph", () => {
         /Jordan|Casey|Riley|example\.test/,
       );
     }
+  });
+
+  it("a label written as 'Them 3' and a segmentId in brackets are normalized; the suggestion is kept", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 2,
+      speakers: 3,
+      selfIntroduction: true,
+    });
+    const intro = f.segments.find((s) => s.text.includes("Morgan Ellis"));
+    const r = await run(f, () =>
+      speakers(
+        proposal(
+          `[${intro?.id as string}]`,
+          "I am Morgan Ellis",
+          `Them ${intro?.speakerLabel as string}`,
+          "Morgan Ellis",
+        ),
+      ),
+    );
+    expect(r.finalState.identify?.proposals[0]).toMatchObject({
+      segmentId: intro?.id,
+      label: intro?.speakerLabel,
+    });
+    expect(r.finalState.verify?.suggestions).toHaveLength(1);
+    // The label enum of the call is the open label numbers.
+    const format = JSON.stringify(r.identifyRequests[0]?.responseFormat);
+    expect(format).toContain(
+      `"label":{"enum":${JSON.stringify(
+        [
+          ...new Set(
+            f.segments.flatMap((x) => (x.speakerLabel ? [x.speakerLabel] : [])),
+          ),
+        ].sort(),
+      )}`,
+    );
   });
 
   it("a segmentId the call did not show is dropped as unknown_segment (a Me line is never shown)", async () => {
@@ -390,6 +446,16 @@ describe("identifySpeakers: the length route", () => {
     expect(id?.proposals.map((p) => p.seq)).toEqual([0, 1]);
     // The step row of the top key ends partial (4.0.7).
     expect(r.recorder.steps.get("candidates")?.status).toBe("partial");
+    // Each half sends a segmentId enum of its own shown ids only.
+    const halves = r.identifyRequests.slice(1);
+    expect(halves).toHaveLength(2);
+    for (const req of halves) {
+      const shown = [...req.user.matchAll(/^\[([^\]]+)\] /gm)].map((m) => m[1]);
+      expect(JSON.stringify(req.responseFormat)).toContain(
+        `"segmentId":{"enum":${JSON.stringify(shown)}`,
+      );
+    }
+    expect(JSON.stringify(halves[0]?.responseFormat)).not.toContain(last.id);
     // The cited line of half 1 is not in the shown set of half 0.
     const verdicts = r.finalState.verify?.verdicts ?? [];
     expect(verdicts.find((v) => v.segmentId === last.id)?.reason).toBe(

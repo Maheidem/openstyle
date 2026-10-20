@@ -147,6 +147,7 @@ describe("startRun: the chained Enhance run (GR24 a)", () => {
     expect(run.error_kind).toBeNull();
     expect(JSON.parse(run.result_json ?? "null")).toEqual({
       correctedCount: 3,
+      droppedCount: 0,
       suggestionCount: 0,
     });
     expect(runsOf(f.meeting.id)).toHaveLength(1);

@@ -56,7 +56,7 @@ import {
   rememberRejectedMode,
 } from "./model-profiles.js";
 import type { GatewayOverrides, LlmTaskContext } from "./registry.js";
-import { isLocalProvider } from "./registry.js";
+import { isLocalProvider, isOwnServerProvider } from "./registry.js";
 import { type ResolvedTaskCall, resolveTaskCall } from "./task-profiles.js";
 import { getTracing, telemetryFor } from "./tracing.js";
 
@@ -1189,7 +1189,7 @@ export async function probeEndpoint(
 ): Promise<boolean> {
   let url: string;
   let method: "GET" | "HEAD";
-  if (isLocalProvider(profile.provider)) {
+  if (isOwnServerProvider(profile.provider)) {
     const target = parseServerModelId(profile.modelId);
     const server = target ? getOwnServer(target.serverId) : null;
     if (!server) return true;

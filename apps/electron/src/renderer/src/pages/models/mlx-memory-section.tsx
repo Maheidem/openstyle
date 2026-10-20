@@ -15,17 +15,25 @@ import type { TFunction } from "i18next";
 import { Cpu } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-function mlxKeepAliveDescription(minutes: number, t: TFunction): string {
+/** Which MLX worker the dialog configures: speech (ASR) or the local LLM. */
+type WarmingKind = "asr" | "llm";
+
+function mlxKeepAliveDescription(
+  minutes: number,
+  kind: WarmingKind,
+  t: TFunction,
+): string {
+  const ns = kind === "llm" ? "models.mlxLlm" : "models.mlx";
   if (minutes === MLX_KEEP_ALIVE_ALWAYS) {
-    return t("models.mlx.descAlways");
+    return t(`${ns}.descAlways`);
   }
   if (minutes === 0) {
-    return t("models.mlx.descCold");
+    return t(`${ns}.descCold`);
   }
   if (minutes === 1) {
-    return t("models.mlx.descOneMinute");
+    return t(`${ns}.descOneMinute`);
   }
-  return t("models.mlx.descMinutes", { minutes });
+  return t(`${ns}.descMinutes`, { minutes });
 }
 
 // ---------------------------------------------------------------------------
@@ -33,11 +41,13 @@ function mlxKeepAliveDescription(minutes: number, t: TFunction): string {
 // ---------------------------------------------------------------------------
 
 export function MlxWarmingDialog({
+  kind = "asr",
   keepAliveMinutes,
   blockedReason,
   onChange,
   onClose,
 }: {
+  kind?: WarmingKind;
   keepAliveMinutes: number;
   blockedReason: string | null;
   onChange: (minutes: number) => void;
@@ -54,12 +64,14 @@ export function MlxWarmingDialog({
         <DialogHeader>
           <div className="flex min-w-0 items-center gap-2.5">
             <Cpu className="text-primary h-4 w-4 shrink-0" />
-            <DialogTitle>{t("models.mlx.title")}</DialogTitle>
+            <DialogTitle>
+              {t(kind === "llm" ? "models.mlxLlm.title" : "models.mlx.title")}
+            </DialogTitle>
           </div>
         </DialogHeader>
 
         <p className="text-muted-foreground text-[12.5px] leading-relaxed">
-          {mlxKeepAliveDescription(keepAliveMinutes, t)}
+          {mlxKeepAliveDescription(keepAliveMinutes, kind, t)}
         </p>
 
         <div>
@@ -73,7 +85,9 @@ export function MlxWarmingDialog({
             min={0}
             max={alwaysPos}
             step={1}
-            aria-label={t("models.mlxKeepAlive")}
+            aria-label={t(
+              kind === "llm" ? "models.mlxLlmKeepAlive" : "models.mlxKeepAlive",
+            )}
           />
           <div className="text-muted-foreground mt-2 flex justify-between text-[11px]">
             <span>{t("models.mlx.coldStart")}</span>

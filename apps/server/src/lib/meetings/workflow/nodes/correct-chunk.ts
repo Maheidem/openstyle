@@ -7,7 +7,7 @@ import {
   buildCorrectSystemPrompt,
   buildCorrectUserPrompt,
 } from "../prompts.js";
-import { CORRECT_CHUNK_STEP_SCHEMA } from "../schemas.js";
+import { correctChunkStepSchema, normalizeId } from "../schemas.js";
 import {
   CORRECT_ANSWER_FACTOR,
   CORRECT_ANSWER_FIXED,
@@ -255,6 +255,42 @@ function inflectionOnly(oldWords: string[], newWords: string[]): boolean {
   return gaps > 0;
 }
 
+/**
+ * True when the correction lowercases a word that the original has with an
+ * uppercase letter inside a sentence (a name or an acronym), for example
+ * "Tableau" to "tableau" or "RAG" to "rag". The first word of a sentence is
+ * not checked. The rule applies only when the new text has the word in lower
+ * case and does not have the original form.
+ */
+function lowercasesName(oldText: string, newText: string): boolean {
+  const strip = (w: string) => w.replace(/[\p{P}\p{S}]/gu, "");
+  const newForms = new Set(newText.split(/\s+/).map(strip).filter(Boolean));
+  const oldTokens = oldText.split(/\s+/).filter(Boolean);
+  return oldTokens.some((token, k) => {
+    const word = strip(token);
+    if (!word || word === word.toLowerCase()) return false;
+    const sentenceStart = k === 0 || /[.!?…]["')\]]*$/u.test(oldTokens[k - 1]!);
+    if (sentenceStart) return false;
+    return !newForms.has(word) && newForms.has(word.toLowerCase());
+  });
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Removes one speaker label at the start of a correction: "Me:", "Them:",
+ * "Them 7:" or the display label of the segment (for example a confirmed
+ * name), in any case, with optional spaces. A label later in the text is
+ * not touched. Returns the trimmed text.
+ */
+export function stripSpeakerLabel(text: string, displayLabel: string): string {
+  const own = displayLabel.trim();
+  const labels = ["me", "them(?:\\s*\\d+)?"];
+  if (own) labels.push(escapeRegExp(own).replace(/\s+/g, "\\s+"));
+  const label = new RegExp(`^\\s*(?:${labels.join("|")})\\s*:`, "iu");
+  return text.replace(label, "").trim();
+}
+
 /** 4.2.3: the code checks after the parse. */
 export function checkCorrections(
   raw: { id: string; text: string }[],
@@ -265,7 +301,10 @@ export function checkCorrections(
   const seen = new Set<string>();
   const corrections: CorrectUnitResult["corrections"] = [];
   const dropped: CorrectUnitResult["dropped"] = [];
-  raw.forEach((entry, seq) => {
+  raw.forEach((rawEntry, seq) => {
+    // The per-call enum makes this a no-op for strict providers. Keep it for
+    // providers that only read the schema in the prompt.
+    const entry = { ...rawEntry, id: normalizeId(rawEntry.id) };
     const drop = (reason: CorrectionDropReason) => {
       dropped.push({ id: entry.id, reason, seq, callId });
     };
@@ -274,15 +313,15 @@ export function checkCorrections(
       drop("unknown_id");
       return;
     }
+    // The first entry that passes every check wins. An id is seen only when
+    // its entry is accepted, so a dropped echo does not block a later fix.
     if (seen.has(entry.id)) {
       drop("duplicate_id");
       return;
     }
-    seen.add(entry.id);
-    let text = entry.text.trim();
-    // A local model sometimes echoes the "Speaker: " prefix of the line format.
-    const prefix = `${original.displayLabel}: `;
-    if (text.startsWith(prefix)) text = text.slice(prefix.length).trim();
+    // A local model sometimes echoes the "Speaker: " prefix of the line format,
+    // or writes a speaker label only. The code removes one label.
+    const text = stripSpeakerLabel(entry.text, original.displayLabel);
     if (!text) {
       drop("empty_text");
       return;
@@ -314,6 +353,12 @@ export function checkCorrections(
       drop("inflection_only");
       return;
     }
+    // A name or an acronym must keep its capital letters.
+    if (lowercasesName(original.text, text)) {
+      drop("lowercases_name");
+      return;
+    }
+    seen.add(entry.id);
     corrections.push({ id: entry.id, text, seq, callId });
   });
   return { corrections, dropped };
@@ -380,7 +425,7 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
               runId: input.runId,
               unitKey: unit.key,
               chunkIndex: input.chunkIndex,
-              schema: CORRECT_CHUNK_STEP_SCHEMA,
+              schema: correctChunkStepSchema(unit.members.map((s) => s.id)),
               instructions: system,
               messages: [
                 {

@@ -203,20 +203,35 @@ export function runNotice(
   };
 }
 
+/** The i18n key under `meetings.` and the count of the Enhance note. */
+export interface EnhanceNote {
+  key: "enhanceResult" | "enhanceNoneCorrected" | "enhanceAllDropped";
+  n: number;
+}
+
 /**
- * The neutral success note of an Enhance run (8.9): the corrected count, for a
- * `succeeded` or `partial` run that ended after `endedAfter` (epoch ms, the
- * moment the page opened or the user last acted). Null when no note shows.
+ * The neutral success note of an Enhance run (8.9), for a `succeeded` or
+ * `partial` run that ended after `endedAfter` (epoch ms, the moment the page
+ * opened or the user last acted). Null when no note shows. When no correction
+ * was applied but the model suggested some that the checks dropped, the note
+ * says so: "No segments needed correction" would then be false.
  */
-export function enhanceNoteCount(
+export function enhanceNoteOf(
   run: LlmRunInfo | undefined,
   jobHoldsSlot: boolean,
   endedAfter: number,
-): number | null {
+): EnhanceNote | null {
   if (!run || jobHoldsSlot || run.kind !== "enhance") return null;
   if (run.status !== "succeeded" && run.status !== "partial") return null;
   if (run.finishedAt === null || run.finishedAt <= endedAfter) return null;
-  return run.correctedCount;
+  if (run.correctedCount === null) return null;
+  if (run.correctedCount > 0) {
+    return { key: "enhanceResult", n: run.correctedCount };
+  }
+  const dropped = run.droppedCount ?? 0;
+  return dropped > 0
+    ? { key: "enhanceAllDropped", n: dropped }
+    : { key: "enhanceNoneCorrected", n: 0 };
 }
 
 /**

@@ -12,6 +12,13 @@ import {
 } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
 import {
+  MLX_LLM_MODELS,
+  MLX_LLM_PROVIDER_ID,
+  MLX_LLM_PROVIDER_NAME,
+} from "../lib/mlx-llm/constants.js";
+import { getMlxLlmModelStatus } from "../lib/mlx-llm/models.js";
+import { reconcileRemovedMlxLlmModels } from "../lib/mlx-llm/reconcile.js";
+import {
   DEPRECATED_STATUS,
   fetchModelsFromRegistry,
   isCleanupSuitableModel,
@@ -235,6 +242,22 @@ const models = new Hono()
         }
       }
 
+      // The built-in local MLX LLM models. Only ready models are shown.
+      for (const m of MLX_LLM_MODELS) {
+        if (getMlxLlmModelStatus(m.id)?.status !== "ready") continue;
+        available.push({
+          provider_id: MLX_LLM_PROVIDER_ID,
+          provider_name: MLX_LLM_PROVIDER_NAME,
+          model_id: `${MLX_LLM_PROVIDER_ID}/${m.id}`,
+          model_name: m.displayName,
+          family: m.family,
+          type: "llm",
+          cost_input: 0,
+          cost_output: 0,
+          curated: true,
+        });
+      }
+
       return c.json(available);
     } catch (err) {
       return c.json(
@@ -245,6 +268,7 @@ const models = new Hono()
   })
   .get("/configured", (c) => {
     reconcileUnsupportedMlxVoiceDefault();
+    reconcileRemovedMlxLlmModels();
     const db = getDb();
     const rows = db
       .prepare(

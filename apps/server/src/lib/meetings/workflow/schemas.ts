@@ -1,11 +1,20 @@
 import { z } from "zod";
 import type { StepSchema } from "../../llm/gateway.js";
+import { FULL_SEGMENT_RULE } from "./prompts.js";
+import { NAME_MAX_CHARS, QUOTE_MAX_CHARS } from "./types.js";
 
 // The fixed answer schemas of the three LLM nodes (specs/meeting-enhance-agentic.md
 // 4.2.1, 4.3.1, 4.5.1). Strict-mode rules (4.0.3): every field is required and
 // `.nullable()` marks an absent value; no `.optional()`, no `.default()`, no
-// size limits, no enum of ids. Field order is generation order. Code checks sizes
-// after the parse. Change a schema, and bump WORKFLOW_GRAPH_VERSION (3.4).
+// size limits (one exception: `identifySpeakersStepSchema` with `sizeLimits`
+// for the local MLX LLM). Field order is generation order. Code checks sizes after the
+// parse. Change a schema, and bump WORKFLOW_GRAPH_VERSION (3.4).
+//
+// The ids and labels exception (owner decision 2026-10-20): small local models
+// do not copy an id exactly. So `correctChunk` and `identifySpeakers` send a
+// schema for each call, with an enum of the ids or labels that the call shows
+// (`correctChunkStepSchema`, `identifySpeakersStepSchema`). The zod side
+// normalizes the value; the node checks it after the parse, as before.
 
 export const CorrectChunkSchema = z.object({
   corrections: z.array(z.object({ id: z.string(), text: z.string() })),
@@ -25,6 +34,25 @@ export const IdentifySpeakersSchema = z.object({
 });
 export type IdentifySpeakers = z.infer<typeof IdentifySpeakersSchema>;
 
+/** Words that a model writes in place of a JSON null (any case, trimmed). */
+const NO_VALUE_WORDS = new Set(["", "null", "none", "n/a", "unknown"]);
+
+/**
+ * The value, or null when it is absent: null, empty, or a placeholder word
+ * such as "null" or "N/A". A small model can write the string "null" for an
+ * owner that the transcript does not name.
+ */
+export function valueOrNull(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  return NO_VALUE_WORDS.has(value.trim().toLowerCase()) ? null : value;
+}
+
+/**
+ * A nullable string. The parse turns a placeholder word into null. The JSON
+ * Schema stays `string | null`: a transform changes only the output side.
+ */
+const optionalText = () => z.string().nullable().transform(valueOrNull);
+
 export const MeetingSummarySchema = z.object({
   overview: z.string(),
   keyPoints: z.array(z.string()),
@@ -32,8 +60,8 @@ export const MeetingSummarySchema = z.object({
   actionItems: z.array(
     z.object({
       task: z.string(),
-      owner: z.string().nullable(), // null when the transcript names no owner
-      due: z.string().nullable(), // time as spoken, e.g. "next Friday". null when none
+      owner: optionalText(), // null when the transcript names no owner
+      due: optionalText(), // time as spoken, e.g. "next Friday". null when none
     }),
   ),
   openQuestions: z.array(z.string()),
@@ -45,17 +73,112 @@ export const MeetingTagsSchema = z.object({
 });
 export type MeetingTags = z.infer<typeof MeetingTagsSchema>;
 
+/** Remove spaces and one pair of surrounding brackets: "[s1]" to "s1". */
+export function normalizeId(value: string): string {
+  const trimmed = value.trim();
+  const inner = /^\[(.*)\]$/s.exec(trimmed);
+  return (inner ? inner[1]! : trimmed).trim();
+}
+
+/**
+ * Normalize a speaker label to its number: "Them 1", "them 1", "Speaker 1",
+ * "[1]" and " 1 " all become "1".
+ */
+export function normalizeLabel(value: string): string {
+  return normalizeId(value)
+    .replace(/^(?:them|speaker)\s*/i, "")
+    .trim();
+}
+
+/**
+ * A string with an enum of `values` in its JSON Schema. A strict provider can
+ * then only write one of the values. The zod side normalizes the value and
+ * accepts any string: the node checks each entry after the parse and drops a
+ * bad one alone (`unknown_id`, `unknown_segment`, `unknown_label`), so one bad
+ * entry does not fail the whole answer of a provider that only reads the
+ * schema in the prompt. The
+ * AI SDK converts the zod input side, and `.meta` adds the enum to that side.
+ */
+function enumOf(values: readonly string[], normalize: (v: string) => string) {
+  return z
+    .string()
+    .transform(normalize)
+    .meta({ enum: [...new Set(values)] });
+}
+
 /** The schemas as the gateway takes them: wire name, stored version, zod object. */
 export const CORRECT_CHUNK_STEP_SCHEMA: StepSchema<CorrectChunk> = {
   name: "correct_chunk",
   version: 1,
   zod: CorrectChunkSchema,
 };
+/**
+ * The `correctChunk` schema of one call: `corrections[].id` is an enum of the
+ * ids of the segments that the call shows. Version 2 is the enum shape.
+ * Version 3 adds the full-segment description on `text` (FULL_SEGMENT_RULE).
+ */
+export function correctChunkStepSchema(
+  ids: readonly string[],
+): StepSchema<CorrectChunk> {
+  return {
+    name: CORRECT_CHUNK_STEP_SCHEMA.name,
+    version: 3,
+    zod: z.object({
+      corrections: z.array(
+        z.object({
+          id: enumOf(ids, normalizeId),
+          text: z.string().describe(FULL_SEGMENT_RULE),
+        }),
+      ),
+    }),
+  };
+}
+
 export const IDENTIFY_SPEAKERS_STEP_SCHEMA: StepSchema<IdentifySpeakers> = {
   name: "identify_speakers",
   version: 1,
   zod: IdentifySpeakersSchema,
 };
+/**
+ * The `identifySpeakers` schema of one call: `segmentId` is an enum of the ids
+ * of the lines that the call shows, and `label` is an enum of the label
+ * numbers to identify. Version 2 is the label enum. Version 3 adds the
+ * `segmentId` enum. Version 4 adds `sizeLimits`.
+ *
+ * `sizeLimits`: only for a grammar engine that applies JSON Schema size
+ * keywords (the local MLX LLM, llguidance). The array gets `maxItems` = the
+ * number of labels, `quote` gets `maxLength` = QUOTE_MAX_CHARS and `name` gets
+ * `maxLength` = NAME_MAX_CHARS. Without them a small model writes one entry
+ * for each line and copies the full line, so it hits the output limit of
+ * 4.3.5 and returns nothing. Cloud providers reject these keywords (4.0.3
+ * rule 4), so the default schema has none. The zod side accepts any size:
+ * `verifyEvidence` checks the sizes after the parse, as before.
+ */
+export function identifySpeakersStepSchema(
+  ids: readonly string[],
+  labels: readonly string[],
+  opts: { sizeLimits?: boolean } = {},
+): StepSchema<IdentifySpeakers> {
+  const row = IdentifySpeakersSchema.shape.speakers.element;
+  const limits = opts.sizeLimits === true;
+  const sized = (max: number) =>
+    limits ? z.string().meta({ maxLength: max }) : z.string();
+  const item = row.extend({
+    segmentId: enumOf(ids, normalizeId),
+    quote: sized(QUOTE_MAX_CHARS),
+    label: enumOf(labels, normalizeLabel),
+    name: sized(NAME_MAX_CHARS),
+  });
+  const speakers = limits
+    ? z.array(item).meta({ maxItems: new Set(labels).size })
+    : z.array(item);
+  return {
+    name: IDENTIFY_SPEAKERS_STEP_SCHEMA.name,
+    version: 4,
+    zod: z.object({ speakers }),
+  };
+}
+
 export const MEETING_SUMMARY_STEP_SCHEMA: StepSchema<MeetingSummary> = {
   name: "meeting_summary",
   version: 1,

@@ -73,6 +73,7 @@ export const SETTINGS_KEYS = {
   meetingSummaryTimeoutSeconds: "meeting_summary_timeout_seconds",
   micDeviceId: "mic_device_id",
   mlxAsrKeepAliveMinutes: "mlx_asr_keep_alive_minutes",
+  mlxLlmKeepAliveMinutes: "mlx_llm_keep_alive_minutes",
   networkCaCertPath: "network_ca_cert_path",
   networkProxyUrl: "network_proxy_url",
   outputMode: "output_mode",

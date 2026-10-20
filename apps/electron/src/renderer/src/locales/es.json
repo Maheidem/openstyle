@@ -678,6 +678,7 @@
     },
     "loading": "Cargando modelos",
     "mlxKeepAlive": "Tiempo de permanencia de MLX ASR",
+    "mlxLlmKeepAlive": "Tiempo de permanencia de MLX LLM",
     "picker": {
       "backToSimple": "Volver a la vista simple"
     },
@@ -708,6 +709,7 @@
       "preparingRuntime": "Preparando el entorno de ejecución…",
       "verifying": "Verificando…",
       "noBuiltin": "No hay modelos de transcripción en el dispositivo en este equipo.",
+      "noBuiltinLlm": "No hay modelos de IA en el dispositivo en este equipo.",
       "noMatch": "Ningún modelo coincide."
     },
     "mlx": {
@@ -718,6 +720,13 @@
       "descCold": "Descarga el modelo de la memoria después de cada transcripción. Usa menos RAM, pero el siguiente dictado espera una recarga completa.",
       "descOneMinute": "Mantiene el modelo en memoria durante aproximadamente 1 minuto después de terminar de dictar, para que los dictados seguidos sigan siendo rápidos.",
       "descMinutes": "Mantiene el modelo cargado en memoria hasta {{minutes}} minutos después del dictado. Uso repetido más rápido, con más RAM mientras está caliente."
+    },
+    "mlxLlm": {
+      "title": "Precarga del modelo de IA",
+      "descAlways": "Mantiene el modelo de IA en memoria todo el tiempo, hasta que cierres Openstyle. Es lo más rápido al repetir, usa más RAM.",
+      "descCold": "Descarga el modelo de IA de la memoria después de cada solicitud. Usa menos RAM, pero la siguiente limpieza o resumen espera una recarga completa.",
+      "descOneMinute": "Mantiene el modelo de IA en memoria durante 1 minuto aproximadamente después de cada solicitud, para que las siguientes sean rápidas.",
+      "descMinutes": "Mantiene el modelo de IA en memoria hasta {{minutes}} minutos después de cada solicitud. Más rápido al repetir, más RAM mientras está activo."
     }
   },
   "shell": {
@@ -888,6 +897,7 @@
     "enhancing": "Mejorando…",
     "enhanceResult": "Se corrigieron {{n}} segmentos.",
     "enhanceNoneCorrected": "Ningún segmento necesitó corrección.",
+    "enhanceAllDropped": "Enhance sugirió {{n}} cambios, pero ninguno pasó las comprobaciones de seguridad.",
     "enhancePartial": "Proceso parcial — {{failed}} de {{attempted}} fragmentos no se pudieron corregir y conservan su texto original.",
     "retryEnhance": "Reintentar mejora",
     "llmRun": {

@@ -1,5 +1,6 @@
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
+import { MLX_LLM_PROVIDER_ID } from "../../../mlx-llm/constants.js";
 import { estimateTokens, formatEnhanceLine } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
 import {
@@ -7,8 +8,8 @@ import {
   buildIdentifyUserPrompt,
 } from "../prompts.js";
 import {
-  IDENTIFY_SPEAKERS_STEP_SCHEMA,
   type IdentifySpeakers,
+  identifySpeakersStepSchema,
 } from "../schemas.js";
 import type { WorkflowStateType } from "../state.js";
 import {
@@ -179,7 +180,22 @@ export function failedIdentifyResult(
   };
 }
 
-/** 4.3.5: the output limit of one unit. */
+/**
+ * True when the provider builds its grammar with llguidance, which applies
+ * `maxItems` and `maxLength` (specs/local-mlx-llm.md G2). Then the schema
+ * carries the size limits (`identifySpeakersStepSchema`, version 4).
+ */
+export function appliesSizeLimits(profile: CallProfile): boolean {
+  return profile.provider === MLX_LLM_PROVIDER_ID;
+}
+
+/**
+ * 4.3.5: the output limit of one unit. With the size limits, one entry is at
+ * most about 350 characters (a 46-character id, a 160-character quote, an
+ * 80-character name, keys). The 2026-10-20 Gemma 4 E2B runs wrote 2.4 to 3.0
+ * characters per token, so a full entry is 117 to 148 tokens. A typical name
+ * of 20 characters gives at most 123 tokens, inside IDENTIFY_PROPOSAL_TOKENS.
+ */
 function maxOutputFor(labelCount: number, profile: CallProfile): number {
   const answer = IDENTIFY_PROPOSAL_TOKENS * labelCount + IDENTIFY_FIXED_TOKENS;
   const reasoningShare = profile.reasoning.countsInMaxOutput
@@ -242,7 +258,11 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
               runId: state.runId,
               unitKey: unit.key,
               chunkIndex: null,
-              schema: IDENTIFY_SPEAKERS_STEP_SCHEMA,
+              schema: identifySpeakersStepSchema(
+                unit.members.map((s) => s.id),
+                labels,
+                { sizeLimits: appliesSizeLimits(unit.profile) },
+              ),
               instructions: system,
               messages: [
                 {

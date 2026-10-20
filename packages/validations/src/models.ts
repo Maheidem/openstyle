@@ -14,6 +14,12 @@ export const serverStartSchema = z.object({
   modelId: z.string().min(1).optional(),
 });
 
+// Body for POST /mlx-llm/server/start. model is a catalog id. When omitted the
+// route falls back to the default LLM if it is a local MLX LLM.
+export const mlxLlmServerStartSchema = z.object({
+  model: z.string().min(1).optional(),
+});
+
 // Body for POST /mlx-asr/custom-models and /mlx-asr/custom-models/validate.
 // The server checks the shape (URL or org/name). This schema only bounds it.
 export const addCustomMlxModelSchema = z.object({

@@ -207,6 +207,7 @@ describe("locale files", () => {
     // engine goes back to reading as a clean transcript in that language.
     "enhance-honesty": [
       "meetings.enhancePartial",
+      "meetings.enhanceAllDropped",
       "meetings.llmRun.enhance.failed",
       "meetings.llmRun.enhance.partial",
       "meetings.llmRun.enhance.interrupted",
@@ -533,6 +534,7 @@ describe("meetings.inspector keys", () => {
     "quote_too_long",
     "quote_not_in_segment",
     "empty_name",
+    "label_echo",
     "name_not_in_quote",
     "not_self_introduction",
     "conflict_lost",
@@ -546,6 +548,7 @@ describe("meetings.inspector keys", () => {
     "too_different",
     "meaning_flip",
     "inflection_only",
+    "lowercases_name",
   ];
   it.each(VERDICT_CODES)("has a verdict text for %s", (code) => {
     expect(en[`meetings.inspector.verdict.${code}`]).toBeTruthy();

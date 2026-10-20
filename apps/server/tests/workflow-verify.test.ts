@@ -206,6 +206,46 @@ describe("verifyEvidence: one test for each drop reason (4.4.2)", () => {
     ).toBe("empty_name");
   });
 
+  it.each([
+    ["role", "Them 2"],
+    ["role", " them2 "],
+    ["role", "Them"],
+    ["name", "Me"],
+    ["name", "SPEAKER 3"],
+    ["role", "Label 2"],
+    ["role", "2"],
+  ] as const)("6b label_echo: a %s %j", (kind, name) => {
+    const r = verify([
+      prop({ segmentId: "b", quote: "Let us start", label: "3", name, kind }),
+    ]);
+    expect(r.verdicts[0]).toMatchObject({
+      status: "dropped",
+      reason: "label_echo",
+      finalName: null,
+    });
+    expect(r.suggestions).toEqual([]);
+  });
+
+  it("6b keeps a real role and a name that holds a label word", () => {
+    const r = verify([
+      prop({
+        segmentId: "d",
+        quote: "the client contact",
+        label: "3",
+        name: "Client contact",
+        kind: "role",
+      }),
+      prop({
+        segmentId: "b",
+        quote: "Let us start",
+        label: "2",
+        name: "Them 2 lead",
+        kind: "role",
+      }),
+    ]);
+    expect(r.verdicts.map((v) => v.reason)).toEqual([null, null]);
+  });
+
   it("7 name_not_in_quote, at a letter boundary", () => {
     const r = verify([
       prop({ segmentId: "a", quote: "this is Ana", label: "2", name: "An" }),
@@ -250,6 +290,76 @@ describe("verifyEvidence: one test for each drop reason (4.4.2)", () => {
       finalName: "Milana Marjanovic",
     });
     expect(r.suggestions[0]?.name).toBe("Milana Marjanovic");
+  });
+
+  describe("7 a first-name match stores only supported surnames", () => {
+    const line = seg("x", "2", "Hi everyone, this is Mike.", 100);
+    const run = (over: Partial<PreparedMeeting>, quote = "this is Mike") =>
+      verifyEvidence(
+        prepared([line], over),
+        [prop({ segmentId: "x", quote, label: "2", name: "Mike Reilly" })],
+        [{ unitKey: "candidates", segmentIds: ["x"] }],
+      );
+
+    it("an invented surname is cut: the first name is stored", () => {
+      const r = run({});
+      expect(r.verdicts[0]).toMatchObject({
+        status: "kept",
+        proposedName: "Mike Reilly",
+        finalName: "Mike",
+      });
+      expect(r.verdicts[0]?.detail).toContain("first name only");
+      expect(r.suggestions[0]?.name).toBe("Mike");
+    });
+
+    it("a surname from the attendee list is kept", () => {
+      const r = run({ attendeeNames: ["Mike Reilly", "Ana Lima"] });
+      expect(r.verdicts[0]?.finalName).toBe("Mike Reilly");
+      expect(r.verdicts[0]?.detail).toBeNull();
+      expect(r.suggestions[0]?.name).toBe("Mike Reilly");
+    });
+
+    it("a full name in the quote is kept", () => {
+      const r = verifyEvidence(
+        prepared([seg("x", "2", "Hi everyone, this is Mike Reilly.", 100)]),
+        [
+          prop({
+            segmentId: "x",
+            quote: "this is Mike Reilly",
+            label: "2",
+            name: "Mike Reilly",
+          }),
+        ],
+        [{ unitKey: "candidates", segmentIds: ["x"] }],
+      );
+      expect(r.suggestions[0]?.name).toBe("Mike Reilly");
+    });
+
+    it("a surname in the user context or the title is kept", () => {
+      expect(
+        run({ context: "Call with Mike Reilly about the pilot." })
+          .suggestions[0]?.name,
+      ).toBe("Mike Reilly");
+      expect(run({ title: "Sync / Reilly" }).suggestions[0]?.name).toBe(
+        "Mike Reilly",
+      );
+    });
+
+    it("a surname in another transcript line is kept", () => {
+      const r = verifyEvidence(
+        prepared([line, seg("y", "3", "Reilly sent the deck.", 200)]),
+        [
+          prop({
+            segmentId: "x",
+            quote: "this is Mike",
+            label: "2",
+            name: "Mike Reilly",
+          }),
+        ],
+        [{ unitKey: "candidates", segmentIds: ["x"] }],
+      );
+      expect(r.suggestions[0]?.name).toBe("Mike Reilly");
+    });
   });
 
   it("7 passes one letter off: quote Harris, proposal Haris", () => {

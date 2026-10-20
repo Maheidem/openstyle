@@ -1,5 +1,5 @@
 import { overlapTokens } from "./chunking.js";
-import type { MeetingSummary } from "./schemas.js";
+import { type MeetingSummary, valueOrNull } from "./schemas.js";
 
 // Pure functions of the summary (specs/meeting-enhance-agentic.md 4.5.3, 4.5.6).
 // WP5a owns the full bodies, because the `save` test compares the stored
@@ -30,9 +30,12 @@ export function renderSummaryMarkdown(s: MeetingSummary): string {
   const list = (a: string[]) =>
     a.length ? a.map((t) => `- ${oneLine(t)}`).join("\n") : "None.";
   const act = s.actionItems.map((a) => {
+    // The render takes any object, also one that did not pass the parse.
+    const owner = valueOrNull(a.owner);
+    const due = valueOrNull(a.due);
     const meta = [
-      a.owner && `Owner: ${oneLine(a.owner)}`,
-      a.due && `Due: ${oneLine(a.due)}`,
+      owner && `Owner: ${oneLine(owner)}`,
+      due && `Due: ${oneLine(due)}`,
     ].filter(Boolean);
     return `- ${oneLine(a.task)}${meta.length ? ` (${meta.join("; ")})` : ""}`;
   });

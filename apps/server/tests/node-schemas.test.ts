@@ -7,13 +7,25 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { getDb } from "../src/lib/db.js";
 import {
+  buildCorrectSystemPrompt,
+  FULL_SEGMENT_RULE,
+} from "../src/lib/meetings/workflow/prompts.js";
+import {
   CORRECT_CHUNK_STEP_SCHEMA,
   CorrectChunkSchema,
+  correctChunkStepSchema,
   IDENTIFY_SPEAKERS_STEP_SCHEMA,
   IdentifySpeakersSchema,
+  identifySpeakersStepSchema,
   MEETING_SUMMARY_STEP_SCHEMA,
   MeetingSummarySchema,
+  normalizeId,
+  normalizeLabel,
 } from "../src/lib/meetings/workflow/schemas.js";
+import {
+  NAME_MAX_CHARS,
+  QUOTE_MAX_CHARS,
+} from "../src/lib/meetings/workflow/types.js";
 import {
   buildMeetingFixture,
   writeMeetingFixture,
@@ -90,6 +102,224 @@ describe("assertPortableSchema", () => {
         "$ref",
       );
     }
+  });
+});
+
+describe("the per-call schemas (ids and labels enum)", () => {
+  const ids = ["fict-1:mic:0", "fict-1:system:1"];
+
+  it("correctChunk: corrections[].id is an enum of exactly the unit ids; version 3", async () => {
+    const step = correctChunkStepSchema(ids);
+    expect(step.name).toBe("correct_chunk");
+    expect(step.version).toBe(3);
+    await expect(assertPortableSchema(step.zod)).resolves.toBeUndefined();
+    const json = (await asSchema(step.zod).jsonSchema) as {
+      properties: {
+        corrections: { items: { properties: { id: unknown; text: unknown } } };
+      };
+    };
+    expect(json.properties.corrections.items.properties.id).toEqual({
+      type: "string",
+      enum: ids,
+    });
+    // WP7: the full-segment rule travels with the schema, for every provider.
+    expect(json.properties.corrections.items.properties.text).toEqual({
+      type: "string",
+      description: FULL_SEGMENT_RULE,
+    });
+    // One id is a valid enum.
+    const one = (await asSchema(correctChunkStepSchema(["s1"]).zod)
+      .jsonSchema) as typeof json;
+    expect(one.properties.corrections.items.properties.id).toEqual({
+      type: "string",
+      enum: ["s1"],
+    });
+  });
+
+  it("correctChunk: the system prompt says text is the complete segment, with an example", () => {
+    const prompt = buildCorrectSystemPrompt({ language: "en", vocabTerms: [] });
+    expect(prompt).toContain(FULL_SEGMENT_RULE);
+    expect(FULL_SEGMENT_RULE).toContain("COMPLETE corrected segment");
+    expect(FULL_SEGMENT_RULE).toContain("Never return only the changed words");
+    expect(prompt).toContain(
+      'text "we moved the cluster to Kubernetes last week."',
+    );
+    expect(prompt).toContain('Wrong output: text "Kubernetes".');
+  });
+
+  it("correctChunk: the parse strips brackets and keeps an unknown id for the node check", () => {
+    const step = correctChunkStepSchema(ids);
+    const parsed = step.zod.parse({
+      corrections: [
+        { id: " [fict-1:mic:0] ", text: "a" },
+        { id: "other", text: "b" },
+      ],
+    });
+    expect(parsed.corrections.map((c) => c.id)).toEqual([
+      "fict-1:mic:0",
+      "other",
+    ]);
+  });
+
+  it("identifySpeakers: segmentId is an enum of the shown ids, label an enum of the label numbers; field order stays; version 4", async () => {
+    const step = identifySpeakersStepSchema(ids, ["1", "2"]);
+    expect(step.name).toBe("identify_speakers");
+    expect(step.version).toBe(4);
+    await expect(assertPortableSchema(step.zod)).resolves.toBeUndefined();
+    const json = (await asSchema(step.zod).jsonSchema) as {
+      properties: {
+        speakers: {
+          items: { properties: Record<string, unknown>; required: string[] };
+        };
+      };
+    };
+    const row = json.properties.speakers.items;
+    expect(row.properties.segmentId).toEqual({ type: "string", enum: ids });
+    expect(row.properties.label).toEqual({ type: "string", enum: ["1", "2"] });
+    expect(Object.keys(row.properties)).toEqual([
+      "segmentId",
+      "quote",
+      "label",
+      "kind",
+      "name",
+    ]);
+    expect(row.required).toEqual(Object.keys(row.properties));
+    const parsed = step.zod.parse({
+      speakers: [
+        {
+          segmentId: "[fict-1:system:1]",
+          quote: "q",
+          label: "Them 1",
+          kind: "name",
+          name: "Ana",
+        },
+      ],
+    });
+    expect(parsed.speakers[0]).toMatchObject({
+      segmentId: "fict-1:system:1",
+      label: "1",
+    });
+  });
+
+  it("identifySpeakers: the default schema has no size keyword (portable)", async () => {
+    const step = identifySpeakersStepSchema(ids, ["1", "2"]);
+    const text = JSON.stringify(await asSchema(step.zod).jsonSchema);
+    for (const key of ["maxItems", "maxLength", "minItems", "minLength"]) {
+      expect(text).not.toContain(key);
+    }
+  });
+
+  it("identifySpeakers: sizeLimits sets maxItems to the label count and maxLength on quote and name only", async () => {
+    const step = identifySpeakersStepSchema(ids, ["1", "2", "2"], {
+      sizeLimits: true,
+    });
+    expect(step.version).toBe(4);
+    const json = (await asSchema(step.zod).jsonSchema) as {
+      properties: {
+        speakers: {
+          maxItems?: number;
+          items: { properties: Record<string, unknown>; required: string[] };
+        };
+      };
+    };
+    const arr = json.properties.speakers;
+    // Two different labels: at most one entry for each.
+    expect(arr.maxItems).toBe(2);
+    expect(arr.items.properties.quote).toEqual({
+      type: "string",
+      maxLength: QUOTE_MAX_CHARS,
+    });
+    expect(arr.items.properties.name).toEqual({
+      type: "string",
+      maxLength: NAME_MAX_CHARS,
+    });
+    expect(arr.items.properties.segmentId).toEqual({
+      type: "string",
+      enum: ids,
+    });
+    // Field order and required stay as in the default schema.
+    expect(Object.keys(arr.items.properties)).toEqual([
+      "segmentId",
+      "quote",
+      "label",
+      "kind",
+      "name",
+    ]);
+    expect(arr.items.required).toEqual(Object.keys(arr.items.properties));
+    // The zod side accepts any size: verifyEvidence drops a long quote alone.
+    const long = "a".repeat(QUOTE_MAX_CHARS + 50);
+    const entry = {
+      segmentId: ids[0],
+      quote: long,
+      label: "1",
+      kind: "name",
+      name: "Ana",
+    };
+    const parsed = step.zod.parse({ speakers: [entry, entry, entry] });
+    expect(parsed.speakers).toHaveLength(3);
+    expect(parsed.speakers[0]?.quote).toBe(long);
+  });
+
+  it("identifySpeakers: the schema of one call holds only that call's ids; an id of another call is not in it", async () => {
+    const callA = identifySpeakersStepSchema(["fict-1:system:1"], ["1"]);
+    const callB = identifySpeakersStepSchema(["fict-1:system:7"], ["1"]);
+    const segmentIdOf = async (step: typeof callA) =>
+      (
+        (await asSchema(step.zod).jsonSchema) as {
+          properties: {
+            speakers: { items: { properties: { segmentId: unknown } } };
+          };
+        }
+      ).properties.speakers.items.properties.segmentId;
+    expect(await segmentIdOf(callA)).toEqual({
+      type: "string",
+      enum: ["fict-1:system:1"],
+    });
+    expect(await segmentIdOf(callB)).toEqual({
+      type: "string",
+      enum: ["fict-1:system:7"],
+    });
+    // The zod side normalizes and keeps any string: the verify node drops an
+    // id that the call did not show as unknown_segment (workflow-identify).
+    const row = (segmentId: string) => ({
+      segmentId,
+      quote: "q",
+      label: "1",
+      kind: "name" as const,
+      name: "Ana",
+    });
+    const parsed = callA.zod.parse({
+      speakers: [row(" [fict-1:system:1] "), row("[fict-1:system:7]")],
+    });
+    expect(parsed.speakers.map((s) => s.segmentId)).toEqual([
+      "fict-1:system:1",
+      "fict-1:system:7",
+    ]);
+  });
+
+  it.each([
+    ["Them 1", "1"],
+    ["them 1", "1"],
+    ["THEM 2", "2"],
+    ["Speaker 3", "3"],
+    ["[1]", "1"],
+    ["[Them 1]", "1"],
+    [" 1 ", "1"],
+    ["Them1", "1"],
+    ["1", "1"],
+  ])("normalizeLabel(%j) is %j", (input, out) => {
+    expect(normalizeLabel(input)).toBe(out);
+  });
+
+  it.each([
+    ["[fict-1:mic:0]", "fict-1:mic:0"],
+    [" [fict-1:mic:0] ", "fict-1:mic:0"],
+    ["fict-1:mic:0", "fict-1:mic:0"],
+    ["[ s1 ]", "s1"],
+    ["[a]b]", "a]b"],
+    ["[unclosed", "[unclosed"],
+  ])("normalizeId(%j) is %j", (input, out) => {
+    expect(normalizeId(input)).toBe(out);
   });
 });
 
@@ -219,6 +449,71 @@ describe("parse cases", () => {
     ).toBe(false);
     const { openQuestions: _drop, ...missing } = ok;
     expect(MeetingSummarySchema.safeParse(missing).success).toBe(false);
+  });
+});
+
+describe("MeetingSummary: placeholder owner and due", () => {
+  const base = {
+    overview: "A short call.",
+    keyPoints: [],
+    decisions: [],
+    openQuestions: [],
+  };
+  const parseItem = (owner: string | null, due: string | null) =>
+    MeetingSummarySchema.parse({
+      ...base,
+      actionItems: [{ task: "x", owner, due }],
+    }).actionItems[0];
+
+  it.each([
+    "",
+    "  ",
+    "null",
+    "NULL",
+    " Null ",
+    "none",
+    "None",
+    "n/a",
+    "N/A",
+    "unknown",
+    "Unknown",
+  ])("%j parses to null", (word) => {
+    expect(parseItem(word, word)).toEqual({
+      task: "x",
+      owner: null,
+      due: null,
+    });
+  });
+
+  it("a real value stays as written; null stays null", () => {
+    expect(parseItem("Sam", "next Friday")).toEqual({
+      task: "x",
+      owner: "Sam",
+      due: "next Friday",
+    });
+    expect(parseItem(null, null)).toEqual({
+      task: "x",
+      owner: null,
+      due: null,
+    });
+    // A word that only holds a placeholder is not changed.
+    expect(parseItem("Nonez", "unknown date")?.owner).toBe("Nonez");
+  });
+
+  it("the JSON Schema still allows null for owner and due (no wire change)", async () => {
+    const json = (await asSchema(MeetingSummarySchema).jsonSchema) as {
+      properties: {
+        actionItems: { items: { properties: Record<string, unknown> } };
+      };
+    };
+    const props = json.properties.actionItems.items.properties;
+    for (const key of ["owner", "due"]) {
+      expect(JSON.stringify(props[key])).toContain('"null"');
+      expect(JSON.stringify(props[key])).toContain('"string"');
+    }
+    await expect(
+      assertPortableSchema(MeetingSummarySchema),
+    ).resolves.toBeUndefined();
   });
 });
 

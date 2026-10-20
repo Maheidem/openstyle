@@ -844,6 +844,7 @@
     },
     "loading": "Loading models",
     "mlxKeepAlive": "MLX ASR keep-alive",
+    "mlxLlmKeepAlive": "MLX LLM keep-alive",
     "removeDownloaded": "Remove downloaded model from disk",
     "modal": {
       "addApiKey": "Add API key",
@@ -871,6 +872,7 @@
       "preparingRuntime": "Preparing runtime…",
       "verifying": "Verifying…",
       "noBuiltin": "No on-device transcription models on this device.",
+      "noBuiltinLlm": "No on-device AI models on this device.",
       "noMatch": "No models match."
     },
     "mlx": {
@@ -881,6 +883,13 @@
       "descCold": "Unload the model from memory after each transcription. Uses less RAM, but the next dictation waits for a full reload.",
       "descOneMinute": "Keep the model in memory for about 1 minute after you finish dictating, so quick follow-ups stay fast.",
       "descMinutes": "Keep the model loaded in memory for up to {{minutes}} minutes after dictation. Faster repeat use, more RAM while warm."
+    },
+    "mlxLlm": {
+      "title": "AI model warming",
+      "descAlways": "Keep the AI model loaded in memory at all times, until you quit Openstyle. Fastest repeat use, uses the most RAM.",
+      "descCold": "Unload the AI model from memory after each request. Uses less RAM, but the next cleanup or summary waits for a full reload.",
+      "descOneMinute": "Keep the AI model in memory for about 1 minute after each request, so quick follow-ups stay fast.",
+      "descMinutes": "Keep the AI model loaded in memory for up to {{minutes}} minutes after each request. Faster repeat use, more RAM while warm."
     }
   },
   "shell": {
@@ -1068,6 +1077,7 @@
     "enhancing": "Enhancing…",
     "enhanceResult": "Corrected {{n}} segments.",
     "enhanceNoneCorrected": "No segments needed correction.",
+    "enhanceAllDropped": "Enhance suggested {{n}} changes, but none passed the safety checks.",
     "enhancePartial": "Partial pass — {{failed}} of {{attempted}} chunks could not be corrected and kept their original text.",
     "retryEnhance": "Retry Enhance",
     "llmRun": {
@@ -1239,6 +1249,7 @@
         "quote_too_long": "The evidence quote is too long.",
         "quote_not_in_segment": "The evidence quote is not in the cited line.",
         "empty_name": "The entry has no name.",
+        "label_echo": "The suggestion only repeats the speaker label.",
         "name_not_in_quote": "The name is not in its own evidence.",
         "not_self_introduction": "The speaker said the name but did not name themselves.",
         "conflict_lost": "Stronger evidence named this speaker differently.",
@@ -1252,6 +1263,7 @@
         "too_different": "The correction changed the line too much.",
         "meaning_flip": "The correction changed the meaning of the line.",
         "inflection_only": "The correction changed only the grammar of a word.",
+        "lowercases_name": "The correction removed the capital letters of a name.",
         "unknown": "No reason is recorded."
       }
     },

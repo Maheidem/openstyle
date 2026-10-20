@@ -99,6 +99,8 @@ export interface LlmRunInfo {
   /** LLM-node steps with status `failed` or `partial`. */
   failedStepCount: number;
   correctedCount: number | null;
+  /** Corrections that the checks dropped (no `unchanged` echoes). Null before graph version 3. */
+  droppedCount: number | null;
   suggestionCount: number | null;
   lostRecords: number;
   /** Sums. Unknown counts as 0. */

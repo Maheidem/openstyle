@@ -678,6 +678,7 @@
     },
     "loading": "Modelle werden geladen",
     "mlxKeepAlive": "MLX-ASR-Haltezeit",
+    "mlxLlmKeepAlive": "MLX-LLM-Haltezeit",
     "picker": {
       "backToSimple": "Zurück zur einfachen Ansicht"
     },
@@ -708,6 +709,7 @@
       "preparingRuntime": "Laufzeitumgebung wird vorbereitet…",
       "verifying": "Wird überprüft…",
       "noBuiltin": "Auf diesem Gerät gibt es keine Transkriptionsmodelle für die lokale Ausführung.",
+      "noBuiltinLlm": "Auf diesem Gerät gibt es keine KI-Modelle für die lokale Ausführung.",
       "noMatch": "Keine passenden Modelle."
     },
     "mlx": {
@@ -718,6 +720,13 @@
       "descCold": "Entlädt das Modell nach jeder Transkription aus dem Speicher. Braucht weniger RAM, aber das nächste Diktat wartet auf ein vollständiges Neuladen.",
       "descOneMinute": "Hält das Modell nach dem Diktat etwa 1 Minute im Speicher, damit schnelle Folgediktate schnell bleiben.",
       "descMinutes": "Hält das Modell nach dem Diktat bis zu {{minutes}} Minuten im Speicher. Schnellere wiederholte Nutzung, mehr RAM im aufgewärmten Zustand."
+    },
+    "mlxLlm": {
+      "title": "KI-Modell vorwärmen",
+      "descAlways": "Hält das KI-Modell immer im Speicher, bis du Openstyle beendest. Am schnellsten bei wiederholter Nutzung, braucht am meisten RAM.",
+      "descCold": "Entlädt das KI-Modell nach jeder Anfrage aus dem Speicher. Braucht weniger RAM, aber die nächste Bereinigung oder Zusammenfassung wartet auf ein vollständiges Neuladen.",
+      "descOneMinute": "Hält das KI-Modell nach jeder Anfrage etwa 1 Minute im Speicher, damit schnelle Folgeanfragen schnell bleiben.",
+      "descMinutes": "Hält das KI-Modell nach jeder Anfrage bis zu {{minutes}} Minuten im Speicher. Schneller bei wiederholter Nutzung, mehr RAM, solange es warm ist."
     }
   },
   "shell": {
@@ -888,6 +897,7 @@
     "enhancing": "Wird verbessert…",
     "enhanceResult": "{{n}} Segmente korrigiert.",
     "enhanceNoneCorrected": "Keine Segmente mussten korrigiert werden.",
+    "enhanceAllDropped": "Enhance hat {{n}} Änderungen vorgeschlagen, aber keine hat die Sicherheitsprüfungen bestanden.",
     "enhancePartial": "Teilweiser Lauf — {{failed}} von {{attempted}} Abschnitten konnten nicht korrigiert werden und behalten ihren Originaltext.",
     "retryEnhance": "Verbesserung erneut versuchen",
     "llmRun": {

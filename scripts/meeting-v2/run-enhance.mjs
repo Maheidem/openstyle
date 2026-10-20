@@ -23,7 +23,13 @@
 // Usage:
 //   node scripts/meeting-v2/run-enhance.mjs --meeting <id> --run <name> \
 //     --arm old|new --from-db <transcribed .backup copy> [--summarize] \
-//     [--port 4790] [--server-repo <dir>] [--out-dir <dir>] [--timeout-sec 7200]
+//     [--port 4790] [--server-repo <dir>] [--out-dir <dir>] [--timeout-sec 7200] \
+//     [--server-home <dir>]
+//
+// --server-home <dir>: the HOME of the server child only (a folder under
+// /tmp). A local MLX LLM run needs it: the server keeps the managed MLX
+// runtime under homedir(), and the real one belongs to the installed app.
+// The script itself keeps the caller's HOME, so `pnpm` still works.
 //
 // --summarize: old arm posts /summarize after Enhance (the old path does not
 // chain). New arm: the Enhance run already holds the summarize stage. If the
@@ -67,14 +73,19 @@ const summarize = has("summarize");
 const port = Number(arg("port") ?? "4790");
 const serverRepo = resolve(arg("server-repo") ?? repoRoot);
 const timeoutSec = Number(arg("timeout-sec") ?? "7200");
+const serverHome = arg("server-home");
 if (!meetingId || !runName || !fromDb || (arm !== "old" && arm !== "new")) {
   console.error(
-    "usage: run-enhance.mjs --meeting <id> --run <name> --arm old|new --from-db <db> [--summarize] [--port n] [--server-repo dir] [--out-dir dir] [--timeout-sec n]",
+    "usage: run-enhance.mjs --meeting <id> --run <name> --arm old|new --from-db <db> [--summarize] [--port n] [--server-repo dir] [--out-dir dir] [--timeout-sec n] [--server-home dir]",
   );
   process.exit(2);
 }
 if (port === 4649) {
   console.error("refusing to use port 4649 (the installed app owns it)");
+  process.exit(2);
+}
+if (serverHome && !/^\/(private\/)?tmp\//.test(resolve(serverHome))) {
+  console.error(`--server-home must be under /tmp: ${serverHome}`);
   process.exit(2);
 }
 if (!existsSync(fromDb)) {
@@ -144,6 +155,10 @@ env.OPENSTYLE_DB_PATH = dbPath;
 env.PORT = String(port);
 env.HOST = "127.0.0.1";
 env.OPENSTYLE_AUTH_TOKEN = token;
+if (serverHome) {
+  mkdirSync(serverHome, { recursive: true });
+  env.HOME = resolve(serverHome);
+}
 
 const logStream = createWriteStream(logPath, { flags: "a" });
 const server = spawn(process.execPath, ["../server/dist/startup.js"], {

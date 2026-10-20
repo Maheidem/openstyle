@@ -88,6 +88,10 @@ jobs:
       - name: Guard hook tests
         run: bash scripts/guard-hook.test.sh
 
+      # The hard-fail checks of pnpm meeting:eval (fictional text only).
+      - name: Meeting eval check tests
+        run: pnpm meeting:eval:test
+
   knip:
     name: Knip
     runs-on: ubuntu-latest

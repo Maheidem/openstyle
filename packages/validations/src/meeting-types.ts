@@ -99,6 +99,7 @@ export type DropReason =
   | "quote_too_long"
   | "quote_not_in_segment"
   | "empty_name"
+  | "label_echo"
   | "name_not_in_quote"
   | "not_self_introduction"
   | "conflict_lost"
@@ -116,7 +117,8 @@ export type CorrectionDropReason =
   | "deletes_words"
   | "too_different"
   | "meaning_flip"
-  | "inflection_only";
+  | "inflection_only"
+  | "lowercases_name";
 
 export interface SpeakerVerdict {
   unitKey: string;

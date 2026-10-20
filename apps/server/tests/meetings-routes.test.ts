@@ -2529,6 +2529,30 @@ describe("POST /api/meetings/:id/enhance", () => {
     });
   });
 
+  it("WP7: reports the dropped count when the model returns only the changed words", async () => {
+    seedModelAndMeeting("we moved the cluster to cooper netties last week");
+    const h = runnerHarness({
+      answer: (r) =>
+        isSummaryRequest(r)
+          ? defaultAnswer(r)
+          : okReply(
+              JSON.stringify({
+                corrections: [{ id: firstIdOf(r), text: "Kubernetes" }],
+              }),
+            ),
+    });
+    __setMeetingsTestOverrides({ workflowDeps: h.deps });
+
+    expect((await postEmpty(app, "/api/meetings/m1/enhance")).status).toBe(202);
+    await waitForNoJob("m1");
+
+    expect((await llmRuns("m1"))[0]).toMatchObject({
+      status: "succeeded",
+      correctedCount: 0,
+      droppedCount: 1,
+    });
+  });
+
   it("treats a pass cancelled before any chunk succeeded as cancelled, not failed (5.7)", async () => {
     seedModelAndMeeting("hello");
     const h = runnerHarness({ answer: () => HANG });

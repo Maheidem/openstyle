@@ -10,6 +10,7 @@ import {
   type ConfiguredModel,
   hasActiveDownload,
   type MlxAsrStatus,
+  type MlxLlmStatus,
   type WhisperStatus,
 } from "./models";
 import { IS_MAC } from "./platform";
@@ -44,6 +45,8 @@ export const queryKeys = {
   servers: ["servers"] as const,
   whisperStatus: ["whisper-status"] as const,
   mlxStatus: ["mlx-status"] as const,
+  /** The built-in local LLM (`GET /api/mlx-llm/status`). */
+  mlxLlmStatus: ["mlx-llm-status"] as const,
 
   /** Experimental feature flags (`GET /api/config`). */
   config: ["config"] as const,
@@ -347,6 +350,24 @@ export function mlxStatusQueryOptions() {
     queryFn: async (): Promise<MlxAsrStatus> => {
       const res = await getClient().api["mlx-asr"].status.$get();
       if (!res.ok) throw new Error("Failed to load MLX ASR status");
+      return await res.json();
+    },
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      return d && hasActiveDownload(d.models) ? 500 : false;
+    },
+    staleTime: 0,
+  });
+}
+
+/** Same rules as the MLX ASR status, for the built-in local LLM. */
+export function mlxLlmStatusQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.mlxLlmStatus,
+    enabled: IS_MAC,
+    queryFn: async (): Promise<MlxLlmStatus> => {
+      const res = await getClient().api["mlx-llm"].status.$get();
+      if (!res.ok) throw new Error("Failed to load MLX LLM status");
       return await res.json();
     },
     refetchInterval: (query) => {

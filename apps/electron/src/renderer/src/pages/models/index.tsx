@@ -9,8 +9,9 @@ import type {
   ApiKeyEntry,
   AvailableModel,
   ConfiguredModel,
+  LocalEngine,
 } from "@renderer/lib/models";
-import { displayProviderName } from "@renderer/lib/models";
+import { displayProviderName, MLX_LLM_PROVIDER_ID } from "@renderer/lib/models";
 import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
@@ -45,7 +46,7 @@ export default function ModelsPage(): React.JSX.Element {
 
   const [pendingLocalDelete, setPendingLocalDelete] = useState<{
     defId: string;
-    engine?: "whisper" | "mlx";
+    engine?: LocalEngine;
     name: string;
     custom: boolean;
   } | null>(null);
@@ -65,6 +66,7 @@ export default function ModelsPage(): React.JSX.Element {
   } | null>(null);
   const [presetDeleteFailed, setPresetDeleteFailed] = useState(false);
   const [warmingOpen, setWarmingOpen] = useState(false);
+  const [llmWarmingOpen, setLlmWarmingOpen] = useState(false);
   // Which task profile row is expanded — lifted here (rather than owned by
   // TaskProfilesSection) so the cleanup PairSide's "Sampling parameters"
   // link (§9.5) can jump straight to the cleanup row from outside the
@@ -148,10 +150,17 @@ export default function ModelsPage(): React.JSX.Element {
     void m.selectServerModel(serverId, modelId, modal.type).then(closeModal);
   };
 
-  const onRequestDeleteLocal = (
-    defId: string,
-    engine?: "whisper" | "mlx",
-  ): void => {
+  const onRequestDeleteLocal = (defId: string, engine?: LocalEngine): void => {
+    if (engine === "mlx-llm") {
+      const item = m.localLlmItems.find((row) => row.defId === defId);
+      setPendingLocalDelete({
+        defId,
+        engine,
+        name: item?.name ?? defId,
+        custom: false,
+      });
+      return;
+    }
     const item = m.voiceItems.find(
       (row) => row.defId === defId && row.localEngine === engine,
     );
@@ -194,6 +203,7 @@ export default function ModelsPage(): React.JSX.Element {
   };
 
   const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
+  const showMlxLlmWarming = m.defaultLlm?.provider === MLX_LLM_PROVIDER_ID;
   // Every task row is meaningful regardless of the effective provider — the
   // mapped-subset tier still applies temperature/max_tokens/top_p to cloud
   // models (specs/llm-task-profiles.md §7, §9.1) — so this is advanced-only,
@@ -242,6 +252,9 @@ export default function ModelsPage(): React.JSX.Element {
           onConfigureWarming={
             showMlxWarming ? () => setWarmingOpen(true) : undefined
           }
+          onConfigureLlmWarming={
+            showMlxLlmWarming ? () => setLlmWarmingOpen(true) : undefined
+          }
           onConfigureSampling={showParams ? onOpenCleanupParams : undefined}
         />
 
@@ -260,6 +273,7 @@ export default function ModelsPage(): React.JSX.Element {
               taskAssignments={m.taskAssignments}
               userPresets={m.userPresets}
               configured={m.configured}
+              localLlmItems={m.localLlmItems}
               servers={m.servers.servers}
               defaultLlm={m.defaultLlm}
               cleanupSampling={m.cleanupSampling}
@@ -307,6 +321,16 @@ export default function ModelsPage(): React.JSX.Element {
           blockedReason={m.mlxStatus?.blockedReason ?? null}
           onChange={m.saveMlxKeepAliveMinutes}
           onClose={() => setWarmingOpen(false)}
+        />
+      )}
+
+      {llmWarmingOpen && (
+        <MlxWarmingDialog
+          kind="llm"
+          keepAliveMinutes={m.mlxLlmKeepAliveMinutes}
+          blockedReason={m.mlxLlmStatus?.blockedReason ?? null}
+          onChange={m.saveMlxLlmKeepAliveMinutes}
+          onClose={() => setLlmWarmingOpen(false)}
         />
       )}
 

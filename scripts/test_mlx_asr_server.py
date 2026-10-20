@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import threading
 import tempfile
 import unittest
 import wave
@@ -392,6 +394,377 @@ class DetectAndFixRepetitionsTests(unittest.TestCase):
 
     def test_two_loops_in_one_text(self) -> None:
         self.assertEqual(self.fix("ab" * 25 + "X" + "cd" * 25), "abXcd")
+
+
+# --- LLM mode (specs/local-mlx-llm.md section 2) ---------------------------
+
+
+class FakeHfTokenizer:
+    eos_token_id = 7
+
+    def get_vocab(self) -> dict[str, int]:
+        return {"<|im_end|>": 7, "<think>": 8, "</think>": 9, "hello": 10}
+
+
+class FakeLlmTokenizer:
+    def __init__(self) -> None:
+        self._tokenizer = FakeHfTokenizer()
+        self.eos_token_ids = {7}
+        self.template_kwargs: dict[str, object] = {}
+
+    def apply_chat_template(self, messages: list[dict[str, str]], **kwargs: object) -> str:
+        self.template_kwargs = {"messages": messages, **kwargs}
+        return "PROMPT"
+
+    def encode(self, text: str, add_special_tokens: bool = True) -> list[int]:
+        return [1, 2, 3]
+
+
+class FakeResponse:
+    def __init__(self, text: str, finish_reason: str | None, generation_tokens: int) -> None:
+        self.text = text
+        self.finish_reason = finish_reason
+        self.generation_tokens = generation_tokens
+
+
+def _engine(chunks: list[tuple[str, str | None]], **kw: object):
+    calls: dict[str, object] = {"grammar": []}
+
+    def stream_generate(model, tok, ids, **kwargs):
+        calls["stream"] = {"ids": ids, **kwargs}
+        for i, (text, finish) in enumerate(chunks):
+            yield FakeResponse(text, finish, i + 1)
+
+    def make_sampler(**kwargs):
+        calls["sampler"] = kwargs
+        return "SAMPLER"
+
+    def make_logits_processors(**kwargs):
+        calls["rep"] = kwargs
+        return ["REP"]
+
+    def grammar_factory(schema_json: str, think: object) -> str:
+        calls["grammar"].append((schema_json, think))  # type: ignore[union-attr]
+        return "GRAMMAR"
+
+    tok = FakeLlmTokenizer()
+    engine = mlx_asr_server._LlmEngine(
+        "mlx-community/Fake-LLM",
+        object(),
+        tok,
+        stop_ids=kw.get("stop_ids", {7, 106}),  # type: ignore[arg-type]
+        n_vocab=64,
+        stream_generate=stream_generate,
+        make_sampler=make_sampler,
+        make_logits_processors=make_logits_processors,
+        grammar_factory=grammar_factory,
+    )
+    return engine, tok, calls
+
+
+SCHEMA = {
+    "type": "object",
+    "properties": {"corrections": {"type": "array"}},
+    "required": ["corrections"],
+}
+
+
+class ParseChatRequestTests(unittest.TestCase):
+    parse = staticmethod(mlx_asr_server._parse_chat_request)
+
+    def test_defaults_and_unknown_fields_ignored(self) -> None:
+        req = self.parse({"model": "x", "messages": [{"role": "user", "content": "hi"}], "foo": 1})
+        self.assertEqual(req["messages"], [{"role": "user", "content": "hi"}])
+        self.assertEqual(req["max_tokens"], mlx_asr_server._LLM_DEFAULT_MAX_TOKENS)
+        self.assertFalse(req["enable_thinking"])
+        self.assertIsNone(req["schema"])
+        self.assertEqual(req["stop"], [])
+
+    def test_all_fields(self) -> None:
+        req = self.parse(
+            {
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}],
+                "max_tokens": 50,
+                "temperature": 0.2,
+                "top_p": 0.9,
+                "top_k": 20,
+                "min_p": 0.05,
+                "repetition_penalty": 1.1,
+                "stop": "END",
+                "response_format": {"type": "json_schema", "json_schema": {"name": "x", "schema": SCHEMA, "strict": True}},
+                "chat_template_kwargs": {"enable_thinking": True},
+                "stream": False,
+            }
+        )
+        self.assertEqual(req["messages"][0]["content"], "ab")
+        self.assertEqual((req["max_tokens"], req["top_k"], req["stop"]), (50, 20, ["END"]))
+        self.assertEqual(req["schema"], SCHEMA)
+        self.assertTrue(req["enable_thinking"])
+
+    def test_json_object_gives_object_schema(self) -> None:
+        req = self.parse({"messages": [{"role": "user", "content": "x"}], "response_format": {"type": "json_object"}})
+        self.assertEqual(req["schema"], {"type": "object"})
+
+    def test_bad_requests(self) -> None:
+        msgs = [{"role": "user", "content": "x"}]
+        for body in (
+            {"messages": msgs, "stream": True},
+            {"messages": []},
+            {"messages": msgs, "max_tokens": 0},
+            {"messages": msgs, "temperature": "hot"},
+            {"messages": msgs, "response_format": {"type": "json_schema", "json_schema": {}}},
+            {"messages": [{"role": "user", "content": [{"type": "image_url"}]}]},
+            [],
+        ):
+            with self.assertRaises(mlx_asr_server._BadRequest, msg=str(body)):
+                self.parse(body)
+
+
+class StopIdsTests(unittest.TestCase):
+    def test_tokenizer_eos_generation_config_and_im_end(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "generation_config.json").write_text('{"eos_token_id": [1, 106, 50]}')
+            tok = FakeLlmTokenizer()
+            tok.eos_token_ids = {2}
+            ids = mlx_asr_server._stop_token_ids(tok, tok._tokenizer, tmp)
+        self.assertEqual(ids, {1, 2, 7, 50, 106})
+
+    def test_int_eos_and_missing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(mlx_asr_server._generation_config_eos(tmp), set())
+            Path(tmp, "generation_config.json").write_text('{"eos_token_id": 106}')
+            self.assertEqual(mlx_asr_server._generation_config_eos(tmp), {106})
+
+    def test_engine_sets_tokenizer_stop_ids(self) -> None:
+        engine, tok, _ = _engine([("x", "stop")], stop_ids={7, 106})
+        self.assertEqual(tok.eos_token_ids, {7, 106})
+        self.assertEqual(engine.think, (8, 9))
+
+
+class LlmEngineTests(unittest.TestCase):
+    def _req(self, **body: object) -> dict[str, object]:
+        return mlx_asr_server._parse_chat_request({"messages": [{"role": "user", "content": "hi"}], **body})
+
+    def test_response_shape_and_template(self) -> None:
+        engine, tok, calls = _engine([("Hel", None), ("lo", "stop")])
+        out = engine.complete(self._req(max_tokens=9))
+        self.assertEqual(tok.template_kwargs["enable_thinking"], False)
+        self.assertEqual(tok.template_kwargs["add_generation_prompt"], True)
+        self.assertEqual(out["model"], "mlx-community/Fake-LLM")
+        self.assertEqual(out["object"], "chat.completion")
+        self.assertTrue(str(out["id"]).startswith("chatcmpl-"))
+        self.assertEqual(out["choices"][0]["message"], {"role": "assistant", "content": "Hello"})
+        self.assertEqual(out["choices"][0]["finish_reason"], "stop")
+        self.assertEqual(out["usage"], {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5})
+        self.assertEqual(calls["stream"]["max_tokens"], 9)
+        self.assertEqual(calls["stream"]["logits_processors"], [])
+        self.assertEqual(calls["sampler"], {"temp": 0.0})
+        self.assertEqual(calls["grammar"], [])
+
+    def test_length_finish(self) -> None:
+        engine, _, _ = _engine([("a", None), ("b", "length")])
+        self.assertEqual(engine.complete(self._req())["choices"][0]["finish_reason"], "length")
+
+    def test_grammar_wired_with_schema_and_think_pair(self) -> None:
+        engine, _, calls = _engine([('{"corrections": []}', "stop")])
+        out = engine.complete(
+            self._req(
+                repetition_penalty=1.1,
+                top_p=0.8,
+                response_format={"type": "json_schema", "json_schema": {"schema": SCHEMA}},
+            )
+        )
+        self.assertEqual(calls["grammar"], [(json.dumps(SCHEMA), None)])
+        self.assertEqual(calls["stream"]["logits_processors"], ["REP", "GRAMMAR"])
+        self.assertEqual(calls["rep"], {"repetition_penalty": 1.1})
+        self.assertEqual(calls["sampler"], {"temp": 0.0, "top_p": 0.8})
+        self.assertEqual(json.loads(out["choices"][0]["message"]["content"]), {"corrections": []})
+
+    def test_think_pair_only_when_thinking_on(self) -> None:
+        engine, _, calls = _engine([("{}", "stop")])
+        engine.complete(self._req(response_format={"type": "json_object"}, chat_template_kwargs={"enable_thinking": True}))
+        self.assertEqual(calls["grammar"], [(json.dumps({"type": "object"}), (8, 9))])
+
+    def test_thinking_block_stripped(self) -> None:
+        engine, _, _ = _engine([("<think>\n\n</think>\n\n", None), ('{"a": 1}', "stop")])
+        self.assertEqual(engine.complete(self._req())["choices"][0]["message"]["content"], '{"a": 1}')
+        self.assertEqual(mlx_asr_server._strip_thinking("<|channel>thought\n<channel|>ok"), "ok")
+
+    def test_stop_string_cuts_text(self) -> None:
+        engine, _, _ = _engine([("one ", None), ("two END three", None), ("never", "stop")])
+        out = engine.complete(self._req(stop=["END"]))
+        self.assertEqual(out["choices"][0]["message"]["content"], "one two ")
+        self.assertEqual(out["choices"][0]["finish_reason"], "stop")
+
+
+class FakeMatcher:
+    def __init__(self) -> None:
+        self.consumed: list[int] = []
+        self.stopped = False
+
+    def is_stopped(self) -> bool:
+        return self.stopped
+
+    def consume_token(self, token: int) -> bool:
+        self.consumed.append(token)
+        return token != 99
+
+    def get_error(self) -> str:
+        return "bad token"
+
+
+class JsonGrammarTests(unittest.TestCase):
+    def _grammar(self, think: tuple[int, int] | None = (8, 9)):
+        matcher = FakeMatcher()
+        fills: list[int] = []
+
+        def fill(m, bitmask, index):
+            fills.append(index)
+            bitmask[:] = 0
+            bitmask[0, 0] = 1  # token 0 allowed
+
+        def apply(logits, bitmask):
+            return ("masked", bitmask.view(np.uint32)[0].tolist())
+
+        grammar = mlx_asr_server._JsonGrammar(
+            matcher, 64, think=think, allocate=lambda n, v: np.zeros((n, (v + 31) // 32), dtype=np.int32),
+            fill=fill, apply=apply,
+        )
+        return grammar, matcher
+
+    def test_first_step_allows_think_open(self) -> None:
+        grammar, _ = self._grammar()
+        kind, words = grammar(np.array([1, 2, 3]), "LOGITS")
+        self.assertEqual(kind, "masked")
+        self.assertEqual(words[0], 1 | (1 << 8))
+
+    def test_grammar_starts_after_thinking_block(self) -> None:
+        grammar, matcher = self._grammar()
+        grammar(np.array([1]), "L")
+        self.assertEqual(grammar(np.array([1, 8]), "L"), "L")  # free inside the block
+        self.assertEqual(grammar(np.array([1, 8, 5]), "L"), "L")
+        kind, words = grammar(np.array([1, 8, 5, 9]), "L")  # block closed: mask again
+        self.assertEqual((kind, words[0]), ("masked", 1))
+        grammar(np.array([1, 8, 5, 9, 0]), "L")
+        self.assertEqual(matcher.consumed, [0])
+        self.assertTrue(grammar.thought)
+
+    def test_no_think_consumes_every_token(self) -> None:
+        grammar, matcher = self._grammar(think=None)
+        kind, words = grammar(np.array([1]), "L")
+        self.assertEqual(words[0], 1)
+        grammar(np.array([1, 0]), "L")
+        grammar(np.array([1, 0, 0]), "L")
+        self.assertEqual(matcher.consumed, [0, 0])
+
+    def test_rejected_token_raises(self) -> None:
+        grammar, _ = self._grammar(think=None)
+        grammar(np.array([1]), "L")
+        with self.assertRaises(RuntimeError):
+            grammar(np.array([1, 99]), "L")
+
+    def test_stopped_matcher_returns_logits(self) -> None:
+        grammar, matcher = self._grammar(think=None)
+        grammar(np.array([1]), "L")
+        matcher.stopped = True
+        self.assertEqual(grammar(np.array([1, 0]), "L"), "L")
+
+
+class LlmHttpTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from http.server import HTTPServer
+
+        self._log_patch = mock.patch.object(mlx_asr_server, "_log", lambda _m: None)
+        self._log_patch.start()
+        self.engine, _, _ = _engine([('{"corrections": []}', "stop")])
+        self.httpd = HTTPServer(("127.0.0.1", 0), mlx_asr_server._make_llm_handler(self.engine))
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self) -> None:
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self._log_patch.stop()
+
+    def _call(self, method: str, path: str, body: object = None) -> tuple[int, dict[str, object]]:
+        import urllib.error
+        import urllib.request
+
+        data = None if body is None else json.dumps(body).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=data, method=method)
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, json.loads(resp.read())
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read())
+
+    def test_models(self) -> None:
+        self.assertEqual(
+            self._call("GET", "/v1/models"),
+            (200, {"object": "list", "data": [{"id": "mlx-community/Fake-LLM", "object": "model"}]}),
+        )
+
+    def test_chat_completion(self) -> None:
+        status, out = self._call("POST", "/v1/chat/completions", {"messages": [{"role": "user", "content": "x"}], "stream": False})
+        self.assertEqual(status, 200)
+        self.assertEqual(out["choices"][0]["message"]["content"], '{"corrections": []}')
+        self.assertIn("usage", out)
+
+    def test_stream_true_is_400(self) -> None:
+        status, out = self._call("POST", "/v1/chat/completions", {"messages": [{"role": "user", "content": "x"}], "stream": True})
+        self.assertEqual(status, 400)
+        self.assertEqual(out["error"]["type"], "invalid_request_error")
+        self.assertIn("stream", out["error"]["message"])
+
+    def test_generation_error_is_500(self) -> None:
+        with mock.patch.object(self.engine, "complete", side_effect=RuntimeError("boom")):
+            status, out = self._call("POST", "/v1/chat/completions", {"messages": [{"role": "user", "content": "x"}]})
+        self.assertEqual((status, out["error"]["message"]), (500, "boom"))
+
+    def test_unknown_path_is_404(self) -> None:
+        self.assertEqual(self._call("GET", "/nope")[0], 404)
+
+
+class RunLlmTests(unittest.TestCase):
+    def _run(self, **patches: object) -> list[dict[str, object]]:
+        import io
+
+        out = io.StringIO()
+        with mock.patch.object(mlx_asr_server, "_log", lambda _m: None), \
+            mock.patch("sys.stdout", out), \
+            mock.patch("signal.signal") as sig, \
+            mock.patch.object(mlx_asr_server.threading, "Thread"), \
+            mock.patch("http.server.HTTPServer.serve_forever", return_value=None):
+            for name, value in patches.items():
+                mock.patch.object(mlx_asr_server, name, value).start()
+            try:
+                mlx_asr_server._run_llm("mlx-community/Fake-LLM", 0)
+            finally:
+                mock.patch.stopall()
+            self.signal_calls = sig.call_args_list
+        return [json.loads(line) for line in out.getvalue().splitlines()]
+
+    def test_ready_line_after_load(self) -> None:
+        engine, _, _ = _engine([])
+        lines = self._run(_load_llm_engine=lambda _m: engine)
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0]["type"], "ready")
+        self.assertEqual(lines[0]["model"], "mlx-community/Fake-LLM")
+        self.assertIsInstance(lines[0]["port"], int)
+        self.assertGreater(lines[0]["port"], 0)
+        import signal
+
+        self.assertEqual(self.signal_calls[0].args[0], signal.SIGTERM)
+
+    def test_load_error_line_and_exit_1(self) -> None:
+        def boom(_m: str) -> object:
+            raise RuntimeError("no weights")
+
+        with self.assertRaises(SystemExit) as ctx:
+            self._run(_load_llm_engine=boom)
+        self.assertEqual(ctx.exception.code, 1)
 
 
 if __name__ == "__main__":

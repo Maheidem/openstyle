@@ -474,6 +474,7 @@ function finish(o: {
     kindOf(final.stages) === "enhance" && final.saved
       ? {
           correctedCount: final.saved.correctedCount,
+          droppedCount: final.saved.droppedCount,
           suggestionCount: final.saved.suggestionCount,
         }
       : null;

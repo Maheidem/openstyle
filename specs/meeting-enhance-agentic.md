@@ -108,7 +108,7 @@ Table 2. LiteLLM lessons that section 5 applies in the gateway (section 5 holds 
 | L2 | Always send the reasoning params, also when thinking is off. Record a param ledger for each call. A missing thinking flag once gave about 48k characters of reasoning and `length` before any JSON (owner note outside this repo: `~/.claude/projects/-Users-maheidem-Documents-dev-OktoLabsAI-marginalia/memory/project_thinking_transport_loopback_bug.md:12-14`). |
 | L3 | One retry layer (`callUnit`), SDK retries at 0. Retry a transient provider error once, with a cap on the Retry-After wait. On `length`, retry once with less reasoning, a bigger budget or a split input. On a schema error, retry once with the validator message in the prompt. Never retry `content-filter` or an auth error. |
 | L4 | Check the served model against the requested model. oMLX `model_fallback` once answered with another model. |
-| L5 | Use a fixed schema for each node. No dynamic enums of ids. For strict mode make all fields required and use nullable instead of optional. UNVERIFIED as a stated rule; the page only shows required fields with type `[string, null]` in an example (https://developers.openai.com/api/docs/guides/structured-outputs). Authors write to these rules and a test enforces them. The AI SDK sets `additionalProperties` false itself; the gateway does not change the schema (4.0.3 rule 7). |
+| L5 | Use a fixed schema for each node. No dynamic enums of ids (changed 2026-10-20: `correctChunk` and `identifySpeakers` send a per-call enum, 4.0.3 rule 3). For strict mode make all fields required and use nullable instead of optional. UNVERIFIED as a stated rule; the page only shows required fields with type `[string, null]` in an example (https://developers.openai.com/api/docs/guides/structured-outputs). Authors write to these rules and a test enforces them. The AI SDK sets `additionalProperties` false itself; the gateway does not change the schema (4.0.3 rule 7). |
 | L6 | Prove the gateway with real calls, not only mocks. Two earlier projects had green suites (988 and 4,052 tests) while real use failed (section 10). |
 
 ### 1.2 Goals
@@ -913,7 +913,14 @@ The `save` row is the SW4 write (4.6.1): `guardNode` closes it from the `SaveRes
 
 1. Every field is required; `.nullable()` marks an absent value (https://developers.openai.com/api/docs/guides/structured-outputs).
 2. No `.optional()`, `.default()`, `.passthrough()`, `z.record()` or dynamic key. Use an array of objects.
-3. Ids, labels, quotes: `z.string()`. No `z.enum()` of ids: each new schema grows the oMLX grammar cache about 0.45 GB (L5; https://github.com/jundot/omlx/issues/4321). A static enum of fixed words is allowed (`"name" | "role"`).
+3. Ids, labels, quotes: `z.string()`. A static enum of fixed words is allowed (`"name" | "role"`). Exception (changed 2026-10-20, commit 06691f3c): two nodes send a per-call enum.
+   - `correctChunk`: `corrections[].id` is an enum of the segment ids of the unit (`correctChunkStepSchema(ids)`, `W/schemas.ts:91`, schema version 2).
+   - `identifySpeakers`: `speakers[].segmentId` is an enum of the ids of the lines that the unit shows, and `speakers[].label` is an enum of the open label numbers (`identifySpeakersStepSchema(ids, labels)`, `W/schemas.ts:122`, schema version 3). Version 2 had the label enum only.
+   - The zod side is lenient: `enumOf` (`W/schemas.ts:74-79`) is `z.string().transform(normalize)` with the enum only in the JSON Schema `meta`. `normalizeId` removes brackets from an id. `normalizeLabel` also changes "Them 1", "Speaker 1" and "[1]" to "1". A string outside the enum still parses, so the node check drops that one entry alone, not the whole answer.
+   - `WORKFLOW_GRAPH_VERSION` is 2.
+   - Why: small local MLX models do not copy ids exactly. Qwen3.5 4B wrote ids in brackets, Gemma 4 E4B shifted ids, and both wrote "Them 1" for label "1". The node checks then dropped every correction and suggestion. With the enum, Qwen3.5 4B applied 12 of 20 corrections on a fictional 40-segment meeting, with 0 `unknown_id` (`specs/local-mlx-llm.md` section 5, WP4).
+   - The owner decided on 2026-10-20 to use the enum for all providers, not only for the local MLX LLM. The council review of this change is pending.
+   - Cost: each call has a new schema. The old rule was "no enum of ids", because each new schema grows the oMLX grammar cache about 0.45 GB (L5; https://github.com/jundot/omlx/issues/4321). That cost now applies to oMLX runs of these two nodes. UNVERIFIED: the cache growth with the per-call enum on oMLX.
 4. No `.min()`, `.max()`, `.length()`, `.regex()`: Anthropic returns error 400 for string length, number range and `minItems` above 1 (https://platform.claude.com/docs/en/build-with-claude/structured-outputs). Code checks sizes after the parse.
 5. One schema per node. `summarize` uses one schema for single, map and reduce (L5).
 6. Field order is generation order: evidence before conclusion (#163).
@@ -1186,7 +1193,7 @@ Council round r185-4 findings (2026-10-18, WP6 ea829062 and 6f57ac69): the code 
 For each correction, in order:
 
 1. `id` not in the chunk: drop (`unknown_id` is the new reason label; today a silent `continue`, `M/enhance.ts:530-531`).
-2. `id` seen earlier in the array: drop, `duplicate_id`. The first entry wins.
+2. `id` of an entry that was accepted earlier in the array: drop, `duplicate_id`. The first entry that passes every check wins. A dropped entry does not mark its `id` as seen (changed 2026-10-20).
 3. Trim the text. Remove an echoed "Speaker: " prefix (`M/enhance.ts:532-543`).
 4. Text empty: drop (`empty_text` is the new reason label; today a silent `continue`, `M/enhance.ts:544`).
 5. Text equals the original: drop (`unchanged` is the new reason label; today a silent `continue`, `M/enhance.ts:551`).
@@ -1323,7 +1330,7 @@ export type VerdictStatus = "kept" | "dropped";
 
 export type DropReason =
   | "unknown_label" | "unknown_segment" | "no_quote" | "quote_too_long"
-  | "quote_not_in_segment" | "empty_name" | "name_not_in_quote"
+  | "quote_not_in_segment" | "empty_name" | "label_echo" | "name_not_in_quote"
   | "not_self_introduction" | "conflict_lost" | "duplicate_same_name";
 
 export type EvidenceType = "self_introduction" | "addressed_as" | "role_detail";
@@ -1408,6 +1415,7 @@ Run in order. The first failure decides the verdict. Every proposal gets exactly
 | 4 | The quote has at most `QUOTE_MAX_CHARS` characters. | `quote_too_long` | New (#163) |
 | 5 | The normalized quote is a substring of the normalized text of the cited segment. | `quote_not_in_segment` | Replaces the search over all chunk lines (`M/enhance.ts:293-306`, loop `300-304`; drop text `345`). |
 | 6 | The trimmed name is not empty. Code cuts it to `NAME_MAX_CHARS`. | `empty_name` | `M/enhance.ts:569` skips an empty name with no reason code; `570` cuts with `slice(0, 80)`. `empty_name` and `NAME_MAX_CHARS` are new. |
+| 6b | The trimmed name or role is not a diarized label: "Me", "Them", "Them N", "Speaker N", "Label N" or a number alone, in any case (2026-10-20). | `label_echo` | New |
 | 7 | `kind = "name"`: the name is in the quote at a letter boundary. | `name_not_in_quote` | `M/enhance.ts:338-340` |
 | 8 | `kind = "name"` and the cited line has the same label: the quote reads as a self-introduction (4.4.3). | `not_self_introduction` | `M/enhance.ts:350-355` |
 
@@ -2545,7 +2553,7 @@ export interface LlmParamsLedger {     // params_json; section 5 fills it; unkno
 
 Each code has English text under `meetings.inspector.verdict.<code>` in `en.json` and `template.json` (planned, 8.10; `en.json` has no `inspector` key at c47cd80d). The link `reason` column holds the `reason` of the verdict or of the drop.
 - Kept (`evidenceType`): `self_introduction` "The speaker named themselves."; `addressed_as` "Another speaker called this speaker by that name."; `role_detail` "A real line supports this role."
-- Dropped speaker proposals (`DropReason`, 4.4): `unknown_label` "The speaker label does not exist."; `unknown_segment` "The cited line was not shown to the model."; `no_quote` "The model gave no evidence quote."; `quote_too_long` "The evidence quote is too long."; `quote_not_in_segment` "The evidence quote is not in the cited line."; `empty_name` "The entry has no name."; `name_not_in_quote` "The name is not in its own evidence."; `not_self_introduction` "The speaker said the name but did not name themselves."; `conflict_lost` "Stronger evidence named this speaker differently."; `duplicate_same_name` "Another proposal for this speaker has the same name."
+- Dropped speaker proposals (`DropReason`, 4.4): `unknown_label` "The speaker label does not exist."; `unknown_segment` "The cited line was not shown to the model."; `no_quote` "The model gave no evidence quote."; `quote_too_long` "The evidence quote is too long."; `quote_not_in_segment` "The evidence quote is not in the cited line."; `empty_name` "The entry has no name."; `label_echo` "The suggestion only repeats the speaker label."; `name_not_in_quote` "The name is not in its own evidence."; `not_self_introduction` "The speaker said the name but did not name themselves."; `conflict_lost` "Stronger evidence named this speaker differently."; `duplicate_same_name` "Another proposal for this speaker has the same name."
 - Dropped corrections (`CorrectionDropReason`, 4.2): `unknown_id` "The model named a segment that is not in this chunk."; `duplicate_id` "The model named this segment twice."; `empty_text` "The correction was empty."; `unchanged` "The correction did not change the text."; `format_only` "The correction changed only case or punctuation."; `deletes_words` "The correction removed words without a replacement."
 
 ### 7.6 Enumerations
