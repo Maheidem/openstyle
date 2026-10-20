@@ -18,6 +18,7 @@ import {
 } from "../mlx-asr/runtime.js";
 import {
   getMlxLlmModel,
+  MLX_LLM_ALLOW_PATTERNS,
   MLX_LLM_MODELS,
   MLX_LLM_PROVIDER_ID,
   type MlxLlmModelDef,
@@ -127,7 +128,9 @@ export async function downloadMlxLlmModel(modelId: string): Promise<void> {
   }
 
   try {
-    await downloadHfSnapshot(active, def.hfId);
+    await downloadHfSnapshot(active, def.hfId, {
+      allowPatterns: MLX_LLM_ALLOW_PATTERNS,
+    });
     activeDownloads.delete(modelId);
   } catch (err) {
     if (active.controller.signal.aborted) {

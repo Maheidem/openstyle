@@ -19,15 +19,17 @@ Today every LLM call (dictation cleanup, Meeting Enhance, Summarize) needs a clo
 1. MLX only, Apple silicon only. Same shape as the built-in local MLX speech models.
 2. Transport: the worker serves an OpenAI-style HTTP API on `127.0.0.1` (a "shim"). The server talks to it with the AI SDK OpenAI provider, as for an own server. This keeps `json_schema_strict`, the trace log and the LLM inspector.
 3. Bundle: the SAME `mlx_asr_worker` archive gets `mlx-lm` and `llguidance`. The server starts it a second time in LLM mode, as a second process. Probe X2b: works frozen, +6.3 MB. Probe X2c: two processes keep dictation at 0.18 s; one process gives 34-37 s.
-4. Catalog v1 (curated only, no custom LLM models):
+4. Catalog v1 (curated only, no custom LLM models; owner-approved 2026-10-20). The download fetches only the files that mlx-lm loads (§3.2). "Disk" is the sum of those files in the HF API tree of the repo.
 
-| Id | HF repo | Disk (bytes, HF API) | Family |
-|---|---|---|---|
-| `qwen3.5-0.8b-4bit` | `mlx-community/Qwen3.5-0.8B-4bit` | 652,029,391 | qwen3_5 |
-| `qwen3.5-4b-4bit` | `mlx-community/Qwen3.5-4B-4bit` | 3,061,130,647 | qwen3_5 |
-| `qwen3.5-9b-4bit` | `mlx-community/Qwen3.5-9B-4bit` | 5,977,073,303 | qwen3_5 |
-| `gemma-4-e2b-4bit` | `mlx-community/gemma-4-e2b-it-4bit` | 3,583,088,661 | gemma4 |
-| `gemma-4-e4b-4bit` | `mlx-community/gemma-4-e4b-it-4bit` | 5,179,241,512 | gemma4 |
+| Id | HF repo | Disk (bytes, filtered) | Family | Why this repo |
+|---|---|---|---|---|
+| `qwen3.5-0.8b-8bit` | `mlx-community/Qwen3.5-0.8B-8bit` | 1,027,974,615 | qwen3_5 | The model is tiny, so 8 bit costs little disk. |
+| `qwen3.5-4b-optiq-4bit` (recommended) | `mlx-community/Qwen3.5-4B-OptiQ-4bit` | 3,289,851,461 | qwen3_5 | The model card shows +1.9 capability and +5 BFCL over plain 4 bit. |
+| `qwen3.5-9b-6bit` | `mlx-community/Qwen3.5-9B-6bit` | 8,215,256,416 | qwen3_5 | OptiQ-9B has the same size and only +0.19, so plain 6 bit is used. |
+| `gemma-4-e2b-qat-4bit` | `mlx-community/gemma-4-E2B-it-qat-4bit` | 4,361,680,121 | gemma4 | QAT: Google states "similar quality to bf16". |
+| `gemma-4-e4b-qat-4bit` | `mlx-community/gemma-4-E4B-it-qat-4bit` | 6,830,817,013 | gemma4 | QAT: Google states "similar quality to bf16". |
+
+Rejected: the Jundot oQ4e repos (an MTP weight file breaks the strict mlx-lm load, and the repo has no license). The Gemma `qat-mobile` repos (`quant_method: gemma` is not supported in mlx-lm 0.32.2).
 
 5. Pins: `mlx==0.32.3`, `mlx-metal==0.32.3`, `mlx-audio==0.5.7`, `mlx-lm==0.32.2`, `llguidance==1.9.1`, `transformers>=5.14`, `huggingface_hub==1.33.0`. A `uv pip compile` resolves with no conflict. mlx-lm 0.31.x crashes at import with transformers 5.14 or later (mlx-lm#1458, fixed in 0.32.0). Do not add mlx-vlm (needs mlx>=0.32.4).
 
@@ -84,7 +86,9 @@ Today every LLM call (dictation cleanup, Meeting Enhance, Summarize) needs a clo
 
 Reuse the speech model code path: `snapshotDownload` into the shared HF cache, `listFiles` sizes, the disk check, the completeness check, cancel and delete (`mlx-asr/models.ts`). The runtime install is the same managed worker (`runtime.ts`).
 
-Completeness (WP5, the speech and the LLM models): before the fetch, the download writes the `listFiles` result (path and size of each file) to `openstyle-expected-files.json` in the repo cache dir. A snapshot is complete only when no `blobs/*.incomplete` file is left and every listed file is in the snapshot dir at its size (stat calls only). A snapshot with no list (an older app version or another HF tool) needs every entry to resolve and one `.safetensors` or `.npz` file. A dropped connection ("terminated", ECONNRESET, a socket error) gets 3 more tries after 2 s, 5 s and 10 s. `@huggingface/hub` 2.13 cannot resume a partial file: a new try skips the complete files and fetches the partial file again from 0. After the last failed try, the status is `error`.
+Text-only files (WP6, LLM models only): the LLM download fetches only the repo files that match `MLX_LLM_ALLOW_PATTERNS`. This list is a copy of `DEFAULT_ALLOW_PATTERNS` in mlx-lm 0.32.2 (`mlx_lm/utils.py`): `*.json`, `model*.safetensors`, `*.py`, `tokenizer.model`, `*.tiktoken`, `tiktoken.model`, `*.txt`, `*.jsonl`, `*.jinja`. The match is `fnmatch` style, as in the hub. So README files, `.gitattributes`, `optiq/mtp.safetensors` and `optiq_vision.safetensors` are not fetched. The filtered list is the size total, the disk check and the manifest below. The speech models still fetch the full repo.
+
+Completeness (WP5, the speech and the LLM models): before the fetch, the download writes the `listFiles` result (for an LLM, the filtered list) (path and size of each file) to `openstyle-expected-files.json` in the repo cache dir. A snapshot is complete only when no `blobs/*.incomplete` file is left and every listed file is in the snapshot dir at its size (stat calls only). A snapshot with no list (an older app version or another HF tool) needs every entry to resolve and one `.safetensors` or `.npz` file. A dropped connection ("terminated", ECONNRESET, a socket error) gets 3 more tries after 2 s, 5 s and 10 s. `@huggingface/hub` 2.13 cannot resume a partial file: a new try skips the complete files and fetches the partial file again from 0. After the last failed try, the status is `error`.
 
 ### 3.3 Process lifecycle (`server.ts`)
 
@@ -109,7 +113,7 @@ Mode ladder `["json_schema_strict","prompt_only"]` and reasoning control `templa
 ## 4. UI (Models page)
 
 - The LLM source picker gets a built-in group "On-device · MLX" (as voice; `source-picker.tsx:25-32`). Remove the "no built-in LLM" note.
-- LLM rows for the 5 models use the voice row component: size until ready, Download / Cancel / Retry / Use / Delete, progress with bytes, speed and percent. One "Recommended" badge: `qwen3.5-4b-4bit`.
+- LLM rows for the 5 models use the voice row component: size until ready, Download / Cancel / Retry / Use / Delete, progress with bytes, speed and percent. One "Recommended" badge: `qwen3.5-4b-optiq-4bit`.
 - "Use" sets the default LLM (`model_configs`, provider `local-mlx-llm`, model_id `local-mlx-llm/<id>`, type `llm`).
 - The task profiles section lists the local LLM models in the model override picker.
 - A keep-alive slider for the LLM next to the MLX memory section.
@@ -121,7 +125,7 @@ Mode ladder `["json_schema_strict","prompt_only"]` and reasoning control `templa
 ## 5. Proof (definition of done)
 
 1. Unit tests: worker (fake model) and server (registry, lifecycle, routes, catalog).
-2. Real worker: `--llm` with `qwen3.5-4b-4bit` answers `/v1/models` and a strict-schema chat completion with valid JSON.
+2. Real worker: `--llm` with `qwen3.5-4b-optiq-4bit` answers `/v1/models` and a strict-schema chat completion with valid JSON.
 3. Isolated server + isolated app (live-testing skill, quiet mode, Test Runner): download a catalog model from the Models page, press Use, run Meeting Enhance + Summarize on a fictional meeting. Show the llm_calls rows (provider `local-mlx-llm`, finish `stop`, valid JSON) and a screenshot of the Models page row.
 4. Dictation latency with the LLM worker loaded stays within 10% of baseline.
 5. CI green.

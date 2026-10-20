@@ -7,8 +7,13 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
-import { listFiles, snapshotDownload } from "@huggingface/hub";
+import { dirname, join } from "node:path";
+import {
+  downloadFileToCacheDir,
+  listFiles,
+  modelInfo,
+  snapshotDownload,
+} from "@huggingface/hub";
 import { getDb } from "../db.js";
 import {
   assertEnoughDiskSpace,
@@ -393,18 +398,88 @@ function waitOrAbort(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
+ * A glob of the hub `allow_patterns` kind (Python `fnmatch`): `*` matches any
+ * text, also `/`, and `?` matches one character.
+ */
+function globToRegExp(glob: string): RegExp {
+  const body = glob
+    .split("")
+    .map((ch) =>
+      ch === "*"
+        ? ".*"
+        : ch === "?"
+          ? "."
+          : ch.replace(/[\\^$.+()|{}[\]]/g, "\\$&"),
+    )
+    .join("");
+  return new RegExp(`^${body}$`);
+}
+
+/** The files whose repo path matches one of `patterns`. */
+export function filterRepoFiles<T extends { path: string }>(
+  files: readonly T[],
+  patterns: readonly string[],
+): T[] {
+  const regexps = patterns.map(globToRegExp);
+  return files.filter((file) => regexps.some((re) => re.test(file.path)));
+}
+
+export interface HfSnapshotOptions {
+  /** Can refuse the download when the total size is known. */
+  checkTotal?: (totalBytes: number) => void;
+  /**
+   * Fetch only the repo files that match one of these globs. Without it the
+   * download fetches the full repo.
+   */
+  allowPatterns?: readonly string[];
+}
+
+/**
+ * Fetch only `files` of the repo at its current commit into the shared HF
+ * cache, in the layout of `snapshotDownload` (`refs/main`, blobs, snapshot
+ * links). Returns the snapshot folder.
+ */
+async function downloadFileSubset(
+  hfId: string,
+  files: readonly ExpectedFile[],
+  fetchFn: typeof fetch,
+): Promise<string> {
+  const repo = { type: "model", name: hfId } as const;
+  const { sha } = await modelInfo({
+    name: hfId,
+    additionalFields: ["sha"],
+    revision: "main",
+    fetch: fetchFn,
+  });
+  const repoDir = hfRepoCacheDir(hfId);
+  const refPath = join(repoDir, "refs", "main");
+  mkdirSync(dirname(refPath), { recursive: true });
+  writeFileSync(refPath, sha);
+  for (const file of files) {
+    await downloadFileToCacheDir({
+      repo,
+      path: file.path,
+      revision: sha,
+      cacheDir: hfCacheRoot(),
+      fetch: fetchFn,
+    });
+  }
+  return join(repoDir, "snapshots", sha);
+}
+
+/**
  * Download the snapshot of `hfId` into the shared HF cache with progress in
  * `active`: read the file list, check the free disk space, write the manifest,
  * then fetch. A dropped connection gets 3 more tries. The hub skips the files
  * that are already complete, and it fetches a partial file again from the
- * start (`@huggingface/hub` 2.13 has no resume). `checkTotal` can refuse the
- * download when it knows the total size. Returns the snapshot folder. The
- * caller handles errors and cancel.
+ * start (`@huggingface/hub` 2.13 has no resume). With `allowPatterns`, the
+ * file list, the total, the manifest and the fetch hold only the matching
+ * files. Returns the snapshot folder. The caller handles errors and cancel.
  */
 export async function downloadHfSnapshot(
   active: ActiveMlxDownload,
   hfId: string,
-  checkTotal?: (totalBytes: number) => void,
+  { checkTotal, allowPatterns }: HfSnapshotOptions = {},
 ): Promise<string> {
   active.phase = "downloading_model";
   active.bytesDownloaded = 0;
@@ -426,6 +501,11 @@ export async function downloadHfSnapshot(
   } catch {
     files = null;
   }
+  if (allowPatterns) {
+    // A subset download needs the list. It has no "fetch all" fallback.
+    if (!files) throw new Error(`Could not read the file list of ${hfId}.`);
+    files = filterRepoFiles(files, allowPatterns);
+  }
   active.bytesTotal = files?.reduce((sum, file) => sum + file.size, 0) ?? 0;
 
   checkTotal?.(active.bytesTotal);
@@ -443,10 +523,14 @@ export async function downloadHfSnapshot(
 
   for (let attempt = 0; ; attempt++) {
     try {
+      const fetchFn = progressFetch(active, active.controller.signal);
+      if (allowPatterns && files) {
+        return await downloadFileSubset(hfId, files, fetchFn);
+      }
       return await snapshotDownload({
         repo,
         cacheDir: hfCacheRoot(),
-        fetch: progressFetch(active, active.controller.signal),
+        fetch: fetchFn,
       });
     } catch (err) {
       const delay = RETRY_DELAYS_MS[attempt];
@@ -516,17 +600,15 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
 
   try {
     // The add step checked the size once. The repo can grow before a retry.
-    const snapshotDir = await downloadHfSnapshot(
-      active,
-      model.hfId,
-      (totalBytes) => {
+    const snapshotDir = await downloadHfSnapshot(active, model.hfId, {
+      checkTotal: (totalBytes) => {
         if (model.custom && totalBytes > MAX_MODEL_BYTES) {
           throw new Error(
             "This model is now larger than 8 GiB. It was not downloaded.",
           );
         }
       },
-    );
+    });
     if (model.custom) {
       // An old mlx-whisper repo has no processor files. Add them before the
       // scan and the record, so both see them (spec section 14).

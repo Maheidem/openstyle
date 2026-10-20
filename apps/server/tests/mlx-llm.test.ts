@@ -62,8 +62,8 @@ import {
 } from "../src/lib/mlx-llm/server.js";
 import { createChatModel } from "../src/lib/providers.js";
 
-const QWEN_4B = "qwen3.5-4b-4bit";
-const QWEN_08B = "qwen3.5-0.8b-4bit";
+const QWEN_4B = "qwen3.5-4b-optiq-4bit";
+const QWEN_08B = "qwen3.5-0.8b-8bit";
 
 let scratch = "";
 let workerLog = "";
@@ -125,34 +125,34 @@ describe("catalog (spec 1 decision 4, 3.1)", () => {
       MLX_LLM_MODELS.map((m) => [m.id, m.hfId, m.family, m.sizeBytes]),
     ).toEqual([
       [
-        "qwen3.5-0.8b-4bit",
-        "mlx-community/Qwen3.5-0.8B-4bit",
+        "qwen3.5-0.8b-8bit",
+        "mlx-community/Qwen3.5-0.8B-8bit",
         "qwen3_5",
-        652_029_391,
+        1_027_974_615,
       ],
       [
-        "qwen3.5-4b-4bit",
-        "mlx-community/Qwen3.5-4B-4bit",
+        "qwen3.5-4b-optiq-4bit",
+        "mlx-community/Qwen3.5-4B-OptiQ-4bit",
         "qwen3_5",
-        3_061_130_647,
+        3_289_851_461,
       ],
       [
-        "qwen3.5-9b-4bit",
-        "mlx-community/Qwen3.5-9B-4bit",
+        "qwen3.5-9b-6bit",
+        "mlx-community/Qwen3.5-9B-6bit",
         "qwen3_5",
-        5_977_073_303,
+        8_215_256_416,
       ],
       [
-        "gemma-4-e2b-4bit",
-        "mlx-community/gemma-4-e2b-it-4bit",
+        "gemma-4-e2b-qat-4bit",
+        "mlx-community/gemma-4-E2B-it-qat-4bit",
         "gemma4",
-        3_583_088_661,
+        4_361_680_121,
       ],
       [
-        "gemma-4-e4b-4bit",
-        "mlx-community/gemma-4-e4b-it-4bit",
+        "gemma-4-e4b-qat-4bit",
+        "mlx-community/gemma-4-E4B-it-qat-4bit",
         "gemma4",
-        5_179_241_512,
+        6_830_817_013,
       ],
     ]);
     for (const m of MLX_LLM_MODELS) {
@@ -161,7 +161,7 @@ describe("catalog (spec 1 decision 4, 3.1)", () => {
     }
   });
 
-  it("recommends only qwen3.5-4b-4bit", () => {
+  it("recommends only qwen3.5-4b-optiq-4bit", () => {
     expect(
       MLX_LLM_MODELS.filter((m) => m.recommended).map((m) => m.id),
     ).toEqual([QWEN_4B]);
@@ -265,26 +265,26 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     seedModel(QWEN_08B);
     const state = getMlxLlmModelStatus(QWEN_08B);
     expect(state?.status).toBe("ready");
-    expect(state?.hfId).toBe("mlx-community/Qwen3.5-0.8B-4bit");
+    expect(state?.hfId).toBe("mlx-community/Qwen3.5-0.8B-8bit");
     expect(getMlxLlmModelStatus("nope")).toBeNull();
   });
 
   it("reports not_downloaded for a partial snapshot (an .incomplete blob)", () => {
-    const def = getMlxLlmModel("gemma-4-e2b-4bit");
-    if (!def) throw new Error("gemma-4-e2b-4bit");
+    const def = getMlxLlmModel("gemma-4-e2b-qat-4bit");
+    if (!def) throw new Error("gemma-4-e2b-qat-4bit");
     const repo = hfRepoCacheDir(def.hfId);
     mkdirSync(join(repo, "snapshots", "abc123"), { recursive: true });
     mkdirSync(join(repo, "blobs"), { recursive: true });
     writeFileSync(join(repo, "snapshots", "abc123", "config.json"), "{}");
     writeFileSync(join(repo, "blobs", "abc.incomplete"), "part");
-    expect(getMlxLlmModelStatus("gemma-4-e2b-4bit")?.status).toBe(
+    expect(getMlxLlmModelStatus("gemma-4-e2b-qat-4bit")?.status).toBe(
       "not_downloaded",
     );
     rmSync(repo, { recursive: true, force: true });
   });
 
   it("never starts a worker for a model that is not on disk (G4)", async () => {
-    await expect(ensureMlxLlmWorker("qwen3.5-9b-4bit")).rejects.toThrow(
+    await expect(ensureMlxLlmWorker("qwen3.5-9b-6bit")).rejects.toThrow(
       /not downloaded/,
     );
     expect(getMlxLlmWorkerState().state).toBe("stopped");
@@ -312,14 +312,14 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     const result = await generateText({ model, prompt: "hello there" });
     expect(result.text).toBe("Fake worker reply.");
     expect(result.finishReason).toBe("stop");
-    expect(result.response.modelId).toBe("mlx-community/Qwen3.5-4B-4bit");
+    expect(result.response.modelId).toBe("mlx-community/Qwen3.5-4B-OptiQ-4bit");
 
     const posted = loggedRequests()
       .slice(before)
       .filter((r) => r.method === "POST");
     expect(posted).toHaveLength(1);
     const body = posted[0]?.body as Record<string, unknown>;
-    expect(body.model).toBe("mlx-community/Qwen3.5-4B-4bit");
+    expect(body.model).toBe("mlx-community/Qwen3.5-4B-OptiQ-4bit");
     expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
     expect(body.top_k).toBe(20);
     expect(posted[0]?.hf_hub_offline).toBe("1");
@@ -332,7 +332,7 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     const again = await ensureMlxLlmWorker(QWEN_4B);
     expect(again.baseURL).toBe(a.baseURL);
     const b = await ensureMlxLlmWorker(QWEN_08B);
-    expect(b.hfId).toBe("mlx-community/Qwen3.5-0.8B-4bit");
+    expect(b.hfId).toBe("mlx-community/Qwen3.5-0.8B-8bit");
     expect(getMlxLlmWorkerState().model).toBe(QWEN_08B);
     // The old worker no longer answers.
     await expect(fetch(`${a.baseURL}/models`)).rejects.toThrow();
@@ -407,7 +407,7 @@ describe("/api/mlx-llm routes (3.5)", () => {
       ).status,
     ).toBe(400);
     const res = await jsonRequest(app, "POST", "/api/mlx-llm/server/start", {
-      model: "gemma-4-e4b-4bit",
+      model: "gemma-4-e4b-qat-4bit",
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
@@ -469,7 +469,7 @@ describe("/api/mlx-llm routes (3.5)", () => {
         `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`,
       );
       expect(local.map((m) => m.model_id)).not.toContain(
-        `${MLX_LLM_PROVIDER_ID}/gemma-4-e4b-4bit`,
+        `${MLX_LLM_PROVIDER_ID}/gemma-4-e4b-qat-4bit`,
       );
       expect(
         local.find((m) => m.model_id === `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`),

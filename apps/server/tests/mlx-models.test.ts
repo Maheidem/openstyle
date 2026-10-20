@@ -28,14 +28,22 @@ const mocks = vi.hoisted(() => ({
   blocker: "runtime missing" as string | null,
   ensureRuntime: vi.fn(),
   snapshotDownload: vi.fn(),
+  downloadFileToCacheDir: vi.fn(),
   listSize: 2,
+  listEntries: null as null | Array<{ path: string; size: number }>,
 }));
 
 vi.mock("@huggingface/hub", () => ({
-  // The size sum for the progress bar. One small file.
+  // The size sum for the progress bar. One small file, or `listEntries`.
   listFiles: async function* () {
+    if (mocks.listEntries) {
+      for (const e of mocks.listEntries) yield { type: "file", ...e };
+      return;
+    }
     yield { type: "file", path: "config.json", size: mocks.listSize };
   },
+  modelInfo: async () => ({ sha: "sha-1" }),
+  downloadFileToCacheDir: mocks.downloadFileToCacheDir,
   snapshotDownload: mocks.snapshotDownload,
 }));
 
@@ -917,5 +925,110 @@ describe("curated snapshot completeness and download retries", () => {
 
     expect(mocks.snapshotDownload).toHaveBeenCalledTimes(1);
     expect(getMlxModelStatus(SENSE)?.status).toBe("error");
+  });
+});
+
+describe("downloadHfSnapshot with allow patterns (LLM text-only files)", () => {
+  // The real file list of mlx-community/Qwen3.5-4B-OptiQ-4bit (HF API tree).
+  const OPTIQ_FILES = [
+    { path: ".gitattributes", size: 1570 },
+    { path: "README.md", size: 5101 },
+    { path: "chat_template.jinja", size: 7756 },
+    { path: "config.json", size: 55537 },
+    { path: "generation_config.json", size: 148 },
+    { path: "kv_config.json", size: 528 },
+    { path: "model.safetensors", size: 3269669552 },
+    { path: "model.safetensors.index.json", size: 99163 },
+    { path: "optiq/mtp.safetensors", size: 86701044 },
+    { path: "optiq_metadata.json", size: 26224 },
+    { path: "optiq_vision.safetensors", size: 667061501 },
+    { path: "preprocessor_config.json", size: 390 },
+    { path: "processor_config.json", size: 1300 },
+    { path: "tokenizer.json", size: 19989343 },
+    { path: "tokenizer_config.json", size: 1135 },
+    { path: "video_preprocessor_config.json", size: 385 },
+  ];
+  const KEPT = OPTIQ_FILES.filter(
+    (f) =>
+      ![
+        ".gitattributes",
+        "README.md",
+        "optiq/mtp.safetensors",
+        "optiq_vision.safetensors",
+      ].includes(f.path),
+  );
+  let cacheDir = "";
+  const originalCache = process.env.HUGGINGFACE_HUB_CACHE;
+
+  beforeEach(() => {
+    cacheDir = mkdtempSync(join(tmpdir(), "mlx-allow-"));
+    process.env.HUGGINGFACE_HUB_CACHE = cacheDir;
+    mocks.snapshotDownload.mockReset();
+    mocks.downloadFileToCacheDir.mockReset();
+    mocks.listEntries = OPTIQ_FILES;
+  });
+
+  afterEach(() => {
+    mocks.listEntries = null;
+    if (originalCache === undefined) delete process.env.HUGGINGFACE_HUB_CACHE;
+    else process.env.HUGGINGFACE_HUB_CACHE = originalCache;
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it("keeps the mlx-lm files and drops README and the optiq extras", async () => {
+    const { filterRepoFiles } = await import("../src/lib/mlx-asr/models.js");
+    const { MLX_LLM_ALLOW_PATTERNS } = await import(
+      "../src/lib/mlx-llm/constants.js"
+    );
+
+    const kept = filterRepoFiles(OPTIQ_FILES, MLX_LLM_ALLOW_PATTERNS);
+
+    expect(kept).toEqual(KEPT);
+    expect(kept.reduce((sum, f) => sum + f.size, 0)).toBe(3_289_851_461);
+  });
+
+  it("fetches only the matching files and writes them into the manifest", async () => {
+    const { downloadHfSnapshot, isHfSnapshotPresent, newActiveMlxDownload } =
+      await import("../src/lib/mlx-asr/models.js");
+    const { MLX_LLM_ALLOW_PATTERNS } = await import(
+      "../src/lib/mlx-llm/constants.js"
+    );
+    const hfId = "mlx-community/Qwen3.5-4B-OptiQ-4bit";
+    const repoDir = join(
+      cacheDir,
+      "models--mlx-community--Qwen3.5-4B-OptiQ-4bit",
+    );
+    const active = newActiveMlxDownload();
+
+    const snapshot = await downloadHfSnapshot(active, hfId, {
+      allowPatterns: MLX_LLM_ALLOW_PATTERNS,
+    });
+
+    expect(mocks.snapshotDownload).not.toHaveBeenCalled();
+    expect(
+      mocks.downloadFileToCacheDir.mock.calls.map((c) => c[0].path),
+    ).toEqual(KEPT.map((f) => f.path));
+    expect(mocks.downloadFileToCacheDir.mock.calls[0][0].revision).toBe(
+      "sha-1",
+    );
+    expect(snapshot).toBe(join(repoDir, "snapshots", "sha-1"));
+    expect(readFileSync(join(repoDir, "refs", "main"), "utf8")).toBe("sha-1");
+    expect(active.bytesTotal).toBe(3_289_851_461);
+    const manifest = JSON.parse(
+      readFileSync(join(repoDir, "openstyle-expected-files.json"), "utf8"),
+    );
+    expect(manifest.files).toEqual(KEPT);
+
+    // The completeness check uses the filtered list: the snapshot is ready
+    // with no optiq file, and not ready with one kept file missing.
+    mkdirSync(snapshot, { recursive: true });
+    for (const f of KEPT.slice(1)) {
+      writeFileSync(join(snapshot, f.path), "");
+      truncateSync(join(snapshot, f.path), f.size);
+    }
+    expect(isHfSnapshotPresent(hfId)).toBe(false);
+    writeFileSync(join(snapshot, KEPT[0].path), "");
+    truncateSync(join(snapshot, KEPT[0].path), KEPT[0].size);
+    expect(isHfSnapshotPresent(hfId)).toBe(true);
   });
 });
