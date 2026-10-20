@@ -15,7 +15,7 @@ import type { MeetingSummary } from "./schemas.js";
  * node result type, a node schema, a prompt, a constant below, the unit key
  * grammar, or the model or reasoning choice (3.4.7, "Graph version").
  */
-export const WORKFLOW_GRAPH_VERSION = 3;
+export const WORKFLOW_GRAPH_VERSION = 4;
 
 // ---------------------------------------------------------------------------
 // Constants of 4.0.5. Names are names of this spec. Values marked "new" in the

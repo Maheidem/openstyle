@@ -23,6 +23,10 @@ import {
   normalizeLabel,
 } from "../src/lib/meetings/workflow/schemas.js";
 import {
+  NAME_MAX_CHARS,
+  QUOTE_MAX_CHARS,
+} from "../src/lib/meetings/workflow/types.js";
+import {
   buildMeetingFixture,
   writeMeetingFixture,
 } from "./helpers/meeting-fixture.js";
@@ -157,10 +161,10 @@ describe("the per-call schemas (ids and labels enum)", () => {
     ]);
   });
 
-  it("identifySpeakers: segmentId is an enum of the shown ids, label an enum of the label numbers; field order stays; version 3", async () => {
+  it("identifySpeakers: segmentId is an enum of the shown ids, label an enum of the label numbers; field order stays; version 4", async () => {
     const step = identifySpeakersStepSchema(ids, ["1", "2"]);
     expect(step.name).toBe("identify_speakers");
-    expect(step.version).toBe(3);
+    expect(step.version).toBe(4);
     await expect(assertPortableSchema(step.zod)).resolves.toBeUndefined();
     const json = (await asSchema(step.zod).jsonSchema) as {
       properties: {
@@ -195,6 +199,65 @@ describe("the per-call schemas (ids and labels enum)", () => {
       segmentId: "fict-1:system:1",
       label: "1",
     });
+  });
+
+  it("identifySpeakers: the default schema has no size keyword (portable)", async () => {
+    const step = identifySpeakersStepSchema(ids, ["1", "2"]);
+    const text = JSON.stringify(await asSchema(step.zod).jsonSchema);
+    for (const key of ["maxItems", "maxLength", "minItems", "minLength"]) {
+      expect(text).not.toContain(key);
+    }
+  });
+
+  it("identifySpeakers: sizeLimits sets maxItems to the label count and maxLength on quote and name only", async () => {
+    const step = identifySpeakersStepSchema(ids, ["1", "2", "2"], {
+      sizeLimits: true,
+    });
+    expect(step.version).toBe(4);
+    const json = (await asSchema(step.zod).jsonSchema) as {
+      properties: {
+        speakers: {
+          maxItems?: number;
+          items: { properties: Record<string, unknown>; required: string[] };
+        };
+      };
+    };
+    const arr = json.properties.speakers;
+    // Two different labels: at most one entry for each.
+    expect(arr.maxItems).toBe(2);
+    expect(arr.items.properties.quote).toEqual({
+      type: "string",
+      maxLength: QUOTE_MAX_CHARS,
+    });
+    expect(arr.items.properties.name).toEqual({
+      type: "string",
+      maxLength: NAME_MAX_CHARS,
+    });
+    expect(arr.items.properties.segmentId).toEqual({
+      type: "string",
+      enum: ids,
+    });
+    // Field order and required stay as in the default schema.
+    expect(Object.keys(arr.items.properties)).toEqual([
+      "segmentId",
+      "quote",
+      "label",
+      "kind",
+      "name",
+    ]);
+    expect(arr.items.required).toEqual(Object.keys(arr.items.properties));
+    // The zod side accepts any size: verifyEvidence drops a long quote alone.
+    const long = "a".repeat(QUOTE_MAX_CHARS + 50);
+    const entry = {
+      segmentId: ids[0],
+      quote: long,
+      label: "1",
+      kind: "name",
+      name: "Ana",
+    };
+    const parsed = step.zod.parse({ speakers: [entry, entry, entry] });
+    expect(parsed.speakers).toHaveLength(3);
+    expect(parsed.speakers[0]?.quote).toBe(long);
   });
 
   it("identifySpeakers: the schema of one call holds only that call's ids; an id of another call is not in it", async () => {

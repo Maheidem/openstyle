@@ -1,11 +1,13 @@
 import { z } from "zod";
 import type { StepSchema } from "../../llm/gateway.js";
 import { FULL_SEGMENT_RULE } from "./prompts.js";
+import { NAME_MAX_CHARS, QUOTE_MAX_CHARS } from "./types.js";
 
 // The fixed answer schemas of the three LLM nodes (specs/meeting-enhance-agentic.md
 // 4.2.1, 4.3.1, 4.5.1). Strict-mode rules (4.0.3): every field is required and
 // `.nullable()` marks an absent value; no `.optional()`, no `.default()`, no
-// size limits. Field order is generation order. Code checks sizes after the
+// size limits (one exception: `identifySpeakersStepSchema` with `sizeLimits`
+// for the local MLX LLM). Field order is generation order. Code checks sizes after the
 // parse. Change a schema, and bump WORKFLOW_GRAPH_VERSION (3.4).
 //
 // The ids and labels exception (owner decision 2026-10-20): small local models
@@ -117,24 +119,39 @@ export const IDENTIFY_SPEAKERS_STEP_SCHEMA: StepSchema<IdentifySpeakers> = {
  * The `identifySpeakers` schema of one call: `segmentId` is an enum of the ids
  * of the lines that the call shows, and `label` is an enum of the label
  * numbers to identify. Version 2 is the label enum. Version 3 adds the
- * `segmentId` enum.
+ * `segmentId` enum. Version 4 adds `sizeLimits`.
+ *
+ * `sizeLimits`: only for a grammar engine that applies JSON Schema size
+ * keywords (the local MLX LLM, llguidance). The array gets `maxItems` = the
+ * number of labels, `quote` gets `maxLength` = QUOTE_MAX_CHARS and `name` gets
+ * `maxLength` = NAME_MAX_CHARS. Without them a small model writes one entry
+ * for each line and copies the full line, so it hits the output limit of
+ * 4.3.5 and returns nothing. Cloud providers reject these keywords (4.0.3
+ * rule 4), so the default schema has none. The zod side accepts any size:
+ * `verifyEvidence` checks the sizes after the parse, as before.
  */
 export function identifySpeakersStepSchema(
   ids: readonly string[],
   labels: readonly string[],
+  opts: { sizeLimits?: boolean } = {},
 ): StepSchema<IdentifySpeakers> {
   const row = IdentifySpeakersSchema.shape.speakers.element;
+  const limits = opts.sizeLimits === true;
+  const sized = (max: number) =>
+    limits ? z.string().meta({ maxLength: max }) : z.string();
+  const item = row.extend({
+    segmentId: enumOf(ids, normalizeId),
+    quote: sized(QUOTE_MAX_CHARS),
+    label: enumOf(labels, normalizeLabel),
+    name: sized(NAME_MAX_CHARS),
+  });
+  const speakers = limits
+    ? z.array(item).meta({ maxItems: new Set(labels).size })
+    : z.array(item);
   return {
     name: IDENTIFY_SPEAKERS_STEP_SCHEMA.name,
-    version: 3,
-    zod: z.object({
-      speakers: z.array(
-        row.extend({
-          segmentId: enumOf(ids, normalizeId),
-          label: enumOf(labels, normalizeLabel),
-        }),
-      ),
-    }),
+    version: 4,
+    zod: z.object({ speakers }),
   };
 }
 

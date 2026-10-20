@@ -4,14 +4,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
+import type { CallProfile } from "../src/lib/llm/model-profiles.js";
 import { __clearModeCacheForTests } from "../src/lib/llm/model-profiles.js";
-import { selectCandidates } from "../src/lib/meetings/workflow/nodes/identify-speakers.js";
+import {
+  appliesSizeLimits,
+  selectCandidates,
+} from "../src/lib/meetings/workflow/nodes/identify-speakers.js";
 import {
   IDENTIFY_ANCHOR_LINES,
   IDENTIFY_MAX_INPUT_TOKENS,
   type PreparedMeeting,
   type PreparedSegment,
 } from "../src/lib/meetings/workflow/types.js";
+import { MLX_LLM_PROVIDER_ID } from "../src/lib/mlx-llm/constants.js";
 import { okReply, reply, type ScriptStep } from "./helpers/fake-model.js";
 import type { MeetingFixture } from "./helpers/meeting-fixture.js";
 import {
@@ -193,6 +198,17 @@ describe("candidate lines (4.3.2)", () => {
   });
 });
 
+describe("schema size limits by provider", () => {
+  const profileOf = (provider: string) => ({ provider }) as CallProfile;
+
+  it("only the local MLX LLM (llguidance) gets the size limits", () => {
+    expect(appliesSizeLimits(profileOf(MLX_LLM_PROVIDER_ID))).toBe(true);
+    for (const p of ["server", "openai", "anthropic", "groq"]) {
+      expect(appliesSizeLimits(profileOf(p))).toBe(false);
+    }
+  });
+});
+
 describe("identifySpeakers in the graph", () => {
   it("a made-up name is proposed, kept, and written as a suggestion; no attendee name is in any request", async () => {
     const f = seedFixtureMeeting({
@@ -213,6 +229,11 @@ describe("identifySpeakers in the graph", () => {
       ),
     );
     expect(r.identifyRequests).toHaveLength(1);
+    // A `server` provider gets the portable schema: no size keyword.
+    const wire = JSON.stringify(r.identifyRequests[0]?.responseFormat);
+    expect(wire).toContain('"speakers"');
+    expect(wire).not.toContain("maxItems");
+    expect(wire).not.toContain("maxLength");
     expect(r.finalState.identify?.status).toBe("ok");
     expect(r.finalState.identify?.proposals[0]).toMatchObject({
       unitKey: "candidates",
