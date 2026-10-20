@@ -906,7 +906,8 @@
         "correctChunk": "Corrections",
         "identifySpeakers": "Intervenants",
         "summarize": "Résumé",
-        "save": "Enregistrement"
+        "save": "Enregistrement",
+        "suggestTags": "Étiquettes"
       },
       "chunks": "segments {{list}}",
       "resume": "Reprendre",
@@ -975,6 +976,16 @@
       "pickTitle": "Événements du jour",
       "link": "Associer un événement du calendrier",
       "actionFailed": "La modification a échoué. Réessayez."
+    },
+    "tags": {
+      "label": "Étiquettes",
+      "add": "Ajouter une étiquette",
+      "placeholder": "Ajouter une étiquette",
+      "remove": "Retirer l'étiquette {{name}}",
+      "suggestions": "Étiquettes existantes",
+      "tooLong": "Une étiquette peut avoir au plus {{max}} caractères.",
+      "tooMany": "Une réunion peut avoir au plus {{max}} étiquettes.",
+      "saveFailed": "Les étiquettes n'ont pas été enregistrées. Réessayez."
     }
   },
   "help": {

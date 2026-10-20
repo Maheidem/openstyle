@@ -12,6 +12,7 @@ export * from "./meeting-calendar.js";
 export * from "./meeting-files.js";
 export * from "./meeting-folders.js";
 export * from "./meeting-responses.js";
+export * from "./meeting-tags.js";
 export * from "./meeting-types.js";
 export * from "./mlx-keep-alive.js";
 export * from "./models.js";

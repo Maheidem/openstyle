@@ -3,6 +3,8 @@ import { getDb } from "../../src/lib/db.js";
 /** Delete every meeting row and its child rows. Call it from `afterEach`. */
 export function resetMeetingTables(): void {
   const db = getDb();
+  db.exec("DELETE FROM meeting_tags");
+  db.exec("DELETE FROM tags");
   db.exec("DELETE FROM meeting_summaries");
   db.exec("DELETE FROM meeting_speakers");
   db.exec("DELETE FROM meeting_segments");

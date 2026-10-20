@@ -1086,7 +1086,8 @@
         "correctChunk": "Corrections",
         "identifySpeakers": "Speakers",
         "summarize": "Summary",
-        "save": "Saving"
+        "save": "Saving",
+        "suggestTags": "Tags"
       },
       "chunks": "chunks {{list}}",
       "resume": "Resume",
@@ -1291,6 +1292,16 @@
       "pickTitle": "Today's events",
       "link": "Link calendar event",
       "actionFailed": "The change did not work. Try again."
+    },
+    "tags": {
+      "label": "Tags",
+      "add": "Add a tag",
+      "placeholder": "Add tag",
+      "remove": "Remove the tag {{name}}",
+      "suggestions": "Existing tags",
+      "tooLong": "A tag can have at most {{max}} characters.",
+      "tooMany": "A meeting can have at most {{max}} tags.",
+      "saveFailed": "The tags were not saved. Try again."
     }
   },
   "help": {

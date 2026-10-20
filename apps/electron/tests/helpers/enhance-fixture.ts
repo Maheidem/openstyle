@@ -25,6 +25,7 @@ export type StepName =
   | "correct_chunk"
   | "identify_speakers"
   | "meeting_summary"
+  | "meeting_tags"
   | "other";
 
 /** One request that reached the fake server, as the test reads it. */
@@ -63,7 +64,8 @@ function stepOf(body: Record<string, unknown>): StepName {
   const name = rf?.json_schema?.name;
   return name === "correct_chunk" ||
     name === "identify_speakers" ||
-    name === "meeting_summary"
+    name === "meeting_summary" ||
+    name === "meeting_tags"
     ? name
     : "other";
 }

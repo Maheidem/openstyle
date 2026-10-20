@@ -40,6 +40,11 @@ export const MeetingSummarySchema = z.object({
 });
 export type MeetingSummary = z.infer<typeof MeetingSummarySchema>;
 
+export const MeetingTagsSchema = z.object({
+  tags: z.array(z.string()),
+});
+export type MeetingTags = z.infer<typeof MeetingTagsSchema>;
+
 /** The schemas as the gateway takes them: wire name, stored version, zod object. */
 export const CORRECT_CHUNK_STEP_SCHEMA: StepSchema<CorrectChunk> = {
   name: "correct_chunk",
@@ -55,4 +60,9 @@ export const MEETING_SUMMARY_STEP_SCHEMA: StepSchema<MeetingSummary> = {
   name: "meeting_summary",
   version: 1,
   zod: MeetingSummarySchema,
+};
+export const MEETING_TAGS_STEP_SCHEMA: StepSchema<MeetingTags> = {
+  name: "meeting_tags",
+  version: 1,
+  zod: MeetingTagsSchema,
 };

@@ -434,20 +434,23 @@ describe("W14, the models.dev read is best effort (5.1)", () => {
     ).rejects.toBeInstanceOf(ModelUnavailableError);
   });
 
-  it("(d) resolveModels reads the registry once for the three profiles", async () => {
+  it("(d) resolveModels reads the registry once for the four profiles", async () => {
     useModel("openai", "openai/gpt-4o-mini");
     const models = await resolveModels({
       maxReasoningTokens: {
         correctChunk: 0,
         identifySpeakers: 1024,
         summarize: 0,
+        suggestTags: 0,
       },
     });
     expect(Object.keys(models).sort()).toEqual([
       "correctChunk",
       "identifySpeakers",
+      "suggestTags",
       "summarize",
     ]);
+    expect(models.suggestTags.taskId).toBe("meetingEnhance");
     expect(registryMock).toHaveBeenCalledTimes(1);
     expect(models.correctChunk.taskId).toBe("meetingEnhance");
     expect(models.summarize.taskId).toBe("meetingSummarize");
@@ -461,6 +464,7 @@ describe("W14, the models.dev read is best effort (5.1)", () => {
         correctChunk: 0,
         identifySpeakers: 0,
         summarize: 0,
+        suggestTags: 0,
       },
     });
     expect(registryMock).not.toHaveBeenCalled();

@@ -43,6 +43,7 @@ function stateFor(meetingId: string, runId = "run-1"): WorkflowStateType {
     verify: null,
     summary: null,
     saved: null,
+    tags: null,
   };
 }
 
@@ -97,6 +98,7 @@ describe("prepare", () => {
     expect(Object.keys(out.models).sort()).toEqual([
       "correctChunk",
       "identifySpeakers",
+      "suggestTags",
       "summarize",
     ]);
     expect(out.models.correctChunk.provider).toBe("server");

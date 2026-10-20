@@ -906,7 +906,8 @@
         "correctChunk": "Korrekturen",
         "identifySpeakers": "Sprecher",
         "summarize": "Zusammenfassung",
-        "save": "Speichern"
+        "save": "Speichern",
+        "suggestTags": "Tags"
       },
       "chunks": "Abschnitte {{list}}",
       "resume": "Fortsetzen",
@@ -975,6 +976,16 @@
       "pickTitle": "Termine von heute",
       "link": "Kalendertermin verknüpfen",
       "actionFailed": "Die Änderung hat nicht funktioniert. Versuchen Sie es erneut."
+    },
+    "tags": {
+      "label": "Tags",
+      "add": "Tag hinzufügen",
+      "placeholder": "Tag hinzufügen",
+      "remove": "Tag {{name}} entfernen",
+      "suggestions": "Vorhandene Tags",
+      "tooLong": "Ein Tag darf höchstens {{max}} Zeichen haben.",
+      "tooMany": "Ein Meeting darf höchstens {{max}} Tags haben.",
+      "saveFailed": "Die Tags wurden nicht gespeichert. Versuche es erneut."
     }
   },
   "help": {

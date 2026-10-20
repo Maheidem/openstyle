@@ -15,7 +15,7 @@ import type { MeetingSummary } from "./schemas.js";
  * node result type, a node schema, a prompt, a constant below, the unit key
  * grammar, or the model or reasoning choice (3.4.7, "Graph version").
  */
-export const WORKFLOW_GRAPH_VERSION = 1;
+export const WORKFLOW_GRAPH_VERSION = 2;
 
 // ---------------------------------------------------------------------------
 // Constants of 4.0.5. Names are names of this spec. Values marked "new" in the
@@ -37,6 +37,11 @@ export const QUOTE_MAX_CHARS = 160;
 export const NAME_MAX_CHARS = 80;
 /** Consecutive final failures of one kind in one node that stop the run (3.4.5). */
 export const BREAKER_N = 3;
+/** suggestTags (issue #231): the input budget and the answer size. */
+export const TAGS_MAX_INPUT_TOKENS = 6000;
+export const TAGS_ANSWER_TOKENS = 200;
+/** The most existing tag names that go in the prompt (the most used first). */
+export const TAGS_PROMPT_MAX_EXISTING = 200;
 
 // ---------------------------------------------------------------------------
 // Failure and status (4.0.7)
@@ -48,7 +53,8 @@ export type NodeId =
   | "identifySpeakers"
   | "verifyEvidence"
   | "summarize"
-  | "save";
+  | "save"
+  | "suggestTags";
 
 export type FailureKind =
   | GatewayErrorKind
@@ -298,6 +304,20 @@ export interface SaveResult {
   failures: NodeFailure[];
   /** The meeting row is gone (4.6.4). */
   meetingGone: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// suggestTags (issue #231). It runs after `save` and never changes the run
+// status: deriveRunStatus does not read it.
+// ---------------------------------------------------------------------------
+
+export interface SuggestTagsResult {
+  status: NodeStatus;
+  /** The normalized names the model gave, at most MAX_SUGGESTED_TAGS. */
+  suggested: string[];
+  /** The names that this run added to the meeting. */
+  added: string[];
+  failure: NodeFailure | null;
 }
 
 // ---------------------------------------------------------------------------

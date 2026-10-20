@@ -906,7 +906,8 @@
         "correctChunk": "Correcciones",
         "identifySpeakers": "Interlocutores",
         "summarize": "Resumen",
-        "save": "Guardado"
+        "save": "Guardado",
+        "suggestTags": "Etiquetas"
       },
       "chunks": "fragmentos {{list}}",
       "resume": "Reanudar",
@@ -975,6 +976,16 @@
       "pickTitle": "Eventos de hoy",
       "link": "Vincular evento del calendario",
       "actionFailed": "El cambio no funcionó. Inténtalo de nuevo."
+    },
+    "tags": {
+      "label": "Etiquetas",
+      "add": "Añadir una etiqueta",
+      "placeholder": "Añadir etiqueta",
+      "remove": "Quitar la etiqueta {{name}}",
+      "suggestions": "Etiquetas existentes",
+      "tooLong": "Una etiqueta puede tener como máximo {{max}} caracteres.",
+      "tooMany": "Una reunión puede tener como máximo {{max}} etiquetas.",
+      "saveFailed": "No se guardaron las etiquetas. Inténtalo de nuevo."
     }
   },
   "help": {

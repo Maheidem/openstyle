@@ -42,6 +42,7 @@ const KNOWN_NODES: ReadonlySet<string> = new Set([
   "identifySpeakers",
   "summarize",
   "save",
+  "suggestTags",
 ]);
 
 /** The run statuses that show a failure or interrupted notice. */
