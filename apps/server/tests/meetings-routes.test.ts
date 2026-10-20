@@ -2175,7 +2175,7 @@ describe("POST /api/meetings/:id/summarize", () => {
     },
   );
 
-  it("records the failure in the run record and leaves meetings.error untouched", async () => {
+  it("rejects a summary without an LLM and leaves meetings.error untouched", async () => {
     insertMeeting("m1", "transcribed");
     insertSystemSegment("m1:system:0", "m1", 0, 0, 2000);
     // 6 constraint 3: meetings.error is the chunk-failure banner. A summarize
@@ -2185,23 +2185,20 @@ describe("POST /api/meetings/:id/summarize", () => {
         "UPDATE meetings SET error = '2 of 5 chunks failed' WHERE id = ?",
       )
       .run("m1");
-    // No default model: the run fails at prepare with a typed code.
+    // No default model: reject the request before creating a run.
     getDb().prepare("DELETE FROM model_configs").run();
     const h = runnerHarness();
     __setMeetingsTestOverrides({ workflowDeps: h.deps });
 
     const res = await postEmpty(app, "/api/meetings/m1/summarize");
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "no_llm" });
     await waitForNoJob("m1");
     const after = await getMeeting("m1");
     expect(after.error).toBe("2 of 5 chunks failed");
     expect(after.status).toBe("transcribed");
     expect(after.summary).toBeNull();
-    const [run] = await llmRuns("m1");
-    expect(run).toMatchObject({
-      status: "failed",
-      errorKind: "model_unavailable",
-    });
+    expect(await llmRuns("m1")).toEqual([]);
     const segments = getDb()
       .prepare(
         "SELECT COUNT(*) AS c FROM meeting_segments WHERE meeting_id = ?",
@@ -2349,15 +2346,16 @@ describe("POST /api/meetings/:id/enhance", () => {
       status: "succeeded",
     });
 
-    // Slot released after success, and after a failed run too.
+    // The slot is free after success. A rejected run does not claim it.
     expect((await postEmpty(app, "/api/meetings/m1/enhance")).status).toBe(202);
     await waitForNoJob("m1");
     getDb().prepare("DELETE FROM model_configs").run();
-    expect((await postEmpty(app, "/api/meetings/m1/enhance")).status).toBe(202);
+    const runsBefore = await llmRuns("m1");
+    expect((await postEmpty(app, "/api/meetings/m1/enhance")).status).toBe(409);
     await waitForNoJob("m1");
     expect((await getMeeting("m1")).job).toBeNull();
-    expect((await llmRuns("m1"))[0]?.status).toBe("failed");
-    expect((await postEmpty(app, "/api/meetings/m1/enhance")).status).toBe(202);
+    expect(await llmRuns("m1")).toEqual(runsBefore);
+    expect((await postEmpty(app, "/api/meetings/m1/enhance")).status).toBe(409);
     await waitForNoJob("m1");
   });
 
@@ -2404,7 +2402,7 @@ describe("POST /api/meetings/:id/enhance", () => {
     expect(enhanced).toContain(correctionText("m1:mic:0"));
   });
 
-  it("answers 202 and reads a failure from the run record: no 500 or 502 any more", async () => {
+  it("rejects Enhance and Summarize without a default LLM and creates no run", async () => {
     insertMeeting("m1", "transcribed");
     insertSegment({
       id: "m1:mic:0",
@@ -2420,13 +2418,15 @@ describe("POST /api/meetings/:id/enhance", () => {
     const h = runnerHarness();
     __setMeetingsTestOverrides({ workflowDeps: h.deps });
 
-    const res = await postEmpty(app, "/api/meetings/m1/enhance");
-    expect(res.status).toBe(202);
-    await waitForNoJob("m1");
-    expect((await llmRuns("m1"))[0]).toMatchObject({
-      status: "failed",
-      errorKind: "model_unavailable",
-    });
+    for (const action of ["enhance", "summarize"]) {
+      const res = await postEmpty(app, `/api/meetings/m1/${action}`);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: "No AI model is set up. Add one in Settings > Models.",
+        code: "no_llm",
+      });
+      expect(await llmRuns("m1")).toEqual([]);
+    }
     expect((await getMeeting("m1")).error).toBeNull();
   });
 
@@ -2970,8 +2970,8 @@ describe("transcribe: auto-run Enhance as its own run", () => {
     expect(after.status).toBe(409);
   });
 
-  it("leaves the status transcribed when the auto-run fails", async () => {
-    // No default model: the run fails at prepare.
+  it("skips auto-run without a default LLM and leaves the status transcribed", async () => {
+    // No default model: skip the automatic run.
     getDb().prepare("DELETE FROM model_configs").run();
     const h = runnerHarness();
     __setMeetingsTestOverrides({
@@ -2986,11 +2986,9 @@ describe("transcribe: auto-run Enhance as its own run", () => {
     await waitForNoJob("m1");
     const done = await getMeeting("m1");
     expect(done.status).toBe("transcribed");
-    expect(done.error).toBeNull(); // the failure is in the run record, not here
-    expect((await llmRuns("m1"))[0]).toMatchObject({
-      status: "failed",
-      errorKind: "model_unavailable",
-    });
+    expect(done.error).toBeNull();
+    expect(await llmRuns("m1")).toEqual([]);
+    expect(h.requests).toHaveLength(0);
   });
 
   it("a cancel that lands during the diarizer run exits the job (I4: cancel right after runDiarizer)", async () => {
