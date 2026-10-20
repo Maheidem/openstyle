@@ -10,8 +10,9 @@
 //                  keys), or the raw `text` column changed
 //   2 numbers      a number or time token changed, lost or added
 //   3 names        a capitalized name of the raw text or of the meeting
-//                  metadata removed, lowercased or changed (a spelling fix
-//                  is not a fail)
+//                  metadata removed, lowercased or replaced by a different
+//                  name (a change of case, spacing or punctuation, a
+//                  spelling fix, or a fix to a known form is not a fail)
 //   4 negations    a negation added or removed
 //   5 labels       the enhanced text starts with a speaker label ("Me:",
 //                  "Them:", "Them 7:") and the raw text does not
@@ -19,8 +20,9 @@
 //                  finish "length"
 //   7 summary      check-summary did not pass, or an owner or due value is
 //                  a placeholder word such as "null"
-//   8 speakers     a speaker suggestion with a name that the meeting text
-//                  and metadata do not contain
+//   8 speakers     a speaker suggestion that only repeats a diarized label,
+//                  or a name with a word that the transcript, the title, the
+//                  user context and the attendee names do not hold
 // Checks 2 to 5 compare the raw text with the enhanced text of each
 // segment that has an enhanced text different from the raw text. The number
 // and negation words are English (the reference meetings are English).
@@ -275,44 +277,93 @@ export function metadataNames(
   return set;
 }
 
+/** A folded word with no punctuation inside ("Falkor-DB" gives "falkordb"). */
+const squash = (s: string) => fold(s).replace(/[^\p{L}\p{N}]+/gu, "");
+
 /**
- * A name of the raw text is kept when the enhanced text has the same word, or
- * a new capitalized word that is a spelling fix of it: an edit distance of at
- * most half the name length (minimum 2), a join or split ("Style" to
- * "OpenStyle"), or a metadata name.
+ * The known forms of a meeting: every word of the meeting text, the metadata
+ * and the vocabulary, and each vocabulary term with no spaces. A name fix to
+ * a known form may differ more than a small spelling fix ("Kias" to "Kiosks"
+ * when the meeting says "kiosks" elsewhere).
  */
-export function checkNames(rows: SegmentRow[], names: Set<string>): Finding {
+export function knownForms(
+  texts: (string | null | undefined)[],
+  terms: string[] = [],
+): Set<string> {
+  const set = new Set<string>();
+  for (const t of [...texts, ...terms])
+    for (const w of (t ?? "").split(/\s+/)) {
+      const q = squash(w);
+      if (q.length >= 2) set.add(q);
+    }
+  for (const t of terms) if (squash(t).length >= 2) set.add(squash(t));
+  return set;
+}
+
+/** A small spelling fix: an edit distance of at most half the length (minimum 2). */
+const smallFix = (a: string, b: string) =>
+  levenshtein(a, b) <= Math.max(2, Math.ceil(a.length / 2));
+/** A fix to a known form: an edit distance of at most half the longer length. */
+const knownFix = (a: string, b: string) =>
+  levenshtein(a, b) <= Math.ceil(Math.max(a.length, b.length) / 2);
+
+/**
+ * A name of the raw text is kept when the enhanced text has the same word,
+ * the same word with other case or punctuation inside ("DataBricks" to
+ * "Databricks"), or a new capitalized word that is a fix of it or of the name
+ * joined with a word next to it ("Puppy Graph" to "PuppyGraph"). A fix is a
+ * metadata name, a join or split ("Style" to "OpenStyle"), a small spelling
+ * fix, or a known form of the meeting or the vocabulary with an edit distance
+ * of at most half the longer word. A name removed, lowercased, or replaced by
+ * a different name fails.
+ */
+export function checkNames(
+  rows: SegmentRow[],
+  names: Set<string>,
+  known: Set<string> = new Set(),
+): Finding {
   const keys: string[] = [];
   for (const p of changedPairs(rows)) {
     const oldTokens = p.a.split(/\s+/).filter(Boolean);
-    const oldFolded = new Set(oldTokens.map((t) => fold(stripWord(t))));
+    const oldWords = oldTokens.map(stripWord);
+    const oldFolded = new Set(oldWords.map(squash));
     const newWords = p.b.split(/\s+/).map(stripWord).filter(Boolean);
     const newSet = new Set(newWords);
-    const newFolded = new Set(newWords.map(fold));
-    const candidates = new Set<string>();
+    const newFolded = new Set(newWords.map(squash));
+    const candidates = new Map<string, number>();
     oldTokens.forEach((token, k) => {
       const w = stripWord(token);
       if (w.length < 2 || NOT_NAMES.has(w)) return;
       const sentenceStart =
         k === 0 || /[.!?…]["')\]]*$/u.test(oldTokens[k - 1] as string);
       if (names.has(fold(w)) || (isCapitalized(w) && !sentenceStart))
-        candidates.add(w);
+        candidates.set(w, k);
     });
-    const broken = [...candidates].some((w) => {
+    const broken = [...candidates].some(([w, k]) => {
       if (newSet.has(w)) return false;
-      const fw = fold(w);
+      const fw = squash(w);
       // A metadata name in lower case in the raw text: any case is kept.
       if (!isCapitalized(w) && newFolded.has(fw)) return false;
-      if (isCapitalized(w) && newSet.has(w.toLowerCase())) return true; // lowercased
+      // Only the case or the punctuation inside changed, the name stays capitalized.
+      if (newWords.some((t) => isCapitalized(t) && squash(t) === fw))
+        return false;
+      if (isCapitalized(w) && newFolded.has(fw)) return true; // lowercased
+      // The name, and the name joined with the word before or after it.
+      const forms = [
+        fw,
+        squash(`${oldWords[k - 1] ?? ""}${w}`),
+        squash(`${w}${oldWords[k + 1] ?? ""}`),
+      ].filter((f, i) => i === 0 || f !== fw);
       return !newWords.some((t) => {
-        const ft = fold(t);
+        const ft = squash(t);
         // A word of the raw text is no fix (a sentence start can be new).
         if (!isCapitalized(t) || oldFolded.has(ft)) return false;
-        return (
-          names.has(ft) ||
-          ft.includes(fw) ||
-          fw.includes(ft) ||
-          levenshtein(ft, fw) <= Math.max(2, Math.ceil(fw.length / 2))
+        if (names.has(ft) || ft.includes(fw) || fw.includes(ft)) return true;
+        // A joined form allows only 2 edits, unless the fix is a known form.
+        return forms.some(
+          (f, i) =>
+            (i === 0 ? smallFix(f, ft) : levenshtein(f, ft) <= 2) ||
+            (known.has(ft) && knownFix(f, ft)),
         );
       });
     });
@@ -436,8 +487,41 @@ export function checkSummary(
 
 // --- 8. Speaker names ------------------------------------------------------------
 
+/** A suggestion that only repeats a diarized label ("Them 1", "Me", "Speaker 2"). */
+const LABEL_AS_NAME = /^\s*(?:me|them(?:\s*\d+)?|speaker\s*\d+)\s*$/iu;
+
+/**
+ * The attendee names of a calendar_attendees JSON value, as the app reads them
+ * (parseAttendees in store.ts; names only, never emails).
+ */
+export function attendeeNames(json: string | null | undefined): string[] {
+  try {
+    const v: unknown = JSON.parse(json ?? "[]");
+    if (!Array.isArray(v)) return [];
+    return v
+      .map((a) =>
+        a && typeof a === "object" ? (a as { name?: unknown }).name : "",
+      )
+      .filter((n): n is string => typeof n === "string" && n.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A suggestion fails when it only repeats a diarized label, or when it is a
+ * name (kind "name", or no kind) with a word that the support texts do not
+ * hold. The support texts are the ones the app uses for a surname
+ * (supportTexts in verify-evidence.ts): the transcript, the meeting title,
+ * the user context and the attendee names. A role ("the client") is no name,
+ * so only the label rule applies to it.
+ */
 export function checkSpeakerNames(
-  speakers: { label: string; suggested_name: string | null }[],
+  speakers: {
+    label: string;
+    suggested_name: string | null;
+    suggested_kind?: string | null;
+  }[],
   texts: (string | null | undefined)[],
 ): Finding {
   const words = new Set<string>();
@@ -446,11 +530,14 @@ export function checkSpeakerNames(
   return finding(
     speakers
       .filter((s) => s.suggested_name?.trim())
-      .filter((s) =>
-        (fold(s.suggested_name as string).match(/[\p{L}\p{N}]+/gu) ?? []).some(
+      .filter((s) => {
+        const name = s.suggested_name as string;
+        if (LABEL_AS_NAME.test(name)) return true;
+        if (s.suggested_kind === "role") return false;
+        return (fold(name).match(/[\p{L}\p{N}]+/gu) ?? []).some(
           (w) => !words.has(w),
-        ),
-      )
+        );
+      })
       .map((s) => `speaker:${s.label}`),
   );
 }

@@ -60,6 +60,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { MLX_LLM_MODELS } from "../../../apps/server/src/lib/mlx-llm/constants.ts";
 import {
+  attendeeNames,
   type CallRow,
   checkChunks,
   checkLabels,
@@ -69,6 +70,7 @@ import {
   checkSegments,
   checkSpeakerNames,
   checkSummary,
+  knownForms,
   type LinkRow,
   metadataNames,
   parseAnswerKey,
@@ -144,14 +146,17 @@ const has = (name: string) => process.argv.includes(`--${name}`);
 function usage(msg: string): never {
   console.error(msg);
   console.error(
-    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--answer-key <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>]",
+    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--answer-key <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>]\n       pnpm meeting:eval --rescore <out dir of a --keep run>",
   );
   process.exit(2);
 }
 
 const isTmp = (p: string) => /^\/(private\/)?tmp\//.test(resolve(p));
+const rescoreDir = arg("rescore");
 const models = (arg("models") ?? "").split(",").filter(Boolean);
-if (models.length === 0) usage("--models is required");
+if (models.length === 0 && !rescoreDir) usage("--models is required");
+if (rescoreDir && !isTmp(rescoreDir))
+  usage(`--rescore must be under /tmp: ${rescoreDir}`);
 const catalog = new Map(MLX_LLM_MODELS.map((m) => [m.id, m]));
 for (const m of models)
   if (m !== OMLX_MODEL && !catalog.has(m))
@@ -837,9 +842,16 @@ function readRun(dbPath: string, id: string) {
     .get(id) as Record<string, string | null>;
   const speakers = db
     .prepare(
-      "SELECT speaker_label AS label, suggested_name FROM meeting_speakers WHERE meeting_id = ?",
+      "SELECT speaker_label AS label, suggested_name, suggested_kind FROM meeting_speakers WHERE meeting_id = ?",
     )
-    .all(id) as { label: string; suggested_name: string | null }[];
+    .all(id) as {
+    label: string;
+    suggested_name: string | null;
+    suggested_kind: string | null;
+  }[];
+  const vocabulary = (
+    db.prepare("SELECT term FROM vocabulary").all() as { term: string }[]
+  ).map((v) => v.term);
   const summary = db
     .prepare(
       "SELECT markdown, summary_json FROM meeting_summaries WHERE meeting_id = ?",
@@ -864,7 +876,7 @@ function readRun(dbPath: string, id: string) {
     )
     .all(...runIds) as unknown as LinkRow[];
   db.close();
-  return { segments, meeting, speakers, summary, calls, links };
+  return { segments, meeting, speakers, summary, calls, links, vocabulary };
 }
 
 function evaluate(
@@ -873,16 +885,22 @@ function evaluate(
   m: Record<string, unknown>,
   checkSummaryPass: boolean | null,
 ): Record<CheckName, { count: number; keys: string[] }> {
+  // The metadata as the app reads it (prepare.ts): title, user context and
+  // the attendee names (never the emails).
   const meta = [
     raw.meeting.title,
     raw.meeting.context,
-    raw.meeting.calendar_title,
-    raw.meeting.calendar_attendees,
+    ...attendeeNames(raw.meeting.calendar_attendees),
   ];
+  const rawTexts = raw.segments.map((s) => s.text);
   return {
     segments: checkSegments(raw.segments, run.segments),
     numbers: checkNumbers(run.segments),
-    names: checkNames(run.segments, metadataNames(meta)),
+    names: checkNames(
+      run.segments,
+      metadataNames([...meta, raw.meeting.calendar_title]),
+      knownForms([...rawTexts, ...meta], raw.vocabulary),
+    ),
     negations: checkNegations(run.segments),
     labels: checkLabels(run.segments),
     chunks: checkChunks(
@@ -895,10 +913,7 @@ function evaluate(
       run.summary?.summary_json ?? null,
       run.summary?.markdown ?? null,
     ),
-    speakers: checkSpeakerNames(run.speakers, [
-      ...raw.segments.map((s) => s.text),
-      ...meta,
-    ]),
+    speakers: checkSpeakerNames(run.speakers, [...rawTexts, ...meta]),
   };
 }
 
@@ -1168,6 +1183,72 @@ async function main(): Promise<number> {
   return failed ? 1 : 0;
 }
 
+/**
+ * --rescore <out>: run the checks again on the run databases of a kept run
+ * (runs/ and arms/), with no model and no GPU. It writes results-rescore.md
+ * and results-rescore.json next to the old files and self-checks them.
+ */
+function rescore(dir: string): number {
+  const old = JSON.parse(
+    readFileSync(join(dir, "results.json"), "utf8"),
+  ) as Results;
+  const errors: string[] = [];
+  const runs = old.runs.map((r): RunResult => {
+    if (r.status !== "ok") return r;
+    const runDir = join(dir, "runs", slug(r.model), r.meeting);
+    const rawDb = join(dir, "arms", `${slug(r.model)}.db`);
+    const id = old.meetings.find((m) => m.id8 === r.meeting)?.id as string;
+    for (const f of [rawDb, join(runDir, "test.db")])
+      if (!existsSync(f)) errors.push(`missing ${f}`);
+    if (errors.length > 0) return r;
+    const m = JSON.parse(
+      readFileSync(join(runDir, "metrics-enhance.json"), "utf8"),
+    );
+    const csPath = join(runDir, "check-summary.json");
+    const csPass = existsSync(csPath)
+      ? JSON.parse(readFileSync(csPath, "utf8")).pass === true
+      : null;
+    const run = readRun(join(runDir, "test.db"), id);
+    const checks = evaluate(readRun(rawDb, id), run, m, csPass);
+    const next: RunResult = {
+      ...r,
+      metrics: runMetrics(run.links, run.calls, run.speakers),
+      checks,
+    };
+    next.hardFails = hardFailsOf(next);
+    return next;
+  });
+  if (errors.length > 0) {
+    for (const e of errors) console.error(e);
+    return 1;
+  }
+  const results: Results = { ...old, runs, floor: null };
+  results.floor = floorModel(results);
+  const jsonPath = join(dir, "results-rescore.json");
+  const mdPath = join(dir, "results-rescore.md");
+  writeFileSync(jsonPath, `${JSON.stringify(results, null, 1)}\n`);
+  writeFileSync(mdPath, renderResults(results));
+  const back = JSON.parse(readFileSync(jsonPath, "utf8")) as Results;
+  const bad = selfCheck(readFileSync(mdPath, "utf8"), back);
+  if (bad.length > 0) {
+    console.error(`SELF-CHECK FAILED (${bad.length}):`);
+    for (const e of bad.slice(0, 20)) console.error(`  ${e}`);
+    return 1;
+  }
+  for (const r of back.runs) {
+    const was = old.runs.find(
+      (o) => o.model === r.model && o.meeting === r.meeting,
+    );
+    console.log(
+      `${r.model} ${r.meeting}: hard fails ${was?.hardFails ?? "-"} -> ${r.hardFails} (${CHECKS.map((c) => `${c}=${r.checks?.[c].count ?? "-"}`).join(" ")})`,
+    );
+  }
+  console.log(`floor: ${results.floor ?? "none"}`);
+  console.log(`self-check ok: ${back.runs.length} runs`);
+  console.log(`results: ${mdPath}`);
+  return 0;
+}
+
 function emptyRun(
   model: string,
   meeting: string,
@@ -1192,7 +1273,7 @@ function emptyRun(
   };
 }
 
-main().then(
+(rescoreDir ? Promise.resolve(rescore(resolve(rescoreDir))) : main()).then(
   (code) => {
     releaseLock();
     unqueue();

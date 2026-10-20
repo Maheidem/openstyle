@@ -99,6 +99,7 @@ pnpm meeting:eval --models qwen3.5-0.8b-8bit,omlx:Qwen3.8-27B \
   [--no-download] [--answer-key <private.json>] [--hf-cache /tmp/meeting-eval/hf] \
   [--port 4797] [--timeout-sec 7200]
 pnpm meeting:eval:test                          # unit tests of the checks (CI Lint job)
+pnpm meeting:eval --rescore <out>               # checks again on a kept run (no model, no GPU)
 ```
 
 Flags:
@@ -107,6 +108,7 @@ Flags:
 - `--hf-cache`: the model cache, default `/tmp/meeting-eval/hf`. Keep it across runs. A missing model downloads through the app route `POST /api/mlx-llm/models/<id>/download`; the tool prints the size first. `--no-download` fails instead.
 - `--port`: the first of 4 ports (prep server, Enhance server, migration boot, transcription). Never 4649.
 - `--keep`: keep the private files (runs/, pack/, arms/). Without it the tool deletes them after it prints.
+- `--rescore <out>`: run the checks again on `runs/` and `arms/` of a kept run. It writes `results-rescore.md` and `results-rescore.json` and self-checks them. Use it after a change to `checks.mts`.
 
 Preconditions (the tool checks them and stops): a fresh server build, the dev worker `dist/mlx_asr_worker/mlx_asr_worker`, and the diarizer files `apps/electron/resources/bin/darwin-arm64/fluidaudio-diarize` and `apps/electron/resources/models/speaker-diarization`. A new worktree has no diarizer files (gitignored). Without them the server skips diarization and VAD with no error, and the speaker step gets no labels (found 2026-10-20). Copy only those two paths from the main checkout, or run `compile:native`.
 
@@ -115,7 +117,7 @@ What the tool does:
    An isolated server first checks the model downloads and waits for the forced aligner (the server starts its 1.2 GB download at boot), so no transcription runs without it.
 2. For each model: an isolated server sets the default LLM row on a copy of `transcribed.db` (read back after the server stops).
 3. For each model, under ONE GPU lock (queue line while it waits; it never removes the lock of another owner): `run-enhance.mjs --arm new --summarize --server-home /tmp/meeting-eval/home` per meeting. It checks oMLX `/v1/models` = 200 before and after an oMLX arm, and samples the peak RSS of the LLM worker.
-4. Hard-fail checks per model and meeting (count + segment keys `source:idx@start_ms`, never text): segments (lost, added, moved; raw text changed), numbers, names, negations, chunks (failed; last attempt finish length), summary (check-summary; owner/due placeholder), speakers (suggested name not in the text or metadata).
+4. Hard-fail checks per model and meeting (count + segment keys `source:idx@start_ms`, never text): segments (lost, added, moved; raw text changed), numbers, names (removed, lowercased or replaced; a change of case, spacing or punctuation, a spelling fix or a fix to a word of the meeting or the vocabulary passes), negations, labels, chunks (failed; last attempt finish length), summary (check-summary; owner/due placeholder), speakers (a suggestion that repeats a label such as "Them 1", or a kind-name suggestion with a word that the transcript, title, user context and attendee names do not hold; the same support texts as the app; a role gets only the label rule).
 5. `results.md` (one table per meeting, drops by reason, hard-fail keys, one summary table per model, the floor line) and `results.json`. The self-check re-reads both files, recomputes every check from the run databases, and exits 1 on a mismatch.
 
 Outputs in `<out>`: `results.md`, `results.json` (numbers and keys only), and with `--keep`: `pack/<model>-<id8>.compare.md` (RAW vs MODEL, compare-speakers format with 3 "around" words), `pack/<model>-<id8>.summary.md`, `pack/raw-<id8>.json`, `runs/<model>/<id8>/` (test.db, dump.json, metrics, server.log), `arms/`.

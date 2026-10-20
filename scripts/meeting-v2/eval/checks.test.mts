@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  attendeeNames,
   checkChunks,
   checkLabels,
   checkNames,
@@ -12,6 +13,7 @@ import {
   checkSegments,
   checkSpeakerNames,
   checkSummary,
+  knownForms,
   metadataNames,
   numberValues,
   parseAnswerKey,
@@ -113,6 +115,38 @@ test("names: removed, lowercased and changed fail; spelling fixes pass", () => {
   ]);
 });
 
+test("names: case, spacing, punctuation and known-form fixes pass", () => {
+  const names = metadataNames(["Weekly sync", "Alice Moreau"]);
+  const known = knownForms(
+    ["the gizmos are back", "we tried ZapQuery last week"],
+    ["Fluxbase", "Night Owl"],
+  );
+  const rows = [
+    seg(0, "we run it on FluxBase now", "We run it on Fluxbase now."), // case only
+    seg(1, "data from Zap Query today", "Data from ZapQuery today."), // join, known
+    seg(2, "data from Zip Query today", "Data from ZapQuery today."), // join + spelling, known
+    seg(3, "the Gias were down", "The Gizmos were down."), // distance 3, known form
+    seg(4, "move to Falkor-DB soon", "Move to FalkorDB soon."), // punctuation inside
+    seg(5, "use Nite Owl for that", "Use NightOwl for that."), // vocabulary term joined
+    seg(6, "use Zip Query today", "Use ZipperQueue today."), // join, not known, far
+    seg(7, "talk to Alice later", "Talk to Bruno later."), // a different name
+    seg(8, "ask Carol and Bruno", "Ask Bruno and Bruno."), // replaced by another raw name
+    seg(9, "then Gizmos will move", "Then gizmo will move."), // lowercased
+    seg(10, "ask Carol today", "Ask Gizmos today."), // a different known word
+  ];
+  assert.deepEqual(checkNames(rows, names, known).keys, [
+    "system:6@6000",
+    "system:7@7000",
+    "system:8@8000",
+    "system:9@9000",
+    "system:10@10000",
+  ]);
+  // Without the known forms, a fix far from the raw name fails.
+  assert.deepEqual(checkNames([rows[3] as SegmentRow], names).keys, [
+    "system:3@3000",
+  ]);
+});
+
 test("negations: added or removed", () => {
   const rows = [
     seg(0, "it does not work", "It does not work."),
@@ -205,6 +239,43 @@ test("speakers: a suggested name must be in the text or metadata", () => {
     "Alice Moreau, Bob",
   ]);
   assert.deepEqual(f.keys, ["speaker:S3"]);
+});
+
+test("speakers: kinds, labels and the app's support texts", () => {
+  assert.deepEqual(
+    attendeeNames(
+      JSON.stringify([
+        { name: "Nora Quill", email: "nq@example.test" },
+        { name: "", email: "x@example.test" },
+        "bad",
+      ]),
+    ),
+    ["Nora Quill"],
+  );
+  assert.deepEqual(attendeeNames("not json"), []);
+  const sp = [
+    { label: "1", suggested_name: "Nora Quill", suggested_kind: "name" }, // attendee surname
+    { label: "2", suggested_name: "Ravi Pell", suggested_kind: "name" }, // surname from context
+    { label: "3", suggested_name: "Ravi Stone", suggested_kind: "name" }, // invented surname
+    { label: "4", suggested_name: "the client", suggested_kind: "role" }, // role: no name check
+    { label: "5", suggested_name: "Them 1", suggested_kind: "role" }, // label echo
+    { label: "6", suggested_name: "Speaker 2", suggested_kind: "name" }, // label echo
+    { label: "7", suggested_name: "Me", suggested_kind: null }, // label echo
+    { label: "8", suggested_name: "Ravi", suggested_kind: "name" }, // first name in the text
+  ];
+  const f = checkSpeakerNames(sp, [
+    "hi nora, ravi here, them 1 said",
+    "Speaker 2 me",
+    "Kickoff with Nora", // title
+    "Ravi Pell runs the build", // context
+    ...attendeeNames(JSON.stringify([{ name: "Nora Quill", email: "" }])),
+  ]);
+  assert.deepEqual(f.keys, [
+    "speaker:3",
+    "speaker:5",
+    "speaker:6",
+    "speaker:7",
+  ]);
 });
 
 test("metrics: applied, echo rate, drops, finish", () => {

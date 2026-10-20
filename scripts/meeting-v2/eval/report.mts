@@ -211,7 +211,7 @@ export function renderResults(res: Results): string {
     `- Answer key: ${res.answerKey ? "yes" : "no"}`,
     `- Floor (smallest model with 0 hard fails on every meeting): ${res.floor ?? "none"}`,
     "",
-    "Hard-fail checks: segments (lost, added or moved; raw text changed), numbers (number or time token changed), names (capitalized name removed or changed, not a spelling fix), negations (added or removed), labels (enhanced text starts with a speaker label, raw text does not), chunks (failed chunks; last attempt finish length), summary (check-summary failed; owner or due placeholder), speakers (suggested name not in the meeting text or metadata).",
+    "Hard-fail checks: segments (lost, added or moved; raw text changed), numbers (number or time token changed), names (capitalized name removed, lowercased or replaced by a different name; a change of case, spacing or punctuation, a spelling fix or a fix to a known form is no fail), negations (added or removed), labels (enhanced text starts with a speaker label, raw text does not), chunks (failed chunks; last attempt finish length), summary (check-summary failed; owner or due placeholder), speakers (a suggestion that repeats a diarized label, or a name with a word that the transcript, title, user context and attendee names do not hold).",
     "",
   ];
   for (const m of res.meetings) {
