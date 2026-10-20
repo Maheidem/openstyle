@@ -35,7 +35,13 @@ function isAlive(pid: number): boolean {
 }
 
 function startSleeper(binary: string): ChildProcess {
-  const child = spawn(binary, ["600"], { stdio: "ignore" });
+  // On Ubuntu 26.04, /bin/sleep is the uutils multi-call binary. It selects
+  // the tool from argv[0], so a copy named whisper-server exits at once with
+  // an error. On Linux, `ps -o comm=` shows the file name, not argv[0], so
+  // argv0 "sleep" keeps the name whisper-server. On macOS, comm comes from
+  // argv[0], so keep the default there.
+  const argv0 = process.platform === "linux" ? "sleep" : binary;
+  const child = spawn(binary, ["600"], { stdio: "ignore", argv0 });
   children.push(child);
   return child;
 }
