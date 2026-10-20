@@ -144,6 +144,18 @@ describe("correctChunk: answer checks (4.2.3)", () => {
     expect(enhanced(a)).toBe(fx(f, a));
   });
 
+  it("an id in brackets is applied; the id enum of the call is the chunk ids", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 1 });
+    const id = f.segments[1]?.id as string;
+    const r = await run(f, [corr([`[${id}]`, fx(f, id)])]);
+    expect(units(r)[0]?.corrections.map((x) => x.id)).toEqual([id]);
+    expect(enhanced(id)).toBe(fx(f, id));
+    const format = JSON.stringify(r.requests[0]?.responseFormat);
+    expect(format).toContain(
+      `"id":{"enum":${JSON.stringify(f.segmentIdsByChunk[0])}`,
+    );
+  });
+
   it("an echoed Speaker prefix is removed", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 1 });
     const id = f.segments[0]?.id as string;
@@ -476,6 +488,21 @@ describe("checkCorrections word guard", () => {
 
   it("does not treat it, its and itself as one word", () => {
     expect(check("we fix it now", "we fix its now").reasons).toEqual([]);
+  });
+
+  it("strips surrounding brackets from an id before the unknown_id check", () => {
+    const r = checkCorrections(
+      [
+        { id: "[s1]", text: "the thirsty fix" },
+        { id: "[s9]", text: "x" },
+      ],
+      [seg("the thirsty")],
+      7,
+    );
+    expect(r.corrections.map((c) => c.id)).toEqual(["s1"]);
+    expect(r.dropped).toEqual([
+      { id: "s9", reason: "unknown_id", seq: 1, callId: 7 },
+    ]);
   });
 
   it("records the call id and seq of a guard drop", () => {

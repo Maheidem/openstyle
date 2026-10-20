@@ -243,6 +243,41 @@ describe("identifySpeakers in the graph", () => {
     }
   });
 
+  it("a label written as 'Them 3' and a segmentId in brackets are normalized; the suggestion is kept", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 2,
+      speakers: 3,
+      selfIntroduction: true,
+    });
+    const intro = f.segments.find((s) => s.text.includes("Morgan Ellis"));
+    const r = await run(f, () =>
+      speakers(
+        proposal(
+          `[${intro?.id as string}]`,
+          "I am Morgan Ellis",
+          `Them ${intro?.speakerLabel as string}`,
+          "Morgan Ellis",
+        ),
+      ),
+    );
+    expect(r.finalState.identify?.proposals[0]).toMatchObject({
+      segmentId: intro?.id,
+      label: intro?.speakerLabel,
+    });
+    expect(r.finalState.verify?.suggestions).toHaveLength(1);
+    // The label enum of the call is the open label numbers.
+    const format = JSON.stringify(r.identifyRequests[0]?.responseFormat);
+    expect(format).toContain(
+      `"label":{"enum":${JSON.stringify(
+        [
+          ...new Set(
+            f.segments.flatMap((x) => (x.speakerLabel ? [x.speakerLabel] : [])),
+          ),
+        ].sort(),
+      )}`,
+    );
+  });
+
   it("a segmentId the call did not show is dropped as unknown_segment (a Me line is never shown)", async () => {
     const f = seedFixtureMeeting({
       chunks: 1,

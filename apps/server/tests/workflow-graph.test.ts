@@ -1032,20 +1032,47 @@ describe("10.5.4: the wire", () => {
     return seen;
   }
 
-  it("two different meetings put the same JSON schemas on the wire; every request is strict", async () => {
+  it("two different meetings put the same JSON schemas on the wire, except the per-call enum; every request is strict", async () => {
     const a = await wireRun("m-stab-a", true);
     vi.restoreAllMocks();
     restoreFetch();
     resetWorkflowTables();
     seedTestModel();
     const b = await wireRun("m-stab-b", false);
+    // The id and label enums change with each call (owner decision
+    // 2026-10-20). The rest of the schema stays the same.
+    const withoutEnums = (format: unknown) =>
+      JSON.stringify(format).replace(/"enum":\[[^\]]*\]/g, '"enum":[]');
     const schemas = (seen: typeof a, identify: boolean) => [
       ...new Set(
         seen
           .filter((r) => systemOf(r).includes("diarized labels") === identify)
-          .map((r) => JSON.stringify(r.body?.response_format)),
+          .map((r) => withoutEnums(r.body?.response_format)),
       ),
     ];
+    for (const r of [...a, ...b]) {
+      const text = JSON.stringify(r.body?.response_format);
+      const enums = [...text.matchAll(/"enum":\[([^\]]*)\]/g)].map(
+        (m) => JSON.parse(`[${m[1]}]`) as string[],
+      );
+      if (systemOf(r).includes("diarized labels")) {
+        // label enum: the label numbers that the system prompt lists. The
+        // second enum is the fixed `kind`.
+        const listed = [...systemOf(r).matchAll(/Them (\d+)/g)].map(
+          (m) => m[1],
+        );
+        expect(enums).toHaveLength(2);
+        expect(enums[1]).toEqual(["name", "role"]);
+        expect(enums[0]?.every((l) => listed.includes(l))).toBe(true);
+        expect(enums[0]?.length).toBeGreaterThan(0);
+      } else {
+        // id enum: exactly the ids of the lines in this request.
+        const shown = [...userOf(r).matchAll(/^\[([^\]]+)\] /gm)].map(
+          (m) => m[1],
+        );
+        expect(enums).toEqual([shown]);
+      }
+    }
     for (const identify of [false, true]) {
       const sa = schemas(a, identify);
       const sb = schemas(b, identify);

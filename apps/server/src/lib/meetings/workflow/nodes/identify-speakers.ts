@@ -7,8 +7,8 @@ import {
   buildIdentifyUserPrompt,
 } from "../prompts.js";
 import {
-  IDENTIFY_SPEAKERS_STEP_SCHEMA,
   type IdentifySpeakers,
+  identifySpeakersStepSchema,
 } from "../schemas.js";
 import type { WorkflowStateType } from "../state.js";
 import {
@@ -224,6 +224,7 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
     const { lines, stats } = selectCandidates(prepared, inputBudget);
     if (lines.length === 0) return skipped("no_labels", stats);
 
+    const schema = identifySpeakersStepSchema(labels);
     ctx.progress.addTotal(1);
     const leaves = await runUnitRoute<PreparedSegment, IdentifySpeakers>(
       {
@@ -242,7 +243,7 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
               runId: state.runId,
               unitKey: unit.key,
               chunkIndex: null,
-              schema: IDENTIFY_SPEAKERS_STEP_SCHEMA,
+              schema,
               instructions: system,
               messages: [
                 {

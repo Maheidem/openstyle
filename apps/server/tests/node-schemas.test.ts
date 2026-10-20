@@ -9,10 +9,14 @@ import { getDb } from "../src/lib/db.js";
 import {
   CORRECT_CHUNK_STEP_SCHEMA,
   CorrectChunkSchema,
+  correctChunkStepSchema,
   IDENTIFY_SPEAKERS_STEP_SCHEMA,
   IdentifySpeakersSchema,
+  identifySpeakersStepSchema,
   MEETING_SUMMARY_STEP_SCHEMA,
   MeetingSummarySchema,
+  normalizeId,
+  normalizeLabel,
 } from "../src/lib/meetings/workflow/schemas.js";
 import {
   buildMeetingFixture,
@@ -90,6 +94,114 @@ describe("assertPortableSchema", () => {
         "$ref",
       );
     }
+  });
+});
+
+describe("the per-call schemas (ids and labels enum)", () => {
+  const ids = ["fict-1:mic:0", "fict-1:system:1"];
+
+  it("correctChunk: corrections[].id is an enum of exactly the unit ids; version 2", async () => {
+    const step = correctChunkStepSchema(ids);
+    expect(step.name).toBe("correct_chunk");
+    expect(step.version).toBe(2);
+    await expect(assertPortableSchema(step.zod)).resolves.toBeUndefined();
+    const json = (await asSchema(step.zod).jsonSchema) as {
+      properties: {
+        corrections: { items: { properties: { id: unknown; text: unknown } } };
+      };
+    };
+    expect(json.properties.corrections.items.properties.id).toEqual({
+      type: "string",
+      enum: ids,
+    });
+    expect(json.properties.corrections.items.properties.text).toEqual({
+      type: "string",
+    });
+    // One id is a valid enum.
+    const one = (await asSchema(correctChunkStepSchema(["s1"]).zod)
+      .jsonSchema) as typeof json;
+    expect(one.properties.corrections.items.properties.id).toEqual({
+      type: "string",
+      enum: ["s1"],
+    });
+  });
+
+  it("correctChunk: the parse strips brackets and keeps an unknown id for the node check", () => {
+    const step = correctChunkStepSchema(ids);
+    const parsed = step.zod.parse({
+      corrections: [
+        { id: " [fict-1:mic:0] ", text: "a" },
+        { id: "other", text: "b" },
+      ],
+    });
+    expect(parsed.corrections.map((c) => c.id)).toEqual([
+      "fict-1:mic:0",
+      "other",
+    ]);
+  });
+
+  it("identifySpeakers: label is an enum of the label numbers; field order stays; version 2", async () => {
+    const step = identifySpeakersStepSchema(["1", "2"]);
+    expect(step.name).toBe("identify_speakers");
+    expect(step.version).toBe(2);
+    await expect(assertPortableSchema(step.zod)).resolves.toBeUndefined();
+    const json = (await asSchema(step.zod).jsonSchema) as {
+      properties: {
+        speakers: {
+          items: { properties: Record<string, unknown>; required: string[] };
+        };
+      };
+    };
+    const row = json.properties.speakers.items;
+    expect(row.properties.label).toEqual({ type: "string", enum: ["1", "2"] });
+    expect(Object.keys(row.properties)).toEqual([
+      "segmentId",
+      "quote",
+      "label",
+      "kind",
+      "name",
+    ]);
+    expect(row.required).toEqual(Object.keys(row.properties));
+    const parsed = step.zod.parse({
+      speakers: [
+        {
+          segmentId: "[fict-1:system:1]",
+          quote: "q",
+          label: "Them 1",
+          kind: "name",
+          name: "Ana",
+        },
+      ],
+    });
+    expect(parsed.speakers[0]).toMatchObject({
+      segmentId: "fict-1:system:1",
+      label: "1",
+    });
+  });
+
+  it.each([
+    ["Them 1", "1"],
+    ["them 1", "1"],
+    ["THEM 2", "2"],
+    ["Speaker 3", "3"],
+    ["[1]", "1"],
+    ["[Them 1]", "1"],
+    [" 1 ", "1"],
+    ["Them1", "1"],
+    ["1", "1"],
+  ])("normalizeLabel(%j) is %j", (input, out) => {
+    expect(normalizeLabel(input)).toBe(out);
+  });
+
+  it.each([
+    ["[fict-1:mic:0]", "fict-1:mic:0"],
+    [" [fict-1:mic:0] ", "fict-1:mic:0"],
+    ["fict-1:mic:0", "fict-1:mic:0"],
+    ["[ s1 ]", "s1"],
+    ["[a]b]", "a]b"],
+    ["[unclosed", "[unclosed"],
+  ])("normalizeId(%j) is %j", (input, out) => {
+    expect(normalizeId(input)).toBe(out);
   });
 });
 

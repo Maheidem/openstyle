@@ -30,7 +30,7 @@ export function buildCorrectSystemPrompt(input: CorrectPromptInput): string {
     input.vocabTerms.length > 0
       ? `\n\nReference vocabulary (correct spellings of names and terms this speaker uses). Use it ONLY to fix a word that is clearly a mis-transcription of one of them. Never add a term that is not really being referred to:\n${input.vocabTerms.join(", ")}`
       : "";
-  return `You clean up a speech-to-text meeting transcript. "Me" is the user of this app. Another speaker is marked "Them 2", "Them 3" and so on, or by a confirmed name. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine(input.language)}${vocabBlock}
+  return `You clean up a speech-to-text meeting transcript. "Me" is the user of this app. Another speaker is marked "Them 1", "Them 2" and so on, or by a confirmed name. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine(input.language)}${vocabBlock}
 
 Rules:
 - Include a segment ONLY if you change its text. Leave out every segment you would keep as it is. Do not echo unchanged segments.

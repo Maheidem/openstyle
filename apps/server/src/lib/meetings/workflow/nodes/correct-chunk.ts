@@ -7,7 +7,7 @@ import {
   buildCorrectSystemPrompt,
   buildCorrectUserPrompt,
 } from "../prompts.js";
-import { CORRECT_CHUNK_STEP_SCHEMA } from "../schemas.js";
+import { correctChunkStepSchema, normalizeId } from "../schemas.js";
 import {
   CORRECT_ANSWER_FACTOR,
   CORRECT_ANSWER_FIXED,
@@ -265,7 +265,10 @@ export function checkCorrections(
   const seen = new Set<string>();
   const corrections: CorrectUnitResult["corrections"] = [];
   const dropped: CorrectUnitResult["dropped"] = [];
-  raw.forEach((entry, seq) => {
+  raw.forEach((rawEntry, seq) => {
+    // The per-call enum makes this a no-op for strict providers. Keep it for
+    // providers that only read the schema in the prompt.
+    const entry = { ...rawEntry, id: normalizeId(rawEntry.id) };
     const drop = (reason: CorrectionDropReason) => {
       dropped.push({ id: entry.id, reason, seq, callId });
     };
@@ -380,7 +383,7 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
               runId: input.runId,
               unitKey: unit.key,
               chunkIndex: input.chunkIndex,
-              schema: CORRECT_CHUNK_STEP_SCHEMA,
+              schema: correctChunkStepSchema(unit.members.map((s) => s.id)),
               instructions: system,
               messages: [
                 {
