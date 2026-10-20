@@ -15,7 +15,7 @@
  * a human to check the allowlist and the tables below again.
  */
 export const FAMILIES_FOR_WORKER_SPEC =
-  "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;bundle=onedir";
+  "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;mlx-lm=0.32.2;llguidance=1.9.1;bundle=onedir";
 
 /**
  * A file that a family needs next to its weights. A plain name must be in the

@@ -8,6 +8,9 @@ Pass any Hugging Face model id that mlx-audio supports via --model, for example:
   mlx-community/Qwen3-ASR-0.6B-5bit
   mlx-community/parakeet-...  (when published for mlx-audio STT)
 
+LLM mode: ``--llm --model <hfId> --port <port>`` loads an mlx-lm model and
+serves an OpenAI-style HTTP API on 127.0.0.1 (specs/local-mlx-llm.md section 2).
+
 Re-publish the frozen worker release when this script or mlx-audio dependencies change.
 """
 
@@ -20,6 +23,7 @@ import multiprocessing
 import os
 import sys
 import threading
+import time
 import wave
 from inspect import Parameter, signature
 from pathlib import Path
@@ -627,6 +631,483 @@ def _serve() -> None:
         _send({"id": message.get("id"), "error": f"unknown message type: {msg_type}"})
 
 
+# ---------------------------------------------------------------------------
+# LLM mode (specs/local-mlx-llm.md section 2).
+#
+# ``--llm --model <hfId> --port <port>`` loads an mlx-lm model and serves an
+# OpenAI-style API on 127.0.0.1. HTTPServer handles one request at a time, so
+# generation is serial. Strict JSON uses an llguidance logits processor
+# (probe X2, .scratchpad/probe-x2/harness.py). Keep whitespace_flexible True:
+# compact whitespace broke the output in probe X2.
+# ---------------------------------------------------------------------------
+
+_LLM_DEFAULT_MAX_TOKENS = 4096
+# (open, close) of an empty thinking block. Qwen3.5 and Gemma 4.
+_THINK_PAIRS: tuple[tuple[str, str], ...] = (("<think>", "</think>"), ("<|channel>", "<channel|>"))
+
+
+class _BadRequest(Exception):
+    pass
+
+
+def _message_text(content: Any) -> str:
+    """Flatten OpenAI content (a string or a list of text parts) to a string."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                parts.append(str(part.get("text") or ""))
+            elif isinstance(part, str):
+                parts.append(part)
+            else:
+                raise _BadRequest("only text content parts are supported")
+        return "".join(parts)
+    raise _BadRequest("message content must be a string or a list of text parts")
+
+
+def _opt_number(body: dict[str, Any], name: str, cast: Any) -> Any:
+    value = body.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _BadRequest(f"{name} must be a number")
+    return cast(value)
+
+
+def _parse_chat_request(body: Any) -> dict[str, Any]:
+    """Validate a /v1/chat/completions body. Unknown fields are ignored."""
+    if not isinstance(body, dict):
+        raise _BadRequest("request body must be a JSON object")
+    if body.get("stream"):
+        raise _BadRequest("stream is not supported; send stream: false")
+
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        raise _BadRequest("messages must be a non-empty list")
+    parsed_messages = []
+    for msg in messages:
+        if not isinstance(msg, dict) or not isinstance(msg.get("role"), str):
+            raise _BadRequest("each message needs a role")
+        parsed_messages.append({"role": msg["role"], "content": _message_text(msg.get("content"))})
+
+    max_tokens = body.get("max_tokens", body.get("max_completion_tokens"))
+    if max_tokens is None:
+        max_tokens = _LLM_DEFAULT_MAX_TOKENS
+    if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens < 1:
+        raise _BadRequest("max_tokens must be a positive integer")
+
+    stop = body.get("stop")
+    if stop is None:
+        stop = []
+    elif isinstance(stop, str):
+        stop = [stop]
+    elif not (isinstance(stop, list) and all(isinstance(s, str) for s in stop)):
+        raise _BadRequest("stop must be a string or a list of strings")
+
+    schema: Any = None
+    response_format = body.get("response_format")
+    if response_format is not None:
+        if not isinstance(response_format, dict):
+            raise _BadRequest("response_format must be an object")
+        kind = response_format.get("type")
+        if kind == "json_schema":
+            spec = response_format.get("json_schema")
+            schema = spec.get("schema") if isinstance(spec, dict) else response_format.get("schema")
+            if not isinstance(schema, dict):
+                raise _BadRequest("response_format.json_schema.schema must be an object")
+        elif kind == "json_object":
+            schema = {"type": "object"}
+        elif kind not in (None, "text"):
+            raise _BadRequest(f"unsupported response_format type: {kind}")
+
+    kwargs = body.get("chat_template_kwargs")
+    if kwargs is not None and not isinstance(kwargs, dict):
+        raise _BadRequest("chat_template_kwargs must be an object")
+    enable_thinking = bool((kwargs or {}).get("enable_thinking", False))
+
+    return {
+        "messages": parsed_messages,
+        "max_tokens": max_tokens,
+        "temperature": _opt_number(body, "temperature", float),
+        "top_p": _opt_number(body, "top_p", float),
+        "top_k": _opt_number(body, "top_k", int),
+        "min_p": _opt_number(body, "min_p", float),
+        "repetition_penalty": _opt_number(body, "repetition_penalty", float),
+        "stop": [s for s in stop if s],
+        "schema": schema,
+        "enable_thinking": enable_thinking,
+    }
+
+
+def _single_token_id(hf_tok: Any, text: str) -> int | None:
+    """Return the id of a token that exists as one vocab entry, else None."""
+    vocab = hf_tok.get_vocab() if hasattr(hf_tok, "get_vocab") else {}
+    token_id = vocab.get(text)
+    return int(token_id) if isinstance(token_id, int) else None
+
+
+def _generation_config_eos(model_id: str) -> set[int]:
+    """Read eos_token_id from generation_config.json (an int or a list)."""
+    try:
+        if Path(model_id).is_dir():
+            root = Path(model_id)
+        else:
+            from huggingface_hub import snapshot_download
+
+            root = Path(snapshot_download(model_id, local_files_only=True))
+        data = json.loads((root / "generation_config.json").read_text())
+    except Exception:
+        return set()
+    eos = data.get("eos_token_id")
+    if isinstance(eos, int):
+        return {eos}
+    if isinstance(eos, list):
+        return {int(e) for e in eos if isinstance(e, int)}
+    return set()
+
+
+def _stop_token_ids(tok: Any, hf_tok: Any, model_id: str) -> set[int]:
+    ids = {int(i) for i in (getattr(tok, "eos_token_ids", None) or [])}
+    eos = getattr(hf_tok, "eos_token_id", None)
+    if isinstance(eos, int):
+        ids.add(eos)
+    ids |= _generation_config_eos(model_id)
+    im_end = _single_token_id(hf_tok, "<|im_end|>")
+    if im_end is not None:
+        ids.add(im_end)
+    return ids
+
+
+class _JsonGrammar:
+    """mlx-lm logits processor that forces output to match a JSON Schema.
+
+    Copied from the probe X2 harness. One extra: when ``think`` is set
+    (thinking on), the first token may also open a thinking block. The grammar
+    then waits until the block closes and starts after it. With thinking off,
+    an empty block is already in the prompt (Qwen3.5) or absent (Gemma 4), so
+    the grammar starts at the first token.
+    """
+
+    def __init__(
+        self,
+        matcher: Any,
+        n_vocab: int,
+        *,
+        think: tuple[int, int] | None,
+        allocate: Any,
+        fill: Any,
+        apply: Any,
+    ) -> None:
+        self.m = matcher
+        self.think = think
+        self.bitmask = allocate(1, n_vocab)
+        self._fill = fill
+        self._apply = apply
+        self.state = "start"  # start | first | thinking | fresh | grammar
+        self.thought = False
+
+    def _mask(self, logits: Any, allow_open: bool = False) -> Any:
+        self._fill(self.m, self.bitmask, 0)
+        if allow_open and self.think is not None:
+            open_id = self.think[0]
+            words = self.bitmask.view(np.uint32)
+            words[0, open_id // 32] |= np.uint32(1 << (open_id % 32))
+        return self._apply(logits, self.bitmask)
+
+    def _consume(self, token: int) -> None:
+        if not self.m.is_stopped() and not self.m.consume_token(token):
+            raise RuntimeError(f"grammar rejected token {token}: {self.m.get_error()}")
+
+    def __call__(self, tokens: Any, logits: Any) -> Any:
+        if self.state == "start":
+            self.state = "first"
+            return self._mask(logits, allow_open=True)
+        token = int(tokens[-1].item())
+        if self.state == "first":
+            if self.think is not None and token == self.think[0]:
+                self.state = "thinking"
+                self.thought = True
+                return logits
+            self.state = "grammar"
+            self._consume(token)
+        elif self.state == "thinking":
+            if token == self.think[1]:  # type: ignore[index]
+                self.state = "grammar"
+            return logits if self.state == "thinking" else self._mask(logits)
+        else:
+            self._consume(token)
+        if self.m.is_stopped():
+            return logits
+        return self._mask(logits)
+
+
+def _strip_thinking(text: str) -> str:
+    """Drop a leading thinking block (empty or not) from the answer text."""
+    stripped = text.lstrip()
+    for open_s, close_s in _THINK_PAIRS:
+        if stripped.startswith(open_s) and close_s in stripped:
+            return stripped.split(close_s, 1)[1].lstrip()
+    return text
+
+
+def _cut_at_stop(text: str, stops: list[str]) -> str | None:
+    """Return text before the first stop string, or None when no stop string is in it."""
+    hits = [text.find(s) for s in stops if s in text]
+    return text[: min(hits)] if hits else None
+
+
+class _LlmEngine:
+    """One loaded mlx-lm model. Collaborators are injected for unit tests."""
+
+    def __init__(
+        self,
+        model_id: str,
+        model: Any,
+        tok: Any,
+        *,
+        stop_ids: set[int],
+        n_vocab: int,
+        stream_generate: Any,
+        make_sampler: Any,
+        make_logits_processors: Any,
+        grammar_factory: Any,
+    ) -> None:
+        self.model_id = model_id
+        self.model = model
+        self.tok = tok
+        self.stop_ids = set(stop_ids)
+        self.n_vocab = n_vocab
+        self._stream_generate = stream_generate
+        self._make_sampler = make_sampler
+        self._make_logits_processors = make_logits_processors
+        self._grammar_factory = grammar_factory
+        # mlx-lm stream_generate stops on tokenizer.eos_token_ids.
+        tok.eos_token_ids = set(self.stop_ids)
+        hf_tok = getattr(tok, "_tokenizer", tok)
+        self.think: tuple[int, int] | None = None
+        for open_s, close_s in _THINK_PAIRS:
+            open_id = _single_token_id(hf_tok, open_s)
+            close_id = _single_token_id(hf_tok, close_s)
+            if open_id is not None and close_id is not None:
+                self.think = (open_id, close_id)
+                break
+        self._seq = 0
+
+    def _prompt_ids(self, req: dict[str, Any]) -> list[int]:
+        prompt = self.tok.apply_chat_template(
+            req["messages"],
+            add_generation_prompt=True,
+            enable_thinking=req["enable_thinking"],
+            tokenize=False,
+        )
+        return list(self.tok.encode(prompt, add_special_tokens=False))
+
+    def complete(self, req: dict[str, Any]) -> dict[str, Any]:
+        ids = self._prompt_ids(req)
+        sampler_kwargs: dict[str, Any] = {"temp": req["temperature"] or 0.0}
+        for name in ("top_p", "top_k", "min_p"):
+            if req[name] is not None:
+                sampler_kwargs[name] = req[name]
+        procs: list[Any] = []
+        if req["repetition_penalty"] is not None:
+            procs += self._make_logits_processors(repetition_penalty=req["repetition_penalty"])
+        grammar = None
+        if req["schema"] is not None:
+            # A thinking block may open only when thinking is on. With thinking
+            # off, Gemma 4 has no block in the prompt but still opens one when
+            # the grammar allows it (about 350 hidden tokens on gemma-4-e2b).
+            think = self.think if req["enable_thinking"] else None
+            grammar = self._grammar_factory(json.dumps(req["schema"]), think)
+            procs.append(grammar)
+
+        text, last, finish = "", None, None
+        for response in self._stream_generate(
+            self.model,
+            self.tok,
+            ids,
+            max_tokens=req["max_tokens"],
+            sampler=self._make_sampler(**sampler_kwargs),
+            logits_processors=procs,
+        ):
+            text += response.text
+            last = response
+            if req["stop"]:
+                cut = _cut_at_stop(text, req["stop"])
+                if cut is not None:
+                    text, finish = cut, "stop"
+                    break
+        if finish is None:
+            finish = "length" if last is not None and last.finish_reason == "length" else "stop"
+
+        completion_tokens = int(getattr(last, "generation_tokens", 0) or 0)
+        self._seq += 1
+        return {
+            "id": f"chatcmpl-{os.getpid()}-{self._seq}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": self.model_id,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": _strip_thinking(text)},
+                    "finish_reason": finish,
+                }
+            ],
+            "usage": {
+                "prompt_tokens": len(ids),
+                "completion_tokens": completion_tokens,
+                "total_tokens": len(ids) + completion_tokens,
+            },
+        }
+
+
+def _vocab_size(model: Any, hf_tok: Any) -> int:
+    """The logits width. Read it from one forward pass, because Gemma 4 keeps
+    vocab_size in a nested text config and a wrong size breaks the bitmask."""
+    try:
+        import mlx.core as mx
+
+        return int(model(mx.array([[0]])).shape[-1])
+    except Exception:
+        args = getattr(model, "args", None)
+        size = getattr(args, "vocab_size", None)
+        return int(size) if size else len(hf_tok)
+
+
+def _load_llm_engine(model_id: str) -> _LlmEngine:
+    import llguidance.hf
+    from llguidance import LLMatcher
+    from llguidance.mlx import apply_token_bitmask
+    from llguidance.numpy import allocate_token_bitmask, fill_next_token_bitmask
+    from mlx_lm import load, stream_generate
+    from mlx_lm.sample_utils import make_logits_processors, make_sampler
+
+    _log(f"loading llm {model_id} ...")
+    model, tok = load(model_id)
+    hf_tok = tok._tokenizer
+    stop_ids = _stop_token_ids(tok, hf_tok, model_id)
+    n_vocab = _vocab_size(model, hf_tok)
+    eos = hf_tok.eos_token_id if isinstance(hf_tok.eos_token_id, int) else min(stop_ids)
+    ll_tok = llguidance.hf.from_tokenizer(hf_tok, n_vocab=n_vocab, eos_token=eos)
+    _log(f"llm ready: n_vocab={n_vocab} stop_ids={sorted(stop_ids)}")
+
+    def grammar_factory(schema_json: str, think: tuple[int, int] | None) -> _JsonGrammar:
+        grammar = LLMatcher.grammar_from_json_schema(
+            schema_json, defaults={"whitespace_flexible": True}
+        )
+        matcher = LLMatcher(ll_tok, grammar)
+        if matcher.is_error():
+            raise _BadRequest(f"invalid json schema: {matcher.get_error()}")
+        return _JsonGrammar(
+            matcher,
+            n_vocab,
+            think=think,
+            allocate=allocate_token_bitmask,
+            fill=fill_next_token_bitmask,
+            apply=apply_token_bitmask,
+        )
+
+    return _LlmEngine(
+        model_id,
+        model,
+        tok,
+        stop_ids=stop_ids,
+        n_vocab=n_vocab,
+        stream_generate=stream_generate,
+        make_sampler=make_sampler,
+        make_logits_processors=make_logits_processors,
+        grammar_factory=grammar_factory,
+    )
+
+
+def _make_llm_handler(engine: _LlmEngine) -> Any:
+    from http.server import BaseHTTPRequestHandler
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, fmt: str, *args: Any) -> None:
+            _log(f"http {fmt % args}")
+
+        def _json(self, status: int, payload: dict[str, Any]) -> None:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _error(self, status: int, message: str, kind: str) -> None:
+            self._json(status, {"error": {"message": message, "type": kind}})
+
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path.split("?")[0] == "/v1/models":
+                self._json(200, {"object": "list", "data": [{"id": engine.model_id, "object": "model"}]})
+            else:
+                self._error(404, f"not found: {self.path}", "invalid_request_error")
+
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length > 0 else b""
+            if self.path.split("?")[0] != "/v1/chat/completions":
+                self._error(404, f"not found: {self.path}", "invalid_request_error")
+                return
+            try:
+                req = _parse_chat_request(json.loads(raw or b"null"))
+                result = engine.complete(req)
+            except json.JSONDecodeError as exc:
+                self._error(400, f"invalid json: {exc}", "invalid_request_error")
+            except _BadRequest as exc:
+                self._error(400, str(exc), "invalid_request_error")
+            except Exception as exc:
+                _log(f"generate error: {exc}")
+                self._error(500, str(exc), "server_error")
+            else:
+                self._json(200, result)
+
+    return Handler
+
+
+def _watch_stdin() -> None:
+    """Exit when stdin closes: the parent process died."""
+    for _ in sys.stdin:
+        pass
+    _log("stdin closed; shutting down")
+    os._exit(0)
+
+
+def _run_llm(model_id: str, port: int | None) -> None:
+    import signal
+    from http.server import HTTPServer
+
+    if port is None:
+        _send({"type": "error", "error": "--llm needs --port"})
+        sys.exit(1)
+    try:
+        engine = _load_llm_engine(model_id)
+        httpd = HTTPServer(("127.0.0.1", port), _make_llm_handler(engine))
+    except Exception as exc:
+        _log(f"llm start error: {exc}")
+        _send({"type": "error", "error": str(exc)})
+        sys.exit(1)
+
+    def _on_term(*_args: Any) -> None:
+        _log("SIGTERM; shutting down")
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, _on_term)
+    threading.Thread(target=_watch_stdin, daemon=True).start()
+    _send({"type": "ready", "model": model_id, "port": httpd.server_address[1]})
+    try:
+        httpd.serve_forever()
+    finally:
+        httpd.server_close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -639,7 +1120,16 @@ def main() -> None:
     parser.add_argument("--preload", action="store_true")
     parser.add_argument("--download-model", action="store_true")
     parser.add_argument("--model-status", action="store_true")
+    parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="serve an mlx-lm model over an OpenAI-style HTTP API on 127.0.0.1:--port",
+    )
     args = parser.parse_args()
+
+    if args.llm:
+        _run_llm(args.model, args.port)
+        return
 
     if args.model_status:
         _model_status(args.model)
