@@ -9,6 +9,7 @@ export const CHECKS = [
   "numbers",
   "names",
   "negations",
+  "labels",
   "chunks",
   "summary",
   "speakers",
@@ -210,7 +211,7 @@ export function renderResults(res: Results): string {
     `- Answer key: ${res.answerKey ? "yes" : "no"}`,
     `- Floor (smallest model with 0 hard fails on every meeting): ${res.floor ?? "none"}`,
     "",
-    "Hard-fail checks: segments (lost, added or moved; raw text changed), numbers (number or time token changed), names (capitalized name removed or changed, not a spelling fix), negations (added or removed), chunks (failed chunks; last attempt finish length), summary (check-summary failed; owner or due placeholder), speakers (suggested name not in the meeting text or metadata).",
+    "Hard-fail checks: segments (lost, added or moved; raw text changed), numbers (number or time token changed), names (capitalized name removed or changed, not a spelling fix), negations (added or removed), labels (enhanced text starts with a speaker label, raw text does not), chunks (failed chunks; last attempt finish length), summary (check-summary failed; owner or due placeholder), speakers (suggested name not in the meeting text or metadata).",
     "",
   ];
   for (const m of res.meetings) {

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   checkChunks,
+  checkLabels,
   checkNames,
   checkNegations,
   checkNumbers,
@@ -120,6 +121,25 @@ test("negations: added or removed", () => {
     seg(3, "no no it is fine", "No, it is fine."),
   ];
   assert.deepEqual(checkNegations(rows).keys, [
+    "system:1@1000",
+    "system:2@2000",
+    "system:3@3000",
+  ]);
+});
+
+test("labels: the enhanced text starts with a speaker label, the raw text does not", () => {
+  const rows = [
+    seg(0, "we ship on friday", "Me: We ship on Friday."),
+    seg(1, "we ship on friday", "them 7: we ship on Friday."),
+    seg(2, "we ship on friday", "Them:"), // a label only
+    seg(3, "we ship on friday", "  THEM 12 : We ship on Friday."),
+    seg(4, "me: we ship on friday", "Me: We ship on Friday."), // raw has it: kept
+    seg(5, "tell me: we ship", "Tell me: we ship."), // not at the start
+    seg(6, "theme: we ship", "Theme: we ship."), // a word, not a label
+    seg(7, "we ship on friday", null), // no enhanced text
+  ];
+  assert.deepEqual(checkLabels(rows).keys, [
+    "system:0@0",
     "system:1@1000",
     "system:2@2000",
     "system:3@3000",
@@ -282,6 +302,7 @@ test("report: render, self-check and floor", () => {
     },
     names: { count: 0, keys: [] },
     negations: { count: 0, keys: [] },
+    labels: { count: 0, keys: [] },
     chunks: { count: 0, keys: [] },
     summary: { count: 0, keys: [] },
     speakers: { count: 0, keys: [] },
@@ -331,6 +352,7 @@ test("report: render, self-check and floor", () => {
   const md = renderResults(res);
   assert.deepEqual(selfCheck(md, res), []);
   assert.ok(md.includes("system:0@0, system:1@0"));
+  assert.ok(md.includes("| negations | labels | chunks |"));
   // A changed cell in the Markdown fails the self-check.
   const broken = md.replace("| small | 2 |", "| small | 3 |");
   assert.ok(selfCheck(broken, res).length > 0);

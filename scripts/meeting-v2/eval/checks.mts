@@ -13,13 +13,15 @@
 //                  metadata removed, lowercased or changed (a spelling fix
 //                  is not a fail)
 //   4 negations    a negation added or removed
-//   5 chunks       a failed chunk, or a step whose last attempt ended with
+//   5 labels       the enhanced text starts with a speaker label ("Me:",
+//                  "Them:", "Them 7:") and the raw text does not
+//   6 chunks       a failed chunk, or a step whose last attempt ended with
 //                  finish "length"
-//   6 summary      check-summary did not pass, or an owner or due value is
+//   7 summary      check-summary did not pass, or an owner or due value is
 //                  a placeholder word such as "null"
-//   7 speakers     a speaker suggestion with a name that the meeting text
+//   8 speakers     a speaker suggestion with a name that the meeting text
 //                  and metadata do not contain
-// Checks 2, 3 and 4 compare the raw text with the enhanced text of each
+// Checks 2 to 5 compare the raw text with the enhanced text of each
 // segment that has an enhanced text different from the raw text. The number
 // and negation words are English (the reference meetings are English).
 
@@ -341,7 +343,24 @@ export function checkNegations(rows: SegmentRow[]): Finding {
   );
 }
 
-// --- 5. Chunks and finish ------------------------------------------------------
+// --- 5. Speaker label in the text --------------------------------------------
+
+/**
+ * A speaker label at the start of a text, in any case, with optional
+ * spaces. The same pattern as the app's stripSpeakerLabel (correct-chunk.ts)
+ * without the display label, which the segment rows do not have.
+ */
+const SPEAKER_LABEL = /^\s*(?:me|them(?:\s*\d+)?)\s*:/iu;
+
+export function checkLabels(rows: SegmentRow[]): Finding {
+  return finding(
+    changedPairs(rows)
+      .filter((p) => SPEAKER_LABEL.test(p.b) && !SPEAKER_LABEL.test(p.a))
+      .map((p) => p.key),
+  );
+}
+
+// --- 6. Chunks and finish ------------------------------------------------------
 
 export interface CallRow {
   run_id: string;
@@ -376,7 +395,7 @@ export function checkChunks(
   };
 }
 
-// --- 6. Summary ----------------------------------------------------------------
+// --- 7. Summary ----------------------------------------------------------------
 
 /** The placeholder words of the app's valueOrNull (workflow/schemas.ts). */
 const PLACEHOLDERS = new Set(["", "null", "none", "n/a", "unknown"]);
@@ -415,7 +434,7 @@ export function checkSummary(
   return { ...finding(keys), placeholders };
 }
 
-// --- 7. Speaker names ------------------------------------------------------------
+// --- 8. Speaker names ------------------------------------------------------------
 
 export function checkSpeakerNames(
   speakers: { label: string; suggested_name: string | null }[],

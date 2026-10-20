@@ -62,6 +62,7 @@ import { MLX_LLM_MODELS } from "../../../apps/server/src/lib/mlx-llm/constants.t
 import {
   type CallRow,
   checkChunks,
+  checkLabels,
   checkNames,
   checkNegations,
   checkNumbers,
@@ -883,6 +884,7 @@ function evaluate(
     numbers: checkNumbers(run.segments),
     names: checkNames(run.segments, metadataNames(meta)),
     negations: checkNegations(run.segments),
+    labels: checkLabels(run.segments),
     chunks: checkChunks(
       (m.failedChunks as number[] | undefined) ?? [],
       (m.chunksFailed as number | undefined) ?? 0,
