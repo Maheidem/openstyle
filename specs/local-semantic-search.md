@@ -81,6 +81,7 @@ The same index is "project memory". Summary and Enhance of a meeting in a folder
 | D18 | vec0 slot growth after deletes: accept it in v1. Track the file size (9.4). No rebuild yet. | Owner, 2026-10-20 (answer to the former Q4) |
 | D19 | Model hosting: use existing Hugging Face repos that other providers publish. The owner does not publish his own conversions. Repos: 5.3. | Owner, 2026-10-20 (answer to the former Q2). Repo facts: HF API, read 2026-10-20 (5.3) |
 | D20 | 8 GB Macs: ship the bf16 text-only model (`embeddinggemma-2-bf16-text`) on every Mac for now. Switch 8 GB Macs to a 4-bit model only when a provider publishes a text-only 4-bit MLX repo. This replaces the 4-bit part of D7 until then. | Owner, 2026-10-20 (answer to the former Q1) |
+| D21 | Search box place: the Meetings page header. The search is scoped by the folder that is selected in the folder tree (PR #235); with no folder selected, it searches all meetings. | Owner, 2026-10-20 (answer to the former Q1) |
 
 ### 2.2 Spec decisions (made here, with the reason)
 
@@ -753,7 +754,7 @@ Seed 6 fictional meetings: 3 in folder "Aurora" (PT and EN), 2 in folder "Atlas"
 
 Only items that no owner decision covers.
 
-- **Q1. Search box place.** This spec puts it in the Meetings page header, scoped by the folder filter of PR #235. Is that the place, or a separate screen?
+None. The owner answered every open question on 2026-10-20 (D16 to D21).
 
 ---
 
