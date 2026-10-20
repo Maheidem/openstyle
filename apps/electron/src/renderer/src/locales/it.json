@@ -734,6 +734,7 @@
     "githubRepo": "Repository GitHub"
   },
   "meetings": {
+    "noLlmHint": "Aggiungi un modello di IA in Impostazioni > Modelli per usare Migliora e Riepilogo.",
     "titleAccent": "Riunioni",
     "subtitle": "Registra il microfono e l'audio di sistema di una riunione, poi ottieni una trascrizione etichettata e un riepilogo. L'audio resta sul tuo Mac finché non trascrivi.",
     "recordTitle": "Registra una riunione",

@@ -735,6 +735,7 @@
     "githubRepo": "Dépôt GitHub"
   },
   "meetings": {
+    "noLlmHint": "Ajoutez un modèle d’IA dans Paramètres > Modèles pour utiliser Améliorer et Résumé.",
     "titleAccent": "Réunions",
     "subtitle": "Enregistrez le micro et l'audio système d'une réunion, puis obtenez une transcription étiquetée et un résumé. L'audio reste sur votre Mac jusqu'à la transcription.",
     "recordTitle": "Enregistrer une réunion",
