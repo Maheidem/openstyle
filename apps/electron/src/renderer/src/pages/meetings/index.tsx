@@ -215,6 +215,17 @@ export default function MeetingsPage(): React.JSX.Element {
   };
   if (!configLoading && !enabled) return <Navigate to="/today" replace />;
   const explicitSelection = Boolean(selectedId || selectedFolderId);
+  // The empty state has its own import button and error. The rail shows
+  // its import controls only when the empty state is not on the page.
+  const showEmptyState = !activeFolder && !activeId;
+  const recordingCard = (
+    <RecordingCard
+      recorder={recorder}
+      compact
+      targetName={targetName}
+      targetReady={targetReady}
+    />
+  );
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
@@ -245,19 +256,18 @@ export default function MeetingsPage(): React.JSX.Element {
                 <AsrContextSettingsPopover />
               </div>
             </div>
-            <MeetingImportRail
-              onFile={meetingImport.handleFile}
-              onPick={() => void meetingImport.handlePick()}
-              importing={meetingImport.importing}
-              error={importError}
-            >
-              <RecordingCard
-                recorder={recorder}
-                compact
-                targetName={targetName}
-                targetReady={targetReady}
-              />
-            </MeetingImportRail>
+            {showEmptyState ? (
+              recordingCard
+            ) : (
+              <MeetingImportRail
+                onFile={meetingImport.handleFile}
+                onPick={() => void meetingImport.handlePick()}
+                importing={meetingImport.importing}
+                error={importError}
+              >
+                {recordingCard}
+              </MeetingImportRail>
+            )}
             {(folderData.isError || listFailed) && (
               <p className="text-destructive mb-3 text-xs" role="alert">
                 {t("meetings.folders.loadFailed")}
