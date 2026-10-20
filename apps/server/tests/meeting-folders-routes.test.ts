@@ -241,6 +241,41 @@ describe("meeting folders", () => {
     ).toBe(404);
   });
 
+  it("returns folder facts for all rows, also past the list limit", async () => {
+    const folder = await createFolder();
+    expect(folder).toMatchObject({
+      first_meeting_at: null,
+      last_meeting_at: null,
+      total_duration_ms: 0,
+    });
+    for (let i = 0; i < 205; i++) {
+      getDb()
+        .prepare(`INSERT INTO meetings (id, status, folder_id, started_at, duration_ms)
+        VALUES (?, 'recorded', ?, ?, ?)`)
+        .run(`fact-${i}`, folder.id, i + 1, i === 0 ? null : 1000);
+    }
+    const res = await app.request(`${base}/folders`);
+    const items = meetingFoldersResponseSchema.parse(await res.json()).items;
+    expect(items[0]).toMatchObject({
+      meeting_count: 205,
+      first_meeting_at: 1,
+      last_meeting_at: 205,
+      total_duration_ms: 204000,
+    });
+    const renamed = await jsonRequest(
+      app,
+      "PATCH",
+      `${base}/folders/${folder.id}`,
+      { name: "New name" },
+    );
+    expect(meetingFolderSchema.parse(await renamed.json())).toMatchObject({
+      meeting_count: 205,
+      first_meeting_at: 1,
+      last_meeting_at: 205,
+      total_duration_ms: 204000,
+    });
+  });
+
   it("filters before the 200-row limit", async () => {
     const folder = await createFolder();
     insertMeeting("old", 0);

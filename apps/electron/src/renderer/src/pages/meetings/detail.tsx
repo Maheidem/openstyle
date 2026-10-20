@@ -58,6 +58,8 @@ import {
   MeetingContextField,
   MeetingLanguageChip,
 } from "./fields";
+import { MeetingFolderChip } from "./folder-controls";
+import type { MeetingFolder } from "./folders-model";
 import { type InspectorTarget, LlmInspectorPanel } from "./llm-inspector";
 import { isAdvancedMode } from "./llm-inspector-model";
 import {
@@ -79,10 +81,14 @@ export function MeetingDetailView({
   id,
   onBack,
   onDeleted,
+  folders,
+  onMove,
 }: {
   id: string;
   onBack: () => void;
   onDeleted: () => void;
+  folders: MeetingFolder[];
+  onMove: (meeting: MeetingDetail, folderId: string | null) => void;
 }): React.JSX.Element {
   const { t, i18n } = useTranslation();
   // A rate in kHz with one decimal at most ("16", "44.1"), in the UI language.
@@ -550,6 +556,11 @@ export function MeetingDetailView({
             {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
             {formatClockDuration(meeting.duration_ms)}
           </div>
+          <MeetingFolderChip
+            meeting={meeting}
+            folders={folders}
+            onMove={(folderId) => onMove(meeting, folderId)}
+          />
           <MeetingContextField
             id={id}
             context={meeting.context}

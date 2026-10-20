@@ -15,6 +15,7 @@ import { cn } from "@renderer/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Folder,
   Mic,
   MonitorSpeaker,
   RefreshCw,
@@ -91,8 +92,9 @@ export function SystemAudioHint(): React.JSX.Element {
 // meeting API (meeting:level IPC events).
 // ---------------------------------------------------------------------------
 
-export function useRecorder(): {
+export function useRecorder(folderId: string | null = null): {
   status: RecorderStatus;
+  starting: boolean;
   supported: boolean;
   meetingId: string | null;
   start: () => Promise<void>;
@@ -105,7 +107,11 @@ export function useRecorder(): {
   confirmDevices: () => Promise<void>;
   dismissDevices: () => void;
 } {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<RecorderStatus>("idle");
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
+  const pendingFolderId = useRef<string | null>(null);
   const [supported, setSupported] = useState(false);
   const [meetingId, setMeetingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -156,34 +162,51 @@ export function useRecorder(): {
   }, [queryClient]);
 
   const startWith = useCallback(
-    async (plan?: MeetingDevicePlan) => {
+    async (plan?: MeetingDevicePlan, targetFolderId = folderId) => {
+      if (startingRef.current) return;
+      startingRef.current = true;
+      setStarting(true);
       setError(null);
-      const result = await window.api?.startMeetingRecording?.(
-        plan ? planKeys(plan) : undefined,
-      );
-      if (result?.devices) {
-        // The devices changed since the last meeting. Ask first.
-        setDevices(result.devices);
-        setPendingDevices(result.devices);
-        return;
-      }
-      setPendingDevices(null);
-      if (result?.ok) {
-        setMeetingId(result.id ?? null);
-        setStatus("recording");
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.meetings.all,
-        });
-      } else if (result?.error) {
-        setError(result.error);
+      // Keep the click target while the device dialog is open.
+      pendingFolderId.current = targetFolderId;
+      try {
+        const result = await window.api?.startMeetingRecording?.(
+          plan ? planKeys(plan) : undefined,
+          targetFolderId,
+        );
+        if (result?.devices) {
+          setDevices(result.devices);
+          setPendingDevices(result.devices);
+          return;
+        }
+        setPendingDevices(null);
+        if (result?.ok) {
+          setMeetingId(result.id ?? null);
+          setStatus("recording");
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.meetings.all,
+          });
+        } else if (result?.code === "invalid_folder") {
+          setError(t("meetings.folders.invalidTarget"));
+        } else if (result?.error) {
+          setError(result.error);
+        }
+      } catch {
+        setError(t("meetings.folders.requestFailed"));
+      } finally {
+        startingRef.current = false;
+        setStarting(false);
       }
     },
-    [queryClient],
+    [queryClient, folderId, t],
   );
 
   const start = useCallback(() => startWith(), [startWith]);
   const confirmDevices = useCallback(
-    () => (pendingDevices ? startWith(pendingDevices) : Promise.resolve()),
+    () =>
+      pendingDevices
+        ? startWith(pendingDevices, pendingFolderId.current)
+        : Promise.resolve(),
     [pendingDevices, startWith],
   );
   const dismissDevices = useCallback(() => setPendingDevices(null), []);
@@ -195,6 +218,7 @@ export function useRecorder(): {
 
   return {
     status,
+    starting,
     supported,
     meetingId,
     start,
@@ -367,8 +391,12 @@ export function LevelMeter({
 export function RecordingCard({
   recorder,
   compact = false,
+  targetName,
+  targetReady = true,
 }: {
   recorder: ReturnType<typeof useRecorder>;
+  targetName?: string;
+  targetReady?: boolean;
   /** Rail context (mockup artboard 02): swap the idle/finalizing "Record a
    * meeting" card — whose title+description text wraps and collides with
    * the button at ~262px — for a slim pill. An in-progress recording still
@@ -422,7 +450,9 @@ export function RecordingCard({
               variant="ink"
               size="xs"
               onClick={() => void recorder.start()}
-              disabled={!recorder.supported}
+              disabled={
+                !recorder.supported || recorder.starting || !targetReady
+              }
             >
               <Mic data-icon="inline-start" />
               {t("meetings.start")}
@@ -434,6 +464,17 @@ export function RecordingCard({
             </span>
           )}
         </div>
+        {!finalizing && targetName && (
+          <div className="border-border bg-card text-muted-foreground mt-2 flex min-w-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px]">
+            <Folder className="size-3 shrink-0" />
+            <span className="shrink-0">
+              {t("meetings.folders.recordsInto")}
+            </span>
+            <strong className="text-foreground min-w-0 truncate font-semibold">
+              {targetName}
+            </strong>
+          </div>
+        )}
         {!finalizing && !recorder.supported && (
           <p className="text-muted-foreground mt-1.5 text-[10.5px] leading-[1.4]">
             {t("meetings.notSupported")}
@@ -513,13 +554,19 @@ export function RecordingCard({
             variant="ink"
             size="sm"
             onClick={() => void recorder.start()}
-            disabled={!recorder.supported}
+            disabled={!recorder.supported || recorder.starting || !targetReady}
           >
             <Mic data-icon="inline-start" />
             {t("meetings.start")}
           </Button>
         )}
       </div>
+      {!recording && !finalizing && targetName && (
+        <p className="text-muted-foreground mt-2 text-xs">
+          {t("meetings.folders.recordsInto")}{" "}
+          <strong className="text-foreground">{targetName}</strong>
+        </p>
+      )}
       <DeviceConfirmDialog recorder={recorder} />
     </Card>
   );

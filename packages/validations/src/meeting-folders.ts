@@ -21,6 +21,9 @@ export const meetingFolderSchema = z.object({
   created_at: z.number().int(),
   updated_at: z.number().int(),
   meeting_count: z.number().int().nonnegative(),
+  first_meeting_at: z.number().nullable(),
+  last_meeting_at: z.number().nullable(),
+  total_duration_ms: z.number().nonnegative(),
 });
 
 export const meetingFoldersResponseSchema = z.object({

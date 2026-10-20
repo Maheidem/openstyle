@@ -17,13 +17,14 @@ import {
   meetingFolderNameExists,
 } from "../lib/meetings/folders.js";
 
-const folderSelect = `SELECT f.*,
-  (SELECT COUNT(*) FROM meetings m WHERE m.folder_id = f.id) AS meeting_count
-  FROM meeting_folders f`;
+const folderSelect = `SELECT f.*, COUNT(m.id) AS meeting_count,
+  MIN(m.started_at) AS first_meeting_at, MAX(m.started_at) AS last_meeting_at,
+  COALESCE(SUM(m.duration_ms), 0) AS total_duration_ms
+  FROM meeting_folders f LEFT JOIN meetings m ON m.folder_id = f.id`;
 
 function readFolder(id: string) {
   return meetingFolderSchema.parse(
-    getDb().prepare(`${folderSelect} WHERE f.id = ?`).get(id),
+    getDb().prepare(`${folderSelect} WHERE f.id = ? GROUP BY f.id`).get(id),
   );
 }
 
@@ -45,7 +46,9 @@ export const meetingFolders = new Hono()
     c.json(
       meetingFoldersResponseSchema.parse({
         items: getDb()
-          .prepare(`${folderSelect} ORDER BY f.name COLLATE NOCASE, f.id`)
+          .prepare(
+            `${folderSelect} GROUP BY f.id ORDER BY f.name COLLATE NOCASE, f.id`,
+          )
           .all(),
       }),
     ),
