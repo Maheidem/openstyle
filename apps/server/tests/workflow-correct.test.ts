@@ -366,6 +366,48 @@ describe("checkCorrections word guard", () => {
     };
   };
 
+  it("duplicate_id: a dropped first entry does not block a later fix of the same id", () => {
+    const r = checkCorrections(
+      [
+        { id: "s1", text: "we ship it on friday" },
+        { id: "s1", text: "We ship it on Friday." },
+      ],
+      [seg("we ship it on friday")],
+      7,
+    );
+    expect(r.corrections.map((c) => [c.text, c.seq])).toEqual([
+      ["We ship it on Friday.", 1],
+    ]);
+    expect(r.dropped.map((d) => [d.reason, d.seq])).toEqual([["unchanged", 0]]);
+  });
+
+  it("duplicate_id: of two good entries for one id, the first is applied", () => {
+    const r = checkCorrections(
+      [
+        { id: "s1", text: "We ship it on Friday." },
+        { id: "s1", text: "We ship it on friday." },
+      ],
+      [seg("we ship it on friday")],
+      7,
+    );
+    expect(r.corrections.map((c) => [c.text, c.seq])).toEqual([
+      ["We ship it on Friday.", 0],
+    ]);
+    expect(r.dropped.map((d) => [d.reason, d.seq])).toEqual([
+      ["duplicate_id", 1],
+    ]);
+  });
+
+  it.each([
+    ["the the cat", "the cat", []],
+    ["the, the cat", "the cat", []],
+    ["I- I think", "I think", []],
+    ["um I think", "I think", ["deletes_words"]],
+    ["you know you know it", "you know it", ["deletes_words"]],
+  ])("deletes_words policy: %j to %j drops %j", (oldText, newText, reasons) => {
+    expect(check(oldText, newText).reasons).toEqual(reasons);
+  });
+
   it("keeps a case or punctuation change", () => {
     expect(check("we ship it on friday", "We ship it on Friday.")).toEqual({
       kept: ["We ship it on Friday."],

@@ -297,11 +297,12 @@ export function checkCorrections(
       drop("unknown_id");
       return;
     }
+    // The first entry that passes every check wins. An id is seen only when
+    // its entry is accepted, so a dropped echo does not block a later fix.
     if (seen.has(entry.id)) {
       drop("duplicate_id");
       return;
     }
-    seen.add(entry.id);
     let text = entry.text.trim();
     // A local model sometimes echoes the "Speaker: " prefix of the line format.
     const prefix = `${original.displayLabel}: `;
@@ -342,6 +343,7 @@ export function checkCorrections(
       drop("lowercases_name");
       return;
     }
+    seen.add(entry.id);
     corrections.push({ id: entry.id, text, seq, callId });
   });
   return { corrections, dropped };

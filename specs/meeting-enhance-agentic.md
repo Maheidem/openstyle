@@ -1193,7 +1193,7 @@ Council round r185-4 findings (2026-10-18, WP6 ea829062 and 6f57ac69): the code 
 For each correction, in order:
 
 1. `id` not in the chunk: drop (`unknown_id` is the new reason label; today a silent `continue`, `M/enhance.ts:530-531`).
-2. `id` seen earlier in the array: drop, `duplicate_id`. The first entry wins.
+2. `id` of an entry that was accepted earlier in the array: drop, `duplicate_id`. The first entry that passes every check wins. A dropped entry does not mark its `id` as seen (changed 2026-10-20).
 3. Trim the text. Remove an echoed "Speaker: " prefix (`M/enhance.ts:532-543`).
 4. Text empty: drop (`empty_text` is the new reason label; today a silent `continue`, `M/enhance.ts:544`).
 5. Text equals the original: drop (`unchanged` is the new reason label; today a silent `continue`, `M/enhance.ts:551`).
