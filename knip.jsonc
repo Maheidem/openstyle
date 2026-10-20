@@ -21,7 +21,8 @@
     "powershell.exe",
     "ps",
     "python3",
-    "security"
+    "security",
+    "sqlite3"
   ],
   "ignoreFiles": [
     // Static marketing site: loaded from site/index.html, which knip does
