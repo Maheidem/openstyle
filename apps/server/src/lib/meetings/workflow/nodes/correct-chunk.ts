@@ -275,6 +275,22 @@ function lowercasesName(oldText: string, newText: string): boolean {
   });
 }
 
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Removes one speaker label at the start of a correction: "Me:", "Them:",
+ * "Them 7:" or the display label of the segment (for example a confirmed
+ * name), in any case, with optional spaces. A label later in the text is
+ * not touched. Returns the trimmed text.
+ */
+export function stripSpeakerLabel(text: string, displayLabel: string): string {
+  const own = displayLabel.trim();
+  const labels = ["me", "them(?:\\s*\\d+)?"];
+  if (own) labels.push(escapeRegExp(own).replace(/\s+/g, "\\s+"));
+  const label = new RegExp(`^\\s*(?:${labels.join("|")})\\s*:`, "iu");
+  return text.replace(label, "").trim();
+}
+
 /** 4.2.3: the code checks after the parse. */
 export function checkCorrections(
   raw: { id: string; text: string }[],
@@ -303,10 +319,9 @@ export function checkCorrections(
       drop("duplicate_id");
       return;
     }
-    let text = entry.text.trim();
-    // A local model sometimes echoes the "Speaker: " prefix of the line format.
-    const prefix = `${original.displayLabel}: `;
-    if (text.startsWith(prefix)) text = text.slice(prefix.length).trim();
+    // A local model sometimes echoes the "Speaker: " prefix of the line format,
+    // or writes a speaker label only. The code removes one label.
+    const text = stripSpeakerLabel(entry.text, original.displayLabel);
     if (!text) {
       drop("empty_text");
       return;
