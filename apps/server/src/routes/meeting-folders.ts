@@ -37,6 +37,7 @@ function invalidRequest(result: { success: boolean }, c: Context) {
       400,
     );
   }
+  return undefined;
 }
 
 export const meetingFolders = new Hono()
