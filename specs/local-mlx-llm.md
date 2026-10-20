@@ -138,4 +138,7 @@ Mode ladder `["json_schema_strict","prompt_only"]` and reasoning control `templa
 - Real E2E, isolated server and app: Qwen3.5 4B and Gemma 4 E4B. Download 351 s and 273 s. Meeting Enhance and Summarize ran and succeeded. About 98 and 77 tok/s. Worker RSS 3.1 GiB and 5.2 GiB.
 - WP4, per-call enum of ids and labels (`specs/meeting-enhance-agentic.md` 4.0.3 rule 3): Qwen3.5 4B applied 12 of 20 corrections on a fictional 40-segment meeting, with 0 `unknown_id`.
 - WP5, download fix: a download that failed with "terminated" left `model.safetensors` as an `.incomplete` blob, and the next POST `/download` reported `ready`. Now a snapshot is complete only when every file of the expected list has its size and no `.incomplete` blob is left (3.2). A dropped connection gets 3 more tries.
+- Council on the 4 reference meetings, oMLX Qwen3.8-27B, OLD (main) vs NEW (this PR):
+  - r228 (WP4 only): no consensus. Claude SHIP 8/5/45, pi FIX-FIRST 12/10/53, Codex REVERT 10/21/43. A noise run (OLD vs OLD2) then gave 0, 0, 16 and 8 changed lines, against 5, 5, 25 and 23 for OLD vs NEW.
+  - r228b (0da84fa8, WP4 + WP7, judged against the noise files): 1, 3, 14 and 28 changed lines. Claude SHIP 7/4/35, pi SHIP 5/5/36, Codex FIX-FIRST 6/5/35. CONSENSUS: no. Codex asks to reject bad full-segment corrections (9243bea0 system:4, mic:80) and to keep the case of technical names ("Tableau", "RAG"; the "RAG" change is also in the noise run). Speaker records are identical in all arms. 0 failed chunks. check-summary passes on all 4.
 - Open: item 4 (dictation latency).
