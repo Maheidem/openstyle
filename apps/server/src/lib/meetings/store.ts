@@ -3,6 +3,7 @@ import { getDb } from "../db.js";
 
 export interface MeetingRow {
   id: string;
+  folder_id: string | null;
   title: string | null;
   started_at: number | null;
   ended_at: number | null;

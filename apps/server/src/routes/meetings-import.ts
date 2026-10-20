@@ -47,7 +47,12 @@ import {
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import { createAppLogger } from "@openstyle/utils";
-import { SYSTEM_WAV } from "@openstyle/validations";
+import {
+  meetingDetailResponseSchema,
+  meetingFolderErrorSchema,
+  meetingFolderIdSchema,
+  SYSTEM_WAV,
+} from "@openstyle/validations";
 import { Hono } from "hono";
 import {
   AudioDecodeError,
@@ -71,6 +76,7 @@ import {
 } from "../lib/audio/multipart-stream.js";
 import { readWavInfo, wavDurationMs } from "../lib/audio/wav.js";
 import { getDb } from "../lib/db.js";
+import { meetingFolderExists } from "../lib/meetings/folders.js";
 import {
   getMeetingRow,
   omitCalendarColumns,
@@ -204,6 +210,29 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
         startedAt = n;
       }
 
+      const folderIdResult = meetingFolderIdSchema
+        .nullable()
+        .safeParse(fields.get("folder_id") ?? null);
+      if (files.has("folder_id") || !folderIdResult.success) {
+        return c.json(
+          meetingFolderErrorSchema.parse({
+            error: "Invalid folder ID",
+            code: "invalid_request",
+          }),
+          400,
+        );
+      }
+      const folderId = folderIdResult.data;
+      if (!meetingFolderExists(folderId)) {
+        return c.json(
+          meetingFolderErrorSchema.parse({
+            error: "Folder not found",
+            code: "folder_not_found",
+          }),
+          404,
+        );
+      }
+
       const ext = importFileExtension(audio.filename);
       if (!ext || !ACCEPTED_IMPORT_EXTENSIONS.has(ext)) {
         return c.json(unsupportedTypeBody(), 415);
@@ -270,6 +299,16 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
         );
       }
 
+      // Decode can yield. Check again before the file and row writes.
+      if (!meetingFolderExists(folderId)) {
+        return c.json(
+          meetingFolderErrorSchema.parse({
+            error: "Folder not found",
+            code: "folder_not_found",
+          }),
+          404,
+        );
+      }
       const startedAtValue = startedAt ?? Date.now();
       // Only after decode + validation: create the dir, place the WAV,
       // insert the row. On any failure, best-effort remove the dir so a
@@ -279,8 +318,8 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
         placeWavFile(wavPath, join(audioDir, SYSTEM_WAV));
         db.prepare(
           `INSERT INTO meetings (id, title, started_at, ended_at, duration_ms,
-                                status, audio_dir, created_at)
-           VALUES (?, ?, ?, ?, ?, 'recorded', ?, ?)`,
+                                status, audio_dir, created_at, folder_id)
+           VALUES (?, ?, ?, ?, ?, 'recorded', ?, ?, ?)`,
         ).run(
           id,
           title || stem(audio.filename, ext) || null,
@@ -289,6 +328,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
           durationMs,
           audioDir,
           Date.now(),
+          folderId,
         );
       } catch (err) {
         log.error(`meeting ${id}: import failed: ${String(err)}`);
@@ -313,7 +353,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       // (`meetings-import-route.test.ts` asserts this shape with toEqual
       // against GET /:id, so a new GET field must land here too.)
       return c.json(
-        {
+        meetingDetailResponseSchema.parse({
           ...(row ? omitCalendarColumns(row) : row),
           calendar: row ? toCalendarEvent(row) : null,
           job: null,
@@ -322,7 +362,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
           track_ratio_warning: null,
           track_repair: null,
           summary: null,
-        },
+        }),
         201,
       );
     } finally {

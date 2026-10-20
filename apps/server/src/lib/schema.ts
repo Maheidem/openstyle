@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 40;
+const SCHEMA_VERSION = 41;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1115,6 +1115,28 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       !hasColumn(db, "meeting_summaries", "summary_json")
     ) {
       db.exec(`ALTER TABLE meeting_summaries ADD COLUMN summary_json TEXT`);
+    }
+  }
+
+  if (currentVersion < 41) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_folders (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE
+          CHECK(length(name) BETWEEN 1 AND 60 AND name = trim(name)),
+        description TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    if (tableExists(db, "meetings")) {
+      if (!hasColumn(db, "meetings", "folder_id")) {
+        db.exec(`ALTER TABLE meetings ADD COLUMN folder_id TEXT
+          REFERENCES meeting_folders(id) ON DELETE RESTRICT`);
+      }
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_meetings_folder_id ON meetings(folder_id)",
+      );
     }
   }
 
