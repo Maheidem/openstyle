@@ -140,6 +140,23 @@ function render(x: Dump, y: Dump): string {
       out.push(`  - (+${diffs.length - MAX_DIFFS_PER_LABEL} more)`);
     out.push("");
   }
+  // Segments with no speaker label (mostly mic) are in no label group above.
+  // Without this section a judge cannot see their changes (round r228).
+  const unlabeled: string[] = [];
+  for (const sy of y.segments) {
+    if (sy.speaker_label) continue;
+    const sx = xseg.get(`${sy.source}:${sy.idx}`);
+    if (!sx || sx.speaker_label) continue;
+    const [a, b] = changedSpan(effective(sx), effective(sy));
+    if (a === b) continue;
+    unlabeled.push(
+      `  - ${sy.source}:${sy.idx} ${xName}: ${JSON.stringify(cut(a) || NONE)} / ${yName}: ${JSON.stringify(cut(b) || NONE)}`,
+    );
+  }
+  out.push("## Segments with no speaker label");
+  out.push(`- enhanced_text changed lines: ${unlabeled.length}`);
+  out.push(...unlabeled);
+  out.push("");
   return out.join("\n");
 }
 
