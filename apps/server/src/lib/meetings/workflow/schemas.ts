@@ -34,6 +34,25 @@ export const IdentifySpeakersSchema = z.object({
 });
 export type IdentifySpeakers = z.infer<typeof IdentifySpeakersSchema>;
 
+/** Words that a model writes in place of a JSON null (any case, trimmed). */
+const NO_VALUE_WORDS = new Set(["", "null", "none", "n/a", "unknown"]);
+
+/**
+ * The value, or null when it is absent: null, empty, or a placeholder word
+ * such as "null" or "N/A". A small model can write the string "null" for an
+ * owner that the transcript does not name.
+ */
+export function valueOrNull(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  return NO_VALUE_WORDS.has(value.trim().toLowerCase()) ? null : value;
+}
+
+/**
+ * A nullable string. The parse turns a placeholder word into null. The JSON
+ * Schema stays `string | null`: a transform changes only the output side.
+ */
+const optionalText = () => z.string().nullable().transform(valueOrNull);
+
 export const MeetingSummarySchema = z.object({
   overview: z.string(),
   keyPoints: z.array(z.string()),
@@ -41,8 +60,8 @@ export const MeetingSummarySchema = z.object({
   actionItems: z.array(
     z.object({
       task: z.string(),
-      owner: z.string().nullable(), // null when the transcript names no owner
-      due: z.string().nullable(), // time as spoken, e.g. "next Friday". null when none
+      owner: optionalText(), // null when the transcript names no owner
+      due: optionalText(), // time as spoken, e.g. "next Friday". null when none
     }),
   ),
   openQuestions: z.array(z.string()),

@@ -226,6 +226,49 @@ describe("summarize: one call (single)", () => {
     expect(status.status).toBe("summarized");
   });
 
+  it('an owner or due of "null", "None", "N/A", "unknown" or blank is stored as null and not rendered', async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    const s = summary({
+      actionItems: [
+        { task: "Send the draft", owner: "null", due: " NULL " },
+        { task: "Book the room", owner: "None", due: "n/a" },
+        { task: "Check the export", owner: " Unknown", due: "  " },
+        { task: "Write the notes", owner: "Casey", due: "Friday" },
+      ],
+    });
+    const r = await run(f, [okReply(JSON.stringify(s))]);
+    expect(r.finalState.summary?.status).toBe("ok");
+    const row = savedRow(f.meeting.id);
+    const stored = JSON.parse(row?.summary_json as string) as MeetingSummary;
+    expect(stored.actionItems.map((a) => [a.owner, a.due])).toEqual([
+      [null, null],
+      [null, null],
+      [null, null],
+      ["Casey", "Friday"],
+    ]);
+    // Only the real owner and due are rendered.
+    expect(row?.markdown?.match(/Owner: /g)).toHaveLength(1);
+    expect(row?.markdown?.match(/Due: /g)).toHaveLength(1);
+    expect(row?.markdown).toContain("- Send the draft\n");
+    expect(row?.markdown).toContain(
+      "- Write the notes (Owner: Casey; Due: Friday)",
+    );
+  });
+
+  it("the render skips a placeholder owner or due also in an object that did not pass the parse", () => {
+    const md = renderSummaryMarkdown(
+      summary({
+        actionItems: [
+          { task: "Send the draft", owner: "null", due: "None" },
+          { task: "Book the room", owner: "N/A", due: "tomorrow" },
+        ],
+      }),
+    );
+    expect(md).toContain("- Send the draft\n");
+    expect(md).toContain("- Book the room (Due: tomorrow)");
+    expect(md).not.toContain("Owner:");
+  });
+
   it("an empty summary has the five headings and `None.` under four; `\\n## Fake` makes no heading", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 1 });
     await run(f, [sum()]);

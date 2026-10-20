@@ -452,6 +452,71 @@ describe("parse cases", () => {
   });
 });
 
+describe("MeetingSummary: placeholder owner and due", () => {
+  const base = {
+    overview: "A short call.",
+    keyPoints: [],
+    decisions: [],
+    openQuestions: [],
+  };
+  const parseItem = (owner: string | null, due: string | null) =>
+    MeetingSummarySchema.parse({
+      ...base,
+      actionItems: [{ task: "x", owner, due }],
+    }).actionItems[0];
+
+  it.each([
+    "",
+    "  ",
+    "null",
+    "NULL",
+    " Null ",
+    "none",
+    "None",
+    "n/a",
+    "N/A",
+    "unknown",
+    "Unknown",
+  ])("%j parses to null", (word) => {
+    expect(parseItem(word, word)).toEqual({
+      task: "x",
+      owner: null,
+      due: null,
+    });
+  });
+
+  it("a real value stays as written; null stays null", () => {
+    expect(parseItem("Sam", "next Friday")).toEqual({
+      task: "x",
+      owner: "Sam",
+      due: "next Friday",
+    });
+    expect(parseItem(null, null)).toEqual({
+      task: "x",
+      owner: null,
+      due: null,
+    });
+    // A word that only holds a placeholder is not changed.
+    expect(parseItem("Nonez", "unknown date")?.owner).toBe("Nonez");
+  });
+
+  it("the JSON Schema still allows null for owner and due (no wire change)", async () => {
+    const json = (await asSchema(MeetingSummarySchema).jsonSchema) as {
+      properties: {
+        actionItems: { items: { properties: Record<string, unknown> } };
+      };
+    };
+    const props = json.properties.actionItems.items.properties;
+    for (const key of ["owner", "due"]) {
+      expect(JSON.stringify(props[key])).toContain('"null"');
+      expect(JSON.stringify(props[key])).toContain('"string"');
+    }
+    await expect(
+      assertPortableSchema(MeetingSummarySchema),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("the fictional meeting fixture", () => {
   it("builds chunks, speakers and a self-introduction", () => {
     const f = buildMeetingFixture({
