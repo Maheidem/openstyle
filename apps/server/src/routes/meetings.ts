@@ -70,6 +70,7 @@ import {
   omitCalendarColumns,
   toCalendarEvent,
 } from "../lib/meetings/store.js";
+import { getMeetingTags } from "../lib/meetings/tags.js";
 import {
   repairSystemTrack,
   trackRepairState,
@@ -116,6 +117,7 @@ import { loadVocabularyTerms } from "../lib/vocabulary.js";
 import { mergeContextVocabTerms } from "../lib/vocabulary-bias.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import { meetingFolders, meetingMoves } from "./meeting-folders.js";
+import { meetingTagEdit, meetingTagList } from "./meeting-tags.js";
 
 /**
  * Internal endpoints backing Meeting Mode. The Electron main process (the
@@ -1099,7 +1101,9 @@ function startRunResponse(
 
 const meetings = new Hono()
   .route("/folders", meetingFolders)
+  .route("/tags", meetingTagList)
   .route("/", meetingMoves)
+  .route("/", meetingTagEdit)
   .get("/", zValidator("query", meetingFolderFilterSchema), (c) => {
     const db = getDb();
     const { folder_id } = c.req.valid("query");
@@ -1956,6 +1960,7 @@ const meetings = new Hono()
     return c.json(
       meetingDetailResponseSchema.parse({
         ...omitCalendarColumns(row),
+        tags: getMeetingTags(id),
         calendar: toCalendarEvent(row),
         /** Live job progress, or null when no job is running. `kind` names the
          * holder so the renderer can tell a cancellable summarize job from a

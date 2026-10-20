@@ -25,6 +25,7 @@ export const meetingListResponseSchema = z.object({
 });
 
 export const meetingDetailResponseSchema = meetingRecordSchema.extend({
+  tags: z.array(z.string()),
   calendar: calendarEventSchema.nullable(),
   job: z
     .object({

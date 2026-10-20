@@ -355,6 +355,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       return c.json(
         meetingDetailResponseSchema.parse({
           ...(row ? omitCalendarColumns(row) : row),
+          tags: [],
           calendar: row ? toCalendarEvent(row) : null,
           job: null,
           segment_counts: { total: 0, failed: 0 },

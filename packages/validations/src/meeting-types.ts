@@ -32,6 +32,8 @@ export interface MeetingDetail extends MeetingListItem {
    * editable anytime. Feeds both the naming prompt and the summarize
    * prompt. NULL means unset. */
   context: string | null;
+  /** The meeting's tag names, sorted (issue #231). */
+  tags: string[];
   /** The linked calendar event, or null (specs/calendar-eventkit.md). */
   calendar: CalendarEvent | null;
   job: {
