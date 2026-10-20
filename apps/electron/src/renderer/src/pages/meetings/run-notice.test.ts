@@ -205,6 +205,27 @@ describe("noticeLines", () => {
 });
 
 describe("runNotice", () => {
+  it("hides only failed model-unavailable notices when no default LLM exists", () => {
+    const failed = run({ status: "failed", errorKind: "model_unavailable" });
+    expect(runNotice(failed, false, [], false)).toBeNull();
+    expect(runNotice(failed, false, [], true)).not.toBeNull();
+    expect(
+      runNotice(
+        run({ status: "failed", errorKind: "provider_auth" }),
+        false,
+        [],
+        false,
+      ),
+    ).not.toBeNull();
+    expect(
+      runNotice(
+        run({ status: "interrupted", errorKind: "model_unavailable" }),
+        false,
+        [],
+        false,
+      ),
+    ).not.toBeNull();
+  });
   it("shows a destructive notice with Start again for a failed run", () => {
     const n = runNotice(
       run({

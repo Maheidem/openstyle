@@ -103,6 +103,7 @@ import {
   canRunMlxAsr,
   type MlxAlignedWord,
 } from "../lib/mlx-asr/server.js";
+import { getDefaultModels } from "../lib/providers.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
 import { mergeContextVocabTerms } from "../lib/vocabulary-bias.js";
@@ -955,7 +956,11 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
         `meeting ${id}: cancel requested after transcription finished, skipping auto Enhance`,
       );
     }
-    if (getMeetingEnhanceAutoRunSetting() && !cancelled) {
+    // No default LLM: skip the auto-run, as dictation skips cleanup (#229).
+    const autoRun = getMeetingEnhanceAutoRunSetting() && !cancelled;
+    if (autoRun && !getDefaultModels().llm) {
+      log.info(`meeting ${id}: no default LLM, skipping auto Enhance`);
+    } else if (autoRun) {
       releaseJob(id);
       const started = startRun(
         { meetingId: id, stages: ["enhance", "summarize"], trigger: "auto" },
@@ -1831,6 +1836,15 @@ const meetings = new Hono()
     if (merged.length === 0) {
       return c.json({ error: "Transcript is empty" }, 409);
     }
+    if (!getDefaultModels().llm) {
+      return c.json(
+        {
+          error: "No AI model is set up. Add one in Settings > Models.",
+          code: "no_llm",
+        },
+        409,
+      );
+    }
     return startRunResponse(c, id, ["summarize"]);
   })
   // LLM cleanup pass (Enhance) over the merged transcript. It starts one
@@ -1853,6 +1867,15 @@ const meetings = new Hono()
     const merged = loadMergedTranscript(id, row.audio_dir);
     if (merged.length === 0) {
       return c.json({ error: "Transcript is empty" }, 409);
+    }
+    if (!getDefaultModels().llm) {
+      return c.json(
+        {
+          error: "No AI model is set up. Add one in Settings > Models.",
+          code: "no_llm",
+        },
+        409,
+      );
     }
     return startRunResponse(c, id, ["enhance", "summarize"]);
   })

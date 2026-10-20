@@ -996,6 +996,7 @@
     "asrContextHint": "Can fix technical terms, can also change names. Off by default.",
     "enhancePromptTitle": "Enhance transcripts automatically?",
     "enhancePromptDesc": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically. The meeting text goes to your default LLM: {{model}} ({{scope}}).",
+    "noLlmHint": "Add an AI model in Settings > Models to use Enhance and Summary.",
     "enhancePromptNoLlm": "Right after a meeting transcribes, Openstyle can clean up its transcript automatically with your default LLM.",
     "enhancePromptTurnOn": "Turn on auto Enhance",
     "enhancePromptNotNow": "Not now",

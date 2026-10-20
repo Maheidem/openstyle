@@ -132,14 +132,16 @@ export function EnhancePromptDialog(): React.JSX.Element {
           >
             {t("meetings.enhancePromptNotNow")}
           </Button>
-          <Button
-            variant="ink"
-            onClick={() => void choose(true)}
-            disabled={busy}
-            data-testid="enhance-prompt-turn-on"
-          >
-            {t("meetings.enhancePromptTurnOn")}
-          </Button>
+          {defaultLlm && (
+            <Button
+              variant="ink"
+              onClick={() => void choose(true)}
+              disabled={busy}
+              data-testid="enhance-prompt-turn-on"
+            >
+              {t("meetings.enhancePromptTurnOn")}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

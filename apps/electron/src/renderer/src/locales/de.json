@@ -735,6 +735,7 @@
     "githubRepo": "GitHub-Repository"
   },
   "meetings": {
+    "noLlmHint": "Füge unter Einstellungen > Modelle ein KI-Modell hinzu, um Verbessern und Zusammenfassung zu nutzen.",
     "titleAccent": "Meetings",
     "subtitle": "Nimm Mikrofon- und Systemaudio eines Meetings auf und mach daraus ein beschriftetes Transkript mit Zusammenfassung. Das Audio bleibt auf deinem Mac, bis du transkribierst.",
     "recordTitle": "Meeting aufnehmen",

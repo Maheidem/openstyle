@@ -91,6 +91,17 @@ export function MeetingDetailView({
       hz / 1000,
     );
   const queryClient = useQueryClient();
+  const { data: configuredModels } = useQuery({
+    queryKey: queryKeys.models.configured,
+    queryFn: async () => {
+      const res = await getClient().api.models.configured.$get();
+      if (!res.ok) throw new Error("Failed to load configured models");
+      return res.json();
+    },
+  });
+  const hasLlm =
+    configuredModels === undefined ||
+    configuredModels.some((m) => m.type === "llm" && m.is_default === 1);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -464,9 +475,14 @@ export function MeetingDetailView({
   // holds the failure of a Summarize too.
   const runOf = (kind: LlmRunKind) =>
     latestRuns?.runs.find((r) => r.kind === kind);
-  const enhanceNotice = runNotice(runOf("enhance"), jobHoldsSlot);
+  const enhanceNotice = runNotice(runOf("enhance"), jobHoldsSlot, [], hasLlm);
   const allRuns = latestRuns?.runs ?? [];
-  const summarizeNotice = runNotice(runOf("summarize"), jobHoldsSlot, allRuns);
+  const summarizeNotice = runNotice(
+    runOf("summarize"),
+    jobHoldsSlot,
+    allRuns,
+    hasLlm,
+  );
   const summarizeCancelled = isSummarizeCancelled(
     runOf("summarize"),
     jobHoldsSlot,
@@ -598,7 +614,7 @@ export function MeetingDetailView({
             variant="outline"
             size="sm"
             onClick={() => void enhance()}
-            disabled={busy !== null || jobHoldsSlot}
+            disabled={!hasLlm || busy !== null || jobHoldsSlot}
           >
             <WandSparkles data-icon="inline-start" />
             {busy === "enhance" || enhancingJob
@@ -613,7 +629,11 @@ export function MeetingDetailView({
           size="sm"
           onClick={() => void summarize()}
           disabled={
-            !hasTranscript || busy !== null || summarizing || jobHoldsSlot
+            !hasLlm ||
+            !hasTranscript ||
+            busy !== null ||
+            summarizing ||
+            jobHoldsSlot
           }
         >
           <Sparkles data-icon="inline-start" />
@@ -669,6 +689,12 @@ export function MeetingDetailView({
           <Trash2 />
         </Button>
       </div>
+
+      {!hasLlm && (
+        <p className="text-muted-foreground mb-5 text-[12px]">
+          {t("meetings.noLlmHint")}
+        </p>
+      )}
 
       {/* One card for both background jobs. Transcribe and Summarize use the
           same contract (202 + poll, §5.6), so they get the same face. The

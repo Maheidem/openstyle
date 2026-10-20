@@ -734,6 +734,7 @@
     "githubRepo": "Repositório do GitHub"
   },
   "meetings": {
+    "noLlmHint": "Adicione um modelo de IA em Configurações > Modelos para usar Melhorar e Resumo.",
     "titleAccent": "Reuniões",
     "subtitle": "Grave o microfone e o áudio do sistema de uma reunião e transforme em uma transcrição identificada e um resumo. O áudio fica no seu Mac até você transcrever.",
     "recordTitle": "Gravar uma reunião",

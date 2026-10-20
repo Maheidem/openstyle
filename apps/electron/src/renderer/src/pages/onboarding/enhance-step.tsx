@@ -56,14 +56,16 @@ export function EnhanceStep({
           >
             {t("meetings.enhancePromptNotNow")}
           </Button>
-          <Button
-            variant="ink"
-            onClick={() => choose("on")}
-            disabled={busy}
-            data-testid="onboarding-enhance-turn-on"
-          >
-            {t("meetings.enhancePromptTurnOn")}
-          </Button>
+          {model && (
+            <Button
+              variant="ink"
+              onClick={() => choose("on")}
+              disabled={busy}
+              data-testid="onboarding-enhance-turn-on"
+            >
+              {t("meetings.enhancePromptTurnOn")}
+            </Button>
+          )}
         </div>
       </div>
       <div className="mt-3 flex justify-end">
