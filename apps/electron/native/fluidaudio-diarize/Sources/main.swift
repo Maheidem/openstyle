@@ -42,10 +42,17 @@
  *                                          (ModelHub.offlineMode = true).
  *                                          Compact JSON segment list on
  *                                          stdout on success.
+ *   fluidaudio-diarize --vad <file.wav> --models-dir <dir>
+ *                                          Runs the Silero VAD on the WAV
+ *                                          file. Loads the model from
+ *                                          <dir>/silero-vad/. No network.
+ *                                          Prints the speech spans as a
+ *                                          compact JSON array
+ *                                          [{"startMs":int,"endMs":int}].
  *
  * stderr protocol: `PROGRESS <done> <total>` out-of-band status lines, plus
  * `ERR_MODELS_MISSING` / `ERR_DIARIZE_FAILED <message>` / `ERR_DOWNLOAD
- * <message>` on failure — matching the ERR_* convention used by
+ * <message>` / `ERR_VAD_FAILED <message>` on failure — matching the ERR_* convention used by
  * macos-system-audio.swift / system-audio-capture.ts's line parser.
  *
  * Compile via SwiftPM, not swiftc directly — FluidAudio is a package
@@ -53,6 +60,7 @@
  *   swift build -c release --package-path apps/electron/native/fluidaudio-diarize
  */
 
+import CoreML
 import FluidAudio
 import Foundation
 
@@ -193,6 +201,87 @@ func runDiarize(_ path: String, modelsDir: String?) async {
     }
 }
 
+// MARK: - VAD mode
+
+/// One speech span of the `--vad` stdout JSON, in ms from the file start.
+struct SpeechSpanOut: Codable {
+    let startMs: Int
+    let endMs: Int
+}
+
+/// Silero VAD settings for the meeting ASR gate. The values must satisfy
+/// the preconditions of `VadSegmentationConfig.init`. A failed
+/// precondition crashes the process, so the values are checked here first.
+/// 0.25, not Silero's usual 0.5: the gate only skips chunks with no span,
+/// so a low threshold keeps weak speech. The 5578edb0 loop window has no
+/// span at any threshold from 0.5 to 0.15 (measured 2026-10-19).
+nonisolated(unsafe) var vadThreshold: Float = 0.25
+let vadMinSpeechDuration: TimeInterval = 0.15
+let vadMinSilenceDuration: TimeInterval = 0.75
+let vadMaxSpeechDuration: TimeInterval = 30.0
+nonisolated(unsafe) var vadSpeechPadding: TimeInterval = 0.1
+
+func runVad(_ path: String, modelsDir: String?) async {
+    // No network. The model must come from the bundled models dir.
+    ModelHub.offlineMode = true
+    guard let modelsDir else {
+        emitError("ERR_VAD_FAILED --vad requires --models-dir <dir>")
+        exit(1)
+    }
+    guard
+        vadThreshold >= 0, vadThreshold <= 1,
+        vadMinSpeechDuration >= 0, vadMinSilenceDuration >= 0,
+        vadMaxSpeechDuration > 0, vadSpeechPadding >= 0,
+        vadMinSpeechDuration <= vadMaxSpeechDuration,
+        vadMinSilenceDuration <= vadMaxSpeechDuration,
+        vadSpeechPadding <= vadMinSpeechDuration
+    else {
+        emitError("ERR_VAD_FAILED invalid VAD settings")
+        exit(1)
+    }
+
+    // Load the compiled model directly. VadManager(modelDirectory:) is not
+    // used: it appends "Models/" and creates folders, and the app bundle
+    // is read-only.
+    let modelURL = URL(fileURLWithPath: modelsDir)
+        .appendingPathComponent("silero-vad")
+        .appendingPathComponent(ModelNames.VAD.sileroVadFile)
+    guard FileManager.default.fileExists(atPath: modelURL.path) else {
+        emitError("ERR_MODELS_MISSING")
+        exit(1)
+    }
+
+    do {
+        let vadConfig = VadConfig(defaultThreshold: vadThreshold)
+        let mlConfig = MLModelConfiguration()
+        mlConfig.computeUnits = vadConfig.computeUnits
+        let model = try MLModel(contentsOf: modelURL, configuration: mlConfig)
+        let manager = VadManager(config: vadConfig, vadModel: model)
+
+        // 16 kHz mono Float32, the format the VAD model expects.
+        let samples = try AudioConverter().resampleAudioFile(URL(fileURLWithPath: path))
+        let segConfig = VadSegmentationConfig(
+            minSpeechDuration: vadMinSpeechDuration,
+            minSilenceDuration: vadMinSilenceDuration,
+            maxSpeechDuration: vadMaxSpeechDuration,
+            speechPadding: vadSpeechPadding
+        )
+        let segments = try await manager.segmentSpeech(samples, config: segConfig)
+        let out = segments.map { seg in
+            SpeechSpanOut(
+                startMs: Int((seg.startTime * 1000).rounded()),
+                endMs: Int((seg.endTime * 1000).rounded())
+            )
+        }
+        let data = try JSONEncoder().encode(out)
+        FileHandle.standardOutput.write(data)
+        exit(0)
+    } catch {
+        emitError("ERR_VAD_FAILED \(error)")
+        exit(1)
+    }
+}
+
 // MARK: - Entry point
 
 // `--models-dir <path>` (spec §4) is a flag, not a positional argument —
@@ -201,6 +290,8 @@ func runDiarize(_ path: String, modelsDir: String?) async {
 var positional: [String] = []
 var modelsDir: String?
 do {
+    // --threshold <0..1> and --padding <seconds> override the VAD defaults
+    // (for tuning; the server does not pass them).
     var rest = ArraySlice(CommandLine.arguments.dropFirst())
     while let arg = rest.first {
         rest = rest.dropFirst()
@@ -211,6 +302,13 @@ do {
             }
             rest = rest.dropFirst()
             modelsDir = value
+        } else if arg == "--threshold" || arg == "--padding" {
+            guard let raw = rest.first, let value = Double(raw) else {
+                emitError("ERR_VAD_FAILED \(arg) requires a number")
+                exit(1)
+            }
+            rest = rest.dropFirst()
+            if arg == "--threshold" { vadThreshold = Float(value) } else { vadSpeechPadding = value }
         } else {
             positional.append(arg)
         }
@@ -219,7 +317,7 @@ do {
 
 guard let mode = positional.first else {
     emitError(
-        "ERR_DIARIZE_FAILED missing argument: expected --prepare-models, --probe, or a path to system.wav"
+        "ERR_DIARIZE_FAILED missing argument: expected --prepare-models, --probe, --vad <wav>, or a path to system.wav"
     )
     exit(1)
 }
@@ -237,6 +335,12 @@ case "--prepare-models":
     await runPrepareModels(modelsDir: modelsDir)
 case "--probe":
     await runProbe(modelsDir: modelsDir)
+case "--vad":
+    guard positional.count >= 2 else {
+        emitError("ERR_VAD_FAILED --vad requires a path to a WAV file")
+        exit(1)
+    }
+    await runVad(positional[1], modelsDir: modelsDir)
 default:
     await runDiarize(mode, modelsDir: modelsDir)
 }

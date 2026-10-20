@@ -15,7 +15,13 @@ import {
 } from "@openstyle/validations";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { parseWavHeader, sliceWav, type WavInfo } from "../lib/audio/wav.js";
+import {
+  parseWavHeader,
+  readWavInfo,
+  sliceWav,
+  type WavInfo,
+  wavDurationMs,
+} from "../lib/audio/wav.js";
 import { getDb, withTransaction } from "../lib/db.js";
 import {
   isDictationActive,
@@ -73,6 +79,11 @@ import {
   type SegmentRow,
   writeTranscriptMarkdown,
 } from "../lib/meetings/transcript-io.js";
+import {
+  attachSpeechSpans,
+  detectSpeechSpans,
+  type VadDeps,
+} from "../lib/meetings/vad.js";
 import {
   getMeetingEnhanceAutoRunSetting,
   type RunnerDeps,
@@ -156,6 +167,9 @@ interface MeetingsTestOverrides {
    * directly — a single fake deps object exercises the pre-flight check,
    * the real run, and the follow-up count query together. */
   diarizeDeps?: DiarizeDeps;
+  /** The VAD gate helper deps inside runTranscribeJob (default: the real
+   * fluidaudio-diarize binary and bundled silero-vad model). */
+  vadDeps?: VadDeps;
   /** Merged into the production workflow dependencies by the runner. It
    * serves POST /:id/enhance, POST /:id/summarize and the auto-run call site
    * inside runTranscribeJob, so route tests never touch a real LLM provider. */
@@ -635,6 +649,21 @@ function storeDiarizerTurns(id: string, turns: DiarizerSegment[]): void {
   }
 }
 
+/**
+ * VAD gate: the speech spans of one track, or null on any failure.
+ * `detectSpeechSpans` never throws; a bad WAV header only sets the
+ * timeout to its floor.
+ */
+async function speechSpansFor(wavPath: string) {
+  let durationMs = 0;
+  try {
+    durationMs = wavDurationMs(readWavInfo(wavPath));
+  } catch {
+    // detectSpeechSpans logs the real failure.
+  }
+  return detectSpeechSpans(wavPath, durationMs, testOverrides.vadDeps);
+}
+
 async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
   const db = getDb();
   // Set when the auto-run handoff below hands the slot to a workflow run
@@ -775,8 +804,21 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     if (!micFound && !systemUncut) {
       throw new Error(`No audio files found in ${audioDir}`);
     }
-    const micSegments = micFound ?? [];
+    let micSegments = micFound ?? [];
     let systemSegments = systemUncut ?? [];
+
+    // VAD gate: Silero VAD speech spans per track, once per job. Runs also
+    // when diarization is off. Null (helper or model missing, any failure)
+    // keeps the old path. The spans are attached to the segments below,
+    // after the final system segmentation.
+    const micSpans =
+      micSegments.length > 0
+        ? await speechSpansFor(join(audioDir, MIC_WAV))
+        : null;
+    const systemSpans =
+      systemSegments.length > 0
+        ? await speechSpansFor(join(audioDir, SYSTEM_WAV))
+        : null;
 
     // Phase A2 (specs/meeting-transcription-quality.md §3.2): resolve the
     // meeting-level language once (sticky across re-transcribe via
@@ -818,6 +860,9 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
         segmentWavFile(join(audioDir, SYSTEM_WAV), diarSegments ?? undefined) ??
         systemSegments;
     }
+
+    micSegments = attachSpeechSpans(micSegments, micSpans);
+    systemSegments = attachSpeechSpans(systemSegments, systemSpans);
 
     const total = micSegments.length + systemSegments.length;
     setProgress(id, { done: 0, total, failed: 0, phase: "transcribing" });

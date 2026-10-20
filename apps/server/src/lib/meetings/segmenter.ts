@@ -52,6 +52,25 @@ export interface Segment {
    * DB), which disables the pre-ASR silence gate for them.
    */
   voicedMs?: number;
+  /**
+   * Meeting VAD gate: the Silero VAD speech spans that overlap this
+   * segment, clipped to [startMs, endMs]. Set once at segmentation time
+   * by `attachSpeechSpans`. An empty array means "no speech", and the
+   * transcriber skips the chunk. Undefined (helper or model missing,
+   * retry-failed) keeps the old path with the voicedMs gate.
+   */
+  speechSpans?: SpeechSpan[];
+}
+
+/** One speech span in ms from the start of the track. */
+export interface SpeechSpan {
+  startMs: number;
+  endMs: number;
+}
+
+/** Total ms of the spans. */
+export function totalSpeechMs(spans: readonly SpeechSpan[]): number {
+  return spans.reduce((n, s) => n + (s.endMs - s.startMs), 0);
 }
 
 export const DEFAULT_SEGMENTER_OPTIONS: SegmenterOptions = {
