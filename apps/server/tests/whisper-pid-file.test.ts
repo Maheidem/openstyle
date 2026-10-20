@@ -35,13 +35,7 @@ function isAlive(pid: number): boolean {
 }
 
 function startSleeper(binary: string): ChildProcess {
-  // On Ubuntu 26.04, /bin/sleep is the uutils multi-call binary. It selects
-  // the tool from argv[0], so a copy named whisper-server exits at once with
-  // an error. On Linux, `ps -o comm=` shows the file name, not argv[0], so
-  // argv0 "sleep" keeps the name whisper-server. On macOS, comm comes from
-  // argv[0], so keep the default there.
-  const argv0 = process.platform === "linux" ? "sleep" : binary;
-  const child = spawn(binary, ["600"], { stdio: "ignore", argv0 });
+  const child = spawn(binary, ["600"], { stdio: "ignore" });
   children.push(child);
   return child;
 }
@@ -57,17 +51,22 @@ beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "openstyle-whisper-pid-"));
   pidFile = join(dir, "whisper-server.pid");
   process.env.OPENSTYLE_DB_PATH = join(dir, "test.db");
-  // A copy of a system binary needs a new ad-hoc signature on macOS.
-  // Without it, the system ends the process at start.
-  copyFileSync("/bin/sleep", join(dir, "whisper-server"));
+  const fake = join(dir, "whisper-server");
   if (process.platform === "darwin") {
-    execFileSync(
-      "codesign",
-      ["-s", "-", "--force", join(dir, "whisper-server")],
-      {
-        stdio: "ignore",
-      },
-    );
+    // A copy of a system binary needs a new ad-hoc signature on macOS.
+    // Without it, the system ends the process at start.
+    copyFileSync("/bin/sleep", fake);
+    execFileSync("codesign", ["-s", "-", "--force", fake], {
+      stdio: "ignore",
+    });
+  } else {
+    // On Ubuntu 26.04, /bin/sleep is the uutils multi-call binary. It picks
+    // the tool from the executable path, so a copy named whisper-server
+    // exits at once. A shell script does not depend on how sleep is built.
+    // Linux shows the script name (whisper-server) as the command name.
+    // The loop keeps the shell alive, so SIGTERM ends the shell itself.
+    writeFileSync(fake, "#!/bin/sh\nwhile :; do sleep 1; done\n");
+    chmodSync(fake, 0o755);
   }
 });
 
