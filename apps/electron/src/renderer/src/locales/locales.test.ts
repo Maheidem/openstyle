@@ -201,6 +201,7 @@ describe("locale files", () => {
     // engine goes back to reading as a clean transcript in that language.
     "enhance-honesty": [
       "meetings.enhancePartial",
+      "meetings.enhanceAllDropped",
       "meetings.llmRun.enhance.failed",
       "meetings.llmRun.enhance.partial",
       "meetings.llmRun.enhance.interrupted",

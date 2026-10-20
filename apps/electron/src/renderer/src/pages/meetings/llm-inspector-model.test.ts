@@ -72,6 +72,7 @@ function run(over: Partial<LlmRunInfo>): LlmRunInfo {
     llmStepCount: 0,
     failedStepCount: 0,
     correctedCount: null,
+    droppedCount: null,
     suggestionCount: null,
     lostRecords: 0,
     inputTokens: 0,

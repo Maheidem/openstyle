@@ -216,6 +216,7 @@ function toRun(
     llmStepCount: row.llm_step_count,
     failedStepCount: row.failed_step_count,
     correctedCount: numberOrNull(counts.correctedCount),
+    droppedCount: numberOrNull(counts.droppedCount),
     suggestionCount: numberOrNull(counts.suggestionCount),
     lostRecords: row.lost_records,
     inputTokens: row.input_tokens,

@@ -846,6 +846,7 @@
     "enhancing": "強化中…",
     "enhanceResult": "{{n}}個のセグメントを修正しました。",
     "enhanceNoneCorrected": "修正が必要なセグメントはありませんでした。",
+    "enhanceAllDropped": "Enhance は {{n}} 件の変更を提案しましたが、安全チェックを通過したものはありませんでした。",
     "enhancePartial": "部分的な処理 — {{attempted}}区切りのうち{{failed}}件を修正できず、元のテキストのまま残っています。",
     "retryEnhance": "強化を再試行",
     "llmRun": {

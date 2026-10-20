@@ -1041,6 +1041,7 @@
     "enhancing": "Enhancing…",
     "enhanceResult": "Corrected {{n}} segments.",
     "enhanceNoneCorrected": "No segments needed correction.",
+    "enhanceAllDropped": "Enhance suggested {{n}} changes, but none passed the safety checks.",
     "enhancePartial": "Partial pass — {{failed}} of {{attempted}} chunks could not be corrected and kept their original text.",
     "retryEnhance": "Retry Enhance",
     "llmRun": {

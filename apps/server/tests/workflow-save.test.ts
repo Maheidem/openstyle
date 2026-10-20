@@ -167,6 +167,7 @@ describe("save: corrections (SW1) and speakers (SW2)", () => {
       meetingGone: false,
     });
     expect(r.finalState.saved?.correctedCount).toBe(1);
+    expect(r.finalState.saved?.droppedCount).toBe(0);
     expect(r.finalState.saved?.suggestionCount).toBe(1);
     expect(enhanced(target)).toBe(fx(f, target));
     // Read back with separate queries (the call record is the proof of the link).
@@ -253,6 +254,21 @@ describe("save: corrections (SW1) and speakers (SW2)", () => {
     ]);
     for (const id of c0) expect(enhanced(id)).toBeNull();
     for (const id of c1) expect(enhanced(id)).toBe("OLD");
+  });
+
+  it("WP7: entries with only the changed words are all dropped; droppedCount counts them, unchanged echoes do not count", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 1 });
+    const [a, b, c] = f.segments.map((s) => s.id) as [string, string, string];
+    const text = (id: string) =>
+      f.segments.find((s) => s.id === id)?.text as string;
+    const r = await graphRun(f, (req) =>
+      isIdentify(req)
+        ? okReply('{"speakers":[]}')
+        : corr([a, "cooper netties"], [b, "post grass"], [c, text(c)]),
+    );
+    expect(r.finalState.saved?.correctedCount).toBe(0);
+    expect(r.finalState.saved?.droppedCount).toBe(2);
+    for (const id of [a, b, c]) expect(enhanced(id)).toBeNull();
   });
 
   it("SW2 never changes display_name or confirmed_at", async () => {
@@ -599,6 +615,7 @@ describe("save: faults (GR21 a)", () => {
       sw3: "none",
       wroteAny: false,
       correctedCount: 0,
+      droppedCount: 0,
       suggestionCount: 0,
       failures: [
         {
@@ -926,6 +943,7 @@ function saved(over: Partial<SaveResult> = {}): SaveResult {
     sw3: "none",
     wroteAny: true,
     correctedCount: 0,
+    droppedCount: 0,
     suggestionCount: 0,
     failures: [],
     meetingGone: false,

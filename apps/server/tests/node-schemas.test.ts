@@ -7,6 +7,10 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { getDb } from "../src/lib/db.js";
 import {
+  buildCorrectSystemPrompt,
+  FULL_SEGMENT_RULE,
+} from "../src/lib/meetings/workflow/prompts.js";
+import {
   CORRECT_CHUNK_STEP_SCHEMA,
   CorrectChunkSchema,
   correctChunkStepSchema,
@@ -100,10 +104,10 @@ describe("assertPortableSchema", () => {
 describe("the per-call schemas (ids and labels enum)", () => {
   const ids = ["fict-1:mic:0", "fict-1:system:1"];
 
-  it("correctChunk: corrections[].id is an enum of exactly the unit ids; version 2", async () => {
+  it("correctChunk: corrections[].id is an enum of exactly the unit ids; version 3", async () => {
     const step = correctChunkStepSchema(ids);
     expect(step.name).toBe("correct_chunk");
-    expect(step.version).toBe(2);
+    expect(step.version).toBe(3);
     await expect(assertPortableSchema(step.zod)).resolves.toBeUndefined();
     const json = (await asSchema(step.zod).jsonSchema) as {
       properties: {
@@ -114,8 +118,10 @@ describe("the per-call schemas (ids and labels enum)", () => {
       type: "string",
       enum: ids,
     });
+    // WP7: the full-segment rule travels with the schema, for every provider.
     expect(json.properties.corrections.items.properties.text).toEqual({
       type: "string",
+      description: FULL_SEGMENT_RULE,
     });
     // One id is a valid enum.
     const one = (await asSchema(correctChunkStepSchema(["s1"]).zod)
@@ -124,6 +130,17 @@ describe("the per-call schemas (ids and labels enum)", () => {
       type: "string",
       enum: ["s1"],
     });
+  });
+
+  it("correctChunk: the system prompt says text is the complete segment, with an example", () => {
+    const prompt = buildCorrectSystemPrompt({ language: "en", vocabTerms: [] });
+    expect(prompt).toContain(FULL_SEGMENT_RULE);
+    expect(FULL_SEGMENT_RULE).toContain("COMPLETE corrected segment");
+    expect(FULL_SEGMENT_RULE).toContain("Never return only the changed words");
+    expect(prompt).toContain(
+      'text "we moved the cluster to Kubernetes last week."',
+    );
+    expect(prompt).toContain('Wrong output: text "Kubernetes".');
   });
 
   it("correctChunk: the parse strips brackets and keeps an unknown id for the node check", () => {

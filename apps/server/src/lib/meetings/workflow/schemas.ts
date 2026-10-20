@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { StepSchema } from "../../llm/gateway.js";
+import { FULL_SEGMENT_RULE } from "./prompts.js";
 
 // The fixed answer schemas of the three LLM nodes (specs/meeting-enhance-agentic.md
 // 4.2.1, 4.3.1, 4.5.1). Strict-mode rules (4.0.3): every field is required and
@@ -87,16 +88,20 @@ export const CORRECT_CHUNK_STEP_SCHEMA: StepSchema<CorrectChunk> = {
 /**
  * The `correctChunk` schema of one call: `corrections[].id` is an enum of the
  * ids of the segments that the call shows. Version 2 is the enum shape.
+ * Version 3 adds the full-segment description on `text` (FULL_SEGMENT_RULE).
  */
 export function correctChunkStepSchema(
   ids: readonly string[],
 ): StepSchema<CorrectChunk> {
   return {
     name: CORRECT_CHUNK_STEP_SCHEMA.name,
-    version: 2,
+    version: 3,
     zod: z.object({
       corrections: z.array(
-        z.object({ id: enumOf(ids, normalizeId), text: z.string() }),
+        z.object({
+          id: enumOf(ids, normalizeId),
+          text: z.string().describe(FULL_SEGMENT_RULE),
+        }),
       ),
     }),
   };

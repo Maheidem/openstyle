@@ -845,6 +845,7 @@
     "enhancing": "Aprimorando…",
     "enhanceResult": "{{n}} segmentos corrigidos.",
     "enhanceNoneCorrected": "Nenhum segmento precisou de correção.",
+    "enhanceAllDropped": "O Enhance sugeriu {{n}} alterações, mas nenhuma passou nas verificações de segurança.",
     "enhancePartial": "Passagem parcial — {{failed}} de {{attempted}} trechos não puderam ser corrigidos e mantiveram o texto original.",
     "retryEnhance": "Tentar aprimorar novamente",
     "llmRun": {
