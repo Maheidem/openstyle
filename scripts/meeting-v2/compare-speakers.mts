@@ -81,8 +81,14 @@ function labelsOf(...dumps: Dump[]): string[] {
   return [...set].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
 }
 
-/** The changed words of two lines: common prefix and suffix dropped. */
-function changedSpan(a: string, b: string): [string, string] {
+const CONTEXT_WORDS = 3;
+
+/**
+ * The changed words of two lines (common prefix and suffix dropped), plus up
+ * to CONTEXT_WORDS unchanged words before and after. Without the context a
+ * judge cannot tell a lost word from a removed repeat (round r228c).
+ */
+function changedSpan(a: string, b: string): [string, string, string, string] {
   const wa = a.split(/\s+/).filter(Boolean);
   const wb = b.split(/\s+/).filter(Boolean);
   let p = 0;
@@ -97,7 +103,18 @@ function changedSpan(a: string, b: string): [string, string] {
   return [
     wa.slice(p, wa.length - s).join(" "),
     wb.slice(p, wb.length - s).join(" "),
+    wa.slice(Math.max(0, p - CONTEXT_WORDS), p).join(" "),
+    wa.slice(wa.length - s, wa.length - s + CONTEXT_WORDS).join(" "),
   ];
+}
+
+/** One diff line: the cut spans, then the unchanged words around them. */
+function diffLine(sy: Segment, sx: Segment): string | null {
+  const [a, b, before, after] = changedSpan(effective(sx), effective(sy));
+  if (a === b) return null;
+  const q = (s: string) => JSON.stringify(cut(s) || NONE);
+  const ctx = `${before ? `${before} ` : "(start) "}[...]${after ? ` ${after}` : " (end)"}`;
+  return `  - ${rowLabel(sy)} ${xName}: ${q(a)} / ${yName}: ${q(b)} / around: ${JSON.stringify(ctx)}`;
 }
 
 // Speaker-cut splits share (source, idx); start_ms tells them apart.
@@ -121,6 +138,7 @@ function render(x: Dump, y: Dump): string {
   out.push(`# Speaker naming: ${xName} vs ${yName}`, "");
   out.push(
     `Each label shows arm ${xName} and arm ${yName}. Evidence and quotes are cut to ${MAX_WORDS} words.`,
+    `Each changed line also shows up to ${CONTEXT_WORDS} unchanged words before and after the change ("around"; [...] marks the change).`,
     "Both arms use the same transcript. LLM output is not repeatable.",
     "",
   );
@@ -145,11 +163,8 @@ function render(x: Dump, y: Dump): string {
       if (sy.speaker_label !== label) continue;
       const sx = xseg.get(rowKey(sy));
       if (!sx) continue;
-      const [a, b] = changedSpan(effective(sx), effective(sy));
-      if (a === b) continue;
-      diffs.push(
-        `  - ${rowLabel(sy)} ${xName}: ${JSON.stringify(cut(a) || NONE)} / ${yName}: ${JSON.stringify(cut(b) || NONE)}`,
-      );
+      const line = diffLine(sy, sx);
+      if (line) diffs.push(line);
     }
     out.push(`- enhanced_text changed lines: ${diffs.length}`);
     out.push(...diffs.slice(0, MAX_DIFFS_PER_LABEL));
@@ -164,11 +179,8 @@ function render(x: Dump, y: Dump): string {
     if (sy.speaker_label) continue;
     const sx = xseg.get(rowKey(sy));
     if (!sx || sx.speaker_label) continue;
-    const [a, b] = changedSpan(effective(sx), effective(sy));
-    if (a === b) continue;
-    unlabeled.push(
-      `  - ${rowLabel(sy)} ${xName}: ${JSON.stringify(cut(a) || NONE)} / ${yName}: ${JSON.stringify(cut(b) || NONE)}`,
-    );
+    const line = diffLine(sy, sx);
+    if (line) unlabeled.push(line);
   }
   out.push("## Segments with no speaker label");
   out.push(`- enhanced_text changed lines: ${unlabeled.length}`);
