@@ -113,7 +113,8 @@ export type CorrectionDropReason =
   | "deletes_words"
   | "too_different"
   | "meaning_flip"
-  | "inflection_only";
+  | "inflection_only"
+  | "lowercases_name";
 
 export interface SpeakerVerdict {
   unitKey: string;

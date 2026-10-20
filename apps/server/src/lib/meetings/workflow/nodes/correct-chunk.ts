@@ -255,6 +255,26 @@ function inflectionOnly(oldWords: string[], newWords: string[]): boolean {
   return gaps > 0;
 }
 
+/**
+ * True when the correction lowercases a word that the original has with an
+ * uppercase letter inside a sentence (a name or an acronym), for example
+ * "Tableau" to "tableau" or "RAG" to "rag". The first word of a sentence is
+ * not checked. The rule applies only when the new text has the word in lower
+ * case and does not have the original form.
+ */
+function lowercasesName(oldText: string, newText: string): boolean {
+  const strip = (w: string) => w.replace(/[\p{P}\p{S}]/gu, "");
+  const newForms = new Set(newText.split(/\s+/).map(strip).filter(Boolean));
+  const oldTokens = oldText.split(/\s+/).filter(Boolean);
+  return oldTokens.some((token, k) => {
+    const word = strip(token);
+    if (!word || word === word.toLowerCase()) return false;
+    const sentenceStart = k === 0 || /[.!?…]["')\]]*$/u.test(oldTokens[k - 1]!);
+    if (sentenceStart) return false;
+    return !newForms.has(word) && newForms.has(word.toLowerCase());
+  });
+}
+
 /** 4.2.3: the code checks after the parse. */
 export function checkCorrections(
   raw: { id: string; text: string }[],
@@ -315,6 +335,11 @@ export function checkCorrections(
     // A change of grammar only (verb agreement, tense, plural) is not a fix.
     if (inflectionOnly(oldWords, newWords)) {
       drop("inflection_only");
+      return;
+    }
+    // A name or an acronym must keep its capital letters.
+    if (lowercasesName(original.text, text)) {
+      drop("lowercases_name");
       return;
     }
     corrections.push({ id: entry.id, text, seq, callId });

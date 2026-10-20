@@ -486,6 +486,41 @@ describe("checkCorrections word guard", () => {
     expect(r.kept).toEqual(["it know Datadog well"]);
   });
 
+  it.each([
+    [
+      "we moved the data to Tableau today",
+      "we moved the data to tableau today",
+    ],
+    ["so we use RAG for search", "so we use rag for search"],
+  ])("drops %s to %s as lowercases_name", (from, to) => {
+    expect(check(from, to)).toEqual({
+      kept: [],
+      reasons: ["lowercases_name"],
+    });
+  });
+
+  it("keeps a lowercased first word of a sentence", () => {
+    expect(
+      check("So we ship it. So it works", "so we ship it. so it works"),
+    ).toEqual({
+      kept: ["so we ship it. so it works"],
+      reasons: [],
+    });
+  });
+
+  it("keeps a fix that adds a capital letter to a name", () => {
+    expect(check("we use datedog here", "we use Datadog here")).toEqual({
+      kept: ["we use Datadog here"],
+      reasons: [],
+    });
+  });
+
+  it("keeps a word fix next to a name", () => {
+    expect(
+      check("we moved the dada to Tableau", "we moved the data to Tableau"),
+    ).toEqual({ kept: ["we moved the data to Tableau"], reasons: [] });
+  });
+
   it("does not treat it, its and itself as one word", () => {
     expect(check("we fix it now", "we fix its now").reasons).toEqual([]);
   });

@@ -44,6 +44,7 @@ const VERDICT_CODES: ReadonlySet<string> = new Set<
   "too_different",
   "meaning_flip",
   "inflection_only",
+  "lowercases_name",
   "self_introduction",
   "addressed_as",
   "role_detail",

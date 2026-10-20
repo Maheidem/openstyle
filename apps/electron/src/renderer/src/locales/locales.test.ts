@@ -540,6 +540,7 @@ describe("meetings.inspector keys", () => {
     "too_different",
     "meaning_flip",
     "inflection_only",
+    "lowercases_name",
   ];
   it.each(VERDICT_CODES)("has a verdict text for %s", (code) => {
     expect(en[`meetings.inspector.verdict.${code}`]).toBeTruthy();

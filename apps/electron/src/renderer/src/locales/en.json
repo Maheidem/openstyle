@@ -1225,6 +1225,7 @@
         "too_different": "The correction changed the line too much.",
         "meaning_flip": "The correction changed the meaning of the line.",
         "inflection_only": "The correction changed only the grammar of a word.",
+        "lowercases_name": "The correction removed the capital letters of a name.",
         "unknown": "No reason is recorded."
       }
     },
