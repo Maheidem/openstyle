@@ -956,18 +956,11 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
         `meeting ${id}: cancel requested after transcription finished, skipping auto Enhance`,
       );
     }
-    if (
-      getMeetingEnhanceAutoRunSetting() &&
-      !cancelled &&
-      !getDefaultModels().llm
-    ) {
-      log.info(`meeting ${id}: skipping auto Enhance: no default LLM`);
-    }
-    if (
-      getMeetingEnhanceAutoRunSetting() &&
-      !cancelled &&
-      getDefaultModels().llm
-    ) {
+    // No default LLM: skip the auto-run, as dictation skips cleanup (#229).
+    const autoRun = getMeetingEnhanceAutoRunSetting() && !cancelled;
+    if (autoRun && !getDefaultModels().llm) {
+      log.info(`meeting ${id}: no default LLM, skipping auto Enhance`);
+    } else if (autoRun) {
       releaseJob(id);
       const started = startRun(
         { meetingId: id, stages: ["enhance", "summarize"], trigger: "auto" },
