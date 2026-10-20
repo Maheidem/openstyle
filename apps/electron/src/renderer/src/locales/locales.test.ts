@@ -527,6 +527,7 @@ describe("meetings.inspector keys", () => {
     "quote_too_long",
     "quote_not_in_segment",
     "empty_name",
+    "label_echo",
     "name_not_in_quote",
     "not_self_introduction",
     "conflict_lost",

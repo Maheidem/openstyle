@@ -1212,6 +1212,7 @@
         "quote_too_long": "The evidence quote is too long.",
         "quote_not_in_segment": "The evidence quote is not in the cited line.",
         "empty_name": "The entry has no name.",
+        "label_echo": "The suggestion only repeats the speaker label.",
         "name_not_in_quote": "The name is not in its own evidence.",
         "not_self_introduction": "The speaker said the name but did not name themselves.",
         "conflict_lost": "Stronger evidence named this speaker differently.",

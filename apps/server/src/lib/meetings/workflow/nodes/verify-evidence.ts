@@ -109,6 +109,16 @@ export function nameMatchInQuote(
 
 // --- 4.4.2 Per-proposal checks ----------------------------------------------
 
+/**
+ * A text that only repeats a diarized label: "Me", "Them", "Them 2",
+ * "Speaker 2", "Label 2" or the label number alone ("2"). Trimmed, any case.
+ */
+const LABEL_ECHO = /^(?:me|them(?:\s*\d+)?|speaker\s*\d+|label\s*\d+|\d+)$/iu;
+
+export function isLabelEcho(text: string): boolean {
+  return LABEL_ECHO.test(text.trim());
+}
+
 interface Judged {
   proposal: SpeakerProposal;
   name: string;
@@ -138,7 +148,7 @@ function drop(
   };
 }
 
-/** Run the eight checks in order. The first failure decides the verdict. */
+/** Run the nine checks in order. The first failure decides the verdict. */
 function judge(
   p: SpeakerProposal,
   prepared: PreparedMeeting,
@@ -213,6 +223,17 @@ function judge(
       "empty_name",
       "The name is empty.",
     );
+  // 6b: a name or a role that only repeats a diarized label.
+  if (isLabelEcho(name)) {
+    return drop(
+      p,
+      name,
+      evidenceType,
+      startMs,
+      "label_echo",
+      "The suggestion only repeats a speaker label.",
+    );
+  }
   let matched: string | null = null;
   if (p.kind === "name") {
     const nameNorm = normalizeForMatch(name);

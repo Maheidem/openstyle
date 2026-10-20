@@ -1330,7 +1330,7 @@ export type VerdictStatus = "kept" | "dropped";
 
 export type DropReason =
   | "unknown_label" | "unknown_segment" | "no_quote" | "quote_too_long"
-  | "quote_not_in_segment" | "empty_name" | "name_not_in_quote"
+  | "quote_not_in_segment" | "empty_name" | "label_echo" | "name_not_in_quote"
   | "not_self_introduction" | "conflict_lost" | "duplicate_same_name";
 
 export type EvidenceType = "self_introduction" | "addressed_as" | "role_detail";
@@ -1415,6 +1415,7 @@ Run in order. The first failure decides the verdict. Every proposal gets exactly
 | 4 | The quote has at most `QUOTE_MAX_CHARS` characters. | `quote_too_long` | New (#163) |
 | 5 | The normalized quote is a substring of the normalized text of the cited segment. | `quote_not_in_segment` | Replaces the search over all chunk lines (`M/enhance.ts:293-306`, loop `300-304`; drop text `345`). |
 | 6 | The trimmed name is not empty. Code cuts it to `NAME_MAX_CHARS`. | `empty_name` | `M/enhance.ts:569` skips an empty name with no reason code; `570` cuts with `slice(0, 80)`. `empty_name` and `NAME_MAX_CHARS` are new. |
+| 6b | The trimmed name or role is not a diarized label: "Me", "Them", "Them N", "Speaker N", "Label N" or a number alone, in any case (2026-10-20). | `label_echo` | New |
 | 7 | `kind = "name"`: the name is in the quote at a letter boundary. | `name_not_in_quote` | `M/enhance.ts:338-340` |
 | 8 | `kind = "name"` and the cited line has the same label: the quote reads as a self-introduction (4.4.3). | `not_self_introduction` | `M/enhance.ts:350-355` |
 
@@ -2552,7 +2553,7 @@ export interface LlmParamsLedger {     // params_json; section 5 fills it; unkno
 
 Each code has English text under `meetings.inspector.verdict.<code>` in `en.json` and `template.json` (planned, 8.10; `en.json` has no `inspector` key at c47cd80d). The link `reason` column holds the `reason` of the verdict or of the drop.
 - Kept (`evidenceType`): `self_introduction` "The speaker named themselves."; `addressed_as` "Another speaker called this speaker by that name."; `role_detail` "A real line supports this role."
-- Dropped speaker proposals (`DropReason`, 4.4): `unknown_label` "The speaker label does not exist."; `unknown_segment` "The cited line was not shown to the model."; `no_quote` "The model gave no evidence quote."; `quote_too_long` "The evidence quote is too long."; `quote_not_in_segment` "The evidence quote is not in the cited line."; `empty_name` "The entry has no name."; `name_not_in_quote` "The name is not in its own evidence."; `not_self_introduction` "The speaker said the name but did not name themselves."; `conflict_lost` "Stronger evidence named this speaker differently."; `duplicate_same_name` "Another proposal for this speaker has the same name."
+- Dropped speaker proposals (`DropReason`, 4.4): `unknown_label` "The speaker label does not exist."; `unknown_segment` "The cited line was not shown to the model."; `no_quote` "The model gave no evidence quote."; `quote_too_long` "The evidence quote is too long."; `quote_not_in_segment` "The evidence quote is not in the cited line."; `empty_name` "The entry has no name."; `label_echo` "The suggestion only repeats the speaker label."; `name_not_in_quote` "The name is not in its own evidence."; `not_self_introduction` "The speaker said the name but did not name themselves."; `conflict_lost` "Stronger evidence named this speaker differently."; `duplicate_same_name` "Another proposal for this speaker has the same name."
 - Dropped corrections (`CorrectionDropReason`, 4.2): `unknown_id` "The model named a segment that is not in this chunk."; `duplicate_id` "The model named this segment twice."; `empty_text` "The correction was empty."; `unchanged` "The correction did not change the text."; `format_only` "The correction changed only case or punctuation."; `deletes_words` "The correction removed words without a replacement."
 
 ### 7.6 Enumerations

@@ -206,6 +206,46 @@ describe("verifyEvidence: one test for each drop reason (4.4.2)", () => {
     ).toBe("empty_name");
   });
 
+  it.each([
+    ["role", "Them 2"],
+    ["role", " them2 "],
+    ["role", "Them"],
+    ["name", "Me"],
+    ["name", "SPEAKER 3"],
+    ["role", "Label 2"],
+    ["role", "2"],
+  ] as const)("6b label_echo: a %s %j", (kind, name) => {
+    const r = verify([
+      prop({ segmentId: "b", quote: "Let us start", label: "3", name, kind }),
+    ]);
+    expect(r.verdicts[0]).toMatchObject({
+      status: "dropped",
+      reason: "label_echo",
+      finalName: null,
+    });
+    expect(r.suggestions).toEqual([]);
+  });
+
+  it("6b keeps a real role and a name that holds a label word", () => {
+    const r = verify([
+      prop({
+        segmentId: "d",
+        quote: "the client contact",
+        label: "3",
+        name: "Client contact",
+        kind: "role",
+      }),
+      prop({
+        segmentId: "b",
+        quote: "Let us start",
+        label: "2",
+        name: "Them 2 lead",
+        kind: "role",
+      }),
+    ]);
+    expect(r.verdicts.map((v) => v.reason)).toEqual([null, null]);
+  });
+
   it("7 name_not_in_quote, at a letter boundary", () => {
     const r = verify([
       prop({ segmentId: "a", quote: "this is Ana", label: "2", name: "An" }),
