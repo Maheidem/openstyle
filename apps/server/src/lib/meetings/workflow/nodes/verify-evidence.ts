@@ -116,6 +116,8 @@ interface Judged {
   startMs: number;
   reason: DropReason | null;
   detail: string | null;
+  /** The part of the name that the quote holds (normalized), for a kept name. */
+  matched?: string;
 }
 
 function drop(
@@ -211,14 +213,11 @@ function judge(
       "empty_name",
       "The name is empty.",
     );
+  let matched: string | null = null;
   if (p.kind === "name") {
     const nameNorm = normalizeForMatch(name);
     // 7
-    const matched = nameMatchInQuote(
-      quoteNorm,
-      nameNorm,
-      prepared.attendeeNames,
-    );
+    matched = nameMatchInQuote(quoteNorm, nameNorm, prepared.attendeeNames);
     if (!matched) {
       return drop(
         p,
@@ -251,7 +250,39 @@ function judge(
     startMs,
     reason: null,
     detail: null,
+    ...(matched ? { matched } : {}),
   };
+}
+
+// --- Surname support ---------------------------------------------------------
+
+/**
+ * The normalized text that can support the words after a spoken first name:
+ * the attendee names, the meeting title, the user's meeting context and the
+ * transcript. The identify prompt holds the title and the context, so a model
+ * can take a surname from them.
+ */
+function supportTexts(prepared: PreparedMeeting): string[] {
+  return [
+    ...prepared.attendeeNames,
+    prepared.title ?? "",
+    prepared.context ?? "",
+    ...prepared.segments.map((s) => s.text),
+  ]
+    .map(normalizeForMatch)
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * The name to store when the quote holds only the first name. The words after
+ * the first name stay only when a support text holds them. Otherwise the model
+ * invented them, and only the first name stays.
+ */
+function supportedName(name: string, support: readonly string[]): string {
+  const [first = "", ...rest] = name.trim().split(/\s+/);
+  if (rest.length === 0) return name;
+  const restNorm = normalizeForMatch(rest.join(" "));
+  return support.some((t) => containsWord(t, restNorm)) ? name : first;
 }
 
 // --- 4.4.5 Conflict policy --------------------------------------------------
@@ -324,18 +355,34 @@ export function verifyEvidence(
     finalName: string;
     respelledFrom: string | null;
   })[] = [];
+  let support: string[] | null = null;
   for (const j of judged) {
     if (j.reason !== null) continue;
     let finalName = j.name;
     let respelledFrom: string | null = null;
+    let detail = j.detail;
     if (j.proposal.kind === "name") {
       const fixed = fixNameSpelling(j.name, prepared.attendeeNames);
       if (fixed !== j.name) {
         respelledFrom = j.name;
         finalName = fixed;
       }
+      // The quote holds only the first name: drop words that no support
+      // text holds, so an invented surname is not stored.
+      if (j.matched && !j.matched.includes(" ")) {
+        support ??= supportTexts(prepared);
+        const kept = supportedName(finalName, support);
+        if (kept !== finalName) {
+          detail =
+            `Kept the first name only. The meeting does not hold: ${finalName}`.slice(
+              0,
+              200,
+            );
+          finalName = kept;
+        }
+      }
     }
-    passed.push({ ...j, finalName, respelledFrom });
+    passed.push({ ...j, finalName, respelledFrom, detail });
   }
 
   // 4.4.5: one winner for each label.
