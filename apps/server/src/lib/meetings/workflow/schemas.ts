@@ -68,8 +68,9 @@ export function normalizeLabel(value: string): string {
  * A string with an enum of `values` in its JSON Schema. A strict provider can
  * then only write one of the values. The zod side normalizes the value and
  * accepts any string: the node checks each entry after the parse and drops a
- * bad one alone (`unknown_id`, `unknown_label`), so one bad entry does not fail
- * the whole answer of a provider that only reads the schema in the prompt. The
+ * bad one alone (`unknown_id`, `unknown_segment`, `unknown_label`), so one bad
+ * entry does not fail the whole answer of a provider that only reads the
+ * schema in the prompt. The
  * AI SDK converts the zod input side, and `.meta` adds the enum to that side.
  */
 function enumOf(values: readonly string[], normalize: (v: string) => string) {
@@ -114,21 +115,23 @@ export const IDENTIFY_SPEAKERS_STEP_SCHEMA: StepSchema<IdentifySpeakers> = {
   zod: IdentifySpeakersSchema,
 };
 /**
- * The `identifySpeakers` schema of one call: `label` is an enum of the label
- * numbers to identify, and `segmentId` loses surrounding brackets. Version 2
- * is the enum shape.
+ * The `identifySpeakers` schema of one call: `segmentId` is an enum of the ids
+ * of the lines that the call shows, and `label` is an enum of the label
+ * numbers to identify. Version 2 is the label enum. Version 3 adds the
+ * `segmentId` enum.
  */
 export function identifySpeakersStepSchema(
+  ids: readonly string[],
   labels: readonly string[],
 ): StepSchema<IdentifySpeakers> {
   const row = IdentifySpeakersSchema.shape.speakers.element;
   return {
     name: IDENTIFY_SPEAKERS_STEP_SCHEMA.name,
-    version: 2,
+    version: 3,
     zod: z.object({
       speakers: z.array(
         row.extend({
-          segmentId: z.string().transform(normalizeId),
+          segmentId: enumOf(ids, normalizeId),
           label: enumOf(labels, normalizeLabel),
         }),
       ),

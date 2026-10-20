@@ -224,7 +224,6 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
     const { lines, stats } = selectCandidates(prepared, inputBudget);
     if (lines.length === 0) return skipped("no_labels", stats);
 
-    const schema = identifySpeakersStepSchema(labels);
     ctx.progress.addTotal(1);
     const leaves = await runUnitRoute<PreparedSegment, IdentifySpeakers>(
       {
@@ -243,7 +242,10 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
               runId: state.runId,
               unitKey: unit.key,
               chunkIndex: null,
-              schema,
+              schema: identifySpeakersStepSchema(
+                unit.members.map((s) => s.id),
+                labels,
+              ),
               instructions: system,
               messages: [
                 {

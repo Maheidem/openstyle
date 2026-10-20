@@ -173,10 +173,10 @@ describe("the per-call schemas (ids and labels enum)", () => {
     ]);
   });
 
-  it("identifySpeakers: label is an enum of the label numbers; field order stays; version 2", async () => {
-    const step = identifySpeakersStepSchema(["1", "2"]);
+  it("identifySpeakers: segmentId is an enum of the shown ids, label an enum of the label numbers; field order stays; version 3", async () => {
+    const step = identifySpeakersStepSchema(ids, ["1", "2"]);
     expect(step.name).toBe("identify_speakers");
-    expect(step.version).toBe(2);
+    expect(step.version).toBe(3);
     await expect(assertPortableSchema(step.zod)).resolves.toBeUndefined();
     const json = (await asSchema(step.zod).jsonSchema) as {
       properties: {
@@ -186,6 +186,7 @@ describe("the per-call schemas (ids and labels enum)", () => {
       };
     };
     const row = json.properties.speakers.items;
+    expect(row.properties.segmentId).toEqual({ type: "string", enum: ids });
     expect(row.properties.label).toEqual({ type: "string", enum: ["1", "2"] });
     expect(Object.keys(row.properties)).toEqual([
       "segmentId",
@@ -210,6 +211,43 @@ describe("the per-call schemas (ids and labels enum)", () => {
       segmentId: "fict-1:system:1",
       label: "1",
     });
+  });
+
+  it("identifySpeakers: the schema of one call holds only that call's ids; an id of another call is not in it", async () => {
+    const callA = identifySpeakersStepSchema(["fict-1:system:1"], ["1"]);
+    const callB = identifySpeakersStepSchema(["fict-1:system:7"], ["1"]);
+    const segmentIdOf = async (step: typeof callA) =>
+      (
+        (await asSchema(step.zod).jsonSchema) as {
+          properties: {
+            speakers: { items: { properties: { segmentId: unknown } } };
+          };
+        }
+      ).properties.speakers.items.properties.segmentId;
+    expect(await segmentIdOf(callA)).toEqual({
+      type: "string",
+      enum: ["fict-1:system:1"],
+    });
+    expect(await segmentIdOf(callB)).toEqual({
+      type: "string",
+      enum: ["fict-1:system:7"],
+    });
+    // The zod side normalizes and keeps any string: the verify node drops an
+    // id that the call did not show as unknown_segment (workflow-identify).
+    const row = (segmentId: string) => ({
+      segmentId,
+      quote: "q",
+      label: "1",
+      kind: "name" as const,
+      name: "Ana",
+    });
+    const parsed = callA.zod.parse({
+      speakers: [row(" [fict-1:system:1] "), row("[fict-1:system:7]")],
+    });
+    expect(parsed.speakers.map((s) => s.segmentId)).toEqual([
+      "fict-1:system:1",
+      "fict-1:system:7",
+    ]);
   });
 
   it.each([

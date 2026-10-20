@@ -425,6 +425,16 @@ describe("identifySpeakers: the length route", () => {
     expect(id?.proposals.map((p) => p.seq)).toEqual([0, 1]);
     // The step row of the top key ends partial (4.0.7).
     expect(r.recorder.steps.get("candidates")?.status).toBe("partial");
+    // Each half sends a segmentId enum of its own shown ids only.
+    const halves = r.identifyRequests.slice(1);
+    expect(halves).toHaveLength(2);
+    for (const req of halves) {
+      const shown = [...req.user.matchAll(/^\[([^\]]+)\] /gm)].map((m) => m[1]);
+      expect(JSON.stringify(req.responseFormat)).toContain(
+        `"segmentId":{"enum":${JSON.stringify(shown)}`,
+      );
+    }
+    expect(JSON.stringify(halves[0]?.responseFormat)).not.toContain(last.id);
     // The cited line of half 1 is not in the shown set of half 0.
     const verdicts = r.finalState.verify?.verdicts ?? [];
     expect(verdicts.find((v) => v.segmentId === last.id)?.reason).toBe(

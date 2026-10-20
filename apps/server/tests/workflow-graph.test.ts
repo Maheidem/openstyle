@@ -1055,21 +1055,22 @@ describe("10.5.4: the wire", () => {
       const enums = [...text.matchAll(/"enum":\[([^\]]*)\]/g)].map(
         (m) => JSON.parse(`[${m[1]}]`) as string[],
       );
+      // id enum: exactly the ids of the lines in this request.
+      const shown = [...userOf(r).matchAll(/^\[([^\]]+)\] /gm)].map(
+        (m) => m[1],
+      );
       if (systemOf(r).includes("diarized labels")) {
-        // label enum: the label numbers that the system prompt lists. The
-        // second enum is the fixed `kind`.
+        // segmentId enum: the shown ids. label enum: the label numbers that
+        // the system prompt lists. The third enum is the fixed `kind`.
         const listed = [...systemOf(r).matchAll(/Them (\d+)/g)].map(
           (m) => m[1],
         );
-        expect(enums).toHaveLength(2);
-        expect(enums[1]).toEqual(["name", "role"]);
-        expect(enums[0]?.every((l) => listed.includes(l))).toBe(true);
-        expect(enums[0]?.length).toBeGreaterThan(0);
+        expect(enums).toHaveLength(3);
+        expect(enums[0]).toEqual(shown);
+        expect(enums[2]).toEqual(["name", "role"]);
+        expect(enums[1]?.every((l) => listed.includes(l))).toBe(true);
+        expect(enums[1]?.length).toBeGreaterThan(0);
       } else {
-        // id enum: exactly the ids of the lines in this request.
-        const shown = [...userOf(r).matchAll(/^\[([^\]]+)\] /gm)].map(
-          (m) => m[1],
-        );
         expect(enums).toEqual([shown]);
       }
     }

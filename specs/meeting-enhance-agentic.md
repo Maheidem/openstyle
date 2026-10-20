@@ -915,7 +915,7 @@ The `save` row is the SW4 write (4.6.1): `guardNode` closes it from the `SaveRes
 2. No `.optional()`, `.default()`, `.passthrough()`, `z.record()` or dynamic key. Use an array of objects.
 3. Ids, labels, quotes: `z.string()`. A static enum of fixed words is allowed (`"name" | "role"`). Exception (changed 2026-10-20, commit 06691f3c): two nodes send a per-call enum.
    - `correctChunk`: `corrections[].id` is an enum of the segment ids of the unit (`correctChunkStepSchema(ids)`, `W/schemas.ts:91`, schema version 2).
-   - `identifySpeakers`: `speakers[].label` is an enum of the open label numbers (`identifySpeakersStepSchema(labels)`, `W/schemas.ts:115`, schema version 2). `segmentId` stays `z.string()`.
+   - `identifySpeakers`: `speakers[].segmentId` is an enum of the ids of the lines that the unit shows, and `speakers[].label` is an enum of the open label numbers (`identifySpeakersStepSchema(ids, labels)`, `W/schemas.ts:122`, schema version 3). Version 2 had the label enum only.
    - The zod side is lenient: `enumOf` (`W/schemas.ts:74-79`) is `z.string().transform(normalize)` with the enum only in the JSON Schema `meta`. `normalizeId` removes brackets from an id. `normalizeLabel` also changes "Them 1", "Speaker 1" and "[1]" to "1". A string outside the enum still parses, so the node check drops that one entry alone, not the whole answer.
    - `WORKFLOW_GRAPH_VERSION` is 2.
    - Why: small local MLX models do not copy ids exactly. Qwen3.5 4B wrote ids in brackets, Gemma 4 E4B shifted ids, and both wrote "Them 1" for label "1". The node checks then dropped every correction and suggestion. With the enum, Qwen3.5 4B applied 12 of 20 corrections on a fictional 40-segment meeting, with 0 `unknown_id` (`specs/local-mlx-llm.md` section 5, WP4).
