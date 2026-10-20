@@ -31,6 +31,7 @@ interface Speaker {
 interface Segment {
   source: string;
   idx: number;
+  start_ms?: number | null;
   speaker_label: string | null;
   text: string | null;
   enhanced_text: string | null;
@@ -99,6 +100,22 @@ function changedSpan(a: string, b: string): [string, string] {
   ];
 }
 
+// Speaker-cut splits share (source, idx); start_ms tells them apart.
+// Old dumps have no start_ms, so their key falls back to (source, idx).
+function rowKey(s: { source: string; idx: number; start_ms?: number | null }) {
+  return `${s.source}:${s.idx}:${s.start_ms ?? ""}`;
+}
+
+function rowLabel(s: {
+  source: string;
+  idx: number;
+  start_ms?: number | null;
+}) {
+  return s.start_ms == null
+    ? `${s.source}:${s.idx}`
+    : `${s.source}:${s.idx}@${s.start_ms}ms`;
+}
+
 function render(x: Dump, y: Dump): string {
   const out: string[] = [];
   out.push(`# Speaker naming: ${xName} vs ${yName}`, "");
@@ -109,7 +126,7 @@ function render(x: Dump, y: Dump): string {
   );
   const xs = new Map(x.speakers.map((s) => [s.label, s]));
   const ys = new Map(y.speakers.map((s) => [s.label, s]));
-  const xseg = new Map(x.segments.map((s) => [`${s.source}:${s.idx}`, s]));
+  const xseg = new Map(x.segments.map((s) => [rowKey(s), s]));
   for (const label of labelsOf(x, y)) {
     out.push(`## Label ${label}`);
     for (const [arm, m] of [
@@ -126,12 +143,12 @@ function render(x: Dump, y: Dump): string {
     const diffs: string[] = [];
     for (const sy of y.segments) {
       if (sy.speaker_label !== label) continue;
-      const sx = xseg.get(`${sy.source}:${sy.idx}`);
+      const sx = xseg.get(rowKey(sy));
       if (!sx) continue;
       const [a, b] = changedSpan(effective(sx), effective(sy));
       if (a === b) continue;
       diffs.push(
-        `  - ${sy.source}:${sy.idx} ${xName}: ${JSON.stringify(cut(a) || NONE)} / ${yName}: ${JSON.stringify(cut(b) || NONE)}`,
+        `  - ${rowLabel(sy)} ${xName}: ${JSON.stringify(cut(a) || NONE)} / ${yName}: ${JSON.stringify(cut(b) || NONE)}`,
       );
     }
     out.push(`- enhanced_text changed lines: ${diffs.length}`);
@@ -145,12 +162,12 @@ function render(x: Dump, y: Dump): string {
   const unlabeled: string[] = [];
   for (const sy of y.segments) {
     if (sy.speaker_label) continue;
-    const sx = xseg.get(`${sy.source}:${sy.idx}`);
+    const sx = xseg.get(rowKey(sy));
     if (!sx || sx.speaker_label) continue;
     const [a, b] = changedSpan(effective(sx), effective(sy));
     if (a === b) continue;
     unlabeled.push(
-      `  - ${sy.source}:${sy.idx} ${xName}: ${JSON.stringify(cut(a) || NONE)} / ${yName}: ${JSON.stringify(cut(b) || NONE)}`,
+      `  - ${rowLabel(sy)} ${xName}: ${JSON.stringify(cut(a) || NONE)} / ${yName}: ${JSON.stringify(cut(b) || NONE)}`,
     );
   }
   out.push("## Segments with no speaker label");
