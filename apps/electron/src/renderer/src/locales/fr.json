@@ -678,6 +678,7 @@
     },
     "loading": "Chargement des modèles",
     "mlxKeepAlive": "Durée de maintien de MLX ASR",
+    "mlxLlmKeepAlive": "Durée de maintien de MLX LLM",
     "picker": {
       "backToSimple": "Retour à la vue simple"
     },
@@ -708,6 +709,7 @@
       "preparingRuntime": "Préparation de l'environnement d'exécution…",
       "verifying": "Vérification…",
       "noBuiltin": "Aucun modèle de transcription local n'est disponible sur cet appareil.",
+      "noBuiltinLlm": "Aucun modèle d'IA local n'est disponible sur cet appareil.",
       "noMatch": "Aucun modèle ne correspond."
     },
     "mlx": {
@@ -718,6 +720,13 @@
       "descCold": "Décharge le modèle de la mémoire après chaque transcription. Consomme moins de RAM, mais la dictée suivante attend un rechargement complet.",
       "descOneMinute": "Garde le modèle en mémoire pendant environ 1 minute après la fin de la dictée, pour que les dictées rapprochées restent rapides.",
       "descMinutes": "Garde le modèle chargé en mémoire jusqu'à {{minutes}} minutes après la dictée. Utilisation répétée plus rapide, plus de RAM tant qu'il est chaud."
+    },
+    "mlxLlm": {
+      "title": "Préchargement du modèle d'IA",
+      "descAlways": "Garde le modèle d'IA en mémoire en permanence, jusqu'à ce que vous quittiez Openstyle. Le plus rapide en usage répété, consomme le plus de RAM.",
+      "descCold": "Décharge le modèle d'IA de la mémoire après chaque requête. Consomme moins de RAM, mais le nettoyage ou le résumé suivant attend un rechargement complet.",
+      "descOneMinute": "Garde le modèle d'IA en mémoire environ 1 minute après chaque requête, pour que les requêtes suivantes restent rapides.",
+      "descMinutes": "Garde le modèle d'IA en mémoire jusqu'à {{minutes}} minutes après chaque requête. Plus rapide en usage répété, plus de RAM tant qu'il est chargé."
     }
   },
   "shell": {

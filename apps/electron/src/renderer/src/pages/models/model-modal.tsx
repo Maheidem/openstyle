@@ -23,6 +23,7 @@ import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import {
   type AvailableModel,
   displayProviderName,
+  type LocalEngine,
   PROVIDER_KEY_URLS,
 } from "@renderer/lib/models";
 import { AlertTriangle, Key, Loader2, X } from "lucide-react";
@@ -106,7 +107,7 @@ export function ModelModal({
     engine?: "whisper" | "mlx",
   ) => void;
   onPickServerModel: (serverId: string, modelId: string) => void;
-  onRequestDeleteLocal: (defId: string, engine?: "whisper" | "mlx") => void;
+  onRequestDeleteLocal: (defId: string, engine?: LocalEngine) => void;
   onRequestRemoveServer: (server: ServerView) => void;
   onBack: () => void;
   onSaveKey: (key: string) => void;

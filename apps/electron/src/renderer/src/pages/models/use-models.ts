@@ -8,6 +8,7 @@ import type {
 import {
   clampMlxKeepAliveMinutes,
   MLX_KEEP_ALIVE_DEFAULT_MINUTES,
+  MLX_LLM_KEEP_ALIVE_DEFAULT_MINUTES,
   parseCleanupSampling,
   parseLlmTaskAssignments,
 } from "@openstyle/validations";
@@ -19,15 +20,21 @@ import {
 import type { ApiKeyEntry, ConfiguredModel } from "@renderer/lib/models";
 import {
   type AvailableModel,
+  buildLocalLlmItems,
   buildVoiceItems,
   hasActiveDownload,
+  type LocalEngine,
+  type LocalLlmItem,
+  MLX_LLM_PROVIDER_ID,
   type MlxAsrStatus,
+  type MlxLlmStatus,
   type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
 import {
   availableModelsQueryOptions,
   configuredModelsQueryOptions,
+  mlxLlmStatusQueryOptions,
   mlxStatusQueryOptions,
   queryKeys,
   settingsQueryOptions,
@@ -57,6 +64,7 @@ const MODELS_KEYS = {
   settings: queryKeys.settings,
   whisper: queryKeys.whisperStatus,
   mlx: queryKeys.mlxStatus,
+  mlxLlm: queryKeys.mlxLlmStatus,
 };
 
 // Stable empty fallbacks so derived useMemo deps don't change identity while a
@@ -92,8 +100,11 @@ export interface UseModels {
   servers: UseServers;
   whisperStatus: WhisperStatus | null;
   mlxStatus: MlxAsrStatus | null;
+  /** The built-in local LLM (specs/local-mlx-llm.md section 4). */
+  mlxLlmStatus: MlxLlmStatus | null;
   llmCleanup: boolean;
   mlxKeepAliveMinutes: number;
+  mlxLlmKeepAliveMinutes: number;
   /** The retired global sampling blob (`cleanup_sampling`) — read-only here,
    *  kept only so `TaskProfilesSection` can show the "migrated from your old
    *  Sampling parameters" note per the §12.7 read-time fallback (no writer
@@ -115,6 +126,8 @@ export interface UseModels {
   defaultVoice: ConfiguredModel | undefined;
   defaultLlm: ConfiguredModel | undefined;
   voiceItems: VoiceItem[];
+  /** The built-in LLM rows; empty when the Mac cannot run MLX. */
+  localLlmItems: LocalLlmItem[];
   llmModelsByProvider: Map<
     string,
     { providerName: string; models: AvailableModel[] }
@@ -132,11 +145,14 @@ export interface UseModels {
     engine?: "whisper" | "mlx",
   ) => Promise<void>;
   retryLocalMlx: (defId: string) => Promise<void>;
+  /** Make a built-in LLM the default LLM and start its worker. */
+  selectLocalLlm: (defId: string, name: string) => Promise<void>;
+  retryLocalMlxLlm: (defId: string) => Promise<void>;
   /** Add a Hugging Face MLX model and start its download. */
   addCustomModel: (model: string) => Promise<CustomModelResult<{ id: string }>>;
-  downloadLocal: (defId: string, engine?: "whisper" | "mlx") => void;
-  cancelLocal: (defId: string, engine?: "whisper" | "mlx") => void;
-  deleteLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
+  downloadLocal: (defId: string, engine?: LocalEngine) => void;
+  cancelLocal: (defId: string, engine?: LocalEngine) => void;
+  deleteLocal: (defId: string, engine?: LocalEngine) => Promise<void>;
   /** Make a model of an own server the default for `type`. */
   selectServerModel: (
     serverId: string,
@@ -145,6 +161,7 @@ export interface UseModels {
   ) => Promise<void>;
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
+  saveMlxLlmKeepAliveMinutes: (minutes: number) => void;
   saveTaskAssignment: (
     taskId: LlmTaskId,
     assignment: LlmTaskAssignment,
@@ -194,12 +211,14 @@ export function useModels(): UseModels {
 
   const whisperQuery = useQuery(whisperStatusQueryOptions());
   const mlxQuery = useQuery(mlxStatusQueryOptions());
+  const mlxLlmQuery = useQuery(mlxLlmStatusQueryOptions());
 
   const available = availableQuery.data ?? EMPTY_AVAILABLE;
   const configured = configuredQuery.data ?? EMPTY_CONFIGURED;
   const apiKeys = keysQuery.data ?? EMPTY_KEYS;
   const whisperStatus = whisperQuery.data ?? null;
   const mlxStatus = mlxQuery.data ?? null;
+  const mlxLlmStatus = mlxLlmQuery.data ?? null;
   const loading =
     availableQuery.isLoading ||
     configuredQuery.isLoading ||
@@ -213,6 +232,9 @@ export function useModels(): UseModels {
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
     MLX_KEEP_ALIVE_DEFAULT_MINUTES,
+  );
+  const [mlxLlmKeepAliveMinutes, setMlxLlmKeepAliveMinutes] = useState(
+    MLX_LLM_KEEP_ALIVE_DEFAULT_MINUTES,
   );
   const [cleanupSampling, setCleanupSampling] = useState<CleanupSampling>({});
   const [taskAssignments, setTaskAssignments] = useState<LlmTaskAssignments>(
@@ -295,6 +317,18 @@ export function useModels(): UseModels {
     }
   }, [mlxQuery.data]);
 
+  // The server reports the stored LLM keep-alive (or its default). Seed once,
+  // so a later poll never undoes a slider move.
+  const llmKeepAliveSeededRef = useRef(false);
+  useEffect(() => {
+    const d = mlxLlmQuery.data;
+    if (!d || llmKeepAliveSeededRef.current) return;
+    llmKeepAliveSeededRef.current = true;
+    if (Number.isFinite(d.keepAliveMinutes)) {
+      setMlxLlmKeepAliveMinutes(clampMlxKeepAliveMinutes(d.keepAliveMinutes));
+    }
+  }, [mlxLlmQuery.data]);
+
   // -------------------------------------------------------------------------
   // Reloaders (invalidate the relevant queries; polling is driven by
   // refetchInterval on the whisper/mlx queries above)
@@ -335,6 +369,27 @@ export function useModels(): UseModels {
     [queryClient],
   );
 
+  // Same as loadMlxStatus, for the built-in LLM.
+  const loadMlxLlmStatus = useCallback(
+    async (refresh = false): Promise<MlxLlmStatus | null> => {
+      try {
+        const res = refresh
+          ? await getClient().api["mlx-llm"].status.$get({
+              query: { refresh: "1" },
+            })
+          : await getClient().api["mlx-llm"].status.$get();
+        if (!res.ok) return null;
+        const data = await res.json();
+        queryClient.setQueryData(MODELS_KEYS.mlxLlm, data);
+        return data;
+      } catch (err) {
+        console.error("Failed to load MLX LLM status:", err);
+        return null;
+      }
+    },
+    [queryClient],
+  );
+
   // When an active download/verify transitions to done, refresh the model
   // lists (a freshly downloaded local model becomes selectable).
   const whisperActive =
@@ -357,6 +412,15 @@ export function useModels(): UseModels {
     }
     prevMlxActive.current = mlxActive;
   }, [mlxActive, queryClient]);
+
+  const mlxLlmActive = hasActiveDownload(mlxLlmStatus?.models);
+  const prevMlxLlmActive = useRef(false);
+  useEffect(() => {
+    if (prevMlxLlmActive.current && !mlxLlmActive) {
+      void queryClient.invalidateQueries({ queryKey: MODELS_KEYS.all });
+    }
+    prevMlxLlmActive.current = mlxLlmActive;
+  }, [mlxLlmActive, queryClient]);
 
   // -------------------------------------------------------------------------
   // Derived state
@@ -386,6 +450,11 @@ export function useModels(): UseModels {
         keyProviders,
       }),
     [available, whisperStatus, mlxStatus, defaultVoice, keyProviders],
+  );
+
+  const localLlmItems = useMemo(
+    () => buildLocalLlmItems(mlxLlmStatus, defaultLlm),
+    [mlxLlmStatus, defaultLlm],
   );
 
   // -------------------------------------------------------------------------
@@ -451,9 +520,32 @@ export function useModels(): UseModels {
     [loadData],
   );
 
+  // "Use" for a built-in LLM: the same steps as the MLX voice "Use".
+  const selectLocalLlm = useCallback(
+    async (defId: string, name: string) => {
+      await postDefaultModel(
+        MLX_LLM_PROVIDER_ID,
+        `${MLX_LLM_PROVIDER_ID}/${defId}`,
+        name,
+        "llm",
+      );
+      getClient()
+        .api["mlx-llm"].server.start.$post({ json: { model: defId } })
+        .catch(() => {});
+      await loadData();
+    },
+    [loadData],
+  );
+
   const downloadLocal = useCallback(
-    (defId: string, engine?: "whisper" | "mlx") => {
-      if (engine === "mlx") {
+    (defId: string, engine?: LocalEngine) => {
+      if (engine === "mlx-llm") {
+        void getClient()
+          .api["mlx-llm"].models[":model"].download.$post({
+            param: { model: defId },
+          })
+          .then(() => loadMlxLlmStatus());
+      } else if (engine === "mlx") {
         void getClient()
           .api["mlx-asr"].models[":model"].download.$post({
             param: { model: defId },
@@ -467,12 +559,18 @@ export function useModels(): UseModels {
           .then(() => loadWhisperStatus());
       }
     },
-    [loadMlxStatus, loadWhisperStatus],
+    [loadMlxStatus, loadMlxLlmStatus, loadWhisperStatus],
   );
 
   const cancelLocal = useCallback(
-    (defId: string, engine?: "whisper" | "mlx") => {
-      if (engine === "mlx") {
+    (defId: string, engine?: LocalEngine) => {
+      if (engine === "mlx-llm") {
+        void getClient()
+          .api["mlx-llm"].models[":model"].cancel.$post({
+            param: { model: defId },
+          })
+          .then(() => loadMlxLlmStatus());
+      } else if (engine === "mlx") {
         void getClient()
           .api["mlx-asr"].models[":model"].cancel.$post({
             param: { model: defId },
@@ -486,15 +584,20 @@ export function useModels(): UseModels {
           .then(() => loadWhisperStatus());
       }
     },
-    [loadMlxStatus, loadWhisperStatus],
+    [loadMlxStatus, loadMlxLlmStatus, loadWhisperStatus],
   );
 
   const deleteLocal = useCallback(
-    async (defId: string, engine?: "whisper" | "mlx") => {
+    async (defId: string, engine?: LocalEngine) => {
       const deletingKey = `${engine ?? "whisper"}:${defId}`;
       setDeletingKeys((prev) => new Set(prev).add(deletingKey));
       try {
-        if (engine === "mlx") {
+        if (engine === "mlx-llm") {
+          await getClient().api["mlx-llm"].models[":model"].$delete({
+            param: { model: defId },
+          });
+          await loadMlxLlmStatus();
+        } else if (engine === "mlx") {
           await getClient().api["mlx-asr"].models[":model"].$delete({
             param: { model: defId },
           });
@@ -514,7 +617,7 @@ export function useModels(): UseModels {
         });
       }
     },
-    [loadMlxStatus, loadWhisperStatus, loadData],
+    [loadMlxStatus, loadMlxLlmStatus, loadWhisperStatus, loadData],
   );
 
   const retryLocalMlx = useCallback(
@@ -531,6 +634,22 @@ export function useModels(): UseModels {
       await selectLocalVoice(defId, name, "mlx");
     },
     [loadMlxStatus, downloadLocal, selectLocalVoice],
+  );
+
+  // Retry a failed LLM row: check MLX again, then download or use the model.
+  const retryLocalMlxLlm = useCallback(
+    async (defId: string) => {
+      const data = await loadMlxLlmStatus(true);
+      if (!data || data.blockedReason) return;
+      const model = data.models.find((m) => m.model === defId);
+      if (!model) return;
+      if (model.status !== "ready") {
+        downloadLocal(defId, "mlx-llm");
+        return;
+      }
+      await selectLocalLlm(defId, model.displayName);
+    },
+    [loadMlxLlmStatus, downloadLocal, selectLocalLlm],
   );
 
   const addCustomModel = useCallback(
@@ -578,6 +697,19 @@ export function useModels(): UseModels {
         return getClient().api["mlx-asr"].server.stop.$post();
       })
       .catch((err) => console.error("Failed to save MLX ASR keep-alive:", err));
+  }, []);
+
+  // Persist the LLM keep-alive window. At 0 ("cold start") also stop the LLM
+  // worker so its model unloads at once.
+  const saveMlxLlmKeepAliveMinutes = useCallback((minutes: number) => {
+    const next = clampMlxKeepAliveMinutes(minutes);
+    setMlxLlmKeepAliveMinutes(next);
+    putSetting(SETTINGS_KEYS.mlxLlmKeepAliveMinutes, String(next))
+      .then(() => {
+        if (next !== 0) return;
+        return getClient().api["mlx-llm"].server.stop.$post();
+      })
+      .catch((err) => console.error("Failed to save MLX LLM keep-alive:", err));
   }, []);
 
   // Persist one task's sampling assignment. The whole `llm_task_assignments`
@@ -800,19 +932,24 @@ export function useModels(): UseModels {
     servers,
     whisperStatus,
     mlxStatus,
+    mlxLlmStatus,
     llmCleanup,
     mlxKeepAliveMinutes,
+    mlxLlmKeepAliveMinutes,
     deletingKeys,
     deletingProviders,
     keyProviders,
     defaultVoice,
     defaultLlm,
     voiceItems,
+    localLlmItems,
     llmModelsByProvider,
     configureModel,
     saveKey,
     selectLocalVoice,
     retryLocalMlx,
+    selectLocalLlm,
+    retryLocalMlxLlm,
     addCustomModel,
     downloadLocal,
     cancelLocal,
@@ -820,6 +957,7 @@ export function useModels(): UseModels {
     selectServerModel,
     setCleanup,
     saveMlxKeepAliveMinutes,
+    saveMlxLlmKeepAliveMinutes,
     cleanupSampling,
     taskAssignments,
     userPresets,

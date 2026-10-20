@@ -22,7 +22,11 @@ import type { UseModels } from "./use-models";
 /** Who runs the model (specs/model-picker-groups.md section 1). */
 export type PickerGroup = "builtin" | "server" | "cloud";
 
-const BUILTIN_PROVIDERS = new Set(["local-whisper", "local-mlx"]);
+const BUILTIN_PROVIDERS = new Set([
+  "local-whisper",
+  "local-mlx",
+  "local-mlx-llm",
+]);
 
 function groupOf(model: ConfiguredModel | undefined): PickerGroup | null {
   if (!model) return null;
@@ -42,7 +46,8 @@ interface GroupRow {
 
 /**
  * Top level of a model picker: one row per group. Transcription shows three
- * groups. The LLM roles show two, because Openstyle has no built-in LLM.
+ * groups. The LLM roles show the built-in group only on a Mac that can run
+ * MLX (specs/local-mlx-llm.md section 4).
  */
 export function SourcePicker({
   role,
@@ -62,8 +67,11 @@ export function SourcePicker({
 
   const rows: GroupRow[] = [];
 
-  if (role === "voice") {
-    const localItems = m.voiceItems.filter((it) => it.kind === "local");
+  const localItems =
+    role === "voice"
+      ? m.voiceItems.filter((it) => it.kind === "local")
+      : m.localLlmItems;
+  if (role === "voice" || m.mlxLlmStatus?.platformSupported === true) {
     const selectedLocal = localItems.find((it) => it.selected);
     rows.push({
       group: "builtin",

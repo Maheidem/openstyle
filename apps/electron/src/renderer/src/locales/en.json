@@ -859,6 +859,7 @@
     },
     "loading": "Loading models",
     "mlxKeepAlive": "MLX ASR keep-alive",
+    "mlxLlmKeepAlive": "MLX LLM keep-alive",
     "removeDownloaded": "Remove downloaded model from disk",
     "modal": {
       "addApiKey": "Add API key",
@@ -886,6 +887,7 @@
       "preparingRuntime": "Preparing runtime…",
       "verifying": "Verifying…",
       "noBuiltin": "No on-device transcription models on this device.",
+      "noBuiltinLlm": "No on-device AI models on this device.",
       "noMatch": "No models match."
     },
     "mlx": {
@@ -896,6 +898,13 @@
       "descCold": "Unload the model from memory after each transcription. Uses less RAM, but the next dictation waits for a full reload.",
       "descOneMinute": "Keep the model in memory for about 1 minute after you finish dictating, so quick follow-ups stay fast.",
       "descMinutes": "Keep the model loaded in memory for up to {{minutes}} minutes after dictation. Faster repeat use, more RAM while warm."
+    },
+    "mlxLlm": {
+      "title": "AI model warming",
+      "descAlways": "Keep the AI model loaded in memory at all times, until you quit Openstyle. Fastest repeat use, uses the most RAM.",
+      "descCold": "Unload the AI model from memory after each request. Uses less RAM, but the next cleanup or summary waits for a full reload.",
+      "descOneMinute": "Keep the AI model in memory for about 1 minute after each request, so quick follow-ups stay fast.",
+      "descMinutes": "Keep the AI model loaded in memory for up to {{minutes}} minutes after each request. Faster repeat use, more RAM while warm."
     }
   },
   "shell": {

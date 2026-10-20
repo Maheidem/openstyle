@@ -28,7 +28,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
-import type { ConfiguredModel } from "@renderer/lib/models";
+import {
+  type ConfiguredModel,
+  type LocalLlmItem,
+  MLX_LLM_PROVIDER_ID,
+} from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -52,12 +56,12 @@ import { providerLabel, type ServerView } from "./server-roles";
 // optionally overrides which model this task uses.
 // ---------------------------------------------------------------------------
 
-// Only `server` is the verbatim transport tier (§7.1) — every other
-// provider is mapped-subset. Mirrors `apps/server/src/lib/llm/registry.ts`'s
+// `server` and the built-in `local-mlx-llm` are the verbatim transport tier
+// (§7.1) — every other provider is mapped-subset. Mirrors `apps/server/src/lib/llm/registry.ts`'s
 // `PROVIDERS`; duplicated here in miniature because "which provider is
 // local" isn't part of the shared `@openstyle/validations` surface the way
 // `SAFE_SUBSET_KEYS` is.
-const LOCAL_PROVIDER_IDS = new Set([SERVER_PROVIDER_ID]);
+const LOCAL_PROVIDER_IDS = new Set([SERVER_PROVIDER_ID, MLX_LLM_PROVIDER_ID]);
 
 const CUSTOM_VALUE = "__custom__";
 const NEW_PRESET_VALUE = "__new__";
@@ -69,6 +73,36 @@ const USE_DEFAULT_MODEL_VALUE = "__default__";
 
 function newPresetId(): string {
   return makePresetId(crypto.randomUUID());
+}
+
+/**
+ * The LLM models a task can use: the configured ones, plus every built-in
+ * LLM that is on disk (specs/local-mlx-llm.md section 4).
+ */
+function overrideLlmModels(
+  configured: ConfiguredModel[],
+  localLlmItems: LocalLlmItem[],
+): ConfiguredModel[] {
+  const models = configured.filter((c) => c.type === "llm");
+  for (const it of localLlmItems) {
+    if (it.status !== "ready") continue;
+    if (
+      models.some(
+        (c) => c.provider === MLX_LLM_PROVIDER_ID && c.model_id === it.key,
+      )
+    ) {
+      continue;
+    }
+    models.push({
+      id: 0,
+      provider: MLX_LLM_PROVIDER_ID,
+      model_id: it.key,
+      model_name: it.name,
+      type: "llm",
+      is_default: 0,
+    });
+  }
+  return models;
 }
 
 function isMappedSubset(providerId: string | undefined): boolean {
@@ -98,6 +132,7 @@ export function TaskProfilesSection({
   taskAssignments,
   userPresets,
   configured,
+  localLlmItems,
   servers,
   defaultLlm,
   cleanupSampling,
@@ -112,6 +147,8 @@ export function TaskProfilesSection({
   taskAssignments: Partial<Record<LlmTaskId, LlmTaskAssignment>>;
   userPresets: LlmParameterPreset[];
   configured: ConfiguredModel[];
+  /** The built-in LLM rows; the ready ones join the model override picker. */
+  localLlmItems: LocalLlmItem[];
   servers: ServerView[];
   defaultLlm: ConfiguredModel | undefined;
   /** The retired global `cleanup_sampling` blob — see §12.7's read-time
@@ -135,7 +172,7 @@ export function TaskProfilesSection({
 }): React.JSX.Element {
   const { t } = useTranslation();
   const mergedPresets = [...BUILTIN_LLM_PRESETS, ...userPresets];
-  const llmModels = configured.filter((c) => c.type === "llm");
+  const llmModels = overrideLlmModels(configured, localLlmItems);
   const cleanupLegacyFallback = Object.keys(cleanupSampling).length > 0;
 
   return (
@@ -228,11 +265,14 @@ function TaskRow({
   onRequestDeletePreset: (preset: LlmParameterPreset) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
+  const builtinModels = llmModels.filter(
+    (c) => c.provider === MLX_LLM_PROVIDER_ID,
+  );
   const ownServerModels = llmModels.filter(
     (c) => c.provider === SERVER_PROVIDER_ID,
   );
   const cloudModels = llmModels.filter(
-    (c) => c.provider !== SERVER_PROVIDER_ID,
+    (c) => !LOCAL_PROVIDER_IDS.has(c.provider),
   );
   const [editor, setEditor] = useState<EditorState | null>(null);
   // Inline failure for the action row — a refused write never silently
@@ -614,6 +654,10 @@ function TaskRow({
                   })}
                 </SelectItem>
                 {[
+                  {
+                    label: t("models.picker.builtIn"),
+                    models: builtinModels,
+                  },
                   {
                     label: t("models.picker.ownServer"),
                     models: ownServerModels,

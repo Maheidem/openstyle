@@ -509,24 +509,33 @@ test("03 show all models reveals the other five with kind badges", async () => {
   );
 });
 
-test("04 LLM picker shows two rows and the chat model", async () => {
+test("04 LLM picker shows its groups and the chat model", async () => {
   await closeDialog();
+  // The built-in LLM group shows only on a Mac that can run MLX
+  // (specs/local-mlx-llm.md section 4). The server decides that.
+  const llmStatus = (await (await api("GET", "/mlx-llm/status")).json()) as {
+    platformSupported: boolean;
+  };
+  const expected = [
+    ...(llmStatus.platformSupported ? ["Built into Openstyle"] : []),
+    "Your own server",
+    "Cloud provider",
+  ];
   await openLlmPicker();
   const rows = await pickerRows();
   check(
     "04",
-    "two rows: Your own server and Cloud provider, no built-in row",
-    rows.length === 2 &&
-      rows[0].startsWith("Your own server") &&
-      rows[1].startsWith("Cloud provider"),
+    `${expected.length} rows: ${expected.join(", ")}`,
+    rows.length === expected.length &&
+      expected.every((title, i) => rows[i]?.startsWith(title)),
     JSON.stringify(rows),
   );
-  expect(rows).toHaveLength(2);
+  expect(rows).toHaveLength(expected.length);
   await shot(
     "04",
     "llm-picker",
     "LLM picker",
-    "Two rows only: Your own server (active, hint Qwen3.8-27B) and Cloud provider.",
+    `${expected.join(", ")}. Your own server is active, hint Qwen3.8-27B.`,
   );
   await dialog()
     .getByRole("button", { name: /Browse the models of your own/ })

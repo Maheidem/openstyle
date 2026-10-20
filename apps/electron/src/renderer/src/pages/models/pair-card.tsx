@@ -23,6 +23,7 @@ export function PairCard({
   onChangeVoice,
   onChangeLlm,
   onConfigureWarming,
+  onConfigureLlmWarming,
   onConfigureSampling,
 }: {
   voice: ConfiguredModel | undefined;
@@ -36,6 +37,8 @@ export function PairCard({
   onChangeLlm: () => void;
   /** When set, shows a "Configure model warming" link below the voice button. */
   onConfigureWarming?: () => void;
+  /** When set, shows a "Configure model warming" link below the cleanup button (built-in LLM). */
+  onConfigureLlmWarming?: () => void;
   /** When set, shows a sampling link below the cleanup button (local LLM only). */
   onConfigureSampling?: () => void;
 }): React.JSX.Element {
@@ -78,6 +81,14 @@ export function PairCard({
           onToggle={onToggleCleanup}
           onChange={onChangeLlm}
           dimmed={!llmCleanup}
+          warmingAction={
+            onConfigureLlmWarming
+              ? {
+                  label: t("models.pair.configureWarming"),
+                  onClick: onConfigureLlmWarming,
+                }
+              : undefined
+          }
           paramsAction={
             onConfigureSampling
               ? {
@@ -119,14 +130,16 @@ function PairSide({
   onToggle?: (next: boolean) => void;
   onChange: () => void;
   dimmed?: boolean;
-  /** Voice side only: "Configure model warming". */
+  /** "Configure model warming": the MLX voice model or the built-in LLM. */
   warmingAction?: { label: string; onClick: () => void };
   /** Cleanup side only: jumps to this task's row in TaskProfilesSection
    *  (specs/llm-task-profiles.md §9.5) — same bottom-link slot as
    *  `warmingAction`, just a different call site's action. */
   paramsAction?: { label: string; onClick: () => void };
 }): React.JSX.Element {
-  const bottomLink = warmingAction ?? paramsAction;
+  const bottomLinks = [warmingAction, paramsAction].filter(
+    (link) => link !== undefined,
+  );
   const { t } = useTranslation();
   return (
     <div
@@ -181,16 +194,17 @@ function PairSide({
         >
           {cta}
         </Button>
-        {bottomLink && (
+        {bottomLinks.map((link) => (
           <Button
+            key={link.label}
             variant="link"
             size="sm"
-            onClick={bottomLink.onClick}
+            onClick={link.onClick}
             className="text-muted-foreground h-auto px-0 text-[13px] font-normal"
           >
-            {bottomLink.label}
+            {link.label}
           </Button>
-        )}
+        ))}
       </div>
     </div>
   );
