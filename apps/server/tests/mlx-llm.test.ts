@@ -79,6 +79,7 @@ function seedModel(id: string): void {
   const snap = join(hfRepoCacheDir(def.hfId), "snapshots", "abc123");
   mkdirSync(snap, { recursive: true });
   writeFileSync(join(snap, "config.json"), "{}");
+  writeFileSync(join(snap, "model.safetensors"), "w");
 }
 
 function loggedRequests(): Array<Record<string, unknown>> {
@@ -266,6 +267,20 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     expect(state?.status).toBe("ready");
     expect(state?.hfId).toBe("mlx-community/Qwen3.5-0.8B-4bit");
     expect(getMlxLlmModelStatus("nope")).toBeNull();
+  });
+
+  it("reports not_downloaded for a partial snapshot (an .incomplete blob)", () => {
+    const def = getMlxLlmModel("gemma-4-e2b-4bit");
+    if (!def) throw new Error("gemma-4-e2b-4bit");
+    const repo = hfRepoCacheDir(def.hfId);
+    mkdirSync(join(repo, "snapshots", "abc123"), { recursive: true });
+    mkdirSync(join(repo, "blobs"), { recursive: true });
+    writeFileSync(join(repo, "snapshots", "abc123", "config.json"), "{}");
+    writeFileSync(join(repo, "blobs", "abc.incomplete"), "part");
+    expect(getMlxLlmModelStatus("gemma-4-e2b-4bit")?.status).toBe(
+      "not_downloaded",
+    );
+    rmSync(repo, { recursive: true, force: true });
   });
 
   it("never starts a worker for a model that is not on disk (G4)", async () => {

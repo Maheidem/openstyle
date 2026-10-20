@@ -108,7 +108,7 @@ Table 2. LiteLLM lessons that section 5 applies in the gateway (section 5 holds 
 | L2 | Always send the reasoning params, also when thinking is off. Record a param ledger for each call. A missing thinking flag once gave about 48k characters of reasoning and `length` before any JSON (owner note outside this repo: `~/.claude/projects/-Users-maheidem-Documents-dev-OktoLabsAI-marginalia/memory/project_thinking_transport_loopback_bug.md:12-14`). |
 | L3 | One retry layer (`callUnit`), SDK retries at 0. Retry a transient provider error once, with a cap on the Retry-After wait. On `length`, retry once with less reasoning, a bigger budget or a split input. On a schema error, retry once with the validator message in the prompt. Never retry `content-filter` or an auth error. |
 | L4 | Check the served model against the requested model. oMLX `model_fallback` once answered with another model. |
-| L5 | Use a fixed schema for each node. No dynamic enums of ids. For strict mode make all fields required and use nullable instead of optional. UNVERIFIED as a stated rule; the page only shows required fields with type `[string, null]` in an example (https://developers.openai.com/api/docs/guides/structured-outputs). Authors write to these rules and a test enforces them. The AI SDK sets `additionalProperties` false itself; the gateway does not change the schema (4.0.3 rule 7). |
+| L5 | Use a fixed schema for each node. No dynamic enums of ids (changed 2026-10-20: `correctChunk` and `identifySpeakers` send a per-call enum, 4.0.3 rule 3). For strict mode make all fields required and use nullable instead of optional. UNVERIFIED as a stated rule; the page only shows required fields with type `[string, null]` in an example (https://developers.openai.com/api/docs/guides/structured-outputs). Authors write to these rules and a test enforces them. The AI SDK sets `additionalProperties` false itself; the gateway does not change the schema (4.0.3 rule 7). |
 | L6 | Prove the gateway with real calls, not only mocks. Two earlier projects had green suites (988 and 4,052 tests) while real use failed (section 10). |
 
 ### 1.2 Goals
@@ -913,7 +913,14 @@ The `save` row is the SW4 write (4.6.1): `guardNode` closes it from the `SaveRes
 
 1. Every field is required; `.nullable()` marks an absent value (https://developers.openai.com/api/docs/guides/structured-outputs).
 2. No `.optional()`, `.default()`, `.passthrough()`, `z.record()` or dynamic key. Use an array of objects.
-3. Ids, labels, quotes: `z.string()`. No `z.enum()` of ids: each new schema grows the oMLX grammar cache about 0.45 GB (L5; https://github.com/jundot/omlx/issues/4321). A static enum of fixed words is allowed (`"name" | "role"`).
+3. Ids, labels, quotes: `z.string()`. A static enum of fixed words is allowed (`"name" | "role"`). Exception (changed 2026-10-20, commit 06691f3c): two nodes send a per-call enum.
+   - `correctChunk`: `corrections[].id` is an enum of the segment ids of the unit (`correctChunkStepSchema(ids)`, `W/schemas.ts:91`, schema version 2).
+   - `identifySpeakers`: `speakers[].label` is an enum of the open label numbers (`identifySpeakersStepSchema(labels)`, `W/schemas.ts:115`, schema version 2). `segmentId` stays `z.string()`.
+   - The zod side is lenient: `enumOf` (`W/schemas.ts:74-79`) is `z.string().transform(normalize)` with the enum only in the JSON Schema `meta`. `normalizeId` removes brackets from an id. `normalizeLabel` also changes "Them 1", "Speaker 1" and "[1]" to "1". A string outside the enum still parses, so the node check drops that one entry alone, not the whole answer.
+   - `WORKFLOW_GRAPH_VERSION` is 2.
+   - Why: small local MLX models do not copy ids exactly. Qwen3.5 4B wrote ids in brackets, Gemma 4 E4B shifted ids, and both wrote "Them 1" for label "1". The node checks then dropped every correction and suggestion. With the enum, Qwen3.5 4B applied 12 of 20 corrections on a fictional 40-segment meeting, with 0 `unknown_id` (`specs/local-mlx-llm.md` section 5, WP4).
+   - The owner decided on 2026-10-20 to use the enum for all providers, not only for the local MLX LLM. The council review of this change is pending.
+   - Cost: each call has a new schema. The old rule was "no enum of ids", because each new schema grows the oMLX grammar cache about 0.45 GB (L5; https://github.com/jundot/omlx/issues/4321). That cost now applies to oMLX runs of these two nodes. UNVERIFIED: the cache growth with the per-call enum on oMLX.
 4. No `.min()`, `.max()`, `.length()`, `.regex()`: Anthropic returns error 400 for string length, number range and `minItems` above 1 (https://platform.claude.com/docs/en/build-with-claude/structured-outputs). Code checks sizes after the parse.
 5. One schema per node. `summarize` uses one schema for single, map and reduce (L5).
 6. Field order is generation order: evidence before conclusion (#163).

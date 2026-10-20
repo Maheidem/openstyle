@@ -85,6 +85,7 @@ describe("downloadMlxModel with cached weights", () => {
     );
     mkdirSync(snapshot, { recursive: true });
     writeFileSync(join(snapshot, "config.json"), "{}");
+    writeFileSync(join(snapshot, "model.safetensors"), "w");
     mocks.blocker = "runtime missing";
     mocks.ensureRuntime.mockReset();
     mocks.ensureRuntime.mockImplementation(async () => {
@@ -244,7 +245,7 @@ describe("custom MLX models", () => {
       expect(getMlxModelStatus(CUSTOM_ID)?.status).toBe("not_downloaded");
     });
 
-    it("keeps the old any-file rule for a curated model", async () => {
+    it("accepts a curated snapshot with weights and no manifest", async () => {
       const snapshot = join(
         cacheDir,
         "models--mlx-community--parakeet-tdt-0.6b-v3",
@@ -253,6 +254,7 @@ describe("custom MLX models", () => {
       );
       mkdirSync(snapshot, { recursive: true });
       writeFileSync(join(snapshot, "config.json"), "{}");
+      writeFileSync(join(snapshot, "model.safetensors"), "w");
       const { getMlxModelStatus } = await import(
         "../src/lib/mlx-asr/models.js"
       );
@@ -734,5 +736,186 @@ describe("custom MLX models", () => {
         "sensevoice-small",
       );
     });
+  });
+});
+
+/**
+ * A curated repo the way a download leaves it: the expected file list, blobs
+ * and the snapshot symlinks. `stored` is the subset that reached the snapshot.
+ */
+function writeCuratedRepo(
+  cacheDir: string,
+  stored: Record<string, number>,
+  incomplete = false,
+): string {
+  const repoDir = join(cacheDir, "models--mlx-community--SenseVoiceSmall");
+  const snapshotDir = join(repoDir, "snapshots", "sha1");
+  mkdirSync(join(repoDir, "blobs"), { recursive: true });
+  mkdirSync(snapshotDir, { recursive: true });
+  writeFileSync(
+    join(repoDir, "openstyle-expected-files.json"),
+    JSON.stringify({
+      files: [
+        { path: "config.json", size: 2 },
+        { path: "model.safetensors", size: 8 },
+      ],
+    }),
+  );
+  for (const [path, size] of Object.entries(stored)) {
+    const blob = join(repoDir, "blobs", `etag-${path}`);
+    writeFileSync(blob, "");
+    truncateSync(blob, size);
+    symlinkSync(blob, join(snapshotDir, path));
+  }
+  if (incomplete) {
+    writeFileSync(join(repoDir, "blobs", "etag-weights.incomplete"), "par");
+  }
+  return snapshotDir;
+}
+
+describe("curated snapshot completeness and download retries", () => {
+  const SENSE = "sensevoice-small";
+  let cacheDir = "";
+  const originalCache = process.env.HUGGINGFACE_HUB_CACHE;
+
+  beforeEach(() => {
+    cacheDir = mkdtempSync(join(tmpdir(), "mlx-curated-"));
+    process.env.HUGGINGFACE_HUB_CACHE = cacheDir;
+    mocks.blocker = null;
+    mocks.listSize = 2;
+    mocks.snapshotDownload.mockReset();
+    // Fake only the retry waits. The disk check needs real I/O callbacks.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+
+  afterEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    rmSync(cacheDir, { recursive: true, force: true });
+    if (originalCache === undefined) delete process.env.HUGGINGFACE_HUB_CACHE;
+    else process.env.HUGGINGFACE_HUB_CACHE = originalCache;
+  });
+
+  it("is ready when every expected file has its size", async () => {
+    writeCuratedRepo(cacheDir, { "config.json": 2, "model.safetensors": 8 });
+    const { getMlxModelStatus } = await import("../src/lib/mlx-asr/models.js");
+
+    expect(getMlxModelStatus(SENSE)?.status).toBe("ready");
+  });
+
+  it.each([
+    ["the weights are missing", { "config.json": 2 }, false],
+    [
+      "the weights have the wrong size",
+      { "config.json": 2, "model.safetensors": 3 },
+      false,
+    ],
+    [
+      "an .incomplete blob is left",
+      { "config.json": 2, "model.safetensors": 8 },
+      true,
+    ],
+  ])("is not downloaded when %s", async (_name, stored, incomplete) => {
+    writeCuratedRepo(cacheDir, stored, incomplete);
+    const { getMlxModelStatus } = await import("../src/lib/mlx-asr/models.js");
+
+    expect(getMlxModelStatus(SENSE)?.status).toBe("not_downloaded");
+  });
+
+  it("is not downloaded when a snapshot with no manifest has no weights", async () => {
+    const snapshot = join(
+      cacheDir,
+      "models--mlx-community--SenseVoiceSmall",
+      "snapshots",
+      "abc",
+    );
+    mkdirSync(snapshot, { recursive: true });
+    writeFileSync(join(snapshot, "config.json"), "{}");
+    const { getMlxModelStatus } = await import("../src/lib/mlx-asr/models.js");
+
+    expect(getMlxModelStatus(SENSE)?.status).toBe("not_downloaded");
+  });
+
+  /** The undici error of a reset body stream. */
+  function terminated(): Error {
+    return Object.assign(new TypeError("terminated"), {
+      cause: Object.assign(new Error("other side closed"), {
+        code: "UND_ERR_SOCKET",
+      }),
+    });
+  }
+
+  /** Write the files that the mocked `listFiles` expects (config.json, 2 bytes). */
+  function writeDownloadedSnapshot(): string {
+    const repoDir = join(cacheDir, "models--mlx-community--SenseVoiceSmall");
+    const snapshotDir = join(repoDir, "snapshots", "sha1");
+    mkdirSync(snapshotDir, { recursive: true });
+    writeFileSync(join(snapshotDir, "config.json"), "{}");
+    return snapshotDir;
+  }
+
+  /** Run real I/O and fake retry waits until `tries` tries have started. */
+  async function passRetryWaits(tries: number): Promise<void> {
+    for (let i = 0; i < 500; i++) {
+      if (mocks.snapshotDownload.mock.calls.length >= tries) return;
+      await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(500);
+    }
+    throw new Error(`only ${mocks.snapshotDownload.mock.calls.length} tries`);
+  }
+
+  it("tries again after a dropped connection and reads as ready", async () => {
+    mocks.snapshotDownload
+      .mockRejectedValueOnce(terminated())
+      .mockRejectedValueOnce(terminated())
+      .mockImplementationOnce(async () => writeDownloadedSnapshot());
+    const { downloadMlxModel, getMlxModelStatus } = await import(
+      "../src/lib/mlx-asr/models.js"
+    );
+
+    const done = downloadMlxModel(SENSE);
+    await passRetryWaits(3);
+    await done;
+
+    expect(mocks.snapshotDownload).toHaveBeenCalledTimes(3);
+    expect(getMlxModelStatus(SENSE)?.status).toBe("ready");
+  });
+
+  it("reports an error, not ready, when every try drops", async () => {
+    mocks.snapshotDownload.mockImplementation(async () => {
+      // The config arrived. The weights stay a partial blob.
+      const dir = writeDownloadedSnapshot();
+      writeFileSync(join(dir, "..", "..", "blobs", "etag-w.incomplete"), "p");
+      throw terminated();
+    });
+    mkdirSync(
+      join(cacheDir, "models--mlx-community--SenseVoiceSmall", "blobs"),
+      {
+        recursive: true,
+      },
+    );
+    const { downloadMlxModel, getMlxModelStatus, clearMlxDownloadError } =
+      await import("../src/lib/mlx-asr/models.js");
+
+    const done = downloadMlxModel(SENSE).catch((err: Error) => err);
+    await passRetryWaits(4);
+
+    expect(await done).toBeInstanceOf(TypeError);
+    expect(mocks.snapshotDownload).toHaveBeenCalledTimes(4);
+    expect(getMlxModelStatus(SENSE)?.status).toBe("error");
+    // A new status read after the error is cleared still sees the partial blob.
+    clearMlxDownloadError(SENSE);
+    expect(getMlxModelStatus(SENSE)?.status).toBe("not_downloaded");
+  });
+
+  it("does not try again after an error that is not a dropped connection", async () => {
+    mocks.snapshotDownload.mockRejectedValue(new Error("404 Not Found"));
+    const { downloadMlxModel, getMlxModelStatus } = await import(
+      "../src/lib/mlx-asr/models.js"
+    );
+
+    await expect(downloadMlxModel(SENSE)).rejects.toThrow("404");
+
+    expect(mocks.snapshotDownload).toHaveBeenCalledTimes(1);
+    expect(getMlxModelStatus(SENSE)?.status).toBe("error");
   });
 });

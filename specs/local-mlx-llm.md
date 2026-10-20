@@ -82,7 +82,9 @@ Today every LLM call (dictation cleanup, Meeting Enhance, Summarize) needs a clo
 
 ### 3.2 Downloads and status
 
-Reuse the speech model code path: `snapshotDownload` into the shared HF cache, `listFiles` sizes, the disk check, the completeness check, cancel and delete (`mlx-asr/models.ts:219-398`). The runtime install is the same managed worker (`runtime.ts`).
+Reuse the speech model code path: `snapshotDownload` into the shared HF cache, `listFiles` sizes, the disk check, the completeness check, cancel and delete (`mlx-asr/models.ts`). The runtime install is the same managed worker (`runtime.ts`).
+
+Completeness (WP5, the speech and the LLM models): before the fetch, the download writes the `listFiles` result (path and size of each file) to `openstyle-expected-files.json` in the repo cache dir. A snapshot is complete only when no `blobs/*.incomplete` file is left and every listed file is in the snapshot dir at its size (stat calls only). A snapshot with no list (an older app version or another HF tool) needs every entry to resolve and one `.safetensors` or `.npz` file. A dropped connection ("terminated", ECONNRESET, a socket error) gets 3 more tries after 2 s, 5 s and 10 s. `@huggingface/hub` 2.13 cannot resume a partial file: a new try skips the complete files and fetches the partial file again from 0. After the last failed try, the status is `error`.
 
 ### 3.3 Process lifecycle (`server.ts`)
 
@@ -123,3 +125,13 @@ Mode ladder `["json_schema_strict","prompt_only"]` and reasoning control `templa
 3. Isolated server + isolated app (live-testing skill, quiet mode, Test Runner): download a catalog model from the Models page, press Use, run Meeting Enhance + Summarize on a fictional meeting. Show the llm_calls rows (provider `local-mlx-llm`, finish `stop`, valid JSON) and a screenshot of the Models page row.
 4. Dictation latency with the LLM worker loaded stays within 10% of baseline.
 5. CI green.
+
+### Status and proof (2026-10-20, PR #228)
+
+- WP1, frozen worker: `--llm` answered a strict-schema chat completion with valid JSON on Qwen3.5 0.8B and Gemma 4 E2B.
+- WP2, server: the registry, lifecycle and routes passed with a fake worker.
+- WP3, UI: the Models page row was proven in the isolated app.
+- Real E2E, isolated server and app: Qwen3.5 4B and Gemma 4 E4B. Download 351 s and 273 s. Meeting Enhance and Summarize ran and succeeded. About 98 and 77 tok/s. Worker RSS 3.1 GiB and 5.2 GiB.
+- WP4, per-call enum of ids and labels (`specs/meeting-enhance-agentic.md` 4.0.3 rule 3): Qwen3.5 4B applied 12 of 20 corrections on a fictional 40-segment meeting, with 0 `unknown_id`.
+- WP5, download fix: a download that failed with "terminated" left `model.safetensors` as an `.incomplete` blob, and the next POST `/download` reported `ready`. Now a snapshot is complete only when every file of the expected list has its size and no `.incomplete` blob is left (3.2). A dropped connection gets 3 more tries.
+- Open: item 4 (dictation latency).
