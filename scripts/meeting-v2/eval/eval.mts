@@ -944,6 +944,12 @@ async function judgePack(
 // --- Main --------------------------------------------------------------------------------------
 
 async function main(): Promise<number> {
+  // Read HEAD at the start: a commit made during a long run must not
+  // label results that ran on the older code.
+  const commit = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).stdout.trim();
   checkBuild();
   const ids = resolveMeetings();
   mkdirSync(join(outDir, "pack"), { recursive: true });
@@ -1085,10 +1091,7 @@ async function main(): Promise<number> {
 
   const results: Results = {
     createdAt: new Date().toISOString(),
-    commit: spawnSync("git", ["rev-parse", "--short", "HEAD"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    }).stdout.trim(),
+    commit,
     models,
     meetings: meetingInfo,
     answerKey: answerKey !== null,
