@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.19.0
+
+### New Features ✨
+
+- Openstyle can now run its AI model on your Mac, with no setup and no account. Go to Settings > Models and download Gemma 4 E2B (recommended) or Gemma 4 E4B under the on-device AI models. Text cleanup, meeting Enhance and meeting summaries then run on your Mac (#228).
+- Meeting folders. Create a folder with a name and a description, then move meetings into it or out of it. Filter the Meetings list by folder. A new recording goes into the selected folder. You can rename a folder, and you can delete a folder when it is empty (#230).
+- Meeting tags. Enhance suggests up to 5 tags for a meeting and uses your existing tags first. Add or remove tags in the meeting header. You can also add tags by hand without an AI model (#231).
+
+### Improvements ⚡
+
+- Before transcription, Openstyle finds the parts of a meeting that have no speech and does not send them to the voice model. Near-silent audio and background noise no longer become invented text (#227).
+- The voice model no longer repeats one word thousands of times on quiet audio. Openstyle stops the repetition and transcribes that part once more. Normal speech gives the same text as before (#226).
+- When a word or a short phrase repeats many times in one transcript line, Openstyle keeps only the first one (#224).
+- After the update, Openstyle downloads the new on-device model runtime one time.
+
+### Bug Fixes 🐛
+
+- Meetings with a voice model and no AI model no longer show errors after transcription. Enhance and Summary are off, with the hint "Add an AI model in Settings > Models to use Enhance and Summary." (#229).
+
+### Known issues 🐞
+
+- On a first install, macOS warns about an unidentified developer. Right-click Openstyle and select Open once. Apple has not notarized Openstyle.
+
 ## 2.18.0
 
 ### New Features ✨
