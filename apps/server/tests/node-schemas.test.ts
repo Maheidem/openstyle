@@ -107,7 +107,7 @@ describe("the per-call schemas (ids and labels enum)", () => {
   it("correctChunk: corrections[].id is an enum of exactly the unit ids; version 3", async () => {
     const step = correctChunkStepSchema(ids);
     expect(step.name).toBe("correct_chunk");
-    expect(step.version).toBe(4);
+    expect(step.version).toBe(3);
     await expect(assertPortableSchema(step.zod)).resolves.toBeUndefined();
     const json = (await asSchema(step.zod).jsonSchema) as {
       properties: {
@@ -141,22 +141,6 @@ describe("the per-call schemas (ids and labels enum)", () => {
       'text "we moved the cluster to Kubernetes last week."',
     );
     expect(prompt).toContain('Wrong output: text "Kubernetes".');
-  });
-
-  it("correctChunk: the system prompt lists only changed segments and names the an and it's drops", () => {
-    const prompt = buildCorrectSystemPrompt({ language: "en", vocabTerms: [] });
-    expect(FULL_SEGMENT_RULE).toContain(
-      "List only the segments that you change.",
-    );
-    expect(prompt).toContain(
-      "- List ONLY the segments that you change. For each one, give its full corrected text. Do not list a segment that you do not change.",
-    );
-    expect(prompt).toContain(
-      `The recognizer often drops the "n" of "an" or the "'s" of "it's": write "an" before a vowel sound, and "it's" where "it is" fits.`,
-    );
-    expect(prompt).toContain('id "seg-9", text "it was an easy move."');
-    expect(prompt).toContain("No entry for seg-8, because it has no error.");
-    expect(prompt).not.toContain("Include a segment ONLY if you change");
   });
 
   it("correctChunk: the parse strips brackets and keeps an unknown id for the node check", () => {

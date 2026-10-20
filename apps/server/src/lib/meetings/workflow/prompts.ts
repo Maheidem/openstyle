@@ -18,12 +18,10 @@ function languageLine(language: string | null): string {
 /**
  * The contract of `corrections[].text`, shared by the prompt and the schema
  * description: small local models returned only the changed words (WP7, PR
- * #228), and the 4.2.3 checks then dropped every entry. With the full-segment
- * rule alone, the model copied unchanged segments and skipped small fixes
- * (round r228d), so the rule also says to list only changed segments.
+ * #228), and the 4.2.3 checks then dropped every entry.
  */
 export const FULL_SEGMENT_RULE =
-  'List only the segments that you change. "text" is the COMPLETE corrected segment: every word of the segment, with only the errors fixed. Never return only the changed words.';
+  '"text" is the COMPLETE corrected segment: every word of the segment, with only the errors fixed. Never return only the changed words.';
 
 // ---------------------------------------------------------------------------
 // correctChunk
@@ -43,15 +41,15 @@ export function buildCorrectSystemPrompt(input: CorrectPromptInput): string {
   return `You clean up a speech-to-text meeting transcript. "Me" is the user of this app. Another speaker is marked "Them 1", "Them 2" and so on, or by a confirmed name. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine(input.language)}${vocabBlock}
 
 Rules:
-- List ONLY the segments that you change. For each one, give its full corrected text. Do not list a segment that you do not change.
+- Include a segment ONLY if you change its text. Leave out every segment you would keep as it is. Do not echo unchanged segments.
 - Never invent, merge, split, or reorder segments. Copy each segment id exactly as given.
-- Fix each clear speech-to-text error. A word that makes no sense in its sentence is a recognition error: replace it with the word the speaker most likely said. This includes: a misheard word, a wrong homophone, a name or product that is misspelled, and a short word that the recognizer dropped. Check every sentence for a missing short word: a verb that needs a preposition or particle, a "to" before a verb, a letter or ending that turns a word into the wrong word. Add the missing word when the sentence is wrong without it. The recognizer often drops the "n" of "an" or the "'s" of "it's": write "an" before a vowel sound, and "it's" where "it is" fits. A line that was translated instead of transcribed is also an error: write it again as a faithful transcription in the language of the transcript.
+- Fix each clear speech-to-text error. A word that makes no sense in its sentence is a recognition error: replace it with the word the speaker most likely said. This includes: a misheard word, a wrong homophone, a name or product that is misspelled, and a short word that the recognizer dropped. Check every sentence for a missing short word: a verb that needs a preposition or particle, a "to" before a verb, a letter or ending that turns a word into the wrong word. Add the missing word when the sentence is wrong without it. A line that was translated instead of transcribed is also an error: write it again as a faithful transcription in the language of the transcript.
 - Names and terms have one correct spelling. Use the spelling from the vocabulary or from other lines of the transcript. When a speaker says their own name, write that same name in every line where a word sounds like it.
 - You may also fix punctuation and capitalization (full stops, commas, question marks, capital letters). You may remove a word that the speaker repeated exactly, one after the other ("the the" becomes "the", "I I" becomes "I", "to to" becomes "to").
 - Do NOT paraphrase or summarize. Do NOT fix grammar, style or register. Do NOT remove or change fillers ("um", "uh", "ah", "like", "you know"). Do NOT remove false starts or any other word. Do NOT add or remove content. Do NOT add or remove a negation. Never delete a word the speaker said, except an exact repeat of the word right before or after it. Never copy text from another segment. Do NOT change the grammar of a word that is a real word and fits the sentence: keep its verb agreement, tense, and plural or singular form. Do NOT replace a real word with another real word, unless the context or the vocabulary clearly shows that the speaker said the other word.
 - Do NOT translate a segment into a different language than the rest of the transcript.
-- Return one entry for each segment you change: its id and its corrected text. Write the text only, without the speaker label.
-- ${FULL_SEGMENT_RULE} Example. Input lines: [seg-7] Them 1: we moved the cluster to cooper netties last week. [seg-8] Me: okay, sounds good. [seg-9] Them 1: it was a easy move. Output entries: id "seg-7", text "we moved the cluster to Kubernetes last week."; id "seg-9", text "it was an easy move." No entry for seg-8, because it has no error. Wrong output: text "Kubernetes".`;
+- Return one entry for each segment you correct: its id and its corrected text. Write the text only, without the speaker label.
+- ${FULL_SEGMENT_RULE} Example. Input line: [seg-7] Them 1: we moved the cluster to cooper netties last week. Output entry: id "seg-7", text "we moved the cluster to Kubernetes last week." Wrong output: text "Kubernetes".`;
 }
 
 /** User prompt of one `correctChunk` call. `lines` are `[id] Speaker: text`. */
