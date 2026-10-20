@@ -131,6 +131,7 @@ export interface PreparedMeeting {
   meetingId: string;
   language: string | null;
   title: string | null;
+  /** The meeting context, then the folder block (buildPromptContext). */
   context: string | null;
   vocabTerms: string[];
   /** For verifyEvidence only. Never in a prompt. */

@@ -24,6 +24,45 @@ export const FULL_SEGMENT_RULE =
   '"text" is the COMPLETE corrected segment: every word of the segment, with only the errors fixed. Never return only the changed words.';
 
 // ---------------------------------------------------------------------------
+// Prompt context (issue #230 phase 2)
+// ---------------------------------------------------------------------------
+
+/** The cap of the folder text in the prompt context, in characters. */
+export const FOLDER_CONTEXT_MAX_CHARS = 500;
+
+export interface FolderContextInput {
+  name: string;
+  description: string | null;
+}
+
+/**
+ * The context text of a run. The meeting's own context comes first and is
+ * never cut. Then a labeled block for the folder of a filed meeting:
+ * `Project: <name> - <description>`, or `Project: <name>` with no description.
+ * The folder text is cut to FOLDER_CONTEXT_MAX_CHARS characters. An unfiled
+ * meeting gets no block. Returns null when both parts are blank.
+ */
+export function buildPromptContext(
+  meetingContext: string | null,
+  folder: FolderContextInput | null,
+): string | null {
+  const parts: string[] = [];
+  const own = meetingContext?.trim();
+  if (own) parts.push(own);
+  const name = folder?.name.trim();
+  if (name) {
+    const description = folder?.description?.trim();
+    const text = description ? `${name} - ${description}` : name;
+    const cut = Array.from(text)
+      .slice(0, FOLDER_CONTEXT_MAX_CHARS)
+      .join("")
+      .trim();
+    parts.push(`Project: ${cut}`);
+  }
+  return parts.length > 0 ? parts.join("\n\n") : null;
+}
+
+// ---------------------------------------------------------------------------
 // correctChunk
 // ---------------------------------------------------------------------------
 

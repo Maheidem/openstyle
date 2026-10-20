@@ -335,6 +335,43 @@ describe("summarize: one call (single)", () => {
   });
 });
 
+describe("summarize: folder context (#230)", () => {
+  it("a filed meeting: every summary prompt has the meeting context, then the Project block. An unfiled one has no block", async () => {
+    const db = getDb();
+    db.exec("DELETE FROM meeting_folders");
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO meeting_folders (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+    ).run("fold-1", "Orchid Rollout", "Launch of a made-up app.", now, now);
+    const filed = seedFixtureMeeting({
+      chunks: 5,
+      speakers: 1,
+      meetingId: "m-filed",
+    });
+    sizeFixtureSegments(db, filed, 300);
+    db.prepare("UPDATE meetings SET folder_id = ? WHERE id = ?").run(
+      "fold-1",
+      filed.meeting.id,
+    );
+    setBudget(2000);
+    const r = await run(filed, [sum()]);
+    const context = "Weekly planning call of a made-up product team.";
+    const block = "Project: Orchid Rollout - Launch of a made-up app.";
+    expect(r.requests.length).toBeGreaterThan(1);
+    for (const req of r.requests) {
+      expect(req.system).toContain(`${context}\n\n${block}`);
+    }
+    const unfiled = meeting(1, 50, "m-unfiled");
+    const ru = await run(unfiled, [sum()]);
+    for (const req of ru.requests) {
+      expect(req.system).toContain(context);
+      expect(req.system).not.toContain("Project:");
+    }
+    db.exec("DELETE FROM meetings");
+    db.exec("DELETE FROM meeting_folders");
+  });
+});
+
 // --- the text of each line ---------------------------------------------------
 
 describe("summarize: the text of the lines (4.5 Inputs)", () => {
