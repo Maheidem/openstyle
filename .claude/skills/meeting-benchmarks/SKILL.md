@@ -88,6 +88,48 @@ The new arm always needs `--summarize`. Without it the script stops the server w
 
 The new-arm branch of `run-enhance.mjs` (202 route, job progress) is UNVERIFIED until the WP5b build exists. WP10b fixes it in the first round if it is wrong.
 
+## Model eval: Enhance + Summarize across LLM models (`pnpm meeting:eval`)
+
+One command runs Enhance (correct + identify speakers) and Summarize for each model on each reference meeting, through the real server code, and writes the hard-fail checks, the metrics and a judge pack. The code is in `scripts/meeting-v2/eval/`.
+
+```bash
+pnpm turbo build --filter=@openstyle/server   # the tool refuses a stale build
+pnpm meeting:eval --models qwen3.5-0.8b-8bit,omlx:Qwen3.8-27B \
+  [--meetings 2943c36a,5578edb0] [--out /tmp/meeting-eval/out/<name>] [--keep] \
+  [--no-download] [--answer-key <private.json>] [--hf-cache /tmp/meeting-eval/hf] \
+  [--port 4797] [--timeout-sec 7200]
+pnpm meeting:eval:test                          # unit tests of the checks (CI Lint job)
+```
+
+Flags:
+- `--models`: catalog ids of `apps/server/src/lib/mlx-llm/constants.ts`, and `omlx:Qwen3.8-27B` (the owner's oMLX, the only oMLX model allowed).
+- `--meetings`: id8 or full ids. The default is the 4 council meetings (2943c36a, 5578edb0, ca70f895, 9243bea0).
+- `--hf-cache`: the model cache, default `/tmp/meeting-eval/hf`. Keep it across runs. A missing model downloads through the app route `POST /api/mlx-llm/models/<id>/download`; the tool prints the size first. `--no-download` fails instead.
+- `--port`: the first of 4 ports (prep server, Enhance server, migration boot, transcription). Never 4649.
+- `--keep`: keep the private files (runs/, pack/, arms/). Without it the tool deletes them after it prints.
+
+Preconditions (the tool checks them and stops): a fresh server build, the dev worker `dist/mlx_asr_worker/mlx_asr_worker`, and the diarizer files `apps/electron/resources/bin/darwin-arm64/fluidaudio-diarize` and `apps/electron/resources/models/speaker-diarization`. A new worktree has no diarizer files (gitignored). Without them the server skips diarization and VAD with no error, and the speaker step gets no labels (found 2026-10-20). Copy only those two paths from the main checkout, or run `compile:native`.
+
+What the tool does:
+1. `setup-scratch.sh` copies the meetings into `/tmp/meeting-eval/asr`. When the ASR config hash (voice row, vocabulary, languages, audio sizes, ASR server code, worker) equals the cached hash, it uses the cached `transcribed.db`. Else it runs `run-baseline.mjs --run R0d` under the GPU lock.
+   An isolated server first checks the model downloads and waits for the forced aligner (the server starts its 1.2 GB download at boot), so no transcription runs without it.
+2. For each model: an isolated server sets the default LLM row on a copy of `transcribed.db` (read back after the server stops).
+3. For each model, under ONE GPU lock (queue line while it waits; it never removes the lock of another owner): `run-enhance.mjs --arm new --summarize --server-home /tmp/meeting-eval/home` per meeting. It checks oMLX `/v1/models` = 200 before and after an oMLX arm, and samples the peak RSS of the LLM worker.
+4. Hard-fail checks per model and meeting (count + segment keys `source:idx@start_ms`, never text): segments (lost, added, moved; raw text changed), numbers, names, negations, chunks (failed; last attempt finish length), summary (check-summary; owner/due placeholder), speakers (suggested name not in the text or metadata).
+5. `results.md` (one table per meeting, drops by reason, hard-fail keys, one summary table per model, the floor line) and `results.json`. The self-check re-reads both files, recomputes every check from the run databases, and exits 1 on a mismatch.
+
+Outputs in `<out>`: `results.md`, `results.json` (numbers and keys only), and with `--keep`: `pack/<model>-<id8>.compare.md` (RAW vs MODEL, compare-speakers format with 3 "around" words), `pack/<model>-<id8>.summary.md`, `pack/raw-<id8>.json`, `runs/<model>/<id8>/` (test.db, dump.json, metrics, server.log), `arms/`.
+
+Privacy: `pack/`, `runs/`, `arms/` and `/tmp/meeting-eval/asr` hold real meeting text and audio. The console prints paths and counts only, and the cleanup command. `OPENSTYLE_LOG_DIR` and the tracing variables are removed from every server, so no MLflow trace leaves the Mac. Delete the private folders when the judging ends.
+
+Answer key (optional, private, never commit): `{"version":1,"meetings":{"<id8>":{"fixes":[{"key","from","to"}],"mustNotChange":[{"key","span"}]}}}`. The format and loader are in `checks.mts`. results.md then shows fixes found/missed and must-not-change violations (not counted as hard fails).
+
+How Claude judges the pack (run with `--keep`):
+1. Read results.md first. A model with hard fails > 0 is out; read its hard-fail keys in the compare file to confirm each one is real (the checks are strict on purpose).
+2. Read each `<model>-<id8>.compare.md`. For each changed line, mark it: a fix (spelling, name, term, punctuation), a harm (meaning change, lost word, wrong name), or neutral. Use the "around" words to tell a lost word from a removed repeat.
+3. Read each `<model>-<id8>.summary.md`. Check the decisions and action items against the compare context, and look for invented owners or dates.
+4. Report numbers only: fixes / harms / neutral per model and meeting, summary faults, and the floor model. Never quote meeting text in chat, a commit or a PR.
+
 ## How to compare runs
 
 Two committed tools (PR #34; they replace the copy-edited per-run compare
