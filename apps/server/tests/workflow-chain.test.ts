@@ -87,10 +87,16 @@ describe.skipIf(SUMMARIZE_IS_STUB)(
       const summaryStep = steps.find((s) => s.node === "summarize");
       expect(summaryStep?.step_key).toBe("single");
       for (const s of steps.filter(
-        (x) => x.node !== "summarize" && x.step_key !== "save",
+        (x) =>
+          x.node !== "summarize" &&
+          x.step_key !== "save" &&
+          x.node !== "suggestTags",
       )) {
         expect(s.seq).toBeLessThan(summaryStep?.seq ?? 0);
       }
+      // suggestTags (issue #231) runs after save, so after the summary too.
+      const tagsStep = steps.find((s) => s.node === "suggestTags");
+      expect(tagsStep?.seq).toBeGreaterThan(summaryStep?.seq ?? 0);
       // The summary prompt shows the corrections of this run, not the raw text.
       const summaryRequest = h.requests.find(isSummary);
       for (const chunk of f.segmentIdsByChunk) {

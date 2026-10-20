@@ -67,12 +67,14 @@ const api = {
    */
   startMeetingRecording: (
     confirmed?: ConfirmedDevices,
+    folderId?: string | null,
   ): Promise<{
     ok: boolean;
     id?: string;
     error?: string;
     devices?: MeetingDevicePlan;
-  }> => ipcRenderer.invoke("meeting:start", confirmed),
+    code?: "invalid_folder";
+  }> => ipcRenderer.invoke("meeting:start", confirmed, folderId),
   /** The mic and output that the next recording uses, or null. */
   getMeetingDevices: (): Promise<MeetingDevicePlan | null> =>
     ipcRenderer.invoke("meeting:devices"),

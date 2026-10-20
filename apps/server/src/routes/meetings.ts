@@ -9,6 +9,12 @@ import {
   MEETINGS_DIR_NAME,
   type MeetingDetail,
   MIC_WAV,
+  meetingDetailResponseSchema,
+  meetingFolderErrorSchema,
+  meetingFolderFilterSchema,
+  meetingFolderIdSchema,
+  meetingListResponseSchema,
+  meetingStartResponseSchema,
   type StartRunResponse,
   SYNC_JSON,
   SYSTEM_WAV,
@@ -40,6 +46,7 @@ import {
   runDiarizer,
   winnerSpeakerFor,
 } from "../lib/meetings/diarize.js";
+import { meetingFolderExists } from "../lib/meetings/folders.js";
 import {
   claimJob,
   getJob,
@@ -63,6 +70,7 @@ import {
   omitCalendarColumns,
   toCalendarEvent,
 } from "../lib/meetings/store.js";
+import { getMeetingTags } from "../lib/meetings/tags.js";
 import {
   repairSystemTrack,
   trackRepairState,
@@ -103,10 +111,13 @@ import {
   canRunMlxAsr,
   type MlxAlignedWord,
 } from "../lib/mlx-asr/server.js";
+import { getDefaultModels } from "../lib/providers.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
 import { mergeContextVocabTerms } from "../lib/vocabulary-bias.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
+import { meetingFolders, meetingMoves } from "./meeting-folders.js";
+import { meetingTagEdit, meetingTagList } from "./meeting-tags.js";
 
 /**
  * Internal endpoints backing Meeting Mode. The Electron main process (the
@@ -955,7 +966,11 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
         `meeting ${id}: cancel requested after transcription finished, skipping auto Enhance`,
       );
     }
-    if (getMeetingEnhanceAutoRunSetting() && !cancelled) {
+    // No default LLM: skip the auto-run, as dictation skips cleanup (#229).
+    const autoRun = getMeetingEnhanceAutoRunSetting() && !cancelled;
+    if (autoRun && !getDefaultModels().llm) {
+      log.info(`meeting ${id}: no default LLM, skipping auto Enhance`);
+    } else if (autoRun) {
       releaseJob(id);
       const started = startRun(
         { meetingId: id, stages: ["enhance", "summarize"], trigger: "auto" },
@@ -993,6 +1008,7 @@ const startSchema = z.object({
   title: z.string().max(512).optional(),
   audio_dir: z.string().max(4096),
   started_at: z.number().int(),
+  folder_id: meetingFolderIdSchema.nullable().optional(),
   // The event the app matched at start (specs/calendar-eventkit.md).
   calendar: calendarEventSchema.optional(),
 });
@@ -1084,17 +1100,32 @@ function startRunResponse(
 }
 
 const meetings = new Hono()
-  .get("/", (c) => {
+  .route("/folders", meetingFolders)
+  .route("/tags", meetingTagList)
+  .route("/", meetingMoves)
+  .route("/", meetingTagEdit)
+  .get("/", zValidator("query", meetingFolderFilterSchema), (c) => {
     const db = getDb();
+    const { folder_id } = c.req.valid("query");
+    const where =
+      folder_id === undefined
+        ? ""
+        : folder_id === "none"
+          ? "WHERE folder_id IS NULL"
+          : "WHERE folder_id = ?";
     const rows = db
       .prepare(
-        "SELECT * FROM meetings ORDER BY created_at DESC, id DESC LIMIT 200",
+        `SELECT * FROM meetings ${where} ORDER BY created_at DESC, id DESC LIMIT 200`,
       )
-      .all() as unknown as MeetingRow[];
-    return c.json({
-      items: rows.map(omitCalendarColumns),
-      total: rows.length,
-    });
+      .all(
+        ...(folder_id !== undefined && folder_id !== "none" ? [folder_id] : []),
+      ) as unknown as MeetingRow[];
+    return c.json(
+      meetingListResponseSchema.parse({
+        items: rows.map(omitCalendarColumns),
+        total: rows.length,
+      }),
+    );
   })
   // Boot-time orphan sweep: rows a crash/force-quit left in 'recording'
   // (recorder died mid-session) or 'transcribing' (the in-process server
@@ -1134,15 +1165,31 @@ const meetings = new Hono()
     return c.json({ enabled, status, error });
   })
   .post("/start", zValidator("json", startSchema), (c) => {
-    const { id, title, audio_dir, started_at, calendar } = c.req.valid("json");
+    const {
+      id,
+      title,
+      audio_dir,
+      started_at,
+      calendar,
+      folder_id = null,
+    } = c.req.valid("json");
     const db = getDb();
+    if (!meetingFolderExists(folder_id)) {
+      return c.json(
+        meetingFolderErrorSchema.parse({
+          error: "Folder not found",
+          code: "folder_not_found",
+        }),
+        404,
+      );
+    }
     // An empty title takes the event title (owner decision 3).
     const finalTitle = title?.trim() ? title : calendar?.title.trim() || null;
     db.prepare(
       `INSERT INTO meetings (id, title, started_at, status, audio_dir, created_at,
          calendar_event_id, calendar_title, calendar_start, calendar_end,
-         calendar_url, calendar_attendees)
-       VALUES (?, ?, ?, 'recording', ?, ?, ?, ?, ?, ?, ?, ?)`,
+         calendar_url, calendar_attendees, folder_id)
+       VALUES (?, ?, ?, 'recording', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       finalTitle,
@@ -1150,8 +1197,11 @@ const meetings = new Hono()
       audio_dir,
       Date.now(),
       ...calendarColumnValues(calendar ?? null),
+      folder_id,
     );
-    return c.json({ ok: true, id });
+    return c.json(
+      meetingStartResponseSchema.parse({ ok: true, id, folder_id }),
+    );
   })
   // Link or change the calendar event of a meeting. The title follows the
   // event only when it is empty or still holds the previous event's title.
@@ -1831,6 +1881,15 @@ const meetings = new Hono()
     if (merged.length === 0) {
       return c.json({ error: "Transcript is empty" }, 409);
     }
+    if (!getDefaultModels().llm) {
+      return c.json(
+        {
+          error: "No AI model is set up. Add one in Settings > Models.",
+          code: "no_llm",
+        },
+        409,
+      );
+    }
     return startRunResponse(c, id, ["summarize"]);
   })
   // LLM cleanup pass (Enhance) over the merged transcript. It starts one
@@ -1853,6 +1912,15 @@ const meetings = new Hono()
     const merged = loadMergedTranscript(id, row.audio_dir);
     if (merged.length === 0) {
       return c.json({ error: "Transcript is empty" }, 409);
+    }
+    if (!getDefaultModels().llm) {
+      return c.json(
+        {
+          error: "No AI model is set up. Add one in Settings > Models.",
+          code: "no_llm",
+        },
+        409,
+      );
     }
     return startRunResponse(c, id, ["enhance", "summarize"]);
   })
@@ -1889,17 +1957,20 @@ const meetings = new Hono()
           created_at: number | null;
         }
       | undefined;
-    return c.json({
-      ...omitCalendarColumns(row),
-      calendar: toCalendarEvent(row),
-      /** Live job progress, or null when no job is running. `kind` names the
-       * holder so the renderer can tell a cancellable summarize job from a
-       * non-cancellable diarize/enhance pass without a second round-trip. */
-      job: getJob(id),
-      segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
-      ...loadTrackState(row),
-      summary: summary ?? null,
-    } satisfies MeetingDetail);
+    return c.json(
+      meetingDetailResponseSchema.parse({
+        ...omitCalendarColumns(row),
+        tags: getMeetingTags(id),
+        calendar: toCalendarEvent(row),
+        /** Live job progress, or null when no job is running. `kind` names the
+         * holder so the renderer can tell a cancellable summarize job from a
+         * non-cancellable diarize/enhance pass without a second round-trip. */
+        job: getJob(id),
+        segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
+        ...loadTrackState(row),
+        summary: summary ?? null,
+      } satisfies MeetingDetail),
+    );
   })
   .delete("/:id", (c) => {
     const db = getDb();

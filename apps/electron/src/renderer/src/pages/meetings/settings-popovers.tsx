@@ -261,6 +261,16 @@ export function AsrContextSettingsPopover(): React.JSX.Element {
  * missing row means off too.
  */
 export function EnhanceSettingsPopover(): React.JSX.Element {
+  const { data: models } = useQuery({
+    queryKey: queryKeys.models.configured,
+    queryFn: async () => {
+      const res = await getClient().api.models.configured.$get();
+      if (!res.ok) throw new Error("Failed to load configured models");
+      return res.json();
+    },
+  });
+  const hasLlm =
+    models?.some((m) => m.type === "llm" && m.is_default === 1) ?? false;
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: settings } = useQuery(settingsQueryOptions());
@@ -302,10 +312,15 @@ export function EnhanceSettingsPopover(): React.JSX.Element {
             <p className="text-muted-foreground m-0 text-[11px] leading-[1.5]">
               {t("meetings.enhanceAutoHint")}
             </p>
+            {!hasLlm && (
+              <p className="text-muted-foreground mt-2 text-[11px]">
+                {t("meetings.noLlmHint")}
+              </p>
+            )}
           </div>
           <Switch
             checked={checked}
-            disabled={busy}
+            disabled={busy || !hasLlm}
             onCheckedChange={(v) => void handleToggle(v)}
           />
         </div>

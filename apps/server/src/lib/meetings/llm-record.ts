@@ -21,4 +21,5 @@ export const MEETING_LLM_NODES: readonly LlmStepId[] = [
   "correctChunk",
   "identifySpeakers",
   MEETING_SUMMARY_NODE,
+  "suggestTags",
 ];

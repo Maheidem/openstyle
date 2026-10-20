@@ -163,10 +163,11 @@ describe("startRun: the chained Enhance run (GR24 a)", () => {
       "chunk:2",
     ]);
     expect(enhancedCount(f.meeting.id)).toBe(3);
-    // Node order follows `seq`: prepare, the chunks, then save last.
+    // Node order follows `seq`: prepare, the chunks, save, then the tag
+    // step of issue #231 last.
     const steps = stepsOf(started.runId);
     expect(steps[0]?.step_key).toBe("prepare");
-    expect(steps.at(-1)?.step_key).toBe("save");
+    expect(steps.slice(-2).map((s) => s.step_key)).toEqual(["save", "tags"]);
     expect(
       steps.some((s) => s.status === "running" || s.status === "failed"),
     ).toBe(false);

@@ -11,6 +11,7 @@ import {
 } from "./nodes/identify-speakers.js";
 import { makePrepareNode } from "./nodes/prepare.js";
 import { makeSaveNode } from "./nodes/save.js";
+import { failedTagsResult, makeSuggestTagsNode } from "./nodes/suggest-tags.js";
 import { failedSummary, makeSummarizeNode } from "./nodes/summarize.js";
 import { makeVerifyEvidenceNode } from "./nodes/verify-evidence.js";
 import { WorkflowState, type WorkflowStateType } from "./state.js";
@@ -18,7 +19,9 @@ import type { CorrectChunkInput } from "./types.js";
 import { internalFailure } from "./unit.js";
 
 // The workflow graph (specs/meeting-enhance-agentic.md 3.2, Figure 1). One
-// graph, six nodes. This module and `state.ts` may import LangGraph statically;
+// graph, seven nodes. `suggestTags` (issue #231) comes after `save`, so it
+// cannot change what another node sends or writes, and a failure in it
+// cannot block a write of Enhance or Summarize. This module and `state.ts` may import LangGraph statically;
 // the runner and the nodes import them as types only. `load-graph.ts` loads
 // this module with a dynamic import, after it removes the tracing variables.
 
@@ -37,6 +40,15 @@ export function buildGraph(deps: WorkflowDeps) {
     if (stopped(state.runId)) return "save";
     return state.stages.includes("summarize") ? "summarize" : "save";
   };
+
+  /** After `save`: an Enhance run that wrote its data suggests tags. */
+  const afterSave = (state: WorkflowStateType) =>
+    state.stages.includes("enhance") &&
+    state.saved !== null &&
+    !state.saved.meetingGone &&
+    !stopped(state.runId)
+      ? "suggestTags"
+      : END;
 
   // Edge rule 1: one Send for each chunk, or straight to `summarize`.
   const afterPrepare = (state: WorkflowStateType) => {
@@ -98,13 +110,26 @@ export function buildGraph(deps: WorkflowDeps) {
       })),
     })
     .addNode("save", makeSaveNode(deps))
+    .addNode("suggestTags", makeSuggestTagsNode(deps), {
+      // The backstop goes to the end, not to `save`: `save` already ran.
+      errorHandler: (_state: WorkflowStateType, { error }: { error: Error }) =>
+        new Command({
+          goto: END,
+          update: {
+            tags: failedTagsResult(
+              internalFailure("suggestTags", "tags", error),
+            ),
+          },
+        }),
+    })
     .addEdge(START, "prepare")
     .addConditionalEdges("prepare", afterPrepare)
     .addConditionalEdges("correctChunk", afterCorrect)
     .addConditionalEdges("identifySpeakers", afterIdentify)
     .addConditionalEdges("verifyEvidence", afterVerify)
     .addEdge("summarize", "save")
-    .addEdge("save", END)
+    .addConditionalEdges("save", afterSave, ["suggestTags", END])
+    .addEdge("suggestTags", END)
     .compile({ checkpointer: new NodeSqliteSaver(deps.db) });
 }
 

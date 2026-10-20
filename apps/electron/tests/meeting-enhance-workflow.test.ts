@@ -82,6 +82,10 @@ function goodAnswer(
         .map((id) => ({ id, text: fixed(req.lines.get(id) ?? "") }));
       return { content: JSON.stringify({ corrections }) };
     }
+    if (req.step === "meeting_tags") {
+      // The tag step of issue #231 runs after save.
+      return { content: JSON.stringify({ tags: ["launch plan"] }) };
+    }
     if (req.step === "identify_speakers") {
       return {
         content: JSON.stringify({
@@ -145,10 +149,14 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
     } | null;
     return body?.job?.kind === "summarize";
   });
-  // The list refetch that the job change starts has to land before the end.
-  await env.page.waitForResponse(
-    (r) => r.url().endsWith("/api/meetings") && r.request().method() === "GET",
+  // Match the list path, also when an open folder adds a query string.
+  // The job change must refresh the list before the held summary ends.
+  const listRefetch = await env.page.waitForResponse(
+    (r) =>
+      new URL(r.url()).pathname === "/api/meetings" &&
+      r.request().method() === "GET",
   );
+  console.log("Meeting list after job change:", listRefetch.url());
   const held = fake.requests.find((r) => r.step === "meeting_summary");
   if (!held) throw new Error("no summary request");
   fake.releaseHeld(base(held));
@@ -177,15 +185,18 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
       "candidates",
       "verify",
       "save",
+      "tags",
     ]),
   );
 
-  // Requests: 3 chunks, one speaker call, one summary call. Nothing else.
+  // Requests: 3 chunks, one speaker call, one summary call, one tag call
+  // (issue #231). Nothing else.
   const count = (step: ChatRequest["step"]) =>
     fake.requests.filter((r) => r.step === step).length;
   expect(count("correct_chunk")).toBe(3);
   expect(count("identify_speakers")).toBe(1);
   expect(count("meeting_summary")).toBe(1);
+  expect(count("meeting_tags")).toBe(1);
   expect(count("other")).toBe(0);
 
   // Every body asks for a json_schema answer. The names are literal: the
@@ -210,6 +221,7 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
     "correct_chunk",
     "identify_speakers",
     "meeting_summary",
+    "meeting_tags",
   ]);
   const correct = fake.requests.find((r) => r.step === "correct_chunk");
   expect(

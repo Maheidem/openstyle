@@ -103,6 +103,9 @@ test.beforeAll(async () => {
           },
         ],
       });
+    } else if (req.step === "meeting_tags") {
+      // The tag step of issue #231. It runs after save.
+      content = JSON.stringify({ tags: [] });
     } else {
       content = JSON.stringify({
         overview: SUMMARY_OVERVIEW,

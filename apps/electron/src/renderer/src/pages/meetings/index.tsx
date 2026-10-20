@@ -1,20 +1,25 @@
-import type { MeetingListItem } from "@openstyle/validations";
+import type { MeetingDetail, MeetingListItem } from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { Button } from "@renderer/components/ui/button";
 import { getClient } from "@renderer/lib/api";
-import { formatClockDuration, formatTimestamp } from "@renderer/lib/format";
 import {
   configQueryOptions,
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { Mic, Square } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 import { MeetingDetailView } from "./detail";
 import { EnhancePromptDialog } from "./enhance-prompt-dialog";
+import { FolderPanel } from "./folder-panel";
+import { FolderTree } from "./folder-tree";
+import { folderMeetingsOptions, useMeetingFolders } from "./folders-data";
+import { folderErrorKey, recordingFolderId } from "./folders-model";
 import {
   MeetingImportRail,
   MeetingsEmptyState,
@@ -31,53 +36,37 @@ import {
   DiarizationSettingsPopover,
   EnhanceSettingsPopover,
 } from "./settings-popovers";
-import { StatusBadge } from "./shared";
 
 export default function MeetingsPage(): React.JSX.Element {
-  const { t, i18n } = useTranslation();
-  const recorder = useRecorder();
+  const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  // The tray opens `?confirmStart=1` when the devices changed since the
-  // last meeting (#169). Start here, so the confirm dialog shows.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const confirmStart = searchParams.get("confirmStart") === "1";
-  const { start: startRecording, supported, status } = recorder;
-  useEffect(() => {
-    if (!confirmStart || !supported || status !== "idle") return;
-    setSearchParams({}, { replace: true });
-    void startRecording();
-  }, [confirmStart, supported, status, setSearchParams, startRecording]);
-
-  // Import affordance (specs/meeting-import.md §4.5), shared by both layouts
-  // (only one renders at a time). On success the new meeting is selected —
-  // explicit selection wins over the default rail selection — and the hook
-  // auto-fires the async transcribe job.
-  const handleImported = useCallback((id: string) => {
-    setSelectedId(id);
-  }, []);
-  const meetingImport = useMeetingImport(handleImported);
-  const importError =
-    meetingImport.state.status === "error" ? meetingImport.state : null;
-
-  // Feature-flagged: the nav entry is already gated, but a direct URL must
-  // bounce too. Wait for the config load before deciding.
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    none: true,
+  });
+  const [creating, setCreating] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [panelAction, setPanelAction] = useState<{
+    kind: "description" | "delete";
+    seq: number;
+  } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const moving = useRef(false);
+  const actionSequence = useRef(0);
   const { data: config, isLoading: configLoading } = useQuery(
     configQueryOptions(),
   );
   const enabled = config?.flags?.meetings === true;
-
-  const { data: listData } = useQuery({
+  const folderData = useMeetingFolders(enabled);
+  const folders = useMemo(() => folderData.data ?? [], [folderData.data]);
+  const { data: listData, isError: listFailed } = useQuery({
     queryKey: queryKeys.meetings.list,
     queryFn: async (): Promise<MeetingListItem[]> => {
-      const res = await getClient().api.meetings.$get();
-      if (!res.ok) return [];
-      const body = await res.json();
-      return body.items;
+      const res = await getClient().api.meetings.$get({ query: {} });
+      if (!res.ok) throw new Error("meetings_load_failed");
+      return (await res.json()).items;
     },
     enabled,
-    // A recording in progress or a transcription job elsewhere in the list
-    // should surface without a manual refresh.
     refetchInterval: (query) =>
       query.state.data?.some(
         (m) => m.status === "recording" || m.status === "transcribing",
@@ -85,13 +74,94 @@ export default function MeetingsPage(): React.JSX.Element {
         ? 2000
         : false,
   });
-
   const meetings = useMemo(() => listData ?? [], [listData]);
+  const [defaultId, setDefaultId] = useState<string | null>(null);
+  useEffect(() => {
+    if (meetings.length > 0 && !meetings.some((m) => m.id === defaultId))
+      setDefaultId(meetings[0].id);
+  }, [meetings, defaultId]);
+  const activeId = selectedFolderId
+    ? null
+    : (selectedId ??
+      (meetings.some((m) => m.id === defaultId) ? defaultId : null));
+  const { data: openMeeting } = useQuery({
+    queryKey: queryKeys.meetings.detail(activeId ?? ""),
+    queryFn: async (): Promise<MeetingDetail | null> => {
+      const res = await getClient().api.meetings[":id"].$get({
+        param: { id: activeId! },
+      });
+      return res.ok ? res.json() : null;
+    },
+    enabled: enabled && activeId !== null,
+  });
+  const targetId = recordingFolderId(selectedFolderId, openMeeting);
+  const targetName =
+    folders.find((folder) => folder.id === targetId)?.name ??
+    t("meetings.folders.unfiled");
+  const targetReady =
+    (!activeId || openMeeting !== undefined) &&
+    (targetId === null || folders.some((folder) => folder.id === targetId));
+  const recorder = useRecorder(targetId);
+  const groupIds = useMemo(
+    () => [...folders.map((folder) => folder.id), null],
+    [folders],
+  );
+  const groupQueries = useQueries({
+    queries: groupIds.map((id) => ({
+      ...folderMeetingsOptions(id),
+      enabled:
+        enabled &&
+        (id === null || Boolean(expanded[id]) || selectedFolderId === id),
+    })),
+  });
+  const groups = new Map(
+    groupIds.map((id, i) => [
+      id,
+      {
+        meetings: groupQueries[i].data ?? [],
+        loading: groupQueries[i].isPending,
+        failed: groupQueries[i].isError,
+      },
+    ]),
+  );
+  const activeFolder = folders.find((folder) => folder.id === selectedFolderId);
+  const folderGroup = groups.get(selectedFolderId);
 
-  // One-time auto-Enhance prompt (specs/meeting-transcription-v2.md §3.2):
-  // shown to existing users once, after their first finished meeting, when
-  // they never chose. "No row" matters: a user who already answered the
-  // prompt or flipped the popover has an explicit value and never sees it.
+  const openFolderId = openMeeting?.folder_id;
+  useEffect(() => {
+    if (!activeId || openFolderId === undefined) return;
+    setExpanded((old) =>
+      old[openFolderId ?? "none"]
+        ? old
+        : { ...old, [openFolderId ?? "none"]: true },
+    );
+  }, [activeId, openFolderId]);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const confirmStart = searchParams.get("confirmStart") === "1";
+  const { start: startRecording, supported, status } = recorder;
+  useEffect(() => {
+    if (!confirmStart || !supported || status !== "idle" || !targetReady)
+      return;
+    setSearchParams({}, { replace: true });
+    void startRecording();
+  }, [
+    confirmStart,
+    supported,
+    status,
+    targetReady,
+    setSearchParams,
+    startRecording,
+  ]);
+  const open = useCallback((id: string) => {
+    setSelectedFolderId(null);
+    setSelectedId(id);
+    setPanelAction(null);
+    setRenamingId(null);
+  }, []);
+  const meetingImport = useMeetingImport(open);
+  const importError =
+    meetingImport.state.status === "error" ? meetingImport.state : null;
   const { data: enhanceSettings } = useQuery(settingsQueryOptions());
   const showEnhancePrompt =
     meetings.some(
@@ -100,28 +170,6 @@ export default function MeetingsPage(): React.JSX.Element {
     enhanceSettings !== undefined &&
     enhanceSettings[SETTINGS_KEYS.meetingEnhanceAutoRun] === undefined &&
     enhanceSettings[SETTINGS_KEYS.meetingEnhancePromptSeen] !== "true";
-
-  // Master-detail (see below) keeps the right-hand pane non-empty by default
-  // once meetings exist, so the persistent list rail never sits next to a
-  // blank pane. Captured once, from the first non-empty load only — NOT
-  // re-derived from `meetings[0]` on every render, because the list query
-  // polls every 2s while anything is recording/transcribing and a fresh
-  // recording lands at index 0 (server orders by created_at DESC). Re-deriving
-  // live would silently swap the detail pane out from under a user who never
-  // explicitly picked a meeting. `selectedId` (explicit, user-driven) always
-  // wins over this default. The default changes only when its meeting leaves
-  // the list, for example after a delete.
-  const [defaultId, setDefaultId] = useState<string | null>(null);
-  useEffect(() => {
-    if (meetings.length > 0 && !meetings.some((m) => m.id === defaultId)) {
-      setDefaultId(meetings[0].id);
-    }
-  }, [meetings, defaultId]);
-  const activeId =
-    selectedId ?? (meetings.some((m) => m.id === defaultId) ? defaultId : null);
-
-  // Only probe ahead of the FIRST recording: list loaded, empty, recorder
-  // supported and idle.
   const showAudioHint = useSystemAudioProbe(
     enabled &&
       recorder.supported &&
@@ -129,79 +177,75 @@ export default function MeetingsPage(): React.JSX.Element {
       listData !== undefined &&
       meetings.length === 0,
   );
-
-  if (!configLoading && !enabled) {
-    return <Navigate to="/today" replace />;
-  }
-
-  // Nothing to show a detail pane for yet — keep the original single-pane
-  // first-run flow (hero title, record card, empty state) rather than
-  // rendering a master-detail grid with an empty rail next to a lone empty
-  // card. Also covers the pre-load instant, same as before this change.
-  if (meetings.length === 0) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <DragSpacer />
-        <div
-          className="responsive-page-scroll flex-1 overflow-auto pt-5"
-          style={{ scrollbarWidth: "none" } as React.CSSProperties}
-        >
-          <div className="mx-auto max-w-[760px]">
-            <div className="mb-2 flex items-start justify-between gap-3">
-              <h1 className="display text-foreground m-0 text-[32px] font-medium leading-tight tracking-[-0.02em]">
-                {t("meetings.titleAccent")}
-              </h1>
-              <div className="flex gap-1.5 pt-2">
-                <DiarizationSettingsPopover />
-                <EnhanceSettingsPopover />
-                <AsrContextSettingsPopover />
-              </div>
-            </div>
-            <p className="text-muted-foreground mb-6 max-w-[480px] text-[13px] leading-[1.5]">
-              {t("meetings.subtitle")}
-            </p>
-
-            {showAudioHint && <SystemAudioHint />}
-
-            <RecordingCard recorder={recorder} />
-
-            <MeetingsEmptyState
-              onFile={meetingImport.handleFile}
-              onPick={() => void meetingImport.handlePick()}
-              importing={meetingImport.importing}
-              error={importError}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Master-detail (mockup artboard 02): persistent list rail + detail pane at
-  // >=900px (same collapse breakpoint settings.tsx already uses for its own
-  // rail+content split). Below that, CSS-only collapse to the old
-  // single-pane flow: `max-[899px]:hidden` on whichever pane isn't the
-  // user's current focus, driven purely by `selectedId` so the narrow-width
-  // behavior (land on the list, tap a row to drill in, back returns to the
-  // list) is byte-for-byte what it was before this change.
-  const hideListAtNarrow = Boolean(selectedId);
-  const hideDetailAtNarrow = !selectedId;
-
+  const selectFolder = (id: string) => {
+    setSelectedFolderId(id);
+    setSelectedId(null);
+    setPanelAction(null);
+    setRenamingId(null);
+    setExpanded((old) => ({ ...old, [id]: true }));
+  };
+  const back = () => {
+    setSelectedId(null);
+    setSelectedFolderId(null);
+    setPanelAction(null);
+    setRenamingId(null);
+  };
+  const move = async (
+    meeting: Pick<MeetingListItem, "id" | "folder_id">,
+    folderId: string | null,
+  ) => {
+    if (moving.current) return;
+    moving.current = true;
+    setActionError(null);
+    try {
+      await folderData.move(meeting, folderId);
+      setExpanded((old) => ({ ...old, [folderId ?? "none"]: true }));
+    } catch (err) {
+      setActionError(t(folderErrorKey(err)));
+    } finally {
+      moving.current = false;
+    }
+  };
+  const drop = (id: string, folderId: string | null) => {
+    const meeting = [
+      ...meetings,
+      ...[...groups.values()].flatMap((group) => group.meetings),
+    ].find((m) => m.id === id);
+    if (meeting) void move(meeting, folderId);
+  };
+  if (!configLoading && !enabled) return <Navigate to="/today" replace />;
+  const explicitSelection = Boolean(selectedId || selectedFolderId);
+  // The empty state has its own import button and error. The rail shows
+  // its import controls only when the empty state is not on the page.
+  const showEmptyState = !activeFolder && !activeId;
+  const recordingCard = (
+    <RecordingCard
+      recorder={recorder}
+      compact
+      targetName={targetName}
+      targetReady={targetReady}
+    />
+  );
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       {showEnhancePrompt && <EnhancePromptDialog />}
       <div
         className="responsive-page-scroll flex-1 overflow-auto pt-5"
-        style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        style={{ scrollbarWidth: "none" }}
       >
         {showAudioHint && <SystemAudioHint />}
-
+        {actionError && (
+          <p className="text-destructive mb-3 text-xs" role="alert">
+            {actionError}
+          </p>
+        )}
         <div className="grid min-h-full grid-cols-1 gap-6 min-[900px]:grid-cols-[262px_minmax(0,1fr)]">
           <aside
+            aria-label={t("meetings.folders.railLabel")}
             className={cn(
               "min-w-0 min-[900px]:border-border min-[900px]:border-r min-[900px]:pr-6",
-              hideListAtNarrow && "max-[899px]:hidden",
+              explicitSelection && "max-[899px]:hidden",
             )}
           >
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -212,65 +256,154 @@ export default function MeetingsPage(): React.JSX.Element {
                 <AsrContextSettingsPopover />
               </div>
             </div>
-
-            <MeetingImportRail
-              onFile={meetingImport.handleFile}
-              onPick={() => void meetingImport.handlePick()}
-              importing={meetingImport.importing}
-              error={importError}
-            >
-              <RecordingCard recorder={recorder} compact />
-            </MeetingImportRail>
-
-            <div className="flex flex-col gap-0.5">
-              {meetings.map((m) => {
-                const selected = selectedId === m.id;
-                // Visual parity for the implicit default selection — only at
-                // >=900px, where the detail pane is actually showing it. At
-                // narrow widths this row hasn't really been "opened" (the
-                // list is what's visible), so it stays unhighlighted there.
-                const implicitlyActive = !selectedId && activeId === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setSelectedId(m.id)}
-                    className={cn(
-                      "flex min-w-0 flex-col gap-1 rounded-[9px] border border-transparent px-3 py-2.5 text-left transition-colors",
-                      "hover:bg-card/60",
-                      selected && "bg-card border-border",
-                      implicitlyActive &&
-                        "min-[900px]:bg-card min-[900px]:border-border",
-                    )}
-                  >
-                    <span className="text-foreground min-w-0 truncate text-[12.5px] font-medium">
-                      {m.title || t("meetings.untitled")}
-                    </span>
-                    <span className="flex min-w-0 items-center justify-between gap-2">
-                      <span className="mono text-muted-foreground/70 min-w-0 truncate text-[10px]">
-                        {formatTimestamp(m.started_at, i18n.language)} ·{" "}
-                        {formatClockDuration(m.duration_ms)}
-                      </span>
-                      <StatusBadge status={m.status} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            {showEmptyState ? (
+              recordingCard
+            ) : (
+              <MeetingImportRail
+                onFile={meetingImport.handleFile}
+                onPick={() => void meetingImport.handlePick()}
+                importing={meetingImport.importing}
+                error={importError}
+              >
+                {recordingCard}
+              </MeetingImportRail>
+            )}
+            {(folderData.isError || listFailed) && (
+              <p className="text-destructive mb-3 text-xs" role="alert">
+                {t("meetings.folders.loadFailed")}
+              </p>
+            )}
+            {folderData.isPending ? (
+              <p className="text-muted-foreground text-xs">
+                {t("meetings.folders.loading")}
+              </p>
+            ) : (
+              <FolderTree
+                folders={folders}
+                groups={groups}
+                expanded={expanded}
+                selectedFolderId={selectedFolderId}
+                activeId={activeId}
+                creating={creating}
+                renamingId={renamingId}
+                onExpanded={(id) =>
+                  setExpanded((old) => ({ ...old, [id]: !old[id] }))
+                }
+                onFolder={selectFolder}
+                onOpen={open}
+                onNew={() => {
+                  setCreating(true);
+                  setRenamingId(null);
+                }}
+                onCancelCreate={() => setCreating(false)}
+                onCreate={async (name) => {
+                  const folder = await folderData.create(name);
+                  setCreating(false);
+                  selectFolder(folder.id);
+                }}
+                onRename={(id) => {
+                  setCreating(false);
+                  setRenamingId(id);
+                }}
+                onCancelName={() => setRenamingId(null)}
+                onSaveName={async (id, name) => {
+                  await folderData.update(id, { name });
+                  setRenamingId(null);
+                }}
+                onAction={(id, kind) => {
+                  selectFolder(id);
+                  setPanelAction({ kind, seq: ++actionSequence.current });
+                }}
+                onMove={(meeting, id) => void move(meeting, id)}
+                onDrop={drop}
+              />
+            )}
           </aside>
-
           <div
             className={cn(
               "min-w-0",
-              hideDetailAtNarrow && "max-[899px]:hidden",
+              !explicitSelection &&
+                (activeId || activeFolder) &&
+                "max-[899px]:hidden",
             )}
           >
-            {activeId && (
+            {explicitSelection && (
+              <div className="mb-4 min-[900px]:hidden">
+                {recorder.status === "idle" ? (
+                  <>
+                    <Button
+                      variant="ink"
+                      size="xs"
+                      disabled={
+                        !recorder.supported || recorder.starting || !targetReady
+                      }
+                      onClick={() => void recorder.start()}
+                    >
+                      <Mic />
+                      {t("meetings.start")}
+                    </Button>
+                    <p className="text-muted-foreground mt-2 text-[11.5px]">
+                      {t("meetings.folders.recordsInto")}{" "}
+                      <strong className="text-foreground">{targetName}</strong>
+                    </p>
+                  </>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    size="xs"
+                    disabled={recorder.status === "finalizing"}
+                    onClick={() => void recorder.stop()}
+                  >
+                    <Square />
+                    {t(
+                      recorder.status === "finalizing"
+                        ? "meetings.finalizing"
+                        : "meetings.stop",
+                    )}
+                  </Button>
+                )}
+                {recorder.error && (
+                  <p role="alert" className="text-destructive mt-2 text-xs">
+                    {recorder.error}
+                  </p>
+                )}
+              </div>
+            )}
+            {activeFolder ? (
+              <FolderPanel
+                key={`${activeFolder.id}-${panelAction?.seq ?? 0}`}
+                folder={activeFolder}
+                folders={folders}
+                meetings={folderGroup?.meetings ?? []}
+                loading={folderGroup?.loading ?? true}
+                failed={folderGroup?.failed ?? false}
+                initialAction={panelAction?.kind}
+                onUpdate={(values) =>
+                  folderData.update(activeFolder.id, values)
+                }
+                onDelete={async () => {
+                  await folderData.remove(activeFolder.id);
+                  back();
+                }}
+                onOpen={open}
+                onMove={(meeting, id) => void move(meeting, id)}
+                onBack={back}
+              />
+            ) : activeId ? (
               <MeetingDetailView
                 key={activeId}
                 id={activeId}
-                onBack={() => setSelectedId(null)}
-                onDeleted={() => setSelectedId(null)}
+                folders={folders}
+                onMove={(meeting, id) => void move(meeting, id)}
+                onBack={back}
+                onDeleted={back}
+              />
+            ) : (
+              <MeetingsEmptyState
+                onFile={meetingImport.handleFile}
+                onPick={() => void meetingImport.handlePick()}
+                importing={meetingImport.importing}
+                error={importError}
               />
             )}
           </div>

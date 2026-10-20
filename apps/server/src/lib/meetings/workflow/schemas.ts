@@ -68,6 +68,11 @@ export const MeetingSummarySchema = z.object({
 });
 export type MeetingSummary = z.infer<typeof MeetingSummarySchema>;
 
+export const MeetingTagsSchema = z.object({
+  tags: z.array(z.string()),
+});
+export type MeetingTags = z.infer<typeof MeetingTagsSchema>;
+
 /** Remove spaces and one pair of surrounding brackets: "[s1]" to "s1". */
 export function normalizeId(value: string): string {
   const trimmed = value.trim();
@@ -178,4 +183,9 @@ export const MEETING_SUMMARY_STEP_SCHEMA: StepSchema<MeetingSummary> = {
   name: "meeting_summary",
   version: 1,
   zod: MeetingSummarySchema,
+};
+export const MEETING_TAGS_STEP_SCHEMA: StepSchema<MeetingTags> = {
+  name: "meeting_tags",
+  version: 1,
+  zod: MeetingTagsSchema,
 };

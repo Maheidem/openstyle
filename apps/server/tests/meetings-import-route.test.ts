@@ -74,12 +74,14 @@ function importForm(opts: {
   audioDir: string;
   title?: string;
   startedAt?: number;
+  folderId?: string;
 }): FormData {
   const form = new FormData();
   form.append("audio", new File([opts.bytes], opts.name));
   form.append("id", opts.id);
   form.append("audio_dir", opts.audioDir);
   if (opts.title !== undefined) form.append("title", opts.title);
+  if (opts.folderId !== undefined) form.append("folder_id", opts.folderId);
   if (opts.startedAt !== undefined)
     form.append("started_at", String(opts.startedAt));
   return form;
@@ -175,6 +177,7 @@ describe("POST /api/meetings/import", () => {
       stt_model: null,
       language: null,
       context: null,
+      folder_id: null,
       error: null,
       job: null,
       segment_counts: { total: 0, failed: 0 },
@@ -205,6 +208,79 @@ describe("POST /api/meetings/import", () => {
     const getRes = await app.request(`/api/meetings/${id}`);
     expect(getRes.status).toBe(200);
     expect(await getRes.json()).toEqual(body);
+  });
+
+  it("imports into a folder and returns the folder ID", async () => {
+    getDb().exec(
+      `INSERT INTO meeting_folders (id, name, created_at, updated_at) VALUES ('f1', 'Work', 1, 1)`,
+    );
+    const id = "11111111-1111-4111-8111-111111111112";
+    const res = await postImport(
+      importForm({
+        name: "call.wav",
+        bytes: buildWav(),
+        id,
+        audioDir: meetingDir(id),
+        folderId: "f1",
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.folder_id).toBe("f1");
+    expect(meetingRow(id)?.folder_id).toBe("f1");
+    const detail = await app.request(`/api/meetings/${id}`);
+    expect(await detail.json()).toEqual(body);
+    expectNoImportTempDirs();
+  });
+
+  it("rejects an unknown or invalid folder ID before it writes the audio directory", async () => {
+    const id = "11111111-1111-4111-8111-111111111113";
+    const dir = meetingDir(id);
+    for (const [folderId, status, code] of [
+      ["missing", 404, "folder_not_found"],
+      ["", 400, "invalid_request"],
+    ] as const) {
+      const res = await postImport(
+        importForm({
+          name: "call.wav",
+          bytes: buildWav(),
+          id,
+          audioDir: dir,
+          folderId,
+        }),
+      );
+      expect(res.status).toBe(status);
+      expect(await res.json()).toMatchObject({ code });
+      expect(meetingRow(id)).toBeUndefined();
+      expect(existsSync(dir)).toBe(false);
+      expectNoImportTempDirs();
+    }
+  });
+
+  it("rejects a folder that is deleted while decode runs", async () => {
+    getDb().exec(
+      `INSERT INTO meeting_folders (id, name, created_at, updated_at) VALUES ('f1', 'Work', 1, 1)`,
+    );
+    mocks.decode.mockImplementation(async (_input: string, output: string) => {
+      getDb().exec("DELETE FROM meeting_folders WHERE id = 'f1'");
+      writeFileSync(output, buildWav());
+    });
+    const id = "11111111-1111-4111-8111-111111111114";
+    const dir = meetingDir(id);
+    const res = await postImport(
+      importForm({
+        name: "call.mp3",
+        bytes: Buffer.from("fake mp3"),
+        id,
+        audioDir: dir,
+        folderId: "f1",
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: "folder_not_found" });
+    expect(meetingRow(id)).toBeUndefined();
+    expect(existsSync(dir)).toBe(false);
+    expectNoImportTempDirs();
   });
 
   it("an explicit title form field wins over the filename stem", async () => {

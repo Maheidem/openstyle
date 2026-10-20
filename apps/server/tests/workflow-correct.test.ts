@@ -194,6 +194,7 @@ describe("correctChunk: the length route (4.0.6)", () => {
       "candidates",
       "verify",
       "save",
+      "tags",
     ]);
     expect(r.recorder.steps.get("chunk:0")?.status).toBe("succeeded");
   });
@@ -251,6 +252,7 @@ describe("correctChunk: the length route (4.0.6)", () => {
     expect(r.recorder.calls.map((c) => [c.unitKey, c.attempt])).toEqual([
       ["chunk:0", 1],
       ["chunk:0", 2],
+      ["tags", 1],
     ]);
   });
 
@@ -344,6 +346,7 @@ describe("correctChunk: the length route (4.0.6)", () => {
       "chunk:0/0",
       "chunk:0/1",
       "chunk:0/1",
+      "tags",
     ]);
     expect(r.finalState.corrections[0]?.status).toBe("partial");
     expect(units(r)[1]?.failure?.kind).toBe("provider_unavailable");

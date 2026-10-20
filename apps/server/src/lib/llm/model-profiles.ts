@@ -29,6 +29,7 @@ export const STEP_TASK: Record<LlmStepId, MeetingLlmTaskId> = {
   correctChunk: "meetingEnhance",
   identifySpeakers: "meetingEnhance",
   summarize: "meetingSummarize",
+  suggestTags: "meetingEnhance",
 };
 
 export interface ReasoningPlan {

@@ -11,7 +11,10 @@ import { existsSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import type { AppType } from "@openstyle/server";
 import { createAppLogger } from "@openstyle/utils";
-import { MEETINGS_DIR_NAME } from "@openstyle/validations";
+import {
+  MEETINGS_DIR_NAME,
+  meetingFolderIdSchema,
+} from "@openstyle/validations";
 import { app, ipcMain, shell } from "electron";
 import type { hc } from "hono/client";
 import type { ConfirmedDevices } from "../shared/meeting-devices";
@@ -37,22 +40,31 @@ export function registerMeetingIpc({
   getMeetingRecorder,
   serverClient,
 }: RegisterMeetingIpcOptions): void {
-  ipcMain.handle("meeting:start", async (_event, confirmed: unknown) => {
-    try {
-      const id = await getMeetingRecorder()!.start(
-        parseConfirmedDevices(confirmed),
-      );
-      return { ok: true, id };
-    } catch (err) {
-      if (err instanceof MeetingDevicesChangedError) {
-        return { ok: false, devices: err.plan };
+  ipcMain.handle(
+    "meeting:start",
+    async (_event, confirmed: unknown, folderId: unknown) => {
+      const folder = meetingFolderIdSchema
+        .nullable()
+        .optional()
+        .safeParse(folderId);
+      if (!folder.success) return { ok: false, code: "invalid_folder" };
+      try {
+        const id = await getMeetingRecorder()!.start(
+          parseConfirmedDevices(confirmed),
+          folder.data,
+        );
+        return { ok: true, id };
+      } catch (err) {
+        if (err instanceof MeetingDevicesChangedError) {
+          return { ok: false, devices: err.plan };
+        }
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  });
+    },
+  );
 
   // The devices that the next recording uses. It opens no audio device.
   ipcMain.handle("meeting:devices", async () => {

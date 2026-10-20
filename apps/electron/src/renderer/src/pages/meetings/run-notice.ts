@@ -42,6 +42,7 @@ const KNOWN_NODES: ReadonlySet<string> = new Set([
   "identifySpeakers",
   "summarize",
   "save",
+  "suggestTags",
 ]);
 
 /** The run statuses that show a failure or interrupted notice. */
@@ -172,7 +173,14 @@ export function runNotice(
   run: LlmRunInfo | undefined,
   jobHoldsSlot: boolean,
   allRuns: readonly LlmRunInfo[] = [],
+  hasLlm = true,
 ): RunNotice | null {
+  if (
+    !hasLlm &&
+    run?.status === "failed" &&
+    run.errorKind === "model_unavailable"
+  )
+    return null;
   if (!run || jobHoldsSlot || summarizeSuperseded(run, allRuns)) return null;
   if (
     run.status !== "failed" &&

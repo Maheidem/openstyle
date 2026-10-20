@@ -7,6 +7,7 @@ import type { CalendarEvent } from "./meeting-calendar.js";
 /** One row of `GET /api/meetings`. */
 export interface MeetingListItem {
   id: string;
+  folder_id: string | null;
   title: string | null;
   started_at: number | null;
   ended_at: number | null;
@@ -31,6 +32,8 @@ export interface MeetingDetail extends MeetingListItem {
    * editable anytime. Feeds both the naming prompt and the summarize
    * prompt. NULL means unset. */
   context: string | null;
+  /** The meeting's tag names, sorted (issue #231). */
+  tags: string[];
   /** The linked calendar event, or null (specs/calendar-eventkit.md). */
   calendar: CalendarEvent | null;
   job: {

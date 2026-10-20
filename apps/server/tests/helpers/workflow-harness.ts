@@ -28,7 +28,12 @@ import {
   WORKFLOW_GRAPH_VERSION,
 } from "../../src/lib/meetings/workflow/types.js";
 import { insertOwnServer } from "../../src/lib/own-servers.js";
-import { type ScriptStep, scriptedModel, seamFor } from "./fake-model.js";
+import {
+  okReply,
+  type ScriptStep,
+  scriptedModel,
+  seamFor,
+} from "./fake-model.js";
 import {
   buildMeetingFixture,
   type MeetingFixture,
@@ -289,13 +294,40 @@ function textOfMessage(content: unknown): string {
   return "";
 }
 
-/** A mock model whose answer comes from a function of the request. */
+/** The system prompt of a `suggestTags` call starts with this text. */
+const TAGS_PROMPT_MARK = "give short topic tags for the meeting";
+
+/** True for a request of the `suggestTags` node (issue #231). */
+export function isTagsRequest(req: { system: string }): boolean {
+  return req.system.includes(TAGS_PROMPT_MARK);
+}
+
+/** The default answer of the `suggestTags` node in a scripted run. */
+export const NO_TAGS: ScriptedAnswer = okReply('{"tags":[]}');
+
+/** The answer of a `suggestTags` request: one answer, or a function. */
+export type TagsAnswer =
+  | ScriptedAnswer
+  | ((req: RecordedRequest) => ScriptedAnswer);
+
+/**
+ * A mock model whose answer comes from a function of the request. A
+ * `suggestTags` request (issue #231) never reaches `responder`: it gets
+ * `tags` (default: no tags) and goes to `tagRequests`, not to `requests`. So
+ * the scripts and the request counts of the other nodes stay as they were.
+ */
 export function responderModel(
   modelId: string,
   responder: (req: RecordedRequest) => ScriptedAnswer,
-): { model: MockLanguageModelV4; requests: RecordedRequest[] } {
+  tags: TagsAnswer = NO_TAGS,
+): {
+  model: MockLanguageModelV4;
+  requests: RecordedRequest[];
+  tagRequests: RecordedRequest[];
+} {
   const base = scriptedModel(modelId, []);
   const requests: RecordedRequest[] = [];
+  const tagRequests: RecordedRequest[] = [];
   base.model.doGenerate = async (options) => {
     const prompt = options.prompt as { role: string; content: unknown }[];
     const req: RecordedRequest = {
@@ -308,11 +340,17 @@ export function responderModel(
       responseFormat: (options as { responseFormat?: unknown }).responseFormat,
       maxOutputTokens: options.maxOutputTokens,
     };
-    requests.push(req);
     base.calls.push(options);
+    if (isTagsRequest(req)) {
+      req.n = tagRequests.length;
+      tagRequests.push(req);
+      const answer = typeof tags === "function" ? tags(req) : tags;
+      return scriptedModel(modelId, [answer]).model.doGenerate(options);
+    }
+    requests.push(req);
     return scriptedModel(modelId, [responder(req)]).model.doGenerate(options);
   };
-  return { model: base.model, requests };
+  return { model: base.model, requests, tagRequests };
 }
 
 export const TEST_MODEL = "Qwen3.8-27B";
@@ -350,13 +388,23 @@ export async function runScriptedGraph(o: {
   config?: { maxConcurrency?: number };
   /** The registry of `makeTestDeps`. The context is registered in it and dropped at the end. */
   contexts?: RunContextRegistry<RunContext>;
+  /**
+   * The answer to the `suggestTags` request (issue #231). Default: no tags.
+   * The tag request never reaches `script`, so the scripts of the other
+   * nodes stay as they are.
+   */
+  tags?: TagsAnswer;
 }): Promise<{
   finalState: WorkflowStateType;
+  /** The requests of every node except `suggestTags`. */
   requests: RecordedRequest[];
+  /** The requests of `suggestTags`. */
+  tagRequests: RecordedRequest[];
   ctx: TestRunContext;
 }> {
   const ctx = o.ctx ?? makeTestRunContext({ meetingId: o.meetingId });
   let requests: RecordedRequest[] = [];
+  let tagRequests: RecordedRequest[] = [];
   let deps = o.deps;
   if (o.script && !deps.createModel) {
     const responder: (req: RecordedRequest) => ScriptedAnswer =
@@ -370,7 +418,9 @@ export async function runScriptedGraph(o: {
               return step;
             };
           })();
-    const { model, requests: seen } = responderModel(TEST_MODEL, responder);
+    const made = responderModel(TEST_MODEL, responder, o.tags);
+    const { model, requests: seen } = made;
+    tagRequests = made.tagRequests;
     requests = seen;
     deps = { ...deps, createModel: seamFor(model) };
   }
@@ -399,7 +449,12 @@ export async function runScriptedGraph(o: {
         maxConcurrency: o.config?.maxConcurrency ?? WORKFLOW_FANOUT_CAP,
       },
     );
-    return { finalState, requests, ctx };
+    return {
+      finalState,
+      requests,
+      tagRequests,
+      ctx,
+    };
   } finally {
     o.contexts?.drop(ctx.runId);
   }
@@ -445,6 +500,7 @@ export function resetWorkflowTables(): void {
   db.exec("DELETE FROM meeting_speakers");
   db.exec("DELETE FROM meeting_segments");
   db.exec("DELETE FROM meetings");
+  db.exec("DELETE FROM tags");
 }
 
 /**

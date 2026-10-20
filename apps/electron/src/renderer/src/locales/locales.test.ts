@@ -65,6 +65,12 @@ describe("locale files", () => {
   // for all groups: the key exists and keeps the placeholders of en.json. The
   // comment above each group says why the group exists.
   const KEY_GROUPS: Record<string, string[]> = {
+    "meeting-folders": Object.keys(en).filter((key) =>
+      key.startsWith("meetings.folders."),
+    ),
+    "meeting-tags": Object.keys(en).filter((key) =>
+      key.startsWith("meetings.tags."),
+    ),
     "speaker-attendee-picker": ["meetings.speakerNamePickHint"],
     // The track length warning and the track repair notes (issue #170) tell
     // the user that the transcript can be wrong, so every locale carries them.
@@ -213,6 +219,7 @@ describe("locale files", () => {
       "meetings.llmRun.node.identifySpeakers",
       "meetings.llmRun.node.summarize",
       "meetings.llmRun.node.save",
+      "meetings.llmRun.node.suggestTags",
       "meetings.llmRun.chunks",
       "meetings.llmRun.resume",
       "meetings.llmRun.startAgain",
