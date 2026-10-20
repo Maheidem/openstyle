@@ -19,14 +19,11 @@ Today every LLM call (dictation cleanup, Meeting Enhance, Summarize) needs a clo
 1. MLX only, Apple silicon only. Same shape as the built-in local MLX speech models.
 2. Transport: the worker serves an OpenAI-style HTTP API on `127.0.0.1` (a "shim"). The server talks to it with the AI SDK OpenAI provider, as for an own server. This keeps `json_schema_strict`, the trace log and the LLM inspector.
 3. Bundle: the SAME `mlx_asr_worker` archive gets `mlx-lm` and `llguidance`. The server starts it a second time in LLM mode, as a second process. Probe X2b: works frozen, +6.3 MB. Probe X2c: two processes keep dictation at 0.18 s; one process gives 34-37 s.
-4. Catalog v1 (curated only, no custom LLM models; owner-approved 2026-10-20). The download fetches only the files that mlx-lm loads (§3.2). "Disk" is the sum of those files in the HF API tree of the repo.
+4. Catalog v1 (curated only, no custom LLM models; owner-approved 2026-10-20). Owner decision 2026-10-20 18:20: the catalog holds only the two Gemma 4 models, and E2B is the recommended model. The three Qwen3.5 models (`qwen3.5-0.8b-8bit`, `qwen3.5-4b-optiq-4bit`, `qwen3.5-9b-6bit`) are removed. The download fetches only the files that mlx-lm loads (§3.2). "Disk" is the sum of those files in the HF API tree of the repo.
 
 | Id | HF repo | Disk (bytes, filtered) | Family | Why this repo |
 |---|---|---|---|---|
-| `qwen3.5-0.8b-8bit` | `mlx-community/Qwen3.5-0.8B-8bit` | 1,027,974,615 | qwen3_5 | The model is tiny, so 8 bit costs little disk. |
-| `qwen3.5-4b-optiq-4bit` (recommended) | `mlx-community/Qwen3.5-4B-OptiQ-4bit` | 3,289,851,461 | qwen3_5 | The model card shows +1.9 capability and +5 BFCL over plain 4 bit. |
-| `qwen3.5-9b-6bit` | `mlx-community/Qwen3.5-9B-6bit` | 8,215,256,416 | qwen3_5 | OptiQ-9B has the same size and only +0.19, so plain 6 bit is used. |
-| `gemma-4-e2b-qat-4bit` | `mlx-community/gemma-4-E2B-it-qat-4bit` | 4,361,680,121 | gemma4 | QAT: Google states "similar quality to bf16". |
+| `gemma-4-e2b-qat-4bit` (recommended) | `mlx-community/gemma-4-E2B-it-qat-4bit` | 4,361,680,121 | gemma4 | QAT: Google states "similar quality to bf16". |
 | `gemma-4-e4b-qat-4bit` | `mlx-community/gemma-4-E4B-it-qat-4bit` | 6,830,817,013 | gemma4 | QAT: Google states "similar quality to bf16". |
 
 Rejected: the Jundot oQ4e repos (an MTP weight file breaks the strict mlx-lm load, and the repo has no license). The Gemma `qat-mobile` repos (`quant_method: gemma` is not supported in mlx-lm 0.32.2).
@@ -113,7 +110,7 @@ Mode ladder `["json_schema_strict","prompt_only"]` and reasoning control `templa
 ## 4. UI (Models page)
 
 - The LLM source picker gets a built-in group "On-device · MLX" (as voice; `source-picker.tsx:25-32`). Remove the "no built-in LLM" note.
-- LLM rows for the 5 models use the voice row component: size until ready, Download / Cancel / Retry / Use / Delete, progress with bytes, speed and percent. One "Recommended" badge: `qwen3.5-4b-optiq-4bit`.
+- LLM rows for the 2 models use the voice row component: size until ready, Download / Cancel / Retry / Use / Delete, progress with bytes, speed and percent. One "Recommended" badge: `gemma-4-e2b-qat-4bit`. A model row in `model_configs` (default or not) of a model that is no longer in the catalog is deleted when the server reads the defaults (`mlx-llm/reconcile.ts`). The person then has no default LLM and picks one again. A task override to such a model falls back to the app default.
 - "Use" sets the default LLM (`model_configs`, provider `local-mlx-llm`, model_id `local-mlx-llm/<id>`, type `llm`).
 - The task profiles section lists the local LLM models in the model override picker.
 - A keep-alive slider for the LLM next to the MLX memory section.
@@ -125,7 +122,7 @@ Mode ladder `["json_schema_strict","prompt_only"]` and reasoning control `templa
 ## 5. Proof (definition of done)
 
 1. Unit tests: worker (fake model) and server (registry, lifecycle, routes, catalog).
-2. Real worker: `--llm` with `qwen3.5-4b-optiq-4bit` answers `/v1/models` and a strict-schema chat completion with valid JSON.
+2. Real worker: `--llm` with a catalog model answers `/v1/models` and a strict-schema chat completion with valid JSON.
 3. Isolated server + isolated app (live-testing skill, quiet mode, Test Runner): download a catalog model from the Models page, press Use, run Meeting Enhance + Summarize on a fictional meeting. Show the llm_calls rows (provider `local-mlx-llm`, finish `stop`, valid JSON) and a screenshot of the Models page row.
 4. Dictation latency with the LLM worker loaded stays within 10% of baseline.
 5. CI green.
@@ -149,4 +146,8 @@ Mode ladder `["json_schema_strict","prompt_only"]` and reasoning control `templa
   - Replay test on 4 chunks, 8 target fixes, 27B at temperature 0: the PR prompt 0/8, main's prompt with the id enums 8/8, main's prompt with one meaningless word change 6/8. The fixes move with any wording change. The schema `text` description has no effect (the local worker does not show the schema to the model, `scripts/mlx_asr_server.py:900-907`). Owner decision 2026-10-20: keep one prompt as is.
   - Gemma 4 E2B on the owner's 3 meetings (peer run X2h, judged by Claude): corrections good (79 edits, mostly exact-repeat removal; about 10 "gonna" to "going to"; 1 small word addition; no lost content), summary correct on spot checks, speakers broken (every identify call ended "length": one entry per line and quotes up to 514 characters). Fixed in 0612ac6e (local-mlx-llm only: maxItems = label count, quote maxLength 160, name maxLength 80) and 4e77a47a ("null" owner or due is missing).
   - Gemma 4 E4B after 66eda28b and 5ace8a71 (peer run X2g): duplicate_id 9 to 0, unknown_segment 12 to 0 on #163.
+- Catalog eval (`pnpm meeting:eval`, 4 reference meetings, hard fails summed over the 4 meetings):
+  - Run 1 (90a31233, rescored with the checks of 06c6d740): Qwen3.5 0.8B 39 (1 of 4 meetings clean), Qwen3.5 4B 3 (3 of 4), Gemma 4 E2B 6 (1 of 4), Gemma 4 E4B 1 (3 of 4), Qwen3.5 9B 1 (3 of 4), oMLX Qwen3.8-27B 0 (4 of 4). Applied corrections: 25, 31, 90, 95, 65, 117. Peak RSS GB: 1.62, 3.91, 4.43, 6.77, 7.64.
+  - Run 2 (06c6d740): Qwen3.5 0.8B 14 (1 of 4), Gemma 4 E2B 6 (1 of 4), Gemma 4 E4B 1 (3 of 4). Applied corrections: 6, 90, 95. Every Gemma hard fail is in the speakers check (E2B 0/1/3/2, E4B 0/1/0/0 per meeting); Qwen3.5 0.8B fails the chunks and summary checks.
+  - Owner decision 2026-10-20 18:20: keep only Gemma 4 E2B (recommended) and E4B. A speaker suggestion that only repeats a diarized label is now dropped as `label_echo` (`specs/meeting-enhance-agentic.md` 4.4.2, check 6b).
 - Open: item 4 (dictation latency).

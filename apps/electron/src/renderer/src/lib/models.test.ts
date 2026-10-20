@@ -9,22 +9,22 @@ function status(platformSupported: boolean): MlxLlmStatus {
     keepAliveMinutes: 5,
     models: [
       {
-        model: "qwen3.5-4b-4bit",
-        hfId: "mlx-community/Qwen3.5-4B-4bit",
-        displayName: "Qwen3.5 4B",
-        family: "qwen3_5",
-        sizeBytes: 3_061_130_647,
+        model: "gemma-4-e2b-qat-4bit",
+        hfId: "mlx-community/gemma-4-E2B-it-qat-4bit",
+        displayName: "Gemma 4 E2B",
+        family: "gemma4",
+        sizeBytes: 4_361_680_121,
         contextTokens: 32_768,
         maxOutputTokens: 8_192,
         recommended: true,
         status: "ready",
       },
       {
-        model: "gemma-4-e2b-4bit",
-        hfId: "mlx-community/gemma-4-e2b-it-4bit",
-        displayName: "Gemma 4 E2B",
+        model: "gemma-4-e4b-qat-4bit",
+        hfId: "mlx-community/gemma-4-E4B-it-qat-4bit",
+        displayName: "Gemma 4 E4B",
         family: "gemma4",
-        sizeBytes: 3_583_088_661,
+        sizeBytes: 6_830_817_013,
         contextTokens: 32_768,
         maxOutputTokens: 8_192,
         recommended: false,
@@ -44,8 +44,8 @@ describe("buildLocalLlmItems", () => {
   it("keys each row by the provider model id and keeps the badge", () => {
     const items = buildLocalLlmItems(status(true), undefined);
     expect(items.map((it) => it.key)).toEqual([
-      "local-mlx-llm/qwen3.5-4b-4bit",
-      "local-mlx-llm/gemma-4-e2b-4bit",
+      "local-mlx-llm/gemma-4-e2b-qat-4bit",
+      "local-mlx-llm/gemma-4-e4b-qat-4bit",
     ]);
     expect(items.map((it) => it.recommended)).toEqual([true, false]);
     expect(items.every((it) => !it.selected)).toBe(true);
@@ -54,12 +54,12 @@ describe("buildLocalLlmItems", () => {
   it("selects the row of the default LLM only", () => {
     const items = buildLocalLlmItems(status(true), {
       provider: "local-mlx-llm",
-      model_id: "local-mlx-llm/qwen3.5-4b-4bit",
+      model_id: "local-mlx-llm/gemma-4-e2b-qat-4bit",
     });
     expect(items.map((it) => it.selected)).toEqual([true, false]);
     const other = buildLocalLlmItems(status(true), {
       provider: "server",
-      model_id: "local-mlx-llm/qwen3.5-4b-4bit",
+      model_id: "local-mlx-llm/gemma-4-e2b-qat-4bit",
     });
     expect(other.some((it) => it.selected)).toBe(false);
   });

@@ -60,10 +60,10 @@ import {
   getMlxLlmWorkerState,
   stopMlxLlmWorker,
 } from "../src/lib/mlx-llm/server.js";
-import { createChatModel } from "../src/lib/providers.js";
+import { createChatModel, getDefaultModels } from "../src/lib/providers.js";
 
-const QWEN_4B = "qwen3.5-4b-optiq-4bit";
-const QWEN_08B = "qwen3.5-0.8b-8bit";
+const GEMMA_E2B = "gemma-4-e2b-qat-4bit";
+const GEMMA_E4B = "gemma-4-e4b-qat-4bit";
 
 let scratch = "";
 let workerLog = "";
@@ -80,6 +80,13 @@ function seedModel(id: string): void {
   mkdirSync(snap, { recursive: true });
   writeFileSync(join(snap, "config.json"), "{}");
   writeFileSync(join(snap, "model.safetensors"), "w");
+}
+
+/** Remove the model from the scratch HF cache. */
+function unseedModel(id: string): void {
+  const def = getMlxLlmModel(id);
+  if (!def) throw new Error(id);
+  rmSync(hfRepoCacheDir(def.hfId), { recursive: true, force: true });
 }
 
 function loggedRequests(): Array<Record<string, unknown>> {
@@ -120,28 +127,10 @@ afterAll(() => {
 });
 
 describe("catalog (spec 1 decision 4, 3.1)", () => {
-  it("has the 5 curated models with the HF ids and byte sizes", () => {
+  it("has only the 2 Gemma 4 models with the HF ids and byte sizes", () => {
     expect(
       MLX_LLM_MODELS.map((m) => [m.id, m.hfId, m.family, m.sizeBytes]),
     ).toEqual([
-      [
-        "qwen3.5-0.8b-8bit",
-        "mlx-community/Qwen3.5-0.8B-8bit",
-        "qwen3_5",
-        1_027_974_615,
-      ],
-      [
-        "qwen3.5-4b-optiq-4bit",
-        "mlx-community/Qwen3.5-4B-OptiQ-4bit",
-        "qwen3_5",
-        3_289_851_461,
-      ],
-      [
-        "qwen3.5-9b-6bit",
-        "mlx-community/Qwen3.5-9B-6bit",
-        "qwen3_5",
-        8_215_256_416,
-      ],
       [
         "gemma-4-e2b-qat-4bit",
         "mlx-community/gemma-4-E2B-it-qat-4bit",
@@ -161,10 +150,10 @@ describe("catalog (spec 1 decision 4, 3.1)", () => {
     }
   });
 
-  it("recommends only qwen3.5-4b-optiq-4bit", () => {
+  it("recommends only gemma-4-e2b-qat-4bit", () => {
     expect(
       MLX_LLM_MODELS.filter((m) => m.recommended).map((m) => m.id),
-    ).toEqual([QWEN_4B]);
+    ).toEqual([GEMMA_E2B]);
   });
 });
 
@@ -174,7 +163,7 @@ describe("provider resolution and the local / ownServer split (3.4)", () => {
       MLX_LLM_PROVIDER_ID,
     );
     expect(
-      getLlmProvider(`${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`)?.providerId,
+      getLlmProvider(`${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`)?.providerId,
     ).toBe(MLX_LLM_PROVIDER_ID);
     // The speech provider id is a prefix of the LLM id, not the other way.
     expect(getLlmProvider("local-mlx")).toBeNull();
@@ -192,7 +181,7 @@ describe("provider resolution and the local / ownServer split (3.4)", () => {
     await expect(
       llmLaneKeyForProvider(
         MLX_LLM_PROVIDER_ID,
-        `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`,
+        `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
       ),
     ).resolves.toEqual({ key: "lane:local-mlx-llm", limit: 1 });
   });
@@ -212,7 +201,7 @@ describe("provider resolution and the local / ownServer split (3.4)", () => {
           mode: "auto",
           modelOverride: {
             provider: MLX_LLM_PROVIDER_ID,
-            model_id: `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`,
+            model_id: `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
           },
         },
       }),
@@ -222,7 +211,7 @@ describe("provider resolution and the local / ownServer split (3.4)", () => {
         autoMaxOutputTokens: 512,
       });
       expect(resolved.provider).toBe(MLX_LLM_PROVIDER_ID);
-      expect(resolved.modelId).toBe(`${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`);
+      expect(resolved.modelId).toBe(`${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`);
       expect(resolved.samplingParams).toEqual({
         chat_template_kwargs: { enable_thinking: false },
       });
@@ -243,7 +232,7 @@ describe("provider resolution and the local / ownServer split (3.4)", () => {
       maxReasoningTokens: 0,
       pin: {
         provider: MLX_LLM_PROVIDER_ID,
-        modelId: `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`,
+        modelId: `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
       },
     });
     expect(profile.structured).toBe("json_schema_strict");
@@ -261,11 +250,11 @@ describe("provider resolution and the local / ownServer split (3.4)", () => {
 
 describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
   it("reports not_downloaded, then ready after the snapshot exists", () => {
-    expect(getMlxLlmModelStatus(QWEN_08B)?.status).toBe("not_downloaded");
-    seedModel(QWEN_08B);
-    const state = getMlxLlmModelStatus(QWEN_08B);
+    expect(getMlxLlmModelStatus(GEMMA_E4B)?.status).toBe("not_downloaded");
+    seedModel(GEMMA_E4B);
+    const state = getMlxLlmModelStatus(GEMMA_E4B);
     expect(state?.status).toBe("ready");
-    expect(state?.hfId).toBe("mlx-community/Qwen3.5-0.8B-8bit");
+    expect(state?.hfId).toBe("mlx-community/gemma-4-E4B-it-qat-4bit");
     expect(getMlxLlmModelStatus("nope")).toBeNull();
   });
 
@@ -284,18 +273,18 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
   });
 
   it("never starts a worker for a model that is not on disk (G4)", async () => {
-    await expect(ensureMlxLlmWorker("qwen3.5-9b-6bit")).rejects.toThrow(
+    await expect(ensureMlxLlmWorker(GEMMA_E2B)).rejects.toThrow(
       /not downloaded/,
     );
     expect(getMlxLlmWorkerState().state).toBe("stopped");
   });
 
   it("starts the worker, sends the request with the sampling body, and reads the answer", async () => {
-    seedModel(QWEN_4B);
+    seedModel(GEMMA_E2B);
     const before = loggedRequests().length;
     const model = await createChatModel(
       MLX_LLM_PROVIDER_ID,
-      `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`,
+      `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
       {
         task: "cleanup",
         sampling: {
@@ -306,45 +295,47 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     );
     const state = getMlxLlmWorkerState();
     expect(state.state).toBe("ready");
-    expect(state.model).toBe(QWEN_4B);
+    expect(state.model).toBe(GEMMA_E2B);
     expect(state.port).toBeGreaterThan(0);
 
     const result = await generateText({ model, prompt: "hello there" });
     expect(result.text).toBe("Fake worker reply.");
     expect(result.finishReason).toBe("stop");
-    expect(result.response.modelId).toBe("mlx-community/Qwen3.5-4B-OptiQ-4bit");
+    expect(result.response.modelId).toBe(
+      "mlx-community/gemma-4-E2B-it-qat-4bit",
+    );
 
     const posted = loggedRequests()
       .slice(before)
       .filter((r) => r.method === "POST");
     expect(posted).toHaveLength(1);
     const body = posted[0]?.body as Record<string, unknown>;
-    expect(body.model).toBe("mlx-community/Qwen3.5-4B-OptiQ-4bit");
+    expect(body.model).toBe("mlx-community/gemma-4-E2B-it-qat-4bit");
     expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
     expect(body.top_k).toBe(20);
     expect(posted[0]?.hf_hub_offline).toBe("1");
   });
 
   it("reuses a running worker, and a different model replaces it", async () => {
-    seedModel(QWEN_4B);
-    seedModel(QWEN_08B);
-    const a = await ensureMlxLlmWorker(QWEN_4B);
-    const again = await ensureMlxLlmWorker(QWEN_4B);
+    seedModel(GEMMA_E2B);
+    seedModel(GEMMA_E4B);
+    const a = await ensureMlxLlmWorker(GEMMA_E2B);
+    const again = await ensureMlxLlmWorker(GEMMA_E2B);
     expect(again.baseURL).toBe(a.baseURL);
-    const b = await ensureMlxLlmWorker(QWEN_08B);
-    expect(b.hfId).toBe("mlx-community/Qwen3.5-0.8B-8bit");
-    expect(getMlxLlmWorkerState().model).toBe(QWEN_08B);
+    const b = await ensureMlxLlmWorker(GEMMA_E4B);
+    expect(b.hfId).toBe("mlx-community/gemma-4-E4B-it-qat-4bit");
+    expect(getMlxLlmWorkerState().model).toBe(GEMMA_E4B);
     // The old worker no longer answers.
     await expect(fetch(`${a.baseURL}/models`)).rejects.toThrow();
   });
 
   it("keep-alive 0 unloads the worker after the request", async () => {
-    seedModel(QWEN_4B);
+    seedModel(GEMMA_E2B);
     writeSetting("mlx_llm_keep_alive_minutes", "0");
     expect(getMlxLlmKeepAliveMinutes()).toBe(0);
     const model = await createChatModel(
       MLX_LLM_PROVIDER_ID,
-      `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`,
+      `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
     );
     expect(getMlxLlmWorkerState().state).toBe("ready");
     await generateText({ model, prompt: "x" });
@@ -356,14 +347,14 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
   });
 
   it("an error line before ready becomes a typed start error", async () => {
-    seedModel(QWEN_4B);
+    seedModel(GEMMA_E2B);
     process.env.FAKE_LLM_FAIL = "1";
-    await expect(ensureMlxLlmWorker(QWEN_4B)).rejects.toThrow(
+    await expect(ensureMlxLlmWorker(GEMMA_E2B)).rejects.toThrow(
       "fake load failure",
     );
     expect(getMlxLlmWorkerState()).toMatchObject({
       state: "error",
-      model: QWEN_4B,
+      model: GEMMA_E2B,
       error: "fake load failure",
     });
   });
@@ -399,6 +390,7 @@ describe("/api/mlx-llm routes (3.5)", () => {
   });
 
   it("rejects an unknown model and a start of a model that is not on disk", async () => {
+    unseedModel(GEMMA_E4B);
     expect(
       (
         await app.request("/api/mlx-llm/models/nope/download", {
@@ -407,7 +399,7 @@ describe("/api/mlx-llm routes (3.5)", () => {
       ).status,
     ).toBe(400);
     const res = await jsonRequest(app, "POST", "/api/mlx-llm/server/start", {
-      model: "gemma-4-e4b-qat-4bit",
+      model: GEMMA_E4B,
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
@@ -416,9 +408,9 @@ describe("/api/mlx-llm routes (3.5)", () => {
   });
 
   it("POST /server/start starts the worker in the background, /server/stop stops it", async () => {
-    seedModel(QWEN_4B);
+    seedModel(GEMMA_E2B);
     const res = await jsonRequest(app, "POST", "/api/mlx-llm/server/start", {
-      model: QWEN_4B,
+      model: GEMMA_E2B,
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
@@ -431,7 +423,7 @@ describe("/api/mlx-llm routes (3.5)", () => {
       if (worker.state === "ready") break;
       await new Promise((r) => setTimeout(r, 50));
     }
-    expect(worker).toMatchObject({ model: QWEN_4B, state: "ready" });
+    expect(worker).toMatchObject({ model: GEMMA_E2B, state: "ready" });
     const stop = await app.request("/api/mlx-llm/server/stop", {
       method: "POST",
     });
@@ -453,7 +445,8 @@ describe("/api/mlx-llm routes (3.5)", () => {
   });
 
   it("/api/models/available lists only ready local LLM models", async () => {
-    seedModel(QWEN_4B);
+    seedModel(GEMMA_E2B);
+    unseedModel(GEMMA_E4B);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -466,19 +459,19 @@ describe("/api/mlx-llm routes (3.5)", () => {
         (await res.json()) as Array<Record<string, unknown>>
       ).filter((m) => m.provider_id === MLX_LLM_PROVIDER_ID);
       expect(local.map((m) => m.model_id)).toContain(
-        `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`,
+        `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
       );
       expect(local.map((m) => m.model_id)).not.toContain(
-        `${MLX_LLM_PROVIDER_ID}/gemma-4-e4b-qat-4bit`,
+        `${MLX_LLM_PROVIDER_ID}/${GEMMA_E4B}`,
       );
       expect(
-        local.find((m) => m.model_id === `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`),
+        local.find((m) => m.model_id === `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`),
       ).toEqual({
         provider_id: MLX_LLM_PROVIDER_ID,
         provider_name: "On-device · MLX",
-        model_id: `${MLX_LLM_PROVIDER_ID}/${QWEN_4B}`,
-        model_name: "Qwen3.5 4B",
-        family: "qwen3_5",
+        model_id: `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
+        model_name: "Gemma 4 E2B",
+        family: "gemma4",
         type: "llm",
         cost_input: 0,
         cost_output: 0,
@@ -490,24 +483,79 @@ describe("/api/mlx-llm routes (3.5)", () => {
   });
 
   it("DELETE /models/:id removes the files and the default LLM row", async () => {
-    seedModel(QWEN_08B);
+    seedModel(GEMMA_E4B);
     getDb()
       .prepare(
         "INSERT INTO model_configs (provider, model_id, model_name, type, is_default) VALUES (?, ?, ?, 'llm', 1)",
       )
       .run(
         MLX_LLM_PROVIDER_ID,
-        `${MLX_LLM_PROVIDER_ID}/${QWEN_08B}`,
-        "Qwen3.5 0.8B",
+        `${MLX_LLM_PROVIDER_ID}/${GEMMA_E4B}`,
+        "Gemma 4 E4B",
       );
-    const res = await app.request(`/api/mlx-llm/models/${QWEN_08B}`, {
+    const res = await app.request(`/api/mlx-llm/models/${GEMMA_E4B}`, {
       method: "DELETE",
     });
     expect(await res.json()).toEqual({ ok: true });
-    expect(getMlxLlmModelStatus(QWEN_08B)?.status).toBe("not_downloaded");
+    expect(getMlxLlmModelStatus(GEMMA_E4B)?.status).toBe("not_downloaded");
     const rows = getDb()
       .prepare("SELECT COUNT(*) AS n FROM model_configs WHERE provider = ?")
       .get(MLX_LLM_PROVIDER_ID) as { n: number };
     expect(rows.n).toBe(0);
+  });
+});
+
+describe("a model that left the catalog (owner decision 2026-10-20)", () => {
+  // A tester who chose a Qwen3.5 model before the catalog change.
+  const REMOVED = `${MLX_LLM_PROVIDER_ID}/qwen3.5-4b-optiq-4bit`;
+
+  afterEach(() => {
+    deleteSetting("llm_task_assignments");
+    getDb().prepare("DELETE FROM model_configs").run();
+  });
+
+  it("removes the stale default row, so no call goes to an unknown model", async () => {
+    const app = createApp();
+    getDb()
+      .prepare(
+        "INSERT INTO model_configs (provider, model_id, model_name, type, is_default) VALUES (?, ?, 'Qwen3.5 4B', 'llm', 1), (?, ?, 'Gemma 4 E2B', 'llm', 0)",
+      )
+      .run(
+        MLX_LLM_PROVIDER_ID,
+        REMOVED,
+        MLX_LLM_PROVIDER_ID,
+        `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
+      );
+    expect(getDefaultModels().llm).toBeNull();
+    const rows = (await (
+      await app.request("/api/models/configured")
+    ).json()) as Array<{ model_id: string }>;
+    expect(rows.map((r) => r.model_id)).toEqual([
+      `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
+    ]);
+    await expect(
+      resolveTaskCall("cleanup", { autoMaxOutputTokens: 512 }),
+    ).rejects.toThrow(/No AI model is set up yet/);
+  });
+
+  it("a task override to a removed model falls back to the app default", async () => {
+    getDb()
+      .prepare(
+        "INSERT INTO model_configs (provider, model_id, model_name, type, is_default) VALUES (?, ?, 'Gemma 4 E2B', 'llm', 1)",
+      )
+      .run(MLX_LLM_PROVIDER_ID, `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`);
+    writeSetting(
+      "llm_task_assignments",
+      JSON.stringify({
+        cleanup: {
+          mode: "auto",
+          modelOverride: { provider: MLX_LLM_PROVIDER_ID, model_id: REMOVED },
+        },
+      }),
+    );
+    const resolved = await resolveTaskCall("cleanup", {
+      autoMaxOutputTokens: 512,
+    });
+    expect(resolved.modelId).toBe(`${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`);
   });
 });

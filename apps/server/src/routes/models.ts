@@ -17,6 +17,7 @@ import {
   MLX_LLM_PROVIDER_NAME,
 } from "../lib/mlx-llm/constants.js";
 import { getMlxLlmModelStatus } from "../lib/mlx-llm/models.js";
+import { reconcileRemovedMlxLlmModels } from "../lib/mlx-llm/reconcile.js";
 import {
   DEPRECATED_STATUS,
   fetchModelsFromRegistry,
@@ -267,6 +268,7 @@ const models = new Hono()
   })
   .get("/configured", (c) => {
     reconcileUnsupportedMlxVoiceDefault();
+    reconcileRemovedMlxLlmModels();
     const db = getDb();
     const rows = db
       .prepare(

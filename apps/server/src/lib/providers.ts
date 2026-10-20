@@ -5,6 +5,7 @@ import type { LlmTaskContext } from "./llm/registry.js";
 import { getLlmProvider, isLocalProvider } from "./llm/registry.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
 import { MLX_LLM_PROVIDER_ID } from "./mlx-llm/constants.js";
+import { reconcileRemovedMlxLlmModels } from "./mlx-llm/reconcile.js";
 import { stripModelPrefix } from "./model-id.js";
 
 const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
@@ -31,6 +32,7 @@ interface DefaultModels {
 
 export function getDefaultModels(): DefaultModels {
   reconcileUnsupportedMlxVoiceDefault();
+  reconcileRemovedMlxLlmModels();
   const db = getDb();
   const voice = db
     .prepare(

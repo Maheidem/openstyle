@@ -33,6 +33,8 @@ import {
 } from "@openstyle/validations";
 import { getApiKey } from "../api-keys.js";
 import { readSetting } from "../db.js";
+import { getMlxLlmModel, MLX_LLM_PROVIDER_ID } from "../mlx-llm/constants.js";
+import { stripModelPrefix } from "../model-id.js";
 import { getOwnServer } from "../own-servers.js";
 import { getLlmProvider, isLocalProvider } from "./registry.js";
 
@@ -312,6 +314,16 @@ function resolveEffectiveModel(
   } else if (!provider.local && !getApiKey(override.provider)) {
     log.warn(
       `resolveTaskCall("${taskId}"): no stored API key for model override provider "${override.provider}", falling back to the app default`,
+    );
+    return { provider: fallback.provider, modelId: fallback.model_id };
+  }
+
+  if (
+    provider.providerId === MLX_LLM_PROVIDER_ID &&
+    !getMlxLlmModel(stripModelPrefix(MLX_LLM_PROVIDER_ID, override.model_id))
+  ) {
+    log.warn(
+      `resolveTaskCall("${taskId}"): model override is a local model that is no longer in the catalog, falling back to the app default`,
     );
     return { provider: fallback.provider, modelId: fallback.model_id };
   }

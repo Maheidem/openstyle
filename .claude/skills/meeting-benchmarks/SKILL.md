@@ -94,7 +94,7 @@ One command runs Enhance (correct + identify speakers) and Summarize for each mo
 
 ```bash
 pnpm turbo build --filter=@openstyle/server   # the tool refuses a stale build
-pnpm meeting:eval --models qwen3.5-0.8b-8bit,omlx:Qwen3.8-27B \
+pnpm meeting:eval --models gemma-4-e2b-qat-4bit,omlx:Qwen3.8-27B \
   [--meetings 2943c36a,5578edb0] [--out /tmp/meeting-eval/out/<name>] [--keep] \
   [--no-download] [--answer-key <private.json>] [--hf-cache /tmp/meeting-eval/hf] \
   [--port 4797] [--timeout-sec 7200]
