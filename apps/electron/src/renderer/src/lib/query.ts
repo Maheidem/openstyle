@@ -57,6 +57,8 @@ export const queryKeys = {
     all: ["meetings"] as const,
     list: ["meetings", "list"] as const,
     folders: ["meetings", "folders"] as const,
+    /** `GET /meetings/tags`: all tags with counts (issue #231). */
+    tags: ["meetings", "tags"] as const,
     folder: (id: string | null) => ["meetings", "list", id] as const,
     detail: (id: string) => ["meetings", "detail", id] as const,
     transcript: (id: string) => ["meetings", "transcript", id] as const,

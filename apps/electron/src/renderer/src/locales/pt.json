@@ -905,7 +905,8 @@
         "correctChunk": "Correções",
         "identifySpeakers": "Interlocutores",
         "summarize": "Resumo",
-        "save": "Salvamento"
+        "save": "Salvamento",
+        "suggestTags": "Tags"
       },
       "chunks": "trechos {{list}}",
       "resume": "Retomar",
@@ -974,6 +975,16 @@
       "pickTitle": "Eventos de hoje",
       "link": "Vincular evento do calendário",
       "actionFailed": "A alteração não funcionou. Tente novamente."
+    },
+    "tags": {
+      "label": "Tags",
+      "add": "Adicionar uma tag",
+      "placeholder": "Adicionar tag",
+      "remove": "Remover a tag {{name}}",
+      "suggestions": "Tags existentes",
+      "tooLong": "Uma tag pode ter no máximo {{max}} caracteres.",
+      "tooMany": "Uma reunião pode ter no máximo {{max}} tags.",
+      "saveFailed": "As tags não foram salvas. Tente de novo."
     }
   },
   "help": {

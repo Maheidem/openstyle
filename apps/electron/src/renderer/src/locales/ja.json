@@ -906,7 +906,8 @@
         "correctChunk": "修正",
         "identifySpeakers": "話者",
         "summarize": "要約",
-        "save": "保存"
+        "save": "保存",
+        "suggestTags": "タグ"
       },
       "chunks": "区切り {{list}}",
       "resume": "再開",
@@ -975,6 +976,16 @@
       "pickTitle": "今日の予定",
       "link": "カレンダーの予定を関連付ける",
       "actionFailed": "変更できませんでした。もう一度お試しください。"
+    },
+    "tags": {
+      "label": "タグ",
+      "add": "タグを追加",
+      "placeholder": "タグを追加",
+      "remove": "タグ {{name}} を削除",
+      "suggestions": "既存のタグ",
+      "tooLong": "タグは最大 {{max}} 文字です。",
+      "tooMany": "1 つの会議に付けられるタグは最大 {{max}} 個です。",
+      "saveFailed": "タグを保存できませんでした。もう一度お試しください。"
     }
   },
   "help": {

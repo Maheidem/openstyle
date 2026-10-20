@@ -75,6 +75,8 @@ import {
 import { SummaryInstructionsPopover } from "./settings-popovers";
 import { CopyButton, StatusBadge, segmentSpeakerLabel } from "./shared";
 import { attendeeNameOptions, SpeakersDialog } from "./speakers";
+import { MeetingTagChips } from "./tag-controls";
+import { useAllTags, useSaveMeetingTags } from "./tags-data";
 import type { SpeakersResponse, TranscriptSegment } from "./types";
 
 export function MeetingDetailView({
@@ -217,6 +219,8 @@ export function MeetingDetailView({
   );
 
   const { data: appSettings } = useQuery(settingsQueryOptions());
+  const { data: allTags } = useAllTags();
+  const saveTags = useSaveMeetingTags(id);
   const calendarEnabled =
     appSettings?.[SETTINGS_KEYS.calendarEnabled] === "true";
   const advancedMode = isAdvancedMode(
@@ -560,6 +564,11 @@ export function MeetingDetailView({
             meeting={meeting}
             folders={folders}
             onMove={(folderId) => onMove(meeting, folderId)}
+          />
+          <MeetingTagChips
+            tags={meeting.tags}
+            allTags={allTags ?? []}
+            onSave={saveTags}
           />
           <MeetingContextField
             id={id}

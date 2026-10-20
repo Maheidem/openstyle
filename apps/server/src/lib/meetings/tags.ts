@@ -33,11 +33,6 @@ export function listTagsWithCounts(db: DatabaseSync = getDb()): {
     .all() as { name: string; meeting_count: number }[];
 }
 
-/** All tag names, sorted. The Enhance tag step reuses them. */
-export function listTagNames(db: DatabaseSync = getDb()): string[] {
-  return listTagsWithCounts(db).map((t) => t.name);
-}
-
 /** Get the id of a tag. Create the tag when it does not exist. The name must
  * be normalized. Call it inside a transaction. */
 function ensureTagId(db: DatabaseSync, name: string, now: number): string {
