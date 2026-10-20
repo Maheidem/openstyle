@@ -56,6 +56,8 @@ export const queryKeys = {
     /** Family base — invalidates the list and every detail/transcript. */
     all: ["meetings"] as const,
     list: ["meetings", "list"] as const,
+    folders: ["meetings", "folders"] as const,
+    folder: (id: string | null) => ["meetings", "list", id] as const,
     detail: (id: string) => ["meetings", "detail", id] as const,
     transcript: (id: string) => ["meetings", "transcript", id] as const,
     /** specs/meeting-speaker-naming.md §7.3: the Speakers dialog's

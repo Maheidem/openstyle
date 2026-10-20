@@ -1,0 +1,1012 @@
+<title>Meeting Folders Prototypes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500&family=Urbanist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: a doc page that holds one app window (the Openstyle Meetings page) plus notes.
+   Tokens mirror apps/electron/src/renderer/src/globals.css. Blue = selection only. Coral = live only. */
+:root{
+  --page:#ECEEF1;
+  --ground:#F6F7F9;
+  --surface:#FFFFFF;
+  --ink:#1D2129;
+  --ink-soft:#3A3F49;
+  --muted:#6B7280;
+  --muted-soft:#6B7280;
+  --faint:#9AA1AC;
+  --hairline:#E5E7EB;
+  --fill:#EEF0F2;
+  --hover:#E5E7EB;
+  --on-ink:#FFFFFF;
+  --sel-tint:#E8F1FC;
+  --sel-ink:#1D4ED8;
+  --sel-icon:#2563EB;
+  --sel-border:rgba(37,99,235,.18);
+  --live:#E4574D;
+  --live-tint:#FBEAE8;
+  --live-border:rgba(228,87,77,.3);
+  --danger:#DC2626;
+  --on-danger:#FFFFFF;
+  --danger-tint:#FDF0F0;
+  --danger-border:rgba(220,38,38,.25);
+  --ring:#2563EB;
+  --shadow:rgba(29,33,41,.08);
+  --shadow-strong:rgba(29,33,41,.16);
+  --traffic:#D9DCE1;
+  --font-display:'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body:'Urbanist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#0F1012; --ground:#17181B; --surface:#1F2126; --ink:#E8E9EB; --ink-soft:#C9CBD0;
+    --muted:#8B8F98; --muted-soft:#7C818B; --faint:#6A6E77; --hairline:#2E3138; --fill:#2A2D33; --hover:#2A2D33;
+    --on-ink:#17181B; --sel-tint:rgba(91,141,239,.16); --sel-ink:#8FB4F5; --sel-icon:#5B8DEF; --sel-border:rgba(91,141,239,.3);
+    --live:#E86A60; --live-tint:rgba(232,106,96,.16); --live-border:rgba(232,106,96,.35);
+    --danger:#F87171; --on-danger:#17181B; --danger-tint:rgba(248,113,113,.10); --danger-border:rgba(248,113,113,.32);
+    --ring:#5B8DEF; --shadow:rgba(0,0,0,.35); --shadow-strong:rgba(0,0,0,.55); --traffic:#3A3D44;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#0F1012; --ground:#17181B; --surface:#1F2126; --ink:#E8E9EB; --ink-soft:#C9CBD0;
+  --muted:#8B8F98; --muted-soft:#7C818B; --faint:#6A6E77; --hairline:#2E3138; --fill:#2A2D33; --hover:#2A2D33;
+  --on-ink:#17181B; --sel-tint:rgba(91,141,239,.16); --sel-ink:#8FB4F5; --sel-icon:#5B8DEF; --sel-border:rgba(91,141,239,.3);
+  --live:#E86A60; --live-tint:rgba(232,106,96,.16); --live-border:rgba(232,106,96,.35);
+  --danger:#F87171; --on-danger:#17181B; --danger-tint:rgba(248,113,113,.10); --danger-border:rgba(248,113,113,.32);
+  --ring:#5B8DEF; --shadow:rgba(0,0,0,.35); --shadow-strong:rgba(0,0,0,.55); --traffic:#3A3D44;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:disabled{cursor:default}
+:focus-visible{outline:2px solid var(--ring);outline-offset:1px;border-radius:6px}
+svg.icon{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block;flex-shrink:0}
+svg.icon.sm{width:12px;height:12px}
+svg.icon.xs{width:10px;height:10px}
+svg.icon.md{width:16px;height:16px}
+.mono{font-family:var(--font-mono)}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-soft)}
+
+/* ---------- doc page ---------- */
+.page{max-width:1280px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+.kicker{font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.04em;margin:0 0 10px}
+h1.doc{font-family:var(--font-display);font-weight:500;font-size:34px;letter-spacing:-0.02em;line-height:1.05;margin:0 0 12px;text-wrap:balance}
+.lede{max-width:68ch;color:var(--ink-soft);margin:0 0 20px;font-size:14.5px}
+.brief{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px 32px;margin-bottom:24px}
+.brief h2{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-soft);margin:0 0 8px}
+.brief ul,.brief ol{margin:0;padding-left:18px;color:var(--ink-soft);font-size:13px;display:flex;flex-direction:column;gap:3px}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:8px 0 14px}
+.seg{display:inline-flex;background:var(--surface);border:1px solid var(--hairline);border-radius:999px;padding:3px;gap:2px}
+.seg button{padding:6px 14px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg button[aria-selected="true"]{background:var(--ink);color:var(--on-ink)}
+.seg.small button{padding:4px 10px;font-size:11.5px}
+.toolbar .grow{flex:1}
+.vtitle{font-size:13px;color:var(--ink-soft);margin:0 0 12px;max-width:80ch}
+.vtitle b{color:var(--ink)}
+.frame{overflow-x:auto;padding:4px 2px 18px;margin:0 -2px}
+.frame-hint{display:none;font-size:12px;color:var(--muted);margin:0 0 8px}
+@media (max-width:1120px){.frame-hint{display:block}}
+
+/* ---------- app window ---------- */
+.win{position:relative;min-width:1080px;height:760px;background:var(--ground);border-radius:14px;border:1px solid var(--hairline);box-shadow:0 4px 16px var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+.titlebar{height:34px;display:flex;align-items:center;gap:7px;padding:0 16px;flex-shrink:0}
+.traffic{width:11px;height:11px;border-radius:50%;background:var(--traffic)}
+.win-body{flex:1;min-height:0;display:flex}
+.side{width:220px;flex-shrink:0;border-right:1px solid var(--hairline);padding:2px 12px 12px;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:10px;padding:8px 2px 22px}
+.brand-mark{width:24px;height:24px;border-radius:7px;background:var(--ink);display:flex;align-items:center;justify-content:center}
+.brand-mark span{width:6px;height:6px;border-radius:50%;background:var(--ground)}
+.brand-name{font-family:var(--font-display);font-size:19px;font-weight:500;letter-spacing:-0.02em}
+.nav{display:flex;flex-direction:column;gap:1px}
+.nav.foot{margin-top:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:7px;border:1px solid transparent;font-size:13px;color:var(--ink-soft)}
+.nav-item svg{color:var(--muted)}
+.nav-item .k{margin-left:auto;font-family:var(--font-mono);font-size:9.5px;color:var(--faint)}
+.nav-item.active{background:var(--sel-tint);border-color:var(--sel-border);color:var(--sel-ink);font-weight:500}
+.nav-item.active svg{color:var(--sel-icon)}
+.nav-item.active .k{color:var(--sel-ink);opacity:.72}
+
+.content{flex:1;min-width:0;display:grid;grid-template-columns:262px minmax(0,1fr);gap:24px;padding:20px 32px 0}
+.rail{min-width:0;border-right:1px solid var(--hairline);padding-right:20px;overflow-y:auto;padding-bottom:24px;position:relative;scrollbar-width:thin}
+.detail{min-width:0;overflow-y:auto;padding:0 4px 48px 0;scrollbar-width:thin}
+
+.rail-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.row-gap{display:flex;gap:4px;align-items:center}
+.icon-btn{width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.icon-btn:hover{background:var(--hover);color:var(--ink)}
+.icon-btn.bordered{border:1px solid var(--hairline);background:var(--surface)}
+
+.btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;font-weight:600;white-space:nowrap;border:1px solid transparent;transition:background .12s}
+.btn.xs{height:26px;padding:0 10px;font-size:11.5px}
+.btn.sm{height:30px;padding:0 13px;font-size:12.5px}
+.btn-ink{background:var(--ink);color:var(--on-ink)}
+.btn-outline{background:var(--surface);color:var(--ink-soft);border-color:var(--hairline)}
+.btn-outline:hover{background:var(--fill)}
+.btn-ghost{color:var(--muted)}
+.btn-ghost:hover{background:var(--hover);color:var(--ink)}
+.btn-danger{background:var(--danger);color:var(--on-danger)}
+.btn:disabled{opacity:.45}
+.link{color:var(--ink-soft);font-size:12px;font-weight:600;text-decoration:underline;text-decoration-color:var(--hairline);text-underline-offset:3px}
+.link:hover{text-decoration-color:var(--ink-soft)}
+
+/* record block */
+.rec-block{margin-bottom:16px;display:flex;flex-direction:column;gap:8px}
+.rec-row{display:flex;gap:8px;align-items:center}
+.into{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);min-width:0}
+.into span{white-space:nowrap}
+.into b{color:var(--ink);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.into svg{color:var(--muted)}
+.into.strong{background:var(--surface);border:1px solid var(--hairline);border-radius:8px;padding:6px 9px}
+.rec-card{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:12px;margin-bottom:16px;display:flex;flex-direction:column;gap:9px}
+.rec-top{display:flex;align-items:center;gap:8px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--live);animation:pulse 1.4s ease-in-out infinite;flex-shrink:0}
+@keyframes pulse{50%{opacity:.35}}
+.rec-l{font-size:13px;font-weight:600}
+.rec-t{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rec-top .btn{margin-left:auto}
+.meter{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted)}
+.meter i{flex:1;height:4px;border-radius:4px;background:var(--fill);overflow:hidden;position:relative}
+.meter i::after{content:"";position:absolute;inset:0;width:40%;background:var(--live);border-radius:4px;animation:lvl 1.1s ease-in-out infinite alternate}
+.meter:nth-child(3) i::after{animation-duration:.8s}
+@keyframes lvl{from{width:18%}to{width:70%}}
+
+/* section heads + folder rows */
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin:6px 0 6px;min-height:26px}
+.sec-head .count{margin-left:6px}
+.count{font-family:var(--font-mono);font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums}
+.frow{position:relative;display:flex;align-items:center;gap:2px;border-radius:9px;border:1px solid transparent;padding:2px 2px 2px 0;min-height:34px}
+.frow:hover{background:color-mix(in srgb, var(--surface) 60%, transparent)}
+.frow.sel{background:var(--surface);border-color:var(--hairline)}
+.frow.drop{border:1px dashed var(--muted);background:var(--hover)}
+.chev{width:22px;height:26px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);border-radius:6px;flex-shrink:0}
+.chev:hover{color:var(--ink)}
+.fname{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left;padding:5px 2px;font-size:13px;font-weight:600;color:var(--ink)}
+.fname svg{color:var(--muted)}
+.fname .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frow .count{padding:0 4px}
+.frow .more{opacity:0}
+.frow:hover .more,.frow.sel .more,.frow.menu-open .more,.frow .more:focus-visible{opacity:1}
+.fchildren{margin:2px 0 6px 14px;padding-left:8px;border-left:1px solid var(--hairline);display:flex;flex-direction:column;gap:2px}
+.empty-mini{font-size:11.5px;color:var(--muted);padding:6px 10px}
+.rail-hint{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.45}
+
+/* meeting rows (mirror index.tsx) */
+.mwrap{position:relative}
+.mrow{display:flex;flex-direction:column;gap:4px;padding:9px 11px;border-radius:9px;border:1px solid transparent;cursor:pointer;min-width:0;user-select:none}
+.mrow:hover{background:color-mix(in srgb, var(--surface) 60%, transparent)}
+.mrow.sel{background:var(--surface);border-color:var(--hairline)}
+.mrow.dragging{opacity:.4}
+.mrow .mt{font-size:12.5px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow .mm{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.mrow .md{font-size:10px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .ftag{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--muted);min-width:0}
+.mrow .ftag span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow.checkable{flex-direction:row;align-items:flex-start;gap:9px}
+.mrow.checkable .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.cbox{width:15px;height:15px;border-radius:4px;border:1.5px solid var(--muted);display:inline-flex;align-items:center;justify-content:center;margin-top:1px;flex-shrink:0;color:var(--on-ink)}
+.cbox.on{background:var(--ink);border-color:var(--ink)}
+.list{display:flex;flex-direction:column;gap:2px}
+
+.badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;padding:0 6px;height:16px;border-radius:5px;border:1px solid var(--hairline);color:var(--muted);background:var(--surface);white-space:nowrap;flex-shrink:0}
+.badge.live{color:var(--live);border-color:var(--live-border);background:var(--live-tint)}
+.badge.live .dot{width:5px;height:5px;border-radius:50%;background:var(--live);animation:pulse 1.4s infinite}
+
+/* chips filter (variant B) */
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;scrollbar-width:thin}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;border:1px solid var(--hairline);background:transparent;font-size:12px;font-weight:600;color:var(--ink-soft);white-space:nowrap;flex-shrink:0}
+.chip .count{font-size:9.5px}
+.chip:hover{background:var(--surface)}
+.chip.on{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+.chip.on .count{color:var(--on-ink);opacity:.7}
+.chip.add{border-style:dashed;color:var(--muted)}
+.chip.drop{border:1px dashed var(--muted);background:var(--hover)}
+.list-head{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--muted);margin:2px 0 6px;padding:0 2px}
+.bulk{position:sticky;bottom:0;margin-top:10px;background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:8px 8px 8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;box-shadow:0 6px 20px var(--shadow)}
+
+/* drill (variant C) */
+.crow{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:9px;border:1px solid transparent;text-align:left;font-size:13px;font-weight:600;color:var(--ink)}
+.crow:hover{background:color-mix(in srgb, var(--surface) 60%, transparent)}
+.crow svg{color:var(--muted)}
+.crow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crow.new{color:var(--muted);font-weight:500}
+.back{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--muted);padding:4px 6px 4px 2px;border-radius:6px;margin-bottom:6px}
+.back:hover{color:var(--ink)}
+.drill-head{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:10px 6px 10px 10px;margin-bottom:12px}
+.drill-head.sel{border-color:var(--ink-soft)}
+.fbox{width:30px;height:30px;border-radius:8px;background:var(--fill);display:flex;align-items:center;justify-content:center;color:var(--ink-soft);flex-shrink:0}
+.drill-head .nm{flex:1;min-width:0;text-align:left}
+.drill-head .nm b{display:block;font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drill-head .nm span{font-size:11px;color:var(--muted)}
+
+/* inline inputs */
+.inline-edit{display:flex;flex-direction:column;gap:4px;padding:4px 0 6px;flex:1;min-width:0}
+.inline-edit .r{display:flex;gap:4px;align-items:center}
+.inp{flex:1;min-width:0;height:28px;border:1px solid var(--hairline);border-radius:7px;padding:0 9px;background:var(--surface);color:var(--ink);font:inherit;font-size:12.5px}
+.inp:focus{outline:2px solid var(--ring);outline-offset:-1px}
+textarea.inp{height:auto;min-height:64px;padding:8px 10px;resize:vertical;line-height:1.5}
+.err{font-size:11px;color:var(--danger)}
+
+/* menus */
+.anchor{position:relative;display:inline-flex}
+.menu{position:absolute;top:calc(100% + 4px);left:0;z-index:40;min-width:220px;max-width:280px;background:var(--surface);border:1px solid var(--hairline);border-radius:10px;box-shadow:0 10px 30px var(--shadow-strong);padding:4px;display:flex;flex-direction:column;text-align:left}
+.menu.right{left:auto;right:0}
+.menu.under-row{top:100%;left:12px}
+.menu-label{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-soft);padding:6px 8px 4px}
+.mi{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;font-size:12.5px;color:var(--ink);text-align:left;width:100%}
+.mi:hover,.mi:focus-visible{background:var(--hover)}
+.mi svg{color:var(--muted)}
+.mi .lbl{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.mi .lbl span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi small{font-size:10.5px;color:var(--muted)}
+.mi.danger,.mi.danger svg{color:var(--danger)}
+.mi.blocked{color:var(--muted)}
+.mi.blocked svg{color:var(--muted)}
+.mi .chk{color:var(--ink)}
+.sep{height:1px;background:var(--hairline);margin:4px 2px}
+.msearch{display:flex;align-items:center;gap:6px;border:1px solid var(--hairline);border-radius:7px;padding:0 8px;margin:4px 4px 6px;color:var(--muted)}
+.msearch input{flex:1;min-width:0;height:28px;border:0;background:transparent;color:var(--ink);font:inherit;font-size:12.5px;outline:none}
+.mnote{font-size:11.5px;color:var(--muted);padding:6px 8px}
+
+/* detail */
+.crumbs{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
+.crumbs button{font-weight:600;color:var(--muted)}
+.crumbs button:hover{color:var(--ink)}
+.crumbs .cur{color:var(--ink-soft);font-weight:600}
+.head{display:flex;align-items:flex-start;gap:10px;margin-bottom:18px}
+.grow{flex:1;min-width:0}
+.title-row{display:flex;align-items:center;gap:6px;min-width:0}
+.title-row h2{font-size:17px;font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{font-size:10.5px;color:var(--faint);margin-top:3px;font-variant-numeric:tabular-nums}
+.fchip{display:inline-flex;align-items:center;gap:6px;margin-top:8px;height:24px;padding:0 9px;border-radius:999px;border:1px solid var(--hairline);background:var(--surface);font-size:11.5px;font-weight:600;color:var(--ink-soft)}
+.fchip:hover{background:var(--fill)}
+.fchip svg{color:var(--muted)}
+.fchip.none{border-style:dashed;color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:18px}
+.actions .sp{flex:1}
+.info-row{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--hairline);background:var(--surface);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--ink-soft);margin-bottom:20px;line-height:1.5}
+.info-row svg{color:var(--muted);margin-top:2px}
+.info-row.live{border-color:var(--live-border);background:var(--live-tint);color:var(--ink)}
+.info-row.live .live-dot{margin-top:4px}
+.tabs{display:flex;gap:14px;border-bottom:1px solid var(--hairline);margin-bottom:18px}
+.tab{font-size:12.5px;font-weight:600;padding:8px 2px 10px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab[aria-selected="true"]{color:var(--ink);border-color:var(--ink)}
+.transcript{display:flex;flex-direction:column;gap:15px}
+.segm{display:flex;gap:14px;align-items:flex-start}
+.segm .who{width:64px;flex-shrink:0;text-align:right}
+.segm p{flex:1;margin:0;font-size:13.5px;line-height:1.6;color:var(--ink-soft)}
+.segm .ts{font-family:var(--font-mono);font-size:9px;color:var(--faint);padding-top:3px}
+.spk{display:inline-flex;font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2.5px 7px;border-radius:5px;background:var(--sel-tint);color:var(--sel-ink);font-weight:500}
+.spk.me{background:transparent;color:var(--ink);padding:2.5px 0;font-weight:600}
+.summary{border:1px solid var(--hairline);border-radius:10px;padding:16px 20px;background:var(--surface)}
+.summary h4{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 6px;font-weight:700}
+.summary h4:not(:first-child){margin-top:14px}
+.summary ul{margin:0;padding-left:18px;font-size:13px;color:var(--ink-soft)}
+.empty-detail{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:60%;color:var(--muted);font-size:13px;text-align:center}
+
+/* folder panel */
+.fp-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px}
+.fp-icon{width:40px;height:40px;border-radius:10px;background:var(--surface);border:1px solid var(--hairline);display:flex;align-items:center;justify-content:center;color:var(--ink-soft);flex-shrink:0}
+.desc{font-size:13px;color:var(--ink-soft);margin:0 0 18px;max-width:62ch;line-height:1.55}
+.desc .ph{color:var(--muted)}
+.desc-edit{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;max-width:62ch}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:22px}
+.fact{border:1px solid var(--hairline);border-radius:10px;padding:12px 14px;background:var(--surface);min-width:0}
+.fact .fn{font-family:var(--font-display);font-size:22px;font-weight:500;letter-spacing:-0.01em;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fact .fl{font-size:11px;color:var(--muted);margin-top:3px}
+.ftable{border:1px solid var(--hairline);border-radius:10px;background:var(--surface);overflow:hidden;margin:8px 0 18px}
+.trow{display:grid;grid-template-columns:minmax(0,1fr) 92px 70px 100px;gap:12px;align-items:center;padding:10px 14px;border-top:1px solid var(--hairline);font-size:12.5px;cursor:pointer}
+.trow:first-child{border-top:0}
+.trow:hover{background:var(--ground)}
+.trow .t{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow .mono{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.trow .badge{justify-self:end}
+.fempty{border:1px dashed var(--hairline);border-radius:10px;padding:22px;text-align:center;color:var(--muted);font-size:12.5px;margin:8px 0 18px}
+.notice{border-radius:10px;padding:12px 14px;margin-bottom:18px;display:flex;gap:10px;font-size:12.5px;border:1px solid var(--hairline);background:var(--surface)}
+.notice.blocked{border-color:var(--danger-border);background:var(--danger-tint)}
+.notice.blocked > svg{color:var(--danger);margin-top:2px}
+.notice b{display:block;font-size:13px;margin-bottom:2px}
+.notice p{margin:0 0 10px;color:var(--ink-soft);max-width:60ch}
+.notice .r{display:flex;gap:8px;flex-wrap:wrap}
+
+/* toast */
+.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--on-ink);border-radius:999px;padding:8px 10px 8px 16px;font-size:12.5px;display:flex;align-items:center;gap:12px;box-shadow:0 10px 30px var(--shadow-strong);z-index:60;max-width:80%}
+.toast .link{color:var(--on-ink);text-decoration-color:currentColor}
+.toast .x{opacity:.7;display:inline-flex;padding:4px}
+
+/* notes */
+.notes{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:28px;margin-top:22px}
+@media (max-width:900px){.notes{grid-template-columns:minmax(0,1fr)}}
+.notes h3{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-soft);margin:0 0 10px}
+.notes ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink-soft);max-width:68ch}
+.notes .open{margin-top:14px;font-size:13px;color:var(--ink-soft);border:1px solid var(--hairline);background:var(--surface);border-radius:10px;padding:10px 14px}
+.notes .open b{color:var(--ink)}
+.cmp-wrap{overflow-x:auto;border:1px solid var(--hairline);border-radius:10px;background:var(--surface)}
+table.cmp{border-collapse:collapse;width:100%;min-width:560px;font-size:12.5px}
+table.cmp th,table.cmp td{text-align:left;padding:8px 12px;border-top:1px solid var(--hairline);vertical-align:top}
+table.cmp thead th{border-top:0;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-soft)}
+table.cmp td:first-child{color:var(--muted);white-space:nowrap}
+table.cmp td.on{color:var(--ink);font-weight:600}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<svg style="display:none" aria-hidden="true"><defs>
+  <symbol id="i-book-open" viewBox="0 0 24 24"><path d="M12 6.2c-2.2-1.6-5.3-2-8-1v13.6c2.7-1 5.8-.6 8 1c2.2-1.6 5.3-2 8-1V5.2c-2.7-1-5.8-.6-8 1z"/><line x1="12" y1="6.2" x2="12" y2="19.8"/></symbol>
+  <symbol id="i-audio-lines" viewBox="0 0 24 24"><line x1="4" y1="9" x2="4" y2="15"/><line x1="8.5" y1="6" x2="8.5" y2="18"/><line x1="13" y1="4" x2="13" y2="20"/><line x1="17.5" y1="7" x2="17.5" y2="17"/><line x1="21" y1="10" x2="21" y2="14"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1.6"/><line x1="9" y1="3" x2="9" y2="21"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13.5 2.5L5 14h6l-1 7.5L18 10h-6l1.5-7.5z"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1.6"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><circle cx="12" cy="12" r="7.6" stroke-dasharray="1.6 3"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.7 2.2c-.9.5-1.4 1-1.4 2.3"/><line x1="12" y1="16.6" x2="12" y2="16.7"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="10.5" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="19.5" x2="12" y2="22"/><line x1="8.5" y1="22" x2="15.5" y2="22"/></symbol>
+  <symbol id="i-square" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="8.3" cy="8" r="3"/><path d="M2.7 19.8c0-3.2 2.5-5.8 5.6-5.8s5.6 2.6 5.6 5.8"/><circle cx="17" cy="8.6" r="2.4"/><path d="M14.6 14.7c.9-.6 2-1 3.2-1c2.6 0 4.7 2 5 4.6"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M11.3 3l1.4 5.6L18 10l-5.3 1.4L11.3 17l-1.4-5.6L4.6 10l5.3-1.4z"/><path d="M18.2 3.5l.5 2 2 .5-2 .5-.5 2-.5-2-2-.5 2-.5z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.3A1.8 1.8 0 0 1 4.8 5.5h4.2l2 2h8.2A1.8 1.8 0 0 1 21 9.3v7.4A1.8 1.8 0 0 1 19.2 18.5H4.8A1.8 1.8 0 0 1 3 16.7z"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13.5l2.2-7.2A1.8 1.8 0 0 1 7.9 5h8.2a1.8 1.8 0 0 1 1.7 1.3l2.2 7.2v4.7a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 18.2z"/><path d="M4 13.5h4.5l1.2 2.2h4.6l1.2-2.2H20"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><line x1="4.5" y1="7" x2="19.5" y2="7"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M6.3 7l.9 12.4a2 2 0 0 0 2 1.85h5.6a2 2 0 0 0 2-1.85L17.7 7"/></symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24"><polyline points="15 5 8 12 15 19"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><polyline points="9 5 16 12 9 19"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><polyline points="5 9 12 16 19 9"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l.9-3.9L15.6 5.4a1.9 1.9 0 0 1 2.7 0l1.3 1.3a1.9 1.9 0 0 1 0 2.7L9 20.1z"/><line x1="13.8" y1="7.2" x2="17.8" y2="11.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="5 13 9.5 17.5 19 6.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><line x1="12" y1="14.5" x2="12" y2="3"/><polyline points="7.2 7.7 12 2.9 16.8 7.7"/><path d="M4.5 17v1.8A1.8 1.8 0 0 0 6.3 20.6h11.4a1.8 1.8 0 0 0 1.8-1.8V17"/></symbol>
+  <symbol id="i-monitor-speaker" viewBox="0 0 24 24"><rect x="2.5" y="5" width="11" height="8" rx="1.2"/><line x1="6" y1="18" x2="10" y2="18"/><line x1="8" y1="13" x2="8" y2="18"/><rect x="16" y="6" width="5.5" height="11" rx="1.4"/><circle cx="18.7" cy="10" r="1.1"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><polyline points="3.3 6.2 4.6 7.5 7 5"/><line x1="10.3" y1="6.2" x2="20.5" y2="6.2"/><polyline points="3.3 12.5 4.6 13.8 7 11.3"/><line x1="10.3" y1="12.5" x2="20.5" y2="12.5"/><line x1="10.3" y1="18.8" x2="20.5" y2="18.8"/></symbol>
+</defs></svg>
+
+<main class="page">
+  <p class="kicker">Openstyle · issue #230 · design prototypes · sample data only</p>
+  <h1 class="doc">Meeting folders</h1>
+  <p class="lede">This page shows three designs for meeting folders on the Meetings page. Each design is a clickable prototype. The layout is the current layout: app menu, then the meeting rail, then the detail area. The designs differ in where the folder controls are and how the rail shows folders.</p>
+
+  <div class="brief">
+    <div>
+      <h2>Rules in all variants</h2>
+      <ul>
+        <li>A meeting is in zero folders or in one folder.</li>
+        <li>Meetings with no folder show in the "Unfiled" group.</li>
+        <li>When a folder is selected, Start recording puts the new meeting in that folder. The rail shows the target folder.</li>
+        <li>A click on a folder opens the folder panel: name, description, facts and meetings.</li>
+        <li>You cannot delete a folder that holds meetings. Move or remove the meetings first.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Try these steps</h2>
+      <ol>
+        <li>Click a folder. Read the folder panel.</li>
+        <li>Keep the folder selected. Click Start recording, then click Stop.</li>
+        <li>Open a meeting. Move it to a different folder.</li>
+        <li>Try to delete a folder that holds meetings.</li>
+        <li>Make a new folder. Rename it. Then delete it.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg" role="tablist" aria-label="Variant" id="vtabs">
+      <button role="tab" id="tab-a" data-v="a" aria-selected="true">A · Folder tree</button>
+      <button role="tab" id="tab-b" data-v="b" aria-selected="false">B · Folder filter</button>
+      <button role="tab" id="tab-c" data-v="c" aria-selected="false">C · Folder drill-in</button>
+    </div>
+    <span class="grow"></span>
+    <div class="seg small" role="group" aria-label="Theme" id="themes">
+      <button id="th-system" data-th="system" aria-selected="true">System</button>
+      <button id="th-light" data-th="light" aria-selected="false">Light</button>
+      <button id="th-dark" data-th="dark" aria-selected="false">Dark</button>
+    </div>
+    <button class="btn btn-outline xs" id="reset">Reset sample data</button>
+  </div>
+  <p class="vtitle" id="vtitle"></p>
+  <p class="frame-hint">The window is 1080 px wide. On a small screen, scroll the window sideways.</p>
+  <div class="frame"><div id="app"></div></div>
+
+  <section class="notes">
+    <div>
+      <h3 id="notes-h">Trade-offs</h3>
+      <ul id="notes"></ul>
+      <div class="open"><b>Open point for all variants.</b> When a meeting is open (no folder selected), the prototypes record into the folder of that meeting. Variant C records into the folder that is open in the rail. Decide which rule is correct.</div>
+    </div>
+    <div>
+      <h3>Where each control is</h3>
+      <div class="cmp-wrap">
+        <table class="cmp" id="cmp">
+          <thead><tr><th>Task</th><th>A · Tree</th><th>B · Filter</th><th>C · Drill-in</th></tr></thead>
+          <tbody>
+            <tr><td>Add folder</td><td>"+" next to Folders</td><td>"+ New" chip</td><td>"New folder" row, or in the Move picker</td></tr>
+            <tr><td>Rename</td><td>"…" menu on the row, or the folder panel</td><td>Folder panel</td><td>"…" on the open folder, or the folder panel</td></tr>
+            <tr><td>Delete</td><td>"…" menu, or the folder panel</td><td>Folder panel</td><td>"…" on the open folder, or the folder panel</td></tr>
+            <tr><td>Move one meeting</td><td>Drag to a folder, right-click menu, or folder chip in the meeting header</td><td>"Move to folder" button in the meeting actions</td><td>"Move…" picker with search, in the meeting breadcrumb</td></tr>
+            <tr><td>Move many</td><td>Not in this variant</td><td>"Select", then "Move to…"</td><td>Not in this variant</td></tr>
+            <tr><td>See folder meetings</td><td>Expand the folder in the rail</td><td>Click the folder chip (filter)</td><td>Open the folder (rail goes one level down)</td></tr>
+            <tr><td>Record target</td><td>Line under Start recording</td><td>Line under Start recording</td><td>Open folder card above Start recording</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+"use strict";
+var MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+var VARIANTS={
+  a:{title:"<b>A · Folder tree.</b> The rail shows folders as groups that expand. Hover a folder to see \"…\". Drag a meeting onto a folder to move it. Right-click a meeting for a menu.",
+     notes:[
+      "The rail shows all folders and their meetings in one tree. The user sees the full structure at one time.",
+      "Drag and drop moves a meeting fast. Drag and drop is hard to find, so the right-click menu and the folder chip in the meeting header do the same task.",
+      "Hover menus keep the rail clean. A new user can miss them, because they show only on hover.",
+      "A folder with many meetings pushes the next folders down. Collapse helps, but the rail can become long.",
+      "Drag and drop needs more work to build and to test than a menu."
+     ]},
+  b:{title:"<b>B · Folder filter.</b> A chip row above the list sets the folder filter. The list stays flat, as today. All folder controls are in the folder panel. Use \"Move to folder\" in the meeting actions, or \"Select\" to move many meetings.",
+     notes:[
+      "The rail stays one flat list, as today. This is the smallest change to the current code.",
+      "The filter shows one folder at a time. The user cannot see the meetings of two folders together.",
+      "Each control has one place: the folder panel or the \"Move to folder\" button. This is easy to learn.",
+      "Multi-select moves many meetings in one step. This helps to sort old meetings into new folders.",
+      "With many folders, the chip row scrolls sideways and does not show all folders at one time."
+     ]},
+  c:{title:"<b>C · Folder drill-in.</b> The rail has two levels. The top level shows folders and unfiled meetings. Click a folder to go into it. The open folder card stays above Start recording, so the record target is always clear.",
+     notes:[
+      "The open folder card is directly above Start recording. The record target is always clear.",
+      "Each rail level is short, also with many folders and many meetings.",
+      "To see a different folder, the user goes back one level first. This is one more click than in A.",
+      "The Move picker has a search field and a \"New folder\" item. The user can make a folder and move a meeting into it in one step.",
+      "There is no drag and drop. This is less work to build, but there is no fast mouse move."
+     ]}
+};
+var LINES={
+  m1:[["Me","Can we keep the tall cabinet next to the fridge?",12],["Them 1","Yes. Then the corner unit gets a pull-out shelf.",31],["Me","Good. Send me the new drawing by Friday.",58]],
+  m2:[["Them 1","The quartz sample is lighter than the photo.",9],["Me","I like the darker one with the grey vein.",27],["Them 1","I will order a full slab sample this week.",49]],
+  m3:[["Them 1","The drain must move twenty centimetres to the left.",14],["Me","Does that change the date for the floor?",36]],
+  m4:[["Them 1","Welcome. Today we set the goals for the first month.",5],["Me","Our first goal is to import the old customer list.",22],["Them 2","We can do the import on Tuesday.",44]],
+  m5:[["Me","The import stopped at row four thousand.",11],["Them 1","The date column has two formats. We will fix it.",29]],
+  m6:[["Them 1","This screen controls the user roles.",8],["Me","Can an admin give a role to a group?",25],["Them 1","Yes, from the Groups tab.",40]],
+  m7:[["Them 1","The ending was too fast for me.",10],["Me","I agree. The middle part was the best.",24],["Them 2","Next month we read something shorter.",51]],
+  m8:[["Me","I propose one classic and two new books.",7],["Them 1","Then we vote by Sunday.",21]],
+  m9:[["Them 1","Your next appointment is on the third, at nine.",6],["Me","That time is good for me.",15]],
+  m10:[["Them 1","The parcel came to my door by mistake.",4],["Me","Thanks. I will get it tonight.",12]]
+};
+function seed(){
+  return {
+    folders:[
+      {id:"f1",name:"Kitchen renovation",desc:"Calls with the designer and the builders about the new kitchen.",created:"2026-09-28T09:00"},
+      {id:"f2",name:"Acme onboarding",desc:"Weekly check-ins with the Acme team during the setup.",created:"2026-09-25T09:00"},
+      {id:"f3",name:"Book club",desc:"",created:"2026-09-01T09:00"}
+    ],
+    meetings:[
+      {id:"m1",title:"Cabinet layout review",folder:"f1",at:"2026-10-18T14:30",dur:2538,status:"summarized"},
+      {id:"m2",title:"Countertop samples with the designer",folder:"f1",at:"2026-10-11T10:00",dur:1865,status:"transcribed"},
+      {id:"m3",title:"Plumber site visit",folder:"f1",at:"2026-10-03T08:15",dur:1120,status:"recorded"},
+      {id:"m4",title:"Acme kickoff",folder:"f2",at:"2026-10-16T15:00",dur:3312,status:"summarized"},
+      {id:"m5",title:"Acme data import check-in",folder:"f2",at:"2026-10-09T15:00",dur:1668,status:"transcribed"},
+      {id:"m6",title:"Acme admin training",folder:"f2",at:"2026-09-30T13:00",dur:3663,status:"summarized"},
+      {id:"m7",title:"October book: discussion",folder:"f3",at:"2026-10-14T19:30",dur:4460,status:"summarized"},
+      {id:"m8",title:"Pick the next three books",folder:"f3",at:"2026-09-12T19:30",dur:2331,status:"transcribed"},
+      {id:"m9",title:"Dentist appointment call",folder:null,at:"2026-10-19T11:10",dur:372,status:"recorded"},
+      {id:"m10",title:"Quick sync with a neighbor",folder:null,at:"2026-10-17T18:40",dur:750,status:"transcribed"}
+    ]
+  };
+}
+function makeState(v){
+  var s=seed();
+  return {v:v,folders:s.folders,meetings:s.meetings,sel:{type:"meeting",id:"m1"},
+    expanded:{f1:true,none:true},menu:null,creating:false,editing:null,err:"",notice:null,
+    rec:null,toast:null,undo:null,tab:"transcript",filter:null,selectMode:false,checked:{},
+    drill:v==="c"?"f1":null,pq:"",pnew:false,focus:null,seq:1};
+}
+var S={a:makeState("a"),b:makeState("b"),c:makeState("c")};
+var cur="a";
+var root=document.getElementById("app");
+
+/* ---------- helpers ---------- */
+function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function icon(n,c){return '<svg class="icon '+(c||"")+'" aria-hidden="true"><use href="#i-'+n+'"/></svg>';}
+function pad(n){return (n<10?"0":"")+n;}
+function dt(at){return new Date(at);}
+function fShort(at){var d=dt(at);return MONTHS[d.getMonth()]+" "+d.getDate();}
+function fDay(at){return fShort(at)+", "+dt(at).getFullYear();}
+function fLong(at){var d=dt(at),h=d.getHours(),ap=h>=12?"PM":"AM";h=h%12||12;return fDay(at)+", "+h+":"+pad(d.getMinutes())+" "+ap;}
+function clock(s){s=Math.max(0,Math.round(s));var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?h+":"+pad(m)+":"+pad(x):m+":"+pad(x);}
+function total(s){var h=Math.floor(s/3600),m=Math.round(s%3600/60);return h?h+" h "+m+" min":m+" min";}
+function folder(st,id){for(var i=0;i<st.folders.length;i++){if(st.folders[i].id===id)return st.folders[i];}return null;}
+function meeting(st,id){for(var i=0;i<st.meetings.length;i++){if(st.meetings[i].id===id)return st.meetings[i];}return null;}
+function byDate(a,b){return a.at<b.at?1:a.at>b.at?-1:0;}
+function inFolder(st,fid){return st.meetings.filter(function(m){return m.folder===fid;}).sort(byDate);}
+function sortedFolders(st){return st.folders.slice().sort(function(a,b){return a.name.localeCompare(b.name);});}
+function fname(st,fid){var f=fid?folder(st,fid):null;return f?f.name:"Unfiled";}
+function plural(n,w){return n+" "+w+(n===1?"":"s");}
+function elapsed(st){return st.rec?(Date.now()-st.rec.start)/1000:0;}
+function target(st){
+  if(st.v==="c")return st.drill;
+  if(st.v==="b"&&st.filter)return st.filter==="none"?null:st.filter;
+  if(st.sel.type==="folder")return st.sel.id;
+  if(st.sel.type==="meeting"){var m=meeting(st,st.sel.id);return m?m.folder:null;}
+  return null;
+}
+function badge(status){
+  var label={recording:"Recording",recorded:"Recorded",transcribed:"Transcribed",summarized:"Summarized"}[status]||status;
+  if(status==="recording")return '<span class="badge live"><span class="dot"></span>'+label+'</span>';
+  return '<span class="badge">'+label+'</span>';
+}
+function validName(st,name,except){
+  var t=name.trim();
+  if(!t)return "Type a folder name.";
+  if(t.length>60)return "Use 60 characters or fewer.";
+  for(var i=0;i<st.folders.length;i++){var f=st.folders[i];if(f.id!==except&&f.name.toLowerCase()===t.toLowerCase())return 'A folder with the name "'+t+'" exists. Use a different name.';}
+  return "";
+}
+function toast(st,text,undo){
+  var id=++st.seq;st.toast={text:text,undo:!!undo,id:id};
+  setTimeout(function(){if(st.toast&&st.toast.id===id){st.toast=null;if(S[cur]===st)render();}},6000);
+}
+
+/* ---------- actions ---------- */
+function createFolder(st,name){
+  var e=validName(st,name,null);if(e){st.err=e;return null;}
+  var id="f"+(++st.seq)+"x";
+  st.folders.push({id:id,name:name.trim(),desc:"",created:"2026-10-20T10:05"});
+  st.err="";st.creating=false;st.pnew=false;
+  return id;
+}
+function moveMeetings(st,ids,fid){
+  st.undo=ids.map(function(id){return [id,meeting(st,id).folder];});
+  ids.forEach(function(id){meeting(st,id).folder=fid||null;});
+  if(fid)st.expanded[fid]=true;else st.expanded.none=true;
+  st.menu=null;st.pq="";st.pnew=false;
+  if(st.notice&&st.notice.kind==="blocked"&&inFolder(st,st.notice.id).length===0)st.notice=null;
+  var m=meeting(st,ids[0]);
+  if(ids.length>1)toast(st,"Moved "+ids.length+" meetings to "+fname(st,fid)+".",true);
+  else if(!fid)toast(st,'Removed "'+m.title+'" from its folder. It is now in Unfiled.',true);
+  else toast(st,'Moved "'+m.title+'" to '+fname(st,fid)+".",true);
+}
+function askDelete(st,fid){
+  st.menu=null;st.sel={type:"folder",id:fid};
+  if(st.v==="b")st.filter=fid;
+  if(st.v==="c")st.drill=fid;
+  st.notice={kind:inFolder(st,fid).length?"blocked":"confirm",id:fid};
+}
+function doDelete(st,fid){
+  var f=folder(st,fid);
+  st.folders=st.folders.filter(function(x){return x.id!==fid;});
+  delete st.expanded[fid];
+  if(st.filter===fid)st.filter=null;
+  if(st.drill===fid)st.drill=null;
+  st.notice=null;st.sel={type:null,id:null};
+  toast(st,'Deleted the folder "'+f.name+'".',false);
+}
+
+/* ---------- shared pieces ---------- */
+function appNav(){
+  var items=[["book-open","Today","1"],["audio-lines","Meetings","2",1],["upload","Import","3"],["book","Vocabulary","4"],["zap","Dictionary","5"],["file-text","Tone","6"]];
+  var h='<aside class="side"><div class="brand"><div class="brand-mark"><span></span></div><span class="brand-name">Openstyle</span></div><nav class="nav">';
+  items.forEach(function(it){h+='<div class="nav-item'+(it[3]?" active":"")+'">'+icon(it[0])+'<span>'+it[1]+'</span><span class="k">⌘'+it[2]+'</span></div>';});
+  h+='</nav><nav class="nav foot"><div class="nav-item">'+icon("settings")+'<span>Settings</span><span class="k">⌘7</span></div><div class="nav-item">'+icon("help")+'<span>Help</span><span class="k">⌘8</span></div></nav></aside>';
+  return h;
+}
+function railHead(){
+  return '<div class="rail-head"><span class="eyebrow">Meetings</span><div class="row-gap">'+
+    '<button class="icon-btn" data-a="noop" title="Speaker labels" aria-label="Speaker labels">'+icon("users")+'</button>'+
+    '<button class="icon-btn" data-a="noop" title="Enhance" aria-label="Enhance">'+icon("sparkles")+'</button>'+
+    '<button class="icon-btn" data-a="noop" title="Context words" aria-label="Context words">'+icon("book")+'</button></div></div>';
+}
+function recordBlock(st){
+  var tf=target(st),name=fname(st,tf);
+  if(st.rec){
+    var m=meeting(st,st.rec.id),rn=fname(st,m?m.folder:null);
+    return '<div class="rec-card"><div class="rec-top"><span class="live-dot"></span><span class="rec-l">Recording</span><span class="mono rec-t" data-timer>'+clock(elapsed(st))+'</span>'+
+      '<button class="btn btn-outline xs" data-a="rec-stop">'+icon("square","sm")+'Stop</button></div>'+
+      '<div class="meter">'+icon("mic","sm")+'Mic<i></i></div><div class="meter">'+icon("monitor-speaker","sm")+'System<i></i></div>'+
+      '<div class="into">'+icon(m&&m.folder?"folder":"inbox","sm")+'<span>Recording into</span><b>'+esc(rn)+'</b></div></div>';
+  }
+  var into='<div class="into'+(st.v==="c"?"":" strong")+'">'+icon(tf?"folder":"inbox","sm")+'<span>Records into</span><b>'+esc(name)+'</b></div>';
+  return '<div class="rec-block"><div class="rec-row"><button class="btn btn-ink xs" data-a="rec-start">'+icon("mic","sm")+'Start recording</button>'+
+    '<button class="btn btn-outline xs" data-a="noop">'+icon("upload","sm")+'Import…</button></div>'+(st.v==="c"&&st.drill?"":into)+'</div>';
+}
+function meetingRow(st,m,o){
+  o=o||{};
+  var sel=st.sel.type==="meeting"&&st.sel.id===m.id;
+  var check=o.check,on=!!st.checked[m.id];
+  var body='<span class="mt">'+esc(m.title)+'</span>'+
+    (o.tag&&m.folder?'<span class="ftag">'+icon("folder","xs")+'<span>'+esc(fname(st,m.folder))+'</span></span>':"")+
+    '<span class="mm"><span class="mono md" '+(m.status==="recording"?"data-timer-row":"")+'>'+fShort(m.at)+" · "+clock(m.status==="recording"?elapsed(st):m.dur)+'</span>'+badge(m.status)+'</span>';
+  var attrs=' role="button" tabindex="0" data-a="'+(check?"check":"open-meeting")+'" data-id="'+m.id+'"'+(o.drag?' draggable="true" data-drag="'+m.id+'"':"")+(o.ctx?' data-ctx="'+m.id+'"':"");
+  var h='<div class="mwrap"><div class="mrow'+(sel&&!check?" sel":"")+(check?" checkable":"")+'"'+attrs+'>'+
+    (check?'<span class="cbox'+(on?" on":"")+'">'+(on?icon("check","xs"):"")+'</span><span class="body">'+body+'</span>':body)+'</div>';
+  if(st.menu&&st.menu.kind==="ctx"&&st.menu.id===m.id)h+=ctxMenu(st,m);
+  return h+'</div>';
+}
+function ctxMenu(st,m){
+  var h='<div class="menu under-row" role="menu"><button class="mi" data-a="open-meeting" data-id="'+m.id+'">'+icon("file-text")+'<span class="lbl"><span>Open</span></span></button><div class="sep"></div><div class="menu-label">Move to folder</div>';
+  sortedFolders(st).forEach(function(f){
+    h+='<button class="mi" data-a="move-to" data-ids="'+m.id+'" data-f="'+f.id+'">'+icon("folder")+'<span class="lbl"><span>'+esc(f.name)+'</span></span>'+(m.folder===f.id?icon("check","sm chk"):"")+'</button>';
+  });
+  if(m.folder)h+='<div class="sep"></div><button class="mi" data-a="move-to" data-ids="'+m.id+'" data-f="">'+icon("inbox")+'<span class="lbl"><span>Remove from folder</span></span></button>';
+  return h+'</div>';
+}
+function moveMenu(st,ids,align){
+  var single=ids.length===1?meeting(st,ids[0]):null;
+  var curF=single?single.folder:undefined;
+  var h='<div class="menu '+(align||"")+'" role="menu" data-keep><div class="menu-label">'+(ids.length>1?"Move "+ids.length+" meetings to":"Move to folder")+'</div>';
+  var list=sortedFolders(st);
+  if(st.v==="c"){
+    h+='<div class="msearch">'+icon("search","sm")+'<input id="picker-q" data-input="picker-q" placeholder="Find or make a folder" value="'+esc(st.pq)+'" autocomplete="off" aria-label="Find a folder"></div>';
+    var q=st.pq.trim().toLowerCase();
+    if(q)list=list.filter(function(f){return f.name.toLowerCase().indexOf(q)>=0;});
+  }
+  list.forEach(function(f){
+    h+='<button class="mi" data-a="move-to" data-ids="'+ids.join(",")+'" data-f="'+f.id+'">'+icon("folder")+'<span class="lbl"><span>'+esc(f.name)+'</span><small>'+plural(inFolder(st,f.id).length,"meeting")+'</small></span>'+(curF===f.id?icon("check","sm chk"):"")+'</button>';
+  });
+  if(st.v==="c"&&st.pq.trim()&&!list.length)h+='<div class="mnote">No folder has this name. Press Enter to make the folder "'+esc(st.pq.trim())+'" and move the meeting into it.</div>';
+  if(curF!==null){
+    h+='<div class="sep"></div><button class="mi" data-a="move-to" data-ids="'+ids.join(",")+'" data-f="">'+icon("inbox")+'<span class="lbl"><span>Remove from folder</span><small>Goes to Unfiled</small></span></button>';
+  }
+  if(st.v==="c"){
+    h+='<div class="sep"></div>';
+    if(st.pnew){
+      h+='<div class="inline-edit" style="padding:4px"><div class="r"><input class="inp" id="pn-input" data-input="picker-new" data-ids="'+ids.join(",")+'" placeholder="Folder name" autocomplete="off" aria-label="New folder name">'+
+        '<button class="icon-btn" data-a="picker-new-save" data-ids="'+ids.join(",")+'" aria-label="Make folder and move">'+icon("check")+'</button></div>'+(st.err?'<span class="err">'+esc(st.err)+'</span>':"")+'</div>';
+    }else h+='<button class="mi" data-a="picker-new">'+icon("plus")+'<span class="lbl"><span>New folder…</span><small>Make it and move the meeting into it</small></span></button>';
+  }
+  return h+'</div>';
+}
+function folderMenu(st,fid,align){
+  var n=inFolder(st,fid).length;
+  return '<div class="menu '+(align||"")+'" role="menu"><button class="mi" data-a="rename" data-id="'+fid+'">'+icon("pencil")+'<span class="lbl"><span>Rename</span></span></button>'+
+    '<button class="mi" data-a="edit-desc" data-id="'+fid+'">'+icon("file-text")+'<span class="lbl"><span>Edit description</span></span></button><div class="sep"></div>'+
+    '<button class="mi '+(n?"blocked":"danger")+'" data-a="delete" data-id="'+fid+'">'+icon(n?"lock":"trash")+'<span class="lbl"><span>Delete folder</span>'+(n?'<small>Not possible: it holds '+plural(n,"meeting")+'</small>':"")+'</span></button></div>';
+}
+function nameInput(st,id,kind,val){
+  return '<div class="inline-edit"><div class="r"><input class="inp" id="'+id+'" data-input="'+kind+'" value="'+esc(val||"")+'" placeholder="Folder name" autocomplete="off" aria-label="Folder name">'+
+    '<button class="icon-btn" data-a="'+kind+'-save" aria-label="Save">'+icon("check")+'</button><button class="icon-btn" data-a="cancel-edit" aria-label="Cancel">'+icon("x")+'</button></div>'+
+    (st.err?'<span class="err">'+esc(st.err)+'</span>':'<span class="count" style="font-family:var(--font-body);font-size:10.5px">Enter saves. Esc cancels.</span>')+'</div>';
+}
+
+/* ---------- rails ---------- */
+function railA(st){
+  var h=railHead()+recordBlock(st);
+  h+='<div class="sec-head"><span class="eyebrow">Folders</span><button class="icon-btn" data-a="new-folder" title="New folder" aria-label="New folder">'+icon("plus")+'</button></div>';
+  if(st.creating)h+=nameInput(st,"nf-input","new-folder","");
+  sortedFolders(st).forEach(function(f){
+    var ms=inFolder(st,f.id),open=!!st.expanded[f.id],sel=st.sel.type==="folder"&&st.sel.id===f.id;
+    var menuOpen=st.menu&&st.menu.kind==="folder"&&st.menu.id===f.id;
+    var renaming=st.editing&&st.editing.kind==="rename"&&st.editing.id===f.id&&st.editing.where==="rail";
+    h+='<div class="fgroup"><div class="frow'+(sel?" sel":"")+(menuOpen?" menu-open":"")+'" data-drop="'+f.id+'">'+
+      '<button class="chev" data-a="toggle" data-id="'+f.id+'" aria-expanded="'+open+'" aria-label="'+(open?"Collapse ":"Expand ")+esc(f.name)+'">'+icon(open?"chevron-down":"chevron-right","sm")+'</button>'+
+      (renaming?nameInput(st,"rn-input","rename",f.name):
+      '<button class="fname" data-a="open-folder" data-id="'+f.id+'">'+icon("folder")+'<span class="t">'+esc(f.name)+'</span></button><span class="count">'+ms.length+'</span>'+
+      '<div class="anchor"><button class="icon-btn more" data-a="folder-menu" data-id="'+f.id+'" aria-label="Actions for '+esc(f.name)+'" aria-haspopup="menu">'+icon("more")+'</button>'+(menuOpen?folderMenu(st,f.id,"right"):"")+'</div>')+
+      '</div>';
+    if(open)h+='<div class="fchildren">'+(ms.length?ms.map(function(m){return meetingRow(st,m,{drag:true,ctx:true});}).join(""):'<div class="empty-mini">No meetings. Drag a meeting here.</div>')+'</div>';
+    h+='</div>';
+  });
+  var un=inFolder(st,null),uo=!!st.expanded.none;
+  h+='<div class="fgroup"><div class="frow" data-drop="none"><button class="chev" data-a="toggle" data-id="none" aria-expanded="'+uo+'" aria-label="'+(uo?"Collapse":"Expand")+' Unfiled">'+icon(uo?"chevron-down":"chevron-right","sm")+'</button>'+
+    '<button class="fname" data-a="toggle" data-id="none" style="color:var(--ink-soft)">'+icon("inbox")+'<span class="t">Unfiled</span></button><span class="count">'+un.length+'</span><span style="width:26px"></span></div>';
+  if(uo)h+='<div class="fchildren">'+(un.length?un.map(function(m){return meetingRow(st,m,{drag:true,ctx:true});}).join(""):'<div class="empty-mini">All meetings are in folders.</div>')+'</div>';
+  h+='</div><p class="rail-hint">Drag a meeting onto a folder to move it. Right-click a meeting for more actions.</p>';
+  return h;
+}
+function railB(st){
+  var h=railHead()+recordBlock(st);
+  var all=st.meetings.length;
+  h+='<div class="chips" role="tablist" aria-label="Folder filter">';
+  h+='<button class="chip'+(!st.filter?" on":"")+'" data-a="filter" data-f="" role="tab" aria-selected="'+!st.filter+'">All <span class="count">'+all+'</span></button>';
+  sortedFolders(st).forEach(function(f){
+    var on=st.filter===f.id;
+    h+='<button class="chip'+(on?" on":"")+'" data-a="filter" data-f="'+f.id+'" role="tab" aria-selected="'+on+'">'+icon("folder","sm")+esc(f.name)+' <span class="count">'+inFolder(st,f.id).length+'</span></button>';
+  });
+  h+='<button class="chip'+(st.filter==="none"?" on":"")+'" data-a="filter" data-f="none" role="tab" aria-selected="'+(st.filter==="none")+'">Unfiled <span class="count">'+inFolder(st,null).length+'</span></button>';
+  h+=st.creating?'':'<button class="chip add" data-a="new-folder" aria-label="New folder">'+icon("plus","sm")+'New</button>';
+  h+='</div>';
+  if(st.creating)h+=nameInput(st,"nf-input","new-folder","");
+  var list=st.meetings.slice().sort(byDate);
+  if(st.filter)list=list.filter(function(m){return st.filter==="none"?!m.folder:m.folder===st.filter;});
+  h+='<div class="list-head"><span>'+plural(list.length,"meeting")+(st.filter?" in "+esc(fname(st,st.filter==="none"?null:st.filter)):"")+'</span><button class="link" data-a="select-mode">'+(st.selectMode?"Done":"Select")+'</button></div>';
+  h+='<div class="list">'+(list.length?list.map(function(m){return meetingRow(st,m,{tag:!st.filter,check:st.selectMode});}).join(""):'<div class="empty-mini">No meetings in this folder yet. Start a recording, or use "Move to folder" on a meeting.</div>')+'</div>';
+  if(st.selectMode){
+    var ids=Object.keys(st.checked).filter(function(k){return st.checked[k];});
+    var mo=st.menu&&st.menu.kind==="bulk";
+    h+='<div class="bulk"><span>'+(ids.length?plural(ids.length,"meeting")+" selected":"Select meetings")+'</span><div class="anchor"><button class="btn btn-ink xs" data-a="bulk-menu" '+(ids.length?"":"disabled")+'>'+icon("folder","sm")+'Move to…</button>'+(mo&&ids.length?moveMenu(st,ids,"right").replace('class="menu right"','class="menu right" style="top:auto;bottom:calc(100% + 6px)"'):"")+'</div></div>';
+  }
+  return h;
+}
+function railC(st){
+  var h=railHead();
+  if(st.drill){
+    var f=folder(st,st.drill),ms=inFolder(st,f.id),sel=st.sel.type==="folder"&&st.sel.id===f.id;
+    var menuOpen=st.menu&&st.menu.kind==="folder"&&st.menu.id===f.id;
+    h+='<button class="back" data-a="drill-up">'+icon("chevron-left","sm")+'All folders</button>';
+    h+='<div class="drill-head'+(sel?" sel":"")+'"><div class="fbox">'+icon("folder")+'</div>'+
+      '<button class="nm" data-a="open-folder" data-id="'+f.id+'"><b>'+esc(f.name)+'</b><span>'+plural(ms.length,"meeting")+' · records go here</span></button>'+
+      '<div class="anchor"><button class="icon-btn" data-a="folder-menu" data-id="'+f.id+'" aria-label="Actions for '+esc(f.name)+'" aria-haspopup="menu">'+icon("more")+'</button>'+(menuOpen?folderMenu(st,f.id,"right"):"")+'</div></div>';
+    h+=recordBlock(st);
+    h+='<div class="list">'+(ms.length?ms.map(function(m){return meetingRow(st,m,{});}).join(""):'<div class="empty-mini">No meetings in this folder yet. Click Start recording, or use "Move…" on a meeting.</div>')+'</div>';
+    return h;
+  }
+  h+=recordBlock(st);
+  h+='<div class="sec-head"><span class="eyebrow">Folders</span></div><div class="list">';
+  sortedFolders(st).forEach(function(f){
+    h+='<button class="crow" data-a="drill" data-id="'+f.id+'">'+icon("folder")+'<span class="t">'+esc(f.name)+'</span><span class="count">'+inFolder(st,f.id).length+'</span>'+icon("chevron-right","sm")+'</button>';
+  });
+  h+=st.creating?nameInput(st,"nf-input","new-folder",""):'<button class="crow new" data-a="new-folder">'+icon("plus")+'<span class="t">New folder</span></button>';
+  var un=inFolder(st,null);
+  h+='</div><div class="sec-head" style="margin-top:14px"><span><span class="eyebrow">Unfiled</span><span class="count">'+un.length+'</span></span></div><div class="list">'+
+    (un.length?un.map(function(m){return meetingRow(st,m,{});}).join(""):'<div class="empty-mini">All meetings are in folders.</div>')+'</div>';
+  return h;
+}
+
+/* ---------- detail ---------- */
+function folderPanel(st,f){
+  var ms=inFolder(st,f.id),tot=ms.reduce(function(a,m){return a+(m.status==="recording"?elapsed(st):m.dur);},0);
+  var renaming=st.editing&&st.editing.kind==="rename"&&st.editing.id===f.id&&st.editing.where==="panel";
+  var descEdit=st.editing&&st.editing.kind==="desc"&&st.editing.id===f.id;
+  var h='<div class="crumbs">'+(st.v==="c"?'<button data-a="drill-up">All folders</button>'+icon("chevron-right","xs"):"")+'<span class="eyebrow">Folder</span></div>';
+  h+='<div class="fp-head"><div class="fp-icon">'+icon("folder","md")+'</div><div class="grow">'+
+    (renaming?nameInput(st,"rn-input","rename",f.name):'<div class="title-row"><h2>'+esc(f.name)+'</h2><button class="icon-btn" data-a="rename-panel" data-id="'+f.id+'" aria-label="Rename folder" title="Rename">'+icon("pencil","sm")+'</button></div>')+
+    '<div class="mono meta">Created '+fDay(f.created)+'</div></div>'+
+    '<button class="btn btn-outline sm" data-a="delete" data-id="'+f.id+'">'+icon("trash")+'Delete folder</button></div>';
+  if(descEdit){
+    h+='<div class="desc-edit"><textarea class="inp" id="desc-input" aria-label="Folder description" placeholder="What is in this folder?">'+esc(f.desc)+'</textarea><div class="row-gap"><button class="btn btn-ink xs" data-a="save-desc" data-id="'+f.id+'">Save</button><button class="btn btn-ghost xs" data-a="cancel-edit">Cancel</button></div></div>';
+  }else{
+    h+='<p class="desc">'+(f.desc?esc(f.desc):'<span class="ph">No description.</span>')+' <button class="link" data-a="edit-desc" data-id="'+f.id+'">'+(f.desc?"Edit":"Add a description")+'</button></p>';
+  }
+  if(st.notice&&st.notice.id===f.id){
+    if(st.notice.kind==="blocked"){
+      h+='<div class="notice blocked" role="alert">'+icon("lock","md")+'<div><b>You cannot delete this folder.</b><p>The folder holds '+plural(ms.length,"meeting")+'. Move the meetings to a different folder, or remove them from this folder. Then you can delete the folder.</p><div class="r">'+
+        (st.v==="b"?'<button class="btn btn-outline xs" data-a="select-these" data-id="'+f.id+'">'+icon("list","sm")+'Select these meetings</button>':"")+
+        '<button class="btn btn-ghost xs" data-a="cancel-notice">Close</button></div></div></div>';
+    }else{
+      h+='<div class="notice" role="alert">'+icon("trash","md")+'<div><b>Delete the folder "'+esc(f.name)+'"?</b><p>The folder is empty. No meeting is deleted. You cannot undo this action.</p><div class="r"><button class="btn btn-danger xs" data-a="confirm-delete" data-id="'+f.id+'">Delete folder</button><button class="btn btn-ghost xs" data-a="cancel-notice">Cancel</button></div></div></div>';
+    }
+  }
+  h+='<div class="facts">'+
+    '<div class="fact"><div class="fn">'+ms.length+'</div><div class="fl">Meetings</div></div>'+
+    '<div class="fact"><div class="fn">'+(ms.length?fShort(ms[0].at):"—")+'</div><div class="fl">Last meeting</div></div>'+
+    '<div class="fact"><div class="fn">'+(ms.length?total(tot):"—")+'</div><div class="fl">Total duration</div></div>'+
+    '<div class="fact"><div class="fn">'+(ms.length?fShort(ms[ms.length-1].at):"—")+'</div><div class="fl">First meeting</div></div></div>';
+  h+='<div class="eyebrow">Meetings in this folder</div>';
+  if(ms.length){
+    h+='<div class="ftable">'+ms.map(function(m){return '<div class="trow" role="button" tabindex="0" data-a="open-meeting" data-id="'+m.id+'"><span class="t">'+esc(m.title)+'</span><span class="mono">'+fShort(m.at)+'</span><span class="mono" '+(m.status==="recording"?"data-timer":"")+'>'+clock(m.status==="recording"?elapsed(st):m.dur)+'</span>'+badge(m.status)+'</div>';}).join("")+'</div>';
+  }else{
+    h+='<div class="fempty">This folder is empty. Click Start recording while the folder is selected, or move a meeting here.</div>';
+  }
+  h+='<div class="info-row">'+icon("mic")+'<span>'+(st.v==="c"?"While this folder is open in the rail, Start recording puts the new meeting in this folder.":"While this folder is selected, Start recording puts the new meeting in this folder.")+'</span></div>';
+  return h;
+}
+function meetingDetail(st,m){
+  var live=m.status==="recording",h="";
+  var moveOpen=st.menu&&st.menu.kind==="move"&&st.menu.id===m.id;
+  if(st.v==="c"){
+    h+='<div class="crumbs"><button data-a="drill-up">All folders</button>'+icon("chevron-right","xs")+
+      (m.folder?'<button data-a="drill" data-id="'+m.folder+'">'+esc(fname(st,m.folder))+'</button>':'<span class="cur">Unfiled</span>')+
+      '<span aria-hidden="true">·</span><div class="anchor"><button class="link" data-a="move-menu" data-id="'+m.id+'">Move…</button>'+(moveOpen?moveMenu(st,[m.id]):"")+'</div></div>';
+  }
+  h+='<div class="head"><div class="grow"><div class="title-row"><h2>'+esc(m.title)+'</h2><button class="icon-btn" data-a="noop" aria-label="Rename meeting">'+icon("pencil","sm")+'</button></div>'+
+    '<div class="mono meta">'+fLong(m.at)+' · <span '+(live?"data-timer":"")+'>'+clock(live?elapsed(st):m.dur)+'</span></div>';
+  if(st.v==="a"){
+    h+='<div class="anchor"><button class="fchip'+(m.folder?"":" none")+'" data-a="move-menu" data-id="'+m.id+'" aria-haspopup="menu">'+icon(m.folder?"folder":"inbox","sm")+(m.folder?esc(fname(st,m.folder)):"Add to a folder")+icon("chevron-down","xs")+'</button>'+(moveOpen?moveMenu(st,[m.id]):"")+'</div>';
+  }
+  h+='</div><span class="badge">EN</span>'+badge(m.status)+'</div>';
+  h+='<div class="actions"><button class="btn btn-ink sm" data-a="noop" '+(live?"disabled":"")+'>'+icon("audio-lines")+(m.status==="recorded"||live?"Transcribe":"Re-transcribe")+'</button>'+
+    '<button class="btn btn-outline sm" data-a="noop" '+(live||m.status==="recorded"?"disabled":"")+'>'+icon("users")+'Identify speakers</button>'+
+    '<button class="btn btn-outline sm" data-a="noop" '+(live||m.status==="recorded"?"disabled":"")+'>'+icon("sparkles")+'Summarize</button><span class="sp"></span>';
+  if(st.v==="b"){
+    h+='<div class="anchor"><button class="btn btn-outline sm" data-a="move-menu" data-id="'+m.id+'" aria-haspopup="menu">'+icon(m.folder?"folder":"inbox")+(m.folder?esc(fname(st,m.folder)):"Move to folder")+icon("chevron-down","sm")+'</button>'+(moveOpen?moveMenu(st,[m.id],"right"):"")+'</div>';
+  }
+  h+='<button class="icon-btn" data-a="noop" aria-label="Delete meeting" title="Delete meeting">'+icon("trash")+'</button></div>';
+  if(live){
+    h+='<div class="info-row live"><span class="live-dot"></span><span>Recording into <b>'+esc(fname(st,m.folder))+'</b>. Stop the recording to transcribe it.</span></div>';
+    return h;
+  }
+  if(m.status==="recorded"){
+    h+='<div class="info-row">'+icon("audio-lines")+'<span>This meeting has no transcript yet. Click Transcribe.</span></div>';
+    return h;
+  }
+  h+='<div class="info-row">'+icon("users")+'<span>Speakers identified: 2.</span></div>';
+  h+='<div class="tabs" role="tablist"><button class="tab" role="tab" data-a="tab" data-t="transcript" aria-selected="'+(st.tab==="transcript")+'">Transcript</button><button class="tab" role="tab" data-a="tab" data-t="summary" aria-selected="'+(st.tab==="summary")+'">Summary</button></div>';
+  var lines=LINES[m.id]||[["Me","This is a sample line.",3],["Them 1","This is a second sample line.",11]];
+  if(st.tab==="transcript"){
+    h+='<div class="transcript">'+lines.map(function(l){return '<div class="segm"><span class="who"><span class="spk'+(l[0]==="Me"?" me":"")+'">'+l[0]+'</span></span><p>'+esc(l[1])+'</p><span class="ts">0:'+pad(l[2])+'</span></div>';}).join("")+'</div>';
+  }else{
+    h+='<div class="summary"><h4>Decisions</h4><ul><li>'+esc(lines[1][1])+'</li></ul><h4>Action items</h4><ul><li>'+esc(lines[lines.length-1][1])+'</li></ul></div>';
+  }
+  return h;
+}
+function detail(st){
+  if(st.sel.type==="folder"){var f=folder(st,st.sel.id);if(f)return folderPanel(st,f);}
+  if(st.sel.type==="meeting"){var m=meeting(st,st.sel.id);if(m)return meetingDetail(st,m);}
+  return '<div class="empty-detail">'+icon("folder","md")+'<span>Select a meeting or a folder.</span></div>';
+}
+
+/* ---------- render ---------- */
+function render(){
+  var st=S[cur];
+  var rail=cur==="a"?railA(st):cur==="b"?railB(st):railC(st);
+  var t=st.toast?'<div class="toast" role="status"><span>'+esc(st.toast.text)+'</span>'+(st.toast.undo?'<button class="link" data-a="undo">Undo</button>':"")+'<button class="x" data-a="close-toast" aria-label="Close">'+icon("x","sm")+'</button></div>':"";
+  var railScroll=root.querySelector(".rail"),rs=railScroll?railScroll.scrollTop:0;
+  var detScroll=root.querySelector(".detail"),ds=detScroll?detScroll.scrollTop:0;
+  root.innerHTML='<div class="win" data-variant="'+cur+'"><div class="titlebar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span></div>'+
+    '<div class="win-body">'+appNav()+'<div class="content"><aside class="rail" aria-label="Meetings and folders">'+rail+'</aside><section class="detail" aria-label="Detail">'+detail(st)+'</section></div></div>'+t+'</div>';
+  if(root.dataset.v===cur){root.querySelector(".rail").scrollTop=rs;root.querySelector(".detail").scrollTop=ds;}
+  root.dataset.v=cur;
+  if(st.focus){var el=document.getElementById(st.focus);if(el){el.focus();if(el.setSelectionRange){var n=el.value.length;el.setSelectionRange(n,n);}}st.focus=null;}
+}
+function setVariant(v){
+  cur=v;
+  ["a","b","c"].forEach(function(x){document.getElementById("tab-"+x).setAttribute("aria-selected",String(x===v));});
+  document.getElementById("vtitle").innerHTML=VARIANTS[v].title;
+  document.getElementById("notes-h").textContent="Trade-offs of variant "+v.toUpperCase();
+  document.getElementById("notes").innerHTML=VARIANTS[v].notes.map(function(n){return "<li>"+esc(n)+"</li>";}).join("");
+  try{history.replaceState(null,"","#"+v);}catch(e){}
+  render();
+}
+
+/* ---------- events ---------- */
+function act(st,a,el){
+  var id=el.getAttribute("data-id");
+  switch(a){
+    case "noop": st.menu=null; break;
+    case "open-meeting":
+      st.sel={type:"meeting",id:id};st.menu=null;st.notice=null;st.tab="transcript";st.editing=null;st.pq="";st.pnew=false;break;
+    case "open-folder":
+      if(st.v==="a"&&st.sel.type==="folder"&&st.sel.id===id)st.expanded[id]=!st.expanded[id];else st.expanded[id]=true;
+      st.sel={type:"folder",id:id};st.menu=null;if(!(st.notice&&st.notice.id===id))st.notice=null;st.editing=null;break;
+    case "toggle": st.expanded[id]=!st.expanded[id];st.menu=null;break;
+    case "new-folder": st.creating=true;st.err="";st.editing=null;st.menu=null;st.focus="nf-input";break;
+    case "new-folder-save": submitInput(st,"new-folder",document.getElementById("nf-input"));return;
+    case "folder-menu": st.menu=(st.menu&&st.menu.kind==="folder"&&st.menu.id===id)?null:{kind:"folder",id:id};break;
+    case "rename": st.editing={kind:"rename",id:id,where:st.v==="a"?"rail":"panel"};st.sel={type:"folder",id:id};if(st.v==="c")st.drill=id;st.err="";st.menu=null;st.creating=false;st.focus="rn-input";break;
+    case "rename-panel": st.editing={kind:"rename",id:id,where:"panel"};st.err="";st.focus="rn-input";break;
+    case "rename-save": submitInput(st,"rename",document.getElementById("rn-input"));return;
+    case "cancel-edit": st.editing=null;st.creating=false;st.err="";break;
+    case "edit-desc": st.editing={kind:"desc",id:id};st.sel={type:"folder",id:id};st.menu=null;st.focus="desc-input";break;
+    case "save-desc": folder(st,id).desc=document.getElementById("desc-input").value.trim();st.editing=null;toast(st,"Saved the description.",false);break;
+    case "delete": askDelete(st,id);break;
+    case "confirm-delete": doDelete(st,id);break;
+    case "cancel-notice": st.notice=null;break;
+    case "move-menu": st.menu=(st.menu&&st.menu.kind==="move"&&st.menu.id===id)?null:{kind:"move",id:id};st.pq="";st.pnew=false;st.err="";if(st.menu&&st.v==="c")st.focus="picker-q";break;
+    case "move-to": moveMeetings(st,el.getAttribute("data-ids").split(","),el.getAttribute("data-f")||null);if(st.v==="b"){st.checked={};st.selectMode=false;}break;
+    case "picker-new": st.pnew=true;st.err="";st.focus="pn-input";break;
+    case "picker-new-save": submitInput(st,"picker-new",document.getElementById("pn-input"));return;
+    case "undo":
+      if(st.undo){st.undo.forEach(function(p){var m=meeting(st,p[0]);if(m)m.folder=p[1];});st.undo=null;st.toast=null;toast(st,"Undone.",false);}break;
+    case "close-toast": st.toast=null;break;
+    case "rec-start":
+      var fid=target(st),mid="r"+(++st.seq);
+      st.meetings.push({id:mid,title:"Untitled meeting",folder:fid,at:"2026-10-20T10:05",dur:0,status:"recording"});
+      st.rec={id:mid,start:Date.now()};if(fid)st.expanded[fid]=true;else st.expanded.none=true;
+      toast(st,"Recording into "+fname(st,fid)+".",false);break;
+    case "rec-stop":
+      var rm=meeting(st,st.rec.id);rm.dur=Math.max(1,elapsed(st));rm.status="recorded";st.rec=null;
+      toast(st,'Saved "'+rm.title+'" in '+fname(st,rm.folder)+".",false);break;
+    case "tab": st.tab=el.getAttribute("data-t");break;
+    case "filter":
+      var f=el.getAttribute("data-f")||null;st.filter=f;st.menu=null;
+      if(f&&f!=="none"){st.sel={type:"folder",id:f};if(!(st.notice&&st.notice.id===f))st.notice=null;}
+      else if(st.sel.type==="folder"){var first=st.meetings.slice().sort(byDate).filter(function(m){return f!=="none"||!m.folder;})[0];st.sel=first?{type:"meeting",id:first.id}:{type:null,id:null};}
+      break;
+    case "select-mode": st.selectMode=!st.selectMode;st.checked={};st.menu=null;break;
+    case "check": st.checked[id]=!st.checked[id];break;
+    case "bulk-menu": st.menu=st.menu&&st.menu.kind==="bulk"?null:{kind:"bulk"};break;
+    case "select-these": st.filter=id;st.selectMode=true;st.checked={};inFolder(st,id).forEach(function(m){st.checked[m.id]=true;});st.notice=null;break;
+    case "drill": st.drill=id;st.sel={type:"folder",id:id};st.menu=null;st.creating=false;if(!(st.notice&&st.notice.id===id))st.notice=null;break;
+    case "drill-up": st.drill=null;st.menu=null;if(st.sel.type==="folder"){st.sel={type:null,id:null};st.notice=null;}break;
+  }
+  render();
+}
+function submitInput(st,kind,input){
+  if(!input)return;
+  var v=input.value;
+  if(kind==="new-folder"){
+    var nid=createFolder(st,v);
+    if(nid){
+      toast(st,'Made the folder "'+v.trim()+'".',false);
+      st.sel={type:"folder",id:nid};
+      if(st.v==="b")st.filter=nid;
+      if(st.v==="c")st.drill=nid;
+    }else st.focus="nf-input";
+  }else if(kind==="rename"){
+    var fid=st.editing&&st.editing.id,e=validName(st,v,fid);
+    if(e){st.err=e;st.focus="rn-input";}
+    else{var f=folder(st,fid),old=f.name;f.name=v.trim();st.editing=null;st.err="";if(old!==f.name)toast(st,'Renamed "'+old+'" to "'+f.name+'".',false);}
+  }else if(kind==="picker-new"){
+    var ids=input.getAttribute("data-ids").split(",");
+    var id2=createFolder(st,v);
+    if(id2)moveMeetings(st,ids,id2);else st.focus="pn-input";
+  }else if(kind==="picker-q"){
+    var q=v.trim();if(!q)return;
+    var hit=sortedFolders(st).filter(function(f){return f.name.toLowerCase().indexOf(q.toLowerCase())>=0;});
+    var mids=[st.menu.id];
+    if(hit.length===1)moveMeetings(st,mids,hit[0].id);
+    else if(!hit.length){var id3=createFolder(st,q);if(id3)moveMeetings(st,mids,id3);}
+    else return;
+  }
+  render();
+}
+root.addEventListener("click",function(e){
+  e.mfHandled=true;
+  var st=S[cur];
+  var el=e.target.closest("[data-a]");
+  if(!el||!root.contains(el)){
+    if(st.menu&&!e.target.closest(".menu")){st.menu=null;st.pq="";st.pnew=false;render();}
+    return;
+  }
+  if(el.disabled)return;
+  if(st.menu&&!el.closest(".menu")&&["folder-menu","move-menu","bulk-menu","picker-new"].indexOf(el.getAttribute("data-a"))<0)st.menu=null;
+  act(st,el.getAttribute("data-a"),el);
+});
+document.addEventListener("click",function(e){
+  var st=S[cur];
+  if(e.mfHandled)return;
+  if(st.menu&&!root.contains(e.target)){st.menu=null;render();}
+});
+root.addEventListener("keydown",function(e){
+  var st=S[cur],t=e.target;
+  var kind=t.getAttribute&&t.getAttribute("data-input");
+  if(kind){
+    if(e.key==="Enter"){e.preventDefault();submitInput(st,kind,t);}
+    else if(e.key==="Escape"){e.preventDefault();st.editing=null;st.creating=false;st.err="";if(kind==="picker-q"||kind==="picker-new"){st.menu=null;st.pq="";st.pnew=false;}render();}
+    return;
+  }
+  if(e.key==="Escape"&&(st.menu||st.editing||st.creating)){st.menu=null;st.editing=null;st.creating=false;st.err="";render();return;}
+  if((e.key==="Enter"||e.key===" ")&&t.getAttribute&&t.getAttribute("role")==="button"&&t.tagName!=="BUTTON"){e.preventDefault();t.click();}
+});
+root.addEventListener("input",function(e){
+  var st=S[cur];
+  if(e.target.getAttribute("data-input")==="picker-q"){st.pq=e.target.value;st.focus="picker-q";render();}
+});
+root.addEventListener("contextmenu",function(e){
+  var el=e.target.closest("[data-ctx]");if(!el)return;
+  e.preventDefault();var st=S[cur];st.menu={kind:"ctx",id:el.getAttribute("data-ctx")};render();
+});
+/* drag and drop (variant A) */
+var dragId=null;
+root.addEventListener("dragstart",function(e){
+  var el=e.target.closest&&e.target.closest("[data-drag]");if(!el)return;
+  dragId=el.getAttribute("data-drag");el.classList.add("dragging");
+  try{e.dataTransfer.setData("text/plain",dragId);e.dataTransfer.effectAllowed="move";}catch(x){}
+});
+root.addEventListener("dragend",function(){dragId=null;root.querySelectorAll(".dragging,.drop").forEach(function(n){n.classList.remove("dragging","drop");});});
+root.addEventListener("dragover",function(e){
+  var z=e.target.closest&&e.target.closest("[data-drop]");if(!z||!dragId)return;
+  e.preventDefault();root.querySelectorAll(".drop").forEach(function(n){if(n!==z)n.classList.remove("drop");});z.classList.add("drop");
+});
+root.addEventListener("dragleave",function(e){var z=e.target.closest&&e.target.closest("[data-drop]");if(z&&!z.contains(e.relatedTarget))z.classList.remove("drop");});
+root.addEventListener("drop",function(e){
+  var z=e.target.closest&&e.target.closest("[data-drop]");if(!z||!dragId)return;
+  e.preventDefault();var st=S[cur],f=z.getAttribute("data-drop");f=f==="none"?null:f;
+  var m=meeting(st,dragId);dragId=null;
+  if(m&&m.folder!==f){moveMeetings(st,[m.id],f);}
+  render();
+});
+/* timer */
+setInterval(function(){
+  var st=S[cur];if(!st.rec)return;
+  var t=clock(elapsed(st));
+  root.querySelectorAll("[data-timer]").forEach(function(n){n.textContent=t;});
+  root.querySelectorAll("[data-timer-row]").forEach(function(n){n.textContent="Oct 20 · "+t;});
+},1000);
+/* toolbar */
+document.getElementById("vtabs").addEventListener("click",function(e){var b=e.target.closest("[data-v]");if(b)setVariant(b.getAttribute("data-v"));});
+document.getElementById("reset").addEventListener("click",function(){S[cur]=makeState(cur);render();});
+function setTheme(th){
+  if(th==="system")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",th);
+  document.querySelectorAll("#themes [data-th]").forEach(function(b){b.setAttribute("aria-selected",String(b.getAttribute("data-th")===th));});
+  try{localStorage.setItem("mf-theme",th);}catch(e){}
+}
+document.getElementById("themes").addEventListener("click",function(e){var b=e.target.closest("[data-th]");if(b)setTheme(b.getAttribute("data-th"));});
+try{var saved=localStorage.getItem("mf-theme");if(saved)setTheme(saved);}catch(e){}
+var h0=(location.hash||"").replace("#","");
+setVariant(VARIANTS[h0]?h0:"a");
+})();
+</script>

@@ -7,6 +7,7 @@ export function resetMeetingTables(): void {
   db.exec("DELETE FROM meeting_speakers");
   db.exec("DELETE FROM meeting_segments");
   db.exec("DELETE FROM meetings");
+  db.exec("DELETE FROM meeting_folders");
 }
 
 interface InsertSegmentOptions {

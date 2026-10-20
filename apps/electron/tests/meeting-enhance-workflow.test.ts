@@ -145,10 +145,14 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
     } | null;
     return body?.job?.kind === "summarize";
   });
-  // The list refetch that the job change starts has to land before the end.
-  await env.page.waitForResponse(
-    (r) => r.url().endsWith("/api/meetings") && r.request().method() === "GET",
+  // Match the list path, also when an open folder adds a query string.
+  // The job change must refresh the list before the held summary ends.
+  const listRefetch = await env.page.waitForResponse(
+    (r) =>
+      new URL(r.url()).pathname === "/api/meetings" &&
+      r.request().method() === "GET",
   );
+  console.log("Meeting list after job change:", listRefetch.url());
   const held = fake.requests.find((r) => r.step === "meeting_summary");
   if (!held) throw new Error("no summary request");
   fake.releaseHeld(base(held));

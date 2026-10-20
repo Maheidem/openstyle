@@ -247,6 +247,35 @@ describe("MeetingRecorder calendar link", () => {
     attendees: [{ name: "Ana", email: "ana@example.test", isOrganizer: true }],
   };
 
+  it.each([
+    "folder-1",
+    null,
+    undefined,
+  ])("sends the folder target %s in the start body", async (folderId) => {
+    const calls: { path: string; body: unknown }[] = [];
+    const { recorder } = createRecorder({ serverFetch: recordingFetch(calls) });
+    const started = recorder.start(undefined, folderId);
+    await vi.waitFor(() => expect(mocks.helpers).toHaveLength(1));
+    mocks.helpers[0].options.onReady?.();
+    await started;
+    if (folderId === undefined)
+      expect(startBody(calls)).not.toHaveProperty("folder_id");
+    else expect(startBody(calls)).toHaveProperty("folder_id", folderId);
+    await recorder.stop();
+  });
+
+  it("does not start capture when the server rejects the folder", async () => {
+    const { recorder } = createRecorder({
+      serverFetch: async (path) =>
+        new Response("{}", { status: path === "/meetings/start" ? 404 : 200 }),
+    });
+    await expect(recorder.start(undefined, "missing-folder")).rejects.toThrow(
+      "HTTP 404",
+    );
+    expect(mocks.helpers).toHaveLength(0);
+    expect(recorder.status).toBe("idle");
+  });
+
   it("sends the found event in the start body", async () => {
     const calls: { path: string; body: unknown }[] = [];
     const { recorder } = createRecorder({

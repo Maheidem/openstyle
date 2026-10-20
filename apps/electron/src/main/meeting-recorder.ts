@@ -404,14 +404,17 @@ export class MeetingRecorder {
    * MeetingDevicesChangedError when the devices differ from the previous
    * meeting and `confirmed` does not hold the same devices.
    */
-  async start(confirmed?: ConfirmedDevices | null): Promise<string> {
+  async start(
+    confirmed?: ConfirmedDevices | null,
+    folderId?: string | null,
+  ): Promise<string> {
     if (this._status !== "idle" || this.starting) {
       throw new Error("A meeting recording is already in progress");
     }
     // Set the flag before the first await. Clear it on every exit.
     this.starting = true;
     try {
-      return await this.startRecording(confirmed);
+      return await this.startRecording(confirmed, folderId);
     } finally {
       this.starting = false;
     }
@@ -419,6 +422,7 @@ export class MeetingRecorder {
 
   private async startRecording(
     confirmed?: ConfirmedDevices | null,
+    folderId?: string | null,
   ): Promise<string> {
     if (!isSystemAudioCaptureSupported()) {
       throw new Error("Meeting recording requires macOS 14.4 or later");
@@ -472,6 +476,7 @@ export class MeetingRecorder {
         id,
         audio_dir: dir,
         started_at: startedAt,
+        ...(folderId !== undefined ? { folder_id: folderId } : {}),
         ...(calendar ? { calendar } : {}),
       },
     });
