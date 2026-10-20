@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import multiprocessing
+import os
 import sys
 import threading
+import wave
 from inspect import Parameter, signature
 from pathlib import Path
 from typing import Any
@@ -35,6 +38,37 @@ _CONTEXT_PARAM_ALIASES: tuple[str, ...] = (
     "context",  # VibeVoice ASR
 )
 _LANGUAGE_PARAM_ALIASES: tuple[str, ...] = ("language",)
+
+# Loop guard. Greedy decoding loops on near-silent chunks: a 26 s mic chunk
+# at the noise floor gave one word 4,094 times, until the default max_tokens
+# 8192 stopped it (meeting 5578edb0, 2026-10-19). A global
+# repetition_penalty stopped the loops but damaged normal speech (council
+# r226), so the guard below acts only when a loop forms.
+#
+# 1. Token cap per chunk: ceil(seconds * 10) + 32. Fast speech is about
+#    5.6 Qwen tokens/s (Switchboard 5.2 words/s x 1.08 tokens/word), so the
+#    cap is near 2x fast speech. Whisper uses 224 tokens per 30 s.
+# 2. Online loop stop, after at least 48 tokens. A loop forms when one of
+#    these is true:
+#    a. The last 24 tokens contain 3 or fewer unique ids
+#       (mlx-audio-swift e5ba0d3). This also finds loops that change a
+#       little, for example "a b a a b".
+#    b. The last max(48, 4 * p) tokens repeat with a period p of 1-40
+#       tokens. This finds phrase loops: a 5-word phrase had 6 or more
+#       unique ids in 24 tokens, so rule a did not find it.
+# 3. On a loop, decode the same audio once more without the context prompt.
+# 4. Every final text goes through Qwen's detect_and_fix_repetitions.
+_TOKENS_PER_SECOND_CAP = 10
+_TOKEN_CAP_MARGIN = 32
+_LOOP_WINDOW = 24
+_LOOP_MAX_UNIQUE = 3
+_LOOP_MIN_TOKENS = 48
+_LOOP_MAX_PERIOD = 40
+_LOOP_MIN_PERIODS = 4
+# Qwen3-ASR generate() splits audio longer than this (chunk_duration
+# default) and pads audio shorter than 1 s. The stream path copies only
+# the padding, so it takes audio up to this length.
+_STREAM_MAX_SECONDS = 1200.0
 
 
 def _log(msg: str) -> None:
@@ -277,6 +311,199 @@ def _audio_from_message(message: dict[str, Any]) -> str:
     return _pcm_path_to_wav_path(path, sample_rate)
 
 
+def _audio_seconds(audio: str) -> float | None:
+    """Return the length of a PCM WAV file in seconds, or None."""
+    try:
+        with wave.open(audio, "rb") as wf:
+            rate = wf.getframerate()
+            return wf.getnframes() / rate if rate > 0 else None
+    except (wave.Error, OSError, EOFError):
+        return None
+
+
+def _max_tokens_for(seconds: float) -> int:
+    return math.ceil(seconds * _TOKENS_PER_SECOND_CAP) + _TOKEN_CAP_MARGIN
+
+
+def _is_periodic(tokens: list[int], period: int) -> bool:
+    """True when the tail of max(48, 4 * period) tokens repeats with this period."""
+    window = max(_LOOP_MIN_TOKENS, _LOOP_MIN_PERIODS * period)
+    n = len(tokens)
+    if n < window:
+        return False
+    return all(tokens[i] == tokens[i - period] for i in range(n - window + period, n))
+
+
+def _is_loop(tokens: list[int]) -> bool:
+    if len(tokens) < _LOOP_MIN_TOKENS:
+        return False
+    if len(set(tokens[-_LOOP_WINDOW:])) <= _LOOP_MAX_UNIQUE:
+        return True
+    return any(_is_periodic(tokens, p) for p in range(1, _LOOP_MAX_PERIOD + 1))
+
+
+def detect_and_fix_repetitions(text: str, threshold: int = 20) -> str:
+    """Collapse long repeats, ported from Qwen3-ASR.
+
+    Source: QwenLM/Qwen3-ASR qwen_asr/inference/utils.py, commit
+    9567667698f195fa807b1581de5c03184e63d2b0 (Apache-2.0, Copyright 2026
+    The Alibaba Qwen team). The logic is the same as the source.
+    A character that repeats more than ``threshold`` times becomes one
+    character. A pattern of 1-20 characters that repeats ``threshold`` or
+    more times becomes one copy.
+    """
+
+    def fix_char_repeats(s: str, thresh: int) -> str:
+        res = []
+        i = 0
+        n = len(s)
+        while i < n:
+            count = 1
+            while i + count < n and s[i + count] == s[i]:
+                count += 1
+            if count > thresh:
+                res.append(s[i])
+            else:
+                res.append(s[i : i + count])
+            i += count
+        return "".join(res)
+
+    def fix_pattern_repeats(s: str, thresh: int, max_len: int = 20) -> str:
+        n = len(s)
+        min_repeat_chars = thresh * 2
+        if n < min_repeat_chars:
+            return s
+
+        i = 0
+        result = []
+        found = False
+        while i <= n - min_repeat_chars:
+            found = False
+            for k in range(1, max_len + 1):
+                if i + k * thresh > n:
+                    break
+                pattern = s[i : i + k]
+                valid = True
+                for rep in range(1, thresh):
+                    start_idx = i + rep * k
+                    if s[start_idx : start_idx + k] != pattern:
+                        valid = False
+                        break
+                if valid:
+                    end_index = i + thresh * k
+                    while end_index + k <= n and s[end_index : end_index + k] == pattern:
+                        end_index += k
+                    result.append(pattern)
+                    result.append(fix_pattern_repeats(s[end_index:], thresh, max_len))
+                    i = n
+                    found = True
+                    break
+            if found:
+                break
+            result.append(s[i])
+            i += 1
+
+        if not found:
+            result.append(s[i:])
+        return "".join(result)
+
+    text = fix_char_repeats(text, threshold)
+    return fix_pattern_repeats(text, threshold)
+
+
+def _can_stream(model: Any) -> bool:
+    """True for a model with the Qwen3-ASR stream contract.
+
+    Qwen3-ASR stream_generate() yields (token, logprobs) and stops at EOS.
+    Other mlx-audio models also have stream_generate() but yield other
+    types, so the check also asks for the tokenizer and extract_language().
+    """
+    return all(
+        callable(getattr(model, name, None))
+        for name in ("stream_generate", "extract_language")
+    ) and hasattr(getattr(model, "_tokenizer", None), "decode")
+
+
+def _load_waveform(audio: str) -> np.ndarray:
+    from mlx_audio.stt.utils import load_audio
+
+    return np.array(load_audio(audio))
+
+
+def _stream_decode(model: Any, wav: np.ndarray, kwargs: dict[str, Any]) -> tuple[str, bool]:
+    """Decode one chunk like Qwen3-ASR _generate_single_chunk(); stop on a loop.
+
+    Without a loop, the text is the same as the text of generate(). Returns
+    (text, looped).
+    """
+    tokens: list[int] = []
+    looped = False
+    for token, _ in model.stream_generate(wav, **kwargs):
+        tokens.append(int(token))
+        if _is_loop(tokens):
+            looped = True
+            break
+    text = model._tokenizer.decode(tokens, skip_special_tokens=True)
+    if kwargs.get("language") is None:
+        _, text = model.extract_language(text)
+    return text, looped
+
+
+def _transcribe_streamed(
+    model: Any,
+    wav: np.ndarray,
+    *,
+    language: str | None,
+    context: str | None,
+) -> str:
+    sample_rate = int(getattr(model, "sample_rate", 16000))
+    seconds = len(wav) / sample_rate
+    # generate() pads audio shorter than 1 s to 1 s. Do the same.
+    if len(wav) < sample_rate:
+        wav = np.pad(wav, (0, sample_rate - len(wav)))
+
+    kwargs = _transcribe_kwargs(model.stream_generate, language=language, context=context)
+    if "max_tokens" in _function_params(model.stream_generate):
+        kwargs["max_tokens"] = _max_tokens_for(seconds)
+
+    text, looped = _stream_decode(model, wav, kwargs)
+    if not looped:
+        return text
+
+    trimmed = _strip_prompt_kwargs(kwargs)
+    if trimmed == kwargs:
+        _log("loop detected; retry without context: skipped (no context)")
+        return text
+    retry_text, retry_looped = _stream_decode(model, wav, trimmed)
+    _log(f"loop detected; retry without context: {'looped' if retry_looped else 'ok'}")
+    return retry_text
+
+
+def _transcribe_generate(
+    model: Any,
+    audio: str,
+    *,
+    language: str | None,
+    context: str | None,
+) -> str:
+    kwargs = _transcribe_kwargs(
+        model.generate,
+        language=language,
+        context=context,
+    )
+    seconds = _audio_seconds(audio)
+    if seconds is not None and "max_tokens" in _function_params(model.generate):
+        kwargs["max_tokens"] = _max_tokens_for(seconds)
+    try:
+        result = model.generate(audio, **kwargs)
+    except TypeError:
+        trimmed = _strip_prompt_kwargs(kwargs)
+        if trimmed == kwargs:
+            raise
+        result = model.generate(audio, **trimmed)
+    return _text_from_result(result)
+
+
 def _transcribe(
     audio: str,
     *,
@@ -287,20 +514,16 @@ def _transcribe(
     if model is None:
         raise RuntimeError("model not loaded")
 
-    kwargs = _transcribe_kwargs(
-        model.generate,
-        language=language,
-        context=context,
-    )
-    try:
-        result = model.generate(audio, **kwargs)
-    except TypeError:
-        trimmed = _strip_prompt_kwargs(kwargs)
-        if trimmed == kwargs:
-            raise
-        result = model.generate(audio, **trimmed)
+    text: str | None = None
+    if _can_stream(model):
+        wav = _load_waveform(audio)
+        sample_rate = int(getattr(model, "sample_rate", 16000))
+        if len(wav) <= _STREAM_MAX_SECONDS * sample_rate:
+            text = _transcribe_streamed(model, wav, language=language, context=context)
+    if text is None:
+        text = _transcribe_generate(model, audio, language=language, context=context)
 
-    return _text_from_result(result).strip()
+    return detect_and_fix_repetitions(text.strip()).strip()
 
 
 def _handle_transcribe(message: dict[str, Any]) -> None:

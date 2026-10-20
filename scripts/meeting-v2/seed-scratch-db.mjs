@@ -85,8 +85,25 @@ try {
       "SELECT provider, model_id, model_name FROM src.model_configs WHERE is_default = 1 AND type = 'voice'",
     )
     .get();
-  const voice =
-    realVoice?.provider === "server"
+  // SEED_VOICE_MODEL_ID picks another voice row of the real DB as the
+  // scratch default, for an eval on the owner's local MLX model. Local
+  // providers only (server, local-mlx): a cloud model would send the
+  // meeting audio off the Mac.
+  const pickedId = process.env.SEED_VOICE_MODEL_ID;
+  const picked = pickedId
+    ? db
+        .prepare(
+          "SELECT provider, model_id, model_name FROM src.model_configs WHERE type = 'voice' AND model_id = ? AND provider IN ('server', 'local-mlx') LIMIT 1",
+        )
+        .get(pickedId)
+    : undefined;
+  if (pickedId && !picked) {
+    console.error(`SEED_VOICE_MODEL_ID ${pickedId}: no local voice row`);
+    process.exit(1);
+  }
+  const voice = picked
+    ? picked
+    : realVoice?.provider === "server"
       ? realVoice
       : db
           .prepare(
@@ -100,8 +117,23 @@ try {
     ).run(voice.provider, voice.model_id, voice.model_name);
   }
   console.log(
-    `voice row: ${voice?.model_id ?? "none"} (${voice === realVoice ? "real default" : `fallback; real default is ${realVoice?.model_id ?? "none"}`})`,
+    `voice row: ${voice?.model_id ?? "none"} (${picked ? "SEED_VOICE_MODEL_ID" : voice === realVoice ? "real default" : `fallback; real default is ${realVoice?.model_id ?? "none"}`})`,
   );
+
+  // SEED_ASR_CONTEXT=1 copies the owner's `meeting_asr_context` setting
+  // (previous-chunk context in the ASR prompt), so an eval runs with it.
+  if (process.env.SEED_ASR_CONTEXT === "1") {
+    db.exec(`
+      INSERT OR REPLACE INTO main.settings (key, value)
+        SELECT key, value FROM src.settings WHERE key = 'meeting_asr_context';
+    `);
+    const ctx = db
+      .prepare(
+        "SELECT value FROM main.settings WHERE key = 'meeting_asr_context'",
+      )
+      .get();
+    console.log(`meeting_asr_context: ${ctx?.value ?? "unset"}`);
+  }
 
   // PR #39: the `context` column (free-text per-meeting context — the
   // calendar invitee list) must reach the scratch DB: the context
