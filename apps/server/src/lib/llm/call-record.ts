@@ -7,7 +7,11 @@ import type { LlmParamsLedger } from "@openstyle/validations";
 // `scope_id` from the run row.
 
 /** The LLM steps. A later consumer widens the union. */
-export type LlmStepId = "correctChunk" | "identifySpeakers" | "summarize";
+export type LlmStepId =
+  | "correctChunk"
+  | "identifySpeakers"
+  | "summarize"
+  | "suggestTags";
 
 export interface ChatTurn {
   role: "user" | "assistant";

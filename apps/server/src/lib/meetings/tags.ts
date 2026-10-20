@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { MAX_MEETING_TAGS, normalizeTagNames } from "@openstyle/validations";
 import { getDb, withTransaction } from "../db.js";
 
 type TagSource = "llm" | "user";
 
 /** The tag names of one meeting, sorted by name. */
-export function getMeetingTags(meetingId: string): string[] {
-  const rows = getDb()
+export function getMeetingTags(
+  meetingId: string,
+  db: DatabaseSync = getDb(),
+): string[] {
+  const rows = db
     .prepare(
       `SELECT t.name FROM meeting_tags mt JOIN tags t ON t.id = mt.tag_id
        WHERE mt.meeting_id = ? ORDER BY t.name`,
@@ -16,11 +20,11 @@ export function getMeetingTags(meetingId: string): string[] {
 }
 
 /** All tag names with the number of meetings that use each tag. */
-export function listTagsWithCounts(): {
+export function listTagsWithCounts(db: DatabaseSync = getDb()): {
   name: string;
   meeting_count: number;
 }[] {
-  return getDb()
+  return db
     .prepare(
       `SELECT t.name, COUNT(mt.meeting_id) AS meeting_count
        FROM tags t LEFT JOIN meeting_tags mt ON mt.tag_id = t.id
@@ -30,14 +34,13 @@ export function listTagsWithCounts(): {
 }
 
 /** All tag names, sorted. The Enhance tag step reuses them. */
-export function listTagNames(): string[] {
-  return listTagsWithCounts().map((t) => t.name);
+export function listTagNames(db: DatabaseSync = getDb()): string[] {
+  return listTagsWithCounts(db).map((t) => t.name);
 }
 
 /** Get the id of a tag. Create the tag when it does not exist. The name must
  * be normalized. Call it inside a transaction. */
-function ensureTagId(name: string, now: number): string {
-  const db = getDb();
+function ensureTagId(db: DatabaseSync, name: string, now: number): string {
   const row = db.prepare("SELECT id FROM tags WHERE name = ?").get(name) as
     | { id: string }
     | undefined;
@@ -52,12 +55,13 @@ function ensureTagId(name: string, now: number): string {
 }
 
 function linkTag(
+  db: DatabaseSync,
   meetingId: string,
   tagId: string,
   source: TagSource,
   now: number,
 ): boolean {
-  const result = getDb()
+  const result = db
     .prepare(
       `INSERT OR IGNORE INTO meeting_tags (meeting_id, tag_id, source, created_at)
        VALUES (?, ?, ?, ?)`,
@@ -75,8 +79,8 @@ export function setMeetingTags(meetingId: string, names: string[]): string[] {
   const db = getDb();
   return withTransaction(db, () => {
     const now = Date.now();
-    const keepIds = names.map((name) => ensureTagId(name, now));
-    for (const tagId of keepIds) linkTag(meetingId, tagId, "user", now);
+    const keepIds = names.map((name) => ensureTagId(db, name, now));
+    for (const tagId of keepIds) linkTag(db, meetingId, tagId, "user", now);
     const current = db
       .prepare("SELECT tag_id FROM meeting_tags WHERE meeting_id = ?")
       .all(meetingId) as { tag_id: string }[];
@@ -86,7 +90,7 @@ export function setMeetingTags(meetingId: string, names: string[]): string[] {
     for (const { tag_id } of current) {
       if (!keepIds.includes(tag_id)) remove.run(meetingId, tag_id);
     }
-    return getMeetingTags(meetingId);
+    return getMeetingTags(meetingId, db);
   });
 }
 
@@ -98,21 +102,21 @@ export function setMeetingTags(meetingId: string, names: string[]): string[] {
 export function addSuggestedTags(
   meetingId: string,
   suggested: readonly string[],
+  db: DatabaseSync = getDb(),
 ): string[] {
-  const db = getDb();
   return withTransaction(db, () => {
     const meeting = db
       .prepare("SELECT 1 FROM meetings WHERE id = ?")
       .get(meetingId);
     if (!meeting) return [];
     const now = Date.now();
-    const existing = getMeetingTags(meetingId);
+    const existing = getMeetingTags(meetingId, db);
     let room = MAX_MEETING_TAGS - existing.length;
     const added: string[] = [];
     for (const name of normalizeTagNames(suggested)) {
       if (room <= 0) break;
       if (existing.includes(name)) continue;
-      if (linkTag(meetingId, ensureTagId(name, now), "llm", now)) {
+      if (linkTag(db, meetingId, ensureTagId(db, name, now), "llm", now)) {
         added.push(name);
         room -= 1;
       }

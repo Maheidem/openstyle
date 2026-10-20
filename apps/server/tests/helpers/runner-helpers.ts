@@ -9,6 +9,7 @@ import {
   instantSleep,
   type RecordedRequest,
   responderModel,
+  type TagsAnswer,
   TEST_MODEL,
 } from "./workflow-harness.js";
 
@@ -68,21 +69,30 @@ export function defaultAnswer(r: RecordedRequest): ScriptStep {
 export interface RunnerHarness {
   /** Pass it to `startRun`, `resumeRun` or `__setMeetingsTestOverrides`. */
   deps: RunnerDeps;
+  /** The requests of every node except `suggestTags`. */
   requests: RecordedRequest[];
+  /** The requests of `suggestTags` (issue #231). */
+  tagRequests: RecordedRequest[];
   /** The scripted model behind `deps.createModel`. */
   model: MockLanguageModelV4;
 }
 
 /** Deps with a scripted model, an instant sleep and the real recorder. */
 export function runnerHarness(
-  o: { answer?: (r: RecordedRequest) => ScriptStep; deps?: RunnerDeps } = {},
+  o: {
+    answer?: (r: RecordedRequest) => ScriptStep;
+    tags?: TagsAnswer;
+    deps?: RunnerDeps;
+  } = {},
 ): RunnerHarness {
-  const { model, requests } = responderModel(
+  const { model, requests, tagRequests } = responderModel(
     TEST_MODEL,
     o.answer ?? defaultAnswer,
+    o.tags,
   );
   return {
     requests,
+    tagRequests,
     model,
     deps: {
       createModel: seamFor(model),

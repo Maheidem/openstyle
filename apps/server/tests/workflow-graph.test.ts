@@ -31,6 +31,7 @@ import {
   chatReply,
   errorReply,
   type FakeRecorder,
+  isTagsRequest,
   makeFakeRecorder,
   makeTestDeps,
   makeTestRunContext,
@@ -112,7 +113,7 @@ afterEach(() => {
 // --- GR1 to GR3 -----------------------------------------------------------------
 
 describe("GR1: the graph is Figure 1", () => {
-  it("names exactly the six nodes", () => {
+  it("names exactly the seven nodes", () => {
     const { deps } = makeTestDeps();
     const drawn = buildGraph(deps).getGraph();
     const names = Object.keys(drawn.nodes).filter((n) => !n.startsWith("__"));
@@ -122,6 +123,7 @@ describe("GR1: the graph is Figure 1", () => {
         "identifySpeakers",
         "prepare",
         "save",
+        "suggestTags",
         "summarize",
         "verifyEvidence",
       ].sort(),
@@ -405,13 +407,16 @@ describe("GR7: total requests for the whole graph, with the real retry settings 
       speakers: 1,
       meetingId: `m-gr7-${Math.random()}`,
     });
-    const seen = stubFetch(handler);
+    const all = stubFetch(handler);
     const { deps } = makeTestDeps();
     const r = await runScriptedGraph({
       deps,
       meetingId: f.meeting.id,
       stages: ["enhance"],
     });
+    // Count the correctChunk requests. `suggestTags` runs after `save` and
+    // gets the same fault; its requests are not part of this count.
+    const seen = all.filter((q) => !isTagsRequest({ system: systemOf(q) }));
     return { seen, r };
   }
 
@@ -759,6 +764,7 @@ describe("GR25: step rows and the run context", () => {
         "prepare",
         "save",
         "single",
+        "tags",
         "verify",
       ].sort(),
     );
@@ -767,7 +773,13 @@ describe("GR25: step rows and the run context", () => {
     const bySeq = [...steps].sort((a, b) => a.seq - b.seq).map((s) => s.key);
     expect(bySeq[0]).toBe("prepare");
     expect(bySeq.slice(1, 4).sort()).toEqual(["chunk:0", "chunk:1", "chunk:2"]);
-    expect(bySeq.slice(4)).toEqual(["candidates", "verify", "single", "save"]);
+    expect(bySeq.slice(4)).toEqual([
+      "candidates",
+      "verify",
+      "single",
+      "save",
+      "tags",
+    ]);
     // Every call of the three chunks counted an attempt on its step row.
     expect(steps.find((s) => s.key === "chunk:0")?.attempts).toBe(1);
     // (b) onNodeStart: once for each node run, in node order.
@@ -780,6 +792,7 @@ describe("GR25: step rows and the run context", () => {
       "verifyEvidence",
       "summarize",
       "save",
+      "suggestTags",
     ]);
     expect(r.finalState.summary?.status).toBe("ok");
   });
@@ -1021,7 +1034,9 @@ describe("10.5.4: the wire", () => {
     const seen = stubFetch((req) =>
       systemOf(req).includes("diarized labels")
         ? chatReply('{"speakers":[]}')
-        : chatReply('{"corrections":[]}'),
+        : isTagsRequest({ system: systemOf(req) })
+          ? chatReply('{"tags":[]}')
+          : chatReply('{"corrections":[]}'),
     );
     const { deps } = makeTestDeps();
     await runScriptedGraph({
@@ -1039,16 +1054,22 @@ describe("10.5.4: the wire", () => {
     resetWorkflowTables();
     seedTestModel();
     const b = await wireRun("m-stab-b", false);
-    const schemas = (seen: typeof a, identify: boolean) => [
+    const nodeOf = (r: (typeof a)[number]) =>
+      systemOf(r).includes("diarized labels")
+        ? "identify"
+        : isTagsRequest({ system: systemOf(r) })
+          ? "tags"
+          : "correct";
+    const schemas = (seen: typeof a, node: string) => [
       ...new Set(
         seen
-          .filter((r) => systemOf(r).includes("diarized labels") === identify)
+          .filter((r) => nodeOf(r) === node)
           .map((r) => JSON.stringify(r.body?.response_format)),
       ),
     ];
-    for (const identify of [false, true]) {
-      const sa = schemas(a, identify);
-      const sb = schemas(b, identify);
+    for (const node of ["correct", "identify", "tags"]) {
+      const sa = schemas(a, node);
+      const sb = schemas(b, node);
       expect(sa).toHaveLength(1);
       expect(sb).toEqual(sa);
     }
@@ -1058,7 +1079,7 @@ describe("10.5.4: the wire", () => {
       );
     }
     // correctChunk sends enable_thinking false on a local server.
-    const correct = a.filter((r) => !systemOf(r).includes("diarized labels"));
+    const correct = a.filter((r) => nodeOf(r) === "correct");
     expect(correct.length).toBeGreaterThan(0);
     for (const r of correct) {
       expect(
