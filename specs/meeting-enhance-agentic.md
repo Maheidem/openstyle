@@ -564,6 +564,10 @@ export interface RunContext extends UnitContext { // `signal` and `isStopped()` 
     addTotal(calls: number): void;
     callEnded(outcome: "ok" | "failed"): void;
     onQueued(info: { waitedMs: number; ahead: number }): void;
+    setPlan(chunks: number, stages: readonly RunStage[]): void; // `prepare` calls it once; it fixes the step total (3.4.4)
+    chunkStarted(chunkIndex: number, text: string): void; // `text`: the first segment of the chunk
+    chunkEnded(chunkIndex: number): void;
+    summaryPart(part: { n: number; of: number } | "combine"): void; // before each map part and before the reduce
   };
   setInputHash(hash: string): void; // `prepare` calls this once; the runner stores it
   onNodeStart(node: NodeId): void; // `guardNode` calls it first for every node run (4.0.2), before the step row opens. Must not throw, be quick, be idempotent. The runner calls `setJobKind(meetingId, "summarize")` for `summarize` (3.6 item 4)
@@ -679,7 +683,7 @@ Only a `running` run holds the job slot. For every other status `GET /:id` retur
 
 #### 3.4.4 Progress
 
-The job blob keeps its shape (J:13-30, `V/meeting-types.ts:36-53`), so renderer polling does not change. Each node adds its planned calls to `total` at its start (`correctChunk`: one per chunk; `summarize`: 4.5.3). `done` counts ended calls; `failed` counts typed failures. `queued` comes from the lane callback `onQueued` (L:275-283); the runner keeps the entry with the smallest `ahead`. Nodes report through `ctx.progress`, never to the registry. The recorder writes each call record when the call ends, so the inspector shows calls during the run (section 8).
+The job blob keeps its fields (J:13-30, `V/meeting-types.ts:36-53`) and adds `phase`, `step`, `steps` and `detail`, so renderer polling does not change. `done` and `total` count work steps, not LLM calls: one step for each chunk, then one step for each later phase (`identifySpeakers` and `suggestTags` in an Enhance run, `summarize` when the run has it, and `save`). `prepare` fixes `total` once, when it knows the chunk count, so the bar never goes back. A split or a retry does not change it. During `correctChunk`, `done` counts ended chunks, `phase` is `reading`, `step` of `steps` names the lowest chunk in work, and `detail` is the first sentence of that chunk (80 characters at most). The other phases are `preparing`, `speakers`, `summarizing` (`step` of `steps` names the map part), `combining` (the reduce), `saving` and `tags`. `verifyEvidence` is code only and quick, so it keeps the phase before it. When a later phase starts, every step before it counts as done. A resume takes the plan and the ended chunks from the checkpoint. Each node still adds its planned calls to an internal call count at its start (`correctChunk`: one per chunk; `summarize`: 4.5.3) for traces and tests. `failed` counts typed failures. `queued` comes from the lane callback `onQueued` (L:275-283); the runner keeps the entry with the smallest `ahead`. Nodes report through `ctx.progress`, never to the registry. The recorder writes each call record when the call ends, so the inspector shows calls during the run (section 8).
 
 #### 3.4.5 Cancel
 
@@ -1060,6 +1064,7 @@ export interface PreparedSegment {
 export interface PreparedMeeting {
   meetingId: string;
   language: string | null; title: string | null; context: string | null;
+  contextWithFolder?: string | null; // P8b: context, then the folder block. Not for summarize.
   vocabTerms: string[];
   attendeeNames: string[]; // for verifyEvidence only. Never in a prompt.
   segments: PreparedSegment[]; // time order
@@ -1085,6 +1090,7 @@ export interface PreparedMeeting {
 - P6. Chunk size = `min(CHUNK_TOKENS_MAX, floor((contextWindow - tokens(system) - SAFETY_TOKENS - CORRECT_ANSWER_FIXED) / (1 + CORRECT_ANSWER_FACTOR)))` (4.0.5). `contextWindow` `null`: `CHUNK_TOKENS_MAX`.
 - P7. Label sets come from the structured `speakerLabel`, not display text (`M/enhance.ts:413-423`; the set has no `speakerName` filter). Confirmed = `display_name` set (`M/speaker-names.ts:37-51`).
 - P8. Copy attendee names (no emails) from the calendar link (`S/routes/meetings.ts:1264-1269` reads names from the stored calendar attendees and drops emails; the copy from the calendar event is `calendarColumnValues`, `S/routes/meetings.ts:1281`).
+- P8b. `contextWithFolder` = `buildPromptContext(meetings.context, folder)` (`M/workflow/prompts.ts`, issue #230 phase 2, owner decision 2026-10-20). The meeting's own context comes first and is never cut. A filed meeting then gets one block `Folder (the user's own label for this group of meetings; it is not a participant, a company or an owner, and it is not a fact from this meeting): <folder name> - <folder description>` (the label and `<folder name>` only with no description). The label is `FOLDER_CONTEXT_LABEL`. A bare `Project:` label made Gemma 4 E2B read the folder name as the company or product of a participant (benchmark 2026-10-21, owner decision 2026-10-21). The folder text is cut to 500 characters. An unfiled meeting gets no block. Only `identifySpeakers`, the `verifyEvidence` support texts and `suggestTags` read `contextWithFolder` (through `promptContextWithFolder`, which falls back to `context` for a checkpoint from before #230). `summarize` reads only `context`, the meeting's own context, so its prompt input is byte-identical to the input before #230 (owner decision 2026-10-21 09:12). Reason: the Gemma 4 E2B reruns with the new label (2026-10-21) still found one folder-word confusion, and it was in the summary. `correctChunk` still gets no context (N4). `prepare` reads the folder row on each run, so a renamed folder reaches the next run.
 - P9. Resolve model and profile for each LLM node once, into the state. A resume reuses them (N5). A model-setup fault is `model_unavailable` (5.2.1). A failed models.dev read is not a fault: the profile falls back to the hand table with a warning (5.1), so an offline Mac still runs a local `server` Enhance. Call: `resolveModels({ maxReasoningTokens: { correctChunk: 0, identifySpeakers: IDENTIFY_REASONING_MAX, summarize: 0 }, reasoningSteps: deps.reasoningSteps })` (5.1). Zeros match mode `off` (`reasoning.budgetTokens` 0; 5.5 rule 4, 4.0.1). `IDENTIFY_REASONING_MAX` is a cap only: reasoning runs when 5.5 rule 4 or a user preset turns it on.
 - P10. No segment left: fail the run with `empty_input` before any call. The route answers 409 (`S/routes/meetings.ts:2114-2117`).
 - P11. Compute `inputHash` with the one function of `M/input-hash.ts` (planned, WP2, 11.4; no `inputHash` symbol exists in `apps` or `packages`). The resume guard (3.4.7) and the inspector reader (7.8) call it too and must get the same bytes from the same database, so it hashes database rows, not the merged transcript:

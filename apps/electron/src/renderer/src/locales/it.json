@@ -900,6 +900,23 @@
     "enhance": "Migliora",
     "reEnhance": "Migliora di nuovo",
     "enhancing": "Miglioramento…",
+    "jobBadge": {
+      "transcribe": "Trascrizione",
+      "retryFailed": "Nuovo tentativo",
+      "diarize": "Parlanti",
+      "enhance": "Miglioramento",
+      "summarize": "Riepilogo"
+    },
+    "progress": {
+      "preparing": "Preparazione…",
+      "reading": "Lettura della trascrizione…",
+      "readingChunk": "Lettura del blocco {{n}} di {{total}}…",
+      "speakers": "Ricerca dei parlanti…",
+      "summarizingPart": "Riepilogo della parte {{n}} di {{total}}…",
+      "combining": "Unione del riepilogo…",
+      "saving": "Salvataggio…",
+      "tags": "Suggerimento dei tag…"
+    },
     "enhanceResult": "{{n}} segmenti corretti.",
     "enhanceNoneCorrected": "Nessun segmento ha richiesto correzioni.",
     "enhanceAllDropped": "Enhance ha suggerito {{n}} modifiche, ma nessuna ha superato i controlli di sicurezza.",

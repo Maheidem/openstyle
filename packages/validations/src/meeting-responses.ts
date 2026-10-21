@@ -19,8 +19,40 @@ const meetingRecordSchema = z.object({
   context: z.string().nullable(),
 });
 
+const meetingJobPhaseSchema = z.enum([
+  "diarizing",
+  "transcribing",
+  "preparing",
+  "reading",
+  "speakers",
+  "summarizing",
+  "combining",
+  "saving",
+  "tags",
+]);
+
+const meetingJobKindSchema = z.enum([
+  "transcribe",
+  "retry-failed",
+  "diarize",
+  "summarize",
+  "enhance",
+]);
+
 export const meetingListResponseSchema = z.object({
-  items: z.array(meetingRecordSchema),
+  items: z.array(
+    meetingRecordSchema.extend({
+      job: z
+        .object({
+          kind: meetingJobKindSchema.nullable().optional(),
+          phase: meetingJobPhaseSchema.optional(),
+          done: z.number(),
+          total: z.number(),
+        })
+        .nullable()
+        .optional(),
+    }),
+  ),
   total: z.number().int().nonnegative(),
 });
 
@@ -32,14 +64,15 @@ export const meetingDetailResponseSchema = meetingRecordSchema.extend({
       done: z.number(),
       total: z.number(),
       failed: z.number(),
-      kind: z
-        .enum(["transcribe", "retry-failed", "diarize", "summarize", "enhance"])
-        .nullable()
-        .optional(),
+      kind: meetingJobKindSchema.nullable().optional(),
       queued: z
         .object({ ahead: z.number(), sinceMs: z.number() })
         .nullable()
         .optional(),
+      phase: meetingJobPhaseSchema.optional(),
+      step: z.number().nullable().optional(),
+      steps: z.number().nullable().optional(),
+      detail: z.string().nullable().optional(),
     })
     .nullable(),
   segment_counts: z.object({ total: z.number(), failed: z.number() }),

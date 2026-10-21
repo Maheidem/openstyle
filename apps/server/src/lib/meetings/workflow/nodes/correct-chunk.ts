@@ -404,6 +404,20 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
     });
     const systemTokens = estimateTokens(system);
     ctx.progress.addTotal(1);
+    ctx.progress.chunkStarted(input.chunkIndex, input.segments[0]?.text ?? "");
+    try {
+      return await correctChunk(input, ctx, system, systemTokens);
+    } finally {
+      ctx.progress.chunkEnded(input.chunkIndex);
+    }
+  }
+
+  async function correctChunk(
+    input: CorrectChunkInput,
+    ctx: RunContext,
+    system: string,
+    systemTokens: number,
+  ): Promise<CorrectChunkResult> {
     const leaves = await runUnitRoute(
       {
         node: "correctChunk",

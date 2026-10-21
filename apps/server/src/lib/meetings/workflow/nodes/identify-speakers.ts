@@ -5,6 +5,7 @@ import type { RunContext, WorkflowDeps } from "../context.js";
 import {
   buildIdentifySystemPrompt,
   buildIdentifyUserPrompt,
+  promptContextWithFolder,
 } from "../prompts.js";
 import {
   type IdentifySpeakers,
@@ -218,7 +219,7 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
     const system = buildIdentifySystemPrompt({
       labels,
       title: prepared.title,
-      context: prepared.context,
+      context: promptContextWithFolder(prepared),
     });
     const systemTokens = estimateTokens(system);
     const maxOut = maxOutputFor(labels.length, profile);

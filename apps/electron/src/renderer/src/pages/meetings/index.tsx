@@ -67,9 +67,14 @@ export default function MeetingsPage(): React.JSX.Element {
       return (await res.json()).items;
     },
     enabled,
+    // Poll while a row records, transcribes or runs any job, so its badge
+    // and percent stay current.
     refetchInterval: (query) =>
       query.state.data?.some(
-        (m) => m.status === "recording" || m.status === "transcribing",
+        (m) =>
+          m.status === "recording" ||
+          m.status === "transcribing" ||
+          m.job != null,
       )
         ? 2000
         : false,

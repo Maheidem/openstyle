@@ -82,7 +82,7 @@ export function MeetingTagChips({
             </button>
           </li>
         ))}
-        <li className="relative">
+        <li>
           <div
             className={cn(
               "border-border text-muted-foreground inline-flex h-6 items-center gap-1 rounded-[5px] border border-dashed px-1.5",
@@ -119,30 +119,32 @@ export function MeetingTagChips({
               }}
             />
           </div>
-          {suggestions.length > 0 && (
-            <div
-              id={listId}
-              className="bg-popover text-popover-foreground border-border absolute top-7 left-0 z-50 min-w-40 rounded-lg border p-1 shadow-md"
-            >
-              <p className="text-muted-foreground px-2 py-1 text-[10.5px]">
-                {t("meetings.tags.suggestions")}
-              </p>
-              {suggestions.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  // Keep the focus in the input, so the list stays open.
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => void add(name)}
-                  className="hover:bg-accent focus-visible:bg-accent flex w-full items-center rounded-md px-2 py-1 text-left text-[12px] outline-none"
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          )}
         </li>
       </ul>
+      {/* In the flow under the chips, not over the page: the list pushes the
+          context line down and never covers it (issue #238). */}
+      {suggestions.length > 0 && (
+        <div
+          id={listId}
+          className="bg-popover text-popover-foreground border-border mt-1 w-fit min-w-40 rounded-lg border p-1 shadow-md"
+        >
+          <p className="text-muted-foreground px-2 py-1 text-[10.5px]">
+            {t("meetings.tags.suggestions")}
+          </p>
+          {suggestions.map((name) => (
+            <button
+              key={name}
+              type="button"
+              // Keep the focus in the input, so the list stays open.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void add(name)}
+              className="hover:bg-accent focus-visible:bg-accent flex w-full items-center rounded-md px-2 py-1 text-left text-[12px] outline-none"
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
       {error && (
         <p
           id={hintId}

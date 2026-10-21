@@ -35,6 +35,7 @@ import {
 } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import {
   AlertTriangle,
   AudioLines,
@@ -258,7 +259,13 @@ export function MeetingDetailView({
       // follows Enhance in a chained run, so the list badge refetches here.
       void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.list });
     }
-    if (prev === "enhance" && kind !== "enhance") {
+    // A chained run goes from "enhance" to "summarize" before `save` writes
+    // the enhanced text, so that refetch can read the old text. So the end
+    // of a summarize run (kind becomes null) refetches them again.
+    if (
+      (prev === "enhance" && kind !== "enhance") ||
+      (prev === "summarize" && kind === null)
+    ) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.meetings.transcript(id),
       });
@@ -481,6 +488,11 @@ export function MeetingDetailView({
   const jobHoldsSlot = meeting.job !== null;
   const summarizeQueueAhead = meeting.job?.queued?.ahead ?? 0;
   const summarizeQueued = summarizing && meeting.job?.queued != null;
+  // A workflow run names its phase (specs/meeting-enhance-agentic.md 3.4.4).
+  const phaseLabel =
+    (summarizing || enhancingJob) && meeting.job
+      ? workflowPhaseLabel(meeting.job, t)
+      : null;
   // The newest run of each kind decides its notice (8.9). The persisted run
   // holds the failure of a Summarize too.
   const runOf = (kind: LlmRunKind) =>
@@ -729,7 +741,7 @@ export function MeetingDetailView({
                   : enhancingJob
                     ? cancelRequested
                       ? t("meetings.cancellingEnhance")
-                      : t("meetings.enhancing")
+                      : (phaseLabel ?? t("meetings.enhancing"))
                     : cancelRequested
                       ? t("meetings.cancellingSummarize")
                       : summarizeQueued && summarizeQueueAhead > 0
@@ -738,8 +750,16 @@ export function MeetingDetailView({
                           })
                         : summarizeQueued
                           ? t("meetings.summarizeQueued")
-                          : t("meetings.summarizing")}
+                          : (phaseLabel ?? t("meetings.summarizing"))}
               </div>
+              {phaseLabel && !cancelRequested && meeting.job?.detail && (
+                <div
+                  className="text-muted-foreground mt-0.5 truncate text-[11.5px]"
+                  data-testid="meetings-job-detail"
+                >
+                  {meeting.job.detail}
+                </div>
+              )}
               {meeting.job && meeting.job.total > 0 && (
                 <Progress
                   value={(meeting.job.done / meeting.job.total) * 100}
@@ -749,7 +769,11 @@ export function MeetingDetailView({
             </div>
             {meeting.job && meeting.job.total > 0 && (
               <span className="mono text-muted-foreground text-[10px] tabular-nums">
-                {meeting.job.done}/{meeting.job.total}
+                {/* A workflow run counts work steps, not chunks: a percent
+                    reads better than "4/7" next to "chunk 3 of 5". */}
+                {phaseLabel
+                  ? `${Math.round((meeting.job.done / meeting.job.total) * 100)}%`
+                  : `${meeting.job.done}/${meeting.job.total}`}
               </span>
             )}
             {/* T1-1 (UX-03): the non-destructive exit from a mis-started job —
@@ -1207,6 +1231,36 @@ export function MeetingDetailView({
  * agentic.md 8.9): the headline, one line for each node and error kind, and the
  * buttons. The text of a line never holds prompt text.
  */
+/** The label of a workflow phase, or null when the job blob has none. */
+function workflowPhaseLabel(
+  job: NonNullable<MeetingDetail["job"]>,
+  t: TFunction,
+): string | null {
+  const part = job.step && job.steps ? { n: job.step, total: job.steps } : null;
+  switch (job.phase) {
+    case "preparing":
+      return t("meetings.progress.preparing");
+    case "reading":
+      return part
+        ? t("meetings.progress.readingChunk", part)
+        : t("meetings.progress.reading");
+    case "speakers":
+      return t("meetings.progress.speakers");
+    case "summarizing":
+      return part
+        ? t("meetings.progress.summarizingPart", part)
+        : t("meetings.summarizing");
+    case "combining":
+      return t("meetings.progress.combining");
+    case "saving":
+      return t("meetings.progress.saving");
+    case "tags":
+      return t("meetings.progress.tags");
+    default:
+      return null;
+  }
+}
+
 function RunNoticeView({
   notice,
   disabled,

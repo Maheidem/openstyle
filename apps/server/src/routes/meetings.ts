@@ -1122,7 +1122,19 @@ const meetings = new Hono()
       ) as unknown as MeetingRow[];
     return c.json(
       meetingListResponseSchema.parse({
-        items: rows.map(omitCalendarColumns),
+        // A short form of the running job, so a list row can show it.
+        items: rows.map((row) => {
+          const job = getJob(row.id);
+          return {
+            ...omitCalendarColumns(row),
+            job: job && {
+              kind: job.kind,
+              phase: job.phase,
+              done: job.done,
+              total: job.total,
+            },
+          };
+        }),
         total: rows.length,
       }),
     );

@@ -25,9 +25,30 @@ export interface MeetingJobProgress {
    * so the UI does not show 0 of 0 with no explanation. Absent (or
    * anything else) means the chunk-transcription phase, whose `done`/
    * `total` are the chunk counters.
+   *
+   * A workflow run (Enhance, Summarize) sets the other values
+   * (specs/meeting-enhance-agentic.md 3.4.4). Its `done`/`total` count
+   * work steps: one per chunk, then one per later phase.
    */
-  phase?: "diarizing" | "transcribing";
+  phase?: MeetingJobPhase;
+  /** Workflow run: the 1-based chunk or summary part in work, or null. */
+  step?: number | null;
+  /** Workflow run: the count of chunks or summary parts, or null. */
+  steps?: number | null;
+  /** Workflow run: the start of the chunk text in work, or null. */
+  detail?: string | null;
 }
+
+export type MeetingJobPhase =
+  | "diarizing"
+  | "transcribing"
+  | "preparing"
+  | "reading"
+  | "speakers"
+  | "summarizing"
+  | "combining"
+  | "saving"
+  | "tags";
 
 /** What kind of job holds a meeting's slot. Transcription jobs (a full
  * re-transcribe or a retry-failed pass) and the workflow runs (Enhance, which

@@ -12,7 +12,11 @@ import { speakerDisplayLabel } from "../../merge.js";
 import { type MeetingRow, parseAttendees } from "../../store.js";
 import { chunkForEnhance, estimateTokens } from "../chunking.js";
 import type { WorkflowDeps } from "../context.js";
-import { buildCorrectSystemPrompt } from "../prompts.js";
+import {
+  buildCorrectSystemPrompt,
+  buildPromptContext,
+  type FolderContextInput,
+} from "../prompts.js";
 import type { WorkflowStateType } from "../state.js";
 import {
   CHUNK_TOKENS_MAX,
@@ -105,6 +109,17 @@ export function makePrepareNode(deps: WorkflowDeps) {
         ...(deps.reasoningSteps ? { reasoningSteps: deps.reasoningSteps } : {}),
       });
 
+      // The folder of a filed meeting adds a labeled block after the
+      // meeting's own context (issue #230). Read on each run, so a renamed
+      // folder reaches the next run.
+      const folder = row.folder_id
+        ? ((deps.db
+            .prepare(
+              "SELECT name, description FROM meeting_folders WHERE id = ?",
+            )
+            .get(row.folder_id) as FolderContextInput | undefined) ?? null)
+        : null;
+
       const vocabTerms = loadVocabularyTerms();
       const language = row.language ?? null;
 
@@ -151,12 +166,14 @@ export function makePrepareNode(deps: WorkflowDeps) {
         })),
         chunkTokens,
       ).map((chunk) => chunk.map((s) => s.id));
+      ctx.progress.setPlan(chunks.length, state.stages);
 
       const prepared: PreparedMeeting = {
         meetingId: state.meetingId,
         language,
         title: row.title,
         context: row.context,
+        contextWithFolder: buildPromptContext(row.context, folder),
         vocabTerms,
         // P8: names only, never emails.
         attendeeNames: parseAttendees(row)

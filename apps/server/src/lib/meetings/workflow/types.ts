@@ -131,7 +131,15 @@ export interface PreparedMeeting {
   meetingId: string;
   language: string | null;
   title: string | null;
+  /** The meeting's own context. `summarize` reads only this (P8b). */
   context: string | null;
+  /**
+   * The meeting context, then the folder block (buildPromptContext).
+   * `identifySpeakers`, `verifyEvidence` and `suggestTags` read it (P8b).
+   * Absent in a checkpoint from before issue #230: read it with
+   * `promptContextWithFolder`.
+   */
+  contextWithFolder?: string | null;
   vocabTerms: string[];
   /** For verifyEvidence only. Never in a prompt. */
   attendeeNames: string[];

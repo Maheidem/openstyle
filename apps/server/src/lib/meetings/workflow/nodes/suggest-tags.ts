@@ -4,7 +4,11 @@ import type { CallProfile } from "../../../llm/model-profiles.js";
 import { addSuggestedTags, listTagsWithCounts } from "../../tags.js";
 import { estimateTokens } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
-import { buildTagsSystemPrompt, buildTagsUserPrompt } from "../prompts.js";
+import {
+  buildTagsSystemPrompt,
+  buildTagsUserPrompt,
+  promptContextWithFolder,
+} from "../prompts.js";
 import { MEETING_TAGS_STEP_SCHEMA, type MeetingTags } from "../schemas.js";
 import type { WorkflowStateType } from "../state.js";
 import {
@@ -111,7 +115,7 @@ export function makeSuggestTagsNode(deps: WorkflowDeps) {
     const profile = models.suggestTags;
     const system = buildTagsSystemPrompt({
       title: prepared.title,
-      context: prepared.context,
+      context: promptContextWithFolder(prepared),
       existingTags: existingTagsForPrompt(deps),
       maxTags: MAX_SUGGESTED_TAGS,
     });

@@ -10,6 +10,11 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
+import {
+  claimJob,
+  releaseJob,
+  updateProgress,
+} from "../src/lib/meetings/job-registry.js";
 import { jsonRequest } from "./helpers/http.js";
 import { resetMeetingTables } from "./helpers/meetings-db.js";
 
@@ -327,5 +332,26 @@ describe("meeting folders", () => {
     expect(
       getDb().prepare("SELECT id FROM meetings WHERE id = 'bad'").get(),
     ).toBeUndefined();
+  });
+});
+
+describe("meeting list job summary", () => {
+  it("adds the short form of a running job to its row, and null to the others", async () => {
+    insertMeeting("busy", 2);
+    insertMeeting("idle", 1);
+    claimJob("busy", "enhance", { done: 2, total: 7, failed: 1 });
+    updateProgress("busy", { phase: "reading", step: 3, steps: 5 });
+    try {
+      const { items } = await list();
+      expect(items.find((m) => m.id === "busy")?.job).toEqual({
+        kind: "enhance",
+        phase: "reading",
+        done: 2,
+        total: 7,
+      });
+      expect(items.find((m) => m.id === "idle")?.job).toBeNull();
+    } finally {
+      releaseJob("busy");
+    }
   });
 });
