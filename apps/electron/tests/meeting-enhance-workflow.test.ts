@@ -128,8 +128,9 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
   const id = "e2e-happy";
   fake.requests.length = 0;
   const base = goodAnswer(id, (i) => i !== 1);
-  // Park the summary call: the list card must read Transcribed while the
-  // chained Summarize runs, so the later "Summarized" proves a refetch.
+  // Park the summary call: the list card must show the Summarizing job
+  // badge while the chained Summarize runs, so the later "Summarized"
+  // proves a refetch.
   fake.script = (req) => (req.step === "meeting_summary" ? "hold" : base(req));
   seedMeeting(env.userDataDir, id, "Happy path sync", defaultSegments(3));
 
@@ -140,7 +141,10 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
     .filter({ hasText: "Happy path sync" });
   await env.page.getByRole("button", { name: "Enhance", exact: true }).click();
   await expect.poll(() => fake.heldCount(), { timeout: 30_000 }).toBe(1);
-  await expect(card.getByText("Transcribed", { exact: true })).toBeVisible();
+  await expect(card.getByTestId("meetings-job-badge")).toContainText(
+    "Summarizing",
+    { timeout: 10_000 },
+  );
   // The one-second poll must see the Summarize job before the call ends.
   await env.page.waitForResponse(async (r) => {
     if (!r.url().endsWith(`/api/meetings/${id}`)) return false;

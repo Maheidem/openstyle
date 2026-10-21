@@ -93,6 +93,10 @@ export function makeTestRunContext(
       if (outcome === "failed") progress.failed += 1;
     },
     onQueued() {},
+    setPlan() {},
+    chunkStarted() {},
+    chunkEnded() {},
+    summaryPart() {},
   };
   return {
     runId: o.runId ?? "run-1",

@@ -166,6 +166,7 @@ export function makePrepareNode(deps: WorkflowDeps) {
         })),
         chunkTokens,
       ).map((chunk) => chunk.map((s) => s.id));
+      ctx.progress.setPlan(chunks.length, state.stages);
 
       const prepared: PreparedMeeting = {
         meetingId: state.meetingId,

@@ -22,6 +22,7 @@ import { hashVariantOf, inputHash, loadHashRows } from "../input-hash.js";
 import {
   claimJob,
   hasJob,
+  type MeetingJobPhase,
   releaseJob,
   setJobKind,
   updateProgress,
@@ -103,6 +104,29 @@ interface RunContextHandle {
   ctx: RunContext;
   /** What `recordLost` counted. */
   lostRecords(): number;
+  /** A resume: take the plan and the finished chunks from the checkpoint. */
+  resumeFrom(values: StateValues): void;
+}
+
+/** The phase that the job blob shows for each node (3.4.4). `verifyEvidence`
+ * is code only and quick, so it keeps the phase before it. */
+const PHASE_OF: Partial<Record<NodeId, MeetingJobPhase>> = {
+  prepare: "preparing",
+  correctChunk: "reading",
+  identifySpeakers: "speakers",
+  summarize: "summarizing",
+  save: "saving",
+  suggestTags: "tags",
+};
+
+/** The first sentence of a text, at most `max` characters. */
+function firstSentence(text: string, max = 80): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const end = flat.search(/[.!?…](\s|$)/);
+  const sentence = end >= 0 ? flat.slice(0, end + 1) : flat;
+  return sentence.length <= max
+    ? sentence
+    : `${sentence.slice(0, max - 1).trimEnd()}…`;
 }
 
 function makeRunContext(o: {
@@ -114,15 +138,53 @@ function makeRunContext(o: {
   const { runId, meetingId, controller, deps } = o;
   let stoppedKind: FailureKind | null = null;
   let lost = 0;
+  // The LLM call counters. Only `failed` goes to the job blob.
   const counts = { total: 0, done: 0, failed: 0 };
   let queued: { ahead: number; sinceMs: number } | null = null;
+  // The job blob counts work steps: one for each chunk, then one for each
+  // later phase. `setPlan` fixes the total once, so the bar never goes back.
+  const view = {
+    chunks: 0,
+    chunksDone: 0,
+    after: [] as NodeId[],
+    afterDone: 0,
+    phase: "preparing" as MeetingJobPhase,
+    step: null as number | null,
+    steps: null as number | null,
+    detail: null as string | null,
+  };
+  /** The chunks in work: index to the first sentence of the chunk. */
+  const reading = new Map<number, string>();
   const publish = () =>
     updateProgress(meetingId, {
-      total: counts.total,
-      done: counts.done,
+      total: view.chunks + view.after.length,
+      done: Math.min(view.chunks, view.chunksDone) + view.afterDone,
       failed: counts.failed,
       queued,
+      phase: view.phase,
+      step: view.step,
+      steps: view.steps,
+      detail: view.detail,
     });
+  /** Show the lowest chunk in work. With no chunk in work, keep the last. */
+  const showChunk = () => {
+    if (reading.size === 0) return;
+    const index = Math.min(...reading.keys());
+    view.step = index + 1;
+    view.steps = view.chunks > 0 ? view.chunks : null;
+    view.detail = reading.get(index) ?? null;
+  };
+  const setPlan = (chunks: number, stages: readonly RunStage[]) => {
+    const enhance = stages.includes("enhance");
+    view.chunks = enhance ? chunks : 0;
+    view.after = [
+      ...(enhance ? (["identifySpeakers"] as const) : []),
+      ...(stages.includes("summarize") ? (["summarize"] as const) : []),
+      "save",
+      ...(enhance ? (["suggestTags"] as const) : []),
+    ];
+    publish();
+  };
   const ctx: RunContext = {
     runId,
     meetingId,
@@ -138,7 +200,6 @@ function makeRunContext(o: {
     progress: {
       addTotal(calls) {
         counts.total += calls;
-        publish();
       },
       callEnded(outcome) {
         counts.done += 1;
@@ -153,6 +214,24 @@ function makeRunContext(o: {
           publish();
         }
       },
+      setPlan,
+      chunkStarted(chunkIndex, text) {
+        reading.set(chunkIndex, firstSentence(text));
+        showChunk();
+        publish();
+      },
+      chunkEnded(chunkIndex) {
+        reading.delete(chunkIndex);
+        view.chunksDone += 1;
+        showChunk();
+        publish();
+      },
+      summaryPart(part) {
+        view.phase = part === "combine" ? "combining" : "summarizing";
+        view.step = part === "combine" ? null : part.n;
+        view.steps = part === "combine" ? null : part.of;
+        publish();
+      },
     },
     setInputHash(hash) {
       deps.recorder.setInputHash(runId, hash);
@@ -160,9 +239,34 @@ function makeRunContext(o: {
     onNodeStart(node: NodeId) {
       // The job starts as `enhance`. The banner names the running stage (3.6).
       if (node === "summarize") setJobKind(meetingId, "summarize");
+      const phase = PHASE_OF[node];
+      if (!phase) return;
+      const at = view.after.indexOf(node);
+      if (at >= 0) {
+        // A later phase starts: every chunk and every phase before it is done.
+        view.chunksDone = view.chunks;
+        view.afterDone = Math.max(view.afterDone, at);
+      }
+      view.phase = phase;
+      if (node !== "correctChunk") {
+        view.step = null;
+        view.steps = null;
+        view.detail = null;
+      }
+      publish();
     },
   };
-  return { ctx, lostRecords: () => lost };
+  return {
+    ctx,
+    lostRecords: () => lost,
+    resumeFrom(values) {
+      const chunks = (values.prepared as { chunks?: unknown[] } | undefined)
+        ?.chunks;
+      if (!chunks) return;
+      view.chunksDone = values.corrections?.length ?? 0;
+      setPlan(chunks.length, values.stages ?? []);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +348,8 @@ interface ExecuteArgs {
   controller: AbortController;
   /** A graph that the caller already built. */
   graph?: CompiledWorkflow;
+  /** A resume: the checkpoint values that `resumeRun` read. */
+  resumed?: StateValues;
 }
 
 interface StateValues {
@@ -302,6 +408,7 @@ async function execute(a: ExecuteArgs): Promise<void> {
   };
   try {
     handle = makeRunContext({ runId, meetingId, controller, deps });
+    if (a.resumed) handle.resumeFrom(a.resumed);
     runContexts.register(handle.ctx);
     registered = true;
     if (controller.signal.aborted) onSoft();
@@ -614,7 +721,15 @@ export async function resumeRun(
     }
     deps.recorder.markResumed(runId);
     runRegistry.claim(SCOPE, meetingId, { runId, controller });
-    void execute({ runId, meetingId, mode: "resume", deps, controller, graph });
+    void execute({
+      runId,
+      meetingId,
+      mode: "resume",
+      deps,
+      controller,
+      graph,
+      resumed: snap.values as StateValues,
+    });
     return { ok: true, runId };
   } catch (err) {
     log.warn(`meeting ${meetingId}: resume of ${runId} failed: ${String(err)}`);

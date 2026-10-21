@@ -1081,6 +1081,23 @@
     "enhance": "Enhance",
     "reEnhance": "Re-enhance",
     "enhancing": "Enhancing…",
+    "jobBadge": {
+      "transcribe": "Transcribing",
+      "retryFailed": "Retrying",
+      "diarize": "Diarizing",
+      "enhance": "Enhancing",
+      "summarize": "Summarizing"
+    },
+    "progress": {
+      "preparing": "Preparing…",
+      "reading": "Reading the transcript…",
+      "readingChunk": "Reading chunk {{n}} of {{total}}…",
+      "speakers": "Finding speakers…",
+      "summarizingPart": "Summarizing part {{n}} of {{total}}…",
+      "combining": "Combining the summary…",
+      "saving": "Saving…",
+      "tags": "Suggesting tags…"
+    },
     "enhanceResult": "Corrected {{n}} segments.",
     "enhanceNoneCorrected": "No segments needed correction.",
     "enhanceAllDropped": "Enhance suggested {{n}} changes, but none passed the safety checks.",

@@ -901,6 +901,23 @@
     "enhance": "Améliorer",
     "reEnhance": "Améliorer à nouveau",
     "enhancing": "Amélioration…",
+    "jobBadge": {
+      "transcribe": "Transcription",
+      "retryFailed": "Nouvelle tentative",
+      "diarize": "Intervenants",
+      "enhance": "Amélioration",
+      "summarize": "Résumé"
+    },
+    "progress": {
+      "preparing": "Préparation…",
+      "reading": "Lecture de la transcription…",
+      "readingChunk": "Lecture du segment {{n}} sur {{total}}…",
+      "speakers": "Identification des intervenants…",
+      "summarizingPart": "Résumé de la partie {{n}} sur {{total}}…",
+      "combining": "Fusion du résumé…",
+      "saving": "Enregistrement…",
+      "tags": "Suggestion de tags…"
+    },
     "enhanceResult": "{{n}} segments corrigés.",
     "enhanceNoneCorrected": "Aucun segment n'a nécessité de correction.",
     "enhanceAllDropped": "Enhance a proposé {{n}} modifications, mais aucune n'a passé les contrôles de sécurité.",
