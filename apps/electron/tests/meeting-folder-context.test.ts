@@ -16,10 +16,11 @@ import {
 // ---------------------------------------------------------------------------
 // Folder text as prompt context in the real app (issue #230 phase 2). A
 // meeting in a folder gets the block `<FOLDER_LABEL> <name> - <description>` after
-// its own context in the speaker, summary and tag prompts. `correct_chunk`
-// gets no context. An unfiled meeting gets no block. The test reads the
-// prompts from the fake server log and from the LLM inspector panel. All text
-// is fictional.
+// its own context in the speaker and tag prompts. The summary prompt gets the
+// meeting context only, as before #230 (spec P8b). `correct_chunk` gets no
+// context. An unfiled meeting gets no block. The test reads the prompts from
+// the fake server log and from the LLM inspector panel. All text is
+// fictional.
 // ---------------------------------------------------------------------------
 
 const FILED = "e2e-folder-ctx-filed";
@@ -123,14 +124,13 @@ async function runEnhance(meetingId: string): Promise<ChatRequest[]> {
   return own;
 }
 
-/** The system message of the summary call, as the inspector panel shows it. */
-async function inspectorSummaryMessages(
+/** Opens the meeting in its rail group, after a fresh load. */
+async function openMeeting(
   page: Page,
   title: string,
   folder: string | null,
-): Promise<string[]> {
-  // A fresh load, then the meeting in its rail group. A folder group starts
-  // closed: a click on the folder shows its meetings.
+): Promise<void> {
+  // A folder group starts closed: a click on the folder shows its meetings.
   await page.reload();
   await page.waitForLoadState("load");
   await page.getByRole("link", { name: "Meetings" }).click();
@@ -150,12 +150,10 @@ async function inspectorSummaryMessages(
   await expect(page.getByTestId("meetings-segment").first()).toBeVisible({
     timeout: 15_000,
   });
-  await page.getByRole("tab", { name: "Summary" }).click();
-  await expect(page.getByText(SUMMARY_OVERVIEW)).toBeVisible();
-  await page.getByTestId("meetings-summary-inspect").click();
-  const calls = page.getByTestId("meetings-inspector-summary-call");
-  await expect(calls).toHaveCount(1, { timeout: 15_000 });
-  await calls.click();
+}
+
+/** The messages of one call, as the open inspector panel shows them. */
+async function shownMessages(page: Page): Promise<string[]> {
   await expect(page.getByTestId("meetings-inspector-call")).toBeVisible({
     timeout: 15_000,
   });
@@ -167,17 +165,52 @@ async function inspectorSummaryMessages(
   return messages;
 }
 
-test("a filed meeting: the folder block follows the meeting context", async () => {
+/** The messages of the summary call, as the inspector panel shows them. */
+async function inspectorSummaryMessages(
+  page: Page,
+  title: string,
+  folder: string | null,
+): Promise<string[]> {
+  await openMeeting(page, title, folder);
+  await page.getByRole("tab", { name: "Summary" }).click();
+  await expect(page.getByText(SUMMARY_OVERVIEW)).toBeVisible();
+  await page.getByTestId("meetings-summary-inspect").click();
+  const calls = page.getByTestId("meetings-inspector-summary-call");
+  await expect(calls).toHaveCount(1, { timeout: 15_000 });
+  await calls.click();
+  return shownMessages(page);
+}
+
+/**
+ * The messages of the speaker call of the Enhance run, as the inspector panel
+ * shows them: the runs list, the Enhance run, then its Speakers step.
+ */
+async function inspectorSpeakerMessages(
+  page: Page,
+  title: string,
+  folder: string | null,
+): Promise<string[]> {
+  await openMeeting(page, title, folder);
+  await page.getByTestId("meetings-inspector-open").click();
+  await page
+    .getByTestId("meetings-inspector-run")
+    .filter({ hasText: "Enhance" })
+    .first()
+    .click();
+  await page
+    .getByTestId("meetings-inspector-step")
+    .filter({ hasText: "Speakers" })
+    .click();
+  return shownMessages(page);
+}
+
+test("a filed meeting: the folder block follows the meeting context in the speaker and tag prompts, not in the summary prompt", async () => {
   test.setTimeout(180_000);
   const requests = await runEnhance(FILED);
   const byStep = (step: ChatRequest["step"]) =>
     requests.filter((r) => r.step === step);
   expect(byStep("correct_chunk").length).toBe(3);
-  for (const step of [
-    "identify_speakers",
-    "meeting_summary",
-    "meeting_tags",
-  ] as const) {
+  for (const step of ["identify_speakers", "meeting_tags"] as const) {
     const found = byStep(step);
     expect(found.length, `${step} requests`).toBeGreaterThan(0);
     for (const r of found) {
@@ -188,13 +221,30 @@ test("a filed meeting: the folder block follows the meeting context", async () =
       );
     }
   }
+  // The summary prompt has the meeting context and no folder block (P8b).
+  for (const r of byStep("meeting_summary")) {
+    expect(r.system).toContain(MEETING_CONTEXT);
+    expect(r.system).not.toContain(FOLDER_LABEL);
+    expect(r.system).not.toContain(FOLDER_NAME);
+    expect(r.user).not.toContain(FOLDER_LABEL);
+  }
   // correct_chunk had no context before, and gets none now.
   for (const r of byStep("correct_chunk")) {
     expect(r.system).not.toContain(FOLDER_LABEL);
     expect(r.system).not.toContain(MEETING_CONTEXT);
   }
 
-  // The inspector shows the same prompt that the fake server logged.
+  // The inspector shows the same prompts that the fake server logged: the
+  // speaker call with the folder block, the summary call without it.
+  const speakerShown = await inspectorSpeakerMessages(
+    env.page,
+    FILED_TITLE,
+    FOLDER_NAME,
+  );
+  const identify = byStep("identify_speakers")[0] as ChatRequest;
+  expect(speakerShown).toEqual(identify.messages);
+  expect(speakerShown[0]).toContain(`${MEETING_CONTEXT}\n\n${BLOCK}`);
+
   const shown = await inspectorSummaryMessages(
     env.page,
     FILED_TITLE,
@@ -202,7 +252,8 @@ test("a filed meeting: the folder block follows the meeting context", async () =
   );
   const summary = byStep("meeting_summary")[0] as ChatRequest;
   expect(shown).toEqual(summary.messages);
-  expect(shown[0]).toContain(`${MEETING_CONTEXT}\n\n${BLOCK}`);
+  expect(shown[0]).toContain(MEETING_CONTEXT);
+  expect(shown.join("\n")).not.toContain(FOLDER_LABEL);
 });
 
 test("an unfiled meeting: no folder block in any prompt", async () => {

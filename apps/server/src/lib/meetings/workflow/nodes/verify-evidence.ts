@@ -9,6 +9,7 @@ import {
   MIN_FUZZY_FIRST_NAME,
 } from "../../speaker-spelling.js";
 import type { WorkflowDeps } from "../context.js";
+import { promptContextWithFolder } from "../prompts.js";
 import type { WorkflowStateType } from "../state.js";
 import {
   NAME_MAX_CHARS,
@@ -279,15 +280,16 @@ function judge(
 
 /**
  * The normalized text that can support the words after a spoken first name:
- * the attendee names, the meeting title, the user's meeting context and the
- * transcript. The identify prompt holds the title and the context, so a model
- * can take a surname from them.
+ * the attendee names, the meeting title, the identify prompt context (the
+ * meeting context and the folder block) and the transcript. The identify
+ * prompt holds the title and that context, so a model can take a surname from
+ * them.
  */
 function supportTexts(prepared: PreparedMeeting): string[] {
   return [
     ...prepared.attendeeNames,
     prepared.title ?? "",
-    prepared.context ?? "",
+    promptContextWithFolder(prepared) ?? "",
     ...prepared.segments.map((s) => s.text),
   ]
     .map(normalizeForMatch)

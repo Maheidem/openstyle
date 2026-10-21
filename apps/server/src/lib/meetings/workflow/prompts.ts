@@ -71,6 +71,19 @@ export function buildPromptContext(
   return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
+/**
+ * The context of the speaker and tags prompts: the meeting context, then the
+ * folder block. A checkpoint from before issue #230 has no
+ * `contextWithFolder`, so it falls back to the meeting context. `summarize`
+ * never calls this: its input stays the meeting context only (P8b).
+ */
+export function promptContextWithFolder(prepared: {
+  context: string | null;
+  contextWithFolder?: string | null;
+}): string | null {
+  return prepared.contextWithFolder ?? prepared.context;
+}
+
 // ---------------------------------------------------------------------------
 // correctChunk
 // ---------------------------------------------------------------------------

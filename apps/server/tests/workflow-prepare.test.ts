@@ -325,16 +325,18 @@ describe("prepare: folder context (#230)", () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     fileInFolder(f.meeting.id, "Orchid Rollout", "Launch of a made-up app.");
     const { out } = await prepare(f.meeting.id);
-    expect(out.prepared.context).toBe(
+    expect(out.prepared.contextWithFolder).toBe(
       `${MEETING_CONTEXT}\n\n${L} Orchid Rollout - Launch of a made-up app.`,
     );
+    // Summarize reads only the meeting's own context (P8b).
+    expect(out.prepared.context).toBe(MEETING_CONTEXT);
   });
 
   it("a folder with no description: the label and the name only", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     fileInFolder(f.meeting.id, "Orchid Rollout", "   ");
     const { out } = await prepare(f.meeting.id);
-    expect(out.prepared.context).toBe(
+    expect(out.prepared.contextWithFolder).toBe(
       `${MEETING_CONTEXT}\n\n${L} Orchid Rollout`,
     );
   });
@@ -342,8 +344,8 @@ describe("prepare: folder context (#230)", () => {
   it("an unfiled meeting gets no folder block", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const { out } = await prepare(f.meeting.id);
-    expect(out.prepared.context).toBe(MEETING_CONTEXT);
-    expect(out.prepared.context).not.toContain(L);
+    expect(out.prepared.contextWithFolder).toBe(MEETING_CONTEXT);
+    expect(out.prepared.contextWithFolder).not.toContain(L);
   });
 
   it("a filed meeting with no own context gets the block alone", async () => {
@@ -353,7 +355,7 @@ describe("prepare: folder context (#230)", () => {
       .run(f.meeting.id);
     fileInFolder(f.meeting.id, "Orchid Rollout", null);
     const { out } = await prepare(f.meeting.id);
-    expect(out.prepared.context).toBe(`${L} Orchid Rollout`);
+    expect(out.prepared.contextWithFolder).toBe(`${L} Orchid Rollout`);
   });
 
   it("the folder text is cut to 500 characters, the meeting context never", async () => {
@@ -364,7 +366,7 @@ describe("prepare: folder context (#230)", () => {
       .run(longOwn, f.meeting.id);
     fileInFolder(f.meeting.id, "Orchid Rollout", "x".repeat(2000));
     const { out } = await prepare(f.meeting.id);
-    const ctx = out.prepared.context as string;
+    const ctx = out.prepared.contextWithFolder as string;
     const [own, block] = ctx.split(`\n\n${L} `);
     expect(own).toBe(longOwn.trim());
     expect(Array.from(block as string)).toHaveLength(FOLDER_CONTEXT_MAX_CHARS);
@@ -377,17 +379,19 @@ describe("prepare: folder context (#230)", () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const id = fileInFolder(f.meeting.id, "Orchid Rollout", null);
     const first = await prepare(f.meeting.id);
-    expect(first.out.prepared.context).toContain(`${L} Orchid Rollout`);
+    expect(first.out.prepared.contextWithFolder).toContain(
+      `${L} Orchid Rollout`,
+    );
     getDb()
       .prepare(
         "UPDATE meeting_folders SET name = ?, description = ?, updated_at = ? WHERE id = ?",
       )
       .run("Lantern Migration", "Move of a made-up store.", Date.now(), id);
     const again = await prepare(f.meeting.id);
-    expect(again.out.prepared.context).toBe(
+    expect(again.out.prepared.contextWithFolder).toBe(
       `${MEETING_CONTEXT}\n\n${L} Lantern Migration - Move of a made-up store.`,
     );
-    expect(again.out.prepared.context).not.toContain("Orchid");
+    expect(again.out.prepared.contextWithFolder).not.toContain("Orchid");
   });
 
   it("buildPromptContext: null when both parts are blank; cuts by character, not UTF-16 unit", () => {

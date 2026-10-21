@@ -171,7 +171,8 @@ export function makePrepareNode(deps: WorkflowDeps) {
         meetingId: state.meetingId,
         language,
         title: row.title,
-        context: buildPromptContext(row.context, folder),
+        context: row.context,
+        contextWithFolder: buildPromptContext(row.context, folder),
         vocabTerms,
         // P8: names only, never emails.
         attendeeNames: parseAttendees(row)
