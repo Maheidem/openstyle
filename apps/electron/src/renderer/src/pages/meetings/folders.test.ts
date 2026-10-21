@@ -93,6 +93,19 @@ describe("folder requests", () => {
     });
   });
 
+  it("polls while a row runs a job, and stops when no row is busy", () => {
+    const { refetchInterval } = folderMeetingsOptions("f1");
+    const rows = (job: unknown) => ({
+      state: {
+        data: [{ status: "transcribed", job }] as never,
+      },
+    });
+    expect(refetchInterval(rows({ kind: "enhance", done: 1, total: 8 }))).toBe(
+      2000,
+    );
+    expect(refetchInterval(rows(null))).toBe(false);
+  });
+
   it("creates and updates folders, then refreshes all meeting data", async () => {
     const actions = useMeetingFolders(true);
     expect(await actions.create("Work")).toEqual(folder);

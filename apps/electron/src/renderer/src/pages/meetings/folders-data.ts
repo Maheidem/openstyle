@@ -40,8 +40,13 @@ export function folderMeetingsOptions(folderId: string | null) {
     refetchInterval: (query: {
       state: { data: MeetingListItem[] | undefined };
     }) =>
+      // The folder tree draws the list rows, so it polls while any row
+      // records, transcribes or runs a job. Then the job badge stays current.
       query.state.data?.some(
-        (m) => m.status === "recording" || m.status === "transcribing",
+        (m) =>
+          m.status === "recording" ||
+          m.status === "transcribing" ||
+          m.job != null,
       )
         ? 2000
         : (false as const),
