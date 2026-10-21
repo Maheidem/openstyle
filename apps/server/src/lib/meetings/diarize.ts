@@ -286,25 +286,87 @@ function pickNearestWithinWindow(
 }
 
 /**
- * The diarizer speaker that "wins" one system span (spec §7, steps 1-4):
- * the largest-overlap turn, else a nearest turn within the 2 s window, else
- * null. Shared by `assignSpeakerLabels` and the phase 4b align path
- * (specs/meeting-transcription-v2.md §3.6), which labels the unsplit
- * chunks and the align-fallback chunks with the same rule.
+ * Turns shorter than this are "short turns" (issue #259). FluidAudio's
+ * default config drops every output turn under 1.0 s
+ * (`OfflineDiarizerConfig.minSegmentDuration`). Then a short isolated
+ * reply ("yes", "thanks") gets no turn and its row stays unlabeled. The
+ * helper now keeps all turns. Speaker cuts, mixed-chunk detection, the
+ * aligner split and the stored turns still use only the turns of 1 s or
+ * more, so these steps do not change.
  */
-export function winnerSpeakerFor(
-  span: { startMs: number; endMs: number },
-  diarSegments: DiarizerSegment[],
-): string | null {
-  const diar: InternalDiarSegment[] = diarSegments.map((d) => ({
+const SHORT_TURN_MS = 1000;
+
+function isShortTurn(d: DiarizerSegment): boolean {
+  return (d.endTimeSeconds - d.startTimeSeconds) * 1000 < SHORT_TURN_MS;
+}
+
+/** The turns of 1 s or more: the input of the cuts and the aligner split. */
+export function longTurns(diarSegments: DiarizerSegment[]): DiarizerSegment[] {
+  return diarSegments.filter((d) => !isShortTurn(d));
+}
+
+function toInternal(diarSegments: DiarizerSegment[]): InternalDiarSegment[] {
+  return diarSegments.map((d) => ({
     speakerId: d.speakerId,
     startMs: d.startTimeSeconds * 1000,
     endMs: d.endTimeSeconds * 1000,
   }));
-  const winner =
-    pickOverlapWinner(span, diar) ??
-    pickNearestWithinWindow(span, diar, NEAREST_NEIGHBOR_WINDOW_MS);
-  return winner?.speakerId ?? null;
+}
+
+/** The winner of one span, and whether a short turn decided it. */
+export interface SpeakerWinner {
+  speakerId: string;
+  fromShortTurn: boolean;
+}
+
+/**
+ * The diarizer speaker that "wins" one system span. Spec §7 steps 1-4 on
+ * the long turns: the largest-overlap turn, else a nearest turn within the
+ * 2 s window. Then (issue #259) the largest-overlap short turn. A short
+ * turn never wins by distance: it must overlap the span. The short turns
+ * come from the same clustering pass as the long turns, so their speaker
+ * ids are the same speakers. Null when nothing qualifies. Shared by
+ * `assignSpeakerLabels` and the phase 4b align path
+ * (specs/meeting-transcription-v2.md §3.6), which labels the unsplit
+ * chunks and the align-fallback chunks with the same rule.
+ */
+export function speakerWinnerFor(
+  span: { startMs: number; endMs: number },
+  diarSegments: DiarizerSegment[],
+): SpeakerWinner | null {
+  const long = toInternal(longTurns(diarSegments));
+  const longWinner =
+    pickOverlapWinner(span, long) ??
+    pickNearestWithinWindow(span, long, NEAREST_NEIGHBOR_WINDOW_MS);
+  if (longWinner) {
+    return { speakerId: longWinner.speakerId, fromShortTurn: false };
+  }
+  const short = toInternal(diarSegments.filter(isShortTurn));
+  const shortWinner = pickOverlapWinner(span, short);
+  return shortWinner
+    ? { speakerId: shortWinner.speakerId, fromShortTurn: true }
+    : null;
+}
+
+/**
+ * Label numbers in first-appearance order (spec §7 step 5), in two passes:
+ * first the winners from long turns (the numbers stay as they were before
+ * the short turns, issue #259), then the winners from short turns. A
+ * speaker heard only in short turns gets the next free number.
+ */
+export function numberSpeakers(
+  winners: (SpeakerWinner | null)[],
+): Map<string, number> {
+  const indexBySpeaker = new Map<string, number>();
+  for (const fromShortTurn of [false, true]) {
+    for (const w of winners) {
+      if (!w || w.fromShortTurn !== fromShortTurn) continue;
+      if (!indexBySpeaker.has(w.speakerId)) {
+        indexBySpeaker.set(w.speakerId, indexBySpeaker.size + 1);
+      }
+    }
+  }
+  return indexBySpeaker;
 }
 
 /**
@@ -320,30 +382,10 @@ export function assignSpeakerLabels(
   whisperSegments: WhisperSegmentForDiarization[],
   diarSegments: DiarizerSegment[],
 ): SpeakerLabelAssignment[] {
-  const diar: InternalDiarSegment[] = diarSegments.map((d) => ({
-    speakerId: d.speakerId,
-    startMs: d.startTimeSeconds * 1000,
-    endMs: d.endTimeSeconds * 1000,
-  }));
-
-  const winners = whisperSegments.map((w) => {
-    const overlapWinner = pickOverlapWinner(w, diar);
-    if (overlapWinner) return overlapWinner;
-    return pickNearestWithinWindow(w, diar, NEAREST_NEIGHBOR_WINDOW_MS);
-  });
-
-  // Label numbering: first-appearance order by whisper-segment order (i.e.
-  // by startMs, since callers pass segments ordered by idx) — not
-  // diarizer-clustering order (spec §7 step 5). A single distinct speaker
-  // still maps to index 1 (the collapse rule, step 6) falls out of this
-  // naturally: the first (and only) speaker seen gets index 1.
-  const indexBySpeaker = new Map<string, number>();
-  for (const winner of winners) {
-    if (!winner) continue;
-    if (!indexBySpeaker.has(winner.speakerId)) {
-      indexBySpeaker.set(winner.speakerId, indexBySpeaker.size + 1);
-    }
-  }
+  const winners = whisperSegments.map((w) => speakerWinnerFor(w, diarSegments));
+  // Not diarizer-clustering order. A single distinct speaker maps to
+  // index 1 (the collapse rule, step 6).
+  const indexBySpeaker = numberSpeakers(winners);
 
   return whisperSegments.map((w, i) => {
     const winner = winners[i];
@@ -538,7 +580,9 @@ export function applyDiarization(
   // (specs/meeting-transcription-v2.md §3.4): the measurement counts
   // multi-speaker chunks from them. A re-transcribe deletes them with the
   // old segments and re-diarizes — the stored turns are for the measurement,
-  // not a cache.
+  // not a cache. Only the long turns go in (issue #259): the measurement
+  // keeps the same input as before the helper kept short turns.
+  const stored = longTurns(diarSegments);
   const clearTurns = db.prepare(
     "DELETE FROM meeting_diarizer_turns WHERE meeting_id = ?",
   );
@@ -551,8 +595,8 @@ export function applyDiarization(
     withTransaction(db, () => {
       for (const a of assignments) update.run(a.speakerLabel, a.id);
       clearTurns.run(meetingId);
-      for (let i = 0; i < diarSegments.length; i += 1) {
-        const t = diarSegments[i];
+      for (let i = 0; i < stored.length; i += 1) {
+        const t = stored[i];
         insertTurn.run(
           meetingId,
           i,
