@@ -162,7 +162,18 @@ func runDiarize(_ path: String, modelsDir: String?) async {
     // silently blocking on a download mid-transcription-job.
     ModelHub.offlineMode = true
     let url = URL(fileURLWithPath: path)
-    let manager = OfflineDiarizerManager(config: .default)
+    // Keep the turns under 1 s (issue #259). The default config drops every
+    // output turn shorter than `minSegmentDuration` (1.0 s), so a short reply
+    // gets no turn and its row stays unlabeled. In the offline pipeline this
+    // value has one more use: the embedding uses the overlap-free mask when
+    // that mask has at least this many frames. Every embedding window already
+    // needs 20 % active frames (about 2 s of a 10 s window), so the mask
+    // choice and the clustering do not change. Measured on 5 meetings: 642 of
+    // the 643 turns of 1 s or more are the same; one start moved 85 ms. The
+    // server uses the short turns only for labels.
+    var config = OfflineDiarizerConfig.default
+    config.minSegmentDuration = 0
+    let manager = OfflineDiarizerManager(config: config)
     do {
         if let modelsDir {
             // Fully-offline bundle path (spec §4, "Option C"): load the four

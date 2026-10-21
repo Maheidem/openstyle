@@ -7,6 +7,7 @@ import {
   type DiarizerSegment,
   getFluidAudioDiarizeBinaryPath,
   getFluidAudioModelsDirPath,
+  longTurns,
   runDiarizer,
   sanitizeDiarizerTurns,
   type WhisperSegmentForDiarization,
@@ -156,6 +157,104 @@ describe("assignSpeakerLabels", () => {
       { id: "w1", speakerLabel: null },
       { id: "w2", speakerLabel: null },
     ]);
+  });
+});
+
+// Issue #259: the helper keeps turns under 1 s. They label only the rows
+// that no long turn labels, and only by overlap.
+/** A short turn with clustering votes (qualityScore > 0). */
+function voted(
+  speakerId: string,
+  startS: number,
+  endS: number,
+): DiarizerSegment {
+  return { ...d(speakerId, startS, endS), qualityScore: 0.8 };
+}
+
+describe("assignSpeakerLabels with short turns", () => {
+  it("labels an isolated short reply from the short turn that overlaps it", () => {
+    // w2 is 10 s from the nearest long turn: the old rule left it null.
+    const whisper = [w("w1", 0, 4000), w("w2", 14_000, 15_500)];
+    const diar = [d("A", 0, 4), d("B", 0, 1), voted("A", 14.2, 14.8)];
+    expect(assignSpeakerLabels(whisper, diar)).toEqual([
+      { id: "w1", speakerLabel: "1" },
+      { id: "w2", speakerLabel: "1" },
+    ]);
+  });
+
+  it("never labels a row from a short turn by distance alone", () => {
+    // The short turn ends 500 ms before w1 starts: no overlap, so null.
+    const whisper = [w("w1", 10_000, 11_000)];
+    const diar = [d("A", 0, 4), d("B", 9.0, 9.5)];
+    expect(assignSpeakerLabels(whisper, diar)).toEqual([
+      { id: "w1", speakerLabel: null },
+    ]);
+  });
+
+  it("keeps the long-turn winner when a short turn also overlaps the row", () => {
+    // w1 overlaps the short B turn more, but a long turn decides first:
+    // the overlap of A, else A within the 2 s window.
+    const whisper = [w("w1", 0, 2000), w("w2", 5000, 6000)];
+    const diar = [
+      d("A", 1.5, 3.5),
+      d("B", 0.2, 0.9),
+      d("A", 7.5, 9),
+      d("B", 5.1, 5.9),
+    ];
+    expect(assignSpeakerLabels(whisper, diar)).toEqual([
+      { id: "w1", speakerLabel: "1" },
+      { id: "w2", speakerLabel: "1" },
+    ]);
+  });
+
+  it("numbers a speaker heard only in short turns after the long-turn speakers", () => {
+    // C speaks first in time, but only in a short turn: A and B keep the
+    // numbers that they had without the short turns.
+    const whisper = [
+      w("w1", 0, 1000),
+      w("w2", 3500, 6000),
+      w("w3", 8000, 11_000),
+    ];
+    const diar = [voted("C", 0.1, 0.7), d("A", 3.5, 6), d("B", 8, 11)];
+    expect(assignSpeakerLabels(whisper, diar)).toEqual([
+      { id: "w1", speakerLabel: "3" },
+      { id: "w2", speakerLabel: "1" },
+      { id: "w3", speakerLabel: "2" },
+    ]);
+  });
+});
+
+describe("assignSpeakerLabels with unvoted short turns", () => {
+  // qualityScore 0: no window gave the turn an embedding, so FluidAudio
+  // picked cluster 0 by a tie-break.
+  const unvoted = (id: string, s: number, e: number): DiarizerSegment => ({
+    ...d(id, s, e),
+    qualityScore: 0,
+  });
+
+  it("ignores an unvoted short turn when the diarizer found two speakers", () => {
+    const whisper = [w("w1", 0, 4000), w("w2", 14_000, 15_500)];
+    const diar = [d("A", 0, 4), d("B", 5, 9), unvoted("A", 14.2, 14.8)];
+    expect(assignSpeakerLabels(whisper, diar)).toEqual([
+      { id: "w1", speakerLabel: "1" },
+      { id: "w2", speakerLabel: null },
+    ]);
+  });
+
+  it("uses an unvoted short turn when the diarizer found one speaker", () => {
+    const whisper = [w("w1", 0, 4000), w("w2", 14_000, 15_500)];
+    const diar = [d("A", 0, 4), unvoted("A", 14.2, 14.8)];
+    expect(assignSpeakerLabels(whisper, diar)).toEqual([
+      { id: "w1", speakerLabel: "1" },
+      { id: "w2", speakerLabel: "1" },
+    ]);
+  });
+});
+
+describe("longTurns", () => {
+  it("keeps the turns of 1 s or more, in order", () => {
+    const diar = [d("A", 0, 1), d("B", 1, 1.999), d("A", 2, 5)];
+    expect(longTurns(diar)).toEqual([d("A", 0, 1), d("A", 2, 5)]);
   });
 });
 

@@ -3667,6 +3667,87 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     expect(system[0]!.id.endsWith(":0:0")).toBe(false);
   });
 
+  // Issue #259: the helper keeps turns under 1 s. They give labels only.
+  function shortTurnRun(turns: unknown[]) {
+    let alignCalls = 0;
+    __setMeetingsTestOverrides(
+      alignOverrides(
+        async () => {
+          alignCalls++;
+          return [];
+        },
+        {
+          diarizeDeps: {
+            resolveBinaryPath: () => "/fake/fluidaudio-diarize",
+            resolveModelsDirPath: () => "/fake/resources/models",
+            execFile: async (_file: string, args: string[]) => ({
+              stdout: args[0] === "--probe" ? "READY" : JSON.stringify(turns),
+              stderr: "",
+            }),
+          },
+        },
+      ),
+    );
+    return { alignCalls: () => alignCalls };
+  }
+
+  async function transcribeAndRead() {
+    const dir = makeAudioDir();
+    insertMeeting("m1", "recorded", dir);
+    getDb()
+      .prepare("UPDATE meetings SET language = ? WHERE id = ?")
+      .run("en", "m1");
+    const start = await postEmpty(app, "/api/meetings/m1/transcribe");
+    expect(start.status).toBe(202);
+    const done = await waitForNoJob("m1");
+    expect(done.status).toBe("transcribed");
+    const labels = (
+      getDb()
+        .prepare(
+          `SELECT speaker_label FROM meeting_segments
+             WHERE meeting_id = 'm1' AND source = 'system' ORDER BY idx`,
+        )
+        .all() as unknown as Array<{ speaker_label: string | null }>
+    ).map((r) => r.speaker_label);
+    const stored = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS n FROM meeting_diarizer_turns WHERE meeting_id = 'm1'",
+      )
+      .get() as { n: number };
+    return { labels, stored: stored.n };
+  }
+
+  it("a short turn inside a chunk does not make the chunk mixed", async () => {
+    // B's 0.6 s turn sits inside A's turn: no align call, one row, A's
+    // label. Only the long turn is stored.
+    const run = shortTurnRun([
+      { speakerId: "A", startTimeSeconds: 0, endTimeSeconds: 10 },
+      { speakerId: "B", startTimeSeconds: 5, endTimeSeconds: 5.6 },
+    ]);
+    const { labels, stored } = await transcribeAndRead();
+    expect(run.alignCalls()).toBe(0);
+    expect(labels).toEqual(["1"]);
+    expect(stored).toBe(1);
+  });
+
+  it("labels a chunk from a short turn when no long turn reaches it", async () => {
+    // The only long turn starts 20 s after the chunk: the old rule left
+    // the row unlabeled. B's short turn overlaps the chunk.
+    const run = shortTurnRun([
+      {
+        speakerId: "B",
+        startTimeSeconds: 3,
+        endTimeSeconds: 3.6,
+        qualityScore: 0.8,
+      },
+      { speakerId: "A", startTimeSeconds: 30, endTimeSeconds: 40 },
+    ]);
+    const { labels, stored } = await transcribeAndRead();
+    expect(run.alignCalls()).toBe(0);
+    expect(labels).toEqual(["1"]);
+    expect(stored).toBe(1);
+  });
+
   it("falls back to the phase 4 cuts when the aligner is not downloaded", async () => {
     const dir = makeAudioDir();
     let alignCalls = 0;

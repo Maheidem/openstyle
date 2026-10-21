@@ -41,10 +41,13 @@ import {
   type DiarizeDeps,
   type DiarizerSegment,
   getMeetingDiarizationEnabledSetting,
+  longTurns,
+  numberSpeakers,
   probeDiarizationModels,
   runDiarizationPass,
   runDiarizer,
-  winnerSpeakerFor,
+  type SpeakerWinner,
+  speakerWinnerFor,
 } from "../lib/meetings/diarize.js";
 import { meetingFolderExists } from "../lib/meetings/folders.js";
 import {
@@ -441,6 +444,10 @@ async function runAlignPass(
     number,
     Array<{ startMs: number; endMs: number; text: string; speakerId: string }>
   >();
+  // Issue #259: the mixed-chunk test and the split use only the long
+  // turns (as before the helper kept short turns). The labels below use
+  // all turns (`speakerWinnerFor`).
+  const splitTurns = longTurns(turns);
 
   try {
     const fd = openSync(join(audioDir, SYSTEM_WAV), "r");
@@ -448,7 +455,7 @@ async function runAlignPass(
       const info = parseWavHeader(fd) as WavInfo;
       for (const r of systemResults) {
         if (r.status !== "ok" || !r.text.trim()) continue;
-        if (!isMixedChunk(r.startMs, r.endMs, turns)) continue;
+        if (!isMixedChunk(r.startMs, r.endMs, splitTurns)) continue;
         // An align call loads the aligner into the single MLX worker. That
         // evicts a local MLX dictation model, so yield to live dictation
         // before EACH call, like the transcriber does before a reload.
@@ -479,7 +486,7 @@ async function runAlignPass(
             startMs: w.start * 1000,
             endMs: w.end * 1000,
           })),
-          turns,
+          splitTurns,
           // The original ASR text: the parts keep its punctuation and
           // case (1:1 token mapping, spec 3.6 review fix).
           r.text,
@@ -531,26 +538,31 @@ async function runAlignPass(
     start_ms: number;
     end_ms: number;
   }>;
-  const indexBySpeaker = new Map<string, number>();
-  const labelOf = (speakerId: string): string => {
-    if (!indexBySpeaker.has(speakerId)) {
-      indexBySpeaker.set(speakerId, indexBySpeaker.size + 1);
-    }
-    return String(indexBySpeaker.get(speakerId));
-  };
-  const partLabels = new Map<string, string>();
+  // Issue #259: a winner from a short turn numbers after every winner
+  // from a long turn (`numberSpeakers`), so the old numbers stay.
+  const rowWinner = new Map(
+    rows.map((r) => [
+      r.id,
+      speakerWinnerFor({ startMs: r.start_ms, endMs: r.end_ms }, turns),
+    ]),
+  );
+  const walk: (SpeakerWinner | null)[] = [];
   for (const r of rows) {
     const parts = alignedByIdx.get(r.idx);
     if (parts) {
       for (const p of parts)
-        partLabels.set(`${r.idx}:${p.startMs}`, labelOf(p.speakerId));
+        walk.push({ speakerId: p.speakerId, fromShortTurn: false });
     } else {
-      const winner = winnerSpeakerFor(
-        { startMs: r.start_ms, endMs: r.end_ms },
-        turns,
-      );
-      if (winner) labelOf(winner);
+      walk.push(rowWinner.get(r.id) ?? null);
     }
+  }
+  const indexBySpeaker = numberSpeakers(walk);
+  const labelOf = (speakerId: string): string =>
+    String(indexBySpeaker.get(speakerId));
+  const partLabels = new Map<string, string>();
+  for (const r of rows) {
+    for (const p of alignedByIdx.get(r.idx) ?? [])
+      partLabels.set(`${r.idx}:${p.startMs}`, labelOf(p.speakerId));
   }
 
   try {
@@ -582,11 +594,8 @@ async function runAlignPass(
       }
       for (const r of rows) {
         if (alignedByIdx.has(r.idx)) continue;
-        const winner = winnerSpeakerFor(
-          { startMs: r.start_ms, endMs: r.end_ms },
-          turns,
-        );
-        updLabel.run(winner ? labelOf(winner) : null, r.id);
+        const winner = rowWinner.get(r.id);
+        updLabel.run(winner ? labelOf(winner.speakerId) : null, r.id);
       }
     });
   } catch (err) {
@@ -616,7 +625,7 @@ async function runAlignPass(
       a +
       (alignedByIdx.has(r.idx)
         ? alignedByIdx.get(r.idx)!.length
-        : winnerSpeakerFor({ startMs: r.start_ms, endMs: r.end_ms }, turns)
+        : rowWinner.get(r.id)
           ? 1
           : 0),
     0,
@@ -860,8 +869,10 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
 
     // §3.6 gate: align (uncut segments + aligner split) vs cut (phase 4)
     // vs plain (no turns). The fallback reason is logged once, at info.
+    // The gate and the cuts use only the long turns (issue #259).
+    const cutTurns = diarSegments ? longTurns(diarSegments) : [];
     const plan = decideAlignPlan({
-      hasTurns: (diarSegments?.length ?? 0) > 0,
+      hasTurns: cutTurns.length > 0,
       language: resolvedLanguage,
       appleSilicon: testOverrides.appleSilicon ?? isAppleSiliconMac(),
       canRun: testOverrides.canRunMlx ?? canRunMlxAsr(),
@@ -870,8 +881,7 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     if (plan.mode === "cut") {
       log.info(`meeting ${id}: speaker alignment fallback: ${plan.reason}`);
       systemSegments =
-        segmentWavFile(join(audioDir, SYSTEM_WAV), diarSegments ?? undefined) ??
-        systemSegments;
+        segmentWavFile(join(audioDir, SYSTEM_WAV), cutTurns) ?? systemSegments;
     }
 
     micSegments = attachSpeechSpans(micSegments, micSpans);
@@ -934,7 +944,7 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
         (r): r is ChunkResult => r !== undefined && r.source === "system",
       );
       await runAlignPass(id, audioDir, systemResults, diarSegments, plan);
-      storeDiarizerTurns(id, diarSegments);
+      storeDiarizerTurns(id, cutTurns);
     } else if (diarSegments !== null) {
       applyDiarization(id, diarSegments);
     }
