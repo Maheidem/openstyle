@@ -79,6 +79,13 @@ export const SETTINGS_KEYS = {
   outputMode: "output_mode",
   pausePlaybackWhileRecording: "pause_playback_while_recording",
   pillCancelButton: "pill_cancel_button",
+  /**
+   * The catalog id of the built-in embedding model for search
+   * (specs/local-semantic-search.md 5.5). Written by
+   * POST /api/mlx-embed/models/:id/use. Empty or missing means no model:
+   * search is then off with reason `no_model`.
+   */
+  searchEmbeddingModel: "search_embedding_model",
   soundEnabled: "sound_enabled",
   theme: "theme",
   translateMode: "translate_mode",

@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import { MLX_ASR_MODELS } from "../src/lib/mlx-asr/constants.js";
@@ -1030,5 +1030,101 @@ describe("downloadHfSnapshot with allow patterns (LLM text-only files)", () => {
     writeFileSync(join(snapshot, KEPT[0].path), "");
     truncateSync(join(snapshot, KEPT[0].path), KEPT[0].size);
     expect(isHfSnapshotPresent(hfId)).toBe(true);
+  });
+});
+
+describe("downloadHfSnapshot at a pinned revision (built-in embedding model)", () => {
+  // The real file list of jayyun98/embeddinggemma-2-text-270m-mlx-bf16 at
+  // 186ecf2d (HF API tree, 2026-10-20).
+  const EMBED_FILES = [
+    { path: ".gitattributes", size: 1570 },
+    { path: "1_Pooling/config.json", size: 90 },
+    { path: "2_Normalize/config.json", size: 97 },
+    { path: "LICENSE", size: 11358 },
+    { path: "NOTICE", size: 577 },
+    { path: "README.md", size: 4505 },
+    { path: "chat_template.jinja", size: 1016 },
+    { path: "config.json", size: 2359 },
+    { path: "config_sentence_transformers.json", size: 1565 },
+    { path: "conversion.json", size: 614 },
+    { path: "model.safetensors", size: 542056154 },
+    { path: "model.safetensors.index.json", size: 34557 },
+    { path: "modules.json", size: 413 },
+    { path: "preprocessor_config.json", size: 511 },
+    { path: "processor_config.json", size: 1788 },
+    { path: "sentence_bert_config.json", size: 214 },
+    { path: "tokenizer.json", size: 32170510 },
+    { path: "tokenizer.model", size: 4689013 },
+    { path: "tokenizer_config.json", size: 1599 },
+    { path: "verification.json", size: 1438 },
+  ];
+  const DROPPED = [
+    ".gitattributes",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "chat_template.jinja",
+  ];
+  let cacheDir = "";
+  const originalCache = process.env.HUGGINGFACE_HUB_CACHE;
+
+  beforeEach(() => {
+    cacheDir = mkdtempSync(join(tmpdir(), "mlx-embed-pin-"));
+    process.env.HUGGINGFACE_HUB_CACHE = cacheDir;
+    mocks.snapshotDownload.mockReset();
+    mocks.downloadFileToCacheDir.mockReset();
+    mocks.listEntries = EMBED_FILES;
+  });
+
+  afterEach(() => {
+    mocks.listEntries = null;
+    if (originalCache === undefined) delete process.env.HUGGINGFACE_HUB_CACHE;
+    else process.env.HUGGINGFACE_HUB_CACHE = originalCache;
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it("fetches the catalog files at the pinned commit and writes no refs/main", async () => {
+    const { downloadHfSnapshot, isHfSnapshotPresent, newActiveMlxDownload } =
+      await import("../src/lib/mlx-asr/models.js");
+    const { MLX_EMBED_ALLOW_PATTERNS, MLX_EMBED_MODELS } = await import(
+      "../src/lib/mlx-embed/constants.js"
+    );
+    const def = MLX_EMBED_MODELS[0];
+    const repoDir = join(
+      cacheDir,
+      "models--jayyun98--embeddinggemma-2-text-270m-mlx-bf16",
+    );
+    const kept = EMBED_FILES.filter((f) => !DROPPED.includes(f.path));
+    const active = newActiveMlxDownload();
+
+    const snapshot = await downloadHfSnapshot(active, def.hfId, {
+      allowPatterns: MLX_EMBED_ALLOW_PATTERNS,
+      revision: def.revision,
+    });
+
+    expect(snapshot).toBe(join(repoDir, "snapshots", def.revision));
+    expect(
+      mocks.downloadFileToCacheDir.mock.calls.map((c) => c[0].path),
+    ).toEqual(kept.map((f) => f.path));
+    for (const call of mocks.downloadFileToCacheDir.mock.calls) {
+      expect(call[0].revision).toBe(def.revision);
+    }
+    expect(existsSync(join(repoDir, "refs", "main"))).toBe(false);
+    // The catalog size is the sum of the kept files.
+    expect(active.bytesTotal).toBe(def.sizeBytes);
+
+    // Ready only with every kept file in the snapshot of the pinned commit.
+    const write = (dir: string) => {
+      for (const f of kept) {
+        mkdirSync(dirname(join(dir, f.path)), { recursive: true });
+        writeFileSync(join(dir, f.path), "");
+        truncateSync(join(dir, f.path), f.size);
+      }
+    };
+    write(join(repoDir, "snapshots", "other-commit"));
+    expect(isHfSnapshotPresent(def.hfId)).toBe(true);
+    expect(isHfSnapshotPresent(def.hfId, def.revision)).toBe(false);
+    write(snapshot);
+    expect(isHfSnapshotPresent(def.hfId, def.revision)).toBe(true);
   });
 });
