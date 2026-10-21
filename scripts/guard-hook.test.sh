@@ -7,10 +7,6 @@ set -euo pipefail
 HOOK="$(cd "$(dirname "$0")" && pwd)/guard-hook.sh"
 pass=0
 fail=0
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-echo '{"model":"mlx-community--parakeet-tdt-0.6b-v3"}' >"$tmp/bad.json"
-echo '{"model":"Qwen3.8-27B","messages":[]}' >"$tmp/good.json"
 
 # expect | tool | command or file path
 CASES=$(
@@ -71,16 +67,16 @@ block|Bash|rtk proxy pkill -f node
 allow|Bash|kill 1234
 allow|Bash|kill $(cat /tmp/t/server.pid)
 allow|Bash|pgrep -fl mlx_asr_worker
-block|Bash|curl -s http://127.0.0.1:8123/v1/audio/transcriptions -F file=@a.wav -F model=mlx-community--parakeet-tdt-0.6b-v3
-block|Bash|curl -s http://127.0.0.1:8123/v1/chat/completions -d '{"model":"Qwen3-Embedding","messages":[]}'
-block|Bash|curl -s http://127.0.0.1:8123/v1/audio/transcriptions -F file=@a.wav
-block|Bash|curl -s localhost:8123/v1/audio/transcriptions -F file=@a.wav -F model=server/srv_x/Qwen3-TTS
-allow|Bash|timeout 8 curl -s http://127.0.0.1:8123/v1/models
-block|Bash|timeout 9 curl -s http://127.0.0.1:8123/v1/chat/completions -d @__TMP__/bad.json
-allow|Bash|timeout 9 curl -s http://127.0.0.1:8123/v1/chat/completions -d @__TMP__/good.json
-allow|Bash|curl -s http://127.0.0.1:8123/v1/audio/transcriptions -F file=@a.wav -F model=Qwen3-ASR
-allow|Bash|curl -s http://127.0.0.1:8123/v1/audio/transcriptions -F file=@a.wav -F model=server/srv_x/Qwen3-ASR
-allow|Bash|curl -s http://127.0.0.1:8123/v1/chat/completions -d '{"model": "Qwen3.8-27B", "messages": []}'
+block|Bash|curl -s http://127.0.0.1:8123/v1/audio/transcriptions -F file=@a.wav -F model=Qwen3-ASR
+block|Bash|curl -s http://127.0.0.1:8123/v1/chat/completions -d '{"model": "Qwen3.8-27B", "messages": []}'
+block|Bash|timeout 8 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/v1/models
+block|Bash|wget -qO- http://localhost:8123/v1/models
+block|Bash|node -e "fetch('http://127.0.0.1:8123/v1/models')"
+block|Bash|python3 -c "import urllib.request as u; u.urlopen('http://localhost:8123/v1/models')"
+block|Bash|cd /tmp && curl -s localhost:8123
+allow|Bash|grep -rn "127.0.0.1:8123" scripts
+allow|Bash|timeout 30 curl -s http://127.0.0.1:81230/x
+allow|Bash|timeout 30 curl -s http://127.0.0.1:4651/v1/models
 block|Bash|osascript -e 'quit app "Openstyle"'
 block|Bash|open -a Openstyle
 block|Bash|open /Applications/Openstyle.app
@@ -122,7 +118,6 @@ EOF
 
 while IFS='|' read -r expect tool arg; do
   [[ -z $expect ]] && continue
-  arg=${arg//__TMP__/$tmp}
   if [[ $tool == Bash ]]; then
     json=$(jq -nc --arg c "$arg" '{tool_name:"Bash",tool_input:{command:$c},cwd:"/tmp"}')
   else
