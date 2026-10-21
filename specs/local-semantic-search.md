@@ -1,10 +1,10 @@
 # Technical Spec: Local Semantic Search (project memory)
 
-**Status:** Proposed. Not implemented.
+**Status:** #86 implementation in PR #250 (index, search, UI). #234 not started.
 **Author:** Claude Code (spec writer for the coordinator).
 **Date:** 2026-10-20
-**Tracking:** #82 (this spec). Builds: #86 (index), #233 (built-in embedding model). Feeds: #234 (project memory for Summary and Enhance). Depends on: #230 (folders, PR #235), #231 (tags, not built), PR #228 (MLX worker HTTP shim).
-**Scope:** `apps/server/src/lib/search/` (new), `apps/server/src/lib/mlx-embed/` (new), `apps/server/src/routes/search.ts` (new), migration 42 in `apps/server/src/lib/schema.ts`, `apps/server/src/lib/db.ts`, the `--embed` mode of `scripts/mlx_asr_server.py`, the Electron build (`resources/bin/darwin-arm64/vec0.dylib`), the Models page and a search box on the Meetings page.
+**Tracking:** #82 (this spec). Builds: #86 (index), #233 (built-in embedding model). Feeds: #234 (project memory for Summary and Enhance). Depends on: #230 (folders, PR #235), #231 (tags, PR #237), PR #228 (MLX worker HTTP shim).
+**Scope:** `apps/server/src/lib/search/` (new), `apps/server/src/lib/mlx-embed/` (new), `apps/server/src/routes/search.ts` (new), migration 43 in `apps/server/src/lib/schema.ts`, `apps/server/src/lib/db.ts`, the `--embed` mode of `scripts/mlx_asr_server.py`, the Electron build (`resources/bin/darwin-arm64/vec0.dylib`), the Models page and a search box on the Meetings page.
 **Baseline:** `origin/main` at `6663abfa`, plus PR #235 head `37e77403` (worktree `openstyle-folders`), plus PR #228 head `2e6dfcdd` (`origin/feat/local-mlx-llm`). Prefixes: `M:` = main, `F:` = PR #235, `L:` = PR #228. A path with no prefix is the same on main and PR #235. Every `file:line` was read on these trees on 2026-10-20. Re-verify before you implement.
 **Rules:** ASD-STE100. No em-dashes. `file:line` for code claims. A URL for external claims. UNVERIFIED for claims with no proof. Owner decisions in #82, #86, #230, #231, #233 and #234 are final. This spec records them. It does not re-open them.
 
@@ -125,9 +125,9 @@ One EN query is 0.0135. So `int8unit` is one EN query below int8 and f32.
 - A folder with meetings cannot be deleted (`F:meeting-folders.ts:129-139`). So a partition is empty before its folder goes.
 - Moves: `POST /api/meetings/move` sets `meetings.folder_id` for up to 200 meetings, also `null` (`F:meeting-folders.ts:145-187`, `:175-177`; schema `F:packages/validations/src/meeting-folders.ts:50-53`).
 
-### 3.2 Migration 42 (plain tables, always created)
+### 3.2 Migration 43 (plain tables, always created)
 
-`SCHEMA_VERSION` becomes 42. If another PR takes 42 first, use the next free number. These tables need no extension.
+`SCHEMA_VERSION` becomes 43. Main took 41 (folders, PR #235) and 42 (tags, PR #237) first. These tables need no extension.
 
 ```sql
 -- One row per chunk of a meeting. id is the vec0 rowid (S11).
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS meeting_index_state (
 ```
 
 - The trigger also fires when a meeting delete cascades to `meeting_chunks` (P3, last line: gc rows `[1,2]`).
-- `meeting_tags (meeting_id, tag)` belongs to #231. This spec only reads it (S5). Until #231 ships, the `tags` filter is refused with 400 (8.2).
+- `tags (id, name)` and `meeting_tags (meeting_id, tag_id, source)` belong to #231 (migration 42, PR #237). This spec only reads them (S5). The `tags` filter takes tag names and matches any of them.
 
 ### 3.3 The vec0 table (created at run time, S12)
 
@@ -364,7 +364,7 @@ Repo facts (HF API `api/models/<repo>?blobs=true`, `config.json` and the safeten
 
 - `ensureMlxEmbedWorker(modelId)`: one serialized chain, reserved port, `HF_HUB_OFFLINE=1`, ready timeout 180 s, SIGTERM then SIGKILL after 5 s, stop on host exit. A model that is not on disk is an error, not a download.
 - Keep-alive: unload after 5 minutes idle. On a Mac with RAM <= 8 GiB, unload as soon as the index queue is empty and no query ran for 30 s. Reason: the LLM worker alone used 3.1 GiB RSS with Qwen3.5 4B (`L:specs/local-mlx-llm.md:138`). Peak memory with ASR + LLM + embedding is UNVERIFIED (spike check 4).
-- `apps/server/src/lib/search/embedder.ts` is the only client:
+- Built (PR #242 and #86): `apps/server/src/lib/mlx-embed/client.ts` holds `embedTexts` (prompts, batches of 16, count and dims check). `apps/server/src/lib/search/embedder.ts` holds `quantizeInt8` and `embedInt8`, the int8 step. The sketch below was the plan:
 
 ```ts
 export type EmbedKind = "document" | "query";
@@ -401,7 +401,7 @@ Code: `apps/server/src/lib/search/indexer.ts`, `vec-store.ts`, `extension.ts`.
    - `instance.loadExtension(path)`, then always `instance.enableLoadExtension(false)`, also after a failure. After that call, a second load fails (P1 1c). The SQL function `load_extension()` is "not authorized" before and after (P4).
    - Check `select vec_version()` equals `v0.1.9` (P1 1d). Another value is a failure (`extension_version`).
    - Never throw. Record `{ state: "loaded" | "failed", reason, path, vecVersion }`. Log a failure once at error level, with the path and the SQLite message.
-3. `initSchema` runs as today (`db.ts:32`). Migration 42 creates the plain tables (3.2).
+3. `initSchema` runs as today (`db.ts:32`). Migration 43 creates the plain tables (3.2).
 4. If loaded: `CREATE VIRTUAL TABLE IF NOT EXISTS meeting_chunk_vec ...` (3.3). A failure here sets `state: "failed"`, reason `vec_table`.
 5. `startServer` starts the indexer after the boot sweeps (`F:apps/server/src/index.ts:218-233`). It runs only when search is on (9.1).
 
@@ -419,9 +419,10 @@ A trigger is a hint. The source hash is the truth (6.3). The indexer must be cor
 | `F:meetings.ts:1643` | Diarize (labels only, so the hash does not change) |
 | `F:meetings.ts:1857` | Speaker rename (labels only) |
 | `F:apps/server/src/lib/meetings/workflow/nodes/save.ts:273` | Enhance saved `enhanced_text` (`save.ts:121-127`) |
-| `F:meeting-folders.ts:175-177` | Move to another folder or out of folders |
+| `F:meeting-folders.ts:175-177` | Move to another folder or out of folders. Built: the move route moves the vectors in its own transaction (6.5), so a move needs no queue slot. |
 | `F:meetings.ts:1998` | Meeting delete (cascade fills `meeting_chunk_gc`) |
 
+- Built: `writeTranscriptMarkdown` (`apps/server/src/lib/meetings/transcript-io.ts`) calls `notifyMeetingChanged`, so every site of this table that writes the file sends the hint. The delete route calls it too, so the gc drains soon.
 - No route edits segment text by hand today (`F:meetings.ts` route list: `.patch("/:id")` changes `title`, `language`, `context` only, `:1246-1262`). A future manual-edit route must call `notifyMeetingChanged`. The boot scan (6.3) catches a missed call.
 - An import starts a transcribe job (`AGENTS.md:31`), so it uses the transcribe trigger.
 
@@ -463,7 +464,7 @@ Gates before a meeting starts:
 
 ### 6.5 Move
 
-In one transaction, for each vec0 row of the meeting: read `embedding`, delete the row, insert it again with the new `folder_id` (S3, P1 5d). Then set `folder_key`. A move of 46 rows is in the same range as a re-index of one meeting (P2: 100 meetings of 46 rows in about 400 ms). No embedding call.
+In one transaction, for each vec0 row of the meeting: read `embedding`, delete the row, insert it again with the new `folder_id` (S3, P1 5d). Then set `folder_key`. Built: `POST /api/meetings/move` calls `moveMeetingIndex` inside its own transaction, so the folder column and the vectors change together. The indexer also runs the move when it finds a `folder_key` that differs. A query drops a hit whose meeting is no longer in the scope folder. A move of 46 rows is in the same range as a re-index of one meeting (P2: 100 meetings of 46 rows in about 400 ms). No embedding call.
 
 ### 6.6 Garbage collection
 
@@ -527,7 +528,7 @@ Read the current text of `segment_ids` (`COALESCE(NULLIF(enhanced_text,''), text
 
 `apps/server/src/routes/search.ts`, mounted at `/search` in `apps/server/src/routes/index.ts` (next to `.route("/meetings", ...)`, `F:routes/index.ts:47-49`). Schemas in `packages/validations/src/search.ts`.
 
-- `GET /api/search/status` returns `{ state: "on" | "off", reason: SearchOffReason | null, model_id, vec_version, meetings: { eligible, indexed, failed, queued }, index: { db_bytes, vector_chunks } }` (`index` from 9.4, D18).
+- `GET /api/search/status` returns `{ state: "on" | "off", reason: SearchOffReason | null, model_id, vec_version, meetings: { eligible, indexed, failed, queued }, index: { db_bytes, vector_chunks, embedded_chunks } }` (`index` from 9.4, D18). `embedded_chunks` counts the chunks that this server process sent to the model. The E2E (12.3 steps 4 and 6) reads it to prove that no embedding call ran.
 - `POST /api/search/meetings` with `{ query, folder_id?: string | "none", tags?: string[], k? }` returns `{ status: "ok", hits: [{ chunk_id, meeting_id, meeting_title, started_at, folder_id, score, start_ms, end_ms, snippet }] }`, or `{ status: "off", reason }` with 200, so the UI renders a state, not an error. `folder_id: "none"` means unfiled, as the list filter of PR #235 (`F:meetings.ts:1109`).
 - Errors: 400 bad input; 503 `{ code: "worker_unavailable" }` when the embedding worker does not start.
 - UI: a search box in the Meetings page header. Its scope follows the folder filter of PR #235. A result shows the meeting title, date, snippet and score order, and opens the meeting at `start_ms`. When search is off, the box is disabled and shows the reason text (9.1). i18n as in 5.5.
@@ -553,7 +554,7 @@ export type RetrievalQuery =
 export interface RetrieveInput {
   query: RetrievalQuery;
   scope: RetrievalScope;
-  tags?: readonly string[];               // any-of; needs #231 (S5)
+  tags?: readonly string[];               // tag names, any-of (S5)
   k: number;                              // 1..50
   excludeMeetingIds?: readonly string[];  // Summary and Enhance pass their own meeting
   signal?: AbortSignal;
@@ -601,7 +602,7 @@ export function hitText(hit: RetrievalHit, maxChars: number): string;
 | Summary (#234) | `query: meeting`, `scope: folder` of the meeting, `excludeMeetingIds: [self]`, `k` from the #234 benchmark | `hitText` of the hits, in a separate labeled block (8.3) |
 | Enhance (#234) | the same call | only the meeting ids of the hits, for names and terms (8.3) |
 
-An unfiled meeting has no folder, so Summary and Enhance skip retrieval. Search with `tags` before #231 ships answers 400 `tags_not_supported`.
+An unfiled meeting has no folder, so Summary and Enhance skip retrieval.
 
 ### 8.3 #234 hook-in (design frame; #234 owns the details)
 
@@ -705,7 +706,7 @@ Rules: fictional meetings only in tests and E2E. Real meetings only through the 
 
 Two modes, both on Linux CI:
 
-- **OFF mode** (the default; no dylib): migration 42 creates the plain tables and no vec0 table; `GET /api/search/status` returns `off` with `unsupported_platform` or `extension_missing`; `POST /api/search/meetings` returns `{ status: "off" }`; transcribe, Enhance and Summary routes pass unchanged; a meeting delete fills `meeting_chunk_gc`; no code path reads `meeting_chunk_vec`.
+- **OFF mode** (the default; no dylib): migration 43 creates the plain tables and no vec0 table; `GET /api/search/status` returns `off` with `unsupported_platform` or `extension_missing`; `POST /api/search/meetings` returns `{ status: "off" }`; transcribe, Enhance and Summary routes pass unchanged; a meeting delete fills `meeting_chunk_gc`; no code path reads `meeting_chunk_vec`.
 - **ON mode**: add `sqlite-vec-linux-x64@0.1.9` as a server devDependency and set `OPENSTYLE_SQLITE_VEC_PATH` in these test files only. It is never packaged. Tests: load and `enableLoadExtension(false)`; vec0 table created; index of a fictional meeting with a fake embedder; second run embeds 0 chunks (hash skip); Enhance text change embeds only changed chunks; move keeps the vectors (byte-equal read back) and changes the partition; unfiled uses `''`; delete drains gc; model change re-indexes and queries never mix model ids; crash in the write (thrown inside the transaction) leaves the old state; BigInt binding; folder scope, exclude and tag `IN` filters.
 
 ### 12.3 E2E (isolated app, fictional meetings)

@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { createAppLogger } from "@openstyle/utils";
 import { SYNC_JSON } from "@openstyle/validations";
 import { getDb } from "../db.js";
+import { notifyMeetingChanged } from "../search/notify.js";
 import { loadVocabularyTerms } from "../vocabulary.js";
 import {
   formatTranscriptMarkdown,
@@ -161,6 +162,9 @@ export function writeTranscriptMarkdown(
   audioDir: string,
   db: DatabaseSync = getDb(),
 ): void {
+  // Every site that changes meeting text writes this file, so this is the
+  // change hint of the search index (specs/local-semantic-search.md 6.2).
+  notifyMeetingChanged(meetingId);
   try {
     const merged = loadMergedTranscript(meetingId, audioDir, db);
     writeFileSync(

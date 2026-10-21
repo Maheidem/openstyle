@@ -6,9 +6,15 @@
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  searchMeetingsResponseSchema,
+  searchStatusSchema,
+} from "@openstyle/validations";
 import { afterEach, describe, expect, it } from "vitest";
+import createApp from "../src/index.js";
 import { closeDb, getDb } from "../src/lib/db.js";
 import { getExtensionState } from "../src/lib/search/extension.js";
+import { jsonRequest } from "./helpers/http.js";
 import { sqliteVecTestPath } from "./helpers/sqlite-vec.js";
 
 const VEC_PATH = sqliteVecTestPath();
@@ -68,6 +74,43 @@ describe("OFF mode (no dylib)", () => {
       db.prepare("SELECT chunk_id FROM meeting_chunk_gc ORDER BY 1").all(),
     ).toEqual([{ chunk_id: a }, { chunk_id: b }]);
     db.exec("DELETE FROM meeting_chunk_gc");
+  });
+
+  it("answers the search routes with the off state, and moves still work", async () => {
+    reopen(undefined);
+    const app = createApp();
+    const status = searchStatusSchema.parse(
+      await (await app.request("/api/search/status")).json(),
+    );
+    expect(status.state).toBe("off");
+    expect(["unsupported_platform", "extension_missing"]).toContain(
+      status.reason,
+    );
+    expect(status.vec_version).toBeNull();
+    expect(status.index.vector_chunks).toBe(0);
+    const res = await jsonRequest(app, "POST", "/api/search/meetings", {
+      query: "when is the release date",
+    });
+    expect(res.status).toBe(200);
+    expect(searchMeetingsResponseSchema.parse(await res.json())).toEqual({
+      status: "off",
+      reason: status.reason,
+    });
+    // A move with search off changes only the folder column.
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO meeting_folders (id, name, created_at, updated_at) VALUES ('f1', 'F', 1, 1)",
+    ).run();
+    db.prepare(
+      "INSERT INTO meetings (id, title, status, started_at) VALUES ('m2', 't', 'transcribed', 1)",
+    ).run();
+    const moved = await jsonRequest(app, "POST", "/api/meetings/move", {
+      meeting_ids: ["m2"],
+      folder_id: "f1",
+    });
+    expect(moved.status).toBe(200);
+    db.prepare("DELETE FROM meetings WHERE id = 'm2'").run();
+    db.prepare("DELETE FROM meeting_folders WHERE id = 'f1'").run();
   });
 
   it("reports extension_load_failed for a file that is not an extension", () => {
