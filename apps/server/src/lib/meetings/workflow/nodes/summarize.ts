@@ -20,10 +20,7 @@ import {
   buildSummarySingleUserPrompt,
   reduceBlocks,
 } from "../prompts.js";
-import {
-  MEETING_SUMMARY_STEP_SCHEMA,
-  type MeetingSummary,
-} from "../schemas.js";
+import { type MeetingSummary, meetingSummaryStepSchema } from "../schemas.js";
 import type { WorkflowStateType } from "../state.js";
 import {
   MAX_SUMMARIZE_CALLS,
@@ -41,6 +38,7 @@ import {
   type SummarizeResult,
 } from "../types.js";
 import {
+  appliesSizeLimits,
   fitsContext,
   guardNode,
   type Leaf,
@@ -309,7 +307,9 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
                   runId: state.runId,
                   unitKey: unit.key,
                   chunkIndex: null,
-                  schema: MEETING_SUMMARY_STEP_SCHEMA,
+                  schema: meetingSummaryStepSchema({
+                    sizeLimits: appliesSizeLimits(unit.profile),
+                  }),
                   instructions: o.system,
                   messages: [{ role: "user", content: o.user(unit.members) }],
                   profile: unit.profile,

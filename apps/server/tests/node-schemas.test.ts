@@ -19,8 +19,10 @@ import {
   identifySpeakersStepSchema,
   MEETING_SUMMARY_STEP_SCHEMA,
   MeetingSummarySchema,
+  meetingSummaryStepSchema,
   normalizeId,
   normalizeLabel,
+  SUMMARY_SIZE_LIMITS,
 } from "../src/lib/meetings/workflow/schemas.js";
 import {
   NAME_MAX_CHARS,
@@ -514,6 +516,121 @@ describe("MeetingSummary: placeholder owner and due", () => {
     await expect(
       assertPortableSchema(MeetingSummarySchema),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("meetingSummaryStepSchema (issue #246)", () => {
+  const L = SUMMARY_SIZE_LIMITS;
+  const base = {
+    overview: "A planning call.",
+    keyPoints: [],
+    decisions: [],
+    actionItems: [],
+    openQuestions: [],
+  };
+
+  it("version 2 with the wire name meeting_summary; the default zod is MeetingSummarySchema", () => {
+    expect(meetingSummaryStepSchema().version).toBe(2);
+    expect(meetingSummaryStepSchema({ sizeLimits: true }).version).toBe(2);
+    expect(meetingSummaryStepSchema({ sizeLimits: true }).name).toBe(
+      MEETING_SUMMARY_STEP_SCHEMA.name,
+    );
+    expect(meetingSummaryStepSchema().zod).toBe(MeetingSummarySchema);
+  });
+
+  it("the default schema has no size keyword (portable for cloud providers)", async () => {
+    const text = JSON.stringify(
+      await asSchema(meetingSummaryStepSchema().zod).jsonSchema,
+    );
+    for (const key of ["maxItems", "maxLength", "minItems", "minLength"]) {
+      expect(text).not.toContain(key);
+    }
+  });
+
+  it("sizeLimits sets maxItems on each list and maxLength on each string", async () => {
+    const json = (await asSchema(
+      meetingSummaryStepSchema({ sizeLimits: true }).zod,
+    ).jsonSchema) as {
+      properties: Record<string, Record<string, unknown>>;
+      required: string[];
+    };
+    const p = json.properties;
+    expect(p.overview).toEqual({ type: "string", maxLength: L.overviewChars });
+    for (const [key, max] of [
+      ["keyPoints", L.keyPoints],
+      ["decisions", L.decisions],
+      ["openQuestions", L.openQuestions],
+    ] as const) {
+      expect(p[key]).toEqual({
+        type: "array",
+        maxItems: max,
+        items: { type: "string", maxLength: L.itemChars },
+      });
+    }
+    const actions = p.actionItems as {
+      maxItems: number;
+      items: { properties: Record<string, unknown>; required: string[] };
+    };
+    expect(actions.maxItems).toBe(L.actionItems);
+    expect(actions.items.properties.task).toEqual({
+      type: "string",
+      maxLength: L.itemChars,
+    });
+    for (const key of ["owner", "due"]) {
+      const text = JSON.stringify(actions.items.properties[key]);
+      expect(text).toContain(`"maxLength":${L.ownerDueChars}`);
+      expect(text).toContain('"null"');
+    }
+    // Field order and required stay as in the default schema.
+    expect(Object.keys(p)).toEqual([
+      "overview",
+      "keyPoints",
+      "decisions",
+      "actionItems",
+      "openQuestions",
+    ]);
+    expect(json.required).toEqual(Object.keys(p));
+    expect(Object.keys(actions.items.properties)).toEqual([
+      "task",
+      "owner",
+      "due",
+    ]);
+  });
+
+  it("the zod side of the limited schema accepts any size", () => {
+    const long = "a".repeat(L.itemChars + 50);
+    const many = Array.from({ length: L.keyPoints + 5 }, (_, i) => `p${i}`);
+    const parsed = meetingSummaryStepSchema({ sizeLimits: true }).zod.parse({
+      ...base,
+      overview: "o".repeat(L.overviewChars + 1),
+      keyPoints: [long, ...many],
+    });
+    expect(parsed.keyPoints).toHaveLength(L.keyPoints + 6);
+    expect(parsed.keyPoints[0]).toBe(long);
+  });
+
+  it.each([
+    false,
+    true,
+  ])("the parse removes duplicate list entries and keeps the order (sizeLimits %s)", (sizeLimits) => {
+    const parsed = meetingSummaryStepSchema({ sizeLimits }).zod.parse({
+      ...base,
+      keyPoints: ["Ship on Friday.", "Fix the export.", " ship  ON friday. "],
+      decisions: ["A", "a", "B"],
+      actionItems: [
+        { task: "Send the draft", owner: "Casey", due: null },
+        { task: "send the  draft", owner: "casey", due: "None" },
+        { task: "Send the draft", owner: "Sam", due: null },
+      ],
+      openQuestions: ["Who?", "Who?"],
+    });
+    expect(parsed.keyPoints).toEqual(["Ship on Friday.", "Fix the export."]);
+    expect(parsed.decisions).toEqual(["A", "B"]);
+    expect(parsed.actionItems).toEqual([
+      { task: "Send the draft", owner: "Casey", due: null },
+      { task: "Send the draft", owner: "Sam", due: null },
+    ]);
+    expect(parsed.openQuestions).toEqual(["Who?"]);
   });
 });
 

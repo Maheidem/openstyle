@@ -1,6 +1,5 @@
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
-import { MLX_LLM_PROVIDER_ID } from "../../../mlx-llm/constants.js";
 import { estimateTokens, formatEnhanceLine } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
 import {
@@ -29,6 +28,7 @@ import {
   type SpeakerProposal,
 } from "../types.js";
 import {
+  appliesSizeLimits,
   createBreaker,
   fitsContext,
   guardNode,
@@ -178,15 +178,6 @@ export function failedIdentifyResult(
     candidates: EMPTY_STATS,
     failures: [failure],
   };
-}
-
-/**
- * True when the provider builds its grammar with llguidance, which applies
- * `maxItems` and `maxLength` (specs/local-mlx-llm.md G2). Then the schema
- * carries the size limits (`identifySpeakersStepSchema`, version 4).
- */
-export function appliesSizeLimits(profile: CallProfile): boolean {
-  return profile.provider === MLX_LLM_PROVIDER_ID;
 }
 
 /**

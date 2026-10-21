@@ -226,6 +226,27 @@ describe("summarize: one call (single)", () => {
     expect(status.status).toBe("summarized");
   });
 
+  it("a `server` provider gets the portable schema; the stored summary has no duplicate entry (issue #246)", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    const point = "The export job takes four minutes.";
+    const s = summary({
+      keyPoints: [point, "The vendor call moves.", ...Array(5).fill(point)],
+    });
+    const r = await run(f, [okReply(JSON.stringify(s))]);
+    expect(r.finalState.summary?.status).toBe("ok");
+    const wire = JSON.stringify(r.requests[0]?.responseFormat);
+    expect(wire).toContain('"keyPoints"');
+    expect(wire).not.toContain("maxItems");
+    expect(wire).not.toContain("maxLength");
+    const stored = JSON.parse(
+      savedRow(f.meeting.id)?.summary_json as string,
+    ) as MeetingSummary;
+    expect(stored.keyPoints).toEqual([point, "The vendor call moves."]);
+    expect(
+      r.recorder.calls.find((c) => c.unitKey === "single")?.schema.version,
+    ).toBe(2);
+  });
+
   it('an owner or due of "null", "None", "N/A", "unknown" or blank is stored as null and not rendered', async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const s = summary({
