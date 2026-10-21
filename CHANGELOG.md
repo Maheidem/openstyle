@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.21.1
+
+### Bug Fixes 🐛
+
+- In dark mode, the bar with the Transcript and Summary tabs, Enhanced and Copy transcript no longer shows a darker strip, and its buttons no longer stick out of it (#267).
+- A finished meeting no longer shows an empty toolbar row: the "…" menu sits with the other icons next to the title (#267).
+- The calendar chip shows the time and the number of attendees, so the language and status stay on the same row with a long event title. The full title is in the chip's popover (#267).
+
 ## 2.21.0
 
 ### New Features ✨
