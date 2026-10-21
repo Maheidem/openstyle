@@ -292,12 +292,18 @@ test("search index end to end", async () => {
   await page.goto("app://renderer/settings/models");
   const section = page.getByTestId("search-model-section");
   await expect(section).toBeVisible({ timeout: 20_000 });
-  const download = section.getByRole("button", { name: "Download" });
+  // exact: the row of a model on disk has "Remove downloaded model".
+  const download = section.getByRole("button", {
+    name: "Download",
+    exact: true,
+  });
   if (await download.isVisible()) await download.click();
-  await expect(section.getByRole("button", { name: "Use" })).toBeVisible({
+  await expect(
+    section.getByRole("button", { name: "Use", exact: true }),
+  ).toBeVisible({
     timeout: 15 * 60_000,
   });
-  await section.getByRole("button", { name: "Use" }).click();
+  await section.getByRole("button", { name: "Use", exact: true }).click();
   await expect(section).toContainText("Selected", { timeout: 60_000 });
   await shot("01-search-model-selected", section);
 
