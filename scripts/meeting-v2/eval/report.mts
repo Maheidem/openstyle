@@ -50,6 +50,8 @@ export interface MeetingInfo {
   id: string;
   segments: number;
   durationSeconds: number;
+  /** The ASR input hash of this meeting's transcription (a gold key records it). */
+  asrHash?: string | null;
 }
 
 export interface Results {

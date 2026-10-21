@@ -20,17 +20,18 @@
 // delta table and exits 3 on a regression.
 //
 // Steps:
-//   1. setup-scratch.sh copies the meetings read-only into /tmp/meeting-eval/asr.
-//      An isolated server checks that each LLM, the built-in ASR model and
-//      the aligner are in the HF cache, and downloads a missing one through
-//      the app routes (--no-download fails instead). The tool sets the
-//      default voice row of the scratch DB to the built-in MLX ASR model
-//      (ASR_VOICE). When the ASR config hash (voice row, vocabulary,
-//      languages, meeting audio, server ASR code, worker, diarizer) equals
-//      the cached one, the cached transcribed.db is used. Else
-//      run-baseline.mjs --run R0d transcribes each meeting under the GPU
-//      lock, and the tool backs up the result.
-//   2. Per model: an isolated server on a copy of transcribed.db sets the
+//   1. setup-scratch.sh copies the meetings read-only into a private scratch
+//      profile (/tmp/meeting-eval/asr/work/<pid>). An isolated server checks that each LLM, the built-in ASR
+//      model and the aligner are in the HF cache, and downloads a missing one
+//      through the app routes (--no-download fails instead). The tool sets
+//      the default voice row of the scratch DB to the built-in MLX ASR model
+//      (ASR_VOICE). Each meeting has an ASR input hash (voice row,
+//      vocabulary, languages, its audio, the contents of the server ASR code,
+//      the worker and the diarizer). A meeting whose hash is in the cache
+//      (/tmp/meeting-eval/asr/cache) comes from there; the others are transcribed by
+//      run-baseline.mjs --run R0d under the GPU lock and stored in the cache.
+//      The run DB (arms/transcribed.db) joins them.
+//   2. Per model: an isolated server on a copy of the run DB sets the
 //      default LLM row (read back from the DB after the server stops).
 //   3. Per model, under one GPU lock: run-enhance.mjs --arm new --summarize
 //      for each meeting, with a scratch HOME and HF cache and the dev worker.
@@ -52,26 +53,18 @@
 // Exit codes: 0 ok; 1 a run, a check or the self-check failed; 2 usage;
 // 3 --compare found a worse metric or a new hard fail.
 
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
-  appendFileSync,
   copyFileSync,
-  createWriteStream,
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
-import { MLX_ASR_MODELS } from "../../../apps/server/src/lib/mlx-asr/constants.ts";
 import { MLX_LLM_MODELS } from "../../../apps/server/src/lib/mlx-llm/constants.ts";
 import {
   buildBaseline,
@@ -116,64 +109,39 @@ import {
   renderResults,
   selfCheck,
 } from "./report.mts";
+import {
+  ASR_DEF,
+  ASR_MODEL_ID,
+  ASR_VOICE,
+  type Call,
+  checkBuild,
+  ensureTranscribed as ensureTranscribedIn,
+  isTmp,
+  needPort,
+  ROOT,
+  releaseLock,
+  removeAllScratch,
+  removeScratch,
+  repoRoot,
+  resolveMeetingIds,
+  runChild,
+  SERVER_HOME,
+  serverEnv,
+  setupScratch as setupScratchIn,
+  sleep,
+  takeLock,
+  unqueue,
+  WORKER,
+  withServer as withServerOn,
+} from "./runtime.mts";
 import { scoreRun } from "./score.mts";
 
-const repoRoot = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "..",
-);
-const ROOT = "/tmp/meeting-eval";
-const ASR_DIR = join(ROOT, "asr");
-const SERVER_HOME = join(ROOT, "home");
-/** The built-in MLX ASR model of every eval transcription (owner rule 2026-10-21). */
-const ASR_MODEL_ID = "qwen3-1.7b-8bit";
-const ASR_DEF = (() => {
-  const d = MLX_ASR_MODELS.find((m) => m.id === ASR_MODEL_ID);
-  if (!d) throw new Error(`${ASR_MODEL_ID} is not in the MLX ASR catalog`);
-  return d;
-})();
-/** The voice row as the app's Models page writes it (provider local-mlx). */
-const ASR_VOICE = {
-  provider: "local-mlx",
-  model_id: `local-mlx/${ASR_MODEL_ID}`,
-  model_name: ASR_DEF.displayName,
-};
-const LOCK = "/tmp/openstyle-gpu.lock";
-const QUEUE = "/tmp/openstyle-gpu.queue";
 const DEFAULT_MEETINGS = [
   "2943c36a-532e-4db9-af09-b5e66f0bdf2d",
   "5578edb0-68fc-4a7f-9fd5-b9e17e43ed7e",
   "ca70f895-ebe9-47e3-b663-eeb2c7bd97a6",
   "9243bea0-567f-443b-bf3b-9980f69993fd",
 ];
-const REAL_DB = join(
-  process.env.HOME ?? "",
-  "Library",
-  "Application Support",
-  "Openstyle",
-  "freestyle.db",
-);
-const DIARIZER = join(
-  repoRoot,
-  "apps",
-  "electron",
-  "resources",
-  "bin",
-  `${process.platform}-${process.arch}`,
-  "fluidaudio-diarize",
-);
-const DIARIZER_MODELS = join(
-  repoRoot,
-  "apps",
-  "electron",
-  "resources",
-  "models",
-);
-const WORKER =
-  process.env.OPENSTYLE_MLX_LLM_WORKER ??
-  join(repoRoot, "dist", "mlx_asr_worker", "mlx_asr_worker");
 
 // --- Arguments ------------------------------------------------------------------
 
@@ -190,7 +158,6 @@ function usage(msg: string): never {
   process.exit(2);
 }
 
-const isTmp = (p: string) => /^\/(private\/)?tmp\//.test(resolve(p));
 const rescoreDir = arg("rescore");
 const models = (arg("models") ?? "").split(",").filter(Boolean);
 if (models.length === 0 && !rescoreDir) usage("--models is required");
@@ -206,6 +173,9 @@ const meetingArgs = (arg("meetings") ?? "").split(",").filter(Boolean);
 const keep = has("keep");
 const noDownload = has("no-download");
 const hfCache = resolve(arg("hf-cache") ?? join(ROOT, "hf"));
+// The private scratch profiles (work/<pid>) and the shared transcription
+// cache (cache/), see runtime.mts.
+const ASR_DIR = join(ROOT, "asr");
 const basePort = Number(arg("port") ?? "4797");
 const timeoutSec = Number(arg("timeout-sec") ?? "7200");
 const stamp = new Date()
@@ -257,436 +227,31 @@ function goldFor(id8s: string[]): Map<string, Gold> {
 }
 
 const slug = (model: string) => model.replace(/[^A-Za-z0-9.-]+/g, "-");
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const hhmm = () => new Date().toTimeString().slice(0, 5);
-const sha = (s: string | Buffer) =>
-  createHash("sha256").update(s).digest("hex").slice(0, 16);
 
-// --- GPU lock (owner rule 2026-10-20) ---------------------------------------------
-
-let heldLock: string | null = null;
-let queuedLine: string | null = null;
-
-function unqueue(): void {
-  if (!queuedLine || !existsSync(QUEUE)) return;
-  const kept = readFileSync(QUEUE, "utf8")
-    .split("\n")
-    .filter((l) => l !== queuedLine);
-  writeFileSync(QUEUE, kept.join("\n"));
-  queuedLine = null;
-}
-
-async function takeLock(job: string, minutes: number): Promise<void> {
-  const owner = `meeting-eval ${job} ${hhmm()}`;
-  for (;;) {
-    try {
-      mkdirSync(LOCK);
-      break;
-    } catch {
-      if (!queuedLine) {
-        queuedLine = `meeting-eval ${job} ${minutes}`;
-        appendFileSync(QUEUE, `${queuedLine}\n`);
-        console.log(`GPU lock busy: queued (${QUEUE}), retry every 60 s`);
-      }
-      await sleep(60_000);
-    }
-  }
-  writeFileSync(join(LOCK, "owner"), `${owner}\n`);
-  heldLock = owner;
-  unqueue();
-  console.log(`GPU lock taken: ${job}`);
-}
-
-function releaseLock(): void {
-  if (!heldLock) return;
-  const owner = existsSync(join(LOCK, "owner"))
-    ? readFileSync(join(LOCK, "owner"), "utf8").trim()
-    : "";
-  // Never remove the lock of another owner.
-  if (owner === heldLock) rmSync(LOCK, { recursive: true, force: true });
-  console.log(
-    `GPU lock released${owner === heldLock ? "" : " (owner changed; left in place)"}`,
-  );
-  heldLock = null;
-}
-
-// --- Children and cleanup -----------------------------------------------------------
-
-const children = new Set<ChildProcess>();
-function onSignal() {
-  for (const c of children) {
-    try {
-      c.kill("SIGTERM");
-    } catch {
-      // already gone
-    }
-  }
-  releaseLock();
-  unqueue();
-  process.exit(1);
-}
-process.on("SIGINT", onSignal);
-process.on("SIGTERM", onSignal);
-
-function portFree(port: number): Promise<boolean> {
-  return new Promise((ok) => {
-    const s = createServer();
-    s.once("error", () => ok(false));
-    s.listen({ port, host: "127.0.0.1" }, () => s.close(() => ok(true)));
+const resolveMeetings = () =>
+  meetingArgs.length === 0
+    ? DEFAULT_MEETINGS
+    : resolveMeetingIds(meetingArgs, ASR_DIR);
+const setupScratch = (ids: string[]) =>
+  setupScratchIn(ASR_DIR, ids, basePort + 2);
+// The run DB lives in arms/, so a run without --keep deletes it.
+const ensureTranscribed = (work: string, ids: string[]) =>
+  ensureTranscribedIn({
+    asrDir: ASR_DIR,
+    work,
+    ids,
+    voice: ASR_VOICE,
+    port: basePort + 3,
+    hfCache,
+    out: join(outDir, "arms", "transcribed.db"),
   });
-}
-
-async function needPort(port: number): Promise<void> {
-  if (!(await portFree(port)))
-    throw new Error(`port ${port} is in use; pass --port`);
-}
-
-/** Run a child to its end. Its output goes to the console (the tools print counts only). */
-function runChild(
-  cmd: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-  cwd = repoRoot,
-): Promise<number> {
-  return new Promise((ok) => {
-    const c = spawn(cmd, args, {
-      cwd,
-      env,
-      stdio: ["ignore", "inherit", "inherit"],
-    });
-    children.add(c);
-    c.on("exit", (code) => {
-      children.delete(c);
-      ok(code ?? 1);
-    });
-  });
-}
-
-/** The environment of every isolated server: scratch HOME, HF cache, dev worker, no trace. */
-function serverEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, ...extra };
-  delete env.OPENSTYLE_LOG_DIR;
-  for (const k of Object.keys(env))
-    if (/^(LANGSMITH|LANGCHAIN|MLFLOW|OKTO_NEURON|MARGINALIA)/i.test(k))
-      delete env[k];
-  env.HF_HOME = hfCache;
-  env.HF_HUB_CACHE = join(hfCache, "hub");
-  env.HUGGINGFACE_HUB_CACHE = join(hfCache, "hub");
-  env.OPENSTYLE_MLX_LLM_WORKER = WORKER;
-  env.OPENSTYLE_MLX_ASR_WORKER = WORKER;
-  return env;
-}
-
-// --- Preconditions ---------------------------------------------------------------------
-
-function newestMtime(dir: string): number {
-  let t = 0;
-  for (const e of readdirSync(dir, { withFileTypes: true, recursive: true })) {
-    if (e.isFile())
-      t = Math.max(t, statSync(join(e.parentPath, e.name)).mtimeMs);
-  }
-  return t;
-}
-
-function checkBuild(): void {
-  const dist = join(repoRoot, "apps", "server", "dist", "index.js");
-  if (!existsSync(dist))
-    throw new Error(
-      "no server build (pnpm turbo build --filter=@openstyle/server)",
-    );
-  if (
-    statSync(dist).mtimeMs <
-    newestMtime(join(repoRoot, "apps", "server", "src"))
-  )
-    throw new Error(
-      "the server build is older than apps/server/src (pnpm turbo build --filter=@openstyle/server)",
-    );
-  if (!existsSync(WORKER))
-    throw new Error(
-      `no dev worker at ${WORKER} (scripts/build_mlx_asr_worker.sh)`,
-    );
-  if (
-    statSync(WORKER).mtimeMs <
-    statSync(join(repoRoot, "scripts", "mlx_asr_server.py")).mtimeMs
-  )
-    console.log(
-      "warning: the dev worker is older than scripts/mlx_asr_server.py",
-    );
-  // Without these files the server skips diarization and VAD with no error
-  // (diarize.ts resolves them from <cwd>/resources), and the speaker step
-  // gets no labels. A new worktree does not have them (gitignored).
-  for (const f of [DIARIZER, join(DIARIZER_MODELS, "speaker-diarization")])
-    if (!existsSync(f))
-      throw new Error(
-        `missing ${f} (pnpm --filter @openstyle/electron compile:native, or copy apps/electron/resources/bin and models from the main checkout)`,
-      );
-}
-
-// --- 1. Transcribed meetings (cached) ------------------------------------------------------
-
-function resolveMeetings(): string[] {
-  if (meetingArgs.length === 0) return DEFAULT_MEETINGS;
-  mkdirSync(join(ASR_DIR, "dbcopy"), { recursive: true });
-  const copy = join(ASR_DIR, "dbcopy", "lookup.db");
-  rmSync(copy, { force: true });
-  const b = spawnSync("sqlite3", ["-readonly", REAL_DB, `.backup '${copy}'`]);
-  if (b.status !== 0)
-    throw new Error("cannot back up the real DB (sqlite3 -readonly)");
-  const db = new DatabaseSync(copy, { readOnly: true });
-  const ids = meetingArgs.map((a) => {
-    const rows = db
-      .prepare("SELECT id FROM meetings WHERE id LIKE ?")
-      .all(`${a}%`) as { id: string }[];
-    if (rows.length !== 1)
-      throw new Error(`meeting ${a}: ${rows.length} matches in the real DB`);
-    return (rows[0] as { id: string }).id;
-  });
-  db.close();
-  rmSync(copy, { force: true });
-  return ids;
-}
-
-/** Hash of every input of the transcription. Equal hash = the cached DB is valid. */
-function asrHash(ids: string[]): string {
-  const db = new DatabaseSync(join(ASR_DIR, "test.db"), { readOnly: true });
-  const q = (sql: string, ...p: string[]) =>
-    JSON.stringify(db.prepare(sql).all(...p));
-  const parts = [
-    "run=R0d",
-    `asr=${ASR_VOICE.model_id}`,
-    q("SELECT term, notes FROM vocabulary ORDER BY term"),
-    q("SELECT value FROM settings WHERE key = 'languages'"),
-    q(
-      "SELECT provider, model_id FROM model_configs WHERE type = 'voice' AND is_default = 1",
-    ),
-  ];
-  for (const id of ids) {
-    parts.push(
-      q(
-        "SELECT id, title, context, duration_ms FROM meetings WHERE id = ?",
-        id,
-      ),
-    );
-    for (const f of ["mic.wav", "system.wav"]) {
-      const p = join(ASR_DIR, "meetings", id, f);
-      parts.push(`${f}:${existsSync(p) ? statSync(p).size : "-"}`);
-    }
-  }
-  db.close();
-  // The server code of the transcription path (not the Enhance workflow).
-  const lib = join(repoRoot, "apps", "server", "src", "lib");
-  const files = [
-    ...readdirSync(join(lib, "meetings"))
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => join(lib, "meetings", f)),
-    join(lib, "transcription-pipeline.ts"),
-    join(lib, "vocabulary-bias.ts"),
-    join(repoRoot, "scripts", "mlx_asr_server.py"),
-  ];
-  for (const f of files.sort()) parts.push(`${f}:${sha(readFileSync(f))}`);
-  parts.push(`worker:${statSync(WORKER).size}:${statSync(WORKER).mtimeMs}`);
-  parts.push(`diarizer:${sha(readFileSync(DIARIZER))}`);
-  return sha(parts.join("\n"));
-}
-
-/** Copy the meetings read-only and seed a fresh scratch DB (asr/test.db). */
-async function setupScratch(ids: string[]): Promise<void> {
-  mkdirSync(ASR_DIR, { recursive: true });
-  await needPort(basePort + 2);
-  const setup = await runChild(
-    "bash",
-    [join(repoRoot, "scripts", "meeting-v2", "setup-scratch.sh"), ...ids],
-    { ...process.env, SCRATCH: ASR_DIR, BOOT_PORT: String(basePort + 2) },
-  );
-  if (setup !== 0) throw new Error("setup-scratch.sh failed");
-}
-
-/**
- * Make the built-in MLX ASR model the only default voice row of the scratch
- * DB, and read it back. setup-scratch.sh copies the owner's own-server voice
- * row; the eval never transcribes through it (owner rule 2026-10-21).
- */
-function forceAsrVoiceRow(dbPath: string): void {
-  const db = new DatabaseSync(dbPath);
-  try {
-    db.exec("UPDATE model_configs SET is_default = 0 WHERE type = 'voice'");
-    db.prepare(
-      `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
-       VALUES (?, ?, ?, 'voice', 1)
-       ON CONFLICT(provider, model_id, type) DO UPDATE SET is_default = 1`,
-    ).run(ASR_VOICE.provider, ASR_VOICE.model_id, ASR_VOICE.model_name);
-    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-    const rows = db
-      .prepare(
-        "SELECT provider, model_id FROM model_configs WHERE type = 'voice' AND is_default = 1",
-      )
-      .all() as { provider: string; model_id: string }[];
-    if (
-      rows.length !== 1 ||
-      rows[0]?.provider !== ASR_VOICE.provider ||
-      rows[0]?.model_id !== ASR_VOICE.model_id
-    )
-      throw new Error(
-        `scratch DB: the default voice row is not ${ASR_VOICE.model_id} (${rows.length} rows)`,
-      );
-  } finally {
-    db.close();
-  }
-}
-
-async function ensureTranscribed(ids: string[]): Promise<{
-  path: string;
-  hash: string;
-}> {
-  forceAsrVoiceRow(join(ASR_DIR, "test.db"));
-  const hash = asrHash(ids);
-  const cached = join(ASR_DIR, "transcribed.db");
-  const metaPath = join(ASR_DIR, "transcribed.json");
-  const meta = existsSync(metaPath)
-    ? JSON.parse(readFileSync(metaPath, "utf8"))
-    : null;
-  if (
-    existsSync(cached) &&
-    meta?.hash === hash &&
-    ids.every((id) => (meta.meetings as string[]).includes(id))
-  ) {
-    console.log(`transcribed DB: cached (asr hash ${hash}) ${cached}`);
-    return { path: cached, hash };
-  }
-  console.log(
-    `transcribing ${ids.length} meetings with ${ASR_VOICE.model_id} (asr hash ${hash})`,
-  );
-  rmSync(metaPath, { force: true });
-  rmSync(cached, { force: true });
-  await needPort(basePort + 3);
-  await takeLock("transcribe", 10 + ids.length * 5);
-  try {
-    for (const id of ids) {
-      const rc = await runChild(
-        process.execPath,
-        [
-          join(repoRoot, "scripts", "meeting-v2", "run-baseline.mjs"),
-          "--meeting",
-          id,
-          "--run",
-          "R0d",
-          "--port",
-          String(basePort + 3),
-          "--hf-cache",
-          hfCache,
-        ],
-        serverEnv({ SCRATCH: ASR_DIR, HOME: SERVER_HOME }),
-      );
-      if (rc !== 0)
-        throw new Error(`run-baseline failed for ${id.slice(0, 8)}`);
-    }
-  } finally {
-    releaseLock();
-  }
-  const b = spawnSync("sqlite3", [
-    "-readonly",
-    `file:${join(ASR_DIR, "test.db")}?immutable=1`,
-    `.backup '${cached}'`,
-  ]);
-  if (b.status !== 0) throw new Error("cannot back up the transcribed DB");
-  // One file, no WAL: every arm starts from a plain copy of it.
-  const rw = new DatabaseSync(cached);
-  rw.exec("PRAGMA journal_mode = DELETE");
-  rw.close();
-  const db = new DatabaseSync(cached, { readOnly: true });
-  for (const id of ids) {
-    const m = db
-      .prepare(
-        "SELECT status, (SELECT COUNT(*) FROM meeting_segments s WHERE s.meeting_id = m.id) AS n FROM meetings m WHERE id = ?",
-      )
-      .get(id) as { status: string; n: number } | undefined;
-    if (m?.status !== "transcribed" || m.n === 0)
-      throw new Error(
-        `meeting ${id.slice(0, 8)}: status ${m?.status ?? "missing"}, ${m?.n ?? 0} segments`,
-      );
-  }
-  db.close();
-  writeFileSync(
-    metaPath,
-    `${JSON.stringify({ hash, meetings: ids }, null, 1)}\n`,
-  );
-  return { path: cached, hash };
-}
-
-// --- 2. Arm database (download, default LLM row) ---------------------------------------------
-
-async function api(
-  port: number,
-  token: string,
-  method: string,
-  path: string,
-  body?: unknown,
-) {
-  const r = await fetch(`http://127.0.0.1:${port}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(60_000),
-  });
-  const json = await r.json().catch(() => null);
-  return { status: r.status, json };
-}
-
-type Call = (
-  method: string,
-  path: string,
-  body?: unknown,
-) => Promise<{ status: number; json: any }>;
-
-/** Start an isolated server on a DB, run `fn` against its API, stop it. */
-async function withServer<T>(
+const withServer = <T,>(
   dbPath: string,
   logPath: string,
   fn: (call: Call) => Promise<T>,
-): Promise<T> {
-  const port = basePort;
-  await needPort(port);
-  const token = randomUUID();
-  const log = createWriteStream(logPath);
-  const server = spawn(process.execPath, ["../server/dist/startup.js"], {
-    cwd: join(repoRoot, "apps", "electron"),
-    env: serverEnv({
-      OPENSTYLE_DB_PATH: dbPath,
-      PORT: String(port),
-      HOST: "127.0.0.1",
-      OPENSTYLE_AUTH_TOKEN: token,
-      HOME: SERVER_HOME,
-    }),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  children.add(server);
-  server.stdout?.pipe(log);
-  server.stderr?.pipe(log);
-  const exited = new Promise<void>((ok) => server.on("exit", () => ok()));
-  const call: Call = (method, path, body) =>
-    api(port, token, method, path, body);
-  try {
-    let up = false;
-    for (let i = 0; i < 120 && !up; i++) {
-      up = await call("GET", "/api/health").then(
-        (r) => r.status === 200,
-        () => false,
-      );
-      if (!up) await sleep(500);
-    }
-    if (!up) throw new Error(`isolated server did not start; log: ${logPath}`);
-    return await fn(call);
-  } finally {
-    server.kill("SIGTERM");
-    await Promise.race([exited, sleep(10_000)]);
-    if (server.exitCode === null) server.kill("SIGKILL");
-    children.delete(server);
-    log.end();
-  }
-}
+) => withServerOn({ port: basePort, hfCache, dbPath, logPath }, fn);
+
+// --- 2. Arm database (download, default LLM row) ---------------------------------------------
 
 async function modelStatus(call: Call, model: string) {
   const r = await call("GET", "/api/mlx-llm/status");
@@ -913,7 +478,7 @@ async function runEnhance(
       "--server-home",
       SERVER_HOME,
     ],
-    serverEnv({}),
+    serverEnv(hfCache, {}),
   );
   clearInterval(timer);
   return {
@@ -1139,10 +704,15 @@ async function main(): Promise<number> {
   const golds = goldFor(ids.map((id) => id.slice(0, 8)));
   mkdirSync(join(outDir, "pack"), { recursive: true });
   console.log(`out: ${outDir}`);
-  await setupScratch(ids);
-  await ensureDownloaded(join(ASR_DIR, "test.db"));
-  const { path: transcribed, hash: asrHashValue } =
-    await ensureTranscribed(ids);
+  const work = await setupScratch(ids);
+  mkdirSync(join(outDir, "arms"), { recursive: true });
+  await ensureDownloaded(join(work, "test.db"));
+  const {
+    path: transcribed,
+    hash: asrHashValue,
+    hashes: asrHashes,
+  } = await ensureTranscribed(work, ids);
+  removeScratch(work);
 
   // The raw dumps: the transcribed DB with enhanced_text = null.
   const raws = new Map<string, ReturnType<typeof readRun>>();
@@ -1172,6 +742,7 @@ async function main(): Promise<number> {
       id,
       segments: raw.segments.length,
       durationSeconds: Math.round(dur.duration_ms / 1000),
+      asrHash: asrHashes[id] ?? null,
     });
   }
 
@@ -1256,7 +827,7 @@ async function main(): Promise<number> {
         metrics: runMetrics(run.links, run.calls, run.speakers),
         checks,
         hardFails: 0,
-        scorecard: scorecardOf(golds.get(id8), run, asrHashValue),
+        scorecard: scorecardOf(golds.get(id8), run, asrHashes[id] ?? null),
       };
       r.hardFails = hardFailsOf(r);
       runs.push(r);
@@ -1297,7 +868,7 @@ async function main(): Promise<number> {
       : null;
     const fresh = readRun(join(runDir, "test.db"), id);
     const again = evaluate(readRun(transcribed, id), fresh, m, csPass);
-    const sc = scorecardOf(golds.get(r.meeting), fresh, asrHashValue);
+    const sc = scorecardOf(golds.get(r.meeting), fresh, asrHashes[id] ?? null);
     if (JSON.stringify(sc) !== JSON.stringify(r.scorecard ?? null))
       errors.push(
         `${r.model} ${r.meeting}: a fresh read gives another scorecard than results.json`,
@@ -1336,7 +907,7 @@ async function main(): Promise<number> {
   console.log(`results.json: ${jsonPath}`);
   console.log(`judge pack (private text): ${join(outDir, "pack")}`);
   console.log(
-    `cleanup (private text): rm -rf ${join(outDir, "runs")} ${join(outDir, "pack")} ${join(outDir, "arms")} ${ASR_DIR}`,
+    `cleanup (private text): rm -rf ${join(outDir, "runs")} ${join(outDir, "pack")} ${join(outDir, "arms")}; the transcription cache: rm -rf ${join(ASR_DIR, "cache")}`,
   );
   if (!keep) {
     for (const d of ["runs", "pack", "arms"])
@@ -1388,7 +959,13 @@ function rescore(dir: string): number {
       ...r,
       metrics: runMetrics(run.links, run.calls, run.speakers),
       checks,
-      scorecard: scorecardOf(golds.get(r.meeting), run, old.asrHash ?? null),
+      scorecard: scorecardOf(
+        golds.get(r.meeting),
+        run,
+        old.meetings.find((x) => x.id8 === r.meeting)?.asrHash ??
+          old.asrHash ??
+          null,
+      ),
     };
     next.hardFails = hardFailsOf(next);
     return next;
@@ -1465,6 +1042,7 @@ function emptyRun(
   (code) => {
     releaseLock();
     unqueue();
+    removeAllScratch();
     process.exit(code);
   },
   (e) => {
@@ -1472,6 +1050,7 @@ function emptyRun(
     console.error(`meeting:eval failed: ${(e as Error).message}`);
     releaseLock();
     unqueue();
+    removeAllScratch();
     process.exit(1);
   },
 );
