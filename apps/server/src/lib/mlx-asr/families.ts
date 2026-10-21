@@ -13,9 +13,15 @@
  * The `MLX_WORKER_BUILD_SPEC` value (`runtime.ts`) that this file was reviewed
  * against. A unit test fails when the two differ. A worker upgrade then forces
  * a human to check the allowlist and the tables below again.
+ *
+ * Re-checked for #233 (2026-10-20): the embed mode adds mlx-vlm 0.7.8 and
+ * raises the transformers floor to 5.18. A `pip list` diff of the old and
+ * the new build venv shows the same mlx-audio 0.5.7, mlx 0.32.3,
+ * transformers 5.20.2 and tokenizers 0.23.3, so the family rules do not
+ * change.
  */
 export const FAMILIES_FOR_WORKER_SPEC =
-  "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;mlx-lm=0.32.2;llguidance=1.9.1;bundle=onedir";
+  "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.18;mlx-lm=0.32.2;llguidance=1.9.1;mlx-vlm=0.7.8;bundle=onedir";
 
 /**
  * A file that a family needs next to its weights. A plain name must be in the
