@@ -111,7 +111,7 @@ function deriveBundledVersion(): string {
   );
   return createHash("sha256")
     .update(
-      "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.14;mlx-lm=0.32.2;llguidance=1.9.1;bundle=onedir",
+      "pyinstaller=6.22.3;mlx-audio=0.5.7;mlx=0.32.3;mlx-metal=0.32.3;huggingface_hub=1.33.0;transformers>=5.18;mlx-lm=0.32.2;llguidance=1.9.1;mlx-vlm=0.7.8;bundle=onedir",
     )
     .update("\0")
     .update(script)
@@ -638,6 +638,13 @@ describe("MLX worker build spec", () => {
     // time, so PyInstaller must collect both (probe X2b).
     expect(script).toMatch(/--collect-all mlx_lm/);
     expect(script).toMatch(/--collect-all llguidance/);
+    // Embed mode imports mlx_vlm.models.<model_type> at run time, so
+    // PyInstaller must collect the submodules. The excludes keep the heavy
+    // mlx-vlm dependencies out of the bundle (#233 bundle measurement).
+    expect(script).toMatch(/--collect-submodules mlx_vlm/);
+    for (const mod of ["pyarrow", "cv2", "pandas", "datasets", "fastapi"]) {
+      expect(script).toMatch(new RegExp(`--exclude-module ${mod} `));
+    }
 
     const spec = [
       `pyinstaller=${pin("PYINSTALLER_VERSION")}`,
@@ -648,6 +655,7 @@ describe("MLX worker build spec", () => {
       `transformers${pin("TRANSFORMERS_SPEC")}`,
       `mlx-lm=${pin("MLX_LM_VERSION")}`,
       `llguidance=${pin("LLGUIDANCE_VERSION")}`,
+      `mlx-vlm=${pin("MLX_VLM_VERSION")}`,
       "bundle=onedir",
     ].join(";");
 
