@@ -483,7 +483,9 @@ function wordRanges(text: string) {
  * Fold the owner's answers into a gold file (the raw JSON object, so other
  * fields stay as they are). For each answer, the words of `from` must occur
  * exactly once in the consecutive turns of its channel that overlap the
- * answer time (plus the gold time tolerance). The turns that hold them are
+ * answer time (plus the gold time tolerance). When they occur more than
+ * once, the one hit that is a whole turn overlapping the answer time wins
+ * (a gold that puts each open span in its own turn). The turns that hold them are
  * split: the text before keeps its turn, the answer becomes a new turn with
  * `verified: true` and the answer time, and the text after keeps the rest.
  * An answer with an empty `from` (engine A had no words there) becomes a new
@@ -533,9 +535,25 @@ export function mergeAnswers(
     const list = near.flatMap((ti) =>
       wordRanges((turns[ti] as GoldTurn).text).map((r) => ({ ...r, ti })),
     );
-    const hits: number[] = [];
+    let hits: number[] = [];
     for (let i = 0; i + want.length <= list.length; i++)
       if (want.every((w, k) => list[i + k]?.w === w)) hits.push(i);
+    // A short `from` ("the", "to") often occurs more than once near the
+    // answer. A gold that puts each open span in its own turn settles it:
+    // the one hit that is a whole turn and overlaps the answer time wins.
+    if (hits.length > 1) {
+      const whole = hits.filter((h) => {
+        const ti = (list[h] as (typeof list)[number]).ti;
+        const t = turns[ti] as GoldTurn;
+        return (
+          list[h + want.length - 1]?.ti === ti &&
+          wordRanges(t.text).length === want.length &&
+          t.startMs <= ans.endMs &&
+          t.endMs >= ans.startMs
+        );
+      });
+      if (whole.length === 1) hits = whole;
+    }
     if (hits.length !== 1) {
       errors.push(
         `answer ${ans.id}: its "from" words occur ${hits.length} times near ${ans.channel} ${ans.startMs} ms (want 1)`,
@@ -550,7 +568,9 @@ export function mergeAnswers(
     const afterText = t1.text.slice(last.end).trim();
     // Times stay in order (the scorers read a channel in start order):
     // before <= answer <= after, inside the turns that held the words.
-    const vStart = before ? Math.max(ans.startMs, t0.startMs) : ans.startMs;
+    // The words lie inside t0..t1, so the answer starts inside them too (a
+    // start before t0 sorted the answer in front of the turn before it).
+    const vStart = Math.min(Math.max(ans.startMs, t0.startMs), t1.endMs);
     const vEnd = Math.max(vStart, ans.endMs);
     const parts: GoldTurn[] = [];
     if (before)

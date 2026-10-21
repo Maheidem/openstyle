@@ -269,6 +269,45 @@ test("mergeAnswers: only turns near the answer time are searched", () => {
   );
 });
 
+test("mergeAnswers: a repeated short from word resolves to the open span's own turn", () => {
+  // The gold puts the open span "the" in its own turn; the same word also
+  // occurs in the turns around it.
+  const g = gold([
+    { startMs: 0, endMs: 1400, text: "Put the kettle on" },
+    { startMs: 1400, endMs: 1600, text: "the" },
+    { startMs: 1600, endMs: 3000, text: "stove, and the mugs." },
+  ]);
+  const r = mergeAnswers(g, [
+    // The span time starts before its own turn (the other engine's words).
+    ans({ startMs: 1300, endMs: 1650, from: "the", text: "a" }),
+  ]);
+  assert.deepEqual(r.errors, []);
+  const mic = (
+    r.gold.transcript as {
+      mic: { startMs: number; text: string; verified: boolean }[];
+    }
+  ).mic;
+  assert.deepEqual(
+    mic.map((t) => [t.startMs, t.text, t.verified]),
+    [
+      [0, "Put the kettle on", false],
+      // Starts inside the turn that held the words, so the order holds.
+      [1400, "a", true],
+      [1600, "stove, and the mugs.", false],
+    ],
+  );
+  // Two whole-turn hits are still refused.
+  const twice = mergeAnswers(
+    gold([
+      { startMs: 0, endMs: 500, text: "the" },
+      { startMs: 600, endMs: 900, text: "the" },
+    ]),
+    [ans({ startMs: 0, endMs: 900, from: "the", text: "a" })],
+  );
+  assert.equal(twice.merged, 0);
+  assert.match(twice.errors[0] as string, /answer m1: .* 2 times/);
+});
+
 test("parseAnswers: format, meeting and fields are checked", () => {
   const ok = JSON.stringify({
     format: "openstyle-gold-answers",
