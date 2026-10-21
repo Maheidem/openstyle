@@ -348,10 +348,32 @@ describe("meeting list job summary", () => {
         phase: "reading",
         done: 2,
         total: 7,
+        queued: null,
       });
       expect(items.find((m) => m.id === "idle")?.job).toBeNull();
     } finally {
       releaseJob("busy");
+    }
+  });
+
+  it("keeps the lane wait of a queued job, so the row can show Queued", async () => {
+    insertMeeting("waiting", 1);
+    claimJob("waiting", "enhance", { done: 0, total: 4, failed: 0 });
+    updateProgress("waiting", {
+      phase: "reading",
+      queued: { ahead: 1, sinceMs: 0 },
+    });
+    try {
+      const { items } = await list();
+      expect(items.find((m) => m.id === "waiting")?.job).toEqual({
+        kind: "enhance",
+        phase: "reading",
+        done: 0,
+        total: 4,
+        queued: { ahead: 1, sinceMs: 0 },
+      });
+    } finally {
+      releaseJob("waiting");
     }
   });
 });

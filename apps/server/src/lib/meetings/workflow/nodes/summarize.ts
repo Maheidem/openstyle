@@ -375,6 +375,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
                   maxOutputTokens: unit.maxOutputTokens,
                   signal: callSignal,
                   onQueued: (i) => ctx.progress.onQueued(i),
+                  onHeld: (held) => ctx.progress.callHeld(held),
                 },
                 ctx,
                 deps,

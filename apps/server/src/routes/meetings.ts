@@ -1135,6 +1135,7 @@ const meetings = new Hono()
               phase: job.phase,
               done: job.done,
               total: job.total,
+              queued: job.queued ?? null,
             },
           };
         }),

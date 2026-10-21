@@ -72,6 +72,8 @@ export interface RunContext extends UnitContext {
     addTotal(calls: number): void;
     callEnded(outcome: "ok" | "failed"): void;
     onQueued(info: { waitedMs: number; ahead: number }): void;
+    /** A call of the run gets (true) or gives back (false) its lane slot. */
+    callHeld(held: boolean): void;
     /** `prepare` calls it once. It fixes the step total of the job blob. */
     setPlan(chunks: number, stages: readonly RunStage[]): void;
     /** A chunk starts. `text` is the text of its first segment. */

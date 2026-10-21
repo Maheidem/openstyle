@@ -451,6 +451,7 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
               maxOutputTokens: unit.maxOutputTokens,
               signal: ctx.signal,
               onQueued: (i) => ctx.progress.onQueued(i),
+              onHeld: (held) => ctx.progress.callHeld(held),
             },
             ctx,
             deps,

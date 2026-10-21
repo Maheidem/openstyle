@@ -50,6 +50,8 @@ export interface MeetingListItem {
     phase?: MeetingJobPhase;
     done: number;
     total: number;
+    /** Set while one of the job's LLM calls waits for its lane. */
+    queued?: { ahead: number; sinceMs: number } | null;
   } | null;
 }
 
