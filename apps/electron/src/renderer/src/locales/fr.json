@@ -924,7 +924,8 @@
       "retryFailed": "Nouvelle tentative",
       "diarize": "Intervenants",
       "enhance": "Amélioration",
-      "summarize": "Résumé"
+      "summarize": "Résumé",
+      "queued": "En attente"
     },
     "progress": {
       "preparing": "Préparation…",

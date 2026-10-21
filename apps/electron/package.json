@@ -16,7 +16,7 @@
     "compile:native": "node scripts/compile-native.js",
     "sign:dev": "node scripts/dev-sign.mjs electron",
     "dev": "npm run sign:dev && electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "npm run typecheck && npm run copy:sqlite-vec && electron-vite build",
     "analyze": "ANALYZE=1 electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && node scripts/dev-sign.mjs builder --dir",

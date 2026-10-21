@@ -923,7 +923,8 @@
       "retryFailed": "Nuovo tentativo",
       "diarize": "Parlanti",
       "enhance": "Miglioramento",
-      "summarize": "Riepilogo"
+      "summarize": "Riepilogo",
+      "queued": "In coda"
     },
     "progress": {
       "preparing": "Preparazione…",

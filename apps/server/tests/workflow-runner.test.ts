@@ -364,6 +364,46 @@ describe("GR8: soft cancel", () => {
   });
 });
 
+describe("the queued state of the job blob (issue #260)", () => {
+  it("is set only while the run waits behind another run, and clears when its call gets the slot", async () => {
+    const a = seedMeeting(4, "m-hold");
+    const b = seedMeeting(2, "m-wait");
+    // Request 0 answers. Then chunk 1 of run A holds the one lane slot, and
+    // chunk 3 joins the lane after that call started.
+    const h = runnerHarness({
+      answer: (r) => (r.n === 0 ? defaultAnswer(r) : HANG),
+    });
+    const runA = startRun(
+      { meetingId: a.meeting.id, stages: BOTH, trigger: "button" },
+      h.deps,
+    );
+    if (!runA.ok) throw new Error("start A failed");
+    await waitUntil(() => h.requests.length >= 2);
+    const runB = startRun(
+      { meetingId: b.meeting.id, stages: BOTH, trigger: "button" },
+      h.deps,
+    );
+    if (!runB.ok) throw new Error("start B failed");
+    await waitUntil(() => getJob(b.meeting.id)?.queued != null);
+    // Run A has a call in work, so it is not queued. Its other two chunks
+    // wait behind its own call, so run B has 3 callers ahead in the lane
+    // count (the lane counts the waiter itself too).
+    expect(getJob(a.meeting.id)?.queued ?? null).toBeNull();
+    expect(getJob(b.meeting.id)?.queued).toMatchObject({ ahead: 3 });
+    expect(h.requests).toHaveLength(2);
+
+    // Run A stops and frees the slot. The call of run B starts.
+    requestCancel(a.meeting.id);
+    await waitForNoJob(a.meeting.id);
+    await waitUntil(() => h.requests.length >= 3);
+    expect(getJob(b.meeting.id)?.queued ?? null).toBeNull();
+
+    requestCancel(b.meeting.id);
+    await waitForNoJob(b.meeting.id);
+    expect(runContexts.size()).toBe(0);
+  });
+});
+
 describe("GR9: hard stop", () => {
   it("ends cancelled after the grace time when a node ignores its signal, and save does not run", async () => {
     const f = seedMeeting(2);

@@ -4,7 +4,7 @@ import { Button } from "@renderer/components/ui/button";
 import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
 import { cn } from "@renderer/lib/utils";
 import type { TFunction } from "i18next";
-import { Check, Copy, RefreshCw } from "lucide-react";
+import { Check, Clock, Copy, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TranscriptSegment } from "./types";
 
@@ -60,43 +60,51 @@ export function StatusBadge({ status }: { status: string }): React.JSX.Element {
   );
 }
 
-/** The label key of a running job in a list row. */
-function jobBadgeKey(job: NonNullable<MeetingListItem["job"]>): string {
-  if (job.phase === "diarizing") return "diarize";
+/** The label key and the percent of a running job in a list row. A job that
+ * waits for the LLM lane shows "Queued" and no percent: no work has started. */
+export function jobBadgeView(job: NonNullable<MeetingListItem["job"]>): {
+  key: string;
+  percent: number | null;
+} {
+  if (job.queued) return { key: "queued", percent: null };
+  const percent =
+    job.total > 0 ? Math.round((job.done / job.total) * 100) : null;
+  if (job.phase === "diarizing") return { key: "diarize", percent };
   switch (job.kind) {
     case "retry-failed":
-      return "retryFailed";
+      return { key: "retryFailed", percent };
     case "diarize":
     case "enhance":
     case "summarize":
-      return job.kind;
+      return { key: job.kind, percent };
     default:
-      return "transcribe";
+      return { key: "transcribe", percent };
   }
 }
 
 // A running job (Transcribe, Enhance, Summarize, Diarize, Retry) is an
 // in-progress state too, so it uses the live badge with a spinner. The
-// percent shows when the job knows its total.
+// percent shows when the job knows its total. A queued job keeps the live
+// badge but shows a static clock, because it does not move yet.
 export function JobBadge({
   job,
 }: {
   job: NonNullable<MeetingListItem["job"]>;
 }): React.JSX.Element {
   const { t } = useTranslation();
+  const { key, percent } = jobBadgeView(job);
+  const queued = key === "queued";
+  const Icon = queued ? Clock : RefreshCw;
   return (
     <Badge
       variant="outline"
       data-testid="meetings-job-badge"
+      data-queued={queued ? "true" : undefined}
       className="mono h-4 shrink-0 gap-1 border-[color:var(--live)]/30 bg-[var(--live-tint)] px-1.5 text-[9px] uppercase tracking-[0.12em] text-[color:var(--live)]"
     >
-      <RefreshCw className="h-2.5 w-2.5 shrink-0 animate-spin" />
-      {t(`meetings.jobBadge.${jobBadgeKey(job)}`)}
-      {job.total > 0 && (
-        <span className="tabular-nums">
-          {Math.round((job.done / job.total) * 100)}%
-        </span>
-      )}
+      <Icon className={cn("h-2.5 w-2.5 shrink-0", !queued && "animate-spin")} />
+      {t(`meetings.jobBadge.${key}`)}
+      {percent !== null && <span className="tabular-nums">{percent}%</span>}
     </Badge>
   );
 }

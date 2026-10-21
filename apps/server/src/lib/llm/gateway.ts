@@ -92,6 +92,8 @@ export interface CallStructuredInput<T> {
   signal: AbortSignal;
   sink: CallSink;
   onQueued?: (i: { waitedMs: number; ahead: number }) => void;
+  /** True when the lane slot opens, false when the call ends. */
+  onHeld?: (held: boolean) => void;
   stopped?: () => boolean;
   retry?: {
     kind: GatewayErrorKind;
@@ -832,6 +834,7 @@ export async function callStructured<T>(
         taskId: profile.taskId,
         signal: input.signal,
         ...(input.onQueued ? { onQueued: input.onQueued } : {}),
+        ...(input.onHeld ? { onHeld: input.onHeld } : {}),
       },
       async () => {
         const queuedMs = Date.now() - laneStart;

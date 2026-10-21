@@ -141,6 +141,9 @@ function makeRunContext(o: {
   // The LLM call counters. Only `failed` goes to the job blob.
   const counts = { total: 0, done: 0, failed: 0 };
   let queued: { ahead: number; sinceMs: number } | null = null;
+  // The calls of this run that hold a lane slot. A run with a call in work
+  // is not queued, also when its other chunks wait behind that call.
+  let held = 0;
   // The job blob counts work steps: one for each chunk, then one for each
   // later phase. `setPlan` fixes the total once, so the bar never goes back.
   const view = {
@@ -207,7 +210,15 @@ function makeRunContext(o: {
         queued = null;
         publish();
       },
+      callHeld(isHeld) {
+        held = Math.max(0, held + (isHeld ? 1 : -1));
+        if (isHeld && queued !== null) {
+          queued = null;
+          publish();
+        }
+      },
       onQueued(info) {
+        if (held > 0) return;
         // The entry with the smallest `ahead` shows (3.4.4).
         if (queued === null || info.ahead < queued.ahead) {
           queued = { ahead: info.ahead, sinceMs: info.waitedMs };

@@ -40,6 +40,12 @@ const meetingJobKindSchema = z.enum([
   "enhance",
 ]);
 
+/** Set while one of the job's LLM calls waits for its lane. */
+const meetingJobQueuedSchema = z
+  .object({ ahead: z.number(), sinceMs: z.number() })
+  .nullable()
+  .optional();
+
 export const meetingListResponseSchema = z.object({
   items: z.array(
     meetingRecordSchema.extend({
@@ -49,6 +55,7 @@ export const meetingListResponseSchema = z.object({
           phase: meetingJobPhaseSchema.optional(),
           done: z.number(),
           total: z.number(),
+          queued: meetingJobQueuedSchema,
         })
         .nullable()
         .optional(),
@@ -66,10 +73,7 @@ export const meetingDetailResponseSchema = meetingRecordSchema.extend({
       total: z.number(),
       failed: z.number(),
       kind: meetingJobKindSchema.nullable().optional(),
-      queued: z
-        .object({ ahead: z.number(), sinceMs: z.number() })
-        .nullable()
-        .optional(),
+      queued: meetingJobQueuedSchema,
       phase: meetingJobPhaseSchema.optional(),
       step: z.number().nullable().optional(),
       steps: z.number().nullable().optional(),

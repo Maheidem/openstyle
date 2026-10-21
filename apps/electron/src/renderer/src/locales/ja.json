@@ -924,7 +924,8 @@
       "retryFailed": "再試行中",
       "diarize": "話者検出中",
       "enhance": "強化中",
-      "summarize": "要約中"
+      "summarize": "要約中",
+      "queued": "待機中"
     },
     "progress": {
       "preparing": "準備中…",

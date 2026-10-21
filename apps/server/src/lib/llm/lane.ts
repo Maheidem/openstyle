@@ -512,15 +512,22 @@ export async function withLlmLane<T>(
   opts: Pick<
     AcquireLlmLaneArgs,
     "cls" | "taskId" | "shouldStop" | "onQueued" | "signal"
-  >,
+  > & {
+    /** Fired with true when the slot opens and with false when `fn` ends,
+     *  so a job can tell "waits for the lane" from "has a call running". */
+    onHeld?: (held: boolean) => void;
+  },
   fn: () => Promise<T>,
 ): Promise<T> {
   const { key: lane, limit } = await llmLaneKeyForProvider(provider, modelId);
-  const lease = await acquireLlmLane({ lane, limit, ...opts });
+  const { onHeld, ...acquire } = opts;
+  const lease = await acquireLlmLane({ lane, limit, ...acquire });
   try {
+    onHeld?.(true);
     return await fn();
   } finally {
     lease.release();
+    onHeld?.(false);
   }
 }
 

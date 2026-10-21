@@ -924,7 +924,8 @@
       "retryFailed": "Reintentando",
       "diarize": "Interlocutores",
       "enhance": "Mejorando",
-      "summarize": "Resumiendo"
+      "summarize": "Resumiendo",
+      "queued": "En cola"
     },
     "progress": {
       "preparing": "Preparando…",
