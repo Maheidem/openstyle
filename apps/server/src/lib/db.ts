@@ -1,5 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { initSchema } from "./schema.js";
+import { tryLoadSqliteVec } from "./search/extension.js";
+import { ensureVecTable } from "./search/vec-store.js";
 
 let db: DatabaseSync | null = null;
 
@@ -21,7 +23,9 @@ export function getDb(): DatabaseSync {
     );
   }
 
-  const instance = new DatabaseSync(dbPath);
+  // allowExtension exists only in the constructor (spec 6.1, P1 1a).
+  // tryLoadSqliteVec turns extension loading off again at once.
+  const instance = new DatabaseSync(dbPath, { allowExtension: true });
 
   // Performance and safety pragmas
   instance.exec("PRAGMA journal_mode = WAL");
@@ -29,7 +33,14 @@ export function getDb(): DatabaseSync {
   instance.exec("PRAGMA foreign_keys = ON");
   instance.exec("PRAGMA synchronous = NORMAL");
 
+  // Meeting search (specs/local-semantic-search.md 6.1). It never throws:
+  // when sqlite-vec does not load, search is off and the app works (D2).
+  tryLoadSqliteVec(instance);
+
   initSchema(instance);
+
+  // The vec0 table needs the extension, so no migration creates it (S12).
+  ensureVecTable(instance);
 
   // Cache only after schema init succeeds — if initSchema() throws, the next
   // getDb() call will retry from scratch instead of returning an instance
