@@ -1081,6 +1081,13 @@
     "enhance": "Enhance",
     "reEnhance": "Re-enhance",
     "enhancing": "Enhancing…",
+    "jobBadge": {
+      "transcribe": "Transcribing",
+      "retryFailed": "Retrying",
+      "diarize": "Diarizing",
+      "enhance": "Enhancing",
+      "summarize": "Summarizing"
+    },
     "progress": {
       "preparing": "Preparing…",
       "reading": "Reading the transcript…",

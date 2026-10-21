@@ -901,6 +901,13 @@
     "enhance": "Verbessern",
     "reEnhance": "Erneut verbessern",
     "enhancing": "Wird verbessert…",
+    "jobBadge": {
+      "transcribe": "Transkribiert",
+      "retryFailed": "Neuer Versuch",
+      "diarize": "Sprecher",
+      "enhance": "Verbessert",
+      "summarize": "Fasst zusammen"
+    },
     "progress": {
       "preparing": "Wird vorbereitet…",
       "reading": "Transkript wird gelesen…",

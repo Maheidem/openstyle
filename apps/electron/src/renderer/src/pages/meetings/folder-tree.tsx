@@ -11,7 +11,7 @@ import {
   MeetingContextMenu,
 } from "./folder-controls";
 import { MEETING_DRAG_TYPE, type MeetingFolder } from "./folders-model";
-import { StatusBadge } from "./shared";
+import { JobBadge, StatusBadge } from "./shared";
 
 export function FolderMeetingRow({
   meeting,
@@ -64,7 +64,11 @@ export function FolderMeetingRow({
             {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
             {formatClockDuration(meeting.duration_ms)}
           </span>
-          <StatusBadge status={meeting.status} />
+          {meeting.job ? (
+            <JobBadge job={meeting.job} />
+          ) : (
+            <StatusBadge status={meeting.status} />
+          )}
         </span>
       </button>
     </MeetingContextMenu>

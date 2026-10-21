@@ -31,8 +31,28 @@ const meetingJobPhaseSchema = z.enum([
   "tags",
 ]);
 
+const meetingJobKindSchema = z.enum([
+  "transcribe",
+  "retry-failed",
+  "diarize",
+  "summarize",
+  "enhance",
+]);
+
 export const meetingListResponseSchema = z.object({
-  items: z.array(meetingRecordSchema),
+  items: z.array(
+    meetingRecordSchema.extend({
+      job: z
+        .object({
+          kind: meetingJobKindSchema.nullable().optional(),
+          phase: meetingJobPhaseSchema.optional(),
+          done: z.number(),
+          total: z.number(),
+        })
+        .nullable()
+        .optional(),
+    }),
+  ),
   total: z.number().int().nonnegative(),
 });
 
@@ -44,10 +64,7 @@ export const meetingDetailResponseSchema = meetingRecordSchema.extend({
       done: z.number(),
       total: z.number(),
       failed: z.number(),
-      kind: z
-        .enum(["transcribe", "retry-failed", "diarize", "summarize", "enhance"])
-        .nullable()
-        .optional(),
+      kind: meetingJobKindSchema.nullable().optional(),
       queued: z
         .object({ ahead: z.number(), sinceMs: z.number() })
         .nullable()

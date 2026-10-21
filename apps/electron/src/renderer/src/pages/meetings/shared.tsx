@@ -1,9 +1,10 @@
+import type { MeetingListItem } from "@openstyle/validations";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { useCopyToClipboard } from "@renderer/hooks/use-copy-to-clipboard";
 import { cn } from "@renderer/lib/utils";
 import type { TFunction } from "i18next";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TranscriptSegment } from "./types";
 
@@ -55,6 +56,47 @@ export function StatusBadge({ status }: { status: string }): React.JSX.Element {
         <span className="h-[5px] w-[5px] shrink-0 animate-pulse rounded-full bg-[var(--live)]" />
       )}
       {t(`meetings.status.${status}`, status)}
+    </Badge>
+  );
+}
+
+/** The label key of a running job in a list row. */
+function jobBadgeKey(job: NonNullable<MeetingListItem["job"]>): string {
+  if (job.phase === "diarizing") return "diarize";
+  switch (job.kind) {
+    case "retry-failed":
+      return "retryFailed";
+    case "diarize":
+    case "enhance":
+    case "summarize":
+      return job.kind;
+    default:
+      return "transcribe";
+  }
+}
+
+// A running job (Transcribe, Enhance, Summarize, Diarize, Retry) is an
+// in-progress state too, so it uses the live badge with a spinner. The
+// percent shows when the job knows its total.
+export function JobBadge({
+  job,
+}: {
+  job: NonNullable<MeetingListItem["job"]>;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <Badge
+      variant="outline"
+      data-testid="meetings-job-badge"
+      className="mono h-4 shrink-0 gap-1 border-[color:var(--live)]/30 bg-[var(--live-tint)] px-1.5 text-[9px] uppercase tracking-[0.12em] text-[color:var(--live)]"
+    >
+      <RefreshCw className="h-2.5 w-2.5 shrink-0 animate-spin" />
+      {t(`meetings.jobBadge.${jobBadgeKey(job)}`)}
+      {job.total > 0 && (
+        <span className="tabular-nums">
+          {Math.round((job.done / job.total) * 100)}%
+        </span>
+      )}
     </Badge>
   );
 }
