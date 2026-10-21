@@ -259,7 +259,13 @@ export function MeetingDetailView({
       // follows Enhance in a chained run, so the list badge refetches here.
       void queryClient.invalidateQueries({ queryKey: queryKeys.meetings.list });
     }
-    if (prev === "enhance" && kind !== "enhance") {
+    // A chained run goes from "enhance" to "summarize" before `save` writes
+    // the enhanced text, so that refetch can read the old text. So the end
+    // of a summarize run (kind becomes null) refetches them again.
+    if (
+      (prev === "enhance" && kind !== "enhance") ||
+      (prev === "summarize" && kind === null)
+    ) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.meetings.transcript(id),
       });
