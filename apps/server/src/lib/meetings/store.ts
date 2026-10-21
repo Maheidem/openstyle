@@ -94,3 +94,40 @@ export function getMeetingRow(id: string): MeetingRow | undefined {
     | MeetingRow
     | undefined;
 }
+
+/**
+ * The status that the badge shows (PR #258). `meetings.status` is the
+ * pipeline state, and its CHECK has no Enhance value. The badge says
+ * `enhanced` when the transcript holds Enhance corrections and the summary
+ * did not complete: none was saved (`transcribed`), or the saved one was
+ * repaired from a cut answer (`summarized` with `summaryPartial`). Every
+ * other case shows `status` as it is.
+ */
+export function displayStatusOf(
+  status: string,
+  enhanced: boolean,
+  summaryPartial: boolean,
+): string {
+  if (!enhanced) return status;
+  if (status === "transcribed") return "enhanced";
+  if (status === "summarized" && summaryPartial) return "enhanced";
+  return status;
+}
+
+/** `displayStatusOf` with the facts read from the database. */
+export function meetingDisplayStatus(row: Pick<MeetingRow, "id" | "status">) {
+  if (row.status !== "transcribed" && row.status !== "summarized") {
+    return row.status;
+  }
+  const facts = getDb()
+    .prepare(
+      `SELECT
+         EXISTS (SELECT 1 FROM meeting_segments
+                 WHERE meeting_id = ? AND enhanced_text IS NOT NULL
+                   AND enhanced_text <> '') AS enhanced,
+         COALESCE((SELECT partial FROM meeting_summaries
+                   WHERE meeting_id = ?), 0) AS partial`,
+    )
+    .get(row.id, row.id) as { enhanced: number; partial: number };
+  return displayStatusOf(row.status, facts.enhanced === 1, facts.partial === 1);
+}

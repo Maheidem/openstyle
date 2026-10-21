@@ -15,7 +15,7 @@ import type { MeetingSummary } from "./schemas.js";
  * node result type, a node schema, a prompt, a constant below, the unit key
  * grammar, or the model or reasoning choice (3.4.7, "Graph version").
  */
-export const WORKFLOW_GRAPH_VERSION = 6;
+export const WORKFLOW_GRAPH_VERSION = 7;
 
 // ---------------------------------------------------------------------------
 // Constants of 4.0.5. Names are names of this spec. Values marked "new" in the
@@ -277,7 +277,11 @@ export interface VerifyResult {
 // ---------------------------------------------------------------------------
 
 export interface SummarizeResult {
-  /** Never `partial`: a summary that omits content must not look complete. */
+  /**
+   * Never `partial`: a summary that omits content must not look complete. A
+   * summary repaired from a cut answer is `ok` with `partial` true: save
+   * stores the flag and the UI shows a notice (PR #258).
+   */
   status: NodeStatus;
   summary: MeetingSummary | null;
   /** Rendered by code. */
@@ -290,6 +294,11 @@ export interface SummarizeResult {
   callCount: number;
   failure: NodeFailure | null;
   llmCallIds: (number | null)[];
+  /**
+   * True when a call hit the output limit and its cut answer was repaired:
+   * the summary can miss the last items (PR #258, graph version 7).
+   */
+  partial: boolean;
 }
 
 // ---------------------------------------------------------------------------

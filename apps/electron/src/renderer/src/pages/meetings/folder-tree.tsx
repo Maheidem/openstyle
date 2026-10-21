@@ -67,7 +67,7 @@ export function FolderMeetingRow({
           {meeting.job ? (
             <JobBadge job={meeting.job} />
           ) : (
-            <StatusBadge status={meeting.status} />
+            <StatusBadge status={meeting.display_status ?? meeting.status} />
           )}
         </span>
       </button>

@@ -838,6 +838,7 @@
       "recorded": "Gravada",
       "transcribing": "Transcrevendo",
       "transcribed": "Transcrita",
+      "enhanced": "Aprimorada",
       "summarized": "Resumida",
       "failed": "Falhou"
     },
@@ -995,6 +996,7 @@
     "speakerResetOnRediarizeTitle": "Executar a identificação de interlocutores novamente?",
     "speakerResetOnRediarizeDesc": "Esta reunião tem nomes ou combinações confirmados. Executar a identificação novamente os apaga, já que uma nova análise não garante numerar os interlocutores da mesma forma.",
     "summaryStaleNames": "Os nomes dos interlocutores mudaram desde que este resumo foi gerado — Resumir novamente para incluí-los.",
+    "summaryPartial": "Este resumo está incompleto: o modelo atingiu o limite de saída e os últimos itens podem estar faltando. Resuma novamente para tentar de novo.",
     "close": "Fechar",
     "speakerUnidentified": "Não identificado",
     "contextPlaceholder": "Adicionar contexto para esta reunião…",

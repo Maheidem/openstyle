@@ -1001,6 +1001,7 @@
       "recorded": "Recorded",
       "transcribing": "Transcribing",
       "transcribed": "Transcribed",
+      "enhanced": "Enhanced",
       "summarized": "Summarized",
       "failed": "Failed"
     },
@@ -1314,6 +1315,7 @@
     "speakerResetOnRediarizeTitle": "Re-run speaker identification?",
     "speakerResetOnRediarizeDesc": "This meeting has confirmed names or merges. Running identification again clears them, since a fresh pass isn't guaranteed to number speakers the same way.",
     "summaryStaleNames": "Speaker names changed since this summary was generated — Resummarize to include them.",
+    "summaryPartial": "This summary is incomplete: the model reached its output limit, so the last items can be missing. Re-summarize to try again.",
     "close": "Close",
     "speakerUnidentified": "Unidentified",
     "contextPlaceholder": "Add context for this meeting…",

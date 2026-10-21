@@ -839,6 +839,7 @@
       "recorded": "録音済み",
       "transcribing": "文字起こし中",
       "transcribed": "文字起こし済み",
+      "enhanced": "強化済み",
       "summarized": "要約済み",
       "failed": "失敗"
     },
@@ -996,6 +997,7 @@
     "speakerResetOnRediarizeTitle": "話者識別を再実行しますか?",
     "speakerResetOnRediarizeDesc": "この会議には確定済みの名前または統合があります。識別を再実行すると、新しい解析で話者に同じ番号が割り当てられる保証がないため、これらはクリアされます。",
     "summaryStaleNames": "この要約の生成後に話者名が変更されました — 再要約すると反映されます。",
+    "summaryPartial": "この要約は不完全です。モデルが出力の上限に達したため、最後の項目が欠けている可能性があります。再要約してやり直してください。",
     "close": "閉じる",
     "speakerUnidentified": "未識別",
     "contextPlaceholder": "この会議のコンテキストを追加…",

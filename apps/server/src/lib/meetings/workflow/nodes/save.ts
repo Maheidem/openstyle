@@ -226,8 +226,8 @@ export function makeSaveNode(deps: WorkflowDeps) {
           .prepare(
             `INSERT OR REPLACE INTO meeting_summaries
                (meeting_id, markdown, summary_json, llm_provider, llm_model,
-                input_tokens, output_tokens, cost_usd, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                input_tokens, output_tokens, cost_usd, created_at, partial)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             meetingId,
@@ -239,6 +239,8 @@ export function makeSaveNode(deps: WorkflowDeps) {
             summary.outputTokens,
             summary.costUsd,
             createdAt,
+            // A summary repaired from a cut answer (PR #258).
+            summary.partial ? 1 : 0,
           );
         deps.db
           .prepare("UPDATE meetings SET status = 'summarized' WHERE id = ?")

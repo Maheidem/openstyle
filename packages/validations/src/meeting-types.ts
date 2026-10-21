@@ -33,6 +33,11 @@ export interface MeetingListItem {
   ended_at: number | null;
   duration_ms: number | null;
   status: string;
+  /** The status that the badge shows (PR #258). It is `status`, or
+   * "enhanced" when the transcript holds Enhance corrections and the summary
+   * failed or is partial. The server always sets it; read `status` when it
+   * is absent. */
+  display_status?: string;
   /** Resolved (or user-set) transcription language, Phase A2. NULL means
    * "not yet resolved". The language chip shows "Auto". */
   language: string | null;
@@ -104,6 +109,9 @@ export interface MeetingDetail extends MeetingListItem {
     llm_model: string | null;
     cost_usd: number | null;
     created_at: number | null;
+    /** True when Summarize repaired a cut answer: the summary can miss the
+     * last items (PR #258). */
+    partial?: boolean;
   } | null;
 }
 

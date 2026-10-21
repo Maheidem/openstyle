@@ -4,6 +4,7 @@ import {
 } from "@openstyle/validations";
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallStructuredResult } from "../../../llm/gateway.js";
+import { LengthError } from "../../../llm/gateway-errors.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
 import {
   fetchModelsFromRegistry,
@@ -26,6 +27,7 @@ import {
   MAX_SUMMARIZE_CALLS,
   plannedSummaryCalls,
   renderSummaryMarkdown,
+  repairCutSummary,
 } from "../summary-pure.js";
 import {
   type CorrectChunkResult,
@@ -73,6 +75,7 @@ export function skippedSummary(): SummarizeResult {
     callCount: 0,
     failure: null,
     llmCallIds: [],
+    partial: false,
   };
 }
 
@@ -130,8 +133,12 @@ function failure(
   };
 }
 
+/**
+ * `cut`: the `length` failure of a unit whose cut answer was repaired, so the
+ * summary may miss content (PR #258). null for a complete summary.
+ */
 type Outcome =
-  | { ok: true; summary: MeetingSummary }
+  | { ok: true; summary: MeetingSummary; cut: NodeFailure | null }
   | { ok: false; status: NodeStatus; failure: NodeFailure | null };
 
 const lineTokens = (lines: readonly string[]) =>
@@ -268,6 +275,55 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       totals.last = r;
     };
 
+    /** The newest cut answer of each unit key (PR #258). */
+    const cutAnswers = new Map<string, LengthError>();
+    /** Leaf key -> the `length` failure of a leaf repaired from its cut answer. */
+    const repaired = new Map<string, NodeFailure>();
+    const summarySchema = meetingSummaryStepSchema({
+      sizeLimits: appliesSizeLimits(profile),
+    }).zod;
+
+    /**
+     * A leaf that failed `length` at the end of the route, with a cut answer
+     * that closes into a valid summary, becomes `ok` with the repaired object
+     * (PR #258). Its failure stays in `repaired`: the step row is `partial`
+     * and the result is marked partial. Other leaves stay as they are.
+     */
+    const repairLeaves = <M>(
+      leaves: Leaf<M, MeetingSummary>[],
+    ): Leaf<M, MeetingSummary>[] =>
+      leaves.map((leaf) => {
+        if (leaf.status !== "failed" || leaf.failure?.kind !== "length") {
+          return leaf;
+        }
+        const cut = cutAnswers.get(leaf.key);
+        if (!cut?.cutText) return leaf;
+        const object = repairCutSummary(cut.cutText, summarySchema);
+        if (object === null) return leaf;
+        repaired.set(leaf.key, leaf.failure);
+        const f = cut.facts;
+        const result: CallStructuredResult<MeetingSummary> = {
+          object,
+          finishReason: "stop",
+          rawFinishReason: f.rawFinishReason ?? "length",
+          usage: f.usage ?? {
+            input: null,
+            output: null,
+            reasoning: null,
+            cached: null,
+          },
+          modelRequested: f.modelRequested,
+          modelServed: f.modelServed,
+          latencyMs: f.latencyMs,
+          queuedMs: 0,
+          attempt: f.attempt,
+          paramsLedger: f.paramsLedger,
+          structuredMode: f.structuredMode,
+          callId: f.callId,
+        };
+        return { ...leaf, status: "ok", result, failure: null };
+      });
+
     /** One unit through the length route (4.0.6, 4.5.5). */
     async function routeUnit<M>(o: {
       key: string;
@@ -281,6 +337,8 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       raise: boolean;
       /** A `length` failure will be replanned: it is not a failed call. */
       quietLength?: boolean;
+      /** Repair a final `length` leaf from its cut answer. Default true. */
+      repair?: boolean;
     }): Promise<Leaf<M, MeetingSummary>[]> {
       try {
         const leaves = await runUnitRoute<M, MeetingSummary>(
@@ -301,6 +359,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
             call: (unit) => {
               if (made >= MAX_SUMMARIZE_CALLS) throw new CallLimitStop();
               made += 1;
+              cutAnswers.delete(unit.key);
               return callUnit(
                 {
                   step: "summarize",
@@ -319,7 +378,12 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
                 },
                 ctx,
                 deps,
-              );
+              ).catch((err: unknown) => {
+                if (err instanceof LengthError && err.where === "output") {
+                  cutAnswers.set(unit.key, err);
+                }
+                throw err;
+              });
             },
             onSplit: () => ctx.progress.addTotal(1),
             onLeafEnd: (leaf) => {
@@ -334,8 +398,9 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           o.key,
           o.members,
         );
-        for (const leaf of leaves) if (leaf.result) absorb(leaf.result);
-        return leaves;
+        const out = o.repair === false ? leaves : repairLeaves(leaves);
+        for (const leaf of out) if (leaf.result) absorb(leaf.result);
+        return out;
       } catch (err) {
         if (!(err instanceof CallLimitStop)) throw err;
         return [
@@ -354,11 +419,24 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       }
     }
 
-    /** The outcome of a step row: the fold over its leaves. */
-    const stepOutcome = (leaves: readonly Leaf<unknown, MeetingSummary>[]) => ({
-      status: foldStatus(leaves.map((l) => l.status)),
-      failure: leaves.find((l) => l.failure !== null)?.failure ?? null,
-    });
+    /**
+     * The outcome of a step row: the fold over its leaves. A repaired leaf
+     * makes the row `partial` with its `length` failure (PR #258).
+     */
+    const stepOutcome = (leaves: readonly Leaf<unknown, MeetingSummary>[]) => {
+      const status = foldStatus(leaves.map((l) => l.status));
+      const cut = leaves.find((l) => repaired.has(l.key));
+      if (status === "ok" && cut) {
+        return {
+          status: "partial" as const,
+          failure: repaired.get(cut.key) ?? null,
+        };
+      }
+      return {
+        status,
+        failure: leaves.find((l) => l.failure !== null)?.failure ?? null,
+      };
+    };
     const step = <M>(
       key: string,
       body: () => Promise<Leaf<M, MeetingSummary>[]>,
@@ -383,7 +461,13 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       const partials = leaves.flatMap((l) =>
         l.result ? [l.result.object] : [],
       );
-      return { ok: true, summary: partials[0] as MeetingSummary, partials };
+      const cutLeaf = leaves.find((l) => repaired.has(l.key));
+      return {
+        ok: true,
+        summary: partials[0] as MeetingSummary,
+        partials,
+        cut: cutLeaf ? (repaired.get(cutLeaf.key) ?? null) : null,
+      };
     };
 
     /** Greedy groups of consecutive partials; each group fits the budget. */
@@ -502,7 +586,35 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
         minSplitTokens: Number.POSITIVE_INFINITY,
         raise: false,
         quietLength,
+        // A quiet `length` replans first. The cut answer is the fallback.
+        repair: !quietLength,
       });
+    /** The fallback of a `single` call that cannot be replanned. */
+    const repairedSingle = (
+      leaves: Leaf<string, MeetingSummary>[],
+      first: Outcome,
+    ): Outcome => {
+      const fixed = repairLeaves(leaves);
+      if (!fixed.some((l) => repaired.has(l.key))) return first;
+      for (const leaf of fixed) {
+        if (repaired.has(leaf.key) && leaf.result) absorb(leaf.result);
+      }
+      return settle(fixed);
+    };
+
+    /**
+     * The step row of an Outcome. A summary made from a repaired unit (this
+     * one or one of its map and reduce units) is `partial`.
+     */
+    const outcomeRow = (
+      o: Outcome,
+    ): { status: NodeStatus; failure: NodeFailure | null } => {
+      if (!o.ok) return { status: o.status, failure: o.failure };
+      const cut = o.cut ?? repaired.values().next().value ?? null;
+      return cut
+        ? { status: "partial", failure: cut }
+        : { status: "ok", failure: null };
+    };
 
     // --- The plan -----------------------------------------------------------
     const plan = plannedSummaryCalls(transcriptTokens, contextBudget);
@@ -540,16 +652,13 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           // Step 2 of 4.5.5: a map and reduce plan at half the tokens.
           const half = Math.ceil(transcriptTokens / 2);
           const replan = plannedSummaryCalls(transcriptTokens, half);
-          if ("error" in replan) return first;
+          if ("error" in replan) return repairedSingle(leaves, first);
           ctx.progress.addTotal(replan.calls);
           armCeiling(replan.calls);
           const done = await mapReduce(half);
-          return done === "one_chunk" ? first : done;
+          return done === "one_chunk" ? repairedSingle(leaves, first) : done;
         },
-        (o) =>
-          o.ok
-            ? { status: "ok", failure: null }
-            : { status: o.status, failure: o.failure },
+        outcomeRow,
       );
     } else {
       const done = await mapReduce(contextBudget);
@@ -561,10 +670,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
               state.runId,
               { key: "single", node: "summarize" },
               async () => settle(await singleCall(false)),
-              (o) =>
-                o.ok
-                  ? { status: "ok", failure: null }
-                  : { status: o.status, failure: o.failure },
+              outcomeRow,
             )
           : done;
     }
@@ -591,6 +697,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       callCount: totals.callIds.length,
       failure: null,
       llmCallIds: totals.callIds,
+      partial: repaired.size > 0,
     };
   }
 

@@ -88,7 +88,7 @@ describe("migration 40", () => {
 
     initSchema(db);
 
-    expect(version()).toBe(42);
+    expect(version()).toBe(43);
     expect(
       count(
         "SELECT count(*) AS c FROM sqlite_master WHERE type='table' AND name LIKE 'llm_%'",
@@ -147,7 +147,7 @@ describe("migration 40", () => {
     ).run();
     db.exec("UPDATE schema_version SET version = 39 WHERE id = 1");
     expect(() => initSchema(db)).not.toThrow();
-    expect(version()).toBe(42);
+    expect(version()).toBe(43);
     expect(
       count(
         "SELECT count(*) AS c FROM pragma_table_info('meeting_summaries') WHERE name = 'summary_json'",
@@ -176,7 +176,7 @@ describe("migration 40", () => {
           .prepare("SELECT version FROM schema_version WHERE id = 1")
           .get() as { version: number }
       ).version,
-    ).toBe(42);
+    ).toBe(43);
     expect(
       old
         .prepare(
@@ -438,5 +438,31 @@ describe("summary_json (check 10, column only)", () => {
       "SELECT summary_json FROM meeting_summaries WHERE meeting_id = 'm1'",
     );
     expect(JSON.parse(row.summary_json)).toEqual(summary);
+  });
+});
+
+describe("migration 43 (meeting_summaries.partial, PR #258)", () => {
+  it("adds the column to a v42 file, keeps old rows NULL, and runs twice", () => {
+    initSchema(db);
+    db.exec(`
+      ALTER TABLE meeting_summaries DROP COLUMN partial;
+      INSERT INTO meetings (id, title, status, created_at) VALUES ('m1', 'One', 'summarized', 1);
+      INSERT INTO meeting_summaries (meeting_id, markdown, created_at) VALUES ('m1', '# md', 5);
+      UPDATE schema_version SET version = 42 WHERE id = 1;
+    `);
+    initSchema(db);
+    expect(version()).toBe(43);
+    expect(
+      one<{ partial: number | null }>(
+        "SELECT partial FROM meeting_summaries WHERE meeting_id = 'm1'",
+      ).partial,
+    ).toBeNull();
+    db.exec("UPDATE schema_version SET version = 42 WHERE id = 1");
+    expect(() => initSchema(db)).not.toThrow();
+    expect(
+      count(
+        "SELECT count(*) AS c FROM pragma_table_info('meeting_summaries') WHERE name = 'partial'",
+      ),
+    ).toBe(1);
   });
 });

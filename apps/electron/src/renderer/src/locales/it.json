@@ -838,6 +838,7 @@
       "recorded": "Registrata",
       "transcribing": "Trascrizione",
       "transcribed": "Trascritta",
+      "enhanced": "Migliorata",
       "summarized": "Riepilogata",
       "failed": "Non riuscita"
     },
@@ -995,6 +996,7 @@
     "speakerResetOnRediarizeTitle": "Eseguire di nuovo l'identificazione dei partecipanti?",
     "speakerResetOnRediarizeDesc": "Questa riunione ha nomi o unioni confermati. Eseguire di nuovo l'identificazione li cancella, perché una nuova analisi non garantisce di numerare i partecipanti allo stesso modo.",
     "summaryStaleNames": "I nomi dei partecipanti sono cambiati da quando è stato generato questo riepilogo — Rigenera il riepilogo per includerli.",
+    "summaryPartial": "Questo riepilogo è incompleto: il modello ha raggiunto il limite di output e gli ultimi elementi possono mancare. Rigenera il riepilogo per riprovare.",
     "close": "Chiudi",
     "speakerUnidentified": "Non identificato",
     "contextPlaceholder": "Aggiungi contesto per questa riunione…",
