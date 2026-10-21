@@ -476,6 +476,47 @@ export function MeetingDetailView({
     },
     [id, queryClient, t],
   );
+  // Issue #266: the sticky tab bar has no background, so it shows the panel
+  // exactly. The tab content that scrolls under the pinned bar is clipped at
+  // the bottom edge of the bar, so no text shows through it.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const hasMeeting = Boolean(meeting);
+  const tabBodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // The bar and the tab content render only after the meeting loads.
+    if (!hasMeeting) return;
+    let frame = 0;
+    const clip = () => {
+      frame = 0;
+      const bar = barRef.current;
+      const body = tabBodyRef.current;
+      if (!bar || !body) return;
+      const cut =
+        bar.getBoundingClientRect().bottom - body.getBoundingClientRect().top;
+      body.style.clipPath = cut > 0 ? `inset(${cut}px 0 0 0)` : "";
+    };
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(clip);
+    };
+    // A scroll event does not bubble. The capture phase sees the scroll of
+    // the detail column (900 px and wider) and of the page (narrower).
+    document.addEventListener("scroll", schedule, {
+      capture: true,
+      passive: true,
+    });
+    window.addEventListener("resize", schedule);
+    // A change of the header height moves the tab content without a scroll.
+    const resize = new ResizeObserver(schedule);
+    if (rootRef.current) resize.observe(rootRef.current);
+    schedule();
+    return () => {
+      document.removeEventListener("scroll", schedule, { capture: true });
+      window.removeEventListener("resize", schedule);
+      resize.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [hasMeeting]);
   const deleteMeeting = useCallback(async () => {
     await getClient().api.meetings[":id"].$delete({ param: { id } });
     invalidate();
@@ -661,12 +702,84 @@ export function MeetingDetailView({
   });
   const primary = actions.find((a) => a.key === primaryKey);
   const menuActions = actions.filter((a) => a.key !== primaryKey);
+  const moreMenu = (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label={t("meetings.moreActions")}
+          title={t("meetings.moreActions")}
+          data-testid="meetings-more-actions"
+        >
+          <Ellipsis />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className={menuClass}
+          sideOffset={4}
+          align={primary ? "start" : "end"}
+        >
+          {menuActions.map((action) => (
+            <DropdownMenu.Item
+              key={action.key}
+              className={itemClass}
+              disabled={action.disabled}
+              onSelect={action.onClick}
+            >
+              <action.icon />
+              {action.label}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+  const iconGroup = (
+    <>
+      {advancedMode && (
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={() => setInspector({ kind: "runs" })}
+          aria-label={t("meetings.inspector.title")}
+          title={t("meetings.inspector.title")}
+          data-testid="meetings-inspector-open"
+        >
+          <ScanSearch />
+        </Button>
+      )}
+      <SummaryInstructionsPopover />
+      <Button
+        variant="outline"
+        size="icon-sm"
+        disabled={!meeting.audio_dir}
+        onClick={() => void window.api?.revealMeetingInFinder?.(id)}
+        aria-label={t("meetings.revealInFinder")}
+        title={t("meetings.revealInFinder")}
+      >
+        <FolderOpen />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="hover:text-destructive"
+        onClick={() => setDeleteOpen(true)}
+        aria-label={t("meetings.delete")}
+        title={t("meetings.delete")}
+      >
+        <Trash2 />
+      </Button>
+    </>
+  );
 
   return (
-    <div>
+    <div ref={rootRef}>
       {/* The compact header (issue #262): one title row, one meta row, one
-          tag and context row, and one action toolbar. The tabs stick to the
-          top of the detail column; the header scrolls away. */}
+          tag and context row, and one action toolbar when the meeting has a
+          next step. The tabs stick to the top of the detail column; the
+          header scrolls away. */}
       <div className="mb-3 flex items-center gap-2.5">
         <Button
           variant="ghost"
@@ -682,10 +795,17 @@ export function MeetingDetailView({
         <div className="min-w-0 flex-1">
           <EditableTitle id={id} title={meeting.title} onRenamed={invalidate} />
         </div>
+        {!primary && (
+          <div className="flex shrink-0 items-center gap-2">
+            {moreMenu}
+            {iconGroup}
+          </div>
+        )}
       </div>
-      {/* The folder and calendar chips truncate first, down to a readable
-          minimum (their flex basis). When the row is narrower than that, it
-          wraps to a second line. Chips never overlap. */}
+      {/* The folder chip truncates first, down to a readable minimum (its
+          flex basis). The calendar chip shows only the time and the attendee
+          count. When the row is narrower than that, it wraps to a second
+          line. Chips never overlap. */}
       <div className="mb-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
         <span className="text-muted-foreground mr-1 shrink-0 whitespace-nowrap text-[11px]">
           {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
@@ -709,7 +829,12 @@ export function MeetingDetailView({
         />
         <StatusBadge status={meeting.display_status ?? meeting.status} />
       </div>
-      <div className="mb-3 flex min-w-0 items-center gap-2">
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-2",
+          primary ? "mb-3" : "mb-5",
+        )}
+      >
         <MeetingTagLine
           tags={meeting.tags}
           allTags={allTags ?? []}
@@ -742,9 +867,12 @@ export function MeetingDetailView({
         )}
       </div>
 
-      {/* Actions: the primary action of the state, the rest in a menu. */}
-      <div className="mb-5 flex items-center gap-2">
-        {primary && (
+      {/* Actions: the primary action of the state, the rest in a menu. A
+          finished meeting has no primary action, so the "..." menu goes in
+          the icon group of the title row, and the toolbar row is not shown
+          (issue #266). */}
+      {primary && (
+        <div className="mb-5 flex items-center gap-2">
           <Button
             variant="ink"
             size="sm"
@@ -754,74 +882,11 @@ export function MeetingDetailView({
             <primary.icon data-icon="inline-start" />
             {primary.label}
           </Button>
-        )}
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={t("meetings.moreActions")}
-              title={t("meetings.moreActions")}
-              data-testid="meetings-more-actions"
-            >
-              <Ellipsis />
-            </Button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              className={menuClass}
-              sideOffset={4}
-              align="start"
-            >
-              {menuActions.map((action) => (
-                <DropdownMenu.Item
-                  key={action.key}
-                  className={itemClass}
-                  disabled={action.disabled}
-                  onSelect={action.onClick}
-                >
-                  <action.icon />
-                  {action.label}
-                </DropdownMenu.Item>
-              ))}
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-        <div className="flex-1" />
-        {advancedMode && (
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={() => setInspector({ kind: "runs" })}
-            aria-label={t("meetings.inspector.title")}
-            title={t("meetings.inspector.title")}
-            data-testid="meetings-inspector-open"
-          >
-            <ScanSearch />
-          </Button>
-        )}
-        <SummaryInstructionsPopover />
-        <Button
-          variant="outline"
-          size="icon-sm"
-          disabled={!meeting.audio_dir}
-          onClick={() => void window.api?.revealMeetingInFinder?.(id)}
-          aria-label={t("meetings.revealInFinder")}
-          title={t("meetings.revealInFinder")}
-        >
-          <FolderOpen />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="hover:text-destructive"
-          onClick={() => setDeleteOpen(true)}
-          aria-label={t("meetings.delete")}
-          title={t("meetings.delete")}
-        >
-          <Trash2 />
-        </Button>
-      </div>
+          {moreMenu}
+          <div className="flex-1" />
+          {iconGroup}
+        </div>
+      )}
 
       {!hasLlm && (
         <p className="text-muted-foreground mb-5 text-[12px]">
@@ -1056,8 +1121,18 @@ export function MeetingDetailView({
 
       <Tabs value={tab} onValueChange={setTab}>
         {/* The tab row sticks to the top of the detail column, with the
-            Enhanced switch and Copy (issue #262). */}
-        <div className="sticky top-0 z-10 -mx-1 flex items-center gap-3 bg-[var(--glass-window-solid)] px-1 py-2">
+            Enhanced switch and Copy (issue #262). It has the width of the
+            column and its own padding: a negative margin made it wider than
+            the scroll column, which clipped it (issue #266). It has no
+            background of its own, so it shows the panel in each theme. A
+            second translucent layer over the panel showed as a darker
+            strip in dark mode. The tab content is clipped under the bar
+            instead (see the effect of `barRef`). In a narrow column the
+            controls wrap to a second line in the bar. */}
+        <div
+          ref={barRef}
+          className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"
+        >
           <TabsList>
             <TabsTrigger value="transcript">
               {t("meetings.tabTranscript")}
@@ -1110,10 +1185,11 @@ export function MeetingDetailView({
           )}
         </div>
 
-        <TabsContent value="transcript" className="mt-2">
-          {transcript && transcript.length > 0 ? (
-            <>
-              {/* Speaker-label column is `max-content`, so it grows to fit
+        <div ref={tabBodyRef}>
+          <TabsContent value="transcript" className="mt-2">
+            {transcript && transcript.length > 0 ? (
+              <>
+                {/* Speaker-label column is `max-content`, so it grows to fit
                   the longest label on screen — flag names are arbitrary
                   length now (confirmed names, not just "ME"/"THEM N"), so a
                   fixed width either clips or overlaps the transcript text.
@@ -1122,134 +1198,135 @@ export function MeetingDetailView({
                   itself caps at 140px with truncation for absurdly long
                   names. A CSS grid (not per-row flex) is required so every
                   row's label column shares one width and stays aligned. */}
-              <div className="grid grid-cols-[minmax(64px,max-content)_minmax(0,1fr)_max-content] gap-x-3 gap-y-3.5">
-                {transcript.map((seg) => {
-                  const label = segmentSpeakerLabel(seg, t);
-                  return (
-                    <div
-                      key={
-                        seg.id ?? `${seg.speaker}-${seg.startMs}-${seg.endMs}`
-                      }
-                      className="contents"
-                      data-testid="meetings-segment"
-                      data-segment-id={seg.id}
-                    >
-                      <span className="pt-0.5 text-right leading-none">
-                        <span
-                          title={label}
-                          className={cn(
-                            "mono inline-block max-w-[140px] truncate align-bottom whitespace-nowrap rounded-[5px] px-[7px] py-[2.5px] text-[9px] font-medium uppercase tracking-[0.1em]",
-                            seg.speaker === "Me"
-                              ? "bg-transparent px-0 font-semibold text-foreground"
-                              : seg.speakerLabel
-                                ? // Confirmed name or numbered-but-unnamed
-                                  // "Them N" — a real, distinguishable
-                                  // speaker — gets the full accent-passive
-                                  // treatment (specs/meeting-speaker-naming.
-                                  // md §7.5).
-                                  "bg-[var(--accent-passive-tint)] text-[color:var(--accent-passive-ink)]"
-                                : // Unidentified: a materially weaker claim
-                                  // (the diarizer couldn't attribute this
-                                  // line to anyone at all) — a muted
-                                  // outline, never the accent-passive fill
-                                  // (§3.3/§7.5).
-                                  "border border-border bg-transparent text-muted-foreground",
-                          )}
-                        >
-                          {label}
-                        </span>
-                      </span>
-                      <p className="text-foreground m-0 text-[13.5px] leading-[1.55]">
-                        {advancedMode &&
-                        seg.id &&
-                        seg.enhancedText !== undefined ? (
-                          // The edited text opens the LLM call that made it.
-                          // No aria-label: it would replace the text as the
-                          // accessible name.
-                          <button
-                            type="button"
-                            data-testid="meetings-segment-inspect"
-                            title={t("meetings.inspector.inspectCorrection")}
-                            aria-expanded={selectedSegmentId === seg.id}
-                            onClick={() =>
-                              setInspector({
-                                kind: "segment",
-                                segmentId: seg.id as string,
-                              })
-                            }
+                <div className="grid grid-cols-[minmax(64px,max-content)_minmax(0,1fr)_max-content] gap-x-3 gap-y-3.5">
+                  {transcript.map((seg) => {
+                    const label = segmentSpeakerLabel(seg, t);
+                    return (
+                      <div
+                        key={
+                          seg.id ?? `${seg.speaker}-${seg.startMs}-${seg.endMs}`
+                        }
+                        className="contents"
+                        data-testid="meetings-segment"
+                        data-segment-id={seg.id}
+                      >
+                        <span className="pt-0.5 text-right leading-none">
+                          <span
+                            title={label}
                             className={cn(
-                              "cursor-pointer rounded-sm text-left underline decoration-dotted underline-offset-2",
-                              selectedSegmentId === seg.id && "bg-accent",
+                              "mono inline-block max-w-[140px] truncate align-bottom whitespace-nowrap rounded-[5px] px-[7px] py-[2.5px] text-[9px] font-medium uppercase tracking-[0.1em]",
+                              seg.speaker === "Me"
+                                ? "bg-transparent px-0 font-semibold text-foreground"
+                                : seg.speakerLabel
+                                  ? // Confirmed name or numbered-but-unnamed
+                                    // "Them N" — a real, distinguishable
+                                    // speaker — gets the full accent-passive
+                                    // treatment (specs/meeting-speaker-naming.
+                                    // md §7.5).
+                                    "bg-[var(--accent-passive-tint)] text-[color:var(--accent-passive-ink)]"
+                                  : // Unidentified: a materially weaker claim
+                                    // (the diarizer couldn't attribute this
+                                    // line to anyone at all) — a muted
+                                    // outline, never the accent-passive fill
+                                    // (§3.3/§7.5).
+                                    "border border-border bg-transparent text-muted-foreground",
                             )}
                           >
-                            {showEnhanced ? seg.enhancedText : seg.text}
-                          </button>
-                        ) : showEnhanced ? (
-                          (seg.enhancedText ?? seg.text)
-                        ) : (
-                          seg.text
-                        )}
-                      </p>
-                      <span className="mono text-muted-foreground/60 pt-0.5 text-[9px] tabular-nums">
-                        {formatClockMs(seg.startMs)}
-                      </span>
-                    </div>
-                  );
-                })}
+                            {label}
+                          </span>
+                        </span>
+                        <p className="text-foreground m-0 text-[13.5px] leading-[1.55]">
+                          {advancedMode &&
+                          seg.id &&
+                          seg.enhancedText !== undefined ? (
+                            // The edited text opens the LLM call that made it.
+                            // No aria-label: it would replace the text as the
+                            // accessible name.
+                            <button
+                              type="button"
+                              data-testid="meetings-segment-inspect"
+                              title={t("meetings.inspector.inspectCorrection")}
+                              aria-expanded={selectedSegmentId === seg.id}
+                              onClick={() =>
+                                setInspector({
+                                  kind: "segment",
+                                  segmentId: seg.id as string,
+                                })
+                              }
+                              className={cn(
+                                "cursor-pointer rounded-sm text-left underline decoration-dotted underline-offset-2",
+                                selectedSegmentId === seg.id && "bg-accent",
+                              )}
+                            >
+                              {showEnhanced ? seg.enhancedText : seg.text}
+                            </button>
+                          ) : showEnhanced ? (
+                            (seg.enhancedText ?? seg.text)
+                          ) : (
+                            seg.text
+                          )}
+                        </p>
+                        <span className="mono text-muted-foreground/60 pt-0.5 text-[9px] tabular-nums">
+                          {formatClockMs(seg.startMs)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="border-border bg-card/30 rounded-lg border border-dashed px-6 py-10 text-center">
+                <p className="text-muted-foreground m-0 text-[13px]">
+                  {!hasTranscript
+                    ? t("meetings.transcriptPending")
+                    : // Distinguish "confirmed empty" from "haven't refetched this
+                      // job's result yet" — isFetching or an as-yet-undefined
+                      // cache entry means the query hasn't resolved for the
+                      // *current* transcribed state, so transcriptEmpty must
+                      // wait for a settled, non-fetching, genuinely zero-length
+                      // result (see the transcript useQuery comment above).
+                      isTranscriptFetching || transcript === undefined
+                      ? t("meetings.transcriptLoading")
+                      : t("meetings.transcriptEmpty")}
+                </p>
               </div>
-            </>
-          ) : (
-            <div className="border-border bg-card/30 rounded-lg border border-dashed px-6 py-10 text-center">
-              <p className="text-muted-foreground m-0 text-[13px]">
-                {!hasTranscript
-                  ? t("meetings.transcriptPending")
-                  : // Distinguish "confirmed empty" from "haven't refetched this
-                    // job's result yet" — isFetching or an as-yet-undefined
-                    // cache entry means the query hasn't resolved for the
-                    // *current* transcribed state, so transcriptEmpty must
-                    // wait for a settled, non-fetching, genuinely zero-length
-                    // result (see the transcript useQuery comment above).
-                    isTranscriptFetching || transcript === undefined
-                    ? t("meetings.transcriptLoading")
-                    : t("meetings.transcriptEmpty")}
-              </p>
-            </div>
-          )}
-        </TabsContent>
+            )}
+          </TabsContent>
 
-        <TabsContent value="summary" className="mt-2">
-          {meeting.summary?.markdown ? (
-            <>
-              {meeting.summary.partial && (
-                <InlineNotice
-                  tone="neutral"
-                  icon={AlertTriangle}
-                  className="mb-3"
-                >
-                  <span data-testid="meetings-summary-partial">
-                    {t("meetings.summaryPartial")}
-                  </span>
-                </InlineNotice>
-              )}
-              {summaryStaleNames && (
-                <InlineNotice
-                  tone="neutral"
-                  icon={Sparkles}
-                  className="mb-3 text-muted-foreground"
-                >
-                  <span>{t("meetings.summaryStaleNames")}</span>
-                </InlineNotice>
-              )}
-              <Markdown source={meeting.summary.markdown} />
-            </>
-          ) : (
-            <div className="border-border bg-card/30 rounded-lg border border-dashed px-6 py-10 text-center">
-              <p className="text-muted-foreground m-0 text-[13px]">
-                {t("meetings.summaryEmpty")}
-              </p>
-            </div>
-          )}
-        </TabsContent>
+          <TabsContent value="summary" className="mt-2">
+            {meeting.summary?.markdown ? (
+              <>
+                {meeting.summary.partial && (
+                  <InlineNotice
+                    tone="neutral"
+                    icon={AlertTriangle}
+                    className="mb-3"
+                  >
+                    <span data-testid="meetings-summary-partial">
+                      {t("meetings.summaryPartial")}
+                    </span>
+                  </InlineNotice>
+                )}
+                {summaryStaleNames && (
+                  <InlineNotice
+                    tone="neutral"
+                    icon={Sparkles}
+                    className="mb-3 text-muted-foreground"
+                  >
+                    <span>{t("meetings.summaryStaleNames")}</span>
+                  </InlineNotice>
+                )}
+                <Markdown source={meeting.summary.markdown} />
+              </>
+            ) : (
+              <div className="border-border bg-card/30 rounded-lg border border-dashed px-6 py-10 text-center">
+                <p className="text-muted-foreground m-0 text-[13px]">
+                  {t("meetings.summaryEmpty")}
+                </p>
+              </div>
+            )}
+          </TabsContent>
+        </div>
       </Tabs>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

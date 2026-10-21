@@ -113,12 +113,13 @@ function formatShortRange(start: number, end: number, lang: string): string {
 }
 
 /**
- * The linked event as one short chip in the meta row (issue #262), for
- * example "ecoATM · 10:00 – 10:30 AM · 2". The title truncates first; the
- * time and the attendee count stay. The tooltip holds the full text. A
- * click opens a popover with the meeting link, Change and Unlink. Without a
- * link the chip is "Link event", but only while the calendar toggle is on.
- * It shows no email addresses.
+ * The linked event as one short chip in the meta row (issues #262, #266):
+ * only the time and the attendee count, for example "10:00 – 10:30 AM · 2".
+ * The event title is in the tooltip and in the popover, so a long title does
+ * not push the other chips to a second line. A click opens a popover with the
+ * title, the meeting link, Change and Unlink. Without a link the chip is
+ * "Link event", but only while the calendar toggle is on. It shows no email
+ * addresses.
  */
 export function CalendarChip({
   id,
@@ -182,14 +183,13 @@ export function CalendarChip({
         <Button
           variant="outline"
           size="xs"
-          className="min-w-0 max-w-fit shrink grow basis-56 overflow-hidden"
+          className="shrink-0"
           data-testid="calendar-card"
           title={fullText}
           aria-label={fullText}
         >
           <CalendarDays data-icon="inline-start" />
-          <span className="min-w-8 truncate">{title}</span>
-          <span className="text-muted-foreground shrink-0">· {range}</span>
+          <span>{range}</span>
           {attendees > 0 && (
             <span className="text-muted-foreground inline-flex shrink-0 items-center gap-0.5">
               <Users className="size-3" />

@@ -241,10 +241,13 @@ export function MeetingTagLine({
           ref={lineRef}
           className="relative flex min-w-0 flex-1 items-center"
         >
+          {/* The hidden copy measures the full chip widths. It is clipped
+              to the line, so it does not make the detail column wider
+              (issue #266). The chips do not shrink, so the widths stay. */}
           <div
             ref={measureRef}
             aria-hidden="true"
-            className="pointer-events-none invisible absolute top-0 left-0 flex gap-1"
+            className="pointer-events-none invisible absolute top-0 left-0 flex max-w-full gap-1 overflow-hidden"
           >
             {tags.map((name) => (
               <span key={name} className={cn(chipClass, "shrink-0")}>
