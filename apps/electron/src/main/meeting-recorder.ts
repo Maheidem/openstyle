@@ -225,8 +225,15 @@ export interface MeetingRecorderDeps {
   listAudioDevices: () => Promise<DeviceSnapshot | null>;
   /** Broadcast a `meeting:level` event to interested renderer windows. */
   broadcastLevel: (event: MeetingLevelEvent) => void;
-  /** Broadcast a `meeting:status` change to interested renderer windows. */
-  broadcastStatus: (status: MeetingRecorderStatus) => void;
+  /**
+   * Broadcast a `meeting:status` change to interested renderer windows.
+   * `startedAt` is the recording start time (epoch ms) while the status is
+   * "recording", else null.
+   */
+  broadcastStatus: (
+    status: MeetingRecorderStatus,
+    startedAt: number | null,
+  ) => void;
   /**
    * The calendar event that runs now, or null (specs/calendar-eventkit.md).
    * It returns null at once when the user has not turned on the calendar.
@@ -280,6 +287,14 @@ export class MeetingRecorder {
   }
 
   /**
+   * The start time (epoch ms) of the running recording, or null when the
+   * status is not "recording". All timers show the elapsed time from it.
+   */
+  get recordingStartedAt(): number | null {
+    return this._status === "recording" ? this.startedAt : null;
+  }
+
+  /**
    * webContents id of the hidden capture window, or null when not recording.
    * IPC handlers use it to drop meeting:mic-chunk / meeting:capture-error
    * messages from any other renderer.
@@ -296,7 +311,7 @@ export class MeetingRecorder {
 
   private setStatus(status: MeetingRecorderStatus): void {
     this._status = status;
-    this.deps.broadcastStatus(status);
+    this.deps.broadcastStatus(status, this.recordingStartedAt);
   }
 
   private async api(

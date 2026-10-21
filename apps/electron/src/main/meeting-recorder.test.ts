@@ -90,6 +90,7 @@ function createRecorder(
   } = {},
 ) {
   const createCaptureWindow = vi.fn(fakeCaptureWindow);
+  const broadcastStatus = vi.fn();
   const recorder = new MeetingRecorder({
     serverFetch: extra.serverFetch ?? (async () => new Response("{}")),
     findCurrentEvent: extra.findCurrentEvent ?? (async () => null),
@@ -98,9 +99,9 @@ function createRecorder(
     resolveMicLabel: async () => null,
     listAudioDevices: extra.listAudioDevices ?? (async () => null),
     broadcastLevel: vi.fn(),
-    broadcastStatus: vi.fn(),
+    broadcastStatus,
   });
-  return { recorder, createCaptureWindow };
+  return { recorder, createCaptureWindow, broadcastStatus };
 }
 
 /** Start a recording and wait until the recorder has made its native helper. */
@@ -299,6 +300,27 @@ describe("MeetingRecorder calendar link", () => {
     await started;
     expect("calendar" in startBody(calls)).toBe(false);
     await recorder.stop();
+  });
+
+  it("broadcasts the start time that it sends to the server", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    const { recorder, broadcastStatus } = createRecorder({
+      serverFetch: recordingFetch(calls),
+    });
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onReady?.();
+    await started;
+    const startedAt = startBody(calls).started_at;
+    expect(typeof startedAt).toBe("number");
+    expect(recorder.recordingStartedAt).toBe(startedAt);
+    expect(broadcastStatus.mock.calls).toEqual([["recording", startedAt]]);
+
+    await recorder.stop();
+    expect(recorder.recordingStartedAt).toBeNull();
+    expect(broadcastStatus.mock.calls.slice(1)).toEqual([
+      ["finalizing", null],
+      ["idle", null],
+    ]);
   });
 
   it("still records when the calendar lookup throws", async () => {

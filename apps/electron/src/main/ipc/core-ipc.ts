@@ -150,8 +150,8 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     broadcastLevel: (event) => {
       broadcastToWindows("meeting:level", event);
     },
-    broadcastStatus: (status) => {
-      broadcastToWindows("meeting:status-changed", status);
+    broadcastStatus: (status, startedAt) => {
+      broadcastToWindows("meeting:status-changed", status, startedAt);
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         state.tray?.setContextMenu(buildTrayContextMenu());

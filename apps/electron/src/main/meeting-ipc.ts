@@ -88,6 +88,7 @@ export function registerMeetingIpc({
     return {
       status: meetingRecorder?.status ?? "idle",
       meetingId: meetingRecorder?.currentMeetingId ?? null,
+      startedAt: meetingRecorder?.recordingStartedAt ?? null,
       supported: isSystemAudioCaptureSupported(),
     };
   });
