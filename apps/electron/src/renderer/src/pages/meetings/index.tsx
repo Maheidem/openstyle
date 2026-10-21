@@ -59,6 +59,7 @@ export default function MeetingsPage(): React.JSX.Element {
   /** The submitted search text. Its scope is the selected folder (D21). */
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const moving = useRef(false);
+  const detailColumn = useRef<HTMLDivElement>(null);
   const actionSequence = useRef(0);
   const { data: config, isLoading: configLoading } = useQuery(
     configQueryOptions(),
@@ -149,6 +150,13 @@ export default function MeetingsPage(): React.JSX.Element {
         : { ...old, [openFolderId ?? "none"]: true },
     );
   }, [activeId, openFolderId]);
+
+  // The detail column scrolls on its own. A new meeting, folder or search
+  // starts at the top of the column.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on selection change
+  useEffect(() => {
+    detailColumn.current?.scrollTo({ top: 0 });
+  }, [activeId, selectedFolderId, searchQuery]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const confirmStart = searchParams.get("confirmStart") === "1";
@@ -247,8 +255,11 @@ export default function MeetingsPage(): React.JSX.Element {
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       {showEnhancePrompt && <EnhancePromptDialog />}
+      {/* Issue #262: at 900px and wider, the page has the height of the
+          window. The list column and the detail column scroll on their own.
+          Below 900px, one column shows and the page scrolls as one. */}
       <div
-        className="responsive-page-scroll flex-1 overflow-auto pt-5"
+        className="responsive-page-scroll flex min-h-0 flex-1 flex-col overflow-auto pt-5 min-[900px]:overflow-hidden min-[900px]:pb-0"
         style={{ scrollbarWidth: "none" }}
       >
         <MeetingSearchBar
@@ -262,11 +273,13 @@ export default function MeetingsPage(): React.JSX.Element {
             {actionError}
           </p>
         )}
-        <div className="grid min-h-full grid-cols-1 gap-6 min-[900px]:grid-cols-[262px_minmax(0,1fr)]">
+        <div className="grid flex-1 grid-cols-1 gap-6 min-[900px]:min-h-0 min-[900px]:grid-cols-[262px_minmax(0,1fr)] min-[900px]:grid-rows-[minmax(0,1fr)]">
           <aside
             aria-label={t("meetings.folders.railLabel")}
+            data-testid="meetings-list-column"
+            style={{ scrollbarWidth: "none" }}
             className={cn(
-              "min-w-0 min-[900px]:border-border min-[900px]:border-r min-[900px]:pr-6",
+              "min-w-0 min-[900px]:border-border min-[900px]:min-h-0 min-[900px]:overflow-y-auto min-[900px]:border-r min-[900px]:pr-6 min-[900px]:pb-8",
               explicitSelection && "max-[899px]:hidden",
             )}
           >
@@ -342,8 +355,11 @@ export default function MeetingsPage(): React.JSX.Element {
             )}
           </aside>
           <div
+            ref={detailColumn}
+            data-testid="meetings-detail-column"
+            style={{ scrollbarWidth: "none" }}
             className={cn(
-              "min-w-0",
+              "min-w-0 min-[900px]:min-h-0 min-[900px]:overflow-y-auto min-[900px]:pb-8",
               !explicitSelection &&
                 (activeId || activeFolder) &&
                 "max-[899px]:hidden",
