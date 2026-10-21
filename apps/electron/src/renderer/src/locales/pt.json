@@ -1037,8 +1037,10 @@
       "suggestions": "Tags existentes",
       "tooLong": "Uma tag pode ter no máximo {{max}} caracteres.",
       "tooMany": "Uma reunião pode ter no máximo {{max}} tags.",
-      "saveFailed": "As tags não foram salvas. Tente de novo."
-    }
+      "saveFailed": "As tags não foram salvas. Tente de novo.",
+      "showAll": "Mostrar todas as tags"
+    },
+    "moreActions": "Mais ações"
   },
   "help": {
     "hotkeys": {

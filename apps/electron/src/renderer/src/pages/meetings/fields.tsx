@@ -79,7 +79,7 @@ export function EditableTitle({
     <button
       type="button"
       onClick={() => setEditing(true)}
-      className="group flex min-w-0 items-center gap-1.5 text-left"
+      className="group flex min-w-0 max-w-full items-center gap-1.5 text-left"
       title={t("meetings.rename")}
     >
       <span className="text-foreground truncate text-[15px] font-medium">
@@ -103,13 +103,19 @@ export function MeetingContextField({
   id,
   context,
   onChanged,
+  autoEdit = false,
+  onDone,
 }: {
   id: string;
   context: string | null;
   onChanged: () => void;
+  /** Open as the text field at once (issue #262). */
+  autoEdit?: boolean;
+  /** Called when the text field closes. */
+  onDone?: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(autoEdit);
   const [value, setValue] = useState(context ?? "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -124,6 +130,7 @@ export function MeetingContextField({
   const commit = useCallback(async () => {
     const next = value.trim();
     setEditing(false);
+    onDone?.();
     if (next === (context ?? "")) return;
     const res = await getClient().api.meetings[":id"].$patch({
       param: { id },
@@ -131,7 +138,7 @@ export function MeetingContextField({
     });
     if (res.ok) onChanged();
     else setValue(context ?? "");
-  }, [id, onChanged, context, value]);
+  }, [id, onChanged, onDone, context, value]);
 
   if (editing) {
     return (
@@ -145,6 +152,7 @@ export function MeetingContextField({
           if (e.key === "Escape") {
             setValue(context ?? "");
             setEditing(false);
+            onDone?.();
           }
         }}
         aria-label={t("meetings.contextPlaceholder")}
@@ -158,7 +166,7 @@ export function MeetingContextField({
     <button
       type="button"
       onClick={() => setEditing(true)}
-      className="group flex min-w-0 items-center gap-1.5 text-left"
+      className="group flex min-w-0 max-w-full items-center gap-1.5 text-left"
     >
       <span className="text-muted-foreground group-hover:text-foreground truncate text-[11.5px] transition-colors">
         {context || t("meetings.contextPlaceholder")}

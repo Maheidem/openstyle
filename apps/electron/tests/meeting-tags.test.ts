@@ -80,8 +80,17 @@ function answer(req: ChatRequest): Answer {
   };
 }
 
+/** The tag line of the detail header (issue #262). */
 function tagChips(page: Page) {
-  return page.getByRole("list", { name: "Tags" });
+  return page.getByTestId("meetings-tag-line");
+}
+
+/** Opens the full tag editor: it is in a popover since issue #262. */
+async function openTagEditor(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Add a tag", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Add a tag", exact: true }),
+  ).toBeVisible();
 }
 
 function readTagRows(
@@ -137,6 +146,7 @@ test("Enhance suggests tags, the user edits them, and they persist after a resta
   ]);
 
   // 2a. Remove one tag and type a new one.
+  await openTagEditor(env.page);
   let saved = waitForTagSave(env.page, ENHANCED.id);
   await env.page
     .getByRole("button", { name: "Remove the tag seed order" })
@@ -152,6 +162,7 @@ test("Enhance suggests tags, the user edits them, and they persist after a resta
 
   // 2b. A meeting with no Enhance run: pick an existing tag from the list.
   await openMeeting(env.page, MANUAL.title);
+  await openTagEditor(env.page);
   const manualInput = env.page.getByRole("textbox", { name: "Add a tag" });
   await manualInput.fill("gar");
   saved = waitForTagSave(env.page, MANUAL.id);

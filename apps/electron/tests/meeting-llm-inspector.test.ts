@@ -322,7 +322,11 @@ test("gate on: the panel shows what the fake server logged", async () => {
 
   // The speaker panel of the kept suggestion: its name, its quote, and the
   // evidence. Label 1 is the speaker that named itself.
-  await env.page.getByRole("button", { name: "Speakers", exact: true }).click();
+  // A finished meeting has Speakers in the "..." menu (issue #262).
+  await env.page.getByTestId("meetings-more-actions").click();
+  await env.page
+    .getByRole("menuitem", { name: "Speakers", exact: true })
+    .click();
   await env.page.getByTestId("meetings-speaker-inspect").first().click();
   const keptRow = env.page.getByTestId("meetings-inspector-speaker-row");
   await expect(keptRow).toHaveCount(1, { timeout: 15_000 });

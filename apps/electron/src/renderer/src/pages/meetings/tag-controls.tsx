@@ -1,8 +1,15 @@
 import { MAX_MEETING_TAGS, MAX_TAG_NAME_LENGTH } from "@openstyle/validations";
+import { Button } from "@renderer/components/ui/button";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@renderer/components/ui/popover";
 import { cn } from "@renderer/lib/utils";
-import { Tag, X } from "lucide-react";
-import { useId, useState } from "react";
+import { Plus, Tag, X } from "lucide-react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { fitTagCount } from "./header-model";
 import {
   addTag,
   removeTag,
@@ -12,7 +19,8 @@ import {
 } from "./tags-model";
 
 /**
- * The editable tag chips of the meeting detail header (issue #231). "x"
+ * The editable tag chips of a meeting (issue #231). The tag line of the
+ * detail header opens them in a popover (issue #262). "x"
  * removes a tag, Enter adds the typed tag, and a click on a suggestion adds
  * an existing tag. It needs no LLM model.
  */
@@ -157,5 +165,142 @@ export function MeetingTagChips({
         </p>
       )}
     </div>
+  );
+}
+
+/** The gap between the items of the tag line, in px (`gap-1`). */
+const TAG_GAP = 4;
+/** The narrowest width of a chip, in px: about 6 characters. */
+const MIN_CHIP_WIDTH = 56;
+/** The width that the "+N" chip needs, in px. */
+const MORE_CHIP_WIDTH = 34;
+/** The width of the "+" button and its gap, in px (`icon-xs`). */
+const ADD_BUTTON_WIDTH = 24 + TAG_GAP;
+const chipClass =
+  "bg-secondary text-secondary-foreground inline-flex h-6 max-w-40 items-center rounded-[5px] px-2 text-[11.5px]";
+
+/**
+ * The tags of the detail header on one line (issue #262). As many chips as
+ * the width allows show, at least 3, then a "+N" chip for the rest. "+N"
+ * and the small "+" open the full tag editor (remove, add, suggestions) in
+ * a popover. A hidden copy of the chips gives their widths.
+ */
+export function MeetingTagLine({
+  tags,
+  allTags,
+  onSave,
+  trailing,
+}: {
+  tags: readonly string[];
+  allTags: readonly { name: string; meeting_count: number }[];
+  onSave: (tags: string[]) => Promise<unknown>;
+  /** One more icon button after "+", for example "Add context". */
+  trailing?: React.ReactNode;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [visible, setVisible] = useState(tags.length);
+  const [widths, setWidths] = useState<number[]>([]);
+  const lineRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+
+  const hasTrailing = trailing != null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measure again when the tags change
+  useLayoutEffect(() => {
+    const line = lineRef.current;
+    const measure = measureRef.current;
+    if (!line || !measure) return;
+    const update = () => {
+      const widths = [...measure.children].map(
+        (chip) => (chip as HTMLElement).offsetWidth,
+      );
+      setWidths(widths);
+      setVisible(
+        fitTagCount(
+          widths,
+          TAG_GAP,
+          line.clientWidth - ADD_BUTTON_WIDTH * (hasTrailing ? 2 : 1),
+          MORE_CHIP_WIDTH + TAG_GAP,
+          3,
+          MIN_CHIP_WIDTH,
+        ),
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(line);
+    return () => observer.disconnect();
+  }, [tags, hasTrailing]);
+
+  const shown = tags.slice(0, visible);
+  const rest = tags.length - shown.length;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <div
+          ref={lineRef}
+          className="relative flex min-w-0 flex-1 items-center"
+        >
+          <div
+            ref={measureRef}
+            aria-hidden="true"
+            className="pointer-events-none invisible absolute top-0 left-0 flex gap-1"
+          >
+            {tags.map((name) => (
+              <span key={name} className={cn(chipClass, "shrink-0")}>
+                <span className="truncate">{name}</span>
+              </span>
+            ))}
+          </div>
+          <ul
+            className="flex min-w-0 items-center gap-1 overflow-hidden"
+            aria-label={t("meetings.tags.label")}
+            data-testid="meetings-tag-line"
+          >
+            {shown.map((name, i) => (
+              <li
+                key={name}
+                className={cn(chipClass, "shrink")}
+                // A chip shrinks, but never below about 6 characters.
+                style={{
+                  minWidth: Math.min(widths[i] ?? 0, MIN_CHIP_WIDTH),
+                }}
+              >
+                <span className="truncate">{name}</span>
+              </li>
+            ))}
+            {rest > 0 && (
+              <li className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setOpen(true)}
+                  className="border-border text-muted-foreground hover:text-foreground inline-flex h-6 items-center rounded-[5px] border px-1.5 text-[11.5px]"
+                  aria-label={t("meetings.tags.showAll")}
+                  title={tags.slice(visible).join(", ")}
+                >
+                  +{rest}
+                </button>
+              </li>
+            )}
+            <li className="shrink-0">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setOpen(true)}
+                aria-label={t("meetings.tags.add")}
+                title={t("meetings.tags.add")}
+                className="text-muted-foreground"
+              >
+                {tags.length === 0 ? <Tag /> : <Plus />}
+              </Button>
+            </li>
+            {trailing && <li className="shrink-0">{trailing}</li>}
+          </ul>
+        </div>
+      </PopoverAnchor>
+      <PopoverContent align="start" className="w-80">
+        <MeetingTagChips tags={tags} allTags={allTags} onSave={onSave} />
+      </PopoverContent>
+    </Popover>
   );
 }

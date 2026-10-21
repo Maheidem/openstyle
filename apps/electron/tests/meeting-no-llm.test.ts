@@ -255,13 +255,14 @@ test("detail view: buttons disabled, one hint, no notice of an old failed run", 
 
   await openMeeting(page, SEEDED_TITLE);
   const enhance = page.getByRole("button", { name: "Enhance", exact: true });
-  const summarize = page.getByRole("button", {
-    name: "Summarize",
-    exact: true,
-  });
   await expect(enhance).toBeVisible({ timeout: 10_000 });
   await expect(enhance).toBeDisabled();
-  await expect(summarize).toBeDisabled();
+  // Summarize is in the "..." menu of the header (issue #262).
+  await page.getByTestId("meetings-more-actions").click();
+  await expect(
+    page.getByRole("menuitem", { name: "Summarize", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
   await expect(page.getByText(HINT, { exact: true })).toHaveCount(1);
   await expect(page.getByTestId("meetings-run-notice-enhance")).toHaveCount(0);
   await expect(page.getByTestId("meetings-run-notice-summarize")).toHaveCount(
@@ -344,9 +345,11 @@ test("a transcription with auto-run on starts no run", async () => {
   await expect(page.getByText(HINT, { exact: true })).toHaveCount(1, {
     timeout: 10_000,
   });
+  await page.getByTestId("meetings-more-actions").click();
   await expect(
-    page.getByRole("button", { name: "Summarize", exact: true }),
+    page.getByRole("menuitem", { name: "Summarize", exact: true }),
   ).toBeDisabled();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await shoot("4-transcribed-detail");
 });
