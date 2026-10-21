@@ -11,6 +11,10 @@ Pass any Hugging Face model id that mlx-audio supports via --model, for example:
 LLM mode: ``--llm --model <hfId> --port <port>`` loads an mlx-lm model and
 serves an OpenAI-style HTTP API on 127.0.0.1 (specs/local-mlx-llm.md section 2).
 
+Embed mode: ``--embed --model <hfId> [--revision <sha>] --port <port>`` loads an
+embedding model with mlx-vlm and serves ``POST /v1/embeddings`` on 127.0.0.1
+(specs/local-semantic-search.md section 5.2).
+
 Re-publish the frozen worker release when this script or mlx-audio dependencies change.
 """
 
@@ -1024,11 +1028,14 @@ def _load_llm_engine(model_id: str) -> _LlmEngine:
     )
 
 
-def _make_llm_handler(engine: _LlmEngine) -> Any:
+def _http_handler_base(model_id: str) -> Any:
+    """The shared base of the LLM and embed HTTP handlers: JSON replies,
+    OpenAI-style errors and ``GET /v1/models``."""
     from http.server import BaseHTTPRequestHandler
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        route = ""
 
         def log_message(self, fmt: str, *args: Any) -> None:
             _log(f"http {fmt % args}")
@@ -1044,30 +1051,187 @@ def _make_llm_handler(engine: _LlmEngine) -> Any:
         def _error(self, status: int, message: str, kind: str) -> None:
             self._json(status, {"error": {"message": message, "type": kind}})
 
+        def handle_body(self, body: Any) -> dict[str, Any]:
+            raise NotImplementedError
+
         def do_GET(self) -> None:  # noqa: N802
             if self.path.split("?")[0] == "/v1/models":
-                self._json(200, {"object": "list", "data": [{"id": engine.model_id, "object": "model"}]})
+                self._json(200, {"object": "list", "data": [{"id": model_id, "object": "model"}]})
             else:
                 self._error(404, f"not found: {self.path}", "invalid_request_error")
 
         def do_POST(self) -> None:  # noqa: N802
             length = int(self.headers.get("Content-Length") or 0)
             raw = self.rfile.read(length) if length > 0 else b""
-            if self.path.split("?")[0] != "/v1/chat/completions":
+            if self.path.split("?")[0] != self.route:
                 self._error(404, f"not found: {self.path}", "invalid_request_error")
                 return
             try:
-                req = _parse_chat_request(json.loads(raw or b"null"))
-                result = engine.complete(req)
+                result = self.handle_body(json.loads(raw or b"null"))
             except json.JSONDecodeError as exc:
                 self._error(400, f"invalid json: {exc}", "invalid_request_error")
             except _BadRequest as exc:
                 self._error(400, str(exc), "invalid_request_error")
             except Exception as exc:
-                _log(f"generate error: {exc}")
+                _log(f"request error: {exc}")
                 self._error(500, str(exc), "server_error")
             else:
                 self._json(200, result)
+
+    return Handler
+
+
+def _make_llm_handler(engine: _LlmEngine) -> Any:
+    class Handler(_http_handler_base(engine.model_id)):
+        route = "/v1/chat/completions"
+
+        def handle_body(self, body: Any) -> dict[str, Any]:
+            return engine.complete(_parse_chat_request(body))
+
+    return Handler
+
+
+# ---------------------------------------------------------------------------
+# Embed mode (specs/local-semantic-search.md 5.2)
+#
+# ``--embed --model <hfId> [--revision <sha>] --port <port>`` loads an
+# EmbeddingGemma 2 checkpoint with mlx_vlm.embedding_loader and serves an
+# OpenAI-style ``POST /v1/embeddings``. The server adds the document and
+# query prompts (spec S10); this mode embeds the text it gets. Keep bf16:
+# Gemma gives bad output in float16 (#233 research comment).
+# ---------------------------------------------------------------------------
+
+_EMBED_MAX_INPUTS = 32
+_EMBED_MAX_TOKENS = 512
+_EMBED_NORM_TOLERANCE = 1e-3
+
+
+def _parse_embed_request(body: Any, dims: int) -> list[str]:
+    """Validate a /v1/embeddings body and return the inputs. ``model`` is ignored."""
+    if not isinstance(body, dict):
+        raise _BadRequest("request body must be a JSON object")
+    inputs = body.get("input")
+    if isinstance(inputs, str):
+        inputs = [inputs]
+    if not (isinstance(inputs, list) and inputs and all(isinstance(t, str) for t in inputs)):
+        raise _BadRequest("input must be a string or a non-empty list of strings")
+    if len(inputs) > _EMBED_MAX_INPUTS:
+        raise _BadRequest(f"input has more than {_EMBED_MAX_INPUTS} items")
+    encoding = body.get("encoding_format")
+    if encoding not in (None, "float"):
+        raise _BadRequest('encoding_format must be "float"')
+    dimensions = body.get("dimensions")
+    if dimensions is not None and (isinstance(dimensions, bool) or dimensions != dims):
+        raise _BadRequest(f"dimensions must be {dims}")
+    return inputs
+
+
+class _EmbedEngine:
+    """One loaded embedding model. ``tokenizer`` is a Hugging Face tokenizer;
+    ``forward(input_ids, attention_mask)`` returns float32 vectors (n, dims).
+    Both are injected for unit tests."""
+
+    def __init__(self, model_id: str, tokenizer: Any, forward: Any) -> None:
+        self.model_id = model_id
+        self.tok = tokenizer
+        self._forward = forward
+        self.dims = int(self._vectors(["dims probe"]).shape[1])
+
+    def _vectors(self, texts: list[str]) -> np.ndarray:
+        enc = self.tok(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=_EMBED_MAX_TOKENS,
+            return_tensors="np",
+        )
+        return np.asarray(self._forward(enc["input_ids"], enc["attention_mask"]), dtype=np.float32)
+
+    def embed(self, texts: list[str]) -> dict[str, Any]:
+        tokens = [len(ids) for ids in self.tok(texts)["input_ids"]]
+        vectors = self._vectors(texts)
+        if vectors.shape != (len(texts), self.dims):
+            raise RuntimeError(f"embedding output has shape {vectors.shape}")
+        if not np.isfinite(vectors).all():
+            raise RuntimeError("embedding output is not finite")
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        if np.any(np.abs(norms - 1.0) > _EMBED_NORM_TOLERANCE):
+            vectors = vectors / np.maximum(norms, 1e-9)
+        used = sum(min(t, _EMBED_MAX_TOKENS) for t in tokens)
+        return {
+            "object": "list",
+            "model": self.model_id,
+            "data": [
+                {"object": "embedding", "index": i, "embedding": [float(x) for x in row]}
+                for i, row in enumerate(vectors)
+            ],
+            "usage": {"prompt_tokens": used, "total_tokens": used},
+            "openstyle": {
+                "tokens": tokens,
+                "truncated": [t > _EMBED_MAX_TOKENS for t in tokens],
+            },
+        }
+
+
+def _resolve_model_dir(model_id: str, revision: str | None) -> Path:
+    """The local snapshot folder of ``model_id`` at ``revision`` (else refs/main).
+
+    The server downloads only the files the model needs, so this reads the
+    cache layout directly. ``snapshot_download(local_files_only=True)`` would
+    refuse the snapshot because the README and license files are absent.
+    """
+    if Path(model_id).is_dir():
+        return Path(model_id)
+    from huggingface_hub.constants import HF_HUB_CACHE
+
+    repo = Path(HF_HUB_CACHE) / ("models--" + model_id.replace("/", "--"))
+    if revision is None:
+        ref = repo / "refs" / "main"
+        if not ref.is_file():
+            raise FileNotFoundError(f"{model_id} is not downloaded")
+        revision = ref.read_text().strip()
+    path = repo / "snapshots" / revision
+    if not (path / "config.json").is_file():
+        raise FileNotFoundError(f"{model_id} at {revision} is not downloaded")
+    return path
+
+
+def _load_embed_engine(model_id: str, revision: str | None = None) -> _EmbedEngine:
+    import gc
+
+    import mlx.core as mx
+    from mlx_vlm.embedding_loader import load_embedding_model
+    from transformers import AutoTokenizer
+
+    _log(f"loading embedding model {model_id}@{revision or 'main'} ...")
+    path = _resolve_model_dir(model_id, revision)
+    model = load_embedding_model(path)
+    # Text only: drop the image and audio towers (a no-op for a text-only repo).
+    for attr in ("vision_tower", "embed_vision", "audio_tower", "embed_audio"):
+        if getattr(model, attr, None) is not None:
+            setattr(model, attr, None)
+    gc.collect()
+    mx.clear_cache()
+    tok = AutoTokenizer.from_pretrained(str(path))
+    tok.padding_side = "right"
+
+    def forward(input_ids: Any, attention_mask: Any) -> np.ndarray:
+        out = model(input_ids=mx.array(input_ids), attention_mask=mx.array(attention_mask))
+        vectors = out.text_embeds.astype(mx.float32)
+        mx.eval(vectors)
+        return np.array(vectors)
+
+    engine = _EmbedEngine(model_id, tok, forward)
+    _log(f"embedding model ready: dims={engine.dims}")
+    return engine
+
+
+def _make_embed_handler(engine: _EmbedEngine) -> Any:
+    class Handler(_http_handler_base(engine.model_id)):
+        route = "/v1/embeddings"
+
+        def handle_body(self, body: Any) -> dict[str, Any]:
+            return engine.embed(_parse_embed_request(body, engine.dims))
 
     return Handler
 
@@ -1080,18 +1244,20 @@ def _watch_stdin() -> None:
     os._exit(0)
 
 
-def _run_llm(model_id: str, port: int | None) -> None:
+def _serve_http(mode: str, port: int | None, load: Any, make_handler: Any, ready: Any) -> None:
+    """Load the engine, bind 127.0.0.1:<port>, print one ready line, serve.
+    Errors before ready print one error line and exit 1."""
     import signal
     from http.server import HTTPServer
 
     if port is None:
-        _send({"type": "error", "error": "--llm needs --port"})
+        _send({"type": "error", "error": f"--{mode} needs --port"})
         sys.exit(1)
     try:
-        engine = _load_llm_engine(model_id)
-        httpd = HTTPServer(("127.0.0.1", port), _make_llm_handler(engine))
+        engine = load()
+        httpd = HTTPServer(("127.0.0.1", port), make_handler(engine))
     except Exception as exc:
-        _log(f"llm start error: {exc}")
+        _log(f"{mode} start error: {exc}")
         _send({"type": "error", "error": str(exc)})
         sys.exit(1)
 
@@ -1101,11 +1267,31 @@ def _run_llm(model_id: str, port: int | None) -> None:
 
     signal.signal(signal.SIGTERM, _on_term)
     threading.Thread(target=_watch_stdin, daemon=True).start()
-    _send({"type": "ready", "model": model_id, "port": httpd.server_address[1]})
+    _send({"type": "ready", "port": httpd.server_address[1], **ready(engine)})
     try:
         httpd.serve_forever()
     finally:
         httpd.server_close()
+
+
+def _run_llm(model_id: str, port: int | None) -> None:
+    _serve_http(
+        "llm",
+        port,
+        lambda: _load_llm_engine(model_id),
+        _make_llm_handler,
+        lambda _engine: {"model": model_id},
+    )
+
+
+def _run_embed(model_id: str, revision: str | None, port: int | None) -> None:
+    _serve_http(
+        "embed",
+        port,
+        lambda: _load_embed_engine(model_id, revision),
+        _make_embed_handler,
+        lambda engine: {"model": model_id, "dims": engine.dims},
+    )
 
 
 def main() -> None:
@@ -1125,10 +1311,20 @@ def main() -> None:
         action="store_true",
         help="serve an mlx-lm model over an OpenAI-style HTTP API on 127.0.0.1:--port",
     )
+    parser.add_argument(
+        "--embed",
+        action="store_true",
+        help="serve an embedding model over an OpenAI-style /v1/embeddings on 127.0.0.1:--port",
+    )
+    parser.add_argument("--revision", default=None, help="Hugging Face commit of --model (embed mode)")
     args = parser.parse_args()
 
     if args.llm:
         _run_llm(args.model, args.port)
+        return
+
+    if args.embed:
+        _run_embed(args.model, args.revision, args.port)
         return
 
     if args.model_status:

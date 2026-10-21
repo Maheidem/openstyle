@@ -25,6 +25,11 @@ export type MlxLlmStatus = ApiRes<
   ApiClient["api"]["mlx-llm"]["status"]["$get"]
 >;
 
+/** GET /api/mlx-embed/status: the built-in search model (specs/local-semantic-search.md 5.5). */
+export type MlxEmbedStatus = ApiRes<
+  ApiClient["api"]["mlx-embed"]["status"]["$get"]
+>;
+
 /** The provider id of the built-in local LLM. */
 export const MLX_LLM_PROVIDER_ID = "local-mlx-llm";
 

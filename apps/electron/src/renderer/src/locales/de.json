@@ -679,6 +679,12 @@
     "loading": "Modelle werden geladen",
     "mlxKeepAlive": "MLX-ASR-Haltezeit",
     "mlxLlmKeepAlive": "MLX-LLM-Haltezeit",
+    "searchModel": {
+      "title": "Suchmodell",
+      "desc": "Openstyle durchsucht Ihre Meetings mit diesem Modell nach Bedeutung. Es läuft auf diesem Mac und braucht kein KI-Modell.",
+      "loading": "Suchmodell wird geladen…",
+      "loadFailed": "Das Suchmodell wurde nicht geladen: {{error}}"
+    },
     "picker": {
       "backToSimple": "Zurück zur einfachen Ansicht"
     },

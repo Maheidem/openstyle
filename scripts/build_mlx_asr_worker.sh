@@ -16,6 +16,12 @@ HUGGINGFACE_HUB_VERSION="${HUGGINGFACE_HUB_VERSION:-1.33.0}"
 # strict JSON. mlx-lm 0.31.x crashes at import with transformers>=5.14 (mlx-lm#1458); 0.32.0 fixed it.
 MLX_LM_VERSION="${MLX_LM_VERSION:-0.32.2}"
 LLGUIDANCE_VERSION="${LLGUIDANCE_VERSION:-1.9.1}"
+# Embed mode (--embed, specs/local-semantic-search.md 5.2): mlx-vlm loads EmbeddingGemma 2 with
+# mlx_vlm.embedding_loader. mlx-vlm 0.7.8 is the last release that accepts mlx 0.32.3 (0.7.9 needs
+# mlx>=0.32.4). mlx-embeddings is not used. The PyInstaller excludes below keep the heavy mlx-vlm
+# dependencies (pyarrow, opencv, pandas, datasets, the fastapi server stack) out of the bundle: the
+# text embedding path imports none of them (#233 bundle measurement, +20 MB tar.gz instead of +111 MB).
+MLX_VLM_VERSION="${MLX_VLM_VERSION:-0.7.8}"
 # mlx-audio 0.5.x vendors the mlx-lm parts it needs for ASR. LLM mode installs mlx-lm itself (above);
 # the pin is past the AutoTokenizer.register crash (ml-explore/mlx-lm#1458, fixed in mlx-lm#1465).
 # mlx-audio 0.5.7 requires transformers>=5.14. transformers 5.x requires huggingface_hub<2.0,
@@ -25,7 +31,8 @@ LLGUIDANCE_VERSION="${LLGUIDANCE_VERSION:-1.9.1}"
 # Any dependency change here must also update MLX_WORKER_BUILD_SPEC in
 # apps/server/src/lib/mlx-asr/runtime.ts, or installed workers never re-download.
 # A test in apps/server/tests/mlx-runtime.test.ts checks that the two match.
-TRANSFORMERS_SPEC="${TRANSFORMERS_SPEC:->=5.14}"
+# EmbeddingGemma 2 needs transformers>=5.18 for its tokenizer (#233 spike, check 1).
+TRANSFORMERS_SPEC="${TRANSFORMERS_SPEC:->=5.18}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "Python 3.12 is required to build the MLX ASR worker." >&2
@@ -46,7 +53,8 @@ rm -rf "${VENV_DIR}"
   "transformers${TRANSFORMERS_SPEC}" \
   "huggingface_hub[hf_xet]==${HUGGINGFACE_HUB_VERSION}" \
   "mlx-lm==${MLX_LM_VERSION}" \
-  "llguidance==${LLGUIDANCE_VERSION}"
+  "llguidance==${LLGUIDANCE_VERSION}" \
+  "mlx-vlm==${MLX_VLM_VERSION}"
 
 rm -rf "${ROOT_DIR}/build/mlx_asr_worker" "${DIST_DIR}/mlx_asr_worker"
 "${VENV_DIR}/bin/pyinstaller" \
@@ -58,6 +66,15 @@ rm -rf "${ROOT_DIR}/build/mlx_asr_worker" "${DIST_DIR}/mlx_asr_worker"
   --collect-all huggingface_hub \
   --collect-all mlx_lm \
   --collect-all llguidance \
+  --collect-submodules mlx_vlm \
+  --exclude-module pyarrow \
+  --exclude-module cv2 \
+  --exclude-module pandas \
+  --exclude-module datasets \
+  --exclude-module fastapi \
+  --exclude-module uvicorn \
+  --exclude-module starlette \
+  --exclude-module mlx_embeddings \
   --distpath "${DIST_DIR}" \
   --workpath "${ROOT_DIR}/build/mlx_asr_worker" \
   "${ROOT_DIR}/scripts/mlx_asr_server.py"

@@ -28,7 +28,7 @@ Today every LLM call (dictation cleanup, Meeting Enhance, Summarize) needs a clo
 
 Rejected: the Jundot oQ4e repos (an MTP weight file breaks the strict mlx-lm load, and the repo has no license). The Gemma `qat-mobile` repos (`quant_method: gemma` is not supported in mlx-lm 0.32.2).
 
-5. Pins: `mlx==0.32.3`, `mlx-metal==0.32.3`, `mlx-audio==0.5.7`, `mlx-lm==0.32.2`, `llguidance==1.9.1`, `transformers>=5.14`, `huggingface_hub==1.33.0`. A `uv pip compile` resolves with no conflict. mlx-lm 0.31.x crashes at import with transformers 5.14 or later (mlx-lm#1458, fixed in 0.32.0). Do not add mlx-vlm (needs mlx>=0.32.4).
+5. Pins: `mlx==0.32.3`, `mlx-metal==0.32.3`, `mlx-audio==0.5.7`, `mlx-lm==0.32.2`, `llguidance==1.9.1`, `transformers>=5.14`, `huggingface_hub==1.33.0`. A `uv pip compile` resolves with no conflict. mlx-lm 0.31.x crashes at import with transformers 5.14 or later (mlx-lm#1458, fixed in 0.32.0). mlx-vlm 0.7.9 needs mlx>=0.32.4, so the embed mode of #233 pins `mlx-vlm==0.7.8` (needs mlx>=0.32.3) and raises transformers to `>=5.18` (specs/local-semantic-search.md 5.2).
 
 ### Goals
 

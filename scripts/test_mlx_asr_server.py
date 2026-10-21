@@ -767,5 +767,218 @@ class RunLlmTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
 
 
+# --- Embed mode (specs/local-semantic-search.md 5.2) -----------------------
+
+
+class FakeEmbedTokenizer:
+    """Whitespace tokenizer with a BOS token, in the shape of a HF tokenizer."""
+
+    def __call__(self, texts, padding=False, truncation=False, max_length=None, return_tensors=None):
+        ids = [[2] + [10 + len(w) for w in t.split()] for t in texts]
+        if truncation and max_length:
+            ids = [row[:max_length] for row in ids]
+        if not padding:
+            return {"input_ids": ids}
+        width = max(len(row) for row in ids)
+        return {
+            "input_ids": np.array([row + [0] * (width - len(row)) for row in ids]),
+            "attention_mask": np.array([[1] * len(row) + [0] * (width - len(row)) for row in ids]),
+        }
+
+
+def _embed_engine(scale: float = 1.0, nan: bool = False, dims: int = 4):
+    seen: list[tuple[int, int]] = []
+
+    def forward(input_ids, attention_mask):
+        seen.append(tuple(input_ids.shape))
+        n = input_ids.shape[0]
+        out = np.zeros((n, dims), dtype=np.float32)
+        for i in range(n):
+            out[i, i % dims] = scale
+        if nan and n > 1:
+            out[0, 0] = np.nan
+        return out
+
+    engine = mlx_asr_server._EmbedEngine("org/fake-embed", FakeEmbedTokenizer(), forward)
+    return engine, seen
+
+
+class EmbedRequestTests(unittest.TestCase):
+    def test_string_input_is_one_item(self) -> None:
+        self.assertEqual(mlx_asr_server._parse_embed_request({"input": "a"}, 768), ["a"])
+
+    def test_list_input_and_ignored_model(self) -> None:
+        body = {"input": ["a", "b"], "model": "anything", "encoding_format": "float", "dimensions": 768}
+        self.assertEqual(mlx_asr_server._parse_embed_request(body, 768), ["a", "b"])
+
+    def test_bad_bodies_are_rejected(self) -> None:
+        bad = [
+            None,
+            {},
+            {"input": []},
+            {"input": [1]},
+            {"input": ["a"] * 33},
+            {"input": "a", "encoding_format": "base64"},
+            {"input": "a", "dimensions": 256},
+            {"input": "a", "dimensions": True},
+        ]
+        for body in bad:
+            with self.subTest(body=body), self.assertRaises(mlx_asr_server._BadRequest):
+                mlx_asr_server._parse_embed_request(body, 768)
+
+    def test_32_inputs_pass(self) -> None:
+        self.assertEqual(len(mlx_asr_server._parse_embed_request({"input": ["a"] * 32}, 768)), 32)
+
+
+class EmbedEngineTests(unittest.TestCase):
+    def test_dims_come_from_a_probe_pass(self) -> None:
+        engine, seen = _embed_engine(dims=6)
+        self.assertEqual(engine.dims, 6)
+        self.assertEqual(len(seen), 1)
+
+    def test_embed_shape_order_and_usage(self) -> None:
+        engine, _ = _embed_engine()
+        out = engine.embed(["one two", "three"])
+        self.assertEqual(out["object"], "list")
+        self.assertEqual(out["model"], "org/fake-embed")
+        self.assertEqual([d["index"] for d in out["data"]], [0, 1])
+        self.assertEqual([len(d["embedding"]) for d in out["data"]], [4, 4])
+        self.assertEqual(out["openstyle"], {"tokens": [3, 2], "truncated": [False, False]})
+        self.assertEqual(out["usage"], {"prompt_tokens": 5, "total_tokens": 5})
+
+    def test_vectors_are_renormalized(self) -> None:
+        engine, _ = _embed_engine(scale=3.0)
+        out = engine.embed(["a", "b"])
+        for row in out["data"]:
+            self.assertAlmostEqual(float(np.linalg.norm(row["embedding"])), 1.0, places=5)
+
+    def test_long_input_is_truncated_and_marked(self) -> None:
+        engine, seen = _embed_engine()
+        out = engine.embed([" ".join(["w"] * 600)])
+        self.assertEqual(out["openstyle"], {"tokens": [601], "truncated": [True]})
+        self.assertEqual(out["usage"]["prompt_tokens"], 512)
+        self.assertEqual(seen[-1], (1, 512))
+
+    def test_nan_output_raises(self) -> None:
+        engine, _ = _embed_engine(nan=True)
+        with self.assertRaises(RuntimeError):
+            engine.embed(["a", "b"])
+
+
+class EmbedHttpTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from http.server import HTTPServer
+
+        self._log_patch = mock.patch.object(mlx_asr_server, "_log", lambda _m: None)
+        self._log_patch.start()
+        self.engine, _ = _embed_engine()
+        self.httpd = HTTPServer(("127.0.0.1", 0), mlx_asr_server._make_embed_handler(self.engine))
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self) -> None:
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self._log_patch.stop()
+
+    def _call(self, method: str, path: str, body: object = None) -> tuple[int, dict[str, object]]:
+        import urllib.error
+        import urllib.request
+
+        data = None if body is None else json.dumps(body).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=data, method=method)
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status, json.loads(resp.read())
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read())
+
+    def test_models(self) -> None:
+        self.assertEqual(
+            self._call("GET", "/v1/models"),
+            (200, {"object": "list", "data": [{"id": "org/fake-embed", "object": "model"}]}),
+        )
+
+    def test_embeddings(self) -> None:
+        status, out = self._call("POST", "/v1/embeddings", {"input": ["a", "b c"], "model": "x"})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(out["data"]), 2)
+        self.assertEqual(len(out["data"][1]["embedding"]), 4)
+
+    def test_bad_request_is_400(self) -> None:
+        status, out = self._call("POST", "/v1/embeddings", {"input": "a", "dimensions": 3})
+        self.assertEqual((status, out["error"]["type"]), (400, "invalid_request_error"))
+
+    def test_nan_is_500(self) -> None:
+        with mock.patch.object(self.engine, "embed", side_effect=RuntimeError("embedding output is not finite")):
+            status, out = self._call("POST", "/v1/embeddings", {"input": "a"})
+        self.assertEqual((status, out["error"]["type"]), (500, "server_error"))
+
+    def test_chat_path_is_404(self) -> None:
+        self.assertEqual(self._call("POST", "/v1/chat/completions", {"messages": []})[0], 404)
+
+
+class RunEmbedTests(unittest.TestCase):
+    def _run(self, load: object) -> list[dict[str, object]]:
+        import io
+
+        out = io.StringIO()
+        with mock.patch.object(mlx_asr_server, "_log", lambda _m: None), \
+            mock.patch("sys.stdout", out), \
+            mock.patch("signal.signal"), \
+            mock.patch.object(mlx_asr_server.threading, "Thread"), \
+            mock.patch("http.server.HTTPServer.serve_forever", return_value=None), \
+            mock.patch.object(mlx_asr_server, "_load_embed_engine", load):
+            mlx_asr_server._run_embed("org/fake-embed", "abc123", 0)
+        return [json.loads(line) for line in out.getvalue().splitlines()]
+
+    def test_ready_line_has_dims(self) -> None:
+        engine, _ = _embed_engine(dims=768)
+        calls: list[tuple[str, object]] = []
+
+        def load(model_id: str, revision: object) -> object:
+            calls.append((model_id, revision))
+            return engine
+
+        lines = self._run(load)
+        self.assertEqual(calls, [("org/fake-embed", "abc123")])
+        self.assertEqual(len(lines), 1)
+        self.assertEqual((lines[0]["type"], lines[0]["model"], lines[0]["dims"]), ("ready", "org/fake-embed", 768))
+        self.assertGreater(lines[0]["port"], 0)
+
+    def test_load_error_line_and_exit_1(self) -> None:
+        def boom(_m: str, _r: object) -> object:
+            raise RuntimeError("no weights")
+
+        with self.assertRaises(SystemExit) as ctx:
+            self._run(boom)
+        self.assertEqual(ctx.exception.code, 1)
+
+
+class ResolveModelDirTests(unittest.TestCase):
+    def _cache(self, tmp: str) -> Path:
+        repo = Path(tmp) / "models--org--fake-embed"
+        (repo / "snapshots" / "rev1").mkdir(parents=True)
+        (repo / "snapshots" / "rev1" / "config.json").write_text("{}")
+        (repo / "refs").mkdir()
+        (repo / "refs" / "main").write_text("rev1\n")
+        return repo
+
+    def test_pinned_revision_and_refs_main(self) -> None:
+        import huggingface_hub.constants as hub_constants
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._cache(tmp)
+            with mock.patch.object(hub_constants, "HF_HUB_CACHE", tmp):
+                self.assertEqual(mlx_asr_server._resolve_model_dir("org/fake-embed", "rev1"), repo / "snapshots" / "rev1")
+                self.assertEqual(mlx_asr_server._resolve_model_dir("org/fake-embed", None), repo / "snapshots" / "rev1")
+                with self.assertRaises(FileNotFoundError):
+                    mlx_asr_server._resolve_model_dir("org/fake-embed", "other")
+                with self.assertRaises(FileNotFoundError):
+                    mlx_asr_server._resolve_model_dir("org/missing", None)
+
+
 if __name__ == "__main__":
     unittest.main()

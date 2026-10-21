@@ -679,6 +679,12 @@
     "loading": "モデルを読み込み中",
     "mlxKeepAlive": "MLX ASRの保持時間",
     "mlxLlmKeepAlive": "MLX LLMの保持時間",
+    "searchModel": {
+      "title": "検索モデル",
+      "desc": "Openstyle はこのモデルで会議を意味で検索します。この Mac で動作し、AI モデルは不要です。",
+      "loading": "検索モデルを読み込み中…",
+      "loadFailed": "検索モデルを読み込めませんでした: {{error}}"
+    },
     "picker": {
       "backToSimple": "シンプル表示に戻る"
     },

@@ -211,7 +211,7 @@ export function isMlxModelDownloaded(model: MlxAsrModelDef): boolean {
  * `.incomplete` blob, and every file of the manifest at its expected size.
  * Stat calls only. The speech and the LLM models use it.
  */
-export function isHfSnapshotPresent(hfId: string): boolean {
+export function isHfSnapshotPresent(hfId: string, revision?: string): boolean {
   const repoDir = hfRepoCacheDir(hfId);
   const snapshotsDir = join(repoDir, "snapshots");
   if (!existsSync(snapshotsDir) || hasIncompleteBlob(repoDir)) return false;
@@ -220,6 +220,8 @@ export function isHfSnapshotPresent(hfId: string): boolean {
   try {
     return readdirSync(snapshotsDir, { withFileTypes: true }).some((entry) => {
       if (!entry.isDirectory()) return false;
+      // A pinned model counts only with the snapshot of its own commit.
+      if (revision && entry.name !== revision) return false;
       const dir = join(snapshotsDir, entry.name);
       return manifest
         ? presentFiles(dir, manifest).length === manifest.length
@@ -432,6 +434,11 @@ export interface HfSnapshotOptions {
    * download fetches the full repo.
    */
   allowPatterns?: readonly string[];
+  /**
+   * A commit sha to fetch instead of `main` (needs `allowPatterns`). The
+   * snapshot folder is named by this sha, and `refs/main` is not written.
+   */
+  revision?: string;
 }
 
 /**
@@ -443,18 +450,22 @@ async function downloadFileSubset(
   hfId: string,
   files: readonly ExpectedFile[],
   fetchFn: typeof fetch,
+  revision?: string,
 ): Promise<string> {
   const repo = { type: "model", name: hfId } as const;
-  const { sha } = await modelInfo({
-    name: hfId,
-    additionalFields: ["sha"],
-    revision: "main",
-    fetch: fetchFn,
-  });
   const repoDir = hfRepoCacheDir(hfId);
-  const refPath = join(repoDir, "refs", "main");
-  mkdirSync(dirname(refPath), { recursive: true });
-  writeFileSync(refPath, sha);
+  let sha = revision;
+  if (!sha) {
+    ({ sha } = await modelInfo({
+      name: hfId,
+      additionalFields: ["sha"],
+      revision: "main",
+      fetch: fetchFn,
+    }));
+    const refPath = join(repoDir, "refs", "main");
+    mkdirSync(dirname(refPath), { recursive: true });
+    writeFileSync(refPath, sha);
+  }
   for (const file of files) {
     await downloadFileToCacheDir({
       repo,
@@ -479,7 +490,7 @@ async function downloadFileSubset(
 export async function downloadHfSnapshot(
   active: ActiveMlxDownload,
   hfId: string,
-  { checkTotal, allowPatterns }: HfSnapshotOptions = {},
+  { checkTotal, allowPatterns, revision }: HfSnapshotOptions = {},
 ): Promise<string> {
   active.phase = "downloading_model";
   active.bytesDownloaded = 0;
@@ -493,7 +504,7 @@ export async function downloadHfSnapshot(
 
   let files: ExpectedFile[] | null = [];
   try {
-    for await (const entry of listFiles({ repo, recursive: true })) {
+    for await (const entry of listFiles({ repo, recursive: true, revision })) {
       if (entry.type === "file") {
         files.push({ path: entry.path, size: entry.size ?? 0 });
       }
@@ -525,7 +536,7 @@ export async function downloadHfSnapshot(
     try {
       const fetchFn = progressFetch(active, active.controller.signal);
       if (allowPatterns && files) {
-        return await downloadFileSubset(hfId, files, fetchFn);
+        return await downloadFileSubset(hfId, files, fetchFn, revision);
       }
       return await snapshotDownload({
         repo,

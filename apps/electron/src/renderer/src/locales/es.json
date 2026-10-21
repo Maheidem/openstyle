@@ -679,6 +679,12 @@
     "loading": "Cargando modelos",
     "mlxKeepAlive": "Tiempo de permanencia de MLX ASR",
     "mlxLlmKeepAlive": "Tiempo de permanencia de MLX LLM",
+    "searchModel": {
+      "title": "Modelo de búsqueda",
+      "desc": "Openstyle usa este modelo para buscar en tus reuniones por significado. Funciona en este Mac y no necesita un modelo de IA.",
+      "loading": "Cargando el modelo de búsqueda…",
+      "loadFailed": "El modelo de búsqueda no se cargó: {{error}}"
+    },
     "picker": {
       "backToSimple": "Volver a la vista simple"
     },
