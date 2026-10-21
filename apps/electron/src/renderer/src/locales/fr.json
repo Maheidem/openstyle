@@ -1085,6 +1085,7 @@
   },
   "pill": {
     "cancelDictation": "Annuler la dictée",
+    "stopMeeting": "Arrêter l’enregistrement de la réunion",
     "dismiss": "Ignorer",
     "retry": "Réessayer",
     "cardTitle": "Échec de la transcription",
@@ -1097,7 +1098,8 @@
       "noAudio": "Aucun son de votre microphone",
       "preparingMic": "Préparation du microphone",
       "listening": "À l'écoute",
-      "transcribing": "Transcription en cours"
+      "transcribing": "Transcription en cours",
+      "meetingRecording": "Enregistrement de la réunion"
     },
     "error": {
       "timedOut": "La transcription a expiré",

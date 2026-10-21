@@ -18,6 +18,8 @@ import {
   pillInnerStyle,
   STATUS_SIZE,
 } from "./constants";
+import { MeetingCapsule } from "./meeting-capsule";
+import { pillSurface } from "./meeting-cue";
 
 export interface PillViewProps {
   state: PillState;
@@ -43,6 +45,8 @@ export interface PillViewProps {
   card: { title: string; body: string; canRetry: boolean };
   dismissPill: (kind: PillExit) => void;
   retryFailedTranscription: () => void;
+  /** Start time (epoch ms) of the meeting that records now, or null. */
+  meetingStartedAt: number | null;
 }
 
 export function PillView({
@@ -69,11 +73,25 @@ export function PillView({
   card,
   dismissPill,
   retryFailedTranscription,
+  meetingStartedAt,
 }: PillViewProps): React.JSX.Element {
   const { t } = useTranslation();
   return (
     <div className="relative h-screen w-screen select-none overflow-hidden">
       <style>{PILL_STYLES}</style>
+
+      {/* A dictation takes over the pill. When it ends, the meeting
+          Recording state comes back. */}
+      {pillSurface(state, meetingStartedAt) === "meeting" &&
+        meetingStartedAt !== null && (
+          <MeetingCapsule
+            startedAt={meetingStartedAt}
+            layerClass={layerClass}
+            riseBy={riseBy}
+            transformOrigin={transformOrigin}
+            pillAlign={pillAlign}
+          />
+        )}
 
       {state !== "idle" && (
         <>

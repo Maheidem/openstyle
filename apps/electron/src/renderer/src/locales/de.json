@@ -1085,6 +1085,7 @@
   },
   "pill": {
     "cancelDictation": "Diktat abbrechen",
+    "stopMeeting": "Meeting-Aufnahme beenden",
     "dismiss": "Schließen",
     "retry": "Erneut versuchen",
     "cardTitle": "Transkription fehlgeschlagen",
@@ -1097,7 +1098,8 @@
       "noAudio": "Kein Audio von Ihrem Mikrofon",
       "preparingMic": "Mikrofon wird vorbereitet",
       "listening": "Höre zu",
-      "transcribing": "Transkribiere"
+      "transcribing": "Transkribiere",
+      "meetingRecording": "Meeting wird aufgenommen"
     },
     "error": {
       "timedOut": "Zeitüberschreitung bei der Transkription",

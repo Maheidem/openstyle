@@ -61,6 +61,7 @@ import {
   hidePill,
   resolveAppWindowPosition,
   setPillExpanded,
+  setPillMeetingRecording,
   setProgrammaticPosition,
 } from "../windows/pill-window";
 
@@ -151,8 +152,12 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
       broadcastToWindows("meeting:level", event);
     },
     broadcastStatus: (status, startedAt) => {
+      const recording = status === "recording";
+      // Show the pill before the event, so its arrival runs on screen. Hide
+      // it before the event, so the capsule does not flash away.
+      setPillMeetingRecording(recording);
       broadcastToWindows("meeting:status-changed", status, startedAt);
-      updateTrayForMeeting(status === "recording");
+      updateTrayForMeeting(recording);
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         state.tray?.setContextMenu(buildTrayContextMenu());

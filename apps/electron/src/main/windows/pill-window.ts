@@ -56,6 +56,17 @@ function markProgrammaticTarget(x: number, y: number): void {
  */
 let pillExpandOffset = { dx: 0, dy: 0 };
 
+/**
+ * True from a dictation hotkey press until the renderer hides the pill. The
+ * Escape shortcut cancels a dictation, so it is registered only while this
+ * is true. The meeting Recording state never registers Escape.
+ */
+let dictationOwnsPill = false;
+
+function meetingRecording(): boolean {
+  return state.meetingRecorder?.status === "recording";
+}
+
 export function setProgrammaticPosition(
   win: BrowserWindow,
   x: number,
@@ -346,7 +357,28 @@ export function createAppWindow(): void {
   }
 }
 
+/** Show the pill for a dictation. Escape then cancels the dictation. */
 export function showPill(): void {
+  dictationOwnsPill = true;
+  presentPill();
+}
+
+/**
+ * Show the pill in the meeting Recording state while a meeting records
+ * (`recording`). When the meeting stops, hide the pill, but only when no
+ * dictation uses it. A dictation hides the pill itself when it ends.
+ */
+export function setPillMeetingRecording(recording: boolean): void {
+  if (recording) {
+    presentPill();
+    return;
+  }
+  if (!dictationOwnsPill && state.mainWindow?.isVisible()) {
+    state.mainWindow.hide();
+  }
+}
+
+function presentPill(): void {
   // Already waiting for a freshly-created pill to finish loading.
   if (state.pillReadyPromise) return;
 
@@ -432,7 +464,7 @@ function anchorPillToFocusedDisplay(): void {
 }
 
 function updatePillEscape(): void {
-  if (state.mainWindow?.isVisible()) {
+  if (dictationOwnsPill && state.mainWindow?.isVisible()) {
     if (!globalShortcut.isRegistered("Escape")) {
       globalShortcut.register("Escape", () => {
         if (state.mainWindow?.isVisible()) {
@@ -448,7 +480,10 @@ function updatePillEscape(): void {
 }
 
 export function hidePill(): void {
-  if (state.mainWindow?.isVisible()) {
+  dictationOwnsPill = false;
+  // While a meeting records, the pill stays up and goes back to the meeting
+  // Recording state.
+  if (!meetingRecording() && state.mainWindow?.isVisible()) {
     state.mainWindow.hide();
   }
   // The next session starts as a bare capsule, so give the extra room back

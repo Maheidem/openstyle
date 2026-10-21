@@ -177,6 +177,14 @@ export const PILL_STYLES = `
             animation: pill-spin 900ms linear infinite;
           }
 
+          /* The meeting Recording state: the live dot breathes slowly, so a
+             glance tells that the meeting still records. */
+          @keyframes pill-live-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
+          }
+          .pill-live-dot { animation: pill-live-pulse 1600ms ease-in-out infinite; }
+
           /* No chip behind the mark — it sits directly on the capsule, and
              reads as part of it. The button keeps its box as a hit target;
              only the glyph is drawn. */
@@ -251,5 +259,7 @@ export const PILL_STYLES = `
             /* A spinner that doesn't turn says nothing, so slow it rather
                than stopping it. */
             .pill-spinner { animation-duration: 2.4s; }
+            /* A still red dot still says "recording". */
+            .pill-live-dot { animation: none; }
           }
         `;
