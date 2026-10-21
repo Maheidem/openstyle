@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.21.0
+
+### New Features ✨
+
+- Search your meetings by meaning. Download EmbeddingGemma 2 in Settings > Models, then use the search box at the top of the Meetings page. It searches inside the selected folder and runs on your Mac (#250).
+- A clear cue while a meeting records: the pill shows a red dot, the elapsed time and Stop, and the tray icon turns red (#254).
+
+### Improvements ⚡
+
+- A cleaner meeting page. The meeting list and the meeting detail scroll on their own. The header has one row for the date, folder, calendar event, language and status. Tags fit in one line with a "+N" chip. The actions sit in one toolbar with a "…" menu, and the Transcript and Summary tabs stay at the top while you scroll (#263).
+- The Enhance progress card is one short line ("Reading chunk 3 of 14 · 11%"), and the Cancel button always fits (#263).
+- A meeting that waits for the AI model shows "Queued" instead of "Enhancing 0%" (#261).
+- The built-in AI and search models answer faster: each request no longer waits about 4 seconds for a connection (#250).
+- Openstyle is now built for Mac only.
+
+### Bug Fixes 🐛
+
+- With the built-in Gemma model, a meeting summary no longer fails with "The model reached its output limit". If an answer is still cut, Openstyle keeps the complete part as a partial summary and shows a notice (#258).
+- A meeting with enhanced text and a missing or partial summary now shows "Enhanced" instead of "Transcribed" (#258).
+
 ## 2.20.0
 
 ### New Features ✨
