@@ -19,6 +19,18 @@ const meetingRecordSchema = z.object({
   context: z.string().nullable(),
 });
 
+const meetingJobPhaseSchema = z.enum([
+  "diarizing",
+  "transcribing",
+  "preparing",
+  "reading",
+  "speakers",
+  "summarizing",
+  "combining",
+  "saving",
+  "tags",
+]);
+
 export const meetingListResponseSchema = z.object({
   items: z.array(meetingRecordSchema),
   total: z.number().int().nonnegative(),
@@ -40,6 +52,10 @@ export const meetingDetailResponseSchema = meetingRecordSchema.extend({
         .object({ ahead: z.number(), sinceMs: z.number() })
         .nullable()
         .optional(),
+      phase: meetingJobPhaseSchema.optional(),
+      step: z.number().nullable().optional(),
+      steps: z.number().nullable().optional(),
+      detail: z.string().nullable().optional(),
     })
     .nullable(),
   segment_counts: z.object({ total: z.number(), failed: z.number() }),

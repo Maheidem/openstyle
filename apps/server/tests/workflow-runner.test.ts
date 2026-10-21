@@ -238,12 +238,13 @@ describe("startRun: the chained Enhance run (GR24 a)", () => {
     expect(JSON.parse(run.result_json ?? "null")).toBeNull();
   });
 
-  it("publishes the progress blob while the run goes on", async () => {
+  it("publishes phases and a fixed step total while the run goes on", async () => {
     const f = seedMeeting(3);
-    const seen: ({ total: number; done: number } | null)[] = [];
+    const seen: NonNullable<ReturnType<typeof getJob>>[] = [];
     const h = runnerHarness({
       answer: (r) => {
-        if (!isSummaryRequest(r)) seen.push(getJob(f.meeting.id));
+        const job = getJob(f.meeting.id);
+        if (job) seen.push(job);
         return defaultAnswer(r);
       },
     });
@@ -252,10 +253,21 @@ describe("startRun: the chained Enhance run (GR24 a)", () => {
       h.deps,
     );
     await waitForNoJob(f.meeting.id);
-    expect(seen).toHaveLength(3);
-    expect(seen.every((j) => j !== null && j.total >= 3)).toBe(true);
-    // Calls that ended before the last request are counted done.
-    expect(seen.at(-1)?.done).toBeGreaterThanOrEqual(1);
+    const reading = seen.filter((j) => j.phase === "reading");
+    expect(reading).toHaveLength(3);
+    for (const j of reading) {
+      expect(j.steps).toBe(3);
+      expect(j.step).toBeGreaterThanOrEqual(1);
+      expect(j.step).toBeLessThanOrEqual(3);
+      expect(j.detail?.length).toBeGreaterThan(0);
+      expect(j.detail?.length).toBeLessThanOrEqual(80);
+    }
+    // Three chunks, then speakers, summarize, save and tags: the total does
+    // not grow, and `done` never goes back.
+    expect(seen.every((j) => j.total === 7)).toBe(true);
+    for (const [i, j] of seen.entries()) {
+      expect(j.done).toBeGreaterThanOrEqual(seen[i - 1]?.done ?? 0);
+    }
   });
 });
 

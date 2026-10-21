@@ -4,6 +4,18 @@ import type { CalendarEvent } from "./meeting-calendar.js";
 // Electron main process passes them on, and the renderer reads them. This
 // file has no runtime code. Use `import type` to read it.
 
+/** The phase of a running meeting job (server job registry). */
+export type MeetingJobPhase =
+  | "diarizing"
+  | "transcribing"
+  | "preparing"
+  | "reading"
+  | "speakers"
+  | "summarizing"
+  | "combining"
+  | "saving"
+  | "tags";
+
 /** One row of `GET /api/meetings`. */
 export interface MeetingListItem {
   id: string;
@@ -53,6 +65,16 @@ export interface MeetingDetail extends MeetingListItem {
       | null;
     /** Set while one of the job's LLM calls waits for its lane (§5.5). */
     queued?: { ahead: number; sinceMs: number } | null;
+    /** The phase of the job. A workflow run (Enhance, Summarize) sets it
+     * with `step`, `steps` and `detail` (specs/meeting-enhance-agentic.md
+     * 3.4.4). Its `done`/`total` then count work steps, not LLM calls. */
+    phase?: MeetingJobPhase;
+    /** The 1-based chunk or summary part in work, or null. */
+    step?: number | null;
+    /** The count of chunks or summary parts, or null. */
+    steps?: number | null;
+    /** The start of the chunk text in work, or null. */
+    detail?: string | null;
   } | null;
   segment_counts: { total: number; failed: number };
   /** `systemSamples / micSamples` from `sync.json` when it is outside

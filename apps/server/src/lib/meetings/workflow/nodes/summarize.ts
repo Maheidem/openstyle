@@ -440,6 +440,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       const partials: MeetingSummary[] = [];
       for (const [i, chunk] of chunks.entries()) {
         const key = `map:${i}`;
+        ctx.progress.summaryPart({ n: i + 1, of: chunks.length });
         const done = settle(
           await step(key, () =>
             routeUnit<string>({
@@ -457,6 +458,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
         if (!done.ok) return done;
         partials.push(...(done.partials ?? []));
       }
+      ctx.progress.summaryPart("combine");
       let current = partials;
       for (let level = 1; ; level++) {
         const groups = groupPartials(current);

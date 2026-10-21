@@ -901,6 +901,16 @@
     "enhance": "強化",
     "reEnhance": "再強化",
     "enhancing": "強化中…",
+    "progress": {
+      "preparing": "準備中…",
+      "reading": "文字起こしを読み込み中…",
+      "readingChunk": "チャンク {{n}} / {{total}} を読み込み中…",
+      "speakers": "話者を特定中…",
+      "summarizingPart": "パート {{n}} / {{total}} を要約中…",
+      "combining": "要約を統合中…",
+      "saving": "保存中…",
+      "tags": "タグを提案中…"
+    },
     "enhanceResult": "{{n}}個のセグメントを修正しました。",
     "enhanceNoneCorrected": "修正が必要なセグメントはありませんでした。",
     "enhanceAllDropped": "Enhance は {{n}} 件の変更を提案しましたが、安全チェックを通過したものはありませんでした。",

@@ -901,6 +901,16 @@
     "enhance": "Mejorar",
     "reEnhance": "Volver a mejorar",
     "enhancing": "Mejorando…",
+    "progress": {
+      "preparing": "Preparando…",
+      "reading": "Leyendo la transcripción…",
+      "readingChunk": "Leyendo el fragmento {{n}} de {{total}}…",
+      "speakers": "Buscando a los hablantes…",
+      "summarizingPart": "Resumiendo la parte {{n}} de {{total}}…",
+      "combining": "Combinando el resumen…",
+      "saving": "Guardando…",
+      "tags": "Sugiriendo etiquetas…"
+    },
     "enhanceResult": "Se corrigieron {{n}} segmentos.",
     "enhanceNoneCorrected": "Ningún segmento necesitó corrección.",
     "enhanceAllDropped": "Enhance sugirió {{n}} cambios, pero ninguno pasó las comprobaciones de seguridad.",

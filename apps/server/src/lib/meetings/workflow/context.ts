@@ -18,7 +18,7 @@ import {
   type RunContextRegistry,
 } from "../../llm/workflow/run-context-registry.js";
 import { loadMergedTranscript } from "../transcript-io.js";
-import type { FailureKind, NodeId } from "./types.js";
+import type { FailureKind, NodeId, RunStage } from "./types.js";
 
 // The injection seams of the workflow (specs/meeting-enhance-agentic.md 3.4.2).
 // Every effect that a test must replace sits in `WorkflowDeps`. Production
@@ -64,10 +64,21 @@ export interface RunContext extends UnitContext {
   stopRun(kind: FailureKind): void;
   /** A call whose record write failed (7.7). */
   recordLost(): void;
+  /**
+   * The LLM call counters (`addTotal`, `callEnded`) feed traces and tests.
+   * The job blob shows phases and work steps instead (3.4.4).
+   */
   progress: {
     addTotal(calls: number): void;
     callEnded(outcome: "ok" | "failed"): void;
     onQueued(info: { waitedMs: number; ahead: number }): void;
+    /** `prepare` calls it once. It fixes the step total of the job blob. */
+    setPlan(chunks: number, stages: readonly RunStage[]): void;
+    /** A chunk starts. `text` is the text of its first segment. */
+    chunkStarted(chunkIndex: number, text: string): void;
+    chunkEnded(chunkIndex: number): void;
+    /** `summarize` calls it before each map part and before the reduce. */
+    summaryPart(part: { n: number; of: number } | "combine"): void;
   };
   /** `prepare` calls this once; the runner stores it. */
   setInputHash(hash: string): void;

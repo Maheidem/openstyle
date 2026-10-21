@@ -72,6 +72,11 @@ describe("locale files", () => {
       key.startsWith("meetings.tags."),
     ),
     "speaker-attendee-picker": ["meetings.speakerNamePickHint"],
+    // The phase labels of the Enhance and Summarize progress card. It is a
+    // primary surface, so every locale carries them.
+    "workflow-progress": Object.keys(en).filter((key) =>
+      key.startsWith("meetings.progress."),
+    ),
     // The built-in search model group on the Models page (#233).
     "search-model": Object.keys(en).filter((key) =>
       key.startsWith("models.searchModel."),

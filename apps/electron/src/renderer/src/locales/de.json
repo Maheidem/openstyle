@@ -901,6 +901,16 @@
     "enhance": "Verbessern",
     "reEnhance": "Erneut verbessern",
     "enhancing": "Wird verbessert…",
+    "progress": {
+      "preparing": "Wird vorbereitet…",
+      "reading": "Transkript wird gelesen…",
+      "readingChunk": "Lese Abschnitt {{n}} von {{total}}…",
+      "speakers": "Sprecher werden erkannt…",
+      "summarizingPart": "Fasse Teil {{n}} von {{total}} zusammen…",
+      "combining": "Zusammenfassung wird kombiniert…",
+      "saving": "Wird gespeichert…",
+      "tags": "Tags werden vorgeschlagen…"
+    },
     "enhanceResult": "{{n}} Segmente korrigiert.",
     "enhanceNoneCorrected": "Keine Segmente mussten korrigiert werden.",
     "enhanceAllDropped": "Enhance hat {{n}} Änderungen vorgeschlagen, aber keine hat die Sicherheitsprüfungen bestanden.",
