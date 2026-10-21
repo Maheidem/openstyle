@@ -30,11 +30,12 @@ export function primaryActionKey(state: {
 }
 
 /**
- * How many tag chips fit on one line. `widths` are the chip widths in
+ * How many tag chips fit on one line. `widths` are the full chip widths in
  * order, `gap` is the space between items, `available` is the width of the
- * line, and `reserve` is the width that the "+N" chip needs. The line shows
- * at least `min` chips (when the meeting has that many), also when they do
- * not fit: those chips then truncate.
+ * line, and `reserve` is the width that the "+N" chip needs. When fewer than
+ * `min` chips fit at full width, the line can still show up to `min` chips,
+ * but only when each chip keeps at least `minChip` px (about 6 characters).
+ * A tag never shrinks to 1 or 2 letters: then fewer chips show.
  */
 export function fitTagCount(
   widths: readonly number[],
@@ -42,16 +43,21 @@ export function fitTagCount(
   available: number,
   reserve: number,
   min = 3,
+  minChip = 56,
 ): number {
-  let used = 0;
+  const need = (k: number, width: (w: number) => number): number =>
+    widths.slice(0, k).reduce((sum, w) => sum + width(w), 0) +
+    gap * Math.max(k - 1, 0) +
+    (k < widths.length ? reserve : 0);
   let count = 0;
-  for (let i = 0; i < widths.length; i++) {
-    const next = used + (i > 0 ? gap : 0) + widths[i];
-    // The last chip needs no room for "+N".
-    const room = i === widths.length - 1 ? available : available - reserve;
-    if (next > room) break;
-    used = next;
-    count = i + 1;
+  for (let k = widths.length; k > 0; k--) {
+    if (need(k, (w) => w) <= available) {
+      count = k;
+      break;
+    }
   }
-  return Math.max(count, Math.min(min, widths.length));
+  for (let k = Math.min(min, widths.length); k > count; k--) {
+    if (need(k, (w) => Math.min(w, minChip)) <= available) return k;
+  }
+  return count;
 }

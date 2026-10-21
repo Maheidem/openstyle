@@ -42,14 +42,20 @@ describe("fitTagCount", () => {
   });
 
   it("keeps room for the +N chip when tags are hidden", () => {
-    // 4 chips need 212 px. Without the reserve, 3 fit in 190 px.
+    // 4 chips and +N need 242 px. 3 chips and +N need 188 px.
     expect(fitTagCount([50, 50, 50, 50, 50], 4, 250, 30, 0)).toBe(4);
     expect(fitTagCount([50, 50, 50, 50, 50], 4, 240, 30, 0)).toBe(3);
   });
 
-  it("shows at least 3 tags, also when they do not fit", () => {
-    expect(fitTagCount([80, 80, 80, 80], 4, 100, 30)).toBe(3);
-    expect(fitTagCount([80, 80], 4, 50, 30)).toBe(2);
+  it("shows 3 tags when each keeps a readable width", () => {
+    // Full width: only 2 fit. At 56 px each, 3 chips and +N need 206 px.
+    expect(fitTagCount([90, 90, 90, 90], 4, 210, 30)).toBe(3);
+  });
+
+  it("shows fewer tags than 3 when they would get too narrow", () => {
+    expect(fitTagCount([90, 90, 90, 90], 4, 150, 30)).toBe(2);
+    expect(fitTagCount([90, 90, 90, 90], 4, 120, 30)).toBe(1);
+    expect(fitTagCount([90, 90, 90, 90], 4, 80, 30)).toBe(0);
     expect(fitTagCount([], 4, 100, 30)).toBe(0);
   });
 });

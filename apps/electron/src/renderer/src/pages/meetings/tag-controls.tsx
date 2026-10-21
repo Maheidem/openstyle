@@ -170,6 +170,8 @@ export function MeetingTagChips({
 
 /** The gap between the items of the tag line, in px (`gap-1`). */
 const TAG_GAP = 4;
+/** The narrowest width of a chip, in px: about 6 characters. */
+const MIN_CHIP_WIDTH = 56;
 /** The width that the "+N" chip needs, in px. */
 const MORE_CHIP_WIDTH = 34;
 /** The width of the "+" button and its gap, in px (`icon-xs`). */
@@ -198,6 +200,7 @@ export function MeetingTagLine({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [visible, setVisible] = useState(tags.length);
+  const [widths, setWidths] = useState<number[]>([]);
   const lineRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
 
@@ -211,12 +214,15 @@ export function MeetingTagLine({
       const widths = [...measure.children].map(
         (chip) => (chip as HTMLElement).offsetWidth,
       );
+      setWidths(widths);
       setVisible(
         fitTagCount(
           widths,
           TAG_GAP,
           line.clientWidth - ADD_BUTTON_WIDTH * (hasTrailing ? 2 : 1),
           MORE_CHIP_WIDTH + TAG_GAP,
+          3,
+          MIN_CHIP_WIDTH,
         ),
       );
     };
@@ -251,8 +257,15 @@ export function MeetingTagLine({
             aria-label={t("meetings.tags.label")}
             data-testid="meetings-tag-line"
           >
-            {shown.map((name) => (
-              <li key={name} className={cn(chipClass, "min-w-0 shrink")}>
+            {shown.map((name, i) => (
+              <li
+                key={name}
+                className={cn(chipClass, "shrink")}
+                // A chip shrinks, but never below about 6 characters.
+                style={{
+                  minWidth: Math.min(widths[i] ?? 0, MIN_CHIP_WIDTH),
+                }}
+              >
                 <span className="truncate">{name}</span>
               </li>
             ))}

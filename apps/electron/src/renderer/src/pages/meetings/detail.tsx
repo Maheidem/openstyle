@@ -683,8 +683,10 @@ export function MeetingDetailView({
           <EditableTitle id={id} title={meeting.title} onRenamed={invalidate} />
         </div>
       </div>
-      {/* One line: the folder and calendar chips truncate first. */}
-      <div className="mb-2 flex min-w-0 items-center gap-1.5">
+      {/* The folder and calendar chips truncate first, down to a readable
+          minimum (their flex basis). When the row is narrower than that, it
+          wraps to a second line. Chips never overlap. */}
+      <div className="mb-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
         <span className="text-muted-foreground mr-1 shrink-0 whitespace-nowrap text-[11px]">
           {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
           {formatClockDuration(meeting.duration_ms)}

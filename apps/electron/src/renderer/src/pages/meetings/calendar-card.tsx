@@ -182,13 +182,13 @@ export function CalendarChip({
         <Button
           variant="outline"
           size="xs"
-          className="min-w-0 shrink-[3]"
+          className="min-w-0 max-w-fit shrink grow basis-56 overflow-hidden"
           data-testid="calendar-card"
           title={fullText}
           aria-label={fullText}
         >
           <CalendarDays data-icon="inline-start" />
-          <span className="min-w-0 truncate">{title}</span>
+          <span className="min-w-8 truncate">{title}</span>
           <span className="text-muted-foreground shrink-0">· {range}</span>
           {attendees > 0 && (
             <span className="text-muted-foreground inline-flex shrink-0 items-center gap-0.5">
