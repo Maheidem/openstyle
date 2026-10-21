@@ -13,7 +13,7 @@ The scripts are in `scripts/meeting-v2/`. They came from `specs/meeting-transcri
 
 1. The real folder `~/Library/Application Support/Openstyle/meetings` and the real DB are read only. Read the DB only with `sqlite3 -readonly ... ".backup ..."`.
 2. Never print, log, commit or report transcript text or audio. Report counts, durations, hashes and ids only.
-3. Copy only these rows into the scratch DB: vocabulary, the `languages` setting, the own server rows, and the default voice and LLM model rows. Never copy API keys. Do not use a cloud model. A cloud model would send the meeting text off the Mac.
+3. Copy only these rows into the scratch DB: vocabulary, the `languages` setting, and the default LLM row when it is a built-in MLX model. The default voice row is always the built-in MLX ASR model. Never copy API keys or own-server rows. Do not use a cloud model. A cloud model would send the meeting text off the Mac.
 4. `DELETE /api/meetings/<id>` removes the meeting's `audio_dir` folder. Before any DELETE test, run `sqlite3 "$DB" "select audio_dir from meetings"` and check that every path starts with `/tmp/`. If one does not, stop.
 5. A screenshot of a meeting page shows the transcript. Never take a screenshot of a real meeting. For UI proof screenshots, use a fictional meeting (seed it as `scripts/site-captures/seed-data.mjs` does) or crop to the control you prove. On 2026-10-06 a pi child saved 3 screenshots with real meeting text; the coordinator deleted them.
 6. Leave `OPENSTYLE_LOG_DIR` unset, so the request trace (which has text) stays off the disk.
@@ -30,7 +30,7 @@ Pick them by length only. Do not read their text.
 ## Setup traps (proven 2026-10-19, main `f51f50ed`)
 
 1. After `git pull`, run `pnpm install --frozen-lockfile` before `setup-scratch.sh`. Without it, the migration boot fails with `ERR_MODULE_NOT_FOUND: Cannot find package '@opentelemetry/api'` (WP8 added it in `apps/server/package.json`). The boot also needs a built server (`pnpm turbo build --filter=@openstyle/server`).
-2. `seed-scratch-db.mjs` copies the owner's own-server `Qwen3-ASR` voice row as the scratch default (it prints `voice row: ...`). That row transcribes through `127.0.0.1:8123`, which rule 7 forbids. `pnpm meeting:eval` replaces it with the built-in row `local-mlx/qwen3-1.7b-8bit` (Qwen3 Pro) and reads it back, so use `pnpm meeting:eval` for every transcription. Do not loosen the guard: `setup-scratch.sh` still fails when a default model is not provider `server`.
+2. `seed-scratch-db.mjs` seeds the built-in voice row `local-mlx/qwen3-1.7b-8bit` (Qwen3 Pro) as the scratch default (it prints `voice row: ...`). The LLM row is the owner's default when it is provider `local-mlx-llm`, else the built-in `gemma-4-e2b-qat-4bit` (`llm row: ...`). No own-server row is copied. Do not loosen the guard: `setup-scratch.sh` fails unless the default providers are exactly `local-mlx` and `local-mlx-llm`, the voice row is Qwen3 Pro, and `own_servers` is empty. `run-baseline.mjs` does not download the ASR model: use the HF cache of `pnpm meeting:eval` (`/tmp/meeting-eval/hf`), which downloads it.
 3. A stopped server can leave no `-wal`/`-shm` files. Then `sqlite3 -readonly <db> ".backup ..."` fails with `unable to open database file`. Open the file as immutable: `sqlite3 -readonly "file:<db>?immutable=1" ".backup '<out>'"`. Use this only on a DB that no process writes.
 
 ## Commands
@@ -116,19 +116,19 @@ Flags:
 - `--compare <baseline>`: print the delta table (per model, meeting and stage: better / worse / same within the noise band) and write `compare.md` in the out folder. Exit 3 on a worse metric, a missing metric or a new hard fail.
 - `--rescore <out>`: run the checks and the gold scores again on `runs/` and `arms/` of a kept run. It writes `results-rescore.md` and `results-rescore.json` and self-checks them. Use it after a change to `checks.mts` or `score.mts`, or after a gold edit.
 
-Preconditions (the tool checks them and stops): a fresh server build, the dev worker `dist/mlx_asr_worker/mlx_asr_worker`, and the diarizer files `apps/electron/resources/bin/darwin-arm64/fluidaudio-diarize` and `apps/electron/resources/models/speaker-diarization`. A new worktree has no diarizer files (gitignored). Without them the server skips diarization and VAD with no error, and the speaker step gets no labels (found 2026-10-20). Copy only those two paths from the main checkout, or run `compile:native`.
+Preconditions (the tool checks them and stops): a fresh server build, the dev worker `dist/mlx_asr_worker/mlx_asr_worker`, and the diarizer files `apps/electron/resources/bin/darwin-arm64/fluidaudio-diarize` and `apps/electron/resources/models/speaker-diarization`. A new worktree has no diarizer files (gitignored). Without them the server skips diarization and VAD with no error, and the speaker step gets no labels (found 2026-10-20). Copy only those two paths from the main checkout, or run `compile:native`. A new worktree has no worker build either. `OPENSTYLE_MLX_LLM_WORKER=<path>` selects another worker (the tools pass it as the ASR and the LLM worker). The tools refuse a worker whose `--help` has no `--llm`: on 2026-10-21 the main checkout's `dist/` worker was a stale build, and every Enhance chunk failed with reason `internal`. A proven choice without a build: copy the shipped runtime out (read only) with `cp -R ~/.cache/freestyle/mlx-asr/runtime/darwin-arm64/mlx_asr_worker /tmp/meeting-eval/worker-<version>/` and point the variable at `.../mlx_asr_worker/mlx_asr_worker`. Say in the report which worker ran (the ASR hash holds its sha).
 
 What the tool does:
-1. `setup-scratch.sh` copies the meetings into `/tmp/meeting-eval/asr`. An isolated server checks the model downloads and waits for the forced aligner (the server starts its 1.2 GB download at boot). The tool sets the scratch default voice row to `local-mlx/qwen3-1.7b-8bit` and reads it back. When the ASR config hash (ASR model, voice row, vocabulary, languages, audio sizes, ASR server code, worker, diarizer) equals the cached hash, it uses the cached `transcribed.db`. Else it runs `run-baseline.mjs --run R0d` under the GPU lock.
-2. For each model: an isolated server sets the default LLM row on a copy of `transcribed.db` (read back after the server stops).
-3. For each model, under ONE GPU lock (queue line while it waits; it never removes the lock of another owner): `run-enhance.mjs --arm new --summarize --server-home /tmp/meeting-eval/home` per meeting. It samples the peak RSS of the LLM worker.
+1. `setup-scratch.sh` copies the meetings into a private scratch profile `/tmp/meeting-eval/asr/work/<pid>` (only this process writes it; it is deleted after the transcription). An isolated server checks the model downloads and waits for the forced aligner (the server starts its 1.2 GB download at boot). The tool sets the scratch default voice row to `local-mlx/qwen3-1.7b-8bit` and reads it back. Each meeting has an ASR input hash (voice row, vocabulary, languages, its audio sizes, and the contents of the ASR server code, `schema.ts`, the worker and the diarizer, with repo-relative paths, so every worktree gets the same hash). A meeting whose hash is in the shared cache `/tmp/meeting-eval/asr/cache/<id>.<hash>.db` comes from there; a subset of meetings reuses the cache too. The others run through `run-baseline.mjs --run R0d` under the GPU lock, and the tool stores each one in the cache under the lock (temp file, then rename; nothing in the cache is deleted). The run DB `arms/transcribed.db` joins the meetings. A gold key records the per-meeting hash (`results.json` `meetings[].asrHash`).
+2. For each model: an isolated server sets the default LLM row on a copy of the run DB (read back after the server stops).
+3. For each model, under ONE GPU lock (the tools in `eval/` take it in queue order, `gpu-queue.mts`: they append their line to `/tmp/openstyle-gpu.queue` first and take the lock only when it is free AND their line is the first live line; a line older than 2 h, or seen first for 2 h when it has no time, is skipped but never deleted; their own line goes at lock, exit and signal; they never remove the lock of another owner): `run-enhance.mjs --arm new --summarize --server-home /tmp/meeting-eval/home` per meeting. It samples the peak RSS of the LLM worker.
 4. Hard-fail checks per model and meeting (count + segment keys `source:idx@start_ms`, never text): segments (lost, added, moved; raw text changed), numbers, names (removed, lowercased or replaced; a change of case, spacing or punctuation, a spelling fix or a fix to a word of the meeting or the vocabulary passes), negations, labels, chunks (failed; last attempt finish length), summary (check-summary; owner/due placeholder), speakers (a suggestion that repeats a label such as "Them 1", or a kind-name suggestion with a word that the transcript, title, user context and attendee names do not hold; the same support texts as the app; a role gets only the label rule).
 5. With a gold key: the scorecard (`score.mts`) per model and meeting. See "Gold scorecard" below.
 6. `results.md` (the Scorecard section first, one table per meeting, drops by reason, hard-fail keys, one summary table per model, the floor line) and `results.json`. The self-check re-reads both files, recomputes every check and every scorecard from the run databases, and exits 1 on a mismatch. Then `--compare` and `--save-baseline` run (never on results that failed the self-check).
 
 Outputs in `<out>`: `results.md`, `results.json`, `compare.md` (numbers, keys and gold ids only), and with `--keep`: `pack/<model>-<id8>.compare.md` (RAW vs MODEL, compare-speakers format with 3 "around" words), `pack/<model>-<id8>.summary.md`, `pack/raw-<id8>.json`, `runs/<model>/<id8>/` (test.db, dump.json, metrics, server.log), `arms/`.
 
-Privacy: `pack/`, `runs/`, `arms/` and `/tmp/meeting-eval/asr` hold real meeting text and audio. The console prints paths and counts only, and the cleanup command. `OPENSTYLE_LOG_DIR` and the tracing variables are removed from every server, so no MLflow trace leaves the Mac. Delete the private folders when the judging ends.
+Privacy: `pack/`, `runs/`, `arms/` and `/tmp/meeting-eval/asr` (the cache and the scratch profiles) hold real meeting text and audio. The console prints paths and counts only, and the cleanup command. `OPENSTYLE_LOG_DIR` and the tracing variables are removed from every server, so no MLflow trace leaves the Mac. Delete the private folders when the judging ends.
 
 ### Gold key v2 (private, never commit)
 
@@ -139,6 +139,29 @@ One file per meeting: `~/.openstyle-eval/gold/<id8>.json`. The folder must have 
 - `summary.decisions[]` and `summary.actionItems[]` `{id, keywords[], owner, due}`; `summary.mustNotClaim[]` `{id, keywords[]}` (a fact that is false for this meeting).
 - `tags.expected[]` `{name, synonyms[]}`; `speakers` `{label: name or null}`.
 - Ids match `[A-Za-z0-9_.-]{1,40}`: results and baselines show them, so an id never holds meeting text.
+
+### Building a gold key (gold-draft, gold-clips, gold-merge)
+
+Claude cannot listen to audio. So a gold key comes from two ASR engines, a Claude pass that reads the context, and the owner, who checks by ear the spans that the context does not settle.
+
+```bash
+# 1. Draft (GPU lock; the two transcriptions are cached by their input hash)
+pnpm meeting:eval:gold-draft --meeting <id8> [--engine-b <hf repo | catalog id>] [--port 4797] [--hf-cache /tmp/meeting-eval/hf]
+# 2. Clips of the spans the Claude pass cannot settle, and the review page
+pnpm meeting:eval:gold-clips --meeting <id8> --spans <file>
+# 3. The owner opens /tmp/meeting-eval/clips/<id8>/review.html, listens, types, presses Save
+pnpm meeting:eval:gold-merge --meeting <id8> --answers <answers.json> [--gold-dir <dir>]
+```
+
+gold-draft:
+1. Engine A and Enhance: it runs `pnpm meeting:eval --models gemma-4-e4b-qat-4bit --meetings <id8> --keep` (the built-in ASR model with its cache, then Enhance and Summarize with the built-in Gemma 4 E4B). Never an oMLX model.
+2. Engine B: Whisper large-v3-turbo (`mlx-community/whisper-large-v3-turbo`) through the app's custom MLX model route, in a private scratch profile (`/tmp/meeting-eval/asr/work/<pid>`), with the same per-meeting cache as engine A (its hash holds the model and its revision). The add route starts the download into the isolated HF cache. A catalog id of `apps/server/src/lib/mlx-asr/constants.ts` (for example `parakeet-tdt-0.6b-v3`) selects a built-in model instead.
+3. Per channel, `align.mts` aligns A and B: by time blocks (the union of the segments of both engines, gaps under 1 s joined), then by words (`words()` normal form). A diff span is a run of changed words; runs with fewer than 2 equal words between them join.
+4. It writes `~/.openstyle-eval/drafts/<id8>.json` (folder mode 0700, file 0600; never the repo or `/tmp`): `channels.<ch>.turns[]` `{startMs, endMs, speaker, a, b, enhanced, spans}`, `channels.<ch>.stats`, `diffSpans[]` `{id, channel, startMs, endMs, a, b}`, the E4B `summary`, `summaryMarkdown`, `tags`, `speakers` (suggestions) and `asrHash` (engine A, the hash for the gold). It reads the file back, prints counts only, and deletes the eval out folder `/tmp/meeting-eval/gold-draft/<id8>`.
+
+gold-clips takes a spans file: an array, or an object with `spans` or `diffSpans` (a draft works as it is). Each span is `{id, channel, startMs, endMs, a?, b?, gold?}`. Set `gold` to the text that the gold holds for the span: an answer replaces exactly those words (without `gold`, the `a` text). It copies `mic.wav` / `system.wav` out of the real meeting folder (read only) and cuts `<n>.wav` per span with 0.5 s on each side (16 kHz mono PCM16) into `/tmp/meeting-eval/clips/<id8>/` (mode 0700). It checks each clip size and never plays audio. The page `review.html` has one row per span: an audio player, the engine texts, "Use A" / "Use B", a text box and "No speech". "Save" downloads `answers.json` with the rows that have an answer.
+
+gold-merge (`mergeAnswers` in `gold.mts`): each answer's `from` words must occur exactly once in the turns of its channel near the answer time (the gold time tolerance). The turn is split: the text before, the answer as a new turn with `verified: true`, the text after. An empty `from` adds a new verified turn; an empty answer means no speech. One bad answer refuses the whole merge and names the answer id. On success goldVersion goes up by 1 and verifiedSpans is the number of verified turns; the file is read back and validated.
 
 ### Gold scorecard (score.mts)
 
@@ -173,14 +196,14 @@ scripts, which is what caused the 2026-10-07 false findings):
 
 ```bash
 # 1. One proof run per meeting + the stored dumps.
-#    DO NOT RUN run-proof.sh now: it still checks the health of
-#    127.0.0.1:8123 and transcribes through the copied own-server voice
-#    row (privacy rule 7). Use pnpm meeting:eval until it moves to the
-#    built-in MLX ASR model.
+#    run-proof.sh transcribes with the built-in MLX ASR model only: it
+#    refuses a scratch DB whose default voice row is not
+#    local-mlx/qwen3-1.7b-8bit, and an HF cache without that model.
+#    Take the GPU lock first (it does not take it).
 OPENSTYLE_MLX_ASR_WORKER=$PWD/dist/mlx_asr_worker/mlx_asr_worker \
   ./scripts/meeting-v2/run-proof.sh <RUN> <meetingId> [meetingId ...]
 # optional env: SCRATCH (default /tmp/meeting-v2), HF_CACHE (default
-# /tmp/meeting-p4b-hf/hf, passed to run-baseline.mjs --hf-cache).
+# /tmp/meeting-eval/hf, passed to run-baseline.mjs --hf-cache).
 # writes /tmp/meeting-v2/compare/<run-lowercase>-<id8>.json and turns-<id8>.json
 
 # 2. Compare two runs (from the repo root). The run names are CLI

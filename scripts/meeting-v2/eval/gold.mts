@@ -414,3 +414,176 @@ export function goldInfo(golds: Map<string, Gold>): GoldInfo | null {
     ),
   };
 }
+
+// --- Owner answers and the merge (gold-clips, gold-merge) ------------------------------
+
+/**
+ * One answer of the review page (gold-clips review.html): the owner listened
+ * to the clip of a span and typed the words. `from` is the text that the
+ * gold holds for the span now (the words that the answer replaces). An empty
+ * `text` means "no speech here".
+ */
+export interface GoldAnswer {
+  id: string;
+  channel: Channel;
+  startMs: number;
+  endMs: number;
+  from: string;
+  text: string;
+}
+
+/** Parse and validate an answers.json file of the review page. */
+export function parseAnswers(json: string, id8: string): GoldAnswer[] {
+  let v: unknown;
+  try {
+    v = JSON.parse(json);
+  } catch {
+    fail(`${id8} answers`, "the file is not valid JSON");
+  }
+  if (!isObj(v)) fail(`${id8} answers`, "the file must hold an object");
+  if (v.format !== "openstyle-gold-answers")
+    fail(`${id8} answers`, 'format must be "openstyle-gold-answers"');
+  if (v.meeting !== id8)
+    fail(`${id8} answers`, "meeting must equal the --meeting id8");
+  const list = arrayAt(v, "answers", `${id8} answers`).map(
+    (x, i): GoldAnswer => {
+      const w = `${id8} answers[${i}]`;
+      if (!isObj(x)) fail(w, "must be an object");
+      if (typeof x.id !== "string" || !ID_RE.test(x.id))
+        fail(w, "id must match [A-Za-z0-9_.-]{1,40}");
+      if (!isChannel(x.channel)) fail(w, "channel must be mic or system");
+      if (!isMs(x.startMs) || !isMs(x.endMs) || x.endMs < x.startMs)
+        fail(w, "needs integer startMs <= endMs");
+      if (typeof x.from !== "string") fail(w, "from must be a string");
+      if (typeof x.text !== "string") fail(w, "text must be a string");
+      return {
+        id: x.id,
+        channel: x.channel,
+        startMs: x.startMs,
+        endMs: x.endMs,
+        from: x.from,
+        text: x.text.trim(),
+      };
+    },
+  );
+  uniqueIds(list, `${id8} answers`);
+  return list;
+}
+
+/** A word of a turn text with its character range (same split rule as words()). */
+function wordRanges(text: string) {
+  return [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({
+    w: m[0].toLowerCase(),
+    start: m.index,
+    end: m.index + m[0].length,
+  }));
+}
+
+/**
+ * Fold the owner's answers into a gold file (the raw JSON object, so other
+ * fields stay as they are). For each answer, the words of `from` must occur
+ * exactly once in the consecutive turns of its channel that overlap the
+ * answer time (plus the gold time tolerance). The turns that hold them are
+ * split: the text before keeps its turn, the answer becomes a new turn with
+ * `verified: true` and the answer time, and the text after keeps the rest.
+ * An answer with an empty `from` (engine A had no words there) becomes a new
+ * verified turn. The merge is all or nothing: any error leaves the gold as
+ * it was. On success goldVersion goes up by 1 and verifiedSpans is the
+ * number of verified turns. Errors name answer ids, never text.
+ */
+export function mergeAnswers(
+  raw: Record<string, unknown>,
+  answers: GoldAnswer[],
+): { gold: Record<string, unknown>; merged: number; errors: string[] } {
+  const id8 = String(raw.meeting ?? "");
+  const gold = parseGold(JSON.stringify(raw), id8);
+  if (!gold.transcript)
+    return { gold: raw, merged: 0, errors: ["the gold has no transcript"] };
+  const tol = gold.timeToleranceMs;
+  const transcript: Record<Channel, GoldTurn[]> = {
+    mic: gold.transcript.mic.map((t) => ({ ...t })),
+    system: gold.transcript.system.map((t) => ({ ...t })),
+  };
+  const errors: string[] = [];
+  const sorted = [...answers].sort(
+    (x, y) => x.channel.localeCompare(y.channel) || x.startMs - y.startMs,
+  );
+  for (const ans of sorted) {
+    const turns = transcript[ans.channel];
+    const want = ans.from.toLowerCase().match(/[\p{L}\p{N}]+/gu) as
+      | string[]
+      | null;
+    const verifiedTurn: GoldTurn = {
+      startMs: ans.startMs,
+      endMs: ans.endMs,
+      text: ans.text,
+      verified: true,
+    };
+    if (!want) {
+      turns.push(verifiedTurn);
+      turns.sort((x, y) => x.startMs - y.startMs || x.endMs - y.endMs);
+      continue;
+    }
+    // The turns near the answer time, as one word list.
+    const near: number[] = [];
+    turns.forEach((t, i) => {
+      if (t.startMs <= ans.endMs + tol && t.endMs >= ans.startMs - tol)
+        near.push(i);
+    });
+    const list = near.flatMap((ti) =>
+      wordRanges((turns[ti] as GoldTurn).text).map((r) => ({ ...r, ti })),
+    );
+    const hits: number[] = [];
+    for (let i = 0; i + want.length <= list.length; i++)
+      if (want.every((w, k) => list[i + k]?.w === w)) hits.push(i);
+    if (hits.length !== 1) {
+      errors.push(
+        `answer ${ans.id}: its "from" words occur ${hits.length} times near ${ans.channel} ${ans.startMs} ms (want 1)`,
+      );
+      continue;
+    }
+    const first = list[hits[0] as number] as (typeof list)[number];
+    const last = list[(hits[0] as number) + want.length - 1] as typeof first;
+    const t0 = turns[first.ti] as GoldTurn;
+    const t1 = turns[last.ti] as GoldTurn;
+    const before = t0.text.slice(0, first.start).trim();
+    const afterText = t1.text.slice(last.end).trim();
+    // Times stay in order (the scorers read a channel in start order):
+    // before <= answer <= after, inside the turns that held the words.
+    const vStart = before ? Math.max(ans.startMs, t0.startMs) : ans.startMs;
+    const vEnd = Math.max(vStart, ans.endMs);
+    const parts: GoldTurn[] = [];
+    if (before)
+      parts.push({
+        startMs: t0.startMs,
+        endMs: vStart,
+        text: before,
+        verified: t0.verified,
+      });
+    parts.push({ ...verifiedTurn, startMs: vStart, endMs: vEnd });
+    if (afterText) {
+      const aStart = Math.max(vStart, Math.min(vEnd, t1.endMs));
+      parts.push({
+        startMs: aStart,
+        endMs: Math.max(aStart, t1.endMs),
+        text: afterText,
+        verified: t1.verified,
+      });
+    }
+    turns.splice(first.ti, last.ti - first.ti + 1, ...parts);
+    turns.sort((x, y) => x.startMs - y.startMs || x.endMs - y.endMs);
+  }
+  if (errors.length > 0) return { gold: raw, merged: 0, errors };
+  const verified = [...transcript.mic, ...transcript.system].filter(
+    (t) => t.verified,
+  ).length;
+  const next = {
+    ...raw,
+    goldVersion: gold.goldVersion + 1,
+    verifiedSpans: verified,
+    transcript,
+  };
+  // The result must pass the same validation as a hand-written file.
+  parseGold(JSON.stringify(next), id8);
+  return { gold: next, merged: answers.length, errors: [] };
+}

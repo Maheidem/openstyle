@@ -10,7 +10,10 @@
     "meeting:check-summary": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/check-summary.mts",
     "meeting:compare-speakers": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare-speakers.mts",
     "meeting:eval": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/eval.mts",
-    "meeting:eval:test": "node --test scripts/meeting-v2/eval/checks.test.mts scripts/meeting-v2/eval/score.test.mts",
+    "meeting:eval:gold-draft": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/gold-draft.mts",
+    "meeting:eval:gold-clips": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/gold-clips.mts",
+    "meeting:eval:gold-merge": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/gold-merge.mts",
+    "meeting:eval:test": "node --test scripts/meeting-v2/eval/checks.test.mts scripts/meeting-v2/eval/score.test.mts scripts/meeting-v2/eval/gold-tools.test.mts scripts/meeting-v2/eval/gpu-queue.test.mts",
     "test": "turbo test",
     "prepare": "is-ci || husky"
   },
