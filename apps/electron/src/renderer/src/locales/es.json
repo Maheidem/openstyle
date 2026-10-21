@@ -1038,8 +1038,10 @@
       "suggestions": "Etiquetas existentes",
       "tooLong": "Una etiqueta puede tener como máximo {{max}} caracteres.",
       "tooMany": "Una reunión puede tener como máximo {{max}} etiquetas.",
-      "saveFailed": "No se guardaron las etiquetas. Inténtalo de nuevo."
-    }
+      "saveFailed": "No se guardaron las etiquetas. Inténtalo de nuevo.",
+      "showAll": "Mostrar todas las etiquetas"
+    },
+    "moreActions": "Más acciones"
   },
   "help": {
     "hotkeys": {

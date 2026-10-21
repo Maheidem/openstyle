@@ -279,7 +279,7 @@ export function MeetingFolderChip({
           variant="outline"
           size="xs"
           className={cn(
-            "mt-2 max-w-full",
+            "min-w-0 max-w-48 shrink",
             !meeting.folder_id && "border-dashed text-muted-foreground",
           )}
           aria-label={t("meetings.folders.moveTo")}

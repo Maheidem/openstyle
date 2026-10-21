@@ -1038,8 +1038,10 @@
       "suggestions": "Étiquettes existantes",
       "tooLong": "Une étiquette peut avoir au plus {{max}} caractères.",
       "tooMany": "Une réunion peut avoir au plus {{max}} étiquettes.",
-      "saveFailed": "Les étiquettes n'ont pas été enregistrées. Réessayez."
-    }
+      "saveFailed": "Les étiquettes n'ont pas été enregistrées. Réessayez.",
+      "showAll": "Afficher toutes les étiquettes"
+    },
+    "moreActions": "Autres actions"
   },
   "help": {
     "hotkeys": {

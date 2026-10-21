@@ -1038,8 +1038,10 @@
       "suggestions": "Vorhandene Tags",
       "tooLong": "Ein Tag darf höchstens {{max}} Zeichen haben.",
       "tooMany": "Ein Meeting darf höchstens {{max}} Tags haben.",
-      "saveFailed": "Die Tags wurden nicht gespeichert. Versuche es erneut."
-    }
+      "saveFailed": "Die Tags wurden nicht gespeichert. Versuche es erneut.",
+      "showAll": "Alle Tags anzeigen"
+    },
+    "moreActions": "Weitere Aktionen"
   },
   "help": {
     "hotkeys": {

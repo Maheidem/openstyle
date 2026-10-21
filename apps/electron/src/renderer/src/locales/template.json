@@ -1356,8 +1356,10 @@
       "suggestions": "Existing tags",
       "tooLong": "A tag can have at most {{max}} characters.",
       "tooMany": "A meeting can have at most {{max}} tags.",
-      "saveFailed": "The tags were not saved. Try again."
-    }
+      "saveFailed": "The tags were not saved. Try again.",
+      "showAll": "Show all tags"
+    },
+    "moreActions": "More actions"
   },
   "help": {
     "hotkeys": {

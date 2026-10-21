@@ -42,7 +42,9 @@ import {
   ChevronLeft,
   CircleSlash,
   Clock,
+  Ellipsis,
   FolderOpen,
+  NotebookPen,
   RefreshCw,
   ScanSearch,
   Sparkles,
@@ -51,10 +53,11 @@ import {
   Users,
   WandSparkles,
 } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
-import { CalendarCard } from "./calendar-card";
+import { CalendarChip } from "./calendar-card";
 import {
   EditableTitle,
   MeetingContextField,
@@ -62,6 +65,7 @@ import {
 } from "./fields";
 import { MeetingFolderChip } from "./folder-controls";
 import type { MeetingFolder } from "./folders-model";
+import { type HeaderActionKey, primaryActionKey } from "./header-model";
 import { type InspectorTarget, LlmInspectorPanel } from "./llm-inspector";
 import { isAdvancedMode } from "./llm-inspector-model";
 import {
@@ -82,9 +86,15 @@ import {
   segmentSpeakerLabel,
 } from "./shared";
 import { attendeeNameOptions, SpeakersDialog } from "./speakers";
-import { MeetingTagChips } from "./tag-controls";
+import { MeetingTagLine } from "./tag-controls";
 import { useAllTags, useSaveMeetingTags } from "./tags-data";
 import type { SpeakersResponse, TranscriptSegment } from "./types";
+
+// The classes of the menus of folder-controls, for the "..." menu.
+const menuClass =
+  "bg-popover text-popover-foreground border-border z-50 min-w-56 max-w-72 rounded-lg border p-1 shadow-md";
+const itemClass =
+  "focus:bg-accent flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] outline-none data-disabled:opacity-50 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
 
 export function MeetingDetailView({
   id,
@@ -139,6 +149,10 @@ export function MeetingDetailView({
   // unchanged (omitted from its JSON response) still renders correctly in
   // either mode via `seg.enhancedText ?? seg.text`.
   const [showEnhanced, setShowEnhanced] = useState(true);
+  // The active tab. The sticky tab row reads it (issue #262).
+  const [tab, setTab] = useState("transcript");
+  // The context field is open while it has no text yet.
+  const [contextOpen, setContextOpen] = useState(false);
 
   // T1-1 / UX-03 (specs/lean-audit-2026-09.md §3): cancelling a running
   // transcribe job. `cancelRequested` rides the wind-down window between the
@@ -564,9 +578,96 @@ export function MeetingDetailView({
     })
     .join("\n");
 
+  // The header toolbar (issue #262): every action keeps its label and its
+  // disabled rule. The next step of the meeting is the primary button; the
+  // other actions go in the "..." menu.
+  type HeaderAction = {
+    key: HeaderActionKey;
+    label: string;
+    icon: typeof AudioLines;
+    onClick: () => void;
+    disabled: boolean;
+  };
+  const actions: HeaderAction[] = [
+    {
+      key: "transcribe",
+      label: hasTranscript
+        ? t("meetings.retranscribe")
+        : t("meetings.transcribe"),
+      icon: AudioLines,
+      onClick: () => void transcribe(),
+      disabled: !canTranscribe,
+    },
+  ];
+  if (failedCount > 0 && !transcribing)
+    actions.push({
+      key: "retry",
+      label: t("meetings.retryFailed", { n: failedCount }),
+      icon: RefreshCw,
+      onClick: () => void retryFailed(),
+      disabled: busy !== null || jobHoldsSlot,
+    });
+  if (hasTranscript)
+    actions.push(
+      {
+        key: "enhance",
+        label:
+          busy === "enhance" || enhancingJob
+            ? t("meetings.enhancing")
+            : hasEnhanced
+              ? t("meetings.reEnhance")
+              : t("meetings.enhance"),
+        icon: WandSparkles,
+        onClick: () => void enhance(),
+        disabled: !hasLlm || busy !== null || jobHoldsSlot,
+      },
+      {
+        key: "identify",
+        label:
+          busy === "diarize"
+            ? t("meetings.identifyingSpeakers")
+            : t("meetings.identifySpeakers"),
+        icon: Users,
+        onClick: handleIdentifySpeakersClick,
+        disabled: busy !== null || jobHoldsSlot,
+      },
+      {
+        key: "speakers",
+        label: t("meetings.speakers"),
+        icon: UserCog,
+        onClick: () => setSpeakersOpen(true),
+        disabled: false,
+      },
+    );
+  actions.push({
+    key: "summarize",
+    label:
+      busy === "summarize" || summarizing
+        ? t("meetings.summarizing")
+        : meeting.summary
+          ? t("meetings.resummarize")
+          : t("meetings.summarize"),
+    icon: Sparkles,
+    onClick: () => void summarize(),
+    disabled:
+      !hasLlm || !hasTranscript || busy !== null || summarizing || jobHoldsSlot,
+  });
+  const primaryKey = primaryActionKey({
+    failedCount,
+    transcribing,
+    hasTranscript,
+    hasEnhanced,
+    hasSummary: Boolean(meeting.summary),
+  });
+  const primary = actions.find((a) => a.key === primaryKey);
+  const menuActions = actions.filter((a) => a.key !== primaryKey);
+
   return (
     <div>
-      <div className="mb-5 flex items-center gap-2.5">
+      {/* The compact header (issue #262): one title row, one meta row, one
+          tag and context row, and one action toolbar. The tabs stick to the
+          top of the detail column; the header scrolls away. */}
+      <div className="mb-3 flex items-center gap-2.5">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -580,32 +681,25 @@ export function MeetingDetailView({
         </Button>
         <div className="min-w-0 flex-1">
           <EditableTitle id={id} title={meeting.title} onRenamed={invalidate} />
-          <div className="text-muted-foreground text-[11px]">
-            {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
-            {formatClockDuration(meeting.duration_ms)}
-          </div>
-          <MeetingFolderChip
-            meeting={meeting}
-            folders={folders}
-            onMove={(folderId) => onMove(meeting, folderId)}
-          />
-          <MeetingTagChips
-            tags={meeting.tags}
-            allTags={allTags ?? []}
-            onSave={saveTags}
-          />
-          <MeetingContextField
-            id={id}
-            context={meeting.context}
-            onChanged={invalidate}
-          />
-          <CalendarCard
-            id={id}
-            calendar={meeting.calendar}
-            enabled={calendarEnabled}
-            onChanged={invalidate}
-          />
         </div>
+      </div>
+      {/* One line: the folder and calendar chips truncate first. */}
+      <div className="mb-2 flex min-w-0 items-center gap-1.5">
+        <span className="text-muted-foreground mr-1 shrink-0 whitespace-nowrap text-[11px]">
+          {formatTimestamp(meeting.started_at, i18n.language)} ·{" "}
+          {formatClockDuration(meeting.duration_ms)}
+        </span>
+        <MeetingFolderChip
+          meeting={meeting}
+          folders={folders}
+          onMove={(folderId) => onMove(meeting, folderId)}
+        />
+        <CalendarChip
+          id={id}
+          calendar={meeting.calendar}
+          enabled={calendarEnabled}
+          onChanged={invalidate}
+        />
         <MeetingLanguageChip
           id={id}
           language={meeting.language}
@@ -613,91 +707,84 @@ export function MeetingDetailView({
         />
         <StatusBadge status={meeting.display_status ?? meeting.status} />
       </div>
-
-      {/* Actions */}
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Button
-          variant="ink"
-          size="sm"
-          onClick={() => void transcribe()}
-          disabled={!canTranscribe}
-        >
-          <AudioLines data-icon="inline-start" />
-          {hasTranscript
-            ? t("meetings.retranscribe")
-            : t("meetings.transcribe")}
-        </Button>
-        {hasTranscript && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleIdentifySpeakersClick}
-            // Diarization is a slot-holding job too: while any job runs
-            // (transcribe/summarize/enhance) the re-diarize 409s, so the
-            // button stays off with the rest. "Speakers" (view-only) stays on.
-            disabled={busy !== null || jobHoldsSlot}
-          >
-            <Users data-icon="inline-start" />
-            {busy === "diarize"
-              ? t("meetings.identifyingSpeakers")
-              : t("meetings.identifySpeakers")}
-          </Button>
-        )}
-        {hasTranscript && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSpeakersOpen(true)}
-          >
-            <UserCog data-icon="inline-start" />
-            {t("meetings.speakers")}
-          </Button>
-        )}
-        {hasTranscript && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void enhance()}
-            disabled={!hasLlm || busy !== null || jobHoldsSlot}
-          >
-            <WandSparkles data-icon="inline-start" />
-            {busy === "enhance" || enhancingJob
-              ? t("meetings.enhancing")
-              : hasEnhanced
-                ? t("meetings.reEnhance")
-                : t("meetings.enhance")}
-          </Button>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void summarize()}
-          disabled={
-            !hasLlm ||
-            !hasTranscript ||
-            busy !== null ||
-            summarizing ||
-            jobHoldsSlot
+      <div className="mb-3 flex min-w-0 items-center gap-2">
+        <MeetingTagLine
+          tags={meeting.tags}
+          allTags={allTags ?? []}
+          onSave={saveTags}
+          trailing={
+            !meeting.context && !contextOpen ? (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="text-muted-foreground"
+                onClick={() => setContextOpen(true)}
+                aria-label={t("meetings.contextPlaceholder")}
+                title={t("meetings.contextPlaceholder")}
+              >
+                <NotebookPen />
+              </Button>
+            ) : undefined
           }
-        >
-          <Sparkles data-icon="inline-start" />
-          {busy === "summarize" || summarizing
-            ? t("meetings.summarizing")
-            : meeting.summary
-              ? t("meetings.resummarize")
-              : t("meetings.summarize")}
-        </Button>
-        {failedCount > 0 && !transcribing && (
+        />
+        {(meeting.context || contextOpen) && (
+          <div className="min-w-0 max-w-[45%]">
+            <MeetingContextField
+              id={id}
+              context={meeting.context}
+              onChanged={invalidate}
+              autoEdit={contextOpen}
+              onDone={() => setContextOpen(false)}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Actions: the primary action of the state, the rest in a menu. */}
+      <div className="mb-5 flex items-center gap-2">
+        {primary && (
           <Button
-            variant="outline"
+            variant="ink"
             size="sm"
-            onClick={() => void retryFailed()}
-            disabled={busy !== null || jobHoldsSlot}
+            onClick={primary.onClick}
+            disabled={primary.disabled}
           >
-            <RefreshCw data-icon="inline-start" />
-            {t("meetings.retryFailed", { n: failedCount })}
+            <primary.icon data-icon="inline-start" />
+            {primary.label}
           </Button>
         )}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={t("meetings.moreActions")}
+              title={t("meetings.moreActions")}
+              data-testid="meetings-more-actions"
+            >
+              <Ellipsis />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              className={menuClass}
+              sideOffset={4}
+              align="start"
+            >
+              {menuActions.map((action) => (
+                <DropdownMenu.Item
+                  key={action.key}
+                  className={itemClass}
+                  disabled={action.disabled}
+                  onSelect={action.onClick}
+                >
+                  <action.icon />
+                  {action.label}
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
         <div className="flex-1" />
         {advancedMode && (
           <Button
@@ -965,39 +1052,65 @@ export function MeetingDetailView({
         </InlineNotice>
       )}
 
-      <Tabs defaultValue="transcript">
-        <TabsList>
-          <TabsTrigger value="transcript">
-            {t("meetings.tabTranscript")}
-          </TabsTrigger>
-          <TabsTrigger value="summary">{t("meetings.tabSummary")}</TabsTrigger>
-        </TabsList>
+      <Tabs value={tab} onValueChange={setTab}>
+        {/* The tab row sticks to the top of the detail column, with the
+            Enhanced switch and Copy (issue #262). */}
+        <div className="sticky top-0 z-10 -mx-1 flex items-center gap-3 bg-[var(--glass-window-solid)] px-1 py-2">
+          <TabsList>
+            <TabsTrigger value="transcript">
+              {t("meetings.tabTranscript")}
+            </TabsTrigger>
+            <TabsTrigger value="summary">
+              {t("meetings.tabSummary")}
+            </TabsTrigger>
+          </TabsList>
+          <div className="flex-1" />
+          {tab === "transcript" && transcript && transcript.length > 0 && (
+            <>
+              {hasEnhanced && (
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={showEnhanced}
+                    onCheckedChange={setShowEnhanced}
+                    aria-label={t("meetings.showEnhancedLabel")}
+                  />
+                  <span className="text-muted-foreground text-[11px]">
+                    {showEnhanced
+                      ? t("meetings.showingEnhanced")
+                      : t("meetings.showingRaw")}
+                  </span>
+                </div>
+              )}
+              <CopyButton
+                text={transcriptText}
+                label={t("meetings.copyTranscript")}
+              />
+            </>
+          )}
+          {tab === "summary" && meeting.summary?.markdown && (
+            <>
+              {advancedMode && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInspector({ kind: "summary" })}
+                  data-testid="meetings-summary-inspect"
+                >
+                  <ScanSearch data-icon="inline-start" />
+                  {t("meetings.inspector.inspectSummary")}
+                </Button>
+              )}
+              <CopyButton
+                text={meeting.summary.markdown}
+                label={t("meetings.copySummary")}
+              />
+            </>
+          )}
+        </div>
 
-        <TabsContent value="transcript" className="mt-4">
+        <TabsContent value="transcript" className="mt-2">
           {transcript && transcript.length > 0 ? (
             <>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                {hasEnhanced ? (
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={showEnhanced}
-                      onCheckedChange={setShowEnhanced}
-                      aria-label={t("meetings.showEnhancedLabel")}
-                    />
-                    <span className="text-muted-foreground text-[11px]">
-                      {showEnhanced
-                        ? t("meetings.showingEnhanced")
-                        : t("meetings.showingRaw")}
-                    </span>
-                  </div>
-                ) : (
-                  <div />
-                )}
-                <CopyButton
-                  text={transcriptText}
-                  label={t("meetings.copyTranscript")}
-                />
-              </div>
               {/* Speaker-label column is `max-content`, so it grows to fit
                   the longest label on screen — flag names are arbitrary
                   length now (confirmed names, not just "ME"/"THEM N"), so a
@@ -1102,7 +1215,7 @@ export function MeetingDetailView({
           )}
         </TabsContent>
 
-        <TabsContent value="summary" className="mt-4">
+        <TabsContent value="summary" className="mt-2">
           {meeting.summary?.markdown ? (
             <>
               {meeting.summary.partial && (
@@ -1125,23 +1238,6 @@ export function MeetingDetailView({
                   <span>{t("meetings.summaryStaleNames")}</span>
                 </InlineNotice>
               )}
-              <div className="mb-3 flex justify-end gap-2">
-                {advancedMode && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setInspector({ kind: "summary" })}
-                    data-testid="meetings-summary-inspect"
-                  >
-                    <ScanSearch data-icon="inline-start" />
-                    {t("meetings.inspector.inspectSummary")}
-                  </Button>
-                )}
-                <CopyButton
-                  text={meeting.summary.markdown}
-                  label={t("meetings.copySummary")}
-                />
-              </div>
               <Markdown source={meeting.summary.markdown} />
             </>
           ) : (

@@ -398,9 +398,16 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       await expect(
         dashboardPage.getByRole("button", { name: "Retry 1 failed" }),
       ).toBeEnabled();
+      // Retry failed is the primary button. Transcribe is in the "..."
+      // menu of the header (issue #262).
+      await dashboardPage.getByTestId("meetings-more-actions").click();
       await expect(
-        dashboardPage.getByRole("button", { name: "Transcribe", exact: true }),
+        dashboardPage.getByRole("menuitem", {
+          name: "Transcribe",
+          exact: true,
+        }),
       ).toBeEnabled();
+      await dashboardPage.keyboard.press("Escape");
 
       // Server-side truth: failed with the canonical cancel error, both segments
       // kept (one ok, one failed).
