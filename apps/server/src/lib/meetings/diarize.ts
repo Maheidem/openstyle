@@ -300,6 +300,22 @@ function isShortTurn(d: DiarizerSegment): boolean {
   return (d.endTimeSeconds - d.startTimeSeconds) * 1000 < SHORT_TURN_MS;
 }
 
+/**
+ * A short turn that a label may use. FluidAudio gives a turn with no
+ * clustering votes (no embedding in any window that covers it) to cluster
+ * 0 by a tie-break, with qualityScore 0. Such a turn names no speaker, so
+ * it is used only when the diarizer found one speaker (the tie-break then
+ * has one choice). Measured on 5 meetings: every short turn with
+ * qualityScore 0 was speaker "S1"; a re-embed of the span (FluidAudio
+ * zeroVoteReembed) moved a fictional 0.6 s reply to the wrong speaker.
+ */
+function usableShortTurns(diarSegments: DiarizerSegment[]): DiarizerSegment[] {
+  const oneSpeaker = new Set(diarSegments.map((d) => d.speakerId)).size === 1;
+  return diarSegments.filter(
+    (d) => isShortTurn(d) && (oneSpeaker || (d.qualityScore ?? 0) > 0),
+  );
+}
+
 /** The turns of 1 s or more: the input of the cuts and the aligner split. */
 export function longTurns(diarSegments: DiarizerSegment[]): DiarizerSegment[] {
   return diarSegments.filter((d) => !isShortTurn(d));
@@ -322,8 +338,9 @@ export interface SpeakerWinner {
 /**
  * The diarizer speaker that "wins" one system span. Spec §7 steps 1-4 on
  * the long turns: the largest-overlap turn, else a nearest turn within the
- * 2 s window. Then (issue #259) the largest-overlap short turn. A short
- * turn never wins by distance: it must overlap the span. The short turns
+ * 2 s window. Then (issue #259) the largest-overlap usable short turn
+ * (`usableShortTurns`). A short turn never wins by distance: it must
+ * overlap the span. The short turns
  * come from the same clustering pass as the long turns, so their speaker
  * ids are the same speakers. Null when nothing qualifies. Shared by
  * `assignSpeakerLabels` and the phase 4b align path
@@ -341,7 +358,7 @@ export function speakerWinnerFor(
   if (longWinner) {
     return { speakerId: longWinner.speakerId, fromShortTurn: false };
   }
-  const short = toInternal(diarSegments.filter(isShortTurn));
+  const short = toInternal(usableShortTurns(diarSegments));
   const shortWinner = pickOverlapWinner(span, short);
   return shortWinner
     ? { speakerId: shortWinner.speakerId, fromShortTurn: true }

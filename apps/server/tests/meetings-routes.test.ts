@@ -3734,7 +3734,12 @@ describe("Phase 4b (I4b): forced alignment at speaker cuts (§3.6)", () => {
     // The only long turn starts 20 s after the chunk: the old rule left
     // the row unlabeled. B's short turn overlaps the chunk.
     const run = shortTurnRun([
-      { speakerId: "B", startTimeSeconds: 3, endTimeSeconds: 3.6 },
+      {
+        speakerId: "B",
+        startTimeSeconds: 3,
+        endTimeSeconds: 3.6,
+        qualityScore: 0.8,
+      },
       { speakerId: "A", startTimeSeconds: 30, endTimeSeconds: 40 },
     ]);
     const { labels, stored } = await transcribeAndRead();
