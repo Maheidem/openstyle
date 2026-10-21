@@ -14,6 +14,7 @@ import {
   SUMMARIZE_IS_STUB,
   summaryCeilingMs,
 } from "../src/lib/meetings/workflow/nodes/summarize.js";
+import { FOLDER_CONTEXT_LABEL } from "../src/lib/meetings/workflow/prompts.js";
 import {
   type MeetingSummary,
   MeetingSummarySchema,
@@ -336,7 +337,7 @@ describe("summarize: one call (single)", () => {
 });
 
 describe("summarize: folder context (#230)", () => {
-  it("a filed meeting: every summary prompt has the meeting context, then the Project block. An unfiled one has no block", async () => {
+  it("a filed meeting: every summary prompt has the meeting context, then the folder block. An unfiled one has no block", async () => {
     const db = getDb();
     db.exec("DELETE FROM meeting_folders");
     const now = Date.now();
@@ -356,7 +357,7 @@ describe("summarize: folder context (#230)", () => {
     setBudget(2000);
     const r = await run(filed, [sum()]);
     const context = "Weekly planning call of a made-up product team.";
-    const block = "Project: Orchid Rollout - Launch of a made-up app.";
+    const block = `${FOLDER_CONTEXT_LABEL} Orchid Rollout - Launch of a made-up app.`;
     expect(r.requests.length).toBeGreaterThan(1);
     for (const req of r.requests) {
       expect(req.system).toContain(`${context}\n\n${block}`);
@@ -365,7 +366,7 @@ describe("summarize: folder context (#230)", () => {
     const ru = await run(unfiled, [sum()]);
     for (const req of ru.requests) {
       expect(req.system).toContain(context);
-      expect(req.system).not.toContain("Project:");
+      expect(req.system).not.toContain(FOLDER_CONTEXT_LABEL);
     }
     db.exec("DELETE FROM meetings");
     db.exec("DELETE FROM meeting_folders");

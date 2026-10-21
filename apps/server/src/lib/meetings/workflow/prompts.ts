@@ -30,6 +30,14 @@ export const FULL_SEGMENT_RULE =
 /** The cap of the folder text in the prompt context, in characters. */
 export const FOLDER_CONTEXT_MAX_CHARS = 500;
 
+/**
+ * The label of the folder block. A small model read a bare `Project:` block as
+ * the company or product of a participant (E2B benchmark, 2026-10-21), so the
+ * label says what the folder text is and what it is not.
+ */
+export const FOLDER_CONTEXT_LABEL =
+  "Folder (the user's own label for this group of meetings; it is not a participant, a company or an owner, and it is not a fact from this meeting):";
+
 export interface FolderContextInput {
   name: string;
   description: string | null;
@@ -38,7 +46,8 @@ export interface FolderContextInput {
 /**
  * The context text of a run. The meeting's own context comes first and is
  * never cut. Then a labeled block for the folder of a filed meeting:
- * `Project: <name> - <description>`, or `Project: <name>` with no description.
+ * `<FOLDER_CONTEXT_LABEL> <name> - <description>`, or
+ * `<FOLDER_CONTEXT_LABEL> <name>` with no description.
  * The folder text is cut to FOLDER_CONTEXT_MAX_CHARS characters. An unfiled
  * meeting gets no block. Returns null when both parts are blank.
  */
@@ -57,7 +66,7 @@ export function buildPromptContext(
       .slice(0, FOLDER_CONTEXT_MAX_CHARS)
       .join("")
       .trim();
-    parts.push(`Project: ${cut}`);
+    parts.push(`${FOLDER_CONTEXT_LABEL} ${cut}`);
   }
   return parts.length > 0 ? parts.join("\n\n") : null;
 }

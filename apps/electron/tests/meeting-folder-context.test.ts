@@ -15,7 +15,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // Folder text as prompt context in the real app (issue #230 phase 2). A
-// meeting in a folder gets the block `Project: <name> - <description>` after
+// meeting in a folder gets the block `<FOLDER_LABEL> <name> - <description>` after
 // its own context in the speaker, summary and tag prompts. `correct_chunk`
 // gets no context. An unfiled meeting gets no block. The test reads the
 // prompts from the fake server log and from the LLM inspector panel. All text
@@ -29,7 +29,10 @@ const UNFILED_TITLE = "Bakery shelf sync";
 const MEETING_CONTEXT = "Weekly sync of a made-up hardware team.";
 const FOLDER_NAME = "Greenhouse Pilot";
 const FOLDER_DESCRIPTION = "Pilot of soil sensors in a made-up greenhouse.";
-const BLOCK = `Project: ${FOLDER_NAME} - ${FOLDER_DESCRIPTION}`;
+// The label must match FOLDER_CONTEXT_LABEL of the server prompts.
+const FOLDER_LABEL =
+  "Folder (the user's own label for this group of meetings; it is not a participant, a company or an owner, and it is not a fact from this meeting):";
+const BLOCK = `${FOLDER_LABEL} ${FOLDER_NAME} - ${FOLDER_DESCRIPTION}`;
 const SUMMARY_OVERVIEW = "The team agreed to move the launch date to Friday.";
 
 const fake = new FakeLlm();
@@ -164,7 +167,7 @@ async function inspectorSummaryMessages(
   return messages;
 }
 
-test("a filed meeting: the Project block follows the meeting context", async () => {
+test("a filed meeting: the folder block follows the meeting context", async () => {
   test.setTimeout(180_000);
   const requests = await runEnhance(FILED);
   const byStep = (step: ChatRequest["step"]) =>
@@ -187,7 +190,7 @@ test("a filed meeting: the Project block follows the meeting context", async () 
   }
   // correct_chunk had no context before, and gets none now.
   for (const r of byStep("correct_chunk")) {
-    expect(r.system).not.toContain("Project:");
+    expect(r.system).not.toContain(FOLDER_LABEL);
     expect(r.system).not.toContain(MEETING_CONTEXT);
   }
 
@@ -202,18 +205,18 @@ test("a filed meeting: the Project block follows the meeting context", async () 
   expect(shown[0]).toContain(`${MEETING_CONTEXT}\n\n${BLOCK}`);
 });
 
-test("an unfiled meeting: no Project block in any prompt", async () => {
+test("an unfiled meeting: no folder block in any prompt", async () => {
   test.setTimeout(180_000);
   const requests = await runEnhance(UNFILED);
   expect(requests.length).toBeGreaterThan(3);
   for (const r of requests) {
-    expect(r.system, r.step).not.toContain("Project:");
-    expect(r.user, r.step).not.toContain("Project:");
+    expect(r.system, r.step).not.toContain(FOLDER_LABEL);
+    expect(r.user, r.step).not.toContain(FOLDER_LABEL);
   }
   const summary = requests.find((r) => r.step === "meeting_summary");
   expect(summary?.system).toContain(MEETING_CONTEXT);
 
   const shown = await inspectorSummaryMessages(env.page, UNFILED_TITLE, null);
   expect(shown).toEqual(summary?.messages);
-  expect(shown.join("\n")).not.toContain("Project:");
+  expect(shown.join("\n")).not.toContain(FOLDER_LABEL);
 });

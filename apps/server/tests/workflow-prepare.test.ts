@@ -14,6 +14,7 @@ import { makePrepareNode } from "../src/lib/meetings/workflow/nodes/prepare.js";
 import {
   buildPromptContext,
   FOLDER_CONTEXT_MAX_CHARS,
+  FOLDER_CONTEXT_LABEL as L,
 } from "../src/lib/meetings/workflow/prompts.js";
 import type { WorkflowStateType } from "../src/lib/meetings/workflow/state.js";
 import {
@@ -320,29 +321,29 @@ describe("prepare: folder context (#230)", () => {
     getDb().exec("DELETE FROM meeting_folders");
   });
 
-  it("a filed meeting: the meeting context first, then the Project block", async () => {
+  it("a filed meeting: the meeting context first, then the folder block", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     fileInFolder(f.meeting.id, "Orchid Rollout", "Launch of a made-up app.");
     const { out } = await prepare(f.meeting.id);
     expect(out.prepared.context).toBe(
-      `${MEETING_CONTEXT}\n\nProject: Orchid Rollout - Launch of a made-up app.`,
+      `${MEETING_CONTEXT}\n\n${L} Orchid Rollout - Launch of a made-up app.`,
     );
   });
 
-  it("a folder with no description: `Project: <name>` only", async () => {
+  it("a folder with no description: the label and the name only", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     fileInFolder(f.meeting.id, "Orchid Rollout", "   ");
     const { out } = await prepare(f.meeting.id);
     expect(out.prepared.context).toBe(
-      `${MEETING_CONTEXT}\n\nProject: Orchid Rollout`,
+      `${MEETING_CONTEXT}\n\n${L} Orchid Rollout`,
     );
   });
 
-  it("an unfiled meeting gets no Project block", async () => {
+  it("an unfiled meeting gets no folder block", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const { out } = await prepare(f.meeting.id);
     expect(out.prepared.context).toBe(MEETING_CONTEXT);
-    expect(out.prepared.context).not.toContain("Project:");
+    expect(out.prepared.context).not.toContain(L);
   });
 
   it("a filed meeting with no own context gets the block alone", async () => {
@@ -352,7 +353,7 @@ describe("prepare: folder context (#230)", () => {
       .run(f.meeting.id);
     fileInFolder(f.meeting.id, "Orchid Rollout", null);
     const { out } = await prepare(f.meeting.id);
-    expect(out.prepared.context).toBe("Project: Orchid Rollout");
+    expect(out.prepared.context).toBe(`${L} Orchid Rollout`);
   });
 
   it("the folder text is cut to 500 characters, the meeting context never", async () => {
@@ -364,7 +365,7 @@ describe("prepare: folder context (#230)", () => {
     fileInFolder(f.meeting.id, "Orchid Rollout", "x".repeat(2000));
     const { out } = await prepare(f.meeting.id);
     const ctx = out.prepared.context as string;
-    const [own, block] = ctx.split("\n\nProject: ");
+    const [own, block] = ctx.split(`\n\n${L} `);
     expect(own).toBe(longOwn.trim());
     expect(Array.from(block as string)).toHaveLength(FOLDER_CONTEXT_MAX_CHARS);
     expect(block).toBe(
@@ -376,7 +377,7 @@ describe("prepare: folder context (#230)", () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const id = fileInFolder(f.meeting.id, "Orchid Rollout", null);
     const first = await prepare(f.meeting.id);
-    expect(first.out.prepared.context).toContain("Project: Orchid Rollout");
+    expect(first.out.prepared.context).toContain(`${L} Orchid Rollout`);
     getDb()
       .prepare(
         "UPDATE meeting_folders SET name = ?, description = ?, updated_at = ? WHERE id = ?",
@@ -384,7 +385,7 @@ describe("prepare: folder context (#230)", () => {
       .run("Lantern Migration", "Move of a made-up store.", Date.now(), id);
     const again = await prepare(f.meeting.id);
     expect(again.out.prepared.context).toBe(
-      `${MEETING_CONTEXT}\n\nProject: Lantern Migration - Move of a made-up store.`,
+      `${MEETING_CONTEXT}\n\n${L} Lantern Migration - Move of a made-up store.`,
     );
     expect(again.out.prepared.context).not.toContain("Orchid");
   });
@@ -396,7 +397,7 @@ describe("prepare: folder context (#230)", () => {
       name: "P",
       description: "\u{1F600}".repeat(600),
     }) as string;
-    expect(Array.from(emoji.slice("Project: ".length))).toHaveLength(
+    expect(Array.from(emoji.slice(`${L} `.length))).toHaveLength(
       FOLDER_CONTEXT_MAX_CHARS,
     );
   });
