@@ -3,31 +3,43 @@
 //
 // Usage (from the repo root):
 //   pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>]
-//     [--keep] [--no-download] [--answer-key <file>] [--hf-cache <dir>]
-//     [--port <n>] [--timeout-sec <n>]
+//     [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>]
+//     [--save-baseline <name> [--noise-from <baseline>]] [--compare <baseline>]
+//     [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>]
+//   pnpm meeting:eval --rescore <out> [gold and baseline flags]
 //
-// Models: the catalog ids of the local MLX LLM
-// (apps/server/src/lib/mlx-llm/constants.ts) and "omlx:Qwen3.8-27B" (the
-// owner's oMLX at 127.0.0.1:8123, the only oMLX model this tool calls).
+// Models: the catalog ids of the built-in MLX LLM
+// (apps/server/src/lib/mlx-llm/constants.ts). Only the app's built-in MLX
+// models run: the tool never calls the owner's oMLX server
+// (127.0.0.1:8123; owner rule 2026-10-21).
 // Meetings: id8 or full ids. The default is the 4 council meetings.
+// Gold: --gold loads ~/.openstyle-eval/gold/<id8>.json for each meeting
+// (gold.mts); --answer-key loads a v1 answer key (fixes only). The scorers
+// are in score.mts. Baselines (baseline.mts): --save-baseline writes
+// eval-baselines/<date>-<name>.json (numbers only); --compare prints the
+// delta table and exits 3 on a regression.
 //
 // Steps:
 //   1. setup-scratch.sh copies the meetings read-only into /tmp/meeting-eval/asr.
-//      An isolated server checks that each local model is in the HF cache and
-//      downloads a missing one through POST /api/mlx-llm/models/<id>/download
-//      (--no-download fails instead). When the ASR config hash (voice row,
-//      vocabulary, languages, meeting audio, server ASR code, worker,
-//      diarizer) equals
-//      the cached one, the cached transcribed.db is used. Else run-baseline.mjs --run R0d transcribes
-//      each meeting under the GPU lock, and the tool backs up the result.
+//      An isolated server checks that each LLM, the built-in ASR model and
+//      the aligner are in the HF cache, and downloads a missing one through
+//      the app routes (--no-download fails instead). The tool sets the
+//      default voice row of the scratch DB to the built-in MLX ASR model
+//      (ASR_VOICE). When the ASR config hash (voice row, vocabulary,
+//      languages, meeting audio, server ASR code, worker, diarizer) equals
+//      the cached one, the cached transcribed.db is used. Else
+//      run-baseline.mjs --run R0d transcribes each meeting under the GPU
+//      lock, and the tool backs up the result.
 //   2. Per model: an isolated server on a copy of transcribed.db sets the
 //      default LLM row (read back from the DB after the server stops).
 //   3. Per model, under one GPU lock: run-enhance.mjs --arm new --summarize
 //      for each meeting, with a scratch HOME and HF cache and the dev worker.
 //      A sampler records the peak RSS of the LLM worker.
 //   4. Per model and meeting: the hard-fail checks (checks.mts), the metrics,
-//      and the judge pack (compare file RAW vs MODEL, summary Markdown).
-//   5. results.json and results.md, the self-check, the cleanup.
+//      the gold scorecard (score.mts), and the judge pack (compare file RAW
+//      vs MODEL, summary Markdown).
+//   5. results.json and results.md, the self-check, the baseline save and
+//      compare, the cleanup.
 //
 // Privacy: the out folder holds real meeting text (runs/, pack/, arms/).
 // Without --keep the tool deletes them after it prints. The transcription
@@ -37,7 +49,8 @@
 // and counts only. OPENSTYLE_LOG_DIR and the tracing variables are removed
 // from every server environment.
 //
-// Exit codes: 0 ok; 1 a run, a check or the self-check failed; 2 usage.
+// Exit codes: 0 ok; 1 a run, a check or the self-check failed; 2 usage;
+// 3 --compare found a worse metric or a new hard fail.
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -58,7 +71,15 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { MLX_ASR_MODELS } from "../../../apps/server/src/lib/mlx-asr/constants.ts";
 import { MLX_LLM_MODELS } from "../../../apps/server/src/lib/mlx-llm/constants.ts";
+import {
+  buildBaseline,
+  compareBaselines,
+  noiseBands,
+  parseBaseline,
+  saveBaseline,
+} from "./baseline.mts";
 import {
   attendeeNames,
   type CallRow,
@@ -76,8 +97,14 @@ import {
   parseAnswerKey,
   runMetrics,
   type SegmentRow,
-  scoreAnswerKey,
 } from "./checks.mts";
+import {
+  DEFAULT_GOLD_DIR,
+  type Gold,
+  goldFromAnswerKey,
+  goldInfo,
+  loadGold,
+} from "./gold.mts";
 import {
   CHECKS,
   type CheckName,
@@ -89,6 +116,7 @@ import {
   renderResults,
   selfCheck,
 } from "./report.mts";
+import { scoreRun } from "./score.mts";
 
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -99,8 +127,19 @@ const repoRoot = resolve(
 const ROOT = "/tmp/meeting-eval";
 const ASR_DIR = join(ROOT, "asr");
 const SERVER_HOME = join(ROOT, "home");
-const OMLX = "http://127.0.0.1:8123";
-const OMLX_MODEL = "omlx:Qwen3.8-27B";
+/** The built-in MLX ASR model of every eval transcription (owner rule 2026-10-21). */
+const ASR_MODEL_ID = "qwen3-1.7b-8bit";
+const ASR_DEF = (() => {
+  const d = MLX_ASR_MODELS.find((m) => m.id === ASR_MODEL_ID);
+  if (!d) throw new Error(`${ASR_MODEL_ID} is not in the MLX ASR catalog`);
+  return d;
+})();
+/** The voice row as the app's Models page writes it (provider local-mlx). */
+const ASR_VOICE = {
+  provider: "local-mlx",
+  model_id: `local-mlx/${ASR_MODEL_ID}`,
+  model_name: ASR_DEF.displayName,
+};
 const LOCK = "/tmp/openstyle-gpu.lock";
 const QUEUE = "/tmp/openstyle-gpu.queue";
 const DEFAULT_MEETINGS = [
@@ -146,7 +185,7 @@ const has = (name: string) => process.argv.includes(`--${name}`);
 function usage(msg: string): never {
   console.error(msg);
   console.error(
-    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--answer-key <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>]\n       pnpm meeting:eval --rescore <out dir of a --keep run>",
+    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>] [--save-baseline <name> [--noise-from <file>]] [--compare <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>]\n       pnpm meeting:eval --rescore <out dir of a --keep run> [the gold and baseline flags]",
   );
   process.exit(2);
 }
@@ -159,9 +198,9 @@ if (rescoreDir && !isTmp(rescoreDir))
   usage(`--rescore must be under /tmp: ${rescoreDir}`);
 const catalog = new Map(MLX_LLM_MODELS.map((m) => [m.id, m]));
 for (const m of models)
-  if (m !== OMLX_MODEL && !catalog.has(m))
+  if (!catalog.has(m))
     usage(
-      `unknown model ${m}; allowed: ${[...catalog.keys(), OMLX_MODEL].join(", ")}`,
+      `unknown model ${m}; allowed (built-in MLX only): ${[...catalog.keys()].join(", ")}`,
     );
 const meetingArgs = (arg("meetings") ?? "").split(",").filter(Boolean);
 const keep = has("keep");
@@ -176,6 +215,23 @@ const stamp = new Date()
   .slice(0, 15);
 const outDir = resolve(arg("out") ?? join(ROOT, "out", stamp));
 const answerKeyPath = arg("answer-key");
+const useGold = has("gold");
+const goldDir = resolve(arg("gold-dir") ?? DEFAULT_GOLD_DIR);
+if (useGold && answerKeyPath) usage("pass --gold or --answer-key, not both");
+if (arg("gold-dir") && !useGold) usage("--gold-dir needs --gold");
+const saveName = arg("save-baseline");
+const comparePath = arg("compare");
+const noiseFromPath = arg("noise-from");
+if (noiseFromPath && !saveName) usage("--noise-from needs --save-baseline");
+if (saveName && !/^[a-z0-9][a-z0-9.-]{0,60}$/.test(saveName))
+  usage("--save-baseline name must match [a-z0-9][a-z0-9.-]{0,60}");
+const BASELINE_DIR = join(repoRoot, "eval-baselines");
+const compareBase = comparePath
+  ? parseBaseline(readFileSync(comparePath, "utf8"))
+  : null;
+const noiseFrom = noiseFromPath
+  ? parseBaseline(readFileSync(noiseFromPath, "utf8"))
+  : null;
 if (!isTmp(outDir))
   usage(`--out must be under /tmp (it holds meeting text): ${outDir}`);
 if (!isTmp(hfCache)) usage(`--hf-cache must be under /tmp: ${hfCache}`);
@@ -185,8 +241,20 @@ for (let p = basePort; p < basePort + 4; p++)
   if (p === 4649)
     usage("the ports must not include 4649 (the installed app owns it)");
 const answerKey = answerKeyPath
-  ? parseAnswerKey(readFileSync(answerKeyPath, "utf8"))
+  ? goldFromAnswerKey(parseAnswerKey(readFileSync(answerKeyPath, "utf8")))
   : null;
+
+/** The gold of the meetings: --gold files, the --answer-key entries, or none. */
+function goldFor(id8s: string[]): Map<string, Gold> {
+  if (useGold) return loadGold(id8s, goldDir);
+  if (answerKey)
+    return new Map(
+      id8s.flatMap((k) =>
+        answerKey.has(k) ? [[k, answerKey.get(k) as Gold]] : [],
+      ),
+    );
+  return new Map();
+}
 
 const slug = (model: string) => model.replace(/[^A-Za-z0-9.-]+/g, "-");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -240,17 +308,6 @@ function releaseLock(): void {
     `GPU lock released${owner === heldLock ? "" : " (owner changed; left in place)"}`,
   );
   heldLock = null;
-}
-
-async function omlxStatus(): Promise<number> {
-  try {
-    const r = await fetch(`${OMLX}/v1/models`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    return r.status;
-  } catch {
-    return 0;
-  }
 }
 
 // --- Children and cleanup -----------------------------------------------------------
@@ -396,12 +453,12 @@ function asrHash(ids: string[]): string {
     JSON.stringify(db.prepare(sql).all(...p));
   const parts = [
     "run=R0d",
+    `asr=${ASR_VOICE.model_id}`,
     q("SELECT term, notes FROM vocabulary ORDER BY term"),
     q("SELECT value FROM settings WHERE key = 'languages'"),
     q(
       "SELECT provider, model_id FROM model_configs WHERE type = 'voice' AND is_default = 1",
     ),
-    q("SELECT o.base_url FROM own_servers o ORDER BY o.id"),
   ];
   for (const id of ids) {
     parts.push(
@@ -444,7 +501,44 @@ async function setupScratch(ids: string[]): Promise<void> {
   if (setup !== 0) throw new Error("setup-scratch.sh failed");
 }
 
-async function ensureTranscribed(ids: string[]): Promise<string> {
+/**
+ * Make the built-in MLX ASR model the only default voice row of the scratch
+ * DB, and read it back. setup-scratch.sh copies the owner's own-server voice
+ * row; the eval never transcribes through it (owner rule 2026-10-21).
+ */
+function forceAsrVoiceRow(dbPath: string): void {
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec("UPDATE model_configs SET is_default = 0 WHERE type = 'voice'");
+    db.prepare(
+      `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
+       VALUES (?, ?, ?, 'voice', 1)
+       ON CONFLICT(provider, model_id, type) DO UPDATE SET is_default = 1`,
+    ).run(ASR_VOICE.provider, ASR_VOICE.model_id, ASR_VOICE.model_name);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    const rows = db
+      .prepare(
+        "SELECT provider, model_id FROM model_configs WHERE type = 'voice' AND is_default = 1",
+      )
+      .all() as { provider: string; model_id: string }[];
+    if (
+      rows.length !== 1 ||
+      rows[0]?.provider !== ASR_VOICE.provider ||
+      rows[0]?.model_id !== ASR_VOICE.model_id
+    )
+      throw new Error(
+        `scratch DB: the default voice row is not ${ASR_VOICE.model_id} (${rows.length} rows)`,
+      );
+  } finally {
+    db.close();
+  }
+}
+
+async function ensureTranscribed(ids: string[]): Promise<{
+  path: string;
+  hash: string;
+}> {
+  forceAsrVoiceRow(join(ASR_DIR, "test.db"));
   const hash = asrHash(ids);
   const cached = join(ASR_DIR, "transcribed.db");
   const metaPath = join(ASR_DIR, "transcribed.json");
@@ -457,18 +551,16 @@ async function ensureTranscribed(ids: string[]): Promise<string> {
     ids.every((id) => (meta.meetings as string[]).includes(id))
   ) {
     console.log(`transcribed DB: cached (asr hash ${hash}) ${cached}`);
-    return cached;
+    return { path: cached, hash };
   }
-  console.log(`transcribing ${ids.length} meetings (asr hash ${hash})`);
+  console.log(
+    `transcribing ${ids.length} meetings with ${ASR_VOICE.model_id} (asr hash ${hash})`,
+  );
   rmSync(metaPath, { force: true });
   rmSync(cached, { force: true });
   await needPort(basePort + 3);
   await takeLock("transcribe", 10 + ids.length * 5);
   try {
-    const before = await omlxStatus();
-    console.log(`oMLX /v1/models before: ${before}`);
-    if (before !== 200)
-      throw new Error("oMLX is not healthy; no transcription");
     for (const id of ids) {
       const rc = await runChild(
         process.execPath,
@@ -488,10 +580,6 @@ async function ensureTranscribed(ids: string[]): Promise<string> {
       if (rc !== 0)
         throw new Error(`run-baseline failed for ${id.slice(0, 8)}`);
     }
-    const after = await omlxStatus();
-    console.log(`oMLX /v1/models after: ${after}`);
-    if (after !== 200)
-      throw new Error("oMLX is not healthy after the transcription");
   } finally {
     releaseLock();
   }
@@ -522,7 +610,7 @@ async function ensureTranscribed(ids: string[]): Promise<string> {
     metaPath,
     `${JSON.stringify({ hash, meetings: ids }, null, 1)}\n`,
   );
-  return cached;
+  return { path: cached, hash };
 }
 
 // --- 2. Arm database (download, default LLM row) ---------------------------------------------
@@ -608,12 +696,12 @@ async function modelStatus(call: Call, model: string) {
 }
 
 /**
- * Every local model must be in the HF cache. A missing model is downloaded
- * through the app's own route (curated allow patterns); --no-download fails.
- * No GPU work: the download is network and disk only.
+ * Every model must be in the HF cache: each LLM, the built-in ASR model and
+ * the aligner. A missing model is downloaded through the app's own route
+ * (curated allow patterns); --no-download fails. No GPU work: the download
+ * is network and disk only.
  */
 async function ensureDownloaded(seedDb: string): Promise<void> {
-  const local = models.filter((m) => m !== OMLX_MODEL);
   const dir = join(outDir, "arms");
   mkdirSync(dir, { recursive: true });
   const db = join(dir, "download.db");
@@ -621,7 +709,7 @@ async function ensureDownloaded(seedDb: string): Promise<void> {
   copyFileSync(seedDb, db);
   try {
     await withServer(db, join(dir, "download.log"), async (call) => {
-      for (const model of local) {
+      for (const model of models) {
         const def = catalog.get(model) as (typeof MLX_LLM_MODELS)[number];
         let st = await modelStatus(call, model);
         if (st?.status === "ready") {
@@ -656,6 +744,41 @@ async function ensureDownloaded(seedDb: string): Promise<void> {
             `download of ${model} ended with status ${st?.status ?? "?"}`,
           );
         console.log(`download ${model}: ready`);
+      }
+      // The built-in ASR model of the transcription (ASR_VOICE).
+      const asr = async () =>
+        (
+          ((await call("GET", "/api/mlx-asr/status")).json?.models ?? []) as {
+            model: string;
+            status: string;
+          }[]
+        ).find((m) => m.model === ASR_MODEL_ID);
+      let as = await asr();
+      if (as?.status !== "ready") {
+        if (noDownload)
+          throw new Error(
+            `${ASR_MODEL_ID} is not downloaded in ${hfCache} (--no-download)`,
+          );
+        console.log(
+          `download ${ASR_MODEL_ID}: ${(ASR_DEF.sizeBytes / 1e9).toFixed(2)} GB into ${hfCache}`,
+        );
+        const d = await call(
+          "POST",
+          `/api/mlx-asr/models/${ASR_MODEL_ID}/download`,
+        );
+        if (d.status !== 200)
+          throw new Error(`ASR download route answered ${d.status}`);
+        const end = Date.now() + 2 * 3600_000;
+        while (Date.now() < end) {
+          await sleep(5000);
+          as = await asr();
+          if (as?.status === "ready" || as?.status === "error") break;
+        }
+        if (as?.status !== "ready")
+          throw new Error(
+            `download of ${ASR_MODEL_ID} ended with status ${as?.status ?? "?"}`,
+          );
+        console.log(`download ${ASR_MODEL_ID}: ready`);
       }
       // The transcription (R0d, diarization on) needs the forced aligner. The
       // server starts its download at boot. Wait for it here, so that no
@@ -706,40 +829,18 @@ async function prepareArm(model: string, transcribed: string): Promise<string> {
     armDb,
     join(outDir, "arms", `${slug(model)}.log`),
     async (call) => {
-      let row: { provider: string; model_id: string; model_name: string };
-      if (model === OMLX_MODEL) {
-        const db = new DatabaseSync(armDb, { readOnly: true });
-        const srv = db
-          .prepare(
-            "SELECT id FROM own_servers WHERE base_url LIKE 'http://127.0.0.1:8123%' OR base_url LIKE 'http://localhost:8123%' LIMIT 1",
-          )
-          .get() as { id: string } | undefined;
-        db.close();
-        if (!srv)
-          throw new Error(
-            "no own server row for oMLX 127.0.0.1:8123 in the transcribed DB",
-          );
-        row = {
-          provider: "server",
-          model_id: `server/${srv.id}/Qwen3.8-27B`,
-          model_name: "Qwen3.8-27B",
-        };
-      } else {
-        if ((await modelStatus(call, model))?.status !== "ready")
-          throw new Error(`${model} is not ready in ${hfCache}`);
-        row = {
-          provider: "local-mlx-llm",
-          model_id: `local-mlx-llm/${model}`,
-          model_name: model,
-        };
-        const k = await call(
-          "PUT",
-          "/api/settings/mlx_llm_keep_alive_minutes",
-          { value: "-1" },
-        );
-        if (k.status !== 200)
-          throw new Error(`keep-alive setting answered ${k.status}`);
-      }
+      if ((await modelStatus(call, model))?.status !== "ready")
+        throw new Error(`${model} is not ready in ${hfCache}`);
+      const row = {
+        provider: "local-mlx-llm",
+        model_id: `local-mlx-llm/${model}`,
+        model_name: model,
+      };
+      const k = await call("PUT", "/api/settings/mlx_llm_keep_alive_minutes", {
+        value: "-1",
+      });
+      if (k.status !== 200)
+        throw new Error(`keep-alive setting answered ${k.status}`);
       const c = await call("POST", "/api/models/configured", {
         ...row,
         type: "llm",
@@ -758,11 +859,7 @@ async function prepareArm(model: string, transcribed: string): Promise<string> {
     )
     .all() as { provider: string; model_id: string }[];
   db.close();
-  const want =
-    model === OMLX_MODEL
-      ? /^server\/[^/]+\/Qwen3\.8-27B$/
-      : new RegExp(`^local-mlx-llm/${model.replace(/\./g, "\\.")}$`);
-  if (rows.length !== 1 || !want.test(rows[0]?.model_id ?? ""))
+  if (rows.length !== 1 || rows[0]?.model_id !== `local-mlx-llm/${model}`)
     throw new Error(
       `arm DB for ${model}: default LLM row not stored (${rows.length} rows)`,
     );
@@ -821,8 +918,7 @@ async function runEnhance(
   clearInterval(timer);
   return {
     rc,
-    peakRssGb:
-      model === OMLX_MODEL ? null : Math.round((peakKb / 1048576) * 100) / 100,
+    peakRssGb: Math.round((peakKb / 1048576) * 100) / 100,
   };
 }
 
@@ -852,6 +948,20 @@ function readRun(dbPath: string, id: string) {
   const vocabulary = (
     db.prepare("SELECT term FROM vocabulary").all() as { term: string }[]
   ).map((v) => v.term);
+  // The meeting tags, as getMeetingTags (apps/server/src/lib/meetings/tags.ts)
+  // reads them. A DB from before the tags migration has no table: no tags.
+  let tags: string[] = [];
+  try {
+    tags = (
+      db
+        .prepare(
+          "SELECT t.name FROM meeting_tags mt JOIN tags t ON t.id = mt.tag_id WHERE mt.meeting_id = ? ORDER BY t.name",
+        )
+        .all(id) as { name: string }[]
+    ).map((t) => t.name);
+  } catch {
+    tags = [];
+  }
   const summary = db
     .prepare(
       "SELECT markdown, summary_json FROM meeting_summaries WHERE meeting_id = ?",
@@ -876,7 +986,16 @@ function readRun(dbPath: string, id: string) {
     )
     .all(...runIds) as unknown as LinkRow[];
   db.close();
-  return { segments, meeting, speakers, summary, calls, links, vocabulary };
+  return {
+    segments,
+    meeting,
+    speakers,
+    summary,
+    calls,
+    links,
+    vocabulary,
+    tags,
+  };
 }
 
 function evaluate(
@@ -956,6 +1075,56 @@ async function judgePack(
   return rc === 0;
 }
 
+/** The gold scorecard of one run, or null with no gold for the meeting. */
+function scorecardOf(
+  gold: Gold | undefined,
+  run: ReturnType<typeof readRun>,
+  hash: string | null,
+) {
+  return gold
+    ? scoreRun(
+        gold,
+        {
+          segments: run.segments,
+          summaryJson: run.summary?.summary_json ?? null,
+          tags: run.tags,
+          speakers: run.speakers,
+        },
+        hash,
+      )
+    : null;
+}
+
+/**
+ * --compare and --save-baseline on finished results. The compare table goes
+ * to the console and to `<dir>/<compareFile>`. The saved baseline is read
+ * back and parsed. Returns 3 on a regression, else 0.
+ */
+function baselines(results: Results, dir: string, compareFile: string): 0 | 3 {
+  let code: 0 | 3 = 0;
+  const now = buildBaseline(results, saveName ?? "run");
+  if (compareBase) {
+    const c = compareBaselines(compareBase, now);
+    writeFileSync(join(dir, compareFile), c.text);
+    console.log(c.text);
+    console.log(`compare: ${join(dir, compareFile)} (exit ${c.exitCode})`);
+    code = c.exitCode;
+  }
+  if (saveName) {
+    const b = buildBaseline(
+      results,
+      saveName,
+      noiseFrom ? noiseBands(noiseFrom, now) : null,
+    );
+    const path = saveBaseline(b, BASELINE_DIR);
+    const back = parseBaseline(readFileSync(path, "utf8"));
+    if (back.runs.length !== b.runs.length)
+      throw new Error(`baseline ${path}: read back ${back.runs.length} runs`);
+    console.log(`baseline saved: ${path} (${back.runs.length} runs)`);
+  }
+  return code;
+}
+
 // --- Main --------------------------------------------------------------------------------------
 
 async function main(): Promise<number> {
@@ -967,11 +1136,13 @@ async function main(): Promise<number> {
   }).stdout.trim();
   checkBuild();
   const ids = resolveMeetings();
+  const golds = goldFor(ids.map((id) => id.slice(0, 8)));
   mkdirSync(join(outDir, "pack"), { recursive: true });
   console.log(`out: ${outDir}`);
   await setupScratch(ids);
   await ensureDownloaded(join(ASR_DIR, "test.db"));
-  const transcribed = await ensureTranscribed(ids);
+  const { path: transcribed, hash: asrHashValue } =
+    await ensureTranscribed(ids);
 
   // The raw dumps: the transcribed DB with enhanced_text = null.
   const raws = new Map<string, ReturnType<typeof readRun>>();
@@ -1027,11 +1198,6 @@ async function main(): Promise<number> {
     }[] = [];
     await takeLock(slug(model), minutes);
     try {
-      if (model === OMLX_MODEL) {
-        const before = await omlxStatus();
-        console.log(`oMLX /v1/models before ${model}: ${before}`);
-        if (before !== 200) throw new Error("oMLX is not healthy");
-      }
       for (const id of ids) {
         const runDir = join(outDir, "runs", slug(model), id.slice(0, 8));
         const r = await runEnhance(model, armDb, id, runDir);
@@ -1042,11 +1208,6 @@ async function main(): Promise<number> {
       console.error(`model ${model}: ${(e as Error).message}`);
       failed = true;
     } finally {
-      if (model === OMLX_MODEL) {
-        const after = await omlxStatus();
-        console.log(`oMLX /v1/models after ${model}: ${after}`);
-        if (after !== 200) failed = true;
-      }
       releaseLock();
     }
     for (const id of ids) {
@@ -1095,9 +1256,7 @@ async function main(): Promise<number> {
         metrics: runMetrics(run.links, run.calls, run.speakers),
         checks,
         hardFails: 0,
-        answerKey: answerKey?.[id8]
-          ? scoreAnswerKey(answerKey[id8], run.segments)
-          : null,
+        scorecard: scorecardOf(golds.get(id8), run, asrHashValue),
       };
       r.hardFails = hardFailsOf(r);
       runs.push(r);
@@ -1109,7 +1268,9 @@ async function main(): Promise<number> {
     commit,
     models,
     meetings: meetingInfo,
-    answerKey: answerKey !== null,
+    asrHash: asrHashValue,
+    asrModel: ASR_VOICE.model_id,
+    gold: goldInfo(golds),
     runs,
     floor: null,
   };
@@ -1134,12 +1295,13 @@ async function main(): Promise<number> {
     const csPass = existsSync(csPath)
       ? JSON.parse(readFileSync(csPath, "utf8")).pass === true
       : null;
-    const again = evaluate(
-      readRun(transcribed, id),
-      readRun(join(runDir, "test.db"), id),
-      m,
-      csPass,
-    );
+    const fresh = readRun(join(runDir, "test.db"), id);
+    const again = evaluate(readRun(transcribed, id), fresh, m, csPass);
+    const sc = scorecardOf(golds.get(r.meeting), fresh, asrHashValue);
+    if (JSON.stringify(sc) !== JSON.stringify(r.scorecard ?? null))
+      errors.push(
+        `${r.model} ${r.meeting}: a fresh read gives another scorecard than results.json`,
+      );
     for (const c of CHECKS)
       if (again[c].count !== r.checks?.[c].count)
         errors.push(
@@ -1167,6 +1329,9 @@ async function main(): Promise<number> {
       `${r.model} ${r.meeting}: hard fails ${r.hardFails} (${CHECKS.map((c) => `${c}=${r.checks?.[c].count ?? "-"}`).join(" ")})`,
     );
   console.log(`floor: ${results.floor ?? "none"}`);
+  // No baseline from results that failed the self-check.
+  const compareCode =
+    errors.length === 0 ? baselines(results, outDir, "compare.md") : 0;
   console.log(`results.md: ${mdPath}`);
   console.log(`results.json: ${jsonPath}`);
   console.log(`judge pack (private text): ${join(outDir, "pack")}`);
@@ -1180,21 +1345,30 @@ async function main(): Promise<number> {
       "deleted runs/, pack/ and arms/ (no --keep); results.md and results.json stay",
     );
   }
-  return failed ? 1 : 0;
+  return failed ? 1 : compareCode;
 }
 
 /**
- * --rescore <out>: run the checks again on the run databases of a kept run
- * (runs/ and arms/), with no model and no GPU. It writes results-rescore.md
- * and results-rescore.json next to the old files and self-checks them.
+ * --rescore <out>: run the checks and the gold scores again on the run
+ * databases of a kept run (runs/ and arms/), with no model and no GPU. The
+ * gold comes from the --gold or --answer-key flag of this call. It writes
+ * results-rescore.md and results-rescore.json next to the old files and
+ * self-checks them; --compare and --save-baseline work on the new results.
  */
 function rescore(dir: string): number {
   const old = JSON.parse(
     readFileSync(join(dir, "results.json"), "utf8"),
-  ) as Results;
+  ) as Partial<Results> &
+    Pick<Results, "createdAt" | "commit" | "models" | "meetings" | "runs">;
+  const golds = goldFor(old.meetings.map((m) => m.id8));
   const errors: string[] = [];
-  const runs = old.runs.map((r): RunResult => {
-    if (r.status !== "ok") return r;
+  const runs = old.runs.map((was): RunResult => {
+    // Results from before the scorecard have an answerKey field: drop it.
+    const { answerKey: _old, ...r } = {
+      ...was,
+      scorecard: was.scorecard ?? null,
+    } as RunResult & { answerKey?: unknown };
+    if (r.status !== "ok") return { ...r, scorecard: null };
     const runDir = join(dir, "runs", slug(r.model), r.meeting);
     const rawDb = join(dir, "arms", `${slug(r.model)}.db`);
     const id = old.meetings.find((m) => m.id8 === r.meeting)?.id as string;
@@ -1214,6 +1388,7 @@ function rescore(dir: string): number {
       ...r,
       metrics: runMetrics(run.links, run.calls, run.speakers),
       checks,
+      scorecard: scorecardOf(golds.get(r.meeting), run, old.asrHash ?? null),
     };
     next.hardFails = hardFailsOf(next);
     return next;
@@ -1222,7 +1397,17 @@ function rescore(dir: string): number {
     for (const e of errors) console.error(e);
     return 1;
   }
-  const results: Results = { ...old, runs, floor: null };
+  const results: Results = {
+    createdAt: old.createdAt,
+    commit: old.commit,
+    models: old.models,
+    meetings: old.meetings,
+    asrHash: old.asrHash ?? null,
+    asrModel: old.asrModel ?? null,
+    gold: goldInfo(golds),
+    runs,
+    floor: null,
+  };
   results.floor = floorModel(results);
   const jsonPath = join(dir, "results-rescore.json");
   const mdPath = join(dir, "results-rescore.md");
@@ -1246,7 +1431,7 @@ function rescore(dir: string): number {
   console.log(`floor: ${results.floor ?? "none"}`);
   console.log(`self-check ok: ${back.runs.length} runs`);
   console.log(`results: ${mdPath}`);
-  return 0;
+  return baselines(results, dir, "compare-rescore.md");
 }
 
 function emptyRun(
@@ -1269,11 +1454,14 @@ function emptyRun(
     metrics: null,
     checks: null,
     hardFails: 1,
-    answerKey: null,
+    scorecard: null,
   };
 }
 
-(rescoreDir ? Promise.resolve(rescore(resolve(rescoreDir))) : main()).then(
+(rescoreDir
+  ? Promise.resolve().then(() => rescore(resolve(rescoreDir)))
+  : main()
+).then(
   (code) => {
     releaseLock();
     unqueue();

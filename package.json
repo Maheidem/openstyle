@@ -10,7 +10,7 @@
     "meeting:check-summary": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/check-summary.mts",
     "meeting:compare-speakers": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare-speakers.mts",
     "meeting:eval": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/eval.mts",
-    "meeting:eval:test": "node --test scripts/meeting-v2/eval/checks.test.mts",
+    "meeting:eval:test": "node --test scripts/meeting-v2/eval/checks.test.mts scripts/meeting-v2/eval/score.test.mts",
     "test": "turbo test",
     "prepare": "is-ci || husky"
   },
