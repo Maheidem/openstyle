@@ -75,7 +75,12 @@ import {
   runNotice,
 } from "./run-notice";
 import { SummaryInstructionsPopover } from "./settings-popovers";
-import { CopyButton, StatusBadge, segmentSpeakerLabel } from "./shared";
+import {
+  CopyButton,
+  jobProgressLine,
+  StatusBadge,
+  segmentSpeakerLabel,
+} from "./shared";
 import { attendeeNameOptions, SpeakersDialog } from "./speakers";
 import { MeetingTagChips } from "./tag-controls";
 import { useAllTags, useSaveMeetingTags } from "./tags-data";
@@ -743,37 +748,44 @@ export function MeetingDetailView({
         <Card className="mb-5 p-4">
           <div className="flex items-center gap-3">
             {workflowQueued ? (
-              <Clock className="text-primary h-3.5 w-3.5" />
+              <Clock className="text-primary h-3.5 w-3.5 shrink-0" />
             ) : (
-              <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
+              <RefreshCw className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
             )}
-            <div className="flex-1">
-              <div className="text-foreground text-[12.5px]">
-                {transcribing
-                  ? cancelRequested
-                    ? t("meetings.cancellingTranscription")
-                    : t("meetings.transcribing")
-                  : cancelRequested
-                    ? enhancingJob
-                      ? t("meetings.cancellingEnhance")
-                      : t("meetings.cancellingSummarize")
-                    : (queuedLabel ??
-                      phaseLabel ??
-                      (enhancingJob
-                        ? t("meetings.enhancing")
-                        : t("meetings.summarizing")))}
-              </div>
-              {phaseLabel &&
-                !cancelRequested &&
-                !workflowQueued &&
-                meeting.job?.detail && (
-                  <div
-                    className="text-muted-foreground mt-0.5 truncate text-[11.5px]"
-                    data-testid="meetings-job-detail"
-                  >
-                    {meeting.job.detail}
-                  </div>
+            {/* Issue #262: one line, "phase · percent", and the bar below.
+                The line truncates first, so the Cancel button never clips.
+                The chunk sentence shows only as the tooltip of the line. */}
+            <div className="min-w-0 flex-1">
+              <div
+                className="text-foreground truncate text-[12.5px]"
+                data-testid="meetings-job-line"
+                title={
+                  phaseLabel && !cancelRequested && !workflowQueued
+                    ? (meeting.job?.detail ?? undefined)
+                    : undefined
+                }
+              >
+                {jobProgressLine(
+                  transcribing
+                    ? cancelRequested
+                      ? t("meetings.cancellingTranscription")
+                      : t("meetings.transcribing")
+                    : cancelRequested
+                      ? enhancingJob
+                        ? t("meetings.cancellingEnhance")
+                        : t("meetings.cancellingSummarize")
+                      : (queuedLabel ??
+                        phaseLabel ??
+                        (enhancingJob
+                          ? t("meetings.enhancing")
+                          : t("meetings.summarizing"))),
+                  // A workflow run counts work steps, not chunks: a percent
+                  // reads better than "4/7" next to "chunk 3 of 5".
+                  showProgress && meeting.job
+                    ? { ...meeting.job, workflow: phaseLabel !== null }
+                    : null,
                 )}
+              </div>
               {showProgress && meeting.job && (
                 <Progress
                   value={(meeting.job.done / meeting.job.total) * 100}
@@ -781,15 +793,6 @@ export function MeetingDetailView({
                 />
               )}
             </div>
-            {showProgress && meeting.job && (
-              <span className="mono text-muted-foreground text-[10px] tabular-nums">
-                {/* A workflow run counts work steps, not chunks: a percent
-                    reads better than "4/7" next to "chunk 3 of 5". */}
-                {phaseLabel
-                  ? `${Math.round((meeting.job.done / meeting.job.total) * 100)}%`
-                  : `${meeting.job.done}/${meeting.job.total}`}
-              </span>
-            )}
             {/* T1-1 (UX-03): the non-destructive exit from a mis-started job —
                 inside the progress card, not the toolbar, so it reads as an
                 attribute of this run. Ghost: it must not compete with the
@@ -800,6 +803,7 @@ export function MeetingDetailView({
             <Button
               variant="ghost"
               size="sm"
+              className="shrink-0"
               data-testid={
                 transcribing
                   ? "meetings-cancel-transcribe"

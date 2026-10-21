@@ -82,6 +82,24 @@ export function jobBadgeView(job: NonNullable<MeetingListItem["job"]>): {
   }
 }
 
+/**
+ * The one line of the progress card of the detail view (issue #262): the
+ * label, then " · " and the progress. A workflow run (Enhance, Summarize)
+ * shows a percent, a transcription shows "done/total". The label loses its
+ * end ellipsis when the progress follows it. With no progress, the label
+ * stays as it is.
+ */
+export function jobProgressLine(
+  label: string,
+  progress: { done: number; total: number; workflow: boolean } | null,
+): string {
+  if (!progress || progress.total <= 0) return label;
+  const value = progress.workflow
+    ? `${Math.round((progress.done / progress.total) * 100)}%`
+    : `${progress.done}/${progress.total}`;
+  return `${label.replace(/(\u2026|\.\.\.)$/, "")} · ${value}`;
+}
+
 // A running job (Transcribe, Enhance, Summarize, Diarize, Retry) is an
 // in-progress state too, so it uses the live badge with a spinner. The
 // percent shows when the job knows its total. A queued job keeps the live

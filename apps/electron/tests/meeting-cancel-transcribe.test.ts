@@ -334,7 +334,9 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       );
       await expect(cancelButton).toBeVisible({ timeout: 20_000 });
       await expect(cancelButton).toBeEnabled();
-      await expect(dashboardPage.getByText("Transcribing…")).toBeVisible();
+      // Issue #262: one line, the label and then the "done/total" count.
+      const jobLine = dashboardPage.getByTestId("meetings-job-line");
+      await expect(jobLine).toHaveText(/^Transcribing( · \d+\/2)?/);
 
       // The meeting is stuck mid-job server-side: 2 planned chunks, none
       // finished (chunk 1 is failing through its retries, chunk 2 is about
@@ -375,9 +377,7 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       expect((await cancelResponse).status()).toBe(202);
 
       // Wind-down state: the card says cancelling and the button is spent.
-      await expect(dashboardPage.getByText("Cancelling…")).toBeVisible({
-        timeout: 5_000,
-      });
+      await expect(jobLine).toHaveText(/^Cancelling/, { timeout: 5_000 });
       await expect(cancelButton).toBeDisabled();
 
       // Release the in-flight chunk: it succeeds (its segment persists —
