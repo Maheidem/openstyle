@@ -19,7 +19,6 @@ import {
   parseAnswerKey,
   runMetrics,
   type SegmentRow,
-  scoreAnswerKey,
 } from "./checks.mts";
 import {
   floorModel,
@@ -319,7 +318,7 @@ test("metrics: applied, echo rate, drops, finish", () => {
   assert.equal(m.suggestions, 1);
 });
 
-test("answer key: load and score", () => {
+test("answer key: load and validate (v1)", () => {
   assert.throws(() => parseAnswerKey('{"version":2}'), /version/);
   assert.throws(
     () =>
@@ -329,39 +328,9 @@ test("answer key: load and score", () => {
     /fixes\[0\]/,
   );
   const key = parseAnswerKey(
-    JSON.stringify({
-      version: 1,
-      meetings: {
-        "2943c36a-full-id": {
-          fixes: [
-            { key: "system:0@0", from: "open style", to: "Openstyle" },
-            { key: "system:1@1000", from: "cube", to: "Kube" },
-            { key: "system:9@9", from: "x", to: "y" },
-          ],
-          mustNotChange: [
-            { key: "system:1@1000", span: "twenty five" },
-            { key: "system:0@0", span: "the plan" },
-          ],
-        },
-      },
-    }),
+    '{"version":1,"meetings":{"2943c36a-full-id":{"fixes":[],"mustNotChange":[]}}}',
   );
-  const rows = [
-    seg(0, "the plan for open style", "The plan for Openstyle."),
-    seg(1, "cube has twenty five pods", "Cube has 25 pods."),
-  ];
-  const s = scoreAnswerKey(key["2943c36a"] as never, rows);
-  assert.deepEqual(
-    [
-      s.fixesFound,
-      s.fixesMissed,
-      s.missedKeys,
-      s.mustNotChangeViolations,
-      s.violationKeys,
-      s.badEntries,
-    ],
-    [1, 1, ["system:1@1000"], 2, ["system:1@1000", "system:0@0"], 1],
-  );
+  assert.deepEqual(Object.keys(key), ["2943c36a"]);
 });
 
 test("report: render, self-check and floor", () => {
@@ -398,7 +367,7 @@ test("report: render, self-check and floor", () => {
       metrics: runMetrics([], [], []),
       checks: checks(fails),
       hardFails: 0,
-      answerKey: null,
+      scorecard: null,
     };
     r.hardFails = hardFailsOf(r);
     return r;
@@ -406,16 +375,14 @@ test("report: render, self-check and floor", () => {
   const res: Results = {
     createdAt: "2026-10-20T00:00:00Z",
     commit: "abc1234",
-    models: ["small", "big", "omlx:Qwen3.8-27B"],
+    models: ["small", "big", "no-size"],
     meetings: [
       { id8: "2943c36a", id: "2943c36a-x", segments: 37, durationSeconds: 425 },
     ],
-    answerKey: false,
-    runs: [
-      run("small", 1e9, 2),
-      run("big", 8e9, 0),
-      run("omlx:Qwen3.8-27B", null, 0),
-    ],
+    asrHash: null,
+    asrModel: null,
+    gold: null,
+    runs: [run("small", 1e9, 2), run("big", 8e9, 0), run("no-size", null, 0)],
     floor: null,
   };
   res.floor = floorModel(res);

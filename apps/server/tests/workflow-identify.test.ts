@@ -6,10 +6,7 @@ import { getDb } from "../src/lib/db.js";
 import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
 import type { CallProfile } from "../src/lib/llm/model-profiles.js";
 import { __clearModeCacheForTests } from "../src/lib/llm/model-profiles.js";
-import {
-  appliesSizeLimits,
-  selectCandidates,
-} from "../src/lib/meetings/workflow/nodes/identify-speakers.js";
+import { selectCandidates } from "../src/lib/meetings/workflow/nodes/identify-speakers.js";
 import { FOLDER_CONTEXT_LABEL } from "../src/lib/meetings/workflow/prompts.js";
 import {
   IDENTIFY_ANCHOR_LINES,
@@ -17,6 +14,7 @@ import {
   type PreparedMeeting,
   type PreparedSegment,
 } from "../src/lib/meetings/workflow/types.js";
+import { appliesSizeLimits } from "../src/lib/meetings/workflow/unit.js";
 import { MLX_LLM_PROVIDER_ID } from "../src/lib/mlx-llm/constants.js";
 import { okReply, reply, type ScriptStep } from "./helpers/fake-model.js";
 import type { MeetingFixture } from "./helpers/meeting-fixture.js";

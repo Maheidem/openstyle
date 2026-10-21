@@ -14,7 +14,6 @@ block() {
 
 input=$(cat)
 tool=$(jq -r '.tool_name // ""' <<<"$input")
-cwd=$(jq -r '.cwd // ""' <<<"$input")
 
 # Owner paths that a test must never change. A scratch copy such as
 # /tmp/x/home/.cache/freestyle does not match: the prefix must be the real home.
@@ -55,28 +54,12 @@ if [[ $cmd =~ (127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]):4649([^0-9]|$) ]] &&
   block "rule a" "port 4649 belongs to the installed app; start an isolated server on another port."
 fi
 
-# Rule e: only Qwen3-ASR and Qwen3.8-27B go to the owner's oMLX server.
-if [[ $cmd =~ (127\.0\.0\.1|localhost):8123/v1/(audio/transcriptions|chat/completions) ]]; then
-  models=$(grep -oE '(\\?"model\\?"[[:space:]]*:[[:space:]]*\\?"[^"\\]+|model=[^[:space:]"'\''&]+)' <<<"$cmd" |
-    sed -E 's/.*[:=][[:space:]]*\\?"?//' || true)
-  # A JSON body from a file (-d @body.json): read the model from the file.
-  while IFS= read -r f; do
-    [[ -z $f ]] && continue
-    [[ $f != /* && -n $cwd ]] && f="$cwd/$f"
-    if [[ -r $f && ! $f =~ \.(wav|aiff|mp3|m4a|flac|ogg|webm)$ ]]; then
-      models+=$'\n'$(jq -r '.model // empty' "$f" 2>/dev/null || true)
-    fi
-  done < <(grep -oE '(-d|--data|--data-binary|--data-raw)[[:space:]]+@[^[:space:]"'\'']+' <<<"$cmd" | sed -E 's/.*@//' || true)
-  models=$(grep -v '^[[:space:]]*$' <<<"$models" || true)
-  if [[ -z $models ]]; then
-    block "rule e" "the model sent to 127.0.0.1:8123 is not visible; put model=Qwen3-ASR or Qwen3.8-27B in the command."
-  fi
-  while IFS= read -r m; do
-    base=$(tr '[:upper:]' '[:lower:]' <<<"${m##*/}")
-    if [[ $base != "qwen3-asr" && $base != "qwen3.8-27b" ]]; then
-      block "rule e" "model '$m' on the owner's oMLX server (127.0.0.1:8123); only Qwen3-ASR and Qwen3.8-27B are allowed."
-    fi
-  done <<<"$models"
+# Rule e: nothing calls the owner's oMLX server on port 8123 (owner rule
+# 2026-10-21): no LLM, no ASR, no health check. Use the app's built-in MLX
+# models. Same shape as rule a: the address and a network client word.
+if [[ $cmd =~ (127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]):8123([^0-9]|$) ]] &&
+  [[ $cmd =~ (^|[^[:alnum:]_-])(curl|wget|http|https|xh|nc|ncat|websocat|node|bun|deno|python3?|fetch)([^[:alnum:]_-]|$) ]]; then
+  block "rule e" "nothing may call the owner's oMLX server (127.0.0.1:8123), not even a health check; use the app's built-in MLX models."
 fi
 
 # kill $(pgrep ... Openstyle) is a kill by name of the installed app.

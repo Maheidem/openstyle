@@ -323,7 +323,9 @@ try {
     let finalStatus = null;
     let finalError = null;
     let segmentCounts = null;
-    const deadline = t0 + timeoutSec * 1000;
+    // A failed POST starts no job: do not poll (a missing meeting row once
+    // polled 404 for the whole timeout).
+    const deadline = exitCode === 0 ? t0 + timeoutSec * 1000 : t0;
     while (performance.now() < deadline) {
       await sleep(2000);
       const res = await fetch(`${base}/api/meetings/${meetingId}`, { headers });

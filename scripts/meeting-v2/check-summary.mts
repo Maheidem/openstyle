@@ -65,12 +65,15 @@ if (!dbPath || !meetingId || !outPath || (arm !== "old" && arm !== "new")) {
 }
 
 // --- Own copy of the render format (4.5.6) --------------------------------
-const oneLine = (s: string): string => s.replace(/\r?\n|\r/g, " ");
+// Same rules as `oneLine` and `paragraphs` in summary-pure.ts: trim the
+// spaces at the ends, and remove a heading line also after leading spaces.
+const oneLine = (s: string): string => s.replace(/\s*[\r\n]+\s*/g, " ").trim();
 const paragraphs = (s: string): string =>
   s
     .split(/\r?\n/)
-    .filter((l) => !l.startsWith("#"))
-    .join("\n");
+    .filter((l) => !l.trimStart().startsWith("#"))
+    .join("\n")
+    .trim();
 function render(s: Summary): string {
   const list = (a: string[]): string =>
     a.length ? a.map((t) => `- ${oneLine(t)}`).join("\n") : "None.";

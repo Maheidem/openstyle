@@ -66,7 +66,7 @@ A PreToolUse hook (`scripts/guard-hook.sh`, registered in `.claude/settings.json
 | b | Write, delete or move under `~/.cache/freestyle`, `~/.cache/huggingface`, `~/Library/Application Support/Openstyle`, `/Applications/Openstyle.app` (rm, mv, touch, `>`, `sed -i`, `find -delete`, `cp`/`rsync` into them, `sqlite3` without `-readonly`, Write/Edit tools) | `ls`, `cat`, `du`, `stat`, `sqlite3 -readonly`, `cp` out of them, the same paths under `/tmp` |
 | c | `say` without `-o`/`--output-file`, any `afplay` | `say -v <voice> -o <file> "text"` |
 | d | `pkill`, `killall`, `kill $(pgrep ... Openstyle)` | `kill <pid>` |
-| e | A request to `127.0.0.1:8123/v1/audio/transcriptions` or `/v1/chat/completions` with a model other than `Qwen3-ASR` or `Qwen3.8-27B` (a prefix like `server/srv_x/` is allowed), or with no visible model | `GET /v1/models` |
+| e | A network client (curl, wget, node, fetch, python...) to `127.0.0.1:8123` or `localhost:8123`: any path, any model, also a health check (owner rule 2026-10-21) | `grep "127.0.0.1:8123"`, other ports |
 | f | `osascript` that names Openstyle, `open -a Openstyle`, `open /Applications/Openstyle.app` | other `open` and `osascript` calls |
 
 The hook does not parse quotes. A separator inside a quoted string can make an extra check, so a rare false block is possible. Rewrite the command; do not disable the hook. Test the table with `bash scripts/guard-hook.test.sh` (CI runs it in the Lint job).
@@ -175,7 +175,7 @@ rm -rf $S
 
 - Use the playwright binary, not `pnpm`, under `isolated_run` (scratch `HOME`).
 - To prove a run is quiet: `screencapture -x -m` before and during the run, and count changed pixels. On 2026-10-08 the main display changed by 0.01-0.03% (clock and menu bar stats only). Without `setHiddenInMissionControl` a shown window, even at opacity 0 or off-screen, changed the menu bar tint (5.3%).
-- `import-screen` sends one Qwen3-ASR request to the owner's oMLX when it answers on 8123. Set `OPENSTYLE_E2E_OMLX_URL=http://127.0.0.1:1` to skip that branch.
+- `import-screen` sends one request to port 8123 when a server answers there. Always set `OPENSTYLE_E2E_OMLX_URL=http://127.0.0.1:1` to skip that branch (see "The owner's model server" below).
 - New worktree trap: `pnpm install` can leave `node_modules/.pnpm/electron@*/node_modules/electron/dist` with only `LICENSES.chromium.html` (extract-zip quits without an error). Fix: `ditto -x -k ~/Library/Caches/electron/electron-v<ver>-darwin-arm64.zip dist` in that folder and `printf 'Electron.app/Contents/MacOS/Electron' > path.txt`.
 - A test must reach the embedded server with `embeddedServerUrl(app)`, never with a hard-coded 4649.
 - A new worktree has no `apps/electron/resources/bin`. Run `pnpm --filter @openstyle/electron download:ffmpeg` first, or the import suites fail with "ffmpeg could not decode the file".
@@ -230,9 +230,9 @@ A throwaway Playwright spec proved the Speakers dialog with fictional data in 18
 
 pi children start without skills or context files (`--no-skills --no-context-files`). The coordinating agent must write this line in every pi brief that runs the app, the server or an E2E spec: "Read `.claude/skills/live-testing/SKILL.md` first and follow it." On 2026-10-15 a brief left the line out. The pi child launched the app without the recipe, failed twice, and the owner saw privacy pop-ups. For a UI proof, also paste the recipe steps above into the brief.
 
-## The owner's oMLX server (127.0.0.1:8123)
+## The owner's model server (127.0.0.1:8123): never call it
 
-It is live infrastructure: the owner's dictation and AI cleanup use it. Call it only with the models the app already uses (Qwen3-ASR, Qwen3.8-27B). Never send other model types (Parakeet, TTS, embeddings): on 2026-10-07 one Parakeet request hung oMLX 0.7.0 at 100% CPU for about 15 minutes. After any test, check `timeout 8 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/v1/models` prints 200.
+Owner rule 2026-10-21: nothing may call `127.0.0.1:8123`. No LLM, no ASR, no health check. It is live infrastructure for the owner's dictation and AI cleanup. Use only the app's built-in MLX models in tests and benchmarks. Guard rule e blocks a network client call to that port.
 
 ## Synthetic audio is silent
 

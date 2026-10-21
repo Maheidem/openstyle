@@ -12,6 +12,7 @@ import {
   withReasoningOff,
 } from "../../llm/model-profiles.js";
 import { getTracing, inNode, markError, setAttrs } from "../../llm/tracing.js";
+import { MLX_LLM_PROVIDER_ID } from "../../mlx-llm/constants.js";
 import type { RunContext, WorkflowDeps } from "./context.js";
 import {
   BREAKER_N,
@@ -27,6 +28,16 @@ import {
 // 4.0.2, 4.0.6, 4.0.7). Exactly one party opens and closes each step row.
 
 const ONE_LINE_MAX = 200;
+
+/**
+ * True when the provider builds its grammar with llguidance, which applies
+ * `maxItems` and `maxLength` (specs/local-mlx-llm.md G2). Then the schema
+ * carries the size limits (`identifySpeakersStepSchema` version 4,
+ * `meetingSummaryStepSchema` version 2).
+ */
+export function appliesSizeLimits(profile: CallProfile): boolean {
+  return profile.provider === MLX_LLM_PROVIDER_ID;
+}
 
 function oneLineText(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, ONE_LINE_MAX);

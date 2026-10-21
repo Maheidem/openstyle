@@ -1,5 +1,5 @@
 // checks.mts: the deterministic hard-fail checks, the run metrics and the
-// answer-key score of the meeting Enhance eval (`pnpm meeting:eval`).
+// v1 answer-key parser of the meeting Enhance eval (`pnpm meeting:eval`).
 //
 // The functions are pure. They take plain database rows and return counts
 // and keys. A segment key is `source:idx@start_ms`. A key never holds
@@ -245,7 +245,11 @@ const isCapitalized = (w: string) => /^\p{Lu}/u.test(w);
 const fold = (s: string) =>
   s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-function levenshtein(a: string, b: string): number {
+/**
+ * The edit distance of two sequences: characters of a string, or the items
+ * of an array (for example word tokens). Items are compared with ===.
+ */
+export function levenshtein<T>(a: ArrayLike<T>, b: ArrayLike<T>): number {
   const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
     let diag = prev[0] as number;
@@ -626,9 +630,11 @@ export function runMetrics(
 //   }
 //
 // key: a segment key (source:idx@start_ms), as results.md and the compare
-// files show it. A fix is found when the enhanced text of the segment holds
-// `to` and no longer holds `from` (`from` may be ""). A must-not-change span
-// is violated when the raw text holds it and the enhanced text does not.
+// files show it. gold.mts goldFromAnswerKey turns a v1 key into a gold v2
+// key (fixes and mustNotChange only), and score.mts scoreFixes scores it: a
+// fix is found when the enhanced text of the segment holds `to` and no
+// longer holds `from` (`from` may be ""); a must-not-change span is violated
+// when the raw text holds it and the enhanced text does not.
 
 export interface AnswerKeyMeeting {
   fixes: { key: string; from: string; to: string }[];
@@ -677,56 +683,4 @@ export function parseAnswerKey(json: string): AnswerKey {
     out[id8.slice(0, 8)] = { fixes, mustNotChange: mnc };
   }
   return out;
-}
-
-export interface AnswerKeyScore {
-  fixesFound: number;
-  fixesMissed: number;
-  missedKeys: string[];
-  mustNotChangeViolations: number;
-  violationKeys: string[];
-  /** Entries whose key is not a segment, or whose span is not in the raw text. */
-  badEntries: number;
-}
-
-export function scoreAnswerKey(
-  entry: AnswerKeyMeeting,
-  rows: SegmentRow[],
-): AnswerKeyScore {
-  const byKey = new Map(rows.map((s) => [segmentKey(s), s]));
-  const score: AnswerKeyScore = {
-    fixesFound: 0,
-    fixesMissed: 0,
-    missedKeys: [],
-    mustNotChangeViolations: 0,
-    violationKeys: [],
-    badEntries: 0,
-  };
-  for (const f of entry.fixes) {
-    const s = byKey.get(f.key);
-    if (!s) {
-      score.badEntries += 1;
-      continue;
-    }
-    const text = effective(s);
-    const gone =
-      f.from === "" || f.to.includes(f.from) || !text.includes(f.from);
-    if (text.includes(f.to) && gone) score.fixesFound += 1;
-    else {
-      score.fixesMissed += 1;
-      score.missedKeys.push(f.key);
-    }
-  }
-  for (const m of entry.mustNotChange) {
-    const s = byKey.get(m.key);
-    if (!s || !(s.text ?? "").includes(m.span)) {
-      score.badEntries += 1;
-      continue;
-    }
-    if (!effective(s).includes(m.span)) {
-      score.mustNotChangeViolations += 1;
-      score.violationKeys.push(m.key);
-    }
-  }
-  return score;
 }
