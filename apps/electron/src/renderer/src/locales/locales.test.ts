@@ -72,6 +72,10 @@ describe("locale files", () => {
       key.startsWith("meetings.tags."),
     ),
     "speaker-attendee-picker": ["meetings.speakerNamePickHint"],
+    // The built-in search model group on the Models page (#233).
+    "search-model": Object.keys(en).filter((key) =>
+      key.startsWith("models.searchModel."),
+    ),
     // The track length warning and the track repair notes (issue #170) tell
     // the user that the transcript can be wrong, so every locale carries them.
     "track-ratio-warning": [

@@ -25,6 +25,7 @@ import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { PairCard } from "./pair-card";
 import { tasksUsingPreset } from "./preset-ops";
+import { SearchModelSection } from "./search-model-section";
 import { type ServerView, voiceCannotTranscribe } from "./server-roles";
 import { TaskProfilesSection } from "./task-profiles-section";
 import { useModels } from "./use-models";
@@ -266,6 +267,8 @@ export default function ModelsPage(): React.JSX.Element {
           servers={m.servers.servers}
           alignerStatus={m.mlxStatus?.aligner ?? null}
         />
+
+        <SearchModelSection />
 
         {showParams && (
           <div ref={taskProfilesRef}>

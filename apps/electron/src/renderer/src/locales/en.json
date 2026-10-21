@@ -860,6 +860,12 @@
     "loading": "Loading models",
     "mlxKeepAlive": "MLX ASR keep-alive",
     "mlxLlmKeepAlive": "MLX LLM keep-alive",
+    "searchModel": {
+      "title": "Search model",
+      "desc": "Openstyle uses this model to search your meetings by meaning. It runs on this Mac and needs no AI model.",
+      "loading": "Loading the search model…",
+      "loadFailed": "The search model did not load: {{error}}"
+    },
     "removeDownloaded": "Remove downloaded model from disk",
     "modal": {
       "addApiKey": "Add API key",

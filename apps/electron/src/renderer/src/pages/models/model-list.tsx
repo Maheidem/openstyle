@@ -51,7 +51,7 @@ import { OpenModelSourceButton, recommendedVoiceKey } from "./voice-helpers";
 // Normalized row — one shape for cloud + local, voice + LLM.
 // ---------------------------------------------------------------------------
 
-interface Row {
+export interface Row {
   key: string;
   name: string;
   source: "cloud" | "local" | "server";
@@ -75,6 +75,8 @@ interface Row {
   state?: WhisperModelDownloadState;
   /** A delete request for this local model is in flight. */
   deleting?: boolean;
+  /** Show the delete button also when the row is selected (the search model). */
+  deleteWhenSelected?: boolean;
   onSelect?: () => void;
   onDownload?: () => void;
   onCancel?: () => void;
@@ -500,7 +502,7 @@ export function ModelList({
 // Row
 // ---------------------------------------------------------------------------
 
-function ModelRow({
+export function ModelRow({
   row,
   first,
 }: {
@@ -599,9 +601,12 @@ function ModelRow({
 
       <div className="flex shrink-0 items-center gap-1.5 justify-self-end">
         {row.selected ? (
-          <span className="text-primary text-[11px] font-semibold">
-            {t("models.list.selected")}
-          </span>
+          <>
+            <span className="text-primary text-[11px] font-semibold">
+              {t("models.list.selected")}
+            </span>
+            {row.deleteWhenSelected && deleteButton}
+          </>
         ) : local ? (
           <>
             {status === "ready" && (

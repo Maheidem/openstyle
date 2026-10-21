@@ -10,6 +10,7 @@ import {
   type ConfiguredModel,
   hasActiveDownload,
   type MlxAsrStatus,
+  type MlxEmbedStatus,
   type MlxLlmStatus,
   type WhisperStatus,
 } from "./models";
@@ -47,6 +48,8 @@ export const queryKeys = {
   mlxStatus: ["mlx-status"] as const,
   /** The built-in local LLM (`GET /api/mlx-llm/status`). */
   mlxLlmStatus: ["mlx-llm-status"] as const,
+  /** The built-in search model (`GET /api/mlx-embed/status`). */
+  mlxEmbedStatus: ["mlx-embed-status"] as const,
 
   /** Experimental feature flags (`GET /api/config`). */
   config: ["config"] as const,
@@ -373,6 +376,29 @@ export function mlxLlmStatusQueryOptions() {
     refetchInterval: (query) => {
       const d = query.state.data;
       return d && hasActiveDownload(d.models) ? 500 : false;
+    },
+    staleTime: 0,
+  });
+}
+
+/**
+ * The built-in search model. It polls during a download and while the
+ * model loads after Use.
+ */
+export function mlxEmbedStatusQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.mlxEmbedStatus,
+    enabled: IS_MAC,
+    queryFn: async (): Promise<MlxEmbedStatus> => {
+      const res = await getClient().api["mlx-embed"].status.$get();
+      if (!res.ok) throw new Error("Failed to load MLX embedding status");
+      return await res.json();
+    },
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      return d && (hasActiveDownload(d.models) || d.worker.state === "starting")
+        ? 500
+        : false;
     },
     staleTime: 0,
   });
