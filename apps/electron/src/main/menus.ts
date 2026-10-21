@@ -15,6 +15,7 @@ import {
 import { autoUpdater } from "electron-updater";
 import trayRecordingIconPath from "../../resources/tray/logoRecording.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
+import { isFakeMeetingCapture } from "./fake-meeting-capture";
 import { refreshMeetingsFlag, state } from "./main-state";
 import { MeetingDevicesChangedError } from "./meeting-recorder";
 import {
@@ -163,7 +164,7 @@ export function buildTrayContextMenu(): Menu {
     buildUpdateMenuItem(),
     // Meeting Mode: feature-flagged ("meetings") and darwin >= 14.4 only.
     ...(state.meetingsFlagEnabled &&
-    isSystemAudioCaptureSupported() &&
+    (isSystemAudioCaptureSupported() || isFakeMeetingCapture()) &&
     state.meetingRecorder
       ? [
           { type: "separator" as const },

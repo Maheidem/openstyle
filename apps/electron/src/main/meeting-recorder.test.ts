@@ -548,3 +548,49 @@ describe("MeetingRecorder track length check (issue #170)", () => {
     expect(trackWarnings()).toHaveLength(0);
   });
 });
+
+describe("MeetingRecorder E2E fake capture", () => {
+  beforeEach(() => {
+    mocks.userData = mkdtempSync(join(tmpdir(), "openstyle-recorder-test-"));
+    mocks.helpers.length = 0;
+    mocks.systemCaptures.length = 0;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(mocks.userData, { recursive: true, force: true });
+  });
+
+  it("writes silence to both tracks and opens no device", async () => {
+    vi.stubEnv("OPENSTYLE_E2E", "1");
+    vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_CAPTURE", "1");
+    const listAudioDevices = vi.fn(async () => null);
+    const { recorder, createCaptureWindow } = createRecorder({
+      listAudioDevices,
+    });
+
+    const meetingId = await recorder.start();
+    expect(recorder.status).toBe("recording");
+    await vi.waitFor(() => expect(readJournal(meetingId).micT0).not.toBeNull());
+    await recorder.stop();
+
+    expect(mocks.helpers).toHaveLength(0);
+    expect(mocks.systemCaptures).toHaveLength(0);
+    expect(createCaptureWindow).not.toHaveBeenCalled();
+    expect(listAudioDevices).not.toHaveBeenCalled();
+    const journal = readJournal(meetingId);
+    expect(journal.systemT0).toBe(journal.micT0);
+    expect(journal.sharedClock).toBe(true);
+  });
+
+  it("ignores the flag without OPENSTYLE_E2E=1", async () => {
+    vi.stubEnv("OPENSTYLE_E2E", "");
+    vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_CAPTURE", "1");
+    const { recorder } = createRecorder();
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onReady?.();
+    await started;
+    expect(mocks.helpers).toHaveLength(1);
+    await recorder.stop();
+  });
+});
