@@ -497,7 +497,10 @@ export function RecordingCard({
                 <span className="text-foreground text-[13px] font-medium">
                   {t("meetings.recording")}
                 </span>
-                <span className="mono text-muted-foreground text-[12px] tabular-nums">
+                <span
+                  className="mono text-muted-foreground text-[12px] tabular-nums"
+                  data-testid="meeting-recording-elapsed"
+                >
                   {elapsed}
                 </span>
               </div>

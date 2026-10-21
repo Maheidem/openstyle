@@ -36,6 +36,8 @@ export function embeddedServerUrl(app: ElectronApplication): string {
 export async function launchOpenstyle(options: {
   userDataDir: string;
   timeout?: number;
+  /** Extra env vars, for example an E2E seam flag. */
+  env?: Record<string, string>;
 }): Promise<ElectronApplication> {
   const serverPort = await freeLoopbackPort();
   const app = await electron.launch({
@@ -48,6 +50,7 @@ export async function launchOpenstyle(options: {
       OPENSTYLE_SERVER_PORT: String(serverPort),
       OPENSTYLE_E2E: "1",
       ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
+      ...options.env,
     },
     timeout: options.timeout ?? 30_000,
   });
