@@ -722,6 +722,7 @@ function summaryResult(over: Partial<SummarizeResult> = {}): SummarizeResult {
     callCount: 1,
     failure: null,
     llmCallIds: [],
+    partial: false,
     ...over,
   };
 }
