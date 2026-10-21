@@ -70,6 +70,8 @@
         "tests/**/*.ts",
         "*.config.ts"
       ],
+      // A loadable extension, copied by path (scripts/copy-sqlite-vec.mjs).
+      "ignoreDependencies": ["sqlite-vec-darwin-arm64"],
       "paths": {
         "@renderer/*": ["src/renderer/src/*"],
         "@shared/*": ["src/shared/*"],
@@ -101,7 +103,13 @@
       "vitest": {
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]
       },
-      "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
+      // sqlite-vec-linux-x64: a loadable extension for the ON-mode search
+      // tests on Linux CI, read by path (tests/helpers/sqlite-vec.ts).
+      "ignoreDependencies": [
+        "@types/json-schema",
+        "node:sqlite",
+        "sqlite-vec-linux-x64"
+      ]
     }
   }
 }

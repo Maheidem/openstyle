@@ -800,6 +800,23 @@
       "railLabel": "Réunions et dossiers",
       "recordsInto": "Enregistrement dans"
     },
+    "search": {
+      "label": "Rechercher dans les réunions",
+      "placeholderAll": "Rechercher dans toutes les réunions",
+      "placeholderFolder": "Rechercher dans {{name}}",
+      "offUnsupported": "La recherche n’est pas disponible sur cet ordinateur.",
+      "offReinstall": "La recherche n’est pas disponible sur cet ordinateur. Réinstallez Openstyle.",
+      "offNoModel": "Téléchargez un modèle de recherche dans Modèles.",
+      "openModels": "Ouvrir Modèles",
+      "indexing": "Indexation des réunions : {{indexed}} sur {{total}}",
+      "resultsLabel": "Résultats de recherche",
+      "resultsAll": "Résultats pour « {{query}} » dans toutes les réunions",
+      "resultsFolder": "Résultats pour « {{query}} » dans {{name}}",
+      "close": "Fermer la recherche",
+      "searching": "Recherche…",
+      "failed": "La recherche a échoué. Réessayez.",
+      "noResults": "Aucun texte de réunion ne correspond à cette recherche."
+    },
     "noLlmHint": "Ajoutez un modèle d’IA dans Paramètres > Modèles pour utiliser Améliorer et Résumé.",
     "titleAccent": "Réunions",
     "subtitle": "Enregistrez le micro et l'audio système d'une réunion, puis obtenez une transcription étiquetée et un résumé. L'audio reste sur votre Mac jusqu'à la transcription.",

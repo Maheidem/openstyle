@@ -67,6 +67,11 @@ export const queryKeys = {
     tags: ["meetings", "tags"] as const,
     folder: (id: string | null) => ["meetings", "list", id] as const,
     detail: (id: string) => ["meetings", "detail", id] as const,
+    /** `GET /api/search/status` (specs/local-semantic-search.md 7.4). */
+    searchStatus: ["meetings", "search-status"] as const,
+    /** `POST /api/search/meetings`, one entry per query and scope. */
+    search: (query: string, folderId: string | null) =>
+      ["meetings", "search", query, folderId] as const,
     transcript: (id: string) => ["meetings", "transcript", id] as const,
     /** specs/meeting-speaker-naming.md §7.3: the Speakers dialog's
      * GET /:id/speakers query — lives at MeetingDetailView level, not

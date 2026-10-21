@@ -16,6 +16,7 @@ import {
   meetingFolderExists,
   meetingFolderNameExists,
 } from "../lib/meetings/folders.js";
+import { moveMeetingIndex } from "../lib/search/indexer.js";
 
 const folderSelect = `SELECT f.*, COUNT(m.id) AS meeting_count,
   MIN(m.started_at) AS first_meeting_at, MAX(m.started_at) AS last_meeting_at,
@@ -175,6 +176,10 @@ export const meetingMoves = new Hono().post(
       db.prepare(
         `UPDATE meetings SET folder_id = ? WHERE id IN (${slots})`,
       ).run(input.folder_id, ...ids);
+      // Search index (specs/local-semantic-search.md 6.5, S3): move the
+      // stored vectors to the new partition in the same transaction. No
+      // embedding call. Does nothing when search is off.
+      for (const id of ids) moveMeetingIndex(db, id, input.folder_id ?? "");
       return c.json(
         moveMeetingsResponseSchema.parse({
           ok: true,

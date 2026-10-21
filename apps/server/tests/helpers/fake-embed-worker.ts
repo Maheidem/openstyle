@@ -11,7 +11,9 @@ import { join } from "node:path";
  *
  * Env: FAKE_EMBED_LOG appends one JSON line per request (with the argv).
  * FAKE_EMBED_DIMS sets the reply dims (default 768). FAKE_EMBED_FAIL=1
- * prints an error line before ready.
+ * prints an error line before ready. FAKE_EMBED_BOW=1 gives bag-of-words
+ * vectors instead (each word, without the D9 prompt, hashed to one dim, then
+ * L2-normalized), so texts that share words are near (search tests).
  */
 const FAKE_EMBED_WORKER_SOURCE = `#!/usr/bin/env node
 const http = require("node:http");
@@ -44,7 +46,21 @@ const server = http.createServer((req, res) => {
       const parsed = JSON.parse(body);
       log({ method: "POST", url: req.url, body: parsed, hf_hub_offline: process.env.HF_HUB_OFFLINE ?? null });
       const input = typeof parsed.input === "string" ? [parsed.input] : parsed.input;
+      const bow = (text) => {
+        const v = new Array(dims).fill(0);
+        const body = text.replace(/^(title: none \\| text: |task: search result \\| query: )/, "");
+        for (const w of body.toLowerCase().match(/\\p{L}+/gu) || []) {
+          let h = 2166136261;
+          for (const ch of w) h = Math.imul(h ^ ch.codePointAt(0), 16777619) >>> 0;
+          v[h % dims] += 1;
+        }
+        const n = Math.sqrt(v.reduce((a, x) => a + x * x, 0)) || 1;
+        return v.map((x) => x / n);
+      };
       const data = input.map((text, index) => {
+        if (process.env.FAKE_EMBED_BOW === "1") {
+          return { object: "embedding", index, embedding: bow(text) };
+        }
         const embedding = new Array(dims).fill(0);
         embedding[text.length % dims] = 1;
         return { object: "embedding", index, embedding };

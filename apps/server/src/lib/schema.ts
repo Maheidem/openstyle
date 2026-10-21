@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 42;
+const SCHEMA_VERSION = 43;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1165,6 +1165,47 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         CREATE INDEX IF NOT EXISTS idx_meeting_tags_tag_id ON meeting_tags(tag_id);
       `);
     }
+  }
+
+  if (currentVersion < 43 && tableExists(db, "meetings")) {
+    // Meeting search index (specs/local-semantic-search.md 3.2). Plain
+    // tables only: the vec0 table needs the extension and is created at run
+    // time (S12). meeting_chunks.id is the vec0 rowid; AUTOINCREMENT never
+    // gives an id again (S11). The trigger records each deleted chunk id,
+    // also on a meeting cascade, so the indexer can delete its vector (6.6).
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meeting_chunks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL,
+        segment_ids TEXT NOT NULL,
+        char_start INTEGER NOT NULL,
+        char_end INTEGER,
+        start_ms INTEGER,
+        end_ms INTEGER,
+        token_estimate INTEGER NOT NULL,
+        text_hash TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_meeting_chunks_meeting
+        ON meeting_chunks(meeting_id, model_id, ordinal);
+      CREATE TABLE IF NOT EXISTS meeting_chunk_gc (chunk_id INTEGER PRIMARY KEY);
+      CREATE TRIGGER IF NOT EXISTS meeting_chunks_ad AFTER DELETE ON meeting_chunks
+      BEGIN
+        INSERT OR IGNORE INTO meeting_chunk_gc(chunk_id) VALUES (old.id);
+      END;
+      CREATE TABLE IF NOT EXISTS meeting_index_state (
+        meeting_id TEXT PRIMARY KEY REFERENCES meetings(id) ON DELETE CASCADE,
+        model_id TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        folder_key TEXT NOT NULL,
+        chunk_count INTEGER NOT NULL,
+        indexed_at INTEGER NOT NULL,
+        error_kind TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0
+      );
+    `);
   }
 
   // Upsert schema version

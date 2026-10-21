@@ -24,6 +24,7 @@ import {
   prefetchManagedMlxRuntimeForAppRelease,
 } from "./lib/mlx-asr/runtime.js";
 import { configureNetwork } from "./lib/network.js";
+import { startSearchIndexer } from "./lib/search/indexer.js";
 import { runInTraceScope } from "./lib/trace.js";
 import {
   isTrustedRendererOrigin,
@@ -231,6 +232,10 @@ export async function startServer(
   // meeting job starts it again if the server booted before the first
   // meeting job.
   maybeStartAlignerDownload();
+  // Meeting search index (specs/local-semantic-search.md 6.1 step 5), after
+  // the boot sweeps. It runs only when sqlite-vec loaded; with no search
+  // model it waits.
+  startSearchIndexer();
 
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ noServer: true });

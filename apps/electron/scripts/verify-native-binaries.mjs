@@ -33,6 +33,9 @@ const EXPECTED = {
     // a hard runtime dependency of Import, so a failed fetch/build must
     // fail CI rather than ship a build that cannot decode audio.
     "ffmpeg",
+    // sqlite-vec for meeting search (specs/local-semantic-search.md 11.2),
+    // copied by copy-sqlite-vec.mjs in build:mac. Without it search is off.
+    "vec0.dylib",
   ],
   win32: [
     "windows-key-listener.exe",

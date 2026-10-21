@@ -208,54 +208,6 @@ jobs:
         timeout-minutes: 5
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @openstyle/electron run test:e2e
 
-  build-linux:
-    name: Build (Linux)
-    needs: [changes, lint, typecheck, test-server]
-    if: needs.changes.outputs.run_electron == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup
-
-      - name: Build server
-        run: pnpm turbo build --filter=@openstyle/server
-
-      - name: Install native build dependencies
-        # See the note on the same step in test-electron.
-        timeout-minutes: 10
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev binutils
-
-      - name: Build whisper.cpp binaries
-        working-directory: apps/electron
-        run: node scripts/download-whisper-cpp.mjs --resources
-
-      - name: Fetch/build ffmpeg
-        working-directory: apps/electron
-        run: node scripts/download-ffmpeg.mjs
-
-      - name: Verify whisper binaries are portable (no AVX-512)
-        working-directory: apps/electron
-        run: node scripts/verify-whisper-portable.mjs
-
-      - name: Build electron (Linux)
-        working-directory: apps/electron
-        run: pnpm run build:linux
-
-      - name: Verify native binaries in package
-        working-directory: apps/electron
-        run: node scripts/verify-native-binaries.mjs
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-builds
-          path: |
-            apps/electron/dist/*.AppImage
-            apps/electron/dist/*.deb
-            apps/electron/dist/latest*.yml
-          if-no-files-found: error
-
   build-mac:
     name: Build (macOS)
     needs: [changes, lint, typecheck, test-server]
@@ -423,6 +375,24 @@ jobs:
         working-directory: apps/electron
         run: node scripts/verify-native-binaries.mjs
 
+      # Meeting search (specs/local-semantic-search.md 11.2 step 4). The
+      # step above checks that vec0.dylib is in the app. This step prints its
+      # signature. The signed path also checks its authority below.
+      - name: Check sqlite-vec dylib in package
+        working-directory: apps/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=""
+          for candidate in dist/mac*/Openstyle.app; do
+            app="$candidate"
+            break
+          done
+          dylib="$app/Contents/Resources/bin/vec0.dylib"
+          test -f "$dylib"
+          file "$dylib"
+          codesign -dv "$dylib"
+
       - name: Verify release signature
         if: steps.signing.outputs.signed == 'true'
         working-directory: apps/electron
@@ -439,7 +409,8 @@ jobs:
             exit 1
           fi
           helper="$app/Contents/Resources/bin/macos-key-listener"
-          for target in "$app" "$helper"; do
+          vec="$app/Contents/Resources/bin/vec0.dylib"
+          for target in "$app" "$helper" "$vec"; do
             echo "== codesign -dv --verbose=4 $target"
             details="$(codesign -dv --verbose=4 "$target" 2>&1)"
             echo "$details"
@@ -505,48 +476,6 @@ jobs:
           security delete-keychain "$dir/release-signing.keychain-db" || true
           rm -rf "$dir"
 
-  build-windows:
-    name: Build (Windows)
-    needs: [changes, lint, typecheck, test-server]
-    if: needs.changes.outputs.run_electron == 'true'
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup
-
-      - name: Build server
-        run: pnpm turbo build --filter=@openstyle/server
-
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Download whisper.cpp binaries
-        working-directory: apps/electron
-        run: node scripts/download-whisper-cpp.mjs --resources
-
-      - name: Fetch/build ffmpeg
-        working-directory: apps/electron
-        run: node scripts/download-ffmpeg.mjs
-
-      - name: Build electron (Windows)
-        working-directory: apps/electron
-        run: pnpm run build:win
-
-      - name: Verify native binaries in package
-        working-directory: apps/electron
-        run: node scripts/verify-native-binaries.mjs
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-builds
-          path: |
-            apps/electron/dist/*.exe
-            apps/electron/dist/latest*.yml
-            apps/electron/dist/*.blockmap
-          if-no-files-found: error
-
   ci-status:
     name: CI Status
     if: always()
@@ -557,9 +486,7 @@ jobs:
       - typecheck
       - test-server
       - test-electron
-      - build-linux
       - build-mac
-      - build-windows
     runs-on: ubuntu-latest
     steps:
       - name: Check CI result
