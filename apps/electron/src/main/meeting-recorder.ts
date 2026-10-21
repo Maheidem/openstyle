@@ -46,6 +46,7 @@ import type {
 } from "../shared/meeting-devices";
 import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
+import { isFakeMeetingCapture } from "./fake-meeting-capture";
 import {
   MeetingCaptureHelper,
   type MicRequest,
@@ -225,8 +226,15 @@ export interface MeetingRecorderDeps {
   listAudioDevices: () => Promise<DeviceSnapshot | null>;
   /** Broadcast a `meeting:level` event to interested renderer windows. */
   broadcastLevel: (event: MeetingLevelEvent) => void;
-  /** Broadcast a `meeting:status` change to interested renderer windows. */
-  broadcastStatus: (status: MeetingRecorderStatus) => void;
+  /**
+   * Broadcast a `meeting:status` change to interested renderer windows.
+   * `startedAt` is the recording start time (epoch ms) while the status is
+   * "recording", else null.
+   */
+  broadcastStatus: (
+    status: MeetingRecorderStatus,
+    startedAt: number | null,
+  ) => void;
   /**
    * The calendar event that runs now, or null (specs/calendar-eventkit.md).
    * It returns null at once when the user has not turned on the calendar.
@@ -249,6 +257,8 @@ export class MeetingRecorder {
   private journal: SyncJournal | null = null;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private maxDurationTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The E2E fake capture timer (see fake-meeting-capture.ts). */
+  private fakeCaptureTimer: ReturnType<typeof setInterval> | null = null;
   private lastMicLevelAt = 0;
   private lastError: string | null = null;
   private resumeListener: (() => void) | null = null;
@@ -280,6 +290,14 @@ export class MeetingRecorder {
   }
 
   /**
+   * The start time (epoch ms) of the running recording, or null when the
+   * status is not "recording". All timers show the elapsed time from it.
+   */
+  get recordingStartedAt(): number | null {
+    return this._status === "recording" ? this.startedAt : null;
+  }
+
+  /**
    * webContents id of the hidden capture window, or null when not recording.
    * IPC handlers use it to drop meeting:mic-chunk / meeting:capture-error
    * messages from any other renderer.
@@ -296,7 +314,7 @@ export class MeetingRecorder {
 
   private setStatus(status: MeetingRecorderStatus): void {
     this._status = status;
-    this.deps.broadcastStatus(status);
+    this.deps.broadcastStatus(status, this.recordingStartedAt);
   }
 
   private async api(
@@ -353,6 +371,8 @@ export class MeetingRecorder {
    * default. It opens no audio device.
    */
   private async prepareDevices(): Promise<PreparedDevices> {
+    // The fake capture reads no device list and asks no renderer.
+    if (isFakeMeetingCapture()) return { plan: null, mic: undefined };
     const chosen = await this.resolveMicName();
     // No label for the chosen mic: the fallback opens the exact device id.
     if (!chosen) return { plan: null, mic: undefined };
@@ -424,7 +444,8 @@ export class MeetingRecorder {
     confirmed?: ConfirmedDevices | null,
     folderId?: string | null,
   ): Promise<string> {
-    if (!isSystemAudioCaptureSupported()) {
+    const fake = isFakeMeetingCapture();
+    if (!fake && !isSystemAudioCaptureSupported()) {
       throw new Error("Meeting recording requires macOS 14.4 or later");
     }
 
@@ -515,10 +536,15 @@ export class MeetingRecorder {
     this.setStatus("recording");
 
     // Capture sources: the native helper first, then the fallback path.
-    const nativeStarted = await this.startNativeCapture(id, devices.mic);
+    // The E2E fake capture uses neither.
+    const nativeStarted =
+      !fake && (await this.startNativeCapture(id, devices.mic));
     // The user may stop the recording while the capture helper starts.
     if (!this.isRecording(id)) return id;
-    if (nativeStarted) {
+    if (fake) {
+      log.info("Meeting capture path: E2E fake (silence, no audio device)");
+      this.startFakeCapture();
+    } else if (nativeStarted) {
       log.info("Meeting capture path: native (macos-meeting-capture)");
     } else {
       log.info(
@@ -763,6 +789,26 @@ export class MeetingRecorder {
     return true;
   }
 
+  /**
+   * E2E fake capture: write silence to both tracks at the real sample rate,
+   * from the wallclock. It goes through the native frame path, so both
+   * tracks share one T0.
+   */
+  private startFakeCapture(): void {
+    if (this.journal) this.journal.sharedClock = true;
+    const t0 = Date.now();
+    let written = 0;
+    this.fakeCaptureTimer = setInterval(() => {
+      const due =
+        Math.floor(((Date.now() - t0) * SAMPLE_RATE) / 1000) - written;
+      if (due <= 0) return;
+      written += due;
+      const pcm = Buffer.alloc(due * BYTES_PER_SAMPLE);
+      this.handleNativeFrame("M", pcm);
+      this.handleNativeFrame("S", pcm);
+    }, 100);
+  }
+
   private broadcastLevel(source: "mic" | "system", rms: number): void {
     if (!this.meetingId) return;
     this.deps.broadcastLevel({ meetingId: this.meetingId, source, rms });
@@ -845,6 +891,8 @@ export class MeetingRecorder {
     this.flushTimer = null;
     if (this.maxDurationTimer) clearTimeout(this.maxDurationTimer);
     this.maxDurationTimer = null;
+    if (this.fakeCaptureTimer) clearInterval(this.fakeCaptureTimer);
+    this.fakeCaptureTimer = null;
     if (this.resumeListener) {
       powerMonitor.removeListener("resume", this.resumeListener);
       this.resumeListener = null;

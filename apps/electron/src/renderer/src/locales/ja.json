@@ -1085,6 +1085,7 @@
   },
   "pill": {
     "cancelDictation": "音声入力をキャンセル",
+    "stopMeeting": "会議の録音を停止",
     "dismiss": "閉じる",
     "retry": "再試行",
     "cardTitle": "文字起こしに失敗しました",
@@ -1097,7 +1098,8 @@
       "noAudio": "マイクから音声が入力されていません",
       "preparingMic": "マイクを準備中",
       "listening": "聞き取り中",
-      "transcribing": "文字起こし中"
+      "transcribing": "文字起こし中",
+      "meetingRecording": "会議を録音中"
     },
     "error": {
       "timedOut": "文字起こしがタイムアウトしました",

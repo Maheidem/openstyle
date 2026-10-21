@@ -90,6 +90,7 @@ function createRecorder(
   } = {},
 ) {
   const createCaptureWindow = vi.fn(fakeCaptureWindow);
+  const broadcastStatus = vi.fn();
   const recorder = new MeetingRecorder({
     serverFetch: extra.serverFetch ?? (async () => new Response("{}")),
     findCurrentEvent: extra.findCurrentEvent ?? (async () => null),
@@ -98,9 +99,9 @@ function createRecorder(
     resolveMicLabel: async () => null,
     listAudioDevices: extra.listAudioDevices ?? (async () => null),
     broadcastLevel: vi.fn(),
-    broadcastStatus: vi.fn(),
+    broadcastStatus,
   });
-  return { recorder, createCaptureWindow };
+  return { recorder, createCaptureWindow, broadcastStatus };
 }
 
 /** Start a recording and wait until the recorder has made its native helper. */
@@ -299,6 +300,27 @@ describe("MeetingRecorder calendar link", () => {
     await started;
     expect("calendar" in startBody(calls)).toBe(false);
     await recorder.stop();
+  });
+
+  it("broadcasts the start time that it sends to the server", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    const { recorder, broadcastStatus } = createRecorder({
+      serverFetch: recordingFetch(calls),
+    });
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onReady?.();
+    await started;
+    const startedAt = startBody(calls).started_at;
+    expect(typeof startedAt).toBe("number");
+    expect(recorder.recordingStartedAt).toBe(startedAt);
+    expect(broadcastStatus.mock.calls).toEqual([["recording", startedAt]]);
+
+    await recorder.stop();
+    expect(recorder.recordingStartedAt).toBeNull();
+    expect(broadcastStatus.mock.calls.slice(1)).toEqual([
+      ["finalizing", null],
+      ["idle", null],
+    ]);
   });
 
   it("still records when the calendar lookup throws", async () => {
@@ -524,5 +546,51 @@ describe("MeetingRecorder track length check (issue #170)", () => {
   it("logs nothing when both tracks have the same length", async () => {
     await recordFrames(600, 600);
     expect(trackWarnings()).toHaveLength(0);
+  });
+});
+
+describe("MeetingRecorder E2E fake capture", () => {
+  beforeEach(() => {
+    mocks.userData = mkdtempSync(join(tmpdir(), "openstyle-recorder-test-"));
+    mocks.helpers.length = 0;
+    mocks.systemCaptures.length = 0;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(mocks.userData, { recursive: true, force: true });
+  });
+
+  it("writes silence to both tracks and opens no device", async () => {
+    vi.stubEnv("OPENSTYLE_E2E", "1");
+    vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_CAPTURE", "1");
+    const listAudioDevices = vi.fn(async () => null);
+    const { recorder, createCaptureWindow } = createRecorder({
+      listAudioDevices,
+    });
+
+    const meetingId = await recorder.start();
+    expect(recorder.status).toBe("recording");
+    await vi.waitFor(() => expect(readJournal(meetingId).micT0).not.toBeNull());
+    await recorder.stop();
+
+    expect(mocks.helpers).toHaveLength(0);
+    expect(mocks.systemCaptures).toHaveLength(0);
+    expect(createCaptureWindow).not.toHaveBeenCalled();
+    expect(listAudioDevices).not.toHaveBeenCalled();
+    const journal = readJournal(meetingId);
+    expect(journal.systemT0).toBe(journal.micT0);
+    expect(journal.sharedClock).toBe(true);
+  });
+
+  it("ignores the flag without OPENSTYLE_E2E=1", async () => {
+    vi.stubEnv("OPENSTYLE_E2E", "");
+    vi.stubEnv("OPENSTYLE_E2E_FAKE_MEETING_CAPTURE", "1");
+    const { recorder } = createRecorder();
+    const { started, helper } = await startWithHelper(recorder);
+    helper.options.onReady?.();
+    await started;
+    expect(mocks.helpers).toHaveLength(1);
+    await recorder.stop();
   });
 });

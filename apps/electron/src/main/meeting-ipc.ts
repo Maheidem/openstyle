@@ -18,6 +18,7 @@ import {
 import { app, ipcMain, shell } from "electron";
 import type { hc } from "hono/client";
 import type { ConfirmedDevices } from "../shared/meeting-devices";
+import { isFakeMeetingCapture } from "./fake-meeting-capture";
 import {
   MeetingDevicesChangedError,
   type MeetingRecorder,
@@ -88,7 +89,8 @@ export function registerMeetingIpc({
     return {
       status: meetingRecorder?.status ?? "idle",
       meetingId: meetingRecorder?.currentMeetingId ?? null,
-      supported: isSystemAudioCaptureSupported(),
+      startedAt: meetingRecorder?.recordingStartedAt ?? null,
+      supported: isSystemAudioCaptureSupported() || isFakeMeetingCapture(),
     };
   });
 
@@ -121,6 +123,8 @@ export function registerMeetingIpc({
     // A running recording already proves the pipeline; don't spawn a second
     // helper under it.
     if (getMeetingRecorder()?.status !== "idle") return "ok";
+    // The E2E fake capture never probes a real device.
+    if (isFakeMeetingCapture()) return "ok";
     return probeSystemAudio();
   });
 

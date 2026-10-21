@@ -83,6 +83,8 @@ const api = {
   getMeetingStatus: (): Promise<{
     status: "idle" | "recording" | "finalizing";
     meetingId: string | null;
+    /** Recording start time (epoch ms) while recording, else null. */
+    startedAt: number | null;
     supported: boolean;
   }> => ipcRenderer.invoke("meeting:status"),
   /** TCC probe: briefly run the system-audio pipeline to detect denial. */
@@ -111,9 +113,10 @@ const api = {
     listen<
       [event: { meetingId: string; source: "mic" | "system"; rms: number }]
     >("meeting:level"),
-  onMeetingStatusChanged: listen<[status: "idle" | "recording" | "finalizing"]>(
-    "meeting:status-changed",
-  ),
+  /** `startedAt` is the recording start time (epoch ms) while recording. */
+  onMeetingStatusChanged: listen<
+    [status: "idle" | "recording" | "finalizing", startedAt: number | null]
+  >("meeting:status-changed"),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),

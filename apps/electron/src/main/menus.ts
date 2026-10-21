@@ -13,7 +13,9 @@ import {
   Tray,
 } from "electron";
 import { autoUpdater } from "electron-updater";
+import trayRecordingIconPath from "../../resources/tray/logoRecording.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
+import { isFakeMeetingCapture } from "./fake-meeting-capture";
 import { refreshMeetingsFlag, state } from "./main-state";
 import { MeetingDevicesChangedError } from "./meeting-recorder";
 import {
@@ -30,6 +32,7 @@ import {
 import { selfUpdater } from "./self-updater";
 import { stopServerHost } from "./server-host";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
+import { trayAppearance } from "./tray-appearance";
 import { showSettingsWindow } from "./windows/settings-window";
 
 const log = createAppLogger("electron");
@@ -161,7 +164,7 @@ export function buildTrayContextMenu(): Menu {
     buildUpdateMenuItem(),
     // Meeting Mode: feature-flagged ("meetings") and darwin >= 14.4 only.
     ...(state.meetingsFlagEnabled &&
-    isSystemAudioCaptureSupported() &&
+    (isSystemAudioCaptureSupported() || isFakeMeetingCapture()) &&
     state.meetingRecorder
       ? [
           { type: "separator" as const },
@@ -204,13 +207,34 @@ export function buildTrayContextMenu(): Menu {
   ]);
 }
 
-export function createTray(): void {
-  const trayImage = nativeImage.createFromPath(trayIconPath);
-  // Mark as template so macOS adapts to menu bar light/dark
-  trayImage.setTemplateImage(true);
+/**
+ * Show the red tray icon while a meeting records, and the normal icon at
+ * other times. It does nothing when there is no tray (quiet E2E mode).
+ */
+export function updateTrayForMeeting(recording: boolean): void {
+  if (!state.tray) return;
+  const look = trayAppearance(recording);
+  state.tray.setImage(trayImage(look.icon, look.template));
+  state.tray.setToolTip(look.tooltip);
+}
 
-  state.tray = new Tray(trayImage);
-  state.tray.setToolTip("Openstyle");
+function trayImage(
+  icon: "default" | "recording",
+  template: boolean,
+): Electron.NativeImage {
+  // createFromPath also loads the @2x file next to the path.
+  const image = nativeImage.createFromPath(
+    icon === "recording" ? trayRecordingIconPath : trayIconPath,
+  );
+  // A template image follows the light/dark menu bar on macOS.
+  image.setTemplateImage(template);
+  return image;
+}
+
+export function createTray(): void {
+  const look = trayAppearance(state.meetingRecorder?.status === "recording");
+  state.tray = new Tray(trayImage(look.icon, look.template));
+  state.tray.setToolTip(look.tooltip);
 
   if (process.platform === "linux") {
     // Linux desktop panels often don't fire the right-click event, so

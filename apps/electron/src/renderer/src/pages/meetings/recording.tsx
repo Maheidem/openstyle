@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@renderer/components/ui/dialog";
 import { Progress } from "@renderer/components/ui/progress";
-import { formatClockMs } from "@renderer/lib/format";
+import { useElapsedClock } from "@renderer/hooks/use-elapsed-clock";
 import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -97,6 +97,8 @@ export function useRecorder(folderId: string | null = null): {
   starting: boolean;
   supported: boolean;
   meetingId: string | null;
+  /** Recording start time (epoch ms) from the main process, or null. */
+  startedAt: number | null;
   start: () => Promise<void>;
   stop: () => Promise<void>;
   error: string | null;
@@ -114,6 +116,7 @@ export function useRecorder(folderId: string | null = null): {
   const pendingFolderId = useRef<string | null>(null);
   const [supported, setSupported] = useState(false);
   const [meetingId, setMeetingId] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<MeetingDevicePlan | null>(null);
   const [pendingDevices, setPendingDevices] =
@@ -145,9 +148,11 @@ export function useRecorder(folderId: string | null = null): {
       setStatus(s.status);
       setSupported(s.supported);
       setMeetingId(s.meetingId);
+      setStartedAt(s.startedAt);
     });
-    const remove = window.api?.onMeetingStatusChanged?.((next) => {
+    const remove = window.api?.onMeetingStatusChanged?.((next, start) => {
       setStatus(next);
+      setStartedAt(start);
       if (next === "idle") {
         setMeetingId(null);
         void queryClient.invalidateQueries({
@@ -221,6 +226,7 @@ export function useRecorder(folderId: string | null = null): {
     starting,
     supported,
     meetingId,
+    startedAt,
     start,
     stop,
     error,
@@ -407,31 +413,23 @@ export function RecordingCard({
   const { t } = useTranslation();
   const [micLevel, setMicLevel] = useState(0);
   const [systemLevel, setSystemLevel] = useState(0);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const startedAtRef = useRef<number | null>(null);
   const recording = recorder.status === "recording";
   const finalizing = recorder.status === "finalizing";
+  // The start time comes from the main process, so this timer and the pill
+  // show the same time, also after the page mounts again.
+  const elapsed = useElapsedClock(recording ? recorder.startedAt : null);
 
   useEffect(() => {
     if (!recording) {
-      startedAtRef.current = null;
-      setElapsedMs(0);
       setMicLevel(0);
       setSystemLevel(0);
       return;
     }
-    startedAtRef.current = Date.now();
-    const timer = setInterval(() => {
-      if (startedAtRef.current) {
-        setElapsedMs(Date.now() - startedAtRef.current);
-      }
-    }, 1000);
     const remove = window.api?.onMeetingLevel?.((event) => {
       if (event.source === "mic") setMicLevel(event.rms);
       else setSystemLevel(event.rms);
     });
     return () => {
-      clearInterval(timer);
       remove?.();
     };
   }, [recording]);
@@ -499,8 +497,11 @@ export function RecordingCard({
                 <span className="text-foreground text-[13px] font-medium">
                   {t("meetings.recording")}
                 </span>
-                <span className="mono text-muted-foreground text-[12px] tabular-nums">
-                  {formatClockMs(elapsedMs)}
+                <span
+                  className="mono text-muted-foreground text-[12px] tabular-nums"
+                  data-testid="meeting-recording-elapsed"
+                >
+                  {elapsed}
                 </span>
               </div>
               <LevelMeter

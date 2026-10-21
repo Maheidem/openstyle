@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   api: null as OpenstyleApi | null,
   start: vi.fn(async () => "meeting-1"),
+  recorder: {} as Partial<MeetingRecorder>,
 }));
 
 vi.mock("@electron-toolkit/preload", () => ({ electronAPI: {} }));
@@ -45,9 +46,9 @@ await import("../preload/index");
 beforeEach(() => {
   mocks.start.mockClear();
   mocks.handlers.clear();
+  mocks.recorder = { start: mocks.start };
   registerMeetingIpc({
-    getMeetingRecorder: () =>
-      ({ start: mocks.start }) as unknown as MeetingRecorder,
+    getMeetingRecorder: () => mocks.recorder as MeetingRecorder,
     serverClient: () => {
       throw new Error("unused");
     },
@@ -89,5 +90,35 @@ describe("meeting folder IPC", () => {
       id: "meeting-1",
     });
     expect(mocks.start).toHaveBeenCalledExactlyOnceWith(null, undefined);
+  });
+});
+
+describe("meeting status IPC", () => {
+  it("sends the recording start time while a meeting records", async () => {
+    mocks.recorder = {
+      status: "recording",
+      currentMeetingId: "meeting-1",
+      recordingStartedAt: 1_760_000_000_000,
+    };
+    expect(await mocks.api!.getMeetingStatus()).toEqual({
+      status: "recording",
+      meetingId: "meeting-1",
+      startedAt: 1_760_000_000_000,
+      supported: true,
+    });
+  });
+
+  it("sends no start time while no meeting records", async () => {
+    mocks.recorder = {
+      status: "idle",
+      currentMeetingId: null,
+      recordingStartedAt: null,
+    };
+    expect(await mocks.api!.getMeetingStatus()).toEqual({
+      status: "idle",
+      meetingId: null,
+      startedAt: null,
+      supported: true,
+    });
   });
 });

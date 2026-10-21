@@ -1403,6 +1403,7 @@
   },
   "pill": {
     "cancelDictation": "Cancel dictation",
+    "stopMeeting": "Stop meeting recording",
     "dismiss": "Dismiss",
     "retry": "Retry",
     "cardTitle": "Transcription failed",
@@ -1415,7 +1416,8 @@
       "noAudio": "No audio from your microphone",
       "preparingMic": "Preparing microphone",
       "listening": "Listening",
-      "transcribing": "Transcribing"
+      "transcribing": "Transcribing",
+      "meetingRecording": "Recording meeting"
     },
     "error": {
       "timedOut": "Transcription timed out",

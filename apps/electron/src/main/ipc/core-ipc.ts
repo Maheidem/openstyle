@@ -39,7 +39,7 @@ import { registerMeetingImportIpc } from "../meeting-import";
 import { registerMeetingIpc } from "../meeting-ipc";
 import { resolveMicLabel } from "../meeting-mic-label";
 import { MeetingRecorder } from "../meeting-recorder";
-import { buildTrayContextMenu } from "../menus";
+import { buildTrayContextMenu, updateTrayForMeeting } from "../menus";
 import { notifyImportComplete, notifyPasteFailed } from "../notifications";
 import { pasteIntoFocusedApp } from "../paste";
 import {
@@ -61,6 +61,7 @@ import {
   hidePill,
   resolveAppWindowPosition,
   setPillExpanded,
+  setPillMeetingRecording,
   setProgrammaticPosition,
 } from "../windows/pill-window";
 
@@ -150,8 +151,13 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     broadcastLevel: (event) => {
       broadcastToWindows("meeting:level", event);
     },
-    broadcastStatus: (status) => {
-      broadcastToWindows("meeting:status-changed", status);
+    broadcastStatus: (status, startedAt) => {
+      const recording = status === "recording";
+      // Show the pill before the event, so its arrival runs on screen. Hide
+      // it before the event, so the capsule does not flash away.
+      setPillMeetingRecording(recording);
+      broadcastToWindows("meeting:status-changed", status, startedAt);
+      updateTrayForMeeting(recording);
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         state.tray?.setContextMenu(buildTrayContextMenu());
