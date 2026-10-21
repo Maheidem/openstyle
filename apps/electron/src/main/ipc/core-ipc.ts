@@ -39,7 +39,7 @@ import { registerMeetingImportIpc } from "../meeting-import";
 import { registerMeetingIpc } from "../meeting-ipc";
 import { resolveMicLabel } from "../meeting-mic-label";
 import { MeetingRecorder } from "../meeting-recorder";
-import { buildTrayContextMenu } from "../menus";
+import { buildTrayContextMenu, updateTrayForMeeting } from "../menus";
 import { notifyImportComplete, notifyPasteFailed } from "../notifications";
 import { pasteIntoFocusedApp } from "../paste";
 import {
@@ -152,6 +152,7 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     },
     broadcastStatus: (status, startedAt) => {
       broadcastToWindows("meeting:status-changed", status, startedAt);
+      updateTrayForMeeting(status === "recording");
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         state.tray?.setContextMenu(buildTrayContextMenu());
