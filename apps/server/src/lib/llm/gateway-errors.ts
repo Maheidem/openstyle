@@ -68,12 +68,23 @@ export class LengthError extends GatewayError {
   readonly kind = "length";
   readonly where: "output" | "input";
   readonly maxOutputTokens: number;
+  /**
+   * The text of the cut answer, or null (input too long, no answer). It stays
+   * in memory: never put it in a message, a log or a span (5.8). Summarize
+   * repairs a cut summary from it (PR #258).
+   */
+  readonly cutText: string | null;
   constructor(
-    init: Init & { where: "output" | "input"; maxOutputTokens: number },
+    init: Init & {
+      where: "output" | "input";
+      maxOutputTokens: number;
+      cutText?: string | null;
+    },
   ) {
     super(init);
     this.where = init.where;
     this.maxOutputTokens = init.maxOutputTokens;
+    this.cutText = init.cutText ?? null;
   }
 }
 

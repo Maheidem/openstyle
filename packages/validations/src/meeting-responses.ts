@@ -10,6 +10,7 @@ const meetingRecordSchema = z.object({
   ended_at: z.number().nullable(),
   duration_ms: z.number().nullable(),
   status: z.string(),
+  display_status: z.string().optional(),
   language: z.string().nullable(),
   error: z.string().nullable(),
   created_at: z.number().nullable(),
@@ -95,6 +96,7 @@ export const meetingDetailResponseSchema = meetingRecordSchema.extend({
       input_tokens: z.number().nullable().optional(),
       output_tokens: z.number().nullable().optional(),
       summary_json: z.string().nullable().optional(),
+      partial: z.boolean().optional(),
     })
     .nullable(),
 }) satisfies z.ZodType<MeetingDetail>;

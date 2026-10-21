@@ -595,7 +595,7 @@ export function MeetingDetailView({
           language={meeting.language}
           onChanged={invalidate}
         />
-        <StatusBadge status={meeting.status} />
+        <StatusBadge status={meeting.display_status ?? meeting.status} />
       </div>
 
       {/* Actions */}
@@ -1087,6 +1087,17 @@ export function MeetingDetailView({
         <TabsContent value="summary" className="mt-4">
           {meeting.summary?.markdown ? (
             <>
+              {meeting.summary.partial && (
+                <InlineNotice
+                  tone="neutral"
+                  icon={AlertTriangle}
+                  className="mb-3"
+                >
+                  <span data-testid="meetings-summary-partial">
+                    {t("meetings.summaryPartial")}
+                  </span>
+                </InlineNotice>
+              )}
               {summaryStaleNames && (
                 <InlineNotice
                   tone="neutral"

@@ -856,6 +856,7 @@
       "recorded": "Enregistrée",
       "transcribing": "Transcription",
       "transcribed": "Transcrite",
+      "enhanced": "Améliorée",
       "summarized": "Résumée",
       "failed": "Échec"
     },
@@ -1013,6 +1014,7 @@
     "speakerResetOnRediarizeTitle": "Relancer l'identification des intervenants ?",
     "speakerResetOnRediarizeDesc": "Cette réunion a des noms ou des fusions confirmés. Relancer l'identification les efface, car une nouvelle analyse ne garantit pas de numéroter les intervenants de la même façon.",
     "summaryStaleNames": "Les noms des intervenants ont changé depuis la génération de ce résumé — relancez le résumé pour les inclure.",
+    "summaryPartial": "Ce résumé est incomplet : le modèle a atteint sa limite de sortie, les derniers éléments peuvent manquer. Relancez le résumé pour réessayer.",
     "close": "Fermer",
     "speakerUnidentified": "Non identifié",
     "contextPlaceholder": "Ajouter du contexte pour cette réunion…",

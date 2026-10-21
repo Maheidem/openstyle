@@ -856,6 +856,7 @@
       "recorded": "Aufgenommen",
       "transcribing": "Transkribiert",
       "transcribed": "Transkribiert",
+      "enhanced": "Verbessert",
       "summarized": "Zusammengefasst",
       "failed": "Fehlgeschlagen"
     },
@@ -1013,6 +1014,7 @@
     "speakerResetOnRediarizeTitle": "Sprechererkennung erneut ausführen?",
     "speakerResetOnRediarizeDesc": "Für dieses Meeting sind bereits Namen oder Zusammenführungen bestätigt. Ein erneuter Durchlauf löscht diese, da eine neue Erkennung Sprecher nicht garantiert gleich nummeriert.",
     "summaryStaleNames": "Sprechernamen haben sich seit der Erstellung dieser Zusammenfassung geändert – erneut zusammenfassen, um sie einzubeziehen.",
+    "summaryPartial": "Diese Zusammenfassung ist unvollständig: Das Modell hat sein Ausgabelimit erreicht, die letzten Punkte können fehlen. Erneut zusammenfassen, um es noch einmal zu versuchen.",
     "close": "Schließen",
     "speakerUnidentified": "Nicht identifiziert",
     "contextPlaceholder": "Kontext für dieses Meeting hinzufügen…",

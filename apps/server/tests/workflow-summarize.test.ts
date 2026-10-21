@@ -20,9 +20,11 @@ import {
   MeetingSummarySchema,
 } from "../src/lib/meetings/workflow/schemas.js";
 import {
+  closeCutJson,
   MAX_SUMMARIZE_CALLS,
   plannedSummaryCalls,
   renderSummaryMarkdown,
+  repairCutSummary,
 } from "../src/lib/meetings/workflow/summary-pure.js";
 import {
   deriveRunStatus,
@@ -675,6 +677,167 @@ describe("the length route", () => {
     );
     expect(reduceCalls.map((c) => c.attempt)).toEqual([1, 2]);
     expect(r.finalState.summary?.status).toBe("ok");
+  });
+});
+
+// --- a cut answer with a valid prefix (PR #258) -----------------------------
+
+const partialRow = (meetingId: string) =>
+  (
+    getDb()
+      .prepare("SELECT partial FROM meeting_summaries WHERE meeting_id = ?")
+      .get(meetingId) as { partial: number | null } | undefined
+  )?.partial;
+
+describe("closeCutJson and repairCutSummary (pure, PR #258)", () => {
+  it("closes at the last complete list element or top member", () => {
+    expect(closeCutJson('{"a": ["x", "y')).toBe('{"a": ["x"]}');
+    expect(closeCutJson('{"a": "x", "b": [1, 2')).toBe('{"a": "x", "b": [1]}');
+    expect(closeCutJson('{"a": "x", "b": tru')).toBe('{"a": "x"}');
+    expect(closeCutJson('{"a": [{"t": "x", "o": null}, {"t": "y"')).toBe(
+      '{"a": [{"t": "x", "o": null}]}',
+    );
+    expect(closeCutJson('{"a": "say \\"hi\\"", "b": "c')).toBe(
+      '{"a": "say \\"hi\\""}',
+    );
+    // A complete object followed by a whitespace loop.
+    expect(closeCutJson(`{"a": []}${" \n".repeat(50)}`)).toBe('{"a": []}');
+  });
+
+  it("gives null when nothing is complete or the text is no object", () => {
+    expect(closeCutJson('{"overview": "cut')).toBeNull();
+    expect(closeCutJson("")).toBeNull();
+    expect(closeCutJson('["a"]')).toBeNull();
+    expect(closeCutJson('text {"a": 1}')).toBeNull();
+  });
+
+  it("fills the missing lists, checks the schema, and needs an overview", () => {
+    expect(
+      repairCutSummary(
+        '{"overview": "A call.", "keyPoints": ["K"], "decisions": [',
+        MeetingSummarySchema,
+      ),
+    ).toEqual(summary({ overview: "A call.", keyPoints: ["K"] }));
+    expect(
+      repairCutSummary(
+        '{"overview": "", "keyPoints": ["K"',
+        MeetingSummarySchema,
+      ),
+    ).toBeNull();
+    expect(
+      repairCutSummary('{"keyPoints": ["K"], "x', MeetingSummarySchema),
+    ).toBeNull();
+    // A wrong type fails the schema.
+    expect(
+      repairCutSummary(
+        '{"overview": "A call.", "keyPoints": [1, 2',
+        MeetingSummarySchema,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("a cut answer with a valid prefix (PR #258)", () => {
+  it("a single call cut in its third list is repaired: the cut item is dropped, the rest kept, saved as partial", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 1,
+      speakers: 1,
+      meetingId: "m-cut1",
+    });
+    const cut = reply(
+      "length",
+      "length",
+      '{\n  "overview": "The team planned the launch.",\n  "keyPoints": ["The beta opens in May.", "Two testers joined."],\n  "decisions": ["Ship the beta", "Hire a desig',
+    );
+    const r = await run(f, [cut]);
+    expect(r.requests).toHaveLength(1);
+    expect(r.finalState.summary?.status).toBe("ok");
+    expect(r.finalState.summary?.partial).toBe(true);
+    expect(r.finalState.summary?.summary).toEqual(
+      summary({
+        overview: "The team planned the launch.",
+        keyPoints: ["The beta opens in May.", "Two testers joined."],
+        decisions: ["Ship the beta"],
+      }),
+    );
+    expect(stepStatus(r.recorder, "single")).toBe("partial");
+    expect(partialRow(f.meeting.id)).toBe(1);
+    expect(savedRow(f.meeting.id)?.markdown).toContain("- Ship the beta");
+    expect(savedRow(f.meeting.id)?.markdown).not.toContain("Hire a desig");
+    // A partial summary does not fail the run.
+    expect(statusOf(r)).toBe("succeeded");
+  });
+
+  it("a reduce call that loops on whitespace at 4096 and 8192 tokens is repaired from the 8192 answer", async () => {
+    setBudget(2000);
+    const f = meeting(5, 300, "m-cut2");
+    const loop = (overview: string) =>
+      reply(
+        "length",
+        "length",
+        `{\n  "overview": "${overview}",\n  "keyPoints": [],\n  "decisions": [],\n  "actionItems": [\n    {\n      "task": "Send the plan",\n      "owner": "Ana",\n      "due": null\n    }\n  ]${"\n    ".repeat(200)}`,
+      );
+    let reduces = 0;
+    const r = await run(f, (req) => {
+      if (isReduce(req)) {
+        reduces += 1;
+        return loop(reduces === 1 ? "First try." : "Second try.");
+      }
+      return sum();
+    });
+    const reduceRequests = r.requests.filter(isReduce);
+    expect(reduceRequests.map((q) => q.maxOutputTokens)).toEqual([4096, 8192]);
+    expect(r.finalState.summary?.partial).toBe(true);
+    expect(r.finalState.summary?.summary?.overview).toBe("Second try.");
+    expect(r.finalState.summary?.summary?.actionItems).toEqual([
+      { task: "Send the plan", owner: "Ana", due: null },
+    ]);
+    expect(r.finalState.summary?.summary?.openQuestions).toEqual([]);
+    expect(stepStatus(r.recorder, "reduce:1:0")).toBe("partial");
+    expect(partialRow(f.meeting.id)).toBe(1);
+    expect(statusOf(r)).toBe("succeeded");
+  });
+
+  it("a complete summary stores partial 0", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 1,
+      speakers: 1,
+      meetingId: "m-cut3",
+    });
+    const r = await run(f, [sum()]);
+    expect(r.finalState.summary?.partial).toBe(false);
+    expect(partialRow(f.meeting.id)).toBe(0);
+  });
+
+  it("a cut answer with no complete overview stays a failed step, as before", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 1,
+      speakers: 1,
+      meetingId: "m-cut4",
+    });
+    const r = await run(f, [LENGTH_CUT]);
+    expect(r.finalState.summary?.status).toBe("failed");
+    expect(r.finalState.summary?.failure?.kind).toBe("length");
+    expect(stepStatus(r.recorder, "single")).toBe("failed");
+    expect(savedRow(f.meeting.id)).toBeUndefined();
+  });
+
+  it("a single call that can replan does not repair: the map and reduce plan runs", async () => {
+    const f = meeting(4, 300, "m-cut5");
+    const cut = reply(
+      "length",
+      "length",
+      '{"overview": "Cut but valid.", "keyPoints": ["A"',
+    );
+    const r = await run(f, (req) => {
+      if (req.n === 0) return cut;
+      return isReduce(req) ? sum({ overview: "Merged." }) : sum();
+    });
+    expect(keysOf(r.recorder)[0]).toBe("single");
+    expect(keysOf(r.recorder).at(-1)).toMatch(/^reduce:\d+:0$/);
+    expect(r.finalState.summary?.partial).toBe(false);
+    expect(r.finalState.summary?.summary?.overview).toBe("Merged.");
+    expect(stepStatus(r.recorder, "single")).toBe("succeeded");
   });
 });
 

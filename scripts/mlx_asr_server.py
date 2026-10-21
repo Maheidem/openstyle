@@ -645,6 +645,18 @@ def _serve() -> None:
 # compact whitespace broke the output in probe X2.
 # ---------------------------------------------------------------------------
 
+# The JSON options of every strict grammar. Flexible whitespace stays on, so
+# the model can start its natural pretty layout (probe X2: compact JSON made
+# Qwen3.5 give empty lists and loops). The pattern bounds each whitespace run
+# between two JSON tokens to 24 characters: the deepest pretty indent of our
+# schemas is about 13 (newline + 3 levels of 4 spaces). Without the bound,
+# Gemma 4 E2B wrote "\n" + 4 spaces until max_tokens after a closed list
+# (PR #258, run 954be5f9: 3104 content chars, then only whitespace).
+_JSON_GRAMMAR_OPTIONS: dict[str, Any] = {
+    "whitespace_flexible": True,
+    "whitespace_pattern": r"[\x20\x0A\x0D\x09]{0,24}",
+}
+
 _LLM_DEFAULT_MAX_TOKENS = 4096
 # (open, close) of an empty thinking block. Qwen3.5 and Gemma 4.
 _THINK_PAIRS: tuple[tuple[str, str], ...] = (("<think>", "</think>"), ("<|channel>", "<channel|>"))
@@ -1000,9 +1012,7 @@ def _load_llm_engine(model_id: str) -> _LlmEngine:
     _log(f"llm ready: n_vocab={n_vocab} stop_ids={sorted(stop_ids)}")
 
     def grammar_factory(schema_json: str, think: tuple[int, int] | None) -> _JsonGrammar:
-        grammar = LLMatcher.grammar_from_json_schema(
-            schema_json, defaults={"whitespace_flexible": True}
-        )
+        grammar = LLMatcher.grammar_from_json_schema(schema_json, defaults=_JSON_GRAMMAR_OPTIONS)
         matcher = LLMatcher(ll_tok, grammar)
         if matcher.is_error():
             raise _BadRequest(f"invalid json schema: {matcher.get_error()}")

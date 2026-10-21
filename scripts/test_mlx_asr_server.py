@@ -1003,5 +1003,81 @@ class ResolveModelDirTests(unittest.TestCase):
                     mlx_asr_server._resolve_model_dir("org/missing", None)
 
 
+
+class _ByteTokenizer:
+    """One token per byte, plus EOS 256. Enough for llguidance to check text."""
+
+    eos_token_id = 256
+    bos_token_id = None
+    tokens = [bytes([i]) for i in range(256)] + [b"<eos>"]
+    special_token_ids = [256]
+
+    def __call__(self, s: bytes | str) -> list[int]:
+        return list(s.encode("utf-8") if isinstance(s, str) else s)
+
+
+class JsonGrammarOptionsTests(unittest.TestCase):
+    """PR #258: flexible JSON whitespace, but each run is at most 24 chars."""
+
+    SUMMARY = {
+        "type": "object",
+        "properties": {
+            "actionItems": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"task": {"type": "string"}},
+                    "required": ["task"],
+                    "additionalProperties": False,
+                },
+            },
+            "openQuestions": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["actionItems", "openQuestions"],
+        "additionalProperties": False,
+    }
+
+    def test_options_keep_flexible_and_bound_the_run(self) -> None:
+        self.assertEqual(
+            mlx_asr_server._JSON_GRAMMAR_OPTIONS,
+            {"whitespace_flexible": True, "whitespace_pattern": r"[\x20\x0A\x0D\x09]{0,24}"},
+        )
+
+    def _accepted(self, text: str) -> tuple[int, int]:
+        try:
+            import llguidance
+            from llguidance import LLMatcher
+        except ImportError:
+            self.skipTest("llguidance is not installed (use the worker build venv)")
+        ll_tok = llguidance.LLTokenizer(llguidance.TokenizerWrapper(_ByteTokenizer()))
+        grammar = LLMatcher.grammar_from_json_schema(
+            json.dumps(self.SUMMARY), defaults=mlx_asr_server._JSON_GRAMMAR_OPTIONS
+        )
+        matcher = LLMatcher(ll_tok, grammar)
+        self.assertFalse(matcher.is_error(), matcher.get_error())
+        ids = list(text.encode("utf-8"))
+        return matcher.validate_tokens(ids), len(ids)
+
+    def test_pretty_and_compact_json_pass(self) -> None:
+        pretty = json.dumps({"actionItems": [{"task": "Send the plan"}], "openQuestions": []}, indent=4)
+        compact = json.dumps({"actionItems": [], "openQuestions": ["Who?"]}, separators=(",", ":"))
+        for text in (pretty, compact):
+            ok, total = self._accepted(text)
+            self.assertEqual(ok, total, text)
+
+    def test_whitespace_loop_after_a_closed_list_is_cut(self) -> None:
+        head = '{\n  "actionItems": [\n    {\n      "task": "Send the plan"\n    }\n  ]'
+        ok, total = self._accepted(head + "\n    " * 40)
+        # The grammar takes the head and at most 24 whitespace chars, then
+        # the model must write "," or "}".
+        self.assertLessEqual(ok, len(head) + 24)
+        self.assertLess(ok, total)
+
+    def test_whitespace_inside_a_string_is_free(self) -> None:
+        text = json.dumps({"actionItems": [{"task": "a" + " " * 60 + "b"}], "openQuestions": []})
+        ok, total = self._accepted(text)
+        self.assertEqual(ok, total)
+
+
 if __name__ == "__main__":
     unittest.main()

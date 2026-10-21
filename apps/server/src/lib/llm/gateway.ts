@@ -963,6 +963,7 @@ export async function callStructured<T>(
               message: `The answer was cut at the token limit (${maxOutputTokens}).`,
               where: "output",
               maxOutputTokens,
+              cutText: c.text,
             }),
             salvage(),
           );

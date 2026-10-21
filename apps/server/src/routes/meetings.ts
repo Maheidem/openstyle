@@ -67,6 +67,7 @@ import {
 import {
   getMeetingRow,
   type MeetingRow,
+  meetingDisplayStatus,
   omitCalendarColumns,
   toCalendarEvent,
 } from "../lib/meetings/store.js";
@@ -1128,6 +1129,7 @@ const meetings = new Hono()
           const job = getJob(row.id);
           return {
             ...omitCalendarColumns(row),
+            display_status: meetingDisplayStatus(row),
             job: job && {
               kind: job.kind,
               phase: job.phase,
@@ -1968,11 +1970,13 @@ const meetings = new Hono()
           output_tokens: number | null;
           cost_usd: number | null;
           created_at: number | null;
+          partial: number | null;
         }
       | undefined;
     return c.json(
       meetingDetailResponseSchema.parse({
         ...omitCalendarColumns(row),
+        display_status: meetingDisplayStatus(row),
         tags: getMeetingTags(id),
         calendar: toCalendarEvent(row),
         /** Live job progress, or null when no job is running. `kind` names the
@@ -1981,7 +1985,10 @@ const meetings = new Hono()
         job: getJob(id),
         segment_counts: { total: counts.total, failed: counts.failed ?? 0 },
         ...loadTrackState(row),
-        summary: summary ?? null,
+        // `partial`: repaired from a cut answer (PR #258). NULL is complete.
+        summary: summary
+          ? { ...summary, partial: summary.partial === 1 }
+          : null,
       } satisfies MeetingDetail),
     );
   })

@@ -73,3 +73,139 @@ export function plannedSummaryCalls(
   }
   return { calls };
 }
+
+// ---------------------------------------------------------------------------
+// Repair of a cut summary (PR #258)
+// ---------------------------------------------------------------------------
+
+type Frame = { kind: "{" | "["; expect: "key" | "colon" | "value" | "comma" };
+
+const LITERAL = /^(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/;
+
+/**
+ * Close a JSON text that the token limit cut. The result ends at the last
+ * point where the text closes into valid JSON: after a complete element of a
+ * list, or after a complete member of the top object. So a cut last item is
+ * dropped, not closed half-written. Null when no such point exists (the text
+ * does not start with an object, or no member is complete).
+ */
+export function closeCutJson(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start < 0 || text.slice(0, start).trim() !== "") return null;
+  const stack: Frame[] = [];
+  let cut: { end: number; closers: string } | null = null;
+  const closersOf = () =>
+    stack
+      .map((f) => (f.kind === "{" ? "}" : "]"))
+      .reverse()
+      .join("");
+  /** A value ended at `end` (exclusive) in the frame on top of the stack. */
+  const valueDone = (end: number) => {
+    const top = stack[stack.length - 1];
+    if (!top) return;
+    top.expect = "comma";
+    if (top.kind === "[" || stack.length === 1) {
+      cut = { end, closers: closersOf() };
+    }
+  };
+  let i = start;
+  while (i < text.length) {
+    const ch = text[i] as string;
+    const top = stack[stack.length - 1];
+    if (ch === " " || ch === "\n" || ch === "\r" || ch === "\t") {
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      // Find the end of the string; a cut string has none.
+      let j = i + 1;
+      let closed = false;
+      while (j < text.length) {
+        const c = text[j];
+        if (c === "\\") j += 2;
+        else if (c === '"') {
+          closed = true;
+          break;
+        } else j += 1;
+      }
+      if (!closed) break;
+      i = j + 1;
+      if (top?.kind === "{" && top.expect === "key") top.expect = "colon";
+      else valueDone(i);
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      stack.push({ kind: ch, expect: ch === "{" ? "key" : "value" });
+      i += 1;
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      stack.pop();
+      i += 1;
+      if (stack.length === 0) {
+        cut = { end: i, closers: "" };
+        break;
+      }
+      valueDone(i);
+      continue;
+    }
+    if (ch === ":") {
+      if (top) top.expect = "value";
+      i += 1;
+      continue;
+    }
+    if (ch === ",") {
+      if (top) top.expect = top.kind === "{" ? "key" : "value";
+      i += 1;
+      continue;
+    }
+    const lit = LITERAL.exec(text.slice(i));
+    // A literal that touches the end of the text may be cut ("tru", "12").
+    if (!lit || i + lit[0].length >= text.length) break;
+    i += lit[0].length;
+    valueDone(i);
+  }
+  if (cut === null) return null;
+  const { end, closers } = cut as { end: number; closers: string };
+  return text.slice(start, end) + closers;
+}
+
+/** The list fields of the summary. A cut can drop the last ones. */
+const SUMMARY_LIST_KEYS = [
+  "keyPoints",
+  "decisions",
+  "actionItems",
+  "openQuestions",
+] as const;
+
+/**
+ * The summary object of a cut answer, or null. It closes the JSON
+ * (`closeCutJson`), gives each missing list field an empty list, and checks
+ * the result with `schema`. The overview must be complete and not empty: it
+ * is the first field, so without it the cut kept nothing useful.
+ */
+export function repairCutSummary<T>(
+  text: string,
+  schema: {
+    safeParse(v: unknown): { success: true; data: T } | { success: false };
+  },
+): T | null {
+  const closed = closeCutJson(text);
+  if (closed === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(closed);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.overview !== "string" || obj.overview.trim() === "") {
+    return null;
+  }
+  for (const key of SUMMARY_LIST_KEYS) if (!(key in obj)) obj[key] = [];
+  const parsed = schema.safeParse(obj);
+  return parsed.success ? parsed.data : null;
+}
