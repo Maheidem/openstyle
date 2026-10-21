@@ -800,6 +800,23 @@
       "railLabel": "ミーティングとフォルダー",
       "recordsInto": "録音の保存先"
     },
+    "search": {
+      "label": "会議を検索",
+      "placeholderAll": "すべての会議を検索",
+      "placeholderFolder": "{{name}} 内を検索",
+      "offUnsupported": "このコンピューターでは検索を使用できません。",
+      "offReinstall": "このコンピューターでは検索を使用できません。Openstyle を再インストールしてください。",
+      "offNoModel": "「モデル」で検索モデルをダウンロードしてください。",
+      "openModels": "モデルを開く",
+      "indexing": "会議をインデックス中: {{total}} 件中 {{indexed}} 件",
+      "resultsLabel": "検索結果",
+      "resultsAll": "すべての会議での「{{query}}」の結果",
+      "resultsFolder": "{{name}} での「{{query}}」の結果",
+      "close": "検索を閉じる",
+      "searching": "検索中…",
+      "failed": "検索に失敗しました。もう一度お試しください。",
+      "noResults": "この検索に一致する会議のテキストはありません。"
+    },
     "noLlmHint": "補正と要約を使うには、設定 > モデルでAIモデルを追加してください。",
     "titleAccent": "ミーティング",
     "subtitle": "ミーティングのマイクとシステム音声を録音し、話者ラベル付きの文字起こしと要約に変換します。文字起こしするまで音声はMacに保存されたままです。",

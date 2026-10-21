@@ -32,6 +32,11 @@ import {
   useSystemAudioProbe,
 } from "./recording";
 import {
+  MeetingSearchBar,
+  MeetingSearchResults,
+  useSearchStatus,
+} from "./search";
+import {
   AsrContextSettingsPopover,
   DiarizationSettingsPopover,
   EnhanceSettingsPopover,
@@ -51,6 +56,8 @@ export default function MeetingsPage(): React.JSX.Element {
     seq: number;
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** The submitted search text. Its scope is the selected folder (D21). */
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const moving = useRef(false);
   const actionSequence = useRef(0);
   const { data: config, isLoading: configLoading } = useQuery(
@@ -130,6 +137,7 @@ export default function MeetingsPage(): React.JSX.Element {
     ]),
   );
   const activeFolder = folders.find((folder) => folder.id === selectedFolderId);
+  const searchStatus = useSearchStatus(enabled);
   const folderGroup = groups.get(selectedFolderId);
 
   const openFolderId = openMeeting?.folder_id;
@@ -159,6 +167,7 @@ export default function MeetingsPage(): React.JSX.Element {
     startRecording,
   ]);
   const open = useCallback((id: string) => {
+    setSearchQuery(null);
     setSelectedFolderId(null);
     setSelectedId(id);
     setPanelAction(null);
@@ -190,6 +199,7 @@ export default function MeetingsPage(): React.JSX.Element {
     setExpanded((old) => ({ ...old, [id]: true }));
   };
   const back = () => {
+    setSearchQuery(null);
     setSelectedId(null);
     setSelectedFolderId(null);
     setPanelAction(null);
@@ -219,7 +229,9 @@ export default function MeetingsPage(): React.JSX.Element {
     if (meeting) void move(meeting, folderId);
   };
   if (!configLoading && !enabled) return <Navigate to="/today" replace />;
-  const explicitSelection = Boolean(selectedId || selectedFolderId);
+  const explicitSelection = Boolean(
+    selectedId || selectedFolderId || searchQuery,
+  );
   // The empty state has its own import button and error. The rail shows
   // its import controls only when the empty state is not on the page.
   const showEmptyState = !activeFolder && !activeId;
@@ -239,6 +251,11 @@ export default function MeetingsPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto pt-5"
         style={{ scrollbarWidth: "none" }}
       >
+        <MeetingSearchBar
+          status={searchStatus.data}
+          scopeName={activeFolder?.name ?? null}
+          onSearch={setSearchQuery}
+        />
         {showAudioHint && <SystemAudioHint />}
         {actionError && (
           <p className="text-destructive mb-3 text-xs" role="alert">
@@ -374,7 +391,15 @@ export default function MeetingsPage(): React.JSX.Element {
                 )}
               </div>
             )}
-            {activeFolder ? (
+            {searchQuery ? (
+              <MeetingSearchResults
+                query={searchQuery}
+                folderId={activeFolder?.id ?? null}
+                scopeName={activeFolder?.name ?? null}
+                onOpen={open}
+                onClose={() => setSearchQuery(null)}
+              />
+            ) : activeFolder ? (
               <FolderPanel
                 key={`${activeFolder.id}-${panelAction?.seq ?? 0}`}
                 folder={activeFolder}
