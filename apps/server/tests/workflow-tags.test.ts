@@ -8,6 +8,7 @@ import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
 import { __clearModeCacheForTests } from "../src/lib/llm/model-profiles.js";
 import { setMeetingTags } from "../src/lib/meetings/tags.js";
 import { sampleLines } from "../src/lib/meetings/workflow/nodes/suggest-tags.js";
+import { FOLDER_CONTEXT_LABEL } from "../src/lib/meetings/workflow/prompts.js";
 import {
   deriveRunStatus,
   type FinalState,
@@ -123,6 +124,35 @@ describe("suggestTags", () => {
       expect(req.system).not.toContain("hiring, roadmap");
       expect(req.user).not.toContain("hiring, roadmap");
     }
+  });
+
+  it("a filed meeting: the tag prompt has the folder block; the summary prompts do not (#230, P8b)", async () => {
+    const f = meeting("m-tags-folder");
+    const now = Date.now();
+    getDb().exec("DELETE FROM meeting_folders");
+    getDb()
+      .prepare(
+        "INSERT INTO meeting_folders (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("fold-t", "Orchid Rollout", "Launch of a made-up app.", now, now);
+    getDb()
+      .prepare("UPDATE meetings SET folder_id = ? WHERE id = ?")
+      .run("fold-t", f.meeting.id);
+    const r = await run(f.meeting.id, tagsReply(["orchid"]), [
+      "enhance",
+      "summarize",
+    ]);
+    expect(r.tagRequests).toHaveLength(1);
+    expect(r.tagRequests[0]?.system).toContain(
+      `Weekly planning call of a made-up product team.\n\n${FOLDER_CONTEXT_LABEL} Orchid Rollout - Launch of a made-up app.`,
+    );
+    const summaries = r.requests.filter(isSummaryRequest);
+    expect(summaries.length).toBeGreaterThan(0);
+    for (const req of summaries) {
+      expect(req.system).not.toContain(FOLDER_CONTEXT_LABEL);
+    }
+    getDb().exec("DELETE FROM meetings");
+    getDb().exec("DELETE FROM meeting_folders");
   });
 
   it("keeps at most 5 suggested tags", async () => {

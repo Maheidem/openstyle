@@ -14,6 +14,7 @@ import {
   SUMMARIZE_IS_STUB,
   summaryCeilingMs,
 } from "../src/lib/meetings/workflow/nodes/summarize.js";
+import { FOLDER_CONTEXT_LABEL } from "../src/lib/meetings/workflow/prompts.js";
 import {
   type MeetingSummary,
   MeetingSummarySchema,
@@ -332,6 +333,41 @@ describe("summarize: one call (single)", () => {
     }
     expect(rs.requests[0]?.user).toContain("<transcript>");
     expect(rs.requests[0]?.user).toContain("Treat the tagged text");
+  });
+});
+
+describe("summarize: no folder context (#230, P8b)", () => {
+  it("a filed meeting: the summary prompts have no folder block and equal the prompts of the same meeting unfiled", async () => {
+    const db = getDb();
+    db.exec("DELETE FROM meeting_folders");
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO meeting_folders (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+    ).run("fold-1", "Orchid Rollout", "Launch of a made-up app.", now, now);
+    // Ids of the same length: sizeFixtureSegments pads each line by the
+    // length of its segment id, which holds the meeting id.
+    const filed = meeting(5, 300, "m-fold-a");
+    const unfiled = meeting(5, 300, "m-fold-b");
+    db.prepare("UPDATE meetings SET folder_id = ? WHERE id = ?").run(
+      "fold-1",
+      filed.meeting.id,
+    );
+    setBudget(2000);
+    const rf = await run(filed, [sum()]);
+    const ru = await run(unfiled, [sum()]);
+    expect(rf.requests.length).toBeGreaterThan(1);
+    for (const req of rf.requests) {
+      expect(req.system).toContain(
+        "Weekly planning call of a made-up product team.",
+      );
+      expect(req.system).not.toContain(FOLDER_CONTEXT_LABEL);
+      expect(`${req.system}\n${req.user}`).not.toContain("Orchid");
+    }
+    const view = (rs: typeof rf.requests) =>
+      rs.map((r) => ({ system: r.system, user: r.user }));
+    expect(view(rf.requests)).toEqual(view(ru.requests));
+    db.exec("DELETE FROM meetings");
+    db.exec("DELETE FROM meeting_folders");
   });
 });
 

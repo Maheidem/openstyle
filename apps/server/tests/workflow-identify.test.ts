@@ -10,6 +10,7 @@ import {
   appliesSizeLimits,
   selectCandidates,
 } from "../src/lib/meetings/workflow/nodes/identify-speakers.js";
+import { FOLDER_CONTEXT_LABEL } from "../src/lib/meetings/workflow/prompts.js";
 import {
   IDENTIFY_ANCHOR_LINES,
   IDENTIFY_MAX_INPUT_TOKENS,
@@ -262,6 +263,27 @@ describe("identifySpeakers in the graph", () => {
         /Jordan|Casey|Riley|example\.test/,
       );
     }
+  });
+
+  it("a filed meeting: the identify prompt has the meeting context, then the folder block (#230, P8b)", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 3 });
+    const now = Date.now();
+    getDb().exec("DELETE FROM meeting_folders");
+    getDb()
+      .prepare(
+        "INSERT INTO meeting_folders (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run("fold-i", "Orchid Rollout", "Launch of a made-up app.", now, now);
+    getDb()
+      .prepare("UPDATE meetings SET folder_id = ? WHERE id = ?")
+      .run("fold-i", f.meeting.id);
+    const r = await run(f, () => speakers());
+    expect(r.identifyRequests).toHaveLength(1);
+    expect(r.identifyRequests[0]?.system).toContain(
+      `Weekly planning call of a made-up product team.\n\n${FOLDER_CONTEXT_LABEL} Orchid Rollout - Launch of a made-up app.`,
+    );
+    getDb().exec("DELETE FROM meetings");
+    getDb().exec("DELETE FROM meeting_folders");
   });
 
   it("a label written as 'Them 3' and a segmentId in brackets are normalized; the suggestion is kept", async () => {

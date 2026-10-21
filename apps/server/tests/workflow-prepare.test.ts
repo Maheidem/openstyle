@@ -11,6 +11,11 @@ import {
   loadHashRows,
 } from "../src/lib/meetings/input-hash.js";
 import { makePrepareNode } from "../src/lib/meetings/workflow/nodes/prepare.js";
+import {
+  buildPromptContext,
+  FOLDER_CONTEXT_MAX_CHARS,
+  FOLDER_CONTEXT_LABEL as L,
+} from "../src/lib/meetings/workflow/prompts.js";
 import type { WorkflowStateType } from "../src/lib/meetings/workflow/state.js";
 import {
   CHUNK_TOKENS_MAX,
@@ -285,6 +290,119 @@ describe("prepare", () => {
     const { out } = await prepare(f.meeting.id);
     expect(out.prepared.segments.map((s) => s.id)).not.toContain(
       f.segments[1]?.id,
+    );
+  });
+});
+
+// Issue #230 phase 2: the folder text in the prompt context.
+describe("prepare: folder context (#230)", () => {
+  const MEETING_CONTEXT = "Weekly planning call of a made-up product team.";
+
+  function fileInFolder(
+    meetingId: string,
+    name: string,
+    description: string | null,
+  ): string {
+    const id = `folder-${meetingId}`;
+    const now = Date.now();
+    getDb()
+      .prepare(
+        "INSERT INTO meeting_folders (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run(id, name, description, now, now);
+    getDb()
+      .prepare("UPDATE meetings SET folder_id = ? WHERE id = ?")
+      .run(id, meetingId);
+    return id;
+  }
+
+  beforeEach(() => {
+    // resetWorkflowTables deleted the meetings, so no row holds a folder.
+    getDb().exec("DELETE FROM meeting_folders");
+  });
+
+  it("a filed meeting: the meeting context first, then the folder block", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    fileInFolder(f.meeting.id, "Orchid Rollout", "Launch of a made-up app.");
+    const { out } = await prepare(f.meeting.id);
+    expect(out.prepared.contextWithFolder).toBe(
+      `${MEETING_CONTEXT}\n\n${L} Orchid Rollout - Launch of a made-up app.`,
+    );
+    // Summarize reads only the meeting's own context (P8b).
+    expect(out.prepared.context).toBe(MEETING_CONTEXT);
+  });
+
+  it("a folder with no description: the label and the name only", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    fileInFolder(f.meeting.id, "Orchid Rollout", "   ");
+    const { out } = await prepare(f.meeting.id);
+    expect(out.prepared.contextWithFolder).toBe(
+      `${MEETING_CONTEXT}\n\n${L} Orchid Rollout`,
+    );
+  });
+
+  it("an unfiled meeting gets no folder block", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    const { out } = await prepare(f.meeting.id);
+    expect(out.prepared.contextWithFolder).toBe(MEETING_CONTEXT);
+    expect(out.prepared.contextWithFolder).not.toContain(L);
+  });
+
+  it("a filed meeting with no own context gets the block alone", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    getDb()
+      .prepare("UPDATE meetings SET context = NULL WHERE id = ?")
+      .run(f.meeting.id);
+    fileInFolder(f.meeting.id, "Orchid Rollout", null);
+    const { out } = await prepare(f.meeting.id);
+    expect(out.prepared.contextWithFolder).toBe(`${L} Orchid Rollout`);
+  });
+
+  it("the folder text is cut to 500 characters, the meeting context never", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    const longOwn = `${"Long made-up meeting note. ".repeat(60)}End.`;
+    getDb()
+      .prepare("UPDATE meetings SET context = ? WHERE id = ?")
+      .run(longOwn, f.meeting.id);
+    fileInFolder(f.meeting.id, "Orchid Rollout", "x".repeat(2000));
+    const { out } = await prepare(f.meeting.id);
+    const ctx = out.prepared.contextWithFolder as string;
+    const [own, block] = ctx.split(`\n\n${L} `);
+    expect(own).toBe(longOwn.trim());
+    expect(Array.from(block as string)).toHaveLength(FOLDER_CONTEXT_MAX_CHARS);
+    expect(block).toBe(
+      `Orchid Rollout - ${"x".repeat(FOLDER_CONTEXT_MAX_CHARS - 17)}`,
+    );
+  });
+
+  it("a renamed folder reaches the next run", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    const id = fileInFolder(f.meeting.id, "Orchid Rollout", null);
+    const first = await prepare(f.meeting.id);
+    expect(first.out.prepared.contextWithFolder).toContain(
+      `${L} Orchid Rollout`,
+    );
+    getDb()
+      .prepare(
+        "UPDATE meeting_folders SET name = ?, description = ?, updated_at = ? WHERE id = ?",
+      )
+      .run("Lantern Migration", "Move of a made-up store.", Date.now(), id);
+    const again = await prepare(f.meeting.id);
+    expect(again.out.prepared.contextWithFolder).toBe(
+      `${MEETING_CONTEXT}\n\n${L} Lantern Migration - Move of a made-up store.`,
+    );
+    expect(again.out.prepared.contextWithFolder).not.toContain("Orchid");
+  });
+
+  it("buildPromptContext: null when both parts are blank; cuts by character, not UTF-16 unit", () => {
+    expect(buildPromptContext(null, null)).toBeNull();
+    expect(buildPromptContext("  ", null)).toBeNull();
+    const emoji = buildPromptContext(null, {
+      name: "P",
+      description: "\u{1F600}".repeat(600),
+    }) as string;
+    expect(Array.from(emoji.slice(`${L} `.length))).toHaveLength(
+      FOLDER_CONTEXT_MAX_CHARS,
     );
   });
 });
