@@ -60,6 +60,7 @@
     "@types/node": "catalog:",
     "@types/ws": "^8.18.1",
     "pkgroll": "catalog:",
+    "sqlite-vec-linux-x64": "0.1.9",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
