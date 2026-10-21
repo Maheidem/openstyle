@@ -246,24 +246,6 @@ jobs:
         working-directory: apps/electron
         run: node scripts/verify-native-binaries.mjs
 
-      # Meeting search (specs/local-semantic-search.md 11.2 step 4). The
-      # step above checks that vec0.dylib is in the app. This step prints its
-      # signature. The signed path also checks its authority below.
-      - name: Check sqlite-vec dylib in package
-        working-directory: apps/electron
-        shell: bash
-        run: |
-          set -euo pipefail
-          app=""
-          for candidate in dist/mac*/Openstyle.app; do
-            app="$candidate"
-            break
-          done
-          dylib="$app/Contents/Resources/bin/vec0.dylib"
-          test -f "$dylib"
-          file "$dylib"
-          codesign -dv "$dylib"
-
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -440,6 +422,24 @@ jobs:
       - name: Verify native binaries in package
         working-directory: apps/electron
         run: node scripts/verify-native-binaries.mjs
+
+      # Meeting search (specs/local-semantic-search.md 11.2 step 4). The
+      # step above checks that vec0.dylib is in the app. This step prints its
+      # signature. The signed path also checks its authority below.
+      - name: Check sqlite-vec dylib in package
+        working-directory: apps/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=""
+          for candidate in dist/mac*/Openstyle.app; do
+            app="$candidate"
+            break
+          done
+          dylib="$app/Contents/Resources/bin/vec0.dylib"
+          test -f "$dylib"
+          file "$dylib"
+          codesign -dv "$dylib"
 
       - name: Verify release signature
         if: steps.signing.outputs.signed == 'true'
