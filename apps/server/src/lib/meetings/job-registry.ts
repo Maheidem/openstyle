@@ -92,6 +92,12 @@ export function hasJob(id: string): boolean {
   return jobs.has(id);
 }
 
+/** How many meetings hold a job slot now. The search indexer waits for 0
+ * (specs/local-semantic-search.md 6.3): the GPU and memory go to the job. */
+export function activeJobCount(): number {
+  return jobs.size;
+}
+
 /** Take the slot. Returns false, and changes nothing, when it is taken. */
 export function claimJob(
   id: string,

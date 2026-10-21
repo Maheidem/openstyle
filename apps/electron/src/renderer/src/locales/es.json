@@ -800,6 +800,23 @@
       "railLabel": "Reuniones y carpetas",
       "recordsInto": "Se graba en"
     },
+    "search": {
+      "label": "Buscar reuniones",
+      "placeholderAll": "Buscar en todas las reuniones",
+      "placeholderFolder": "Buscar en {{name}}",
+      "offUnsupported": "La búsqueda no está disponible en este equipo.",
+      "offReinstall": "La búsqueda no está disponible en este equipo. Reinstala Openstyle.",
+      "offNoModel": "Descarga un modelo de búsqueda en Modelos.",
+      "openModels": "Abrir Modelos",
+      "indexing": "Indexando reuniones: {{indexed}} de {{total}}",
+      "resultsLabel": "Resultados de búsqueda",
+      "resultsAll": "Resultados de «{{query}}» en todas las reuniones",
+      "resultsFolder": "Resultados de «{{query}}» en {{name}}",
+      "close": "Cerrar búsqueda",
+      "searching": "Buscando…",
+      "failed": "La búsqueda falló. Inténtalo de nuevo.",
+      "noResults": "Ningún texto de reunión coincide con esta búsqueda."
+    },
     "noLlmHint": "Añade un modelo de IA en Ajustes > Modelos para usar Mejorar y Resumen.",
     "titleAccent": "Reuniones",
     "subtitle": "Graba el micrófono y el audio del sistema de una reunión y conviértelos en una transcripción etiquetada y un resumen. El audio no sale de tu Mac hasta que transcribes.",

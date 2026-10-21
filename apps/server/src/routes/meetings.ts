@@ -113,6 +113,7 @@ import {
   type MlxAlignedWord,
 } from "../lib/mlx-asr/server.js";
 import { getDefaultModels } from "../lib/providers.js";
+import { notifyMeetingChanged } from "../lib/search/notify.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { loadVocabularyTerms } from "../lib/vocabulary.js";
 import { mergeContextVocabTerms } from "../lib/vocabulary-bias.js";
@@ -2020,6 +2021,9 @@ const meetings = new Hono()
       }
     }
     db.prepare("DELETE FROM meetings WHERE id = ?").run(id);
+    // The cascade filled meeting_chunk_gc. Wake the search indexer so it
+    // deletes the vectors soon (specs/local-semantic-search.md 6.6).
+    notifyMeetingChanged(id);
     return c.json({ ok: true });
   });
 

@@ -15,6 +15,7 @@ import mlxEmbed from "./mlx-embed.js";
 import mlxLlm from "./mlx-llm.js";
 import models from "./models.js";
 import postProcessRoute from "./post-process-route.js";
+import search from "./search.js";
 import servers from "./servers.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
@@ -49,6 +50,7 @@ const apiRouter = new Hono()
   .route("/meetings", meetings)
   .route("/meetings", meetingsImport)
   .route("/meetings", meetingsRuns)
+  .route("/search", search)
   .route("/dictionary", dictionary)
   .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)

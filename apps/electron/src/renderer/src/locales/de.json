@@ -800,6 +800,23 @@
       "railLabel": "Meetings und Ordner",
       "recordsInto": "Aufnahme in"
     },
+    "search": {
+      "label": "Besprechungen durchsuchen",
+      "placeholderAll": "Alle Besprechungen durchsuchen",
+      "placeholderFolder": "In {{name}} suchen",
+      "offUnsupported": "Die Suche ist auf diesem Computer nicht verfügbar.",
+      "offReinstall": "Die Suche ist auf diesem Computer nicht verfügbar. Installieren Sie Openstyle neu.",
+      "offNoModel": "Laden Sie unter Modelle ein Suchmodell herunter.",
+      "openModels": "Modelle öffnen",
+      "indexing": "Besprechungen werden indexiert: {{indexed}} von {{total}}",
+      "resultsLabel": "Suchergebnisse",
+      "resultsAll": "Ergebnisse für „{{query}}“ in allen Besprechungen",
+      "resultsFolder": "Ergebnisse für „{{query}}“ in {{name}}",
+      "close": "Suche schließen",
+      "searching": "Suche läuft…",
+      "failed": "Die Suche ist fehlgeschlagen. Versuchen Sie es erneut.",
+      "noResults": "Kein Besprechungstext passt zu dieser Suche."
+    },
     "noLlmHint": "Füge unter Einstellungen > Modelle ein KI-Modell hinzu, um Verbessern und Zusammenfassung zu nutzen.",
     "titleAccent": "Meetings",
     "subtitle": "Nimm Mikrofon- und Systemaudio eines Meetings auf und mach daraus ein beschriftetes Transkript mit Zusammenfassung. Das Audio bleibt auf deinem Mac, bis du transkribierst.",

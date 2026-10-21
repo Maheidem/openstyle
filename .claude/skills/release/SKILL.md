@@ -63,7 +63,7 @@ gh issue edit <n> --repo Maheidem/openstyle --add-label accepted
 ```
 
 The `accepted` label triggers `publish.yml` → `craft publish`, which
-creates the GitHub release with all platform assets, merges the release
+creates the GitHub release with the macOS assets, merges the release
 branch into `main`, deletes the branch, and closes the issue. This runs
 unattended — no manual asset upload or merge needed.
 
@@ -76,7 +76,8 @@ git log main -1   # release commit should be present
 
 `scripts/release-verify.sh` downloads the release like the updater does and
 prints PASS/FAIL per check (exit 1 on any FAIL). It checks: not a draft; all
-assets present (the 4 mac assets plus blockmaps, Windows and Linux files);
+assets present (the 4 mac assets plus the 2 blockmaps; since 2026-10-21 CI
+builds no Windows or Linux app);
 `latest-mac.yml` version; the zip and dmg sha512 and size against the feed;
 and one forced alignment with the released MLX worker. The worker check uses
 the aligner model in `ALIGNER_HF_HOME` (default `/tmp/meeting-p4b-hf/hf`) and

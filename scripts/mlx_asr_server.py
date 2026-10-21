@@ -1055,6 +1055,12 @@ def _http_handler_base(model_id: str) -> Any:
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
+            # One connection at a time (HTTPServer is not threaded, so a
+            # generation stays serial). Close each connection after its reply:
+            # an idle keep-alive socket would hold the server, and Node's fetch
+            # opens a new connection that waits about 4 s for that socket to
+            # time out. send_header also sets close_connection.
+            self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(data)
 

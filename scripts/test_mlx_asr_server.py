@@ -919,6 +919,29 @@ class EmbedHttpTests(unittest.TestCase):
     def test_chat_path_is_404(self) -> None:
         self.assertEqual(self._call("POST", "/v1/chat/completions", {"messages": []})[0], 404)
 
+    def test_closes_each_connection_so_the_next_one_is_served(self) -> None:
+        import http.client
+        import time
+
+        body = json.dumps({"input": ["a"]})
+        first = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        first.request("POST", "/v1/embeddings", body, {"Content-Type": "application/json"})
+        resp = first.getresponse()
+        resp.read()
+        self.assertEqual(resp.getheader("Connection"), "close")
+        # The first client keeps its socket open, as a keep-alive pool does.
+        # The single-threaded server must still serve a new connection now.
+        second = http.client.HTTPConnection("127.0.0.1", self.port, timeout=2)
+        try:
+            start = time.monotonic()
+            second.request("POST", "/v1/embeddings", body, {"Content-Type": "application/json"})
+            self.assertEqual(second.getresponse().status, 200)
+            self.assertLess(time.monotonic() - start, 1.0)
+        finally:
+            # Free the server even when the check fails, so tearDown ends.
+            first.close()
+            second.close()
+
 
 class RunEmbedTests(unittest.TestCase):
     def _run(self, load: object) -> list[dict[str, object]]:

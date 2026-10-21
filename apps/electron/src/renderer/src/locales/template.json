@@ -963,6 +963,23 @@
       "railLabel": "Meetings and folders",
       "recordsInto": "Records into"
     },
+    "search": {
+      "label": "Search meetings",
+      "placeholderAll": "Search all meetings",
+      "placeholderFolder": "Search in {{name}}",
+      "offUnsupported": "Search is not available on this computer.",
+      "offReinstall": "Search is not available on this computer. Reinstall Openstyle.",
+      "offNoModel": "Download a search model in Models.",
+      "openModels": "Open Models",
+      "indexing": "Indexing meetings: {{indexed}} of {{total}}",
+      "resultsLabel": "Search results",
+      "resultsAll": "Results for “{{query}}” in all meetings",
+      "resultsFolder": "Results for “{{query}}” in {{name}}",
+      "close": "Close search",
+      "searching": "Searching…",
+      "failed": "Search failed. Try again.",
+      "noResults": "No meeting text matches this search."
+    },
     "titleAccent": "Meetings",
     "subtitle": "Record a meeting's mic and system audio, then turn it into a labeled transcript and a summary. Audio stays on your Mac until you transcribe.",
     "recordTitle": "Record a meeting",

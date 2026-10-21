@@ -799,6 +799,23 @@
       "railLabel": "Riunioni e cartelle",
       "recordsInto": "Registra in"
     },
+    "search": {
+      "label": "Cerca nelle riunioni",
+      "placeholderAll": "Cerca in tutte le riunioni",
+      "placeholderFolder": "Cerca in {{name}}",
+      "offUnsupported": "La ricerca non è disponibile su questo computer.",
+      "offReinstall": "La ricerca non è disponibile su questo computer. Reinstalla Openstyle.",
+      "offNoModel": "Scarica un modello di ricerca in Modelli.",
+      "openModels": "Apri Modelli",
+      "indexing": "Indicizzazione delle riunioni: {{indexed}} di {{total}}",
+      "resultsLabel": "Risultati della ricerca",
+      "resultsAll": "Risultati per “{{query}}” in tutte le riunioni",
+      "resultsFolder": "Risultati per “{{query}}” in {{name}}",
+      "close": "Chiudi la ricerca",
+      "searching": "Ricerca in corso…",
+      "failed": "Ricerca non riuscita. Riprova.",
+      "noResults": "Nessun testo delle riunioni corrisponde a questa ricerca."
+    },
     "noLlmHint": "Aggiungi un modello di IA in Impostazioni > Modelli per usare Migliora e Riepilogo.",
     "titleAccent": "Riunioni",
     "subtitle": "Registra il microfono e l'audio di sistema di una riunione, poi ottieni una trascrizione etichettata e un riepilogo. L'audio resta sul tuo Mac finché non trascrivi.",
