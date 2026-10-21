@@ -2,10 +2,13 @@
 // Phase 0a helper (specs/meeting-transcription-v2.md, section 7.2).
 //
 // Seeds the fresh scratch DB with the allow-listed rows of the real DB
-// (vocabulary rows, the `languages` setting, own_servers rows, default
-// voice + llm model rows) and inserts one `meetings` row per copied
+// (vocabulary rows, the `languages` setting, the default llm model row when
+// it is a built-in MLX model) and inserts one `meetings` row per copied
 // meeting (status 'recorded', audio_dir pointing at the copy, created_at
-// = now so the retention sweep ignores the row). Never the api_keys table.
+// = now so the retention sweep ignores the row). The default voice row is
+// always the built-in MLX ASR model (local-mlx/qwen3-1.7b-8bit). Never the
+// api_keys table, never the own_servers rows: nothing may call the owner's
+// model server (owner rule 2026-10-21).
 // Prints counts, ids and durations only.
 //
 // Usage:
@@ -43,6 +46,9 @@ function wavDurationMs(path) {
   return Math.round((dataBytes / 32000) * 1000);
 }
 
+/** The built-in MLX ASR voice row of every scratch DB. */
+const BUILTIN_VOICE_ID = "local-mlx/qwen3-1.7b-8bit";
+
 const db = new DatabaseSync(join(scratchRoot, "test.db"));
 
 // The scratch DB must already be migrated (step 3 of setup-scratch.sh). An
@@ -69,55 +75,38 @@ try {
       SELECT term, notes, created_at, updated_at FROM src.vocabulary;
     INSERT OR IGNORE INTO main.settings (key, value, updated_at)
       SELECT key, value, updated_at FROM src.settings WHERE key = 'languages';
-    INSERT OR IGNORE INTO main.own_servers (id, base_url, api_key, flavor, server_key)
-      SELECT id, base_url, api_key, flavor, server_key FROM src.own_servers;
-    INSERT OR IGNORE INTO main.model_configs (provider, model_id, model_name, type, is_default)
-      SELECT provider, model_id, model_name, type, is_default
-      FROM src.model_configs WHERE is_default = 1 AND type = 'llm';
   `);
 
-  // Voice: the benchmark baseline is Qwen3-ASR on the owner's own server.
-  // When the real default voice row is not provider 'server' (2026-10-19:
-  // local-mlx whisper), copy the server Qwen3-ASR row as the default
-  // instead. setup-scratch.sh still refuses any non-server default.
-  const realVoice = db
+  // Voice: the built-in MLX ASR model (the "Qwen3 Pro" entry of
+  // apps/server/src/lib/mlx-asr/constants.ts), never an own-server row.
+  db.prepare(
+    `INSERT OR IGNORE INTO main.model_configs (provider, model_id, model_name, type, is_default)
+     VALUES ('local-mlx', ?, 'Qwen3 Pro', 'voice', 1)`,
+  ).run(BUILTIN_VOICE_ID);
+  console.log(`voice row: ${BUILTIN_VOICE_ID} (built-in MLX ASR)`);
+
+  // LLM: the real default row when it is a built-in MLX model, else the
+  // built-in Gemma 4 E2B. A run that needs another model sets its own row
+  // (pnpm meeting:eval does).
+  const realLlm = db
     .prepare(
-      "SELECT provider, model_id, model_name FROM src.model_configs WHERE is_default = 1 AND type = 'voice'",
+      "SELECT provider, model_id, model_name FROM src.model_configs WHERE is_default = 1 AND type = 'llm'",
     )
     .get();
-  // SEED_VOICE_MODEL_ID picks another voice row of the real DB as the
-  // scratch default, for an eval on the owner's local MLX model. Local
-  // providers only (server, local-mlx): a cloud model would send the
-  // meeting audio off the Mac.
-  const pickedId = process.env.SEED_VOICE_MODEL_ID;
-  const picked = pickedId
-    ? db
-        .prepare(
-          "SELECT provider, model_id, model_name FROM src.model_configs WHERE type = 'voice' AND model_id = ? AND provider IN ('server', 'local-mlx') LIMIT 1",
-        )
-        .get(pickedId)
-    : undefined;
-  if (pickedId && !picked) {
-    console.error(`SEED_VOICE_MODEL_ID ${pickedId}: no local voice row`);
-    process.exit(1);
-  }
-  const voice = picked
-    ? picked
-    : realVoice?.provider === "server"
-      ? realVoice
-      : db
-          .prepare(
-            "SELECT provider, model_id, model_name FROM src.model_configs WHERE type = 'voice' AND provider = 'server' AND model_id LIKE 'server/%/Qwen3-ASR' ORDER BY id LIMIT 1",
-          )
-          .get();
-  if (voice) {
-    db.prepare(
-      `INSERT OR IGNORE INTO main.model_configs (provider, model_id, model_name, type, is_default)
-       VALUES (?, ?, ?, 'voice', 1)`,
-    ).run(voice.provider, voice.model_id, voice.model_name);
-  }
+  const llm =
+    realLlm?.provider === "local-mlx-llm"
+      ? realLlm
+      : {
+          provider: "local-mlx-llm",
+          model_id: "local-mlx-llm/gemma-4-e2b-qat-4bit",
+          model_name: "gemma-4-e2b-qat-4bit",
+        };
+  db.prepare(
+    `INSERT OR IGNORE INTO main.model_configs (provider, model_id, model_name, type, is_default)
+     VALUES (?, ?, ?, 'llm', 1)`,
+  ).run(llm.provider, llm.model_id, llm.model_name);
   console.log(
-    `voice row: ${voice?.model_id ?? "none"} (${picked ? "SEED_VOICE_MODEL_ID" : voice === realVoice ? "real default" : `fallback; real default is ${realVoice?.model_id ?? "none"}`})`,
+    `llm row: ${llm.model_id} (${llm === realLlm ? "real default" : "built-in fallback"})`,
   );
 
   // SEED_ASR_CONTEXT=1 copies the owner's `meeting_asr_context` setting

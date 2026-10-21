@@ -30,17 +30,20 @@
 # Optional env:
 #   REPO      repo root (default: resolved from this script's location)
 #   SCRATCH   scratch profile dir (default /tmp/meeting-v2)
-#   HF_CACHE  Hugging Face cache dir argument (default /tmp/meeting-p4b-hf/hf):
-#             the automatic aligner download (~1.2 GB) goes here, never into
+#   HF_CACHE  Hugging Face cache dir argument (default /tmp/meeting-eval/hf,
+#             the cache of pnpm meeting:eval): it must hold the built-in ASR
+#             model (Qwen3-ASR-1.7B-8bit; pnpm meeting:eval downloads it).
+#             The automatic aligner download (~1.2 GB) goes here, never into
 #             the user's ~/.cache/huggingface.
-#   OMLX_URL  oMLX endpoint for the health check (default http://127.0.0.1:8123)
 #   PORT      server port for the runs (default 4787): parallel proof
 #             children must use their OWN port (never 4649)
 #
-# oMLX health (HTTP 200 on /v1/models) is checked before the first run and
-# after EVERY meeting. It prints counts, statuses and file paths only —
-# never transcript text. A failed meeting or dump is logged and the driver
-# continues; the exit code is non-zero if anything failed.
+# Transcription uses the app's built-in MLX ASR model only: the scratch DB's
+# default voice row must be local-mlx/qwen3-1.7b-8bit (setup-scratch.sh
+# seeds it), and the driver refuses another row. Nothing calls the owner's
+# model server (owner rule 2026-10-21). It prints counts, statuses and file
+# paths only, never transcript text. A failed meeting or dump is logged and
+# the driver continues; the exit code is non-zero if anything failed.
 
 set -u
 
@@ -64,8 +67,7 @@ SCRATCH=${SCRATCH:-/tmp/meeting-v2}
 # must be EXPORTED to cross that boundary (an assignment as the first
 # command word is not an env prefix once it comes from "$@").
 export SCRATCH
-HF_CACHE=${HF_CACHE:-/tmp/meeting-p4b-hf/hf}
-OMLX_URL=${OMLX_URL:-http://127.0.0.1:8123}
+HF_CACHE=${HF_CACHE:-/tmp/meeting-eval/hf}
 PORT=${PORT:-4787}
 if [ "$PORT" = "4649" ]; then
   echo "REFUSED: port 4649 (the installed app owns it)" >&2
@@ -98,23 +100,19 @@ if [ ! -f "$SCRATCH/test.db" ]; then
   exit 2
 fi
 
-health() {
-  local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" "$OMLX_URL/v1/models") || code=000
-  if [ "$code" = "200" ]; then
-    echo "oMLX $1: 200"
-    return 0
-  fi
-  echo "oMLX UNHEALTHY $1: HTTP $code ($OMLX_URL)" >&2
-  return 1
-}
-
-fail=0
-if ! health "pre-run"; then
-  echo "REFUSED: oMLX is not healthy before the run" >&2
+VOICE_WANT=local-mlx/qwen3-1.7b-8bit
+VOICE=$(sqlite3 "$SCRATCH/test.db" "select model_id from model_configs where type='voice' and is_default=1;")
+if [ "$VOICE" != "$VOICE_WANT" ]; then
+  echo "REFUSED: the scratch default voice row is '$VOICE', want $VOICE_WANT (the built-in MLX ASR model; setup-scratch.sh seeds it)" >&2
   exit 2
 fi
+if [ ! -d "$HF_CACHE/hub/models--mlx-community--Qwen3-ASR-1.7B-8bit" ]; then
+  echo "REFUSED: $HF_CACHE has no Qwen3-ASR-1.7B-8bit (run pnpm meeting:eval once, or set HF_CACHE)" >&2
+  exit 2
+fi
+echo "voice row: $VOICE (built-in MLX ASR)"
 
+fail=0
 for id in "$@"; do
   short=${id:0:8}
   echo "=== $short $RUN start $(date +%H:%M:%S) ==="
@@ -125,7 +123,6 @@ for id in "$@"; do
   echo "$RUN exit=$status $(date +%H:%M:%S)"
   grep -E "status=|chunks=|aligner split" "$RUNSDIR/$short-$RUN_LC.log" | tail -3
   if [ "$status" -ne 0 ]; then fail=1; fi
-  if ! health "post-$RUN_LC-$short"; then fail=1; fi
   node "$REPO/scripts/meeting-v2/dump-chunks.mjs" "$SCRATCH/test.db" "$id" \
     "$CMP/$RUN_LC-$short.json" || { echo "DUMP-FAIL $RUN_LC-$short" >&2; fail=1; }
   node "$REPO/scripts/meeting-v2/dump-turns.mjs" "$SCRATCH/test.db" "$id" \

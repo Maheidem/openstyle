@@ -97,8 +97,9 @@ if [ "$(sqlite3 "$SCRATCH_DB" "select version from schema_version limit 1;")" !=
 fi
 
 # --- 4. Copy the allow-listed rows, insert the meetings rows --------------
-# Copied: vocabulary rows, the `languages` setting, own_servers rows, and the
-# default voice + llm model_configs rows. Never the api_keys table.
+# Copied: vocabulary rows, the `languages` setting and the default llm row
+# (built-in MLX only). The default voice row is the built-in MLX ASR model.
+# Never the api_keys table, never the own_servers rows.
 node "$REPO_ROOT/scripts/meeting-v2/seed-scratch-db.mjs" "$SCRATCH" "$SCRATCH/dbcopy/attach.db" "$@"
 
 # --- 5. Done-when checks (spec phase 0a) ----------------------------------
@@ -110,8 +111,11 @@ STATUS_OK=1
 for s in $(sqlite3 "$SCRATCH_DB" "select status from meetings;"); do
   [ "$s" = "recorded" ] || STATUS_OK=0
 done
-# Guard (7.2): the proof models must be the owner's own server, no cloud.
+# Guard (7.2, owner rule 2026-10-21): only the app's built-in MLX models.
+# No cloud model and no own-server model (nothing may call the owner's server).
 PROVIDERS="$(sqlite3 "$SCRATCH_DB" "select distinct provider from model_configs where is_default=1 order by provider;" | tr '\n' ',')"
+VOICE="$(sqlite3 "$SCRATCH_DB" "select model_id from model_configs where is_default=1 and type='voice';")"
+OWN_SERVERS="$(sqlite3 "$SCRATCH_DB" "select count(*) from own_servers;")"
 
 fail=0
 echo "vocabulary: scratch=$V_SCRATCH real=$V_REAL"
@@ -122,13 +126,12 @@ echo "api_keys: $API_KEYS (want 0)"
 [ "$API_KEYS" = "0" ] || fail=1
 echo "meetings all recorded: $([ "$STATUS_OK" = 1 ] && echo yes || echo NO)"
 [ "$STATUS_OK" = 1 ] || fail=1
-# SEED_VOICE_MODEL_ID may make the voice default local-mlx (still on the Mac).
-echo "default model providers: $PROVIDERS (want only 'server', or 'local-mlx' + 'server')"
-case "$PROVIDERS" in
-  "server,") ;;
-  "local-mlx,server,") [ -n "${SEED_VOICE_MODEL_ID:-}" ] || fail=1 ;;
-  *) fail=1 ;;
-esac
+echo "default model providers: $PROVIDERS (want local-mlx,local-mlx-llm,)"
+[ "$PROVIDERS" = "local-mlx,local-mlx-llm," ] || fail=1
+echo "default voice row: $VOICE (want local-mlx/qwen3-1.7b-8bit)"
+[ "$VOICE" = "local-mlx/qwen3-1.7b-8bit" ] || fail=1
+echo "own_servers: $OWN_SERVERS (want 0)"
+[ "$OWN_SERVERS" = "0" ] || fail=1
 
 if [ "$fail" -ne 0 ]; then
   echo "phase 0a checks FAILED" >&2
