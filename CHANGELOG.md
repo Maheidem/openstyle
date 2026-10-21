@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.20.0
+
+### New Features ✨
+
+- Meeting folders now give context to the AI. The folder name and description help Enhance name the speakers and suggest tags. The summary does not use the folder text (#239).
+- A built-in on-device embedding model, EmbeddingGemma 2. Download it in Settings > Models. It runs on your Mac and prepares the coming local search (#242).
+
+### Improvements ⚡
+
+- The Enhance card shows the step that runs now: "Reading chunk N of M…", "Finding speakers…", "Summarizing…", "Saving…" and "Suggesting tags…". The progress bar shows a percent and does not go back (#248).
+- In the Meetings list, a meeting with a running job shows a badge with the job and its percent, for example "Summarizing 63%" (#248).
+
+### Bug Fixes 🐛
+
+- With the built-in Gemma model, a long meeting summary no longer repeats one line until it stops with an error. The summary lists now have a maximum size, and duplicate items are removed (#246).
+- After an Enhance and Summary run, the meeting page shows the enhanced text at once, with no reload (#248).
+- In the tag editor, the line under the add field stays visible when the list of existing tags is long (#238).
+
 ## 2.19.0
 
 ### New Features ✨
