@@ -924,7 +924,8 @@
       "retryFailed": "Neuer Versuch",
       "diarize": "Sprecher",
       "enhance": "Verbessert",
-      "summarize": "Fasst zusammen"
+      "summarize": "Fasst zusammen",
+      "queued": "In Warteschlange"
     },
     "progress": {
       "preparing": "Wird vorbereitet…",

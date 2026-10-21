@@ -41,6 +41,7 @@ import {
   AudioLines,
   ChevronLeft,
   CircleSlash,
+  Clock,
   FolderOpen,
   RefreshCw,
   ScanSearch,
@@ -486,8 +487,18 @@ export function MeetingDetailView({
   // answers a race with 409 naming the real job; this keeps the UI honest
   // before the click.
   const jobHoldsSlot = meeting.job !== null;
-  const summarizeQueueAhead = meeting.job?.queued?.ahead ?? 0;
-  const summarizeQueued = summarizing && meeting.job?.queued != null;
+  // A workflow run (Enhance or Summarize) can wait for the LLM lane. While it
+  // waits, the card names the wait and shows no progress (§5.5).
+  const queueAhead = meeting.job?.queued?.ahead ?? 0;
+  const workflowQueued =
+    (summarizing || enhancingJob) && meeting.job?.queued != null;
+  const queuedLabel = workflowQueued
+    ? queueAhead > 0
+      ? t("meetings.summarizeQueuedAhead", { n: queueAhead })
+      : t("meetings.summarizeQueued")
+    : null;
+  const showProgress =
+    !workflowQueued && meeting.job !== null && meeting.job.total > 0;
   // A workflow run names its phase (specs/meeting-enhance-agentic.md 3.4.4).
   const phaseLabel =
     (summarizing || enhancingJob) && meeting.job
@@ -731,43 +742,46 @@ export function MeetingDetailView({
       {(transcribing || summarizing || enhancingJob) && (
         <Card className="mb-5 p-4">
           <div className="flex items-center gap-3">
-            <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
+            {workflowQueued ? (
+              <Clock className="text-primary h-3.5 w-3.5" />
+            ) : (
+              <RefreshCw className="text-primary h-3.5 w-3.5 animate-spin" />
+            )}
             <div className="flex-1">
               <div className="text-foreground text-[12.5px]">
                 {transcribing
                   ? cancelRequested
                     ? t("meetings.cancellingTranscription")
                     : t("meetings.transcribing")
-                  : enhancingJob
-                    ? cancelRequested
+                  : cancelRequested
+                    ? enhancingJob
                       ? t("meetings.cancellingEnhance")
-                      : (phaseLabel ?? t("meetings.enhancing"))
-                    : cancelRequested
-                      ? t("meetings.cancellingSummarize")
-                      : summarizeQueued && summarizeQueueAhead > 0
-                        ? t("meetings.summarizeQueuedAhead", {
-                            n: summarizeQueueAhead,
-                          })
-                        : summarizeQueued
-                          ? t("meetings.summarizeQueued")
-                          : (phaseLabel ?? t("meetings.summarizing"))}
+                      : t("meetings.cancellingSummarize")
+                    : (queuedLabel ??
+                      phaseLabel ??
+                      (enhancingJob
+                        ? t("meetings.enhancing")
+                        : t("meetings.summarizing")))}
               </div>
-              {phaseLabel && !cancelRequested && meeting.job?.detail && (
-                <div
-                  className="text-muted-foreground mt-0.5 truncate text-[11.5px]"
-                  data-testid="meetings-job-detail"
-                >
-                  {meeting.job.detail}
-                </div>
-              )}
-              {meeting.job && meeting.job.total > 0 && (
+              {phaseLabel &&
+                !cancelRequested &&
+                !workflowQueued &&
+                meeting.job?.detail && (
+                  <div
+                    className="text-muted-foreground mt-0.5 truncate text-[11.5px]"
+                    data-testid="meetings-job-detail"
+                  >
+                    {meeting.job.detail}
+                  </div>
+                )}
+              {showProgress && meeting.job && (
                 <Progress
                   value={(meeting.job.done / meeting.job.total) * 100}
                   className="mt-2 h-1"
                 />
               )}
             </div>
-            {meeting.job && meeting.job.total > 0 && (
+            {showProgress && meeting.job && (
               <span className="mono text-muted-foreground text-[10px] tabular-nums">
                 {/* A workflow run counts work steps, not chunks: a percent
                     reads better than "4/7" next to "chunk 3 of 5". */}

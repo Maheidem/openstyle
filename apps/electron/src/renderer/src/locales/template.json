@@ -1104,7 +1104,8 @@
       "retryFailed": "Retrying",
       "diarize": "Diarizing",
       "enhance": "Enhancing",
-      "summarize": "Summarizing"
+      "summarize": "Summarizing",
+      "queued": "Queued"
     },
     "progress": {
       "preparing": "Preparing…",
