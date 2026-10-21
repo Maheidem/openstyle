@@ -25,9 +25,6 @@ worker_tar="mlx_asr_worker-darwin-arm64.tar.gz"
 required=(
   "$zip" "$dmg" latest-mac.yml "$worker_tar"
   "$zip.blockmap" "$dmg.blockmap"
-  "Openstyle-$version-setup.exe" "Openstyle-$version-setup.exe.blockmap"
-  "Openstyle-$version.AppImage" "Openstyle-$version.deb"
-  latest.yml latest-linux.yml
 )
 
 failures=0

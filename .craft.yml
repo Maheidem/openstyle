@@ -17,10 +17,8 @@ artifactProvider:
   config:
     artifacts:
       Build & Test:
-        - "linux-builds"
         - "mac-builds"
-        - "windows-builds"
 
 targets:
   - name: github
-    includeNames: /(^|.*\/)(.*\.(dmg|zip|exe|msi|AppImage|deb|snap|blockmap)|latest.*\.yml|mlx_asr_worker-.*\.tar\.gz)$/
+    includeNames: /(^|.*\/)(.*\.(dmg|zip|blockmap)|latest-mac\.yml|mlx_asr_worker-.*\.tar\.gz)$/
