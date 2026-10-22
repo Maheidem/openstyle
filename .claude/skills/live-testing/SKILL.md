@@ -18,10 +18,13 @@ The owner runs the installed Openstyle app every day. Every live test must run n
 7. Give every `curl` a timeout (`timeout 30 curl ...`). A hook blocks a `curl` with no timeout.
 8. Do not push, merge or change GitHub settings. The coordinating agent does outward actions.
 9. Launch a local app or E2E run only in quiet mode (`OPENSTYLE_E2E=1`, section 4). Prefer CI for the full E2E suite.
+10. Do not edit or delete files in `~/Library/Logs/Openstyle`. Before and after each app run, record `stat -f '%N %z %Sm' ~/Library/Logs/Openstyle/*`. A change that the installed app did not write is a bug (section "Log folder of an app run").
 
-## Logs of a packaged build
+## Log folder of an app run
 
-A packaged build (`build:unpack`) writes its logs to `~/Library/Logs/Openstyle`, the installed app's folder, even with an isolated `OPENSTYLE_USER_DATA`; `HOME` and `OPENSTYLE_LOG_DIR` do not redirect it (found 2026-10-19, issue #218). Use only fictional text in a packaged run, and record the log sizes before the run. Never run the full E2E suite locally: `tests/permission-flow.test.ts` raises a Microphone dialog; run only named spec files (2026-10-18).
+Main resolves the log folder once (`apps/electron/src/main/log-dir.ts`, issue #218): `OPENSTYLE_LOG_DIR` if set, else `<OPENSTYLE_USER_DATA>/logs`, else `~/Library/Logs/Openstyle`. `openstyle.log`, `openstyle-server.log` and `openstyle-trace.log` all go there. So a run with an isolated profile (`launchOpenstyle`) writes its logs into the scratch profile, not into the installed app's folder. Proven 2026-10-22 with `tests/app.test.ts` and `tests/meeting-no-llm.test.ts` through the Test Runner: `~/Library/Logs/Openstyle` and `~/Library/Logs/Electron` kept the same sizes and mtimes.
+
+Use only fictional text in a run: the trace log holds full request bodies. Never run the full E2E suite locally: `tests/permission-flow.test.ts` raises a Microphone dialog; run only named spec files (2026-10-18).
 
 ## Privacy dialogs and the dev identity
 
