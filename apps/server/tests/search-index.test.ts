@@ -63,6 +63,7 @@ const VEC_PATH = sqliteVecTestPath();
 
 import createApp from "../src/index.js";
 import { closeDb, getDb, writeSetting } from "../src/lib/db.js";
+import { addSuggestedTags } from "../src/lib/meetings/tags.js";
 import { hfRepoCacheDir } from "../src/lib/mlx-asr/constants.js";
 import { getMlxEmbedModel } from "../src/lib/mlx-embed/constants.js";
 import { stopMlxEmbedWorker } from "../src/lib/mlx-embed/server.js";
@@ -72,7 +73,10 @@ import {
   startSearchIndexer,
   stopSearchIndexer,
 } from "../src/lib/search/indexer.js";
-import { notifyMeetingChanged } from "../src/lib/search/notify.js";
+import {
+  notifyMeetingChanged,
+  takePendingMeetings,
+} from "../src/lib/search/notify.js";
 import { hitText, retrieve } from "../src/lib/search/retrieve.js";
 import { readVecRow } from "../src/lib/search/vec-store.js";
 import { writeFakeEmbedWorker } from "./helpers/fake-embed-worker.js";
@@ -308,7 +312,9 @@ describe.skipIf(!VEC_PATH)("search index, ON mode", () => {
 
     const unfiled = await search({ query: q, folder_id: "none" });
     expect(
-      unfiled.status === "ok" && unfiled.hits.map((h) => h.meeting_id),
+      unfiled.status === "ok" && [
+        ...new Set(unfiled.hits.map((h) => h.meeting_id)),
+      ],
     ).toEqual(["u1"]);
     const all = await search({ query: q, k: 3 });
     expect(all.status === "ok" && all.hits).toHaveLength(3);
@@ -319,7 +325,9 @@ describe.skipIf(!VEC_PATH)("search index, ON mode", () => {
     });
     const tagged = await search({ query: q, tags: ["launch"] });
     expect(
-      tagged.status === "ok" && tagged.hits.map((h) => h.meeting_id),
+      tagged.status === "ok" && [
+        ...new Set(tagged.hits.map((h) => h.meeting_id)),
+      ],
     ).toEqual(["t1"]);
     const noTag = await search({ query: q, tags: ["nothing"] });
     expect(noTag.status === "ok" && noTag.hits).toEqual([]);
@@ -341,9 +349,9 @@ describe.skipIf(!VEC_PATH)("search index, ON mode", () => {
       k: 10,
       excludeMeetingIds: ["a1", "a2", "t1", "x1", "x2", "x3"],
     });
-    expect(ex6.status === "ok" && ex6.hits.map((h) => h.meetingId)).toEqual([
-      "u1",
-    ]);
+    expect(
+      ex6.status === "ok" && [...new Set(ex6.hits.map((h) => h.meetingId))],
+    ).toEqual(["u1"]);
 
     // A meeting query (Summary, #234): the meeting's own stored vectors.
     const own = await retrieve({
@@ -355,7 +363,9 @@ describe.skipIf(!VEC_PATH)("search index, ON mode", () => {
     expect(own.status).toBe("ok");
     if (own.status !== "ok") return;
     expect(own.hits.every((h) => h.meetingId !== "t1")).toBe(true);
-    expect(hitText(own.hits[0] as (typeof own.hits)[number], 400)).toContain(
+    // The fixture titles share the word "Title", so meta hits come too.
+    const ownTranscript = own.hits.find((h) => h.kind === "transcript");
+    expect(hitText(ownTranscript as (typeof own.hits)[number], 400)).toContain(
       "Friday",
     );
 
@@ -456,6 +466,140 @@ describe.skipIf(!VEC_PATH)("search index, ON mode", () => {
     expect(s.index.vector_chunks).toBeGreaterThan(0);
     expect(s.index.db_bytes).toBeGreaterThan(0);
     expect(s.index.embedded_chunks).toBeGreaterThan(0);
+  });
+
+  it("indexes the title, tags and summary as their own chunks; a change embeds only its chunks (4.6)", async () => {
+    meeting("m1", "f-aurora", filler("hardware", 30));
+    getDb()
+      .prepare("UPDATE meetings SET title = ? WHERE id = 'm1'")
+      .run("Zeppelin hangar walkthrough");
+    await jsonRequest(app, "PUT", "/api/meetings/m1/tags", { tags: ["Ops"] });
+    const summary =
+      "## Decisions\n- The marmalade supplier stays for one more year.\n- Ana writes the contract note.";
+    getDb()
+      .prepare(
+        "INSERT INTO meeting_summaries (meeting_id, markdown, created_at) VALUES ('m1', ?, 1)",
+      )
+      .run(summary);
+    expect(await indexMeeting("m1")).toBe("indexed");
+    const kinds = () =>
+      getDb()
+        .prepare(
+          "SELECT kind, COUNT(*) AS n, MIN(start_ms) AS s FROM meeting_chunks WHERE meeting_id = 'm1' GROUP BY kind ORDER BY kind",
+        )
+        .all() as { kind: string; n: number; s: number | null }[];
+    const first = kinds();
+    expect(first.map((k) => [k.kind, k.n > 0])).toEqual([
+      ["meta", true],
+      ["summary", true],
+      ["transcript", true],
+    ]);
+    expect(first.find((k) => k.kind === "meta")?.n).toBe(1);
+    expect(first.find((k) => k.kind === "meta")?.s).toBeNull();
+    // The document prompt stays "title: none" (D9); the title is in the text.
+    expect(embeddedInputs()).toContain(
+      "title: none | text: Zeppelin hangar walkthrough\nTags: ops",
+    );
+
+    // A word only in the title finds the meta chunk; a word only in the
+    // summary finds a summary chunk. Neither has a time.
+    const byTitle = await search({ query: "zeppelin hangar" });
+    expect(byTitle.status === "ok" && byTitle.hits[0]).toMatchObject({
+      meeting_id: "m1",
+      kind: "meta",
+      start_ms: null,
+      snippet: "Zeppelin hangar walkthrough\nTags: ops",
+    });
+    const bySummary = await search({ query: "marmalade supplier" });
+    expect(bySummary.status === "ok" && bySummary.hits[0]).toMatchObject({
+      meeting_id: "m1",
+      kind: "summary",
+      start_ms: null,
+    });
+    expect(bySummary.status === "ok" && bySummary.hits[0]?.snippet).toContain(
+      "marmalade supplier",
+    );
+    const transcriptIds = () =>
+      (
+        getDb()
+          .prepare(
+            "SELECT id FROM meeting_chunks WHERE meeting_id = 'm1' AND kind = 'transcript' ORDER BY ordinal",
+          )
+          .all() as { id: number }[]
+      ).map((r) => r.id);
+    const tIds = transcriptIds();
+    const allIds = () => chunkIds("m1");
+
+    // A tag change (PUT tags): only the meta chunk is embedded again.
+    takePendingMeetings();
+    await jsonRequest(app, "PUT", "/api/meetings/m1/tags", {
+      tags: ["Ops", "Hangar"],
+    });
+    expect(takePendingMeetings()).toEqual(["m1"]);
+    rmSync(workerLog, { force: true });
+    expect(await indexMeeting("m1")).toBe("indexed");
+    expect(embeddedInputs()).toEqual([
+      "title: none | text: Zeppelin hangar walkthrough\nTags: hangar, ops",
+    ]);
+    expect(transcriptIds()).toEqual(tIds);
+
+    // An Enhance tag step (addSuggestedTags): a hint, then only meta again.
+    addSuggestedTags("m1", ["Budget"]);
+    expect(takePendingMeetings()).toEqual(["m1"]);
+    rmSync(workerLog, { force: true });
+    expect(await indexMeeting("m1")).toBe("indexed");
+    expect(embeddedInputs()).toEqual([
+      "title: none | text: Zeppelin hangar walkthrough\nTags: budget, hangar, ops",
+    ]);
+
+    // A title rename (PATCH): a hint, then only the meta chunk.
+    const renamed = await jsonRequest(app, "PATCH", "/api/meetings/m1", {
+      title: "Zeppelin dock walkthrough",
+    });
+    expect(renamed.status).toBe(200);
+    expect(takePendingMeetings()).toEqual(["m1"]);
+    rmSync(workerLog, { force: true });
+    expect(await indexMeeting("m1")).toBe("indexed");
+    expect(embeddedInputs()).toHaveLength(1);
+    expect(embeddedInputs()[0]).toContain("Zeppelin dock walkthrough");
+
+    // A summary change: only the summary chunks.
+    getDb()
+      .prepare(
+        "UPDATE meeting_summaries SET markdown = ? WHERE meeting_id = 'm1'",
+      )
+      .run(summary.replace("one more year", "two more years"));
+    rmSync(workerLog, { force: true });
+    const beforeSummary = allIds();
+    expect(await indexMeeting("m1")).toBe("indexed");
+    expect(embeddedInputs()).toHaveLength(
+      kinds().find((k) => k.kind === "summary")?.n ?? -1,
+    );
+    expect(
+      embeddedInputs().every(
+        (t) => t.includes("Decisions") || t.includes("contract"),
+      ),
+    ).toBe(true);
+    expect(transcriptIds()).toEqual(tIds);
+    expect(allIds().length).toBe(beforeSummary.length);
+
+    // A transcript change: no meta or summary chunk is embedded again.
+    getDb()
+      .prepare(
+        "UPDATE meeting_segments SET enhanced_text = ? WHERE id = 'm1:system:29'",
+      )
+      .run("The hardware order now ships on Monday after the audit.");
+    rmSync(workerLog, { force: true });
+    expect(await indexMeeting("m1")).toBe("indexed");
+    const changed = embeddedInputs();
+    expect(changed.length).toBeGreaterThanOrEqual(1);
+    expect(changed.every((t) => t.includes("Monday"))).toBe(true);
+
+    // Same text again: nothing is embedded (D5).
+    rmSync(workerLog, { force: true });
+    expect(await indexMeeting("m1")).toBe("done");
+    expect(embeddedInputs()).toHaveLength(0);
+    expect(vecCount()).toBe(allIds().length);
   });
 
   it("purges the rows of a deleted model and keeps other models (9.2)", async () => {

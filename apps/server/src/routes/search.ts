@@ -73,6 +73,7 @@ const search = new Hono()
           | undefined;
         return {
           chunk_id: h.chunkId,
+          kind: h.kind,
           meeting_id: h.meetingId,
           meeting_title: m?.title ?? null,
           started_at: m?.started_at ?? null,

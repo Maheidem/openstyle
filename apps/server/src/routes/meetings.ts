@@ -1246,6 +1246,7 @@ const meetings = new Hono()
          WHERE id = ?`,
       )
       .run(title, ...calendarColumnValues(event), id);
+    notifyMeetingChanged(id);
     return c.json({ ok: true, title });
   })
   // Unlink. A title that only came from the event goes back to empty. A
@@ -1266,6 +1267,7 @@ const meetings = new Hono()
          WHERE id = ?`,
       )
       .run(title, id);
+    notifyMeetingChanged(id);
     return c.json({ ok: true, title });
   })
   // Rename a meeting and/or set its transcription language (Phase A2's
@@ -1295,6 +1297,8 @@ const meetings = new Hono()
       .prepare(`UPDATE meetings SET ${sets.join(", ")} WHERE id = ?`)
       .run(...values, id);
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
+    // The title is in the meta chunk of the search index (spec 4.6).
+    if (title !== undefined) notifyMeetingChanged(id);
     return c.json({ ok: true, title, language, context });
   })
   .post("/:id/stop", zValidator("json", stopSchema), (c) => {

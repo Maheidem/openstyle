@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { MAX_MEETING_TAGS, normalizeTagNames } from "@openstyle/validations";
 import { getDb, withTransaction } from "../db.js";
+import { notifyMeetingChanged } from "../search/notify.js";
 
 type TagSource = "llm" | "user";
 
@@ -72,6 +73,8 @@ function linkTag(
  */
 export function setMeetingTags(meetingId: string, names: string[]): string[] {
   const db = getDb();
+  // The tags are in the meta chunk of the search index (spec 4.6).
+  notifyMeetingChanged(meetingId);
   return withTransaction(db, () => {
     const now = Date.now();
     const keepIds = names.map((name) => ensureTagId(db, name, now));
@@ -116,6 +119,8 @@ export function addSuggestedTags(
         room -= 1;
       }
     }
+    // The tags are in the meta chunk of the search index (spec 4.6).
+    if (added.length > 0) notifyMeetingChanged(meetingId);
     return added;
   });
 }

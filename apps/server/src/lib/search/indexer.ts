@@ -9,7 +9,6 @@ import {
 import { activeJobCount, hasJob } from "../meetings/job-registry.js";
 import { EmbedError } from "../mlx-embed/client.js";
 import { getSearchEmbeddingModelId } from "../mlx-embed/server.js";
-import { buildChunks, type Chunk } from "./chunker.js";
 import { embedInt8 } from "./embedder.js";
 import { getExtensionState, isVecReady } from "./extension.js";
 import {
@@ -18,7 +17,13 @@ import {
   setIndexerWake,
   takePendingMeetings,
 } from "./notify.js";
-import { loadMeetingSource, type MeetingSource, sourceHash } from "./source.js";
+import {
+  buildMeetingChunks,
+  type IndexChunk,
+  loadMeetingSource,
+  type MeetingSource,
+  sourceHash,
+} from "./source.js";
 import { searchState } from "./state.js";
 import {
   drainGc,
@@ -94,11 +99,7 @@ export function isMeetingIndexCurrent(
 ): boolean {
   const src = loadMeetingSource(db, meetingId);
   if (!src) return false;
-  return isCurrent(
-    readState(db, meetingId),
-    modelId,
-    sourceHash(src.segments, modelId),
-  );
+  return isCurrent(readState(db, meetingId), modelId, sourceHash(src, modelId));
 }
 
 /**
@@ -147,7 +148,7 @@ function recordFailure(
   ).run(
     src.meetingId,
     modelId,
-    sourceHash(src.segments, modelId),
+    sourceHash(src, modelId),
     old?.folder_key ?? src.folderKey,
     old?.chunk_count ?? 0,
     Date.now(),
@@ -164,9 +165,13 @@ function errorKindOf(err: unknown): string {
   return "worker_unavailable";
 }
 
+function kindCount(chunks: readonly IndexChunk[], kind: IndexChunk["kind"]) {
+  return chunks.filter((c) => c.kind === kind).length;
+}
+
 interface Plan {
   src: MeetingSource;
-  chunks: Chunk[];
+  chunks: IndexChunk[];
   hash: string;
   state: StateRow | undefined;
 }
@@ -180,8 +185,8 @@ function plan(
   if (!src) return null;
   return {
     src,
-    chunks: buildChunks(src.segments, src.language),
-    hash: sourceHash(src.segments, modelId),
+    chunks: buildMeetingChunks(src),
+    hash: sourceHash(src, modelId),
     state: readState(db, meetingId),
   };
 }
@@ -224,7 +229,7 @@ export async function indexMeeting(
     free.set(row.text_hash, [...(free.get(row.text_hash) ?? []), row.id]);
   }
   const keep = new Map<number, number>(); // chunk ordinal -> kept row id
-  const toEmbed: Chunk[] = [];
+  const toEmbed: IndexChunk[] = [];
   for (const c of p.chunks) {
     const ids = free.get(c.textHash);
     const id = ids?.shift();
@@ -275,7 +280,7 @@ export async function indexMeeting(
         outcome = "missing";
         return;
       }
-      if (sourceHash(now.segments, modelId) !== p.hash) throw new RetryLater();
+      if (sourceHash(now, modelId) !== p.hash) throw new RetryLater();
       // The model was deleted or changed during the embed (9.2, 6.8):
       // write nothing for it.
       if (signal?.aborted || getSearchEmbeddingModelId() !== modelId) {
@@ -293,8 +298,8 @@ export async function indexMeeting(
       );
       const insert = db.prepare(
         `INSERT INTO meeting_chunks (meeting_id, ordinal, segment_ids, char_start, char_end,
-           start_ms, end_ms, token_estimate, text_hash, model_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           start_ms, end_ms, token_estimate, text_hash, model_id, created_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const created = Date.now();
       const rows: Parameters<typeof insertVectors>[1][number][] = [];
@@ -315,7 +320,7 @@ export async function indexMeeting(
           continue;
         }
         const id = Number(
-          insert.run(meetingId, ...fields, c.textHash, modelId, created)
+          insert.run(meetingId, ...fields, c.textHash, modelId, created, c.kind)
             .lastInsertRowid,
         );
         rows.push({
@@ -353,7 +358,7 @@ export async function indexMeeting(
   if (outcome === "indexed") {
     const ratio = estTokens > 0 ? (realTokens / estTokens).toFixed(3) : "n/a";
     log.info(
-      `indexed meeting ${meetingId}: chunks=${p.chunks.length} embedded=${toEmbed.length} kept=${keep.size} ms=${Date.now() - started} tokenRatio=${ratio} dbBytes=${dbBytes(db)} vectorChunks=${vectorChunkCount(db)}`,
+      `indexed meeting ${meetingId}: chunks=${p.chunks.length} meta=${kindCount(p.chunks, "meta")} summary=${kindCount(p.chunks, "summary")} embedded=${toEmbed.length} kept=${keep.size} ms=${Date.now() - started} tokenRatio=${ratio} dbBytes=${dbBytes(db)} vectorChunks=${vectorChunkCount(db)}`,
     );
   }
   return outcome;
