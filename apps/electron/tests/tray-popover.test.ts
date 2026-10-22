@@ -167,6 +167,7 @@ test.beforeAll(async () => {
     userDataDir,
     env: {
       OPENSTYLE_E2E_FAKE_MEETING_CAPTURE: "1",
+      OPENSTYLE_E2E_FAKE_CALENDAR: "1",
       OPENSTYLE_E2E_TRAY: "1",
     },
   });
@@ -419,6 +420,258 @@ test("History opens the Transcriptions page and closes the popover", async () =>
   await expect.poll(() => main.url(), { timeout: 10_000 }).toContain("/today");
 });
 
+// ---------------------------------------------------------------------------
+// Step 3: "Next event" and "Record when it starts". OPENSTYLE_E2E_FAKE_CALENDAR
+// gives the calendar helpers fictional events with no EventKit call. The
+// E2E-only IPC "e2e:fake-calendar-set" replaces them. The calendar setting is
+// on only for these tests.
+// ---------------------------------------------------------------------------
+
+const PLANNING = {
+  id: "e2e-quarterly-planning",
+  title: "Quarterly planning review",
+};
+
+async function setCalendar(on: boolean): Promise<void> {
+  const res = await fetch(
+    `${embeddedServerUrl(app!)}/api/settings/calendar_enabled`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: on ? "true" : "false" }),
+    },
+  );
+  expect(res.ok, "PUT /api/settings/calendar_enabled").toBe(true);
+}
+
+/** One event that starts in `inMs`, and the planning review later today. */
+async function setEvents(id: string, title: string, inMs: number) {
+  const now = Date.now();
+  const events = [
+    { id, title, start: now + inMs, end: now + inMs + 30 * 60_000 },
+    {
+      ...PLANNING,
+      start: now + 229 * 60_000,
+      end: now + 259 * 60_000,
+    },
+  ];
+  await app!.evaluate(({ ipcMain }, list) => {
+    ipcMain.emit("e2e:fake-calendar-set", {}, list);
+  }, events);
+  return events[0];
+}
+
+/** Hide and show the popover, so it reads the calendar again. */
+async function reopenPopover(): Promise<Page> {
+  if (await popoverVisible()) await toggle();
+  await expect.poll(popoverVisible).toBe(false);
+  return openPopover();
+}
+
+async function listMeetings(): Promise<{ id: string; status: string }[]> {
+  const res = await fetch(`${embeddedServerUrl(app!)}/api/meetings`);
+  return ((await res.json()) as { items: never[] }).items;
+}
+
+/** The id of the calendar event that a meeting links, or null. */
+async function linkedEventId(meetingId: string | null): Promise<string | null> {
+  const res = await fetch(
+    `${embeddedServerUrl(app!)}/api/meetings/${meetingId}`,
+  );
+  const body = (await res.json()) as { calendar: { id: string } | null };
+  return body.calendar?.id ?? null;
+}
+
+async function pillShowsRecording(): Promise<boolean> {
+  const pill = app!.windows().find((w) => w.url().includes("pill"));
+  if (!pill) return false;
+  const shown = await app!.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().some(
+      (w) => w.webContents.getURL().includes("pill") && w.isVisible(),
+    ),
+  );
+  return shown && (await pill.getByTestId("pill-meeting").isVisible());
+}
+
+async function stopMeeting(popover: Page): Promise<void> {
+  await popover.getByRole("button", { name: "Stop meeting recording" }).click();
+  await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("idle");
+}
+
+/** Light and dark shots of the popover, for the step-3 proof. */
+async function themedShots(
+  popover: Page,
+  name: string,
+  ready: () => Promise<void>,
+): Promise<void> {
+  if (!SHOTS_DIR) return;
+  for (const theme of ["light", "dark"] as const) {
+    await popover.evaluate((v) => localStorage.setItem("theme", v), theme);
+    await popover.reload();
+    await ready();
+    await popover.waitForTimeout(400);
+    await shot(popover, `${name}-${theme}.png`);
+  }
+  await popover.evaluate(() => localStorage.removeItem("theme"));
+  await popover.reload();
+  await ready();
+}
+
+test("the Next event card shows the next event of today", async () => {
+  await setCalendar(true);
+  await setEvents("e2e-roadmap-check-in", "Roadmap check-in", 90_000);
+  const popover = await reopenPopover();
+  const card = popover.getByTestId("tray-popover-next-event");
+  await expect(card).toBeVisible({ timeout: 10_000 });
+  await expect(popover.getByTestId("tray-popover-event-title")).toHaveText(
+    "Roadmap check-in",
+  );
+  await expect(popover.getByTestId("tray-popover-event-time")).toHaveText(
+    /^\S+.* – \S+.* · in 2 min$/,
+  );
+  await expect(
+    popover.getByRole("button", { name: "Record Roadmap check-in now" }),
+  ).toBeVisible();
+  const toggleArm = popover.getByRole("switch", {
+    name: "Record Roadmap check-in when it starts",
+  });
+  await expect(toggleArm).not.toBeChecked();
+  await themedShots(popover, "1-next-event", async () => {
+    await expect(popover.getByTestId("tray-popover-event-title")).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+});
+
+test("Record on the card starts a meeting now with the event linked", async () => {
+  const popover = await reopenPopover();
+  const before = (await listMeetings()).length;
+  await popover
+    .getByRole("button", { name: "Record Roadmap check-in now" })
+    .click();
+  await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("recording");
+  const meetings = await listMeetings();
+  expect(meetings).toHaveLength(before + 1);
+  const { meetingId } = await dashboard.evaluate(() =>
+    window.api.getMeetingStatus(),
+  );
+  expect(meetings.some((m) => m.id === meetingId)).toBe(true);
+  expect(await linkedEventId(meetingId)).toBe("e2e-roadmap-check-in");
+  await stopMeeting(popover);
+});
+
+test("Record when it starts starts the meeting at the event start, linked, with the pill", async () => {
+  test.setTimeout(90_000);
+  const event = await setEvents("e2e-design-standup", "Design standup", 9_000);
+  const popover = await reopenPopover();
+  const before = (await listMeetings()).length;
+  await popover
+    .getByRole("switch", { name: "Record Design standup when it starts" })
+    .click();
+  await expect(popover.getByTestId("tray-popover-armed")).toHaveText(
+    /^Recording will start at /,
+  );
+  await expect(
+    popover.getByRole("status").filter({ hasText: "Recording will start at" }),
+  ).toBeAttached();
+  await themedShots(popover, "2-armed", async () => {
+    await expect(popover.getByTestId("tray-popover-armed")).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+  // Nothing starts before the event.
+  expect(await meetingStatus()).toBe("idle");
+
+  await expect
+    .poll(meetingStatus, { timeout: event.start - Date.now() + 40_000 })
+    .toBe("recording");
+  const startedAt = Date.now();
+  console.log("AUTO_START_DELAY_MS", startedAt - event.start);
+  expect(startedAt).toBeGreaterThanOrEqual(event.start);
+  const meetings = await listMeetings();
+  expect(meetings).toHaveLength(before + 1);
+  const { meetingId } = await dashboard.evaluate(() =>
+    window.api.getMeetingStatus(),
+  );
+  expect(await linkedEventId(meetingId)).toBe("e2e-design-standup");
+  await expect.poll(pillShowsRecording, { timeout: 10_000 }).toBe(true);
+  // The arm is cleared when the event starts.
+  await expect(popover.getByTestId("tray-popover-armed")).toHaveCount(0, {
+    timeout: 10_000,
+  });
+  await themedShots(popover, "3-auto-started", async () => {
+    await expect(popover.getByTestId("tray-popover-elapsed")).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+  await stopMeeting(popover);
+});
+
+test("a disarmed watch starts nothing", async () => {
+  test.setTimeout(60_000);
+  const event = await setEvents("e2e-budget-sync", "Budget sync", 6_000);
+  const popover = await reopenPopover();
+  const before = (await listMeetings()).length;
+  const arm = popover.getByRole("switch", {
+    name: "Record Budget sync when it starts",
+  });
+  await arm.click();
+  await expect(arm).toBeChecked();
+  await arm.click();
+  await expect(arm).not.toBeChecked();
+  await expect(popover.getByTestId("tray-popover-armed")).toHaveCount(0);
+  // Wait past the start time.
+  await popover.waitForTimeout(event.start - Date.now() + 4_000);
+  expect(await meetingStatus()).toBe("idle");
+  expect(await listMeetings()).toHaveLength(before);
+});
+
+test("the start time does nothing while a meeting already records", async () => {
+  test.setTimeout(60_000);
+  const popover = await reopenPopover();
+  await popover
+    .getByRole("button", { name: "Start meeting recording" })
+    .click();
+  await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("recording");
+  const { meetingId } = await dashboard.evaluate(() =>
+    window.api.getMeetingStatus(),
+  );
+  const before = (await listMeetings()).length;
+
+  const event = await setEvents("e2e-client-call", "Client call", 6_000);
+  const again = await reopenPopover();
+  const arm = again.getByRole("switch", {
+    name: "Record Client call when it starts",
+  });
+  await arm.click();
+  await expect(arm).toBeChecked();
+  await again.waitForTimeout(event.start - Date.now() + 4_000);
+  // The same meeting records, no second one exists, and the arm is gone.
+  expect(await meetingStatus()).toBe("recording");
+  const now = await dashboard.evaluate(() => window.api.getMeetingStatus());
+  expect(now.meetingId).toBe(meetingId);
+  expect(await listMeetings()).toHaveLength(before);
+  // The arm is gone. The card now shows the next event, not the started one.
+  await expect(again.getByTestId("tray-popover-armed")).toHaveCount(0, {
+    timeout: 10_000,
+  });
+  await expect(again.getByTestId("tray-popover-event-title")).toHaveText(
+    PLANNING.title,
+  );
+  // Main logged why.
+  await expect
+    .poll(() => {
+      try {
+        return readFileSync(join(userDataDir, "logs", "openstyle.log"), "utf8");
+      } catch {
+        return "";
+      }
+    })
+    .toContain("a meeting already records");
+  await stopMeeting(again);
+  await setCalendar(false);
+});
+
 test("screenshots of each popover state in light and dark (proof only)", async () => {
   test.skip(!SHOTS_DIR, "Only with OPENSTYLE_PROOF_SHOTS.");
   test.setTimeout(180_000);
@@ -487,6 +740,44 @@ test("screenshots of each popover state in light and dark (proof only)", async (
     await shot(popover, `3-${theme}-update-ready.png`);
   }
   await popoverPage().evaluate(() => localStorage.removeItem("theme"));
+});
+
+test("the active models line names the default voice model and LLM", async () => {
+  // No meeting records after this test: a default voice model would
+  // transcribe a stopped meeting, and a test must not start an MLX worker.
+  const base = embeddedServerUrl(app!);
+  for (const model of [
+    {
+      provider: "local-mlx",
+      model_id: "local-mlx/qwen3-0.6b-8bit",
+      model_name: "Qwen3 Fast",
+      type: "voice",
+    },
+    {
+      provider: "local-mlx-llm",
+      model_id: "local-mlx-llm/gemma-4-e2b-qat-4bit",
+      model_name: "Gemma 4 E2B",
+      type: "llm",
+    },
+  ]) {
+    const res = await fetch(`${base}/api/models/configured`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...model, is_default: true }),
+    });
+    expect(res.ok, `POST /api/models/configured ${model.type}`).toBe(true);
+  }
+  const popover = await reopenPopover();
+  const names = popover.getByTestId("tray-popover-models-names");
+  await expect(names).toHaveText("Qwen3 Fast · Gemma 4 E2B", {
+    timeout: 10_000,
+  });
+  await expect(popover.getByTestId("tray-popover-models")).toContainText(
+    "Active models:",
+  );
+  await themedShots(popover, "4-idle-models", async () => {
+    await expect(names).toBeVisible({ timeout: 10_000 });
+  });
 });
 
 test("Restart to update runs the restart path of main", async () => {
