@@ -6,73 +6,72 @@ import { DatabaseSync } from "node:sqlite";
 
 const MIN = 60 * 1000;
 
-// [raw, cleaned, voice provider, voice model, llm provider, llm model,
-//  duration ms, audio ms, created_at SQL]
+// The default setup of a new install: the built-in Qwen3-ASR model for voice
+// and the built-in Gemma 4 E2B model for cleanup (both local MLX).
+const VOICE = ["local-mlx", "qwen3-0.6b-8bit"];
+const LLM = ["local-mlx-llm", "gemma-4-e2b-qat-4bit"];
+
+// [raw, cleaned, [voice provider, voice model], [llm provider, llm model],
+//  duration ms, audio ms, cost usd, created_at SQL]
 const HISTORY = [
   [
     "um so the deploy went fine but uh the login page is slow on safari",
     "The deploy went fine, but the login page is slow on Safari.",
-    "local-mlx",
-    "parakeet-tdt-0.6b-v3",
-    "server",
-    "Qwen3.8-27B",
+    VOICE,
+    LLM,
     3200,
     2900,
+    0,
     "datetime('now', '-2 hours')",
   ],
   [
     "hey can you send the invoice to accounting by end of day thanks",
     "Hey, can you send the invoice to Accounting by end of day? Thanks.",
-    "local-mlx",
-    "parakeet-tdt-0.6b-v3",
-    "groq",
-    "llama-3.3-70b-versatile",
+    VOICE,
+    ["groq", "llama-3.3-70b-versatile"],
     2600,
     2400,
+    0.0003,
     "datetime('now', '-5 hours')",
   ],
   [
     "heads up the staging api is throwing 500s on upload again can someone take a look",
     "Heads up: the staging API is throwing 500s on upload again. Can someone take a look?",
-    "server",
-    "Qwen3-ASR",
-    "server",
-    "Qwen3.8-27B",
+    VOICE,
+    LLM,
     4800,
     4500,
+    0,
     "datetime('now', '-1 day')",
   ],
   [
     "remember to rotate the api keys and update the env file on both boxes",
     "Remember to rotate the API keys and update the .env file on both boxes.",
-    "local-mlx",
-    "parakeet-tdt-0.6b-v3",
-    "server",
-    "Qwen3.8-27B",
+    VOICE,
+    LLM,
     3900,
     3600,
+    0,
     "datetime('now', '-1 day', '-3 hours')",
   ],
   [
     "fix clamp the waveform buffer so long recordings do not crash the pill",
     "fix: clamp the waveform buffer so long recordings do not crash the pill",
-    "local-mlx",
-    "parakeet-tdt-0.6b-v3",
-    "server",
-    "Qwen3.8-27B",
+    VOICE,
+    LLM,
     2900,
     2700,
+    0,
     "datetime('now', '-2 days')",
   ],
   [
     "então amanhã a gente revisa o contrato",
     "Amanhã a gente revisa o contrato.",
-    "local-mlx",
-    "parakeet-tdt-0.6b-v3",
-    "server",
-    "Qwen3.8-27B",
+    VOICE,
+    LLM,
     1800,
     1600,
+    0,
     "datetime('now', '-2 days', '-5 hours')",
   ],
 ];
@@ -157,29 +156,104 @@ function seedHistory(db) {
          (raw_text, cleaned_text, voice_provider, voice_model, llm_provider,
           llm_model, duration_ms, audio_duration_ms, input_tokens,
           output_tokens, cost_usd, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 120, 24, 0.0003, ${at})`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 120, 24, ?, ${at})`,
     );
-  for (const [raw, cleaned, vp, vm, lp, lm, dur, adur, at] of HISTORY) {
-    insert(at).run(raw, cleaned, vp, vm, lp, lm, dur, adur);
+  for (const [
+    raw,
+    cleaned,
+    [vp, vm],
+    [lp, lm],
+    dur,
+    adur,
+    cost,
+    at,
+  ] of HISTORY) {
+    insert(at).run(raw, cleaned, vp, vm, lp, lm, dur, adur, cost);
   }
 }
 
-function seedMeeting(db) {
-  const startedAt = Date.now() - 26 * 60 * MIN;
+// Meeting folders and tags (columns: meeting_folders, tags, meeting_tags).
+const FOLDERS = [
+  ["folder_product", "Product team", "Weekly syncs and planning."],
+  ["folder_customers", "Customer calls", "Calls with pilot customers."],
+  ["folder_hiring", "Hiring", null],
+];
+const TAGS = ["release", "onboarding", "safari", "qa"];
+
+// Two short meetings, so the other folders are not empty.
+// [id, title, folder id, hours ago, minutes, context, lines]
+const OTHER_MEETINGS = [
+  [
+    "meet_demo_pilot_call",
+    "Pilot check-in with Northwind",
+    "folder_customers",
+    50,
+    24,
+    "Monthly call with the pilot customer.",
+    [
+      [
+        "mic",
+        null,
+        "Thanks for the time. How did the first month go for your team?",
+      ],
+      [
+        "system",
+        "1",
+        "Mostly well. Two people still type their notes after each call.",
+      ],
+      [
+        "system",
+        "1",
+        "We would like the summaries to go straight into our wiki.",
+      ],
+      ["mic", null, "Noted. We will look at an export to Markdown first."],
+    ],
+  ],
+  [
+    "meet_demo_interview",
+    "Interview debrief: frontend role",
+    "folder_hiring",
+    74,
+    18,
+    "Debrief after the second interview round.",
+    [
+      ["mic", null, "Let us go around. Strong points first, then concerns."],
+      [
+        "system",
+        "1",
+        "Clear thinking on state management and good questions about testing.",
+      ],
+      [
+        "system",
+        "2",
+        "I agree. The take-home was clean, but light on accessibility.",
+      ],
+      [
+        "mic",
+        null,
+        "Then we move to the final round and ask about accessibility there.",
+      ],
+    ],
+  ],
+];
+
+function insertMeeting(db, m) {
   db.prepare(
     `INSERT INTO meetings
        (id, title, started_at, ended_at, duration_ms, status, audio_dir,
-        stt_provider, stt_model, language, context, created_at)
-     VALUES (?, ?, ?, ?, ?, 'summarized', NULL, 'local-mlx',
-             'parakeet-tdt-0.6b-v3', 'en', ?, ?)`,
+        stt_provider, stt_model, language, context, folder_id, created_at)
+     VALUES (?, ?, ?, ?, ?, 'summarized', NULL, ?, ?, 'en', ?, ?, ?)`,
   ).run(
-    MEETING_ID,
-    MEETING_TITLE,
-    startedAt,
-    startedAt + MEETING_MS,
-    MEETING_MS,
-    "Weekly sync of the product team.",
-    startedAt,
+    m.id,
+    m.title,
+    m.startedAt,
+    m.startedAt + m.durationMs,
+    m.durationMs,
+    VOICE[0],
+    VOICE[1],
+    m.context,
+    m.folderId,
+    m.startedAt,
   );
 
   const seg = db.prepare(
@@ -188,12 +262,12 @@ function seedMeeting(db) {
         speaker_label)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'ok', ?)`,
   );
-  const step = Math.floor(MEETING_MS / LINES.length);
-  LINES.forEach(([source, speaker, text], i) => {
+  const step = Math.floor(m.durationMs / m.lines.length);
+  m.lines.forEach(([source, speaker, text], i) => {
     const start = i * step + 2000;
     seg.run(
-      `${MEETING_ID}-seg-${i}`,
-      MEETING_ID,
+      `${m.id}-seg-${i}`,
+      m.id,
       source,
       i,
       start,
@@ -207,8 +281,64 @@ function seedMeeting(db) {
     `INSERT INTO meeting_summaries
        (meeting_id, markdown, llm_provider, llm_model, input_tokens,
         output_tokens, cost_usd, created_at)
-     VALUES (?, ?, 'server', 'Qwen3.8-27B', 1840, 320, 0, ?)`,
-  ).run(MEETING_ID, SUMMARY, startedAt + MEETING_MS + 45000);
+     VALUES (?, ?, ?, ?, 1840, 320, 0, ?)`,
+  ).run(m.id, m.summary, LLM[0], LLM[1], m.startedAt + m.durationMs + 45000);
+}
+
+function seedMeetings(db) {
+  const now = Date.now();
+  const folder = db.prepare(
+    `INSERT INTO meeting_folders (id, name, description, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  );
+  for (const [id, name, description] of FOLDERS) {
+    folder.run(id, name, description, now - 30 * 24 * 60 * MIN, now);
+  }
+
+  const startedAt = now - 26 * 60 * MIN;
+  insertMeeting(db, {
+    id: MEETING_ID,
+    title: MEETING_TITLE,
+    folderId: "folder_product",
+    startedAt,
+    durationMs: MEETING_MS,
+    context: "Weekly sync of the product team.",
+    lines: LINES,
+    summary: SUMMARY,
+  });
+  for (const [
+    id,
+    title,
+    folderId,
+    hoursAgo,
+    minutes,
+    context,
+    lines,
+  ] of OTHER_MEETINGS) {
+    insertMeeting(db, {
+      id,
+      title,
+      folderId,
+      startedAt: now - hoursAgo * 60 * MIN,
+      durationMs: minutes * MIN,
+      context,
+      lines,
+      summary: `## Summary\n- ${lines[1][2]}\n- ${lines.at(-1)[2]}`,
+    });
+  }
+
+  const tag = db.prepare(
+    "INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)",
+  );
+  const link = db.prepare(
+    `INSERT INTO meeting_tags (meeting_id, tag_id, source, created_at)
+     VALUES (?, ?, ?, ?)`,
+  );
+  TAGS.forEach((name, i) => {
+    tag.run(`tag_${name}`, name, now);
+    link.run(MEETING_ID, `tag_${name}`, i < 2 ? "llm" : "user", now);
+  });
+  link.run("meet_demo_pilot_call", "tag_onboarding", "llm", now);
 
   const speaker = db.prepare(
     `INSERT INTO meeting_speakers
@@ -220,11 +350,31 @@ function seedMeeting(db) {
   speaker.run(MEETING_ID, "2", "Sam", startedAt + MEETING_MS);
 }
 
+// Hide the first-run tutorial card and the one-time Enhance dialog, as on a
+// Mac that has used the app for some weeks. Advanced mode shows Models in
+// the sidebar. AI cleanup is on.
+function seedSettings(db) {
+  db.prepare(
+    "INSERT OR IGNORE INTO dismissed_notifications (key) VALUES ('today.tutorial_hero')",
+  ).run();
+  db.prepare(
+    `INSERT INTO settings (key, value) VALUES ('meeting_enhance_prompt_seen', 'true')
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run();
+  for (const key of ["advanced_mode", "llm_cleanup"]) {
+    db.prepare(
+      `INSERT INTO settings (key, value) VALUES (?, 'true')
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    ).run(key);
+  }
+}
+
 export function seedDatabase(dbPath) {
   const db = new DatabaseSync(dbPath);
   try {
     seedHistory(db);
-    seedMeeting(db);
+    seedMeetings(db);
+    seedSettings(db);
   } finally {
     db.close();
   }

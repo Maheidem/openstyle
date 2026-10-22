@@ -4,7 +4,7 @@ Real screenshots and a short video of the Openstyle desktop app for the
 landing page. Output goes to `site/assets/screens/`.
 
 Each run is isolated. It starts its own server on `127.0.0.1:8790`, a fake
-oMLX-style model server on `127.0.0.1:8787`, and a throwaway profile in a temp
+OpenAI-compatible model server on `127.0.0.1:8787`, and a throwaway profile in a temp
 folder. It deletes them at the end. All data is fictional (`seed-data.mjs`).
 It never touches an installed Openstyle app or its profile. The only contact is
 the one boot health probe that the app sends to `127.0.0.1:4649`.
@@ -18,7 +18,8 @@ pnpm turbo build --filter=@openstyle/server && pnpm --filter @openstyle/electron
 The build steps are only needed when the code changed. The capture alone is
 `node scripts/site-captures/capture.mjs` (Node 22+ for `node:sqlite`, on macOS).
 Add `--only pill` for just the pill video (with its crop and poster), or
-`--only dash` for just the dashboard screenshots and the pill still.
+`--only dash` for just the dashboard screenshots, the pill still, the webp
+variants and the social card. The dash run needs `cwebp` (Homebrew `webp`).
 
 ## Output
 
@@ -28,9 +29,12 @@ Add `--only pill` for just the pill video (with its crop and poster), or
 | `meeting.png` | "Weekly product sync", transcript tab |
 | `meeting-summary.png` | Same meeting, summary tab |
 | `models-picker.png` | Transcription picker, three tiers |
+| `models-picker-dialog.png` | The picker dialog alone, 1360x660 |
 | `models-builtin.png` | Built into Openstyle list |
 | `models-server.png` | Your own server list |
 | `pill-recording.png` | Pill while recording, transparent background |
+| `*-1600.webp`, `models-picker-dialog-680.webp` | 1x variants for `index.html` (cwebp) |
+| `../og-image.png` | 1200x630 social card from `transcriptions.png` (`og-image.mjs`) |
 | `pill-recording.webm` | 4 s of the pill recording on `#18202E` (webm has no alpha) |
 | `pill-recording-crop.webm` | The pill alone, cropped from the webm (VP9) |
 | `pill-recording-poster.png` | Poster frame of the crop (1.5 s) |
@@ -42,6 +46,7 @@ Dashboard images are 1280x800 at 2x, dark theme.
 - `capture.mjs`: starts the backend, seeds it, drives the app with Playwright.
 - `seed-data.mjs`: fictional history rows and the demo meeting (SQLite).
 - `fake-model-server.mjs`: fake OpenAI-compatible server for "Your own server".
+- `og-image.mjs`: renders the social card with Playwright Chromium.
 
 The pill is driven with the app's own `e2e:trigger-hotkey-down` IPC and a
 synthetic microphone stream, so no real microphone is used.
