@@ -173,11 +173,21 @@ const SUMMARY_GUARD =
 const SUMMARY_SPEAKERS =
   'Lines look like "Me: ...", "Them 2: ...", a confirmed name, or "Unidentified: ...". "Me" is the user of this app. The transcript comes from speech-to-text, so expect fillers, false starts, and occasional mistranscriptions. Summarize the substance, not the noise.';
 
+/**
+ * The owner rule of an action item (issue #273). The context and the title
+ * can hold names, but they do not say which label is which person. Gemma 4
+ * E2B gave a label's task to a name from the context: on one reference
+ * meeting, a one-word change in the transcript moved 3 of 3 owners to the
+ * same wrong person. A label is always right for a speaker.
+ */
+export const SUMMARY_OWNER_RULE =
+  'When a speaker takes the task, write the speaker label exactly as the transcript writes it: "Me", "Them 2" or a confirmed name. Do not change a label into a name from the context or the title: they do not say which label is which person. Use another name only when the text says that this person takes the task.';
+
 const SUMMARY_FIELDS = `Fill the fields of the answer like this:
 - overview: two to four sentences about what the meeting was about and its outcome.
 - keyPoints: the substantive points that were discussed. Name a speaker only when it matters.
 - decisions: decisions that were actually made. Use an empty list when none were made.
-- actionItems: concrete follow-ups. "task" says what to do. "owner" is the person who is responsible, or null when the text names none. "due" is the time exactly as spoken, for example "next Friday", or null when none is given. Do not work out a date.
+- actionItems: concrete follow-ups. "task" says what to do. "owner" is the person who is responsible, or null when the text names none. ${SUMMARY_OWNER_RULE} "due" is the time exactly as spoken, for example "next Friday", or null when none is given. Do not work out a date.
 - openQuestions: questions that were raised and not answered. Use an empty list when there are none.
 Use an empty list for a field with no content. Do not invent facts, decisions, or action items that the text does not support. Write no Markdown and no headings.`;
 
