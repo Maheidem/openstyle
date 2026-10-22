@@ -97,10 +97,14 @@ export function createTrayPopoverWindow(): void {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   }
 
+  // Do not call showTrayPopover here: isLoading() is still true during
+  // did-finish-load (Chromium clears it later, at did-stop-loading), so it
+  // would wait for the load again and never show. Linux hit this on its first
+  // toggle, because Linux makes the window on the first toggle (menus.ts).
   win.webContents.on("did-finish-load", () => {
     if (!showAfterLoad) return;
     showAfterLoad = false;
-    showTrayPopover("after-load");
+    revealTrayPopover(win, "after-load");
   });
 
   win.on("closed", () => {
@@ -130,6 +134,12 @@ export function showTrayPopover(reason: string): void {
     showAfterLoad = true;
     return;
   }
+  revealTrayPopover(win, reason);
+}
+
+/** Show the loaded popover without focus, and hold its close triggers. */
+function revealTrayPopover(win: BrowserWindow, reason: string): void {
+  if (win.isDestroyed()) return;
   placeTrayPopover(win);
   // showInactive: show the panel without making it key and without
   // activating the app.

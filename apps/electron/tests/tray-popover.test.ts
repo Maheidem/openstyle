@@ -211,6 +211,29 @@ test("a toggle shows the popover with the header, the hotkey and Start", async (
   }
 });
 
+test("the first toggle makes the popover window and shows it when the window does not exist yet", async () => {
+  // Linux makes the window on the first toggle only (menus.ts). Remove the
+  // window, so this platform takes the same path: the toggle makes the
+  // window, and the show waits for the end of the page load.
+  if (await popoverVisible()) await toggle();
+  await app!.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (w.webContents.getURL().includes("tray-popover")) w.destroy();
+    }
+  });
+  await expect
+    .poll(() => app!.windows().some((w) => w.url().includes("tray-popover")))
+    .toBe(false);
+  await toggle();
+  await expect.poll(popoverVisible, { timeout: 10_000 }).toBe(true);
+  await expect(popoverPage().getByTestId("tray-popover-version")).toContainText(
+    "Openstyle",
+    { timeout: 10_000 },
+  );
+  await toggle();
+  await expect.poll(popoverVisible).toBe(false);
+});
+
 test("the last 3 dictations show newest first, and Copy writes the clipboard in main", async () => {
   const popover = await openPopover();
   const rows = popover.getByTestId("tray-popover-dictation");
