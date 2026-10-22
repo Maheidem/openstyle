@@ -34,6 +34,13 @@ export interface Space {
   stage: StageName;
   baseline: Params;
   params: Record<string, ParamSpec>;
+  /** An explicit list of combinations (a confirm run): replaces the coarse grid; no fine grid. */
+  combos?: Params[];
+  /**
+   * Single control arms (for example a repetition penalty): run once in the
+   * coarse phase as they are, never expanded and never a fine-grid center.
+   */
+  controls?: Params[];
   fine?: boolean;
   repeats?: number;
   earlyStopAfter?: number;
@@ -265,14 +272,25 @@ export async function search(
   };
   const full = () => [...done.values()].filter((c) => !c.earlyStopped);
 
-  for (const p of coarseGrid(space)) {
+  const sorted = (p: Params): Params =>
+    Object.fromEntries(
+      Object.entries(p).sort(([a], [b]) => a.localeCompare(b)),
+    );
+  const controls = (space.controls ?? []).map(sorted);
+  const isControl = (p: Params) => controls.some((c) => keyOf(c) === keyOf(p));
+  const grid = space.combos
+    ? space.combos.map((p) =>
+        isControl(sorted(p)) ? sorted(p) : normalize(space, p),
+      )
+    : [...coarseGrid(space), ...controls];
+  for (const p of grid) {
     if (done.has(keyOf(p))) continue;
     done.set(keyOf(p), await runCombo(p, "coarse", gate));
   }
-  if (space.fine !== false) {
-    const bestCoarse = full().sort(
-      (a, b) => b.objective - a.objective,
-    )[0] as ComboResult;
+  if (space.fine !== false && !space.combos) {
+    const bestCoarse = full()
+      .filter((c) => !isControl(c.params))
+      .sort((a, b) => b.objective - a.objective)[0] as ComboResult;
     for (const p of fineGrid(space, bestCoarse.params)) {
       if (done.has(keyOf(p))) continue;
       done.set(keyOf(p), await runCombo(p, "fine", gate));

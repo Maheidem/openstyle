@@ -251,6 +251,8 @@ export interface Overrides {
   perturb?: [string, string];
   /** The worker's repetition_penalty (mlx-lm window: 20 tokens). */
   repetition_penalty?: number;
+  /** llama.cpp only (the MLX worker drops it). */
+  seed?: number;
 }
 
 const NUMBER_KEYS = [
@@ -259,6 +261,7 @@ const NUMBER_KEYS = [
   "top_k",
   "min_p",
   "repetition_penalty",
+  "seed",
 ] as const;
 
 /** The wire body of a stored call: params + messages + schema. */
@@ -324,19 +327,53 @@ export interface Reply {
 }
 export type Complete = (body: Record<string, unknown>) => Promise<Reply>;
 
-/** POST one body to the worker (timeout per call). Throws on a non-200. */
-export function workerClient(baseUrl: string, timeoutMs = 900_000): Complete {
-  return async (body) => {
+/**
+ * POST one body to an OpenAI-style chat URL (timeout per call). Throws on a
+ * non-200. The MLX worker: `<base>/v1/chat/completions`. The llama.cpp
+ * desktop backend (owner, 2026-10-22, sweeps only): `model` is the server's
+ * model name, repetition_penalty goes as repeat_penalty, the prompt cache is
+ * off, and at most `parallel` requests run at a time.
+ */
+export function workerClient(
+  chatUrl: string,
+  o: { timeoutMs?: number; model?: string; parallel?: number } = {},
+): Complete {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  const parallel = o.parallel ?? 1;
+  return async (input) => {
+    while (running >= parallel) await new Promise<void>((r) => waiting.push(r));
+    running++;
+    try {
+      return await post(input);
+    } finally {
+      running--;
+      waiting.shift()?.();
+    }
+  };
+  async function post(input: Record<string, unknown>): Promise<Reply> {
+    const body: Record<string, unknown> = { ...input, stream: false };
+    if (o.model) {
+      body.model = o.model;
+      // The prompt cache changes the logits a little: at temperature 0 the
+      // same summary request gave 2 different answers in 3 runs with it, and
+      // 3 equal answers without it (2026-10-22).
+      body.cache_prompt = false;
+      if (body.repetition_penalty !== undefined) {
+        body.repeat_penalty = body.repetition_penalty;
+        delete body.repetition_penalty;
+      }
+    }
     const t0 = Date.now();
-    const r = await fetch(`${baseUrl}/v1/chat/completions`, {
+    const r = await fetch(chatUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...body, stream: false }),
-      signal: AbortSignal.timeout(timeoutMs),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(o.timeoutMs ?? 900_000),
     });
     const j = (await r.json().catch(() => null)) as any;
     if (r.status !== 200 || !j?.choices?.[0])
-      throw new Error(`worker answered ${r.status}`);
+      throw new Error(`the model server answered ${r.status}`);
     return {
       text: String(j.choices[0].message?.content ?? ""),
       finish: String(j.choices[0].finish_reason ?? ""),
@@ -344,7 +381,7 @@ export function workerClient(baseUrl: string, timeoutMs = 900_000): Complete {
       promptTokens: Number(j.usage?.prompt_tokens ?? 0),
       latencyMs: Date.now() - t0,
     };
-  };
+  }
 }
 
 /**
@@ -645,10 +682,13 @@ export async function runCorrect(
     dropped: {},
     requests: [],
   };
-  for (const r of requests) {
-    const body = applyOverrides(r.body, o);
-    out.requests?.push(body);
-    const reply = await complete(body);
+  // The chunks are independent: send them together (the client limits the
+  // parallel requests), then read the answers in chunk order.
+  const bodies = requests.map((r) => applyOverrides(r.body, o));
+  out.requests?.push(...bodies);
+  const replies = await Promise.all(bodies.map((b) => complete(b)));
+  for (const [i, r] of requests.entries()) {
+    const reply = replies[i] as Reply;
     const ids = r.members.map((s) => s.id);
     const parsed =
       reply.finish === "stop"
@@ -941,13 +981,18 @@ export async function runSummary(
     const chunks = chunkTranscript(segs as never, chunkBudget);
     if (chunks.length < 2) return "one";
     if (made + chunks.length + 1 > MAX_SUMMARIZE_CALLS) return null;
+    // The map calls are independent: send them together, keep chunk order.
+    const maps = await Promise.all(
+      chunks.map((chunk, i) =>
+        call(
+          `map:${i}`,
+          systems.map,
+          buildSummaryMapUserPrompt(chunk, i, chunks.length),
+        ),
+      ),
+    );
     const partials: MeetingSummary[] = [];
-    for (const [i, chunk] of chunks.entries()) {
-      const r = await call(
-        `map:${i}`,
-        systems.map,
-        buildSummaryMapUserPrompt(chunk, i, chunks.length),
-      );
+    for (const r of maps) {
       if (!r.obj) return null;
       if (r.cut) out.summaryPartial = true;
       partials.push(r.obj);

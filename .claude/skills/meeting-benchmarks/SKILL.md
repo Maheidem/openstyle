@@ -189,6 +189,32 @@ Gold hard fails count in the run's hard fails, so a model with one is not the fl
 3. Read each `<model>-<id8>.summary.md`. Check the decisions and action items against the compare context, and look for invented owners or dates.
 4. Report numbers only: fixes / harms / neutral per model and meeting, summary faults, and the floor model. Never quote meeting text in chat, a commit or a PR.
 
+## Per-stage parameter sweep (`pnpm meeting:eval:sweep`, PR #308, issue #307)
+
+The sweep finds the best settings per stage (correctChunk, identifySpeakers, summarize, suggestTags) and model. It replays only one stage, so one combination takes seconds to minutes, not a full Enhance run. The code is `scripts/meeting-v2/eval/{stage-replay,stage-score,sweep-search,sweep}.mts`. The spaces are in `scripts/meeting-v2/eval/sweep-spaces/`.
+
+Backends:
+- `--backend mlx` (default): the app's worker on 127.0.0.1, started by the tool under the GPU lock and queue. Only MLX numbers count for an app change.
+- `--backend llamacpp --base-url http://192.168.31.222:80/v1`: the owner's desktop llama.cpp server (llama-swap; models `gemma4-e2b` and `gemma4-e4b`, unsloth QAT UD-Q4_K_XL GGUF with an MTP draft). Owner, 2026-10-22: the desktop counts as local, the same as a run on the Mac. It is allowed for sweeps only. Numbers-only reports and all other privacy rules stay. Its numbers are "coarse, GGUF": confirm the top combinations on MLX with `--confirm`.
+
+Steps:
+1. Capture (no GPU): run `pnpm meeting:eval --models <ids> --gold --keep --out /tmp/meeting-eval/out/<name>`, then `pnpm meeting:eval:sweep --capture /tmp/meeting-eval/out/<name>`. The capture copies the llm_calls rows and the run DB per meeting and model into `~/.openstyle-eval/sweep/<id8>/` (folder 0700, files 0600). After that, delete `runs/`, `pack/` and `arms/` of the eval out folder.
+2. Replay proof: `pnpm meeting:eval:sweep --replay-check --models <ids> [--backend ...]`.
+   - On MLX, every rebuilt request equals the stored request byte for byte. Every stored call comes back byte-equal at temperature 0, and the stage output equals the stored DB state. Proven 2026-10-22 on E2B for 4 of 4 meetings (42 calls) and on E4B for 3 of 4 meetings (23 calls).
+   - On the desktop, each stage runs twice at temperature 0, and the two runs must give equal answers.
+3. Sweep: `pnpm meeting:eval:sweep --stage <name> --models <ids> --space scripts/meeting-v2/eval/sweep-spaces/<name>.json [--backend ...] [--out /tmp/meeting-eval/sweep/<dir>]`. It writes `results.md` and `results.json` (numbers only).
+4. Confirm on MLX: run the same command with `--backend mlx --confirm <desktop results.json> --top 3`. Add `--save-baseline <name>` to store the numbers in `eval-baselines/`.
+
+Search: the baseline, then a noise run (the baseline with one word changed in the stage's system prompt; band = |noise - baseline|), then the coarse grid plus the single control arms, then a fine grid with halved steps around the best. Above temperature 0, each combination runs 3 times and the median counts. A combination stops after the 2 shortest meetings when it is below the best by more than max(2 x band, earlyStopMargin). A winner counts only when its delta is above the band. The objective of each stage is documented in the header of `stage-score.mts`.
+
+Known facts (2026-10-22):
+- The llama.cpp prompt cache changes the answer at temperature 0. One summary request gave 2 different answers in 3 runs with the cache, and 3 equal answers without it. The client sends `cache_prompt: false`.
+- llama-swap answers `/props` only with `?model=<name>`. The desktop has 1 slot per model, so the tool sends 1 request at a time.
+- The MLX worker stops when its stdin closes. The tool keeps a pipe open.
+- The server's transcript loader reads the vocabulary through `getDb()`, which migrates `OPENSTYLE_DB_PATH`. The tool points it at a scratch copy in `/tmp/meeting-eval/sweep-work/<pid>`, never at a capture file.
+- The worker drops seed, presence and frequency penalty. `repetition_penalty` works on both backends. A seed arm cannot be confirmed on MLX.
+- The executors do not run the server's length split and raise steps. A length finish is a failed unit. A cut summary gets the server's repair.
+
 ## How to compare runs
 
 Two committed tools (PR #34; they replace the copy-edited per-run compare

@@ -534,3 +534,89 @@ test("search: a delta inside the noise band does not beat noise", async () => {
   assert.ok(res.delta > 0);
   assert.equal(res.beatsNoise, false);
 });
+
+test("workerClient (llama.cpp mode): model name, repeat_penalty, at most `parallel` requests", async () => {
+  const { createServer } = await import("node:http");
+  let running = 0;
+  let peak = 0;
+  const seen: any[] = [];
+  const server = createServer((req, res) => {
+    let data = "";
+    req.on("data", (c) => {
+      data += c;
+    });
+    req.on("end", () => {
+      running++;
+      peak = Math.max(peak, running);
+      seen.push(JSON.parse(data));
+      setTimeout(() => {
+        running--;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+            usage: { completion_tokens: 2, prompt_tokens: 3 },
+          }),
+        );
+      }, 30);
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  const port = (server.address() as { port: number }).port;
+  const { workerClient } = await import("./stage-replay.mts");
+  const complete = workerClient(
+    `http://127.0.0.1:${port}/v1/chat/completions`,
+    {
+      model: "server-name",
+      parallel: 2,
+      timeoutMs: 5000,
+    },
+  );
+  const replies = await Promise.all(
+    [1, 2, 3, 4, 5].map(() =>
+      complete({ model: "app/model", repetition_penalty: 1.1, messages: [] }),
+    ),
+  );
+  server.close();
+  assert.equal(replies.length, 5);
+  assert.equal(replies[0]?.finish, "stop");
+  assert.equal(peak, 2);
+  assert.equal(seen[0].model, "server-name");
+  assert.equal(seen[0].repeat_penalty, 1.1);
+  assert.equal("repetition_penalty" in seen[0], false);
+  assert.equal(seen[0].stream, false);
+  assert.equal(seen[0].cache_prompt, false);
+});
+
+test("search with explicit combos runs only those, plus baseline and noise", async () => {
+  const { calls, evaluate } = fakeEval((p) => (p.maxItems === 5 ? 0.7 : 0.5));
+  const res = await search(
+    { ...SPACE, combos: [{ maxItems: 5, temperature: 0 }] },
+    2,
+    evaluate,
+  );
+  assert.equal(res.combos.length, 2); // baseline + 1 combo (noise is separate)
+  assert.deepEqual(res.best.params, { maxItems: 5, temperature: 0 });
+  assert.equal(calls.length, 6); // baseline 2 + noise 2 + combo 2
+});
+
+test("search runs a control arm once as it is and never centers the fine grid on it", async () => {
+  const { calls, evaluate } = fakeEval((p) =>
+    "repetition_penalty" in p ? 0.9 : 0.5,
+  );
+  const res = await search(
+    { ...SPACE, controls: [{ temperature: 0, repetition_penalty: 1.1 }] },
+    2,
+    evaluate,
+  );
+  const ctl = res.combos.filter((c) => "repetition_penalty" in c.params);
+  assert.equal(ctl.length, 1);
+  assert.deepEqual(ctl[0]?.params, { repetition_penalty: 1.1, temperature: 0 });
+  assert.equal(
+    res.combos.filter(
+      (c) => c.phase === "fine" && "repetition_penalty" in c.params,
+    ).length,
+    0,
+  );
+  assert.ok(calls.length > 0);
+});

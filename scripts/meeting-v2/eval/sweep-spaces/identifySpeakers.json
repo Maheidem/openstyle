@@ -1,13 +1,32 @@
 {
   "stage": "identifySpeakers",
-  "baseline": { "thinking": false, "maxTokensExtra": 0, "temperature": 0 },
+  "baseline": {
+    "thinking": false,
+    "maxTokensExtra": 0,
+    "temperature": 0
+  },
   "params": {
-    "thinking": { "values": [false, true] },
-    "maxTokensExtra": { "values": [0, 2048, 4096], "integer": true },
-    "temperature": { "values": [0] }
+    "thinking": {
+      "values": [false, true]
+    },
+    "maxTokensExtra": {
+      "values": [0, 2048, 4096],
+      "integer": true
+    },
+    "temperature": {
+      "values": [0]
+    }
   },
   "fine": true,
   "repeats": 3,
   "earlyStopAfter": 2,
-  "earlyStopMargin": 1
+  "earlyStopMargin": 1,
+  "controls": [
+    {
+      "thinking": false,
+      "maxTokensExtra": 0,
+      "temperature": 0,
+      "repetition_penalty": 1.1
+    }
+  ]
 }
