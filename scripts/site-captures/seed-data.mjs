@@ -164,52 +164,52 @@ const SUMMARY = [
 // weeks of real use. [raw, cleaned, audio ms]
 const OLDER = [
   [
-    "can you uh push the release notes to the shared drive before lunch",
+    "Can you push the release notes to the shared drive before lunch",
     "Can you push the release notes to the shared drive before lunch?",
     3400,
   ],
   [
-    "lets move the standup to ten thirty tomorrow",
+    "Let's move the standup to ten thirty tomorrow.",
     "Let's move the standup to 10:30 tomorrow.",
     2300,
   ],
   [
-    "um the build is green again thanks for the quick fix",
+    "The build is green again. Thanks for the quick fix.",
     "The build is green again. Thanks for the quick fix.",
     2600,
   ],
   [
-    "note to self check the retry logic in the upload worker",
+    "Note to self: check the retry logic in the upload worker.",
     "Note to self: check the retry logic in the upload worker.",
     2900,
   ],
   [
-    "so the customer wants the export in csv not in excel",
+    "The customer wants the export in csv, not in Excel.",
     "The customer wants the export in CSV, not in Excel.",
     2800,
   ],
   [
-    "please add the design review to thursdays agenda",
+    "Please add the design review to Thursdays agenda.",
     "Please add the design review to Thursday's agenda.",
     2400,
   ],
   [
-    "i think we should cache the user settings on the client side",
+    "I think we should cache the user settings on the client side.",
     "I think we should cache the user settings on the client side.",
     3100,
   ],
   [
-    "reminder the vendor contract renews at the end of the month",
+    "Reminder: the vendor contract renews at the end of the month.",
     "Reminder: the vendor contract renews at the end of the month.",
     3000,
   ],
   [
-    "hey sam can you review my pull request when you have a minute",
+    "Hey Sam, can you review my pull request when you have a minute?",
     "Hey Sam, can you review my pull request when you have a minute?",
     3300,
   ],
   [
-    "the dashboard numbers look off for last week can you double check",
+    "The dashboard numbers look off for last week. Can you double check?",
     "The dashboard numbers look off for last week. Can you double-check?",
     3600,
   ],
