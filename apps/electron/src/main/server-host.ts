@@ -206,7 +206,12 @@ function buildChildEnv(): Record<string, string> {
   }
   env.OPENSTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
   env.OPENSTYLE_RESOURCES_PATH = process.resourcesPath ?? "";
+  // index.ts resolves this folder once (resolveLogsDir, setAppLogsPath).
   env.OPENSTYLE_LOGS_DIR = app.getPath("logs");
+  // The logger reads OPENSTYLE_LOG_DIR at import and then opens openstyle.log,
+  // the file of main. The child must write only openstyle-server.log.
+  delete env.OPENSTYLE_LOG_DIR;
+  delete env.FREESTYLE_LOG_DIR;
   if (!is.dev) {
     env.OPENSTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
     // The child activates the staged MLX runtime for this version.
