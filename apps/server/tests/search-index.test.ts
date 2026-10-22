@@ -64,6 +64,7 @@ const VEC_PATH = sqliteVecTestPath();
 import createApp from "../src/index.js";
 import { closeDb, getDb, writeSetting } from "../src/lib/db.js";
 import { addSuggestedTags } from "../src/lib/meetings/tags.js";
+import { loadFolderMemory } from "../src/lib/meetings/workflow/folder-memory.js";
 import { hfRepoCacheDir } from "../src/lib/mlx-asr/constants.js";
 import { getMlxEmbedModel } from "../src/lib/mlx-embed/constants.js";
 import { stopMlxEmbedWorker } from "../src/lib/mlx-embed/server.js";
@@ -672,6 +673,64 @@ describe.skipIf(!VEC_PATH)("search index, ON mode", () => {
       await stopMlxEmbedWorker();
       seedModel(EG2);
     }
+  });
+
+  it("project memory (#234): real retrieve, folder scope, own meeting and meta chunks left out", async () => {
+    const friday = [
+      "The launch of the beacon app moves to Friday because the audit is late.",
+      ...filler("beacon launch", 12),
+    ];
+    meeting("m-old", "f-aurora", friday);
+    getDb()
+      .prepare("UPDATE meetings SET title = ? WHERE id = 'm-old'")
+      .run("Beacon launch Friday sync");
+    getDb()
+      .prepare(
+        "INSERT INTO meeting_summaries (meeting_id, markdown, created_at) VALUES ('m-old', ?, 1)",
+      )
+      .run("## Decisions\n- The beacon launch moves to Friday.");
+    meeting("m-atlas", "f-atlas", friday);
+    meeting("m-new", "f-aurora", [
+      "We keep the beacon launch date that we agreed last week.",
+      ...filler("beacon launch", 6),
+    ]);
+    for (const id of ["m-old", "m-atlas", "m-new"]) {
+      expect(await indexMeeting(id)).toBe("indexed");
+    }
+    const memory = await loadFolderMemory(getDb(), {
+      meetingId: "m-new",
+      folderId: "f-aurora",
+    });
+    expect(memory).not.toBeNull();
+    expect(memory?.modelId).toBe(EG2);
+    expect(memory?.meetingIds).toEqual(["m-old"]);
+    const kinds = getDb()
+      .prepare(
+        `SELECT DISTINCT kind, meeting_id FROM meeting_chunks WHERE id IN (${memory?.chunkIds.map(() => "?").join(", ")})`,
+      )
+      .all(...(memory?.chunkIds ?? [])) as {
+      kind: string;
+      meeting_id: string;
+    }[];
+    expect(kinds.every((k) => k.meeting_id === "m-old")).toBe(true);
+    expect(kinds.some((k) => k.kind === "meta")).toBe(false);
+    expect(memory?.summaryBlock).toContain("Friday");
+    expect(memory?.summaryBlock).not.toContain("Beacon launch Friday sync");
+
+    // An unknown folder or search off: no memory, no throw.
+    expect(
+      await loadFolderMemory(getDb(), {
+        meetingId: "m-new",
+        folderId: "f-none",
+      }),
+    ).toBeNull();
+    writeSetting("search_embedding_model", "");
+    expect(
+      await loadFolderMemory(getDb(), {
+        meetingId: "m-new",
+        folderId: "f-aurora",
+      }),
+    ).toBeNull();
   });
 
   it("validates the search request", async () => {

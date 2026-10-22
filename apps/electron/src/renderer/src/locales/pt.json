@@ -1042,7 +1042,16 @@
       "saveFailed": "As tags não foram salvas. Tente de novo.",
       "showAll": "Mostrar todas as tags"
     },
-    "moreActions": "Mais ações"
+    "moreActions": "Mais ações",
+    "inspector": {
+      "retrieval": {
+        "title": "Memória do projeto",
+        "note": "Trechos de outras reuniões desta pasta que esta execução usou. Somente IDs.",
+        "meetings": "Reuniões",
+        "chunks": "Trechos",
+        "model": "Modelo de busca"
+      }
+    }
   },
   "help": {
     "hotkeys": {

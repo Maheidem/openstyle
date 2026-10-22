@@ -163,6 +163,41 @@ function RecordLost({ run }: { run: LlmRunInfo }): React.JSX.Element | null {
   );
 }
 
+/** The project memory of a run (issue #234): ids only, no text. */
+function RetrievalRecord({
+  run,
+}: {
+  run: LlmRunInfo;
+}): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const r = run.retrieval;
+  if (!r) return null;
+  const rows: [string, string][] = [
+    [t("meetings.inspector.retrieval.meetings"), r.meetingIds.join(", ")],
+    [t("meetings.inspector.retrieval.chunks"), r.chunkIds.join(", ")],
+    [t("meetings.inspector.retrieval.model"), r.modelId],
+  ];
+  return (
+    <div
+      className="border-border mb-3 rounded-md border px-2.5 py-1.5 text-[12px]"
+      data-testid="meetings-inspector-retrieval"
+    >
+      <SectionTitle>{t("meetings.inspector.retrieval.title")}</SectionTitle>
+      <p className="text-muted-foreground m-0 mb-1.5">
+        {t("meetings.inspector.retrieval.note")}
+      </p>
+      <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="mono m-0 break-all text-[11px]">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function StepRow({
   step,
   onClick,
@@ -314,6 +349,7 @@ function RunView({
         </InlineNotice>
       )}
       <RecordLost run={run} />
+      <RetrievalRecord run={run} />
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {steps.map((step) => (
           <li key={step.key}>

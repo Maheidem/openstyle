@@ -1043,7 +1043,16 @@
       "saveFailed": "No se guardaron las etiquetas. Inténtalo de nuevo.",
       "showAll": "Mostrar todas las etiquetas"
     },
-    "moreActions": "Más acciones"
+    "moreActions": "Más acciones",
+    "inspector": {
+      "retrieval": {
+        "title": "Memoria del proyecto",
+        "note": "Fragmentos de otras reuniones de esta carpeta que usó esta ejecución. Solo ID.",
+        "meetings": "Reuniones",
+        "chunks": "Fragmentos",
+        "model": "Modelo de búsqueda"
+      }
+    }
   },
   "help": {
     "hotkeys": {

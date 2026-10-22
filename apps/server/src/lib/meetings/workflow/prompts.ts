@@ -197,6 +197,12 @@ export interface SummaryPromptInput {
   instructions: string;
   /** The per-meeting context. null or blank: no block. */
   context: string | null;
+  /**
+   * Project memory (issue #234): the labeled block of earlier meetings in
+   * the same folder. null, absent or blank: no block. Only the `single` and
+   * `reduce` prompts get it, after the context block.
+   */
+  earlierMeetings?: string | null;
 }
 
 function summaryLanguageLine(language: string | null): string {
@@ -219,16 +225,24 @@ function withContext(base: string, context: string | null): string {
     : base;
 }
 
+function withEarlierMeetings(base: string, block?: string | null): string {
+  const trimmed = block?.trim();
+  return trimmed ? `${base}\n\n${trimmed}` : base;
+}
+
 /** System prompt of the `single` call: the whole transcript fits. */
 export function buildSummarySingleSystemPrompt(
   input: SummaryPromptInput,
 ): string {
-  return withContext(
-    withInstructions(
-      `You summarize meeting transcripts. ${SUMMARY_SPEAKERS} ${summaryLanguageLine(input.language)}\n\n${SUMMARY_FIELDS}`,
-      input.instructions,
+  return withEarlierMeetings(
+    withContext(
+      withInstructions(
+        `You summarize meeting transcripts. ${SUMMARY_SPEAKERS} ${summaryLanguageLine(input.language)}\n\n${SUMMARY_FIELDS}`,
+        input.instructions,
+      ),
+      input.context,
     ),
-    input.context,
+    input.earlierMeetings,
   );
 }
 
@@ -244,12 +258,15 @@ export function buildSummaryMapSystemPrompt(input: SummaryPromptInput): string {
 export function buildSummaryReduceSystemPrompt(
   input: SummaryPromptInput,
 ): string {
-  return withContext(
-    withInstructions(
-      `You combine partial summaries of consecutive parts of one meeting into one summary. ${summaryLanguageLine(input.language)} The partial summaries are in time order and can repeat content across their boundaries. Remove duplicates: keep each distinct point, decision, action item, and question once.\n\n${SUMMARY_FIELDS}`,
-      input.instructions,
+  return withEarlierMeetings(
+    withContext(
+      withInstructions(
+        `You combine partial summaries of consecutive parts of one meeting into one summary. ${summaryLanguageLine(input.language)} The partial summaries are in time order and can repeat content across their boundaries. Remove duplicates: keep each distinct point, decision, action item, and question once.\n\n${SUMMARY_FIELDS}`,
+        input.instructions,
+      ),
+      input.context,
     ),
-    input.context,
+    input.earlierMeetings,
   );
 }
 

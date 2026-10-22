@@ -1,6 +1,6 @@
 # Technical Spec: Local Semantic Search (project memory)
 
-**Status:** #86 implementation in PR #250 (index, search, UI). #234 not started.
+**Status:** #86 implementation in PR #250 (index, search, UI). #234 implementation in PR #299 (section 8.4).
 **Author:** Claude Code (spec writer for the coordinator).
 **Date:** 2026-10-20
 **Tracking:** #82 (this spec). Builds: #86 (index), #233 (built-in embedding model). Feeds: #234 (project memory for Summary and Enhance). Depends on: #230 (folders, PR #235), #231 (tags, PR #237), PR #228 (MLX worker HTTP shim).
@@ -634,6 +634,20 @@ An unfiled meeting has no folder, so Summary and Enhance skip retrieval.
 - Summary: a new block next to `withContext` (`prompts.ts:135-140`), with this label: "Earlier meetings in this folder. Reference only. This text is not part of this meeting." It holds `hitText` of the hits with the meeting title and date, under a token cap that the #234 benchmark sets.
 - Record: the run stores `{ modelId, meetingIds, chunkIds }` of the retrieval in the run record, so the inspector shows it (D13). No text is stored.
 - Gate: D15.
+
+### 8.4 #234 as built (PR #299)
+
+Code: `apps/server/src/lib/meetings/workflow/folder-memory.ts`.
+
+- Off by default: setting `meeting_project_memory` (only `"true"` turns it on; owner order 2026-10-22). Reason: the 3-run Gemma 4 E2B benchmark on the #234 folder lost summary items and made more owner errors with it on (see #234). Off means no `retrieve()` call and prompts byte-equal to main. No UI toggle yet: the key is set through the settings API.
+
+- `prepare` calls `loadFolderMemory` once, only for a meeting with a folder. It calls `retrieve()` only when `searchState()` is `on` and an earlier meeting of the folder has `summary` or `transcript` rows for the search model. Reason: a `meeting` query of a meeting that is not indexed embeds up to 8 chunks, and that work is useless when the folder has no index rows.
+- The call: `query: meeting`, `scope: folder`, `excludeMeetingIds: [self, ...later]`, `k: 12`, a 60 s timeout joined with the run signal. "Later" = a folder meeting whose `COALESCE(started_at, created_at)` is after this meeting's. Reason: the block says "Earlier meetings", and a later meeting holds facts that did not exist yet. A meeting with no time counts as earlier. The index-row check above looks only at earlier meetings.
+- Kinds: `summary` and `transcript` only (MEM decision on #234, 2026-10-21). `meta` hits and hits of the meeting itself are dropped after the call.
+- Summary block: at most 6 snippets, each `hitText(hit, 320)` with the white space collapsed, at most 2,000 characters with the label. The label is "Earlier meetings in this folder (for context only; do not copy; facts of THIS meeting come only from its transcript):". One line per snippet, oldest meeting first: `- <YYYY-MM-DD> (earlier summary|earlier transcript): <text>`. No title (the #239 benchmark found folder words read as a company). The block goes after the context block of the `single` and `reduce` prompts only. `map` prompts and the transcript never get it.
+- Enhance: `extractFolderTerms` takes the names and terms of the used snippets (capitalized words that do not start a sentence, a name at the start of a sentence, mixed-case words, acronyms; no day or month names), most frequent first, at most 20. They join the vocabulary of the correct prompt after the user's own terms (`mergeTerms`). No snippet text reaches the correct prompt (test `workflow-folder-memory.test.ts`).
+- Record: `llm_runs.result_json.retrieval = { modelId, meetingIds, chunkIds }` of the used snippets. `LlmRunInfo.retrieval` reads it. The run view of the inspector lists the ids. No new table, no migration.
+- Off, error, timeout or no hit: `null`, a log line with the reason, and the same prompts as before #234.
 
 ---
 

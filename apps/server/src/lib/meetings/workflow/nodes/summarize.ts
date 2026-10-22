@@ -218,6 +218,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       language: prepared.language,
       instructions: prepared.summary.instructions,
       context: prepared.context,
+      earlierMeetings: prepared.folderMemory?.summaryBlock ?? null,
     };
     const singleSystem = buildSummarySingleSystemPrompt(promptInput);
     const mapSystem = buildSummaryMapSystemPrompt(promptInput);
