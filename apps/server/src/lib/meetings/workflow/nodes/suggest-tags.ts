@@ -69,6 +69,18 @@ export function sampleLines(
   return out;
 }
 
+/**
+ * The tags to store from the model answer: normalized, without duplicates, at
+ * most MAX_SUGGESTED_TAGS. A small model can write a tag in snake case
+ * ("machine_learning"), so an underscore becomes a space first.
+ */
+export function suggestedTagNames(raw: readonly string[]): string[] {
+  return normalizeTagNames(raw.map((t) => t.replace(/_+/g, " "))).slice(
+    0,
+    MAX_SUGGESTED_TAGS,
+  );
+}
+
 /** The existing tags for the prompt: the most used first, then by name. */
 function existingTagsForPrompt(deps: WorkflowDeps): string[] {
   return listTagsWithCounts(deps.db)
@@ -195,10 +207,7 @@ export function makeSuggestTagsNode(deps: WorkflowDeps) {
         failure: leaf?.failure ?? null,
       };
     }
-    const suggested = normalizeTagNames(leaf.result.object.tags).slice(
-      0,
-      MAX_SUGGESTED_TAGS,
-    );
+    const suggested = suggestedTagNames(leaf.result.object.tags);
     const added = addSuggestedTags(state.meetingId, suggested, deps.db);
     return { status: "ok", suggested, added, failure: null };
   }

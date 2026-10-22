@@ -3,9 +3,15 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildCorrectUserPrompt } from "../../../apps/server/src/lib/meetings/workflow/prompts.ts";
+import {
+  buildCorrectSystemPrompt,
+  buildCorrectUserPrompt,
+  buildTagsSystemPrompt,
+} from "../../../apps/server/src/lib/meetings/workflow/prompts.ts";
+import { correctChunkStepSchema } from "../../../apps/server/src/lib/meetings/workflow/schemas.ts";
 import type { Gold } from "./gold.mts";
 import {
+  type AppInputs,
   applyOverrides,
   buildCorrectRequests,
   type Capture,
@@ -15,46 +21,39 @@ import {
   runCorrect,
   runTags,
   type StoredCall,
+  storedExistingTags,
   wireBody,
+  wireSchema,
 } from "./stage-replay.mts";
 import { objective, scoreStage } from "./stage-score.mts";
 import {
   coarseGrid,
+  compareVariant,
   fineGrid,
   type Params,
   parseSpace,
+  runVariant,
   type Space,
   search,
 } from "./sweep-search.mts";
 
 // --- Fictional fixtures ---------------------------------------------------------------
 
-const SYSTEM = "You clean up a fictional transcript with garbled words.";
+/** Fictional prompt inputs: no language pin, one vocabulary term. */
+const APP: AppInputs = {
+  language: null,
+  vocabTerms: ["Kubernetes"],
+  title: "Fictional launch sync",
+  context: null,
+  contextWithFolder: null,
+};
+/** The system prompt of the current app code for APP (the replay rebuilds it). */
+const SYSTEM = buildCorrectSystemPrompt(APP);
 const LINES = [
   "[s1] Me: we moved the cluster to cooper netties",
   "[s2] Them 1: the the demo is on friday",
   "[s3] Me: thanks Ana see you then",
 ];
-const correctSchema = (ids: string[]) => ({
-  $schema: "http://json-schema.org/draft-07/schema#",
-  type: "object",
-  properties: {
-    corrections: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          id: { type: "string", enum: ids },
-          text: { type: "string" },
-        },
-        required: ["id", "text"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["corrections"],
-  additionalProperties: false,
-});
 const TOP = {
   model: "fictional/model",
   max_tokens: 0,
@@ -91,6 +90,11 @@ function call(
   };
 }
 
+/** The schema of the current app code for the three ids (the replay rebuilds it). */
+const CORRECT_SCHEMA = await wireSchema(
+  correctChunkStepSchema(["s1", "s2", "s3"]),
+);
+
 /** One stored correctChunk call with all three lines (as the server would build it). */
 function correctCapture(): Capture {
   const user = buildCorrectUserPrompt(LINES);
@@ -100,7 +104,7 @@ function correctCapture(): Capture {
       { role: "system", content: SYSTEM },
       { role: "user", content: user },
     ],
-    schema: correctSchema(["s1", "s2", "s3"]),
+    schema: structuredClone(CORRECT_SCHEMA),
     topLevel: { ...structuredClone(TOP), max_tokens: tokens * 2 + 200 },
   });
   return {
@@ -200,9 +204,9 @@ test("parseEnhanceLine reads id, label and text (text may hold a colon)", () => 
   assert.equal(parseEnhanceLine("no id here"), null);
 });
 
-test("buildCorrectRequests at the stored chunk size gives the stored request byte for byte", () => {
+test("buildCorrectRequests at the stored chunk size gives the stored request byte for byte", async () => {
   const cap = correctCapture();
-  const { requests } = buildCorrectRequests(cap.calls, 1200);
+  const { requests } = await buildCorrectRequests(cap.calls, 1200, APP);
   assert.equal(requests.length, 1);
   assert.equal(
     JSON.stringify(requests[0]?.body),
@@ -210,8 +214,12 @@ test("buildCorrectRequests at the stored chunk size gives the stored request byt
   );
 });
 
-test("buildCorrectRequests at a small chunk size cuts whole segments with their own id enum", () => {
-  const { requests } = buildCorrectRequests(correctCapture().calls, 15);
+test("buildCorrectRequests at a small chunk size cuts whole segments with their own id enum", async () => {
+  const { requests } = await buildCorrectRequests(
+    correctCapture().calls,
+    15,
+    APP,
+  );
   assert.equal(requests.length, 3);
   const ids = requests.map(
     (r) =>
@@ -233,7 +241,7 @@ test("runCorrect applies the server checks: a fix stays, a deletion is dropped",
     ],
   });
   const stub: Complete = async () => reply(answer);
-  const out = await runCorrect(correctCapture(), { temperature: 0 }, stub);
+  const out = await runCorrect(correctCapture(), APP, { temperature: 0 }, stub);
   assert.deepEqual(out.corrections, {
     s1: "we moved the cluster to Kubernetes",
   });
@@ -243,12 +251,45 @@ test("runCorrect applies the server checks: a fix stays, a deletion is dropped",
 });
 
 test("runCorrect counts a length finish as a failed unit", async () => {
-  const out = await runCorrect(correctCapture(), {}, async () =>
+  const out = await runCorrect(correctCapture(), APP, {}, async () =>
     reply('{"corr', "length"),
   );
   assert.equal(out.failedUnits, 1);
   assert.equal(out.calls[0]?.finish, "length");
   assert.deepEqual(out.corrections, {});
+});
+
+test("buildCorrectRequests takes the system prompt from the current code, not the stored one", async () => {
+  const cap = correctCapture();
+  (cap.calls[0] as StoredCall).messages[0] = {
+    role: "system",
+    content: "An old fictional prompt.",
+  };
+  const { requests } = await buildCorrectRequests(cap.calls, 1200, APP);
+  const sent = (requests[0]?.body.messages as { content: string }[])[0];
+  assert.equal(sent?.content, SYSTEM);
+  assert.match(sent?.content ?? "", /Kubernetes/);
+});
+
+test("storedExistingTags reads the existing tags of a stored tags prompt", () => {
+  const system = buildTagsSystemPrompt({
+    title: null,
+    context: null,
+    existingTags: ["billing", "q4 plan"],
+    maxTags: 5,
+  });
+  assert.deepEqual(storedExistingTags(system), ["billing", "q4 plan"]);
+  assert.deepEqual(
+    storedExistingTags(
+      buildTagsSystemPrompt({
+        title: null,
+        context: null,
+        existingTags: [],
+        maxTags: 5,
+      }),
+    ),
+    [],
+  );
 });
 
 test("runTags sets maxItems on the schema and keeps at most 5 normalized tags", async () => {
@@ -265,7 +306,7 @@ test("runTags sets maxItems on the schema and keeps at most 5 normalized tags", 
   });
   const cap = { ...correctCapture(), calls: [tagsCall] };
   let sent: any = null;
-  const out = await runTags(cap, { maxItems: 5 }, async (b) => {
+  const out = await runTags(cap, APP, { maxItems: 5 }, async (b) => {
     sent = b;
     return reply(
       JSON.stringify({
@@ -636,4 +677,65 @@ test("search runs a control arm once as it is and never centers the fine grid on
     0,
   );
   assert.ok(calls.length > 0);
+});
+
+test("runVariant: one run at temperature 0, repeats above it, noise band with --noise", async () => {
+  const cold = fakeEval(() => 0.5);
+  const a = await runVariant("suggestTags", 2, cold.evaluate, {
+    params: {},
+    repeats: 3,
+    noise: false,
+  });
+  assert.equal(a.arm.repeats, 1);
+  assert.equal(a.arm.objective, 1); // 2 meetings x F1 0.5
+  assert.equal(a.noise, null);
+  assert.equal(cold.calls.length, 2);
+  const hot = fakeEval((_p, _m, r) => 0.5 + r * 0.01);
+  const b = await runVariant("suggestTags", 2, hot.evaluate, {
+    params: { temperature: 0.4 },
+    repeats: 3,
+    noise: true,
+  });
+  assert.equal(b.arm.repeats, 3);
+  assert.equal(b.arm.objective, 1.02); // median of 1, 1.02, 1.04
+  assert.equal(hot.calls.filter((c) => c.perturb).length, 2);
+  // The noise run (repeat 0, F1 0.45 per meeting) vs the median arm: |0.9 - 1.02|.
+  assert.equal(b.band?.objective, 0.12);
+});
+
+test("compareVariant: delta per metric, the larger band decides the verdict", async () => {
+  const { evaluate } = fakeEval(() => 0.6);
+  const v = await runVariant("suggestTags", 2, evaluate, {
+    params: {},
+    repeats: 3,
+    noise: true,
+  });
+  const base = {
+    objective: 1,
+    totals: { tagsPrecision: 1, tagsRecall: 1 },
+    band: { objective: 0.05, tagsPrecision: 0.02 },
+  };
+  const c = compareVariant(base, v, ["tagsPrecision", "tagsRecall", "none"]);
+  assert.equal(c.delta, 0.2);
+  assert.equal(c.band, 0.1); // this run's band (2 x 0.05) is larger
+  assert.equal(c.verdict, "better");
+  // A rate is the mean over the meetings; its band is the larger one (0.05).
+  assert.deepEqual(c.rows[0], {
+    metric: "tagsPrecision",
+    base: 1,
+    variant: 0.6,
+    delta: -0.4,
+    band: 0.05,
+  });
+  assert.deepEqual(c.rows[2], {
+    metric: "none",
+    base: null,
+    variant: null,
+    delta: null,
+    band: null,
+  });
+  const inside = compareVariant({ ...base, objective: 1.15 }, v, []);
+  assert.equal(inside.verdict, "inside noise");
+  const worse = compareVariant({ ...base, objective: 1.5 }, v, []);
+  assert.equal(worse.verdict, "worse");
 });

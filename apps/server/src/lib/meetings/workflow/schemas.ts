@@ -63,11 +63,53 @@ function uniqueBy<T>(items: readonly T[], keyOf: (item: T) => string): T[] {
   });
 }
 
+/** Short words that carry no content for the repeat check. */
+const FILLER_WORDS = new Set(
+  "the and for with that this will was were are has have had not but from into onto about after before their them they then than its our your who whom what when which also all any can may must should would could shall agreed agree decided decide".split(
+    " ",
+  ),
+);
+
+/** The content words of a list entry: lower case, 3 letters or more, no filler. */
+function contentWords(value: string): Set<string> {
+  const words = value
+    .toLowerCase()
+    .replace(/'s\b/gu, "")
+    .match(/[\p{L}\p{N}]+/gu);
+  return new Set(
+    (words ?? []).filter((w) => w.length >= 3 && !FILLER_WORDS.has(w)),
+  );
+}
+
+/** The share of task words that the decision holds, at which it repeats the task. */
+const REPEAT_SHARE = 0.6;
+
+/**
+ * True when the decision only restates an action item: it holds at least
+ * REPEAT_SHARE of the content words of one task ("Ana will send the deck"
+ * and the task "Send the deck"). Gemma 4 wrote follow-ups in both lists
+ * (#211).
+ */
+export function repeatsActionItem(
+  decision: string,
+  tasks: readonly string[],
+): boolean {
+  const d = contentWords(decision);
+  return tasks.some((task) => {
+    const t = contentWords(task);
+    if (t.size === 0) return false;
+    let shared = 0;
+    for (const w of t) if (d.has(w)) shared++;
+    return shared / t.size >= REPEAT_SHARE;
+  });
+}
+
 /**
  * Remove the duplicate entries of each list; keep the order (issue #246).
  * Two entries are the same when they are equal after a change to lower case
  * and one space for each run of spaces. An action item compares task, owner
- * and due.
+ * and due. A decision that only restates an action item goes too
+ * (`repeatsActionItem`, #211): the follow-up stays in its own list.
  */
 export function withoutDuplicates<
   S extends {
@@ -77,10 +119,13 @@ export function withoutDuplicates<
     openQuestions: string[];
   },
 >(summary: S): S {
+  const tasks = summary.actionItems.map((a) => a.task);
   return {
     ...summary,
     keyPoints: uniqueBy(summary.keyPoints, sameText),
-    decisions: uniqueBy(summary.decisions, sameText),
+    decisions: uniqueBy(summary.decisions, sameText).filter(
+      (d) => !repeatsActionItem(d, tasks),
+    ),
     actionItems: uniqueBy(summary.actionItems, (a) =>
       [a.task, a.owner, a.due].map(sameText).join("\u0000"),
     ),

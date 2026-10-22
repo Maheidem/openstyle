@@ -1323,6 +1323,7 @@
         "label_echo": "The suggestion only repeats the speaker label.",
         "name_not_in_quote": "The name is not in its own evidence.",
         "not_self_introduction": "The speaker said the name but did not name themselves.",
+        "other_speaker_intro": "Another speaker said this name to introduce themselves.",
         "conflict_lost": "Stronger evidence named this speaker differently.",
         "duplicate_same_name": "Another proposal for this speaker has the same name.",
         "unknown_id": "The model named a segment that is not in this chunk.",

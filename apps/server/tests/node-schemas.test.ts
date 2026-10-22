@@ -22,6 +22,7 @@ import {
   meetingSummaryStepSchema,
   normalizeId,
   normalizeLabel,
+  repeatsActionItem,
   SUMMARY_SIZE_LIMITS,
 } from "../src/lib/meetings/workflow/schemas.js";
 import {
@@ -631,6 +632,57 @@ describe("meetingSummaryStepSchema (issue #246)", () => {
       { task: "Send the draft", owner: "Sam", due: null },
     ]);
     expect(parsed.openQuestions).toEqual(["Who?"]);
+  });
+
+  it.each([
+    false,
+    true,
+  ])("the parse drops a decision that restates an action item (sizeLimits %s)", (sizeLimits) => {
+    const parsed = meetingSummaryStepSchema({ sizeLimits }).zod.parse({
+      ...base,
+      decisions: [
+        "Casey will send the revised draft to the client.",
+        "The launch moves to March.",
+      ],
+      actionItems: [
+        {
+          task: "Send the revised draft to the client",
+          owner: "Casey",
+          due: null,
+        },
+      ],
+    });
+    expect(parsed.decisions).toEqual(["The launch moves to March."]);
+    expect(parsed.actionItems).toHaveLength(1);
+  });
+});
+
+describe("repeatsActionItem (#211)", () => {
+  it("needs 60% of the task words in the decision", () => {
+    // Task words: review, list, suggested, people, project. 3 of 5 shared.
+    expect(
+      repeatsActionItem("Sam agreed to review the list of suggested names.", [
+        "Review the list of suggested people for the project",
+      ]),
+    ).toBe(true);
+    // 2 of 5 shared.
+    expect(
+      repeatsActionItem("Sam will review the budget list.", [
+        "Review the list of suggested people for the project",
+      ]),
+    ).toBe(false);
+  });
+
+  it("keeps a decision that only shares a product name with a task", () => {
+    expect(
+      repeatsActionItem("The data stays in the warehouse.", [
+        "Open access tickets for the warehouse and the dashboard",
+      ]),
+    ).toBe(false);
+  });
+
+  it("ignores a task with no content word", () => {
+    expect(repeatsActionItem("Do it.", ["Do it"])).toBe(false);
   });
 });
 

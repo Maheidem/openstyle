@@ -78,6 +78,22 @@ export function looksSelfIdentifying(
 }
 
 /**
+ * The quote holds a first-person self-introduction of the name: "I'm Ana",
+ * "I am Ana", "my name is Ana". "This is Ana" is not one: a speaker can say
+ * it to introduce somebody else.
+ */
+export function introducesSelfInFirstPerson(
+  quoteNorm: string,
+  nameNorm: string,
+): boolean {
+  if (!nameNorm) return false;
+  return new RegExp(
+    `${B}(?:i'?m|i am|my name'?s|my name is)\\s+${escapeRegExp(nameNorm)}${E}`,
+    "u",
+  ).test(quoteNorm);
+}
+
+/**
  * The part of a proposed name that the quote holds, or null. The calendar lists
  * full names, but people say only the first name. So the full name, the name
  * with the attendee spelling, or the first name alone (at a word boundary)
@@ -150,7 +166,7 @@ function drop(
   };
 }
 
-/** Run the nine checks in order. The first failure decides the verdict. */
+/** Run the checks in order. The first failure decides the verdict. */
 function judge(
   p: SpeakerProposal,
   prepared: PreparedMeeting,
@@ -263,6 +279,22 @@ function judge(
         startMs,
         "not_self_introduction",
         "The quote does not read as a self-introduction.",
+      );
+    }
+    // 8b: the cited line belongs to another label and its speaker
+    // introduces themselves ("I'm Ana"). That names the speaker of the
+    // line, never the proposed label.
+    if (
+      evidenceType === "addressed_as" &&
+      introducesSelfInFirstPerson(quoteNorm, matched)
+    ) {
+      return drop(
+        p,
+        name,
+        evidenceType,
+        startMs,
+        "other_speaker_intro",
+        "The quote is another speaker's self-introduction.",
       );
     }
   }

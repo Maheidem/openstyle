@@ -8,16 +8,23 @@
 // files 0600). The files hold real meeting text: never commit or print them.
 //
 // Replay: a stage executor rebuilds the requests of one stage and sends them
-// to the local MLX worker with overridden settings. Sampling settings
-// (temperature, top_p, top_k, min_p, max_tokens, thinking) change the stored
-// wire body. App-level settings change the stage input, and the executor
-// rebuilds it with the server's own builders (chunking, prompts, plan,
-// checks, verifyEvidence), never with a hand-made prompt:
+// to the model with overridden settings. The system prompt, the user prompt
+// and the answer schema of every stage come from the CURRENT app code (the
+// prompt builders of prompts.ts, the step schemas of schemas.ts through the
+// AI SDK asSchema, as the gateway sends them), built from the stored inputs:
+// the meeting row, folder, vocabulary and settings of the run DB, the
+// transcript lines of the stored prompts, and the existing tags of the stored
+// tags prompt. So a prompt or schema change in the working tree reaches the
+// replay at once (issue #311, rank 5). Sampling settings (temperature,
+// top_p, top_k, min_p, max_tokens, thinking) change the stored wire body.
+// App-level settings change the stage input, and the executor rebuilds it
+// with the server's own builders (chunking, prompts, plan, checks,
+// verifyEvidence), never with a hand-made prompt:
 //   correctChunk  chunkTokens (CHUNK_TOKENS_MAX of the server, 1200 today)
 //   summarize     contextBudget (meeting_summary_context_budget, 8000 today)
 //   suggestTags   maxItems (a JSON Schema maxItems on the tags list)
-// `rebuildCheck` proves that the rebuild at the current settings gives the
-// stored requests byte for byte.
+// `rebuildCheck` proves that the rebuild at the current settings and the
+// current code gives the stored requests byte for byte.
 //
 // Only the app's built-in MLX models run, on a worker that this process
 // starts on 127.0.0.1. Nothing here calls the owner's model server or the
@@ -34,9 +41,11 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
 import { speakerDisplayLabel } from "../../../apps/server/src/lib/meetings/merge.ts";
 import { parseAttendees } from "../../../apps/server/src/lib/meetings/store.ts";
 import { loadMergedTranscript } from "../../../apps/server/src/lib/meetings/transcript-io.ts";
@@ -44,18 +53,26 @@ import {
   chunkForEnhance,
   chunkTranscript,
   estimateTokens,
+  formatEnhanceLine,
   formatSegment,
 } from "../../../apps/server/src/lib/meetings/workflow/chunking.ts";
 import { checkCorrections } from "../../../apps/server/src/lib/meetings/workflow/nodes/correct-chunk.ts";
+import { suggestedTagNames } from "../../../apps/server/src/lib/meetings/workflow/nodes/suggest-tags.ts";
 import { verifyEvidence } from "../../../apps/server/src/lib/meetings/workflow/nodes/verify-evidence.ts";
 import {
+  buildCorrectSystemPrompt,
   buildCorrectUserPrompt,
+  buildIdentifySystemPrompt,
+  buildIdentifyUserPrompt,
+  buildPromptContext,
   buildSummaryMapSystemPrompt,
   buildSummaryMapUserPrompt,
   buildSummaryReduceSystemPrompt,
   buildSummaryReduceUserPrompt,
   buildSummarySingleSystemPrompt,
   buildSummarySingleUserPrompt,
+  buildTagsSystemPrompt,
+  buildTagsUserPrompt,
   reduceBlocks,
 } from "../../../apps/server/src/lib/meetings/workflow/prompts.ts";
 import {
@@ -79,10 +96,8 @@ import {
   SAFETY_TOKENS,
 } from "../../../apps/server/src/lib/meetings/workflow/types.ts";
 import { MLX_LLM_MODELS } from "../../../apps/server/src/lib/mlx-llm/constants.ts";
-import {
-  MAX_SUGGESTED_TAGS,
-  normalizeTagNames,
-} from "../../../packages/validations/src/meeting-tags.ts";
+import { loadVocabularyTerms } from "../../../apps/server/src/lib/vocabulary.ts";
+import { MAX_SUGGESTED_TAGS } from "../../../packages/validations/src/meeting-tags.ts";
 import { parseMeetingSummaryInstructions } from "../../../packages/validations/src/settings.ts";
 import type { SegmentRow } from "./checks.mts";
 import type { SpeakerRow } from "./score.mts";
@@ -102,6 +117,30 @@ export const CURRENT = {
   contextBudget: 8000,
   maxItems: null as number | null,
 };
+
+/** The server package resolves "ai" (the scripts have no copy of their own). */
+const serverRequire = createRequire(
+  new URL("../../../apps/server/package.json", import.meta.url),
+);
+let asSchemaOf: ((zod: unknown) => { jsonSchema: unknown }) | null = null;
+
+/**
+ * The JSON Schema of a step schema as the gateway sends and stores it
+ * (`asSchema(schema.zod).jsonSchema` of the AI SDK, gateway.ts).
+ */
+export async function wireSchema(step: {
+  zod: unknown;
+}): Promise<Record<string, unknown>> {
+  if (!asSchemaOf) {
+    const ai = await import(pathToFileURL(serverRequire.resolve("ai")).href);
+    asSchemaOf = ai.asSchema;
+  }
+  const make = asSchemaOf as (zod: unknown) => { jsonSchema: unknown };
+  return structuredClone(await make(step.zod).jsonSchema) as Record<
+    string,
+    unknown
+  >;
+}
 
 // --- Capture --------------------------------------------------------------------------
 
@@ -544,6 +583,18 @@ export interface StageOutput {
   requests?: Record<string, unknown>[];
 }
 
+/** The prompt inputs of the stage builders, read as prepare.ts reads them. */
+export interface AppInputs {
+  language: string | null;
+  /** The vocabulary terms (loadVocabularyTerms; no project memory in the eval). */
+  vocabTerms: string[];
+  title: string | null;
+  /** The meeting's own context (summarize). */
+  context: string | null;
+  /** The meeting context plus the folder block (identifySpeakers, suggestTags). */
+  contextWithFolder: string | null;
+}
+
 /** The meeting context that the stage builders need, read from the run DB. */
 export interface MeetingInput {
   meetingId: string;
@@ -552,6 +603,7 @@ export interface MeetingInput {
   segments: PreparedSegment[];
   language: string | null;
   summaryInstructions: string;
+  app: AppInputs;
   /** meeting_segments rows (for the scorer). */
   rows: SegmentRow[];
 }
@@ -612,6 +664,13 @@ export function readMeeting(dbPath: string, meetingId: string): MeetingInput {
         "SELECT id, source, idx, start_ms, text, enhanced_text FROM meeting_segments WHERE meeting_id = ? ORDER BY source, idx, start_ms",
       )
       .all(meetingId) as unknown as SegmentRow[];
+    const folder = row.folder_id
+      ? ((db
+          .prepare("SELECT name, description FROM meeting_folders WHERE id = ?")
+          .get(row.folder_id) as
+          | { name: string; description: string | null }
+          | undefined) ?? null)
+      : null;
     return {
       meetingId,
       row,
@@ -619,6 +678,13 @@ export function readMeeting(dbPath: string, meetingId: string): MeetingInput {
       language: row.language ?? null,
       summaryInstructions: parseMeetingSummaryInstructions(instr?.value),
       rows,
+      app: {
+        language: row.language ?? null,
+        vocabTerms: loadVocabularyTerms(),
+        title: row.title ?? null,
+        context: row.context ?? null,
+        contextWithFolder: buildPromptContext(row.context ?? null, folder),
+      },
     };
   } finally {
     db.close();
@@ -658,24 +724,15 @@ export function parseEnhanceLine(
 
 // --- correctChunk -------------------------------------------------------------------
 
-/**
- * Rebuild the correctChunk units at `chunkTokens` with the server builders:
- * the segment lines come from the stored prompts (exact), chunkForEnhance
- * cuts them, buildCorrectUserPrompt wraps them, and the stored schema gets
- * the id enum of the new chunk (correctChunkStepSchema shape).
- */
-export function buildCorrectRequests(calls: StoredCall[], chunkTokens: number) {
-  const stored = finalCalls(calls, "correctChunk");
-  const first = stored[0];
-  if (!first) return { requests: [], segments: [] as PreparedSegment[] };
+/** The segments of the stored transcript lines of one node, in first-seen order. */
+function storedSegments(stored: StoredCall[]): PreparedSegment[] {
   const seen = new Set<string>();
   const segments: PreparedSegment[] = [];
   for (const c of stored) {
     const user = c.messages.find((m) => m.role === "user")?.content ?? "";
     for (const line of transcriptLines(user)) {
       const p = parseEnhanceLine(line);
-      if (!p)
-        throw new Error(`correctChunk call ${c.id}: a line does not parse`);
+      if (!p) throw new Error(`${c.node} call ${c.id}: a line does not parse`);
       if (seen.has(p.id)) continue;
       seen.add(p.id);
       segments.push({
@@ -690,48 +747,72 @@ export function buildCorrectRequests(calls: StoredCall[], chunkTokens: number) {
       });
     }
   }
-  const system = first.messages.find((m) => m.role === "system")?.content ?? "";
-  const lineOf = (s: PreparedSegment) =>
-    `[${s.id}] ${s.displayLabel}: ${s.text}`;
+  return segments;
+}
+
+const enhanceLine = (s: PreparedSegment) =>
+  formatEnhanceLine(s.id, s.displayLabel, s.text);
+
+/**
+ * Rebuild the correctChunk units at `chunkTokens` with the current server
+ * code: the segments come from the stored prompts (exact), chunkForEnhance
+ * cuts them, buildCorrectSystemPrompt (language and vocabulary of the run
+ * DB) and buildCorrectUserPrompt write the prompts, and
+ * correctChunkStepSchema gives the schema with the id enum of the chunk.
+ */
+export async function buildCorrectRequests(
+  calls: StoredCall[],
+  chunkTokens: number,
+  app: AppInputs,
+) {
+  const stored = finalCalls(calls, "correctChunk");
+  const first = stored[0];
+  if (!first) return { requests: [], segments: [] as PreparedSegment[] };
+  const segments = storedSegments(stored);
+  const system = buildCorrectSystemPrompt({
+    language: app.language,
+    vocabTerms: app.vocabTerms,
+  });
   const chunks = chunkForEnhance(
     segments.map((s) => ({ id: s.id, speaker: s.displayLabel, text: s.text })),
     chunkTokens,
   );
   const byId = new Map(segments.map((s) => [s.id, s]));
-  const requests = chunks.map((chunk, i) => {
-    const members = chunk.map((c) => byId.get(c.id) as PreparedSegment);
-    const lines = members.map(lineOf);
-    const tokens = lines.reduce((a, l) => a + estimateTokens(l) + 1, 0);
-    const schema = structuredClone(first.schema) as any;
-    schema.properties.corrections.items.properties.id.enum = [
-      ...new Set(members.map((s) => s.id)),
-    ];
-    const body = wireBody({
-      topLevel: first.topLevel,
-      extraBody: first.extraBody,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: buildCorrectUserPrompt(lines) },
-      ],
-      schema,
-    });
-    body.max_tokens = Math.min(
-      8192,
-      Math.ceil(tokens * CORRECT_ANSWER_FACTOR) + CORRECT_ANSWER_FIXED,
-    );
-    return { key: `chunk:${i}`, body, members };
-  });
+  const requests = await Promise.all(
+    chunks.map(async (chunk, i) => {
+      const members = chunk.map((c) => byId.get(c.id) as PreparedSegment);
+      const lines = members.map(enhanceLine);
+      const tokens = lines.reduce((a, l) => a + estimateTokens(l) + 1, 0);
+      const body = wireBody({
+        topLevel: first.topLevel,
+        extraBody: first.extraBody,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: buildCorrectUserPrompt(lines) },
+        ],
+        schema: await wireSchema(
+          correctChunkStepSchema(members.map((s) => s.id)),
+        ),
+      });
+      body.max_tokens = Math.min(
+        8192,
+        Math.ceil(tokens * CORRECT_ANSWER_FACTOR) + CORRECT_ANSWER_FIXED,
+      );
+      return { key: `chunk:${i}`, body, members };
+    }),
+  );
   return { requests, segments };
 }
 
 export async function runCorrect(
   cap: Capture,
+  app: AppInputs,
   params: Record<string, unknown>,
   complete: Complete,
   extra: Overrides = {},
 ): Promise<StageOutput> {
   const chunkTokens = Number(params.chunkTokens ?? CURRENT.chunkTokens);
-  const { requests } = buildCorrectRequests(cap.calls, chunkTokens);
+  const { requests } = await buildCorrectRequests(cap.calls, chunkTokens, app);
   const o = { ...overridesOf(params), ...extra };
   const out: StageOutput = {
     stage: "correctChunk",
@@ -789,10 +870,10 @@ export function preparedFor(m: MeetingInput): PreparedMeeting {
   return {
     meetingId: m.meetingId,
     language: m.language,
-    title: m.row.title ?? null,
-    context: m.row.context ?? null,
-    contextWithFolder: m.row.context ?? null,
-    vocabTerms: [],
+    title: m.app.title,
+    context: m.app.context,
+    contextWithFolder: m.app.contextWithFolder,
+    vocabTerms: m.app.vocabTerms,
     attendeeNames: parseAttendees(m.row as never)
       .map((a) => a.name)
       .filter((n) => n.trim().length > 0),
@@ -829,13 +910,37 @@ export async function runIdentify(
   };
   const proposals: Parameters<typeof verifyEvidence>[1][number][] = [];
   const shown: { unitKey: string; segmentIds: string[] }[] = [];
+  // The current builders: labels to identify (prepare.ts P7), the system
+  // prompt, and per unit the stored lines and the schema of those ids.
+  const prepared = preparedFor(meeting);
+  const labels = prepared.labels.toIdentify;
+  const system = buildIdentifySystemPrompt({
+    labels,
+    title: prepared.title,
+    context: prepared.contextWithFolder,
+  });
   for (const c of finalCalls(cap.calls, "identifySpeakers")) {
-    const body = applyOverrides(wireBody(c), o);
+    const members = storedSegments([c]);
+    const ids = members.map((s) => s.id);
+    const body = applyOverrides(
+      wireBody({
+        topLevel: c.topLevel,
+        extraBody: c.extraBody,
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: buildIdentifyUserPrompt(members.map(enhanceLine)),
+          },
+        ],
+        schema: await wireSchema(
+          identifySpeakersStepSchema(ids, labels, { sizeLimits: true }),
+        ),
+      }),
+      o,
+    );
     out.requests?.push(body);
     const reply = await complete(body);
-    const item = (c.schema as any).properties.speakers.items.properties;
-    const ids: string[] = item.segmentId.enum ?? [];
-    const labels: string[] = item.label.enum ?? [];
     const parsed =
       reply.finish === "stop"
         ? identifySpeakersStepSchema(ids, labels, {
@@ -882,8 +987,15 @@ export async function runIdentify(
 
 // --- suggestTags --------------------------------------------------------------------
 
+/** The existing tags that a stored suggestTags system prompt lists (the stored input). */
+export function storedExistingTags(system: string): string[] {
+  const m = /\n\nThese tags exist already:\n(.*)\n/.exec(system);
+  return m ? (m[1] as string).split(", ") : [];
+}
+
 export async function runTags(
   cap: Capture,
+  app: AppInputs,
   params: Record<string, unknown>,
   complete: Complete,
   extra: Overrides = {},
@@ -897,10 +1009,33 @@ export async function runTags(
     requests: [],
   };
   for (const c of finalCalls(cap.calls, "suggestTags")) {
-    const schema = structuredClone(c.schema) as any;
+    const schema = (await wireSchema(MEETING_TAGS_STEP_SCHEMA)) as any;
     if (typeof params.maxItems === "number")
       schema.properties.tags.maxItems = params.maxItems;
-    const body = applyOverrides(wireBody({ ...c, schema }), o);
+    const storedSystem =
+      c.messages.find((m) => m.role === "system")?.content ?? "";
+    const storedUser = c.messages.find((m) => m.role === "user")?.content ?? "";
+    const system = buildTagsSystemPrompt({
+      title: app.title,
+      context: app.contextWithFolder,
+      existingTags: storedExistingTags(storedSystem),
+      maxTags: MAX_SUGGESTED_TAGS,
+    });
+    const body = applyOverrides(
+      wireBody({
+        topLevel: c.topLevel,
+        extraBody: c.extraBody,
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: buildTagsUserPrompt(transcriptLines(storedUser)),
+          },
+        ],
+        schema,
+      }),
+      o,
+    );
     out.requests?.push(body);
     const reply = await complete(body);
     const parsed =
@@ -918,7 +1053,7 @@ export async function runTags(
       out.failedUnits++;
       continue;
     }
-    out.tags = normalizeTagNames(parsed.data.tags).slice(0, MAX_SUGGESTED_TAGS);
+    out.tags = suggestedTagNames(parsed.data.tags);
   }
   return out;
 }
@@ -971,9 +1106,9 @@ export async function runSummary(
   if (!template) return out;
   const { segs, lines } = summaryLines(meeting);
   const promptInput = {
-    language: meeting.language,
+    language: meeting.app.language,
     instructions: meeting.summaryInstructions,
-    context: meeting.row.context ?? null,
+    context: meeting.app.context,
   };
   const systems = {
     single: buildSummarySingleSystemPrompt(promptInput),
@@ -987,7 +1122,9 @@ export async function runSummary(
     Number(params.contextBudget ?? CURRENT.contextBudget),
     fit,
   );
-  const zod = meetingSummaryStepSchema({ sizeLimits: true }).zod;
+  const step = meetingSummaryStepSchema({ sizeLimits: true });
+  const zod = step.zod;
+  const schema = await wireSchema(step);
   let made = 0;
 
   const call = async (
@@ -1006,7 +1143,7 @@ export async function runSummary(
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        schema: template.schema,
+        schema,
       }),
       o,
     );
@@ -1145,12 +1282,13 @@ export function runStage(
   complete: Complete,
   extra: Overrides = {},
 ): Promise<StageOutput> {
-  if (stage === "correctChunk") return runCorrect(cap, params, complete, extra);
+  if (stage === "correctChunk")
+    return runCorrect(cap, meeting.app, params, complete, extra);
   if (stage === "identifySpeakers")
     return runIdentify(cap, meeting, params, complete, extra);
   if (stage === "summarize")
     return runSummary(cap, meeting, params, complete, extra);
-  return runTags(cap, params, complete, extra);
+  return runTags(cap, meeting.app, params, complete, extra);
 }
 
 /** The node name of a stage in llm_calls. */

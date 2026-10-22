@@ -144,17 +144,70 @@ function deletesWords(oldWords: string[], newWords: string[]): boolean {
   return closeGap();
 }
 
+/**
+ * Walks the word alignment of old to new and calls `onGap` once for each gap
+ * between matched words (and at the end): the old words it loses and the new
+ * words it gains. Returns false as soon as `onGap` returns false.
+ */
+function everyGap(
+  a: string[],
+  b: string[],
+  onGap: (removed: string[], added: string[]) => boolean,
+): boolean {
+  const lcs = lcsTable(a, b);
+  let i = 0;
+  let j = 0;
+  let removed: string[] = [];
+  let added: string[] = [];
+  const closeGap = () => {
+    if (removed.length === 0 && added.length === 0) return true;
+    const ok = onGap(removed, added);
+    removed = [];
+    added = [];
+    return ok;
+  };
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      if (!closeGap()) return false;
+      i++;
+      j++;
+    } else if (
+      j >= b.length ||
+      (i < a.length && lcs[i + 1]![j]! >= lcs[i]![j + 1]!)
+    ) {
+      removed.push(a[i]!);
+      i++;
+    } else {
+      added.push(b[j]!);
+      j++;
+    }
+  }
+  return closeGap();
+}
+
 /** A correction may add at most this many words net. */
-const MAX_NET_ADDED_WORDS = 3;
+const MAX_NET_ADDED_WORDS = 2;
+/** A run of new words with no old word in its place holds at most this many words. */
+const MAX_INSERTED_RUN = 1;
 /** Share of the original words that must stay, in order. */
 const MIN_WORD_OVERLAP = 0.5;
 
-/** True when the new text adds many words or keeps too little of the old text. */
+/**
+ * True when the new text adds many words, inserts a run of more than one new
+ * word where no old word was, or keeps too little of the old text. A speech
+ * recognizer seldom drops two words in a row; a model that writes them in
+ * invents content.
+ */
 function tooDifferent(oldWords: string[], newWords: string[]): boolean {
   if (newWords.length - oldWords.length > MAX_NET_ADDED_WORDS) return true;
   if (oldWords.length === 0) return false;
   const kept = lcsTable(oldWords, newWords)[0]![0]!;
-  return kept / oldWords.length < MIN_WORD_OVERLAP;
+  if (kept / oldWords.length < MIN_WORD_OVERLAP) return true;
+  return !everyGap(
+    oldWords,
+    newWords,
+    (removed, added) => removed.length > 0 || added.length <= MAX_INSERTED_RUN,
+  );
 }
 
 /** Negation words: not, no, never, nothing, none, nobody, and any n't word. */
@@ -211,49 +264,93 @@ function collapseRepeats(words: string[]): string[] {
 }
 
 /**
- * True when the two texts differ only in inflections: after the repeat
- * collapse, every gap of the word alignment is a run of old words that match
- * the same number of new words one for one, each pair an inflection. Any other
- * change (a different word, an added or lost word, a split or joined word)
- * makes the correction a real fix, and the whole correction stays.
+ * Grammar words. A speech recognizer seldom drops one of them in a way that
+ * the reference transcript keeps; a small model adds them to "fix" the grammar
+ * of spoken language. English and Portuguese. Negations are not here: the
+ * negation check handles them.
  */
-function inflectionOnly(oldWords: string[], newWords: string[]): boolean {
-  const a = collapseRepeats(oldWords);
-  const b = collapseRepeats(newWords);
-  const lcs = lcsTable(a, b);
-  let i = 0;
-  let j = 0;
-  let removed: string[] = [];
-  let added: string[] = [];
+const FUNCTION_WORDS = new Set([
+  // English: articles, prepositions, particles, pronouns, auxiliaries, conjunctions.
+  ..."a an the to of in on at for with from by about as into onto up out off over".split(
+    " ",
+  ),
+  ..."i you he she it we they me him her us them my your his its our their this that these those there".split(
+    " ",
+  ),
+  ..."is are was were be been am do does did have has had will would can could should shall may might must".split(
+    " ",
+  ),
+  ..."and or but so if then than just".split(" "),
+  // Portuguese.
+  ..."o os as ao aos à às um uma uns umas de do da dos das em no na nos nas num numa para pra pro por pelo pela com e ou que se".split(
+    " ",
+  ),
+  ..."eu ele ela nós eles elas me te lhe é foi ser está estar tá".split(" "),
+]);
+
+/**
+ * Spoken (informal) forms and their written form. A change from one to the
+ * other changes the register, not a recognition error. English and Portuguese.
+ */
+const REGISTER_FORMS: ReadonlyMap<string, string[]> = new Map([
+  ["gonna", ["going", "to"]],
+  ["wanna", ["want", "to"]],
+  ["gotta", ["got", "to"]],
+  ["hafta", ["have", "to"]],
+  ["kinda", ["kind", "of"]],
+  ["sorta", ["sort", "of"]],
+  ["outta", ["out", "of"]],
+  ["lotta", ["lot", "of"]],
+  ["gimme", ["give", "me"]],
+  ["lemme", ["let", "me"]],
+  ["cause", ["because"]],
+  ["cuz", ["because"]],
+  ["cos", ["because"]],
+  ["ya", ["you"]],
+  ["yeah", ["yes"]],
+  ["yep", ["yes"]],
+  ["tá", ["está"]],
+  ["tô", ["estou"]],
+  ["tava", ["estava"]],
+  ["pra", ["para"]],
+  ["pro", ["para", "o"]],
+  ["cê", ["você"]],
+  ["vc", ["você"]],
+  ["né", ["não", "é"]],
+]);
+
+/** The words with every spoken form replaced by its written form. */
+function writtenForms(words: string[]): string[] {
+  return words.flatMap((w) => REGISTER_FORMS.get(w) ?? [w]);
+}
+
+/**
+ * True when the two texts differ only in grammar or register: after the
+ * repeat collapse and the spoken-form expansion, every gap of the word
+ * alignment is either a run of old words that match the same number of new
+ * words one for one, each pair an inflection, or a pure insertion of grammar
+ * words ("look" to "look at"). A change of a spoken form only ("gonna" to
+ * "going to") is also grammar only. Any other change (a different word, a
+ * lost word, a split or joined word) makes the correction a real fix, and the
+ * whole correction stays.
+ */
+function grammarOnly(oldWords: string[], newWords: string[]): boolean {
+  const a0 = collapseRepeats(oldWords);
+  const b0 = collapseRepeats(newWords);
+  const a = writtenForms(a0);
+  const b = writtenForms(b0);
   let gaps = 0;
-  const closeGap = () => {
-    if (removed.length === 0 && added.length === 0) return true;
+  const ok = everyGap(a, b, (removed, added) => {
     gaps++;
-    const ok =
+    if (removed.length === 0) return added.every((w) => FUNCTION_WORDS.has(w));
+    return (
       removed.length === added.length &&
-      removed.every((w, k) => isInflection(w, added[k]!));
-    removed = [];
-    added = [];
-    return ok;
-  };
-  while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) {
-      if (!closeGap()) return false;
-      i++;
-      j++;
-    } else if (
-      j >= b.length ||
-      (i < a.length && lcs[i + 1]![j]! >= lcs[i]![j + 1]!)
-    ) {
-      removed.push(a[i]!);
-      i++;
-    } else {
-      added.push(b[j]!);
-      j++;
-    }
-  }
-  if (!closeGap()) return false;
-  return gaps > 0;
+      removed.every((w, k) => isInflection(w, added[k]!))
+    );
+  });
+  if (!ok) return false;
+  // No gap after the expansion: only a spoken form changed (or nothing did).
+  return gaps > 0 || a0.join(" ") !== b0.join(" ");
 }
 
 /**
@@ -349,8 +446,9 @@ export function checkCorrections(
       drop("meaning_flip");
       return;
     }
-    // A change of grammar only (verb agreement, tense, plural) is not a fix.
-    if (inflectionOnly(oldWords, newWords)) {
+    // A change of grammar or register only (verb agreement, tense, plural,
+    // an added grammar word, "gonna" to "going to") is not a fix.
+    if (grammarOnly(oldWords, newWords)) {
       drop("inflection_only");
       return;
     }
