@@ -32,6 +32,7 @@
 // Exit codes: 0 ok; 1 a run or a check failed; 2 usage.
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import process from "node:process";
@@ -496,8 +497,9 @@ async function replayCheck(outDir: string): Promise<number> {
 }
 
 function workerSha(): string {
-  const r = spawnSync("shasum", [WORKER], { encoding: "utf8" });
-  return r.stdout.split(" ")[0]?.slice(0, 16) ?? "?";
+  return existsSync(WORKER)
+    ? createHash("sha1").update(readFileSync(WORKER)).digest("hex").slice(0, 16)
+    : "?";
 }
 
 // --- 3. Sweep --------------------------------------------------------------------------------

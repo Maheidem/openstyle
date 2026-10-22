@@ -298,7 +298,7 @@ export function applyOverrides(
   if (o.perturb) {
     const sys = (b.messages as Message[]).find((m) => m.role === "system");
     const [from, to] = o.perturb;
-    if (!sys || !sys.content.includes(from))
+    if (!sys?.content.includes(from))
       throw new Error(`perturb: the system prompt has no "${from}"`);
     sys.content = sys.content.replace(from, to);
   }
@@ -795,7 +795,7 @@ export async function runIdentify(
       continue;
     }
     shown.push({ unitKey: c.unitKey, segmentIds: ids });
-    parsed.data.speakers.forEach((p, seq) =>
+    parsed.data.speakers.forEach((p, seq) => {
       proposals.push({
         unitKey: c.unitKey,
         llmCallId: c.id,
@@ -805,8 +805,8 @@ export async function runIdentify(
         label: p.label,
         kind: p.kind,
         name: p.name,
-      }),
-    );
+      });
+    });
   }
   const { suggestions } = verifyEvidence(
     preparedFor(meeting),
