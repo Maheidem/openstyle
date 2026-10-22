@@ -14,6 +14,7 @@ import {
   type Rectangle,
   screen,
 } from "electron";
+import { version as packageVersion } from "../../../package.json";
 import type {
   TrayPopoverState,
   TrayPopoverTarget,
@@ -248,6 +249,15 @@ function isOutsideClick(point: { x: number; y: number }): boolean {
   return true;
 }
 
+/**
+ * The Openstyle version. An unpacked run (dev, E2E) starts Electron with a
+ * script, and app.getVersion() then gives the Electron version. So only a
+ * packaged app asks Electron; other runs use package.json.
+ */
+function appVersion(): string {
+  return app.isPackaged ? app.getVersion() : packageVersion;
+}
+
 function isTarget(value: unknown): value is TrayPopoverTarget {
   return typeof value === "string" && Object.hasOwn(TARGET_PATHS, value);
 }
@@ -268,7 +278,7 @@ export function registerTrayPopoverIpc(deps: {
   ipcMain.handle("tray-popover:state", async (): Promise<TrayPopoverState> => {
     await refreshMeetingsFlag();
     return {
-      version: app.getVersion(),
+      version: appVersion(),
       hotkey: state.currentHotkeyAccel,
       hotkeyMode: deps.getHotkeyMode(),
       dictating: state.hotkeyPressed,

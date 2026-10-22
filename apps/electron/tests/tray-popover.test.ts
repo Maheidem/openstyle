@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -31,6 +37,11 @@ import {
 // ---------------------------------------------------------------------------
 
 const SHOTS_DIR = process.env.OPENSTYLE_PROOF_SHOTS;
+const APP_VERSION = (
+  JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
 const MAC = process.platform === "darwin";
 
 test.describe.configure({ mode: "serial" });
@@ -169,8 +180,9 @@ test("a toggle shows the popover with the header, the hotkey and Start", async (
   await expect(
     popover.getByRole("button", { name: "Start meeting recording" }),
   ).toBeVisible();
-  await expect(popover.getByTestId("tray-popover-version")).toContainText(
-    "Up to date",
+  // The Openstyle version from package.json, never the Electron version.
+  await expect(popover.getByTestId("tray-popover-version")).toHaveText(
+    `Openstyle ${APP_VERSION} · Up to date`,
   );
   for (const name of ["Open Openstyle", "Settings", "Quit Openstyle"]) {
     await expect(popover.getByRole("button", { name })).toBeVisible();
