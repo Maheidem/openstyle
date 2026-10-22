@@ -1,6 +1,7 @@
 import type {
   LlmRunInfo,
   LlmRunKind,
+  LlmSkipReason,
   LlmStepInfo,
 } from "@openstyle/validations";
 
@@ -78,6 +79,33 @@ export interface RunNotice {
 export function llmErrorKey(kind: string | null | undefined): string {
   return `meetings.llmError.${
     kind && KNOWN_ERROR_KINDS.has(kind) ? kind : "unknown"
+  }`;
+}
+
+/**
+ * The skip reasons that have a `meetings.skipReason.<reason>` text (issue
+ * #300). The Record type makes a new reason in `LlmSkipReason` a type error
+ * here until it gets its text.
+ */
+export const SKIP_REASONS: Readonly<Record<LlmSkipReason, true>> = {
+  no_labels: true,
+  all_confirmed: true,
+  stopped: true,
+  cancelled: true,
+  speakers_skipped: true,
+  speakers_failed: true,
+  not_saved: true,
+  meeting_gone: true,
+  empty_transcript: true,
+};
+
+/**
+ * The i18n key of the neutral text of a skipped step. A skip is not an error,
+ * so a missing or unknown reason reads as `other`, never as `unknown` error.
+ */
+export function skipReasonKey(reason: string | null | undefined): string {
+  return `meetings.skipReason.${
+    reason && Object.hasOwn(SKIP_REASONS, reason) ? reason : "other"
   }`;
 }
 

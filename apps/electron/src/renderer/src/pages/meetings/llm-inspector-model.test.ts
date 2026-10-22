@@ -47,6 +47,7 @@ function step(over: Partial<LlmStepInfo>): LlmStepInfo {
     recordedCalls: 1,
     errorKind: null,
     errorDetail: null,
+    skipReason: null,
     startedAt: 1,
     finishedAt: 2,
     ...over,

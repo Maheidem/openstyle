@@ -77,6 +77,11 @@ describe("locale files", () => {
     "workflow-progress": Object.keys(en).filter((key) =>
       key.startsWith("meetings.progress."),
     ),
+    // The neutral reason text of a skipped Enhance step (issue #300). A
+    // missing key would show English, so every locale carries them.
+    "skip-reasons": Object.keys(en).filter((key) =>
+      key.startsWith("meetings.skipReason."),
+    ),
     // The running-job badge of a meeting list row.
     "job-badge": Object.keys(en).filter((key) =>
       key.startsWith("meetings.jobBadge."),

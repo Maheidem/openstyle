@@ -395,8 +395,18 @@ describe("identifySpeakers in the graph", () => {
     const a = await run(solo, () => speakers());
     expect(a.identifyRequests).toHaveLength(0);
     expect(a.finalState.identify?.status).toBe("skipped");
-    expect(a.recorder.steps.get("candidates")?.errorDetail).toBe("no_labels");
+    expect(a.recorder.steps.get("candidates")).toMatchObject({
+      status: "skipped",
+      errorKind: "skipped",
+      errorDetail: "no_labels",
+    });
     expect(a.finalState.verify?.status).toBe("skipped");
+    // verify says why it skipped too (issue #300).
+    expect(a.recorder.steps.get("verify")).toMatchObject({
+      status: "skipped",
+      errorKind: "skipped",
+      errorDetail: "speakers_skipped",
+    });
 
     const named = seedFixtureMeeting({
       chunks: 1,

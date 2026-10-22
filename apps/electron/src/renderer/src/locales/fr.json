@@ -993,6 +993,18 @@
       "cancelled": "L’exécution a été annulée.",
       "unknown": "Une erreur inconnue s’est produite."
     },
+    "skipReason": {
+      "no_labels": "Aucun tour de parole à nommer.",
+      "all_confirmed": "Chaque intervenant a déjà un nom.",
+      "stopped": "L'exécution s'est arrêtée avant cette étape.",
+      "cancelled": "L'exécution a été annulée avant cette étape.",
+      "speakers_skipped": "L'identification des intervenants n'a pas eu lieu, il n'y a donc rien à vérifier.",
+      "speakers_failed": "L'identification des intervenants a échoué, il n'y a donc rien à vérifier.",
+      "not_saved": "L'exécution n'a enregistré aucun résultat, cette étape n'a donc pas eu lieu.",
+      "meeting_gone": "La réunion a été supprimée pendant l'exécution.",
+      "empty_transcript": "La transcription ne contient aucun texte pour cette étape.",
+      "other": "Cette étape n'était pas nécessaire."
+    },
     "showEnhancedLabel": "Afficher la transcription améliorée",
     "showingEnhanced": "Améliorée",
     "showingRaw": "Brute",

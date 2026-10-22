@@ -993,6 +993,18 @@
       "cancelled": "実行はキャンセルされました。",
       "unknown": "不明なエラーが発生しました。"
     },
+    "skipReason": {
+      "no_labels": "名前を付ける話者の発言がありません。",
+      "all_confirmed": "すべての話者にすでに名前があります。",
+      "stopped": "この手順の前に実行が停止しました。",
+      "cancelled": "この手順の前に実行がキャンセルされました。",
+      "speakers_skipped": "話者の識別が実行されなかったため、確認する対象がありません。",
+      "speakers_failed": "話者の識別に失敗したため、確認する対象がありません。",
+      "not_saved": "結果が保存されなかったため、この手順は実行されませんでした。",
+      "meeting_gone": "実行中に会議が削除されました。",
+      "empty_transcript": "文字起こしにこの手順で使うテキストがありません。",
+      "other": "この手順は不要でした。"
+    },
     "showEnhancedLabel": "強化後の文字起こしを表示",
     "showingEnhanced": "強化後",
     "showingRaw": "元のテキスト",

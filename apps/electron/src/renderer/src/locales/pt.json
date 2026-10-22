@@ -992,6 +992,18 @@
       "cancelled": "A execução foi cancelada.",
       "unknown": "Ocorreu um erro desconhecido."
     },
+    "skipReason": {
+      "no_labels": "Não há falas de interlocutores para nomear.",
+      "all_confirmed": "Todos os interlocutores já têm nome.",
+      "stopped": "A execução parou antes desta etapa.",
+      "cancelled": "A execução foi cancelada antes desta etapa.",
+      "speakers_skipped": "A identificação de interlocutores não foi executada, então não há nada para verificar.",
+      "speakers_failed": "A identificação de interlocutores falhou, então não há nada para verificar.",
+      "not_saved": "A execução não salvou nenhum resultado, então esta etapa não foi executada.",
+      "meeting_gone": "A reunião foi excluída durante a execução.",
+      "empty_transcript": "A transcrição não tem texto para esta etapa.",
+      "other": "Esta etapa não foi necessária."
+    },
     "showEnhancedLabel": "Mostrar transcrição aprimorada",
     "showingEnhanced": "Aprimorada",
     "showingRaw": "Original",

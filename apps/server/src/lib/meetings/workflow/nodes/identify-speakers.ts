@@ -1,3 +1,4 @@
+import type { LlmSkipReason } from "@openstyle/validations";
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
 import { estimateTokens, formatEnhanceLine } from "../chunking.js";
@@ -36,6 +37,7 @@ import {
   type Leaf,
   recordUnitEnd,
   runUnitRoute,
+  skippedBecause,
 } from "../unit.js";
 
 // Node `identifySpeakers` (specs/meeting-enhance-agentic.md 4.3). One call
@@ -148,25 +150,20 @@ const EMPTY_STATS: CandidateStats = {
   droppedByBudget: 0,
 };
 
-/**
- * Why a result was skipped. The reason is not part of the result contract
- * (spec 4.3); it goes to the step row detail only.
- */
-const skipReasons = new WeakMap<IdentifySpeakersResult, string>();
-
 function skipped(
-  skipReason: "no_labels" | "all_confirmed" | null,
+  reason: LlmSkipReason,
   candidates: CandidateStats = EMPTY_STATS,
 ): IdentifySpeakersResult {
-  const result: IdentifySpeakersResult = {
-    status: "skipped",
-    proposals: [],
-    shown: [],
-    candidates,
-    failures: [],
-  };
-  if (skipReason) skipReasons.set(result, skipReason);
-  return result;
+  return skippedBecause(
+    {
+      status: "skipped",
+      proposals: [],
+      shown: [],
+      candidates,
+      failures: [],
+    },
+    reason,
+  );
 }
 
 export function failedIdentifyResult(
@@ -212,7 +209,8 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
     if (prepared.labels.all.length === 0) return skipped("no_labels");
     if (prepared.labels.toIdentify.length === 0)
       return skipped("all_confirmed");
-    if (ctx.isCancelled() || ctx.isStopped()) return skipped(null);
+    if (ctx.isCancelled()) return skipped("cancelled");
+    if (ctx.isStopped()) return skipped("stopped");
 
     const profile = models.identifySpeakers;
     const labels = prepared.labels.toIdentify;
@@ -293,7 +291,6 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
       outcome: (r) => ({
         status: r.status,
         failure: r.failures[0] ?? null,
-        skipDetail: skipReasons.get(r) ?? null,
       }),
     },
     run,
@@ -337,11 +334,15 @@ function resultFromLeaves(
       if (leaf.status === "failed" && leaf.failure) failures.push(leaf.failure);
     }
   }
-  return {
+  const result: IdentifySpeakersResult = {
     status: foldStatus(statuses),
     proposals,
     shown,
     candidates,
     failures,
   };
+  // A unit is skipped only when the run stopped before its call.
+  return result.status === "skipped"
+    ? skippedBecause(result, "stopped")
+    : result;
 }

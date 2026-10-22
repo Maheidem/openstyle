@@ -5,6 +5,7 @@ import type {
   LlmStepStatus,
 } from "@openstyle/validations";
 import { describe, expect, it } from "vitest";
+import en from "../../locales/en.json";
 import {
   chunkNumber,
   enhanceNoteOf,
@@ -15,6 +16,8 @@ import {
   noticeLines,
   noticeTextKey,
   runNotice,
+  SKIP_REASONS,
+  skipReasonKey,
 } from "./run-notice";
 
 function step(
@@ -33,6 +36,7 @@ function step(
     recordedCalls: 1,
     errorKind,
     errorDetail: null,
+    skipReason: null,
     startedAt: 1,
     finishedAt: 2,
   };
@@ -102,6 +106,67 @@ describe("llmErrorKey", () => {
     expect(llmErrorKey("brand_new_kind")).toBe("meetings.llmError.unknown");
     expect(llmErrorKey(null)).toBe("meetings.llmError.unknown");
     expect(llmErrorKey(undefined)).toBe("meetings.llmError.unknown");
+  });
+});
+
+describe("skipReasonKey (issue #300)", () => {
+  /** The en.json text of a dotted key, or undefined. */
+  function enText(key: string): unknown {
+    return key
+      .split(".")
+      .reduce<unknown>(
+        (node, part) =>
+          node && typeof node === "object"
+            ? (node as Record<string, unknown>)[part]
+            : undefined,
+        en,
+      );
+  }
+
+  it("gives every known skip reason its own key with an English text", () => {
+    const reasons = Object.keys(SKIP_REASONS);
+    expect(reasons.length).toBeGreaterThanOrEqual(9);
+    const texts = new Set<string>();
+    for (const reason of reasons) {
+      const key = skipReasonKey(reason);
+      expect(key).toBe(`meetings.skipReason.${reason}`);
+      const text = enText(key);
+      expect(typeof text, key).toBe("string");
+      texts.add(text as string);
+    }
+    // Each reason has its own text.
+    expect(texts.size).toBe(reasons.length);
+    expect(skipReasonKey("no_labels")).toBe("meetings.skipReason.no_labels");
+    expect(enText("meetings.skipReason.no_labels")).toBe(
+      "No speaker turns to name.",
+    );
+  });
+
+  it("reads a missing or new reason as the neutral other text, never as an unknown error", () => {
+    for (const reason of [null, undefined, "", "a_future_reason", "toString"]) {
+      const key = skipReasonKey(reason);
+      expect(key).toBe("meetings.skipReason.other");
+      expect(key).not.toBe(llmErrorKey(null));
+    }
+    expect(typeof enText("meetings.skipReason.other")).toBe("string");
+  });
+
+  it("a skipped step never adds a line to a run notice", () => {
+    const lines = noticeLines(
+      run({
+        status: "partial",
+        steps: [
+          {
+            ...step("candidates", "skipped", null, 1, "identifySpeakers"),
+            skipReason: "no_labels",
+          },
+          step("chunk:0", "failed", "length", 2),
+        ],
+      }),
+    );
+    expect(lines).toEqual([
+      { node: "correctChunk", chunks: [1], kind: "length" },
+    ]);
   });
 });
 
