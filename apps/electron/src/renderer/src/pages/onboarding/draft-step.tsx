@@ -108,7 +108,6 @@ export function DraftStep({
               {t("onboarding.draft.skip")}
             </Button>
             <Button
-              variant="ink"
               onClick={onContinue}
               disabled={!!blockedReason || !body.trim()}
             >

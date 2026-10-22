@@ -116,12 +116,7 @@ export function ParamJsonEditor({
         <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
           {t("common.cancel")}
         </Button>
-        <Button
-          variant="ink"
-          size="sm"
-          onClick={onSave}
-          disabled={!!error || saving}
-        >
+        <Button size="sm" onClick={onSave} disabled={!!error || saving}>
           {saveLabel ?? t("common.save")}
         </Button>
       </div>

@@ -134,7 +134,7 @@ export function MeetingTagChips({
       {suggestions.length > 0 && (
         <div
           id={listId}
-          className="bg-popover text-popover-foreground border-border mt-1 w-fit min-w-40 rounded-lg border p-1 shadow-md"
+          className="bg-popover text-popover-foreground border-border mt-1 w-fit min-w-40 rounded-lg border p-1 shadow-(--shadow-card)"
         >
           <p className="text-muted-foreground px-2 py-1 text-[10.5px]">
             {t("meetings.tags.suggestions")}

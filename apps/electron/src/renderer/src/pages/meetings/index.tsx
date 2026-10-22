@@ -389,7 +389,6 @@ export default function MeetingsPage(): React.JSX.Element {
                 {recorder.status === "idle" ? (
                   <>
                     <Button
-                      variant="ink"
                       size="xs"
                       disabled={
                         !recorder.supported || recorder.starting || !targetReady

@@ -78,7 +78,7 @@ An audit says no. The pipeline has the whole recording on disk, yet each chunk i
 
 The bias text is `Technical terms: a, b, c` cut to 900 characters for `local-mlx` and `server` (`vocabulary-bias.ts:16`, `:150-159`). It is `Terms: ...` for the whisper-style providers (`:103-109`). No provider asks for word timestamps. The `TranscribeResult` type has an optional `segments` field that no meeting provider fills (`streaming/types.ts:40-48`).
 
-**Merge.** `mergeTranscript` runs: drift correction, hallucination filter, vocabulary-leak filter, repeat filter, echo dedup (mic copy dropped when it overlaps a system segment within 1 s and the text similarity is above 0.7), then sort (`merge.ts:266-304`).
+**Merge.** `mergeTranscript` runs: drift correction, hallucination filter, vocabulary-leak filter, repeat filter, echo dedup (mic copy dropped when it overlaps a system segment within 1 s and the text similarity is above 0.7; since issue #269 the overlap must be more than 1500 ms), then sort (`merge.ts:266-304`).
 
 **Diarization.** It is off by default: only the value `"true"` turns it on (`diarize.ts:50-57`). It runs after transcription (`routes/meetings.ts:420-428`). It runs the `fluidaudio-diarize` binary on the whole `system.wav` (`diarize.ts:355-485`, timeout is the meeting duration with a 120 s floor, `:337-338`, `:432`). It then gives each finished chunk the speaker with the largest overlap (`assignSpeakerLabels`, `:265-301`). A chunk that holds two speakers gets one label. Imported meetings have only `system.wav`, so they depend on this label (`meetings-import.ts:11-15`).
 

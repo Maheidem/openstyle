@@ -2044,12 +2044,7 @@ function ServerConnection(): React.JSX.Element {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          variant="ink"
-          size="sm"
-          onClick={handleSaveServer}
-          disabled={!dirty}
-        >
+        <Button size="sm" onClick={handleSaveServer} disabled={!dirty}>
           {t("common.save")}
         </Button>
         {canReset && (
@@ -2115,7 +2110,7 @@ function PermissionControl({
             <span className="text-muted-foreground text-xs">{note}</span>
           )}
           {actionLabel && onAction && (
-            <Button variant="ink" size="sm" onClick={onAction}>
+            <Button size="sm" onClick={onAction}>
               {actionLabel}
               {external && <ExternalLink data-icon="inline-end" />}
             </Button>

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.21.2
+
+### Improvements ⚡
+
+- Meeting search now also finds words in a meeting's title, tags and summary. A click on a result opens the meeting at the matching part of the transcript (#286).
+- When you delete the search model, Openstyle also removes its search index (#286).
+
+### Bug Fixes 🐛
+
+- Short replies in meetings, such as "Yes." or "Okay.", now get a speaker instead of "UNIDENTIFIED" (#259).
+- Meeting summaries no longer give action items to a guessed person from the invitee list. The owner is the speaker label ("Me", "Them 2") or the name that you confirmed in Speakers (#273).
+- The history date filter is faster (#286).
+
 ## 2.21.1
 
 ### Bug Fixes 🐛

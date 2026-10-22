@@ -134,7 +134,6 @@ export function EnhancePromptDialog(): React.JSX.Element {
           </Button>
           {defaultLlm && (
             <Button
-              variant="ink"
               onClick={() => void choose(true)}
               disabled={busy}
               data-testid="enhance-prompt-turn-on"

@@ -274,12 +274,7 @@ function KeyStep({
           >
             {canGoBack ? t("common.back") : t("common.cancel")}
           </Button>
-          <Button
-            type="submit"
-            variant="ink"
-            size="sm"
-            disabled={!value.trim() || saving}
-          >
+          <Button type="submit" size="sm" disabled={!value.trim() || saving}>
             {saving ? (
               <span className="flex items-center gap-1.5">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

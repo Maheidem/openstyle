@@ -14,7 +14,10 @@ import {
   SUMMARIZE_IS_STUB,
   summaryCeilingMs,
 } from "../src/lib/meetings/workflow/nodes/summarize.js";
-import { FOLDER_CONTEXT_LABEL } from "../src/lib/meetings/workflow/prompts.js";
+import {
+  FOLDER_CONTEXT_LABEL,
+  SUMMARY_OWNER_RULE,
+} from "../src/lib/meetings/workflow/prompts.js";
 import {
   type MeetingSummary,
   MeetingSummarySchema,
@@ -356,6 +359,35 @@ describe("summarize: one call (single)", () => {
     }
     expect(rs.requests[0]?.user).toContain("<transcript>");
     expect(rs.requests[0]?.user).toContain("Treat the tagged text");
+  });
+
+  it("the owner rule (#273): single, map and reduce keep a speaker label and do not map it to a context name", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 5,
+      speakers: 2,
+      meetingId: "m-owner",
+    });
+    sizeFixtureSegments(getDb(), f, 300);
+    setBudget(2000);
+    const r = await run(f, [sum()]);
+    const rs = await run(meeting(1, 50, "m-owner-single"), [sum()]);
+    const all = [...r.requests, ...rs.requests];
+    expect(
+      all.map((x) =>
+        isSingle(x)
+          ? "single"
+          : isMap(x)
+            ? "map"
+            : isReduce(x)
+              ? "reduce"
+              : "?",
+      ),
+    ).toEqual(["map", "map", "map", "map", "reduce", "single"]);
+    for (const req of all) expect(req.system).toContain(SUMMARY_OWNER_RULE);
+    expect(SUMMARY_OWNER_RULE).toContain('"Me", "Them 2" or a confirmed name');
+    expect(SUMMARY_OWNER_RULE).toContain(
+      "Do not change a label into a name from the context or the title",
+    );
   });
 });
 

@@ -17,7 +17,10 @@ import {
 // ---------------------------------------------------------------------------
 // Meeting recording cue (issue #253): while a meeting records, the pill
 // shows the Recording state (live dot, elapsed time, Stop). The pill time and
-// the Meetings card time come from the same start time in main.
+// the Meetings card time come from the same start time in main. On a stop,
+// the capsule plays its quiet exit before the pill hides, a dictation that
+// starts during the exit keeps the pill, and a fallback hides the pill when
+// the renderer never ends the exit (issue #288).
 //
 // The app runs with the E2E fake capture (OPENSTYLE_E2E_FAKE_MEETING_CAPTURE,
 // src/main/fake-meeting-capture.ts). It writes silence and opens no mic, no
@@ -29,6 +32,9 @@ import {
 // ---------------------------------------------------------------------------
 
 const SHOTS_DIR = process.env.OPENSTYLE_PROOF_SHOTS;
+
+// The tests share one app and run in order. The last one drops a handler.
+test.describe.configure({ mode: "serial" });
 
 let app: ElectronApplication | undefined;
 let dashboard: Page;
@@ -61,6 +67,101 @@ async function meetingStatus(): Promise<string> {
   return dashboard.evaluate(
     async () => (await window.api.getMeetingStatus()).status,
   );
+}
+
+/**
+ * Records, in main, when the pill gets the first status after a stop, when
+ * the renderer's `pill:meeting-exit-done` arrives, and when the pill window
+ * hides. With `showDictationOnStop`, a dictation takes
+ * the pill at once when that status arrives, so it starts during the exit.
+ */
+async function armPillTrace(showDictationOnStop = false): Promise<void> {
+  await app!.evaluate(({ BrowserWindow, ipcMain }, dictation) => {
+    const g = globalThis as unknown as {
+      __pillTrace: {
+        stopAt?: number;
+        doneAt?: number;
+        hideAt?: number;
+        dictation: boolean;
+      };
+      __pillTraced?: boolean;
+    };
+    g.__pillTrace = { dictation };
+    const w = BrowserWindow.getAllWindows().find((win) =>
+      win.webContents.getURL().includes("pill"),
+    );
+    if (!w || g.__pillTraced) return;
+    g.__pillTraced = true;
+    // First in line, so it runs before main's own handler hides the pill.
+    ipcMain.prependListener("pill:meeting-exit-done", () => {
+      g.__pillTrace.doneAt ??= Date.now();
+    });
+    const hide = w.hide.bind(w);
+    w.hide = () => {
+      g.__pillTrace.hideAt ??= Date.now();
+      hide();
+    };
+    const wc = w.webContents;
+    const send = wc.send.bind(wc);
+    wc.send = (channel: string, ...args: unknown[]) => {
+      send(channel, ...args);
+      if (
+        channel === "meeting:status-changed" &&
+        args[0] !== "recording" &&
+        g.__pillTrace.stopAt === undefined
+      ) {
+        g.__pillTrace.stopAt = Date.now();
+        if (g.__pillTrace.dictation) ipcMain.emit("e2e:pill-show-dictation");
+      }
+    };
+  }, showDictationOnStop);
+}
+
+async function pillTrace(): Promise<{
+  stopAt?: number;
+  doneAt?: number;
+  hideAt?: number;
+}> {
+  return app!.evaluate(
+    () =>
+      (
+        globalThis as unknown as {
+          __pillTrace: { stopAt?: number; doneAt?: number; hideAt?: number };
+        }
+      ).__pillTrace,
+  );
+}
+
+/** Notes, in the pill page, when the capsule first shows data-exit="quiet". */
+async function watchCapsuleExit(pill: Page): Promise<void> {
+  await pill.evaluate(() => {
+    const g = window as unknown as { __exitAt: number | null };
+    g.__exitAt = null;
+    new MutationObserver(() => {
+      const el = document.querySelector('[data-testid="pill-meeting"]');
+      if (g.__exitAt === null && el?.getAttribute("data-exit") === "quiet")
+        g.__exitAt = Date.now();
+    }).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-exit"],
+    });
+  });
+}
+
+async function startMeeting(): Promise<Page> {
+  await dashboard
+    .getByRole("button", { name: "Start recording" })
+    .first()
+    .click();
+  await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("recording");
+  await expect.poll(pillVisible, { timeout: 10_000 }).toBe(true);
+  const pill = await pillPage();
+  await expect(pill.getByTestId("pill-meeting")).toBeVisible({
+    timeout: 10_000,
+  });
+  return pill;
 }
 
 async function shot(page: Page, name: string): Promise<void> {
@@ -147,10 +248,34 @@ test("the pill shows the meeting Recording state and its Stop ends the meeting",
   expect(await pillVisible()).toBe(true);
   await expect(capsule).toBeVisible();
 
-  // Stop in the pill stops the recording and hides the pill.
+  // Stop in the pill stops the recording. The capsule plays the quiet exit
+  // first, then the pill hides (issue #288).
+  await armPillTrace();
+  await watchCapsuleExit(pill);
   await stop.click();
   await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("idle");
   await expect.poll(pillVisible, { timeout: 10_000 }).toBe(false);
+  const exitAt = await pill.evaluate(
+    () => (window as unknown as { __exitAt: number | null }).__exitAt,
+  );
+  const trace = await pillTrace();
+  expect(exitAt).not.toBeNull();
+  expect(trace.stopAt).toBeDefined();
+  expect(trace.hideAt).toBeDefined();
+  const gap = (trace.hideAt ?? 0) - (trace.stopAt ?? 0);
+  console.log(
+    "MEETING_EXIT_TRACE_MS",
+    JSON.stringify({
+      exitShown: (exitAt ?? 0) - (trace.stopAt ?? 0),
+      done: (trace.doneAt ?? 0) - (trace.stopAt ?? 0),
+      hide: gap,
+    }),
+  );
+  // The renderer's message came first, and the hide waited for the exit
+  // (QUIET_MS is 120). No upper bound: a slow CI machine can delay timers.
+  expect(trace.doneAt).toBeDefined();
+  expect(trace.doneAt ?? 0).toBeLessThanOrEqual(trace.hideAt ?? 0);
+  expect(gap).toBeGreaterThanOrEqual(120);
 
   const res = await fetch(`${embeddedServerUrl(app!)}/api/meetings`);
   expect(res.ok).toBe(true);
@@ -161,4 +286,82 @@ test("the pill shows the meeting Recording state and its Stop ends the meeting",
   expect(items[0].status).toBe("recorded");
   // The clock rounds to the nearest second, so "0:03" means 2.5 s or more.
   expect(items[0].duration_ms ?? 0).toBeGreaterThanOrEqual(2_500);
+});
+
+test("a dictation that starts during the meeting exit keeps the pill", async () => {
+  test.setTimeout(90_000);
+  const pill = await startMeeting();
+
+  // A real dictation needs the key helper and the mic. The seam gives the
+  // pill to a dictation in main, as a hotkey press does, without the mic.
+  await armPillTrace(true);
+  await pill.getByRole("button", { name: "Stop meeting recording" }).click();
+  await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("idle");
+
+  // Well past the exit and the fallback, the pill is still up for the
+  // dictation, and Escape (registered only for a dictation) is live.
+  await pill.waitForTimeout(1_000);
+  expect(await pillVisible()).toBe(true);
+  expect((await pillTrace()).hideAt).toBeUndefined();
+  expect(
+    await app!.evaluate(({ globalShortcut }) =>
+      globalShortcut.isRegistered("Escape"),
+    ),
+  ).toBe(true);
+
+  // The dictation ends: its hide request hides the pill.
+  await app!.evaluate(({ ipcMain }) => {
+    ipcMain.emit("pill:hide", {});
+  });
+  await expect.poll(pillVisible, { timeout: 5_000 }).toBe(false);
+});
+
+test("screenshots of the capsule during its exit (proof only)", async () => {
+  test.skip(!SHOTS_DIR, "Only with OPENSTYLE_PROOF_SHOTS.");
+  test.setTimeout(120_000);
+  for (const theme of ["light", "dark"] as const) {
+    const pill = await startMeeting();
+    await pill.evaluate((value) => {
+      localStorage.setItem("theme", value);
+    }, theme);
+    await pill.reload();
+    await expect(pill.getByTestId("pill-meeting")).toBeVisible({
+      timeout: 10_000,
+    });
+    await pill.waitForTimeout(500);
+    await shot(pill, `2-${theme}-pill-before-stop.png`);
+    await pill.getByRole("button", { name: "Stop meeting recording" }).click();
+    await pill.waitForSelector(
+      '[data-testid="pill-meeting"][data-exit="quiet"]',
+      {
+        timeout: 2_000,
+      },
+    );
+    // The exit lasts 120 ms, so the shot catches it part way.
+    await shot(pill, `2-${theme}-pill-exit.png`).catch(() => {});
+    await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("idle");
+    await expect.poll(pillVisible, { timeout: 5_000 }).toBe(false);
+  }
+  const pill = await pillPage();
+  await pill.evaluate(() => localStorage.removeItem("theme"));
+});
+
+test("the fallback hides the pill when the exit message never comes", async () => {
+  test.setTimeout(90_000);
+  const pill = await startMeeting();
+
+  // Drop main's handler, so the renderer's message has no effect. Keep this
+  // test last: the handler does not come back.
+  await app!.evaluate(({ ipcMain }) => {
+    ipcMain.removeAllListeners("pill:meeting-exit-done");
+  });
+  await armPillTrace();
+  await pill.getByRole("button", { name: "Stop meeting recording" }).click();
+  await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("idle");
+  await expect.poll(pillVisible, { timeout: 5_000 }).toBe(false);
+  const trace = await pillTrace();
+  const gap = (trace.hideAt ?? 0) - (trace.stopAt ?? 0);
+  console.log("MEETING_EXIT_FALLBACK_GAP_MS", gap);
+  expect(trace.doneAt).toBeUndefined();
+  expect(gap).toBeGreaterThanOrEqual(290);
 });

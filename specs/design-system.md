@@ -24,7 +24,7 @@ treat as source of truth for pixel-level details not captured here).
 | `--border` / `--input` (hairline) | `#E5E7EB` | Dividers, card borders |
 | `--secondary` / `--muted` | `#EEF0F2` | Neutral fill (secondary buttons, muted chips) |
 | `--accent` | `#E5E7EB` | **Neutral** hover/focus tint (dropdown items, combobox rows) — deliberately NOT blue, see "Accent discipline" |
-| `--primary` | `#1D2129` (ink) | Default button fill — mirrors the mockup's `.btn-ink` primary action |
+| `--primary` | `#1D2129` (ink) | Same value as `--foreground`. The default button fills with `--foreground` (`button.tsx`), the mockup's `.btn-ink` primary action |
 | `--destructive` | `#DC2626` | Danger actions — deliberately distinct from the live coral, see "Accent discipline" |
 | `--ring` | `#2563EB` | Focus ring — the one blue usage outside the accent-passive fence, treated as a system affordance |
 | `--chart-1..5` | `#2563EB` `#1D4ED8` `#3B4E6B` `#6B8CAE` `#1D2129` | Calm speaker/series ramp, all blue/ink family, zero coral (see "Speaker chart ramp") |
@@ -138,10 +138,15 @@ blue/coral fences that didn't have a prior equivalent.
   the mockup, `.chip`/`.badge` use a 5px radius, not a pill; pills are for
   buttons/toggles only. No component work landed here yet; this is guidance for
   the screen pass.
-- Single soft shadow: `0 4px 16px rgba(29,33,41,.08)` (mockup's `--shadow`) — not
-  yet wired into a shared token/utility; components currently use ad hoc
-  `box-shadow` values (e.g. `.glass-topbar`). Introducing a `--shadow-card` token
-  is screen-pass work.
+- Single soft shadow: the `--shadow-card` token (`globals.css`, `:root` and
+  `.dark`). Light is `0 4px 16px rgba(29,33,41,.08)` (mockup's `--shadow`).
+  Dark is `0 4px 16px rgba(0,0,0,.32)`, because the light value does not show on
+  a dark surface. Use it with `shadow-(--shadow-card)` on every raised card:
+  popover, select, hotkey recorder, the meeting menus and the tag suggestion
+  list. Dialog and alert dialog add a 1px second layer:
+  `shadow-[var(--shadow-card),0_1px_0_rgba(29,33,41,0.04)]`. Do not write a
+  card shadow by hand. The small thumb and key shadows (switch, slider,
+  key-combo) and `.glass-topbar` are not card shadows and stay as they are.
 
 ## Accent discipline (the fences)
 
@@ -281,8 +286,7 @@ These items were out of scope for the foundation pass. Status checked 2026-10-13
   `components/ui/switch.tsx:17`, `components/ui/toggle.tsx:7` and
   `components/ui/segmented-control.tsx:48,60` use `rounded-full`. Tabs
   (`components/ui/tabs.tsx:25,63`) use `rounded-lg`/`rounded-md` and are not pills.
-- **Open**: A shared `--shadow-card` token. `globals.css` has no such token. Only
-  `--glass-shadow` exists (`globals.css:106`, `:163`).
+- **Done**: A shared `--shadow-card` token (issue #288). See "Shape & shadow".
 - **Dropped (token removed)**: The `--chart-1..5` speaker ramp. The tokens have zero
   consumers and are no longer in `globals.css`
   (`grep -rn -e "--chart" apps/electron/src` finds only a comment at
@@ -291,8 +295,12 @@ These items were out of scope for the foundation pass. Status checked 2026-10-13
 - **Done**: Flatten the 7 redundant `<span className="display text-primary">`
   heading spans. Only one `display text-primary` span is left, a stat number at
   `pages/history.tsx:877`, not a heading.
-- **Open**: Merge the near-duplicate `default` and `ink` variants of
-  `components/ui/button.tsx`. Both variants still exist (`button.tsx:11-12`).
+- **Done**: Merge the near-duplicate `default` and `ink` variants of
+  `components/ui/button.tsx` (issue #288). The `ink` variant is gone. `default`
+  is `bg-foreground text-background hover:bg-foreground/90`: the same fill and
+  text as before in both themes, and it now hovers on a `<button>` too, not
+  only on an `<a>`. Use `<Button>` with no `variant` prop for the primary
+  action.
 
 ## Verification performed
 

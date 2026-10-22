@@ -23,7 +23,7 @@ import { useTranslation } from "react-i18next";
 import { folderErrorKey, type MeetingFolder } from "./folders-model";
 
 const menuClass =
-  "bg-popover text-popover-foreground border-border z-50 max-h-[min(420px,70vh)] min-w-56 max-w-72 overflow-y-auto rounded-lg border p-1 shadow-md";
+  "bg-popover text-popover-foreground border-border z-50 max-h-[min(420px,70vh)] min-w-56 max-w-72 overflow-y-auto rounded-lg border p-1 shadow-(--shadow-card)";
 const itemClass =
   "focus:bg-accent flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] outline-none data-disabled:opacity-50 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
 

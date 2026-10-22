@@ -38,7 +38,7 @@ import {
   type TranscribeResult,
   WARMING_AFTER_MS,
 } from "./pill/constants";
-import { useMeetingStartedAt } from "./pill/meeting-cue";
+import { useMeetingCue } from "./pill/meeting-cue";
 import type { PillShared } from "./pill/pill-shared";
 import { PillView } from "./pill/pill-view";
 import { useDictationSession } from "./pill/use-dictation-session";
@@ -141,7 +141,7 @@ export default function AppPage(): React.JSX.Element {
   const micSilentRef = useRef(false);
   const [elapsedLabel, setElapsedLabel] = useState<string | null>(null);
   // Set while a meeting records; the pill then shows the Recording state.
-  const meetingStartedAt = useMeetingStartedAt();
+  const meetingCue = useMeetingCue();
 
   // ---- Warming (T1-3 / UX-01) ----
   /** Latched per recording by the pre-warm call in `startRecording`: true
@@ -833,7 +833,7 @@ export default function AppPage(): React.JSX.Element {
       card={card}
       dismissPill={dismissPill}
       retryFailedTranscription={retryFailedTranscription}
-      meetingStartedAt={meetingStartedAt}
+      meetingCue={meetingCue}
     />
   );
 }

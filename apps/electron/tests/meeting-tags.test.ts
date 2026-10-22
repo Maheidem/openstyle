@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, type Page, test } from "@playwright/test";
@@ -32,6 +32,9 @@ import {
 
 const ENHANCED = { id: "e2e-tags-1", title: "Garden budget sync" };
 const MANUAL = { id: "e2e-tags-2", title: "Shed paint review" };
+const FULL = { id: "e2e-tags-3", title: "Pond liner planning" };
+/** Set OPENSTYLE_PROOF_SHOTS=<dir> to save screenshots. */
+const SHOTS_DIR = process.env.OPENSTYLE_PROOF_SHOTS;
 
 const fake = new FakeLlm();
 let env: EnhanceApp;
@@ -221,4 +224,71 @@ test("Enhance suggests tags, the user edits them, and they persist after a resta
   const after = readTagRows(env.userDataDir);
   expect(after).toEqual(before);
   console.log("TAGS_DB_READBACK", JSON.stringify(after));
+});
+
+test("the suggestion list stays above the hint line (issue #288)", async () => {
+  test.setTimeout(180_000);
+  seedMeeting(env.userDataDir, FULL.id, FULL.title, defaultSegments(1));
+  // 20 tags is the limit: one more typed tag shows the "too many" hint.
+  const full = Array.from(
+    { length: 20 },
+    (_, i) => `pond topic ${String(i + 1).padStart(2, "0")}`,
+  );
+  const put = await env.api("PUT", `/meetings/${FULL.id}/tags`, {
+    tags: full,
+  });
+  expect(put.ok).toBe(true);
+  const win = await env.app.browserWindow(env.page);
+
+  for (const theme of ["light", "dark"] as const) {
+    await env.page.evaluate((value) => {
+      localStorage.setItem("theme", value);
+    }, theme);
+    await openMeeting(env.page, FULL.title);
+    await expect(env.page.locator("html")).toHaveClass(new RegExp(theme));
+    await openTagEditor(env.page);
+    const input = env.page.getByRole("textbox", { name: "Add a tag" });
+    await input.fill("gar");
+    await input.press("Enter");
+    const list = env.page.getByRole("button", {
+      name: "garden budget",
+      exact: true,
+    });
+    const hint = env.page.getByRole("alert").filter({ hasText: "20" });
+    await expect(list).toBeVisible();
+    await expect(hint).toBeVisible();
+
+    for (const width of [1280, 1440, 1600]) {
+      await win.evaluate((w, size) => w.setContentSize(size, 900), width);
+      await expect
+        .poll(() => env.page.evaluate(() => window.innerWidth))
+        .toBe(width);
+      // Wait for the popover to end its open animation.
+      await env.page.waitForFunction(() =>
+        document.getAnimations().every((a) => a.playState !== "running"),
+      );
+      const listBox = await list.locator("xpath=..").boundingBox();
+      const hintBox = await hint.boundingBox();
+      expect(listBox).not.toBeNull();
+      expect(hintBox).not.toBeNull();
+      if (!listBox || !hintBox) return;
+      console.log(
+        "TAG_LIST_VS_HINT",
+        theme,
+        width,
+        JSON.stringify({
+          listBottom: listBox.y + listBox.height,
+          hintTop: hintBox.y,
+        }),
+      );
+      expect(listBox.y + listBox.height).toBeLessThanOrEqual(hintBox.y);
+      if (SHOTS_DIR) {
+        mkdirSync(SHOTS_DIR, { recursive: true });
+        await env.page.screenshot({
+          path: join(SHOTS_DIR, `1-${theme}-${width}-tag-hint.png`),
+        });
+      }
+    }
+  }
+  await env.page.evaluate(() => localStorage.removeItem("theme"));
 });

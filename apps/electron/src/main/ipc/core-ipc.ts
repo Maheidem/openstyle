@@ -57,12 +57,14 @@ import {
 } from "../server-target";
 import { createMeetingCaptureWindow } from "../windows/meeting-capture-window";
 import {
+  finishPillMeetingExit,
   getPillAlignmentForCustom,
   hidePill,
   resolveAppWindowPosition,
   setPillExpanded,
   setPillMeetingRecording,
   setProgrammaticPosition,
+  showPill,
 } from "../windows/pill-window";
 
 const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
@@ -153,8 +155,8 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     },
     broadcastStatus: (status, startedAt) => {
       const recording = status === "recording";
-      // Show the pill before the event, so its arrival runs on screen. Hide
-      // it before the event, so the capsule does not flash away.
+      // Show the pill before the event, so its arrival runs on screen. On a
+      // stop, the pill stays up until the renderer ends the capsule's exit.
       setPillMeetingRecording(recording);
       broadcastToWindows("meeting:status-changed", status, startedAt);
       updateTrayForMeeting(recording);
@@ -211,6 +213,11 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     hidePill();
   });
 
+  // IPC: the meeting capsule ended its exit, so the pill can hide.
+  ipcMain.on("pill:meeting-exit-done", () => {
+    finishPillMeetingExit();
+  });
+
   // IPC: the renderer needs (or no longer needs) room for the status card.
   ipcMain.on("pill:set-expanded", (_event, expanded: boolean) => {
     setPillExpanded(expanded === true);
@@ -251,6 +258,9 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
   if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
     ipcMain.on("e2e:trigger-hotkey-down", () => handleDictationHotkeyDown());
     ipcMain.on("e2e:trigger-hotkey-up", () => handleDictationHotkeyUp());
+    // Gives the pill to a dictation, as a hotkey press does, but sends no
+    // hotkey:down, so the renderer opens no mic.
+    ipcMain.on("e2e:pill-show-dictation", () => showPill());
   }
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS

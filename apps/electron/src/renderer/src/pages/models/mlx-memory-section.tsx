@@ -102,7 +102,7 @@ export function MlxWarmingDialog({
         )}
 
         <DialogFooter>
-          <Button variant="ink" size="sm" onClick={onClose}>
+          <Button size="sm" onClick={onClose}>
             {t("common.done")}
           </Button>
         </DialogFooter>

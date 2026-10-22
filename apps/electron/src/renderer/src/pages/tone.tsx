@@ -623,7 +623,6 @@ function CleanupTonePanel({
             <div className="text-muted-foreground mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px]">
               <span>{t("models.cleanup.customHint")}</span>
               <Button
-                variant="ink"
                 size="sm"
                 onClick={onSaveCustomPrompt}
                 disabled={savingCustomPrompt || !customPromptDirty}

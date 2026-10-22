@@ -92,7 +92,6 @@ export function SummaryInstructionsPopover(): React.JSX.Element {
         />
         <div className="flex justify-end">
           <Button
-            variant="ink"
             size="sm"
             onClick={() => void save()}
             disabled={!dirty || saving}

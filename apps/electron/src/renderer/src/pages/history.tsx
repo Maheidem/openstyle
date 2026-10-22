@@ -828,7 +828,7 @@ const FiltersModal = memo(function FiltersModal({
         </div>
 
         <DialogFooter>
-          <Button variant="ink" onClick={() => onOpenChange(false)}>
+          <Button onClick={() => onOpenChange(false)}>
             {t("history.done")}
           </Button>
         </DialogFooter>
