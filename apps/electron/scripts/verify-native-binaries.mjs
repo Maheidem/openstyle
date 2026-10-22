@@ -18,6 +18,8 @@ const EXPECTED = {
     "macos-output-volume",
     "macos-media-control",
     "macos-calendar",
+    // Closes the tray popover on a click outside it (issue #317).
+    "macos-click-watcher",
     // SwiftPM package (specs/meeting-diarization.md §3); compile-native.js
     // builds it warn-only so a broken Swift toolchain doesn't block the
     // other seven binaries, which means nothing else fails CI if it's
