@@ -43,6 +43,12 @@ import {
 const log = createAppLogger("electron");
 
 export function restartAndUpdate(): void {
+  // E2E seam: a test checks that this path runs. It never installs or quits.
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
+    log.info("E2E: restart and update requested; no install");
+    (app as NodeJS.EventEmitter).emit("e2e:restart-and-update");
+    return;
+  }
   if (process.platform === "darwin" && selfUpdater.isReadyToInstall) {
     // Self-update path (see self-updater.ts): quitAndInstall() would hand
     // this off to Squirrel.Mac. Squirrel.Mac rejected the ad-hoc-signed

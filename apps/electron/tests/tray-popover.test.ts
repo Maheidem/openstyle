@@ -466,3 +466,36 @@ test("screenshots of each popover state in light and dark (proof only)", async (
   }
   await popoverPage().evaluate(() => localStorage.removeItem("theme"));
 });
+
+test("Restart to update runs the restart path of main", async () => {
+  // The seam marks a downloaded update. In E2E, restartAndUpdate (menus.ts)
+  // sends an app event and returns: no install and no quit.
+  await app!.evaluate(({ app: electronApp, ipcMain }) => {
+    const g = globalThis as unknown as { __restartCalls: number };
+    g.__restartCalls = 0;
+    electronApp.on("e2e:restart-and-update" as "ready", () => {
+      g.__restartCalls += 1;
+    });
+    ipcMain.emit("e2e:tray-popover-update-ready");
+  });
+  if (await popoverVisible()) await toggle();
+  const popover = await openPopover();
+  const restart = popover.getByRole("button", {
+    name: "Update ready, Restart to update",
+  });
+  await expect(restart).toHaveText("Restart to update");
+  await restart.click();
+  await expect
+    .poll(() =>
+      app!.evaluate(
+        () =>
+          (globalThis as unknown as { __restartCalls: number }).__restartCalls,
+      ),
+    )
+    .toBe(1);
+  expect(
+    await app!.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().some((w) => !w.isDestroyed()),
+    ),
+  ).toBe(true);
+});

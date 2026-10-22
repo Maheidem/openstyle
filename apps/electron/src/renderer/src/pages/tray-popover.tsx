@@ -476,14 +476,17 @@ function Footer({
         {info && t("trayPopover.footer.version", { version: info.version })}
         {info && " · "}
         {info?.update === "downloaded" ? (
+          // The same main-process path as "Restart & Update" in the tray
+          // menu (updater:install calls restartAndUpdate in menus.ts).
           <button
             type="button"
             onClick={() => window.api.installUpdate()}
-            title={t("trayPopover.footer.restartToUpdate")}
-            aria-label={t("trayPopover.footer.restartToUpdate")}
-            className="font-medium text-foreground underline-offset-2 hover:underline"
+            title={t("trayPopover.footer.updateReady")}
+            aria-label={`${t("trayPopover.footer.updateReady")}, ${t("trayPopover.footer.restartToUpdate")}`}
+            data-testid="tray-popover-restart"
+            className="font-medium text-foreground underline underline-offset-2 hover:no-underline"
           >
-            {t("trayPopover.footer.updateReady")}
+            {t("trayPopover.footer.restartToUpdate")}
           </button>
         ) : info?.update === "downloading" ? (
           t("trayPopover.footer.downloading")
