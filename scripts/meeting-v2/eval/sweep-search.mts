@@ -130,7 +130,7 @@ export function fineGrid(space: Space, best: Params): Params[] {
 
 export interface ComboResult {
   params: Params;
-  phase: "baseline" | "noise" | "coarse" | "fine";
+  phase: "baseline" | "noise" | "coarse" | "fine" | "variant";
   /** Median over the repeats. */
   objective: number;
   objectives: number[];
@@ -190,6 +190,169 @@ export function repeatsFor(space: Space, p: Params): number {
     : 1;
 }
 
+/**
+ * One parameter set on every meeting: `reps` repeats, the median objective.
+ * With a gate, the arm stops after `after` meetings when the gate says so.
+ */
+export async function runArm(o: {
+  stage: StageName;
+  params: Params;
+  phase: ComboResult["phase"];
+  meetings: number;
+  reps: number;
+  evaluate: Evaluate;
+  gate?: ((partial: number) => boolean) | null;
+  after?: number;
+}): Promise<ComboResult> {
+  const runs: Metrics[][] = Array.from({ length: o.reps }, () => []);
+  let stopped = false;
+  for (let mi = 0; mi < o.meetings; mi++) {
+    for (let r = 0; r < o.reps; r++)
+      (runs[r] as Metrics[]).push(
+        await o.evaluate(o.params, mi, r, o.phase === "noise"),
+      );
+    if (o.gate && mi + 1 === o.after && mi + 1 < o.meetings) {
+      const partial = median(runs.map((m) => objective(o.stage, m)));
+      if (o.gate(partial)) {
+        stopped = true;
+        break;
+      }
+    }
+  }
+  const objectives = runs.map((m) => objective(o.stage, m));
+  return {
+    params: o.params,
+    phase: o.phase,
+    objective: median(objectives),
+    objectives,
+    repeats: o.reps,
+    meetingsRun: (runs[0] as Metrics[]).length,
+    earlyStopped: stopped,
+    totals: meanMetrics(runs.map(totals)),
+    perMeeting: (runs[0] as Metrics[]).map((_, mi) =>
+      meanMetrics(runs.map((m) => m[mi] as Metrics)),
+    ),
+  };
+}
+
+const r4 = (x: number) => Math.round(x * 10000) / 10000;
+
+/** Per metric |b - a| of the totals; `objective` holds the objective band. */
+export function bandOf(a: ComboResult, b: ComboResult): Metrics {
+  const band: Metrics = {};
+  for (const k of Object.keys(a.totals)) {
+    const x = a.totals[k];
+    const y = b.totals[k];
+    band[k] =
+      typeof x === "number" && typeof y === "number"
+        ? r4(Math.abs(x - y))
+        : null;
+  }
+  band.objective = r4(Math.abs(b.objective - a.objective));
+  return band;
+}
+
+// --- Variant mode -------------------------------------------------------------------
+
+export interface VariantResult {
+  arm: ComboResult;
+  /** The arm with the one-word change (--noise), or null. */
+  noise: ComboResult | null;
+  /** |noise - arm| (--noise), or null. */
+  band: Metrics | null;
+}
+
+/**
+ * Variant mode: the stage with the current working-tree prompts at `params`.
+ * Above temperature 0 it runs `repeats` times (median objective); at
+ * temperature 0 one run (the runs are equal). With `noise`, the arm runs
+ * again with the stage's one-word change, for the noise band of this prompt.
+ */
+export async function runVariant(
+  stage: StageName,
+  meetings: number,
+  evaluate: Evaluate,
+  o: { params: Params; repeats: number; noise: boolean },
+): Promise<VariantResult> {
+  const hot =
+    typeof o.params.temperature === "number" && o.params.temperature > 0;
+  const arm = await runArm({
+    stage,
+    params: o.params,
+    phase: "variant",
+    meetings,
+    reps: hot ? o.repeats : 1,
+    evaluate,
+  });
+  if (!o.noise) return { arm, noise: null, band: null };
+  const noise = await runArm({
+    stage,
+    params: o.params,
+    phase: "noise",
+    meetings,
+    reps: 1,
+    evaluate,
+  });
+  return { arm, noise, band: bandOf(arm, noise) };
+}
+
+export interface StoredArm {
+  objective: number;
+  totals: Metrics;
+  /** The stored noise band (per metric and `objective`), or null. */
+  band: Metrics | null;
+}
+
+export interface VariantCompare {
+  delta: number;
+  /** The larger of the stored band and the band of this run. */
+  band: number;
+  verdict: "better" | "worse" | "inside noise";
+  rows: {
+    metric: string;
+    base: number | null;
+    variant: number | null;
+    delta: number | null;
+    band: number | null;
+  }[];
+}
+
+/**
+ * Baseline vs variant: the objective delta and each metric's delta, with
+ * the noise band (the larger of the stored band and this run's band). The
+ * variant is better or worse only outside the band.
+ */
+export function compareVariant(
+  base: StoredArm,
+  v: VariantResult,
+  metrics: string[],
+): VariantCompare {
+  const bandAt = (k: string) => {
+    const xs = [base.band?.[k], v.band?.[k]].filter(
+      (x): x is number => typeof x === "number",
+    );
+    return xs.length ? Math.max(...xs) : null;
+  };
+  const delta = r4(v.arm.objective - base.objective);
+  const band = bandAt("objective") ?? 0;
+  return {
+    delta,
+    band,
+    verdict: delta > band ? "better" : delta < -band ? "worse" : "inside noise",
+    rows: metrics.map((metric) => {
+      const b = base.totals[metric] ?? null;
+      const n = v.arm.totals[metric] ?? null;
+      return {
+        metric,
+        base: b,
+        variant: n,
+        delta: b === null || n === null ? null : r4(n - b),
+        band: bandAt(metric),
+      };
+    }),
+  };
+}
+
 export async function search(
   space: Space,
   meetings: number,
@@ -201,62 +364,32 @@ export async function search(
   const margin = space.earlyStopMargin ?? 1;
   const done = new Map<string, ComboResult>();
 
-  async function runCombo(
+  const runCombo = async (
     params: Params,
     phase: ComboResult["phase"],
     gate: ((partial: number) => boolean) | null,
-  ): Promise<ComboResult> {
-    const reps = phase === "noise" ? 1 : repeatsFor(space, params);
-    const runs: Metrics[][] = Array.from({ length: reps }, () => []);
-    let stopped = false;
-    for (let mi = 0; mi < meetings; mi++) {
-      for (let r = 0; r < reps; r++)
-        (runs[r] as Metrics[]).push(
-          await evaluate(params, mi, r, phase === "noise"),
-        );
-      if (gate && mi + 1 === after && mi + 1 < meetings) {
-        const partial = median(runs.map((m) => objective(stage, m)));
-        if (gate(partial)) {
-          stopped = true;
-          break;
-        }
-      }
-    }
-    const objectives = runs.map((m) => objective(stage, m));
-    const res: ComboResult = {
+  ): Promise<ComboResult> => {
+    const res = await runArm({
+      stage,
       params,
       phase,
-      objective: median(objectives),
-      objectives,
-      repeats: reps,
-      meetingsRun: (runs[0] as Metrics[]).length,
-      earlyStopped: stopped,
-      totals: meanMetrics(runs.map(totals)),
-      perMeeting: (runs[0] as Metrics[]).map((_, mi) =>
-        meanMetrics(runs.map((m) => m[mi] as Metrics)),
-      ),
-    };
+      meetings,
+      reps: phase === "noise" ? 1 : repeatsFor(space, params),
+      evaluate,
+      gate,
+      after,
+    });
     log(
-      `${phase} ${keyOf(params)}: objective ${res.objective}${stopped ? ` (early stop after ${res.meetingsRun})` : ""}`,
+      `${phase} ${keyOf(params)}: objective ${res.objective}${res.earlyStopped ? ` (early stop after ${res.meetingsRun})` : ""}`,
     );
     return res;
-  }
+  };
 
   const base = normalize(space, space.baseline);
   const baseline = await runCombo(base, "baseline", null);
   done.set(keyOf(base), baseline);
   const noise = await runCombo(base, "noise", null);
-  const band: Metrics = {};
-  for (const k of Object.keys(baseline.totals)) {
-    const a = baseline.totals[k];
-    const b = noise.totals[k];
-    band[k] =
-      typeof a === "number" && typeof b === "number"
-        ? Math.round(Math.abs(a - b) * 10000) / 10000
-        : null;
-  }
-  band.objective =
-    Math.round(Math.abs(noise.objective - baseline.objective) * 10000) / 10000;
+  const band = bandOf(baseline, noise);
   const partialBand = Math.abs(
     objective(stage, noise.perMeeting.slice(0, after)) -
       objective(stage, baseline.perMeeting.slice(0, after)),
