@@ -23,6 +23,7 @@ import {
 import type {
   TrayPopoverState,
   TrayPopoverTarget,
+  TrayScheduleState,
 } from "../shared/tray-popover";
 
 // Build an `on*` member for one main-to-renderer channel. `A` is the payload
@@ -309,6 +310,20 @@ const api = {
   openMeetingFromTrayPopover: (id: string): void =>
     ipcRenderer.send("tray-popover:open-meeting", id),
   quitFromTrayPopover: (): void => ipcRenderer.send("tray-popover:quit"),
+  /** The next event of today and the "Record when it starts" arm. */
+  getTraySchedule: (): Promise<TrayScheduleState> =>
+    ipcRenderer.invoke("tray-popover:schedule"),
+  armRecordWhenItStarts: (eventId: string): Promise<TrayScheduleState> =>
+    ipcRenderer.invoke("tray-popover:arm", eventId),
+  disarmRecordWhenItStarts: (): Promise<TrayScheduleState> =>
+    ipcRenderer.invoke("tray-popover:disarm"),
+  /**
+   * Link this event to the next meeting:start. False when it is gone. Null
+   * clears the link.
+   */
+  linkEventToNextStart: (eventId: string | null): Promise<boolean> =>
+    ipcRenderer.invoke("tray-popover:link-next-start", eventId),
+  onTrayScheduleChanged: listen("tray-popover:schedule-changed"),
 };
 
 // The renderer types read `Window.api` from this type (see index.d.ts).

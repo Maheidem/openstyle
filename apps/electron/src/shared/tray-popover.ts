@@ -26,3 +26,19 @@ export type TrayPopoverTarget =
   | "settings"
   | "history"
   | "confirmMeeting";
+
+/** The "Next event" card of the popover (step 3). No attendees, no link. */
+export interface TrayNextEvent {
+  id: string;
+  title: string;
+  /** Epoch ms. */
+  start: number;
+  end: number;
+}
+
+export interface TrayScheduleState {
+  /** The next event that starts today, or null (calendar off, or none). */
+  event: TrayNextEvent | null;
+  /** The event that "Record when it starts" waits for, or null. */
+  armed: { eventId: string; start: number } | null;
+}

@@ -39,6 +39,7 @@ import { registerMeetingImportIpc } from "../meeting-import";
 import { registerMeetingIpc } from "../meeting-ipc";
 import { resolveMicLabel } from "../meeting-mic-label";
 import { MeetingRecorder } from "../meeting-recorder";
+import { takePendingEventLink } from "../meeting-schedule";
 import { buildTrayContextMenu } from "../menus";
 import { notifyImportComplete, notifyPasteFailed } from "../notifications";
 import { pasteIntoFocusedApp } from "../paste";
@@ -149,7 +150,10 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     listAudioDevices,
     // Links the running calendar event. Returns null while the calendar
     // toggle is off, before any helper starts.
-    findCurrentEvent: () =>
+    // An event chosen in the tray popover ("Record", or "Record when it
+    // starts") wins once over the event that runs now.
+    findCurrentEvent: async () =>
+      takePendingEventLink() ??
       autoLinkCurrentEvent({ isEnabled: () => isCalendarEnabled(serverFetch) }),
     broadcastLevel: (event) => {
       broadcastToWindows("meeting:level", event);

@@ -53,6 +53,7 @@ import { registerCoreIpc, registerSystemIpc } from "./ipc/core-ipc";
 import { readSettings } from "./local-settings";
 import { resolveLogsDir } from "./log-dir";
 import { broadcastToWindows, refreshMeetingsFlag, state } from "./main-state";
+import { registerMeetingScheduleIpc } from "./meeting-schedule";
 import { createTray, rebuildMenus } from "./menus";
 import { migrateLegacyUserData } from "./migrate-user-data";
 import { startLinuxPasteHelper } from "./paste";
@@ -243,6 +244,7 @@ app.whenReady().then(async () => {
 
   registerCoreIpc({ logsDir });
   registerTrayPopoverIpc({ getHotkeyMode: getHotkeyActivationMode });
+  registerMeetingScheduleIpc();
 
   await startServerHost({ userDataOverride });
 
