@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 44;
+const SCHEMA_VERSION = 45;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1216,6 +1216,20 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // 1 when Summarize repaired a cut answer: the summary can miss the last
     // items (PR #258). Older rows keep NULL, read as complete.
     db.exec(`ALTER TABLE meeting_summaries ADD COLUMN partial INTEGER`);
+  }
+
+  if (
+    currentVersion < 45 &&
+    tableExists(db, "meeting_chunks") &&
+    !hasColumn(db, "meeting_chunks", "kind")
+  ) {
+    // What a search chunk holds (specs/local-semantic-search.md 3.2, #286):
+    // transcript text, the meta text (title and tags) or summary text. The
+    // UI shows the kind of a hit and opens the meeting at the right place.
+    db.exec(
+      `ALTER TABLE meeting_chunks ADD COLUMN kind TEXT NOT NULL DEFAULT 'transcript'
+         CHECK(kind IN ('transcript', 'meta', 'summary'))`,
+    );
   }
 
   // Upsert schema version

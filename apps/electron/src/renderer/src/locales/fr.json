@@ -815,6 +815,8 @@
       "close": "Fermer la recherche",
       "searching": "Recherche…",
       "failed": "La recherche a échoué. Réessayez.",
+      "kindMeta": "Titre et étiquettes",
+      "kindSummary": "Résumé",
       "noResults": "Aucun texte de réunion ne correspond à cette recherche."
     },
     "noLlmHint": "Ajoutez un modèle d’IA dans Paramètres > Modèles pour utiliser Améliorer et Résumé.",

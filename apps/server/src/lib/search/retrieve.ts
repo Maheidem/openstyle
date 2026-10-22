@@ -1,11 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { SearchOffReason } from "@openstyle/validations";
 import { getDb } from "../db.js";
+import { getMeetingTags } from "../meetings/tags.js";
 import { EmbedError } from "../mlx-embed/client.js";
-import { buildChunks, spanText } from "./chunker.js";
+import { type ChunkKind, spanText } from "./chunker.js";
 import { embedInt8 } from "./embedder.js";
 import { isMeetingIndexCurrent } from "./indexer.js";
-import { loadMeetingSource } from "./source.js";
+import { buildMeetingChunks, loadMeetingSource, metaText } from "./source.js";
 import { searchState } from "./state.js";
 import { KNN_IN_LIST_MAX, knn, readVecRow } from "./vec-store.js";
 
@@ -39,6 +40,9 @@ export interface RetrievalHit {
   /** 1 - cosine distance. */
   score: number;
   ordinal: number;
+  /** transcript, meta (title and tags) or summary (3.2). */
+  kind: ChunkKind;
+  /** null for meta and summary chunks. */
   startMs: number | null;
   endMs: number | null;
 }
@@ -93,10 +97,7 @@ async function queryVectors(
   // embed up to 8 chunks now. They are not stored.
   const src = loadMeetingSource(db, query.meetingId);
   if (!src) return [];
-  const chunks = evenlySpaced(
-    buildChunks(src.segments, src.language),
-    MEETING_QUERY_VECTORS,
-  );
+  const chunks = evenlySpaced(buildMeetingChunks(src), MEETING_QUERY_VECTORS);
   if (chunks.length === 0) return [];
   return (
     await embedInt8(
@@ -207,7 +208,7 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
   // were written.
   const excluded = new Set(exclude);
   const rowStmt = db.prepare(
-    `SELECT c.ordinal, c.start_ms, c.end_ms, COALESCE(m.folder_id, '') AS fk
+    `SELECT c.ordinal, c.kind, c.start_ms, c.end_ms, COALESCE(m.folder_id, '') AS fk
        FROM meeting_chunks c JOIN meetings m ON m.id = c.meeting_id
       WHERE c.id = ? AND c.model_id = ?`,
   );
@@ -217,6 +218,7 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
     const row = rowStmt.get(chunkId, modelId) as
       | {
           ordinal: number;
+          kind: ChunkKind;
           start_ms: number | null;
           end_ms: number | null;
           fk: string;
@@ -229,6 +231,7 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
       meetingId: h.meetingId,
       score: h.score,
       ordinal: row.ordinal,
+      kind: row.kind,
       startMs: row.start_ms,
       endMs: row.end_ms,
     });
@@ -237,27 +240,56 @@ export async function retrieve(input: RetrieveInput): Promise<RetrieveResult> {
   return ok(hits.slice(0, k));
 }
 
+function currentMetaText(db: DatabaseSync, meetingId: string): string {
+  const row = db
+    .prepare("SELECT title FROM meetings WHERE id = ?")
+    .get(meetingId) as { title: string | null } | undefined;
+  return metaText(row?.title ?? null, getMeetingTags(meetingId, db)) ?? "";
+}
+
 /**
- * The current text of a hit (7.3): its segments, cut at the stored offsets,
- * joined with spaces, cut to `maxChars`. No text is stored in the index.
+ * The current text of a hit (7.3). A transcript hit: its segments, cut at
+ * the stored offsets, joined with spaces. A meta hit: the title and tags. A
+ * summary hit: the summary, cut at the stored offsets. Cut to `maxChars`.
+ * No text is stored in the index.
  */
 export function hitText(hit: RetrievalHit, maxChars: number): string {
   const db = getDb();
   const row = db
     .prepare(
-      "SELECT segment_ids, char_start, char_end FROM meeting_chunks WHERE id = ?",
+      "SELECT meeting_id, kind, segment_ids, char_start, char_end FROM meeting_chunks WHERE id = ?",
     )
     .get(hit.chunkId) as
-    | { segment_ids: string; char_start: number; char_end: number | null }
+    | {
+        meeting_id: string;
+        kind: ChunkKind;
+        segment_ids: string;
+        char_start: number;
+        char_end: number | null;
+      }
     | undefined;
   if (!row) return "";
-  const ids = JSON.parse(row.segment_ids) as string[];
-  const stmt = db.prepare(
-    "SELECT COALESCE(NULLIF(enhanced_text, ''), text, '') AS t FROM meeting_segments WHERE id = ?",
+  let texts: string[];
+  if (row.kind === "meta") {
+    texts = [currentMetaText(db, row.meeting_id)];
+  } else if (row.kind === "summary") {
+    const s = db
+      .prepare("SELECT markdown FROM meeting_summaries WHERE meeting_id = ?")
+      .get(row.meeting_id) as { markdown: string | null } | undefined;
+    texts = [s?.markdown ?? ""];
+  } else {
+    const ids = JSON.parse(row.segment_ids) as string[];
+    const stmt = db.prepare(
+      "SELECT COALESCE(NULLIF(enhanced_text, ''), text, '') AS t FROM meeting_segments WHERE id = ?",
+    );
+    texts = ids.map(
+      (id) => (stmt.get(id) as { t: string } | undefined)?.t ?? "",
+    );
+  }
+  const text = spanText(
+    texts,
+    row.kind === "meta" ? 0 : row.char_start,
+    row.kind === "meta" ? null : row.char_end,
   );
-  const texts = ids.map(
-    (id) => (stmt.get(id) as { t: string } | undefined)?.t ?? "",
-  );
-  const text = spanText(texts, row.char_start, row.char_end);
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
 }

@@ -82,13 +82,14 @@ import { SummaryInstructionsPopover } from "./settings-popovers";
 import {
   CopyButton,
   jobProgressLine,
+  nearestSegmentId,
   StatusBadge,
   segmentSpeakerLabel,
 } from "./shared";
 import { attendeeNameOptions, SpeakersDialog } from "./speakers";
 import { MeetingTagLine } from "./tag-controls";
 import { useAllTags, useSaveMeetingTags } from "./tags-data";
-import type { SpeakersResponse, TranscriptSegment } from "./types";
+import type { SearchFocus, SpeakersResponse, TranscriptSegment } from "./types";
 
 // The classes of the menus of folder-controls, for the "..." menu.
 const menuClass =
@@ -102,12 +103,15 @@ export function MeetingDetailView({
   onDeleted,
   folders,
   onMove,
+  focus,
 }: {
   id: string;
   onBack: () => void;
   onDeleted: () => void;
   folders: MeetingFolder[];
   onMove: (meeting: MeetingDetail, folderId: string | null) => void;
+  /** A search hit to show (spec 7.4). */
+  focus?: SearchFocus;
 }): React.JSX.Element {
   const { t, i18n } = useTranslation();
   // A rate in kHz with one decimal at most ("16", "44.1"), in the UI language.
@@ -150,7 +154,10 @@ export function MeetingDetailView({
   // either mode via `seg.enhancedText ?? seg.text`.
   const [showEnhanced, setShowEnhanced] = useState(true);
   // The active tab. The sticky tab row reads it (issue #262).
-  const [tab, setTab] = useState("transcript");
+  // A summary hit opens the Summary tab (spec 7.4).
+  const [tab, setTab] = useState(
+    focus?.kind === "summary" ? "summary" : "transcript",
+  );
   // The context field is open while it has no text yet.
   const [contextOpen, setContextOpen] = useState(false);
 
@@ -483,6 +490,23 @@ export function MeetingDetailView({
   const barRef = useRef<HTMLDivElement>(null);
   const hasMeeting = Boolean(meeting);
   const tabBodyRef = useRef<HTMLDivElement>(null);
+  // A transcript hit scrolls the transcript to the segment at its time and
+  // marks it, once per open (spec 7.4).
+  const [hitSegmentId, setHitSegmentId] = useState<string | null>(null);
+  const focusShown = useRef(false);
+  useEffect(() => {
+    if (focusShown.current || focus?.kind !== "transcript") return;
+    if (focus.startMs === null || !transcript?.length) return;
+    const target = nearestSegmentId(transcript, focus.startMs);
+    if (!target) return;
+    focusShown.current = true;
+    setHitSegmentId(target);
+    requestAnimationFrame(() => {
+      tabBodyRef.current
+        ?.querySelector(`[data-segment-id="${CSS.escape(target)}"] p`)
+        ?.scrollIntoView({ block: "center" });
+    });
+  }, [focus, transcript]);
   useEffect(() => {
     // The bar and the tab content render only after the meeting loads.
     if (!hasMeeting) return;
@@ -1209,6 +1233,12 @@ export function MeetingDetailView({
                         className="contents"
                         data-testid="meetings-segment"
                         data-segment-id={seg.id}
+                        data-start-ms={seg.startMs}
+                        data-search-hit={
+                          hitSegmentId !== null && seg.id === hitSegmentId
+                            ? "true"
+                            : undefined
+                        }
                       >
                         <span className="pt-0.5 text-right leading-none">
                           <span
@@ -1235,7 +1265,14 @@ export function MeetingDetailView({
                             {label}
                           </span>
                         </span>
-                        <p className="text-foreground m-0 text-[13.5px] leading-[1.55]">
+                        <p
+                          className={cn(
+                            "text-foreground m-0 text-[13.5px] leading-[1.55]",
+                            hitSegmentId !== null &&
+                              seg.id === hitSegmentId &&
+                              "-mx-1 rounded-sm bg-[var(--accent-passive-tint)] px-1",
+                          )}
+                        >
                           {advancedMode &&
                           seg.id &&
                           seg.enhancedText !== undefined ? (

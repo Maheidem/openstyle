@@ -1,4 +1,5 @@
 import {
+  type SearchHit,
   type SearchMeetingsResponse,
   type SearchOffReason,
   type SearchStatus,
@@ -128,7 +129,8 @@ export function MeetingSearchResults({
   query: string;
   folderId: string | null;
   scopeName: string | null;
-  onOpen: (meetingId: string) => void;
+  /** Opens the meeting at the hit (spec 7.4). */
+  onOpen: (hit: SearchHit) => void;
   onClose: () => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -184,7 +186,7 @@ export function MeetingSearchResults({
               <button
                 type="button"
                 className="hover:bg-muted/60 block w-full px-3.5 py-2.5 text-left"
-                onClick={() => onOpen(hit.meeting_id)}
+                onClick={() => onOpen(hit)}
               >
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="truncate text-[13px] font-medium">
@@ -192,8 +194,14 @@ export function MeetingSearchResults({
                   </span>
                   <span className="text-muted-foreground mono shrink-0 text-[11px]">
                     {formatTimestamp(hit.started_at, i18n.language)}
-                    {hit.start_ms !== null &&
-                      ` · ${formatClockMs(hit.start_ms)}`}
+                    {hit.kind === "transcript"
+                      ? hit.start_ms !== null &&
+                        ` · ${formatClockMs(hit.start_ms)}`
+                      : ` · ${t(
+                          hit.kind === "summary"
+                            ? "meetings.search.kindSummary"
+                            : "meetings.search.kindMeta",
+                        )}`}
                   </span>
                 </span>
                 <span className="text-muted-foreground mt-1 line-clamp-2 block text-xs">

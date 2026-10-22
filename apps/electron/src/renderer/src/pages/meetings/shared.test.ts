@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { jobBadgeView, jobProgressLine } from "./shared";
+import { jobBadgeView, jobProgressLine, nearestSegmentId } from "./shared";
 
 describe("jobBadgeView", () => {
   it("shows the job kind and its percent while the job runs", () => {
@@ -68,5 +68,22 @@ describe("jobProgressLine", () => {
     expect(
       jobProgressLine("Preparing\u2026", { done: 0, total: 0, workflow: true }),
     ).toBe("Preparing\u2026");
+  });
+});
+
+describe("nearestSegmentId", () => {
+  const segs = [
+    { id: "a", startMs: 0 },
+    { startMs: 4000 },
+    { id: "b", startMs: 6000 },
+    { id: "c", startMs: 12_000 },
+  ];
+  it("finds the segment at the hit time, else the nearest one", () => {
+    expect(nearestSegmentId(segs, 6000)).toBe("b");
+    expect(nearestSegmentId(segs, 8000)).toBe("b");
+    expect(nearestSegmentId(segs, 11_000)).toBe("c");
+    // A segment with no id is never the target.
+    expect(nearestSegmentId(segs, 4000)).toBe("b");
+    expect(nearestSegmentId([{ startMs: 1 }], 1)).toBeNull();
   });
 });

@@ -9,15 +9,21 @@ import {
 import { activeJobCount, hasJob } from "../meetings/job-registry.js";
 import { EmbedError } from "../mlx-embed/client.js";
 import { getSearchEmbeddingModelId } from "../mlx-embed/server.js";
-import { buildChunks, type Chunk } from "./chunker.js";
 import { embedInt8 } from "./embedder.js";
 import { getExtensionState, isVecReady } from "./extension.js";
 import {
   pendingMeetingCount,
+  setIndexerModelGone,
   setIndexerWake,
   takePendingMeetings,
 } from "./notify.js";
-import { loadMeetingSource, type MeetingSource, sourceHash } from "./source.js";
+import {
+  buildMeetingChunks,
+  type IndexChunk,
+  loadMeetingSource,
+  type MeetingSource,
+  sourceHash,
+} from "./source.js";
 import { searchState } from "./state.js";
 import {
   drainGc,
@@ -93,11 +99,7 @@ export function isMeetingIndexCurrent(
 ): boolean {
   const src = loadMeetingSource(db, meetingId);
   if (!src) return false;
-  return isCurrent(
-    readState(db, meetingId),
-    modelId,
-    sourceHash(src.segments, modelId),
-  );
+  return isCurrent(readState(db, meetingId), modelId, sourceHash(src, modelId));
 }
 
 /**
@@ -146,7 +148,7 @@ function recordFailure(
   ).run(
     src.meetingId,
     modelId,
-    sourceHash(src.segments, modelId),
+    sourceHash(src, modelId),
     old?.folder_key ?? src.folderKey,
     old?.chunk_count ?? 0,
     Date.now(),
@@ -163,9 +165,13 @@ function errorKindOf(err: unknown): string {
   return "worker_unavailable";
 }
 
+function kindCount(chunks: readonly IndexChunk[], kind: IndexChunk["kind"]) {
+  return chunks.filter((c) => c.kind === kind).length;
+}
+
 interface Plan {
   src: MeetingSource;
-  chunks: Chunk[];
+  chunks: IndexChunk[];
   hash: string;
   state: StateRow | undefined;
 }
@@ -179,8 +185,8 @@ function plan(
   if (!src) return null;
   return {
     src,
-    chunks: buildChunks(src.segments, src.language),
-    hash: sourceHash(src.segments, modelId),
+    chunks: buildMeetingChunks(src),
+    hash: sourceHash(src, modelId),
     state: readState(db, meetingId),
   };
 }
@@ -223,7 +229,7 @@ export async function indexMeeting(
     free.set(row.text_hash, [...(free.get(row.text_hash) ?? []), row.id]);
   }
   const keep = new Map<number, number>(); // chunk ordinal -> kept row id
-  const toEmbed: Chunk[] = [];
+  const toEmbed: IndexChunk[] = [];
   for (const c of p.chunks) {
     const ids = free.get(c.textHash);
     const id = ids?.shift();
@@ -274,7 +280,12 @@ export async function indexMeeting(
         outcome = "missing";
         return;
       }
-      if (sourceHash(now.segments, modelId) !== p.hash) throw new RetryLater();
+      if (sourceHash(now, modelId) !== p.hash) throw new RetryLater();
+      // The model was deleted or changed during the embed (9.2, 6.8):
+      // write nothing for it.
+      if (signal?.aborted || getSearchEmbeddingModelId() !== modelId) {
+        throw new RetryLater();
+      }
       const keptIds = [...keep.values()];
       const slots = keptIds.map(() => "?").join(", ");
       db.prepare(
@@ -287,8 +298,8 @@ export async function indexMeeting(
       );
       const insert = db.prepare(
         `INSERT INTO meeting_chunks (meeting_id, ordinal, segment_ids, char_start, char_end,
-           start_ms, end_ms, token_estimate, text_hash, model_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           start_ms, end_ms, token_estimate, text_hash, model_id, created_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const created = Date.now();
       const rows: Parameters<typeof insertVectors>[1][number][] = [];
@@ -309,7 +320,7 @@ export async function indexMeeting(
           continue;
         }
         const id = Number(
-          insert.run(meetingId, ...fields, c.textHash, modelId, created)
+          insert.run(meetingId, ...fields, c.textHash, modelId, created, c.kind)
             .lastInsertRowid,
         );
         rows.push({
@@ -347,7 +358,7 @@ export async function indexMeeting(
   if (outcome === "indexed") {
     const ratio = estTokens > 0 ? (realTokens / estTokens).toFixed(3) : "n/a";
     log.info(
-      `indexed meeting ${meetingId}: chunks=${p.chunks.length} embedded=${toEmbed.length} kept=${keep.size} ms=${Date.now() - started} tokenRatio=${ratio} dbBytes=${dbBytes(db)} vectorChunks=${vectorChunkCount(db)}`,
+      `indexed meeting ${meetingId}: chunks=${p.chunks.length} meta=${kindCount(p.chunks, "meta")} summary=${kindCount(p.chunks, "summary")} embedded=${toEmbed.length} kept=${keep.size} ms=${Date.now() - started} tokenRatio=${ratio} dbBytes=${dbBytes(db)} vectorChunks=${vectorChunkCount(db)}`,
     );
   }
   return outcome;
@@ -361,6 +372,8 @@ const queue: string[] = [];
 let loop: Promise<void> | null = null;
 let stopping = false;
 let controller: AbortController | null = null;
+/** The model of the meeting in flight (9.2). */
+let runningModel: string | null = null;
 let wakeNow: (() => void) | null = null;
 let scannedModel: string | null = null;
 let slowScanCursor = 0;
@@ -459,11 +472,15 @@ async function runLoop(): Promise<void> {
         continue;
       }
       controller = new AbortController();
+      runningModel = st.modelId;
       let outcome: IndexOutcome;
       try {
         outcome = await indexMeeting(id, controller.signal);
       } catch (err) {
         if (err instanceof EmbedError && err.kind === "no_model") continue;
+        // The model was deleted (9.2) or changed (6.8) during the embed:
+        // the worker stop is not a failure of this meeting.
+        if (getSearchEmbeddingModelId() !== st.modelId) continue;
         const src = loadMeetingSource(db, id);
         if (src && !controller.signal.aborted) {
           const kind = errorKindOf(err);
@@ -473,6 +490,7 @@ async function runLoop(): Promise<void> {
         continue;
       } finally {
         controller = null;
+        runningModel = null;
       }
       // A job took the meeting, the text moved under us, or the model
       // changed: try again later. A busy meeting comes back by its hint.
@@ -487,11 +505,25 @@ async function runLoop(): Promise<void> {
   }
 }
 
+/**
+ * The files of an embedding model were deleted (9.2). Abort the meeting that
+ * embeds with it, so nothing is written and no failure is recorded. Empty the
+ * queue: the rows of the model are gone, so a later Use of it runs the boot
+ * scan again and indexes every meeting.
+ */
+function onModelDeleted(modelId: string): void {
+  if (runningModel === modelId) controller?.abort();
+  if (scannedModel === modelId) scannedModel = null;
+  queue.length = 0;
+  wakeNow?.();
+}
+
 /** Start the indexer loop once (spec 6.1 step 5). Search off: it waits. */
 export function startSearchIndexer(): void {
   if (loop || !isVecReady()) return;
   stopping = false;
   setIndexerWake(() => wakeNow?.());
+  setIndexerModelGone(onModelDeleted);
   loop = runLoop().finally(() => {
     loop = null;
   });
@@ -503,6 +535,7 @@ export async function stopSearchIndexer(): Promise<void> {
   controller?.abort();
   wakeNow?.();
   setIndexerWake(null);
+  setIndexerModelGone(null);
   await loop;
   queue.length = 0;
   scannedModel = null;

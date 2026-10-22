@@ -1,3 +1,5 @@
+import type { SearchHitKind } from "@openstyle/validations";
+
 export interface TranscriptSegment {
   speaker: "Me" | "Them";
   startMs: number;
@@ -53,3 +55,12 @@ export interface DiarizationStatusResponse {
 }
 
 export type RecorderStatus = "idle" | "recording" | "finalizing";
+
+/** Where a search hit opens its meeting (specs/local-semantic-search.md
+ * 7.4): a transcript hit scrolls to its time, a summary hit opens the
+ * Summary tab, a title or tag hit opens the meeting at the top. */
+export interface SearchFocus {
+  meetingId: string;
+  kind: SearchHitKind;
+  startMs: number | null;
+}

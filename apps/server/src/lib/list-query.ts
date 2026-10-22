@@ -51,6 +51,10 @@ export function queryPage<T>(
   return { items, total: countRow.count };
 }
 
+/** created_at in the local "today", as a range on the raw column. */
+export const LOCAL_TODAY_WHERE = `created_at >= datetime('now', 'localtime', 'start of day', 'utc')
+  AND created_at < datetime('now', 'localtime', 'start of day', '+1 day', 'utc')`;
+
 /** Build the local-time date filters for created_at. Both dates are optional. */
 export function dateRangeWhere(
   start: string | null,
@@ -58,12 +62,15 @@ export function dateRangeWhere(
 ): { where: string[]; params: string[] } {
   const where: string[] = [];
   const params: string[] = [];
+  // created_at is UTC text from datetime('now') ("YYYY-MM-DD HH:MM:SS").
+  // Compare the raw column with the UTC times of the local day edges, so the
+  // created_at index is used. Same days as date(created_at, 'localtime').
   if (start) {
-    where.push("date(created_at, 'localtime') >= ?");
+    where.push("created_at >= datetime(?, 'utc')");
     params.push(start);
   }
   if (end) {
-    where.push("date(created_at, 'localtime') <= ?");
+    where.push("created_at < datetime(?, '+1 day', 'utc')");
     params.push(end);
   }
   return { where, params };

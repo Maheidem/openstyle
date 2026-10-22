@@ -814,6 +814,8 @@
       "close": "Chiudi la ricerca",
       "searching": "Ricerca in corso…",
       "failed": "Ricerca non riuscita. Riprova.",
+      "kindMeta": "Titolo e tag",
+      "kindSummary": "Riepilogo",
       "noResults": "Nessun testo delle riunioni corrisponde a questa ricerca."
     },
     "noLlmHint": "Aggiungi un modello di IA in Impostazioni > Modelli per usare Migliora e Riepilogo.",

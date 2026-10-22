@@ -51,8 +51,22 @@ export function sha256Json(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-function chunkTextHash(text: string): string {
-  return sha256Json([CHUNKER_VERSION, EMBED_DOC_PROMPT, text]);
+/** What a chunk holds (3.2): transcript text, title and tags, or summary. */
+export type ChunkKind = "transcript" | "meta" | "summary";
+
+/**
+ * The text hash of a chunk (4.5). A meta or summary chunk also hashes its
+ * kind; a transcript chunk keeps the hash of CHUNKER_VERSION 1.
+ */
+export function chunkTextHash(
+  text: string,
+  kind: ChunkKind = "transcript",
+): string {
+  return sha256Json(
+    kind === "transcript"
+      ? [CHUNKER_VERSION, EMBED_DOC_PROMPT, text]
+      : [CHUNKER_VERSION, EMBED_DOC_PROMPT, kind, text],
+  );
 }
 
 /** A part of one segment: the whole text, or a piece of a long segment. */
