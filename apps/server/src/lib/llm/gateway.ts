@@ -187,6 +187,32 @@ function bodyReasoning(body: unknown): string | null {
   );
 }
 
+/**
+ * True when the answer came from llama.cpp: its chat answer carries a
+ * `timings` object that other OpenAI-style servers do not send.
+ */
+function isLlamaCppBody(body: unknown): boolean {
+  const timings = asObject(asObject(body)?.timings);
+  return timings !== null && typeof timings.predicted_n === "number";
+}
+
+/**
+ * Own-server model and step pairs that need the llama.cpp completion route
+ * (`GatewayOverrides.llamaCppCompletion`). A pair gets in after one call on
+ * that route passes, so the later calls of that step send no failed attempt
+ * first. The key holds the step: the route is only for a step that leaked,
+ * because Gemma 4 E2B wrote a long identifySpeakers list on it while the
+ * chat route answered well (2026-10-22). The set is in memory: after a
+ * restart, one failed call learns it again.
+ */
+const llamaCppCompletionModels = new Set<string>();
+const routeKey = (modelId: string, step: string) => `${modelId}\u0000${step}`;
+
+/** Test seam: forget the learned models. */
+export function __clearLlamaCppCompletionForTests(): void {
+  llamaCppCompletionModels.clear();
+}
+
 /** Zod paths and messages only, no echoed values, at most 500 characters. */
 function validatorMessage(issues: readonly z.core.$ZodIssue[]): string {
   return issues
@@ -627,6 +653,15 @@ export async function callStructured<T>(
   const warnings = [...profile.warnings];
   const wire = reasoningWire(profile);
   warnings.push(...wire.warnings);
+  const llamaCppCompletion =
+    isOwnServerProvider(profile.provider) &&
+    (input.retry?.change === "llamacpp_completion" ||
+      llamaCppCompletionModels.has(routeKey(profile.modelId, input.step)));
+  if (llamaCppCompletion) {
+    warnings.push(
+      "llama.cpp: /v1/completions, JSON grammar from the first token",
+    );
+  }
   let jsonSchema: unknown;
   try {
     resolved = await resolveTaskCall(profile.taskId, {
@@ -642,6 +677,7 @@ export async function callStructured<T>(
     const overrides: GatewayOverrides = {
       ...wire.overrides,
       presetSet,
+      ...(llamaCppCompletion ? { llamaCppCompletion: true } : {}),
     };
     if (wire.overrides.bounded) {
       if (presetSet.chatTemplateKwargs.includes("enable_thinking")) {
@@ -958,7 +994,45 @@ export async function callStructured<T>(
           return r.ok ? r.value : null;
         };
 
-        // (1) unified finish reason
+        // A reasoning leak: reasoning text and no answer while reasoning is
+        // off. llama.cpp can fix it: its chat grammar lets Gemma 4 open a
+        // thought block before the JSON, so one retry goes through
+        // /v1/completions with the JSON grammar from the first token.
+        const reasoningOff = profile.reasoning.mode === "off";
+        const reasoningOnly =
+          c.text.trim() === "" &&
+          (c.reasoningChars > 0 || (c.usage.reasoning ?? 0) > 0);
+        const leakError = (
+          leak: "think_tag" | "empty_content_with_reasoning",
+          message: string,
+        ): ReasoningLeakError =>
+          new ReasoningLeakError({
+            facts,
+            message,
+            leak,
+            runWide: reasoningOff,
+            retry:
+              !isRetry &&
+              !llamaCppCompletion &&
+              reasoningOff &&
+              leak === "empty_content_with_reasoning" &&
+              isOwnServerProvider(profile.provider) &&
+              isLlamaCppBody(c.responseBody)
+                ? { change: "llamacpp_completion", waitMs: 0 }
+                : null,
+          });
+
+        // (1) unified finish reason. With reasoning off, an output limit
+        // spent on reasoning is a leak: a split or a bigger limit only buys
+        // more reasoning.
+        if (c.unified === "length" && reasoningOff && reasoningOnly) {
+          throw await fail(
+            leakError(
+              "empty_content_with_reasoning",
+              `The model used its output limit (${maxOutputTokens}) on reasoning and wrote no answer.`,
+            ),
+          );
+        }
         if (c.unified === "length") {
           throw await fail(
             new LengthError({
@@ -1038,22 +1112,15 @@ export async function callStructured<T>(
           );
         }
         // (3) reasoning leak
-        const reasoningOff = profile.reasoning.mode === "off";
         const leak: "think_tag" | "empty_content_with_reasoning" | null =
           THINK_TAG.test(c.text)
             ? "think_tag"
-            : c.text.trim() === "" &&
-                (c.reasoningChars > 0 || (c.usage.reasoning ?? 0) > 0)
+            : reasoningOnly
               ? "empty_content_with_reasoning"
               : null;
         if (leak) {
           throw await fail(
-            new ReasoningLeakError({
-              facts,
-              message: `The answer holds reasoning text (${leak}).`,
-              leak,
-              runWide: reasoningOff,
-            }),
+            leakError(leak, `The answer holds reasoning text (${leak}).`),
           );
         }
         // (4) served model
@@ -1129,6 +1196,9 @@ export async function callStructured<T>(
           );
         }
 
+        if (llamaCppCompletion) {
+          llamaCppCompletionModels.add(routeKey(profile.modelId, input.step));
+        }
         const recorded = await finalize(
           { error: null, parsed: object },
           { startedAt, wireStart },

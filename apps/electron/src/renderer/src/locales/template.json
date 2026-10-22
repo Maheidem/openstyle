@@ -1153,7 +1153,7 @@
       "content_filter": "The provider blocked the answer.",
       "unexpected_tool_calls": "The model tried to call a tool.",
       "abnormal_stop": "The model stopped for an unknown reason.",
-      "reasoning_leak": "The model put its reasoning in the answer.",
+      "reasoning_leak": "The model wrote reasoning text instead of a clean answer.",
       "schema": "The answer did not match the required format.",
       "provider_timeout": "The model did not answer in time. Raise the timeout in Settings, then retry.",
       "provider_rate_limited": "The provider limited the requests.",

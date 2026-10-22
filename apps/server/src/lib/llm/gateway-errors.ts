@@ -11,7 +11,11 @@ import type {
 // Code, UI and inspector read `kind`, never the message. A message holds fixed
 // text with codes and numbers. It never holds prompt or answer text (5.8).
 
-export type RetryChange = "none" | "add_validator_message" | "downgrade_mode";
+export type RetryChange =
+  | "none"
+  | "add_validator_message"
+  | "downgrade_mode"
+  | "llamacpp_completion";
 
 /** What `callUnit` may do after this error. `waitMs` is at most 60 000. */
 export interface RetryAdvice {
