@@ -626,6 +626,56 @@ test("a disarmed watch starts nothing", async () => {
   expect(await listMeetings()).toHaveLength(before);
 });
 
+test("the card shows the armed event, also when an earlier event comes first", async () => {
+  const now = Date.now();
+  const planning = {
+    ...PLANNING,
+    start: now + 229 * 60_000,
+    end: now + 259 * 60_000,
+  };
+  const emit = (list: object[]) =>
+    app!.evaluate(({ ipcMain }, events) => {
+      ipcMain.emit("e2e:fake-calendar-set", {}, events);
+    }, list);
+  await emit([planning]);
+  let popover = await reopenPopover();
+  const arm = () =>
+    popover.getByRole("switch", {
+      name: "Record Quarterly planning review when it starts",
+    });
+  await arm().click();
+  await expect(arm()).toBeChecked();
+
+  // A new event comes before the armed one.
+  await emit([
+    {
+      id: "e2e-early-sync",
+      title: "Early sync",
+      start: now + 10 * 60_000,
+      end: now + 40 * 60_000,
+    },
+    planning,
+  ]);
+  popover = await reopenPopover();
+  await expect(popover.getByTestId("tray-popover-event-title")).toHaveText(
+    PLANNING.title,
+    { timeout: 10_000 },
+  );
+  await expect(arm()).toBeChecked();
+  await expect(popover.getByTestId("tray-popover-armed")).toBeVisible();
+  await themedShots(popover, "2-armed-later", async () => {
+    await expect(popover.getByTestId("tray-popover-armed")).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+  // Disarm: the card goes back to the first event that comes.
+  await arm().click();
+  await expect(popover.getByTestId("tray-popover-armed")).toHaveCount(0);
+  await expect(popover.getByTestId("tray-popover-event-title")).toHaveText(
+    "Early sync",
+  );
+});
+
 test("the start time does nothing while a meeting already records", async () => {
   test.setTimeout(60_000);
   const popover = await reopenPopover();
