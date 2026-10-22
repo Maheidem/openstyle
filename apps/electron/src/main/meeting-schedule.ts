@@ -83,7 +83,12 @@ function setPendingLink(e: ListedEvent): void {
 export async function readScheduleState(): Promise<TrayScheduleState> {
   const now = Date.now();
   const events = await readTodayEvents();
-  const next = events.find((e) => e.start > now) ?? null;
+  // While a watch is armed, the card shows the armed event, also when an
+  // earlier event comes first.
+  const next =
+    (armed && events.find((e) => e.id === armed?.eventId)) ||
+    events.find((e) => e.start > now) ||
+    null;
   return {
     event: next ? toNextEvent(next) : null,
     armed: armed ? { ...armed } : null,
@@ -152,9 +157,12 @@ async function fire(event: ListedEvent): Promise<void> {
     log.warn("Record when it starts: fired, but no meeting recorder exists");
     return;
   }
-  if (recorder.status !== "idle") {
+  // A start that runs now (the Start button, the tray menu, the confirm of
+  // the Meetings page) counts as a recording: log only, no error box.
+  if (recorder.status !== "idle" || recorder.isStarting) {
+    const why = recorder.isStarting ? "starting" : recorder.status;
     log.info(
-      `Record when it starts: fired, but a meeting already records (${recorder.status}); no new start`,
+      `Record when it starts: fired, but a meeting already records (${why}); no new start`,
     );
     return;
   }
