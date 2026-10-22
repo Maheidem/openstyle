@@ -34,6 +34,11 @@ import { stopServerHost } from "./server-host";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
 import { trayAppearance } from "./tray-appearance";
 import { showSettingsWindow } from "./windows/settings-window";
+import {
+  createTrayPopoverWindow,
+  hideTrayPopover,
+  toggleTrayPopover,
+} from "./windows/tray-popover-window";
 
 const log = createAppLogger("electron");
 
@@ -151,10 +156,19 @@ function devMenuItems(): MenuItemConstructorOptions[] {
   ];
 }
 
+/**
+ * The short native menu of a right click on the tray icon (a left click on
+ * Linux, where the panel shows this menu). The popover is the main place for
+ * the rest (windows/tray-popover-window.ts).
+ */
 export function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
-      label: "Settings",
+      label: "Open Openstyle",
+      click: () => showSettingsWindow(),
+    },
+    {
+      label: "Settings…",
       click: () => showSettingsWindow("/settings"),
     },
     {
@@ -241,19 +255,28 @@ export function createTray(): void {
     // assign the menu natively so the OS can register it via DBusMenu.
     state.tray.setContextMenu(buildTrayContextMenu());
   } else {
-    // macOS/Windows: left-click opens settings, right-click shows menu.
-    // Using setContextMenu on macOS would override the click handler.
+    // macOS/Windows: right click shows the short menu. Using setContextMenu
+    // on macOS would override the click handler.
     state.tray.on("right-click", () => {
+      log.info("Tray right click");
+      hideTrayPopover("right-click");
       // Opportunistic background refresh — the menu template is synchronous,
       // so a flag flip shows up on the next open.
-      refreshMeetingsFlag();
+      void refreshMeetingsFlag();
       state.tray!.popUpContextMenu(buildTrayContextMenu());
     });
   }
 
+  // Left click toggles the popover (on Linux the panel often sends no click).
   state.tray.on("click", () => {
-    showSettingsWindow();
+    log.info("Tray left click");
+    toggleTrayPopover("tray-click");
   });
+
+  // Make the popover now, so the first click shows it at once. Linux panels
+  // often send no click (they show the menu), so there it is made on the
+  // first toggle only.
+  if (process.platform !== "linux") createTrayPopoverWindow();
 }
 
 // Rebuild the application menu so update-related labels stay current.

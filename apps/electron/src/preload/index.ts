@@ -20,6 +20,10 @@ import {
   normalizePillCancelMode,
   type PillCancelMode,
 } from "../shared/pill-cancel";
+import type {
+  TrayPopoverState,
+  TrayPopoverTarget,
+} from "../shared/tray-popover";
 
 // Build an `on*` member for one main-to-renderer channel. `A` is the payload
 // tuple the callback receives. Pass it by hand: the compiler cannot infer it.
@@ -287,6 +291,19 @@ const api = {
   onTranscriptionDone: listen("transcription:done"),
   // Fullscreen state
   onFullscreenChanged: listen<[isFullscreen: boolean]>("fullscreen:changed"),
+  // --- Tray popover (main/windows/tray-popover-window.ts) ---
+  getTrayPopoverState: (): Promise<TrayPopoverState> =>
+    ipcRenderer.invoke("tray-popover:state"),
+  /** The popover shows. Read the data again. */
+  onTrayPopoverShown: listen("tray-popover:shown"),
+  /** The height of the popover content, so main can size the window. */
+  setTrayPopoverHeight: (height: number): void =>
+    ipcRenderer.send("tray-popover:set-height", height),
+  hideTrayPopover: (): void => ipcRenderer.send("tray-popover:hide"),
+  /** Close the popover and show a page in the main window. */
+  openFromTrayPopover: (target: TrayPopoverTarget): void =>
+    ipcRenderer.send("tray-popover:open", target),
+  quitFromTrayPopover: (): void => ipcRenderer.send("tray-popover:quit"),
 };
 
 // The renderer types read `Window.api` from this type (see index.d.ts).

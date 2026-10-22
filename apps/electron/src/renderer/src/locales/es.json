@@ -1171,5 +1171,44 @@
   "notFound": {
     "title": "Página no encontrada",
     "goToApp": "Ir a la app"
+  },
+  "trayPopover": {
+    "label": "Menú de Openstyle",
+    "hint": {
+      "hold": "Mantén {{key}} para dictar",
+      "press": "Pulsa {{key}} para dictar"
+    },
+    "status": {
+      "ready": "Listo",
+      "recording": "Grabando",
+      "dictating": "Dictando"
+    },
+    "meeting": {
+      "section": "Grabación de reunión",
+      "start": "Iniciar grabación de reunión",
+      "stop": "Detener",
+      "stopLabel": "Detener grabación de reunión",
+      "elapsed": "Tiempo de grabación",
+      "started": "Grabación de reunión iniciada",
+      "stopped": "Grabación de reunión detenida",
+      "startFailed": "La grabación de la reunión no se inició."
+    },
+    "recent": {
+      "title": "Dictados recientes",
+      "history": "Historial",
+      "empty": "Tus dictados aparecen aquí.",
+      "copy": "Copiar dictado",
+      "copied": "Copiado"
+    },
+    "footer": {
+      "version": "Openstyle {{version}}",
+      "upToDate": "Actualizado",
+      "updateReady": "Actualización lista",
+      "restartToUpdate": "Reiniciar para actualizar",
+      "downloading": "Descargando actualización",
+      "openApp": "Abrir Openstyle",
+      "settings": "Ajustes",
+      "quit": "Salir de Openstyle"
+    }
   }
 }

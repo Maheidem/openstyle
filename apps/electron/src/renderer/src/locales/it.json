@@ -1170,5 +1170,44 @@
   "notFound": {
     "title": "Pagina non trovata",
     "goToApp": "Vai all'app"
+  },
+  "trayPopover": {
+    "label": "Menu di Openstyle",
+    "hint": {
+      "hold": "Tieni premuto {{key}} per dettare",
+      "press": "Premi {{key}} per dettare"
+    },
+    "status": {
+      "ready": "Pronto",
+      "recording": "Registrazione",
+      "dictating": "Dettatura"
+    },
+    "meeting": {
+      "section": "Registrazione riunione",
+      "start": "Avvia registrazione riunione",
+      "stop": "Ferma",
+      "stopLabel": "Ferma registrazione riunione",
+      "elapsed": "Durata della registrazione",
+      "started": "Registrazione della riunione avviata",
+      "stopped": "Registrazione della riunione fermata",
+      "startFailed": "La registrazione della riunione non è partita."
+    },
+    "recent": {
+      "title": "Dettature recenti",
+      "history": "Cronologia",
+      "empty": "Le tue dettature appaiono qui.",
+      "copy": "Copia dettatura",
+      "copied": "Copiato"
+    },
+    "footer": {
+      "version": "Openstyle {{version}}",
+      "upToDate": "Aggiornato",
+      "updateReady": "Aggiornamento pronto",
+      "restartToUpdate": "Riavvia per aggiornare",
+      "downloading": "Download dell’aggiornamento",
+      "openApp": "Apri Openstyle",
+      "settings": "Impostazioni",
+      "quit": "Esci da Openstyle"
+    }
   }
 }

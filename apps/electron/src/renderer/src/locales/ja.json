@@ -1171,5 +1171,44 @@
   "notFound": {
     "title": "ページが見つかりません",
     "goToApp": "アプリに移動"
+  },
+  "trayPopover": {
+    "label": "Openstyle メニュー",
+    "hint": {
+      "hold": "{{key}} を押し続けて音声入力",
+      "press": "{{key}} を押して音声入力"
+    },
+    "status": {
+      "ready": "準備完了",
+      "recording": "録音中",
+      "dictating": "音声入力中"
+    },
+    "meeting": {
+      "section": "会議の録音",
+      "start": "会議の録音を開始",
+      "stop": "停止",
+      "stopLabel": "会議の録音を停止",
+      "elapsed": "録音時間",
+      "started": "会議の録音を開始しました",
+      "stopped": "会議の録音を停止しました",
+      "startFailed": "会議の録音を開始できませんでした。"
+    },
+    "recent": {
+      "title": "最近の音声入力",
+      "history": "履歴",
+      "empty": "音声入力の結果がここに表示されます。",
+      "copy": "音声入力をコピー",
+      "copied": "コピーしました"
+    },
+    "footer": {
+      "version": "Openstyle {{version}}",
+      "upToDate": "最新です",
+      "updateReady": "アップデートの準備完了",
+      "restartToUpdate": "再起動してアップデート",
+      "downloading": "アップデートをダウンロード中",
+      "openApp": "Openstyle を開く",
+      "settings": "設定",
+      "quit": "Openstyle を終了"
+    }
   }
 }

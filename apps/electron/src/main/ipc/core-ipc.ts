@@ -159,6 +159,11 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
       // stop, the pill stays up until the renderer ends the capsule's exit.
       setPillMeetingRecording(recording);
       broadcastToWindows("meeting:status-changed", status, startedAt);
+      state.trayPopover?.webContents.send(
+        "meeting:status-changed",
+        status,
+        startedAt,
+      );
       updateTrayForMeeting(recording);
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
@@ -234,6 +239,7 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
   // history-driven views (Today, History) can refetch without polling.
   ipcMain.on("transcription:done", () => {
     state.settingsWindow?.webContents.send("transcription:done");
+    state.trayPopover?.webContents.send("transcription:done");
   });
 
   registerAppSettingsIpc({

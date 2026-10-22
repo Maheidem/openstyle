@@ -12,6 +12,10 @@ export function getPillURL(): string {
   return rendererUrl("/pill.html");
 }
 
+export function getTrayPopoverURL(): string {
+  return rendererUrl("/tray-popover.html");
+}
+
 export function getMeetingCaptureURL(): string {
   return rendererUrl("/meeting-capture.html");
 }

@@ -22,6 +22,8 @@ export interface MainState {
   mainWindow: BrowserWindow | null;
   settingsWindow: BrowserWindow | null;
   tray: Tray | null;
+  /** The popover under the tray icon (windows/tray-popover-window.ts). */
+  trayPopover: BrowserWindow | null;
   keyListener: NativeKeyListener | null;
   // Latching flag: records that the native key listener started successfully.
   // It persists while the listener is temporarily torn down for hotkey recording,
@@ -60,6 +62,7 @@ export const state: MainState = {
   mainWindow: null,
   settingsWindow: null,
   tray: null,
+  trayPopover: null,
   keyListener: null,
   accessibilityConfirmed: false,
   hotkeyPressed: false,
@@ -94,8 +97,9 @@ export function broadcastServerChanged(): void {
   broadcastToWindows("server:changed");
 }
 
-export function refreshMeetingsFlag(): void {
-  void serverFetch("/config/flags/meetings")
+/** Read the `meetings` flag again. The promise resolves after the read. */
+export function refreshMeetingsFlag(): Promise<void> {
+  return serverFetch("/config/flags/meetings")
     .then(async (res) => {
       if (!res.ok) return;
       const body = (await res.json()) as { value?: boolean };

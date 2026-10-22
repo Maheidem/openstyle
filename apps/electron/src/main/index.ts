@@ -45,6 +45,7 @@ import { app, dialog, protocol, screen } from "electron";
 import { registerAppProtocol } from "./app-protocol";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import {
+  getHotkeyActivationMode,
   registerHotkeyIpc,
   scheduleHotkeyRegistration,
 } from "./hotkeys/dictation";
@@ -78,6 +79,7 @@ import {
   isOnboardingActive,
   showSettingsWindow,
 } from "./windows/settings-window";
+import { registerTrayPopoverIpc } from "./windows/tray-popover-window";
 
 // Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
 // share the real "Electron" userData (settings.json included) with a running
@@ -240,11 +242,13 @@ app.whenReady().then(async () => {
   });
 
   registerCoreIpc({ logsDir });
+  registerTrayPopoverIpc({ getHotkeyMode: getHotkeyActivationMode });
 
   await startServerHost({ userDataOverride });
 
-  // Quiet E2E: no menu bar icon.
-  if (!quietE2E) createTray();
+  // Quiet E2E: no menu bar icon, unless a test of the tray and its popover
+  // asks for it (OPENSTYLE_E2E_TRAY=1, honored only with OPENSTYLE_E2E=1).
+  if (!quietE2E || process.env.OPENSTYLE_E2E_TRAY === "1") createTray();
 
   createAppWindow();
 
@@ -253,7 +257,7 @@ app.whenReady().then(async () => {
   // 'recording' (finalize WAV headers, mark 'interrupted') or 'transcribing'
   // (job died with the process — mark 'failed', partial transcript kept).
   setTimeout(() => {
-    refreshMeetingsFlag();
+    void refreshMeetingsFlag();
     void state.meetingRecorder?.sweepOrphans();
   }, 3000);
 
