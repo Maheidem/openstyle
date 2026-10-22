@@ -1043,7 +1043,16 @@
       "saveFailed": "Die Tags wurden nicht gespeichert. Versuche es erneut.",
       "showAll": "Alle Tags anzeigen"
     },
-    "moreActions": "Weitere Aktionen"
+    "moreActions": "Weitere Aktionen",
+    "inspector": {
+      "retrieval": {
+        "title": "Projektgedächtnis",
+        "note": "Abschnitte aus anderen Besprechungen in diesem Ordner, die dieser Lauf verwendet hat. Nur IDs.",
+        "meetings": "Besprechungen",
+        "chunks": "Abschnitte",
+        "model": "Suchmodell"
+      }
+    }
   },
   "help": {
     "hotkeys": {

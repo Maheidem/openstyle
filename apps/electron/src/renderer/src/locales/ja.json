@@ -1043,7 +1043,16 @@
       "saveFailed": "タグを保存できませんでした。もう一度お試しください。",
       "showAll": "すべてのタグを表示"
     },
-    "moreActions": "その他の操作"
+    "moreActions": "その他の操作",
+    "inspector": {
+      "retrieval": {
+        "title": "プロジェクトメモリ",
+        "note": "この実行で使った、このフォルダー内の他の会議のチャンク。IDのみ。",
+        "meetings": "会議",
+        "chunks": "チャンク",
+        "model": "検索モデル"
+      }
+    }
   },
   "help": {
     "hotkeys": {

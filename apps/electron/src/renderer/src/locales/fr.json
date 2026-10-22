@@ -1043,7 +1043,16 @@
       "saveFailed": "Les étiquettes n'ont pas été enregistrées. Réessayez.",
       "showAll": "Afficher toutes les étiquettes"
     },
-    "moreActions": "Autres actions"
+    "moreActions": "Autres actions",
+    "inspector": {
+      "retrieval": {
+        "title": "Mémoire du projet",
+        "note": "Extraits d'autres réunions de ce dossier utilisés par cette exécution. Identifiants seulement.",
+        "meetings": "Réunions",
+        "chunks": "Extraits",
+        "model": "Modèle de recherche"
+      }
+    }
   },
   "help": {
     "hotkeys": {

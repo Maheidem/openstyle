@@ -74,6 +74,7 @@ function run(over: Partial<LlmRunInfo>): LlmRunInfo {
     correctedCount: null,
     droppedCount: null,
     suggestionCount: null,
+    retrieval: null,
     lostRecords: 0,
     inputTokens: 0,
     outputTokens: 0,

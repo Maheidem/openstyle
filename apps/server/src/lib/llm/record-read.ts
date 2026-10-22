@@ -5,6 +5,7 @@ import type {
   LlmLinkInfo,
   LlmMessage,
   LlmParamsLedger,
+  LlmRetrievalInfo,
   LlmRunInfo,
   LlmRunKind,
   LlmRunStatus,
@@ -167,6 +168,28 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** The `retrieval` object of a run result (issue #234), or null. */
+function retrievalOf(value: unknown): LlmRetrievalInfo | null {
+  if (value === null || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (
+    typeof v.modelId !== "string" ||
+    !Array.isArray(v.meetingIds) ||
+    !Array.isArray(v.chunkIds)
+  ) {
+    return null;
+  }
+  return {
+    modelId: v.modelId,
+    meetingIds: v.meetingIds.filter(
+      (id): id is string => typeof id === "string",
+    ),
+    chunkIds: v.chunkIds.filter(
+      (id): id is number => typeof id === "number" && Number.isInteger(id),
+    ),
+  };
+}
+
 function toRun(
   db: DatabaseSync,
   row: RunRow,
@@ -218,6 +241,7 @@ function toRun(
     correctedCount: numberOrNull(counts.correctedCount),
     droppedCount: numberOrNull(counts.droppedCount),
     suggestionCount: numberOrNull(counts.suggestionCount),
+    retrieval: retrievalOf(counts.retrieval),
     lostRecords: row.lost_records,
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,

@@ -102,12 +102,25 @@ export interface LlmRunInfo {
   /** Corrections that the checks dropped (no `unchanged` echoes). Null before graph version 3. */
   droppedCount: number | null;
   suggestionCount: number | null;
+  /**
+   * Project memory of the run (issue #234): the chunks that `prepare` found
+   * in the other meetings of the folder. Ids only, no text. Null when the run
+   * used none (unfiled meeting, search off, no hit, or an older run).
+   */
+  retrieval: LlmRetrievalInfo | null;
   lostRecords: number;
   /** Sums. Unknown counts as 0. */
   inputTokens: number;
   outputTokens: number;
   reasoningTokens: number;
   steps: LlmStepInfo[];
+}
+
+export interface LlmRetrievalInfo {
+  /** The embedding model of the index. */
+  modelId: string;
+  meetingIds: string[];
+  chunkIds: number[];
 }
 
 export interface LlmRunListResponse {

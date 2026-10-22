@@ -1324,6 +1324,13 @@
         "inflection_only": "The correction changed only the grammar of a word.",
         "lowercases_name": "The correction removed the capital letters of a name.",
         "unknown": "No reason is recorded."
+      },
+      "retrieval": {
+        "title": "Project memory",
+        "note": "Chunks from other meetings in this folder that this run used. Ids only.",
+        "meetings": "Meetings",
+        "chunks": "Chunks",
+        "model": "Search model"
       }
     },
     "showEnhancedLabel": "Show enhanced transcript",
