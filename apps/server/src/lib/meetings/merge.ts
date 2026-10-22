@@ -86,8 +86,19 @@ export interface SyncData {
 /** Corrections below this are noise — leave timestamps untouched. */
 const DRIFT_APPLY_THRESHOLD_MS = 500;
 
-/** Echo dedup: mic copy must overlap the system segment within this slack. */
-const ECHO_WINDOW_MS = 1000;
+/**
+ * Echo dedup (issue #269). The mic picks up the system audio at the same
+ * time as the system channel records it, so an echo chunk and its system
+ * chunk overlap by the whole shared speech plus the chunk padding. A real
+ * reply comes after the other speaker. Its chunk touches the system chunk
+ * only through the segmenter's padBefore + hangover + padAfter (300 + 700 +
+ * 400 = 1400 ms at zero gap, DEFAULT_SEGMENTER_OPTIONS). So the mic copy
+ * must overlap the system segment by more than that. The old rule (overlap
+ * within a 1 s slack) also hid a reply that repeated the words before it,
+ * for example "Yes, we can ship it on Friday" after "Can we ship it on
+ * Friday?".
+ */
+export const ECHO_MIN_OVERLAP_MS = 1500;
 const ECHO_SIMILARITY_THRESHOLD = 0.7;
 
 /** Repeat filter: identical normalized text this many times in a row. */
@@ -339,13 +350,12 @@ function applyDrift(
   return { mic: correct(mic, micFit), system: correct(system, sysFit) };
 }
 
-/** Overlap (with slack) between two segments in ms-domain. */
-function overlapsWithin(
-  a: TranscriptSegment,
-  b: TranscriptSegment,
-  slackMs: number,
-): boolean {
-  return a.startMs <= b.endMs + slackMs && b.startMs <= a.endMs + slackMs;
+/** Time overlap of two segments in ms (0 when they do not overlap). */
+function overlapMs(a: TranscriptSegment, b: TranscriptSegment): number {
+  return Math.max(
+    0,
+    Math.min(a.endMs, b.endMs) - Math.max(a.startMs, b.startMs),
+  );
 }
 
 /**
@@ -355,8 +365,8 @@ function overlapsWithin(
  * Pipeline: drift correction → in-segment loop collapse → hallucination
  * filter → same-channel repeat
  * filter → speaker-echo dedup (system audio leaking into the mic: when a Me
- * segment overlaps a Them segment within ±1 s and the texts are >0.7
- * similar, the mic copy is dropped — Them wins) → sort.
+ * segment overlaps a Them segment by more than ECHO_MIN_OVERLAP_MS and the
+ * texts are >0.7 similar, the mic copy is dropped — Them wins) → sort.
  */
 export function mergeTranscript(
   micSegments: TranscriptSegment[],
@@ -393,7 +403,7 @@ export function mergeTranscript(
     (m) =>
       !systemClean.some(
         (s) =>
-          overlapsWithin(m, s, ECHO_WINDOW_MS) &&
+          overlapMs(m, s) > ECHO_MIN_OVERLAP_MS &&
           textSimilarity(m.text, s.text) > ECHO_SIMILARITY_THRESHOLD,
       ),
   );
