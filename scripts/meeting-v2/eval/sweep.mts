@@ -394,6 +394,7 @@ async function desktopReplayCheck(outDir: string): Promise<number> {
             });
           const outSame = strip(a.out) === strip(b.out);
           if (
+            a.out.failedUnits > 0 ||
             same !== a.texts.size ||
             b.texts.size !== a.texts.size ||
             !outSame
@@ -407,10 +408,11 @@ async function desktopReplayCheck(outDir: string): Promise<number> {
             calls: a.texts.size,
             sameAnswers: same,
             sameOutput: outSame,
+            failedUnits: a.out.failedUnits,
             equalToStoredMlx: asStored,
           });
           console.log(
-            `desktop replay ${model} ${l.id8} ${stage}: ${a.texts.size} calls, same answers in both runs ${same}, same stage output ${outSame}, equal to stored MLX answer ${asStored}`,
+            `desktop replay ${model} ${l.id8} ${stage}: ${a.texts.size} calls, same answers in both runs ${same}, same stage output ${outSame}, failed units ${a.out.failedUnits}, equal to stored MLX answer ${asStored}`,
           );
         }
     });

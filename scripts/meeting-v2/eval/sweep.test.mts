@@ -535,27 +535,34 @@ test("search: a delta inside the noise band does not beat noise", async () => {
   assert.equal(res.beatsNoise, false);
 });
 
-test("workerClient (llama.cpp mode): model name, repeat_penalty, at most `parallel` requests", async () => {
+test("workerClient (llama.cpp mode): template + raw completion, schema grammar, thought token blocked, at most `parallel` requests", async () => {
   const { createServer } = await import("node:http");
   let running = 0;
   let peak = 0;
-  const seen: any[] = [];
+  const seen: { url: string; body: any }[] = [];
   const server = createServer((req, res) => {
     let data = "";
     req.on("data", (c) => {
       data += c;
     });
     req.on("end", () => {
+      const body = JSON.parse(data);
+      seen.push({ url: req.url ?? "", body });
+      res.setHeader("content-type", "application/json");
+      if (req.url?.endsWith("/apply-template")) {
+        res.end(JSON.stringify({ prompt: "<rendered>" }));
+        return;
+      }
       running++;
       peak = Math.max(peak, running);
-      seen.push(JSON.parse(data));
       setTimeout(() => {
         running--;
-        res.setHeader("content-type", "application/json");
         res.end(
           JSON.stringify({
-            choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
-            usage: { completion_tokens: 2, prompt_tokens: 3 },
+            content: "{}",
+            stop_type: "limit",
+            tokens_predicted: 2,
+            tokens_evaluated: 3,
           }),
         );
       }, 30);
@@ -566,26 +573,36 @@ test("workerClient (llama.cpp mode): model name, repeat_penalty, at most `parall
   const { workerClient } = await import("./stage-replay.mts");
   const complete = workerClient(
     `http://127.0.0.1:${port}/v1/chat/completions`,
-    {
-      model: "server-name",
-      parallel: 2,
-      timeoutMs: 5000,
-    },
+    { model: "server-name", parallel: 2, timeoutMs: 5000 },
   );
+  const schema = { type: "object" };
   const replies = await Promise.all(
     [1, 2, 3, 4, 5].map(() =>
-      complete({ model: "app/model", repetition_penalty: 1.1, messages: [] }),
+      complete({
+        model: "app/model",
+        max_tokens: 50,
+        temperature: 0,
+        repetition_penalty: 1.1,
+        chat_template_kwargs: { enable_thinking: false },
+        response_format: { type: "json_schema", json_schema: { schema } },
+        messages: [{ role: "user", content: "fictional" }],
+      }),
     ),
   );
   server.close();
   assert.equal(replies.length, 5);
-  assert.equal(replies[0]?.finish, "stop");
+  assert.equal(replies[0]?.finish, "length");
   assert.equal(peak, 2);
-  assert.equal(seen[0].model, "server-name");
-  assert.equal(seen[0].repeat_penalty, 1.1);
-  assert.equal("repetition_penalty" in seen[0], false);
-  assert.equal(seen[0].stream, false);
-  assert.equal(seen[0].cache_prompt, false);
+  const tpl = seen.find((x) => x.url.endsWith("/apply-template"));
+  assert.equal(tpl?.url, "/upstream/server-name/apply-template");
+  assert.deepEqual(tpl?.body.chat_template_kwargs, { enable_thinking: false });
+  const done = seen.find((x) => x.url.endsWith("/completion"));
+  assert.equal(done?.body.prompt, "<rendered>");
+  assert.deepEqual(done?.body.json_schema, schema);
+  assert.equal(done?.body.n_predict, 50);
+  assert.equal(done?.body.repeat_penalty, 1.1);
+  assert.equal(done?.body.cache_prompt, false);
+  assert.deepEqual(done?.body.logit_bias, [[100, false]]);
 });
 
 test("search with explicit combos runs only those, plus baseline and noise", async () => {

@@ -332,7 +332,8 @@ export type Complete = (body: Record<string, unknown>) => Promise<Reply>;
  * non-200. The MLX worker: `<base>/v1/chat/completions`. The llama.cpp
  * desktop backend (owner, 2026-10-22, sweeps only): `model` is the server's
  * model name, repetition_penalty goes as repeat_penalty, the prompt cache is
- * off, and at most `parallel` requests run at a time.
+ * off, and at most `parallel` requests run at a time. With thinking off it
+ * uses the raw completion path (postRaw); with thinking on, the chat path.
  */
 export function workerClient(
   chatUrl: string,
@@ -352,6 +353,7 @@ export function workerClient(
     }
   };
   async function post(input: Record<string, unknown>): Promise<Reply> {
+    if (o.model && !thinkingOn(input)) return postRaw(input);
     const body: Record<string, unknown> = { ...input, stream: false };
     if (o.model) {
       body.model = o.model;
@@ -382,7 +384,64 @@ export function workerClient(
       latencyMs: Date.now() - t0,
     };
   }
+
+  /**
+   * llama.cpp with thinking off: the chat endpoint applies a strict schema
+   * lazily, and Gemma 4 E2B opened a thought block on the correctChunk
+   * prompts, so the answer was never JSON (2026-10-22). So the client asks
+   * the server for its own chat template rendering (/apply-template; the
+   * prompt token count equals the MLX one), then sends /completion with the
+   * schema as a grammar from the first token, and blocks the thought-open
+   * token, as the MLX worker does with thinking off.
+   */
+  async function postRaw(input: Record<string, any>): Promise<Reply> {
+    const up = `${new URL(chatUrl).origin}/upstream/${o.model}`;
+    const call = async (path: string, body: unknown) => {
+      const r = await fetch(`${up}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(o.timeoutMs ?? 900_000),
+      });
+      const j = (await r.json().catch(() => null)) as any;
+      if (r.status !== 200 || !j)
+        throw new Error(`the model server answered ${r.status} on ${path}`);
+      return j;
+    };
+    const t0 = Date.now();
+    const tpl = await call("/apply-template", {
+      model: o.model,
+      messages: input.messages,
+      chat_template_kwargs: input.chat_template_kwargs ?? {},
+    });
+    const body: Record<string, unknown> = {
+      model: o.model,
+      prompt: String(tpl.prompt ?? ""),
+      n_predict: input.max_tokens,
+      cache_prompt: false,
+      logit_bias: [[THOUGHT_OPEN_TOKEN, false]],
+    };
+    const schema = input.response_format?.json_schema?.schema;
+    if (schema) body.json_schema = schema;
+    for (const k of ["temperature", "top_p", "top_k", "min_p", "seed"])
+      if (input[k] !== undefined) body[k] = input[k];
+    if (input.repetition_penalty !== undefined)
+      body.repeat_penalty = input.repetition_penalty;
+    const j = await call("/completion", body);
+    return {
+      text: String(j.content ?? ""),
+      finish: j.stop_type === "limit" ? "length" : "stop",
+      outputTokens: Number(j.tokens_predicted ?? 0),
+      promptTokens: Number(j.tokens_evaluated ?? 0),
+      latencyMs: Date.now() - t0,
+    };
+  }
 }
+
+/** Gemma 4 `<|channel>` (the same id in the MLX tokenizer and the GGUF). */
+const THOUGHT_OPEN_TOKEN = 100;
+const thinkingOn = (b: Record<string, any>) =>
+  b.chat_template_kwargs?.enable_thinking === true;
 
 /**
  * Start the MLX worker in LLM mode for a built-in model on 127.0.0.1:<port>
