@@ -50,6 +50,7 @@ import {
 } from "./hotkeys/dictation";
 import { registerCoreIpc, registerSystemIpc } from "./ipc/core-ipc";
 import { readSettings } from "./local-settings";
+import { resolveLogsDir } from "./log-dir";
 import { broadcastToWindows, refreshMeetingsFlag, state } from "./main-state";
 import { createTray, rebuildMenus } from "./menus";
 import { migrateLegacyUserData } from "./migrate-user-data";
@@ -115,9 +116,14 @@ const log = createAppLogger("electron");
 // ~/Library/Logs/Openstyle (macOS), %APPDATA%\Openstyle\logs (Windows), or
 // ~/.config/Openstyle/logs (Linux). enableFileLogging() is order-independent:
 // it also back-fills loggers that were created during module import.
+// OPENSTYLE_LOG_DIR or an isolated profile (OPENSTYLE_USER_DATA) moves the
+// folder (resolveLogsDir). setAppLogsPath makes every later
+// app.getPath("logs") return it, so the server child (server-host.ts,
+// OPENSTYLE_LOGS_DIR) and the trace log use the same folder.
 let logsDir = "";
 try {
-  logsDir = app.getPath("logs");
+  logsDir = resolveLogsDir(process.env, app.getPath("logs"));
+  if (logsDir !== app.getPath("logs")) app.setAppLogsPath(logsDir);
   enableFileLogging(logsDir);
   log.info(`File logging enabled at ${logsDir}`);
 } catch (err) {
