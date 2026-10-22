@@ -1240,6 +1240,9 @@
       "recordWhenItStarts": "開始時に録音",
       "recordWhenItStartsLabel": "{{title}} を開始時に録音",
       "willStart": "{{time}} に録音を開始します"
+    },
+    "models": {
+      "label": "使用中のモデル"
     }
   }
 }

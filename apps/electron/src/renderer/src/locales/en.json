@@ -1572,6 +1572,9 @@
       "recordWhenItStarts": "Record when it starts",
       "recordWhenItStartsLabel": "Record {{title}} when it starts",
       "willStart": "Recording will start at {{time}}"
+    },
+    "models": {
+      "label": "Active models"
     }
   }
 }

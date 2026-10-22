@@ -1239,6 +1239,9 @@
       "recordWhenItStarts": "Registra all’inizio",
       "recordWhenItStartsLabel": "Registra {{title}} all’inizio",
       "willStart": "La registrazione inizierà alle {{time}}"
+    },
+    "models": {
+      "label": "Modelli attivi"
     }
   }
 }

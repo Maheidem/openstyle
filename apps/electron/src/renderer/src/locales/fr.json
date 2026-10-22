@@ -1240,6 +1240,9 @@
       "recordWhenItStarts": "Enregistrer au début",
       "recordWhenItStartsLabel": "Enregistrer {{title}} au début",
       "willStart": "L’enregistrement commencera à {{time}}"
+    },
+    "models": {
+      "label": "Modèles actifs"
     }
   }
 }

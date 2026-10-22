@@ -5,9 +5,11 @@ import {
 } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient, initApiBase } from "@renderer/lib/api";
 import { IS_MAC } from "@renderer/lib/platform";
+import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { formatClock } from "@renderer/pages/history/helpers";
 import type { TrayPopoverState } from "@shared/tray-popover";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AppWindow,
   AudioLines,
@@ -20,6 +22,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { JobsSection, useTrayJobs } from "./tray-popover-jobs";
+import { ActiveModelsLine } from "./tray-popover-models";
 import { NextEventSection } from "./tray-popover-next-event";
 
 // The tray popover (issue #317, design Option B). Sections, top to bottom:
@@ -68,6 +71,7 @@ export default function TrayPopoverPage(): React.JSX.Element {
   const [visible, setVisible] = useState(false);
   const jobs = useTrayJobs(visible);
   const rootRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const loadRecent = useCallback(async () => {
     try {
@@ -96,7 +100,10 @@ export default function TrayPopoverPage(): React.JSX.Element {
 
   useEffect(() => {
     void loadAll();
-    const offShown = window.api.onTrayPopoverShown(() => void loadAll());
+    const offShown = window.api.onTrayPopoverShown(() => {
+      void loadAll();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+    });
     const offDone = window.api.onTranscriptionDone(() => void loadRecent());
     const offHidden = window.api.onTrayPopoverHidden(() => setVisible(false));
     const offMeeting = window.api.onMeetingStatusChanged(() => {
@@ -109,7 +116,7 @@ export default function TrayPopoverPage(): React.JSX.Element {
       offHidden();
       offMeeting();
     };
-  }, [loadAll, loadRecent]);
+  }, [loadAll, loadRecent, queryClient]);
 
   // Escape when the page has the keyboard (an E2E key press, or a platform
   // where the window can take focus). On macOS the global shortcut in main
@@ -232,6 +239,10 @@ export default function TrayPopoverPage(): React.JSX.Element {
         }
       />
 
+      {/* Idle only: while a model loads or downloads, the Jobs section shows it. */}
+      {jobs?.models.every(
+        (m) => m.status !== "downloading" && m.status !== "loading",
+      ) && <ActiveModelsLine />}
       <Footer info={info} />
     </main>
   );

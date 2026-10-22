@@ -1239,6 +1239,9 @@
       "recordWhenItStarts": "Gravar quando começar",
       "recordWhenItStartsLabel": "Gravar {{title}} quando começar",
       "willStart": "A gravação começa às {{time}}"
+    },
+    "models": {
+      "label": "Modelos ativos"
     }
   }
 }

@@ -1240,6 +1240,9 @@
       "recordWhenItStarts": "Grabar cuando empiece",
       "recordWhenItStartsLabel": "Grabar {{title}} cuando empiece",
       "willStart": "La grabación empezará a las {{time}}"
+    },
+    "models": {
+      "label": "Modelos activos"
     }
   }
 }

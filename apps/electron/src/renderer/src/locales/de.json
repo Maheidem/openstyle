@@ -1240,6 +1240,9 @@
       "recordWhenItStarts": "Beim Start aufnehmen",
       "recordWhenItStartsLabel": "{{title}} beim Start aufnehmen",
       "willStart": "Die Aufnahme startet um {{time}}"
+    },
+    "models": {
+      "label": "Aktive Modelle"
     }
   }
 }
