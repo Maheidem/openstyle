@@ -225,6 +225,8 @@ A throwaway Playwright spec proved the Speakers dialog with fictional data in 18
    `/usr/bin/log show --last 10m --predicate 'subsystem == "com.apple.TCC"' --style compact | grep -c AUTHREQ_PROMPTING`
    If a privacy dialog appears, stop at once. Do not click it. Report the service name.
 10. Never start a recording, the mic or system audio in a proof.
+11. Never stub `permissions:check-mic` (or any permission check) to return "granted". With "granted", the Settings Transcription section calls `getUserMedia` (`settings.tsx:515-529`), and macOS shows a microphone dialog for the Test Runner. This happened on 2026-10-22 (PR #303). If a shot needs a "granted" state, restore the real handler in the same step, before any navigation.
+12. Open `/settings` only with a visible section hash, for example `#data`. A hidden hash such as `#network` falls back to the Transcription section, which can probe the mic.
 
 ## For pi children
 
