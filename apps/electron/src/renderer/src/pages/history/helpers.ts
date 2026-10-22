@@ -18,6 +18,27 @@ export function shortModel(model: string | null | undefined): string {
   return model.includes("/") ? (model.split("/").pop() ?? "") : model;
 }
 
+/** Model id prefixes of the built-in local models (MLX speech and MLX LLM). */
+const BUILTIN_MODEL_PREFIXES = ["local-mlx/", "local-mlx-llm/"];
+
+/**
+ * The label of a history model id. A built-in id shows its catalog name
+ * ("Qwen3 Fast", "Gemma 4 E2B") from `names` (model id to model name). Any
+ * other id, and a built-in id that `names` does not have yet, shows
+ * `shortModel`.
+ */
+export function resolveModelLabel(
+  model: string | null | undefined,
+  names: ReadonlyMap<string, string>,
+): string {
+  if (!model) return "";
+  if (BUILTIN_MODEL_PREFIXES.some((prefix) => model.startsWith(prefix))) {
+    const name = names.get(model);
+    if (name) return name;
+  }
+  return shortModel(model);
+}
+
 export function formatCost(cost: number): string {
   if (cost === 0) return "$0.000";
   if (cost < 0.001) return "<$0.001";
