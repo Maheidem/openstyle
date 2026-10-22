@@ -347,6 +347,49 @@ test("summary: keyword match, owner and due, unmatched items, must-not-claim", (
   assert.equal(scoreSummary(gold({ summary: null }), "{}"), null);
 });
 
+test('summary: a gold owner "A (B)" accepts either form (#273)', () => {
+  const twoForms = (owner: string) =>
+    gold({
+      summary: {
+        decisions: [],
+        actionItems: [
+          { id: "a1", keywords: ["send", "invoice"], owner, due: null },
+        ],
+        mustNotClaim: [],
+      },
+    });
+  const ownerOf = (goldOwner: string, outOwner: string | null) =>
+    scoreSummary(
+      twoForms(goldOwner),
+      JSON.stringify({
+        ...SUMMARY,
+        decisions: [],
+        actionItems: [{ task: "Send the invoice", owner: outOwner, due: null }],
+      }),
+    )?.owner;
+  const right = { correct: 1, wrong: 0, missing: 0, wrongIds: [] };
+  const wrong = { correct: 0, wrong: 1, missing: 0, wrongIds: ["a1"] };
+  // The name with a surname, the label, the whole value: the same person.
+  assert.deepEqual(ownerOf("Ana (Them 2)", "Ana Lima"), right);
+  assert.deepEqual(ownerOf("Ana (Them 2)", "Them 2"), right);
+  assert.deepEqual(ownerOf("Ana (Them 2)", "Ana (Them 2)"), right);
+  assert.deepEqual(ownerOf("Me (Marcos)", "Me"), right);
+  assert.deepEqual(ownerOf("Me (Marcos)", "Marcos Vale"), right);
+  // Another person or another label stays wrong.
+  assert.deepEqual(ownerOf("Ana (Them 2)", "Bruno Lima"), wrong);
+  assert.deepEqual(ownerOf("Ana (Them 2)", "Them 3"), wrong);
+  assert.deepEqual(ownerOf("Me (Marcos)", "Them 1"), wrong);
+  // A gold value with no parentheses keeps the old rule.
+  assert.deepEqual(ownerOf("Ana", "Ana Lima"), right);
+  assert.deepEqual(ownerOf("Ana", "Bruno"), wrong);
+  assert.deepEqual(ownerOf("Ana (Them 2)", null), {
+    correct: 0,
+    wrong: 0,
+    missing: 1,
+    wrongIds: [],
+  });
+});
+
 test("tags: precision and recall with synonyms and the app's normalization", () => {
   const t = scoreTags(gold(), ["price ", "q4 plan", "lunch"]);
   assert.ok(t);

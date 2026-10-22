@@ -359,13 +359,26 @@ const holdsAll = (text: string, keywords: string[]) => {
 };
 
 /** Two names or times are the same when the words of one hold all words of the other. */
-function sameValue(a: string, b: string): boolean {
+function sameWords(a: string, b: string): boolean {
   const wa = words(a);
   const wb = words(b);
   if (wa.length === 0 || wb.length === 0) return false;
   const sa = new Set(wa);
   const sb = new Set(wb);
   return wa.every((w) => sb.has(w)) || wb.every((w) => sa.has(w));
+}
+
+/**
+ * The output value is the gold value. A gold value "A (B)" names one person
+ * or time in two forms, for example "Ana (Them 2)" or "Me (Ana)". The output
+ * can use either form, so it is compared with the whole value, with A and
+ * with B. Issue #273: the output "Ana Lima" for the gold "Ana (Them 2)" was
+ * scored wrong, because neither word set held the other.
+ */
+function sameValue(gold: string, output: string): boolean {
+  const forms = /^(.+?)\s*\(([^()]+)\)\s*$/.exec(gold);
+  const alternatives = forms ? [gold, forms[1] ?? "", forms[2] ?? ""] : [gold];
+  return alternatives.some((g) => sameWords(g, output));
 }
 
 export interface ValueScore {
