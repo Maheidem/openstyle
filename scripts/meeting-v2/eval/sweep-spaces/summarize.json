@@ -1,0 +1,41 @@
+{
+  "stage": "summarize",
+  "baseline": {
+    "contextBudget": 8000,
+    "temperature": 0
+  },
+  "params": {
+    "contextBudget": {
+      "values": [4000, 8000, 16000],
+      "integer": true
+    },
+    "temperature": {
+      "values": [0, 0.3]
+    },
+    "top_p": {
+      "values": [0.95],
+      "when": "temperature>0"
+    },
+    "top_k": {
+      "values": [64],
+      "when": "temperature>0"
+    }
+  },
+  "fine": true,
+  "repeats": 3,
+  "earlyStopAfter": 2,
+  "earlyStopMargin": 2,
+  "controls": [
+    {
+      "contextBudget": 8000,
+      "temperature": 0,
+      "repetition_penalty": 1.1
+    },
+    {
+      "contextBudget": 8000,
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 64
+    }
+  ]
+}

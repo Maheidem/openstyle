@@ -1,0 +1,34 @@
+{
+  "stage": "suggestTags",
+  "baseline": {
+    "maxItems": null,
+    "temperature": 0
+  },
+  "params": {
+    "maxItems": {
+      "values": [null, 5]
+    },
+    "temperature": {
+      "values": [0, 0.3]
+    },
+    "top_p": {
+      "values": [0.95],
+      "when": "temperature>0"
+    },
+    "top_k": {
+      "values": [64],
+      "when": "temperature>0"
+    }
+  },
+  "fine": true,
+  "repeats": 3,
+  "earlyStopAfter": 2,
+  "earlyStopMargin": 0.3,
+  "controls": [
+    {
+      "maxItems": null,
+      "temperature": 0,
+      "repetition_penalty": 1.1
+    }
+  ]
+}

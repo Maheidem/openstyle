@@ -88,6 +88,11 @@ jobs:
       - name: Guard hook tests
         run: bash scripts/guard-hook.test.sh
 
+      # The sweep tests import server modules, which import the built
+      # workspace packages (dist/).
+      - name: Build the server's workspace packages
+        run: pnpm --filter "@openstyle/server^..." run build
+
       # The hard-fail checks of pnpm meeting:eval (fictional text only).
       - name: Meeting eval check tests
         run: pnpm meeting:eval:test
