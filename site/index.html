@@ -65,7 +65,7 @@
             "applicationCategory": "ProductivityApplication",
             "url": "https://maheidem.github.io/openstyle/",
             "description": "Free, open source dictation app for Mac on Apple silicon. Hold a key, talk, let go; it types clean text in the app you use. Speech-to-text runs locally with MLX models, on your own server, or on a cloud provider.",
-            "softwareVersion": "2.12.1",
+            "softwareVersion": "2.21.2",
             "offers": {
               "@type": "Offer",
               "price": "0",
@@ -138,7 +138,7 @@
                 "name": "Can I use my own server?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. Speech-to-text needs a server with an OpenAI-compatible transcription endpoint, for example oMLX. The AI cleanup LLM can run on oMLX, LM Studio or any OpenAI-compatible server."
+                  "text": "Yes. Speech-to-text needs a server with an OpenAI-compatible transcription endpoint, for example oMLX. The AI cleanup LLM can run inside the app with the built-in Gemma 4, or on oMLX, LM Studio or any OpenAI-compatible server."
                 }
               },
               {
@@ -146,7 +146,7 @@
                 "name": "Does Openstyle take meeting notes?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. It records meetings, transcribes them after the call, writes a summary, and detects speakers."
+                  "text": "Yes. It records meetings, transcribes them after the call, writes a summary, and detects speakers. You can file meetings in folders, tag them and search across all meetings."
                 }
               }
             ]
@@ -223,7 +223,7 @@
           </p>
           <p class="hero-meta">
             <span class="hero-meta-group">
-              <span data-version>Version 2.12.1</span>
+              <span data-version>Version 2.21.2</span>
               <span class="meta-sep" aria-hidden="true">&middot;</span>
             </span>
             <span>For Macs with Apple silicon</span>
@@ -351,8 +351,8 @@
               <h3 class="lane-name">Built into Openstyle</h3>
               <p class="lane-tag">Stays on your Mac</p>
               <p class="lane-text">
-                Models run on your Mac with MLX: Parakeet, Qwen3-ASR, Whisper.
-                Add more from Hugging Face.
+                Models run on your Mac. Speech: Parakeet, Qwen3-ASR, SenseVoice,
+                Whisper. Text: Gemma 4. Add more speech models from Hugging Face.
               </p>
             </div>
             <div class="lane lane-dash">
@@ -405,7 +405,8 @@
         </h2>
         <p class="meetings-line">
           Openstyle records your meetings, transcribes them after the call and
-          writes a summary.
+          writes a summary. File them in folders, add tags and search across all
+          meetings.
         </p>
         <div class="meetings-stack">
           <figure class="shot">
@@ -492,7 +493,7 @@
           <li class="feature-item">
             <h3 class="feature-name">Meetings</h3>
             <p class="feature-text">
-              Record, transcribe and summarize meetings
+              Record, transcribe, summarize, file and search meetings
             </p>
           </li>
           <li class="feature-item">

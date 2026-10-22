@@ -16,7 +16,8 @@ Downloads: https://github.com/Maheidem/openstyle/releases/latest
   terminals.
 - Optional AI cleanup fixes grammar and punctuation and strips filler words.
 - Meetings: Openstyle records your meetings, transcribes them after the call
-  and writes a summary. It detects speakers.
+  and writes a summary. It detects speakers. You can file meetings in folders,
+  tag them and search across all meetings.
 - Import: transcribe audio files.
 - Vocabulary: teach it your names and terms.
 - Tone: set how the cleaned text sounds.
@@ -26,11 +27,13 @@ Downloads: https://github.com/Maheidem/openstyle/releases/latest
 
 You choose where your voice goes:
 
-- Built into Openstyle: models run on your Mac with MLX (Parakeet, Qwen3-ASR,
-  Whisper). Add more from Hugging Face. Audio stays on your Mac.
+- Built into Openstyle: models run on your Mac. Speech: Parakeet, Qwen3-ASR,
+  SenseVoice, Whisper. Text: Gemma 4. Add more speech models from Hugging
+  Face. Audio stays on your Mac.
 - Your own server: use a server with an OpenAI-compatible transcription
   endpoint, for example oMLX. Audio goes to that server. The AI cleanup LLM
-  can run on oMLX, LM Studio or any OpenAI-compatible server.
+  can run inside the app (built-in Gemma 4), or on oMLX, LM Studio or any
+  OpenAI-compatible server.
 - Cloud provider: use OpenAI, Groq, Deepgram, ElevenLabs and others with your
   own API key. Audio goes to that provider.
 
@@ -80,12 +83,13 @@ a cloud provider it goes to that provider.
 
 Can I use my own server?
 Yes. Speech-to-text needs a server with an OpenAI-compatible transcription
-endpoint, for example oMLX. The AI cleanup LLM can run on oMLX, LM Studio or
-any OpenAI-compatible server.
+endpoint, for example oMLX. The AI cleanup LLM can run inside the app with
+the built-in Gemma 4, or on oMLX, LM Studio or any OpenAI-compatible server.
 
 Does it take meeting notes?
 Yes. It records meetings, transcribes them after the call, writes a summary,
-and detects speakers.
+and detects speakers. You can file meetings in folders, tag them and search
+across all meetings.
 
 How do updates work?
 Openstyle checks for updates and downloads them in the background. You choose
