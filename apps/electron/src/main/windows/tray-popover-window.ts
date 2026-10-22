@@ -24,6 +24,7 @@ import { refreshMeetingsFlag, state } from "../main-state";
 import { getNativeBinaryPath } from "../native-binary";
 import { getTrayPopoverURL } from "../renderer-urls";
 import { isSystemAudioCaptureSupported } from "../system-audio-capture";
+import { currentTrayAppearance, refreshTrayIcon } from "../tray-icon";
 import { trayPopoverPosition } from "../tray-popover-position";
 import { showSettingsWindow } from "./settings-window";
 
@@ -144,6 +145,7 @@ export function hideTrayPopover(reason: string): void {
   const win = state.trayPopover;
   if (!win?.isVisible()) return;
   win.hide();
+  win.webContents.send("tray-popover:hidden");
   releaseEscape();
   stopClickWatcher();
   log.info(`Tray popover hidden (${reason})`);
@@ -287,6 +289,7 @@ export function registerTrayPopoverIpc(deps: {
         state.meetingRecorder !== null &&
         (isSystemAudioCaptureSupported() || isFakeMeetingCapture()),
       update: state.updateDownloadState,
+      visible: isTrayPopoverVisible(),
     };
   });
 
@@ -308,6 +311,14 @@ export function registerTrayPopoverIpc(deps: {
     showSettingsWindow(TARGET_PATHS[target]);
   });
 
+  // A click on a meeting job opens that meeting in the main window.
+  ipcMain.on("tray-popover:open-meeting", (event, id: unknown) => {
+    if (!fromPopover(event) || typeof id !== "string") return;
+    if (!/^[\w-]{1,128}$/.test(id)) return;
+    hideTrayPopover("open meeting");
+    showSettingsWindow(`/meetings?meeting=${encodeURIComponent(id)}`);
+  });
+
   ipcMain.on("tray-popover:quit", (event) => {
     if (fromPopover(event)) app.quit();
   });
@@ -317,9 +328,12 @@ export function registerTrayPopoverIpc(deps: {
     ipcMain.on("e2e:tray-popover-toggle", () => {
       toggleTrayPopover("e2e");
     });
+    // The tray look that main shows now: a test cannot capture the menu bar.
+    ipcMain.handle("e2e:tray-appearance", () => currentTrayAppearance());
     // An update that finished its download, for the popover footer.
     ipcMain.on("e2e:tray-popover-update-ready", () => {
       state.updateDownloadState = "downloaded";
+      refreshTrayIcon();
     });
   }
 }

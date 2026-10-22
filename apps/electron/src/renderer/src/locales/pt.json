@@ -1208,6 +1208,27 @@
       "openApp": "Abrir o Openstyle",
       "settings": "Configurações",
       "quit": "Sair do Openstyle"
+    },
+    "jobs": {
+      "title": "Tarefas",
+      "untitled": "Reunião sem título",
+      "kind": {
+        "enhance": "Melhorar",
+        "summarize": "Resumir",
+        "transcribe": "Transcrever",
+        "diarize": "Falantes"
+      },
+      "running": {
+        "enhance": "Melhorando {{title}}",
+        "summarize": "Resumindo {{title}}",
+        "transcribe": "Transcrevendo {{title}}",
+        "diarize": "Identificando falantes em {{title}}"
+      },
+      "queued": "Na fila · {{kind}} · {{title}}",
+      "downloading": "Baixando {{model}}",
+      "downloadSize": "{{done}} de {{total}} GB",
+      "loading": "Carregando {{model}}…",
+      "openMeeting": "{{job}}. Abrir a reunião."
     }
   }
 }

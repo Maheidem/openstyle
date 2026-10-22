@@ -20,6 +20,17 @@ import {
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
+import {
+  type Answer,
+  bootEnhanceApp,
+  type ChatRequest,
+  defaultSegments,
+  type EnhanceApp,
+  FakeLlm,
+  RIGHT_WORD,
+  seedMeeting,
+  WRONG_WORD,
+} from "./helpers/enhance-fixture";
 
 // ---------------------------------------------------------------------------
 // Tray popover, step 1 (issue #317). A left click on the tray icon toggles a
@@ -84,6 +95,16 @@ async function popoverVisible(): Promise<boolean> {
 async function toggle(): Promise<void> {
   await app!.evaluate(({ ipcMain }) => {
     ipcMain.emit("e2e:tray-popover-toggle");
+  });
+}
+
+/** The tray look that main shows now (E2E-only IPC). */
+async function trayIcon(): Promise<string> {
+  return dashboard.evaluate(async () => {
+    const look = (await window.electron.ipcRenderer.invoke(
+      "e2e:tray-appearance",
+    )) as { icon: string };
+    return look.icon;
   });
 }
 
@@ -328,6 +349,7 @@ test("the popover never takes focus when its Copy and Start buttons are clicked"
     .getByRole("button", { name: "Start meeting recording" })
     .click();
   await expect.poll(meetingStatus, { timeout: 15_000 }).toBe("recording");
+  await expect.poll(trayIcon).toBe("recording");
 
   const after = await focusState();
   console.log("FOCUS_PROOF", JSON.stringify({ before, after, probeHasFocus }));
@@ -478,6 +500,8 @@ test("Restart to update runs the restart path of main", async () => {
     });
     ipcMain.emit("e2e:tray-popover-update-ready");
   });
+  // No job and no meeting: the menu bar shows the badge dot.
+  await expect.poll(trayIcon).toBe("update");
   if (await popoverVisible()) await toggle();
   const popover = await openPopover();
   const restart = popover.getByRole("button", {
@@ -498,4 +522,196 @@ test("Restart to update runs the restart path of main", async () => {
       BrowserWindow.getAllWindows().some((w) => !w.isDestroyed()),
     ),
   ).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// Step 2: the Jobs section. One fake own server (FakeLlm) runs Enhance. Its
+// lane has one slot, so a held chunk call of the first meeting makes the
+// second meeting wait in the real lane (the pattern of
+// meeting-queued-badge.test.ts). OPENSTYLE_E2E_FAKE_MODEL_JOBS adds a fake
+// download of Gemma 4 E2B and a fake load of Qwen3 Fast in GET /api/jobs.
+// Nothing downloads.
+// ---------------------------------------------------------------------------
+
+test.describe("the Jobs section", () => {
+  const RUN_ID = "e2e-tray-run";
+  const RUN_TITLE = "Weekly product sync";
+  const WAIT_ID = "e2e-tray-wait";
+  const WAIT_TITLE = "Design review with Priya";
+  const fake = new FakeLlm();
+  let env: EnhanceApp;
+
+  function goodAnswer(req: ChatRequest): Answer {
+    switch (req.step) {
+      case "correct_chunk":
+        return {
+          content: JSON.stringify({
+            corrections: req.ids.map((id) => ({
+              id,
+              text: (req.lines.get(id) ?? "").replace(WRONG_WORD, RIGHT_WORD),
+            })),
+          }),
+        };
+      case "identify_speakers":
+        return { content: JSON.stringify({ speakers: [] }) };
+      case "meeting_tags":
+        return { content: JSON.stringify({ tags: ["launch plan"] }) };
+      default:
+        return {
+          content: JSON.stringify({
+            overview: "The team moved the launch date to Friday.",
+            keyPoints: ["The launch date moved."],
+            decisions: [],
+            actionItems: [],
+            openQuestions: [],
+          }),
+        };
+    }
+  }
+
+  const isRunChunk = (req: ChatRequest): boolean =>
+    req.step === "correct_chunk" &&
+    req.ids.some((id) => id.startsWith(`${RUN_ID}-`));
+
+  /** Answer the held chunk call of the run meeting. */
+  function releaseRunChunk(): void {
+    const req = fake.requests.filter(isRunChunk).at(-1);
+    if (!req) throw new Error("no held chunk call");
+    fake.releaseHeld(goodAnswer(req));
+  }
+
+  test.beforeAll(async () => {
+    // This part needs the fake LLM set-up, so it uses its own app.
+    if (app) await closeApp(app);
+    rmSync(userDataDir, { recursive: true, force: true });
+    await fake.start();
+    env = await bootEnhanceApp(fake, {
+      advancedMode: false,
+      prefix: "openstyle-e2e-tray-jobs-",
+      env: { OPENSTYLE_E2E_TRAY: "1", OPENSTYLE_E2E_FAKE_MODEL_JOBS: "1" },
+    });
+    app = env.app;
+    dashboard = env.page;
+  });
+
+  test.afterAll(async () => {
+    if (env) {
+      await closeApp(env.app);
+      app = undefined;
+      rmSync(env.userDataDir, { recursive: true, force: true });
+    }
+    await fake.stop();
+  });
+
+  test("running and queued meeting jobs and the model jobs show, and the percent moves", async () => {
+    test.setTimeout(180_000);
+    seedMeeting(env.userDataDir, RUN_ID, RUN_TITLE, defaultSegments(4));
+    seedMeeting(env.userDataDir, WAIT_ID, WAIT_TITLE, defaultSegments(2));
+    fake.script = (req) => (isRunChunk(req) ? "hold" : goodAnswer(req));
+
+    const run = await env.api("POST", `/meetings/${RUN_ID}/enhance`);
+    expect(run.status, "POST enhance of the run meeting").toBe(202);
+    await expect.poll(() => fake.heldCount(), { timeout: 30_000 }).toBe(1);
+    const wait = await env.api("POST", `/meetings/${WAIT_ID}/enhance`);
+    expect(wait.status, "POST enhance of the waiting meeting").toBe(202);
+
+    const popover = await openPopover();
+    const jobs = popover.getByTestId("tray-popover-jobs");
+    await expect(jobs).toBeVisible({ timeout: 10_000 });
+    const rows = popover.getByTestId("tray-popover-job");
+    const running = rows.filter({ hasText: `Enhancing ${RUN_TITLE}` });
+    const queued = rows.filter({ hasText: WAIT_TITLE });
+    await expect(running).toBeVisible({ timeout: 10_000 });
+    await expect(queued).toHaveText(`Queued · Enhance · ${WAIT_TITLE}`, {
+      timeout: 15_000,
+    });
+    await expect(queued).toHaveAttribute("data-queued", "true");
+    await expect(queued).not.toContainText("%");
+    await expect(queued).toHaveAccessibleName(
+      `Queued · Enhance · ${WAIT_TITLE}. Open the meeting.`,
+    );
+    await expect(running).toHaveAccessibleName(
+      new RegExp(`^Enhancing ${RUN_TITLE}, \\d+%\\. Open the meeting\\.$`),
+    );
+
+    // The model rows of the seam: real catalog names and sizes.
+    const models = popover.getByTestId("tray-popover-model-job");
+    const download = models.filter({ hasText: "Downloading Gemma 4 E2B" });
+    await expect(download).toContainText(/\d\.\d of 4\.4 GB/);
+    await expect(download).toContainText(/\d+%/);
+    await expect(
+      models.filter({ hasText: "Loading Qwen3 Fast…" }),
+    ).toBeVisible();
+
+    // The menu bar shows the job ring.
+    await expect.poll(trayIcon, { timeout: 10_000 }).toBe("job");
+
+    // The percent of the run moves when its held chunk call is answered.
+    const percent = async (): Promise<number> =>
+      Number(
+        /(\d+)%/.exec((await running.innerText()) ?? "")?.[1] ?? Number.NaN,
+      );
+    const before = await percent();
+    releaseRunChunk();
+    await expect.poll(() => fake.heldCount(), { timeout: 30_000 }).toBe(1);
+    await expect.poll(percent, { timeout: 10_000 }).toBeGreaterThan(before);
+    console.log(
+      "JOB_PERCENT",
+      JSON.stringify({ before, after: await percent() }),
+    );
+    await shot(popover, "jobs-light.png");
+  });
+
+  test("screenshots of the Jobs section in dark (proof only)", async () => {
+    test.skip(!SHOTS_DIR, "Only with OPENSTYLE_PROOF_SHOTS.");
+    const popover = await openPopover();
+    await popover.evaluate(() => localStorage.setItem("theme", "dark"));
+    await popover.reload();
+    await expect(popover.getByTestId("tray-popover-job")).toHaveCount(2, {
+      timeout: 10_000,
+    });
+    await popover.waitForTimeout(400);
+    await shot(popover, "jobs-dark.png");
+    await popover.evaluate(() => localStorage.removeItem("theme"));
+    await popover.reload();
+    await expect(popover.getByTestId("tray-popover-job")).toHaveCount(2, {
+      timeout: 10_000,
+    });
+  });
+
+  test("a click on a meeting job opens that meeting in the main window", async () => {
+    const popover = await openPopover();
+    await popover
+      .getByTestId("tray-popover-job")
+      .filter({ hasText: `Enhancing ${RUN_TITLE}` })
+      .click();
+    await expect.poll(popoverVisible, { timeout: 5_000 }).toBe(false);
+    await expect(dashboard.getByTestId("meetings-job-line")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      dashboard.getByTestId("meetings-segment").first(),
+    ).toBeVisible();
+    expect(new URL(dashboard.url()).pathname).toBe("/meetings");
+  });
+
+  test("when the meeting jobs end, only the model jobs stay", async () => {
+    test.setTimeout(120_000);
+    fake.script = goodAnswer;
+    releaseRunChunk();
+    const popover = await openPopover();
+    await expect(popover.getByTestId("tray-popover-job")).toHaveCount(0, {
+      timeout: 60_000,
+    });
+    await expect(popover.getByTestId("tray-popover-model-job")).toHaveCount(2);
+    await shot(popover, "models-light.png");
+    await popover.evaluate(() => localStorage.setItem("theme", "dark"));
+    await popover.reload();
+    await expect(popover.getByTestId("tray-popover-model-job")).toHaveCount(2, {
+      timeout: 10_000,
+    });
+    await popover.waitForTimeout(400);
+    await shot(popover, "models-dark.png");
+    await popover.evaluate(() => localStorage.removeItem("theme"));
+  });
 });

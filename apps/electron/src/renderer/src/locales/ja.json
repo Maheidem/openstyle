@@ -1209,6 +1209,27 @@
       "openApp": "Openstyle を開く",
       "settings": "設定",
       "quit": "Openstyle を終了"
+    },
+    "jobs": {
+      "title": "ジョブ",
+      "untitled": "無題の会議",
+      "kind": {
+        "enhance": "改善",
+        "summarize": "要約",
+        "transcribe": "文字起こし",
+        "diarize": "話者"
+      },
+      "running": {
+        "enhance": "{{title}} を改善中",
+        "summarize": "{{title}} を要約中",
+        "transcribe": "{{title}} を文字起こし中",
+        "diarize": "{{title}} の話者を識別中"
+      },
+      "queued": "待機中 · {{kind}} · {{title}}",
+      "downloading": "{{model}} をダウンロード中",
+      "downloadSize": "{{done}} / {{total}} GB",
+      "loading": "{{model}} を読み込み中…",
+      "openMeeting": "{{job}}。会議を開きます。"
     }
   }
 }

@@ -39,7 +39,7 @@ import { registerMeetingImportIpc } from "../meeting-import";
 import { registerMeetingIpc } from "../meeting-ipc";
 import { resolveMicLabel } from "../meeting-mic-label";
 import { MeetingRecorder } from "../meeting-recorder";
-import { buildTrayContextMenu, updateTrayForMeeting } from "../menus";
+import { buildTrayContextMenu } from "../menus";
 import { notifyImportComplete, notifyPasteFailed } from "../notifications";
 import { pasteIntoFocusedApp } from "../paste";
 import {
@@ -55,6 +55,7 @@ import {
   serverClient,
   serverFetch,
 } from "../server-target";
+import { refreshTrayIcon } from "../tray-icon";
 import { createMeetingCaptureWindow } from "../windows/meeting-capture-window";
 import {
   finishPillMeetingExit,
@@ -164,7 +165,7 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
         status,
         startedAt,
       );
-      updateTrayForMeeting(recording);
+      refreshTrayIcon();
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         state.tray?.setContextMenu(buildTrayContextMenu());

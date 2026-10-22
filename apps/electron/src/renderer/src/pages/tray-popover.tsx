@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { JobsSection, useTrayJobs } from "./tray-popover-jobs";
 
 // The tray popover (issue #317, design Option B). Sections, top to bottom:
 // header, meeting control, next event (step 3), recent dictations, jobs
@@ -62,6 +63,9 @@ export default function TrayPopoverPage(): React.JSX.Element {
     startedAt: null,
   });
   const [recent, setRecent] = useState<RecentDictation[] | null>(null);
+  // True while the popover shows: the jobs poll runs only then.
+  const [visible, setVisible] = useState(false);
+  const jobs = useTrayJobs(visible);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const loadRecent = useCallback(async () => {
@@ -84,6 +88,7 @@ export default function TrayPopoverPage(): React.JSX.Element {
       window.api.getMeetingStatus(),
     ]);
     setInfo(state);
+    setVisible(state.visible);
     setMeeting(status);
     await loadRecent();
   }, [loadRecent]);
@@ -92,6 +97,7 @@ export default function TrayPopoverPage(): React.JSX.Element {
     void loadAll();
     const offShown = window.api.onTrayPopoverShown(() => void loadAll());
     const offDone = window.api.onTranscriptionDone(() => void loadRecent());
+    const offHidden = window.api.onTrayPopoverHidden(() => setVisible(false));
     const offMeeting = window.api.onMeetingStatusChanged(() => {
       // The event has no meeting id, so read the full status.
       void window.api.getMeetingStatus().then(setMeeting);
@@ -99,6 +105,7 @@ export default function TrayPopoverPage(): React.JSX.Element {
     return () => {
       offShown();
       offDone();
+      offHidden();
       offMeeting();
     };
   }, [loadAll, loadRecent]);
@@ -172,7 +179,14 @@ export default function TrayPopoverPage(): React.JSX.Element {
 
       <RecentDictations items={recent} />
 
-      {/* Step 2 (issue #317): the "Jobs" section goes here. */}
+      <JobsSection
+        jobs={jobs}
+        title={
+          <SectionTitle>
+            <span id="tray-popover-jobs">{t("trayPopover.jobs.title")}</span>
+          </SectionTitle>
+        }
+      />
 
       <Footer info={info} />
     </main>

@@ -1209,6 +1209,27 @@
       "openApp": "Ouvrir Openstyle",
       "settings": "Réglages",
       "quit": "Quitter Openstyle"
+    },
+    "jobs": {
+      "title": "Tâches",
+      "untitled": "Réunion sans titre",
+      "kind": {
+        "enhance": "Améliorer",
+        "summarize": "Résumer",
+        "transcribe": "Transcrire",
+        "diarize": "Intervenants"
+      },
+      "running": {
+        "enhance": "Amélioration de {{title}}",
+        "summarize": "Résumé de {{title}}",
+        "transcribe": "Transcription de {{title}}",
+        "diarize": "Recherche des intervenants de {{title}}"
+      },
+      "queued": "En attente · {{kind}} · {{title}}",
+      "downloading": "Téléchargement de {{model}}",
+      "downloadSize": "{{done}} sur {{total}} Go",
+      "loading": "Chargement de {{model}}…",
+      "openMeeting": "{{job}}. Ouvrir la réunion."
     }
   }
 }

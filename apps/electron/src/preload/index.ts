@@ -299,10 +299,15 @@ const api = {
   /** The height of the popover content, so main can size the window. */
   setTrayPopoverHeight: (height: number): void =>
     ipcRenderer.send("tray-popover:set-height", height),
+  /** The popover hides. Stop the jobs poll. */
+  onTrayPopoverHidden: listen("tray-popover:hidden"),
   hideTrayPopover: (): void => ipcRenderer.send("tray-popover:hide"),
   /** Close the popover and show a page in the main window. */
   openFromTrayPopover: (target: TrayPopoverTarget): void =>
     ipcRenderer.send("tray-popover:open", target),
+  /** Close the popover and open a meeting in the main window. */
+  openMeetingFromTrayPopover: (id: string): void =>
+    ipcRenderer.send("tray-popover:open-meeting", id),
   quitFromTrayPopover: (): void => ipcRenderer.send("tray-popover:quit"),
 };
 

@@ -1209,6 +1209,27 @@
       "openApp": "Openstyle öffnen",
       "settings": "Einstellungen",
       "quit": "Openstyle beenden"
+    },
+    "jobs": {
+      "title": "Aufgaben",
+      "untitled": "Meeting ohne Titel",
+      "kind": {
+        "enhance": "Verbessern",
+        "summarize": "Zusammenfassen",
+        "transcribe": "Transkribieren",
+        "diarize": "Sprecher"
+      },
+      "running": {
+        "enhance": "{{title}} wird verbessert",
+        "summarize": "{{title}} wird zusammengefasst",
+        "transcribe": "{{title}} wird transkribiert",
+        "diarize": "Sprecher in {{title}} werden erkannt"
+      },
+      "queued": "Wartet · {{kind}} · {{title}}",
+      "downloading": "{{model}} wird geladen",
+      "downloadSize": "{{done}} von {{total}} GB",
+      "loading": "{{model}} wird gestartet…",
+      "openMeeting": "{{job}}. Meeting öffnen."
     }
   }
 }

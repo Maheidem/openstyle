@@ -1541,6 +1541,27 @@
       "openApp": "Open Openstyle",
       "settings": "Settings",
       "quit": "Quit Openstyle"
+    },
+    "jobs": {
+      "title": "Jobs",
+      "untitled": "Untitled meeting",
+      "kind": {
+        "enhance": "Enhance",
+        "summarize": "Summarize",
+        "transcribe": "Transcribe",
+        "diarize": "Speakers"
+      },
+      "running": {
+        "enhance": "Enhancing {{title}}",
+        "summarize": "Summarizing {{title}}",
+        "transcribe": "Transcribing {{title}}",
+        "diarize": "Finding speakers in {{title}}"
+      },
+      "queued": "Queued · {{kind}} · {{title}}",
+      "downloading": "Downloading {{model}}",
+      "downloadSize": "{{done}} of {{total}} GB",
+      "loading": "Loading {{model}}…",
+      "openMeeting": "{{job}}. Open the meeting."
     }
   }
 }
