@@ -327,7 +327,7 @@ export function buildTagsSystemPrompt(input: TagsPromptInput): string {
 
 Rules:
 - Give at most ${input.maxTags} tags. Give fewer when fewer topics are clear. Give an empty list when the transcript has no clear topic.
-- A tag names a topic, a project, a product, a customer or a kind of meeting. Use one to three words. Use lowercase.
+- A tag names a topic, a project, a product, a customer or a kind of meeting. Use one or two words, and prefer one word. Write the name itself: "kubernetes", not "kubernetes review". Use lowercase.
 - Do not use a person's name, a date, or a generic word such as "meeting", "call" or "discussion" as a tag.
 - Write the tags in the language of the transcript, unless an existing tag fits.
 - Write no comment.`;
