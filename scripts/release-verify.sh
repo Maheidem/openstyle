@@ -3,7 +3,9 @@
 #   bash scripts/release-verify.sh <version>
 # Checks: the release is published (not a draft) and has every asset; the
 # latest-mac.yml feed names <version>; the zip and dmg match the feed sha512
-# and size; the MLX worker from the release runs one forced alignment.
+# and size; a Developer ID app passes spctl and stapler (self-signed and
+# ad-hoc apps skip these checks); the MLX worker from the release runs one
+# forced alignment.
 # Prints PASS/FAIL/SKIPPED per check and exits 1 on any FAIL.
 # The worker check uses the aligner model already on disk
 # (ALIGNER_HF_HOME, default /tmp/meeting-p4b-hf/hf) and never downloads it.
@@ -124,10 +126,46 @@ for file in "$zip" "$dmg"; do
   else
     fail "$file size $got_size, feed has $want_size"
   fi
+  # Keep the app from the zip for the signature check in step 3.
+  if [ "$file" = "$zip" ] && [ "$(uname -s)" = Darwin ]; then
+    mkdir -p "$tmp/app"
+    ditto -x -k "$tmp/$file" "$tmp/app" || fail "unzip $file"
+  fi
   rm -f "${tmp:?}/$file"
 done
 
-# 3. Worker: one forced alignment with the released worker.
+# 3. Signature. A Developer ID build must pass Gatekeeper as notarized and
+# carry a stapled ticket. Self-signed (Openstyle Release, 2.15.1 and later)
+# and ad-hoc releases skip the Gatekeeper checks, so they still PASS.
+app="$tmp/app/Openstyle.app"
+if [ "$(uname -s)" != Darwin ]; then
+  skip "signature checks (need macOS)"
+elif [ ! -d "$app" ]; then
+  fail "Openstyle.app is in $zip"
+else
+  sig=$(codesign -dv --verbose=4 "$app" 2>&1 || true)
+  authority=$(sed -n 's/^Authority=//p' <<<"$sig" | head -1)
+  if grep -q '^Authority=Developer ID Application: ' <<<"$sig"; then
+    pass "app is signed by $authority"
+    assessment=$(spctl -a -vv -t exec "$app" 2>&1 || true)
+    if grep -qF accepted <<<"$assessment" &&
+      grep -qF 'source=Notarized Developer ID' <<<"$assessment"; then
+      pass "spctl accepts the app (source=Notarized Developer ID)"
+    else
+      fail "spctl: $(tr '\n' ' ' <<<"$assessment")"
+    fi
+    if staple=$(xcrun stapler validate "$app" 2>&1); then
+      pass "stapled notarization ticket is valid"
+    else
+      fail "stapler validate: $(tail -1 <<<"$staple")"
+    fi
+  else
+    skip "spctl and stapler checks (app is not Developer ID signed: ${authority:-ad-hoc})"
+  fi
+  rm -rf "${tmp:?}/app"
+fi
+
+# 4. Worker: one forced alignment with the released worker.
 if [ "$(uname -sm)" != "Darwin arm64" ]; then
   skip "worker align check (needs macOS arm64)"
   finish

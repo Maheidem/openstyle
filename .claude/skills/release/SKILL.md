@@ -111,16 +111,74 @@ It needs `gh`, `jq` and about 300 MB in `/tmp`; a full run takes about
 - **gh auth account split.** The active `gh` account must be the personal
   one with push/release rights on `Maheidem/openstyle`, not the work
   account. Check with `gh auth status` if pushes/releases get rejected.
-- **CI builds are signed with the self-signed certificate "Openstyle Release"
-  (since 2.15.1).** Updates keep the TCC grants (proven 2026-10-13, 2.15.1 to
-  2.15.2). The re-prompt happens only when the secret is empty and the job
-  keeps the ad-hoc build. The first update that changes the identity prompts
-  once. See "Release signing (self-signed)" below.
+- **CI signing has three paths, in this order: Developer ID, self-signed
+  "Openstyle Release", ad-hoc.** The first secret that is set wins (see
+  "Release signing (Developer ID)" below). Updates with the same identity keep
+  the TCC grants (proven 2026-10-13, 2.15.1 to 2.15.2, self-signed). The first
+  update that changes the identity prompts once.
+
+## Release signing (Developer ID)
+
+Issues #53 and #54. The macOS job in `.github/workflows/build.yml` signs with
+the owner's "Developer ID Application" certificate, with the hardened runtime.
+electron-builder then notarizes the app with the App Store Connect API key and
+staples the ticket to the app, before it makes the dmg and the zip.
+
+- **Secrets** (repository Actions secrets, stored by the owner; an agent never
+  reads or writes them):
+  - `MAC_DEVID_CERT_P12`: base64 of the PKCS#12 export of the "Developer ID
+    Application" certificate with its private key.
+  - `MAC_DEVID_CERT_PASSWORD`: the password of that p12.
+  - `APPLE_API_KEY_P8`: the raw content of the `.p8` API key file.
+  - `APPLE_API_KEY_ID`: the key ID.
+  - `APPLE_API_ISSUER`: the issuer ID.
+- **Fallback order** (step "Prepare release signing identity", output `mode`):
+  1. `devid`: `MAC_DEVID_CERT_P12` is set. All four other Developer ID secrets
+     must also be set, or the step fails with the names of the empty ones.
+  2. `self`: `MAC_DEVID_CERT_P12` is empty and `MAC_RELEASE_CERT_P12` is set.
+     See "Release signing (self-signed)" below.
+  3. `adhoc`: both are empty. One notice line, no signing.
+- **How the devid path works:** the step imports the p12 into a temporary
+  keychain, adds the Apple intermediate `DeveloperIDG2CA.cer`, writes the `.p8`
+  to `$RUNNER_TEMP/release-signing/AuthKey.p8` and passes the SHA-1 hash of the
+  identity to `-c.mac.identity`. electron-builder refuses a name that starts
+  with `Developer ID Application:`. The build step exports `APPLE_API_KEY`
+  (the file path), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` only in the devid
+  path: one of them set alone makes electron-builder fail. The step "Remove
+  release signing material" (always) deletes the keychain and the key file.
+- **Nested binaries:** `@electron/osx-sign` walks the whole bundle and signs
+  every binary file with the identity, the hardened runtime and
+  `build/entitlements.mac.plist` (`mac.entitlementsInherit`). This covers
+  `Contents/Resources/bin/*` (the Swift helpers, `ffmpeg`,
+  `fluidaudio-diarize`, `vec0.dylib`) and `Contents/Resources/whisper/*`.
+  No extra sign step is needed. The MLX worker is not in the bundle: the app
+  downloads it at run time, so notarization does not see it.
+- **Verify step** (devid): the step "Verify release signature" fails unless the
+  app and every Mach-O file under `Contents/Resources` show
+  `Authority=Developer ID Application: ...`, the same TeamIdentifier and the
+  hardened runtime flag; every helper executable has the entitlements
+  audio-input, apple-events and calendars; `spctl -a -vv -t exec` prints
+  `accepted` and `source=Notarized Developer ID`; and
+  `xcrun stapler validate` passes on the app. The dmg has no ticket
+  (electron-builder notarizes the app only); the step prints a notice for it.
+- **After the release:** `bash scripts/release-verify.sh <version>` runs
+  spctl and stapler on the app from the zip when the app is Developer ID
+  signed. For self-signed and ad-hoc releases it prints SKIPPED for these
+  checks and can still PASS.
+- **First Developer ID update:** the identity changes from "Openstyle Release"
+  to the Developer ID, so macOS asks for the Privacy permissions once more.
+  Later updates keep them. Say this in the changelog of that release.
+- **Cost:** notarization adds some minutes to each signed macOS build, also on
+  pull request builds from the same repository.
+- **Rollback:** delete the `MAC_DEVID_CERT_P12` secret. The next build uses the
+  self-signed path again (or ad-hoc if `MAC_RELEASE_CERT_P12` is also empty).
+  Users who updated to a Developer ID build then get one more Privacy prompt.
 
 ## Release signing (self-signed)
 
-The macOS job in `.github/workflows/build.yml` signs the app with the
-self-signed certificate "Openstyle Release". Craft publishes the assets of the
+When `MAC_DEVID_CERT_P12` is empty, the macOS job in
+`.github/workflows/build.yml` signs the app with the self-signed certificate
+"Openstyle Release". Craft publishes the assets of the
 release-branch Build & Test run, so this job signs the published files.
 
 - **Secrets** (repository Actions secrets): `MAC_RELEASE_CERT_P12` (base64 of
@@ -135,10 +193,9 @@ release-branch Build & Test run, so this job signs the published files.
 - **Secret set:** the job imports the key into a temporary keychain, trusts the
   certificate for code signing on the runner, and builds with
   `-c.mac.identity="Openstyle Release" -c.mac.notarize=false`. The step
-  "Verify release signature" fails the job unless the app and
-  `Contents/Resources/bin/macos-key-listener` show
-  `Authority=Openstyle Release` and the designated requirement of each contains
-  `certificate leaf`. Do not remove this check: with an identity that it cannot
+  "Verify release signature" fails the job unless the app and every Mach-O
+  file under `Contents/Resources` show `Authority=Openstyle Release` and the
+  designated requirement of each contains `certificate leaf`. Do not remove this check: with an identity that it cannot
   find, electron-builder falls back to ad-hoc on arm64 and does not fail.
 - **First signed update:** the identity changes from ad-hoc to the certificate,
   so macOS asks for the Privacy permissions once more. Later updates keep
@@ -150,8 +207,8 @@ release-branch Build & Test run, so this job signs the published files.
   setup script prints the export command).
 - **Rollback:** deleting the `MAC_RELEASE_CERT_P12` secret returns builds to
   ad-hoc at once.
-- **Developer ID** (Apple notarization) stays deferred. See
-  `specs/under-the-hood.md`, item 1.
+- **Developer ID** takes priority when `MAC_DEVID_CERT_P12` is set. See
+  "Release signing (Developer ID)" above.
 
 ## Final verification checklist
 

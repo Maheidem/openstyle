@@ -273,27 +273,104 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_16.2.app
           swift --version
 
-      # Release signing (specs/under-the-hood.md, item 1, "Alternative").
-      # When the secret MAC_RELEASE_CERT_P12 is set, this job signs the app
-      # with the self-signed certificate "Openstyle Release". macOS keeps the
-      # Privacy (TCC) permissions between two builds with the same identifier
-      # and the same certificate. The owner creates the secrets once with
-      # scripts/release-cert-setup.sh. When the secret is empty (forks, or
-      # before the owner runs the script), this job keeps the ad-hoc build.
-      # Not notarized in both cases: there is no Apple Developer account, and
-      # empty CSC_LINK/APPLE_* secrets make electron-builder fail instead of
-      # falling back.
+      # Release signing (specs/under-the-hood.md, item 1; issues #53, #54).
+      # The step picks one of three paths, in this order:
+      #   1. devid: the secret MAC_DEVID_CERT_P12 is set. The job signs with
+      #      the "Developer ID Application" identity, with the hardened
+      #      runtime, and electron-builder notarizes and staples the app
+      #      (App Store Connect API key: APPLE_API_KEY_P8, APPLE_API_KEY_ID,
+      #      APPLE_API_ISSUER).
+      #   2. self: MAC_DEVID_CERT_P12 is empty and MAC_RELEASE_CERT_P12 is set.
+      #      The job signs with the self-signed certificate "Openstyle
+      #      Release" (scripts/release-cert-setup.sh). Not notarized.
+      #   3. adhoc: both secrets are empty (forks). The build stays ad-hoc.
+      # macOS keeps the Privacy (TCC) permissions between two builds with the
+      # same identifier and the same certificate. A change of path changes the
+      # identity, so macOS asks for the permissions once more at that update.
+      # No step prints a secret value.
       - name: Prepare release signing identity
         id: signing
         timeout-minutes: 5
         shell: bash
         env:
+          DEVID_CERT_P12: ${{ secrets.MAC_DEVID_CERT_P12 }}
+          DEVID_CERT_PASSWORD: ${{ secrets.MAC_DEVID_CERT_PASSWORD }}
+          DEVID_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          DEVID_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          DEVID_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           RELEASE_CERT_P12: ${{ secrets.MAC_RELEASE_CERT_P12 }}
           RELEASE_CERT_PASSWORD: ${{ secrets.MAC_RELEASE_CERT_PASSWORD }}
         run: |
           set -euo pipefail
+          dir="$RUNNER_TEMP/release-signing"
+          kc="$dir/release-signing.keychain-db"
+
+          # Imports $1 (base64 PKCS#12) with password $2 into a temporary
+          # keychain that holds the signing key for this job only.
+          import_identity() {
+            mkdir -p "$dir"
+            chmod 700 "$dir"
+            printf '%s' "$1" | base64 -D > "$dir/identity.p12"
+            kc_pass="$(/usr/bin/openssl rand -hex 16)"
+            echo "::add-mask::$kc_pass"
+            security create-keychain -p "$kc_pass" "$kc"
+            security set-keychain-settings -lut 21600 "$kc"
+            security unlock-keychain -p "$kc_pass" "$kc"
+            security import "$dir/identity.p12" -k "$kc" -P "$2" -T /usr/bin/codesign > /dev/null
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$kc_pass" "$kc" > /dev/null
+
+            # Put the temporary keychain first in the search list, and make it the default.
+            keychains=("$kc")
+            while IFS= read -r line; do
+              line="${line#"${line%%[![:space:]]*}"}"
+              line="${line//\"/}"
+              if [ -n "$line" ]; then keychains+=("$line"); fi
+            done < <(security list-keychains -d user)
+            security list-keychains -d user -s "${keychains[@]}"
+            security default-keychain -d user -s "$kc"
+          }
+
+          if [ -n "$DEVID_CERT_P12" ]; then
+            missing=()
+            [ -n "$DEVID_CERT_PASSWORD" ] || missing+=(MAC_DEVID_CERT_PASSWORD)
+            [ -n "$DEVID_API_KEY_P8" ] || missing+=(APPLE_API_KEY_P8)
+            [ -n "$DEVID_API_KEY_ID" ] || missing+=(APPLE_API_KEY_ID)
+            [ -n "$DEVID_API_ISSUER" ] || missing+=(APPLE_API_ISSUER)
+            if [ "${#missing[@]}" -gt 0 ]; then
+              echo "::error::MAC_DEVID_CERT_P12 is set but these secrets are empty: ${missing[*]}."
+              exit 1
+            fi
+            import_identity "$DEVID_CERT_P12" "$DEVID_CERT_PASSWORD"
+            # The p12 often holds only the leaf certificate. Add the Apple
+            # intermediate "Developer ID Certification Authority" (G2), so
+            # that the identity is valid on the runner. An import of a
+            # certificate that is already present fails, so it is not fatal.
+            curl -fsSL --retry 3 --max-time 60 -o "$dir/DeveloperIDG2CA.cer" \
+              https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+            security import "$dir/DeveloperIDG2CA.cer" -k "$kc" > /dev/null 2>&1 || true
+
+            # notarytool reads the API key from a file.
+            (umask 077 && printf '%s\n' "$DEVID_API_KEY_P8" > "$dir/AuthKey.p8")
+
+            ids="$(security find-identity -v -p codesigning "$kc")"
+            echo "$ids"
+            hash="$(grep -F '"Developer ID Application: ' <<<"$ids" | head -n 1 | awk '{print $2}' || true)"
+            if ! [[ "$hash" =~ ^[0-9A-F]{40}$ ]]; then
+              echo "::error::No valid Developer ID Application identity after the import."
+              exit 1
+            fi
+            {
+              echo "mode=devid"
+              echo "signed=true"
+              echo "identity=$hash"
+              echo "api_key_path=$dir/AuthKey.p8"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ -z "$RELEASE_CERT_P12" ]; then
-            echo "::notice::MAC_RELEASE_CERT_P12 is empty. This build stays ad-hoc signed (no release signing)."
+            echo "::notice::MAC_DEVID_CERT_P12 and MAC_RELEASE_CERT_P12 are empty. This build stays ad-hoc signed (no release signing)."
+            echo "mode=adhoc" >> "$GITHUB_OUTPUT"
             echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -302,35 +379,11 @@ jobs:
             exit 1
           fi
 
-          dir="$RUNNER_TEMP/release-signing"
-          kc="$dir/release-signing.keychain-db"
-          mkdir -p "$dir"
-          chmod 700 "$dir"
-          printf '%s' "$RELEASE_CERT_P12" | base64 -D > "$dir/identity.p12"
+          import_identity "$RELEASE_CERT_P12" "$RELEASE_CERT_PASSWORD"
           # Take the certificate out of the p12, for the trust setting.
           /usr/bin/openssl pkcs12 -in "$dir/identity.p12" \
             -passin env:RELEASE_CERT_PASSWORD -nokeys -clcerts |
             /usr/bin/openssl x509 -out "$dir/cert.pem"
-
-          # Temporary keychain that holds the signing key for this job only.
-          kc_pass="$(/usr/bin/openssl rand -hex 16)"
-          echo "::add-mask::$kc_pass"
-          security create-keychain -p "$kc_pass" "$kc"
-          security set-keychain-settings -lut 21600 "$kc"
-          security unlock-keychain -p "$kc_pass" "$kc"
-          security import "$dir/identity.p12" -k "$kc" -P "$RELEASE_CERT_PASSWORD" -T /usr/bin/codesign > /dev/null
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$kc_pass" "$kc" > /dev/null
-
-          # Put the temporary keychain first in the search list, and make it the default.
-          keychains=("$kc")
-          while IFS= read -r line; do
-            line="${line#"${line%%[![:space:]]*}"}"
-            line="${line//\"/}"
-            if [ -n "$line" ]; then keychains+=("$line"); fi
-          done < <(security list-keychains -d user)
-          security list-keychains -d user -s "${keychains[@]}"
-          security default-keychain -d user -s "$kc"
-
           # A self-signed certificate is valid for code signing only when it is trusted.
           sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$dir/cert.pem"
 
@@ -340,27 +393,49 @@ jobs:
             echo "::error::The identity Openstyle Release is not valid after the import."
             exit 1
           fi
+          echo "mode=self" >> "$GITHUB_OUTPUT"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       # electron-builder 26 skips signing in pull request builds (it reads
       # GITHUB_BASE_REF) unless CSC_FOR_PULL_REQUEST is true. An empty value
-      # also counts as true, so the variable is set only in the signed branch.
+      # also counts as true, so the variable is set only in the signed paths.
       # With an identity that it cannot find, electron-builder falls back to
       # ad-hoc for arm64 and does not fail. The step "Verify release
       # signature" below catches that case.
+      # mac.identity takes the SHA-1 hash: electron-builder refuses a name
+      # that starts with "Developer ID Application:".
+      # electron-builder notarizes when notarize is not false and APPLE_API_KEY,
+      # APPLE_API_KEY_ID and APPLE_API_ISSUER are set. One of them set alone
+      # makes it fail, so the APPLE_* variables exist only in the devid path.
+      # It notarizes and staples the .app before it makes the dmg and the zip.
       - name: Build electron (macOS)
         working-directory: apps/electron
         env:
-          SIGNED: ${{ steps.signing.outputs.signed }}
+          MODE: ${{ steps.signing.outputs.mode }}
+          IDENTITY: ${{ steps.signing.outputs.identity }}
+          API_KEY_PATH: ${{ steps.signing.outputs.api_key_path }}
+          DEVID_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          DEVID_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          if [ "$SIGNED" = "true" ]; then
-            echo "Release signing path: identity Openstyle Release, notarization off."
-            export CSC_FOR_PULL_REQUEST=true
-            pnpm run build:mac -c.mac.identity="Openstyle Release" -c.mac.notarize=false
-          else
-            echo "Ad-hoc path: no release signing identity."
-            pnpm run build:mac
-          fi
+          case "$MODE" in
+            devid)
+              echo "Developer ID path: hardened runtime, notarization on."
+              export CSC_FOR_PULL_REQUEST=true
+              export APPLE_API_KEY="$API_KEY_PATH"
+              export APPLE_API_KEY_ID="$DEVID_API_KEY_ID"
+              export APPLE_API_ISSUER="$DEVID_API_ISSUER"
+              pnpm run build:mac -c.mac.identity="$IDENTITY" -c.mac.hardenedRuntime=true -c.mac.notarize=true
+              ;;
+            self)
+              echo "Release signing path: identity Openstyle Release, notarization off."
+              export CSC_FOR_PULL_REQUEST=true
+              pnpm run build:mac -c.mac.identity="Openstyle Release" -c.mac.notarize=false
+              ;;
+            *)
+              echo "Ad-hoc path: no release signing identity."
+              pnpm run build:mac
+              ;;
+          esac
 
       # Issue #170: the meeting helper converts the system audio at the rate
       # of the device. --self-test sends synthetic buffers through the real
@@ -398,10 +473,16 @@ jobs:
           file "$dylib"
           codesign -dv "$dylib"
 
+      # Checks every Mach-O file under Contents/Resources (helpers in bin/,
+      # vec0.dylib, whisper/) plus the app. electron-builder signs them with
+      # @electron/osx-sign, which walks the whole bundle and uses
+      # mac.entitlementsInherit for every file except the main app.
       - name: Verify release signature
         if: steps.signing.outputs.signed == 'true'
         working-directory: apps/electron
         shell: bash
+        env:
+          MODE: ${{ steps.signing.outputs.mode }}
         run: |
           set -euo pipefail
           app=""
@@ -413,44 +494,120 @@ jobs:
             echo "::error::No Openstyle.app found under dist/mac*."
             exit 1
           fi
-          helper="$app/Contents/Resources/bin/macos-key-listener"
-          vec="$app/Contents/Resources/bin/vec0.dylib"
-          for target in "$app" "$helper" "$vec"; do
+
+          # True when the hardened runtime flag (0x10000) is on for $1.
+          has_runtime() {
+            local flags_hex
+            flags_hex="$(codesign -dv "$1" 2>&1 | sed -n 's/.*flags=\(0x[0-9a-fA-F]*\).*/\1/p' | head -n 1)"
+            [ -n "$flags_hex" ] && (( (flags_hex & 0x10000) != 0 ))
+          }
+
+          targets=("$app")
+          executables=()
+          while IFS= read -r -d '' f; do
+            kind="$(file -b "$f")"
+            case "$kind" in
+              *Mach-O*)
+                targets+=("$f")
+                case "$kind" in *executable*) executables+=("$f") ;; esac
+                ;;
+            esac
+          done < <(find "$app/Contents/Resources" -type f -print0)
+          if [ "${#executables[@]}" -eq 0 ]; then
+            echo "::error::No native helpers found under $app/Contents/Resources."
+            exit 1
+          fi
+
+          app_team="$(codesign -dv "$app" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+          for target in "${targets[@]}"; do
             echo "== codesign -dv --verbose=4 $target"
             details="$(codesign -dv --verbose=4 "$target" 2>&1)"
             echo "$details"
-            if ! grep -qxF 'Authority=Openstyle Release' <<<"$details"; then
-              echo "::error::$target is not signed by Openstyle Release."
-              exit 1
-            fi
-            echo "== codesign -d -r- $target"
-            requirement="$(codesign -d -r- "$target" 2>&1)"
-            echo "$requirement"
-            if ! grep -qF 'certificate leaf' <<<"$requirement"; then
-              echo "::error::The designated requirement of $target has no certificate leaf."
-              exit 1
+            if [ "$MODE" = "devid" ]; then
+              if ! grep -q '^Authority=Developer ID Application: ' <<<"$details"; then
+                echo "::error::$target is not signed by a Developer ID Application identity."
+                exit 1
+              fi
+              team="$(sed -n 's/^TeamIdentifier=//p' <<<"$details")"
+              if [ -z "$team" ] || [ "$team" = "not set" ] || [ "$team" != "$app_team" ]; then
+                echo "::error::$target has TeamIdentifier '${team:-none}', the app has '${app_team:-none}'."
+                exit 1
+              fi
+              if ! has_runtime "$target"; then
+                echo "::error::$target has no hardened runtime flag. Notarization rejects it."
+                exit 1
+              fi
+            else
+              if ! grep -qxF 'Authority=Openstyle Release' <<<"$details"; then
+                echo "::error::$target is not signed by Openstyle Release."
+                exit 1
+              fi
+              echo "== codesign -d -r- $target"
+              requirement="$(codesign -d -r- "$target" 2>&1)"
+              echo "$requirement"
+              if ! grep -qF 'certificate leaf' <<<"$requirement"; then
+                echo "::error::The designated requirement of $target has no certificate leaf."
+                exit 1
+              fi
             fi
           done
 
           echo "== codesign --verify --deep --strict --verbose=2 $app"
           codesign --verify --deep --strict --verbose=2 "$app"
 
-          # The hardened runtime must stay on: the flags value includes 0x10000.
-          app_details="$(codesign -dv "$app" 2>&1)"
-          flags_hex="$(sed -n 's/.*flags=\(0x[0-9a-fA-F]*\).*/\1/p' <<<"$app_details" | head -n 1)"
-          if [ -z "$flags_hex" ] || (( (flags_hex & 0x10000) == 0 )); then
-            echo "::error::$app has no hardened runtime flag (flags=${flags_hex:-none})."
+          if ! has_runtime "$app"; then
+            echo "::error::$app has no hardened runtime flag."
             exit 1
           fi
-          echo "Hardened runtime flag is on (flags=$flags_hex)."
+          echo "Hardened runtime flag is on for $app."
 
           # The entitlement that lets the app load helpers with another signature.
           entitlements="$(codesign -d --entitlements - "$app" 2>&1)"
-          if ! grep -qF 'com.apple.security.cs.disable-library-validation' <<<"$entitlements"; then
-            echo "::error::$app lacks the entitlement com.apple.security.cs.disable-library-validation."
+          for key in com.apple.security.cs.disable-library-validation com.apple.security.cs.allow-jit; do
+            if ! grep -qF "$key" <<<"$entitlements"; then
+              echo "::error::$app lacks the entitlement $key."
+              exit 1
+            fi
+          done
+          echo "App entitlements are present."
+
+          # Under the hardened runtime a helper that opens the mic, sends
+          # Apple Events or reads Calendars needs the entitlement itself.
+          for helper in "${executables[@]}"; do
+            helper_ents="$(codesign -d --entitlements - "$helper" 2>&1)"
+            for key in com.apple.security.device.audio-input com.apple.security.automation.apple-events com.apple.security.personal-information.calendars; do
+              if ! grep -qF "$key" <<<"$helper_ents"; then
+                echo "::error::$helper lacks the entitlement $key."
+                exit 1
+              fi
+            done
+          done
+          echo "Helper entitlements are present (${#executables[@]} executables)."
+
+          if [ "$MODE" != "devid" ]; then
+            exit 0
+          fi
+
+          echo "== spctl -a -vv -t exec $app"
+          assessment="$(spctl -a -vv -t exec "$app" 2>&1 || true)"
+          echo "$assessment"
+          if ! grep -qF 'accepted' <<<"$assessment" || ! grep -qF 'source=Notarized Developer ID' <<<"$assessment"; then
+            echo "::error::Gatekeeper does not accept $app as Notarized Developer ID."
             exit 1
           fi
-          echo "Entitlement disable-library-validation is present."
+          echo "== xcrun stapler validate $app"
+          xcrun stapler validate "$app"
+
+          # electron-builder notarizes the .app only. Check the dmg ticket
+          # when the dmg has one; a dmg without a ticket is not an error.
+          for dmg in dist/*.dmg; do
+            [ -f "$dmg" ] || continue
+            if xcrun stapler validate "$dmg" > /dev/null 2>&1; then
+              echo "The dmg $dmg has a valid stapled ticket."
+            else
+              echo "::notice::The dmg $dmg has no stapled ticket. The app inside it is stapled."
+            fi
+          done
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -475,6 +632,8 @@ jobs:
             echo "No release signing material on this runner."
             exit 0
           fi
+          # The directory holds the temporary keychain, the p12 and, in the
+          # devid path, the API key file AuthKey.p8. All of it goes.
           # The runner is ephemeral, so the certificate trust is not removed here.
           # "sudo security remove-trusted-cert" waits for an authorization on a
           # headless runner and hangs the job.
