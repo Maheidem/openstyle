@@ -18,6 +18,7 @@ import {
   type RunContextRegistry,
 } from "../../llm/workflow/run-context-registry.js";
 import { loadMergedTranscript } from "../transcript-io.js";
+import type { loadFolderMemory } from "./folder-memory.js";
 import type { FailureKind, NodeId, RunStage } from "./types.js";
 
 // The injection seams of the workflow (specs/meeting-enhance-agentic.md 3.4.2).
@@ -49,6 +50,8 @@ export interface WorkflowDeps extends CallUnitDeps {
   probeEndpoint: (
     p: Pick<CallProfile, "provider" | "modelId">,
   ) => Promise<boolean>;
+  /** `prepare` calls it for a filed meeting. Default: `loadFolderMemory`. */
+  loadFolderMemory?: typeof loadFolderMemory;
   /** Test hook of 5.5 rule 4. `prepare` passes it to `resolveModels`. */
   reasoningSteps?: ReasoningSteps;
 }

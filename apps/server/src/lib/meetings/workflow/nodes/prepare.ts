@@ -12,6 +12,7 @@ import { speakerDisplayLabel } from "../../merge.js";
 import { type MeetingRow, parseAttendees } from "../../store.js";
 import { chunkForEnhance, estimateTokens } from "../chunking.js";
 import type { WorkflowDeps } from "../context.js";
+import { loadFolderMemory, mergeTerms } from "../folder-memory.js";
 import {
   buildCorrectSystemPrompt,
   buildPromptContext,
@@ -120,7 +121,20 @@ export function makePrepareNode(deps: WorkflowDeps) {
             .get(row.folder_id) as FolderContextInput | undefined) ?? null)
         : null;
 
-      const vocabTerms = loadVocabularyTerms();
+      // Project memory (issue #234): once, for a filed meeting, when search
+      // is on. Null means no memory, and the prompts are the same as before.
+      const folderMemory = row.folder_id
+        ? await (deps.loadFolderMemory ?? loadFolderMemory)(deps.db, {
+            meetingId: state.meetingId,
+            folderId: row.folder_id,
+            signal: ctx.signal,
+          })
+        : null;
+
+      // Enhance gets names and terms of the folder only, never chunk text.
+      const vocabTerms = folderMemory
+        ? mergeTerms(loadVocabularyTerms(), folderMemory.terms)
+        : loadVocabularyTerms();
       const language = row.language ?? null;
 
       const segments: PreparedSegment[] = merged.map((s) => ({
@@ -192,6 +206,7 @@ export function makePrepareNode(deps: WorkflowDeps) {
           ),
         },
         inputHash: hash,
+        ...(folderMemory ? { folderMemory } : {}),
       };
       return { prepared, models };
     },

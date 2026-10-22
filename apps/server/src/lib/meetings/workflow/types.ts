@@ -5,6 +5,7 @@ import type {
 } from "@openstyle/validations";
 import type { GatewayErrorKind } from "../../llm/call-record.js";
 import type { CallProfile } from "../../llm/model-profiles.js";
+import type { FolderMemory, FolderMemoryRecord } from "./folder-memory.js";
 import type { MeetingSummary } from "./schemas.js";
 
 // Types and pure functions of the Enhance workflow (specs/meeting-enhance-agentic.md
@@ -131,7 +132,7 @@ export interface PreparedMeeting {
   meetingId: string;
   language: string | null;
   title: string | null;
-  /** The meeting's own context. `summarize` reads only this (P8b). */
+  /** The meeting's own context. Of the context fields, `summarize` reads only this (P8b). */
   context: string | null;
   /**
    * The meeting context, then the folder block (buildPromptContext).
@@ -154,6 +155,12 @@ export interface PreparedMeeting {
   summary: { instructions: string; contextBudget: number };
   /** sha256 hex from `inputHash(loadHashRows(...), hashVariantOf(stages))`. */
   inputHash: string;
+  /**
+   * Project memory (issue #234). Absent when the meeting is unfiled, search
+   * is off, or nothing was found. `summarize` reads `summaryBlock`. Its
+   * `terms` are already in `vocabTerms`. The run record keeps the ids only.
+   */
+  folderMemory?: FolderMemory;
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +362,8 @@ export interface FinalState {
   verify: VerifyResult | null;
   summary: SummarizeResult | null;
   saved: SaveResult | null;
+  /** The ids of the project memory that `prepare` found (issue #234). */
+  retrieval?: FolderMemoryRecord | null;
 }
 
 export interface RunEnd {

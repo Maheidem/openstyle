@@ -35,6 +35,7 @@ import {
   WORKFLOW_FANOUT_CAP,
   type WorkflowDeps,
 } from "./context.js";
+import { type FolderMemory, folderMemoryRecord } from "./folder-memory.js";
 import type { CompiledWorkflow } from "./graph.js";
 import { loadGraph } from "./load-graph.js";
 import {
@@ -374,7 +375,12 @@ interface StateValues {
 }
 
 function finalStateOf(values: StateValues, fallback: RunStage[]): FinalState {
+  const prepared = values.prepared as
+    | { folderMemory?: FolderMemory }
+    | null
+    | undefined;
   return {
+    retrieval: folderMemoryRecord(prepared?.folderMemory),
     stages: values.stages ?? fallback,
     corrections: values.corrections ?? [],
     identify: values.identify ?? null,
@@ -588,12 +594,20 @@ function finish(o: {
     errorKind = "internal";
     errorDetail = o.faultDetail;
   }
-  const result =
+  const counts =
     kindOf(final.stages) === "enhance" && final.saved
       ? {
           correctedCount: final.saved.correctedCount,
           droppedCount: final.saved.droppedCount,
           suggestionCount: final.saved.suggestionCount,
+        }
+      : null;
+  // The project memory of the run: ids only, no text (issue #234, D13).
+  const result =
+    counts || final.retrieval
+      ? {
+          ...counts,
+          ...(final.retrieval ? { retrieval: final.retrieval } : {}),
         }
       : null;
   deps.recorder.finishRun(runId, status as LlmRunStatus, {
