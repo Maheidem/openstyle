@@ -19,7 +19,7 @@ import {
   STATUS_SIZE,
 } from "./constants";
 import { MeetingCapsule } from "./meeting-capsule";
-import { pillSurface } from "./meeting-cue";
+import { type MeetingCue, pillSurface } from "./meeting-cue";
 
 export interface PillViewProps {
   state: PillState;
@@ -45,8 +45,8 @@ export interface PillViewProps {
   card: { title: string; body: string; canRetry: boolean };
   dismissPill: (kind: PillExit) => void;
   retryFailedTranscription: () => void;
-  /** Start time (epoch ms) of the meeting that records now, or null. */
-  meetingStartedAt: number | null;
+  /** The meeting that the pill shows, and whether its exit plays. */
+  meetingCue: MeetingCue;
 }
 
 export function PillView({
@@ -73,7 +73,7 @@ export function PillView({
   card,
   dismissPill,
   retryFailedTranscription,
-  meetingStartedAt,
+  meetingCue,
 }: PillViewProps): React.JSX.Element {
   const { t } = useTranslation();
   return (
@@ -82,10 +82,11 @@ export function PillView({
 
       {/* A dictation takes over the pill. When it ends, the meeting
           Recording state comes back. */}
-      {pillSurface(state, meetingStartedAt) === "meeting" &&
-        meetingStartedAt !== null && (
+      {pillSurface(state, meetingCue.startedAt) === "meeting" &&
+        meetingCue.startedAt !== null && (
           <MeetingCapsule
-            startedAt={meetingStartedAt}
+            startedAt={meetingCue.startedAt}
+            leaving={meetingCue.leaving}
             layerClass={layerClass}
             riseBy={riseBy}
             transformOrigin={transformOrigin}

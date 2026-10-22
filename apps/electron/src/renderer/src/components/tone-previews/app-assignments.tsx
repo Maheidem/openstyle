@@ -349,7 +349,6 @@ export function AppAssignments({
               />
               <Button
                 type="button"
-                variant="ink"
                 className="h-9"
                 onClick={addWebsite}
                 disabled={

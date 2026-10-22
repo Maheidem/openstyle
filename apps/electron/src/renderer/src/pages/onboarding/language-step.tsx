@@ -128,7 +128,7 @@ export function LanguageStep({
         <Button variant="outline" onClick={onBack}>
           {t("common.back")}
         </Button>
-        <Button variant="ink" onClick={onContinue}>
+        <Button onClick={onContinue}>
           {t("common.continue")}
           <ArrowRight data-icon="inline-end" />
         </Button>

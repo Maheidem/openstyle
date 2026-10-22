@@ -13,12 +13,15 @@ import { LIVE, pillInnerStyle } from "./constants";
  */
 export function MeetingCapsule({
   startedAt,
+  leaving,
   layerClass,
   riseBy,
   transformOrigin,
   pillAlign,
 }: {
   startedAt: number;
+  /** True after a stop: play the quiet exit (the dictation's `quiet`). */
+  leaving: boolean;
   layerClass: string;
   riseBy: (distance: number) => CSSProperties;
   transformOrigin: string;
@@ -40,7 +43,8 @@ export function MeetingCapsule({
   const stop = (): void => {
     if (stopping) return;
     setStopping(true);
-    // The main process hides the pill when the status changes to idle.
+    // The status change starts the exit. The main process hides the pill
+    // when the exit ends.
     void window.api.stopMeetingRecording().catch(() => setStopping(false));
   };
 
@@ -53,6 +57,7 @@ export function MeetingCapsule({
         <div
           className="pill-surface pill-capsule inline-flex items-center"
           data-show={entered}
+          data-exit={leaving ? "quiet" : undefined}
           data-testid="pill-meeting"
           title={label}
           style={{

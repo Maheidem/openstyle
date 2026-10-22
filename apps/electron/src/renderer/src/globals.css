@@ -107,6 +107,8 @@
   --glass-topbar: rgba(246, 247, 249, 0.96);
   --glass-border: rgba(229, 231, 235, 0.72);
   --glass-shadow: rgba(29, 33, 41, 0.18);
+  /* The shadow of a raised card: popover, select, menu, dialog. */
+  --shadow-card: 0 4px 16px rgba(29, 33, 41, 0.08);
   --glass-nav-active: rgba(232, 241, 252, 0.9);
   --glass-nav-active-border: rgba(37, 99, 235, 0.22);
   /* Accent-passive: the ONLY sanctioned spot for the blue family outside
@@ -164,6 +166,7 @@
   --glass-topbar: rgba(23, 24, 27, 0.9);
   --glass-border: rgba(46, 49, 56, 0.52);
   --glass-shadow: rgba(0, 0, 0, 0.42);
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.32);
   --glass-nav-active: rgba(91, 141, 239, 0.16);
   --glass-nav-active-border: rgba(91, 141, 239, 0.3);
   --accent-passive-tint: rgba(91, 141, 239, 0.16);

@@ -196,7 +196,6 @@ export function FolderPanel({
           />
           <div className="mt-2 flex gap-2">
             <Button
-              variant="ink"
               size="xs"
               disabled={busy}
               onClick={() => void saveDescription()}

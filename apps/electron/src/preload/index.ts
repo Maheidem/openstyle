@@ -49,6 +49,8 @@ const api = {
   setHotkeyMode: (mode: "hold" | "toggle"): void =>
     ipcRenderer.send("hotkey:set-mode", mode),
   hidePill: (): void => ipcRenderer.send("pill:hide"),
+  // The meeting capsule ended its exit after a stop; main hides the pill.
+  meetingPillExitDone: (): void => ipcRenderer.send("pill:meeting-exit-done"),
   // Ask the pill window to grow around the capsule (or shrink back) so the
   // expanded status card has somewhere to render.
   setPillExpanded: (expanded: boolean): void =>

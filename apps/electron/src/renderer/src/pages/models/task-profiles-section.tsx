@@ -929,7 +929,6 @@ function RenamePresetEditor({
           {t("common.cancel")}
         </Button>
         <Button
-          variant="ink"
           size="sm"
           onClick={() => onSave(draft)}
           disabled={!draft.trim() || saving}

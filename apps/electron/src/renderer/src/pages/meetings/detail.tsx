@@ -93,7 +93,7 @@ import type { SearchFocus, SpeakersResponse, TranscriptSegment } from "./types";
 
 // The classes of the menus of folder-controls, for the "..." menu.
 const menuClass =
-  "bg-popover text-popover-foreground border-border z-50 min-w-56 max-w-72 rounded-lg border p-1 shadow-md";
+  "bg-popover text-popover-foreground border-border z-50 min-w-56 max-w-72 rounded-lg border p-1 shadow-(--shadow-card)";
 const itemClass =
   "focus:bg-accent flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] outline-none data-disabled:opacity-50 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
 
@@ -898,7 +898,6 @@ export function MeetingDetailView({
       {primary && (
         <div className="mb-5 flex items-center gap-2">
           <Button
-            variant="ink"
             size="sm"
             onClick={primary.onClick}
             disabled={primary.disabled}
