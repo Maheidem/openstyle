@@ -458,6 +458,78 @@ describe.skipIf(!VEC_PATH)("search index, ON mode", () => {
     expect(s.index.embedded_chunks).toBeGreaterThan(0);
   });
 
+  it("purges the rows of a deleted model and keeps other models (9.2)", async () => {
+    meeting("m1", "f-aurora", filler("finance", 8));
+    meeting("m2", "f-atlas", filler("travel", 8));
+    expect(await indexMeeting("m1")).toBe("indexed");
+    writeSetting("search_embedding_model", OTHER);
+    expect(await indexMeeting("m2")).toBe("indexed");
+    const otherChunks = chunkIds("m2").length;
+    expect(chunkIds("m1").length).toBeGreaterThan(0);
+    expect(vecCount()).toBe(chunkIds("m1").length + otherChunks);
+
+    // EG2 is not the search model now: its rows go, the OTHER rows stay.
+    const res = await app.request(`/api/mlx-embed/models/${EG2}`, {
+      method: "DELETE",
+    });
+    expect(await res.json()).toEqual({ ok: true });
+    expect(chunkIds("m1")).toEqual([]);
+    expect(chunkIds("m2")).toHaveLength(otherChunks);
+    expect(vecCount()).toBe(otherChunks);
+    expect(
+      getDb()
+        .prepare("SELECT meeting_id, model_id FROM meeting_index_state")
+        .all(),
+    ).toEqual([{ meeting_id: "m2", model_id: OTHER }]);
+
+    // Delete the search model itself: every row goes, search is off.
+    await app.request(`/api/mlx-embed/models/${OTHER}`, { method: "DELETE" });
+    const count = (t: string) =>
+      (getDb().prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number })
+        .n;
+    expect(count("meeting_chunks")).toBe(0);
+    expect(count("meeting_chunk_vec")).toBe(0);
+    expect(count("meeting_index_state")).toBe(0);
+    expect(count("meeting_chunk_gc")).toBe(0);
+    expect(await status()).toMatchObject({ state: "off", reason: "no_model" });
+    await stopMlxEmbedWorker();
+    seedModel(EG2);
+    seedModel(OTHER);
+  });
+
+  it("a model delete during an embed writes nothing and records no failure (9.2)", async () => {
+    await stopMlxEmbedWorker();
+    process.env.FAKE_EMBED_DELAY_MS = "1500";
+    try {
+      meeting("m1", null, filler("garden", 6));
+      startSearchIndexer();
+      notifyMeetingChanged("m1");
+      const deadline = Date.now() + 8000;
+      while (embeddedInputs().length === 0 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(embeddedInputs().length).toBeGreaterThan(0);
+      const res = await app.request(`/api/mlx-embed/models/${EG2}`, {
+        method: "DELETE",
+      });
+      expect(await res.json()).toEqual({ ok: true });
+      // Longer than the reply delay: an aborted meeting would write now.
+      await new Promise((r) => setTimeout(r, 2500));
+      await stopSearchIndexer();
+      expect(chunkIds("m1")).toEqual([]);
+      expect(vecCount()).toBe(0);
+      expect(
+        getDb().prepare("SELECT * FROM meeting_index_state").all(),
+      ).toEqual([]);
+      expect((await status()).meetings.failed).toBe(0);
+    } finally {
+      delete process.env.FAKE_EMBED_DELAY_MS;
+      await stopSearchIndexer();
+      await stopMlxEmbedWorker();
+      seedModel(EG2);
+    }
+  });
+
   it("validates the search request", async () => {
     const res = await jsonRequest(app, "POST", "/api/search/meetings", {
       query: "   ",

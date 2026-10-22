@@ -199,6 +199,30 @@ export function drainGc(db: DatabaseSync): number {
   return ids.length;
 }
 
+/**
+ * Delete every index row of one embedding model (spec 9.2): its
+ * meeting_chunks rows (the trigger puts their ids in meeting_chunk_gc), its
+ * meeting_index_state rows and, when the extension is loaded, its vec0 rows
+ * through the gc drain. With search off, the gc ids wait for the next start
+ * with search on (6.6). The caller runs this inside its transaction.
+ */
+export function purgeModelRows(
+  db: DatabaseSync,
+  modelId: string,
+): { chunks: number; states: number; vectors: number } {
+  const chunks = Number(
+    db.prepare("DELETE FROM meeting_chunks WHERE model_id = ?").run(modelId)
+      .changes,
+  );
+  const states = Number(
+    db
+      .prepare("DELETE FROM meeting_index_state WHERE model_id = ?")
+      .run(modelId).changes,
+  );
+  const vectors = isVecReady() ? drainGc(db) : 0;
+  return { chunks, states, vectors };
+}
+
 /** Row count of the vector chunk shadow table (spec 9.4). */
 export function vectorChunkCount(db: DatabaseSync): number {
   if (!isVecReady()) return 0;

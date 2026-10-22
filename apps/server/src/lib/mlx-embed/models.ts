@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
+import { createAppLogger } from "@openstyle/utils";
 import { SETTINGS_KEYS } from "@openstyle/validations";
-import { deleteSetting } from "../db.js";
+import { deleteSetting, getDb, withTransaction } from "../db.js";
 import { describeDownloadError } from "../disk.js";
 import { downloadErrorSourceUrl } from "../download-guard.js";
 import { hfRepoCacheDir } from "../mlx-asr/constants.js";
@@ -17,6 +18,8 @@ import {
   cancelMlxRuntimeDownload,
   isMlxRuntimeInstallable,
 } from "../mlx-asr/runtime.js";
+import { notifySearchModelDeleted } from "../search/notify.js";
+import { purgeModelRows } from "../search/vec-store.js";
 import {
   getMlxEmbedModel,
   MLX_EMBED_ALLOW_PATTERNS,
@@ -43,6 +46,8 @@ export interface MlxEmbedModelState extends MlxModelDownloadState {
   /** This model is the search model (setting `search_embedding_model`). */
   selected: boolean;
 }
+
+const log = createAppLogger("search");
 
 const activeDownloads = new Map<string, ActiveMlxDownload>();
 
@@ -175,7 +180,9 @@ export function cancelMlxEmbedDownload(modelId: string): boolean {
 
 /**
  * Delete the files of the model. When it is the search model, the setting is
- * cleared, so search reads "no model" (spec 5.5).
+ * cleared, so search reads "no model" (spec 5.5). The index rows of the model
+ * go too: chunks, index state and vectors (spec 9.2). A later Use of the
+ * same model builds the index again.
  */
 export function deleteMlxEmbedModel(modelId: string): boolean {
   const def = getMlxEmbedModel(modelId);
@@ -197,5 +204,11 @@ export function deleteMlxEmbedModel(modelId: string): boolean {
   if (getSearchEmbeddingModelId() === modelId) {
     deleteSetting(SETTINGS_KEYS.searchEmbeddingModel);
   }
+  notifySearchModelDeleted(modelId);
+  const db = getDb();
+  const purged = withTransaction(db, () => purgeModelRows(db, modelId));
+  log.info(
+    `search model ${modelId} deleted: chunks=${purged.chunks} states=${purged.states} vectors=${purged.vectors}`,
+  );
   return existed;
 }

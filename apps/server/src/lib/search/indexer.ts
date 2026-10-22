@@ -14,6 +14,7 @@ import { embedInt8 } from "./embedder.js";
 import { getExtensionState, isVecReady } from "./extension.js";
 import {
   pendingMeetingCount,
+  setIndexerModelGone,
   setIndexerWake,
   takePendingMeetings,
 } from "./notify.js";
@@ -275,6 +276,11 @@ export async function indexMeeting(
         return;
       }
       if (sourceHash(now.segments, modelId) !== p.hash) throw new RetryLater();
+      // The model was deleted or changed during the embed (9.2, 6.8):
+      // write nothing for it.
+      if (signal?.aborted || getSearchEmbeddingModelId() !== modelId) {
+        throw new RetryLater();
+      }
       const keptIds = [...keep.values()];
       const slots = keptIds.map(() => "?").join(", ");
       db.prepare(
@@ -361,6 +367,8 @@ const queue: string[] = [];
 let loop: Promise<void> | null = null;
 let stopping = false;
 let controller: AbortController | null = null;
+/** The model of the meeting in flight (9.2). */
+let runningModel: string | null = null;
 let wakeNow: (() => void) | null = null;
 let scannedModel: string | null = null;
 let slowScanCursor = 0;
@@ -459,11 +467,15 @@ async function runLoop(): Promise<void> {
         continue;
       }
       controller = new AbortController();
+      runningModel = st.modelId;
       let outcome: IndexOutcome;
       try {
         outcome = await indexMeeting(id, controller.signal);
       } catch (err) {
         if (err instanceof EmbedError && err.kind === "no_model") continue;
+        // The model was deleted (9.2) or changed (6.8) during the embed:
+        // the worker stop is not a failure of this meeting.
+        if (getSearchEmbeddingModelId() !== st.modelId) continue;
         const src = loadMeetingSource(db, id);
         if (src && !controller.signal.aborted) {
           const kind = errorKindOf(err);
@@ -473,6 +485,7 @@ async function runLoop(): Promise<void> {
         continue;
       } finally {
         controller = null;
+        runningModel = null;
       }
       // A job took the meeting, the text moved under us, or the model
       // changed: try again later. A busy meeting comes back by its hint.
@@ -487,11 +500,25 @@ async function runLoop(): Promise<void> {
   }
 }
 
+/**
+ * The files of an embedding model were deleted (9.2). Abort the meeting that
+ * embeds with it, so nothing is written and no failure is recorded. Empty the
+ * queue: the rows of the model are gone, so a later Use of it runs the boot
+ * scan again and indexes every meeting.
+ */
+function onModelDeleted(modelId: string): void {
+  if (runningModel === modelId) controller?.abort();
+  if (scannedModel === modelId) scannedModel = null;
+  queue.length = 0;
+  wakeNow?.();
+}
+
 /** Start the indexer loop once (spec 6.1 step 5). Search off: it waits. */
 export function startSearchIndexer(): void {
   if (loop || !isVecReady()) return;
   stopping = false;
   setIndexerWake(() => wakeNow?.());
+  setIndexerModelGone(onModelDeleted);
   loop = runLoop().finally(() => {
     loop = null;
   });
@@ -503,6 +530,7 @@ export async function stopSearchIndexer(): Promise<void> {
   controller?.abort();
   wakeNow?.();
   setIndexerWake(null);
+  setIndexerModelGone(null);
   await loop;
   queue.length = 0;
   scannedModel = null;
