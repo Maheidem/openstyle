@@ -1171,5 +1171,78 @@
   "notFound": {
     "title": "Página no encontrada",
     "goToApp": "Ir a la app"
+  },
+  "trayPopover": {
+    "label": "Menú de Openstyle",
+    "hint": {
+      "hold": "Mantén {{key}} para dictar",
+      "press": "Pulsa {{key}} para dictar"
+    },
+    "status": {
+      "ready": "Listo",
+      "recording": "Grabando",
+      "dictating": "Dictando"
+    },
+    "meeting": {
+      "section": "Grabación de reunión",
+      "start": "Iniciar grabación de reunión",
+      "stop": "Detener",
+      "stopLabel": "Detener grabación de reunión",
+      "elapsed": "Tiempo de grabación",
+      "started": "Grabación de reunión iniciada",
+      "stopped": "Grabación de reunión detenida",
+      "startFailed": "La grabación de la reunión no se inició."
+    },
+    "recent": {
+      "title": "Dictados recientes",
+      "history": "Historial",
+      "empty": "Tus dictados aparecen aquí.",
+      "copy": "Copiar dictado",
+      "copied": "Copiado"
+    },
+    "footer": {
+      "version": "Openstyle {{version}}",
+      "upToDate": "Actualizado",
+      "updateReady": "Actualización lista",
+      "restartToUpdate": "Reiniciar para actualizar",
+      "downloading": "Descargando actualización",
+      "openApp": "Abrir Openstyle",
+      "settings": "Ajustes",
+      "quit": "Salir de Openstyle"
+    },
+    "jobs": {
+      "title": "Tareas",
+      "untitled": "Reunión sin título",
+      "kind": {
+        "enhance": "Mejorar",
+        "summarize": "Resumir",
+        "transcribe": "Transcribir",
+        "diarize": "Hablantes"
+      },
+      "running": {
+        "enhance": "Mejorando {{title}}",
+        "summarize": "Resumiendo {{title}}",
+        "transcribe": "Transcribiendo {{title}}",
+        "diarize": "Buscando hablantes en {{title}}"
+      },
+      "queued": "En cola · {{kind}} · {{title}}",
+      "downloading": "Descargando {{model}}",
+      "downloadSize": "{{done}} de {{total}} GB",
+      "loading": "Cargando {{model}}…",
+      "openMeeting": "{{job}}. Abrir la reunión."
+    },
+    "nextEvent": {
+      "title": "Próximo evento",
+      "inHours": "en {{hours}} h {{minutes}} min",
+      "inMinutes": "en {{minutes}} min",
+      "record": "Grabar",
+      "recordLabel": "Grabar {{title}} ahora",
+      "recordWhenItStarts": "Grabar cuando empiece",
+      "recordWhenItStartsLabel": "Grabar {{title}} cuando empiece",
+      "willStart": "La grabación empezará a las {{time}}"
+    },
+    "models": {
+      "label": "Modelos activos"
+    }
   }
 }

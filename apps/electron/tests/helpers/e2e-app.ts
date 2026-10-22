@@ -60,10 +60,15 @@ export async function launchOpenstyle(options: {
   return app;
 }
 
+/** True for the windows that are not the dashboard: the pill and the tray popover. */
+function isAuxiliaryWindow(url: string): boolean {
+  return url.includes("pill") || url.includes("tray-popover");
+}
+
 /**
- * Wait for a window whose URL is not the pill.
- * That is the dashboard or onboarding window. The pill (pill.html) is an
- * auxiliary window and can appear first.
+ * Wait for a window whose URL is not the pill or the tray popover.
+ * That is the dashboard or onboarding window. The pill (pill.html) and the
+ * tray popover (tray-popover.html) are auxiliary windows and can appear first.
  */
 export async function waitForDashboardWindow(
   electronApp: ElectronApplication,
@@ -74,7 +79,7 @@ export async function waitForDashboardWindow(
   while (Date.now() < deadline) {
     for (const win of electronApp.windows()) {
       const url = win.url();
-      if (!url.includes("pill") && url.length > 0) {
+      if (!isAuxiliaryWindow(url) && url.length > 0) {
         await win.waitForLoadState("domcontentloaded");
         return win;
       }
@@ -82,8 +87,9 @@ export async function waitForDashboardWindow(
     await new Promise((r) => setTimeout(r, 250));
   }
 
-  // Fallback: return the first window that exists.
-  return electronApp.windows()[0];
+  // Fallback: the first window that is not auxiliary, else the first window.
+  const windows = electronApp.windows();
+  return windows.find((w) => !isAuxiliaryWindow(w.url())) ?? windows[0];
 }
 
 /** Closes the app. A hung quit gets SIGKILL after 10 s. */

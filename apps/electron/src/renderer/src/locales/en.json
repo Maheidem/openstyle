@@ -1503,5 +1503,78 @@
   "notFound": {
     "title": "Page not found",
     "goToApp": "Go to App"
+  },
+  "trayPopover": {
+    "label": "Openstyle menu",
+    "hint": {
+      "hold": "Hold {{key}} to dictate",
+      "press": "Press {{key}} to dictate"
+    },
+    "status": {
+      "ready": "Ready",
+      "recording": "Recording",
+      "dictating": "Dictating"
+    },
+    "meeting": {
+      "section": "Meeting recording",
+      "start": "Start meeting recording",
+      "stop": "Stop",
+      "stopLabel": "Stop meeting recording",
+      "elapsed": "Recording time",
+      "started": "Meeting recording started",
+      "stopped": "Meeting recording stopped",
+      "startFailed": "The meeting recording did not start."
+    },
+    "recent": {
+      "title": "Recent dictations",
+      "history": "History",
+      "empty": "Your dictations show here.",
+      "copy": "Copy dictation",
+      "copied": "Copied"
+    },
+    "footer": {
+      "version": "Openstyle {{version}}",
+      "upToDate": "Up to date",
+      "updateReady": "Update ready",
+      "restartToUpdate": "Restart to update",
+      "downloading": "Downloading update",
+      "openApp": "Open Openstyle",
+      "settings": "Settings",
+      "quit": "Quit Openstyle"
+    },
+    "jobs": {
+      "title": "Jobs",
+      "untitled": "Untitled meeting",
+      "kind": {
+        "enhance": "Enhance",
+        "summarize": "Summarize",
+        "transcribe": "Transcribe",
+        "diarize": "Speakers"
+      },
+      "running": {
+        "enhance": "Enhancing {{title}}",
+        "summarize": "Summarizing {{title}}",
+        "transcribe": "Transcribing {{title}}",
+        "diarize": "Finding speakers in {{title}}"
+      },
+      "queued": "Queued · {{kind}} · {{title}}",
+      "downloading": "Downloading {{model}}",
+      "downloadSize": "{{done}} of {{total}} GB",
+      "loading": "Loading {{model}}…",
+      "openMeeting": "{{job}}. Open the meeting."
+    },
+    "nextEvent": {
+      "title": "Next event",
+      "inHours": "in {{hours}} h {{minutes}} min",
+      "inMinutes": "in {{minutes}} min",
+      "record": "Record",
+      "recordLabel": "Record {{title}} now",
+      "recordWhenItStarts": "Record when it starts",
+      "recordWhenItStartsLabel": "Record {{title}} when it starts",
+      "willStart": "Recording will start at {{time}}"
+    },
+    "models": {
+      "label": "Active models"
+    }
   }
 }

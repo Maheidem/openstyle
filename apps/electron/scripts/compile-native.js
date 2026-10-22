@@ -104,6 +104,12 @@ function compileMacOS() {
       frameworks: ["Cocoa", "Carbon"],
     },
     {
+      // Closes the tray popover on a click outside it. Needs no permission.
+      name: "macos-click-watcher",
+      src: "macos-click-watcher.swift",
+      frameworks: ["Cocoa"],
+    },
+    {
       name: "macos-output-volume",
       src: "macos-output-volume.swift",
       frameworks: ["CoreAudio", "Foundation"],

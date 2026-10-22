@@ -8,13 +8,10 @@ import {
   dialog,
   Menu,
   type MenuItemConstructorOptions,
-  nativeImage,
   shell,
   Tray,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import trayRecordingIconPath from "../../resources/tray/logoRecording.png?asset";
-import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isFakeMeetingCapture } from "./fake-meeting-capture";
 import { refreshMeetingsFlag, state } from "./main-state";
 import { MeetingDevicesChangedError } from "./meeting-recorder";
@@ -32,12 +29,28 @@ import {
 import { selfUpdater } from "./self-updater";
 import { stopServerHost } from "./server-host";
 import { isSystemAudioCaptureSupported } from "./system-audio-capture";
-import { trayAppearance } from "./tray-appearance";
+import {
+  currentTrayAppearance,
+  refreshTrayIcon,
+  startTrayJobWatch,
+  trayImage,
+} from "./tray-icon";
 import { showSettingsWindow } from "./windows/settings-window";
+import {
+  createTrayPopoverWindow,
+  hideTrayPopover,
+  toggleTrayPopover,
+} from "./windows/tray-popover-window";
 
 const log = createAppLogger("electron");
 
 export function restartAndUpdate(): void {
+  // E2E seam: a test checks that this path runs. It never installs or quits.
+  if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
+    log.info("E2E: restart and update requested; no install");
+    (app as NodeJS.EventEmitter).emit("e2e:restart-and-update");
+    return;
+  }
   if (process.platform === "darwin" && selfUpdater.isReadyToInstall) {
     // Self-update path (see self-updater.ts): quitAndInstall() would hand
     // this off to Squirrel.Mac. Squirrel.Mac rejected the ad-hoc-signed
@@ -57,6 +70,7 @@ export function restartAndUpdate(): void {
       })
       .catch((err) => {
         state.updateDownloadState = "idle";
+        refreshTrayIcon();
         const msg = err instanceof Error ? err.message : String(err);
         log.warn(`Self-update install failed: ${msg}`);
         state.settingsWindow?.webContents.send("updater:error", {
@@ -151,10 +165,19 @@ function devMenuItems(): MenuItemConstructorOptions[] {
   ];
 }
 
+/**
+ * The short native menu of a right click on the tray icon (a left click on
+ * Linux, where the panel shows this menu). The popover is the main place for
+ * the rest (windows/tray-popover-window.ts).
+ */
 export function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
-      label: "Settings",
+      label: "Open Openstyle",
+      click: () => showSettingsWindow(),
+    },
+    {
+      label: "Settings…",
       click: () => showSettingsWindow("/settings"),
     },
     {
@@ -207,53 +230,39 @@ export function buildTrayContextMenu(): Menu {
   ]);
 }
 
-/**
- * Show the red tray icon while a meeting records, and the normal icon at
- * other times. It does nothing when there is no tray (quiet E2E mode).
- */
-export function updateTrayForMeeting(recording: boolean): void {
-  if (!state.tray) return;
-  const look = trayAppearance(recording);
-  state.tray.setImage(trayImage(look.icon, look.template));
-  state.tray.setToolTip(look.tooltip);
-}
-
-function trayImage(
-  icon: "default" | "recording",
-  template: boolean,
-): Electron.NativeImage {
-  // createFromPath also loads the @2x file next to the path.
-  const image = nativeImage.createFromPath(
-    icon === "recording" ? trayRecordingIconPath : trayIconPath,
-  );
-  // A template image follows the light/dark menu bar on macOS.
-  image.setTemplateImage(template);
-  return image;
-}
-
 export function createTray(): void {
-  const look = trayAppearance(state.meetingRecorder?.status === "recording");
-  state.tray = new Tray(trayImage(look.icon, look.template));
+  const look = currentTrayAppearance();
+  state.tray = new Tray(trayImage(look));
   state.tray.setToolTip(look.tooltip);
+  startTrayJobWatch();
 
   if (process.platform === "linux") {
     // Linux desktop panels often don't fire the right-click event, so
     // assign the menu natively so the OS can register it via DBusMenu.
     state.tray.setContextMenu(buildTrayContextMenu());
   } else {
-    // macOS/Windows: left-click opens settings, right-click shows menu.
-    // Using setContextMenu on macOS would override the click handler.
+    // macOS/Windows: right click shows the short menu. Using setContextMenu
+    // on macOS would override the click handler.
     state.tray.on("right-click", () => {
+      log.info("Tray right click");
+      hideTrayPopover("right-click");
       // Opportunistic background refresh — the menu template is synchronous,
       // so a flag flip shows up on the next open.
-      refreshMeetingsFlag();
+      void refreshMeetingsFlag();
       state.tray!.popUpContextMenu(buildTrayContextMenu());
     });
   }
 
+  // Left click toggles the popover (on Linux the panel often sends no click).
   state.tray.on("click", () => {
-    showSettingsWindow();
+    log.info("Tray left click");
+    toggleTrayPopover("tray-click");
   });
+
+  // Make the popover now, so the first click shows it at once. Linux panels
+  // often send no click (they show the menu), so there it is made on the
+  // first toggle only.
+  if (process.platform !== "linux") createTrayPopoverWindow();
 }
 
 // Rebuild the application menu so update-related labels stay current.

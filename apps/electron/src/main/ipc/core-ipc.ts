@@ -39,7 +39,8 @@ import { registerMeetingImportIpc } from "../meeting-import";
 import { registerMeetingIpc } from "../meeting-ipc";
 import { resolveMicLabel } from "../meeting-mic-label";
 import { MeetingRecorder } from "../meeting-recorder";
-import { buildTrayContextMenu, updateTrayForMeeting } from "../menus";
+import { takePendingEventLink } from "../meeting-schedule";
+import { buildTrayContextMenu } from "../menus";
 import { notifyImportComplete, notifyPasteFailed } from "../notifications";
 import { pasteIntoFocusedApp } from "../paste";
 import {
@@ -55,6 +56,7 @@ import {
   serverClient,
   serverFetch,
 } from "../server-target";
+import { refreshTrayIcon } from "../tray-icon";
 import { createMeetingCaptureWindow } from "../windows/meeting-capture-window";
 import {
   finishPillMeetingExit,
@@ -148,7 +150,10 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
     listAudioDevices,
     // Links the running calendar event. Returns null while the calendar
     // toggle is off, before any helper starts.
-    findCurrentEvent: () =>
+    // An event chosen in the tray popover ("Record", or "Record when it
+    // starts") wins once over the event that runs now.
+    findCurrentEvent: async () =>
+      takePendingEventLink() ??
       autoLinkCurrentEvent({ isEnabled: () => isCalendarEnabled(serverFetch) }),
     broadcastLevel: (event) => {
       broadcastToWindows("meeting:level", event);
@@ -159,7 +164,12 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
       // stop, the pill stays up until the renderer ends the capsule's exit.
       setPillMeetingRecording(recording);
       broadcastToWindows("meeting:status-changed", status, startedAt);
-      updateTrayForMeeting(recording);
+      state.trayPopover?.webContents.send(
+        "meeting:status-changed",
+        status,
+        startedAt,
+      );
+      refreshTrayIcon();
       // Linux keeps a static tray menu; elsewhere it rebuilds on right-click.
       if (process.platform === "linux") {
         state.tray?.setContextMenu(buildTrayContextMenu());
@@ -234,6 +244,7 @@ export function registerCoreIpc({ logsDir }: { logsDir: string }): void {
   // history-driven views (Today, History) can refetch without polling.
   ipcMain.on("transcription:done", () => {
     state.settingsWindow?.webContents.send("transcription:done");
+    state.trayPopover?.webContents.send("transcription:done");
   });
 
   registerAppSettingsIpc({
