@@ -2,7 +2,11 @@ import { zValidator } from "@hono/zod-validator";
 import { historyQuerySchema } from "@openstyle/validations";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { dateRangeWhere, queryPage } from "../lib/list-query.js";
+import {
+  dateRangeWhere,
+  LOCAL_TODAY_WHERE,
+  queryPage,
+} from "../lib/list-query.js";
 
 interface HistoryRow {
   id: number;
@@ -122,12 +126,12 @@ const history = new Hono()
       .prepare("SELECT COUNT(*) as count FROM transcription_history")
       .get() as { count: number };
 
-    // Use localtime to match the user's timezone for "today" boundary
+    // "Today" is the local day, as a range that uses the created_at index.
     const today = db
       .prepare(
         `SELECT COUNT(*) as sessions, COALESCE(SUM(cost_usd), 0) as cost
          FROM transcription_history
-         WHERE date(created_at, 'localtime') = date('now', 'localtime')`,
+         WHERE ${LOCAL_TODAY_WHERE}`,
       )
       .get() as { sessions: number; cost: number };
 

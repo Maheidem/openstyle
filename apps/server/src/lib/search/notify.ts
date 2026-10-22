@@ -27,3 +27,21 @@ export function pendingMeetingCount(): number {
 export function setIndexerWake(fn: (() => void) | null): void {
   wake = fn;
 }
+
+let modelGone: ((modelId: string) => void) | null = null;
+
+/**
+ * Tell the indexer that the files of an embedding model are gone (spec
+ * 9.2). The indexer aborts a meeting that embeds with that model. The
+ * caller purges the rows of the model.
+ */
+export function notifySearchModelDeleted(modelId: string): void {
+  modelGone?.(modelId);
+}
+
+/** The indexer sets its model-delete handler here. null removes it. */
+export function setIndexerModelGone(
+  fn: ((modelId: string) => void) | null,
+): void {
+  modelGone = fn;
+}

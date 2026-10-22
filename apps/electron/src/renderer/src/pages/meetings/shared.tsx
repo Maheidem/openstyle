@@ -146,3 +146,18 @@ export function CopyButton({
     </Button>
   );
 }
+
+/** The id of the segment that starts nearest to `startMs` (a search hit,
+ * spec 7.4). The first one wins a tie. null when no segment has an id. */
+export function nearestSegmentId(
+  segments: readonly { id?: string; startMs: number }[],
+  startMs: number,
+): string | null {
+  let best: { id: string; gap: number } | null = null;
+  for (const s of segments) {
+    if (!s.id) continue;
+    const gap = Math.abs(s.startMs - startMs);
+    if (!best || gap < best.gap) best = { id: s.id, gap };
+  }
+  return best?.id ?? null;
+}

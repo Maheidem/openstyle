@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS meeting_index_state (
 ```
 
 - The trigger also fires when a meeting delete cascades to `meeting_chunks` (P3, last line: gc rows `[1,2]`).
+- Migration 45 (#286) adds `kind TEXT NOT NULL DEFAULT 'transcript' CHECK(kind IN ('transcript', 'meta', 'summary'))` to `meeting_chunks`. A `meta` chunk holds the title and the tags. A `summary` chunk holds summary text. These chunks have `segment_ids = []` and no times (4.6). Old rows read as `transcript`.
 - `tags (id, name)` and `meeting_tags (meeting_id, tag_id, source)` belong to #231 (migration 42, PR #237). This spec only reads them (S5). The `tags` filter takes tag names and matches any of them.
 
 ### 3.3 The vec0 table (created at run time, S12)
@@ -265,6 +266,17 @@ interface Chunk {
 ```
 
 A change of `CHUNKER_VERSION` or `DOC_PROMPT` changes every hash. That re-embeds all chunks, as a model change does.
+
+### 4.6 Title, tags and summary (#286)
+
+Code: `buildMeetingChunks` in `apps/server/src/lib/search/source.ts`.
+
+1. The transcript chunks come first, with ordinal 0 to n-1 (4.3).
+2. Then one `meta` chunk. Its text is the title, a line break, then `Tags: <tag>, <tag>`. A meeting with no title and no tags has no meta chunk.
+3. Then the `summary` chunks. The summary Markdown (`meeting_summaries.markdown`) is one long segment for the chunker. So the chunker cuts it by sentences into pieces of up to 300 tokens (4.4). `char_start` and `char_end` record the piece inside the summary text.
+4. The document prompt stays `title: none | text: ` (D9). The spike showed lower recall with the meeting title in `title:`. So the title goes into the text of the meta chunk.
+5. The text hash of a meta or summary chunk is sha256 of JSON `[CHUNKER_VERSION, DOC_PROMPT, kind, text]`. A transcript chunk keeps the hash of 4.5, so an upgrade embeds only the new meta and summary chunks.
+6. Result: a tag, title or summary change embeds only the chunks of that kind. A transcript change does not embed the meta or summary chunks again (D5).
 
 ---
 
@@ -421,6 +433,9 @@ A trigger is a hint. The source hash is the truth (6.3). The indexer must be cor
 | `F:apps/server/src/lib/meetings/workflow/nodes/save.ts:273` | Enhance saved `enhanced_text` (`save.ts:121-127`) |
 | `F:meeting-folders.ts:175-177` | Move to another folder or out of folders. Built: the move route moves the vectors in its own transaction (6.5), so a move needs no queue slot. |
 | `F:meetings.ts:1998` | Meeting delete (cascade fills `meeting_chunk_gc`) |
+| `setMeetingTags` (`PUT /:id/tags`) and `addSuggestedTags` (Enhance tag step), `apps/server/src/lib/meetings/tags.ts` | Tag change (meta chunk, #286) |
+| `save.ts` SW3 | Summary write (summary chunks, #286). The meeting can have no `audio_dir`, so no `transcript.md` write sends the hint. |
+| `PATCH /:id` with `title`, `PUT /:id/calendar`, `DELETE /:id/calendar` | Title change (meta chunk, #286) |
 
 - Built: `writeTranscriptMarkdown` (`apps/server/src/lib/meetings/transcript-io.ts`) calls `notifyMeetingChanged`, so every site of this table that writes the file sends the hint. The delete route calls it too, so the gc drains soon.
 - No route edits segment text by hand today (`F:meetings.ts` route list: `.patch("/:id")` changes `title`, `language`, `context` only, `:1246-1262`). A future manual-edit route must call `notifyMeetingChanged`. The boot scan (6.3) catches a missed call.
@@ -436,7 +451,7 @@ Sources of work:
 2. A boot scan, in the background: every meeting where `meeting_index_state` is missing, or `model_id` differs from the current model, or `folder_key` differs from `COALESCE(meetings.folder_id, '')`.
 3. A slow scan of all meetings, one meeting per second while idle: compute the source hash and compare it with `source_hash`. This catches text changes with no trigger.
 
-`source_hash = sha256(JSON [CHUNKER_VERSION, modelId, [[segmentId, sourceText], ...]])` over the input of 4.1.
+`source_hash = sha256(JSON [CHUNKER_VERSION, modelId, [[segmentId, sourceText], ...], metaText, summary])` over the input of 4.1 and 4.6. `metaText` is the text of the meta chunk or null. `summary` is the summary Markdown or null.
 
 Gates before a meeting starts:
 
@@ -468,7 +483,7 @@ In one transaction, for each vec0 row of the meeting: read `embedding`, delete t
 
 ### 6.6 Garbage collection
 
-`meeting_chunk_gc` holds ids whose vec0 row must go. The indexer deletes `meeting_chunk_vec` rows by `chunk_id` (BigInt), then the gc rows, in one transaction. It drains the table at start and after each meeting. When search is off, the table grows. It drains at the next start with search on. vec0 rows have no foreign key, so this is the only delete path for vectors.
+`meeting_chunk_gc` holds ids whose vec0 row must go. The indexer deletes `meeting_chunk_vec` rows by `chunk_id` (BigInt), then the gc rows, in one transaction. It drains the table at start and after each meeting. The delete of a search model also drains it (9.2). When search is off, the table grows. It drains at the next start with search on. vec0 rows have no foreign key, so this is the only delete path for vectors.
 
 ### 6.7 Progress, cancel and crash safety
 
@@ -524,14 +539,21 @@ SELECT chunk_id, meeting_id, distance
 
 Read the current text of `segment_ids` (`COALESCE(NULLIF(enhanced_text,''), text)`), cut by `char_start` and `char_end`, join with spaces, and cut to 400 characters. If the text changed after the index write, the snippet shows the new text and the meeting is already in the queue.
 
+- A `meta` hit: the current title and tags, as in 4.6.
+- A `summary` hit: the current summary Markdown, cut by `char_start` and `char_end`.
+
 ### 7.4 Routes and UI
 
 `apps/server/src/routes/search.ts`, mounted at `/search` in `apps/server/src/routes/index.ts` (next to `.route("/meetings", ...)`, `F:routes/index.ts:47-49`). Schemas in `packages/validations/src/search.ts`.
 
 - `GET /api/search/status` returns `{ state: "on" | "off", reason: SearchOffReason | null, model_id, vec_version, meetings: { eligible, indexed, failed, queued }, index: { db_bytes, vector_chunks, embedded_chunks } }` (`index` from 9.4, D18). `embedded_chunks` counts the chunks that this server process sent to the model. The E2E (12.3 steps 4 and 6) reads it to prove that no embedding call ran.
-- `POST /api/search/meetings` with `{ query, folder_id?: string | "none", tags?: string[], k? }` returns `{ status: "ok", hits: [{ chunk_id, meeting_id, meeting_title, started_at, folder_id, score, start_ms, end_ms, snippet }] }`, or `{ status: "off", reason }` with 200, so the UI renders a state, not an error. `folder_id: "none"` means unfiled, as the list filter of PR #235 (`F:meetings.ts:1109`).
+- `POST /api/search/meetings` with `{ query, folder_id?: string | "none", tags?: string[], k? }` returns `{ status: "ok", hits: [{ chunk_id, kind, meeting_id, meeting_title, started_at, folder_id, score, start_ms, end_ms, snippet }] }` (`kind`: `transcript`, `meta` or `summary`, 4.6), or `{ status: "off", reason }` with 200, so the UI renders a state, not an error. `folder_id: "none"` means unfiled, as the list filter of PR #235 (`F:meetings.ts:1109`).
 - Errors: 400 bad input; 503 `{ code: "worker_unavailable" }` when the embedding worker does not start.
-- UI: a search box in the Meetings page header. Its scope follows the folder filter of PR #235. A result shows the meeting title, date, snippet and score order, and opens the meeting at `start_ms`. When search is off, the box is disabled and shows the reason text (9.1). i18n as in 5.5.
+- UI: a search box in the Meetings page header. Its scope follows the folder filter of PR #235. A result shows the meeting title, date, snippet and score order. A transcript hit also shows its time. A meta hit shows "Title and tags". A summary hit shows "Summary". When search is off, the box is disabled and shows the reason text (9.1). i18n as in 5.5.
+- A click on a result opens the meeting (#286):
+  - A transcript hit selects the Transcript tab. The transcript scrolls to the segment that starts nearest to `start_ms` (the first segment of the chunk) and marks it (`data-search-hit`).
+  - A summary hit selects the Summary tab.
+  - A meta hit opens the meeting at the top.
 
 ---
 
@@ -565,7 +587,8 @@ export interface RetrievalHit {
   meetingId: string;
   score: number;        // 1 - cosine distance
   ordinal: number;
-  startMs: number | null;
+  kind: "transcript" | "meta" | "summary"; // 4.6
+  startMs: number | null; // null for meta and summary
   endMs: number | null;
 }
 
@@ -590,7 +613,7 @@ export function hitText(hit: RetrievalHit, maxChars: number): string;
 - Hits are sorted by score, highest first. A chunk id appears once.
 - `query.kind = "meeting"`:
   - If the meeting's `meeting_index_state` matches its current source hash and model, use up to 8 of its stored vectors, evenly spaced by ordinal. Read them with `SELECT embedding FROM meeting_chunk_vec WHERE chunk_id = ?`.
-  - Else build the chunks now (4), pick up to 8, and embed them with `DOC_PROMPT`. Do not store them. Reason: during a workflow run the meeting holds its job slot, so the indexer has not indexed it yet (6.3).
+  - Else build the chunks now (4, 4.6), pick up to 8, and embed them with `DOC_PROMPT`. Do not store them. Reason: during a workflow run the meeting holds its job slot, so the indexer has not indexed it yet (6.3).
   - Run one KNN per vector, merge by the highest score per chunk, keep the top `k`.
 - A scope `folder` with an unknown folder gives `ok` with no hits.
 
@@ -635,7 +658,8 @@ One switch: `searchState()` returns `on`, or `off` with a `SearchOffReason` (8.1
 
 ### 9.2 Model missing or deleted
 
-- Delete of the model in use: stop the worker, set `search_embedding_model` to empty, state `no_model`. Keep the index rows. A later Use of the same model id needs no re-index.
+- Delete of a model (built in #286): stop the worker, and set `search_embedding_model` to empty when it is the search model (state `no_model`). Then, in one transaction, delete all index rows of that model id: `meeting_chunks` (the trigger fills `meeting_chunk_gc`), `meeting_index_state`, and the vec0 rows through the gc drain (6.6). With search off, the gc ids wait for the next start with search on. Rows of other model ids stay. A later Use of the same model id indexes every meeting again.
+- The indexer handles the delete separately. The delete sends a hint (`notifySearchModelDeleted`). The indexer aborts the meeting that embeds with that model, empties its queue, and runs the boot scan again at the next Use. The write transaction checks the model again, so an embed that ends after the delete writes nothing. A worker stop caused by the delete is not a failure: no `error_kind` is recorded.
 - The snapshot is incomplete: `ensureMlxEmbedWorker` refuses it, as `ensureMlxLlmWorker` does (`L:mlx-llm/server.ts:145-149`).
 
 ### 9.3 Worker down

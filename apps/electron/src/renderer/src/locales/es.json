@@ -815,6 +815,8 @@
       "close": "Cerrar búsqueda",
       "searching": "Buscando…",
       "failed": "La búsqueda falló. Inténtalo de nuevo.",
+      "kindMeta": "Título y etiquetas",
+      "kindSummary": "Resumen",
       "noResults": "Ningún texto de reunión coincide con esta búsqueda."
     },
     "noLlmHint": "Añade un modelo de IA en Ajustes > Modelos para usar Mejorar y Resumen.",

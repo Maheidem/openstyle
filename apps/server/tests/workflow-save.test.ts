@@ -36,6 +36,7 @@ import {
   type SaveResult,
   type SummarizeResult,
 } from "../src/lib/meetings/workflow/types.js";
+import { takePendingMeetings } from "../src/lib/search/notify.js";
 import { okReply, type ScriptStep } from "./helpers/fake-model.js";
 import type { MeetingFixture } from "./helpers/meeting-fixture.js";
 import {
@@ -808,6 +809,7 @@ describe("save: the summary (SW3)", () => {
     contexts.register(
       makeTestRunContext({ runId: "run-sw3", meetingId: f.meeting.id }),
     );
+    takePendingMeetings();
     const out = await makeSaveNode(deps)(
       summaryState(f, "run-sw3", summaryResult({ llmCallIds: [callId, null] })),
     );
@@ -818,6 +820,9 @@ describe("save: the summary (SW3)", () => {
       wroteAny: true,
       failures: [],
     });
+    // The new summary is a hint for the search index (no audio_dir here, so
+    // no transcript.md write sends it).
+    expect(takePendingMeetings()).toContain(f.meeting.id);
     const row = getDb()
       .prepare(
         "SELECT markdown, summary_json, llm_provider, llm_model, input_tokens, output_tokens, cost_usd, created_at FROM meeting_summaries WHERE meeting_id = ?",

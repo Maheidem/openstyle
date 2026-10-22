@@ -3,7 +3,7 @@
  * 12.2). OFF mode is the default with no dylib. ON mode sets
  * OPENSTYLE_SQLITE_VEC_PATH to the sqlite-vec build of this platform.
  */
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,6 +18,7 @@ import { jsonRequest } from "./helpers/http.js";
 import { sqliteVecTestPath } from "./helpers/sqlite-vec.js";
 
 const VEC_PATH = sqliteVecTestPath();
+const EG2 = "embeddinggemma-2-bf16-text";
 
 function reopen(vecPath: string | undefined) {
   closeDb();
@@ -111,6 +112,46 @@ describe("OFF mode (no dylib)", () => {
     expect(moved.status).toBe(200);
     db.prepare("DELETE FROM meetings WHERE id = 'm2'").run();
     db.prepare("DELETE FROM meeting_folders WHERE id = 'f1'").run();
+  });
+
+  it("purges chunks and index state of a deleted model with search off (9.2)", async () => {
+    const db = reopen(undefined);
+    const hf = mkdtempSync(join(tmpdir(), "openstyle-hf-"));
+    const oldHf = process.env.HUGGINGFACE_HUB_CACHE;
+    process.env.HUGGINGFACE_HUB_CACHE = hf;
+    try {
+      db.prepare(
+        "INSERT INTO meetings (id, title, status, started_at) VALUES ('m3', 't', 'transcribed', 1)",
+      ).run();
+      const ins = db.prepare(
+        `INSERT INTO meeting_chunks (meeting_id, ordinal, segment_ids, char_start, token_estimate, text_hash, model_id, created_at)
+         VALUES ('m3', ?, '[]', 0, 1, 'h', ?, 1)`,
+      );
+      const gone = Number(ins.run(0, EG2).lastInsertRowid);
+      ins.run(1, "other-model");
+      db.prepare(
+        `INSERT INTO meeting_index_state (meeting_id, model_id, source_hash, folder_key, chunk_count, indexed_at)
+         VALUES ('m3', ?, 'h', '', 1, 1)`,
+      ).run(EG2);
+      const res = await createApp().request(`/api/mlx-embed/models/${EG2}`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(200);
+      expect(db.prepare("SELECT model_id FROM meeting_chunks").all()).toEqual([
+        { model_id: "other-model" },
+      ]);
+      expect(db.prepare("SELECT * FROM meeting_index_state").all()).toEqual([]);
+      // No vec0 module: the vector id waits in the gc table (6.6).
+      expect(db.prepare("SELECT chunk_id FROM meeting_chunk_gc").all()).toEqual(
+        [{ chunk_id: gone }],
+      );
+    } finally {
+      db.prepare("DELETE FROM meetings WHERE id = 'm3'").run();
+      db.exec("DELETE FROM meeting_chunk_gc");
+      if (oldHf === undefined) delete process.env.HUGGINGFACE_HUB_CACHE;
+      else process.env.HUGGINGFACE_HUB_CACHE = oldHf;
+      rmSync(hf, { recursive: true, force: true });
+    }
   });
 
   it("reports extension_load_failed for a file that is not an extension", () => {

@@ -14,6 +14,7 @@ import { join } from "node:path";
  * prints an error line before ready. FAKE_EMBED_BOW=1 gives bag-of-words
  * vectors instead (each word, without the D9 prompt, hashed to one dim, then
  * L2-normalized), so texts that share words are near (search tests).
+ * FAKE_EMBED_DELAY_MS waits that long before each embeddings reply.
  */
 const FAKE_EMBED_WORKER_SOURCE = `#!/usr/bin/env node
 const http = require("node:http");
@@ -66,11 +67,13 @@ const server = http.createServer((req, res) => {
         return { object: "embedding", index, embedding };
       });
       const tokens = input.map((text) => text.split(" ").length);
-      return send(200, {
+      const reply = () => send(200, {
         object: "list", model, data,
         usage: { prompt_tokens: 1, total_tokens: 1 },
         openstyle: { tokens, truncated: tokens.map(() => false) },
       });
+      const delay = Number(process.env.FAKE_EMBED_DELAY_MS || 0);
+      return delay > 0 ? setTimeout(reply, delay) : reply();
     }
     send(404, { error: { message: "not found", type: "invalid_request_error" } });
   });

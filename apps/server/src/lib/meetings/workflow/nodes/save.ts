@@ -1,6 +1,7 @@
 import { createAppLogger } from "@openstyle/utils";
 import { withTransaction } from "../../../db.js";
 import type { NewLink } from "../../../llm/recorder.js";
+import { notifyMeetingChanged } from "../../../search/notify.js";
 import { writeTranscriptMarkdown } from "../../transcript-io.js";
 import type { WorkflowDeps } from "../context.js";
 import type { WorkflowStateType } from "../state.js";
@@ -264,6 +265,8 @@ export function makeSaveNode(deps: WorkflowDeps) {
       if (outcome === "ok") {
         r.sw3 = "ok";
         r.wroteAny = true;
+        // The summary is in the search index (spec 4.6).
+        notifyMeetingChanged(meetingId);
       } else {
         r.sw3 = "failed";
         r.failures.push(saveFailure(null, "SW3 failed twice"));

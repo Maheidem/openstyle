@@ -49,8 +49,13 @@ export const searchMeetingsRequestSchema = z.object({
 });
 export type SearchMeetingsRequest = z.infer<typeof searchMeetingsRequestSchema>;
 
+/** What a hit holds (spec 3.2): transcript text, title and tags, summary. */
+export const SEARCH_HIT_KINDS = ["transcript", "meta", "summary"] as const;
+export type SearchHitKind = (typeof SEARCH_HIT_KINDS)[number];
+
 export const searchHitSchema = z.object({
   chunk_id: z.number().int(),
+  kind: z.enum(SEARCH_HIT_KINDS),
   meeting_id: z.string(),
   meeting_title: z.string().nullable(),
   started_at: z.number().nullable(),
