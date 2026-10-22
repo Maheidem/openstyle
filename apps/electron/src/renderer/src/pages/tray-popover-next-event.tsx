@@ -1,4 +1,5 @@
 import { Switch } from "@renderer/components/ui/switch";
+import { formatTimeOfDay } from "@renderer/pages/history/helpers";
 import type { TrayScheduleState } from "@shared/tray-popover";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,13 +10,6 @@ import { useTranslation } from "react-i18next";
 // on a timer: only the "in 3 h 49 min" text moves, from the clock.
 
 const CLOCK_TICK_MS = 30_000;
-
-function clock(ms: number, lang: string): string {
-  return new Date(ms).toLocaleTimeString(lang, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 export function NextEventSection({
   visible,
@@ -64,7 +58,7 @@ export function NextEventSection({
           minutes: minutes % 60,
         })
       : t("trayPopover.nextEvent.inMinutes", { minutes });
-  const startClock = clock(event.start, lang);
+  const startClock = formatTimeOfDay(event.start, lang);
 
   const toggle = async (on: boolean): Promise<void> => {
     setSchedule(
@@ -108,7 +102,7 @@ export function NextEventSection({
               className="mt-0.5 text-[12px] text-muted-foreground tabular-nums"
               data-testid="tray-popover-event-time"
             >
-              {`${startClock} – ${clock(event.end, lang)} · ${until}`}
+              {`${startClock} – ${formatTimeOfDay(event.end, lang)} · ${until}`}
             </div>
           </div>
           <button
