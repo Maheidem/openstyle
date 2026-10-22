@@ -70,8 +70,9 @@ import {
   getDateGroup,
   getLocalDateString,
   parseLocalDate,
-  shortModel,
+  resolveModelLabel,
 } from "./history/helpers";
+import { useModelNames } from "./history/use-model-names";
 import {
   STATS_WIDTH_MAX,
   STATS_WIDTH_MIN,
@@ -225,6 +226,7 @@ export default function HistoryPage(): React.JSX.Element {
   // cached ["settings-all"] query the settings pages use instead of a separate
   // single-key round-trip.
   const { data: settings } = useQuery(settingsQueryOptions());
+  const modelNames = useModelNames();
   const historyPaused = settings?.[SETTINGS_KEYS.historyPaused] === "true";
 
   // Per-day usage for the heatmap. Fixed lookback window on the server, so it
@@ -427,6 +429,7 @@ export default function HistoryPage(): React.JSX.Element {
                 diffMode={diffMode}
                 showAiEdits={showAiEdits}
                 nerdMode={nerdMode}
+                modelNames={modelNames}
               />
             ))}
           </FeedGroup>
@@ -1128,6 +1131,7 @@ const FeedItem = memo(function FeedItem({
   diffMode,
   showAiEdits,
   nerdMode,
+  modelNames,
 }: {
   entry: HistoryEntry;
   onDelete: (id: number) => void;
@@ -1135,6 +1139,8 @@ const FeedItem = memo(function FeedItem({
   diffMode: boolean;
   showAiEdits: boolean;
   nerdMode: boolean;
+  /** Model id to model name (useModelNames). */
+  modelNames: ReadonlyMap<string, string>;
 }): React.JSX.Element {
   const { t, i18n } = useTranslation();
   const { copied, copy } = useCopyToClipboard();
@@ -1151,8 +1157,9 @@ const FeedItem = memo(function FeedItem({
         : null,
     [showDiff, entry.raw_text, entry.cleaned_text],
   );
-  const voice = shortModel(entry.voice_model) || entry.voice_provider;
-  const llm = shortModel(entry.llm_model);
+  const voice =
+    resolveModelLabel(entry.voice_model, modelNames) || entry.voice_provider;
+  const llm = resolveModelLabel(entry.llm_model, modelNames);
   // In nerd mode, qualify each model with its provider (STT and post-process),
   // shown right in the header label rather than in a separate line below. The
   // post-process provider is only prefixed when it differs from the STT

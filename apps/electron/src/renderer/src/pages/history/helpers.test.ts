@@ -14,6 +14,7 @@ import {
   formatRangeDate,
   formatRangeLabel,
   getDateGroup,
+  resolveModelLabel,
 } from "./helpers";
 
 // 15:45 UTC. The checks compare the style of the text, not the hour or day
@@ -133,5 +134,45 @@ describe("loadDayPickerLocale", () => {
       if (lang === "en") continue;
       expect((await loadDayPickerLocale(lang)).code, lang).not.toBe("en-US");
     }
+  });
+});
+
+describe("resolveModelLabel", () => {
+  const names = new Map([
+    ["local-mlx/qwen3-0.6b-8bit", "Qwen3 Fast"],
+    ["local-mlx-llm/gemma-4-e2b-qat-4bit", "Gemma 4 E2B"],
+    ["groq/llama-3.3-70b-versatile", "Llama 3.3 70B"],
+  ]);
+
+  it("shows the catalog name of a built-in voice model", () => {
+    expect(resolveModelLabel("local-mlx/qwen3-0.6b-8bit", names)).toBe(
+      "Qwen3 Fast",
+    );
+  });
+
+  it("shows the catalog name of a built-in LLM", () => {
+    expect(resolveModelLabel("local-mlx-llm/gemma-4-e2b-qat-4bit", names)).toBe(
+      "Gemma 4 E2B",
+    );
+  });
+
+  it("keeps the short id of a cloud model", () => {
+    expect(resolveModelLabel("groq/llama-3.3-70b-versatile", names)).toBe(
+      "llama-3.3-70b-versatile",
+    );
+  });
+
+  it("keeps the short id of a built-in model with no name yet", () => {
+    expect(resolveModelLabel("local-mlx/sensevoice-small", names)).toBe(
+      "sensevoice-small",
+    );
+    expect(resolveModelLabel("local-mlx/qwen3-0.6b-8bit", new Map())).toBe(
+      "qwen3-0.6b-8bit",
+    );
+  });
+
+  it("returns an empty label for no model", () => {
+    expect(resolveModelLabel(null, names)).toBe("");
+    expect(resolveModelLabel(undefined, names)).toBe("");
   });
 });

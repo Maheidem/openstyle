@@ -63,6 +63,9 @@ const scratch = mkdtempSync(join(tmpdir(), "openstyle-site-captures-"));
 const userData = join(scratch, "user-data");
 const dbPath = join(userData, "openstyle.db");
 mkdirSync(userData, { recursive: true });
+mkdirSync(join(scratch, "home"), { recursive: true });
+const workerStandIn = join(scratch, "mlx-worker-stand-in");
+writeFileSync(workerStandIn, "");
 mkdirSync(OUT, { recursive: true });
 
 let serverProc = null;
@@ -177,22 +180,32 @@ serverProc = spawn("node", [SERVER_JS], {
     PORT: String(SERVER_PORT),
     HOST: "127.0.0.1",
     OPENSTYLE_AUTH_TOKEN: TOKEN,
+    // A scratch home and model cache: the built-in models show as not
+    // downloaded, so no MLX worker starts and the owner's caches stay as
+    // they are.
+    HOME: join(scratch, "home"),
+    HF_HOME: join(scratch, "hf"),
+    HUGGINGFACE_HUB_CACHE: join(scratch, "hf", "hub"),
+    // The server only checks that the MLX worker file exists. An empty file
+    // lets the built-in models show as on a normal Apple silicon Mac (not
+    // the Whisper fallback). It cannot run, and no model is on disk.
+    OPENSTYLE_MLX_ASR_WORKER: workerStandIn,
   },
 });
 await waitHttp(`${SERVER_URL}/api/health`);
 
-const added = await api("/api/servers", {
-  url: `http://127.0.0.1:${MODEL_PORT}`,
-});
+// The own server stays for the "Your own server" list. The defaults are the
+// built-in models of a new install: Qwen3-ASR (voice) and Gemma 4 E2B (LLM).
+await api("/api/servers", { url: `http://127.0.0.1:${MODEL_PORT}` });
 const defaults = [
-  ["Qwen3-ASR", "voice"],
-  ["Qwen3.8-27B", "llm"],
+  ["local-mlx", "local-mlx/qwen3-0.6b-8bit", "Qwen3 Fast", "voice"],
+  ["local-mlx-llm", "local-mlx-llm/gemma-4-e2b-qat-4bit", "Gemma 4 E2B", "llm"],
 ];
-for (const [name, type] of defaults) {
+for (const [provider, model_id, model_name, type] of defaults) {
   await api("/api/models/configured", {
-    provider: "server",
-    model_id: `server/${added.id}/${name}`,
-    model_name: name,
+    provider,
+    model_id,
+    model_name,
     type,
     is_default: true,
   });
@@ -287,6 +300,12 @@ if (!ONLY || ONLY === "dash") {
         });
         w?.focus();
       });
+      // The glass surfaces are translucent and the native vibrancy is not in
+      // a page capture. Without a backdrop the PNG is half transparent and
+      // looks grey. Paint a dark desktop color behind the page instead.
+      await dash.addStyleTag({
+        content: "html { background: #0c0d0f !important; }",
+      });
       await sleep(900);
       await dash.screenshot({ path: join(OUT, name), ...opts });
       record(name);
@@ -307,8 +326,13 @@ if (!ONLY || ONLY === "dash") {
     await text("login page is slow on Safari").waitFor({ timeout: 30000 });
     await shoot("transcriptions.png");
 
-    // Meeting: transcript tab, then summary tab.
+    // Meeting: its folder, then the transcript tab and the summary tab.
     await link("Meetings").click();
+    // The page opens the newest meeting and expands its folder. Expand the
+    // folder only when it is still closed.
+    await sleep(2000);
+    const expand = dash.getByRole("button", { name: "Expand Product team" });
+    if (await expand.count()) await expand.click();
     await text("Weekly product sync").click();
     await text("onboarding, the Safari bug").waitFor({ timeout: 30000 });
     await shoot("meeting.png");
@@ -321,7 +345,7 @@ if (!ONLY || ONLY === "dash") {
       history.pushState({}, "", "/settings/models");
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
-    await text("Qwen3-ASR").waitFor({ timeout: 30000 });
+    await text("Qwen3 Fast").waitFor({ timeout: 30000 });
     await sleep(800);
     await dash
       .getByRole("button", { name: /change/i })
@@ -329,13 +353,28 @@ if (!ONLY || ONLY === "dash") {
       .click();
     await text("Built into Openstyle").waitFor({ timeout: 20000 });
     await shoot("models-picker.png");
+    // The dialog alone, for the "flexible" section of the site: its box
+    // plus 4 px left and right and 2 px top and bottom (680x330 CSS px,
+    // 1360x660 at 2x).
+    const dialog = await dash.getByRole("dialog").boundingBox();
+    await shoot("models-picker-dialog.png", {
+      clip: {
+        x: dialog.x - 4,
+        y: dialog.y - 2,
+        width: dialog.width + 8,
+        height: dialog.height + 4,
+      },
+    });
     await text("Built into Openstyle").click();
     await text("Parakeet").waitFor({ timeout: 20000 });
     await shoot("models-builtin.png");
     await dash.getByLabel("Back to simple view").click();
     await sleep(300);
     await text("Your own server").click();
-    await dash.getByText("Qwen3-ASR", { exact: true }).first().waitFor();
+    await dash
+      .getByText("whisper-large-v3-turbo", { exact: true })
+      .first()
+      .waitFor();
     await shoot("models-server.png");
 
     // Pill recording: the app's own e2e hotkey IPC, synthetic microphone,
@@ -372,6 +411,32 @@ if (!ONLY || ONLY === "dash") {
   } finally {
     await closeApp(app);
   }
+}
+
+// The 1x webp variants that index.html uses next to each 2x PNG, and the
+// social card made from the new Transcriptions shot.
+if (!ONLY || ONLY === "dash") {
+  const WEBP = [
+    ["transcriptions.png", "transcriptions-1600.webp", 1600, 1000],
+    ["meeting.png", "meeting-1600.webp", 1600, 1000],
+    ["meeting-summary.png", "meeting-summary-1600.webp", 1600, 1000],
+    ["models-picker-dialog.png", "models-picker-dialog-680.webp", 680, 330],
+  ];
+  for (const [png, webp, w, h] of WEBP) {
+    await run("cwebp", [
+      "-quiet",
+      "-q",
+      "82",
+      "-resize",
+      String(w),
+      String(h),
+      join(OUT, png),
+      "-o",
+      join(OUT, webp),
+    ]);
+    record(webp);
+  }
+  await run("node", [join(REPO, "scripts/site-captures/og-image.mjs")]);
 }
 
 // ---------------------------------------------------------------------------

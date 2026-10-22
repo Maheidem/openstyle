@@ -13,10 +13,10 @@
 - Free and open source (MIT license)
 - macOS only, Apple silicon (arm64) builds
 - Hold a key, talk, let go; the text lands in the app you are typing in
-- Models: built-in MLX speech models (Parakeet, Qwen3-ASR, Whisper, more from Hugging Face), your own server with an OpenAI-compatible transcription endpoint (for example oMLX), or a cloud provider with your own API key
-- The AI cleanup LLM can run on oMLX, LM Studio or any OpenAI-compatible server
+- Models: built-in speech models (Parakeet, Qwen3-ASR, SenseVoice, Whisper, more from Hugging Face) and a built-in text model (Gemma 4), your own server with an OpenAI-compatible transcription endpoint (for example oMLX), or a cloud provider with your own API key
+- The AI cleanup LLM can run inside the app (built-in Gemma 4), or on oMLX, LM Studio or any OpenAI-compatible server
 - Optional AI cleanup of the transcript with an LLM
-- Meetings: records, transcribes after the call, writes a summary, speaker detection
+- Meetings: records, transcribes after the call, writes a summary, speaker detection, folders, tags and search across all meetings
 - Custom vocabulary, tones and shortcuts
 - In tests on an idle Apple silicon Mac, Parakeet transcribed a 3-minute recording in under a second (measured October 2026 with Openstyle 2.10, warm model)
 
