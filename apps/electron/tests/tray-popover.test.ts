@@ -840,9 +840,22 @@ test("the active models line names the default voice model and LLM", async () =>
     });
     expect(res.ok, `POST /api/models/configured ${model.type}`).toBe(true);
   }
+  // The server keeps an MLX voice default only where MLX runs (Apple
+  // silicon). Elsewhere GET /api/models/configured switches it to the local
+  // Whisper fallback base-q5_1 (server lib/mlx-asr/reconcile.ts), and the
+  // line shows that model. The product is Mac-only; Linux CI checks the
+  // fallback.
+  const mlx = MAC && process.arch === "arm64";
+  const voiceLabel = mlx ? "Qwen3 Fast" : "base-q5_1";
+  const configured = (await (
+    await fetch(`${base}/api/models/configured`)
+  ).json()) as { model_id: string; type: string; is_default: number }[];
+  expect(
+    configured.find((m) => m.type === "voice" && m.is_default)?.model_id,
+  ).toBe(mlx ? "local-mlx/qwen3-0.6b-8bit" : "local-whisper/base-q5_1");
   const popover = await reopenPopover();
   const names = popover.getByTestId("tray-popover-models-names");
-  await expect(names).toHaveText("Qwen3 Fast · Gemma 4 E2B", {
+  await expect(names).toHaveText(`${voiceLabel} · Gemma 4 E2B`, {
     timeout: 10_000,
   });
   await expect(popover.getByTestId("tray-popover-models")).toContainText(
