@@ -57,6 +57,7 @@ import {
   formatSegment,
 } from "../../../apps/server/src/lib/meetings/workflow/chunking.ts";
 import { checkCorrections } from "../../../apps/server/src/lib/meetings/workflow/nodes/correct-chunk.ts";
+import { suggestedTagNames } from "../../../apps/server/src/lib/meetings/workflow/nodes/suggest-tags.ts";
 import { verifyEvidence } from "../../../apps/server/src/lib/meetings/workflow/nodes/verify-evidence.ts";
 import {
   buildCorrectSystemPrompt,
@@ -96,10 +97,7 @@ import {
 } from "../../../apps/server/src/lib/meetings/workflow/types.ts";
 import { MLX_LLM_MODELS } from "../../../apps/server/src/lib/mlx-llm/constants.ts";
 import { loadVocabularyTerms } from "../../../apps/server/src/lib/vocabulary.ts";
-import {
-  MAX_SUGGESTED_TAGS,
-  normalizeTagNames,
-} from "../../../packages/validations/src/meeting-tags.ts";
+import { MAX_SUGGESTED_TAGS } from "../../../packages/validations/src/meeting-tags.ts";
 import { parseMeetingSummaryInstructions } from "../../../packages/validations/src/settings.ts";
 import type { SegmentRow } from "./checks.mts";
 import type { SpeakerRow } from "./score.mts";
@@ -1055,7 +1053,7 @@ export async function runTags(
       out.failedUnits++;
       continue;
     }
-    out.tags = normalizeTagNames(parsed.data.tags).slice(0, MAX_SUGGESTED_TAGS);
+    out.tags = suggestedTagNames(parsed.data.tags);
   }
   return out;
 }
