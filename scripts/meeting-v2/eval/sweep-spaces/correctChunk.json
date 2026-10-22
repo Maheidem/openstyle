@@ -1,0 +1,14 @@
+{
+  "stage": "correctChunk",
+  "baseline": { "chunkTokens": 1200, "temperature": 0 },
+  "params": {
+    "chunkTokens": { "values": [600, 1200], "integer": true },
+    "temperature": { "values": [0, 0.3] },
+    "top_p": { "values": [0.95], "when": "temperature>0" },
+    "top_k": { "values": [64], "when": "temperature>0" }
+  },
+  "fine": true,
+  "repeats": 3,
+  "earlyStopAfter": 2,
+  "earlyStopMargin": 1
+}
