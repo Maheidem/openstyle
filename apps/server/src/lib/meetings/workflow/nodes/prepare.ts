@@ -1,6 +1,7 @@
 import {
   parseMeetingSummaryContextBudget,
   parseMeetingSummaryInstructions,
+  SETTINGS_KEYS,
 } from "@openstyle/validations";
 import {
   type ResolvedModels,
@@ -121,15 +122,19 @@ export function makePrepareNode(deps: WorkflowDeps) {
             .get(row.folder_id) as FolderContextInput | undefined) ?? null)
         : null;
 
-      // Project memory (issue #234): once, for a filed meeting, when search
-      // is on. Null means no memory, and the prompts are the same as before.
-      const folderMemory = row.folder_id
-        ? await (deps.loadFolderMemory ?? loadFolderMemory)(deps.db, {
-            meetingId: state.meetingId,
-            folderId: row.folder_id,
-            signal: ctx.signal,
-          })
-        : null;
+      // Project memory (issue #234): once, for a filed meeting, when the
+      // setting is on (off by default) and search is on. Null means no
+      // memory, and the prompts are the same as before.
+      const memoryOn =
+        readSettingFrom(deps, SETTINGS_KEYS.meetingProjectMemory) === "true";
+      const folderMemory =
+        memoryOn && row.folder_id
+          ? await (deps.loadFolderMemory ?? loadFolderMemory)(deps.db, {
+              meetingId: state.meetingId,
+              folderId: row.folder_id,
+              signal: ctx.signal,
+            })
+          : null;
 
       // Enhance gets names and terms of the folder only, never chunk text.
       const vocabTerms = folderMemory

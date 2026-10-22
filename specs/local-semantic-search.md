@@ -639,6 +639,8 @@ An unfiled meeting has no folder, so Summary and Enhance skip retrieval.
 
 Code: `apps/server/src/lib/meetings/workflow/folder-memory.ts`.
 
+- Off by default: setting `meeting_project_memory` (only `"true"` turns it on; owner order 2026-10-22). Reason: the 3-run Gemma 4 E2B benchmark on the #234 folder lost summary items and made more owner errors with it on (see #234). Off means no `retrieve()` call and prompts byte-equal to main. No UI toggle yet: the key is set through the settings API.
+
 - `prepare` calls `loadFolderMemory` once, only for a meeting with a folder. It calls `retrieve()` only when `searchState()` is `on` and an earlier meeting of the folder has `summary` or `transcript` rows for the search model. Reason: a `meeting` query of a meeting that is not indexed embeds up to 8 chunks, and that work is useless when the folder has no index rows.
 - The call: `query: meeting`, `scope: folder`, `excludeMeetingIds: [self, ...later]`, `k: 12`, a 60 s timeout joined with the run signal. "Later" = a folder meeting whose `COALESCE(started_at, created_at)` is after this meeting's. Reason: the block says "Earlier meetings", and a later meeting holds facts that did not exist yet. A meeting with no time counts as earlier. The index-row check above looks only at earlier meetings.
 - Kinds: `summary` and `transcript` only (MEM decision on #234, 2026-10-21). `meta` hits and hits of the meeting itself are dropped after the call.

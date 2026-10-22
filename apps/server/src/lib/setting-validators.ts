@@ -216,6 +216,8 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
   ["meeting_asr_context", checkBooleanFlag],
   // Calendar link (specs/calendar-eventkit.md): off by default, same contract.
   ["calendar_enabled", checkBooleanFlag],
+  // Project memory (issue #234): off by default, same contract.
+  ["meeting_project_memory", checkBooleanFlag],
 ]);
 
 /**

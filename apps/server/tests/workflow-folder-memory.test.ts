@@ -356,7 +356,55 @@ describe("loadFolderMemory", () => {
   });
 });
 
+/** The project memory setting (issue #234): off unless the row is "true". */
+function setMemory(on: boolean): void {
+  getDb()
+    .prepare("DELETE FROM settings WHERE key = 'meeting_project_memory'")
+    .run();
+  if (on) {
+    getDb()
+      .prepare(
+        "INSERT INTO settings (key, value) VALUES ('meeting_project_memory', 'true')",
+      )
+      .run();
+  }
+}
+
+/** The Summary and correct prompts of a run equal the prompts without #234. */
+function expectMainPrompts(
+  requests: RecordedRequest[],
+  meetingId: string,
+): void {
+  const summary = requests.find(isSummary);
+  expect(summary?.system).toBe(
+    buildSummarySingleSystemPrompt({
+      language: "en",
+      instructions: "",
+      context: (
+        getDb()
+          .prepare("SELECT context FROM meetings WHERE id = ?")
+          .get(meetingId) as {
+          context: string | null;
+        }
+      ).context,
+    }),
+  );
+  const correct = requests.filter(isCorrect);
+  expect(correct.length).toBeGreaterThan(0);
+  for (const r of correct) {
+    expect(r.system).toBe(
+      buildCorrectSystemPrompt({
+        language: "en",
+        vocabTerms: loadVocabularyTerms(),
+      }),
+    );
+  }
+}
+
 describe("the workflow with project memory", () => {
+  beforeEach(() => setMemory(true));
+  afterEach(() => setMemory(false));
+
   /** A filed meeting "m-new" and an earlier meeting "m-old" in Aurora. */
   function seedAurora() {
     seedFolder();
@@ -474,6 +522,34 @@ describe("the workflow with project memory", () => {
         }),
       );
     }
+    expect(
+      JSON.parse(runRow(runId).result_json ?? "{}").retrieval,
+    ).toBeUndefined();
+  });
+
+  it("setting off (the default): no loader call, no retrieve call, prompts equal main", async () => {
+    setMemory(false);
+    seedAurora();
+    const calls: RetrieveInput[] = [];
+    const fake = fakeSearch(
+      [hit(11, "m-old", "transcript", 0.9)],
+      { 11: DECISION },
+      calls,
+    );
+    const loader = vi.fn(
+      (
+        db: Parameters<typeof loadFolderMemory>[0],
+        input: Parameters<typeof loadFolderMemory>[1],
+      ) => loadFolderMemory(db, input, fake),
+    );
+    const { h, runId } = await run("m-new", {
+      answer: defaultAnswer,
+      deps: { loadFolderMemory: loader },
+    });
+    expect(runRow(runId).status).toBe("succeeded");
+    expect(loader).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
+    expectMainPrompts(h.requests, "m-new");
     expect(
       JSON.parse(runRow(runId).result_json ?? "{}").retrieval,
     ).toBeUndefined();

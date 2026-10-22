@@ -48,6 +48,13 @@ export const SETTINGS_KEYS = {
   meetingDiarizationEnabled: "meeting_diarization_enabled",
   meetingEnhanceAutoRun: "meeting_enhance_auto_run",
   /**
+   * Project memory (issue #234, specs/local-semantic-search.md 8.4): Summary
+   * and Enhance of a filed meeting use earlier meetings of its folder. OFF by
+   * default (owner decision 2026-10-22): only `"true"` turns it on. The 3-run
+   * Gemma 4 E2B test lost summary items with it on.
+   */
+  meetingProjectMemory: "meeting_project_memory",
+  /**
    * I2 (specs/meeting-transcription-v2.md §3.2): the one-time auto-Enhance
    * prompt (or the onboarding step for new users) has been shown. Only
    * `"true"` counts as shown; a missing row means not shown yet. Written
