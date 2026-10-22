@@ -815,6 +815,8 @@
       "close": "Suche schließen",
       "searching": "Suche läuft…",
       "failed": "Die Suche ist fehlgeschlagen. Versuchen Sie es erneut.",
+      "kindMeta": "Titel und Tags",
+      "kindSummary": "Zusammenfassung",
       "noResults": "Kein Besprechungstext passt zu dieser Suche."
     },
     "noLlmHint": "Füge unter Einstellungen > Modelle ein KI-Modell hinzu, um Verbessern und Zusammenfassung zu nutzen.",

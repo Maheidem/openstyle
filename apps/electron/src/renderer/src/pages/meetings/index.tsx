@@ -1,4 +1,8 @@
-import type { MeetingDetail, MeetingListItem } from "@openstyle/validations";
+import type {
+  MeetingDetail,
+  MeetingListItem,
+  SearchHit,
+} from "@openstyle/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
 import { getClient } from "@renderer/lib/api";
@@ -41,6 +45,7 @@ import {
   DiarizationSettingsPopover,
   EnhanceSettingsPopover,
 } from "./settings-popovers";
+import type { SearchFocus } from "./types";
 
 export default function MeetingsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -58,6 +63,8 @@ export default function MeetingsPage(): React.JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
   /** The submitted search text. Its scope is the selected folder (D21). */
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  // Where the last search hit opens its meeting (spec 7.4).
+  const [searchFocus, setSearchFocus] = useState<SearchFocus | null>(null);
   const moving = useRef(false);
   const detailColumn = useRef<HTMLDivElement>(null);
   const actionSequence = useRef(0);
@@ -175,12 +182,24 @@ export default function MeetingsPage(): React.JSX.Element {
     startRecording,
   ]);
   const open = useCallback((id: string) => {
+    setSearchFocus(null);
     setSearchQuery(null);
     setSelectedFolderId(null);
     setSelectedId(id);
     setPanelAction(null);
     setRenamingId(null);
   }, []);
+  const openHit = useCallback(
+    (hit: SearchHit) => {
+      open(hit.meeting_id);
+      setSearchFocus({
+        meetingId: hit.meeting_id,
+        kind: hit.kind,
+        startMs: hit.start_ms,
+      });
+    },
+    [open],
+  );
   const meetingImport = useMeetingImport(open);
   const importError =
     meetingImport.state.status === "error" ? meetingImport.state : null;
@@ -412,7 +431,7 @@ export default function MeetingsPage(): React.JSX.Element {
                 query={searchQuery}
                 folderId={activeFolder?.id ?? null}
                 scopeName={activeFolder?.name ?? null}
-                onOpen={open}
+                onOpen={openHit}
                 onClose={() => setSearchQuery(null)}
               />
             ) : activeFolder ? (
@@ -439,6 +458,9 @@ export default function MeetingsPage(): React.JSX.Element {
               <MeetingDetailView
                 key={activeId}
                 id={activeId}
+                focus={
+                  searchFocus?.meetingId === activeId ? searchFocus : undefined
+                }
                 folders={folders}
                 onMove={(meeting, id) => void move(meeting, id)}
                 onBack={back}

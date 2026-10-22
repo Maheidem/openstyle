@@ -993,6 +993,8 @@
       "close": "Close search",
       "searching": "Searching…",
       "failed": "Search failed. Try again.",
+      "kindMeta": "Title and tags",
+      "kindSummary": "Summary",
       "noResults": "No meeting text matches this search."
     },
     "titleAccent": "Meetings",
