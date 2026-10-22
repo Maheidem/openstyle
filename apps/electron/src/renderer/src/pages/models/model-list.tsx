@@ -611,7 +611,7 @@ export function ModelRow({
           <>
             {status === "ready" && (
               <>
-                <Button variant="ink" size="sm" onClick={row.onSelect}>
+                <Button size="sm" onClick={row.onSelect}>
                   {t("models.list.use")}
                 </Button>
                 {deleteButton}
@@ -647,7 +647,7 @@ export function ModelRow({
             )}
           </>
         ) : row.hasKey ? (
-          <Button variant="ink" size="sm" onClick={row.onSelect}>
+          <Button size="sm" onClick={row.onSelect}>
             {t("models.list.use")}
           </Button>
         ) : (

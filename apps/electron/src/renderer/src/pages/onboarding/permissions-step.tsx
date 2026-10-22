@@ -148,7 +148,7 @@ export function PermissionsStep({
                 : t("onboarding.permissions.grantAccess")}
             </span>
           )}
-          <Button variant="ink" disabled={!allGranted} onClick={onContinue}>
+          <Button disabled={!allGranted} onClick={onContinue}>
             {t("common.continue")}
             <ArrowRight data-icon="inline-end" />
           </Button>
@@ -215,7 +215,7 @@ function PermButton({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <Button variant="ink" size="sm" onClick={onClick} className="shrink-0">
+    <Button size="sm" onClick={onClick} className="shrink-0">
       {children}
     </Button>
   );

@@ -354,7 +354,6 @@ function DeviceConfirmDialog({
             {t("meetings.cancel")}
           </Button>
           <Button
-            variant="ink"
             size="sm"
             disabled={busy}
             onClick={() => {
@@ -445,7 +444,6 @@ export function RecordingCard({
             </Button>
           ) : (
             <Button
-              variant="ink"
               size="xs"
               onClick={() => void recorder.start()}
               disabled={
@@ -552,7 +550,6 @@ export function RecordingCard({
           </Button>
         ) : (
           <Button
-            variant="ink"
             size="sm"
             onClick={() => void recorder.start()}
             disabled={!recorder.supported || recorder.starting || !targetReady}

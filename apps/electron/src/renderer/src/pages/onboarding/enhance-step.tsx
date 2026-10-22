@@ -58,7 +58,6 @@ export function EnhanceStep({
           </Button>
           {model && (
             <Button
-              variant="ink"
               onClick={() => choose("on")}
               disabled={busy}
               data-testid="onboarding-enhance-turn-on"

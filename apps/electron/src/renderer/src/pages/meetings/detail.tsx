@@ -898,7 +898,6 @@ export function MeetingDetailView({
       {primary && (
         <div className="mb-5 flex items-center gap-2">
           <Button
-            variant="ink"
             size="sm"
             onClick={primary.onClick}
             disabled={primary.disabled}

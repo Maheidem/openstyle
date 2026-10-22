@@ -203,7 +203,6 @@ export function AddCustomModelDialog({
             {t("models.custom.cancel")}
           </Button>
           <Button
-            variant="ink"
             size="sm"
             onClick={() => void add()}
             disabled={check.status !== "ok" || adding}

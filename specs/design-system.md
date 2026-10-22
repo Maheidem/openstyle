@@ -24,7 +24,7 @@ treat as source of truth for pixel-level details not captured here).
 | `--border` / `--input` (hairline) | `#E5E7EB` | Dividers, card borders |
 | `--secondary` / `--muted` | `#EEF0F2` | Neutral fill (secondary buttons, muted chips) |
 | `--accent` | `#E5E7EB` | **Neutral** hover/focus tint (dropdown items, combobox rows) — deliberately NOT blue, see "Accent discipline" |
-| `--primary` | `#1D2129` (ink) | Default button fill — mirrors the mockup's `.btn-ink` primary action |
+| `--primary` | `#1D2129` (ink) | Same value as `--foreground`. The default button fills with `--foreground` (`button.tsx`), the mockup's `.btn-ink` primary action |
 | `--destructive` | `#DC2626` | Danger actions — deliberately distinct from the live coral, see "Accent discipline" |
 | `--ring` | `#2563EB` | Focus ring — the one blue usage outside the accent-passive fence, treated as a system affordance |
 | `--chart-1..5` | `#2563EB` `#1D4ED8` `#3B4E6B` `#6B8CAE` `#1D2129` | Calm speaker/series ramp, all blue/ink family, zero coral (see "Speaker chart ramp") |
@@ -295,8 +295,12 @@ These items were out of scope for the foundation pass. Status checked 2026-10-13
 - **Done**: Flatten the 7 redundant `<span className="display text-primary">`
   heading spans. Only one `display text-primary` span is left, a stat number at
   `pages/history.tsx:877`, not a heading.
-- **Open**: Merge the near-duplicate `default` and `ink` variants of
-  `components/ui/button.tsx`. Both variants still exist (`button.tsx:11-12`).
+- **Done**: Merge the near-duplicate `default` and `ink` variants of
+  `components/ui/button.tsx` (issue #288). The `ink` variant is gone. `default`
+  is `bg-foreground text-background hover:bg-foreground/90`: the same fill and
+  text as before in both themes, and it now hovers on a `<button>` too, not
+  only on an `<a>`. Use `<Button>` with no `variant` prop for the primary
+  action.
 
 ## Verification performed
 
