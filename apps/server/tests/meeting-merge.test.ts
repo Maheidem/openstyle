@@ -2,6 +2,7 @@ import { isVocabLeak, textSimilarity } from "@openstyle/stt";
 import { describe, expect, it } from "vitest";
 import {
   collapseInSegmentLoops,
+  ECHO_MIN_OVERLAP_MS,
   filterConsecutiveRepeats,
   formatTranscriptMarkdown,
   isHallucination,
@@ -9,6 +10,7 @@ import {
   type SyncData,
   type TranscriptSegment,
 } from "../src/lib/meetings/merge.js";
+import { DEFAULT_SEGMENTER_OPTIONS } from "../src/lib/meetings/segmenter.js";
 
 function seg(
   startMs: number,
@@ -53,6 +55,54 @@ describe("mergeTranscript", () => {
     });
   });
 
+  // Issue #269: a real reply that repeats the other speaker's words comes
+  // AFTER their line. Its chunk touches theirs only through the segmenter
+  // padding and hangover, so it must stay.
+  it("keeps a Me reply that repeats the words of the line before it", () => {
+    const system = [seg(10_000, 12_400, "Can we ship it on Friday?")];
+    const mic = [seg(12_100, 14_500, "Yes, we can ship it on Friday.")];
+    expect(textSimilarity(mic[0].text, system[0].text)).toBeGreaterThan(0.7);
+    const merged = mergeTranscript(mic, system);
+    expect(merged.map((m) => [m.speaker, m.text])).toEqual([
+      ["Them", "Can we ship it on Friday?"],
+      ["Me", "Yes, we can ship it on Friday."],
+    ]);
+  });
+
+  it("keeps an identical Me reply after a short pause (no overlap)", () => {
+    const system = [seg(10_000, 12_000, "Okay, Friday then.")];
+    const mic = [seg(12_600, 13_800, "Okay, Friday then.")];
+    expect(mergeTranscript(mic, system)).toHaveLength(2);
+  });
+
+  it("keeps a Me reply whose chunk overlaps only by the padding", () => {
+    // Worst case of sequential speech: zero gap between the two speakers.
+    // The overlap is then padBefore + hangover + padAfter of the segmenter.
+    const { padBeforeMs, hangoverMs, padAfterMs } = DEFAULT_SEGMENTER_OPTIONS;
+    const pad = padBeforeMs + hangoverMs + padAfterMs;
+    expect(pad).toBeLessThan(ECHO_MIN_OVERLAP_MS);
+    const system = [seg(0, 3000, "the demo is on Friday at ten")];
+    const mic = [seg(3000 - pad, 5000, "the demo is on Friday at ten")];
+    expect(mergeTranscript(mic, system)).toHaveLength(2);
+  });
+
+  it("still drops a true echo that runs at the same time as the system line", () => {
+    const system = [seg(20_000, 24_000, "Let's move the review to Friday.")];
+    const mic = [seg(20_040, 24_100, "let's move the review to Friday")];
+    const merged = mergeTranscript(mic, system);
+    expect(merged.map((m) => m.speaker)).toEqual(["Them"]);
+  });
+
+  it("still drops a short echo inside a long mic chunk", () => {
+    // The mic chunk is longer than the system line, but the copy overlaps
+    // the whole system line.
+    const system = [seg(30_000, 33_000, "see you on Friday")];
+    const mic = [seg(28_000, 40_000, "see you on Friday")];
+    expect(mergeTranscript(mic, system).map((m) => m.speaker)).toEqual([
+      "Them",
+    ]);
+  });
+
   it("keeps a mic segment overlapping a dissimilar system segment", () => {
     const mic = [seg(1000, 3000, "I totally disagree with that plan")];
     const system = [seg(1200, 3200, "the weather has been great this week")];
@@ -60,7 +110,7 @@ describe("mergeTranscript", () => {
     expect(merged).toHaveLength(2);
   });
 
-  it("keeps a similar mic segment outside the ±1 s echo window", () => {
+  it("keeps a similar mic segment that does not overlap the system segment", () => {
     const mic = [
       seg(10_000, 12_000, "let's review the quarterly numbers together"),
     ];
