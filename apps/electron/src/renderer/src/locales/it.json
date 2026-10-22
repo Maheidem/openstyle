@@ -1229,6 +1229,16 @@
       "downloadSize": "{{done}} di {{total}} GB",
       "loading": "Caricamento di {{model}}…",
       "openMeeting": "{{job}}. Apri la riunione."
+    },
+    "nextEvent": {
+      "title": "Prossimo evento",
+      "inHours": "tra {{hours}} h {{minutes}} min",
+      "inMinutes": "tra {{minutes}} min",
+      "record": "Registra",
+      "recordLabel": "Registra {{title}} ora",
+      "recordWhenItStarts": "Registra all’inizio",
+      "recordWhenItStartsLabel": "Registra {{title}} all’inizio",
+      "willStart": "La registrazione inizierà alle {{time}}"
     }
   }
 }

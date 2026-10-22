@@ -1230,6 +1230,16 @@
       "downloadSize": "{{done}} sur {{total}} Go",
       "loading": "Chargement de {{model}}…",
       "openMeeting": "{{job}}. Ouvrir la réunion."
+    },
+    "nextEvent": {
+      "title": "Prochain événement",
+      "inHours": "dans {{hours}} h {{minutes}} min",
+      "inMinutes": "dans {{minutes}} min",
+      "record": "Enregistrer",
+      "recordLabel": "Enregistrer {{title}} maintenant",
+      "recordWhenItStarts": "Enregistrer au début",
+      "recordWhenItStartsLabel": "Enregistrer {{title}} au début",
+      "willStart": "L’enregistrement commencera à {{time}}"
     }
   }
 }

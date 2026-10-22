@@ -20,6 +20,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { JobsSection, useTrayJobs } from "./tray-popover-jobs";
+import { NextEventSection } from "./tray-popover-next-event";
 
 // The tray popover (issue #317, design Option B). Sections, top to bottom:
 // header, meeting control, next event (step 3), recent dictations, jobs
@@ -133,6 +134,31 @@ export default function TrayPopoverPage(): React.JSX.Element {
     return () => observer.disconnect();
   }, []);
 
+  // One start path for the big button and the "Record" of the next event:
+  // meeting:start, as the Meetings page and the tray menu use. When the
+  // devices changed, the Meetings page asks the user to confirm them (#169).
+  const [startError, setStartError] = useState<string | null>(null);
+  const startMeetingNow = useCallback(
+    async (eventId?: string): Promise<void> => {
+      setStartError(null);
+      try {
+        if (eventId) await window.api.linkEventToNextStart(eventId);
+        const res = await window.api.startMeetingRecording();
+        if (res.devices) {
+          // The confirmed start of the Meetings page takes the link.
+          window.api.openFromTrayPopover("confirmMeeting");
+        } else if (!res.ok) {
+          if (eventId) await window.api.linkEventToNextStart(null);
+          setStartError(res.error ?? t("trayPopover.meeting.startFailed"));
+        }
+      } catch (err) {
+        if (eventId) void window.api.linkEventToNextStart(null);
+        setStartError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [t],
+  );
+
   const recording = meeting.status === "recording";
   const hotkey = info?.hotkey ?? window.api.defaultHotkey;
 
@@ -172,10 +198,28 @@ export default function TrayPopoverPage(): React.JSX.Element {
       </header>
 
       {info?.meetingsAvailable && (
-        <MeetingControl meeting={meeting} recording={recording} />
+        <MeetingControl
+          meeting={meeting}
+          recording={recording}
+          onStart={() => startMeetingNow()}
+          error={startError}
+        />
       )}
 
-      {/* Step 3 (issue #317): the "Next event" section goes here. */}
+      {info?.meetingsAvailable && (
+        <NextEventSection
+          visible={visible}
+          canRecord={meeting.status === "idle"}
+          onRecord={(eventId) => startMeetingNow(eventId)}
+          title={
+            <SectionTitle>
+              <span id="tray-popover-next-event">
+                {t("trayPopover.nextEvent.title")}
+              </span>
+            </SectionTitle>
+          }
+        />
+      )}
 
       <RecentDictations items={recent} />
 
@@ -226,13 +270,18 @@ function StatusChip({
 function MeetingControl({
   meeting,
   recording,
+  onStart,
+  error,
 }: {
   meeting: MeetingInfo;
   recording: boolean;
+  /** Start a meeting now (startMeetingNow of the page). */
+  onStart: () => Promise<void>;
+  /** The message of the last failed start, or null. */
+  error: string | null;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState<string | null>(null);
   // One message per state change, never one per second.
   const [announcement, setAnnouncement] = useState("");
@@ -278,18 +327,8 @@ function MeetingControl({
   const start = async (): Promise<void> => {
     if (busy) return;
     setBusy(true);
-    setError(null);
     try {
-      // The same path as the Meetings page and the tray menu. When the
-      // devices changed, the Meetings page asks the user to confirm them.
-      const res = await window.api.startMeetingRecording();
-      if (res.devices) {
-        window.api.openFromTrayPopover("confirmMeeting");
-      } else if (!res.ok) {
-        setError(res.error ?? t("trayPopover.meeting.startFailed"));
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      await onStart();
     } finally {
       setBusy(false);
     }

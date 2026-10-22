@@ -1230,6 +1230,16 @@
       "downloadSize": "{{done}} / {{total}} GB",
       "loading": "{{model}} を読み込み中…",
       "openMeeting": "{{job}}。会議を開きます。"
+    },
+    "nextEvent": {
+      "title": "次の予定",
+      "inHours": "あと {{hours}} 時間 {{minutes}} 分",
+      "inMinutes": "あと {{minutes}} 分",
+      "record": "録音",
+      "recordLabel": "{{title}} を今すぐ録音",
+      "recordWhenItStarts": "開始時に録音",
+      "recordWhenItStartsLabel": "{{title}} を開始時に録音",
+      "willStart": "{{time}} に録音を開始します"
     }
   }
 }

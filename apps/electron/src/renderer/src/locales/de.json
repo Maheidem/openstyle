@@ -1230,6 +1230,16 @@
       "downloadSize": "{{done}} von {{total}} GB",
       "loading": "{{model}} wird gestartet…",
       "openMeeting": "{{job}}. Meeting öffnen."
+    },
+    "nextEvent": {
+      "title": "Nächster Termin",
+      "inHours": "in {{hours}} h {{minutes}} min",
+      "inMinutes": "in {{minutes}} min",
+      "record": "Aufnehmen",
+      "recordLabel": "{{title}} jetzt aufnehmen",
+      "recordWhenItStarts": "Beim Start aufnehmen",
+      "recordWhenItStartsLabel": "{{title}} beim Start aufnehmen",
+      "willStart": "Die Aufnahme startet um {{time}}"
     }
   }
 }

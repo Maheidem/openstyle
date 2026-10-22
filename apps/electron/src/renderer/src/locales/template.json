@@ -1547,6 +1547,16 @@
       "downloadSize": "{{done}} of {{total}} GB",
       "loading": "Loading {{model}}…",
       "openMeeting": "{{job}}. Open the meeting."
+    },
+    "nextEvent": {
+      "title": "Next event",
+      "inHours": "in {{hours}} h {{minutes}} min",
+      "inMinutes": "in {{minutes}} min",
+      "record": "Record",
+      "recordLabel": "Record {{title}} now",
+      "recordWhenItStarts": "Record when it starts",
+      "recordWhenItStartsLabel": "Record {{title}} when it starts",
+      "willStart": "Recording will start at {{time}}"
     }
   }
 }
