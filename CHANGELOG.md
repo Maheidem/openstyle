@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.22.0
+
+### Improvements ⚡
+
+- Enhance gives better results with the built-in Gemma 4 models. Corrections no longer add grammar words or change your wording ("gonna" stays "gonna"), and they add fewer errors to the transcript. Suggested tags are short topic names. Speakers stay unnamed when the meeting gives no name. The summary no longer repeats an action item as a decision (#211).
+- History shows the built-in models by name, for example "Qwen3 Fast · Gemma 4 E2B" (#309).
+- When Speakers skips a step, the Enhance progress shows the reason, not "An unknown error occurred" (#300).
+
+### Bug Fixes 🐛
+
+- Enhance works with your own llama.cpp server and Gemma 4. Before, every correction ended with "The model reached its output limit", because the model wrote hidden reasoning instead of an answer (#312).
+- A reply that repeats the other person's words ("Yes, we can ship it on Friday.") is no longer hidden from the transcript, Enhance, Summary or export (#304).
+- The pill closes with its animation when a meeting stops. Cards and buttons look the same across the app in light and dark mode (#288).
+
 ## 2.21.2
 
 ### Improvements ⚡
