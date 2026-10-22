@@ -218,7 +218,8 @@ jobs:
     needs: [changes, lint, typecheck, test-server]
     if: needs.changes.outputs.run_electron == 'true'
     runs-on: macos-14
-    timeout-minutes: 45
+    # Notarization waits for Apple; the first submissions can take long.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -411,6 +412,8 @@ jobs:
       - name: Build electron (macOS)
         working-directory: apps/electron
         env:
+          # Progress lines for codesign and notarization (no secrets are printed).
+          DEBUG: electron-osx-sign*,electron-notarize*,@electron/notarize*
           MODE: ${{ steps.signing.outputs.mode }}
           IDENTITY: ${{ steps.signing.outputs.identity }}
           API_KEY_PATH: ${{ steps.signing.outputs.api_key_path }}
