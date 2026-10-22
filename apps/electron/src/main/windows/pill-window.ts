@@ -17,6 +17,7 @@ import {
   resolveCustomPosition,
 } from "../pill-position";
 import { getPillURL } from "../renderer-urls";
+import { createMeetingPillExit } from "./meeting-pill-exit";
 
 /**
  * The window is grown to this while the renderer shows its expanded status
@@ -364,18 +365,41 @@ export function showPill(): void {
 }
 
 /**
+ * The longest wait for the renderer's meeting exit (QUIET_MS, 120 ms, plus
+ * margin). After it, the pill hides without the message.
+ */
+const MEETING_EXIT_FALLBACK_MS = 300;
+
+const meetingExit = createMeetingPillExit({
+  fallbackMs: MEETING_EXIT_FALLBACK_MS,
+  canHide: () =>
+    !dictationOwnsPill &&
+    !meetingRecording() &&
+    state.mainWindow?.isVisible() === true,
+  hide: () => state.mainWindow?.hide(),
+});
+
+/**
  * Show the pill in the meeting Recording state while a meeting records
- * (`recording`). When the meeting stops, hide the pill, but only when no
- * dictation uses it. A dictation hides the pill itself when it ends.
+ * (`recording`). When the meeting stops, the renderer plays the exit of the
+ * capsule first, then `finishPillMeetingExit()` hides the pill. A fallback
+ * timer hides it if the renderer does not answer. The pill never hides while
+ * a dictation uses it: a dictation hides the pill itself when it ends.
  */
 export function setPillMeetingRecording(recording: boolean): void {
   if (recording) {
+    meetingExit.cancel();
     presentPill();
     return;
   }
   if (!dictationOwnsPill && state.mainWindow?.isVisible()) {
-    state.mainWindow.hide();
+    meetingExit.start();
   }
+}
+
+/** The renderer ended the exit of the meeting capsule. */
+export function finishPillMeetingExit(): void {
+  meetingExit.done();
 }
 
 function presentPill(): void {

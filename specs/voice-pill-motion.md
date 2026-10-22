@@ -194,6 +194,14 @@ are renderer-driven, so there is always something on the other side to do it.
 that re-introduces an earlier hide silently deletes the confirmation while
 every renderer-side assertion still passes.
 
+The meeting Recording capsule follows the same rule (issue #288). On a stop,
+main does not hide the pill. The capsule plays the `quiet` exit (`QUIET_MS`),
+then the renderer sends `pill:meeting-exit-done` and main hides the pill. A
+300 ms fallback timer hides it if the message does not come. Main never hides
+the pill while a dictation owns it, and it does not use `hidePill()` for this
+(that call also clears the dictation and hotkey state). Code:
+`main/windows/meeting-pill-exit.ts`, `renderer/.../pill/meeting-cue.ts`.
+
 ## 8. Three traps
 
 All three looked correct in review and were only visible under measurement or on a real first run.
