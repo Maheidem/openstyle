@@ -22,7 +22,7 @@ function Notice({
   return (
     <div
       className={cn(
-        "bg-popover text-popover-foreground border-border shadow-[0_4px_16px_rgba(29,33,41,.08)] absolute top-[calc(100%+6px)] z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs",
+        "bg-popover text-popover-foreground border-border shadow-(--shadow-card) absolute top-[calc(100%+6px)] z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs",
         NOTICE_SIDE[side],
       )}
     >
