@@ -973,7 +973,7 @@
       "content_filter": "El proveedor bloqueó la respuesta.",
       "unexpected_tool_calls": "El modelo intentó llamar a una herramienta.",
       "abnormal_stop": "El modelo se detuvo por un motivo desconocido.",
-      "reasoning_leak": "El modelo puso su razonamiento en la respuesta.",
+      "reasoning_leak": "El modelo escribió su razonamiento en lugar de una respuesta limpia.",
       "schema": "La respuesta no cumplía el formato requerido.",
       "provider_timeout": "El modelo no respondió a tiempo. Sube el tiempo límite en Ajustes y vuelve a intentarlo.",
       "provider_rate_limited": "El proveedor limitó las solicitudes.",

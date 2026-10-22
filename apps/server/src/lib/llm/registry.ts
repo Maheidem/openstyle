@@ -7,6 +7,7 @@ import { MLX_LLM_PROVIDER_ID } from "../mlx-llm/constants.js";
 import { stripModelPrefix } from "../model-id.js";
 import { getOwnServer } from "../own-servers.js";
 import { traceLlmFetch } from "../trace.js";
+import { llamaCppCompletionFetch } from "./llamacpp-completion.js";
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
@@ -59,6 +60,11 @@ export interface GatewayOverridePart {
 export interface GatewayOverrides {
   force?: GatewayOverridePart;
   bounded?: GatewayOverridePart;
+  /**
+   * llama.cpp only: send the request as template + `/v1/completions`, so the
+   * JSON grammar applies from the first token (`llamacpp-completion.ts`).
+   */
+  llamaCppCompletion?: boolean;
   presetSet?: {
     topLevel?: readonly string[];
     chatTemplateKwargs?: readonly string[];
@@ -289,6 +295,9 @@ export function createSamplingFetch(
       opts.gatewayOverrides,
     );
     reportBody(body, opts.onRequestBody);
+    if (opts.gatewayOverrides?.llamaCppCompletion) {
+      return llamaCppCompletionFetch(input, { ...init, body });
+    }
     return traceLlmFetch(input, { ...init, body });
   };
 }

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import type { CallRecord, CallSink } from "../src/lib/llm/call-record.js";
 import {
+  __clearLlamaCppCompletionForTests,
   type CallStructuredInput,
   callStructured,
   probeEndpoint,
@@ -39,7 +40,7 @@ import {
   CORRECT_CHUNK_STEP_SCHEMA,
   type CorrectChunk,
 } from "../src/lib/meetings/workflow/schemas.js";
-import { insertOwnServer } from "../src/lib/own-servers.js";
+import { getOwnServer, insertOwnServer } from "../src/lib/own-servers.js";
 
 const MODEL = "Qwen3.8-27B";
 const VALID = '{"corrections":[]}';
@@ -59,10 +60,12 @@ function chatReply(
     model?: string | null;
     extraMessage?: Record<string, unknown>;
     reasoningTokens?: number;
+    extraBody?: Record<string, unknown>;
   } = {},
 ): Response {
   return new Response(
     JSON.stringify({
+      ...(o.extraBody ?? {}),
       id: "1",
       object: "chat.completion",
       created: 0,
@@ -232,6 +235,7 @@ beforeEach(() => {
   modelId = serverModelId(serverId, MODEL);
   __resetLlmLanesForTests();
   __clearModeCacheForTests();
+  __clearLlamaCppCompletionForTests();
 });
 
 afterEach(() => {
@@ -524,6 +528,152 @@ describe("W8, reasoning in the answer", () => {
     stubFetch([() => chatReply(VALID)]);
     const b = await makeInput(await serverProfile());
     expect((await callStructured(b.input)).usage.reasoning).toBeNull();
+  });
+});
+
+describe("W8b, a thought block that uses the output limit", () => {
+  const thought = { reasoning_content: "er</|channel> id seg-2..." };
+  const llamaCpp = {
+    system_fingerprint: "b11594-e0bcaccbe",
+    timings: { prompt_n: 900, predicted_n: 400 },
+  };
+
+  it("length with only reasoning and reasoning off is a leak, not length", async () => {
+    stubFetch([
+      () => chatReply("", { finish: "length", extraMessage: thought }),
+    ]);
+    const { input, records } = await makeInput(await serverProfile());
+    const err = await fails(callStructured(input));
+    expect(err).toBeInstanceOf(ReasoningLeakError);
+    expect((err as ReasoningLeakError).leak).toBe(
+      "empty_content_with_reasoning",
+    );
+    expect(err.message).toBe(
+      "The model used its output limit (400) on reasoning and wrote no answer.",
+    );
+    expect(err.runWide).toBe(true);
+    // Not llama.cpp: nothing to change, so no retry.
+    expect(err.retry).toBeNull();
+    expect(records[0]?.errorKind).toBe("reasoning_leak");
+  });
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+  const completion = (text: string) =>
+    json({
+      ...llamaCpp,
+      id: "c1",
+      object: "text_completion",
+      created: 0,
+      model: MODEL,
+      choices: [{ index: 0, text, finish_reason: "stop" }],
+      usage: { prompt_tokens: 900, completion_tokens: 12, total_tokens: 912 },
+    });
+  /** The fake server root of the seeded own server. Fetch is stubbed. */
+  const root = () => getOwnServer(serverId)?.base_url ?? "";
+
+  it("llama.cpp: the retry uses the template and /v1/completions, and the model keeps it", async () => {
+    const seen = stubFetch([
+      () =>
+        chatReply("", {
+          finish: "length",
+          extraMessage: thought,
+          extraBody: llamaCpp,
+        }),
+      () => json({ prompt: "<|turn>user\nhi<turn|>\n<|turn>model\n" }),
+      () => completion(VALID),
+      () => json({ prompt: "P2" }),
+      () => completion(VALID),
+    ]);
+    const profile = await serverProfile();
+    const first = await makeInput(profile);
+    const err = await fails(callStructured(first.input));
+    expect(err).toBeInstanceOf(ReasoningLeakError);
+    expect(err.retry).toEqual({ change: "llamacpp_completion", waitMs: 0 });
+
+    const retry = await makeInput(profile, {
+      retry: { kind: "reasoning_leak", change: "llamacpp_completion" },
+    });
+    const result = await callStructured(retry.input);
+    expect(result.object).toEqual({ corrections: [] });
+    expect(seen[1]?.url).toBe(`${root()}/apply-template`);
+    expect(seen[1]?.body?.chat_template_kwargs).toEqual({
+      enable_thinking: false,
+    });
+    expect(seen[1]?.body?.messages).toEqual(seen[0]?.body?.messages);
+    expect(seen[2]?.url).toBe(`${root()}/v1/completions`);
+    const body = seen[2]?.body as Record<string, unknown>;
+    expect(body.prompt).toBe("<|turn>user\nhi<turn|>\n<|turn>model\n");
+    expect(body.json_schema).toEqual(
+      (seen[0]?.body?.response_format as { json_schema: { schema: unknown } })
+        .json_schema.schema,
+    );
+    expect(body.max_tokens).toBe(400);
+    expect(body.messages).toBeUndefined();
+    expect(body.response_format).toBeUndefined();
+    expect(retry.records[0]?.finishUnified).toBe("stop");
+    expect(retry.records[0]?.params.warnings).toContain(
+      "llama.cpp: /v1/completions, JSON grammar from the first token",
+    );
+
+    // The next call of the same model and step takes the route on the first try.
+    const next = await makeInput(profile);
+    await callStructured(next.input);
+    expect(seen[4]?.url).toBe(`${root()}/v1/completions`);
+
+    // Another step of the same model keeps the chat route.
+    stubFetch([() => chatReply(VALID, { extraBody: llamaCpp })]);
+    const other = await makeInput(profile, { step: "summarize" });
+    await callStructured(other.input);
+    expect(other.records[0]?.params.warnings).not.toContain(
+      "llama.cpp: /v1/completions, JSON grammar from the first token",
+    );
+  });
+
+  it("llama-swap: a 404 on /apply-template falls back to /upstream/<model>/", async () => {
+    const seen = stubFetch([
+      () => json({ error: "not found" }, 404),
+      () => json({ prompt: "P" }),
+      () => completion(VALID),
+    ]);
+    const { input } = await makeInput(await serverProfile(), {
+      retry: { kind: "reasoning_leak", change: "llamacpp_completion" },
+    });
+    await callStructured(input);
+    expect(seen.map((s) => s.url)).toEqual([
+      `${root()}/apply-template`,
+      `${root()}/upstream/${MODEL}/apply-template`,
+      `${root()}/v1/completions`,
+    ]);
+  });
+
+  it("an output limit on the completion route is length, with no retry", async () => {
+    stubFetch([
+      () => json({ prompt: "P" }),
+      () =>
+        json({
+          ...llamaCpp,
+          model: MODEL,
+          choices: [
+            {
+              index: 0,
+              text: '{"corrections":[{"id"',
+              finish_reason: "length",
+            },
+          ],
+          usage: {
+            prompt_tokens: 900,
+            completion_tokens: 400,
+            total_tokens: 1300,
+          },
+        }),
+    ]);
+    const { input } = await makeInput(await serverProfile(), {
+      retry: { kind: "reasoning_leak", change: "llamacpp_completion" },
+    });
+    const err = await fails(callStructured(input));
+    expect(err).toBeInstanceOf(LengthError);
+    expect(err.retry).toBeNull();
   });
 });
 

@@ -973,7 +973,7 @@
       "content_filter": "Der Anbieter hat die Antwort blockiert.",
       "unexpected_tool_calls": "Das Modell hat versucht, ein Werkzeug aufzurufen.",
       "abnormal_stop": "Das Modell hat aus einem unbekannten Grund angehalten.",
-      "reasoning_leak": "Das Modell hat seine Überlegungen in die Antwort geschrieben.",
+      "reasoning_leak": "Das Modell hat Überlegungen statt einer sauberen Antwort geschrieben.",
       "schema": "Die Antwort entsprach nicht dem verlangten Format.",
       "provider_timeout": "Das Modell hat nicht rechtzeitig geantwortet. Erhöhen Sie das Zeitlimit in den Einstellungen und versuchen Sie es erneut.",
       "provider_rate_limited": "Der Anbieter hat die Anfragen begrenzt.",
