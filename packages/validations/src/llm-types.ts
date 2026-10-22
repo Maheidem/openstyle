@@ -31,6 +31,31 @@ export type LlmStepStatus =
   | "interrupted"
   | "unknown";
 
+/**
+ * Why a step skipped itself. A `skipped` step row has the error kind
+ * `"skipped"` and one of these words as its error detail. A skip is not an
+ * error: the app shows a neutral text for each word (issue #300).
+ * - `no_labels`: the meeting has no diarized speaker turns to name.
+ * - `all_confirmed`: every speaker already has a name.
+ * - `stopped`: the person stopped the run before the step ran.
+ * - `cancelled`: the person cancelled the run before the step ran.
+ * - `speakers_skipped`: Speakers did not run, so nothing is to check.
+ * - `speakers_failed`: Speakers failed, so nothing is to check.
+ * - `not_saved`: the run saved no result, so the step did not run.
+ * - `meeting_gone`: the meeting was deleted during the run.
+ * - `empty_transcript`: the transcript has no text for the step.
+ */
+export type LlmSkipReason =
+  | "no_labels"
+  | "all_confirmed"
+  | "stopped"
+  | "cancelled"
+  | "speakers_skipped"
+  | "speakers_failed"
+  | "not_saved"
+  | "meeting_gone"
+  | "empty_transcript";
+
 /** The meeting targets. A link is generic by (target_type, target_id). */
 export type LlmTargetType = "segment" | "speaker" | "summary";
 
@@ -71,8 +96,11 @@ export interface LlmStepInfo {
   attempts: number;
   /** Call rows that exist. Less than `attempts` means a gap. */
   recordedCalls: number;
+  /** null for a skipped step: a skip is not an error (issue #300). */
   errorKind: string | null;
   errorDetail: string | null;
+  /** Why a `skipped` step skipped itself. null for an unknown or no reason. */
+  skipReason: LlmSkipReason | null;
   startedAt: number | null;
   finishedAt: number | null;
 }

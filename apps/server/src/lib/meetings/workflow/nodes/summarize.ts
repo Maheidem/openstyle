@@ -1,4 +1,5 @@
 import {
+  type LlmSkipReason,
   MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
   meetingSummaryTimeoutMs,
 } from "@openstyle/validations";
@@ -610,8 +611,17 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
      */
     const outcomeRow = (
       o: Outcome,
-    ): { status: NodeStatus; failure: NodeFailure | null } => {
-      if (!o.ok) return { status: o.status, failure: o.failure };
+    ): {
+      status: NodeStatus;
+      failure: NodeFailure | null;
+      skipReason?: LlmSkipReason;
+    } => {
+      if (!o.ok) {
+        // A unit is skipped only when the run stopped before its call.
+        return o.status === "skipped"
+          ? { status: o.status, failure: o.failure, skipReason: "stopped" }
+          : { status: o.status, failure: o.failure };
+      }
       const cut = o.cut ?? repaired.values().next().value ?? null;
       return cut
         ? { status: "partial", failure: cut }

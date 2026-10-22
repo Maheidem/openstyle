@@ -1,4 +1,4 @@
-import type { LlmStepStatus } from "@openstyle/validations";
+import type { LlmSkipReason, LlmStepStatus } from "@openstyle/validations";
 import type { Span } from "@opentelemetry/api";
 import type { CallStructuredResult } from "../../llm/gateway.js";
 import {
@@ -117,9 +117,38 @@ export interface NodeSpec<S extends { runId: string }, R> {
   outcome: (r: R) => {
     status: NodeStatus;
     failure: NodeFailure | null;
-    /** Why a node skipped itself. It goes to the step row detail. */
-    skipDetail?: string | null;
   };
+}
+
+/**
+ * Why a node result is `skipped`. The reason is not part of the result
+ * contract (spec 4.3): the node guard writes it to the step row only.
+ */
+const skipReasons = new WeakMap<object, LlmSkipReason>();
+
+/** Marks a `skipped` node result with its reason and returns the result. */
+export function skippedBecause<R extends object>(
+  result: R,
+  reason: LlmSkipReason,
+): R {
+  skipReasons.set(result, reason);
+  return result;
+}
+
+/**
+ * The error columns of a finished step row: the failure, or for a skipped
+ * step the kind `"skipped"` and the reason as the detail (issue #300).
+ */
+function stepError(
+  status: NodeStatus,
+  failure: NodeFailure | null,
+  skipReason: LlmSkipReason | null | undefined,
+): { kind: string; detail: string } | undefined {
+  if (failure) return { kind: failure.kind, detail: failure.message };
+  if (status === "skipped" && skipReason) {
+    return { kind: "skipped", detail: skipReason };
+  }
+  return undefined;
 }
 
 interface CallRow {
@@ -268,11 +297,13 @@ export function guardNode<S extends { runId: string }, R>(
         state.runId,
         key,
         stepStatusOf(out.status),
-        out.failure
-          ? { kind: out.failure.kind, detail: out.failure.message }
-          : out.skipDetail
-            ? { kind: "skipped", detail: out.skipDetail }
-            : undefined,
+        stepError(
+          out.status,
+          out.failure,
+          typeof result === "object" && result !== null
+            ? skipReasons.get(result)
+            : null,
+        ),
       );
     }
     return result;
@@ -289,7 +320,11 @@ export async function runStep<R>(
   runId: string,
   step: { key: string; node: NodeId },
   body: () => Promise<R>,
-  outcome: (r: R) => { status: NodeStatus; failure: NodeFailure | null },
+  outcome: (r: R) => {
+    status: NodeStatus;
+    failure: NodeFailure | null;
+    skipReason?: LlmSkipReason;
+  },
 ): Promise<R> {
   deps.recorder.startStep(runId, step);
   let result: R;
@@ -307,9 +342,7 @@ export async function runStep<R>(
     runId,
     step.key,
     stepStatusOf(out.status),
-    out.failure
-      ? { kind: out.failure.kind, detail: out.failure.message }
-      : undefined,
+    stepError(out.status, out.failure, out.skipReason),
   );
   return result;
 }

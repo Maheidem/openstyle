@@ -20,7 +20,7 @@ export function isAdvancedMode(value: string | null | undefined): boolean {
   return value === "true";
 }
 
-export { llmErrorKey as errorTextKey } from "./run-notice";
+export { llmErrorKey as errorTextKey, skipReasonKey } from "./run-notice";
 
 const VERDICT_CODES: ReadonlySet<string> = new Set<
   DropReason | CorrectionDropReason | EvidenceType

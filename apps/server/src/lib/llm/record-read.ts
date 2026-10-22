@@ -10,6 +10,7 @@ import type {
   LlmRunKind,
   LlmRunStatus,
   LlmScope,
+  LlmSkipReason,
   LlmStepInfo,
   LlmStepStatus,
   LlmTargetType,
@@ -88,6 +89,29 @@ function parseJson(text: string | null): unknown {
   }
 }
 
+/**
+ * The skip reasons (issue #300). A skipped step row stores the error kind
+ * `"skipped"` and the reason as its detail. The record maps it out of the
+ * error columns, so a skip never reads as an `unknown` error.
+ */
+const SKIP_REASONS: Record<LlmSkipReason, true> = {
+  no_labels: true,
+  all_confirmed: true,
+  stopped: true,
+  cancelled: true,
+  speakers_skipped: true,
+  speakers_failed: true,
+  not_saved: true,
+  meeting_gone: true,
+  empty_transcript: true,
+};
+
+function skipReasonOf(value: string | null): LlmSkipReason | null {
+  return value !== null && Object.hasOwn(SKIP_REASONS, value)
+    ? (value as LlmSkipReason)
+    : null;
+}
+
 function errorKindOf(value: string | null): string | null {
   if (value === null) return null;
   return ERROR_KINDS.has(value) ? value : "unknown";
@@ -157,8 +181,17 @@ function toStep(row: StepRow): LlmStepInfo {
     seq: row.seq,
     attempts: row.attempts,
     recordedCalls: row.recorded_calls,
-    errorKind: errorKindOf(row.error_kind),
-    errorDetail: row.error_detail,
+    ...(row.error_kind === "skipped"
+      ? {
+          errorKind: null,
+          errorDetail: null,
+          skipReason: skipReasonOf(row.error_detail),
+        }
+      : {
+          errorKind: errorKindOf(row.error_kind),
+          errorDetail: row.error_detail,
+          skipReason: null,
+        }),
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   };

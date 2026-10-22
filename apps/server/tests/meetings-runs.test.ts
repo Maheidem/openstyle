@@ -255,6 +255,38 @@ describe("step counts (check 9)", () => {
   });
 });
 
+describe("skipped steps (issue #300)", () => {
+  it("a skip row reads as a skip reason, never as an unknown error", async () => {
+    startRun("r1");
+    const rec = recorder();
+    const skip = (key: string, node: string, detail: string) => {
+      rec.startStep("r1", { key, node });
+      rec.finishStep("r1", key, "skipped", { kind: "skipped", detail });
+    };
+    skip("candidates", "identifySpeakers", "no_labels");
+    skip("verify", "verify", "speakers_skipped");
+    skip("tags", "suggestTags", "a_future_reason");
+    rec.startStep("r1", { key: "chunk:0", node: "correctChunk" });
+    rec.finishStep("r1", "chunk:0", "skipped");
+    step("r1", "chunk:1", "correctChunk", "failed");
+    const { body } = await getJson<LlmRunListResponse>(
+      "/api/meetings/m1/llm-runs?run_id=r1",
+    );
+    const steps = body.runs[0]?.steps ?? [];
+    expect(
+      steps.map((s) => [s.key, s.status, s.errorKind, s.skipReason]),
+    ).toEqual([
+      ["candidates", "skipped", null, "no_labels"],
+      ["verify", "skipped", null, "speakers_skipped"],
+      ["tags", "skipped", null, null],
+      ["chunk:0", "skipped", null, null],
+      // A real error stays as it was.
+      ["chunk:1", "failed", "length", null],
+    ]);
+    expect(steps[4]?.errorDetail).toBe("cut");
+  });
+});
+
 describe("no prompt text in meeting routes (check 2)", () => {
   it("a sentinel in messages_json and raw_text is in no meeting route and no llm-runs answer", async () => {
     startRun("r1");

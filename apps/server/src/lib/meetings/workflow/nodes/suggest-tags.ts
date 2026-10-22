@@ -1,4 +1,8 @@
-import { MAX_SUGGESTED_TAGS, normalizeTagNames } from "@openstyle/validations";
+import {
+  type LlmSkipReason,
+  MAX_SUGGESTED_TAGS,
+  normalizeTagNames,
+} from "@openstyle/validations";
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
 import { addSuggestedTags, listTagsWithCounts } from "../../tags.js";
@@ -19,7 +23,12 @@ import {
   TAGS_MAX_INPUT_TOKENS,
   TAGS_PROMPT_MAX_EXISTING,
 } from "../types.js";
-import { fitsContext, guardNode, runUnitRoute } from "../unit.js";
+import {
+  fitsContext,
+  guardNode,
+  runUnitRoute,
+  skippedBecause,
+} from "../unit.js";
 
 // Node `suggestTags` (issue #231). One call that suggests at most 5 topic
 // tags for the meeting. It runs after `save`, so it cannot change a prompt or
@@ -79,8 +88,11 @@ function maxOutputFor(profile: CallProfile): number {
   );
 }
 
-function skipped(): SuggestTagsResult {
-  return { status: "skipped", suggested: [], added: [], failure: null };
+function skipped(reason: LlmSkipReason): SuggestTagsResult {
+  return skippedBecause(
+    { status: "skipped", suggested: [], added: [], failure: null },
+    reason,
+  );
 }
 
 export function failedTagsResult(failure: NodeFailure): SuggestTagsResult {
@@ -108,9 +120,10 @@ export function makeSuggestTagsNode(deps: WorkflowDeps) {
   ): Promise<SuggestTagsResult> {
     const prepared = state.prepared;
     const models = state.models;
-    if (!prepared || !models) return skipped();
-    if (!state.saved || state.saved.meetingGone) return skipped();
-    if (ctx.isCancelled() || ctx.isStopped()) return skipped();
+    if (!prepared || !models || !state.saved) return skipped("not_saved");
+    if (state.saved.meetingGone) return skipped("meeting_gone");
+    if (ctx.isCancelled()) return skipped("cancelled");
+    if (ctx.isStopped()) return skipped("stopped");
 
     const profile = models.suggestTags;
     const system = buildTagsSystemPrompt({
@@ -128,7 +141,7 @@ export function makeSuggestTagsNode(deps: WorkflowDeps) {
         : profile.contextWindow - systemTokens - maxOut - SAFETY_TOKENS,
     );
     const lines = sampleLines(transcriptLines(state), budget);
-    if (lines.length === 0) return skipped();
+    if (lines.length === 0) return skipped("empty_transcript");
 
     ctx.progress.addTotal(1);
     const leaves = await runUnitRoute<string, MeetingTags>(
@@ -172,12 +185,11 @@ export function makeSuggestTagsNode(deps: WorkflowDeps) {
       lines,
     );
     const leaf = leaves[0];
+    // A unit is skipped only when the run stopped before its call.
+    if (leaf?.status === "skipped") return skipped("stopped");
     if (leaf?.status !== "ok" || !leaf.result) {
       return {
-        status:
-          leaf?.status === "cancelled" || leaf?.status === "skipped"
-            ? leaf.status
-            : "failed",
+        status: leaf?.status === "cancelled" ? "cancelled" : "failed",
         suggested: [],
         added: [],
         failure: leaf?.failure ?? null,

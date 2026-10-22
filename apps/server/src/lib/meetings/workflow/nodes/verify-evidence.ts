@@ -1,6 +1,7 @@
 import type {
   DropReason,
   EvidenceType,
+  LlmSkipReason,
   SpeakerVerdict,
 } from "@openstyle/validations";
 import {
@@ -20,7 +21,7 @@ import {
   type SpeakerSuggestion,
   type VerifyResult,
 } from "../types.js";
-import { guardNode } from "../unit.js";
+import { guardNode, skippedBecause } from "../unit.js";
 
 // Node `verifyEvidence` (specs/meeting-enhance-agentic.md 4.4). Code only. It
 // checks every proposal against the real transcript, picks one winner for each
@@ -489,12 +490,21 @@ export function makeVerifyEvidenceNode(deps: WorkflowDeps) {
         identify.status === "failed" ||
         identify.status === "cancelled"
       ) {
-        return {
-          status: "skipped",
-          failure: null,
-          verdicts: [],
-          suggestions: [],
-        };
+        const reason: LlmSkipReason =
+          identify?.status === "failed"
+            ? "speakers_failed"
+            : identify?.status === "cancelled"
+              ? "cancelled"
+              : "speakers_skipped";
+        return skippedBecause(
+          {
+            status: "skipped",
+            failure: null,
+            verdicts: [],
+            suggestions: [],
+          },
+          reason,
+        );
       }
       const { verdicts, suggestions } = verifyEvidence(
         prepared,

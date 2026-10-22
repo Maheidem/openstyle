@@ -26,6 +26,7 @@ import {
   type Leaf,
   recordUnitEnd,
   runUnitRoute,
+  skippedBecause,
 } from "../unit.js";
 
 // Node `correctChunk` (specs/meeting-enhance-agentic.md 4.2). One task for each
@@ -467,11 +468,17 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
     );
     recordUnitEnd(breaker, ctx, leaves);
     const units = leaves.map(toUnit);
-    return {
+    const result: CorrectChunkResult = {
       chunkIndex: input.chunkIndex,
       status: foldStatus(units.map((u) => u.status)),
       units,
     };
+    if (result.status !== "skipped") return result;
+    // No unit: the chunk has no text. A skipped unit: the run stopped first.
+    return skippedBecause(
+      result,
+      units.length === 0 ? "empty_transcript" : "stopped",
+    );
   }
 
   const guarded = guardNode<CorrectChunkInput, CorrectChunkResult>(

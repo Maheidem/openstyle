@@ -992,6 +992,18 @@
       "cancelled": "L’esecuzione è stata annullata.",
       "unknown": "Si è verificato un errore sconosciuto."
     },
+    "skipReason": {
+      "no_labels": "Nessun turno di parola da nominare.",
+      "all_confirmed": "Ogni partecipante ha già un nome.",
+      "stopped": "L'esecuzione si è fermata prima di questo passaggio.",
+      "cancelled": "L'esecuzione è stata annullata prima di questo passaggio.",
+      "speakers_skipped": "L'identificazione dei partecipanti non è stata eseguita, quindi non c'è nulla da verificare.",
+      "speakers_failed": "L'identificazione dei partecipanti non è riuscita, quindi non c'è nulla da verificare.",
+      "not_saved": "L'esecuzione non ha salvato alcun risultato, quindi questo passaggio non è stato eseguito.",
+      "meeting_gone": "La riunione è stata eliminata durante l'esecuzione.",
+      "empty_transcript": "La trascrizione non contiene testo per questo passaggio.",
+      "other": "Questo passaggio non era necessario."
+    },
     "showEnhancedLabel": "Mostra trascrizione migliorata",
     "showingEnhanced": "Migliorata",
     "showingRaw": "Originale",

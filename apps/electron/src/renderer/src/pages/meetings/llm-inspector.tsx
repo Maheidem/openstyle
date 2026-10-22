@@ -11,7 +11,7 @@ import { formatTimestamp } from "@renderer/lib/format";
 import { llmCallsQueryOptions, llmRunsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ChevronLeft, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, CircleSlash, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -28,6 +28,7 @@ import {
   missingCalls,
   producingCall,
   reduceNeedsDetail,
+  skipReasonKey,
   stepLabel,
   verdictTextKey,
 } from "./llm-inspector-model";
@@ -217,10 +218,20 @@ function StepRow({
       <span className="mono text-muted-foreground tabular-nums">
         {step.attempts}
       </span>
-      {step.errorKind && (
-        <span className="text-destructive">
-          {t(errorTextKey(step.errorKind))}
+      {step.status === "skipped" ? (
+        // A skip is not an error (issue #300): a neutral reason text.
+        <span
+          className="text-muted-foreground"
+          data-testid="meetings-inspector-skip-reason"
+        >
+          {t(skipReasonKey(step.skipReason))}
         </span>
+      ) : (
+        step.errorKind && (
+          <span className="text-destructive">
+            {t(errorTextKey(step.errorKind))}
+          </span>
+        )
       )}
       {gap > 0 && (
         <span className="text-muted-foreground">
@@ -414,7 +425,18 @@ function StepCallView({
       <p className="mono text-muted-foreground m-0 mb-2 text-[11px]">
         {step.key} · {step.node}
       </p>
-      {step.errorKind ? (
+      {step.status === "skipped" ? (
+        <InlineNotice
+          tone="neutral"
+          icon={CircleSlash}
+          iconClassName="text-muted-foreground"
+          className="mb-3"
+        >
+          <span data-testid="meetings-inspector-skip-reason">
+            {t(skipReasonKey(step.skipReason))}
+          </span>
+        </InlineNotice>
+      ) : step.errorKind ? (
         <InlineNotice tone="destructive" icon={AlertTriangle} className="mb-3">
           <span className="flex min-w-0 flex-col gap-1">
             <span>{t(errorTextKey(step.errorKind))}</span>

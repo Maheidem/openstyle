@@ -518,6 +518,17 @@ describe("GR18: a run-wide stop", () => {
     expect(statuses.filter((s) => s === "skipped").length).toBe(
       statuses.length - 1,
     );
+    // Each skipped chunk row says why (issue #300): the run stopped.
+    for (const c of r.finalState.corrections) {
+      if (c.status !== "skipped") continue;
+      expect(
+        (deps.recorder as FakeRecorder).steps.get(`chunk:${c.chunkIndex}`),
+      ).toMatchObject({
+        status: "skipped",
+        errorKind: "skipped",
+        errorDetail: "stopped",
+      });
+    }
     // The router sends a stopped run from correctChunk straight to save.
     expect(r.finalState.identify).toBeNull();
     expect((deps.recorder as FakeRecorder).steps.has("candidates")).toBe(false);

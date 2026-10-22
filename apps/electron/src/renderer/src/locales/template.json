@@ -1173,6 +1173,18 @@
       "cancelled": "The run was cancelled.",
       "unknown": "An unknown error occurred."
     },
+    "skipReason": {
+      "no_labels": "No speaker turns to name.",
+      "all_confirmed": "Every speaker already has a name.",
+      "stopped": "The run stopped before this step.",
+      "cancelled": "The run was cancelled before this step.",
+      "speakers_skipped": "Speakers did not run, so there is nothing to check.",
+      "speakers_failed": "Speakers failed, so there is nothing to check.",
+      "not_saved": "The run saved no result, so this step did not run.",
+      "meeting_gone": "The meeting was deleted during the run.",
+      "empty_transcript": "The transcript has no text for this step.",
+      "other": "This step did not need to run."
+    },
     "inspector": {
       "title": "LLM inspector",
       "close": "Close",

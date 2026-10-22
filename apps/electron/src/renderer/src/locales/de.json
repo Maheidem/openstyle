@@ -993,6 +993,18 @@
       "cancelled": "Der Lauf wurde abgebrochen.",
       "unknown": "Ein unbekannter Fehler ist aufgetreten."
     },
+    "skipReason": {
+      "no_labels": "Keine Sprecherwechsel zum Benennen.",
+      "all_confirmed": "Alle Sprecher haben bereits einen Namen.",
+      "stopped": "Der Lauf wurde vor diesem Schritt angehalten.",
+      "cancelled": "Der Lauf wurde vor diesem Schritt abgebrochen.",
+      "speakers_skipped": "Die Sprechererkennung lief nicht, daher gibt es nichts zu prüfen.",
+      "speakers_failed": "Die Sprechererkennung ist fehlgeschlagen, daher gibt es nichts zu prüfen.",
+      "not_saved": "Der Lauf hat kein Ergebnis gespeichert, daher lief dieser Schritt nicht.",
+      "meeting_gone": "Das Meeting wurde während des Laufs gelöscht.",
+      "empty_transcript": "Das Transkript enthält keinen Text für diesen Schritt.",
+      "other": "Dieser Schritt war nicht nötig."
+    },
     "showEnhancedLabel": "Verbesserte Abschrift anzeigen",
     "showingEnhanced": "Verbessert",
     "showingRaw": "Original",
