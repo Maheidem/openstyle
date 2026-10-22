@@ -271,6 +271,55 @@ describe("loadFolderMemory", () => {
     expect(memory?.terms).toContain("Bruno Lima");
   });
 
+  it("leaves out later meetings of the folder: no hit, no index check, excluded in the call", async () => {
+    seedFolder();
+    for (const [id, at] of [
+      ["m-old", 1_000],
+      ["m-new", 2_000],
+      ["m-later", 3_000],
+    ] as const) {
+      seedFixtureMeeting({ chunks: 1, speakers: 1, meetingId: id });
+      file(id);
+      getDb()
+        .prepare("UPDATE meetings SET started_at = ? WHERE id = ?")
+        .run(at, id);
+    }
+    // Only the later meeting has index rows: no retrieve call.
+    indexRow("m-later", 21, "transcript");
+    const none: RetrieveInput[] = [];
+    expect(
+      await loadFolderMemory(
+        getDb(),
+        { meetingId: "m-new", folderId: FOLDER },
+        fakeSearch(
+          [hit(21, "m-later", "transcript", 0.9)],
+          { 21: DECISION },
+          none,
+        ),
+      ),
+    ).toBeNull();
+    expect(none).toHaveLength(0);
+
+    indexRow("m-old", 11, "transcript");
+    const calls: RetrieveInput[] = [];
+    const memory = await loadFolderMemory(
+      getDb(),
+      { meetingId: "m-new", folderId: FOLDER },
+      fakeSearch(
+        [
+          hit(21, "m-later", "transcript", 0.95),
+          hit(11, "m-old", "transcript", 0.9),
+        ],
+        { 21: "Later text about Orion.", 11: DECISION },
+        calls,
+      ),
+    );
+    expect(calls[0]?.excludeMeetingIds).toEqual(["m-new", "m-later"]);
+    expect(memory?.meetingIds).toEqual(["m-old"]);
+    expect(memory?.chunkIds).toEqual([11]);
+    expect(memory?.summaryBlock).not.toContain("Orion");
+  });
+
   it("a retrieve error or a throw gives no memory and no throw", async () => {
     seedFolder();
     seedFixtureMeeting({ chunks: 1, speakers: 1, meetingId: "m-new" });

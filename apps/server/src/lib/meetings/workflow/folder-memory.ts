@@ -328,22 +328,50 @@ export function buildFolderMemoryBlock(
 // Load
 // ---------------------------------------------------------------------------
 
-/** One index row of another meeting of the folder, of a used kind. */
-function folderHasIndexRows(
+/**
+ * The other meetings of the folder, split by time. A meeting that started
+ * after this one is "later": its facts did not exist yet, and the block label
+ * says "Earlier meetings". A meeting with no time, or a run on a meeting with
+ * no time, counts as earlier.
+ */
+function folderMeetingsByTime(
   db: DatabaseSync,
   folderId: string,
   meetingId: string,
+): { earlier: string[]; later: string[] } {
+  const self = meetingTime(db, meetingId);
+  const rows = db
+    .prepare(
+      `SELECT id, COALESCE(started_at, created_at) AS at FROM meetings
+        WHERE folder_id = ? AND id <> ? ORDER BY id`,
+    )
+    .all(folderId, meetingId) as { id: string; at: number | null }[];
+  const earlier: string[] = [];
+  const later: string[] = [];
+  for (const r of rows) {
+    if (self !== null && r.at !== null && r.at > self) later.push(r.id);
+    else earlier.push(r.id);
+  }
+  return { earlier, later };
+}
+
+/** One index row of a used kind for one of the meetings. */
+function hasIndexRows(
+  db: DatabaseSync,
+  meetingIds: readonly string[],
   modelId: string,
 ): boolean {
+  if (meetingIds.length === 0) return false;
+  const slots = meetingIds.map(() => "?").join(", ");
   return (
     db
       .prepare(
-        `SELECT 1 FROM meeting_chunks c JOIN meetings m ON m.id = c.meeting_id
-          WHERE m.folder_id = ? AND c.meeting_id <> ? AND c.model_id = ?
-            AND c.kind IN ('summary', 'transcript')
+        `SELECT 1 FROM meeting_chunks
+          WHERE meeting_id IN (${slots}) AND model_id = ?
+            AND kind IN ('summary', 'transcript')
           LIMIT 1`,
       )
-      .get(folderId, meetingId, modelId) !== undefined
+      .get(...meetingIds, modelId) !== undefined
   );
 }
 
@@ -358,8 +386,9 @@ function meetingTime(db: DatabaseSync, meetingId: string): number | null {
 
 /**
  * Project memory of one meeting in a folder (8.3). One `retrieve` call with
- * the meeting as the query, scoped to its folder, its own chunks excluded.
- * Only when search is on and another meeting of the folder has index rows.
+ * the meeting as the query, scoped to its folder, its own chunks and the
+ * chunks of later meetings excluded. Only when search is on and an earlier
+ * meeting of the folder has index rows.
  * Never throws: an off state, an error or no hit gives null.
  */
 export async function loadFolderMemory(
@@ -370,9 +399,12 @@ export async function loadFolderMemory(
   try {
     const st = deps.searchState();
     if (st.state !== "on") return null;
-    if (!folderHasIndexRows(db, input.folderId, input.meetingId, st.modelId)) {
-      return null;
-    }
+    const { earlier, later } = folderMeetingsByTime(
+      db,
+      input.folderId,
+      input.meetingId,
+    );
+    if (!hasIndexRows(db, earlier, st.modelId)) return null;
     const timeout = AbortSignal.timeout(FOLDER_MEMORY_TIMEOUT_MS);
     const signal = input.signal
       ? AbortSignal.any([input.signal, timeout])
@@ -381,7 +413,7 @@ export async function loadFolderMemory(
       query: { kind: "meeting", meetingId: input.meetingId },
       scope: { kind: "folder", folderId: input.folderId },
       k: FOLDER_MEMORY_RETRIEVE_K,
-      excludeMeetingIds: [input.meetingId],
+      excludeMeetingIds: [input.meetingId, ...later],
       signal,
     });
     if (result.status !== "ok") {
@@ -395,6 +427,7 @@ export async function loadFolderMemory(
       if (snippets.length >= FOLDER_MEMORY_SNIPPETS_MAX) break;
       if (!MEMORY_KINDS.has(hit.kind)) continue;
       if (hit.meetingId === input.meetingId) continue;
+      if (later.includes(hit.meetingId)) continue;
       const text = deps
         .hitText(hit, FOLDER_MEMORY_SNIPPET_CHARS)
         .replace(/\s+/g, " ")
