@@ -19,6 +19,9 @@ set -euo pipefail
 # Bash reads a script while it runs. The brace group makes bash parse the
 # whole file first, so an edit or a git checkout during a run cannot change it.
 {
+# codesign matches the identity name as UTF-8 text. Under the C locale the
+# "é" in the owner's name does not match ("no identity found", 2026-10-23).
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 REF="origin/main"
 DRY=0
