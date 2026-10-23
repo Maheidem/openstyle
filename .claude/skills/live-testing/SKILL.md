@@ -255,6 +255,7 @@ The owner keeps a second app, "Openstyle Dev", next to the installed Openstyle. 
 pnpm dev:install                   # origin/main, after a fetch
 pnpm dev:install --ref <rev>       # a local branch, origin/<branch> or a sha
 pnpm dev:install --dry-run         # print each step, change nothing
+pnpm dev:install --main-app        # the NORMAL Openstyle: replaces /Applications/Openstyle.app
 ```
 
 What the script (`scripts/dev-install.sh`) does:
@@ -283,5 +284,13 @@ First run on the owner's Mac:
 - macOS asks once: "codesign wants to access key ... in your keychain". Enter the login password and click "Always Allow". Later runs sign with no prompt.
 - The first quit of a running Openstyle Dev can ask once: "Terminal wants access to control Openstyle Dev". Click OK.
 - Openstyle Dev is a new app for Privacy & Security: macOS asks once for Microphone, Accessibility and the other grants. The Developer ID identity stays the same across rebuilds, so the grants stay.
+
+`--main-app` (owner only) updates the real installed app from main, for fast tests with the real data:
+- It builds the normal flavor (`electron-builder.yml`: `com.openstyle.app`, Openstyle, the real profile, port 4649 and `~/.cache/freestyle`). It uses the same Developer ID, the hardened runtime and no notarization. It refuses `--adhoc`.
+- It quits the running Openstyle by bundle id `com.openstyle.app`, moves the old app to `~/Applications/Openstyle.prev.app` (one backup only), copies the new app to `/Applications/Openstyle.app` and opens it.
+- It prints the version change (old -> new) and the git sha.
+- The first run prints a warning: a main build can run DB migrations on the real profile, so a return to an older release (or to the backup) may not work. The first Developer ID build also asks for the Privacy permissions once more. The normal flavor keeps its updater, so a newer release replaces the local build.
+- To go back: quit Openstyle, then move `~/Applications/Openstyle.prev.app` back to `/Applications/Openstyle.app`.
+- Agents never run `--main-app`, not even with `--build-only`. Only `--main-app --dry-run` is allowed.
 
 Agents never run the real command: it reads the login keychain and opens a window. Agents use `--dry-run`, or build with `--adhoc --build-only` (no keychain, no install, no open) and `OPENSTYLE_DEVBUILD_DIR=/tmp/<task>/wt`. Launch such a build only in quiet mode through the Test Runner, with Playwright `_electron.launch({ executablePath: "<wt>/apps/electron/dist/mac-arm64/Openstyle Dev.app/Contents/MacOS/Openstyle Dev" })`. Delete the scratch worktree with `git worktree remove --force <wt>` at the end.

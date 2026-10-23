@@ -158,11 +158,11 @@ else
   run_in "$E" node scripts/download-whisper-cpp.mjs --resources
 fi
 run_in "$E" pnpm exec electron-vite build
-# dev-sign.mjs adds -c.mac.identity=<hash> -c.mac.notarize=false when the
+# pnpm exec puts electron-builder on PATH. dev-sign.mjs adds -c.mac.identity=<hash> -c.mac.notarize=false when the
 # identity is set (else ad-hoc). For the dev flavor, extraMetadata goes into
 # the packaged package.json: the product name gives the own userData and log
 # folders, the flavor flag turns on the rest (apps/electron/src/main/flavor.ts).
-run_in "$E" env "${SIGN_ENV[@]}" node scripts/dev-sign.mjs builder --mac dir --arm64 --publish never \
+run_in "$E" env "${SIGN_ENV[@]}" pnpm exec node scripts/dev-sign.mjs builder --mac dir --arm64 --publish never \
   ${FLAVOR_ARGS[@]+"${FLAVOR_ARGS[@]}"} -c.mac.hardenedRuntime=true
 [ "$DRY" -eq 1 ] || [ -d "$APP_SRC" ] || die "build finished but $APP_SRC is missing"
 
