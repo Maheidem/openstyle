@@ -79,7 +79,10 @@ export function registerUpdater(): void {
   let notifiedAvailableVersion: string | null = null;
   let notifiedDownloadedVersion: string | null = null;
 
-  if (!is.dev) {
+  // The dev flavor (pnpm dev:install) updates by a rebuild, never by the feed.
+  const updatesOn = !is.dev && !state.devFlavor;
+
+  if (updatesOn) {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
     // Builds before 2.15.1 were ad-hoc signed, and Squirrel.Mac rejected
     // their updates AFTER downloading them ("Code signature ... did not pass
@@ -207,7 +210,7 @@ export function registerUpdater(): void {
   });
 
   ipcMain.handle("updater:check", async () => {
-    if (is.dev) return null;
+    if (!updatesOn) return null;
     try {
       const result = await autoUpdater.checkForUpdates();
       const latest = result?.updateInfo?.version;

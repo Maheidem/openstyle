@@ -246,3 +246,52 @@ Make synthetic speech only with `say -v <voice> -o <file> "text"`. A `say` call 
 ## The MLX worker folder is shared
 
 The server keeps the managed MLX worker in `~/.cache/freestyle/mlx-asr/runtime` (paths from `homedir()`). An isolated test server uses the SAME folder as the installed app and can re-download it (it happened on 2026-10-07 at 15:48). For tests that touch local MLX: set `OPENSTYLE_MLX_ASR_WORKER` to the dev worker you built, or start the server with `HOME` set to a scratch folder. Never let a test write the real worker folder.
+
+## Openstyle Dev build (pnpm dev:install)
+
+The owner keeps a second app, "Openstyle Dev", next to the installed Openstyle. It is a local build of origin/main (or of another rev). To update it, the owner runs the command again. The owner runs it in a terminal:
+
+```bash
+pnpm dev:install                   # origin/main, after a fetch
+pnpm dev:install --ref <rev>       # a local branch, origin/<branch> or a sha
+pnpm dev:install --dry-run         # print each step, change nothing
+pnpm dev:install --main-app        # the NORMAL Openstyle: replaces /Applications/Openstyle.app
+```
+
+What the script (`scripts/dev-install.sh`) does:
+1. It finds the first "Developer ID Application" identity (`security find-identity -v -p codesigning`). It stops with an error when there is none.
+2. It fetches origin and checks out the rev in its own detached worktree `../openstyle-devbuild` (next to the main checkout). This worktree holds no work. The script stops when it has changed tracked files.
+3. It runs `pnpm install --frozen-lockfile`, builds the server, the native helpers, ffmpeg, whisper.cpp (first run only) and the app.
+4. It packages an arm64 unpacked app with `-c.appId=com.openstyle.app.dev -c.productName="Openstyle Dev" -c.extraMetadata.openstyleFlavor=dev`, signed with the Developer ID and the hardened runtime. No notarization: a local build has no quarantine.
+5. It quits a running Openstyle Dev (bundle id `com.openstyle.app.dev` only), replaces `~/Applications/Openstyle Dev.app` (not `/Applications`) and opens it.
+6. It prints the version, the bundle id, the git sha and the signing authority (`codesign -dv`).
+
+What the dev flavor isolates (`apps/electron/src/main/flavor.ts`, read once at startup from the packaged package.json):
+
+| Item | Installed Openstyle | Openstyle Dev |
+|---|---|---|
+| Bundle id, name | `com.openstyle.app`, Openstyle | `com.openstyle.app.dev`, Openstyle Dev (dock, app menu, tray tooltip) |
+| Profile (DB, settings) | `~/Library/Application Support/Openstyle` | `~/Library/Application Support/Openstyle Dev` |
+| Logs | `~/Library/Logs/Openstyle` | `~/Library/Logs/Openstyle Dev` |
+| Server port | 4649 (reuses a server there) | 4659 first, then a free port; never probes or reuses 4649 |
+| Model and MLX worker cache | `~/.cache/freestyle` | `~/.cache/openstyle-dev` (`OPENSTYLE_MODEL_CACHE_DIR`) |
+| Updates | feed check and self-update | off: no feed check |
+| Old Freestyle profile import | yes | no |
+
+Shared on purpose: the Hugging Face cache (`~/.cache/huggingface`, the app sets no own one). A model delete in Openstyle Dev also deletes it for the installed app. Both apps can listen to the same dictation hotkey: give Openstyle Dev another hotkey.
+
+First run on the owner's Mac:
+- The identity must be VALID (`security find-identity -v -p codesigning`). If the Developer ID line shows only without `-v`, the "Developer ID Certification Authority G2" intermediate is missing (proven 2026-10-23). Fix: `curl -sfo ~/Downloads/DeveloperIDG2CA.cer https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer && open ~/Downloads/DeveloperIDG2CA.cer`, add to the login keychain.
+- macOS asks once: "codesign wants to access key ... in your keychain". Enter the login password and click "Always Allow". Later runs sign with no prompt.
+- The first quit of a running Openstyle Dev can ask once: "Terminal wants access to control Openstyle Dev". Click OK.
+- Openstyle Dev is a new app for Privacy & Security: macOS asks once for Microphone, Accessibility and the other grants. The Developer ID identity stays the same across rebuilds, so the grants stay.
+
+`--main-app` (owner only) updates the real installed app from main, for fast tests with the real data:
+- It builds the normal flavor (`electron-builder.yml`: `com.openstyle.app`, Openstyle, the real profile, port 4649 and `~/.cache/freestyle`). It uses the same Developer ID, the hardened runtime and no notarization. It refuses `--adhoc`.
+- It quits the running Openstyle by bundle id `com.openstyle.app`, moves the old app to `~/Applications/Openstyle.prev.app` (one backup only), copies the new app to `/Applications/Openstyle.app` and opens it.
+- It prints the version change (old -> new) and the git sha.
+- The first run prints a warning: a main build can run DB migrations on the real profile, so a return to an older release (or to the backup) may not work. The first Developer ID build also asks for the Privacy permissions once more. The normal flavor keeps its updater, so a newer release replaces the local build.
+- To go back: quit Openstyle, then move `~/Applications/Openstyle.prev.app` back to `/Applications/Openstyle.app`.
+- Agents never run `--main-app`, not even with `--build-only`. Only `--main-app --dry-run` is allowed.
+
+Agents never run the real command: it reads the login keychain and opens a window. Agents use `--dry-run`, or build with `--adhoc --build-only` (no keychain, no install, no open) and `OPENSTYLE_DEVBUILD_DIR=/tmp/<task>/wt`. Launch such a build only in quiet mode through the Test Runner, with Playwright `_electron.launch({ executablePath: "<wt>/apps/electron/dist/mac-arm64/Openstyle Dev.app/Contents/MacOS/Openstyle Dev" })`. Delete the scratch worktree with `git worktree remove --force <wt>` at the end.

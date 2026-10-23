@@ -4,6 +4,7 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "dev:install": "bash scripts/dev-install.sh",
     "format": "biome check --write .",
     "knip": "knip",
     "meeting:compare": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/compare.mts",
