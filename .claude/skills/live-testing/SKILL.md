@@ -293,5 +293,16 @@ First run on the owner's Mac:
 - The first run prints a warning: a main build can run DB migrations on the real profile, so a return to an older release (or to the backup) may not work. The first Developer ID build also asks for the Privacy permissions once more. The normal flavor keeps its updater, so a newer release replaces the local build.
 - To go back: quit Openstyle, then move `~/Applications/Openstyle.prev.app` back to `/Applications/Openstyle.app`.
 - Agents never run `--main-app`, not even with `--build-only`. Only `--main-app --dry-run` is allowed.
+- Before the owner runs it, the agent checks for DB changes since the installed release: `git diff <installed version> origin/main -- apps/server/src | grep -cE "ALTER TABLE|CREATE TABLE|user_version"`. Output 0 means the backup can go back safely. Tell the owner the result.
+- The version string stays the same (for example `2.22.0 -> 2.22.0`) until a release bumps it. To prove the new build is installed, look for a file that only main has in `Contents/Resources/app.asar` (`npx -y @electron/asar list <app>/Contents/Resources/app.asar | grep -c <file>`), and compare with the backup.
+
+Proven 2026-10-23 on the owner's Mac (PR #321):
+- `pnpm dev:install`: Openstyle Dev 2.22.0, Developer ID, port 4659, own profile. The owner confirmed it works.
+- `pnpm dev:install --main-app`: `/Applications/Openstyle.app` = main 7c710b60, Developer ID, port 4649, backup 2.22.0. `app.asar` had `tray-popover` (main only): 2 entries; the backup: 0.
+
+Traps found in the first runs (all fixed in the script):
+- The Developer ID name has "é". Under the C locale, `codesign` cannot match it. The script exports `LANG`/`LC_ALL=en_US.UTF-8`.
+- electron-builder 26 sends the identity NAME to `codesign`, not the hash (`app-builder-lib/out/macPackager.js` doSign), and `codesign` did not find the name with "é" even under UTF-8. `apps/electron/scripts/mac-sign-by-hash.cjs` is a `-c.mac.sign` hook that gets the hash. `dev-sign.mjs builder` adds it when the identity is a 40-hex hash.
+- Do not edit `scripts/dev-install.sh` while it runs. The whole script is in a brace group so that bash parses it before it starts.
 
 Agents never run the real command: it reads the login keychain and opens a window. Agents use `--dry-run`, or build with `--adhoc --build-only` (no keychain, no install, no open) and `OPENSTYLE_DEVBUILD_DIR=/tmp/<task>/wt`. Launch such a build only in quiet mode through the Test Runner, with Playwright `_electron.launch({ executablePath: "<wt>/apps/electron/dist/mac-arm64/Openstyle Dev.app/Contents/MacOS/Openstyle Dev" })`. Delete the scratch worktree with `git worktree remove --force <wt>` at the end.
