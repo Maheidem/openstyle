@@ -1,11 +1,19 @@
-/** Clock time in the given app language. The language decides the 12/24 hour style. */
-export function formatClock(iso: string, lang?: string): string {
-  return new Date(`${iso}Z`)
+/**
+ * Clock time of `date` in the given app language. The language decides the
+ * 12/24 hour style. The history rows and the tray popover use it.
+ */
+export function formatTimeOfDay(date: Date | number, lang?: string): string {
+  return new Date(date)
     .toLocaleTimeString(lang, {
       hour: "numeric",
       minute: "2-digit",
     })
     .toLowerCase();
+}
+
+/** Clock time of a server timestamp (UTC, no zone suffix). */
+export function formatClock(iso: string, lang?: string): string {
+  return formatTimeOfDay(new Date(`${iso}Z`), lang);
 }
 
 export function formatSeconds(ms: number): string {

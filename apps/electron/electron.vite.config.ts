@@ -53,7 +53,7 @@ const mkVisualizer = (name: string) =>
 // permits `/` (same file, :555), so this does not even warn.
 //
 // Safe because nothing loads these files over `file://`: every window goes
-// through `app://` (getDashboardURL / getPillURL /
+// through `app://` (getDashboardURL / getPillURL / getTrayPopoverURL /
 // getMeetingCaptureURL) and dev uses ELECTRON_RENDERER_URL.
 const rendererRootBaseUrl: Plugin = {
   name: "openstyle:renderer-root-base",
@@ -124,6 +124,7 @@ export default defineConfig({
         input: {
           index: resolve("src/renderer/index.html"),
           pill: resolve("src/renderer/pill.html"),
+          "tray-popover": resolve("src/renderer/tray-popover.html"),
           "meeting-capture": resolve("src/renderer/meeting-capture.html"),
         },
         plugins: analyze ? [mkVisualizer("renderer")] : [],

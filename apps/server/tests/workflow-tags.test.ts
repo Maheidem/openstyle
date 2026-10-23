@@ -7,7 +7,10 @@ import { getDb } from "../src/lib/db.js";
 import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
 import { __clearModeCacheForTests } from "../src/lib/llm/model-profiles.js";
 import { setMeetingTags } from "../src/lib/meetings/tags.js";
-import { sampleLines } from "../src/lib/meetings/workflow/nodes/suggest-tags.js";
+import {
+  sampleLines,
+  suggestedTagNames,
+} from "../src/lib/meetings/workflow/nodes/suggest-tags.js";
 import { FOLDER_CONTEXT_LABEL } from "../src/lib/meetings/workflow/prompts.js";
 import {
   deriveRunStatus,
@@ -287,5 +290,29 @@ describe("sampleLines", () => {
     // Lines from the start and from the end of the meeting are in.
     expect(Number(picked[0]?.split(" ")[2])).toBeLessThan(15);
     expect(Number(picked.at(-1)?.split(" ")[2])).toBeGreaterThan(85);
+  });
+});
+
+describe("suggestedTagNames", () => {
+  it("turns underscores into spaces before it normalizes", () => {
+    expect(
+      suggestedTagNames(["Machine_Learning", "data__modeling", "rag"]),
+    ).toEqual(["machine learning", "data modeling", "rag"]);
+  });
+
+  it("removes a duplicate that only differs by an underscore", () => {
+    expect(suggestedTagNames(["team setup", "team_setup"])).toEqual([
+      "team setup",
+    ]);
+  });
+
+  it("keeps at most 5 tags", () => {
+    expect(suggestedTagNames(["a", "b", "c", "d", "e", "f"])).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
   });
 });

@@ -7,6 +7,7 @@ import configRoute from "./config.js";
 import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import history from "./history.js";
+import jobs from "./jobs.js";
 import meetings from "./meetings.js";
 import meetingsImport from "./meetings-import.js";
 import meetingsRuns from "./meetings-runs.js";
@@ -47,6 +48,7 @@ const apiRouter = new Hono()
   .route("/transcribe", transcribePreWarmRoute)
   .route("/transcribe", transcribeFile)
   .route("/history", history)
+  .route("/jobs", jobs)
   .route("/meetings", meetings)
   .route("/meetings", meetingsImport)
   .route("/meetings", meetingsRuns)

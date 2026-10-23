@@ -397,7 +397,12 @@ export interface EnhanceApp {
  */
 export async function bootEnhanceApp(
   fake: FakeLlm,
-  options: { advancedMode: boolean; prefix: string },
+  options: {
+    advancedMode: boolean;
+    prefix: string;
+    /** Extra env vars for the app, for example an E2E seam flag. */
+    env?: Record<string, string>;
+  },
 ): Promise<EnhanceApp> {
   const userDataDir = mkdtempSync(join(tmpdir(), options.prefix));
   mkdirSync(userDataDir, { recursive: true });
@@ -409,7 +414,7 @@ export async function bootEnhanceApp(
     join(userDataDir, "config.freestyle.json"),
     JSON.stringify({ version: 1, flags: { meetings: true } }),
   );
-  const app = await launchOpenstyle({ userDataDir });
+  const app = await launchOpenstyle({ userDataDir, env: options.env });
   const page = await waitForDashboardWindow(app, 15_000);
   try {
     await page.waitForLoadState("networkidle", { timeout: 15_000 });

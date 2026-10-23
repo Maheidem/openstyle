@@ -285,6 +285,11 @@ export class MeetingRecorder {
     return this._status;
   }
 
+  /** True while start() runs and the status is still "idle". */
+  get isStarting(): boolean {
+    return this.starting;
+  }
+
   get currentMeetingId(): string | null {
     return this.meetingId;
   }

@@ -1171,5 +1171,78 @@
   "notFound": {
     "title": "Page introuvable",
     "goToApp": "Aller à l'app"
+  },
+  "trayPopover": {
+    "label": "Menu Openstyle",
+    "hint": {
+      "hold": "Maintenez {{key}} pour dicter",
+      "press": "Appuyez sur {{key}} pour dicter"
+    },
+    "status": {
+      "ready": "Prêt",
+      "recording": "Enregistrement",
+      "dictating": "Dictée"
+    },
+    "meeting": {
+      "section": "Enregistrement de réunion",
+      "start": "Enregistrer la réunion",
+      "stop": "Arrêter",
+      "stopLabel": "Arrêter l’enregistrement de la réunion",
+      "elapsed": "Durée d’enregistrement",
+      "started": "Enregistrement de la réunion démarré",
+      "stopped": "Enregistrement de la réunion arrêté",
+      "startFailed": "L’enregistrement de la réunion n’a pas démarré."
+    },
+    "recent": {
+      "title": "Dictées récentes",
+      "history": "Historique",
+      "empty": "Vos dictées s’affichent ici.",
+      "copy": "Copier la dictée",
+      "copied": "Copié"
+    },
+    "footer": {
+      "version": "Openstyle {{version}}",
+      "upToDate": "À jour",
+      "updateReady": "Mise à jour prête",
+      "restartToUpdate": "Redémarrer pour mettre à jour",
+      "downloading": "Téléchargement de la mise à jour",
+      "openApp": "Ouvrir Openstyle",
+      "settings": "Réglages",
+      "quit": "Quitter Openstyle"
+    },
+    "jobs": {
+      "title": "Tâches",
+      "untitled": "Réunion sans titre",
+      "kind": {
+        "enhance": "Améliorer",
+        "summarize": "Résumer",
+        "transcribe": "Transcrire",
+        "diarize": "Intervenants"
+      },
+      "running": {
+        "enhance": "Amélioration de {{title}}",
+        "summarize": "Résumé de {{title}}",
+        "transcribe": "Transcription de {{title}}",
+        "diarize": "Recherche des intervenants de {{title}}"
+      },
+      "queued": "En attente · {{kind}} · {{title}}",
+      "downloading": "Téléchargement de {{model}}",
+      "downloadSize": "{{done}} sur {{total}} Go",
+      "loading": "Chargement de {{model}}…",
+      "openMeeting": "{{job}}. Ouvrir la réunion."
+    },
+    "nextEvent": {
+      "title": "Prochain événement",
+      "inHours": "dans {{hours}} h {{minutes}} min",
+      "inMinutes": "dans {{minutes}} min",
+      "record": "Enregistrer",
+      "recordLabel": "Enregistrer {{title}} maintenant",
+      "recordWhenItStarts": "Enregistrer au début",
+      "recordWhenItStartsLabel": "Enregistrer {{title}} au début",
+      "willStart": "L’enregistrement commencera à {{time}}"
+    },
+    "models": {
+      "label": "Modèles actifs"
+    }
   }
 }

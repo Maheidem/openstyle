@@ -18,6 +18,7 @@ import {
   baselinePath,
   buildBaseline,
   compareBaselines,
+  legacyRawKeys,
   noiseBands,
   parseBaseline,
   saveBaseline,
@@ -45,11 +46,14 @@ import {
 } from "./report.mts";
 import {
   errorRates,
+  normalizeWords,
+  scoreChannel,
   scoreFixes,
   scoreRun,
   scoreSpeakers,
   scoreSummary,
   scoreTags,
+  scoreWords,
   stageMetrics,
   words,
 } from "./score.mts";
@@ -208,6 +212,104 @@ const RAW = [
   seg("mic", 1, 3000, "We ship on Friday.", "We ship on Monday."),
   seg("system", 0, 0, "Sounds good to me", null),
 ];
+
+test("normalizeWords: number words are digits (English and Portuguese)", () => {
+  const n = (t: string) => normalizeWords(scoreWords(t)).words.join(" ");
+  assert.equal(n("we need five rooms"), "we need 5 rooms");
+  assert.equal(n("twenty one days"), "21 days");
+  assert.equal(n("twenty-one days"), "21 days");
+  assert.equal(n("one hundred and five boxes"), "105 boxes");
+  assert.equal(n("two thousand twenty six"), "2026");
+  assert.equal(n("a thousand cups"), "a 1000 cups");
+  assert.equal(n("three million"), "3000000");
+  assert.equal(n("eleven or zero"), "11 or 0");
+  assert.equal(n("vinte e um dias"), "21 dias");
+  assert.equal(n("cento e vinte e três"), "123");
+  assert.equal(n("mil e duzentos reais"), "1200 reais");
+  assert.equal(n("dois mil e vinte e seis"), "2026");
+  assert.equal(n("duas salas e três mesas"), "2 salas e 3 mesas");
+  assert.equal(n("dezesseis"), "16");
+  // Digits stay; a thousands separator goes.
+  assert.equal(n("1,000 or 1.000 units"), "1000 or 1000 units");
+  assert.equal(n("version 3.14159"), "version 3 14159");
+  // Two numbers side by side do not join.
+  assert.equal(n("five six seven"), "5 6 7");
+  assert.equal(n("twenty thirty"), "20 30");
+  assert.equal(n("zero zero seven"), "0 7");
+});
+
+test("normalizeWords: an exact adjacent repeat counts once; flags follow", () => {
+  const n = (t: string) => normalizeWords(words(t)).words.join(" ");
+  assert.equal(n("the the plan is is ready"), "the plan is ready");
+  assert.equal(n("I I I think so"), "i think so");
+  // Not adjacent, or not exact: kept.
+  assert.equal(n("the plan the plan"), "the plan the plan");
+  assert.equal(n("go going"), "go going");
+  // A repeat made by the number rule ("five 5") also counts once.
+  assert.equal(n("five 5 cars"), "5 cars");
+  const f = normalizeWords(
+    ["the", "the", "twenty", "one", "cats"],
+    [true, false, true, false, true],
+  );
+  assert.deepEqual(f.words, ["the", "21", "cats"]);
+  assert.deepEqual(f.flags, [true, false, true]);
+});
+
+test("WER: normalized vs raw on number words and stutter repeats", () => {
+  const g = parseGold(
+    JSON.stringify({
+      ...GOLD_JSON,
+      transcript: {
+        mic: [
+          {
+            startMs: 0,
+            endMs: 3000,
+            text: "We need twenty one chairs, the the big ones.",
+            verified: true,
+          },
+        ],
+      },
+    }),
+    "aaaa1111",
+  );
+  const rows = [seg("mic", 0, 0, "We need 21 chairs the big ones")];
+  const s = scoreChannel(g, "mic", rows, "asr");
+  // Raw: "twenty one" vs "21" is 1 substitution + 1 deletion; "the the" vs
+  // "the" is 1 deletion. Normalized: no error.
+  assert.deepEqual([s?.wordsRaw.errors, s?.wordsRaw.ref], [3, 9]);
+  assert.deepEqual([s?.words.errors, s?.words.ref], [0, 7]);
+  assert.equal(s?.wordsVerified.errors, 0);
+  assert.equal(s?.wordsVerifiedRaw.errors, 3);
+  // A real error still counts in both.
+  const bad = scoreChannel(
+    g,
+    "mic",
+    [seg("mic", 0, 0, "We need 22 chairs the big ones")],
+    "asr",
+  );
+  assert.equal(bad?.words.errors, 1);
+});
+
+test("baseline: a legacy baseline compares its WER as the raw WER", () => {
+  assert.deepEqual(
+    legacyRawKeys({
+      wer: 0.2,
+      "wer.mic": 0.3,
+      werVerified: 0.1,
+      delta: -0.01,
+      cer: 0.1,
+    }),
+    {
+      werRaw: 0.2,
+      "werRaw.mic": 0.3,
+      werVerifiedRaw: 0.1,
+      deltaRaw: -0.01,
+      cer: 0.1,
+    },
+  );
+  const now = { wer: 0.1, werRaw: 0.2 };
+  assert.equal(legacyRawKeys(now), now);
+});
 
 test("scorecard: meeting-level WER per channel, Enhance delta", () => {
   const sc = scoreRun(

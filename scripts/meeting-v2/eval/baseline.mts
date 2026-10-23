@@ -47,9 +47,9 @@ const NAME_RE = /^[a-z0-9][a-z0-9.-]{0,60}$/;
 
 /** Metrics where a lower value is better (and every metric of the checks stage). */
 const LOWER_IS_BETTER =
-  /^(wer|cer|werVerified|cerVerified)(\.|$)|^(fixesMissed|mustNotChangeViolations|ownerWrong|ownerMissing|dueWrong|dueMissing|mustNotClaimHits|wrong|missing)$/;
+  /^(wer|cer|werVerified|cerVerified|werRaw|werVerifiedRaw)(\.|$)|^(fixesMissed|mustNotChangeViolations|ownerWrong|ownerMissing|dueWrong|dueMissing|mustNotClaimHits|wrong|missing)$/;
 const RATE =
-  /^(wer|cer|werVerified|cerVerified)(\.|$)|Recall$|Precision$|^(precision|recall|delta)$/;
+  /^(wer|cer|werVerified|cerVerified|werRaw|werVerifiedRaw)(\.|$)|Recall$|Precision$|^(precision|recall|delta|deltaRaw)$/;
 
 export const lowerIsBetter = (stage: BaselineStage, metric: string) =>
   stage === "checks" || LOWER_IS_BETTER.test(metric);
@@ -229,6 +229,25 @@ const fmt = (v: number | null) =>
   v === null ? "-" : String(Math.round(v * 1e4) / 1e4);
 
 /**
+ * The metrics of a baseline made before the normalized WER (2026-10-22):
+ * its WER keys held the raw WER, so they move to the raw names (wer to
+ * werRaw, werVerified to werVerifiedRaw, delta to deltaRaw, also per
+ * channel). A stage that has werRaw already is returned as it is.
+ */
+export function legacyRawKeys(m: StageMetrics): StageMetrics {
+  if (!("wer" in m) || "werRaw" in m) return m;
+  const out: StageMetrics = {};
+  for (const [k, v] of Object.entries(m)) {
+    const raw = k
+      .replace(/^wer(\.|$)/, "werRaw$1")
+      .replace(/^werVerified(\.|$)/, "werVerifiedRaw$1")
+      .replace(/^delta$/, "deltaRaw");
+    out[raw] = v;
+  }
+  return out;
+}
+
+/**
  * Compare a run (as a baseline object) with a stored baseline. A metric is
  * worse when it moved the wrong way by more than its noise band (the
  * baseline's band, else the default band), or when it is missing now. A
@@ -250,7 +269,16 @@ export function compareBaselines(base: Baseline, now: Baseline): CompareResult {
       continue;
     }
     for (const stage of BASELINE_STAGES) {
-      const mb = rb.stages[stage] ?? {};
+      const stored = rb.stages[stage] ?? {};
+      const mb = legacyRawKeys(stored);
+      // A legacy baseline keeps its noise bands under the old names.
+      const noiseKey = (metric: string) =>
+        mb === stored
+          ? metric
+          : metric
+              .replace(/^werVerifiedRaw/, "werVerified")
+              .replace(/^werRaw/, "wer")
+              .replace(/^deltaRaw$/, "delta");
       const mn = rn.stages[stage] ?? {};
       const keys = [
         ...new Set([...Object.keys(mb), ...Object.keys(mn)]),
@@ -259,7 +287,7 @@ export function compareBaselines(base: Baseline, now: Baseline): CompareResult {
         const b = mb[metric] ?? null;
         const n = mn[metric] ?? null;
         const noise =
-          base.noise?.[`${stage}.${metric}`] ?? defaultNoise(metric);
+          base.noise?.[`${stage}.${noiseKey(metric)}`] ?? defaultNoise(metric);
         rows.push({
           model: rn.model,
           meeting: rn.meeting,

@@ -18,6 +18,7 @@ import {
 } from "../pill-position";
 import { getPillURL } from "../renderer-urls";
 import { createMeetingPillExit } from "./meeting-pill-exit";
+import { hideTrayPopover } from "./tray-popover-window";
 
 /**
  * The window is grown to this while the renderer shows its expanded status
@@ -63,6 +64,12 @@ let pillExpandOffset = { dx: 0, dy: 0 };
  * is true. The meeting Recording state never registers Escape.
  */
 let dictationOwnsPill = false;
+
+/**
+ * True while the pill holds the global Escape shortcut. The tray popover
+ * also holds Escape while it shows, so the pill removes only its own.
+ */
+let pillOwnsEscape = false;
 
 function meetingRecording(): boolean {
   return state.meetingRecorder?.status === "recording";
@@ -361,6 +368,9 @@ export function createAppWindow(): void {
 /** Show the pill for a dictation. Escape then cancels the dictation. */
 export function showPill(): void {
   dictationOwnsPill = true;
+  // The user dictates into another app. Close the tray popover first, so it
+  // gives back the Escape shortcut before the pill takes it.
+  hideTrayPopover("dictation");
   presentPill();
 }
 
@@ -490,13 +500,14 @@ function anchorPillToFocusedDisplay(): void {
 function updatePillEscape(): void {
   if (dictationOwnsPill && state.mainWindow?.isVisible()) {
     if (!globalShortcut.isRegistered("Escape")) {
-      globalShortcut.register("Escape", () => {
+      pillOwnsEscape = globalShortcut.register("Escape", () => {
         if (state.mainWindow?.isVisible()) {
           state.mainWindow.webContents.send("pill:cancel");
         }
       });
     }
-  } else {
+  } else if (pillOwnsEscape) {
+    pillOwnsEscape = false;
     try {
       globalShortcut.unregister("Escape");
     } catch {}

@@ -189,6 +189,13 @@ export default function MeetingsPage(): React.JSX.Element {
     setPanelAction(null);
     setRenamingId(null);
   }, []);
+  // The tray popover opens a meeting with ?meeting=<id> (issue #317).
+  const linkedMeeting = searchParams.get("meeting");
+  useEffect(() => {
+    if (!linkedMeeting) return;
+    setSearchParams({}, { replace: true });
+    open(linkedMeeting);
+  }, [linkedMeeting, setSearchParams, open]);
   const openHit = useCallback(
     (hit: SearchHit) => {
       open(hit.meeting_id);

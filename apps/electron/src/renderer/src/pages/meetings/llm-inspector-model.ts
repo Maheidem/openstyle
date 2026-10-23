@@ -34,6 +34,7 @@ const VERDICT_CODES: ReadonlySet<string> = new Set<
   "label_echo",
   "name_not_in_quote",
   "not_self_introduction",
+  "other_speaker_intro",
   "conflict_lost",
   "duplicate_same_name",
   "unknown_id",

@@ -1171,5 +1171,78 @@
   "notFound": {
     "title": "Seite nicht gefunden",
     "goToApp": "Zur App"
+  },
+  "trayPopover": {
+    "label": "Openstyle-Menü",
+    "hint": {
+      "hold": "{{key}} halten zum Diktieren",
+      "press": "{{key}} drücken zum Diktieren"
+    },
+    "status": {
+      "ready": "Bereit",
+      "recording": "Aufnahme",
+      "dictating": "Diktat"
+    },
+    "meeting": {
+      "section": "Meeting-Aufnahme",
+      "start": "Meeting-Aufnahme starten",
+      "stop": "Stopp",
+      "stopLabel": "Meeting-Aufnahme stoppen",
+      "elapsed": "Aufnahmedauer",
+      "started": "Meeting-Aufnahme gestartet",
+      "stopped": "Meeting-Aufnahme gestoppt",
+      "startFailed": "Die Meeting-Aufnahme wurde nicht gestartet."
+    },
+    "recent": {
+      "title": "Letzte Diktate",
+      "history": "Verlauf",
+      "empty": "Hier erscheinen deine Diktate.",
+      "copy": "Diktat kopieren",
+      "copied": "Kopiert"
+    },
+    "footer": {
+      "version": "Openstyle {{version}}",
+      "upToDate": "Aktuell",
+      "updateReady": "Update bereit",
+      "restartToUpdate": "Neu starten und aktualisieren",
+      "downloading": "Update wird geladen",
+      "openApp": "Openstyle öffnen",
+      "settings": "Einstellungen",
+      "quit": "Openstyle beenden"
+    },
+    "jobs": {
+      "title": "Aufgaben",
+      "untitled": "Meeting ohne Titel",
+      "kind": {
+        "enhance": "Verbessern",
+        "summarize": "Zusammenfassen",
+        "transcribe": "Transkribieren",
+        "diarize": "Sprecher"
+      },
+      "running": {
+        "enhance": "{{title}} wird verbessert",
+        "summarize": "{{title}} wird zusammengefasst",
+        "transcribe": "{{title}} wird transkribiert",
+        "diarize": "Sprecher in {{title}} werden erkannt"
+      },
+      "queued": "Wartet · {{kind}} · {{title}}",
+      "downloading": "{{model}} wird geladen",
+      "downloadSize": "{{done}} von {{total}} GB",
+      "loading": "{{model}} wird gestartet…",
+      "openMeeting": "{{job}}. Meeting öffnen."
+    },
+    "nextEvent": {
+      "title": "Nächster Termin",
+      "inHours": "in {{hours}} h {{minutes}} min",
+      "inMinutes": "in {{minutes}} min",
+      "record": "Aufnehmen",
+      "recordLabel": "{{title}} jetzt aufnehmen",
+      "recordWhenItStarts": "Beim Start aufnehmen",
+      "recordWhenItStartsLabel": "{{title}} beim Start aufnehmen",
+      "willStart": "Die Aufnahme startet um {{time}}"
+    },
+    "models": {
+      "label": "Aktive Modelle"
+    }
   }
 }

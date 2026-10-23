@@ -93,6 +93,18 @@ export function isMlxServerRunning(): boolean {
   return workerProcess !== null && workerReady;
 }
 
+/** The speech worker: its model and whether it is starting or ready. */
+export function getMlxAsrWorkerState(): {
+  model: string | null;
+  state: "stopped" | "starting" | "ready";
+} {
+  if (workerProcess && workerReady) {
+    return { model: currentModelId, state: "ready" };
+  }
+  if (startPromise) return { model: currentModelId, state: "starting" };
+  return { model: null, state: "stopped" };
+}
+
 export { canRunMlxAsr } from "./python.js";
 
 export function getMlxAsrKeepAliveMinutes(): number {

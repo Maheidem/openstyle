@@ -269,6 +269,7 @@ export function scorecardCells(
     );
     const w = pooled(ch, "words");
     const detail = [
+      `WER raw ${erText(pooled(ch, "wordsRaw"))}`,
       `CER ${erText(pooled(ch, "chars"))}`,
       `WER verified ${erText(pooled(ch, "wordsVerified"))}`,
       `CER verified ${erText(pooled(ch, "charsVerified"))}`,
@@ -292,7 +293,7 @@ export function scorecardCells(
     return cells(
       scs.length,
       `WER ${erText(w)}, delta ${r4(delta)}`,
-      own.length ? detail.join("; ") : detail.slice(3).join("; "),
+      own.length ? detail.join("; ") : detail.slice(4).join("; "),
       0,
     );
   }
@@ -443,7 +444,7 @@ export function renderResults(res: Results): string {
     "",
     ...(res.gold
       ? [
-          "One row per model and stage, pooled over the meetings. WER and CER are meeting-level per channel (word alignment of all gold turns vs all segments). Enhance delta = ASR WER - Enhance WER (positive = Enhance helped). Gold hard fails: must-not-claim hits (summary), wrong speaker names (speakers); they count in the hard fails.",
+          "One row per model and stage, pooled over the meetings. WER and CER are meeting-level per channel (word alignment of all gold turns vs all segments). WER aligns normalized words (number words as digits, an exact adjacent repeat counted once); WER raw does not. Enhance delta = ASR WER - Enhance WER (positive = Enhance helped). Gold hard fails: must-not-claim hits (summary), wrong speaker names (speakers); they count in the hard fails.",
           "",
           ...table(SCORECARD_HEADER, scorecardRows(res)),
           "",

@@ -66,6 +66,11 @@ commit the file.
 - `stages.<stage>.<metric>` is a number or null. `scripts/meeting-v2/eval/score.mts`
   (`stageMetrics`) defines the metrics; `baseline.mts` defines the direction
   (lower or higher is better) and the default noise band.
+- Since 2026-10-22, `wer`, `werVerified` and `delta` of the asr and enhance
+  stages use normalized words (number words as digits, an exact adjacent
+  repeat counted once). `werRaw`, `werVerifiedRaw` and `deltaRaw` hold the
+  old values. A baseline without `werRaw` is from before: `--compare` reads
+  its `wer*` and `delta` as the raw metrics.
 - `noise` is optional. Without it, the band is 0.005 for a rate and 0 for a
   count. `--noise-from` sets each band to the largest difference between two
   runs of the same setup.

@@ -6,12 +6,23 @@
 //      pnpm meeting:eval:sweep --capture <out dir of `meeting:eval --keep`>
 //   2. Replay proof (GPU): every stored call again at the stored settings.
 //      pnpm meeting:eval:sweep --replay-check --models <id,...> [--meetings <id8,...>]
+//      Rebuild proof only (no GPU, no model call): the requests rebuilt from
+//      the current app code equal the stored ones byte for byte.
+//      pnpm meeting:eval:sweep --rebuild-check --models <id,...> [--meetings <id8,...>]
 //   3. Sweep (GPU):
 //      pnpm meeting:eval:sweep --stage <correctChunk|identifySpeakers|summarize|suggestTags>
 //        --models <id,...> --space <file> [--meetings <id8,...>] [--out <dir>]
 //        [--save-baseline <name>] [--confirm <results.json> [--top <n>]]
 //        [--port <n>] [--hf-cache <dir>]
-//   Backend of modes 2 and 3: --backend mlx (default, the app's worker under
+//   4. Variant (GPU): the stage with the current working-tree prompts and
+//      schemas, against a stored baseline (a variant or sweep results.json).
+//      pnpm meeting:eval:sweep --variant --stage <name> --models <id,...>
+//        [--against <results.json>] [--repeats <n>] [--noise] [--out <dir>]
+//      --repeats (default 3) counts only above temperature 0; at temperature
+//      0 one run. --noise runs the variant again with the one-word change and
+//      gives this prompt's noise band. Without --against it only measures (a
+//      new baseline for later variants).
+//   Backend of modes 2, 3 and 4: --backend mlx (default, the app's worker under
 //   the GPU lock) or --backend llamacpp --base-url http://<host>/v1 (the
 //   owner's desktop; owner 2026-10-22: it counts as local, for sweeps only).
 //   The desktop replay check runs each stage twice at temperature 0 and
@@ -72,13 +83,19 @@ import {
   wireBody,
   workerClient,
 } from "./stage-replay.mts";
-import { type Metrics, scoreStage } from "./stage-score.mts";
+import { type Metrics, SCORER, scoreStage } from "./stage-score.mts";
 import {
   type ComboResult,
+  compareVariant,
+  type Evaluate,
   keyOf,
+  type Params,
   parseSpace,
+  runVariant,
   type SearchResult,
+  type StoredArm,
   search,
+  type VariantResult,
 } from "./sweep-search.mts";
 
 const DEFAULT_MEETINGS = ["2943c36a", "5578edb0", "ca70f895", "9243bea0"];
@@ -91,7 +108,7 @@ const has = (name: string) => process.argv.includes(`--${name}`);
 function usage(msg: string): never {
   console.error(msg);
   console.error(
-    "usage: pnpm meeting:eval:sweep --capture <out dir>\n       pnpm meeting:eval:sweep --replay-check --models <id,...> [--meetings <id8,...>]\n       pnpm meeting:eval:sweep --stage <name> --models <id,...> --space <file> [--meetings <id8,...>] [--out <dir>] [--save-baseline <name>] [--confirm <results.json> [--top <n>]] [--port <n>] [--hf-cache <dir>]\n       any GPU mode: [--backend mlx | --backend llamacpp --base-url http://<host>/v1]",
+    "usage: pnpm meeting:eval:sweep --capture <out dir>\n       pnpm meeting:eval:sweep --variant --stage <name> --models <id,...> [--against <results.json>] [--repeats <n>] [--noise] [--meetings <id8,...>] [--out <dir>]\n       pnpm meeting:eval:sweep --replay-check --models <id,...> [--meetings <id8,...>]\n       pnpm meeting:eval:sweep --rebuild-check --models <id,...> [--meetings <id8,...>]\n       pnpm meeting:eval:sweep --stage <name> --models <id,...> --space <file> [--meetings <id8,...>] [--out <dir>] [--save-baseline <name>] [--confirm <results.json> [--top <n>]] [--port <n>] [--hf-cache <dir>]\n       any GPU mode: [--backend mlx | --backend llamacpp --base-url http://<host>/v1]",
   );
   process.exit(2);
 }
@@ -429,6 +446,45 @@ async function desktopReplayCheck(outDir: string): Promise<number> {
   return bad === 0 ? 0 : 1;
 }
 
+/**
+ * No GPU: the requests rebuilt from the current app code at the current
+ * settings vs the stored requests, per model, meeting and stage. Returns the
+ * count of stages that are not byte-equal.
+ */
+async function rebuildStages(
+  model: string,
+  loaded: Loaded[],
+  report: Record<string, unknown>[],
+): Promise<number> {
+  let bad = 0;
+  for (const l of loaded)
+    for (const stage of STAGES) {
+      const r = await rebuildCheck(stage, l.cap, l.meeting);
+      if (r.equal !== r.stored || r.rebuilt !== r.stored) bad++;
+      report.push({ model, meeting: l.id8, stage, check: "rebuild", ...r });
+      console.log(
+        `rebuild ${model} ${l.id8} ${stage}: stored ${r.stored}, rebuilt ${r.rebuilt}, byte-equal ${r.equal}`,
+      );
+    }
+  return bad;
+}
+
+/** --rebuild-check: only the no-GPU rebuild part of the replay check. */
+async function rebuildOnly(outDir: string): Promise<number> {
+  mkdirSync(outDir, { recursive: true });
+  const report: Record<string, unknown>[] = [];
+  let bad = 0;
+  for (const model of models)
+    bad += await rebuildStages(model, loadMeetings(model), report);
+  const path = join(outDir, "rebuild-check.json");
+  writeFileSync(
+    path,
+    `${JSON.stringify({ createdAt: new Date().toISOString(), report }, null, 1)}\n`,
+  );
+  console.log(`rebuild-check: ${path} (${bad === 0 ? "PASS" : `FAIL ${bad}`})`);
+  return bad === 0 ? 0 : 1;
+}
+
 async function replayCheck(outDir: string): Promise<number> {
   if (backend === "llamacpp") return desktopReplayCheck(outDir);
   checkWorker();
@@ -437,16 +493,7 @@ async function replayCheck(outDir: string): Promise<number> {
   let bad = 0;
   for (const model of models) {
     const loaded = loadMeetings(model);
-    // No GPU: the rebuilt requests at the current settings vs the stored ones.
-    for (const l of loaded)
-      for (const stage of STAGES) {
-        const r = await rebuildCheck(stage, l.cap, l.meeting);
-        if (r.equal !== r.stored || r.rebuilt !== r.stored) bad++;
-        report.push({ model, meeting: l.id8, stage, check: "rebuild", ...r });
-        console.log(
-          `rebuild ${model} ${l.id8} ${stage}: stored ${r.stored}, rebuilt ${r.rebuilt}, byte-equal ${r.equal}`,
-        );
-      }
+    bad += await rebuildStages(model, loaded, report);
     await withWorker(model, "replay-check", 30, outDir, async (complete) => {
       for (const l of loaded) {
         const st = storedOutput(capturePaths(l.id8, model).db, l.cap.meetingId);
@@ -510,6 +557,8 @@ const KEY_METRICS: Record<StageName, string[]> = {
   correctChunk: [
     "wer",
     "werDelta",
+    "werRaw",
+    "werDeltaRaw",
     "fixesFound",
     "mustNotChangeHits",
     "applied",
@@ -610,6 +659,43 @@ function renderMd(
   return `${lines.join("\n")}\n`;
 }
 
+/** One stage run on one meeting, scored against its gold (sweep and variant). */
+function evaluator(
+  stage: StageName,
+  loaded: Loaded[],
+  golds: Map<string, Gold>,
+  complete: Complete,
+): Evaluate {
+  return async (params, mi, repeat, perturb) => {
+    const l = loaded[mi] as Loaded;
+    const extra: Record<string, unknown> = perturb
+      ? { perturb: PERTURB[stage] }
+      : {};
+    // llama.cpp: one fixed seed per repeat above temperature 0.
+    if (
+      backend === "llamacpp" &&
+      typeof params.temperature === "number" &&
+      params.temperature > 0 &&
+      params.seed === undefined
+    )
+      extra.seed = 1000 + repeat;
+    const out = await runStage(
+      stage,
+      l.cap,
+      l.meeting,
+      params,
+      complete,
+      extra,
+    );
+    return scoreStage(
+      stage,
+      out,
+      golds.get(l.id8) as Gold,
+      l.meeting.rows,
+    ) as Metrics;
+  };
+}
+
 async function sweep(
   stage: StageName,
   spacePath: string,
@@ -665,34 +751,7 @@ async function sweep(
       search(
         modelSpace,
         loaded.length,
-        async (params, mi, repeat, perturb) => {
-          const l = loaded[mi] as Loaded;
-          const extra: Record<string, unknown> = perturb
-            ? { perturb: PERTURB[stage] }
-            : {};
-          // llama.cpp: one fixed seed per repeat above temperature 0.
-          if (
-            backend === "llamacpp" &&
-            typeof params.temperature === "number" &&
-            params.temperature > 0 &&
-            params.seed === undefined
-          )
-            extra.seed = 1000 + repeat;
-          const out = await runStage(
-            stage,
-            l.cap,
-            l.meeting,
-            params,
-            complete,
-            extra,
-          );
-          return scoreStage(
-            stage,
-            out,
-            golds.get(l.id8) as Gold,
-            l.meeting.rows,
-          ) as Metrics;
-        },
+        evaluator(stage, loaded, golds, complete),
         (line) => console.log(`${model} ${line}`),
       ),
     );
@@ -732,6 +791,7 @@ function baselineOf(stage: StageName, rs: ModelResult[], commit: string) {
   return {
     format: "openstyle-sweep",
     version: 1,
+    scorer: SCORER,
     stage,
     backend,
     backendLabel: BACKEND_LABEL,
@@ -768,6 +828,7 @@ function writeOut(
   const json = {
     format: "openstyle-sweep-results",
     version: 1,
+    scorer: SCORER,
     stage,
     backend,
     backendLabel: BACKEND_LABEL,
@@ -803,12 +864,171 @@ function writeOut(
   console.log(`results: ${join(outDir, "results.md")}`);
 }
 
+// --- 4. Variant --------------------------------------------------------------------------------
+
+/** The baseline arm of one model in a variant or sweep results.json. */
+function storedArmOf(
+  file: any,
+  model: string,
+): (StoredArm & { params: Params }) | null {
+  const m = (file.models ?? []).find(
+    (x: { model: string }) => x.model === model,
+  );
+  if (!m) return null;
+  const arm = file.format === "openstyle-stage-variant" ? m.arm : m.baseline;
+  return {
+    params: arm.params ?? {},
+    objective: arm.objective,
+    totals: arm.totals,
+    band: m.band ?? null,
+  };
+}
+
+async function variant(stage: StageName, outDir: string): Promise<number> {
+  if (backend === "mlx") checkWorker();
+  const againstPath = arg("against");
+  const against = againstPath
+    ? JSON.parse(readFileSync(againstPath, "utf8"))
+    : null;
+  if (against && against.stage !== stage)
+    usage(`--against is for ${against.stage}, not ${stage}`);
+  // The correctChunk objective changed with the normalized WER (SCORER).
+  if (against && stage === "correctChunk" && against.scorer !== SCORER)
+    usage(
+      `--against was scored with ${against.scorer ?? "the raw WER"}, not ${SCORER}: make a new baseline with --variant and no --against`,
+    );
+  const repeats = Number(arg("repeats") ?? "3");
+  if (!Number.isInteger(repeats) || repeats < 1)
+    usage("--repeats must be a whole number of 1 or more");
+  const golds = loadGold(meetingIds, DEFAULT_GOLD_DIR) as Map<string, Gold>;
+  mkdirSync(outDir, { recursive: true });
+  const git = (a: string[]) =>
+    spawnSync("git", a, { cwd: repoRoot, encoding: "utf8" }).stdout.trim();
+  const commit = git(["rev-parse", "--short", "HEAD"]);
+  const dirty = git(["status", "--porcelain", "--", "apps/server/src"]) !== "";
+  const cols = [...KEY_METRICS[stage], ...CALL_METRICS];
+  const out: {
+    model: string;
+    meetings: string[];
+    seconds: number;
+    v: VariantResult;
+    base: (StoredArm & { params: Params }) | null;
+  }[] = [];
+  const md: string[] = [
+    `# Variant: ${stage}`,
+    "",
+    `Backend: ${BACKEND_LABEL}${backend === "mlx" ? `, worker sha ${workerSha()}` : `, ${baseUrl}`}. Commit ${commit}${dirty ? " + working-tree changes in apps/server/src" : ""}. Scorer ${SCORER}. Against: ${againstPath ?? "none (measure only)"}. Numbers only; metrics are sums over the meetings (rates are means).`,
+  ];
+  for (const model of models) {
+    const loaded = loadMeetings(model);
+    const base = against ? storedArmOf(against, model) : null;
+    if (against && !base) throw new Error(`--against has no ${model}`);
+    const params = base?.params ?? {};
+    const { value: v } = await withWorker(
+      model,
+      `variant-${stage}`,
+      60,
+      outDir,
+      (complete) =>
+        runVariant(
+          stage,
+          loaded.length,
+          evaluator(stage, loaded, golds, complete),
+          {
+            params,
+            repeats,
+            noise: has("noise"),
+          },
+        ),
+    );
+    out.push({
+      model,
+      meetings: loaded.map((l) => l.id8),
+      seconds: lastGpuSeconds,
+      v,
+      base,
+    });
+    md.push(
+      "",
+      `## ${model}`,
+      "",
+      `Meetings: ${loaded.map((l) => l.id8).join(", ")}. Parameters: ${fmtParams(params)}. Runs: ${v.arm.repeats}${v.noise ? " + 1 noise run" : ""}.`,
+      "",
+    );
+    if (base) {
+      const c = compareVariant(base, v, cols);
+      md.push(
+        "| Metric | Baseline | Variant | Delta | Noise band |",
+        "|---|---|---|---|---|",
+        `| objective | ${base.objective} | ${v.arm.objective} | ${c.delta} | ${c.band} |`,
+        ...c.rows.map(
+          (r) =>
+            `| ${r.metric} | ${fmt(r.base)} | ${fmt(r.variant)} | ${fmt(r.delta)} | ${fmt(r.band)} |`,
+        ),
+        "",
+        `Verdict: ${c.verdict} (objective delta ${c.delta}, band ${c.band}).`,
+      );
+      console.log(
+        `variant ${model} ${stage}: baseline ${base.objective}, variant ${v.arm.objective}, delta ${c.delta}, band ${c.band}: ${c.verdict}`,
+      );
+    } else {
+      md.push(
+        "| Metric | Variant | Noise band |",
+        "|---|---|---|",
+        `| objective | ${v.arm.objective} | ${fmt(v.band?.objective)} |`,
+        ...cols.map(
+          (k) => `| ${k} | ${fmt(v.arm.totals[k])} | ${fmt(v.band?.[k])} |`,
+        ),
+      );
+      console.log(
+        `variant ${model} ${stage}: objective ${v.arm.objective}${v.band ? `, noise band ${v.band.objective}` : ""}`,
+      );
+    }
+  }
+  const json = {
+    format: "openstyle-stage-variant",
+    version: 1,
+    scorer: SCORER,
+    stage,
+    backend,
+    backendLabel: BACKEND_LABEL,
+    baseUrl: baseUrl ?? null,
+    commit,
+    dirty,
+    against: againstPath ?? null,
+    createdAt: new Date().toISOString(),
+    models: out.map((o) => ({
+      model: o.model,
+      meetings: o.meetings,
+      seconds: o.seconds,
+      arm: o.v.arm,
+      noise: o.v.noise,
+      band: o.v.band,
+      baseline: o.base,
+    })),
+  };
+  writeFileSync(
+    join(outDir, "results.json"),
+    `${JSON.stringify(json, null, 1)}\n`,
+  );
+  writeFileSync(join(outDir, "results.md"), `${md.join("\n")}\n`);
+  const back = JSON.parse(readFileSync(join(outDir, "results.json"), "utf8"));
+  if (back.models.length !== out.length)
+    throw new Error("results.json read back with another model count");
+  console.log(`results: ${join(outDir, "results.md")}`);
+  return 0;
+}
+
 // --- Main ------------------------------------------------------------------------------------
 
 async function main(): Promise<number> {
   const cap = arg("capture");
   if (cap) return capture(resolve(cap));
   if (models.length === 0) usage("--models is required");
+  if (has("rebuild-check"))
+    return rebuildOnly(
+      resolve(arg("out") ?? join(ROOT, "sweep", `rebuild-check-${stamp}`)),
+    );
   if (has("replay-check"))
     return replayCheck(
       resolve(arg("out") ?? join(ROOT, "sweep", `replay-check-${stamp}`)),
@@ -816,6 +1036,11 @@ async function main(): Promise<number> {
   const stage = arg("stage") as StageName | undefined;
   if (!stage || !STAGES.includes(stage))
     usage(`--stage must be one of ${STAGES.join(", ")}`);
+  if (has("variant"))
+    return variant(
+      stage,
+      resolve(arg("out") ?? join(ROOT, "sweep", `variant-${stage}-${stamp}`)),
+    );
   const space = arg("space");
   if (!space) usage("--space is required");
   return sweep(

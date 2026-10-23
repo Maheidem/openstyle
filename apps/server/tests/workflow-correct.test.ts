@@ -458,11 +458,69 @@ describe("checkCorrections word guard", () => {
     });
   });
 
-  it("keeps a one-to-one fix and an added short word", () => {
+  it("keeps a one-to-one fix", () => {
     expect(check("be said and sent", "be saved and sent").reasons).toEqual([]);
+  });
+
+  it.each([
+    ["we look and understand", "we look at and understand"],
+    ["we need fix the build", "we need to fix the build"],
+    ["so team ships it", "so the team ships it"],
+    ["she said fine", "she said it fine"],
+    ["a gente vai mercado", "a gente vai ao mercado"],
+    ["eu vou casa amanhã", "eu vou para casa amanhã"],
+  ])("drops the added grammar words in %j as inflection_only", (from, to) => {
+    expect(check(from, to)).toEqual({
+      kept: [],
+      reasons: ["inflection_only"],
+    });
+  });
+
+  it.each([
+    ["we are gonna ship it", "we are going to ship it"],
+    ["we are going to ship it", "we are gonna ship it"],
+    ["I wanna see it", "I want to see it"],
+    ["you gotta fix it", "you got to fix it"],
+    ["it is kinda slow", "it is kind of slow"],
+    ["we stopped cause it broke", "we stopped because it broke"],
+    ["eu tô em casa", "eu estou em casa"],
+    ["vou pra casa", "vou para casa"],
+    ["tá bom", "está bom"],
+  ])("drops the register change %j to %j as inflection_only", (from, to) => {
+    expect(check(from, to)).toEqual({
+      kept: [],
+      reasons: ["inflection_only"],
+    });
+  });
+
+  it("keeps a register change mixed with a real fix", () => {
     expect(
-      check("we look and understand", "we look at and understand").kept,
-    ).toEqual(["we look at and understand"]);
+      check("we are gonna use Datedog", "we are going to use Datadog").kept,
+    ).toEqual(["we are going to use Datadog"]);
+  });
+
+  it("keeps an added content word that a real fix needs", () => {
+    expect(
+      check("we deploy to cooper today", "we deploy to Kubernetes today").kept,
+    ).toEqual(["we deploy to Kubernetes today"]);
+    expect(
+      check("we use the dashboard", "we use the Datadog dashboard").kept,
+    ).toEqual(["we use the Datadog dashboard"]);
+  });
+
+  it("drops an inserted run of two or more new words as too_different", () => {
+    expect(
+      check("we ship it today", "we ship it to them today").reasons,
+    ).toEqual(["too_different"]);
+    expect(
+      check("we ship it today", "we ship it now and today").reasons,
+    ).toEqual(["too_different"]);
+  });
+
+  it("keeps a two-word replacement of one misheard word", () => {
+    expect(
+      check("we use grafanna here", "we use Grafana Cloud here").kept,
+    ).toEqual(["we use Grafana Cloud here"]);
   });
 
   it("drops text copied from a neighbour as too_different (net words added)", () => {

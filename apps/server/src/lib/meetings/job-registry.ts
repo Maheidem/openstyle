@@ -157,6 +157,17 @@ export function getJob(
   return { ...progress, kind: jobKinds.get(id) ?? null };
 }
 
+/** Every job that holds a slot now, with its meeting id and kind. */
+export function listJobs(): Array<
+  MeetingJobProgress & { id: string; kind: MeetingJobKind | null }
+> {
+  return [...jobs].map(([id, progress]) => ({
+    ...progress,
+    id,
+    kind: jobKinds.get(id) ?? null,
+  }));
+}
+
 /** Ask the running job to stop. Returns false when no cancellable job holds
  * the slot (none, or a diarize pass). */
 export function requestCancel(id: string): boolean {

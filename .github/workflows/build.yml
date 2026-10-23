@@ -564,6 +564,16 @@ jobs:
           fi
           echo "Hardened runtime flag is on for $app."
 
+          # electron-builder signs each helper with the hardened runtime too
+          # (mac.hardenedRuntime defaults to true). Check the newest helper.
+          clicks_details="$(codesign -dv "$clicks" 2>&1)"
+          clicks_flags="$(sed -n 's/.*flags=\(0x[0-9a-fA-F]*\).*/\1/p' <<<"$clicks_details" | head -n 1)"
+          if [ -z "$clicks_flags" ] || (( (clicks_flags & 0x10000) == 0 )); then
+            echo "::error::$clicks has no hardened runtime flag (flags=${clicks_flags:-none})."
+            exit 1
+          fi
+          echo "Hardened runtime flag is on for $clicks (flags=$clicks_flags)."
+
           # The entitlement that lets the app load helpers with another signature.
           entitlements="$(codesign -d --entitlements - "$app" 2>&1)"
           for key in com.apple.security.cs.disable-library-validation com.apple.security.cs.allow-jit; do

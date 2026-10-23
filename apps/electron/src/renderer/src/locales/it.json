@@ -1170,5 +1170,78 @@
   "notFound": {
     "title": "Pagina non trovata",
     "goToApp": "Vai all'app"
+  },
+  "trayPopover": {
+    "label": "Menu di Openstyle",
+    "hint": {
+      "hold": "Tieni premuto {{key}} per dettare",
+      "press": "Premi {{key}} per dettare"
+    },
+    "status": {
+      "ready": "Pronto",
+      "recording": "Registrazione",
+      "dictating": "Dettatura"
+    },
+    "meeting": {
+      "section": "Registrazione riunione",
+      "start": "Avvia registrazione riunione",
+      "stop": "Ferma",
+      "stopLabel": "Ferma registrazione riunione",
+      "elapsed": "Durata della registrazione",
+      "started": "Registrazione della riunione avviata",
+      "stopped": "Registrazione della riunione fermata",
+      "startFailed": "La registrazione della riunione non è partita."
+    },
+    "recent": {
+      "title": "Dettature recenti",
+      "history": "Cronologia",
+      "empty": "Le tue dettature appaiono qui.",
+      "copy": "Copia dettatura",
+      "copied": "Copiato"
+    },
+    "footer": {
+      "version": "Openstyle {{version}}",
+      "upToDate": "Aggiornato",
+      "updateReady": "Aggiornamento pronto",
+      "restartToUpdate": "Riavvia per aggiornare",
+      "downloading": "Download dell’aggiornamento",
+      "openApp": "Apri Openstyle",
+      "settings": "Impostazioni",
+      "quit": "Esci da Openstyle"
+    },
+    "jobs": {
+      "title": "Attività",
+      "untitled": "Riunione senza titolo",
+      "kind": {
+        "enhance": "Migliora",
+        "summarize": "Riassumi",
+        "transcribe": "Trascrivi",
+        "diarize": "Interlocutori"
+      },
+      "running": {
+        "enhance": "Miglioramento di {{title}}",
+        "summarize": "Riassunto di {{title}}",
+        "transcribe": "Trascrizione di {{title}}",
+        "diarize": "Ricerca interlocutori in {{title}}"
+      },
+      "queued": "In coda · {{kind}} · {{title}}",
+      "downloading": "Download di {{model}}",
+      "downloadSize": "{{done}} di {{total}} GB",
+      "loading": "Caricamento di {{model}}…",
+      "openMeeting": "{{job}}. Apri la riunione."
+    },
+    "nextEvent": {
+      "title": "Prossimo evento",
+      "inHours": "tra {{hours}} h {{minutes}} min",
+      "inMinutes": "tra {{minutes}} min",
+      "record": "Registra",
+      "recordLabel": "Registra {{title}} ora",
+      "recordWhenItStarts": "Registra all’inizio",
+      "recordWhenItStartsLabel": "Registra {{title}} all’inizio",
+      "willStart": "La registrazione inizierà alle {{time}}"
+    },
+    "models": {
+      "label": "Modelli attivi"
+    }
   }
 }

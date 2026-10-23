@@ -173,7 +173,7 @@ gold-merge (`mergeAnswers` in `gold.mts`): each answer's `from` words must occur
 | tags | precision and recall vs expected tags + synonyms (normalized with `normalizeTagName`) | - |
 | speakers | correct / wrong / missing names vs the gold map (a role is no name) | a wrong name |
 
-Gold hard fails count in the run's hard fails, so a model with one is not the floor. WER counts substitutions, deletions and insertions over the gold words (`words()` normalizer: lower case, no punctuation). CER is the character edit distance on the word alignment.
+Gold hard fails count in the run's hard fails, so a model with one is not the floor. WER counts substitutions, deletions and insertions over the gold words. Since 2026-10-22 (#211) `wer`, `werVerified` and `delta` use normalized words on both sides (`normalizeWords` in `score.mts`): number words become digits ("twenty one" = "vinte e um" = "21"), a thousands separator goes ("1,000" = "1000"), and an exact adjacent repeat counts once ("the the" = "the"; owner decision: Enhance may remove a stutter). `werRaw`, `werVerifiedRaw` and `deltaRaw` keep the old rule (`words()` only: lower case, no punctuation). `--compare` against a baseline from before 2026-10-22 maps its `wer*` and `delta` to the raw names, so old baselines compare raw to raw. CER is the character edit distance on the raw word alignment.
 
 ### How to read a compare
 
@@ -199,21 +199,42 @@ Backends:
 
 Steps:
 1. Capture (no GPU): run `pnpm meeting:eval --models <ids> --gold --keep --out /tmp/meeting-eval/out/<name>`, then `pnpm meeting:eval:sweep --capture /tmp/meeting-eval/out/<name>`. The capture copies the llm_calls rows and the run DB per meeting and model into `~/.openstyle-eval/sweep/<id8>/` (folder 0700, files 0600). After that, delete `runs/`, `pack/` and `arms/` of the eval out folder.
-2. Replay proof: `pnpm meeting:eval:sweep --replay-check --models <ids> [--backend ...]`.
+2. Replay proof: `pnpm meeting:eval:sweep --replay-check --models <ids> [--backend ...]`. Rebuild proof only (no GPU, no model call, seconds): `pnpm meeting:eval:sweep --rebuild-check --models <ids>`. Expected at an unchanged app: every line `byte-equal` = `stored`, last line `rebuild-check: ... (PASS)`. After a prompt or schema change, the changed stages show `byte-equal 0`: that is the proof that the replay sends the new prompt.
    - On MLX, every rebuilt request equals the stored request byte for byte. Every stored call comes back byte-equal at temperature 0, and the stage output equals the stored DB state. Proven 2026-10-22 on E2B for 4 of 4 meetings (42 calls) and on E4B for 3 of 4 meetings (23 calls).
    - On the desktop, each stage runs twice at temperature 0, and the two runs must give equal answers.
 3. Sweep: `pnpm meeting:eval:sweep --stage <name> --models <ids> --space scripts/meeting-v2/eval/sweep-spaces/<name>.json [--backend ...] [--out /tmp/meeting-eval/sweep/<dir>]`. It writes `results.md` and `results.json` (numbers only).
 4. Confirm on MLX: run the same command with `--backend mlx --confirm <desktop results.json> --top 3`. Add `--save-baseline <name>` to store the numbers in `eval-baselines/`.
 
+What the replay rebuilds (since 2026-10-22, issue #311 rank 5): for all 4 stages, the system prompt, the user prompt and the answer schema come from the CURRENT app code (`prompts.ts` builders, `schemas.ts` step schemas through the AI SDK `asSchema`, as `gateway.ts` sends them). The inputs are stored: language, title, context, folder and vocabulary from the run DB; transcript lines from the stored prompts; existing tags from the stored tags prompt. So a prompt or schema change in the working tree reaches the replay at once. Not rebuilt: candidate selection of identifySpeakers (the stored lines are used), the tags line sample, and the summary input lines (they come from the run DB, so a correctChunk change does not reach a summary replay).
+
+Variant mode (test a prompt or schema change fast):
+1. Make the baseline at the unchanged code: `pnpm meeting:eval:sweep --variant --stage <name> --models <ids> --noise --backend llamacpp --base-url http://192.168.31.222:80/v1 --out /tmp/meeting-eval/sweep/variant-base-<name>`.
+2. Change the prompt or schema in the working tree. Run `--rebuild-check`: the changed stage must show `byte-equal 0`.
+3. Run the variant: the same command with `--against /tmp/meeting-eval/sweep/variant-base-<name>/results.json --out <new dir>`. Add `--noise` to get the band of the new prompt (the band moves with the prompt).
+4. Read `results.md`: baseline, variant, delta and noise band per metric, and `Verdict: better | worse | inside noise`. The band is the larger of the stored band and the band of this run.
+- `--repeats <n>` (default 3) counts only above temperature 0. At temperature 0 one run.
+- `--against` also takes a sweep `results.json` (its baseline arm and band). For correctChunk it refuses a file without `scorer: "norm-v1"`, because the objective changed with the normalized WER.
+- The meetings must be the same as in the `--against` file.
+- The header says `+ working-tree changes in apps/server/src` when the app code is not committed.
+- Revert or commit the change after the run. Never leave a test prompt in the app.
+
 Search: the baseline, then a noise run (the baseline with one word changed in the stage's system prompt; band = |noise - baseline|), then the coarse grid plus the single control arms, then a fine grid with halved steps around the best. Above temperature 0, each combination runs 3 times and the median counts. A combination stops after the 2 shortest meetings when it is below the best by more than max(2 x band, earlyStopMargin). A winner counts only when its delta is above the band. The objective of each stage is documented in the header of `stage-score.mts`.
 
 Known facts (2026-10-22):
+- The correctChunk objective uses the normalized WER (`SCORER = "norm-v1"` in `stage-score.mts`). Sweep results from before have no `scorer` field: their correctChunk objectives are raw and are not comparable. The metrics `werRaw`, `werDeltaRaw`, `asrWordErrorsRaw` and `enhWordErrorsRaw` keep the raw numbers.
+- A fresh worktree has no `node_modules` and no package `dist`. Run `pnpm install --frozen-lockfile --prefer-offline --ignore-scripts`, then `pnpm --filter @openstyle/validations --filter @openstyle/utils --filter @openstyle/stt --filter @openstyle/sdk build`, before `pnpm meeting:eval:test`.
 - The llama.cpp prompt cache changes the answer at temperature 0. One summary request gave 2 different answers in 3 runs with the cache, and 3 equal answers without it. The client sends `cache_prompt: false`.
 - llama-swap answers `/props` only with `?model=<name>`. The desktop has 1 slot per model, so the tool sends 1 request at a time.
 - The MLX worker stops when its stdin closes. The tool keeps a pipe open.
 - The server's transcript loader reads the vocabulary through `getDb()`, which migrates `OPENSTYLE_DB_PATH`. The tool points it at a scratch copy in `/tmp/meeting-eval/sweep-work/<pid>`, never at a capture file.
 - The worker drops seed, presence and frequency penalty. `repetition_penalty` works on both backends. A seed arm cannot be confirmed on MLX.
 - The executors do not run the server's length split and raise steps. A length finish is a failed unit. A cut summary gets the server's repair.
+
+Audio second opinion (`scripts/meeting-v2/eval/audio-verify.mts`, PR #320, desktop only; usage in the file header):
+- The desktop llama.cpp takes `{"type":"input_audio","input_audio":{"data":<base64 wav>,"format":"wav"}}` on `/v1/chat/completions`. Audio costs 25 prompt tokens per second. Clips of 40, 60 and 90 s also work there (llama.cpp mtmd cuts audio into 30 s pieces). The Gemma 4 model card limit is 30 s per clip, and mlx-vlm cuts longer audio at 30 s with no warning. Keep every clip at 30 s or less.
+- Meeting audio: copy `/tmp/meeting-eval/asr/meetings/<id>/{mic,system}.wav` (16 kHz mono PCM16) into a 0700 scratch folder. Segment `start_ms` / `end_ms` are offsets in the channel file.
+- A choice prompt ("A or B") with a JSON schema answered "A" in every order on a synthetic clip. Without the schema both models were right, but on real meetings most answers were still the same letter in both orders. Ask in both orders and keep a change only when both answers agree.
+- The app's MLX worker cannot take audio: LLM mode loads Gemma 4 with mlx-lm, whose `gemma4.py` `sanitize` drops `audio_tower` and `embed_audio`. The cached MLX checkpoint has the audio weights; mlx-vlm 0.7.8 has the Gemma 4 audio code.
 
 ## How to compare runs
 

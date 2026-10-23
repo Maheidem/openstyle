@@ -17,6 +17,7 @@ import {
 import type { ServerFetch } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { execAsync } from "./active-window";
+import { fakeCalendarOutput, isFakeCalendar } from "./fake-calendar";
 import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("calendar");
@@ -39,6 +40,8 @@ const REQUEST_TIMEOUT_MS = 120_000;
 const START_EARLY_MS = 5 * 60 * 1000;
 
 const defaultRunner: HelperRunner = async (args, timeoutMs) => {
+  // E2E seam: fictional events, no helper and no EventKit call.
+  if (isFakeCalendar()) return fakeCalendarOutput(args);
   if (process.platform !== "darwin") return null;
   const binary = getNativeBinaryPath("macos-calendar");
   if (!binary) return null;

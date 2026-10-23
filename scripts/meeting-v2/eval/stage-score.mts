@@ -4,7 +4,8 @@
 //
 // Each stage gives flat metrics and one objective (higher is better), the
 // value that the search ranks on:
-//   correctChunk     100 x (ASR WER - Enhance WER, pooled) + 0.5 x fixes found
+//   correctChunk     100 x (ASR WER - Enhance WER, pooled; normalized WER of
+//                    score.mts, SCORER below) + 0.5 x fixes found
 //                    - 1 x must-not-change violations - 1 x failed units
 //   identifySpeakers correct - 2 x wrong (a wrong name is a hard fail)
 //                    - 1 x failed units
@@ -28,6 +29,13 @@ import {
 import type { StageName, StageOutput } from "./stage-replay.mts";
 
 export type Metrics = Record<string, number | null>;
+
+/**
+ * The scorer of the objectives. "norm-v1" (2026-10-22): the correctChunk WER
+ * is the normalized WER (number words as digits, an exact adjacent repeat
+ * counted once). Results without this field used the raw WER.
+ */
+export const SCORER = "norm-v1";
 
 const r4 = (x: number) => Math.round(x * 10000) / 10000;
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -73,6 +81,8 @@ export function scoreStage(
     );
     const a = pooled(asr, "words");
     const e = pooled(enh, "words");
+    const ar = pooled(asr, "wordsRaw");
+    const eR = pooled(enh, "wordsRaw");
     const ac = pooled(asr, "chars");
     const ec = pooled(enh, "chars");
     const f = scoreFixes(gold, segs);
@@ -84,6 +94,12 @@ export function scoreStage(
       wer: e?.rate ?? null,
       cer: ec?.rate ?? null,
       werDelta: a?.rate != null && e?.rate != null ? r4(a.rate - e.rate) : null,
+      asrWordErrorsRaw: ar?.errors ?? null,
+      enhWordErrorsRaw: eR?.errors ?? null,
+      refWordsRaw: ar?.ref ?? null,
+      werRaw: eR?.rate ?? null,
+      werDeltaRaw:
+        ar?.rate != null && eR?.rate != null ? r4(ar.rate - eR.rate) : null,
       cerDelta:
         ac?.rate != null && ec?.rate != null ? r4(ac.rate - ec.rate) : null,
       applied: Object.keys(out.corrections ?? {}).length,
@@ -195,7 +211,8 @@ export function objective(stage: StageName, perMeeting: Metrics[]): number {
 /** Sum the metrics of several meetings (rates are averaged). */
 export function totals(perMeeting: Metrics[]): Metrics {
   const out: Metrics = {};
-  const rate = /^(wer|cer|werDelta|cerDelta|tagsPrecision|tagsRecall)$/;
+  const rate =
+    /^(wer|cer|werDelta|cerDelta|werRaw|werDeltaRaw|tagsPrecision|tagsRecall)$/;
   const keys = new Set(perMeeting.flatMap((m) => Object.keys(m)));
   for (const k of keys) {
     const vals = perMeeting

@@ -74,6 +74,11 @@ export function registerHotkeyIpc(): void {
   );
 }
 
+/** "hold" or "toggle": how the dictation hotkey works now. */
+export function getHotkeyActivationMode(): "hold" | "toggle" {
+  return hotkeyActivationMode;
+}
+
 /** The configured hotkey accelerator from a settings map, if valid. */
 function hotkeyFromSettings(
   settings: Record<string, string>,

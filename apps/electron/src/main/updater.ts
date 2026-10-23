@@ -18,6 +18,7 @@ import {
 } from "./permission-dialogs";
 import { selfUpdater } from "./self-updater";
 import { prefetchMlxRuntime } from "./server-host";
+import { refreshTrayIcon } from "./tray-icon";
 
 const log = createAppLogger("electron");
 
@@ -131,6 +132,7 @@ export function registerUpdater(): void {
 
     selfUpdater.on("downloaded", (info) => {
       state.updateDownloadState = "downloaded";
+      refreshTrayIcon();
       state.settingsWindow?.webContents.send("updater:downloaded", {
         version: info.version,
       });

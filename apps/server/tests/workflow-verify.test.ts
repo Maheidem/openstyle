@@ -428,6 +428,57 @@ describe("verifyEvidence: one test for each drop reason (4.4.2)", () => {
     });
   });
 
+  it("8b other_speaker_intro: another label's line introduces its own speaker", () => {
+    const r = verifyEvidence(
+      prepared([
+        seg(
+          "x",
+          "3",
+          "Hi. Nice to meet you. I'm Mira, from the launch team.",
+          100,
+        ),
+      ]),
+      [
+        prop({
+          segmentId: "x",
+          quote: "I'm Mira, from the launch team.",
+          label: "2",
+          name: "Mira",
+        }),
+      ],
+      [{ unitKey: "candidates", segmentIds: ["x"] }],
+    );
+    expect(r.verdicts[0]).toMatchObject({
+      status: "dropped",
+      reason: "other_speaker_intro",
+      evidenceType: "addressed_as",
+    });
+    expect(r.suggestions).toEqual([]);
+  });
+
+  it("8b keeps an address and a third-person introduction on another label's line", () => {
+    const r = verifyEvidence(
+      prepared([
+        seg("x", "2", "Thanks, Ana. Over to you.", 100),
+        seg("y", "3", "This is Ben, he joins us today.", 200),
+      ]),
+      [
+        prop({
+          segmentId: "x",
+          quote: "Thanks, Ana.",
+          label: "3",
+          name: "Ana",
+        }),
+        prop({ segmentId: "y", quote: "This is Ben", label: "2", name: "Ben" }),
+      ],
+      [{ unitKey: "candidates", segmentIds: ["x", "y"] }],
+    );
+    expect(r.verdicts.map((v) => [v.status, v.reason])).toEqual([
+      ["kept", null],
+      ["kept", null],
+    ]);
+  });
+
   it("9 conflict_lost and 10 duplicate_same_name: one winner for each label", () => {
     const r = verify([
       prop({ segmentId: "d", quote: "I am Ben", label: "3", name: "Ben" }), // self-introduction, later

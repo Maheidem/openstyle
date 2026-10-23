@@ -40,6 +40,8 @@ export function createSettingsWindow(initialPath?: string): Promise<void> {
 
 /** Show the dashboard and bring the app to the front (dock icon + focus). */
 export function revealSettingsWindow(win: BrowserWindow): void {
+  // A minimized window stays in the Dock after show(). Restore it first.
+  if (win.isMinimized()) win.restore();
   // Quiet E2E: show without focus, dock icon or app activation.
   if (state.quietE2E) {
     win.showInactive();
@@ -48,9 +50,16 @@ export function revealSettingsWindow(win: BrowserWindow): void {
   if (process.platform === "darwin") {
     app.dock?.show();
     app.focus({ steal: true });
+    // Bring the window to the current Space. A window that joins all Spaces
+    // shows on the current one, and it stays there when it stops joining.
+    // skipTransformProcessType keeps the dock icon (no process type change).
+    win.setVisibleOnAllWorkspaces(true, { skipTransformProcessType: true });
   }
   win.show();
   win.focus();
+  if (process.platform === "darwin") {
+    win.setVisibleOnAllWorkspaces(false, { skipTransformProcessType: true });
+  }
 }
 
 async function buildSettingsWindow(initialPath?: string): Promise<void> {

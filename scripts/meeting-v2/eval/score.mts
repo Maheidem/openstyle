@@ -6,7 +6,10 @@
 //
 // Stages:
 //   asr       WER and CER per channel of the raw segment text vs the gold
-//             transcript, for all text and for verified text only
+//             transcript, for all text and for verified text only. The WER
+//             aligns normalized words (normalizeWords: number words are
+//             digits, an exact adjacent repeat counts once); werRaw keeps
+//             the rule before 2026-10-22, so old baselines compare
 //   enhance   the same for the enhanced text, the Enhance delta (ASR WER -
 //             Enhance WER), fixes found and missed, must-not-change
 //             violations
@@ -33,6 +36,237 @@ export function words(text: string): string[] {
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .split(/\s+/)
     .filter(Boolean);
+}
+
+// --- Score normalization (issue #211, owner decisions 2026-10-22) --------------
+//
+// The WER of the asr and enhance stages aligns normalized words: number words
+// become digits ("twenty one" and "21" are both "21", English and Portuguese),
+// and an exact adjacent repeat counts once ("the the" is "the"; Enhance may
+// remove such a stutter). The same rule runs on the gold and on the output.
+// The raw WER (words() only, the rule before 2026-10-22) stays as `werRaw`.
+
+const UNITS: Record<string, number> = {
+  zero: 0,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  um: 1,
+  uma: 1,
+  dois: 2,
+  duas: 2,
+  três: 3,
+  tres: 3,
+  quatro: 4,
+  cinco: 5,
+  seis: 6,
+  sete: 7,
+  oito: 8,
+  nove: 9,
+};
+const TEENS: Record<string, number> = {
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  dez: 10,
+  onze: 11,
+  doze: 12,
+  treze: 13,
+  catorze: 14,
+  quatorze: 14,
+  quinze: 15,
+  dezesseis: 16,
+  dezasseis: 16,
+  dezessete: 17,
+  dezassete: 17,
+  dezoito: 18,
+  dezenove: 19,
+  dezanove: 19,
+};
+const TENS: Record<string, number> = {
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
+  sixty: 60,
+  seventy: 70,
+  eighty: 80,
+  ninety: 90,
+  vinte: 20,
+  trinta: 30,
+  quarenta: 40,
+  cinquenta: 50,
+  cinqüenta: 50,
+  sessenta: 60,
+  setenta: 70,
+  oitenta: 80,
+  noventa: 90,
+};
+/** Portuguese hundreds are one word ("duzentos"); English uses "<unit> hundred". */
+const PT_HUNDREDS: Record<string, number> = {
+  cem: 100,
+  cento: 100,
+  duzentos: 200,
+  duzentas: 200,
+  trezentos: 300,
+  trezentas: 300,
+  quatrocentos: 400,
+  quatrocentas: 400,
+  quinhentos: 500,
+  quinhentas: 500,
+  seiscentos: 600,
+  seiscentas: 600,
+  setecentos: 700,
+  setecentas: 700,
+  oitocentos: 800,
+  oitocentas: 800,
+  novecentos: 900,
+  novecentas: 900,
+};
+const SCALES: Record<string, number> = {
+  thousand: 1000,
+  mil: 1000,
+  million: 1_000_000,
+  milhão: 1_000_000,
+  milhao: 1_000_000,
+  milhões: 1_000_000,
+  milhoes: 1_000_000,
+};
+/** "one hundred and five", "cento e vinte", "mil e duzentos". */
+const CONNECT = new Set(["and", "e"]);
+
+const has = (o: Record<string, number>, w: string | undefined) =>
+  w !== undefined && Object.hasOwn(o, w);
+const startsTens = (w: string | undefined) =>
+  has(TEENS, w) || has(TENS, w) || (has(UNITS, w) && UNITS[w as string] !== 0);
+
+/** One number below 1000 that starts at ws[i]: its value and the next index. */
+function readGroup(ws: string[], i: number): { v: number; j: number } | null {
+  let v = 0;
+  let j = i;
+  let any = false;
+  const w = ws[j];
+  if (has(UNITS, w) && UNITS[w as string] !== 0 && ws[j + 1] === "hundred") {
+    v = (UNITS[w as string] as number) * 100;
+    j += 2;
+    any = true;
+  } else if (w === "hundred") {
+    v = 100;
+    j += 1;
+    any = true;
+  } else if (has(PT_HUNDREDS, w)) {
+    v = PT_HUNDREDS[w as string] as number;
+    j += 1;
+    any = true;
+  }
+  let k = j;
+  if (any && CONNECT.has(ws[k] ?? "") && startsTens(ws[k + 1])) k++;
+  const t = ws[k];
+  if (has(TEENS, t)) {
+    v += TEENS[t as string] as number;
+    j = k + 1;
+    any = true;
+  } else if (has(TENS, t)) {
+    v += TENS[t as string] as number;
+    j = k + 1;
+    any = true;
+    // "twenty one"; Portuguese "vinte e um".
+    const m = ws[j] === "e" ? j + 1 : j;
+    const u = ws[m];
+    if (has(UNITS, u) && UNITS[u as string] !== 0) {
+      v += UNITS[u as string] as number;
+      j = m + 1;
+    }
+  } else if (has(UNITS, t) && !(any && UNITS[t as string] === 0)) {
+    v += UNITS[t as string] as number;
+    j = k + 1;
+    any = true;
+  }
+  return any ? { v, j } : null;
+}
+
+/** The longest number in words that starts at ws[i], or null. */
+function readNumber(ws: string[], i: number): { v: number; j: number } | null {
+  let total = 0;
+  let j = i;
+  let lastScale = Number.POSITIVE_INFINITY;
+  let any = false;
+  let g = readGroup(ws, j);
+  for (;;) {
+    if (g) j = g.j;
+    const s = SCALES[ws[j] ?? ""];
+    if (s !== undefined && s < lastScale && (g === null || g.v > 0)) {
+      total += (g?.v ?? 1) * s;
+      lastScale = s;
+      j += 1;
+      any = true;
+      const m = CONNECT.has(ws[j] ?? "") ? j + 1 : j;
+      g = readGroup(ws, m);
+      if (!g) break;
+      continue;
+    }
+    if (g) {
+      total += g.v;
+      any = true;
+    }
+    break;
+  }
+  return any && j > i ? { v: total, j } : null;
+}
+
+/**
+ * The normal form of a word stream for the WER: number words become digits,
+ * then an exact adjacent repeat counts once. `flags` (one per word) follow
+ * the words: a number keeps the flag only when all its words had it; a
+ * removed repeat takes its flag away with it.
+ */
+export function normalizeWords(
+  ws: string[],
+  flags: boolean[] = ws.map(() => true),
+): { words: string[]; flags: boolean[] } {
+  const nums: string[] = [];
+  const numFlags: boolean[] = [];
+  for (let i = 0; i < ws.length; ) {
+    const n = readNumber(ws, i);
+    if (n) {
+      nums.push(String(n.v));
+      numFlags.push(flags.slice(i, n.j).every(Boolean));
+      i = n.j;
+    } else {
+      nums.push(ws[i] as string);
+      numFlags.push(flags[i] ?? false);
+      i++;
+    }
+  }
+  const out: string[] = [];
+  const outFlags: boolean[] = [];
+  nums.forEach((w, k) => {
+    if (out.length > 0 && out[out.length - 1] === w) return;
+    out.push(w);
+    outFlags.push(numFlags[k] as boolean);
+  });
+  return { words: out, flags: outFlags };
+}
+
+/**
+ * The words of a text for the normalized WER: a thousands separator between
+ * digits goes ("1,000" and "1.000" are "1000"), then words().
+ */
+export function scoreWords(text: string): string[] {
+  return words(text.replace(/(\d)[.,](?=\d{3}(?!\d))/g, "$1"));
 }
 
 const round = (v: number, digits = 4) => {
@@ -130,14 +364,23 @@ export interface ErrorRate {
 }
 
 export interface ChannelScore {
+  /** Normalized words (normalizeWords). */
   words: ErrorRate;
+  /** Raw words (words() only): the WER before 2026-10-22. */
+  wordsRaw: ErrorRate;
+  /** Characters of the raw words. */
   chars: ErrorRate;
   wordsVerified: ErrorRate;
+  wordsVerifiedRaw: ErrorRate;
   charsVerified: ErrorRate;
+  /** Edit counts of the normalized alignment. */
   substitutions: number;
   deletions: number;
   insertions: number;
 }
+
+/** The rates of one alignment (errorRates): no raw / normalized split. */
+export type ErrorRates = Omit<ChannelScore, "wordsRaw" | "wordsVerifiedRaw">;
 
 const er = (errors: number, ref: number): ErrorRate => ({
   errors,
@@ -173,7 +416,7 @@ export function errorRates(
   ref: string[],
   hyp: string[],
   verified: boolean[] = ref.map(() => true),
-): ChannelScore {
+): ErrorRates {
   const steps = alignWords(ref, hyp);
   const flagAt = (r: number) => (r < 0 ? false : (verified[r] ?? false));
   let lastRef = -1;
@@ -233,7 +476,9 @@ const byStart = (a: SegmentRow, b: SegmentRow) =>
 /**
  * Score one channel at meeting level: the words of all gold turns in time
  * order vs the words of all segments of the channel in time order. A new
- * segmentation does not change the score.
+ * segmentation does not change the score. WER and its edit counts use the
+ * normalized words (normalizeWords on both sides); `wordsRaw`,
+ * `wordsVerifiedRaw` and the CER use the raw words.
  */
 export function scoreChannel(
   gold: Gold,
@@ -245,16 +490,36 @@ export function scoreChannel(
   if (!turns) return null;
   const ref: string[] = [];
   const flags: boolean[] = [];
-  for (const t of turns)
+  const nRef: string[] = [];
+  const nFlags: boolean[] = [];
+  for (const t of turns) {
     for (const w of words(t.text)) {
       ref.push(w);
       flags.push(t.verified);
     }
-  const hyp = rows
+    for (const w of scoreWords(t.text)) {
+      nRef.push(w);
+      nFlags.push(t.verified);
+    }
+  }
+  const texts = rows
     .filter((s) => s.source === channel)
     .sort(byStart)
-    .flatMap((s) => words(stage === "asr" ? (s.text ?? "") : effective(s)));
-  return errorRates(ref, hyp, flags);
+    .map((s) => (stage === "asr" ? (s.text ?? "") : effective(s)));
+  const raw = errorRates(ref, texts.flatMap(words), flags);
+  const n = normalizeWords(nRef, nFlags);
+  const norm = errorRates(
+    n.words,
+    normalizeWords(texts.flatMap(scoreWords)).words,
+    n.flags,
+  );
+  return {
+    ...norm,
+    chars: raw.chars,
+    charsVerified: raw.charsVerified,
+    wordsRaw: raw.words,
+    wordsVerifiedRaw: raw.wordsVerified,
+  };
 }
 
 /** WER or CER of several channels together (sum of errors / sum of words). */
@@ -262,7 +527,12 @@ export function pooled(
   scores: (ChannelScore | null)[],
   field: keyof Pick<
     ChannelScore,
-    "words" | "chars" | "wordsVerified" | "charsVerified"
+    | "words"
+    | "wordsRaw"
+    | "chars"
+    | "wordsVerified"
+    | "wordsVerifiedRaw"
+    | "charsVerified"
   >,
 ): ErrorRate | null {
   const own = scores.filter((s): s is ChannelScore => s !== null);
@@ -659,6 +929,8 @@ export interface Scorecard {
     channels: Record<Channel, ChannelScore | null> | null;
     /** ASR WER - Enhance WER per channel and pooled. Positive = Enhance helped. */
     delta: Record<Channel | "all", number | null> | null;
+    /** The same on the raw WER (wordsRaw). */
+    deltaRaw: number | null;
     fixes: FixScore;
   };
   summary: SummaryScore | null;
@@ -703,6 +975,13 @@ export function scoreRun(
           ),
         }
       : null;
+  const deltaRaw =
+    asr && enh
+      ? diff(
+          pooled(Object.values(asr), "wordsRaw"),
+          pooled(Object.values(enh), "wordsRaw"),
+        )
+      : null;
   const summary = scoreSummary(gold, run.summaryJson);
   const speakers = scoreSpeakers(gold, run.speakers);
   return {
@@ -712,7 +991,12 @@ export function scoreRun(
         ? null
         : gold.asrHash === asrHash,
     asr,
-    enhance: { channels: enh, delta, fixes: scoreFixes(gold, run.segments) },
+    enhance: {
+      channels: enh,
+      delta,
+      deltaRaw,
+      fixes: scoreFixes(gold, run.segments),
+    },
     summary,
     tags: scoreTags(gold, run.tags),
     speakers,
@@ -744,6 +1028,8 @@ function channelMetrics(
     cer: pooled(Object.values(ch), "chars")?.rate ?? null,
     werVerified: pooled(Object.values(ch), "wordsVerified")?.rate ?? null,
     cerVerified: pooled(Object.values(ch), "charsVerified")?.rate ?? null,
+    werRaw: pooled(Object.values(ch), "wordsRaw")?.rate ?? null,
+    werVerifiedRaw: pooled(Object.values(ch), "wordsVerifiedRaw")?.rate ?? null,
   };
   for (const c of CHANNELS) {
     const s = ch[c];
@@ -751,6 +1037,8 @@ function channelMetrics(
     out[`cer.${c}`] = s?.chars.rate ?? null;
     out[`werVerified.${c}`] = s?.wordsVerified.rate ?? null;
     out[`cerVerified.${c}`] = s?.charsVerified.rate ?? null;
+    out[`werRaw.${c}`] = s?.wordsRaw.rate ?? null;
+    out[`werVerifiedRaw.${c}`] = s?.wordsVerifiedRaw.rate ?? null;
   }
   return out;
 }
@@ -765,7 +1053,9 @@ export function stageMetrics(sc: Scorecard): Record<Stage, StageMetrics> {
     asr: channelMetrics(sc.asr),
     enhance: {
       ...channelMetrics(sc.enhance.channels),
-      ...(sc.enhance.delta ? { delta: sc.enhance.delta.all } : {}),
+      ...(sc.enhance.delta
+        ? { delta: sc.enhance.delta.all, deltaRaw: sc.enhance.deltaRaw }
+        : {}),
       fixesFound: f.fixesFound,
       fixesMissed: f.fixesMissed,
       mustNotChangeViolations: f.mustNotChangeViolations,
