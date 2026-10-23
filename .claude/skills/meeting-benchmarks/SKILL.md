@@ -230,6 +230,12 @@ Known facts (2026-10-22):
 - The worker drops seed, presence and frequency penalty. `repetition_penalty` works on both backends. A seed arm cannot be confirmed on MLX.
 - The executors do not run the server's length split and raise steps. A length finish is a failed unit. A cut summary gets the server's repair.
 
+Audio second opinion (`scripts/meeting-v2/eval/audio-verify.mts`, PR #320, desktop only; usage in the file header):
+- The desktop llama.cpp takes `{"type":"input_audio","input_audio":{"data":<base64 wav>,"format":"wav"}}` on `/v1/chat/completions`. Audio costs 25 prompt tokens per second. Clips of 40, 60 and 90 s also work there (llama.cpp mtmd cuts audio into 30 s pieces). The Gemma 4 model card limit is 30 s per clip, and mlx-vlm cuts longer audio at 30 s with no warning. Keep every clip at 30 s or less.
+- Meeting audio: copy `/tmp/meeting-eval/asr/meetings/<id>/{mic,system}.wav` (16 kHz mono PCM16) into a 0700 scratch folder. Segment `start_ms` / `end_ms` are offsets in the channel file.
+- A choice prompt ("A or B") with a JSON schema answered "A" in every order on a synthetic clip. Without the schema both models were right, but on real meetings most answers were still the same letter in both orders. Ask in both orders and keep a change only when both answers agree.
+- The app's MLX worker cannot take audio: LLM mode loads Gemma 4 with mlx-lm, whose `gemma4.py` `sanitize` drops `audio_tower` and `embed_audio`. The cached MLX checkpoint has the audio weights; mlx-vlm 0.7.8 has the Gemma 4 audio code.
+
 ## How to compare runs
 
 Two committed tools (PR #34; they replace the copy-edited per-run compare
