@@ -231,7 +231,10 @@ echo "git:     $SHA ($REF)"
 if [ "$ADHOC" -eq 1 ]; then
   echo "signing: ad-hoc (--adhoc)"
 else
-  codesign -dv "$DEST" 2>&1 | grep -E '^(Authority|TeamIdentifier|CodeDirectory)' | sed 's/^/signing: /'
+  # Authority lines show only with --verbose=2. The first one is the leaf.
+  codesign -dv --verbose=2 "$DEST" 2>&1 |
+    awk '/^Authority=/ && !a++ || /^(TeamIdentifier|CodeDirectory)/' |
+    sed 's/^/signing: /'
 fi
 
 exit 0
