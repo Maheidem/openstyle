@@ -123,6 +123,11 @@ function runBuilder(args) {
   const extra = identity
     ? [`-c.mac.identity=${identity}`, "-c.mac.notarize=false"]
     : [];
+  // A hash identity must reach codesign as a hash (see mac-sign-by-hash.cjs).
+  if (identity && /^[0-9A-Fa-f]{40}$/.test(identity))
+    extra.push(
+      `-c.mac.sign=${fileURLToPath(new URL("mac-sign-by-hash.cjs", import.meta.url))}`,
+    );
   // Without dev signing, stop electron-builder from finding the
   // "Openstyle Dev" identity in the keychain. A caller value wins.
   const env = identity
