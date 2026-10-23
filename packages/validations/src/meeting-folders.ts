@@ -35,7 +35,9 @@ export const meetingFolderSchema = z.object({
   id: meetingFolderIdSchema,
   name: folderNameSchema,
   description: z.string().nullable(),
-  color: folderColorSchema.nullable(),
+  // A stored name outside the palette (a later palette change) reads as no
+  // color, so one bad row cannot break the whole folder list.
+  color: folderColorSchema.nullable().catch(null),
   created_at: z.number().int(),
   updated_at: z.number().int(),
   meeting_count: z.number().int().nonnegative(),

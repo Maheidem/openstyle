@@ -115,6 +115,14 @@ describe("meeting folders", () => {
     // A folder made without a color, like one from before the migration.
     const old = await createFolder("Old");
     expect(old.color).toBeNull();
+    // A stored name outside the palette reads as no color.
+    getDb()
+      .prepare("UPDATE meeting_folders SET color = 'purple' WHERE id = ?")
+      .run(old.id);
+    const list = meetingFoldersResponseSchema.parse(
+      await (await app.request(`${base}/folders`)).json(),
+    );
+    expect(list.items.find((f) => f.id === old.id)?.color).toBeNull();
   });
 
   it("rejects duplicate names on create and rename, with no change to either folder", async () => {
