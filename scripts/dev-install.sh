@@ -115,7 +115,10 @@ else
   line="$(security find-identity -v -p codesigning | grep '"Developer ID Application:' | head -n 1 || true)"
   [ -n "$line" ] || die 'no "Developer ID Application" identity in the keychain.
   Check: security find-identity -v -p codesigning
-  Install the Developer ID certificate with its private key in the login keychain,
+  Install the Developer ID certificate with its private key in the login keychain.
+  If it shows without -v only, add the G2 intermediate:
+  curl -sfo ~/Downloads/DeveloperIDG2CA.cer https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer && open ~/Downloads/DeveloperIDG2CA.cer
+  Otherwise,
   or build without it: pnpm dev:install --adhoc'
   HASH="$(echo "$line" | awk '{print $2}')"
   NAME="$(echo "$line" | sed -E 's/^[^"]*"(.*)"[^"]*$/\1/')"

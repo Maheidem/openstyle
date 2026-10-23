@@ -281,6 +281,7 @@ What the dev flavor isolates (`apps/electron/src/main/flavor.ts`, read once at s
 Shared on purpose: the Hugging Face cache (`~/.cache/huggingface`, the app sets no own one). A model delete in Openstyle Dev also deletes it for the installed app. Both apps can listen to the same dictation hotkey: give Openstyle Dev another hotkey.
 
 First run on the owner's Mac:
+- The identity must be VALID (`security find-identity -v -p codesigning`). If the Developer ID line shows only without `-v`, the "Developer ID Certification Authority G2" intermediate is missing (proven 2026-10-23). Fix: `curl -sfo ~/Downloads/DeveloperIDG2CA.cer https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer && open ~/Downloads/DeveloperIDG2CA.cer`, add to the login keychain.
 - macOS asks once: "codesign wants to access key ... in your keychain". Enter the login password and click "Always Allow". Later runs sign with no prompt.
 - The first quit of a running Openstyle Dev can ask once: "Terminal wants access to control Openstyle Dev". Click OK.
 - Openstyle Dev is a new app for Privacy & Security: macOS asks once for Microphone, Accessibility and the other grants. The Developer ID identity stays the same across rebuilds, so the grants stay.
