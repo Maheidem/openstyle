@@ -144,20 +144,20 @@ fi
 [ -z "${WARN_PENDING:-}" ] || touch "$WARNED"
 
 step "3. Dependencies"
-run pnpm -C "$WT" install --frozen-lockfile
+run_in "$WT" pnpm install --frozen-lockfile
 
 step "4. Build $PRODUCT (arm64, unpacked)"
 E="$WT/apps/electron"
-run pnpm -C "$WT" turbo build --filter=@openstyle/server
-run env "${SIGN_ENV[@]}" pnpm -C "$E" run compile:native
-run pnpm -C "$E" run copy:sqlite-vec
-run env "${SIGN_ENV[@]}" pnpm -C "$E" run download:ffmpeg
+run_in "$WT" pnpm turbo build --filter=@openstyle/server
+run_in "$E" env "${SIGN_ENV[@]}" pnpm run compile:native
+run_in "$E" pnpm run copy:sqlite-vec
+run_in "$E" env "${SIGN_ENV[@]}" pnpm run download:ffmpeg
 if [ -n "$(ls -A "$E/resources/whisper/darwin-arm64" 2>/dev/null)" ]; then
   echo "whisper.cpp binaries present, skip"
 else
   run_in "$E" node scripts/download-whisper-cpp.mjs --resources
 fi
-run pnpm -C "$E" exec electron-vite build
+run_in "$E" pnpm exec electron-vite build
 # dev-sign.mjs adds -c.mac.identity=<hash> -c.mac.notarize=false when the
 # identity is set (else ad-hoc). For the dev flavor, extraMetadata goes into
 # the packaged package.json: the product name gives the own userData and log
