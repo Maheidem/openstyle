@@ -943,6 +943,8 @@
       "actions": "Actions for {{name}}",
       "rename": "Rename folder",
       "editDescription": "Edit description",
+      "color": "Color",
+      "colorNone": "None",
       "delete": "Delete folder",
       "deleteBlockedCount": "Not empty ({{count}})",
       "moveTo": "Move to folder",

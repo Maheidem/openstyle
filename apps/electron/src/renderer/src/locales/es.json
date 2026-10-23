@@ -765,6 +765,8 @@
       "actions": "Acciones de {{name}}",
       "rename": "Renombrar carpeta",
       "editDescription": "Editar descripción",
+      "color": "Color",
+      "colorNone": "Ninguno",
       "delete": "Eliminar carpeta",
       "deleteBlockedCount": "No está vacía ({{count}})",
       "moveTo": "Mover a carpeta",

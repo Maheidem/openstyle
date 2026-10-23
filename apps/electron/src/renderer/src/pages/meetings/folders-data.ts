@@ -1,4 +1,5 @@
 import {
+  type FolderColor,
   type MeetingDetail,
   type MeetingListItem,
   meetingFolderErrorSchema,
@@ -79,7 +80,11 @@ export function useMeetingFolders(enabled: boolean) {
     },
     update: async (
       id: string,
-      values: { name?: string; description?: string | null },
+      values: {
+        name?: string;
+        description?: string | null;
+        color?: FolderColor | null;
+      },
     ) => {
       await checked(
         await getClient().api.meetings.folders[":id"].$patch({

@@ -1,5 +1,7 @@
 import {
   createMeetingFolderSchema,
+  type FolderColor,
+  folderColorSchema,
   type MeetingListItem,
 } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
@@ -20,7 +22,45 @@ import {
 import { ContextMenu, DropdownMenu } from "radix-ui";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useMeetingFolders } from "./folders-data";
 import { folderErrorKey, type MeetingFolder } from "./folders-model";
+
+// Full class strings, so Tailwind keeps them.
+const FOLDER_COLORS: Record<FolderColor, { icon: string; swatch: string }> = {
+  red: { icon: "text-red-600 dark:text-red-400", swatch: "bg-red-500" },
+  orange: {
+    icon: "text-orange-600 dark:text-orange-400",
+    swatch: "bg-orange-500",
+  },
+  amber: { icon: "text-amber-600 dark:text-amber-400", swatch: "bg-amber-500" },
+  green: { icon: "text-green-600 dark:text-green-400", swatch: "bg-green-500" },
+  teal: { icon: "text-teal-600 dark:text-teal-400", swatch: "bg-teal-500" },
+  blue: { icon: "text-blue-600 dark:text-blue-400", swatch: "bg-blue-500" },
+  violet: {
+    icon: "text-violet-600 dark:text-violet-400",
+    swatch: "bg-violet-500",
+  },
+  pink: { icon: "text-pink-600 dark:text-pink-400", swatch: "bg-pink-500" },
+};
+
+export function FolderIcon({
+  color,
+  className,
+}: {
+  color?: FolderColor | null;
+  className?: string;
+}) {
+  return (
+    <Folder
+      className={cn(
+        color
+          ? `${FOLDER_COLORS[color].icon} fill-current/30`
+          : "text-muted-foreground",
+        className,
+      )}
+    />
+  );
+}
 
 const menuClass =
   "bg-popover text-popover-foreground border-border z-50 max-h-[min(420px,70vh)] min-w-56 max-w-72 overflow-y-auto rounded-lg border p-1 shadow-(--shadow-card)";
@@ -135,6 +175,9 @@ export function FolderMenu({
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
+  const { update } = useMeetingFolders(false);
+  const setColor = (color: FolderColor | null) =>
+    void update(folder.id, { color }).catch(() => {});
   const focusElsewhere = useRef(false);
   const act = (action: () => void) => {
     focusElsewhere.current = true;
@@ -178,6 +221,33 @@ export function FolderMenu({
             <FileText />
             {t("meetings.folders.editDescription")}
           </DropdownMenu.Item>
+          <DropdownMenu.Label className="eyebrow px-2 pt-1.5 pb-1">
+            {t("meetings.folders.color")}
+          </DropdownMenu.Label>
+          <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5">
+            {folderColorSchema.options.map((color) => (
+              <DropdownMenu.Item
+                key={color}
+                aria-label={color}
+                aria-current={folder.color === color ? "true" : undefined}
+                className={cn(
+                  "focus:ring-ring flex size-5 cursor-default items-center justify-center rounded-full outline-none focus:ring-2",
+                  FOLDER_COLORS[color].swatch,
+                )}
+                onSelect={() => setColor(color)}
+              >
+                {folder.color === color && (
+                  <Check className="size-3 text-white" />
+                )}
+              </DropdownMenu.Item>
+            ))}
+            <DropdownMenu.Item
+              className="text-muted-foreground focus:bg-accent cursor-default rounded-md px-1.5 py-0.5 text-[11px] outline-none"
+              onSelect={() => setColor(null)}
+            >
+              {t("meetings.folders.colorNone")}
+            </DropdownMenu.Item>
+          </div>
           <DropdownMenu.Separator className="bg-border my-1 h-px" />
           <DropdownMenu.Item
             className={cn(
@@ -231,7 +301,7 @@ function MoveItems({
           disabled={meeting.folder_id === folder.id}
           onSelect={() => onMove(folder.id)}
         >
-          <Folder />
+          <FolderIcon color={folder.color} />
           <span className="min-w-0 flex-1 truncate">
             {folder.name}
             <span className="text-muted-foreground block text-[10.5px]">
@@ -284,7 +354,7 @@ export function MeetingFolderChip({
           )}
           aria-label={t("meetings.folders.moveTo")}
         >
-          {meeting.folder_id ? <Folder /> : <Inbox />}
+          {meeting.folder_id ? <FolderIcon color={folder?.color} /> : <Inbox />}
           <span className="truncate">
             {folder?.name ??
               t(

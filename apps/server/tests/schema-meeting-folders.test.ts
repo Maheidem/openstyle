@@ -15,14 +15,21 @@ describe("schema 41: meeting folders", () => {
   it("adds the folder table, nullable key, and index on a new DB", () => {
     initSchema(db);
     expect(db.prepare("SELECT version FROM schema_version").get()).toEqual({
-      version: 45,
+      version: 46,
     });
     expect(
       db
         .prepare("PRAGMA table_info(meeting_folders)")
         .all()
         .map((c) => c.name),
-    ).toEqual(["id", "name", "description", "created_at", "updated_at"]);
+    ).toEqual([
+      "id",
+      "name",
+      "description",
+      "created_at",
+      "updated_at",
+      "color",
+    ]);
     expect(db.prepare("PRAGMA table_info(meetings)").all()).toContainEqual(
       expect.objectContaining({ name: "folder_id", type: "TEXT", notnull: 0 }),
     );
@@ -63,7 +70,7 @@ describe("schema 41: meeting folders", () => {
     initSchema(db);
 
     expect(db.prepare("SELECT version FROM schema_version").get()).toEqual({
-      version: 45,
+      version: 46,
     });
     expect(db.prepare("SELECT * FROM meetings").all()).toEqual(
       before.map((row) => ({ ...row, folder_id: null })),

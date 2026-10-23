@@ -765,6 +765,8 @@
       "actions": "Aktionen für {{name}}",
       "rename": "Ordner umbenennen",
       "editDescription": "Beschreibung bearbeiten",
+      "color": "Farbe",
+      "colorNone": "Keine",
       "delete": "Ordner löschen",
       "deleteBlockedCount": "Nicht leer ({{count}})",
       "moveTo": "In Ordner verschieben",

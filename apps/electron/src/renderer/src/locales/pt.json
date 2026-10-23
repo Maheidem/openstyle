@@ -764,6 +764,8 @@
       "actions": "Ações de {{name}}",
       "rename": "Renomear pasta",
       "editDescription": "Editar descrição",
+      "color": "Cor",
+      "colorNone": "Nenhuma",
       "delete": "Excluir pasta",
       "deleteBlockedCount": "Não está vazia ({{count}})",
       "moveTo": "Mover para pasta",

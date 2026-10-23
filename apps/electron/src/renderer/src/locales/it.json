@@ -764,6 +764,8 @@
       "actions": "Azioni per {{name}}",
       "rename": "Rinomina cartella",
       "editDescription": "Modifica descrizione",
+      "color": "Colore",
+      "colorNone": "Nessuno",
       "delete": "Elimina cartella",
       "deleteBlockedCount": "Non vuota ({{count}})",
       "moveTo": "Sposta nella cartella",

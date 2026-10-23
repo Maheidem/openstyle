@@ -3,21 +3,39 @@ import { z } from "zod";
 export const meetingFolderIdSchema = z.string().min(1).max(128);
 const folderNameSchema = z.string().trim().min(1).max(60);
 
+export const folderColorSchema = z.enum([
+  "red",
+  "orange",
+  "amber",
+  "green",
+  "teal",
+  "blue",
+  "violet",
+  "pink",
+]);
+export type FolderColor = z.infer<typeof folderColorSchema>;
+
 export const createMeetingFolderSchema = z.object({
   name: folderNameSchema,
   description: z.string().nullable().optional(),
+  color: folderColorSchema.nullable().optional(),
 });
 
 export const updateMeetingFolderSchema = createMeetingFolderSchema
   .partial()
-  .refine((v) => v.name !== undefined || v.description !== undefined, {
-    message: "Give a name or description",
-  });
+  .refine(
+    (v) =>
+      v.name !== undefined ||
+      v.description !== undefined ||
+      v.color !== undefined,
+    { message: "Give a name, description or color" },
+  );
 
 export const meetingFolderSchema = z.object({
   id: meetingFolderIdSchema,
   name: folderNameSchema,
   description: z.string().nullable(),
+  color: folderColorSchema.nullable(),
   created_at: z.number().int(),
   updated_at: z.number().int(),
   meeting_count: z.number().int().nonnegative(),

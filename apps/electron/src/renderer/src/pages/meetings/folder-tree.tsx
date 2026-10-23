@@ -2,10 +2,11 @@ import type { MeetingListItem } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { formatClockDuration, formatTimestamp } from "@renderer/lib/format";
 import { cn } from "@renderer/lib/utils";
-import { ChevronDown, ChevronRight, Folder, Inbox, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Inbox, Plus } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  FolderIcon,
   FolderMenu,
   FolderNameInput,
   MeetingContextMenu,
@@ -177,7 +178,10 @@ function FolderGroup({
               aria-current={selected ? "true" : undefined}
             >
               {folder ? (
-                <Folder className="text-muted-foreground size-3.5 shrink-0" />
+                <FolderIcon
+                  color={folder.color}
+                  className="size-3.5 shrink-0"
+                />
               ) : (
                 <Inbox className="text-muted-foreground size-3.5 shrink-0" />
               )}

@@ -765,6 +765,8 @@
       "actions": "{{name}}の操作",
       "rename": "フォルダー名を変更",
       "editDescription": "説明を編集",
+      "color": "色",
+      "colorNone": "なし",
       "delete": "フォルダーを削除",
       "deleteBlockedCount": "空ではありません（{{count}}件）",
       "moveTo": "フォルダーに移動",

@@ -2,17 +2,10 @@ import type { MeetingListItem } from "@openstyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { formatClockDuration } from "@renderer/lib/format";
-import {
-  ChevronLeft,
-  Folder,
-  LockKeyhole,
-  Mic,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { ChevronLeft, LockKeyhole, Mic, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderNameInput } from "./folder-controls";
+import { FolderIcon, FolderNameInput } from "./folder-controls";
 import { FolderMeetingRow } from "./folder-tree";
 import {
   FolderRequestError,
@@ -146,7 +139,7 @@ export function FolderPanel({
       <p className="eyebrow mb-2">{t("meetings.folders.folder")}</p>
       <div className="mb-4 flex flex-wrap items-start gap-3">
         <div className="border-border bg-card flex size-10 shrink-0 items-center justify-center rounded-lg border">
-          <Folder className="text-muted-foreground size-4" />
+          <FolderIcon color={folder.color} className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
           {renaming ? (
