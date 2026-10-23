@@ -8,22 +8,21 @@
 #   pnpm dev:install --dry-run       print each step, change nothing
 #   pnpm dev:install --adhoc         no Developer ID: ad-hoc signature (agents, tests)
 #   pnpm dev:install --build-only    stop after the build: no quit, install or open
+#   pnpm dev:install --main-app      build the NORMAL Openstyle and replace
+#                                    /Applications/Openstyle.app (real profile and data;
+#                                    backup: ~/Applications/Openstyle.prev.app)
 #
 # OPENSTYLE_DEVBUILD_DIR moves the build worktree (default ../openstyle-devbuild
 # next to the main checkout). The worktree belongs to this script: it is
 # detached and holds no work.
 set -euo pipefail
 
-BUNDLE_ID="com.openstyle.app.dev"
-PRODUCT="Openstyle Dev"
-DEST_DIR="$HOME/Applications"
-DEST="$DEST_DIR/$PRODUCT.app"
-
 REF="origin/main"
 DRY=0
 ADHOC=0
 BUILD_ONLY=0
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; }
+MAIN_APP=0
+usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --ref) [ $# -ge 2 ] || { echo "error: --ref needs a value" >&2; exit 2; }; REF="$2"; shift ;;
@@ -31,6 +30,7 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1 ;;
     --adhoc) ADHOC=1 ;;
     --build-only) BUILD_ONLY=1 ;;
+    --main-app) MAIN_APP=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -51,6 +51,29 @@ run_in() {
 }
 die() { echo "error: $*" >&2; exit 1; }
 
+if [ "$MAIN_APP" -eq 1 ]; then
+  # The normal flavor (electron-builder.yml): the real profile, port and caches.
+  BUNDLE_ID="com.openstyle.app"
+  PRODUCT="Openstyle"
+  DEST_DIR="/Applications"
+  BACKUP="$HOME/Applications/Openstyle.prev.app"
+  FLAVOR_ARGS=()
+  # An ad-hoc signature would reset the Privacy grants of the real app.
+  [ "$ADHOC" -eq 0 ] || die "--main-app needs the Developer ID. Remove --adhoc."
+else
+  BUNDLE_ID="com.openstyle.app.dev"
+  PRODUCT="Openstyle Dev"
+  DEST_DIR="$HOME/Applications"
+  BACKUP=""
+  FLAVOR_ARGS=(
+    -c.appId="$BUNDLE_ID"
+    -c.productName="$PRODUCT"
+    -c.extraMetadata.productName="$PRODUCT"
+    -c.extraMetadata.openstyleFlavor=dev
+  )
+fi
+DEST="$DEST_DIR/$PRODUCT.app"
+
 [ "$(uname -s)" = Darwin ] || die "Openstyle Dev builds only on macOS."
 [ "$(uname -m)" = arm64 ] || die "Openstyle Dev builds only on Apple Silicon (arm64)."
 
@@ -59,6 +82,26 @@ COMMON_GIT="$(git rev-parse --path-format=absolute --git-common-dir)"
 MAIN_ROOT="$(dirname "$COMMON_GIT")"
 WT="${OPENSTYLE_DEVBUILD_DIR:-$(dirname "$MAIN_ROOT")/openstyle-devbuild}"
 APP_SRC="$WT/apps/electron/dist/mac-arm64/$PRODUCT.app"
+
+if [ "$MAIN_APP" -eq 1 ]; then
+  echo "== --main-app: target $DEST (bundle id $BUNDLE_ID) =="
+  echo "   It uses your real profile and data. Backup of the old app: $BACKUP"
+  WARNED="$WT/.dev-install-main-app-warned"
+  if [ ! -e "$WARNED" ]; then
+    cat <<'WARN'
+
+!! WARNING (first --main-app run) !!
+   - A build of main can run database migrations on your real profile.
+     Going back to an older release (or to the backup) may then not work.
+   - The first Developer ID build asks for the Privacy permissions
+     (Microphone, Accessibility, ...) once more. Later builds keep them.
+   - The normal flavor keeps its updater: a newer release replaces this build.
+   Press Ctrl-C now to stop.
+
+WARN
+    [ "$DRY" -eq 1 ] || { sleep 5; WARN_PENDING=1; }
+  fi
+fi
 
 step "1. Signing identity"
 SIGN_ENV=()
@@ -97,6 +140,8 @@ $dirty
 else
   run git -C "$MAIN_ROOT" worktree add --detach "$WT" "$SHA"
 fi
+# Show the first-run warning only once (the marker lives in the worktree).
+[ -z "${WARN_PENDING:-}" ] || touch "$WARNED"
 
 step "3. Dependencies"
 run pnpm -C "$WT" install --frozen-lockfile
@@ -114,15 +159,11 @@ else
 fi
 run pnpm -C "$E" exec electron-vite build
 # dev-sign.mjs adds -c.mac.identity=<hash> -c.mac.notarize=false when the
-# identity is set (else ad-hoc). extraMetadata goes into the packaged
-# package.json: the product name gives the own userData and log folders, the
-# flavor flag turns on the rest (apps/electron/src/main/flavor.ts).
+# identity is set (else ad-hoc). For the dev flavor, extraMetadata goes into
+# the packaged package.json: the product name gives the own userData and log
+# folders, the flavor flag turns on the rest (apps/electron/src/main/flavor.ts).
 run_in "$E" env "${SIGN_ENV[@]}" node scripts/dev-sign.mjs builder --mac dir --arm64 --publish never \
-  -c.appId="$BUNDLE_ID" \
-  -c.productName="$PRODUCT" \
-  -c.extraMetadata.productName="$PRODUCT" \
-  -c.extraMetadata.openstyleFlavor=dev \
-  -c.mac.hardenedRuntime=true
+  ${FLAVOR_ARGS[@]+"${FLAVOR_ARGS[@]}"} -c.mac.hardenedRuntime=true
 [ "$DRY" -eq 1 ] || [ -d "$APP_SRC" ] || die "build finished but $APP_SRC is missing"
 
 if [ "$BUILD_ONLY" -eq 1 ]; then
@@ -149,8 +190,20 @@ else
 fi
 
 step "6. Install $DEST"
-run mkdir -p "$DEST_DIR"
-run rm -rf "$DEST"
+OLD_VERSION="none"
+if [ -d "$DEST" ]; then
+  OLD_VERSION="$(plutil -extract CFBundleShortVersionString raw "$DEST/Contents/Info.plist" 2>/dev/null || echo unknown)"
+fi
+echo "old version: $OLD_VERSION"
+if [ -n "$BACKUP" ] && [ -d "$DEST" ]; then
+  # One backup only: the app that this run replaces.
+  run mkdir -p "$(dirname "$BACKUP")"
+  run rm -rf "$BACKUP"
+  run mv "$DEST" "$BACKUP"
+else
+  run mkdir -p "$DEST_DIR"
+  run rm -rf "$DEST"
+fi
 run ditto "$APP_SRC" "$DEST"
 
 step "7. Open"
@@ -158,11 +211,13 @@ run open "$DEST"
 
 step "Result"
 if [ "$DRY" -eq 1 ]; then
-  echo "+ plutil CFBundleShortVersionString, git sha, codesign -dv \"$DEST\""
+  echo "+ plutil CFBundleShortVersionString (old -> new), git sha, codesign -dv \"$DEST\""
+  [ -z "$BACKUP" ] || echo "backup:  $BACKUP"
   exit 0
 fi
 echo "app:     $DEST"
-echo "version: $(plutil -extract CFBundleShortVersionString raw "$DEST/Contents/Info.plist")"
+echo "version: $OLD_VERSION -> $(plutil -extract CFBundleShortVersionString raw "$DEST/Contents/Info.plist")"
+[ -z "$BACKUP" ] || [ "$OLD_VERSION" = none ] || echo "backup:  $BACKUP"
 echo "bundle:  $(plutil -extract CFBundleIdentifier raw "$DEST/Contents/Info.plist")"
 echo "git:     $SHA ($REF)"
 if [ "$ADHOC" -eq 1 ]; then
