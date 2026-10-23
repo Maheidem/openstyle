@@ -16,6 +16,9 @@
 # next to the main checkout). The worktree belongs to this script: it is
 # detached and holds no work.
 set -euo pipefail
+# Bash reads a script while it runs. The brace group makes bash parse the
+# whole file first, so an edit or a git checkout during a run cannot change it.
+{
 
 REF="origin/main"
 DRY=0
@@ -227,3 +230,6 @@ if [ "$ADHOC" -eq 1 ]; then
 else
   codesign -dv "$DEST" 2>&1 | grep -E '^(Authority|TeamIdentifier|CodeDirectory)' | sed 's/^/signing: /'
 fi
+
+exit 0
+}
