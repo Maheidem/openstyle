@@ -14,6 +14,7 @@
     "meeting:eval:gold-clips": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/gold-clips.mts",
     "meeting:eval:gold-merge": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/gold-merge.mts",
     "meeting:eval:sweep": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/sweep.mts",
+    "meeting:eval:audio-verify": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/audio-verify.mts",
     "meeting:eval:test": "node --import ./scripts/meeting-v2/ts-register.mjs --test scripts/meeting-v2/eval/checks.test.mts scripts/meeting-v2/eval/score.test.mts scripts/meeting-v2/eval/gold-tools.test.mts scripts/meeting-v2/eval/gpu-queue.test.mts scripts/meeting-v2/eval/sweep.test.mts",
     "test": "turbo test",
     "prepare": "is-ci || husky"
