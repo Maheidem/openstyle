@@ -44,6 +44,7 @@ import { createAppLogger, enableFileLogging } from "@openstyle/utils";
 import { app, dialog, protocol, screen } from "electron";
 import { registerAppProtocol } from "./app-protocol";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
+import { DEV_FLAVOR_NAME, isDevFlavorApp } from "./flavor";
 import {
   getHotkeyActivationMode,
   registerHotkeyIpc,
@@ -91,6 +92,10 @@ if (userDataOverride) {
   app.setPath("userData", userDataOverride);
 }
 
+// The "Openstyle Dev" build of `pnpm dev:install` (flavor.ts). Its product
+// name already gives it its own userData and log folders.
+state.devFlavor = isDevFlavorApp(app.getAppPath());
+
 // Quiet E2E mode (macOS only): a local E2E run must not disturb the person at
 // the screen. No dock icon, no focus steal, no always-on-top overlay, no tray
 // icon, no notification, and every window is fully transparent (opacity 0)
@@ -129,6 +134,9 @@ try {
   if (logsDir !== app.getPath("logs")) app.setAppLogsPath(logsDir);
   enableFileLogging(logsDir);
   log.info(`File logging enabled at ${logsDir}`);
+  if (state.devFlavor) {
+    log.info(`${DEV_FLAVOR_NAME} build: userData ${app.getPath("userData")}`);
+  }
 } catch (err) {
   log.error(`Failed to enable file logging: ${String(err)}`);
 }
@@ -138,7 +146,8 @@ try {
 // profile across before the first read of settings.json (readSettings) or of
 // OPENSTYLE_DB_PATH (set from userData further down). Runs after the
 // OPENSTYLE_USER_DATA override above so E2E profiles are never touched.
-migrateLegacyUserData();
+// The dev flavor never imports an old profile.
+if (!state.devFlavor) migrateLegacyUserData();
 
 // Global crash handlers — without these, errors in the main process vanish
 // silently (no console in a packaged app). Log, then for a truly uncaught
@@ -229,7 +238,7 @@ app.whenReady().then(async () => {
   electronApp.setAppUserModelId("com.openstyle.app");
 
   // Override app.name so macOS menu shows "Openstyle" instead of the package name
-  app.setName("Openstyle");
+  app.setName(state.devFlavor ? DEV_FLAVOR_NAME : "Openstyle");
 
   // Register the custom app:// protocol for production SPA support
   registerAppProtocol();

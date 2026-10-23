@@ -8,7 +8,7 @@
  * local variable.
  *
  * This module must have no side effects when it loads. `index.ts` sets
- * `quietE2E` after the user-data override.
+ * `quietE2E` and `devFlavor` after the user-data override.
  */
 import type { BrowserWindow, Tray } from "electron";
 import { AudioPlaybackController } from "./audio-control/controller";
@@ -56,6 +56,8 @@ export interface MainState {
   hotkeyStuckTimer: NodeJS.Timeout | null;
   /** Quiet E2E mode. `index.ts` sets it once, right after it computes it. */
   quietE2E: boolean;
+  /** The "Openstyle Dev" build of `pnpm dev:install` (flavor.ts). Set once by `index.ts`. */
+  devFlavor: boolean;
 }
 
 export const state: MainState = {
@@ -78,6 +80,7 @@ export const state: MainState = {
   updateDownloadState: "idle",
   hotkeyStuckTimer: null,
   quietE2E: false,
+  devFlavor: false,
 };
 
 /**

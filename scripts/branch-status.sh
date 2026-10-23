@@ -100,6 +100,8 @@ done
 echo "== Worktrees =="
 git worktree list | sed 's/^/  /'
 git worktree list --porcelain | awk '/^worktree /{p=$2} /^detached/{print p}' | while read -r p; do
+  # The build worktree of `pnpm dev:install` (scripts/dev-install.sh) is detached by design.
+  case "$p" in */openstyle-devbuild) echo "  $p: dev:install build worktree (detached, OK)"; continue ;; esac
   [ "$p" != "$(pwd)" ] && echo "  !! detached worktree $p: remove it (git worktree remove)"
 done
 

@@ -7,6 +7,7 @@ import { is } from "@electron-toolkit/utils";
 import { createAppLogger } from "@openstyle/utils";
 import { DEFAULT_SERVER_PORT } from "@openstyle/validations";
 import { app, dialog, type UtilityProcess, utilityProcess } from "electron";
+import { DEV_SERVER_PORT, devModelCacheDir } from "./flavor";
 import { broadcastServerChanged, state } from "./main-state";
 import { probeServerHealth, setServerPort } from "./server-target";
 
@@ -212,6 +213,9 @@ function buildChildEnv(): Record<string, string> {
   // the file of main. The child must write only openstyle-server.log.
   delete env.OPENSTYLE_LOG_DIR;
   delete env.FREESTYLE_LOG_DIR;
+  // The dev flavor keeps its models and MLX worker out of the cache of the
+  // installed app (~/.cache/freestyle).
+  if (state.devFlavor) env.OPENSTYLE_MODEL_CACHE_DIR ||= devModelCacheDir();
   if (!is.dev) {
     env.OPENSTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
     // The child activates the staged MLX runtime for this version.
@@ -240,8 +244,10 @@ export async function startServerHost({
   // 1.5s bound matters: a normal cold start fast-fails with ECONNREFUSED, but
   // without a timeout a half-open socket on the port could hang window/tray
   // creation indefinitely.
+  // The dev flavor never reuses the server of the installed app.
   const existingServer =
     !usePinnedPort &&
+    !state.devFlavor &&
     (await probeServerHealth(`http://127.0.0.1:${DEFAULT_SERVER_PORT}`, 1500));
 
   if (existingServer) {
@@ -253,7 +259,11 @@ export async function startServerHost({
   }
 
   host.stopRequested = false;
-  host.port = usePinnedPort ? pinnedPort : DEFAULT_SERVER_PORT;
+  host.port = usePinnedPort
+    ? pinnedPort
+    : state.devFlavor
+      ? DEV_SERVER_PORT
+      : DEFAULT_SERVER_PORT;
   host.allowFallback = !usePinnedPort;
   host.env = buildChildEnv();
   if (usePinnedPort) setServerPort(pinnedPort);

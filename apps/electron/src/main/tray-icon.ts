@@ -7,6 +7,7 @@ import trayJobIconPath from "../../resources/tray/logoJobTemplate.png?asset";
 import trayRecordingIconPath from "../../resources/tray/logoRecording.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import trayUpdateIconPath from "../../resources/tray/logoUpdateTemplate.png?asset";
+import { DEV_FLAVOR_NAME } from "./flavor";
 import { state } from "./main-state";
 import { serverFetch } from "./server-target";
 import { type TrayAppearance, trayAppearance } from "./tray-appearance";
@@ -26,11 +27,15 @@ let jobWatch: NodeJS.Timeout | null = null;
 
 /** The look for the current state of main. */
 export function currentTrayAppearance(): TrayAppearance {
-  return trayAppearance({
+  const look = trayAppearance({
     recording: state.meetingRecorder?.status === "recording",
     job: jobRunning,
     updateReady: state.updateDownloadState === "downloaded",
   });
+  // The dev flavor shows "Openstyle Dev" in the tooltip.
+  return state.devFlavor
+    ? { ...look, tooltip: look.tooltip.replace("Openstyle", DEV_FLAVOR_NAME) }
+    : look;
 }
 
 export function trayImage(look: TrayAppearance): Electron.NativeImage {

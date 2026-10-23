@@ -20,9 +20,16 @@ import { join } from "node:path";
  */
 export const MODEL_CACHE_DIR_NAME = "freestyle";
 
-/** Absolute path inside the shared on-disk model cache. */
+/**
+ * Absolute path inside the on-disk model cache. OPENSTYLE_MODEL_CACHE_DIR
+ * replaces the root: the "Openstyle Dev" build of `pnpm dev:install` sets it,
+ * so it never writes the cache of the installed app.
+ */
 export function modelCacheDir(...segments: string[]): string {
-  return join(homedir(), ".cache", MODEL_CACHE_DIR_NAME, ...segments);
+  const root =
+    process.env.OPENSTYLE_MODEL_CACHE_DIR ||
+    join(homedir(), ".cache", MODEL_CACHE_DIR_NAME);
+  return join(root, ...segments);
 }
 
 /*

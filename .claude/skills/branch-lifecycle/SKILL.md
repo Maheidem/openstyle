@@ -13,7 +13,7 @@ On 2026-10-08 the owner found trash branches, forgotten branches and lost or dup
 2. **WIP limit: 2 open PRs.** To start a third, finish or close one. Do not start parallel work to avoid a decision.
 3. **One branch per deliverable.** Name it `type/short-topic` (feat, fix, chore, docs, test). Never reuse a merged branch.
 4. **Only the coordinator creates, pushes and merges branches.** pi children and subagents work on the branch they are given and never create, push, merge or delete branches. Their brief names the branch.
-5. **Worktrees only for parallel lanes.** A worktree holds exactly one branch with an open PR. Create it with `git worktree add -b <branch> ../openstyle-<topic> origin/main`. Remove it when its PR merges or closes. No detached worktrees.
+5. **Worktrees only for parallel lanes.** A worktree holds exactly one branch with an open PR. Create it with `git worktree add -b <branch> ../openstyle-<topic> origin/main`. Remove it when its PR merges or closes. No detached worktrees. One exception: `../openstyle-devbuild`, the build worktree of `pnpm dev:install` (scripts/dev-install.sh). It is detached, holds no work, and stays.
 6. **No stashes as storage.** Turn a stash into a branch + draft PR, or drop it.
 7. **main is protected** (ruleset "main: PR + green CI", id 24718487): no direct push, no force push, no deletion; only squash-merged PRs with a green `CI Status` check. Only the release bot (app 4715859) bypasses it, for Craft's release merge.
 8. **Merge = auto-merge.** When the PR is ready: mark it ready (`gh pr ready`), then `gh pr merge --squash --auto`. GitHub merges when CI is green and deletes the branch. A quality change (meeting transcript output) needs the council verdict in the PR before `--auto`.
