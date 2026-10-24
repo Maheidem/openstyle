@@ -11,7 +11,7 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 // reports 26). Migrations only run while currentVersion < SCHEMA_VERSION, so a
 // fork migration numbered below that is silently skipped for anyone arriving
 // from upstream. Keep this above the highest upstream version we have seen.
-const SCHEMA_VERSION = 45;
+const SCHEMA_VERSION = 46;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -1230,6 +1230,16 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       `ALTER TABLE meeting_chunks ADD COLUMN kind TEXT NOT NULL DEFAULT 'transcript'
          CHECK(kind IN ('transcript', 'meta', 'summary'))`,
     );
+  }
+
+  if (
+    currentVersion < 46 &&
+    tableExists(db, "meeting_folders") &&
+    !hasColumn(db, "meeting_folders", "color")
+  ) {
+    // Folder color: one name from the palette in folderColorSchema. NULL
+    // means no color. Older folders keep NULL.
+    db.exec(`ALTER TABLE meeting_folders ADD COLUMN color TEXT`);
   }
 
   // Upsert schema version

@@ -18,6 +18,7 @@ const folder: MeetingFolder = {
   id: "f1",
   name: "Work",
   description: "Test notes",
+  color: "blue",
   created_at: 1000,
   updated_at: 1000,
   meeting_count: 205,

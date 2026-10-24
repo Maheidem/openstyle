@@ -58,7 +58,7 @@ export const meetingFolders = new Hono()
     "/",
     zValidator("json", createMeetingFolderSchema, invalidRequest),
     (c) => {
-      const { name, description } = c.req.valid("json");
+      const { name, description, color } = c.req.valid("json");
       if (meetingFolderNameExists(name)) {
         return c.json(
           meetingFolderErrorSchema.parse({
@@ -71,9 +71,9 @@ export const meetingFolders = new Hono()
       const id = randomUUID();
       const now = Date.now();
       getDb()
-        .prepare(`INSERT INTO meeting_folders (id, name, description, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)`)
-        .run(id, name, description ?? null, now, now);
+        .prepare(`INSERT INTO meeting_folders (id, name, description, color, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(id, name, description ?? null, color ?? null, now, now);
       return c.json(readFolder(id), 201);
     },
   )
@@ -91,7 +91,7 @@ export const meetingFolders = new Hono()
           404,
         );
       }
-      const { name, description } = c.req.valid("json");
+      const { name, description, color } = c.req.valid("json");
       if (name !== undefined && meetingFolderNameExists(name, id)) {
         return c.json(
           meetingFolderErrorSchema.parse({
@@ -104,11 +104,12 @@ export const meetingFolders = new Hono()
       const old = readFolder(id);
       getDb()
         .prepare(
-          `UPDATE meeting_folders SET name = ?, description = ?, updated_at = ? WHERE id = ?`,
+          `UPDATE meeting_folders SET name = ?, description = ?, color = ?, updated_at = ? WHERE id = ?`,
         )
         .run(
           name ?? old.name,
           description === undefined ? old.description : description,
+          color === undefined ? old.color : color,
           Date.now(),
           id,
         );

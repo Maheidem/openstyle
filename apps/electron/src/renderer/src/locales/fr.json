@@ -765,6 +765,8 @@
       "actions": "Actions pour {{name}}",
       "rename": "Renommer le dossier",
       "editDescription": "Modifier la description",
+      "color": "Couleur",
+      "colorNone": "Aucune",
       "delete": "Supprimer le dossier",
       "deleteBlockedCount": "Non vide ({{count}})",
       "moveTo": "Déplacer vers un dossier",

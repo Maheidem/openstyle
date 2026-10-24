@@ -88,6 +88,43 @@ describe("meeting folders", () => {
     expect((await patch({ name: "HOME" })).status).toBe(200);
   });
 
+  it("creates, changes and clears a folder color, and old folders have none", async () => {
+    const res = await jsonRequest(app, "POST", `${base}/folders`, {
+      name: "Blue team",
+      color: "blue",
+    });
+    expect(res.status).toBe(201);
+    const folder = meetingFolderSchema.parse(await res.json());
+    expect(folder.color).toBe("blue");
+    const patch = (body: unknown) =>
+      jsonRequest(app, "PATCH", `${base}/folders/${folder.id}`, body);
+    const red = meetingFolderSchema.parse(
+      await (await patch({ color: "red" })).json(),
+    );
+    expect(red).toMatchObject({ name: "Blue team", color: "red" });
+    // A patch with no color keeps it.
+    const renamed = meetingFolderSchema.parse(
+      await (await patch({ name: "Red team" })).json(),
+    );
+    expect(renamed.color).toBe("red");
+    const cleared = meetingFolderSchema.parse(
+      await (await patch({ color: null })).json(),
+    );
+    expect(cleared.color).toBeNull();
+    expect((await patch({ color: "purple" })).status).toBe(400);
+    // A folder made without a color, like one from before the migration.
+    const old = await createFolder("Old");
+    expect(old.color).toBeNull();
+    // A stored name outside the palette reads as no color.
+    getDb()
+      .prepare("UPDATE meeting_folders SET color = 'purple' WHERE id = ?")
+      .run(old.id);
+    const list = meetingFoldersResponseSchema.parse(
+      await (await app.request(`${base}/folders`)).json(),
+    );
+    expect(list.items.find((f) => f.id === old.id)?.color).toBeNull();
+  });
+
   it("rejects duplicate names on create and rename, with no change to either folder", async () => {
     const first = await createFolder("Work");
     const second = await createFolder("Home");

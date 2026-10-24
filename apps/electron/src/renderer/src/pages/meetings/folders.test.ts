@@ -46,6 +46,7 @@ const folder = {
   id: "f1",
   name: "Work",
   description: null,
+  color: null,
   created_at: 1,
   updated_at: 1,
   meeting_count: 0,
