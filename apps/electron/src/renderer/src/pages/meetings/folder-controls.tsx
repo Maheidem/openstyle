@@ -255,7 +255,7 @@ export function FolderMenu({
               itemClass,
               folder.meeting_count
                 ? "text-muted-foreground"
-                : "text-destructive [&>svg]:text-destructive",
+                : "text-destructive [&>svg:where(:not([data-color]))]:text-destructive",
             )}
             onSelect={() => act(onDelete)}
           >
