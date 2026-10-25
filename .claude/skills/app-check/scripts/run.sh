@@ -10,7 +10,8 @@ MODEL_ID=${1:?usage: run.sh <catalog-model-id>   (for example gemma-4-e4b-qat-4b
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../../../.." && pwd)
 STAMP=$(date +%Y%m%d-%H%M%S)
-OUT=${APP_CHECK_OUT:-/tmp/app-check/$MODEL_ID-$STAMP}
+# Evidence stays out of /tmp: macOS cleans it (same rule as the HF eval cache).
+OUT=${APP_CHECK_OUT:-$HOME/Library/Application Support/Openstyle-eval/app-check/$MODEL_ID-$STAMP}
 LOCK=/tmp/openstyle-gpu.lock
 SPEC_DST="$REPO/apps/electron/tests/zz-proof-appcheck.test.ts"
 BACK_ID=gemma-4-e2b-qat-4bit
@@ -36,7 +37,7 @@ IFS='|' read -r HF_ID MODEL_NAME < <(node -e '
 [[ -x $WORKER ]] || { echo "worker not found: $WORKER (set APP_CHECK_WORKER)" >&2; exit 2; }
 
 cleanup() {
-  [[ -n $SAMPLER_PID ]] && kill "$SAMPLER_PID" 2>/dev/null || true
+  if [[ -n $SAMPLER_PID ]]; then kill "$SAMPLER_PID" 2>/dev/null || true; wait "$SAMPLER_PID" 2>/dev/null || true; fi
   rm -f "$SPEC_DST"
   if [[ $HAVE_LOCK == 1 ]]; then rm -f "$LOCK/owner"; rmdir "$LOCK" 2>/dev/null || true; fi
   if [[ ${APP_CHECK_KEEP_SCRATCH:-0} != 1 ]]; then rm -rf "$OUT/scratch"; fi
@@ -88,18 +89,24 @@ set +e
 scripts/test-runner/run.sh "$REPO/apps/electron" -- timeout 5400 pnpm exec playwright test tests/zz-proof-appcheck.test.ts > "$OUT/run.log" 2>&1
 CODE=$?
 set -e
+# Release the GPU lock now. The evidence steps below need no GPU, and other sessions wait for the lock.
+rm -f "$LOCK/owner"; rmdir "$LOCK" 2>/dev/null || true; HAVE_LOCK=0
 
 # 6. Evidence.
 stat -f '%N %z %Sm' "$LOGS"/* > "$OUT/logs-after.txt" 2>&1 || true
 df -h / | tail -1 > "$OUT/df-after.txt"
 /usr/bin/log show --start "$START" --predicate 'subsystem == "com.apple.TCC"' --style compact 2>/dev/null | grep -c AUTHREQ_PROMPTING > "$OUT/tcc-prompts.txt" || true
 UD=$(cat "$OUT/userdata.path" 2>/dev/null || true)
+# The profile is in the scratch folder, the app is closed, and the DB is in WAL mode with no -shm file.
+# `sqlite3 -readonly` fails on that ("unable to open database file", 2026-10-25), so open it normally.
 if [[ -n $UD && -f $UD/freestyle.db ]]; then
-  sqlite3 -readonly "$UD/freestyle.db" ".backup $OUT/scratch/copy.db"
-  sqlite3 -readonly -header "$OUT/scratch/copy.db" \
-    "select step_key, provider, finish_unified, count(*) calls, round(avg(latency_ms)) avg_ms, max(latency_ms) max_ms from llm_calls group by 1,2,3" > "$OUT/llm-calls.txt" || true
+  sqlite3 -header "$UD/freestyle.db" \
+    "select step_key, provider, finish_unified, count(*) calls, round(avg(latency_ms)) avg_ms, max(latency_ms) max_ms, sum(error_kind is not null) errors from llm_calls group by 1,2,3" > "$OUT/llm-calls.txt" 2>&1 || true
 fi
-if [[ $(cmp -s "$OUT/logs-before.txt" "$OUT/logs-after.txt" && echo same) == same ]]; then LOGSTAT="logs unchanged"; else LOGSTAT="LOGS CHANGED (see logs-before/after.txt)"; fi
+# The installed app writes its own log (updater check every 5 min), so a size change alone proves nothing.
+# Proof of isolation: no line of the real logs names this run's folder.
+LOGHITS=$(cat "$LOGS"/* 2>/dev/null | grep -c -F "$OUT" || true)
+if [[ $LOGHITS == 0 ]]; then LOGSTAT="no line in ~/Library/Logs/Openstyle names this run"; else LOGSTAT="REAL LOGS NAME THIS RUN: $LOGHITS lines"; fi
 
 echo "=== run.log tail ==="; tail -12 "$OUT/run.log"
 echo "=== results.json ==="; cat "$OUT/results.json" 2>/dev/null || echo "(none)"
@@ -114,7 +121,7 @@ for k, v in sorted(peak.items()):
 PY
 echo "=== llm_calls ==="; cat "$OUT/llm-calls.txt" 2>/dev/null || echo "(none)"
 echo "=== TCC prompts since start (expect 0) ==="; cat "$OUT/tcc-prompts.txt"
-echo "=== $LOGSTAT ==="
+echo "=== real log folder: $LOGSTAT ==="; diff "$OUT/logs-before.txt" "$OUT/logs-after.txt" || true
 echo "=== artifacts in $OUT ==="; ls -1 "$OUT"/*.png 2>/dev/null
 echo "playwright exit code: $CODE"
 exit "$CODE"

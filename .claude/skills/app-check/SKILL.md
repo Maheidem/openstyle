@@ -35,10 +35,10 @@ It is the distilled form of the overnight proofs of 2026-10-25 (Nemotron Bolt E4
 | Worker | The shipped worker from the installed runtime: `~/.cache/freestyle/mlx-asr/runtime/darwin-arm64/mlx_asr_worker/mlx_asr_worker` (executed, not written). Override: `APP_CHECK_WORKER`. The same binary serves ASR and LLM (`--llm` mode, a second process). |
 | Worker process names | `mlx_asr_worker` for ASR, `mlx_asr_worker ... --llm` for the LLM, `--embed` for embeddings |
 | Fixture meeting | id `app-check`, title `Launch planning sync`, 6 chunks, one planted wrong word ("lunch" for "launch", `WRONG_WORD` in `enhance-fixture.ts:213`) |
-| Where files land | `<out>` = `/tmp/app-check/<model-id>-<timestamp>/` (or `APP_CHECK_OUT`). Screenshots `<out>/*.png`, `proof.log`, `results.json`, `rss.csv`, `llm-calls.txt`, `run.log`, `tcc-prompts.txt`, `logs-before.txt`, `logs-after.txt`. The big scratch folder is deleted at exit (`APP_CHECK_KEEP_SCRATCH=1` keeps it). |
+| Where files land | `<out>` = `~/Library/Application Support/Openstyle-eval/app-check/<model-id>-<timestamp>/` (or `APP_CHECK_OUT`). Not `/tmp`: macOS cleans it (same rule as the HF eval cache). Screenshots `<out>/*.png`, `proof.log`, `results.json`, `rss.csv`, `llm-calls.txt`, `run.log`, `tcc-prompts.txt`, `logs-before.txt`, `logs-after.txt`. The big scratch folder is deleted at exit (`APP_CHECK_KEEP_SCRATCH=1` keeps it). |
 | Build | The script builds the server and the app first (about 2 min). `APP_CHECK_SKIP_BUILD=1` skips it. Skip only when the build is from the current commit. |
 | Switch-back target | `gemma-4-e2b-qat-4bit`, cloned from the real HF cache (read only) with `cp -Rc` before the app starts |
-| Wall time (E4B, 6.8 GB) | see "Expected output" |
+| Wall time (E4B, 6.8 GB) | about 12.3 min of test time (download 687 s) plus the build (about 2 min) plus any wait for the GPU lock |
 
 ## Run
 
@@ -50,11 +50,12 @@ bash scripts/branch-status.sh                          # fix every !! first
 
 For a candidate model, the catalog entry must be in your branch first (`.claude/skills/model-catalog/SKILL.md`). The script looks the id up in `apps/server/src/lib/mlx-llm/constants.ts` and stops with exit 2 when it is missing.
 
-For a long run (a 15 GB model downloads for 10 minutes or more) start it in the background and read `<out>/proof.log`:
+For a long run (a 15 GB model downloads for 10 minutes or more) start it in the background and read `<out>/proof.log`. Keep the stdout file next to the evidence:
 
 ```bash
-(nohup env APP_CHECK_OUT=/tmp/app-check/run1 .claude/skills/app-check/scripts/run.sh <id> > /tmp/app-check/run1.out 2>&1 &)
-tail -f /tmp/app-check/run1/proof.log
+E="$HOME/Library/Application Support/Openstyle-eval/app-check/run1"; mkdir -p "$E"
+(nohup env APP_CHECK_OUT="$E" .claude/skills/app-check/scripts/run.sh <id> > "$E.out" 2>&1 &)
+tail -f "$E/proof.log"
 ```
 
 ## Steps that the spec runs
@@ -67,6 +68,12 @@ tail -f /tmp/app-check/run1/proof.log
 6. Dictation smoke: 3 texts through `POST /api/post-process`. Log latency and a "think tag" check.
 7. Switch back to Gemma 4 E2B: Use button, "Selected" check (light, dark). Skipped when the checked model is E2B.
 8. Close the app.
+
+## Known gaps
+
+1. **ASR worker RSS is not measured.** The fixture meeting is already transcribed, so Enhance and Summarize never start the ASR worker. `rss.csv` has `llm` rows only (run 1, 2026-10-25: pid 51509 peak 6.75 GiB, then pid 54090 for the E2B switch-back). The overnight number for the shipped 1.7B ASR worker (2.84 GiB, pid 412) came from the Nemotron app run by another agent and is not reproduced here. To measure ASR, the spec needs a dictation or import step that sends real audio (`say -v Samantha -o file.aiff`, then `afconvert`, then `POST /api/transcribe`), or the check stays out.
+2. **Enhance quality is not asserted.** Run 1 summary says "lunch date" (the planted error was not fixed by E4B).
+3. **Per-call latency** comes from `llm-calls.txt` (the `llm_calls` table), not from the screenshots.
 
 ## Checks (what PASS looks like)
 
@@ -89,7 +96,7 @@ A planted-error note: Nemotron Bolt E4B and Gemma 4 26B-A4B both made 0 edits on
 
 ## Expected output
 
-See the section "Run record" at the end of this file.
+See "Run record" at the end of this file. The summary block starts with `=== run.log tail ===` and ends with `playwright exit code: 0`.
 
 ## Cleanup
 
@@ -104,7 +111,7 @@ Delete `<out>` when the numbers are in your report. Delete `apps/electron/test-r
 
 ## Traps
 
-1. **Use step failed on 2026-10-25 (26B-A4B run, 06:22Z).** The old throwaway spec cloned E2B with Node `cpSync(src, dst, { recursive: true, mode: 1 })` after the app had started. Error: `expect(locator).toBeVisible() failed ... getByRole('button', { name: 'Use' }) ... Expected: visible ... Timeout: 20000ms ... element(s) not found` at `zz-proof-overnight.test.ts:288`. The error-context page showed the row `Gemma 4 E2B Recommended On-device · 4.4 GB` with a `Download` button. Cause found: `cpSync` writes the snapshot symlinks as ABSOLUTE paths to the source (`/private/tmp/meeting-eval/hf/hub/.../blobs/...`), not as the relative `../../blobs/...` of the HF cache. A link that points into `/tmp` dangles when the source moves or when macOS cleans the blobs (the 00:00 cleanup removed the blobs of 5 models on 2026-10-25). Then `isHfSnapshotPresent` returns false and the row shows Download. Proven: the leftover clone in `/tmp/overnight-app/hf` has absolute links, and `/tmp/meeting-eval/hf/hub` is gone now (dev_b moved the eval cache to `~/Library/Application Support/Openstyle-eval/hf`, per lead). Not proven: whether the source blobs were already missing at 06:22. The failing 06:22 state was not checked. Fix: clone before the app starts with `cp -Rc`, which keeps relative links, and check `find -L <clone> -type l | wc -l` = 0. The script does both. Status: see "Run record" for the proof run.
+1. **Use step failed on 2026-10-25 (26B-A4B run, 06:22Z).** The old throwaway spec cloned E2B with Node `cpSync(src, dst, { recursive: true, mode: 1 })` after the app had started. Error: `expect(locator).toBeVisible() failed ... getByRole('button', { name: 'Use' }) ... Expected: visible ... Timeout: 20000ms ... element(s) not found` at `zz-proof-overnight.test.ts:288`. The error-context page showed the row `Gemma 4 E2B Recommended On-device · 4.4 GB` with a `Download` button. Cause found: `cpSync` writes the snapshot symlinks as ABSOLUTE paths to the source (`/private/tmp/meeting-eval/hf/hub/.../blobs/...`), not as the relative `../../blobs/...` of the HF cache. A link that points into `/tmp` dangles when the source moves or when macOS cleans the blobs (the 00:00 cleanup removed the blobs of 5 models on 2026-10-25). Then `isHfSnapshotPresent` returns false and the row shows Download. Proven: the leftover clone in `/tmp/overnight-app/hf` has absolute links, and `/tmp/meeting-eval/hf/hub` is gone now (dev_b moved the eval cache to `~/Library/Application Support/Openstyle-eval/hf`, per lead). Not proven: whether the source blobs were already missing at 06:22. The failing 06:22 state was not checked. Fix: clone before the app starts with `cp -Rc`, which keeps relative links, and check `find -L <clone> -type l | wc -l` = 0. The script does both. Status: the proof run passed this step (see "Run record").
 2. **Claude Code updates break its Privacy grant** (`com.anthropic.claude-code` path changes per version). The Test Runner app avoids it. Never run the app from the agent shell. If a dialog appears, stop and report.
 3. **Bluetooth headset mic bug** (`bt-headset-meeting-capture-bug`, issues #169 #170): a transient BT default mic squeezes the system track 3x. This check never records, so it does not hit it. It matters for a real meeting proof only.
 4. **`/tmp` is not durable.** Do not point `APP_CHECK_WORKER` or any cache at `/tmp/meeting-eval`. The overnight spec used `/tmp/meeting-eval/worker-2.22.0`; the script now uses the installed runtime.
@@ -112,3 +119,81 @@ Delete `<out>` when the numbers are in your report. Delete `apps/electron/test-r
 6. **Do not use `pkill`/`killall`.** The guard hook blocks them, and they kill the installed app's worker.
 7. **`session_open` in Nexus can answer PERMISSION_DENIED for dev agents.** Claim handoffs without a session. This does not affect the script.
 8. **A GPU lock held by another session blocks the run.** The script prints `GPU lock busy: <owner>` every 60 s. Wait. Do not remove the lock.
+
+## Run record
+
+Proof run of the script, 2026-10-25, model `gemma-4-e4b-qat-4bit`, branch `feat/app-check-and-catalog-skills`, Mac with the shipped worker from the installed runtime. Run 2 used the fixed script. Evidence: `~/Library/Application Support/Openstyle-eval/app-check/e4b-run2/` (12 screenshots, `proof.log`, `results.json`, `rss.csv`, `llm-calls.txt`, `stdout.txt`).
+
+| Run | Result | Download | Enhance + Summarize | Peak LLM RSS | TCC prompts |
+|---|---|---|---|---|---|
+| run 1 | Playwright 8 passed (12.6 min). `run.sh` then stopped at `sqlite3 -readonly` ("unable to open database file"): fixed. | 703.1 s | 15.1 s | 6.75 GiB | 0 |
+| run 2 | Playwright 8 passed (12.3 min), exit 0 | 687.1 s | 15.1 s | 6.75 GiB | 0 |
+
+Start of the output (run 2):
+
+```
+model=gemma-4-e4b-qat-4bit name="Gemma 4 E4B" hf=mlx-community/gemma-4-E4B-it-qat-4bit out=<out>
+E2B clone ok (0 dangling symlinks)
+20:23:20 GPU lock busy: meeting-eval gemma-4-e4b-qat-4bit 20:12
+```
+
+End of the output (run 2, raw, paths shortened):
+
+```
+=== results.json ===
+{
+  "model": "gemma-4-e4b-qat-4bit",
+  "downloadSeconds": 687.1,
+  "useStep": "PASS",
+  "enhanceSummarizeSeconds": 15.1,
+  "inspectorHasHfName_light": true,
+  "inspectorHasHfName_dark": true,
+  "dictationLatenciesMs": [
+    1929,
+    1874,
+    1990
+  ],
+  "switchBack": "PASS"
+}=== peak RSS (GiB) per worker kind ===
+llm: 6.75
+=== llm_calls ===
+step_key|provider|finish_unified|calls|avg_ms|max_ms|errors
+candidates|local-mlx-llm|stop|1|2188.0|2188|0
+chunk:0|local-mlx-llm|stop|1|1254.0|1254|0
+chunk:1|local-mlx-llm|stop|1|1145.0|1145|0
+chunk:2|local-mlx-llm|stop|1|1138.0|1138|0
+chunk:3|local-mlx-llm|stop|1|1126.0|1126|0
+chunk:4|local-mlx-llm|stop|1|1079.0|1079|0
+chunk:5|local-mlx-llm|stop|1|1084.0|1084|0
+single|local-mlx-llm|stop|1|3189.0|3189|0
+tags|local-mlx-llm|stop|1|1745.0|1745|0
+=== TCC prompts since start (expect 0) ===
+0
+=== real log folder: no line in ~/Library/Logs/Openstyle names this run ===
+5c5
+< ~/Library/Logs/Openstyle/openstyle.log 1809727 Oct 25 20:26:19 2026
+---
+> ~/Library/Logs/Openstyle/openstyle.log 1810774 Oct 25 20:41:19 2026
+=== artifacts in <out> ===
+<out>/step2-models-before-dark.png
+<out>/step2-models-before-light.png
+<out>/step3-model-in-use-dark.png
+<out>/step3-model-in-use-light.png
+<out>/step4-llm-inspector-dark.png
+<out>/step4-llm-inspector-light.png
+<out>/step4-meeting-summary-dark.png
+<out>/step4-meeting-summary-light.png
+<out>/step4-meeting-transcript-dark.png
+<out>/step4-meeting-transcript-light.png
+<out>/step6-e2b-in-use-dark.png
+<out>/step6-e2b-in-use-light.png
+playwright exit code: 0
+```
+
+What this proves: the Use step passes (so does the switch back to E2B, in light and dark) when the E2B snapshot is a `cp -Rc` clone with relative links. Enhance and Summarize ran 9 calls on `local-mlx-llm`, all finish `stop`, 0 errors. The LLM inspector shows `mlx-community/gemma-4-E4B-it-qat-4bit`.
+
+What this does not prove:
+- The default output folder `~/Library/Application Support/Openstyle-eval/app-check/` has a space. Both runs set `APP_CHECK_OUT` to a `/tmp` path. The path code is quoted and the default value was printed by a shell check, but no full run used it (unverified).
+- The ASR worker RSS (see Known gaps).
+- The Enhance quality: the summary of run 1 still says "lunch date".
+- Lock wait: run 2 waited about 6 min for the GPU lock (`lock-wait.log`: first line 20:23:20, lock taken 23:29:21Z = 20:29:21 -03). The run holds the lock from the test start to the end of the Playwright run only.
