@@ -119,7 +119,6 @@ import {
   ensureTranscribed as ensureTranscribedIn,
   HF_CACHE_DEFAULT,
   isCacheDir,
-  isTmp,
   needPort,
   ROOT,
   releaseLock,
@@ -165,7 +164,7 @@ const rescoreDir = arg("rescore");
 const models = (arg("models") ?? "").split(",").filter(Boolean);
 if (models.length === 0 && !rescoreDir) usage("--models is required");
 if (rescoreDir && !isCacheDir(rescoreDir))
-  usage(`--rescore must be under /tmp: ${rescoreDir}`);
+  usage(`--rescore must be under /tmp or ${EVAL_HOME}: ${rescoreDir}`);
 const catalog = new Map(MLX_LLM_MODELS.map((m) => [m.id, m]));
 for (const m of models)
   if (!catalog.has(m))

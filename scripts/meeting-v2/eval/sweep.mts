@@ -54,7 +54,6 @@ import {
   EVAL_HOME,
   HF_CACHE_DEFAULT,
   isCacheDir,
-  isTmp,
   ROOT,
   releaseLock,
   repoRoot,

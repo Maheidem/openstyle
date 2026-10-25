@@ -57,7 +57,6 @@ import {
   ensureTranscribed,
   HF_CACHE_DEFAULT,
   isCacheDir,
-  isTmp,
   ROOT,
   releaseLock,
   removeAllScratch,

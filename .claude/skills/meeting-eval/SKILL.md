@@ -19,7 +19,7 @@ This skill wraps `pnpm meeting:eval` (see `.claude/skills/meeting-benchmarks/SKI
 ## Known facts
 
 - Eval home (outside `/tmp`): `~/Library/Application Support/Openstyle-eval/`.
-  - `hf/`: the model cache. Env `OPENSTYLE_EVAL_HF_HOME` overrides it. It was `/tmp/meeting-eval/hf` until 2026-10-25. The macOS tmp cleanup deleted blobs of 5 models at 00:00 that day.
+  - `hf/`: the model cache. Env `OPENSTYLE_EVAL_HF_HOME` overrides it, but only with a folder under `/tmp` or the eval home. The tool refuses any other path (`--hf-cache must be under /tmp or ...`). It was `/tmp/meeting-eval/hf` until 2026-10-25. The macOS tmp cleanup deleted blobs of 5 models at 00:00 that day.
   - `audio/<meeting id>/{mic,system}.wav,sync.json`: a private copy of the gold audio.
   - `out/<model>-<date>/`: the default output of `run.sh`.
 - `--out` and `--hf-cache` accept `/tmp` or the eval home. No other place.
