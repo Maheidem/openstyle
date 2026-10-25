@@ -156,6 +156,26 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
   },
+  // overnight sweep candidate 2026-10-25, not for release
+  {
+    id: "qwen3.8-27b-4bit",
+    hfId: "mlx-community/Qwen3.8-27B-4bit",
+    displayName: "Qwen3.8 27B",
+    family: "qwen3_5",
+    sizeBytes: 16_081_488_731,
+    contextTokens: 32_768,
+    maxOutputTokens: 8_192,
+  },
+  // overnight sweep candidate 2026-10-25, not for release
+  {
+    id: "gemma-4-31b-4bit",
+    hfId: "mlx-community/gemma-4-31b-it-4bit",
+    displayName: "Gemma 4 31B",
+    family: "gemma4",
+    sizeBytes: 18_444_419_448,
+    contextTokens: 32_768,
+    maxOutputTokens: 8_192,
+  },
 ];
 
 export function getMlxLlmModel(id: string): MlxLlmModelDef | undefined {

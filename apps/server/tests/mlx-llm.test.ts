@@ -187,6 +187,18 @@ describe("catalog (spec 1 decision 4, 3.1)", () => {
         13_277_585_038,
       ],
       ["qwen3-8b-4bit", "mlx-community/Qwen3-8B-4bit", "qwen3", 4_623_782_544],
+      [
+        "qwen3.8-27b-4bit",
+        "mlx-community/Qwen3.8-27B-4bit",
+        "qwen3_5",
+        16_081_488_731,
+      ],
+      [
+        "gemma-4-31b-4bit",
+        "mlx-community/gemma-4-31b-it-4bit",
+        "gemma4",
+        18_444_419_448,
+      ],
     ]);
     for (const m of MLX_LLM_MODELS) {
       expect(m.contextTokens).toBe(32_768);
