@@ -19,7 +19,12 @@
 // Output per model and meeting: <model>-<id8>.summary.md, <model>-<id8>.raw.json,
 // and one line per call in run.log.
 
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { speakerDisplayLabel } from "../../../apps/server/src/lib/meetings/merge.ts";
@@ -70,7 +75,9 @@ interface RawSegment {
 
 /** The merged transcript as prepare.ts builds it: by start time, Me / Them N. */
 function readPack(id8: string): MeetingInput {
-  const raw = JSON.parse(readFileSync(join(PACK, `raw-${id8}.json`), "utf8")) as {
+  const raw = JSON.parse(
+    readFileSync(join(PACK, `raw-${id8}.json`), "utf8"),
+  ) as {
     meetingId: string;
     segments: RawSegment[];
   };
@@ -175,7 +182,11 @@ async function identify(
     chat_template_kwargs: { enable_thinking: false },
     response_format: {
       type: "json_schema",
-      json_schema: { name: "step", strict: true, schema: await wireSchema(step) },
+      json_schema: {
+        name: "step",
+        strict: true,
+        schema: await wireSchema(step),
+      },
     },
     messages: [
       {
@@ -261,7 +272,10 @@ async function main() {
           ? (JSON.parse(sum.summaryJson) as MeetingSummary)
           : null;
         if (summary)
-          writeFileSync(`${stem}.summary.md`, `${renderSummaryMarkdown(summary)}\n`);
+          writeFileSync(
+            `${stem}.summary.md`,
+            `${renderSummaryMarkdown(summary)}\n`,
+          );
         writeFileSync(
           `${stem}.raw.json`,
           JSON.stringify(
@@ -287,7 +301,11 @@ async function main() {
           parseOk: Boolean(summary) && idn.ok,
           files: `${stem}.{summary.md,raw.json}`,
           note: [
-            idn.skipped ? `identify ${idn.skipped}` : idn.ok ? "" : "identify bad",
+            idn.skipped
+              ? `identify ${idn.skipped}`
+              : idn.ok
+                ? ""
+                : "identify bad",
             summary ? "" : "summary failed",
             sum.summaryPartial ? "partial" : "",
           ]
