@@ -16,7 +16,10 @@ const patterns = [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 const regexes = patterns.map(
   (p) =>
     new RegExp(
-      `^${p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
+      `^${p
+        .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+        .replace(/\*/g, ".*")
+        .replace(/\?/g, ".")}$`,
     ),
 );
 
@@ -41,7 +44,10 @@ for (const repo of process.argv.slice(2)) {
       {
         repo,
         sizeBytes,
-        sizeBytesUnderscored: String(sizeBytes).replace(/\B(?=(\d{3})+$)/g, "_"),
+        sizeBytesUnderscored: String(sizeBytes).replace(
+          /\B(?=(\d{3})+$)/g,
+          "_",
+        ),
         filesMatched: files.length,
         filesInRepo: tree.filter((e) => e.type === "file").length,
         license: card.license ?? null,
