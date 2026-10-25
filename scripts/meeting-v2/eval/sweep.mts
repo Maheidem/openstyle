@@ -51,6 +51,9 @@ import { DatabaseSync } from "node:sqlite";
 import { MLX_LLM_MODELS } from "../../../apps/server/src/lib/mlx-llm/constants.ts";
 import { DEFAULT_GOLD_DIR, type Gold, loadGold } from "./gold.mts";
 import {
+  EVAL_HOME,
+  HF_CACHE_DEFAULT,
+  isCacheDir,
   isTmp,
   ROOT,
   releaseLock,
@@ -124,8 +127,9 @@ const meetingIds = (arg("meetings") ?? DEFAULT_MEETINGS.join(","))
 const port = Number(arg("port") ?? "4805");
 if (!Number.isInteger(port) || port < 1024 || port === 4649 || port === 8123)
   usage("--port must be a free port number (never 4649 or 8123)");
-const hfCache = resolve(arg("hf-cache") ?? join(ROOT, "hf"));
-if (!isTmp(hfCache)) usage("--hf-cache must be under /tmp");
+const hfCache = resolve(arg("hf-cache") ?? HF_CACHE_DEFAULT);
+if (!isCacheDir(hfCache))
+  usage(`--hf-cache must be under /tmp or ${EVAL_HOME}: ${hfCache}`);
 // The backend: the app's MLX worker (default), or the owner's desktop
 // llama.cpp server (owner, 2026-10-22: it counts as local; sweeps only).
 // Desktop numbers are "coarse, GGUF": only MLX-confirmed numbers count.

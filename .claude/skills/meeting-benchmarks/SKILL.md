@@ -45,7 +45,7 @@ scripts/meeting-v2/eval-audio-copy.sh <meetingId> [<meetingId> ...]
 ## Setup traps (proven 2026-10-19, main `f51f50ed`)
 
 1. After `git pull`, run `pnpm install --frozen-lockfile` before `setup-scratch.sh`. Without it, the migration boot fails with `ERR_MODULE_NOT_FOUND: Cannot find package '@opentelemetry/api'` (WP8 added it in `apps/server/package.json`). The boot also needs a built server (`pnpm turbo build --filter=@openstyle/server`).
-2. `seed-scratch-db.mjs` seeds the built-in voice row `local-mlx/qwen3-1.7b-8bit` (Qwen3 Pro) as the scratch default (it prints `voice row: ...`). The LLM row is the owner's default when it is provider `local-mlx-llm`, else the built-in `gemma-4-e2b-qat-4bit` (`llm row: ...`). No own-server row is copied. Do not loosen the guard: `setup-scratch.sh` fails unless the default providers are exactly `local-mlx` and `local-mlx-llm`, the voice row is Qwen3 Pro, and `own_servers` is empty. `run-baseline.mjs` does not download the ASR model: use the HF cache of `pnpm meeting:eval` (`/tmp/meeting-eval/hf`), which downloads it.
+2. `seed-scratch-db.mjs` seeds the built-in voice row `local-mlx/qwen3-1.7b-8bit` (Qwen3 Pro) as the scratch default (it prints `voice row: ...`). The LLM row is the owner's default when it is provider `local-mlx-llm`, else the built-in `gemma-4-e2b-qat-4bit` (`llm row: ...`). No own-server row is copied. Do not loosen the guard: `setup-scratch.sh` fails unless the default providers are exactly `local-mlx` and `local-mlx-llm`, the voice row is Qwen3 Pro, and `own_servers` is empty. `run-baseline.mjs` does not download the ASR model: use the HF cache of `pnpm meeting:eval` (`~/Library/Application Support/Openstyle-eval/hf`), which downloads it.
 3. A stopped server can leave no `-wal`/`-shm` files. Then `sqlite3 -readonly <db> ".backup ..."` fails with `unable to open database file`. Open the file as immutable: `sqlite3 -readonly "file:<db>?immutable=1" ".backup '<out>'"`. Use this only on a DB that no process writes.
 
 ## Commands
@@ -115,7 +115,7 @@ pnpm meeting:eval --models gemma-4-e2b-qat-4bit,gemma-4-e4b-qat-4bit \
   [--meetings 2943c36a,5578edb0] [--out /tmp/meeting-eval/out/<name>] [--keep] \
   [--no-download] [--gold [--gold-dir <dir>] | --answer-key <private v1 file>] \
   [--save-baseline <name> [--noise-from <baseline>]] [--compare <baseline>] \
-  [--hf-cache /tmp/meeting-eval/hf] [--port 4797] [--timeout-sec 7200]
+  [--hf-cache "~/Library/Application Support/Openstyle-eval/hf"] [--port 4797] [--timeout-sec 7200]
 pnpm meeting:eval:test                          # unit tests (CI Lint job, fictional text)
 pnpm meeting:eval --rescore <out> [--gold] [--compare <baseline>]   # no model, no GPU
 ```
@@ -123,7 +123,7 @@ pnpm meeting:eval --rescore <out> [--gold] [--compare <baseline>]   # no model, 
 Flags:
 - `--models`: catalog ids of `apps/server/src/lib/mlx-llm/constants.ts` (built-in MLX only).
 - `--meetings`: id8 or full ids. The default is the 4 council meetings (2943c36a, 5578edb0, ca70f895, 9243bea0).
-- `--hf-cache`: the model cache, default `/tmp/meeting-eval/hf`. Keep it across runs. A missing model (an LLM, the ASR model `qwen3-1.7b-8bit`, the aligner) downloads through the app routes; the tool prints the size first. `--no-download` fails instead.
+- `--hf-cache`: the model cache, default `~/Library/Application Support/Openstyle-eval/hf` (env `OPENSTYLE_EVAL_HF_HOME` overrides it). It sits outside `/tmp` because the macOS tmp cleanup deleted 5 model folders from the old `/tmp/meeting-eval/hf` on 2026-10-25. Keep it across runs. A missing model (an LLM, the ASR model `qwen3-1.7b-8bit`, the aligner) downloads through the app routes; the tool prints the size first. `--no-download` fails instead.
 - `--port`: the first of 4 ports (prep server, Enhance server, migration boot, transcription). Never 4649.
 - `--keep`: keep the private files (runs/, pack/, arms/). Without it the tool deletes them after it prints.
 - `--gold`: load the gold key v2 of each meeting from `~/.openstyle-eval/gold/<id8>.json` (`--gold-dir` for another folder). A missing file fails. `--answer-key <file>` loads a v1 answer key instead (fixes and must-not-change only).
@@ -179,7 +179,7 @@ Claude cannot listen to audio. So a gold key comes from two ASR engines, a Claud
 
 ```bash
 # 1. Draft (GPU lock; the two transcriptions are cached by their input hash)
-pnpm meeting:eval:gold-draft --meeting <id8> [--engine-b <hf repo | catalog id>] [--port 4797] [--hf-cache /tmp/meeting-eval/hf]
+pnpm meeting:eval:gold-draft --meeting <id8> [--engine-b <hf repo | catalog id>] [--port 4797] [--hf-cache "~/Library/Application Support/Openstyle-eval/hf"]
 # 2. Clips of the spans the Claude pass cannot settle, and the review page
 pnpm meeting:eval:gold-clips --meeting <id8> --spans <file>
 # 3. The owner opens /tmp/meeting-eval/clips/<id8>/review.html, listens, types, presses Save
@@ -283,7 +283,7 @@ scripts, which is what caused the 2026-10-07 false findings):
 OPENSTYLE_MLX_ASR_WORKER=$PWD/dist/mlx_asr_worker/mlx_asr_worker \
   ./scripts/meeting-v2/run-proof.sh <RUN> <meetingId> [meetingId ...]
 # optional env: SCRATCH (default /tmp/meeting-v2), HF_CACHE (default
-# /tmp/meeting-eval/hf, passed to run-baseline.mjs --hf-cache).
+# ~/Library/Application Support/Openstyle-eval/hf, passed to run-baseline.mjs --hf-cache).
 # writes /tmp/meeting-v2/compare/<run-lowercase>-<id8>.json and turns-<id8>.json
 
 # 2. Compare two runs (from the repo root). The run names are CLI
