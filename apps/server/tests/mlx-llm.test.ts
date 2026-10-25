@@ -127,7 +127,7 @@ afterAll(() => {
 });
 
 describe("catalog (spec 1 decision 4, 3.1)", () => {
-  it("has the 3 models with the HF ids and byte sizes", () => {
+  it("has the 2 Gemma 4 models and the overnight sweep candidates with the HF ids and byte sizes", () => {
     expect(
       MLX_LLM_MODELS.map((m) => [m.id, m.hfId, m.family, m.sizeBytes]),
     ).toEqual([
@@ -149,6 +149,44 @@ describe("catalog (spec 1 decision 4, 3.1)", () => {
         "gemma4",
         4_231_265_397,
       ],
+      // overnight sweep candidates 2026-10-25, not for release
+      [
+        "qwen3.5-4b-4bit",
+        "mlx-community/Qwen3.5-4B-MLX-4bit",
+        "qwen3_5",
+        3_061_129_077,
+      ],
+      [
+        "qwen3.5-9b-6bit",
+        "mlx-community/Qwen3.5-9B-6bit",
+        "qwen3_5",
+        8_215_256_416,
+      ],
+      [
+        "qwen3.6-35b-a3b-4bit",
+        "mlx-community/Qwen3.6-35B-A3B-4bit",
+        "qwen3_5_moe",
+        20_429_166_969,
+      ],
+      [
+        "gemma-4-26b-a4b-qat-4bit",
+        "mlx-community/gemma-4-26B-A4B-it-qat-4bit",
+        "gemma4",
+        15_641_239_295,
+      ],
+      [
+        "qwen3.6-27b-4bit",
+        "mlx-community/Qwen3.6-27B-4bit",
+        "qwen3_5",
+        16_081_487_798,
+      ],
+      [
+        "mistral-small-3.2-24b-4bit",
+        "mlx-community/Mistral-Small-3.2-24B-Instruct-2506-4bit",
+        "mistral3",
+        13_277_585_038,
+      ],
+      ["qwen3-8b-4bit", "mlx-community/Qwen3-8B-4bit", "qwen3", 4_623_782_544],
     ]);
     for (const m of MLX_LLM_MODELS) {
       expect(m.contextTokens).toBe(32_768);

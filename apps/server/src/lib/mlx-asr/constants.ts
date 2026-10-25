@@ -115,6 +115,20 @@ export const MLX_ASR_MODELS: MlxAsrModelDef[] = [
     speed: "Fast",
     quality: "High",
     quantized: false,
+  }, // overnight sweep candidate 2026-10-25, not for release. The repo has the
+  // mlx-whisper layout (config.json + weights). Its processor files come from
+  // fillWhisperProcessor, which runs only for custom models (models.ts), so
+  // this entry works only on a cache where they were filled before.
+  {
+    id: "whisper-large-v3-turbo",
+    hfId: "mlx-community/whisper-large-v3-turbo",
+    family: "whisper",
+    displayName: "Whisper Large v3 Turbo",
+    sizeBytes: 1_613_977_880,
+    ramRequired: "~2 GB",
+    speed: "Medium",
+    quality: "High",
+    quantized: false,
   },
 ];
 

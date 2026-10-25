@@ -46,8 +46,8 @@ function wavDurationMs(path) {
   return Math.round((dataBytes / 32000) * 1000);
 }
 
-/** The built-in MLX ASR voice row of every scratch DB. */
-const BUILTIN_VOICE_ID = "local-mlx/qwen3-1.7b-8bit";
+/** The built-in MLX ASR voice row of every scratch DB (MEETING_EVAL_ASR_MODEL selects another catalog id). */
+const BUILTIN_VOICE_ID = `local-mlx/${process.env.MEETING_EVAL_ASR_MODEL?.trim() || "qwen3-1.7b-8bit"}`;
 
 const db = new DatabaseSync(join(scratchRoot, "test.db"));
 
