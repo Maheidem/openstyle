@@ -49,6 +49,16 @@ interface BenchmarkResult {
   byLanguage: Record<string, { passed: number; total: number }>;
   latencyMs: { p50: number; p95: number };
   failures: string[];
+  /** Every case with its output, for a later blind quality pass. */
+  cases: {
+    id: string;
+    language: string;
+    pass: boolean;
+    latencyMs: number;
+    inputTokens: number;
+    outputTokens: number;
+    actual: string;
+  }[];
   /** local-mlx only: the worker binary and the worker start + model load time. */
   worker?: { binary: string; startMs: number };
 }
@@ -294,6 +304,7 @@ async function runBenchmarkSuite(
     let passed = 0;
     const latencies: number[] = [];
     const failures: string[] = [];
+    const cases: BenchmarkResult["cases"] = [];
     let worker: BenchmarkResult["worker"];
 
     if (provider === "local-mlx") {
@@ -315,6 +326,15 @@ async function runBenchmarkSuite(
       const ok = evaluateCase(testCase, outcome.actual);
       latencies.push(outcome.latencyMs);
       if (!ok) failures.push(testCase.id);
+      cases.push({
+        id: testCase.id,
+        language: testCase.language,
+        pass: ok,
+        latencyMs: outcome.latencyMs,
+        inputTokens: outcome.inputTokens,
+        outputTokens: outcome.outputTokens,
+        actual: outcome.actual,
+      });
       if (!byLanguage[testCase.language]) {
         byLanguage[testCase.language] = { passed: 0, total: 0 };
       }
@@ -342,6 +362,7 @@ async function runBenchmarkSuite(
       byLanguage,
       latencyMs: { p50: percentile(sorted, 50), p95: percentile(sorted, 95) },
       failures,
+      cases,
       ...(worker ? { worker } : {}),
     });
   }
