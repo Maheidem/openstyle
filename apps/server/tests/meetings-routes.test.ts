@@ -2809,6 +2809,36 @@ describe("meeting audio retention sweep", () => {
     // Second sweep is a no-op: audio_dir was nulled.
     expect(purgeExpiredMeetingAudio()).toBe(0);
   });
+
+  it("never sweeps a meeting marked retentionExempt (eval gold)", async () => {
+    const goldDir = makeMeetingDir("gold");
+    const normalDir = makeMeetingDir("normal");
+    insertMeeting("gold", "summarized", goldDir, Date.now() - 400 * DAY_MS);
+    insertMeeting("normal", "summarized", normalDir, Date.now() - 400 * DAY_MS);
+
+    const res = await app.request("/api/meetings/gold", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retentionExempt: true }),
+    });
+    expect(res.status).toBe(200);
+
+    expect(purgeExpiredMeetingAudio()).toBe(1);
+    expect(existsSync(join(goldDir, "mic.wav"))).toBe(true);
+    expect(existsSync(join(goldDir, "system.wav"))).toBe(true);
+    expect((await getMeeting("gold")).audio_dir).toBe(goldDir);
+    expect(existsSync(join(normalDir, "mic.wav"))).toBe(false);
+    expect((await getMeeting("normal")).audio_dir).toBeNull();
+
+    // Clearing the flag makes the meeting sweepable again.
+    await app.request("/api/meetings/gold", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retentionExempt: false }),
+    });
+    expect(purgeExpiredMeetingAudio()).toBe(1);
+    expect(existsSync(join(goldDir, "mic.wav"))).toBe(false);
+  });
 });
 
 describe("DELETE /api/meetings/:id", () => {

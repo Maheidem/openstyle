@@ -1052,13 +1052,17 @@ const renameSchema = z
     // summarize prompt (§9.3). Unlike title, empty string is meaningful
     // (explicitly clear the field) — trimmed but not `min(1)`-constrained.
     context: z.string().trim().max(2000).nullable().optional(),
+    // true = the audio retention sweep never deletes this meeting's audio
+    // (eval gold meetings). No UI sets it yet.
+    retentionExempt: z.boolean().optional(),
   })
   .refine(
     (v) =>
       v.title !== undefined ||
       v.language !== undefined ||
-      v.context !== undefined,
-    { message: "Provide title, language, or context" },
+      v.context !== undefined ||
+      v.retentionExempt !== undefined,
+    { message: "Provide title, language, context, or retentionExempt" },
   );
 
 // specs/meeting-speaker-naming.md §6.2: same partial-update idiom as
@@ -1277,10 +1281,10 @@ const meetings = new Hono()
   // no other wiring.
   .patch("/:id", zValidator("json", renameSchema), (c) => {
     const id = c.req.param("id");
-    const { title, language, context } = c.req.valid("json");
+    const { title, language, context, retentionExempt } = c.req.valid("json");
     const db = getDb();
     const sets: string[] = [];
-    const values: (string | null)[] = [];
+    const values: (string | number | null)[] = [];
     if (title !== undefined) {
       sets.push("title = ?");
       values.push(title);
@@ -1293,13 +1297,17 @@ const meetings = new Hono()
       sets.push("context = ?");
       values.push(context);
     }
+    if (retentionExempt !== undefined) {
+      sets.push("retention_exempt = ?");
+      values.push(retentionExempt ? 1 : 0);
+    }
     const result = db
       .prepare(`UPDATE meetings SET ${sets.join(", ")} WHERE id = ?`)
       .run(...values, id);
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
     // The title is in the meta chunk of the search index (spec 4.6).
     if (title !== undefined) notifyMeetingChanged(id);
-    return c.json({ ok: true, title, language, context });
+    return c.json({ ok: true, title, language, context, retentionExempt });
   })
   .post("/:id/stop", zValidator("json", stopSchema), (c) => {
     const id = c.req.param("id");
