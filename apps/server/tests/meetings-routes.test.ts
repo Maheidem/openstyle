@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import {
   type LlmRunInfo,
   type LlmRunListResponse,
+  type MeetingDetail,
   type StartRunResponse,
   SYSTEM_REPAIR_TMP,
 } from "@openstyle/validations";
@@ -2822,6 +2823,15 @@ describe("meeting audio retention sweep", () => {
       body: JSON.stringify({ retentionExempt: true }),
     });
     expect(res.status).toBe(200);
+    // Read the flag back: a 200 alone does not prove it was stored.
+    const detail = await app.request("/api/meetings/gold");
+    expect(((await detail.json()) as MeetingDetail).retention_exempt).toBe(
+      true,
+    );
+    const normalDetail = await app.request("/api/meetings/normal");
+    expect(
+      ((await normalDetail.json()) as MeetingDetail).retention_exempt,
+    ).toBe(false);
 
     expect(purgeExpiredMeetingAudio()).toBe(1);
     expect(existsSync(join(goldDir, "mic.wav"))).toBe(true);

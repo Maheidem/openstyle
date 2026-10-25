@@ -65,6 +65,7 @@ export const meetingListResponseSchema = z.object({
 });
 
 export const meetingDetailResponseSchema = meetingRecordSchema.extend({
+  retention_exempt: z.boolean().optional(),
   tags: z.array(z.string()),
   calendar: calendarEventSchema.nullable(),
   job: z

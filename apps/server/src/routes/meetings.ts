@@ -1999,6 +1999,7 @@ const meetings = new Hono()
     return c.json(
       meetingDetailResponseSchema.parse({
         ...omitCalendarColumns(row),
+        retention_exempt: row.retention_exempt === 1,
         display_status: meetingDisplayStatus(row),
         tags: getMeetingTags(id),
         calendar: toCalendarEvent(row),

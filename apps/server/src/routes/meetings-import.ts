@@ -355,6 +355,7 @@ export function createMeetingsImportRoute(opts: { maxBytes?: number } = {}) {
       return c.json(
         meetingDetailResponseSchema.parse({
           ...(row ? omitCalendarColumns(row) : row),
+          retention_exempt: row?.retention_exempt === 1,
           display_status: row?.status,
           tags: [],
           calendar: row ? toCalendarEvent(row) : null,

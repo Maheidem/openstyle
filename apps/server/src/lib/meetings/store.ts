@@ -21,6 +21,8 @@ export interface MeetingRow {
    * prompt (§9.3). NULL means unset — the common case, and every meeting
    * created before this migration. */
   context: string | null;
+  /** 1 = the audio retention sweep skips this meeting (schema 47). */
+  retention_exempt: number;
   error: string | null;
   created_at: number | null;
   /** Linked calendar event (specs/calendar-eventkit.md). All NULL when the
