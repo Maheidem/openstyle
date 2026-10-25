@@ -1,0 +1,307 @@
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import { expect, type Page, test } from "@playwright/test";
+import {
+  closeApp,
+  embeddedServerUrl,
+  launchOpenstyle,
+  waitForDashboardWindow,
+} from "./helpers/e2e-app";
+import {
+  defaultSegments,
+  openMeeting,
+  seedMeeting,
+} from "./helpers/enhance-fixture";
+
+// THROWAWAY proof. .claude/skills/app-check/scripts/run.sh copies this file to
+// apps/electron/tests/zz-proof-appcheck.test.ts and deletes it at the end.
+// Never commit the copy. Real app, real local model, fictional data.
+const OUT = process.env.APP_CHECK_OUT ?? "";
+const MODEL_ID = process.env.APP_CHECK_MODEL_ID ?? "";
+const MODEL_NAME = process.env.APP_CHECK_MODEL_NAME ?? "";
+const HF_ID = process.env.APP_CHECK_HF_ID ?? "";
+const BACK_ID = "gemma-4-e2b-qat-4bit";
+const BACK_NAME = "Gemma 4 E2B";
+if (!OUT || !MODEL_ID || !MODEL_NAME || !HF_ID) {
+  throw new Error("run this spec through .claude/skills/app-check/scripts/run.sh");
+}
+const SCRATCH = join(OUT, "scratch");
+const HF_NAME = HF_ID.split("/").pop() as string;
+const MEETING = "app-check";
+const TITLE = "Launch planning sync";
+const LOG = join(OUT, "proof.log");
+const results: Record<string, unknown> = { model: MODEL_ID };
+const log = (s: string) => {
+  appendFileSync(LOG, `${new Date().toISOString()} ${s}\n`);
+  console.log(s);
+};
+const save = () =>
+  writeFileSync(join(OUT, "results.json"), JSON.stringify(results, null, 2));
+
+test.describe.configure({ mode: "serial" });
+test.setTimeout(3 * 60 * 60_000);
+
+let app: Awaited<ReturnType<typeof launchOpenstyle>>;
+let page: Page;
+let userDataDir: string;
+let base: string;
+
+const api = (method: string, path: string, body?: unknown) =>
+  fetch(`${base}/api${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+
+async function setTheme(theme: "light" | "dark"): Promise<void> {
+  await page.evaluate((t) => localStorage.setItem("theme", t), theme);
+  await page.reload();
+  await page.waitForLoadState("load");
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.classList.contains("dark")),
+    )
+    .toBe(theme === "dark");
+}
+
+async function shot(name: string): Promise<void> {
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: join(OUT, `${name}.png`) });
+  log(`shot ${name}.png`);
+}
+
+/** Models page -> AI cleanup picker -> built-in list. */
+async function openLlmList(): Promise<void> {
+  await page.getByRole("link", { name: "Models" }).first().click();
+  await expect(page.getByText("AI cleanup · optional")).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByRole("button", { name: /^(Pick a model|Change)$/ }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: /^Browse the models that Openstyle runs/ })
+    .click();
+  await expect(dialog.getByText(MODEL_NAME).first()).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
+const row = (name: string) =>
+  page
+    .getByRole("dialog")
+    .locator("div")
+    .filter({ hasText: name })
+    .filter({ has: page.getByRole("button") })
+    .last();
+
+test("boot", async () => {
+  mkdirSync(SCRATCH, { recursive: true });
+  userDataDir = mkdtempSync(join(SCRATCH, "ud-"));
+  writeFileSync(
+    join(userDataDir, "settings.json"),
+    JSON.stringify({ onboardingComplete: true }),
+  );
+  writeFileSync(
+    join(userDataDir, "config.freestyle.json"),
+    JSON.stringify({ version: 1, flags: { meetings: true } }),
+  );
+  const worker = process.env.APP_CHECK_WORKER ?? "";
+  app = await launchOpenstyle({
+    userDataDir,
+    env: {
+      HOME: join(SCRATCH, "home"),
+      HUGGINGFACE_HUB_CACHE: join(SCRATCH, "hf", "hub"),
+      OPENSTYLE_MODEL_CACHE_DIR: join(SCRATCH, "cache"),
+      OPENSTYLE_MLX_ASR_WORKER: worker,
+      OPENSTYLE_MLX_LLM_WORKER: worker,
+    },
+  });
+  writeFileSync(join(OUT, "app.pid"), String(app.process().pid));
+  writeFileSync(join(OUT, "userdata.path"), userDataDir);
+  page = await waitForDashboardWindow(app, 20_000);
+  await page.waitForLoadState("load");
+  await new Promise((r) => setTimeout(r, 3500));
+  base = embeddedServerUrl(app);
+  for (const [k, v] of [
+    ["advanced_mode", "true"],
+    ["meeting_enhance_prompt_seen", "true"],
+  ] as const) {
+    expect((await api("PUT", `/settings/${k}`, { value: v })).status).toBe(200);
+  }
+  await page.reload();
+  await page.waitForLoadState("load");
+  log(`booted ${base} userData=${userDataDir}`);
+});
+
+test("step 2: model list before download, light + dark", async () => {
+  for (const theme of ["light", "dark"] as const) {
+    await setTheme(theme);
+    await openLlmList();
+    log(
+      `rows ${theme}: ${(await page.getByRole("dialog").innerText()).replace(/\s+/g, " ").slice(0, 1500)}`,
+    );
+    await shot(`step2-models-before-${theme}`);
+    await page.keyboard.press("Escape");
+  }
+  const st = await (await api("GET", "/mlx-llm/status")).json();
+  log(`status before: ${JSON.stringify(st).slice(0, 600)}`);
+});
+
+test("step 3: download through the Models page, then Use", async () => {
+  await setTheme("light");
+  await openLlmList();
+  const t0 = Date.now();
+  await row(MODEL_NAME).getByRole("button", { name: "Download" }).click();
+  log("download clicked");
+  let last = 0;
+  await expect
+    .poll(
+      async () => {
+        const txt = await row(MODEL_NAME).innerText();
+        if (Date.now() - last > 30_000) {
+          last = Date.now();
+          log(`dl progress: ${txt.replace(/\s+/g, " ").slice(0, 160)}`);
+        }
+        return await row(MODEL_NAME).getByRole("button", { name: "Use" }).count();
+      },
+      { timeout: 45 * 60_000, intervals: [2000] },
+    )
+    .toBeGreaterThan(0);
+  results.downloadSeconds = Number(((Date.now() - t0) / 1000).toFixed(1));
+  log(`DOWNLOAD DONE wall=${results.downloadSeconds}s`);
+  await row(MODEL_NAME).getByRole("button", { name: "Use" }).click();
+  await page.waitForTimeout(1500);
+  for (const theme of ["light", "dark"] as const) {
+    await setTheme(theme);
+    await openLlmList();
+    await expect(row(MODEL_NAME).getByText("Selected")).toBeVisible({
+      timeout: 10_000,
+    });
+    await shot(`step3-model-in-use-${theme}`);
+    await page.keyboard.press("Escape");
+  }
+  results.useStep = "PASS";
+  save();
+});
+
+test("step 4: meeting Enhance + Summarize", async () => {
+  seedMeeting(userDataDir, MEETING, TITLE, defaultSegments(6));
+  await setTheme("light");
+  await openMeeting(page, TITLE);
+  await expect(page.getByTestId("meetings-segment").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  const t0 = Date.now();
+  await page.getByRole("button", { name: "Enhance", exact: true }).click();
+  log("enhance clicked");
+  let last = 0;
+  await expect
+    .poll(
+      async () => {
+        const d = (await (await api("GET", `/meetings/${MEETING}`)).json()) as {
+          status: string;
+        };
+        if (Date.now() - last > 30_000) {
+          last = Date.now();
+          log(`meeting status: ${d.status}`);
+        }
+        return d.status;
+      },
+      { timeout: 60 * 60_000, intervals: [3000] },
+    )
+    .toBe("summarized");
+  results.enhanceSummarizeSeconds = Number(((Date.now() - t0) / 1000).toFixed(1));
+  log(`ENHANCE+SUMMARIZE DONE wall=${results.enhanceSummarizeSeconds}s`);
+  save();
+});
+
+test("step 4b: meeting views + LLM inspector, light + dark", async () => {
+  for (const theme of ["light", "dark"] as const) {
+    await setTheme(theme);
+    await openMeeting(page, TITLE);
+    await expect(page.getByTestId("meetings-segment").first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await shot(`step4-meeting-transcript-${theme}`);
+    await page.getByRole("tab", { name: "Summary" }).click();
+    await page.waitForTimeout(800);
+    await shot(`step4-meeting-summary-${theme}`);
+    await page.getByTestId("meetings-summary-inspect").click();
+    const panel = page.getByTestId("meetings-inspector");
+    await expect(panel).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(1500);
+    const text = (await panel.innerText()).toLowerCase();
+    // The inspector shows the hf name, not the catalog id.
+    results[`inspectorHasHfName_${theme}`] = text.includes(HF_NAME.toLowerCase());
+    log(`inspector ${theme}: has hf name ${HF_NAME}=${results[`inspectorHasHfName_${theme}`]}`);
+    await shot(`step4-llm-inspector-${theme}`);
+    await page.getByTestId("meetings-inspector-close").click();
+  }
+  save();
+});
+
+test("step 5: dictation smoke via POST /api/post-process", async () => {
+  const inputs = [
+    "um so the launch date uh moved to friday i think and and we need to tell the design team about it before the review on monday",
+    "hey can you send me the the notes from yesterday's call about the budget it was like two hundred thousand or so",
+    "okay so first thing the migration is is done second thing the dashboards still look broken on mobile and third we need new copy for the pricing page",
+  ];
+  const latencies: number[] = [];
+  for (const [i, text] of inputs.entries()) {
+    const t0 = Date.now();
+    const res = await api("POST", "/post-process", { text });
+    const ms = Date.now() - t0;
+    const body = (await res.json()) as { cleaned?: string };
+    const cleaned = body.cleaned ?? "";
+    latencies.push(ms);
+    log(
+      `dictation ${i + 1}: status=${res.status} latency=${ms}ms think=${/<think|<\/think|thinking/i.test(cleaned)} sameAsInput=${cleaned === text}`,
+    );
+    log(`dictation ${i + 1} output: ${cleaned}`); // fictional text
+  }
+  results.dictationLatenciesMs = latencies;
+  save();
+});
+
+test("step 6: switch back to Gemma 4 E2B", async () => {
+  if (MODEL_ID === BACK_ID) {
+    results.switchBack = "SKIPPED (the checked model is the switch-back target)";
+    save();
+    return;
+  }
+  // run.sh cloned E2B into the cache before the app started. If this check
+  // fails, the clone is broken (dangling symlinks), not the app.
+  const st = (await (await api("GET", "/mlx-llm/status")).json()) as {
+    models?: Array<{ id: string; downloaded?: boolean; status?: string }>;
+  };
+  log(`status before switch-back: ${JSON.stringify(st).slice(0, 800)}`);
+  for (const theme of ["light", "dark"] as const) {
+    await setTheme(theme);
+    await openLlmList();
+    if (theme === "light") {
+      await expect(
+        row(BACK_NAME).getByRole("button", { name: "Use" }),
+      ).toBeVisible({ timeout: 20_000 });
+      await row(BACK_NAME).getByRole("button", { name: "Use" }).click();
+      await page.waitForTimeout(1500);
+      await openLlmList();
+    }
+    await expect(row(BACK_NAME).getByText("Selected")).toBeVisible({
+      timeout: 10_000,
+    });
+    await shot(`step6-e2b-in-use-${theme}`);
+    await page.keyboard.press("Escape");
+  }
+  results.switchBack = "PASS";
+  save();
+});
+
+test("teardown", async () => {
+  await closeApp(app);
+  log("app closed");
+});
