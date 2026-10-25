@@ -27,6 +27,21 @@ Pick them by length only. Do not read their text.
 - Issue #163 meeting (8 chunks; the old Enhance path fails 2 of 8): `ca70f895-ebe9-47e3-b663-eeb2c7bd97a6`
 
 
+## Eval audio copies (retention sweep)
+
+The app deletes meeting audio older than 30 days (`apps/server/src/lib/meetings/retention.ts`). On 2026-10-24 it deleted the audio of gold meetings `2943c36a` and `9243bea0`. Those two are lost.
+
+- Location: `~/Library/Application Support/Openstyle-eval/audio/<meetingId>/{mic.wav,system.wav,sync.json}`. It is outside the app folder and survives a reboot.
+- Override: `MEETING_EVAL_AUDIO_DIR=<dir>`.
+- Use: `setup-scratch.sh` (so `pnpm meeting:eval`) copies a meeting from there when `<dir>/<id>/mic.wav` exists. Else it copies from the app folder. It prints `audio source: eval copy (<id>)` or `audio source: app folder (<id>)`.
+- Copy command (read-only on the app folder, sha256 check on every file):
+
+```bash
+scripts/meeting-v2/eval-audio-copy.sh <meetingId> [<meetingId> ...]
+```
+
+- Rule: copy a meeting into eval audio right after you add it to the gold set. Never wait for the sweep.
+
 ## Setup traps (proven 2026-10-19, main `f51f50ed`)
 
 1. After `git pull`, run `pnpm install --frozen-lockfile` before `setup-scratch.sh`. Without it, the migration boot fails with `ERR_MODULE_NOT_FOUND: Cannot find package '@opentelemetry/api'` (WP8 added it in `apps/server/package.json`). The boot also needs a built server (`pnpm turbo build --filter=@openstyle/server`).
