@@ -26,7 +26,7 @@ This skill wraps `pnpm meeting:eval` (see `.claude/skills/meeting-benchmarks/SKI
 - Gold meetings: `5578edb0` (831 s) and `ca70f895` (2142 s). Gold files are in `~/.openstyle-eval/gold/<id8>.json`.
 - The eval reads the wav from the real profile `~/Library/Application Support/Openstyle/meetings/<id>/`. The app retention sweep (30 days) deleted the wav of gold meetings `2943c36a` and `9243bea0`. Only `5578edb0` and `ca70f895` have a private copy. `run.sh` checks both places.
 - The ASR transcripts come from the cache `/tmp/meeting-eval/asr/cache/`. A cache hit needs the same worker, diarizer and server code (same ASR hash). Without a hit, the run transcribes first and takes much longer. This cache is in `/tmp` and can vanish too.
-- Run time, measured 2026-10-25 with `gemma-4-e4b-qat-4bit`, transcripts cached: Enhance and Summarize 244.7 s for `5578edb0` and 271.3 s for `ca70f895`. Peak RSS of the LLM worker 6.75 GB (`5578edb0`). Unverified for other models.
+- Run time, measured 2026-10-25 with `gemma-4-e4b-qat-4bit`, transcripts cached: Enhance and Summarize 244.7 s and 271.3 s (run 1), 93.8 s and 228.0 s (run 2, total 321.8 s). Peak RSS of the LLM worker 6.75 GB. `elapsed_sec` in the `run.sh` output includes the wait for the GPU lock (934 s in run 2, of which about 10 min was queue). Unverified for other models.
 - Cache damage found 2026-10-25 (snapshot links with no blob): `models--mlx-community--gemma-4-E2B-it-qat-4bit` (6 links), `models--mlx-community--Qwen3.5-0.8B-8bit` (5), `models--mlx-community--Qwen3.5-4B-OptiQ-4bit` (6). Find them again with:
   `find "$HOME/Library/Application Support/Openstyle-eval/hf/hub" -path '*snapshots*' -type l ! -exec test -e {} \; -print`
   Repair (not run, unverified): delete the damaged `models--...` folder. Then run `pnpm meeting:eval --models <id>` without `--no-download`. The tool prints the size and downloads the model.
@@ -71,7 +71,11 @@ GPU lock released
 self-check ok: 2 runs, 2 meetings
 gemma-4-e4b-qat-4bit 5578edb0: hard fails 1 (...)
 gemma-4-e4b-qat-4bit ca70f895: hard fails 0 (...)
+floor: none
+elapsed_sec=934
 ```
+
+The hard fail of `5578edb0` is the gold key `claim:c1` (a must-not-claim hit in the summary).
 
 `results.md` scorecard of the same run (pooled over both meetings): ASR WER 0.0066, Enhance WER 0.0069 (delta -0.0003), summary matched 8/11, tags P 0.80 R 0.80, speakers correct 3/6.
 
