@@ -1,11 +1,36 @@
+// Dictation cleanup benchmark.
+//
+// Groq (default):
+//   pnpm dlx tsx apps/server/scripts/benchmark-post-process.ts --suite=full
+// Local MLX LLM (the app's local-mlx-llm provider and worker):
+//   HF_HOME=/tmp/meeting-eval/hf OPENSTYLE_MLX_LLM_WORKER=<worker binary> \
+//   pnpm dlx tsx apps/server/scripts/benchmark-post-process.ts \
+//     --provider=local-mlx --models=gemma-4-e2b-qat-4bit --suite=full --out=/tmp/dictation-bench.json
+// (node's strip-only TypeScript mode cannot load the server sources.)
+// --models takes catalog ids (apps/server/src/lib/mlx-llm/constants.ts) or their HF ids.
+// Without OPENSTYLE_MLX_LLM_WORKER the managed runtime worker runs.
+import { writeFileSync } from "node:fs";
 import {
   maxOutputTokensForCleanup,
   sanitizeTranscriptText,
 } from "@openstyle/stt";
+import type { LanguageModel } from "ai";
 import { generateText } from "ai";
 import { buildRewritePrompt } from "../src/lib/editor/prompts.ts";
 import { getGroqChatModel } from "../src/lib/groq-http.ts";
-import { groqCleanupProviderOptions } from "../src/lib/llm/registry.ts";
+import {
+  getLlmProvider,
+  groqCleanupProviderOptions,
+} from "../src/lib/llm/registry.ts";
+import {
+  MLX_LLM_MODELS,
+  MLX_LLM_PROVIDER_ID,
+} from "../src/lib/mlx-llm/constants.ts";
+import {
+  ensureMlxLlmWorker,
+  mlxLlmWorkerOverride,
+  stopMlxLlmWorker,
+} from "../src/lib/mlx-llm/server.ts";
 import {
   type BenchmarkCase,
   POST_PROCESS_BENCHMARK_CASES,
@@ -13,13 +38,19 @@ import {
 
 type PromptVariant = "baseline" | "dynamic-language";
 type BenchmarkSuite = "quick" | "full";
+type Provider = "groq" | "local-mlx";
 
 interface BenchmarkResult {
+  provider: Provider;
   modelId: string;
   variant: PromptVariant;
   passed: number;
   total: number;
   byLanguage: Record<string, { passed: number; total: number }>;
+  latencyMs: { p50: number; p95: number };
+  failures: string[];
+  /** local-mlx only: the worker binary and the worker start + model load time. */
+  worker?: { binary: string; startMs: number };
 }
 
 const MODELS = [
@@ -149,13 +180,37 @@ function buildBenchmarkPrompt(
   );
 }
 
+/** The catalog id of a local MLX model, from a catalog id or its HF id. */
+function localCatalogId(modelId: string): string {
+  const def = MLX_LLM_MODELS.find(
+    (m) => m.id === modelId || m.hfId === modelId,
+  );
+  if (!def) {
+    throw new Error(
+      `Unknown local MLX model: ${modelId}. Use one of: ${MLX_LLM_MODELS.map((m) => m.id).join(", ")}`,
+    );
+  }
+  return def.id;
+}
+
+/** The app's own local-mlx-llm provider (llm/registry.ts), so the request matches the app. */
+async function localMlxModel(catalogId: string): Promise<LanguageModel> {
+  const provider = getLlmProvider(MLX_LLM_PROVIDER_ID);
+  if (!provider) throw new Error(`No provider ${MLX_LLM_PROVIDER_ID}`);
+  return provider.createModel(catalogId, "local", { task: "cleanup" });
+}
+
 async function runCase(
+  provider: Provider,
   modelId: string,
   variant: PromptVariant,
   testCase: BenchmarkCase,
 ) {
   const started = Date.now();
-  const model = getGroqChatModel(modelId);
+  const model =
+    provider === "local-mlx"
+      ? await localMlxModel(modelId)
+      : getGroqChatModel(modelId);
   const { system, prompt } = buildBenchmarkPrompt(
     testCase.input,
     testCase.language,
@@ -167,7 +222,8 @@ async function runCase(
     prompt,
     temperature: 0,
     maxOutputTokens: maxOutputTokensForCleanup(testCase.input),
-    providerOptions: groqCleanupProviderOptions(modelId, false),
+    providerOptions:
+      provider === "groq" ? groqCleanupProviderOptions(modelId, false) : {},
   });
 
   const actual = sanitizeTranscriptText(result.text);
@@ -177,6 +233,20 @@ async function runCase(
     inputTokens: result.usage?.inputTokens ?? 0,
     outputTokens: result.usage?.outputTokens ?? 0,
   };
+}
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const index = Math.min(
+    sorted.length - 1,
+    Math.ceil((p / 100) * sorted.length) - 1,
+  );
+  return sorted[Math.max(0, index)] as number;
+}
+
+function parseArg(name: string): string | null {
+  const arg = process.argv.find((entry) => entry.startsWith(`--${name}=`));
+  return arg ? arg.slice(name.length + 3) : null;
 }
 
 function parseCsvArg(name: string): string[] | null {
@@ -192,11 +262,19 @@ function parseCsvArg(name: string): string[] | null {
 }
 
 async function runBenchmarkSuite(
+  provider: Provider,
   variant: PromptVariant,
   suite: BenchmarkSuite,
 ): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
-  const selectedModels = parseCsvArg("models") ?? [...MODELS];
+  const modelArg = parseCsvArg("models");
+  if (provider === "local-mlx" && !modelArg) {
+    throw new Error("--provider=local-mlx needs --models=<catalog id,...>");
+  }
+  const selectedModels =
+    provider === "local-mlx"
+      ? (modelArg ?? []).map(localCatalogId)
+      : (modelArg ?? [...MODELS]);
   const requestedLanguages = new Set(parseCsvArg("languages") ?? []);
   const selectedCases =
     suite === "quick"
@@ -214,10 +292,29 @@ async function runBenchmarkSuite(
   for (const modelId of selectedModels) {
     const byLanguage: BenchmarkResult["byLanguage"] = {};
     let passed = 0;
+    const latencies: number[] = [];
+    const failures: string[] = [];
+    let worker: BenchmarkResult["worker"];
+
+    if (provider === "local-mlx") {
+      // Start the worker and load the model before the first case, so the
+      // case latencies hold no model load.
+      const startedAt = Date.now();
+      await ensureMlxLlmWorker(modelId);
+      worker = {
+        binary: mlxLlmWorkerOverride() ?? "managed runtime worker",
+        startMs: Date.now() - startedAt,
+      };
+      console.log(
+        `[local-mlx] ${modelId}: worker ${worker.binary} ready in ${worker.startMs}ms`,
+      );
+    }
 
     for (const testCase of filteredCases) {
-      const outcome = await runCase(modelId, variant, testCase);
+      const outcome = await runCase(provider, modelId, variant, testCase);
       const ok = evaluateCase(testCase, outcome.actual);
+      latencies.push(outcome.latencyMs);
+      if (!ok) failures.push(testCase.id);
       if (!byLanguage[testCase.language]) {
         byLanguage[testCase.language] = { passed: 0, total: 0 };
       }
@@ -235,12 +332,17 @@ async function runBenchmarkSuite(
       }
     }
 
+    const sorted = [...latencies].sort((a, b) => a - b);
     results.push({
+      provider,
       modelId,
       variant,
       passed,
       total: filteredCases.length,
       byLanguage,
+      latencyMs: { p50: percentile(sorted, 50), p95: percentile(sorted, 95) },
+      failures,
+      ...(worker ? { worker } : {}),
     });
   }
 
@@ -254,8 +356,16 @@ function printSummary(results: BenchmarkResult[]): void {
       .map(([lang, stats]) => `${lang} ${stats.passed}/${stats.total}`)
       .join(" | ");
     console.log(
-      `${result.variant} :: ${result.modelId} => ${result.passed}/${result.total} (${byLang})`,
+      `${result.variant} :: ${result.modelId} => ${result.passed}/${result.total} (${byLang}) p50 ${result.latencyMs.p50}ms p95 ${result.latencyMs.p95}ms`,
     );
+    if (result.failures.length > 0) {
+      console.log(`  failures: ${result.failures.join(", ")}`);
+    }
+    if (result.worker) {
+      console.log(
+        `  worker: ${result.worker.binary} (start ${result.worker.startMs}ms)`,
+      );
+    }
   }
 }
 
@@ -273,9 +383,25 @@ async function main() {
   if (suite !== "quick" && suite !== "full") {
     throw new Error(`Unsupported suite: ${suite}`);
   }
+  const provider = (parseArg("provider") ?? "groq") as Provider;
+  if (provider !== "groq" && provider !== "local-mlx") {
+    throw new Error(`Unsupported provider: ${provider}`);
+  }
 
-  const results = await runBenchmarkSuite(variant, suite);
-  printSummary(results);
+  try {
+    const results = await runBenchmarkSuite(provider, variant, suite);
+    printSummary(results);
+    const out = parseArg("out");
+    if (out) {
+      writeFileSync(
+        out,
+        `${JSON.stringify({ createdAt: new Date().toISOString(), suite, results }, null, 2)}\n`,
+      );
+      console.log(`json: ${out}`);
+    }
+  } finally {
+    if (provider === "local-mlx") await stopMlxLlmWorker();
+  }
 }
 
 void main();
