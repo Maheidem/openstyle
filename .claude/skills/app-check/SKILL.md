@@ -18,7 +18,7 @@ It is the distilled form of the overnight proofs of 2026-10-25 (Nemotron Bolt E4
 1. Run only through `scripts/test-runner/run.sh` (the script does it). Never launch the app another way. The Test Runner keeps the Privacy grant.
 2. Quiet mode only (`OPENSTYLE_E2E=1`, set by `launchOpenstyle`). Never record, never use the mic or system audio.
 3. Fictional data only. The fixture is `defaultSegments(6)` from `apps/electron/tests/helpers/enhance-fixture.ts`.
-4. Take the shared GPU lock `/tmp/openstyle-gpu.lock` (`mkdir`). The script waits and takes it. It releases it at exit. Do not kill another session's lock owner. Wait.
+4. Take the shared GPU lock `/tmp/openstyle-gpu.lock` in queue order. The script appends its line to `/tmp/openstyle-gpu.queue`, then takes the lock (`mkdir`) only when the lock is free AND its line is the first live line (same rule as `scripts/meeting-v2/eval/gpu-queue.mts`; a line older than 2 h is skipped). It removes its line when it takes the lock, at exit and on INT/TERM. It releases the lock at exit. Do not kill another session's lock owner. Wait.
 5. Never write to `~/.cache/huggingface`, the real profile, or `/Applications/Openstyle.app`. The script uses a scratch `HOME`, a scratch HF cache and a scratch profile.
 6. Stop at the first Privacy dialog. Report the service name. `tcc-prompts.txt` must be `0`.
 7. Look at every screenshot yourself before you report it (empty states, spinners, cut-off UI).
@@ -118,8 +118,8 @@ Delete `<out>` when the numbers are in your report. Delete `apps/electron/test-r
 5. **The scratch `HOME` is on purpose.** The server refreshes the managed worker under `homedir()` before each worker start, even with `OPENSTYLE_MLX_ASR_WORKER` set (`live-testing` skill). With the real `HOME` it could rewrite the installed app's worker folder.
 6. **Do not use `pkill`/`killall`.** The guard hook blocks them, and they kill the installed app's worker.
 7. **`session_open` in Nexus can answer PERMISSION_DENIED for dev agents.** Claim handoffs without a session. This does not affect the script.
-8. **A GPU lock held by another session blocks the run.** The script prints `GPU lock busy: <owner>` every 60 s. Wait. Do not remove the lock.
-9. **A partial Electron install fails the boot step after the lock wait** (2026-10-25, dev_senior worktree). Error in `run.log`: `Error: electron.launch: Electron failed to install correctly, please delete node_modules/electron and try installing again` at `helpers/e2e-app.ts:43`, then `1 failed` (boot) and `7 did not run`. Cause: `node_modules/.pnpm/electron@<ver>/node_modules/electron/dist/` held only `LICENSES.chromium.html` and `path.txt` was missing. `node install.js` in that folder exited 0 and installed nothing. Check before a run, in `apps/electron`: `node -e "console.log(require('electron'))"` must print a path to `Electron.app/Contents/MacOS/Electron`. Fix: clone `dist/` and `path.txt` from a checkout with the same Electron version: `cp -Rc <good>/dist <bad>/dist && cp <good>/path.txt <bad>/`.
+8. **A GPU lock held by another session blocks the run.** The script prints `GPU lock or queue busy: <owner> | queue: <n> line(s)` every 30 s. Wait. Do not remove the lock.
+9. **A partial Electron install fails the boot step after the lock wait** (the script now checks this before the build and the lock wait: it exits 2 with a message when `path.txt` or the binary in `dist/` is missing; `APP_CHECK_ELECTRON_PKG` overrides the package folder, for tests) (2026-10-25, dev_senior worktree). Error in `run.log`: `Error: electron.launch: Electron failed to install correctly, please delete node_modules/electron and try installing again` at `helpers/e2e-app.ts:43`, then `1 failed` (boot) and `7 did not run`. Cause: `node_modules/.pnpm/electron@<ver>/node_modules/electron/dist/` held only `LICENSES.chromium.html` and `path.txt` was missing. `node install.js` in that folder exited 0 and installed nothing. Check before a run, in `apps/electron`: `node -e "console.log(require('electron'))"` must print a path to `Electron.app/Contents/MacOS/Electron`. Fix: clone `dist/` and `path.txt` from a checkout with the same Electron version: `cp -Rc <good>/dist <bad>/dist && cp <good>/path.txt <bad>/`.
 
 ## Run record
 
@@ -135,7 +135,7 @@ Start of the output (run 2):
 ```
 model=gemma-4-e4b-qat-4bit name="Gemma 4 E4B" hf=mlx-community/gemma-4-E4B-it-qat-4bit out=<out>
 E2B clone ok (0 dangling symlinks)
-20:23:20 GPU lock busy: meeting-eval gemma-4-e4b-qat-4bit 20:12
+20:23:20 GPU lock busy: meeting-eval gemma-4-e4b-qat-4bit 20:12   (run 2 used the old 60 s message; the script now prints "GPU lock or queue busy" every 30 s)
 ```
 
 End of the output (run 2, raw, paths shortened):
@@ -198,3 +198,11 @@ What this does not prove:
 - The ASR worker RSS (see Known gaps).
 - The Enhance quality: the summary of run 1 still says "lunch date".
 - Lock wait: run 2 waited about 6 min for the GPU lock (`lock-wait.log`: first line 20:23:20, lock taken 23:29:21Z = 20:29:21 -03). The run holds the lock from the test start to the end of the Playwright run only.
+
+## Review fixes R1-R3 (PR #328, 2026-10-26)
+
+Tests with raw output are in the PR thread. Test hooks: `APP_CHECK_LOCK` and `APP_CHECK_QUEUE` point the lock and the queue to temp paths, so a test does not touch the shared lock.
+
+- R1 queue: with a fake queue entry first and a free lock, the script printed `GPU lock or queue busy` twice (30 s apart) and took no lock. After the entry was removed it printed `GPU lock taken`, and its own queue line was gone.
+- R2 preflight: with `APP_CHECK_ELECTRON_PKG` on a folder with an empty `dist/`, the script printed `Electron binary missing or partial ...` and exited 2 before the build, the lock wait and any output folder.
+- R3 summary: with `rss.csv` removed from a copy of `e4b-run2` and `CODE=3`, the summary printed `(rss.csv missing: the sampler did not write it)`, still printed the TCC count `0`, and the script exited 3. The summary runs with `set +e`, so no single failed step hides the Playwright exit code.

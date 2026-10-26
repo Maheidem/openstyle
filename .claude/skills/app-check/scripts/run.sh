@@ -12,7 +12,10 @@ REPO=$(cd "$HERE/../../../.." && pwd)
 STAMP=$(date +%Y%m%d-%H%M%S)
 # Evidence stays out of /tmp: macOS cleans it (same rule as the HF eval cache).
 OUT=${APP_CHECK_OUT:-$HOME/Library/Application Support/Openstyle-eval/app-check/$MODEL_ID-$STAMP}
-LOCK=/tmp/openstyle-gpu.lock
+# APP_CHECK_LOCK and APP_CHECK_QUEUE exist only to test the queue logic without the shared lock.
+LOCK=${APP_CHECK_LOCK:-/tmp/openstyle-gpu.lock}
+QUEUE=${APP_CHECK_QUEUE:-/tmp/openstyle-gpu.queue}
+QLINE=""
 SPEC_DST="$REPO/apps/electron/tests/zz-proof-appcheck.test.ts"
 BACK_ID=gemma-4-e2b-qat-4bit
 BACK_HF=mlx-community/gemma-4-E2B-it-qat-4bit
@@ -36,13 +39,30 @@ IFS='|' read -r HF_ID MODEL_NAME < <(node -e '
 [[ -n ${HF_ID:-} ]] || { echo "catalog lookup failed" >&2; exit 2; }
 [[ -x $WORKER ]] || { echo "worker not found: $WORKER (set APP_CHECK_WORKER)" >&2; exit 2; }
 
+# Preflight: the Electron binary must exist. A partial install fails the boot step AFTER the lock wait.
+# APP_CHECK_ELECTRON_PKG overrides the package folder (used to test this check).
+EL_PKG=${APP_CHECK_ELECTRON_PKG:-$(cd apps/electron && node -p 'require("path").dirname(require.resolve("electron/package.json"))' 2>/dev/null || true)}
+if [[ -z $EL_PKG || ! -s $EL_PKG/path.txt || ! -e $EL_PKG/dist/$(cat "$EL_PKG/path.txt" 2>/dev/null) ]]; then
+  echo "Electron binary missing or partial in '${EL_PKG:-<not resolved>}' (path.txt or dist/ lacks the binary)." >&2
+  echo "Fix: clone dist/ and path.txt from a checkout with the same Electron version. See SKILL.md Traps 9." >&2
+  exit 2
+fi
+
+unqueue() {
+  [[ -n $QLINE && -f $QUEUE ]] || return 0
+  { grep -v -x -F -- "$QLINE" "$QUEUE" || true; } > "$QUEUE.$$" && cat "$QUEUE.$$" > "$QUEUE"; rm -f "$QUEUE.$$"
+  QLINE=""
+}
+
 cleanup() {
   if [[ -n $SAMPLER_PID ]]; then kill "$SAMPLER_PID" 2>/dev/null || true; wait "$SAMPLER_PID" 2>/dev/null || true; fi
   rm -f "$SPEC_DST"
+  unqueue
   if [[ $HAVE_LOCK == 1 ]]; then rm -f "$LOCK/owner"; rmdir "$LOCK" 2>/dev/null || true; fi
   if [[ ${APP_CHECK_KEEP_SCRATCH:-0} != 1 ]]; then rm -rf "$OUT/scratch"; fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 mkdir -p "$OUT/scratch/hf/hub" "$OUT/scratch/home"
 echo "model=$MODEL_ID name=\"$MODEL_NAME\" hf=$HF_ID out=$OUT"
@@ -67,11 +87,22 @@ fi
 
 # 4. Spec copy, GPU lock, sampler.
 cp "$HERE/app-check.spec.ts.txt" "$SPEC_DST"
-until mkdir "$LOCK" 2>/dev/null; do
-  echo "$(date +%T) GPU lock busy: $(cat "$LOCK/owner" 2>/dev/null)" | tee -a "$OUT/lock-wait.log"
-  sleep 60
+# GPU lock in queue order (owner rule 2026-10-20): queue first, then take the lock only
+# when it is free AND our line is the first live line of the queue.
+QLINE="app-check $MODEL_ID 100 $(date -u +%Y-%m-%dT%H:%M:%SZ) pid=$$"
+echo "$QLINE" >> "$QUEUE"
+our_turn_and_lock() {
+  # Someone removed our line: queue again at the end.
+  grep -q -x -F -- "$QLINE" "$QUEUE" 2>/dev/null || echo "$QLINE" >> "$QUEUE"
+  python3 -I "$HERE/queue-turn.py" "$QUEUE" "$QLINE" && mkdir "$LOCK" 2>/dev/null
+}
+until our_turn_and_lock; do
+  echo "$(date +%T) GPU lock or queue busy: $(cat "$LOCK/owner" 2>/dev/null) | queue: $(grep -c . "$QUEUE" 2>/dev/null) line(s)" | tee -a "$OUT/lock-wait.log"
+  sleep 30
 done
 HAVE_LOCK=1
+unqueue
+echo "$(date +%T) GPU lock taken"
 echo "app-check $MODEL_ID $(date -u +%H:%M:%SZ)" > "$LOCK/owner"
 
 LOGS=~/Library/Logs/Openstyle
@@ -92,7 +123,8 @@ set -e
 # Release the GPU lock now. The evidence steps below need no GPU, and other sessions wait for the lock.
 rm -f "$LOCK/owner"; rmdir "$LOCK" 2>/dev/null || true; HAVE_LOCK=0
 
-# 6. Evidence.
+# 6. Evidence. Every step below may fail on its own: print each field, mark a missing one, keep the real exit code.
+set +e
 stat -f '%N %z %Sm' "$LOGS"/* > "$OUT/logs-after.txt" 2>&1 || true
 df -h / | tail -1 > "$OUT/df-after.txt"
 /usr/bin/log show --start "$START" --predicate 'subsystem == "com.apple.TCC"' --style compact 2>/dev/null | grep -c AUTHREQ_PROMPTING > "$OUT/tcc-prompts.txt" || true
@@ -108,20 +140,25 @@ fi
 LOGHITS=$(cat "$LOGS"/* 2>/dev/null | grep -c -F "$OUT" || true)
 if [[ $LOGHITS == 0 ]]; then LOGSTAT="no line in ~/Library/Logs/Openstyle names this run"; else LOGSTAT="REAL LOGS NAME THIS RUN: $LOGHITS lines"; fi
 
-echo "=== run.log tail ==="; tail -12 "$OUT/run.log"
-echo "=== results.json ==="; cat "$OUT/results.json" 2>/dev/null || echo "(none)"
+echo "=== run.log tail ==="; tail -12 "$OUT/run.log" 2>/dev/null || echo "(run.log missing)"
+echo "=== results.json ==="; { cat "$OUT/results.json" 2>/dev/null && echo; } || echo "(none)"
 echo "=== peak RSS (GiB) per worker kind ==="
-python3 -I - "$OUT/rss.csv" <<'PY'
-import csv, sys
+python3 -I - "$OUT/rss.csv" <<'PY' || echo "(rss summary failed)"
+import csv, os, sys
+if not os.path.exists(sys.argv[1]):
+    print("(rss.csv missing: the sampler did not write it)")
+    sys.exit(0)
 peak = {}
 for r in csv.DictReader(open(sys.argv[1])):
     peak[r["kind"]] = max(peak.get(r["kind"], 0), int(r["rss_kb"]))
+if not peak:
+    print("(rss.csv has no samples)")
 for k, v in sorted(peak.items()):
     print(f"{k}: {v/1024/1024:.2f}")
 PY
 echo "=== llm_calls ==="; cat "$OUT/llm-calls.txt" 2>/dev/null || echo "(none)"
-echo "=== TCC prompts since start (expect 0) ==="; cat "$OUT/tcc-prompts.txt"
-echo "=== real log folder: $LOGSTAT ==="; diff "$OUT/logs-before.txt" "$OUT/logs-after.txt" || true
-echo "=== artifacts in $OUT ==="; ls -1 "$OUT"/*.png 2>/dev/null
+echo "=== TCC prompts since start (expect 0) ==="; cat "$OUT/tcc-prompts.txt" 2>/dev/null || echo "(missing)"
+echo "=== real log folder: $LOGSTAT ==="; diff "$OUT/logs-before.txt" "$OUT/logs-after.txt"
+echo "=== artifacts in $OUT ==="; ls -1 "$OUT"/*.png 2>/dev/null || echo "(no screenshots)"
 echo "playwright exit code: $CODE"
 exit "$CODE"
