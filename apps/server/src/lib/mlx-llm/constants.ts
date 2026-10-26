@@ -9,13 +9,7 @@ export const MLX_LLM_PROVIDER_ID = "local-mlx-llm";
 
 export const MLX_LLM_PROVIDER_NAME = "On-device · MLX";
 
-export type MlxLlmFamily =
-  | "gemma4"
-  // overnight sweep candidate 2026-10-25, not for release
-  | "qwen3_5"
-  | "qwen3_5_moe"
-  | "mistral3"
-  | "qwen3";
+export type MlxLlmFamily = "gemma4";
 
 export interface MlxLlmModelDef {
   id: string;
@@ -83,96 +77,6 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     displayName: "Nemotron 3.5 Bolt E4B",
     family: "gemma4",
     sizeBytes: 4_231_265_397,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "qwen3.5-4b-4bit",
-    hfId: "mlx-community/Qwen3.5-4B-MLX-4bit",
-    displayName: "Qwen3.5 4B",
-    family: "qwen3_5",
-    sizeBytes: 3_061_129_077,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "qwen3.5-9b-6bit",
-    hfId: "mlx-community/Qwen3.5-9B-6bit",
-    displayName: "Qwen3.5 9B",
-    family: "qwen3_5",
-    sizeBytes: 8_215_256_416,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "qwen3.6-35b-a3b-4bit",
-    hfId: "mlx-community/Qwen3.6-35B-A3B-4bit",
-    displayName: "Qwen3.6 35B A3B",
-    family: "qwen3_5_moe",
-    sizeBytes: 20_429_166_969,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "gemma-4-26b-a4b-qat-4bit",
-    hfId: "mlx-community/gemma-4-26B-A4B-it-qat-4bit",
-    displayName: "Gemma 4 26B A4B",
-    family: "gemma4",
-    sizeBytes: 15_641_239_295,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "qwen3.6-27b-4bit",
-    hfId: "mlx-community/Qwen3.6-27B-4bit",
-    displayName: "Qwen3.6 27B",
-    family: "qwen3_5",
-    sizeBytes: 16_081_487_798,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "mistral-small-3.2-24b-4bit",
-    hfId: "mlx-community/Mistral-Small-3.2-24B-Instruct-2506-4bit",
-    displayName: "Mistral Small 3.2 24B",
-    family: "mistral3",
-    sizeBytes: 13_277_585_038,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "qwen3-8b-4bit",
-    hfId: "mlx-community/Qwen3-8B-4bit",
-    displayName: "Qwen3 8B",
-    family: "qwen3",
-    sizeBytes: 4_623_782_544,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "qwen3.8-27b-4bit",
-    hfId: "mlx-community/Qwen3.8-27B-4bit",
-    displayName: "Qwen3.8 27B",
-    family: "qwen3_5",
-    sizeBytes: 16_081_488_731,
-    contextTokens: 32_768,
-    maxOutputTokens: 8_192,
-  },
-  // overnight sweep candidate 2026-10-25, not for release
-  {
-    id: "gemma-4-31b-4bit",
-    hfId: "mlx-community/gemma-4-31b-it-4bit",
-    displayName: "Gemma 4 31B",
-    family: "gemma4",
-    sizeBytes: 18_444_419_448,
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
   },
