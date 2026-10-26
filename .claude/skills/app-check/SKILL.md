@@ -129,6 +129,7 @@ Proof run of the script, 2026-10-25, model `gemma-4-e4b-qat-4bit`, branch `feat/
 |---|---|---|---|---|---|
 | run 1 | Playwright 8 passed (12.6 min). `run.sh` then stopped at `sqlite3 -readonly` ("unable to open database file"): fixed. | 703.1 s | 15.1 s | 6.75 GiB | 0 |
 | run 2 | Playwright 8 passed (12.3 min), exit 0 | 687.1 s | 15.1 s | 6.75 GiB | 0 |
+| run 3 (final script, queue + preflight + robust summary; evidence `e4b-run3/`, 12 PNG) | Playwright 8 passed (15.7 min), exit 0 | 893.5 s | 15.1 s | 6.73 GiB | 0 |
 
 Start of the output (run 2):
 
