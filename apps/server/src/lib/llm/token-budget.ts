@@ -11,37 +11,50 @@ import { getModelContextCached } from "../model-registry.js";
 // MLX worker has no tokenize endpoint. A request to count tokens would also
 // add a round trip to each dictation. The estimate below is calibrated on the
 // real tokenizers of the 5 catalog models (2026-10-26, fictional texts in 13
-// languages and 7 app locales). For natural text it is 1.15x to 1.71x the
-// real count (English 1.22x, Chinese 1.39x, Japanese 1.61x). The old
-// `chars / 4` estimate was 0.37x to 1.01x (Chinese 0.39x). A long run of
-// digits or hex is the only measured case under the real count (0.83x). The
-// worker refusal (ContextExceededError) covers that case.
+// languages and 7 app locales). For natural text it is 1.15x to 1.57x the
+// highest real count of the 5 (English 1.22x, Chinese 1.17x, Korean 1.18x,
+// Japanese 1.34x). The old `chars / 4` estimate was 0.37x to 1.01x (Chinese
+// 0.39x). A long run of digits or hex is the only measured case under the
+// real count (0.83x). The worker refusal (ContextExceededError) covers it.
+// The weights are close to the measured worst case of each script, not far
+// over it: an input that really fits must not be split for nothing.
 
-/** Chat template tokens of one call (turn markers, BOS). Measured: about 10. */
+/** Chat template tokens of one call (turn markers, BOS). */
 export const CALL_OVERHEAD_TOKENS = 32;
 /** Chat template tokens of one message. */
 export const MESSAGE_OVERHEAD_TOKENS = 8;
 
 /**
  * An estimate of the tokens of `text` that is high for natural text in every
- * measured language. Weights per UTF-16 code unit: ASCII 1/3, an ASCII digit
- * 1, Latin, Greek, Cyrillic, Hebrew and Arabic 1/2, any other character
- * (CJK, Hangul, kana, Devanagari, Thai and others) 1, each half of a
- * surrogate pair (emoji) 1.
+ * measured language. Weights per UTF-16 code unit (measured worst case in
+ * brackets): ASCII 1/3 (0.31), an ASCII digit 1 (Gemma splits digits),
+ * Latin, Greek, Cyrillic, Hebrew and Arabic 1/2 (0.43), Hangul 0.9 (0.83),
+ * CJK ideographs and kana 0.8 (0.72), any other character (Devanagari, Thai,
+ * CJK punctuation and others) 1 (0.83), each half of a surrogate pair
+ * (emoji) 1.
  */
 export function estimatePromptTokens(text: string): number {
-  let ascii = 0;
-  let half = 0;
-  let full = 0;
+  let sum = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);
-    if (c < 0x80) {
-      if (c >= 0x30 && c <= 0x39) full++;
-      else ascii++;
-    } else if (c <= 0x024f || (c >= 0x0370 && c <= 0x06ff)) half++;
-    else full++;
+    if (c < 0x80) sum += c >= 0x30 && c <= 0x39 ? 30 : 10;
+    else if (c <= 0x024f || (c >= 0x0370 && c <= 0x06ff)) sum += 15;
+    else if (
+      (c >= 0xac00 && c <= 0xd7af) ||
+      (c >= 0x1100 && c <= 0x11ff) ||
+      (c >= 0x3130 && c <= 0x318f)
+    ) {
+      sum += 27;
+    } else if (
+      (c >= 0x3040 && c <= 0x30ff) ||
+      (c >= 0x3400 && c <= 0x9fff) ||
+      (c >= 0xf900 && c <= 0xfaff)
+    ) {
+      sum += 24;
+    } else sum += 30;
   }
-  return Math.ceil(ascii / 3 + half / 2 + full);
+  // The sum is in 1/30 of a token, so the math stays in integers.
+  return Math.ceil(sum / 30);
 }
 
 /** The estimated prompt tokens of one chat call. */

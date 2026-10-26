@@ -147,8 +147,8 @@ describe("dictation cleanup keeps prompt + max_tokens inside the window", () => 
     expect(calls.length).toBeGreaterThan(1);
     for (const c of calls) {
       expect(promptTokensOf(c) + c.maxTokens).toBeLessThanOrEqual(12_000);
-      // Each answer budget is under the cap, so the answer can end.
-      expect(c.maxTokens).toBeLessThan(8192);
+      // Each answer budget is small, so the answer ends inside the timeout.
+      expect(c.maxTokens).toBeLessThanOrEqual(2048);
     }
     expect(r.cleaned).toBe(calls.map((_, n) => `Part ${n}.`).join(" "));
     expect(r.llmModel).not.toBeNull();

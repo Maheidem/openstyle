@@ -1,6 +1,5 @@
 import {
   postProcess as cleanupWithModel,
-  MAX_CLEANUP_OUTPUT_TOKENS,
   maxOutputTokensForCleanup,
   sanitizeTranscriptText,
 } from "@openstyle/stt";
@@ -45,6 +44,14 @@ import {
 import { createChatModel, getDefaultModels } from "./providers.js";
 
 const log = createAppLogger("post-process");
+
+/**
+ * The answer budget of one piece of a dictation that does not fit the
+ * window. A piece must also end inside the cleanup timeout (20 s, task
+ * profile `cleanup`): Gemma 4 E2B writes about 144 tokens/s
+ * (specs/llm-runtime-tuning.md 4.1), so 2048 tokens take about 14 s.
+ */
+const CLEANUP_PIECE_MAX_OUTPUT_TOKENS = 2048;
 
 /** The result of one cleanup call, or of the pieces of one dictation. */
 interface CleanupOutcome {
@@ -335,8 +342,8 @@ export async function postProcess(
 
       // The context guard (specs/llm-runtime-tuning.md 9 item 5). A text that
       // fits is sent as one call, as before. A longer text is cut into pieces
-      // that fit the window and whose answer budget is under the cap, so each
-      // answer can end. The person gets cleaned text, never an error.
+      // that fit the window and whose answer budget is at most
+      // CLEANUP_PIECE_MAX_OUTPUT_TOKENS, so each answer can end in time. The person gets cleaned text, never an error.
       const contextWindow = contextWindowFor(
         resolved.provider,
         resolved.modelId,
@@ -385,7 +392,7 @@ export async function postProcess(
         const pieceFits = (p: string) => {
           const call = buildRewritePrompt(p, promptOptions);
           return (
-            maxOutputTokensForCleanup(p) < MAX_CLEANUP_OUTPUT_TOKENS &&
+            maxOutputTokensForCleanup(p) <= CLEANUP_PIECE_MAX_OUTPUT_TOKENS &&
             fitsCall(
               call.system,
               call.prompt,

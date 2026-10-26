@@ -21,13 +21,14 @@ const ZH =
   "[s12] 我：好的，Riverside 发布的计划是由 Dana 负责供应商名单，我们在三月十四日发布测试版。";
 
 describe("estimatePromptTokens", () => {
-  it("weights ASCII 1/3, a digit 1, Latin and Cyrillic 1/2, CJK 1", () => {
+  it("weights ASCII 1/3, a digit 1, Latin and Cyrillic 1/2, CJK 0.8, Hangul 0.9", () => {
     expect(estimatePromptTokens("")).toBe(0);
     expect(estimatePromptTokens("abc")).toBe(1);
     expect(estimatePromptTokens("123")).toBe(3);
     expect(estimatePromptTokens("éé")).toBe(1);
     expect(estimatePromptTokens("привет")).toBe(3);
-    expect(estimatePromptTokens("我们发布")).toBe(4);
+    expect(estimatePromptTokens("我们发布发布")).toBe(5);
+    expect(estimatePromptTokens("한국어요")).toBe(4);
     expect(estimatePromptTokens("🎉")).toBe(2);
   });
 
