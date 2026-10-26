@@ -36,8 +36,14 @@ export const repoRoot = resolve(
 );
 export const ROOT = "/tmp/meeting-eval";
 export const SERVER_HOME = join(ROOT, "home");
-/** The built-in MLX ASR model of every eval transcription (owner rule 2026-10-21). */
-export const ASR_MODEL_ID = "qwen3-1.7b-8bit";
+/**
+ * The built-in MLX ASR model of every eval transcription (owner rule
+ * 2026-10-21). MEETING_EVAL_ASR_MODEL selects another catalog id of
+ * apps/server/src/lib/mlx-asr/constants.ts (overnight ASR sweep). The id is
+ * part of the ASR hash (meetingHash, `asr=`).
+ */
+export const ASR_MODEL_ID =
+  process.env.MEETING_EVAL_ASR_MODEL?.trim() || "qwen3-1.7b-8bit";
 export const ASR_DEF = (() => {
   const d = MLX_ASR_MODELS.find((m) => m.id === ASR_MODEL_ID);
   if (!d) throw new Error(`${ASR_MODEL_ID} is not in the MLX ASR catalog`);

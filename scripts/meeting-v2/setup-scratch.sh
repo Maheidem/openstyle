@@ -140,8 +140,9 @@ echo "meetings all recorded: $([ "$STATUS_OK" = 1 ] && echo yes || echo NO)"
 [ "$STATUS_OK" = 1 ] || fail=1
 echo "default model providers: $PROVIDERS (want local-mlx,local-mlx-llm,)"
 [ "$PROVIDERS" = "local-mlx,local-mlx-llm," ] || fail=1
-echo "default voice row: $VOICE (want local-mlx/qwen3-1.7b-8bit)"
-[ "$VOICE" = "local-mlx/qwen3-1.7b-8bit" ] || fail=1
+VOICE_WANT="local-mlx/${MEETING_EVAL_ASR_MODEL:-qwen3-1.7b-8bit}"
+echo "default voice row: $VOICE (want $VOICE_WANT)"
+[ "$VOICE" = "$VOICE_WANT" ] || fail=1
 echo "own_servers: $OWN_SERVERS (want 0)"
 [ "$OWN_SERVERS" = "0" ] || fail=1
 

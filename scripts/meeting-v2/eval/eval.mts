@@ -704,6 +704,9 @@ async function main(): Promise<number> {
   const golds = goldFor(ids.map((id) => id.slice(0, 8)));
   mkdirSync(join(outDir, "pack"), { recursive: true });
   console.log(`out: ${outDir}`);
+  console.log(
+    `asr model: ${ASR_MODEL_ID}${process.env.MEETING_EVAL_ASR_MODEL ? " (MEETING_EVAL_ASR_MODEL)" : " (default)"}`,
+  );
   const work = await setupScratch(ids);
   mkdirSync(join(outDir, "arms"), { recursive: true });
   await ensureDownloaded(join(work, "test.db"));
