@@ -114,6 +114,17 @@ Repeatable procedures live as skills. Check them before you start a task; do not
 
 pi children start without skills or context files, so every pi brief must name the skill files to read first.
 
+## LLM design ethos (owner rule, 2026-10-26)
+
+**Specialization over over-prompting.** The app runs small local models (Gemma 4 E2B by default). A small model does one focused job well and many jobs badly. This rule applies to every LLM feature in the app.
+
+- Give each LLM call one narrow job, with a short prompt and its own tests.
+- Use plain code for rule-like work (digits, dates, money, contact info, symbols, line commands, list markers). Do not ask the model to do it.
+- When a small model does a job badly, split the job into stages. Do not add more rules or examples to the same prompt.
+- Measure each stage alone, and measure the whole pipeline against the current one (bench, gold meetings, blind judge).
+
+Why: on 2026-10-26 a 333-word focused dictation prompt beat the ~4k-token multi-job prompt (E2B 36 vs 32 of 108 bench passes, E4B 60 vs 40; blind judge 13 vs 2 on E2B). Details: `specs/llm-runtime-tuning.md`.
+
 ## UI conventions
 
 - Design tokens and the accent discipline live in `specs/design-system.md` and `apps/electron/src/renderer/src/globals.css`. The accent is deliberately **neutral grey**; `--accent-passive-tint`/`--accent-passive-ink` (blue) are the only sanctioned blue fills (selection, speaker/diarization chips), `--live` (coral) is **recording/live only**, and `--destructive` is kept distinct from both. Check that file before styling, and `specs/design/reskin-mockups.html` for pixel-level truth.
