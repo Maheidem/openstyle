@@ -237,6 +237,8 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
         ctx,
         profile,
         minSplitTokens: MIN_SPLIT_TOKENS_IDENTIFY,
+        // A unit that is too long for the window always splits.
+        minSplitTokensInput: 0,
         tokensOf: tokensOfLines,
         maxOutput: (_members, p) => maxOutputFor(labels.length, p),
         fits: (members, out, p) =>

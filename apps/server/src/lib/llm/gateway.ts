@@ -34,13 +34,16 @@ import {
   type CallFacts,
   CancelledError,
   ContentFilterError,
+  ContextExceededError,
   DeadlineExceededError,
   failureDetail,
   type GatewayError,
+  INPUT_OVERFLOW,
   LengthError,
   MAX_RETRY_WAIT_MS,
   ModelMismatchError,
   modelUnavailableFrom,
+  overflowNumbers,
   ProviderError,
   ReasoningLeakError,
   type RetryAdvice,
@@ -58,6 +61,7 @@ import {
 import type { GatewayOverrides, LlmTaskContext } from "./registry.js";
 import { isLocalProvider, isOwnServerProvider } from "./registry.js";
 import { type ResolvedTaskCall, resolveTaskCall } from "./task-profiles.js";
+import { estimateCallTokens, fitsWindow } from "./token-budget.js";
 import { getTracing, telemetryFor } from "./tracing.js";
 
 // The LLM gateway (specs/meeting-enhance-agentic.md section 5). One entry
@@ -456,8 +460,6 @@ function parseRetryAfter(
   return null;
 }
 
-const INPUT_OVERFLOW =
-  /prefill_memory_exceeded|context_length_exceeded|maximum context length/i;
 const MODE_REJECTION = /response_format|json_schema|schema/i;
 
 /** Unwrap a `RetryError` to its last error. Not expected at `maxRetries` 0. */
@@ -501,11 +503,19 @@ function mapApiError(error: APICallError, c: ErrorContext): GatewayError {
     status === 413 ||
     (status === 400 && INPUT_OVERFLOW.test(`${body} ${error.message}`))
   ) {
-    return new LengthError({
+    const numbers = overflowNumbers(body);
+    // Loud: the guard before the send let this call through, so its estimate
+    // was too low. The caller splits the input and tries again.
+    log.error(
+      `context exceeded: the model refused ${c.facts.step} ${c.facts.unitKey} (HTTP ${status}, prompt ${numbers.promptTokens ?? "?"} + max ${c.maxOutputTokens} > context ${numbers.contextTokens ?? c.profile.contextWindow ?? "?"}); the caller splits`,
+    );
+    return new ContextExceededError({
       ...common,
       message: "The request was too long for the model.",
-      where: "input",
       maxOutputTokens: c.maxOutputTokens,
+      source: "provider",
+      promptTokens: numbers.promptTokens,
+      contextTokens: numbers.contextTokens ?? c.profile.contextWindow,
       retry: null,
     });
   }
@@ -860,6 +870,25 @@ export async function callStructured<T>(
       phase: "queued",
     });
   };
+
+  // The context guard (specs/llm-runtime-tuning.md 9 item 5): a call whose
+  // estimated prompt and answer budget do not fit the window is not sent.
+  // The caller splits the input. A call that fits is sent unchanged.
+  const promptTokens = estimateCallTokens({ instructions, messages });
+  if (!fitsWindow(promptTokens, maxOutputTokens, profile.contextWindow)) {
+    log.warn(
+      `context guard: ${input.step} ${input.unitKey} not sent (estimated prompt ${promptTokens} + max ${maxOutputTokens} > context ${profile.contextWindow}); the caller splits`,
+    );
+    throw new ContextExceededError({
+      facts,
+      message: "The request is too long for the model. It was not sent.",
+      maxOutputTokens,
+      source: "estimate",
+      promptTokens,
+      contextTokens: profile.contextWindow,
+      retry: null,
+    });
+  }
 
   try {
     return await withLlmLane(

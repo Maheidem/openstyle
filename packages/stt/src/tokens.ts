@@ -5,7 +5,7 @@ function estimateTokenCount(text: string): number {
 
 const MIN_CLEANUP_OUTPUT_TOKENS = 512;
 /** Groq / most cleanup models support at least 8k completion tokens. */
-const MAX_CLEANUP_OUTPUT_TOKENS = 8192;
+export const MAX_CLEANUP_OUTPUT_TOKENS = 8192;
 
 /**
  * Scale max output tokens with input length so long dictations aren't truncated.

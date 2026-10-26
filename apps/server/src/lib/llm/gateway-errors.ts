@@ -92,6 +92,80 @@ export class LengthError extends GatewayError {
   }
 }
 
+/**
+ * The prompt and the answer budget do not fit the context window of the model
+ * (specs/llm-runtime-tuning.md 9 item 5). The kind stays `length` (where
+ * `input`), so every caller that splits on a long input handles it.
+ *
+ * `source`:
+ * - `estimate`: the guard of the gateway stopped the call before it was sent
+ *   (no request, no call record).
+ * - `provider`: the model refused the request. For the local MLX worker the
+ *   expected refusal is HTTP 400 with the body
+ *   `{"error": {"type": "invalid_request_error", "code": "context_length_exceeded",
+ *   "message": "...", "prompt_tokens": N, "max_tokens": M, "context_tokens": C}}`.
+ *   The numbers are optional. OpenAI-compatible servers send the same code.
+ *   A refusal means that the estimate was too low: the caller splits.
+ */
+export class ContextExceededError extends LengthError {
+  readonly source: "estimate" | "provider";
+  /** Estimated (source `estimate`) or counted by the provider. null: unknown. */
+  readonly promptTokens: number | null;
+  readonly contextTokens: number | null;
+  constructor(
+    init: Init & {
+      maxOutputTokens: number;
+      source: "estimate" | "provider";
+      promptTokens: number | null;
+      contextTokens: number | null;
+    },
+  ) {
+    super({ ...init, where: "input" });
+    this.source = init.source;
+    this.promptTokens = init.promptTokens;
+    this.contextTokens = init.contextTokens;
+  }
+}
+
+/** Provider texts of a prompt that is too long for the model. */
+export const INPUT_OVERFLOW =
+  /prefill_memory_exceeded|context_length_exceeded|maximum context length/i;
+
+/** The token numbers of a refusal body, when the provider sends them. */
+export function overflowNumbers(body: string): {
+  promptTokens: number | null;
+  contextTokens: number | null;
+} {
+  const num = (key: string): number | null => {
+    const m = new RegExp(`"${key}"\\s*:\\s*(\\d+)`).exec(body);
+    return m?.[1] ? Number.parseInt(m[1], 10) : null;
+  };
+  return {
+    promptTokens: num("prompt_tokens"),
+    contextTokens: num("context_tokens"),
+  };
+}
+
+/**
+ * True when a raw provider error says that the prompt is too long: HTTP 413,
+ * or HTTP 400 with one of the INPUT_OVERFLOW texts. For callers that do not
+ * go through the gateway (dictation cleanup).
+ */
+export function isInputOverflow(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if (error instanceof ContextExceededError) return true;
+  const e = error as {
+    statusCode?: unknown;
+    responseBody?: unknown;
+    message?: unknown;
+  };
+  if (e.statusCode === 413) return true;
+  if (e.statusCode !== 400) return false;
+  const body = typeof e.responseBody === "string" ? e.responseBody : "";
+  const message = typeof e.message === "string" ? e.message : "";
+  return INPUT_OVERFLOW.test(`${body} ${message}`);
+}
+
 export class ContentFilterError extends GatewayError {
   readonly kind = "content_filter";
   readonly via: "finish_reason" | "refusal";

@@ -131,6 +131,35 @@ export function getModelCostCached(
   }
 }
 
+/**
+ * Cache-only lookup of the models.dev `limit.context` of a model. It never
+ * fetches, so it is safe on the dictation path. null on a cold cache or when
+ * the entry has no limit.
+ */
+export function getModelContextCached(
+  providerId: string,
+  modelId: string,
+): number | null {
+  if (!isRegistryCacheFresh() || !modelsCache) return null;
+  try {
+    const provider = (modelsCache.data as Record<string, unknown>)[
+      providerId
+    ] as RegistryProvider | undefined;
+    if (!provider?.models) return null;
+    const shortId = stripModelPrefix(providerId, modelId);
+    const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
+    const context = (model?.limit as { context?: unknown } | undefined)
+      ?.context;
+    return typeof context === "number" &&
+      Number.isFinite(context) &&
+      context > 0
+      ? Math.floor(context)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function isCleanupModelSupported(
   providerId: string,
   modelId: string,

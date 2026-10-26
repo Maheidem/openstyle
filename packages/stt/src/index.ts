@@ -22,7 +22,10 @@ export {
   wordEndsSentence,
   wordEndsTurn,
 } from "./text.js";
-export { maxOutputTokensForCleanup } from "./tokens.js";
+export {
+  MAX_CLEANUP_OUTPUT_TOKENS,
+  maxOutputTokensForCleanup,
+} from "./tokens.js";
 export type {
   TranscribeAudio,
   TranscribeParams,

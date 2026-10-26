@@ -1167,3 +1167,86 @@ describe("GR10 (c): resume sends no finished call again", () => {
     expect(finishedKeys(r.runId).every(([, n]) => n === 1)).toBe(true);
   });
 });
+
+// The context guard (specs/llm-runtime-tuning.md 9 item 5): a call that the
+// model refuses as too long is split and sent again, never a failed summary.
+const refused = () =>
+  new APICallError({
+    message: "HTTP 400",
+    url: "http://127.0.0.1:1/v1/chat/completions",
+    requestBodyValues: {},
+    statusCode: 400,
+    responseBody: JSON.stringify({
+      error: {
+        type: "invalid_request_error",
+        code: "context_length_exceeded",
+        message: "The prompt and max_tokens do not fit the context.",
+        prompt_tokens: 40_000,
+        max_tokens: 4096,
+        context_tokens: 32_768,
+      },
+    }),
+    isRetryable: false,
+  });
+
+describe("summarize: the context guard", () => {
+  it("CB-S1: a refused single call becomes map and reduce; the summary is ok", async () => {
+    setBudget(8000);
+    const f = meeting(5, 300, "m-cb1"); // 20 lines, about 6000 tokens: one call
+    const r = await run(f, (req) =>
+      isSingle(req) ? refused() : sum({ overview: "Final." }),
+    );
+    expect(keysOf(r.recorder)[0]).toBe("single");
+    expect(r.requests.filter(isMap).length).toBeGreaterThanOrEqual(2);
+    expect(r.requests.filter(isReduce).length).toBeGreaterThanOrEqual(1);
+    expect(r.finalState.summary?.status).toBe("ok");
+    expect(savedRow(f.meeting.id)?.summary_json).toContain('"Final."');
+    expect(statusOf(r)).toBe("succeeded");
+  });
+
+  it("CB-S2: a refused map chunk is split in two halves", async () => {
+    setBudget(2000);
+    const f = meeting(5, 300, "m-cb2");
+    let refusedOnce = false;
+    const r = await run(f, (req) => {
+      if (isMap(req) && partOf(req) === 0 && !refusedOnce) {
+        refusedOnce = true;
+        return refused();
+      }
+      return sum({ overview: "Final." });
+    });
+    expect(keysOf(r.recorder).slice(0, 3)).toEqual([
+      "map:0",
+      "map:0/0",
+      "map:0/1",
+    ]);
+    expect(r.finalState.summary?.status).toBe("ok");
+    expect(statusOf(r)).toBe("succeeded");
+  });
+
+  it("CB-S3: a refused reduce group is split; the halves are reduced on the next level", async () => {
+    setBudget(2000);
+    const f = meeting(5, 300, "m-cb3");
+    let reduces = 0;
+    const r = await run(f, (req) => {
+      if (!isReduce(req)) return sum();
+      reduces += 1;
+      if (reduces === 1) return refused();
+      return sum({ overview: `Reduce ${reduces}.` });
+    });
+    expect(keysOf(r.recorder)).toEqual([
+      "map:0",
+      "map:1",
+      "map:2",
+      "map:3",
+      "reduce:1:0",
+      "reduce:1:0/0",
+      "reduce:1:0/1",
+      "reduce:2:0",
+    ]);
+    const last = r.requests.at(-1);
+    expect(last?.user.match(/<partial index="\d">/g)).toHaveLength(2);
+    expect(savedRow(f.meeting.id)?.summary_json).toContain('"Reduce 4."');
+    expect(statusOf(r)).toBe("succeeded");
+  });
+});

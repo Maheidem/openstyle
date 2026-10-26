@@ -523,6 +523,8 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
         ctx,
         profile: input.profile,
         minSplitTokens: MIN_SPLIT_TOKENS_CORRECT,
+        // A unit that is too long for the window always splits.
+        minSplitTokensInput: 0,
         tokensOf: tokensOfSegments,
         maxOutput: maxOutputFor,
         fits: (members, maxOut, profile) =>

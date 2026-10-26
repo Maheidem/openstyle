@@ -1,8 +1,10 @@
+import { createAppLogger } from "@openstyle/utils";
 import type { LlmSkipReason, LlmStepStatus } from "@openstyle/validations";
 import type { Span } from "@opentelemetry/api";
 import type { CallStructuredResult } from "../../llm/gateway.js";
 import {
   CancelledError,
+  ContextExceededError,
   GatewayError,
   LengthError,
   ReasoningLeakError,
@@ -28,6 +30,8 @@ import {
 // 4.0.2, 4.0.6, 4.0.7). Exactly one party opens and closes each step row.
 
 const ONE_LINE_MAX = 200;
+
+const log = createAppLogger("llm-unit");
 
 /**
  * True when the provider builds its grammar with llguidance, which applies
@@ -413,6 +417,12 @@ export interface RouteSpec<M, T> {
   ctx: RunContext;
   profile: CallProfile;
   minSplitTokens: number;
+  /**
+   * The split floor when the input is too long for the context window
+   * (ContextExceededError). Default `minSplitTokens`. A unit that never splits
+   * for an output `length` can still split for a long input.
+   */
+  minSplitTokensInput?: number;
   tokensOf(members: readonly M[]): number;
   /** The node formula of the output limit (4.2.4, 4.3.5). */
   maxOutput(members: readonly M[], profile: CallProfile): number;
@@ -507,7 +517,8 @@ export async function runUnitRoute<M, T>(
       // A call that reached the wire but wrote no record is a lost record.
       const neverSent =
         err.kind === "model_unavailable" ||
-        (err instanceof CancelledError && err.phase === "queued");
+        (err instanceof CancelledError && err.phase === "queued") ||
+        (err instanceof ContextExceededError && err.source === "estimate");
       if (err.facts.callId === null && !neverSent) ctx.recordLost();
       if (err instanceof CancelledError) {
         if (ctx.isStopped() && !ctx.signal.aborted) {
@@ -538,9 +549,16 @@ export async function runUnitRoute<M, T>(
         const halves = splitMembers(
           members,
           spec.tokensOf,
-          spec.minSplitTokens,
+          inputTooLong
+            ? (spec.minSplitTokensInput ?? spec.minSplitTokens)
+            : spec.minSplitTokens,
         );
         if (halves) {
+          if (inputTooLong) {
+            log.warn(
+              `context budget: ${node} ${key} split into ${halves[0].length} + ${halves[1].length} members`,
+            );
+          }
           spec.onSplit?.();
           const first = await runUnitRoute(spec, `${key}/0`, halves[0]);
           const second = await runUnitRoute(spec, `${key}/1`, halves[1]);

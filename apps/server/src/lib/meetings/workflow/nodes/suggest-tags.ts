@@ -1,9 +1,11 @@
+import { createAppLogger } from "@openstyle/utils";
 import {
   type LlmSkipReason,
   MAX_SUGGESTED_TAGS,
   normalizeTagNames,
 } from "@openstyle/validations";
 import { callUnit } from "../../../llm/call-unit.js";
+import { ContextExceededError } from "../../../llm/gateway-errors.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
 import { addSuggestedTags, listTagsWithCounts } from "../../tags.js";
 import { estimateTokens } from "../chunking.js";
@@ -37,6 +39,8 @@ import {
 // `deriveRunStatus` does not read this node, so the run keeps its status.
 
 const UNIT_KEY = "tags";
+
+const log = createAppLogger("suggest-tags");
 
 function tokensOfLines(lines: readonly string[]): number {
   return lines.reduce((sum, l) => sum + estimateTokens(l) + 1, 0);
@@ -156,47 +160,65 @@ export function makeSuggestTagsNode(deps: WorkflowDeps) {
     if (lines.length === 0) return skipped("empty_transcript");
 
     ctx.progress.addTotal(1);
-    const leaves = await runUnitRoute<string, MeetingTags>(
-      {
-        node: "suggestTags",
-        ctx,
-        profile,
-        // One unit. Never split it.
-        minSplitTokens: Number.POSITIVE_INFINITY,
-        tokensOf: tokensOfLines,
-        maxOutput: (_members, p) => maxOutputFor(p),
-        fits: (members, out, p) =>
-          fitsContext(p, systemTokens + tokensOfLines(members), out),
-        call: (unit) =>
-          callUnit(
-            {
-              step: "suggestTags",
-              runId: state.runId,
-              unitKey: unit.key,
-              chunkIndex: null,
-              schema: MEETING_TAGS_STEP_SCHEMA,
-              instructions: system,
-              messages: [
-                { role: "user", content: buildTagsUserPrompt(unit.members) },
-              ],
-              profile: unit.profile,
-              maxOutputTokens: unit.maxOutputTokens,
-              signal: ctx.signal,
-              onQueued: (i) => ctx.progress.onQueued(i),
-              onHeld: (held) => ctx.progress.callHeld(held),
-            },
-            ctx,
-            deps,
-          ),
-        onLeafEnd: (leaf) => {
-          if (leaf.status === "ok") ctx.progress.callEnded("ok");
-          else if (leaf.status === "failed") ctx.progress.callEnded("failed");
+    let refused = false;
+    const route = (key: string, members: string[]) =>
+      runUnitRoute<string, MeetingTags>(
+        {
+          node: "suggestTags",
+          ctx,
+          profile,
+          // One unit. Never split it.
+          minSplitTokens: Number.POSITIVE_INFINITY,
+          tokensOf: tokensOfLines,
+          maxOutput: (_members, p) => maxOutputFor(p),
+          fits: (members, out, p) =>
+            fitsContext(p, systemTokens + tokensOfLines(members), out),
+          call: (unit) =>
+            callUnit(
+              {
+                step: "suggestTags",
+                runId: state.runId,
+                unitKey: unit.key,
+                chunkIndex: null,
+                schema: MEETING_TAGS_STEP_SCHEMA,
+                instructions: system,
+                messages: [
+                  { role: "user", content: buildTagsUserPrompt(unit.members) },
+                ],
+                profile: unit.profile,
+                maxOutputTokens: unit.maxOutputTokens,
+                signal: ctx.signal,
+                onQueued: (i) => ctx.progress.onQueued(i),
+                onHeld: (held) => ctx.progress.callHeld(held),
+              },
+              ctx,
+              deps,
+            ).catch((err: unknown) => {
+              if (err instanceof ContextExceededError) refused = true;
+              throw err;
+            }),
+          onLeafEnd: (leaf) => {
+            if (leaf.status === "ok") ctx.progress.callEnded("ok");
+            else if (leaf.status === "failed") ctx.progress.callEnded("failed");
+          },
         },
-      },
-      UNIT_KEY,
-      lines,
-    );
-    const leaf = leaves[0];
+        key,
+        members,
+      );
+    let leaves = await route(UNIT_KEY, lines);
+    if (refused && leaves[0]?.status === "failed") {
+      // The context guard (specs/llm-runtime-tuning.md 9 item 5): the unit
+      // never splits, so it tries once more with half of the lines.
+      const fewer = sampleLines(lines, Math.floor(tokensOfLines(lines) / 2));
+      log.warn(
+        `context budget: suggestTags is too long for the window; one more try with ${fewer.length} of ${lines.length} lines`,
+      );
+      if (fewer.length > 0) {
+        ctx.progress.addTotal(1);
+        leaves = await route(`${UNIT_KEY}/1`, fewer);
+      }
+    }
+    const leaf = leaves[leaves.length - 1];
     // A unit is skipped only when the run stopped before its call.
     if (leaf?.status === "skipped") return skipped("stopped");
     if (leaf?.status !== "ok" || !leaf.result) {

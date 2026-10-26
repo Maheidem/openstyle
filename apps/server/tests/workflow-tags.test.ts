@@ -218,6 +218,34 @@ describe("suggestTags", () => {
     expect(tagRows(f.meeting.id)).toEqual([{ name: "legal", source: "user" }]);
   });
 
+  it("CB-T1: a tag call that the model refuses as too long is sent once more with half of the lines", async () => {
+    const f = meeting("m-tags-refused");
+    let n = 0;
+    const r = await run(f.meeting.id, () => {
+      n += 1;
+      if (n > 1) return tagsReply(["budget"]);
+      return new APICallError({
+        message: "HTTP 400",
+        url: "http://127.0.0.1:1/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 400,
+        responseBody:
+          '{"error":{"type":"invalid_request_error","code":"context_length_exceeded","message":"too long"}}',
+        isRetryable: false,
+      });
+    });
+    expect(r.tagRequests).toHaveLength(2);
+    const lines = (i: number) =>
+      (r.tagRequests[i]?.user.match(/\n/g) ?? []).length;
+    expect(lines(1)).toBeLessThan(lines(0));
+    expect(r.recorder.calls.map((c) => c.unitKey)).toContain("tags/1");
+    expect(r.finalState.tags).toMatchObject({
+      status: "ok",
+      added: ["budget"],
+    });
+    expect(r.recorder.steps.get("tags")?.status).toBe("succeeded");
+  });
+
   it("an invalid answer fails only the tag step", async () => {
     const f = meeting("m-bad-json");
     const r = await run(f.meeting.id, okReply('{"tags":"budget"}'));
