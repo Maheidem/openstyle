@@ -137,13 +137,13 @@ Through the app (the user path): Models page, AI cleanup, Change, Browse, row, D
 Through the eval harness (cache outside the app profile):
 
 ```bash
-pnpm meeting:eval --models <catalog-id> --hf-cache "$HOME/Library/Application Support/Openstyle-eval/hf"   # downloads when the model is missing
+pnpm meeting:eval --models <catalog-id>   # downloads to the default cache when the model is missing
 pnpm meeting:eval --models <catalog-id> --no-download                     # fails when the model is missing
 ```
 
 `eval.mts` reads the catalog (`eval.mts:68`, `:166`) and downloads through `POST /api/mlx-llm/models/<id>/download`. It rejects an id that is not in the catalog. So an eval of a candidate needs the candidate entry in the branch.
 
-Trap: `/tmp` is not durable. The macOS cleanup removed the blobs of 5 models from `/tmp/meeting-eval/hf` at 00:00 on 2026-10-25, and on 2026-10-25 evening the whole `/tmp/meeting-eval/hf/hub` folder was gone. PR #330 moves the default cache to `~/Library/Application Support/Openstyle-eval/hf` (env `OPENSTYLE_EVAL_HF_HOME`). Until it merges, pass `--hf-cache` as above. Check the blobs before a run: `find -L <cache>/hub/models--*/snapshots -type l | wc -l` must print 0 (a broken link shows as type `l` under `-L`).
+Trap: `/tmp` is not durable. The macOS cleanup removed the blobs of 5 models from `/tmp/meeting-eval/hf` at 00:00 on 2026-10-25, and on 2026-10-25 evening the whole `/tmp/meeting-eval/hf/hub` folder was gone. PR #330 moves the default cache to `~/Library/Application Support/Openstyle-eval/hf` (env `OPENSTYLE_EVAL_HF_HOME`) and lets `--hf-cache` point there. Before #330 merges, the default is `/tmp/meeting-eval/hf` and `--hf-cache` must be under `/tmp` (`eval.mts` refuses other paths). Check the blobs before a run: `find -L <cache>/hub/models--*/snapshots -type l | wc -l` must print 0 (a broken link shows as type `l` under `-L`).
 
 ## Tests (run from the repo root)
 
