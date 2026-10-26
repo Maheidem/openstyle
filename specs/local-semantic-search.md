@@ -668,7 +668,7 @@ One switch: `searchState()` returns `on`, or `off` with a `SearchOffReason` (8.1
 
 - In all off states: meetings, Enhance and Summary run as today. #234 retrieval is off (D2). The indexer does not run. `meeting_chunk_gc` keeps growing until search is on again.
 - Only `extension.ts` and `vec-store.ts` touch the vec0 table. Each call checks the state first. Reason: a read without the module fails with "no such module: vec0" (P1 9b). `DROP TABLE` also fails without it (P1 9d). `PRAGMA integrity_check` stays `ok` (P1 9e).
-- The dylib has `minos 14.0` (`vtool -show-build`). The app's `LSMinimumSystemVersion` is `12.0` (built `Info.plist`). On macOS 12 and 13 the load may fail. UNVERIFIED. If it fails, that is `extension_load_failed`.
+- The dylib has `minos 14.0` (`vtool -show-build`). The app's `LSMinimumSystemVersion` is `14.0` (`mac.minimumSystemVersion` in `electron-builder.yml`, issue #274), so the gap is closed: macOS 12 and 13 cannot start the app.
 
 ### 9.2 Model missing or deleted
 

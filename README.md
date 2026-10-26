@@ -48,7 +48,7 @@ Thanks to the Freestyle authors and contributors for the original work.
 
 ## Requirements
 
-- macOS. The published build is Apple Silicon (arm64) only.
+- macOS 14 (Sonoma) or later. The published build is Apple Silicon (arm64) only.
 - Node.js 22+ and pnpm 10+ to build.
 
 Windows and Linux targets exist in the build config and are inherited from

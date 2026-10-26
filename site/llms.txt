@@ -11,7 +11,7 @@
 ## Key facts
 
 - Free and open source (MIT license)
-- macOS only, Apple silicon (arm64) builds
+- macOS 14 or later, Apple silicon (arm64) builds
 - Hold a key, talk, let go; the text lands in the app you are typing in
 - Models: built-in speech models (Parakeet, Qwen3-ASR, SenseVoice, Whisper, more from Hugging Face) and a built-in text model (Gemma 4), your own server with an OpenAI-compatible transcription endpoint (for example oMLX), or a cloud provider with your own API key
 - The AI cleanup LLM can run inside the app (built-in Gemma 4), or on oMLX, LM Studio or any OpenAI-compatible server

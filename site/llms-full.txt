@@ -39,7 +39,7 @@ You choose where your voice goes:
 
 ## Requirements
 
-- macOS. The published builds are for Macs with Apple silicon (arm64) only.
+- macOS 14 (Sonoma) or later. The published builds are for Macs with Apple silicon (arm64) only.
 - On first launch macOS asks for Microphone access, and for Accessibility and
   Input Monitoring access so the app can read the global hotkey and paste into
   other applications.
@@ -75,7 +75,7 @@ Yes. Transcription can run entirely on your Mac with built-in MLX models.
 There is no account, no cloud service, and no telemetry.
 
 Which Macs are supported?
-Macs with Apple silicon. The published builds are for arm64 only.
+Macs with Apple silicon and macOS 14 or later. The published builds are for arm64 only.
 
 Does my audio leave my Mac?
 Not with a built-in model. With your own server it goes to that server. With
