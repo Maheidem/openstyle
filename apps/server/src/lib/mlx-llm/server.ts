@@ -64,6 +64,11 @@ export function getMlxLlmWorkerState(): MlxLlmWorkerState {
   return worker.getState();
 }
 
+/** True while a request to the LLM worker is in flight. */
+export function isMlxLlmWorkerBusy(): boolean {
+  return worker.busy();
+}
+
 /**
  * Start (or reuse) the worker for `modelId` and return its OpenAI base URL.
  * A different model stops the current worker first. A model that is not on

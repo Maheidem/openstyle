@@ -11,6 +11,7 @@
   "ignoreBinaries": [
     "cmake",
     "codesign",
+    "du",
     "ffmpeg",
     "install_name_tool",
     "make",

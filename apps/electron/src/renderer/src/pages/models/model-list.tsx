@@ -17,6 +17,7 @@ import type {
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
 import {
+  diskUseKey,
   displayProviderName,
   formatBytes,
   formatSpeed,
@@ -106,11 +107,20 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers, t: TFunction): Row[] {
       const status = it.status ?? "not_downloaded";
       const defId = it.defId;
       const engine = it.localEngine;
+      const deleteKey = `${engine ?? "whisper"}:${defId}`;
       const row: Row = {
         key: it.key,
         name: it.name,
         source: "local",
-        meta: localMeta(t, status, it.sizeBytes, it.note),
+        meta: localMeta(
+          t,
+          status,
+          it.sizeBytes,
+          it.note,
+          defId
+            ? m.diskBytes.get(diskUseKey(engine ?? "whisper", defId))
+            : undefined,
+        ),
         recommended: it.key === recommendedKey,
         custom: it.custom,
         selected: it.selected && status === "ready",
@@ -120,7 +130,11 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers, t: TFunction): Row[] {
       };
       // A row without a definition id has nothing to select, fetch or delete.
       if (defId) {
-        row.deleting = m.deletingKeys.has(`${engine ?? "whisper"}:${defId}`);
+        row.deleting = m.deletingKeys.has(deleteKey);
+        row.warning = m.deleteErrors.get(deleteKey);
+        // The selected MLX voice model can be deleted too (the app then
+        // switches to the recommended model, or to no model).
+        row.deleteWhenSelected = engine === "mlx";
         row.onSelect = () => h.onPickLocalVoice(defId, it.name, engine);
         row.onDownload = () => m.downloadLocal(defId, engine);
         row.onCancel = () => m.cancelLocal(defId, engine);
@@ -152,17 +166,23 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers, t: TFunction): Row[] {
   return rows;
 }
 
-/** The size shows until the model is on disk, as on the voice rows. */
-function localMeta(
+/**
+ * The download size shows until the model is on disk. Then the row shows the
+ * real disk use of the model folder (from the server), when it is known.
+ */
+export function localMeta(
   t: TFunction,
   status: Row["status"],
   sizeBytes: number | undefined,
   note?: string,
+  diskBytes?: number,
 ): string {
-  const sizeNote =
-    status !== "ready" && sizeBytes != null
-      ? ` · ${formatBytes(sizeBytes)}`
-      : "";
+  let sizeNote = "";
+  if (status !== "ready" && sizeBytes != null) {
+    sizeNote = ` · ${formatBytes(sizeBytes)}`;
+  } else if (status === "ready" && diskBytes != null) {
+    sizeNote = ` · ${t("models.diskUse.onDisk", { size: formatBytes(diskBytes) })}`;
+  }
   return `${note ?? t("models.onDevice")}${sizeNote}`;
 }
 
@@ -180,12 +200,22 @@ function buildLlmRows(
     key: it.key,
     name: it.name,
     source: "local",
-    meta: localMeta(t, it.status, it.sizeBytes),
+    meta: localMeta(
+      t,
+      it.status,
+      it.sizeBytes,
+      undefined,
+      m.diskBytes.get(diskUseKey("mlx-llm", it.defId)),
+    ),
     recommended: it.recommended,
     selected: it.selected && it.status === "ready",
     status: it.status,
     state: it.state,
     deleting: m.deletingKeys.has(`mlx-llm:${it.defId}`),
+    warning: m.deleteErrors.get(`mlx-llm:${it.defId}`),
+    // The selected built-in LLM can be deleted too (the app then switches to
+    // the recommended model, or to no model).
+    deleteWhenSelected: true,
     onSelect: () => void m.selectLocalLlm(it.defId, it.name).then(h.onClose),
     onDownload: () => m.downloadLocal(it.defId, "mlx-llm"),
     onCancel: () => m.cancelLocal(it.defId, "mlx-llm"),

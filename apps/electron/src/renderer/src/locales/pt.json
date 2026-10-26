@@ -625,6 +625,12 @@
     "modelPlural": "modelos",
     "deleteLocalTitle": "Excluir modelo local?",
     "deleteLocalMsg": "Remover <b>{{name}}</b>? Os pesos serão excluídos do cache local.",
+    "deleteInUseSwitch": "Este modelo está em uso. O app muda para <b>{{fallback}}</b>.",
+    "deleteInUseNone": "Este modelo está em uso. Depois de excluir, nenhum modelo deste tipo fica selecionado. Escolha um novo aqui.",
+    "diskUse": {
+      "onDisk": "{{size}} no disco",
+      "total": "Os modelos baixados usam {{size}} no disco."
+    },
     "deleteProviderTitle": "Excluir provedor",
     "deleteProviderMsgBase": "Excluir a chave do <b>{{provider}}</b>?",
     "deleteProviderCurrentSuffix": ", incluindo o modelo em uso",

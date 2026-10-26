@@ -678,6 +678,12 @@
     "modelPlural": "models",
     "deleteLocalTitle": "Delete local model?",
     "deleteLocalMsg": "Remove <b>{{name}}</b> from {{phrase}}. The weights are deleted from your local cache; you can download them again later.",
+    "deleteInUseSwitch": "This model is in use now. The app switches to <b>{{fallback}}</b>.",
+    "deleteInUseNone": "This model is in use now. After the delete, no model of this type is selected. Pick a new one here.",
+    "diskUse": {
+      "onDisk": "{{size}} on disk",
+      "total": "Downloaded models use {{size}} on disk."
+    },
     "deleteProviderTitle": "Delete provider",
     "deleteProviderMsgBase": "Delete the <b>{{provider}}</b> API key? This also removes all configured models for this provider",
     "deleteProviderCurrentSuffix": ", including a model you're currently using",

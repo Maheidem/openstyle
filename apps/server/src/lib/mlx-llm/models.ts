@@ -1,7 +1,13 @@
 import { existsSync, rmSync } from "node:fs";
-import { getDb } from "../db.js";
 import { describeDownloadError } from "../disk.js";
 import { downloadErrorSourceUrl } from "../download-guard.js";
+import {
+  type DefaultFallback,
+  type DeleteBlocker,
+  hasMeetingJobOfKind,
+  releaseDeletedModel,
+} from "../local-model-delete.js";
+import type { MeetingJobKind } from "../meetings/job-registry.js";
 import { hfRepoCacheDir } from "../mlx-asr/constants.js";
 import {
   type ActiveMlxDownload,
@@ -25,6 +31,7 @@ import {
 } from "./constants.js";
 import {
   getMlxLlmWorkerState,
+  isMlxLlmWorkerBusy,
   mlxLlmSetupBlocker,
   mlxLlmWorkerOverride,
   stopMlxLlmWorker,
@@ -168,13 +175,50 @@ export function cancelMlxLlmDownload(modelId: string): boolean {
   return true;
 }
 
-export function deleteMlxLlmModel(modelId: string): boolean {
+const LLM_JOB_KINDS: ReadonlySet<MeetingJobKind> = new Set([
+  "summarize",
+  "enhance",
+]);
+
+/**
+ * Why `modelId` cannot be deleted now, or null. A download must be
+ * cancelled first. A model is in use while the worker holds it and a request
+ * or a meeting Enhance or Summarize job runs.
+ */
+export function mlxLlmDeleteBlocker(modelId: string): DeleteBlocker | null {
+  const active = activeDownloads.get(modelId);
+  if (active && !active.error) return "downloading";
+  if (
+    getMlxLlmWorkerState().model === modelId &&
+    (isMlxLlmWorkerBusy() || hasMeetingJobOfKind(LLM_JOB_KINDS))
+  ) {
+    return "in_use";
+  }
+  return null;
+}
+
+/**
+ * The recommended model becomes the default after a delete of the default,
+ * when it is on disk and is not the deleted model.
+ */
+function llmFallbackFor(modelId: string): DefaultFallback | null {
+  const def = MLX_LLM_MODELS.find((m) => m.recommended);
+  if (!def || def.id === modelId || !isMlxLlmModelDownloaded(def)) return null;
+  return {
+    provider: MLX_LLM_PROVIDER_ID,
+    modelId: `${MLX_LLM_PROVIDER_ID}/${def.id}`,
+    modelName: def.displayName,
+  };
+}
+
+export async function deleteMlxLlmModel(modelId: string): Promise<boolean> {
   const def = getMlxLlmModel(modelId);
   if (!def) return false;
 
   cancelMlxLlmDownload(modelId);
+  // Unload the model before its files go, so no worker holds deleted files.
   if (getMlxLlmWorkerState().model === modelId) {
-    stopMlxLlmWorker().catch(() => {});
+    await stopMlxLlmWorker().catch(() => {});
   }
 
   const dir = hfRepoCacheDir(def.hfId);
@@ -185,14 +229,11 @@ export function deleteMlxLlmModel(modelId: string): boolean {
     return false;
   }
 
-  try {
-    getDb()
-      .prepare(
-        "DELETE FROM model_configs WHERE type = 'llm' AND provider = ? AND model_id = ?",
-      )
-      .run(MLX_LLM_PROVIDER_ID, `${MLX_LLM_PROVIDER_ID}/${modelId}`);
-  } catch {
-    // The DB can be closed during shutdown.
-  }
+  releaseDeletedModel({
+    type: "llm",
+    provider: MLX_LLM_PROVIDER_ID,
+    modelId: `${MLX_LLM_PROVIDER_ID}/${modelId}`,
+    fallback: llmFallbackFor(modelId),
+  });
   return existed;
 }

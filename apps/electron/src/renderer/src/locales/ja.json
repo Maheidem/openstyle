@@ -626,6 +626,12 @@
     "modelPlural": "モデル",
     "deleteLocalTitle": "ローカルモデルを削除しますか？",
     "deleteLocalMsg": "{{phrase}} から <b>{{name}}</b> を削除します。モデルデータはローカルキャッシュから削除されますが、後でいつでも再ダウンロードできます。",
+    "deleteInUseSwitch": "このモデルは使用中です。アプリは <b>{{fallback}}</b> に切り替わります。",
+    "deleteInUseNone": "このモデルは使用中です。削除後、この種類のモデルは選択されません。ここで新しいモデルを選んでください。",
+    "diskUse": {
+      "onDisk": "ディスク上 {{size}}",
+      "total": "ダウンロード済みモデルはディスクを {{size}} 使用しています。"
+    },
     "deleteProviderTitle": "プロバイダーを削除",
     "deleteProviderMsgBase": "<b>{{provider}}</b> の API キーを削除しますか？これにより、このプロバイダー用に構成されたすべてのモデルも削除されます",
     "deleteProviderCurrentSuffix": "（現在使用中のモデルも含みます）",

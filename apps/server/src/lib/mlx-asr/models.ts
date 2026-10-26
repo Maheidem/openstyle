@@ -14,7 +14,7 @@ import {
   modelInfo,
   snapshotDownload,
 } from "@huggingface/hub";
-import { getDb } from "../db.js";
+import { isDictationActive } from "../dictation-activity.js";
 import {
   assertEnoughDiskSpace,
   DOWNLOAD_FREE_BUFFER_BYTES,
@@ -22,6 +22,13 @@ import {
 } from "../disk.js";
 import { downloadErrorSourceUrl } from "../download-guard.js";
 import { progressFetch } from "../hf/progress.js";
+import {
+  type DefaultFallback,
+  type DeleteBlocker,
+  hasMeetingJobOfKind,
+  releaseDeletedModel,
+} from "../local-model-delete.js";
+import type { MeetingJobKind } from "../meetings/job-registry.js";
 import {
   getMlxAsrModel,
   hfCacheRoot,
@@ -50,7 +57,7 @@ import {
   isMlxRuntimeInstallable,
   updateManagedMlxRuntimeIfNeeded,
 } from "./runtime.js";
-import { stopMlxServer } from "./server.js";
+import { getMlxAsrWorkerState, stopMlxServer } from "./server.js";
 import { fillWhisperProcessor } from "./whisper-processor.js";
 
 export type MlxDownloadStatus =
@@ -677,11 +684,51 @@ export function cancelMlxDownload(modelId: string): boolean {
   return true;
 }
 
+const ASR_JOB_KINDS: ReadonlySet<MeetingJobKind> = new Set([
+  "transcribe",
+  "retry-failed",
+]);
+
+/** The recommended voice model on a Mac that runs MLX. */
+const RECOMMENDED_MLX_VOICE_ID = "qwen3-0.6b-8bit";
+
+/**
+ * Why `modelId` cannot be deleted now, or null. A download must be
+ * cancelled first. A model is in use while the speech worker holds it and a
+ * dictation or a meeting transcription runs.
+ */
+export function mlxDeleteBlocker(modelId: string): DeleteBlocker | null {
+  const active = activeDownloads.get(modelId);
+  if (active && !active.error) return "downloading";
+  if (
+    getMlxAsrWorkerState().model === modelId &&
+    (isDictationActive() || hasMeetingJobOfKind(ASR_JOB_KINDS))
+  ) {
+    return "in_use";
+  }
+  return null;
+}
+
+/**
+ * The recommended voice model becomes the default after a delete of the
+ * default, when it is on disk and is not the deleted model.
+ */
+function voiceFallbackFor(modelId: string): DefaultFallback | null {
+  const def = getMlxAsrModel(RECOMMENDED_MLX_VOICE_ID);
+  if (!def || def.id === modelId || !isMlxModelDownloaded(def)) return null;
+  return {
+    provider: MLX_ASR_PROVIDER_ID,
+    modelId: `${MLX_ASR_PROVIDER_ID}/${def.id}`,
+    modelName: def.displayName,
+  };
+}
+
 export function deleteMlxModel(modelId: string): boolean {
   const model = getMlxAsrModel(modelId);
   if (!model) return false;
 
   cancelMlxDownload(modelId);
+  // stopMlxServer clears the worker state at once, before the files go.
   stopMlxServer().catch(() => {});
 
   const dir = hfRepoCacheDir(model.hfId);
@@ -692,15 +739,12 @@ export function deleteMlxModel(modelId: string): boolean {
     return false;
   }
 
-  try {
-    const db = getDb();
-    const configuredId = `${MLX_ASR_PROVIDER_ID}/${modelId}`;
-    db.prepare(
-      "DELETE FROM model_configs WHERE type = 'voice' AND provider = ? AND model_id = ?",
-    ).run(MLX_ASR_PROVIDER_ID, configuredId);
-  } catch {
-    // DB may be unavailable during shutdown
-  }
+  releaseDeletedModel({
+    type: "voice",
+    provider: MLX_ASR_PROVIDER_ID,
+    modelId: `${MLX_ASR_PROVIDER_ID}/${modelId}`,
+    fallback: voiceFallbackFor(modelId),
+  });
 
   // A custom model leaves the list. The caller adds it again through the dialog.
   const rowRemoved = model.custom ? deleteCustomModelRow(modelId) : false;

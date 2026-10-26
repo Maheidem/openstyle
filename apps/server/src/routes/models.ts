@@ -18,6 +18,7 @@ import {
 } from "../lib/mlx-llm/constants.js";
 import { getMlxLlmModelStatus } from "../lib/mlx-llm/models.js";
 import { reconcileRemovedMlxLlmModels } from "../lib/mlx-llm/reconcile.js";
+import { listModelDiskUse } from "../lib/model-disk-usage.js";
 import {
   DEPRECATED_STATUS,
   fetchModelsFromRegistry,
@@ -266,6 +267,8 @@ const models = new Hono()
       );
     }
   })
+  // The real disk use of each downloaded app model and the total.
+  .get("/disk-usage", (c) => c.json(listModelDiskUse()))
   .get("/configured", (c) => {
     reconcileUnsupportedMlxVoiceDefault();
     reconcileRemovedMlxLlmModels();

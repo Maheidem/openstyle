@@ -626,6 +626,12 @@
     "modelPlural": "Modelos",
     "deleteLocalTitle": "¿Eliminar modelo local?",
     "deleteLocalMsg": "Eliminar <b>{{name}}</b> de {{phrase}}. Los pesos se eliminan de tu caché local; puedes descargarlos de nuevo después.",
+    "deleteInUseSwitch": "Este modelo está en uso. La app cambia a <b>{{fallback}}</b>.",
+    "deleteInUseNone": "Este modelo está en uso. Tras eliminarlo, no queda ningún modelo de este tipo seleccionado. Elige uno nuevo aquí.",
+    "diskUse": {
+      "onDisk": "{{size}} en disco",
+      "total": "Los modelos descargados ocupan {{size}} en disco."
+    },
     "deleteProviderTitle": "Eliminar proveedor",
     "deleteProviderMsgBase": "¿Eliminar la clave API de <b>{{provider}}</b>? Esto también elimina todos los modelos configurados para este proveedor",
     "deleteProviderCurrentSuffix": ", incluyendo un modelo que estás usando actualmente",

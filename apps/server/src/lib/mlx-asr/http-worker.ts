@@ -69,6 +69,8 @@ export interface MlxHttpWorker<D extends MlxHttpModelDef> {
   override: () => string | undefined;
   setupBlocker: () => MlxSetupBlocker | null;
   getState: () => MlxHttpWorkerState;
+  /** True while a request to the worker is in flight. */
+  busy: () => boolean;
   /**
    * Start (or reuse) the worker for `modelId` and return its OpenAI base URL.
    * A different model stops the current worker first. A model that is not on
@@ -448,10 +450,15 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
     });
   }
 
+  function busy(): boolean {
+    return inFlight > 0;
+  }
+
   return {
     override,
     setupBlocker,
     getState,
+    busy,
     ensure,
     startInBackground,
     trackFetch,

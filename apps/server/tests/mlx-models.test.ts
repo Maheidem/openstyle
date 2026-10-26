@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   downloadFileToCacheDir: vi.fn(),
   listSize: 2,
   listEntries: null as null | Array<{ path: string; size: number }>,
+  asrWorker: { model: null as string | null, state: "stopped" },
 }));
 
 vi.mock("@huggingface/hub", () => ({
@@ -63,6 +64,7 @@ vi.mock("../src/lib/mlx-asr/runtime.js", () => ({
 
 vi.mock("../src/lib/mlx-asr/server.js", () => ({
   stopMlxServer: async () => {},
+  getMlxAsrWorkerState: () => mocks.asrWorker,
 }));
 
 describe("MLX ASR model catalog", () => {
@@ -1126,5 +1128,128 @@ describe("downloadHfSnapshot at a pinned revision (built-in embedding model)", (
     expect(isHfSnapshotPresent(def.hfId, def.revision)).toBe(false);
     write(snapshot);
     expect(isHfSnapshotPresent(def.hfId, def.revision)).toBe(true);
+  });
+});
+
+describe("delete of the voice model in use", () => {
+  const FAST = "qwen3-0.6b-8bit";
+  const PRO = "qwen3-1.7b-8bit";
+  let cacheDir = "";
+  const originalCache = process.env.HUGGINGFACE_HUB_CACHE;
+
+  /** A curated snapshot with one weight file, so the model reads as ready. */
+  function seed(id: string): void {
+    const def = MLX_ASR_MODELS.find((m) => m.id === id);
+    if (!def) throw new Error(id);
+    const snap = join(
+      cacheDir,
+      `models--${def.hfId.replaceAll("/", "--")}`,
+      "snapshots",
+      "abc",
+    );
+    mkdirSync(snap, { recursive: true });
+    writeFileSync(join(snap, "config.json"), "{}");
+    writeFileSync(join(snap, "model.safetensors"), "w");
+  }
+
+  function setDefault(id: string): void {
+    getDb()
+      .prepare(
+        `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
+         VALUES ('local-mlx', ?, ?, 'voice', 1)`,
+      )
+      .run(`local-mlx/${id}`, id);
+  }
+
+  function defaultVoice(): string | undefined {
+    return (
+      getDb()
+        .prepare(
+          "SELECT model_id FROM model_configs WHERE type = 'voice' AND is_default = 1",
+        )
+        .get() as { model_id: string } | undefined
+    )?.model_id;
+  }
+
+  beforeEach(() => {
+    cacheDir = mkdtempSync(join(tmpdir(), "mlx-delete-"));
+    process.env.HUGGINGFACE_HUB_CACHE = cacheDir;
+    mocks.blocker = null;
+    mocks.asrWorker = { model: null, state: "stopped" };
+  });
+
+  afterEach(async () => {
+    const { releaseJob } = await import("../src/lib/meetings/job-registry.js");
+    releaseJob("voice-delete-test");
+    getDb().prepare("DELETE FROM model_configs").run();
+    getDb()
+      .prepare("DELETE FROM settings WHERE key = 'meeting_stt_model'")
+      .run();
+    if (originalCache === undefined) delete process.env.HUGGINGFACE_HUB_CACHE;
+    else process.env.HUGGINGFACE_HUB_CACHE = originalCache;
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it("switches the default to the recommended voice model when it is on disk", async () => {
+    seed(FAST);
+    seed(PRO);
+    setDefault(PRO);
+    const { deleteMlxModel, getMlxModelStatus } = await import(
+      "../src/lib/mlx-asr/models.js"
+    );
+
+    expect(deleteMlxModel(PRO)).toBe(true);
+
+    expect(getMlxModelStatus(PRO)?.status).toBe("not_downloaded");
+    expect(defaultVoice()).toBe(`local-mlx/${FAST}`);
+  });
+
+  it("leaves no default voice when the recommended model is the deleted one", async () => {
+    seed(FAST);
+    setDefault(FAST);
+    const { deleteMlxModel } = await import("../src/lib/mlx-asr/models.js");
+
+    expect(deleteMlxModel(FAST)).toBe(true);
+
+    expect(defaultVoice()).toBeUndefined();
+  });
+
+  it("clears the meeting model setting that names the deleted model", async () => {
+    seed(PRO);
+    getDb()
+      .prepare(
+        "INSERT INTO settings (key, value) VALUES ('meeting_stt_model', ?)",
+      )
+      .run(
+        JSON.stringify({ provider: "local-mlx", model_id: `local-mlx/${PRO}` }),
+      );
+    const { deleteMlxModel } = await import("../src/lib/mlx-asr/models.js");
+
+    deleteMlxModel(PRO);
+
+    expect(
+      getDb()
+        .prepare(
+          "SELECT COUNT(*) AS n FROM settings WHERE key = 'meeting_stt_model'",
+        )
+        .get(),
+    ).toEqual({ n: 0 });
+  });
+
+  it("blocks the delete while a meeting transcription runs on the loaded model", async () => {
+    seed(PRO);
+    mocks.asrWorker = { model: PRO, state: "ready" };
+    const { mlxDeleteBlocker } = await import("../src/lib/mlx-asr/models.js");
+    const { claimJob } = await import("../src/lib/meetings/job-registry.js");
+
+    expect(mlxDeleteBlocker(PRO)).toBeNull();
+    claimJob("voice-delete-test", "transcribe", {
+      done: 0,
+      total: 1,
+      failed: 0,
+    });
+    expect(mlxDeleteBlocker(PRO)).toBe("in_use");
+    // Another model is free to go.
+    expect(mlxDeleteBlocker(FAST)).toBeNull();
   });
 });

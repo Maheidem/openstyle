@@ -6,6 +6,7 @@ import {
 } from "@openstyle/validations";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { deleteBlockedResponse } from "../lib/local-model-delete.js";
 import {
   isAppleSiliconMac,
   MLX_ALIGNER_MODEL_ID,
@@ -27,6 +28,7 @@ import {
   getAllMlxModelStatuses,
   getMlxCatalogModels,
   getMlxModelStatus,
+  mlxDeleteBlocker,
 } from "../lib/mlx-asr/models.js";
 import {
   describeMlxSetupBlocker,
@@ -176,6 +178,8 @@ const mlxAsr = new Hono()
   })
   .delete("/models/:model", (c) => {
     const modelId = c.req.param("model");
+    const blocker = mlxDeleteBlocker(modelId);
+    if (blocker) return deleteBlockedResponse(c, blocker);
     const deleted = deleteMlxModel(modelId);
     return c.json({ ok: deleted });
   })

@@ -40,6 +40,8 @@ export const queryKeys = {
     all: ["models"] as const,
     available: ["models", "available"] as const,
     configured: ["models", "configured"] as const,
+    /** The disk use of each downloaded app model (`GET /api/models/disk-usage`). */
+    diskUse: ["models", "disk-use"] as const,
   },
   apiKeys: ["api-keys"] as const,
   /** Own servers with their live probe (`GET /api/servers`). */
@@ -162,6 +164,23 @@ export function configuredModelsQueryOptions() {
       return (await res.json()) as ConfiguredModel[];
     },
   };
+}
+
+/**
+ * Query options for the real disk use of each downloaded app model and the
+ * total. It is in the `models` family, so a refresh of the model lists also
+ * reads it again.
+ */
+export function modelDiskUseQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.models.diskUse,
+    queryFn: async () => {
+      const res = await getClient().api.models["disk-usage"].$get();
+      if (!res.ok) throw new Error("Failed to load the model disk use");
+      return await res.json();
+    },
+    staleTime: 0,
+  });
 }
 
 /**

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildLocalLlmItems, type MlxLlmStatus } from "./models";
+import {
+  buildLocalLlmItems,
+  fallbackAfterDelete,
+  type MlxLlmStatus,
+} from "./models";
 
 function status(platformSupported: boolean): MlxLlmStatus {
   return {
@@ -62,5 +66,30 @@ describe("buildLocalLlmItems", () => {
       model_id: "local-mlx-llm/gemma-4-e2b-qat-4bit",
     });
     expect(other.some((it) => it.selected)).toBe(false);
+  });
+});
+
+describe("fallbackAfterDelete", () => {
+  const E2B = "local-mlx-llm/gemma-4-e2b-qat-4bit";
+  const E4B = "local-mlx-llm/gemma-4-e4b-qat-4bit";
+  const items = (e2bStatus: string) => [
+    { key: E2B, name: "Gemma 4 E2B", status: e2bStatus },
+    { key: E4B, name: "Gemma 4 E4B", status: "ready" },
+  ];
+
+  it("names the recommended model when it is on disk", () => {
+    expect(fallbackAfterDelete(items("ready"), E2B, E4B)).toBe("Gemma 4 E2B");
+  });
+
+  it("is null when the recommended model is not on disk", () => {
+    expect(fallbackAfterDelete(items("not_downloaded"), E2B, E4B)).toBeNull();
+  });
+
+  it("is null when the deleted model is the recommended model", () => {
+    expect(fallbackAfterDelete(items("ready"), E2B, E2B)).toBeNull();
+  });
+
+  it("is null when the type has no recommended model", () => {
+    expect(fallbackAfterDelete(items("ready"), undefined, E4B)).toBeNull();
   });
 });
