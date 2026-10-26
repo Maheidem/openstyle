@@ -1,6 +1,7 @@
 // The built-in local MLX LLM catalog (specs/local-mlx-llm.md section 1 and
-// 3.1). Owner decision 2026-10-20: the catalog holds only the two Gemma 4
-// models. The sizes are the sums of the files that match
+// 3.1). Owner decision 2026-10-20: the catalog holds the two Gemma 4 models.
+// Owner decision 2026-10-24: a third, optional model (Nemotron 3.5 Bolt E4B).
+// The sizes are the sums of the files that match
 // MLX_LLM_ALLOW_PATTERNS, from the HF API tree of each repo (2026-10-20).
 
 /** The LLM provider id. No other provider id starts with it (registry prefix match). */
@@ -59,6 +60,23 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     displayName: "Gemma 4 E4B",
     family: "gemma4",
     sizeBytes: 6_830_817_013,
+    contextTokens: 32_768,
+    maxOutputTokens: 8_192,
+  },
+  // License note (2026-10-25). The catalog has no license field.
+  // - Quant repo (lmstudio-community): its card has no license field.
+  // - NVIDIA source repo: license "other", name openmdw-1.1
+  //   (https://openmdw.ai/license/1-1/), card
+  //   https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16
+  // - That card names the base model google/gemma-4-E4B-it. The Gemma 4
+  //   terms on top of OpenMDW-1.1 need a legal read (not done).
+  // Owner decision 2026-10-25: Nemotron stays an option; Gemma E2B stays the default.
+  {
+    id: "nemotron-3.5-bolt-e4b-4bit",
+    hfId: "lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit",
+    displayName: "Nemotron 3.5 Bolt E4B",
+    family: "gemma4",
+    sizeBytes: 4_231_265_397,
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
   },

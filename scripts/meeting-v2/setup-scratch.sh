@@ -12,6 +12,11 @@
 # Environment:
 #   SCRATCH   scratch dir (default /tmp/meeting-v2)
 #   BOOT_PORT port for the one-time migration boot (default 4788, never 4649)
+#   MEETING_EVAL_AUDIO_DIR  eval audio copies (default
+#             ~/Library/Application Support/Openstyle-eval/audio). A meeting with
+#             <dir>/<id>/mic.wav there is copied from it, not from the app folder.
+#             The app deletes old meeting audio (retention sweep); see
+#             scripts/meeting-v2/eval-audio-copy.sh.
 
 set -euo pipefail
 
@@ -21,6 +26,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROFILE="$HOME/Library/Application Support/Openstyle"
 REAL_DB="$PROFILE/freestyle.db"
 SCRATCH_DB="$SCRATCH/test.db"
+EVAL_AUDIO_DIR="${MEETING_EVAL_AUDIO_DIR:-$HOME/Library/Application Support/Openstyle-eval/audio}"
 
 if [ "$#" -lt 1 ]; then
   echo "usage: $0 <meeting-id> [<meeting-id> ...]" >&2
@@ -42,7 +48,13 @@ cp "$SRC_DB" "$SCRATCH/dbcopy/attach.db"
 
 # --- 2. Copy the meeting folders, drop old transcripts from the copy ------
 for id in "$@"; do
-  src_dir="$PROFILE/meetings/$id"
+  if [ -f "$EVAL_AUDIO_DIR/$id/mic.wav" ]; then
+    src_dir="$EVAL_AUDIO_DIR/$id"
+    echo "audio source: eval copy ($id)"
+  else
+    src_dir="$PROFILE/meetings/$id"
+    echo "audio source: app folder ($id)"
+  fi
   if [ ! -d "$src_dir" ]; then
     echo "meeting dir missing: $src_dir" >&2
     exit 1
