@@ -402,6 +402,7 @@ describe("/api/mlx-llm routes (3.5)", () => {
         "contextTokens",
         "displayName",
         "family",
+        "fit",
         "hfId",
         "maxOutputTokens",
         "model",

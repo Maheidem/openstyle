@@ -1,4 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
+import { parseMeetingSttModel, SETTINGS_KEYS } from "@openstyle/validations";
+import { readSetting } from "../db.js";
 import { describeDownloadError } from "../disk.js";
 import { downloadErrorSourceUrl } from "../download-guard.js";
 import {
@@ -22,6 +24,7 @@ import {
   cancelMlxRuntimeDownload,
   isMlxRuntimeInstallable,
 } from "../mlx-asr/runtime.js";
+import { getDefaultModels } from "../providers.js";
 import {
   getMlxLlmModel,
   MLX_LLM_ALLOW_PATTERNS,
@@ -29,6 +32,7 @@ import {
   MLX_LLM_PROVIDER_ID,
   type MlxLlmModelDef,
 } from "./constants.js";
+import { computeMlxLlmFit, fitMachine, type MlxLlmFit } from "./fit.js";
 import {
   getMlxLlmWorkerState,
   isMlxLlmWorkerBusy,
@@ -46,11 +50,50 @@ export interface MlxLlmModelState extends MlxModelDownloadState {
   contextTokens: number;
   maxOutputTokens: number;
   recommended: boolean;
+  /** How well the model fits this Mac (specs/llm-runtime-tuning.md 5). */
+  fit: MlxLlmFit;
 }
 
 const activeDownloads = new Map<string, ActiveMlxDownload>();
 
-function baseState(def: MlxLlmModelDef): Omit<MlxLlmModelState, "status"> {
+const LOCAL_ASR_PROVIDERS = new Set(["local-mlx", "local-whisper"]);
+
+/** The facts of this Mac that the fit label of every model uses. */
+interface FitContext {
+  ramBytes: number;
+  gpuCapBytes: number | null;
+  localAsr: boolean;
+}
+
+/**
+ * A local ASR model is selected for dictation or for meetings, so its worker
+ * uses memory next to the LLM worker.
+ */
+function isLocalAsrSelected(): boolean {
+  try {
+    const voice = getDefaultModels().voice;
+    const meeting = parseMeetingSttModel(
+      readSetting(SETTINGS_KEYS.meetingSttModel),
+    );
+    return (
+      (voice != null && LOCAL_ASR_PROVIDERS.has(voice.provider)) ||
+      (meeting != null && LOCAL_ASR_PROVIDERS.has(meeting.provider))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function fitContext(): FitContext {
+  const workerCap =
+    getMlxLlmWorkerState().gpu?.maxRecommendedWorkingSetBytes ?? null;
+  return { ...fitMachine(workerCap), localAsr: isLocalAsrSelected() };
+}
+
+function baseState(
+  def: MlxLlmModelDef,
+  ctx: FitContext,
+): Omit<MlxLlmModelState, "status"> {
   return {
     model: def.id,
     hfId: def.hfId,
@@ -60,6 +103,14 @@ function baseState(def: MlxLlmModelDef): Omit<MlxLlmModelState, "status"> {
     contextTokens: def.contextTokens,
     maxOutputTokens: def.maxOutputTokens,
     recommended: def.recommended === true,
+    fit: computeMlxLlmFit({
+      peakBytes: def.peakBytes,
+      ramBytes: ctx.ramBytes,
+      gpuCapBytes: ctx.gpuCapBytes,
+      localAsr: ctx.localAsr,
+      // Owner rule (2026-10-26): the default model always stays usable.
+      neverWontFit: def.recommended === true,
+    }),
   };
 }
 
@@ -67,14 +118,17 @@ export function isMlxLlmModelDownloaded(def: MlxLlmModelDef): boolean {
   return isHfSnapshotPresent(def.hfId);
 }
 
-export function getMlxLlmModelStatus(modelId: string): MlxLlmModelState | null {
+export function getMlxLlmModelStatus(
+  modelId: string,
+  ctx: FitContext = fitContext(),
+): MlxLlmModelState | null {
   const def = getMlxLlmModel(modelId);
   if (!def) return null;
 
   const active = activeDownloads.get(modelId);
   if (active?.error) {
     return {
-      ...baseState(def),
+      ...baseState(def, ctx),
       status: "error",
       error: active.error,
       errorSourceUrl: active.errorSourceUrl,
@@ -82,7 +136,7 @@ export function getMlxLlmModelStatus(modelId: string): MlxLlmModelState | null {
   }
   if (active) {
     return {
-      ...baseState(def),
+      ...baseState(def, ctx),
       status: "downloading",
       phase: active.phase,
       downloadProgress: activeDownloadProgress(active),
@@ -95,18 +149,19 @@ export function getMlxLlmModelStatus(modelId: string): MlxLlmModelState | null {
       isMlxRuntimeInstallable() &&
       (blocker.code === "no-runtime" || blocker.code === "deps-missing");
     return canDownloadRuntime
-      ? { ...baseState(def), status: "not_downloaded" }
-      : { ...baseState(def), status: "error", error: blocker.message };
+      ? { ...baseState(def, ctx), status: "not_downloaded" }
+      : { ...baseState(def, ctx), status: "error", error: blocker.message };
   }
 
   return {
-    ...baseState(def),
+    ...baseState(def, ctx),
     status: isMlxLlmModelDownloaded(def) ? "ready" : "not_downloaded",
   };
 }
 
 export function getAllMlxLlmModelStatuses(): MlxLlmModelState[] {
-  return MLX_LLM_MODELS.map((m) => getMlxLlmModelStatus(m.id)!);
+  const ctx = fitContext();
+  return MLX_LLM_MODELS.map((m) => getMlxLlmModelStatus(m.id, ctx)!);
 }
 
 export function clearMlxLlmDownloadError(modelId: string): void {

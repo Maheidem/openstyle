@@ -2,8 +2,24 @@ import { describe, expect, it } from "vitest";
 import {
   buildLocalLlmItems,
   fallbackAfterDelete,
+  formatMemoryGb,
+  hiddenByFit,
+  type MlxLlmFit,
   type MlxLlmStatus,
 } from "./models";
+
+const GIB = 1024 ** 3;
+
+function fit(label: MlxLlmFit["label"]): MlxLlmFit {
+  return {
+    label,
+    raised: false,
+    peakBytes: 7.5 * GIB,
+    ramBytes: 16 * GIB,
+    budgetBytes: 8.79 * GIB,
+    gpuCapBytes: null,
+  };
+}
 
 function status(platformSupported: boolean): MlxLlmStatus {
   return {
@@ -22,6 +38,7 @@ function status(platformSupported: boolean): MlxLlmStatus {
         maxOutputTokens: 8_192,
         recommended: true,
         status: "ready",
+        fit: fit("runs_well"),
       },
       {
         model: "gemma-4-e4b-qat-4bit",
@@ -33,6 +50,7 @@ function status(platformSupported: boolean): MlxLlmStatus {
         maxOutputTokens: 8_192,
         recommended: false,
         status: "not_downloaded",
+        fit: fit("tight"),
       },
     ],
     worker: { model: null, state: "stopped", port: null },
@@ -66,6 +84,35 @@ describe("buildLocalLlmItems", () => {
       model_id: "local-mlx-llm/gemma-4-e2b-qat-4bit",
     });
     expect(other.some((it) => it.selected)).toBe(false);
+  });
+});
+
+describe("fit label helpers (specs/llm-runtime-tuning.md 5)", () => {
+  it("passes the fit of each model to its row", () => {
+    const items = buildLocalLlmItems(status(true), undefined);
+    expect(items.map((it) => it.fit.label)).toEqual(["runs_well", "tight"]);
+  });
+
+  it("hides only a Won't fit row that is not on disk and not selected", () => {
+    const row = (
+      label: MlxLlmFit["label"],
+      rowStatus: Parameters<typeof hiddenByFit>[0]["status"],
+      selected = false,
+    ) => hiddenByFit({ fit: fit(label), status: rowStatus, selected });
+    expect(row("wont_fit", "not_downloaded")).toBe(true);
+    // On disk, downloading, failed or selected: the row stays, so it can be deleted.
+    expect(row("wont_fit", "ready")).toBe(false);
+    expect(row("wont_fit", "downloading")).toBe(false);
+    expect(row("wont_fit", "error")).toBe(false);
+    expect(row("wont_fit", "not_downloaded", true)).toBe(false);
+    expect(row("tight", "not_downloaded")).toBe(false);
+    expect(row("runs_well", "not_downloaded")).toBe(false);
+  });
+
+  it("shows memory as Apple names it (GiB as GB)", () => {
+    expect(formatMemoryGb(16 * GIB)).toBe("16");
+    expect(formatMemoryGb(Math.round(5.1 * GIB), 1)).toBe("5.1");
+    expect(formatMemoryGb(Math.round(18.7 * GIB), 1)).toBe("18.7");
   });
 });
 

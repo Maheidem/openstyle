@@ -10,11 +10,13 @@ import type {
   AvailableModel,
   ConfiguredModel,
   LocalEngine,
+  LocalLlmItem,
 } from "@renderer/lib/models";
 import {
   displayProviderName,
   fallbackAfterDelete,
   formatBytes,
+  formatMemoryGb,
   MLX_LLM_PROVIDER_ID,
 } from "@renderer/lib/models";
 import { settingsQueryOptions } from "@renderer/lib/query";
@@ -61,6 +63,10 @@ export default function ModelsPage(): React.JSX.Element {
     /** The model the app switches to after the delete, or null for none. */
     fallback: string | null;
   } | null>(null);
+  // A "Won't fit" built-in LLM downloads only after a warning (owner
+  // decision 2026-10-26, specs/llm-runtime-tuning.md 5).
+  const [pendingWontFitDownload, setPendingWontFitDownload] =
+    useState<LocalLlmItem | null>(null);
   const [pendingProviderDelete, setPendingProviderDelete] = useState<
     string | null
   >(null);
@@ -382,6 +388,7 @@ export default function ModelsPage(): React.JSX.Element {
           onPickLocalVoice={onPickLocalVoice}
           onPickServerModel={onPickServerModel}
           onRequestDeleteLocal={onRequestDeleteLocal}
+          onRequestWontFitDownload={setPendingWontFitDownload}
           onRequestRemoveServer={setPendingServerRemove}
           onBack={onBack}
           onSaveKey={onSaveKey}
@@ -433,6 +440,34 @@ export default function ModelsPage(): React.JSX.Element {
             const { defId, engine } = pendingLocalDelete;
             setPendingLocalDelete(null);
             void m.deleteLocal(defId, engine);
+          }}
+        />
+      )}
+
+      {pendingWontFitDownload && (
+        <ConfirmDialog
+          title={t("models.fit.confirmTitle")}
+          message={
+            <Trans
+              i18nKey="models.fit.confirmMsg"
+              values={{
+                name: pendingWontFitDownload.name,
+                need: formatMemoryGb(pendingWontFitDownload.fit.peakBytes, 1),
+                ram: formatMemoryGb(pendingWontFitDownload.fit.ramBytes),
+                size: formatBytes(pendingWontFitDownload.sizeBytes),
+              }}
+              components={{
+                b: <span className="text-foreground/80 font-medium" />,
+              }}
+            />
+          }
+          confirmLabel={t("models.fit.confirmAction")}
+          confirmVariant="default"
+          onCancel={() => setPendingWontFitDownload(null)}
+          onConfirm={() => {
+            const { defId } = pendingWontFitDownload;
+            setPendingWontFitDownload(null);
+            m.downloadLocal(defId, "mlx-llm");
           }}
         />
       )}

@@ -418,6 +418,35 @@ export function buildVoiceItems(
   return [...whisperLocal, ...mlxLocal, ...cloud];
 }
 
+/** How well a built-in LLM fits this Mac (specs/llm-runtime-tuning.md 5). */
+export type MlxLlmFit = MlxLlmStatus["models"][number]["fit"];
+
+const GIB = 1024 ** 3;
+
+/**
+ * Memory as Apple names it on a Mac: GiB, with the label "GB". A 16 GiB Mac
+ * is a "16 GB" Mac.
+ */
+export function formatMemoryGb(bytes: number, digits = 0): string {
+  return (bytes / GIB).toFixed(digits);
+}
+
+/**
+ * A "Won't fit" row waits behind "Show all models". A row that is on disk,
+ * downloading, failed or selected always shows, so it can be used or deleted.
+ */
+export function hiddenByFit(item: {
+  fit: MlxLlmFit;
+  status: WhisperModelDownloadState["status"];
+  selected: boolean;
+}): boolean {
+  return (
+    item.fit.label === "wont_fit" &&
+    item.status === "not_downloaded" &&
+    !item.selected
+  );
+}
+
 /** One row of the built-in LLM list (specs/local-mlx-llm.md section 4). */
 export interface LocalLlmItem {
   key: string;
@@ -428,6 +457,7 @@ export interface LocalLlmItem {
   selected: boolean;
   status: WhisperModelDownloadState["status"];
   state: WhisperModelDownloadState;
+  fit: MlxLlmFit;
 }
 
 /**
@@ -452,6 +482,7 @@ export function buildLocalLlmItems(
         defaultLlm.model_id === key,
       status: m.status,
       state: m,
+      fit: m.fit,
     };
   });
 }
