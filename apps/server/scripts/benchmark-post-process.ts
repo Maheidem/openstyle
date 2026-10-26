@@ -58,9 +58,39 @@ interface BenchmarkResult {
     inputTokens: number;
     outputTokens: number;
     actual: string;
+    /** local-mlx only: the worker stats from the response usage. */
+    workerUsage?: WorkerUsage;
   }[];
+  /** local-mlx only: worker time to first token, from the response usage. */
+  ttftMs?: { p50: number; p95: number };
   /** local-mlx only: the worker binary and the worker start + model load time. */
   worker?: { binary: string; startMs: number };
+}
+
+/** The mlx-lm stats that the local LLM worker adds to usage (specs/llm-runtime-tuning.md). */
+interface WorkerUsage {
+  ttft_ms?: number;
+  total_ms?: number;
+  prompt_tps?: number;
+  generation_tps?: number;
+  peak_memory_bytes?: number;
+}
+
+function workerUsageOf(body: unknown): WorkerUsage | undefined {
+  const usage = (body as { usage?: Record<string, unknown> } | undefined)
+    ?.usage;
+  if (!usage || typeof usage.ttft_ms !== "number") return undefined;
+  const out: WorkerUsage = {};
+  for (const key of [
+    "ttft_ms",
+    "total_ms",
+    "prompt_tps",
+    "generation_tps",
+    "peak_memory_bytes",
+  ] as const) {
+    if (typeof usage[key] === "number") out[key] = usage[key] as number;
+  }
+  return out;
 }
 
 const MODELS = [
@@ -234,6 +264,8 @@ async function runCase(
     maxOutputTokens: maxOutputTokensForCleanup(testCase.input),
     providerOptions:
       provider === "groq" ? groqCleanupProviderOptions(modelId, false) : {},
+    // The worker stats are in the raw usage (workerUsageOf).
+    include: { responseBody: provider === "local-mlx" },
   });
 
   const actual = sanitizeTranscriptText(result.text);
@@ -242,6 +274,7 @@ async function runCase(
     latencyMs: Date.now() - started,
     inputTokens: result.usage?.inputTokens ?? 0,
     outputTokens: result.usage?.outputTokens ?? 0,
+    workerUsage: workerUsageOf(result.response?.body),
   };
 }
 
@@ -334,6 +367,7 @@ async function runBenchmarkSuite(
         inputTokens: outcome.inputTokens,
         outputTokens: outcome.outputTokens,
         actual: outcome.actual,
+        ...(outcome.workerUsage ? { workerUsage: outcome.workerUsage } : {}),
       });
       if (!byLanguage[testCase.language]) {
         byLanguage[testCase.language] = { passed: 0, total: 0 };
@@ -353,6 +387,10 @@ async function runBenchmarkSuite(
     }
 
     const sorted = [...latencies].sort((a, b) => a - b);
+    const ttfts = cases
+      .map((c) => c.workerUsage?.ttft_ms)
+      .filter((t): t is number => typeof t === "number")
+      .sort((a, b) => a - b);
     results.push({
       provider,
       modelId,
@@ -361,6 +399,9 @@ async function runBenchmarkSuite(
       total: filteredCases.length,
       byLanguage,
       latencyMs: { p50: percentile(sorted, 50), p95: percentile(sorted, 95) },
+      ...(ttfts.length
+        ? { ttftMs: { p50: percentile(ttfts, 50), p95: percentile(ttfts, 95) } }
+        : {}),
       failures,
       cases,
       ...(worker ? { worker } : {}),
@@ -385,6 +426,11 @@ function printSummary(results: BenchmarkResult[]): void {
     if (result.worker) {
       console.log(
         `  worker: ${result.worker.binary} (start ${result.worker.startMs}ms)`,
+      );
+    }
+    if (result.ttftMs) {
+      console.log(
+        `  ttft p50 ${result.ttftMs.p50}ms p95 ${result.ttftMs.p95}ms (worker usage)`,
       );
     }
   }
