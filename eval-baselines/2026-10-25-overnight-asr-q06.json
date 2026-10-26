@@ -1,0 +1,195 @@
+{
+ "format": "openstyle-eval-baseline",
+ "version": 1,
+ "name": "overnight-asr-q06",
+ "createdAt": "2026-10-25T05:11:08.323Z",
+ "commit": "6aaf9b2a",
+ "asrHash": "b299957fea0c691f",
+ "asrModel": "local-mlx/qwen3-0.6b-8bit",
+ "models": [
+  "gemma-4-e4b-qat-4bit"
+ ],
+ "gold": {
+  "source": "gold-v2",
+  "versions": {
+   "5578edb0": 1,
+   "ca70f895": 1
+  }
+ },
+ "noise": null,
+ "runs": [
+  {
+   "model": "gemma-4-e4b-qat-4bit",
+   "meeting": "5578edb0",
+   "stages": {
+    "checks": {
+     "hardFails": 0,
+     "segments": 0,
+     "numbers": 0,
+     "names": 0,
+     "negations": 0,
+     "labels": 0,
+     "chunks": 0,
+     "summary": 0,
+     "speakers": 0
+    },
+    "asr": {
+     "wer": 0.0943,
+     "cer": 0.0668,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0969,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.1373,
+     "cer.mic": 0.1067,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.1376,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.067,
+     "cer.system": 0.0422,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0711,
+     "werVerifiedRaw.system": null
+    },
+    "enhance": {
+     "wer": 0.0935,
+     "cer": 0.07,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.1003,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.1373,
+     "cer.mic": 0.1108,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.1419,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0655,
+     "cer.system": 0.0449,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0739,
+     "werVerifiedRaw.system": null,
+     "delta": 0.0008,
+     "deltaRaw": -0.0034,
+     "fixesFound": 0,
+     "fixesMissed": 0,
+     "mustNotChangeViolations": 0
+    },
+    "summary": {
+     "decisionsRecall": 0,
+     "decisionsPrecision": null,
+     "actionItemsRecall": 0.5,
+     "actionItemsPrecision": 0.6667,
+     "ownerCorrect": 1,
+     "ownerWrong": 1,
+     "ownerMissing": 0,
+     "dueCorrect": 1,
+     "dueWrong": 0,
+     "dueMissing": 1,
+     "mustNotClaimHits": 0
+    },
+    "tags": {
+     "precision": 0.75,
+     "recall": 0.6
+    },
+    "speakers": {
+     "correct": 1,
+     "wrong": 0,
+     "missing": 0
+    }
+   },
+   "hardFails": []
+  },
+  {
+   "model": "gemma-4-e4b-qat-4bit",
+   "meeting": "ca70f895",
+   "stages": {
+    "checks": {
+     "hardFails": 2,
+     "segments": 0,
+     "numbers": 1,
+     "names": 1,
+     "negations": 0,
+     "labels": 0,
+     "chunks": 0,
+     "summary": 0,
+     "speakers": 0
+    },
+    "asr": {
+     "wer": 0.0612,
+     "cer": 0.0371,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0676,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.0664,
+     "cer.mic": 0.0297,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.07,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0584,
+     "cer.system": 0.0412,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0663,
+     "werVerifiedRaw.system": null
+    },
+    "enhance": {
+     "wer": 0.0581,
+     "cer": 0.0396,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0684,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.0592,
+     "cer.mic": 0.0288,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0629,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0575,
+     "cer.system": 0.0455,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0713,
+     "werVerifiedRaw.system": null,
+     "delta": 0.0031,
+     "deltaRaw": -0.0008,
+     "fixesFound": 0,
+     "fixesMissed": 0,
+     "mustNotChangeViolations": 0
+    },
+    "summary": {
+     "decisionsRecall": 1,
+     "decisionsPrecision": 1,
+     "actionItemsRecall": 0.75,
+     "actionItemsPrecision": 1,
+     "ownerCorrect": 5,
+     "ownerWrong": 0,
+     "ownerMissing": 0,
+     "dueCorrect": 4,
+     "dueWrong": 0,
+     "dueMissing": 1,
+     "mustNotClaimHits": 0
+    },
+    "tags": {
+     "precision": 0.8,
+     "recall": 0.8
+    },
+    "speakers": {
+     "correct": 2,
+     "wrong": 0,
+     "missing": 3
+    }
+   },
+   "hardFails": [
+    "check:numbers",
+    "check:names"
+   ]
+  }
+ ]
+}

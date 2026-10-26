@@ -1,0 +1,540 @@
+{
+ "format": "openstyle-eval-baseline",
+ "version": 1,
+ "name": "nemotron-2of4",
+ "createdAt": "2026-10-25T01:35:41.750Z",
+ "commit": "b414ba27",
+ "asrHash": "9d13997bc8059221",
+ "asrModel": "local-mlx/qwen3-1.7b-8bit",
+ "models": [
+  "gemma-4-e2b-qat-4bit",
+  "gemma-4-e4b-qat-4bit",
+  "nemotron-3.5-bolt-e4b-4bit"
+ ],
+ "gold": {
+  "source": "gold-v2",
+  "versions": {
+   "5578edb0": 1,
+   "ca70f895": 1
+  }
+ },
+ "noise": null,
+ "runs": [
+  {
+   "model": "gemma-4-e2b-qat-4bit",
+   "meeting": "5578edb0",
+   "stages": {
+    "checks": {
+     "hardFails": 1,
+     "segments": 0,
+     "numbers": 0,
+     "names": 0,
+     "negations": 0,
+     "labels": 0,
+     "chunks": 0,
+     "summary": 0,
+     "speakers": 0
+    },
+    "asr": {
+     "wer": 0.0087,
+     "cer": 0.0046,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0089,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.01,
+     "cer.mic": 0.0039,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0098,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0078,
+     "cer.system": 0.005,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0083,
+     "werVerifiedRaw.system": null
+    },
+    "enhance": {
+     "wer": 0.0148,
+     "cer": 0.012,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0203,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.0134,
+     "cer.mic": 0.0108,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0197,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0157,
+     "cer.system": 0.0128,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0207,
+     "werVerifiedRaw.system": null,
+     "delta": -0.0061,
+     "deltaRaw": -0.0114,
+     "fixesFound": 0,
+     "fixesMissed": 0,
+     "mustNotChangeViolations": 0
+    },
+    "summary": {
+     "decisionsRecall": 1,
+     "decisionsPrecision": 1,
+     "actionItemsRecall": 0.25,
+     "actionItemsPrecision": 0.5,
+     "ownerCorrect": 1,
+     "ownerWrong": 1,
+     "ownerMissing": 0,
+     "dueCorrect": 1,
+     "dueWrong": 1,
+     "dueMissing": 0,
+     "mustNotClaimHits": 1
+    },
+    "tags": {
+     "precision": 0.8,
+     "recall": 0.6
+    },
+    "speakers": {
+     "correct": 1,
+     "wrong": 0,
+     "missing": 0
+    }
+   },
+   "hardFails": [
+    "claim:c1"
+   ]
+  },
+  {
+   "model": "gemma-4-e2b-qat-4bit",
+   "meeting": "ca70f895",
+   "stages": {
+    "checks": {
+     "hardFails": 0,
+     "segments": 0,
+     "numbers": 0,
+     "names": 0,
+     "negations": 0,
+     "labels": 0,
+     "chunks": 0,
+     "summary": 0,
+     "speakers": 0
+    },
+    "asr": {
+     "wer": 0.0057,
+     "cer": 0.004,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0078,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.01,
+     "cer.mic": 0.0063,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0131,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0033,
+     "cer.system": 0.0027,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.005,
+     "werVerifiedRaw.system": null
+    },
+    "enhance": {
+     "wer": 0.0057,
+     "cer": 0.006,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0105,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.01,
+     "cer.mic": 0.0078,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0159,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0033,
+     "cer.system": 0.005,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0076,
+     "werVerifiedRaw.system": null,
+     "delta": 0,
+     "deltaRaw": -0.0027,
+     "fixesFound": 0,
+     "fixesMissed": 0,
+     "mustNotChangeViolations": 0
+    },
+    "summary": {
+     "decisionsRecall": 0.5,
+     "decisionsPrecision": 0.3333,
+     "actionItemsRecall": 0.5,
+     "actionItemsPrecision": 1,
+     "ownerCorrect": 3,
+     "ownerWrong": 0,
+     "ownerMissing": 0,
+     "dueCorrect": 2,
+     "dueWrong": 1,
+     "dueMissing": 0,
+     "mustNotClaimHits": 0
+    },
+    "tags": {
+     "precision": 0.6,
+     "recall": 0.4
+    },
+    "speakers": {
+     "correct": 0,
+     "wrong": 0,
+     "missing": 5
+    }
+   },
+   "hardFails": []
+  },
+  {
+   "model": "gemma-4-e4b-qat-4bit",
+   "meeting": "5578edb0",
+   "stages": {
+    "checks": {
+     "hardFails": 1,
+     "segments": 0,
+     "numbers": 0,
+     "names": 0,
+     "negations": 0,
+     "labels": 0,
+     "chunks": 0,
+     "summary": 0,
+     "speakers": 0
+    },
+    "asr": {
+     "wer": 0.0087,
+     "cer": 0.0046,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0089,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.01,
+     "cer.mic": 0.0039,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0098,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0078,
+     "cer.system": 0.005,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0083,
+     "werVerifiedRaw.system": null
+    },
+    "enhance": {
+     "wer": 0.0091,
+     "cer": 0.0087,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0144,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.0123,
+     "cer.mic": 0.0087,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0164,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0071,
+     "cer.system": 0.0087,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0131,
+     "werVerifiedRaw.system": null,
+     "delta": -0.0004,
+     "deltaRaw": -0.0055,
+     "fixesFound": 0,
+     "fixesMissed": 0,
+     "mustNotChangeViolations": 0
+    },
+    "summary": {
+     "decisionsRecall": 1,
+     "decisionsPrecision": 1,
+     "actionItemsRecall": 0.5,
+     "actionItemsPrecision": 0.6667,
+     "ownerCorrect": 3,
+     "ownerWrong": 0,
+     "ownerMissing": 0,
+     "dueCorrect": 2,
+     "dueWrong": 0,
+     "dueMissing": 1,
+     "mustNotClaimHits": 1
+    },
+    "tags": {
+     "precision": 0.8,
+     "recall": 0.8
+    },
+    "speakers": {
+     "correct": 1,
+     "wrong": 0,
+     "missing": 0
+    }
+   },
+   "hardFails": [
+    "claim:c1"
+   ]
+  },
+  {
+   "model": "gemma-4-e4b-qat-4bit",
+   "meeting": "ca70f895",
+   "stages": {
+    "checks": {
+     "hardFails": 0,
+     "segments": 0,
+     "numbers": 0,
+     "names": 0,
+     "negations": 0,
+     "labels": 0,
+     "chunks": 0,
+     "summary": 0,
+     "speakers": 0
+    },
+    "asr": {
+     "wer": 0.0057,
+     "cer": 0.004,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0078,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.01,
+     "cer.mic": 0.0063,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0131,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0033,
+     "cer.system": 0.0027,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.005,
+     "werVerifiedRaw.system": null
+    },
+    "enhance": {
+     "wer": 0.0058,
+     "cer": 0.0062,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0113,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.01,
+     "cer.mic": 0.0085,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0169,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0036,
+     "cer.system": 0.005,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0082,
+     "werVerifiedRaw.system": null,
+     "delta": -0.0001,
+     "deltaRaw": -0.0035,
+     "fixesFound": 0,
+     "fixesMissed": 0,
+     "mustNotChangeViolations": 0
+    },
+    "summary": {
+     "decisionsRecall": 1,
+     "decisionsPrecision": 1,
+     "actionItemsRecall": 0.75,
+     "actionItemsPrecision": 1,
+     "ownerCorrect": 5,
+     "ownerWrong": 0,
+     "ownerMissing": 0,
+     "dueCorrect": 3,
+     "dueWrong": 0,
+     "dueMissing": 2,
+     "mustNotClaimHits": 0
+    },
+    "tags": {
+     "precision": 0.8,
+     "recall": 0.8
+    },
+    "speakers": {
+     "correct": 2,
+     "wrong": 0,
+     "missing": 3
+    }
+   },
+   "hardFails": []
+  },
+  {
+   "model": "nemotron-3.5-bolt-e4b-4bit",
+   "meeting": "5578edb0",
+   "stages": {
+    "checks": {
+     "hardFails": 1,
+     "segments": 0,
+     "numbers": 0,
+     "names": 0,
+     "negations": 0,
+     "labels": 0,
+     "chunks": 0,
+     "summary": 0,
+     "speakers": 0
+    },
+    "asr": {
+     "wer": 0.0087,
+     "cer": 0.0046,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0089,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.01,
+     "cer.mic": 0.0039,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0098,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0078,
+     "cer.system": 0.005,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0083,
+     "werVerifiedRaw.system": null
+    },
+    "enhance": {
+     "wer": 0.0074,
+     "cer": 0.0107,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0157,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.0089,
+     "cer.mic": 0.0085,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0142,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0064,
+     "cer.system": 0.0121,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0166,
+     "werVerifiedRaw.system": null,
+     "delta": 0.0013,
+     "deltaRaw": -0.0068,
+     "fixesFound": 0,
+     "fixesMissed": 0,
+     "mustNotChangeViolations": 0
+    },
+    "summary": {
+     "decisionsRecall": 0,
+     "decisionsPrecision": 0,
+     "actionItemsRecall": 0.5,
+     "actionItemsPrecision": 1,
+     "ownerCorrect": 1,
+     "ownerWrong": 1,
+     "ownerMissing": 0,
+     "dueCorrect": 1,
+     "dueWrong": 0,
+     "dueMissing": 1,
+     "mustNotClaimHits": 1
+    },
+    "tags": {
+     "precision": 0.75,
+     "recall": 0.6
+    },
+    "speakers": {
+     "correct": 1,
+     "wrong": 0,
+     "missing": 0
+    }
+   },
+   "hardFails": [
+    "claim:c1"
+   ]
+  },
+  {
+   "model": "nemotron-3.5-bolt-e4b-4bit",
+   "meeting": "ca70f895",
+   "stages": {
+    "checks": {
+     "hardFails": 0,
+     "segments": 0,
+     "numbers": 0,
+     "names": 0,
+     "negations": 0,
+     "labels": 0,
+     "chunks": 0,
+     "summary": 0,
+     "speakers": 0
+    },
+    "asr": {
+     "wer": 0.0057,
+     "cer": 0.004,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0078,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.01,
+     "cer.mic": 0.0063,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0131,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.0033,
+     "cer.system": 0.0027,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.005,
+     "werVerifiedRaw.system": null
+    },
+    "enhance": {
+     "wer": 0.0051,
+     "cer": 0.0065,
+     "werVerified": null,
+     "cerVerified": null,
+     "werRaw": 0.0113,
+     "werVerifiedRaw": null,
+     "wer.mic": 0.0088,
+     "cer.mic": 0.0069,
+     "werVerified.mic": null,
+     "cerVerified.mic": null,
+     "werRaw.mic": 0.0142,
+     "werVerifiedRaw.mic": null,
+     "wer.system": 0.003,
+     "cer.system": 0.0063,
+     "werVerified.system": null,
+     "cerVerified.system": null,
+     "werRaw.system": 0.0097,
+     "werVerifiedRaw.system": null,
+     "delta": 0.0006,
+     "deltaRaw": -0.0035,
+     "fixesFound": 0,
+     "fixesMissed": 0,
+     "mustNotChangeViolations": 0
+    },
+    "summary": {
+     "decisionsRecall": 0.5,
+     "decisionsPrecision": 0.5,
+     "actionItemsRecall": 0.25,
+     "actionItemsPrecision": 0.3333,
+     "ownerCorrect": 2,
+     "ownerWrong": 0,
+     "ownerMissing": 0,
+     "dueCorrect": 2,
+     "dueWrong": 0,
+     "dueMissing": 0,
+     "mustNotClaimHits": 0
+    },
+    "tags": {
+     "precision": 0.8,
+     "recall": 0.8
+    },
+    "speakers": {
+     "correct": 1,
+     "wrong": 0,
+     "missing": 4
+    }
+   },
+   "hardFails": []
+  }
+ ]
+}
