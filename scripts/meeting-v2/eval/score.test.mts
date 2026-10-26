@@ -255,6 +255,16 @@ test("normalizeWords: an exact adjacent repeat counts once; flags follow", () =>
   assert.deepEqual(f.flags, [true, false, true]);
 });
 
+test("scoreWords: an exact repeated token goes, contractions too (owner rule 2026-10-26)", () => {
+  const n = (t: string) => normalizeWords(scoreWords(t)).words.join(" ");
+  assert.equal(n("I'm I'm good"), "i m good");
+  assert.equal(n("we'll, we'll talk"), "we ll talk");
+  assert.equal(n("the The step"), "the step");
+  // A different token, or a repeat that is not next to it: kept.
+  assert.equal(n("I'm I am"), "i m i am");
+  assert.equal(n("it is it"), "it is it");
+});
+
 test("WER: normalized vs raw on number words and stutter repeats", () => {
   const g = parseGold(
     JSON.stringify({

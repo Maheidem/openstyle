@@ -13,7 +13,13 @@
  * - A word with leading punctuation (a quote or a bracket) is kept.
  * - A number is kept ("20 20" or "twenty twenty" can be a year or a score).
  *   A removed number would also change the numbers of the line.
- * - A run of three or more repeats keeps one word ("no no no" gives "no").
+ * - A negation is kept ("No, no." stays): the 4.2.3 meaning_flip check and
+ *   the eval negation check count negations, and a removed one fails both
+ *   (gold eval 2026-10-26, ca70f895).
+ * - When the first word is lower case and the second has a capital ("the The
+ *   step"), the kept word takes the capital: the second word starts the
+ *   sentence or is a name (gold eval 2026-10-26, a names hard fail).
+ * - A run of three or more repeats keeps one word ("we we we" gives "we").
  *   An emphatic double such as "very very" also goes: the owner rule has no
  *   exception, and code cannot tell emphasis from a stutter.
  */
@@ -42,6 +48,13 @@ function keyOf(core: string): string {
   return core.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
+const NEGATIONS = new Set(["no", "not", "never", "nothing", "none", "nobody"]);
+
+function isNegation(core: string): boolean {
+  const w = core.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'");
+  return NEGATIONS.has(w) || w.endsWith("n't");
+}
+
 function isNumber(key: string): boolean {
   return /\p{N}/u.test(key) || NUMBER_WORDS.has(key);
 }
@@ -61,9 +74,13 @@ export function removeRepeatedWords(text: string): string {
       key === keyOf(prev.core) &&
       !tok.lead &&
       !/[.!?…]/u.test(prev.trail) &&
-      !isNumber(key);
+      !isNumber(key) &&
+      !isNegation(tok.core);
     if (repeat) {
       prev.trail = tok.trail;
+      if (!/\p{Lu}/u.test(prev.core) && /\p{Lu}/u.test(tok.core)) {
+        prev.core = tok.core;
+      }
       changed = true;
       continue;
     }

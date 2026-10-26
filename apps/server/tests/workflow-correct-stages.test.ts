@@ -89,12 +89,12 @@ describe("stage 1 (code): vocabulary spelling", () => {
 });
 
 describe("stage 1b (code): exact repeated words", () => {
-  it("removes an immediate repeat in any case and keeps the first word", () => {
+  it("removes an immediate repeat in any case", () => {
     expect(removeRepeatedWords("so the the plan is fine")).toBe(
       "so the plan is fine",
     );
     expect(removeRepeatedWords("The the plan")).toBe("The plan");
-    expect(removeRepeatedWords("no no no way")).toBe("no way");
+    expect(removeRepeatedWords("we we we go")).toBe("we go");
   });
 
   it("moves the punctuation after the removed word", () => {
@@ -109,6 +109,16 @@ describe("stage 1b (code): exact repeated words", () => {
     );
     expect(removeRepeatedWords("in 20 20 and twenty twenty")).toBe(
       "in 20 20 and twenty twenty",
+    );
+    expect(removeRepeatedWords("No, no. We wait")).toBe("No, no. We wait");
+    expect(removeRepeatedWords("I don't don't know")).toBe(
+      "I don't don't know",
+    );
+  });
+
+  it("keeps the capital of the second word", () => {
+    expect(removeRepeatedWords("next stages. the The step")).toBe(
+      "next stages. The step",
     );
   });
 

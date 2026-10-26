@@ -262,11 +262,35 @@ export function normalizeWords(
 }
 
 /**
+ * The text without exact immediate repeated tokens: a whitespace token with
+ * the same letters and digits as the token before it (any case, any
+ * punctuation) goes. Owner rule 2026-10-26: Enhance removes exact repeated
+ * words, so the normalized WER ignores them on both sides. normalizeWords
+ * collapses repeated words, but words() splits "I'm" into "i m", so it does
+ * not see "I'm I'm" as a repeat. This step does.
+ */
+export function dropRepeatTokens(text: string): string {
+  const keyOf = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  const out: string[] = [];
+  let prev = "";
+  for (const tok of text.split(/\s+/).filter(Boolean)) {
+    const key = keyOf(tok);
+    if (key !== "" && key === prev) continue;
+    out.push(tok);
+    prev = key;
+  }
+  return out.join(" ");
+}
+
+/**
  * The words of a text for the normalized WER: a thousands separator between
- * digits goes ("1,000" and "1.000" are "1000"), then words().
+ * digits goes ("1,000" and "1.000" are "1000"), exact repeated tokens go
+ * (dropRepeatTokens), then words().
  */
 export function scoreWords(text: string): string[] {
-  return words(text.replace(/(\d)[.,](?=\d{3}(?!\d))/g, "$1"));
+  return words(
+    dropRepeatTokens(text.replace(/(\d)[.,](?=\d{3}(?!\d))/g, "$1")),
+  );
 }
 
 const round = (v: number, digits = 4) => {
