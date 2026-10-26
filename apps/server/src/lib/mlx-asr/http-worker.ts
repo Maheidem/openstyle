@@ -15,7 +15,11 @@ import {
   type MlxSetupBlocker,
   mlxSetupBlocker,
 } from "./python.js";
-import { updateManagedMlxRuntimeIfNeeded } from "./runtime.js";
+import {
+  isStaleManagedWorker,
+  runtimeUpdatePendingError,
+  updateManagedMlxRuntimeIfNeeded,
+} from "./runtime.js";
 
 // An HTTP mode of the MLX worker binary (`--llm` in specs/local-mlx-llm.md
 // 3.3, `--embed` in specs/local-semantic-search.md 5.4). The same binary as
@@ -246,7 +250,13 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
 
     const out: LaunchCandidate[] = [];
     const workerPath = getMlxAsrWorkerPath();
-    if (workerPath && existsSync(workerPath)) {
+    // A managed worker of another version never starts (runtime.ts,
+    // isStaleManagedWorker): it can exit on the arguments of this server.
+    if (
+      workerPath &&
+      existsSync(workerPath) &&
+      !isStaleManagedWorker(workerPath)
+    ) {
       out.push({
         label: "bundled worker",
         command: workerPath,
@@ -277,6 +287,9 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
     const port = await reservePort();
     const candidates = launchCandidates(def, port);
     if (candidates.length === 0) {
+      if (isStaleManagedWorker(getMlxAsrWorkerPath())) {
+        throw runtimeUpdatePendingError();
+      }
       throw new Error(
         setupBlocker()?.message ??
           `The MLX worker for the local ${opts.label} was not found.`,

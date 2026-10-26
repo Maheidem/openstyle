@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -166,6 +167,8 @@ async function importRuntime(): Promise<{
     createAppLogger: () => log,
     enableFileLogging: vi.fn(),
     traceLog: vi.fn(),
+    errorMessage: (err: unknown) =>
+      err instanceof Error ? err.message : String(err),
   }));
 
   const runtime = await import("../src/lib/mlx-asr/runtime.js");
@@ -376,6 +379,104 @@ describe("MLX runtime versioning", () => {
     await expect(runtime.ensureMlxRuntimeDownloaded()).rejects.toThrow(
       "this Openstyle release does not include the MLX worker asset yet",
     );
+  });
+});
+
+describe("server and worker version contract", () => {
+  /** A managed worker that leaves a marker file when it runs. */
+  function writeMarkerWorker(version: string): string {
+    writeManagedRuntime(version);
+    const marker = join(homeDir, "worker-ran");
+    const worker = join(runtimeRoot(), "mlx_asr_worker", "mlx_asr_worker");
+    writeFileSync(worker, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`);
+    chmodSync(worker, 0o755);
+    return marker;
+  }
+
+  /** An LLM-style HTTP worker on the managed runtime, with no Python fallback. */
+  async function importHttpWorker() {
+    const { runtime } = await importRuntime();
+    vi.doMock("../src/lib/mlx-asr/python.js", async () => ({
+      ...(await vi.importActual<typeof import("../src/lib/mlx-asr/python.js")>(
+        "../src/lib/mlx-asr/python.js",
+      )),
+      findPythonExecutable: () => null,
+    }));
+    const { createMlxHttpWorker } = await import(
+      "../src/lib/mlx-asr/http-worker.js"
+    );
+    const def = { id: "m", hfId: "org/m", displayName: "M" };
+    const worker = createMlxHttpWorker({
+      logName: "mlx-llm",
+      label: "LLM",
+      overrideEnv: "OPENSTYLE_TEST_NO_OVERRIDE",
+      getModel: (id) => (id === "m" ? def : undefined),
+      isDownloaded: () => true,
+      workerArgs: (_d, port) => ["--llm", "--port", String(port)],
+      keepAliveMinutes: () => 5,
+    });
+    return { runtime, worker };
+  }
+
+  afterEach(() => {
+    vi.doUnmock("../src/lib/mlx-asr/python.js");
+  });
+
+  it("marks only the managed worker of another version as stale", async () => {
+    process.env.OPENSTYLE_MLX_ASR_WORKER_VERSION = "0.9.1";
+    writeManagedRuntime("0.9.0");
+    const { runtime } = await importRuntime();
+    const managed = join(runtimeRoot(), "mlx_asr_worker", "mlx_asr_worker");
+    expect(runtime.isStaleManagedWorker(managed)).toBe(true);
+    expect(runtime.isStaleManagedWorker("/opt/other/mlx_asr_worker")).toBe(
+      false,
+    );
+    expect(runtime.getMlxRuntimeDownloadStatus().updatePending).toBe(true);
+
+    process.env.OPENSTYLE_MLX_ASR_WORKER_VERSION = "0.9.0";
+    vi.resetModules();
+    const fresh = (await importRuntime()).runtime;
+    expect(fresh.isStaleManagedWorker(managed)).toBe(false);
+    expect(fresh.getMlxRuntimeDownloadStatus().updatePending).toBe(false);
+  });
+
+  it("never starts the old worker when the update download fails, and tries the download again on the next start", async () => {
+    process.env.OPENSTYLE_MLX_ASR_WORKER_VERSION = "0.9.1";
+    const marker = writeMarkerWorker("0.9.0");
+    const fetchSpy = vi.fn().mockRejectedValue(new Error("offline"));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { runtime, worker } = await importHttpWorker();
+
+    const first = worker.ensure("m");
+    await expect(first).rejects.toBeInstanceOf(
+      runtime.MlxRuntimeUpdatePendingError,
+    );
+    await expect(first).rejects.toThrow(
+      "The MLX worker update is not installed (offline). The old worker does not start.",
+    );
+    expect(existsSync(marker)).toBe(false);
+    expect(worker.getState()).toMatchObject({ state: "error", model: "m" });
+    expect(runtime.getMlxRuntimeDownloadStatus()).toMatchObject({
+      updatePending: true,
+      error: "offline",
+    });
+    const calls = fetchSpy.mock.calls.length;
+    expect(calls).toBeGreaterThan(0);
+
+    await expect(worker.ensure("m")).rejects.toBeInstanceOf(
+      runtime.MlxRuntimeUpdatePendingError,
+    );
+    expect(fetchSpy.mock.calls.length).toBeGreaterThan(calls);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("starts the managed worker when its version is the expected one", async () => {
+    process.env.OPENSTYLE_MLX_ASR_WORKER_VERSION = "0.9.0";
+    const marker = writeMarkerWorker("0.9.0");
+    const { worker } = await importHttpWorker();
+    // The marker worker exits at once, so the start fails after the spawn.
+    await expect(worker.ensure("m")).rejects.toThrow();
+    expect(existsSync(marker)).toBe(true);
   });
 });
 
