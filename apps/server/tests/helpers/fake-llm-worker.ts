@@ -53,7 +53,12 @@ const server = http.createServer((req, res) => {
   });
 });
 server.listen(port, "127.0.0.1", () => {
-  console.log(JSON.stringify({ type: "ready", model, port }));
+  console.log(JSON.stringify({
+    type: "ready",
+    model,
+    port,
+    metal: { max_recommended_working_set_size: 107374182400, memory_size: 137438953472 },
+  }));
 });
 process.stdin.resume();
 process.stdin.on("end", () => process.exit(0));

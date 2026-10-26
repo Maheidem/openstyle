@@ -545,6 +545,32 @@ class LlmEngineTests(unittest.TestCase):
     def _req(self, **body: object) -> dict[str, object]:
         return mlx_asr_server._parse_chat_request({"messages": [{"role": "user", "content": "hi"}], **body})
 
+    def test_usage_has_mlx_generation_stats(self) -> None:
+        engine, _, _ = _engine([])
+        resets: list[int] = []
+        engine._reset_peak_memory = lambda: resets.append(1)
+
+        def stream_generate(model, tok, ids, **kwargs):
+            r = FakeResponse("{}", "stop", 4)
+            r.prompt_tps, r.generation_tps, r.peak_memory = 1234.567, 88.123, 4.5
+            yield r
+
+        engine._stream_generate = stream_generate
+        usage = engine.complete(self._req())["usage"]
+        self.assertEqual(resets, [1])
+        self.assertEqual(usage["prompt_tps"], 1234.57)
+        self.assertEqual(usage["generation_tps"], 88.12)
+        self.assertEqual(usage["peak_memory_bytes"], 4_500_000_000)
+        self.assertEqual(usage["completion_tokens"], 4)
+        self.assertLessEqual(usage["ttft_ms"], usage["total_ms"])
+
+    def test_usage_without_tokens_has_no_ttft(self) -> None:
+        engine, _, _ = _engine([])
+        usage = engine.complete(self._req())["usage"]
+        self.assertNotIn("ttft_ms", usage)
+        self.assertNotIn("prompt_tps", usage)
+        self.assertIn("total_ms", usage)
+
     def test_response_shape_and_template(self) -> None:
         engine, tok, calls = _engine([("Hel", None), ("lo", "stop")])
         out = engine.complete(self._req(max_tokens=9))
@@ -555,7 +581,10 @@ class LlmEngineTests(unittest.TestCase):
         self.assertTrue(str(out["id"]).startswith("chatcmpl-"))
         self.assertEqual(out["choices"][0]["message"], {"role": "assistant", "content": "Hello"})
         self.assertEqual(out["choices"][0]["finish_reason"], "stop")
-        self.assertEqual(out["usage"], {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5})
+        usage = dict(out["usage"])
+        self.assertGreaterEqual(usage.pop("total_ms"), 0)
+        self.assertGreaterEqual(usage.pop("ttft_ms"), 0)
+        self.assertEqual(usage, {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5})
         self.assertEqual(calls["stream"]["max_tokens"], 9)
         self.assertEqual(calls["stream"]["logits_processors"], [])
         self.assertEqual(calls["sampler"], {"temp": 0.0})
@@ -757,6 +786,16 @@ class RunLlmTests(unittest.TestCase):
         import signal
 
         self.assertEqual(self.signal_calls[0].args[0], signal.SIGTERM)
+
+    def test_ready_line_has_metal_info(self) -> None:
+        engine, _, _ = _engine([])
+        metal = {"metal": {"max_recommended_working_set_size": 107_000_000_000, "memory_size": 137_000_000_000}}
+        lines = self._run(_load_llm_engine=lambda _m: engine, _metal_info=lambda: metal)
+        self.assertEqual(lines[0]["metal"], metal["metal"])
+
+    def test_metal_info_is_empty_without_mlx(self) -> None:
+        with mock.patch.dict(sys.modules, {"mlx": None, "mlx.core": None}):
+            self.assertEqual(mlx_asr_server._metal_info(), {})
 
     def test_load_error_line_and_exit_1(self) -> None:
         def boom(_m: str) -> object:

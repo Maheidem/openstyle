@@ -390,7 +390,11 @@ describe("/api/mlx-llm routes (3.5)", () => {
     expect(data.platformSupported).toBe(true);
     expect(data.blockedReason).toBeNull();
     expect(data.keepAliveMinutes).toBe(5);
-    expect(data.worker).toEqual({ model: null, state: "stopped", port: null });
+    expect(data.worker).toMatchObject({
+      model: null,
+      state: "stopped",
+      port: null,
+    });
     const models = data.models as Array<Record<string, unknown>>;
     expect(models.map((m) => m.model)).toEqual(MLX_LLM_MODELS.map((m) => m.id));
     expect(Object.keys(models[0] ?? {}).sort()).toEqual(
@@ -444,6 +448,11 @@ describe("/api/mlx-llm routes (3.5)", () => {
       await new Promise((r) => setTimeout(r, 50));
     }
     expect(worker).toMatchObject({ model: GEMMA_E2B, state: "ready" });
+    // The Metal facts of the ready line (specs/llm-runtime-tuning.md, step 1).
+    expect(worker.gpu).toEqual({
+      maxRecommendedWorkingSetBytes: 107374182400,
+      memoryBytes: 137438953472,
+    });
     const stop = await app.request("/api/mlx-llm/server/stop", {
       method: "POST",
     });
