@@ -308,3 +308,9 @@ Traps found in the first runs (all fixed in the script):
 - Do not edit `scripts/dev-install.sh` while it runs. The whole script is in a brace group so that bash parses it before it starts.
 
 Agents never run the real command: it reads the login keychain and opens a window. Agents use `--dry-run`, or build with `--adhoc --build-only` (no keychain, no install, no open) and `OPENSTYLE_DEVBUILD_DIR=/tmp/<task>/wt`. Launch such a build only in quiet mode through the Test Runner, with Playwright `_electron.launch({ executablePath: "<wt>/apps/electron/dist/mac-arm64/Openstyle Dev.app/Contents/MacOS/Openstyle Dev" })`. Delete the scratch worktree with `git worktree remove --force <wt>` at the end.
+
+Traps found 2026-10-26 (PR #332):
+- Packaged-plist check without keychain: `OPENSTYLE_DEVBUILD_DIR=/tmp/<task>/wt bash scripts/dev-install.sh --ref origin/<branch> --adhoc --build-only`, then `/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "<wt>/apps/electron/dist/mac-arm64/Openstyle Dev.app/Contents/Info.plist"`. The build takes about 25 minutes. The ref must be pushed.
+- Never put `HOME=...` in front of `scripts/test-runner/run.sh`. It breaks the bundle lookup ("Test Runner bundle missing"). Pass `env HOME=... <cmd>` after the `--`.
+- `sqlite3 -readonly ... ".backup"` can fail with "unable to open database file" on a profile DB. Close the app, then read with `file:<db>?immutable=1`.
+
