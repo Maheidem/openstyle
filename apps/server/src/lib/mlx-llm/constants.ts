@@ -63,6 +63,14 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
   },
+  // License note (2026-10-25). The catalog has no license field.
+  // - Quant repo (lmstudio-community): its card has no license field.
+  // - NVIDIA source repo: license "other", name openmdw-1.1
+  //   (https://openmdw.ai/license/1-1/), card
+  //   https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16
+  // - That card names the base model google/gemma-4-E4B-it. The Gemma 4
+  //   terms on top of OpenMDW-1.1 need a legal read (not done).
+  // Owner decision 2026-10-25: Nemotron stays an option; Gemma E2B stays the default.
   {
     id: "nemotron-3.5-bolt-e4b-4bit",
     hfId: "lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit",
