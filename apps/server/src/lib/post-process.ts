@@ -330,12 +330,18 @@ export async function postProcess(
       /** Clean each piece with its own prompt and answer budget, in order. */
       const cleanPieces = async (pieces: string[]): Promise<CleanupOutcome> => {
         const out: CleanupOutcome[] = [];
-        for (const piece of pieces) {
+        for (const [i, piece] of pieces.entries()) {
           const call = buildRewritePrompt(piece, promptOptions);
           const pieceResolved = await resolveTaskCall("cleanup", {
             autoMaxOutputTokens: maxOutputTokensForCleanup(piece),
           });
-          out.push(await cleanOne(piece, { ...call, resolved: pieceResolved }));
+          const r = await cleanOne(piece, { ...call, resolved: pieceResolved });
+          if (!r.model) {
+            log.warn(
+              `cleanup piece ${i + 1} of ${pieces.length} failed; its raw text is kept: ${r.error instanceof Error ? r.error.message.slice(0, 200) : String(r.error)}`,
+            );
+          }
+          out.push(r);
         }
         return joinCleanedPieces(pieces, out);
       };
