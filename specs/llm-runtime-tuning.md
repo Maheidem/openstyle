@@ -336,3 +336,22 @@ Proof (frozen workers built from `32b89fb6` ("old") and from this branch ("new")
 - `meeting:eval` E2B, both gold meetings, old and new worker: same pack files (sha256 of all 6 files equal), same tokens (20,253 / 4,216 and 43,935 / 12,377), same hard fails (5578edb0: 1, gold `claim:c1`, also in the baseline; ca70f895: 0). No new hard fail. The outputs are identical, so no blind judge for meetings.
 - Real app (app-check skill, E2B, new worker, fictional data): 3 dictation cleanups 371, 210 and 265 ms; the worker log says `prefix 3959 of 4056 tokens, cached 0`, then `cached 3959` twice. Enhance + Summarize: 9 calls, all `stop`, 0 errors, `cached_tokens` 0 in `llm_calls`.
 - MLflow: the app run exported 1 Enhance + Summarize trace to experiment `llm-runtime-tuning` (id 68), read back with status OK. Dictation cleanup has no MLflow path. The bench and the replay call the worker directly, and `meeting:eval` strips tracing on purpose.
+
+---
+
+## 11. Step 4 result: worker context guard (built 2026-10-26)
+
+- The server starts the LLM worker with `--context-tokens <contextTokens>` from the catalog (`apps/server/src/lib/mlx-llm/server.ts`).
+- The worker tokenizes the chat-templated prompt. When `prompt_tokens + max_tokens > context_tokens`, it does not generate. It logs one `CONTEXT EXCEEDED` line and returns HTTP 400 with `{"error":{"type":"invalid_request_error","code":"context_length_exceeded","message":...,"prompt_tokens":N,"max_tokens":M,"context_tokens":C}}`. The guard counts all prompt tokens, also the tokens from the prefix cache. A refusal makes no prefill.
+- Without `--context-tokens` the worker has no guard. The eval tools that start the worker themselves (`stage-replay.mts`) do not send it.
+- Version contract (owner decision 2026-10-26): the server never starts a managed worker whose installed version is not the expected version (`isStaleManagedWorker` in `apps/server/src/lib/mlx-asr/runtime.ts`). Before, a failed update download (offline) started the old worker, and the old worker exits on `--context-tokens`. Now the start fails with `MlxRuntimeUpdatePendingError`, the status API shows `runtime.updatePending: true` and the download error, and each next start tries the download again. Real run: an isolated server with the shipped 2.22.0 worker and an offline download URL started no worker; with the download back, it installed the new worker and started it with `--context-tokens 32768`.
+
+Proof (E2B, frozen worker of this branch against the main script in the same pinned venv, each run under the GPU lock):
+
+| Check | Result |
+|---|---|
+| Dictation bench, 27 cases, 1 pass, main vs new | 27/27 byte-equal, pass 8/27 both |
+| 18 stored gold-meeting requests (sweep capture), main vs new | 18/18 byte-equal, 0 refusals |
+| Raw request at the limit / 1 token over / 40,832-token prompt | 200 / 400 / 400, also with the prefix cache on |
+| Server, worker window 4,900 (test only), dictation cleanup | refusal, split in 3 pieces, cleaned text, HTTP 200 |
+| Server, worker window 6,500 (test only), Enhance + Summarize | summarize refused, map and reduce, meeting `summarized`, no error |

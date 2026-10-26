@@ -23,6 +23,7 @@ vi.mock("../src/lib/mlx-asr/python.js", () => ({
 
 vi.mock("../src/lib/mlx-asr/runtime.js", () => ({
   isManagedMlxRuntimeAvailable: () => false,
+  isStaleManagedWorker: () => false,
   markManagedMlxRuntimeSyncedForAppVersion: () => {},
   mlxAsrReleaseTagOverride: () => null,
   updateManagedMlxRuntimeIfNeeded: async () => {},

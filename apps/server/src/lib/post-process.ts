@@ -3,7 +3,7 @@ import {
   maxOutputTokensForCleanup,
   sanitizeTranscriptText,
 } from "@openstyle/stt";
-import { createAppLogger } from "@openstyle/utils";
+import { createAppLogger, errorMessage } from "@openstyle/utils";
 import type {
   CleanupAppAssignment,
   CleanupEmailTone,
@@ -274,172 +274,187 @@ export async function postProcess(
       const resolved = await resolveTaskCall("cleanup", {
         autoMaxOutputTokens: maxOutputTokensForCleanup(normalizedRawText),
       });
+      // A model that does not start (for example a local worker whose
+      // update is not installed, or no runtime) is an engine problem. The
+      // person gets the raw text, as for any other cleanup failure.
       const chatModel = await createChatModel(
         resolved.provider,
         resolved.modelId,
         { task: "cleanup", sampling: resolved.samplingParams },
-      );
-
-      /** One cleanup call. It never throws: a fault gives the raw text. */
-      const cleanOne = async (
-        text: string,
-        call: { system: string; prompt: string; resolved: ResolvedTaskCall },
-      ): Promise<CleanupOutcome> => {
-        let error: unknown;
-        // Dictation cleanup is the `interactive` class (§5.4) — the single most
-        // latency-sensitive LLM call in the app, and the reason the lane
-        // exists. Acquired per call around the one `generateText` inside
-        // `cleanupWithModel`; `withLlmLane` releases it before the
-        // `result.model` bookkeeping, so a failed cleanup never leaves the
-        // lane occupied. Spec §6 constraint 5: if this ever measurably adds
-        // time to the commit -> delivered-text path, the lane is wrong.
-        const result = await withLlmLane(
-          call.resolved.provider,
-          call.resolved.modelId,
-          { cls: "interactive", taskId: "cleanup" },
-          () =>
-            cleanupWithModel({
-              model: chatModel,
-              text,
-              system: call.system,
-              prompt: call.prompt,
-              temperature: call.resolved.temperature,
-              topP: call.resolved.topP,
-              maxOutputTokens: call.resolved.maxOutputTokens,
-              // The empty/filler-only case is already handled above for the whole
-              // function (both the cloud and local-model branches), so this call
-              // is guaranteed non-empty text — disable the package's own internal
-              // check rather than relying on two independently-maintained filler
-              // regexes staying in sync.
-              skipEmptyText: false,
-              providerOptions: getLlmProvider(
-                call.resolved.provider,
-              )?.providerOptions?.(
-                call.resolved.modelId,
-                call.resolved.reasoningEnabled,
-              ),
-              signal: AbortSignal.timeout(call.resolved.timeoutMs),
-              onError: (err) => {
-                error = err;
-              },
-            }),
+      ).catch((err: unknown) => {
+        log.warn(
+          `LLM cleanup skipped: the model ${resolved.modelId} did not start; the raw text is kept: ${errorMessage(err)}`,
         );
-        return { ...result, error };
-      };
+        return null;
+      });
 
-      /** Clean each piece with its own prompt and answer budget, in order. */
-      const cleanPieces = async (pieces: string[]): Promise<CleanupOutcome> => {
-        const out: CleanupOutcome[] = [];
-        for (const [i, piece] of pieces.entries()) {
-          const call = buildRewritePrompt(piece, promptOptions);
-          const pieceResolved = await resolveTaskCall("cleanup", {
-            autoMaxOutputTokens: maxOutputTokensForCleanup(piece),
-          });
-          const r = await cleanOne(piece, { ...call, resolved: pieceResolved });
-          if (!r.model) {
-            log.warn(
-              `cleanup piece ${i + 1} of ${pieces.length} failed; its raw text is kept: ${r.error instanceof Error ? r.error.message.slice(0, 200) : String(r.error)}`,
-            );
-          }
-          out.push(r);
-        }
-        return joinCleanedPieces(pieces, out);
-      };
-
-      // The context guard (specs/llm-runtime-tuning.md 9 item 5). A text that
-      // fits is sent as one call, as before. A longer text is cut into pieces
-      // that fit the window and whose answer budget is at most
-      // CLEANUP_PIECE_MAX_OUTPUT_TOKENS, so each answer can end in time. The person gets cleaned text, never an error.
-      const contextWindow = contextWindowFor(
-        resolved.provider,
-        resolved.modelId,
-      );
-      const fitsCall = (
-        callSystem: string,
-        callPrompt: string,
-        maxOutputTokens: number,
-      ) =>
-        fitsWindow(
-          estimateCallTokens({
-            instructions: callSystem,
-            messages: [{ content: callPrompt }],
-          }),
-          maxOutputTokens,
-          contextWindow,
-        );
-      let result: CleanupOutcome;
-      if (fitsCall(system, prompt, resolved.maxOutputTokens)) {
-        result = await cleanOne(normalizedRawText, {
-          system,
-          prompt,
-          resolved,
-        });
-        if (!result.model && isInputOverflow(result.error)) {
-          // The model refused the call: the estimate was too low. Cut the
-          // text in two near the middle and try once more.
-          const limit = Math.ceil(
-            estimatePromptTokens(normalizedRawText) * 0.55,
+      if (chatModel) {
+        /** One cleanup call. It never throws: a fault gives the raw text. */
+        const cleanOne = async (
+          text: string,
+          call: { system: string; prompt: string; resolved: ResolvedTaskCall },
+        ): Promise<CleanupOutcome> => {
+          let error: unknown;
+          // Dictation cleanup is the `interactive` class (§5.4) — the single most
+          // latency-sensitive LLM call in the app, and the reason the lane
+          // exists. Acquired per call around the one `generateText` inside
+          // `cleanupWithModel`; `withLlmLane` releases it before the
+          // `result.model` bookkeeping, so a failed cleanup never leaves the
+          // lane occupied. Spec §6 constraint 5: if this ever measurably adds
+          // time to the commit -> delivered-text path, the lane is wrong.
+          const result = await withLlmLane(
+            call.resolved.provider,
+            call.resolved.modelId,
+            { cls: "interactive", taskId: "cleanup" },
+            () =>
+              cleanupWithModel({
+                model: chatModel,
+                text,
+                system: call.system,
+                prompt: call.prompt,
+                temperature: call.resolved.temperature,
+                topP: call.resolved.topP,
+                maxOutputTokens: call.resolved.maxOutputTokens,
+                // The empty/filler-only case is already handled above for the whole
+                // function (both the cloud and local-model branches), so this call
+                // is guaranteed non-empty text — disable the package's own internal
+                // check rather than relying on two independently-maintained filler
+                // regexes staying in sync.
+                skipEmptyText: false,
+                providerOptions: getLlmProvider(
+                  call.resolved.provider,
+                )?.providerOptions?.(
+                  call.resolved.modelId,
+                  call.resolved.reasoningEnabled,
+                ),
+                signal: AbortSignal.timeout(call.resolved.timeoutMs),
+                onError: (err) => {
+                  error = err;
+                },
+              }),
           );
-          const pieces = splitTextToFit(
-            normalizedRawText,
-            (p) => estimatePromptTokens(p) <= limit,
-          );
-          log.error(
-            `context exceeded: the model refused the cleanup (${normalizedRawText.length} chars); one more try in ${pieces.length} pieces`,
-          );
-          result = await cleanPieces(pieces);
-        }
-      } else {
-        // The answer budget of a piece: the "auto" value of the cleanup task
-        // for the piece, and at least the preset floor (task-profiles.ts).
-        const floor = (
-          await resolveTaskCall("cleanup", { autoMaxOutputTokens: 1 })
-        ).maxOutputTokens;
-        const pieceFits = (p: string) => {
-          const call = buildRewritePrompt(p, promptOptions);
-          return (
-            maxOutputTokensForCleanup(p) <= CLEANUP_PIECE_MAX_OUTPUT_TOKENS &&
-            fitsCall(
-              call.system,
-              call.prompt,
-              Math.max(floor, maxOutputTokensForCleanup(p)),
-            )
-          );
+          return { ...result, error };
         };
-        if (pieceFits("")) {
-          const pieces = splitTextToFit(normalizedRawText, pieceFits);
-          log.warn(
-            `context guard: cleanup of ${normalizedRawText.length} chars does not fit the window (${contextWindow} tokens); split into ${pieces.length} pieces`,
+
+        /** Clean each piece with its own prompt and answer budget, in order. */
+        const cleanPieces = async (
+          pieces: string[],
+        ): Promise<CleanupOutcome> => {
+          const out: CleanupOutcome[] = [];
+          for (const [i, piece] of pieces.entries()) {
+            const call = buildRewritePrompt(piece, promptOptions);
+            const pieceResolved = await resolveTaskCall("cleanup", {
+              autoMaxOutputTokens: maxOutputTokensForCleanup(piece),
+            });
+            const r = await cleanOne(piece, {
+              ...call,
+              resolved: pieceResolved,
+            });
+            if (!r.model) {
+              log.warn(
+                `cleanup piece ${i + 1} of ${pieces.length} failed; its raw text is kept: ${r.error instanceof Error ? r.error.message.slice(0, 200) : String(r.error)}`,
+              );
+            }
+            out.push(r);
+          }
+          return joinCleanedPieces(pieces, out);
+        };
+
+        // The context guard (specs/llm-runtime-tuning.md 9 item 5). A text that
+        // fits is sent as one call, as before. A longer text is cut into pieces
+        // that fit the window and whose answer budget is at most
+        // CLEANUP_PIECE_MAX_OUTPUT_TOKENS, so each answer can end in time. The person gets cleaned text, never an error.
+        const contextWindow = contextWindowFor(
+          resolved.provider,
+          resolved.modelId,
+        );
+        const fitsCall = (
+          callSystem: string,
+          callPrompt: string,
+          maxOutputTokens: number,
+        ) =>
+          fitsWindow(
+            estimateCallTokens({
+              instructions: callSystem,
+              messages: [{ content: callPrompt }],
+            }),
+            maxOutputTokens,
+            contextWindow,
           );
-          result = await cleanPieces(pieces);
-        } else {
-          // Even an empty text does not fit: the system prompt and the
-          // answer floor fill the window. A split cannot help. Send the text
-          // as one call; a refusal gives the raw text.
-          log.error(
-            `context guard: the cleanup prompt alone does not fit the window (${contextWindow} tokens); sent as one call`,
-          );
+        let result: CleanupOutcome;
+        if (fitsCall(system, prompt, resolved.maxOutputTokens)) {
           result = await cleanOne(normalizedRawText, {
             system,
             prompt,
             resolved,
           });
+          if (!result.model && isInputOverflow(result.error)) {
+            // The model refused the call: the estimate was too low. Cut the
+            // text in two near the middle and try once more.
+            const limit = Math.ceil(
+              estimatePromptTokens(normalizedRawText) * 0.55,
+            );
+            const pieces = splitTextToFit(
+              normalizedRawText,
+              (p) => estimatePromptTokens(p) <= limit,
+            );
+            log.error(
+              `context exceeded: the model refused the cleanup (${normalizedRawText.length} chars); one more try in ${pieces.length} pieces`,
+            );
+            result = await cleanPieces(pieces);
+          }
+        } else {
+          // The answer budget of a piece: the "auto" value of the cleanup task
+          // for the piece, and at least the preset floor (task-profiles.ts).
+          const floor = (
+            await resolveTaskCall("cleanup", { autoMaxOutputTokens: 1 })
+          ).maxOutputTokens;
+          const pieceFits = (p: string) => {
+            const call = buildRewritePrompt(p, promptOptions);
+            return (
+              maxOutputTokensForCleanup(p) <= CLEANUP_PIECE_MAX_OUTPUT_TOKENS &&
+              fitsCall(
+                call.system,
+                call.prompt,
+                Math.max(floor, maxOutputTokensForCleanup(p)),
+              )
+            );
+          };
+          if (pieceFits("")) {
+            const pieces = splitTextToFit(normalizedRawText, pieceFits);
+            log.warn(
+              `context guard: cleanup of ${normalizedRawText.length} chars does not fit the window (${contextWindow} tokens); split into ${pieces.length} pieces`,
+            );
+            result = await cleanPieces(pieces);
+          } else {
+            // Even an empty text does not fit: the system prompt and the
+            // answer floor fill the window. A split cannot help. Send the text
+            // as one call; a refusal gives the raw text.
+            log.error(
+              `context guard: the cleanup prompt alone does not fit the window (${contextWindow} tokens); sent as one call`,
+            );
+            result = await cleanOne(normalizedRawText, {
+              system,
+              prompt,
+              resolved,
+            });
+          }
         }
-      }
 
-      if (result.model) {
-        inputTokens = result.inputTokens;
-        outputTokens = result.outputTokens;
-        llmProvider = resolved.provider;
-        // Record the resolved model id (e.g. `groq/qwen/qwen3-32b`), not
-        // the AI SDK's prefix-stripped `result.model` (`qwen/qwen3-32b`), so
-        // the persisted history label stays consistent with pre-migration
-        // rows.
-        llmModel = resolved.modelId;
-      } else {
-        log.error(`LLM cleanup failed: ${result.error}`);
+        if (result.model) {
+          inputTokens = result.inputTokens;
+          outputTokens = result.outputTokens;
+          llmProvider = resolved.provider;
+          // Record the resolved model id (e.g. `groq/qwen/qwen3-32b`), not
+          // the AI SDK's prefix-stripped `result.model` (`qwen/qwen3-32b`), so
+          // the persisted history label stays consistent with pre-migration
+          // rows.
+          llmModel = resolved.modelId;
+        } else {
+          log.error(`LLM cleanup failed: ${result.error}`);
+        }
+        cleanedText = result.cleaned;
       }
-      cleanedText = result.cleaned;
     }
   }
 

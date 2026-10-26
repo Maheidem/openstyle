@@ -317,6 +317,16 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     expect(state.state).toBe("ready");
     expect(state.model).toBe(GEMMA_E2B);
     expect(state.port).toBeGreaterThan(0);
+    // The worker gets the context window of the model for its guard
+    // (specs/llm-runtime-tuning.md 7 step 4).
+    const start = loggedRequests()
+      .slice(before)
+      .find((r) => r.start === true);
+    const args = start?.args as string[];
+    expect(args.slice(args.indexOf("--context-tokens"))).toEqual([
+      "--context-tokens",
+      "32768",
+    ]);
 
     const result = await generateText({ model, prompt: "hello there" });
     expect(result.text).toBe("Fake worker reply.");

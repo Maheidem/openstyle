@@ -26,8 +26,10 @@ import {
 } from "./python.js";
 import {
   isManagedMlxRuntimeAvailable,
+  isStaleManagedWorker,
   markManagedMlxRuntimeSyncedForAppVersion,
   mlxAsrReleaseTagOverride,
+  runtimeUpdatePendingError,
   updateManagedMlxRuntimeIfNeeded,
 } from "./runtime.js";
 
@@ -300,7 +302,13 @@ function workerLaunchCandidates(modelHfId: string): WorkerLaunchCandidate[] {
   const candidates: WorkerLaunchCandidate[] = [];
 
   const workerPath = getMlxAsrWorkerPath();
-  if (workerPath && existsSync(workerPath)) {
+  // A managed worker of another version never starts (runtime.ts,
+  // isStaleManagedWorker).
+  if (
+    workerPath &&
+    existsSync(workerPath) &&
+    !isStaleManagedWorker(workerPath)
+  ) {
     candidates.push({
       label: "bundled worker",
       command: workerPath,
@@ -420,6 +428,9 @@ async function startWorker(modelId: string): Promise<void> {
 
   const candidates = workerLaunchCandidates(def.hfId);
   if (candidates.length === 0) {
+    if (isStaleManagedWorker(getMlxAsrWorkerPath())) {
+      throw runtimeUpdatePendingError();
+    }
     throw new Error(
       describeMlxSetupBlocker() ??
         "Bundled MLX ASR worker or Python 3 with mlx-audio not found.",

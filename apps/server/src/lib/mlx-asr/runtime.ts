@@ -121,6 +121,12 @@ export interface MlxRuntimeDownloadStatus {
     speedBps: number;
   };
   error?: string;
+  /**
+   * The installed managed worker is not the version this app needs, and the
+   * update is not installed yet. That worker does not start (see
+   * isStaleManagedWorker). The next worker start tries the download again.
+   */
+  updatePending: boolean;
 }
 
 interface ActiveRuntimeDownload {
@@ -400,14 +406,42 @@ export function needsManagedMlxRuntimeUpdate(): boolean {
   return getInstalledMlxRuntimeVersion() !== version;
 }
 
+/**
+ * The server and the worker have a strict version contract: the server
+ * passes options that only the worker of the same version knows (for example
+ * `--context-tokens`), and an older worker exits on them. So a start never
+ * uses a managed worker of another version. True when `workerPath` is the
+ * managed worker and its installed version is not the expected one.
+ */
+export function isStaleManagedWorker(workerPath: string): boolean {
+  return (
+    workerPath === getManagedMlxWorkerPath() && needsManagedMlxRuntimeUpdate()
+  );
+}
+
+/** The update of the managed worker is not installed, so no worker starts. */
+export class MlxRuntimeUpdatePendingError extends Error {
+  readonly code = "runtime-update-pending";
+}
+
+/** The start error when only a stale managed worker is installed. */
+export function runtimeUpdatePendingError(): MlxRuntimeUpdatePendingError {
+  const reason = activeDownload?.error;
+  return new MlxRuntimeUpdatePendingError(
+    `The MLX worker update is not installed${reason ? ` (${reason})` : ""}. The old worker does not start. The next start tries the download again.`,
+  );
+}
+
 export function getMlxRuntimeDownloadStatus(): MlxRuntimeDownloadStatus {
   const available = isManagedMlxRuntimeAvailable();
+  const updatePending = needsManagedMlxRuntimeUpdate();
   if (activeDownload?.error) {
     return {
       available,
       downloading: false,
       url: runtimeUrl(),
       error: activeDownload.error,
+      updatePending,
     };
   }
   if (activeDownload) {
@@ -415,6 +449,7 @@ export function getMlxRuntimeDownloadStatus(): MlxRuntimeDownloadStatus {
       available,
       downloading: true,
       url: runtimeUrl(),
+      updatePending,
       downloadProgress: activeDownload.bytesTotal
         ? {
             bytesDownloaded: activeDownload.bytesDownloaded,
@@ -428,7 +463,7 @@ export function getMlxRuntimeDownloadStatus(): MlxRuntimeDownloadStatus {
         : undefined,
     };
   }
-  return { available, downloading: false, url: runtimeUrl() };
+  return { available, downloading: false, url: runtimeUrl(), updatePending };
 }
 
 export async function ensureMlxRuntimeDownloaded(): Promise<void> {

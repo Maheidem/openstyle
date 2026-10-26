@@ -8,8 +8,9 @@ Pass any Hugging Face model id that mlx-audio supports via --model, for example:
   mlx-community/Qwen3-ASR-0.6B-5bit
   mlx-community/parakeet-...  (when published for mlx-audio STT)
 
-LLM mode: ``--llm --model <hfId> --port <port>`` loads an mlx-lm model and
-serves an OpenAI-style HTTP API on 127.0.0.1 (specs/local-mlx-llm.md section 2).
+LLM mode: ``--llm --model <hfId> --port <port> [--context-tokens <n>]`` loads
+an mlx-lm model and serves an OpenAI-style HTTP API on 127.0.0.1
+(specs/local-mlx-llm.md section 2).
 
 Embed mode: ``--embed --model <hfId> [--revision <sha>] --port <port>`` loads an
 embedding model with mlx-vlm and serves ``POST /v1/embeddings`` on 127.0.0.1
@@ -666,6 +667,36 @@ class _BadRequest(Exception):
     pass
 
 
+class _ContextExceeded(Exception):
+    """The prompt and max_tokens do not fit the context window of the model.
+
+    The worker sends no request to the model. The reply is HTTP 400 with the
+    OpenAI code context_length_exceeded and the token numbers. The server
+    reads them (apps/server/src/lib/llm/gateway-errors.ts, overflowNumbers),
+    splits the input and tries again (specs/llm-runtime-tuning.md 9 item 5).
+    """
+
+    def __init__(self, prompt_tokens: int, max_tokens: int, context_tokens: int) -> None:
+        self.prompt_tokens = prompt_tokens
+        self.max_tokens = max_tokens
+        self.context_tokens = context_tokens
+        super().__init__(
+            f"prompt {prompt_tokens} tokens + max_tokens {max_tokens} > context window {context_tokens} tokens"
+        )
+
+    def body(self) -> dict[str, Any]:
+        return {
+            "error": {
+                "type": "invalid_request_error",
+                "code": "context_length_exceeded",
+                "message": str(self),
+                "prompt_tokens": self.prompt_tokens,
+                "max_tokens": self.max_tokens,
+                "context_tokens": self.context_tokens,
+            }
+        }
+
+
 def _message_text(content: Any) -> str:
     """Flatten OpenAI content (a string or a list of text parts) to a string."""
     if content is None:
@@ -980,8 +1011,11 @@ class _LlmEngine:
         reset_peak_memory: Any = None,
         make_prompt_cache: Any = None,
         forward: Any = None,
+        context_tokens: int | None = None,
     ) -> None:
         self.model_id = model_id
+        # The context window of the model (--context-tokens). None: no guard.
+        self.context_tokens = context_tokens
         # forward(cache, ids) runs the model on one chunk and fills the cache.
         self._prefix_cache = _PrefixCache(make_prompt_cache, forward)
         # Resets the MLX peak memory counter before each request, so
@@ -1046,6 +1080,14 @@ class _LlmEngine:
         if self._reset_peak_memory is not None:
             self._reset_peak_memory()
         ids = self._prompt_ids(req)
+        # The context guard (specs/llm-runtime-tuning.md 7 step 4). It counts
+        # all prompt tokens, also the tokens that come from the prefix cache.
+        # The server keeps each call inside the window before it sends, so a
+        # refusal here means that its estimate was too low.
+        if self.context_tokens is not None and len(ids) + req["max_tokens"] > self.context_tokens:
+            exc = _ContextExceeded(len(ids), req["max_tokens"], self.context_tokens)
+            _log(f"CONTEXT EXCEEDED: request refused, not generated: {exc}")
+            raise exc
         feed, gen_kwargs, cached = ids, {}, 0
         mode = req.get("prefix_cache")
         if mode is not None:
@@ -1175,7 +1217,7 @@ def _vocab_size(model: Any, hf_tok: Any) -> int:
         return int(size) if size else len(hf_tok)
 
 
-def _load_llm_engine(model_id: str) -> _LlmEngine:
+def _load_llm_engine(model_id: str, context_tokens: int | None = None) -> _LlmEngine:
     import llguidance.hf
     import mlx.core as mx
     from llguidance import LLMatcher
@@ -1227,6 +1269,7 @@ def _load_llm_engine(model_id: str) -> _LlmEngine:
         reset_peak_memory=mx.reset_peak_memory,
         make_prompt_cache=lambda: make_prompt_cache(model),
         forward=forward,
+        context_tokens=context_tokens,
     )
 
 
@@ -1280,6 +1323,8 @@ def _http_handler_base(model_id: str) -> Any:
                 self._error(400, f"invalid json: {exc}", "invalid_request_error")
             except _BadRequest as exc:
                 self._error(400, str(exc), "invalid_request_error")
+            except _ContextExceeded as exc:
+                self._json(400, exc.body())
             except Exception as exc:
                 _log(f"request error: {exc}")
                 self._error(500, str(exc), "server_error")
@@ -1484,11 +1529,11 @@ def _serve_http(mode: str, port: int | None, load: Any, make_handler: Any, ready
         httpd.server_close()
 
 
-def _run_llm(model_id: str, port: int | None) -> None:
+def _run_llm(model_id: str, port: int | None, context_tokens: int | None = None) -> None:
     _serve_http(
         "llm",
         port,
-        lambda: _load_llm_engine(model_id),
+        lambda: _load_llm_engine(model_id, context_tokens),
         _make_llm_handler,
         lambda _engine: {"model": model_id, **_metal_info()},
     )
@@ -1527,10 +1572,18 @@ def main() -> None:
         help="serve an embedding model over an OpenAI-style /v1/embeddings on 127.0.0.1:--port",
     )
     parser.add_argument("--revision", default=None, help="Hugging Face commit of --model (embed mode)")
+    parser.add_argument(
+        "--context-tokens",
+        type=int,
+        default=None,
+        help="context window of --model (llm mode): refuse a request when prompt + max_tokens is more",
+    )
     args = parser.parse_args()
+    if args.context_tokens is not None and args.context_tokens < 1:
+        parser.error("--context-tokens must be a positive integer")
 
     if args.llm:
-        _run_llm(args.model, args.port)
+        _run_llm(args.model, args.port, args.context_tokens)
         return
 
     if args.embed:
