@@ -1,3 +1,4 @@
+import { createAppLogger } from "@openstyle/utils";
 import {
   type LlmSkipReason,
   MEETING_SUMMARY_TIMEOUT_SETTING_KEY,
@@ -5,8 +6,12 @@ import {
 } from "@openstyle/validations";
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallStructuredResult } from "../../../llm/gateway.js";
-import { LengthError } from "../../../llm/gateway-errors.js";
+import {
+  ContextExceededError,
+  LengthError,
+} from "../../../llm/gateway-errors.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
+import { estimateCallTokens, fitsWindow } from "../../../llm/token-budget.js";
 import {
   fetchModelsFromRegistry,
   getModelCostCached,
@@ -48,6 +53,8 @@ import {
   runStep,
   runUnitRoute,
 } from "../unit.js";
+
+const log = createAppLogger("summarize");
 
 // Node `summarize` (specs/meeting-enhance-agentic.md 4.5). One `single` call
 // when the transcript fits the context budget. Else one `map` call for each
@@ -277,6 +284,8 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       totals.last = r;
     };
 
+    /** Unit keys that did not fit the context window. For the log only. */
+    const contextRefused = new Set<string>();
     /** The newest cut answer of each unit key (PR #258). */
     const cutAnswers = new Map<string, LengthError>();
     /** Leaf key -> the `length` failure of a leaf repaired from its cut answer. */
@@ -335,6 +344,8 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       tokensOf: (members: readonly M[]) => number;
       /** Step 2 `split`: Infinity turns it off. */
       minSplitTokens: number;
+      /** Step 2 `split` for an input that is too long for the window. */
+      minSplitTokensInput?: number;
       /** Step 3 `raise`. */
       raise: boolean;
       /** A `length` failure will be replanned: it is not a failed call. */
@@ -349,6 +360,9 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
             ctx,
             profile,
             minSplitTokens: o.minSplitTokens,
+            ...(o.minSplitTokensInput !== undefined
+              ? { minSplitTokensInput: o.minSplitTokensInput }
+              : {}),
             tokensOf: o.tokensOf,
             maxOutput: () => maxOut,
             fits: (members, out, p) =>
@@ -384,6 +398,9 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
               ).catch((err: unknown) => {
                 if (err instanceof LengthError && err.where === "output") {
                   cutAnswers.set(unit.key, err);
+                }
+                if (err instanceof ContextExceededError) {
+                  contextRefused.add(unit.key);
                 }
                 throw err;
               });
@@ -473,13 +490,31 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       };
     };
 
+    /**
+     * The context guard of a reduce call (specs/llm-runtime-tuning.md 9
+     * item 5): the estimate of the gateway, so a group that passes here is
+     * sent.
+     */
+    const reduceFits = (group: readonly MeetingSummary[]) =>
+      fitsWindow(
+        estimateCallTokens({
+          instructions: reduceSystem,
+          messages: [{ content: buildSummaryReduceUserPrompt(group) }],
+        }),
+        maxOut,
+        profile.contextWindow,
+      );
+
     /** Greedy groups of consecutive partials; each group fits the budget. */
     const groupPartials = (partials: MeetingSummary[]): MeetingSummary[][] => {
       const groups: MeetingSummary[][] = [];
       let cur: MeetingSummary[] = [];
       for (const p of partials) {
         const next = [...cur, p];
-        if (cur.length > 0 && partialTokens(next) > contextBudget) {
+        if (
+          cur.length > 0 &&
+          (partialTokens(next) > contextBudget || !reduceFits(next))
+        ) {
           groups.push(cur);
           cur = [p];
         } else cur = next;
@@ -501,6 +536,8 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
             user: buildSummaryReduceUserPrompt,
             tokensOf: partialTokens,
             minSplitTokens: Number.POSITIVE_INFINITY,
+            // A group that the model refuses as too long is cut in two.
+            minSplitTokensInput: 0,
             raise: true,
           }),
         ),
@@ -538,6 +575,8 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
                 buildSummaryMapUserPrompt(members.join("\n"), i, chunks.length),
               tokensOf: lineTokens,
               minSplitTokens: MIN_SPLIT_TOKENS_SUMMARY,
+              // A chunk that is too long for the window always splits.
+              minSplitTokensInput: 0,
               raise: true,
             }),
           ),
@@ -562,7 +601,15 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           return overLimit();
         }
         if (groups.length === 1) {
-          return reduceUnit(`reduce:${level}:0`, groups[0] as MeetingSummary[]);
+          const done = await reduceUnit(
+            `reduce:${level}:0`,
+            groups[0] as MeetingSummary[],
+          );
+          // A group that was split for its length gives more than one
+          // summary: reduce them on the next level.
+          if (!done.ok || (done.partials?.length ?? 1) <= 1) return done;
+          current = done.partials as MeetingSummary[];
+          continue;
         }
         const next: MeetingSummary[] = [];
         for (const [g, group] of groups.entries()) {
@@ -573,7 +620,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           }
           const done = await reduceUnit(`reduce:${level}:${g}`, group);
           if (!done.ok) return done;
-          next.push(done.summary);
+          next.push(...(done.partials ?? [done.summary]));
         }
         current = next;
       }
@@ -661,6 +708,11 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           const leaves = await singleCall(true);
           const first = settle(leaves);
           if (first.ok || first.failure?.kind !== "length") return first;
+          if (contextRefused.has("single")) {
+            log.warn(
+              "context budget: summarize single is too long for the window; map and reduce at half the tokens",
+            );
+          }
           // Step 2 of 4.5.5: a map and reduce plan at half the tokens.
           const half = Math.ceil(transcriptTokens / 2);
           const replan = plannedSummaryCalls(transcriptTokens, half);

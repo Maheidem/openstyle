@@ -19,6 +19,7 @@ import {
   AbnormalStopError,
   CancelledError,
   ContentFilterError,
+  ContextExceededError,
   DeadlineExceededError,
   type GatewayError,
   LengthError,
@@ -790,5 +791,61 @@ describe("the error kinds cover the 15 kinds of 5.2", () => {
       deadline_exceeded: "DeadlineExceededError",
     };
     expect(Object.keys(classes)).toHaveLength(15);
+  });
+});
+
+describe("CG1 to CG3, the context guard (specs/llm-runtime-tuning.md 9 item 5)", () => {
+  it("CG1: a call over the window is not sent and gives ContextExceededError", async () => {
+    // Prompt about 60 tokens + max 400 > window 300.
+    const { input, rec, fake } = setup(
+      [okReply(VALID)],
+      makeProfile({ contextWindow: 300 }),
+    );
+    const err = await fails(callStructured(input));
+    expect(err).toBeInstanceOf(ContextExceededError);
+    expect(err).toBeInstanceOf(LengthError);
+    const c = err as ContextExceededError;
+    expect(c.where).toBe("input");
+    expect(c.source).toBe("estimate");
+    expect(c.contextTokens).toBe(300);
+    expect(c.promptTokens).toBeGreaterThan(0);
+    expect(c.retry).toBeNull();
+    expect(fake.calls).toHaveLength(0);
+    expect(rec.records).toHaveLength(0);
+    expect(rec.attempts).toHaveLength(0);
+  });
+
+  it("CG2: a call that fits is sent once, unchanged", async () => {
+    const { input, rec, fake } = setup(
+      [okReply(VALID)],
+      makeProfile({ contextWindow: 32_768 }),
+    );
+    const r = await callStructured(input);
+    expect(r.object).toEqual({ corrections: [] });
+    expect(fake.calls).toHaveLength(1);
+    expect(rec.records).toHaveLength(1);
+  });
+
+  it("CG3: the typed worker refusal gives ContextExceededError with its numbers", async () => {
+    const body = JSON.stringify({
+      error: {
+        type: "invalid_request_error",
+        code: "context_length_exceeded",
+        message: "The prompt and max_tokens do not fit the context.",
+        prompt_tokens: 31_000,
+        max_tokens: 4096,
+        context_tokens: 32_768,
+      },
+    });
+    const { input, rec } = setup([apiError(400, { body })]);
+    const err = await fails(callStructured(input));
+    expect(err).toBeInstanceOf(ContextExceededError);
+    const c = err as ContextExceededError;
+    expect(c.source).toBe("provider");
+    expect(c.promptTokens).toBe(31_000);
+    expect(c.contextTokens).toBe(32_768);
+    expect(c.kind).toBe("length");
+    expect(rec.records).toHaveLength(1);
+    expect(rec.records[0]?.errorKind).toBe("length");
   });
 });
