@@ -11,7 +11,12 @@ import type {
   ConfiguredModel,
   LocalEngine,
 } from "@renderer/lib/models";
-import { displayProviderName, MLX_LLM_PROVIDER_ID } from "@renderer/lib/models";
+import {
+  displayProviderName,
+  fallbackAfterDelete,
+  formatBytes,
+  MLX_LLM_PROVIDER_ID,
+} from "@renderer/lib/models";
 import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
@@ -29,6 +34,7 @@ import { SearchModelSection } from "./search-model-section";
 import { type ServerView, voiceCannotTranscribe } from "./server-roles";
 import { TaskProfilesSection } from "./task-profiles-section";
 import { useModels } from "./use-models";
+import { recommendedVoiceKey } from "./voice-helpers";
 
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -50,6 +56,10 @@ export default function ModelsPage(): React.JSX.Element {
     engine?: LocalEngine;
     name: string;
     custom: boolean;
+    /** The model is the selected model of its type. */
+    inUse: boolean;
+    /** The model the app switches to after the delete, or null for none. */
+    fallback: string | null;
   } | null>(null);
   const [pendingProviderDelete, setPendingProviderDelete] = useState<
     string | null
@@ -154,11 +164,16 @@ export default function ModelsPage(): React.JSX.Element {
   const onRequestDeleteLocal = (defId: string, engine?: LocalEngine): void => {
     if (engine === "mlx-llm") {
       const item = m.localLlmItems.find((row) => row.defId === defId);
+      const recommended = m.localLlmItems.find((row) => row.recommended);
       setPendingLocalDelete({
         defId,
         engine,
         name: item?.name ?? defId,
         custom: false,
+        inUse: item?.selected === true,
+        fallback: item
+          ? fallbackAfterDelete(m.localLlmItems, recommended?.key, item.key)
+          : null,
       });
       return;
     }
@@ -170,6 +185,14 @@ export default function ModelsPage(): React.JSX.Element {
       engine,
       name: item?.name ?? defId,
       custom: item?.custom === true,
+      inUse: item?.selected === true,
+      fallback: item
+        ? fallbackAfterDelete(
+            m.voiceItems,
+            recommendedVoiceKey(m.voiceItems),
+            item.key,
+          )
+        : null,
     });
   };
 
@@ -270,6 +293,17 @@ export default function ModelsPage(): React.JSX.Element {
 
         <SearchModelSection />
 
+        {m.diskTotalBytes != null && m.diskTotalBytes > 0 && (
+          <p
+            className="text-muted-foreground text-[12px]"
+            data-testid="models-disk-total"
+          >
+            {t("models.diskUse.total", {
+              size: formatBytes(m.diskTotalBytes),
+            })}
+          </p>
+        )}
+
         {showParams && (
           <div ref={taskProfilesRef}>
             <TaskProfilesSection
@@ -362,20 +396,37 @@ export default function ModelsPage(): React.JSX.Element {
               : "models.deleteLocalTitle",
           )}
           message={
-            <Trans
-              i18nKey={
-                pendingLocalDelete.custom
-                  ? "models.custom.deleteMsg"
-                  : "models.deleteLocalMsg"
-              }
-              values={{
-                name: pendingLocalDelete.name,
-                phrase: ON_DEVICE_PHRASE,
-              }}
-              components={{
-                b: <span className="text-foreground/80 font-medium" />,
-              }}
-            />
+            <>
+              <Trans
+                i18nKey={
+                  pendingLocalDelete.custom
+                    ? "models.custom.deleteMsg"
+                    : "models.deleteLocalMsg"
+                }
+                values={{
+                  name: pendingLocalDelete.name,
+                  phrase: ON_DEVICE_PHRASE,
+                }}
+                components={{
+                  b: <span className="text-foreground/80 font-medium" />,
+                }}
+              />
+              {pendingLocalDelete.inUse && (
+                <span className="mt-2 block">
+                  <Trans
+                    i18nKey={
+                      pendingLocalDelete.fallback
+                        ? "models.deleteInUseSwitch"
+                        : "models.deleteInUseNone"
+                    }
+                    values={{ fallback: pendingLocalDelete.fallback }}
+                    components={{
+                      b: <span className="text-foreground/80 font-medium" />,
+                    }}
+                  />
+                </span>
+              )}
+            </>
           }
           onCancel={() => setPendingLocalDelete(null)}
           onConfirm={() => {

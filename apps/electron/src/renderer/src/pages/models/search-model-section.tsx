@@ -6,13 +6,17 @@
  * is hidden when the Mac cannot run MLX.
  */
 import { getClient } from "@renderer/lib/api";
-import { formatBytes, type MlxEmbedStatus } from "@renderer/lib/models";
-import { mlxEmbedStatusQueryOptions, queryKeys } from "@renderer/lib/query";
+import { hasActiveDownload, type MlxEmbedStatus } from "@renderer/lib/models";
+import {
+  mlxEmbedStatusQueryOptions,
+  modelDiskUseQueryOptions,
+  queryKeys,
+} from "@renderer/lib/query";
 import { ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { ModelRow, type Row } from "./model-list";
+import { localMeta, ModelRow, type Row } from "./model-list";
 import { ConfirmDialog } from "./model-modal";
 
 type EmbedModel = MlxEmbedStatus["models"][number];
@@ -23,11 +27,26 @@ export function SearchModelSection(): React.JSX.Element | null {
   const { data } = useQuery(mlxEmbedStatusQueryOptions());
   const [pendingDelete, setPendingDelete] = useState<EmbedModel | null>(null);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const { data: diskUse } = useQuery(modelDiskUseQueryOptions());
+
+  // A finished download changes the disk use: read it again.
+  const active = hasActiveDownload(data?.models);
+  const wasActive = useRef(false);
+  useEffect(() => {
+    if (wasActive.current && !active) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.models.diskUse,
+      });
+    }
+    wasActive.current = active;
+  }, [active, queryClient]);
 
   if (!data?.platformSupported || data.models.length === 0) return null;
 
-  const refresh = (): Promise<void> =>
-    queryClient.invalidateQueries({ queryKey: queryKeys.mlxEmbedStatus });
+  const refresh = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.mlxEmbedStatus });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.models.diskUse });
+  };
   const models = getClient().api["mlx-embed"].models[":model"];
   const call = (p: Promise<unknown>): void => {
     void p.catch(() => {}).then(refresh);
@@ -54,9 +73,15 @@ export function SearchModelSection(): React.JSX.Element | null {
     const meta =
       m.selected && loadedHere && worker.state === "starting"
         ? t("models.searchModel.loading")
-        : `${t("models.onDevice")}${
-            m.status !== "ready" ? ` · ${formatBytes(m.sizeBytes)}` : ""
-          }`;
+        : localMeta(
+            t,
+            m.status,
+            m.sizeBytes,
+            undefined,
+            diskUse?.models.find(
+              (d) => d.engine === "mlx-embed" && d.model === m.model,
+            )?.bytes,
+          );
     return {
       key: `mlx-embed/${m.model}`,
       name: m.displayName,

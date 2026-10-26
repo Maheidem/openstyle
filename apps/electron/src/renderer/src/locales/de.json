@@ -626,6 +626,12 @@
     "modelPlural": "Modelle",
     "deleteLocalTitle": "Lokales Modell löschen?",
     "deleteLocalMsg": "<b>{{name}}</b> von {{phrase}} entfernen. Die Gewichte werden aus Ihrem lokalen Cache gelöscht; Sie können sie später erneut herunterladen.",
+    "deleteInUseSwitch": "Dieses Modell ist gerade in Verwendung. Die App wechselt zu <b>{{fallback}}</b>.",
+    "deleteInUseNone": "Dieses Modell ist gerade in Verwendung. Nach dem Löschen ist kein Modell dieser Art ausgewählt. Wählen Sie hier ein neues.",
+    "diskUse": {
+      "onDisk": "{{size}} auf der Festplatte",
+      "total": "Heruntergeladene Modelle belegen {{size}} auf der Festplatte."
+    },
     "deleteProviderTitle": "Anbieter löschen",
     "deleteProviderMsgBase": "Den API-Schlüssel von <b>{{provider}}</b> löschen? Dadurch werden auch alle konfigurierten Modelle für diesen Anbieter entfernt",
     "deleteProviderCurrentSuffix": ", einschließlich eines Modells, das Sie derzeit verwenden",

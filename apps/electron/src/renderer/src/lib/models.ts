@@ -165,6 +165,27 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
 }
 
+/** The key of one model in the disk use list: `<engine>:<catalog id>`. */
+export function diskUseKey(engine: string, defId: string): string {
+  return `${engine}:${defId}`;
+}
+
+/**
+ * The name of the model that becomes the default after the delete of the
+ * selected model: the recommended model of the type, when it is on disk and
+ * is not the deleted model. Null means the type has no model after the
+ * delete. The server applies the same rule.
+ */
+export function fallbackAfterDelete(
+  items: { key: string; name: string; status?: string }[],
+  recommendedKey: string | undefined,
+  deletedKey: string,
+): string | null {
+  if (!recommendedKey || recommendedKey === deletedKey) return null;
+  const item = items.find((it) => it.key === recommendedKey);
+  return item?.status === "ready" ? item.name : null;
+}
+
 export function formatSpeed(bps: number): string {
   if (bps < 1_000_000) return `${(bps / 1_000).toFixed(0)} KB/s`;
   return `${(bps / 1_000_000).toFixed(1)} MB/s`;

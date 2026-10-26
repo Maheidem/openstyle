@@ -625,6 +625,12 @@
     "modelPlural": "modelli",
     "deleteLocalTitle": "Eliminare il modello locale?",
     "deleteLocalMsg": "Rimuovere <b>{{name}}</b>? I file verranno eliminati.",
+    "deleteInUseSwitch": "Questo modello è in uso. L'app passa a <b>{{fallback}}</b>.",
+    "deleteInUseNone": "Questo modello è in uso. Dopo l'eliminazione, nessun modello di questo tipo è selezionato. Scegline uno nuovo qui.",
+    "diskUse": {
+      "onDisk": "{{size}} su disco",
+      "total": "I modelli scaricati occupano {{size}} su disco."
+    },
     "deleteProviderTitle": "Elimina provider",
     "deleteProviderMsgBase": "Eliminare la chiave per <b>{{provider}}</b>?",
     "deleteProviderCurrentSuffix": ", incluso il modello in uso",

@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { mlxLlmServerStartSchema } from "@openstyle/validations";
 import { Hono } from "hono";
+import { deleteBlockedResponse } from "../lib/local-model-delete.js";
 import {
   isAppleSiliconMac,
   MLX_UNSUPPORTED_PLATFORM_REASON,
@@ -21,6 +22,7 @@ import {
   downloadMlxLlmModel,
   getAllMlxLlmModelStatuses,
   getMlxLlmModelStatus,
+  mlxLlmDeleteBlocker,
 } from "../lib/mlx-llm/models.js";
 import {
   getMlxLlmKeepAliveMinutes,
@@ -75,9 +77,12 @@ const mlxLlm = new Hono()
   .post("/models/:model/cancel", (c) =>
     c.json({ ok: cancelMlxLlmDownload(c.req.param("model")) }),
   )
-  .delete("/models/:model", (c) =>
-    c.json({ ok: deleteMlxLlmModel(c.req.param("model")) }),
-  )
+  .delete("/models/:model", async (c) => {
+    const modelId = c.req.param("model");
+    const blocker = mlxLlmDeleteBlocker(modelId);
+    if (blocker) return deleteBlockedResponse(c, blocker);
+    return c.json({ ok: await deleteMlxLlmModel(modelId) });
+  })
   .post("/server/start", zValidator("json", mlxLlmServerStartSchema), (c) => {
     let modelId = c.req.valid("json").model;
     if (!modelId) {

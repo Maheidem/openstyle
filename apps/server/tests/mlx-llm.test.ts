@@ -47,6 +47,7 @@ import {
   isOwnServerProvider,
 } from "../src/lib/llm/registry.js";
 import { resolveTaskCall } from "../src/lib/llm/task-profiles.js";
+import { claimJob, releaseJob } from "../src/lib/meetings/job-registry.js";
 import { hfRepoCacheDir } from "../src/lib/mlx-asr/constants.js";
 import {
   getMlxLlmModel,
@@ -60,6 +61,7 @@ import {
   getMlxLlmWorkerState,
   stopMlxLlmWorker,
 } from "../src/lib/mlx-llm/server.js";
+import { diskUsageBytes } from "../src/lib/model-disk-usage.js";
 import { createChatModel, getDefaultModels } from "../src/lib/providers.js";
 
 const GEMMA_E2B = "gemma-4-e2b-qat-4bit";
@@ -501,6 +503,7 @@ describe("/api/mlx-llm routes (3.5)", () => {
   });
 
   it("DELETE /models/:id removes the files and the default LLM row", async () => {
+    unseedModel(GEMMA_E2B);
     seedModel(GEMMA_E4B);
     getDb()
       .prepare(
@@ -520,6 +523,142 @@ describe("/api/mlx-llm routes (3.5)", () => {
       .prepare("SELECT COUNT(*) AS n FROM model_configs WHERE provider = ?")
       .get(MLX_LLM_PROVIDER_ID) as { n: number };
     expect(rows.n).toBe(0);
+  });
+});
+
+describe("delete of the model in use", () => {
+  const app = createApp();
+  const E2B_ID = `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`;
+  const E4B_ID = `${MLX_LLM_PROVIDER_ID}/${GEMMA_E4B}`;
+
+  function setDefault(modelId: string, name: string): void {
+    getDb()
+      .prepare("UPDATE model_configs SET is_default = 0 WHERE type = 'llm'")
+      .run();
+    getDb()
+      .prepare(
+        "INSERT INTO model_configs (provider, model_id, model_name, type, is_default) VALUES (?, ?, ?, 'llm', 1)",
+      )
+      .run(MLX_LLM_PROVIDER_ID, modelId, name);
+  }
+
+  afterEach(() => {
+    releaseJob("delete-test");
+    deleteSetting("llm_task_assignments");
+    getDb().prepare("DELETE FROM model_configs").run();
+    unseedModel(GEMMA_E2B);
+    unseedModel(GEMMA_E4B);
+  });
+
+  it("switches the default to Gemma 4 E2B when it is on disk, and unloads the deleted model", async () => {
+    seedModel(GEMMA_E2B);
+    seedModel(GEMMA_E4B);
+    setDefault(E4B_ID, "Gemma 4 E4B");
+    await ensureMlxLlmWorker(GEMMA_E4B);
+    expect(getMlxLlmWorkerState().model).toBe(GEMMA_E4B);
+
+    const res = await app.request(`/api/mlx-llm/models/${GEMMA_E4B}`, {
+      method: "DELETE",
+    });
+    expect(await res.json()).toEqual({ ok: true });
+    expect(getMlxLlmModelStatus(GEMMA_E4B)?.status).toBe("not_downloaded");
+    expect(getMlxLlmWorkerState().model).toBeNull();
+    expect(getDefaultModels().llm?.model_id).toBe(E2B_ID);
+    expect(getDefaultModels().llm?.model_name).toBe("Gemma 4 E2B");
+  });
+
+  it("leaves no default when the deleted model is Gemma 4 E2B itself", async () => {
+    seedModel(GEMMA_E2B);
+    setDefault(E2B_ID, "Gemma 4 E2B");
+    const res = await app.request(`/api/mlx-llm/models/${GEMMA_E2B}`, {
+      method: "DELETE",
+    });
+    expect(await res.json()).toEqual({ ok: true });
+    expect(getDefaultModels().llm).toBeNull();
+    await expect(
+      resolveTaskCall("cleanup", { autoMaxOutputTokens: 512 }),
+    ).rejects.toThrow(/No AI model is set up yet/);
+  });
+
+  it("leaves no default when Gemma 4 E2B is not on disk", async () => {
+    seedModel(GEMMA_E4B);
+    setDefault(E4B_ID, "Gemma 4 E4B");
+    await app.request(`/api/mlx-llm/models/${GEMMA_E4B}`, { method: "DELETE" });
+    expect(getDefaultModels().llm).toBeNull();
+  });
+
+  it("keeps the default when a model that is not the default is deleted", async () => {
+    seedModel(GEMMA_E2B);
+    seedModel(GEMMA_E4B);
+    setDefault(E2B_ID, "Gemma 4 E2B");
+    await app.request(`/api/mlx-llm/models/${GEMMA_E4B}`, { method: "DELETE" });
+    expect(getDefaultModels().llm?.model_id).toBe(E2B_ID);
+    expect(getMlxLlmModelStatus(GEMMA_E2B)?.status).toBe("ready");
+  });
+
+  it("removes a task model override to the deleted model", async () => {
+    seedModel(GEMMA_E4B);
+    writeSetting(
+      "llm_task_assignments",
+      JSON.stringify({
+        meetingSummarize: {
+          mode: "auto",
+          modelOverride: { provider: MLX_LLM_PROVIDER_ID, model_id: E4B_ID },
+        },
+      }),
+    );
+    await app.request(`/api/mlx-llm/models/${GEMMA_E4B}`, { method: "DELETE" });
+    const raw = getDb()
+      .prepare("SELECT value FROM settings WHERE key = 'llm_task_assignments'")
+      .get() as { value: string };
+    expect(JSON.parse(raw.value)).toEqual({
+      meetingSummarize: { mode: "auto" },
+    });
+  });
+
+  it("refuses with 409 while a meeting Enhance job runs on the loaded model", async () => {
+    seedModel(GEMMA_E4B);
+    setDefault(E4B_ID, "Gemma 4 E4B");
+    await ensureMlxLlmWorker(GEMMA_E4B);
+    claimJob("delete-test", "enhance", { done: 0, total: 1, failed: 0 });
+
+    const res = await app.request(`/api/mlx-llm/models/${GEMMA_E4B}`, {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ ok: false, code: "in_use" });
+    expect(getMlxLlmModelStatus(GEMMA_E4B)?.status).toBe("ready");
+    expect(getDefaultModels().llm?.model_id).toBe(E4B_ID);
+  });
+});
+
+describe("GET /api/models/disk-usage", () => {
+  afterEach(() => unseedModel(GEMMA_E2B));
+
+  it("lists a ready model with the du size of its folder and the total", async () => {
+    unseedModel(GEMMA_E4B);
+    seedModel(GEMMA_E2B);
+    const def = getMlxLlmModel(GEMMA_E2B);
+    if (!def) throw new Error(GEMMA_E2B);
+    const dir = hfRepoCacheDir(def.hfId);
+    writeFileSync(
+      join(dir, "snapshots", "abc123", "big.bin"),
+      Buffer.alloc(200_000, 1),
+    );
+
+    const res = await createApp().request("/api/models/disk-usage");
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      models: Array<{ engine: string; model: string; bytes: number }>;
+      totalBytes: number;
+    };
+    const llm = data.models.filter((m) => m.engine === "mlx-llm");
+    expect(llm.map((m) => m.model)).toEqual([GEMMA_E2B]);
+    expect(llm[0]?.bytes).toBe(diskUsageBytes(dir));
+    expect(llm[0]?.bytes).toBeGreaterThanOrEqual(200_000);
+    expect(data.totalBytes).toBe(
+      data.models.reduce((sum, m) => sum + m.bytes, 0),
+    );
   });
 });
 

@@ -22,6 +22,7 @@ import {
   type AvailableModel,
   buildLocalLlmItems,
   buildVoiceItems,
+  diskUseKey,
   hasActiveDownload,
   type LocalEngine,
   type LocalLlmItem,
@@ -36,6 +37,7 @@ import {
   configuredModelsQueryOptions,
   mlxLlmStatusQueryOptions,
   mlxStatusQueryOptions,
+  modelDiskUseQueryOptions,
   queryKeys,
   settingsQueryOptions,
   whisperStatusQueryOptions,
@@ -120,6 +122,12 @@ export interface UseModels {
   deletingKeys: Set<string>;
   /** Providers with an in-flight key/model delete. */
   deletingProviders: Set<string>;
+  /** Why the server refused a local delete, keyed like `deletingKeys`. */
+  deleteErrors: Map<string, string>;
+  /** Real disk bytes of each downloaded app model, keyed `diskUseKey()`. */
+  diskBytes: Map<string, number>;
+  /** Real disk bytes of all downloaded app models (LLM, voice, search). */
+  diskTotalBytes: number | null;
 
   // Derived
   keyProviders: Set<string>;
@@ -212,6 +220,7 @@ export function useModels(): UseModels {
   const whisperQuery = useQuery(whisperStatusQueryOptions());
   const mlxQuery = useQuery(mlxStatusQueryOptions());
   const mlxLlmQuery = useQuery(mlxLlmStatusQueryOptions());
+  const diskUseQuery = useQuery(modelDiskUseQueryOptions());
 
   const available = availableQuery.data ?? EMPTY_AVAILABLE;
   const configured = configuredQuery.data ?? EMPTY_CONFIGURED;
@@ -271,6 +280,9 @@ export function useModels(): UseModels {
   const [deletingKeys, setDeletingKeys] = useState<Set<string>>(new Set());
   const [deletingProviders, setDeletingProviders] = useState<Set<string>>(
     new Set(),
+  );
+  const [deleteErrors, setDeleteErrors] = useState<Map<string, string>>(
+    new Map(),
   );
 
   // Seed editable state from persisted settings once, when the settings query
@@ -452,6 +464,19 @@ export function useModels(): UseModels {
     [available, whisperStatus, mlxStatus, defaultVoice, keyProviders],
   );
 
+  const diskUse = diskUseQuery.data;
+  const diskBytes = useMemo(
+    () =>
+      new Map(
+        (diskUse?.models ?? []).map((m) => [
+          diskUseKey(m.engine, m.model),
+          m.bytes,
+        ]),
+      ),
+    [diskUse],
+  );
+  const diskTotalBytes = diskUse?.totalBytes ?? null;
+
   const localLlmItems = useMemo(
     () => buildLocalLlmItems(mlxLlmStatus, defaultLlm),
     [mlxLlmStatus, defaultLlm],
@@ -591,16 +616,38 @@ export function useModels(): UseModels {
     async (defId: string, engine?: LocalEngine) => {
       const deletingKey = `${engine ?? "whisper"}:${defId}`;
       setDeletingKeys((prev) => new Set(prev).add(deletingKey));
+      setDeleteErrors((prev) => {
+        const next = new Map(prev);
+        next.delete(deletingKey);
+        return next;
+      });
+      // A 409 says the model is downloading or in use: show why on the row.
+      const keepRefusal = async (res: {
+        status: number;
+        statusText: string;
+        json: () => Promise<unknown>;
+      }): Promise<void> => {
+        if (res.status !== 409) return;
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        const message = body?.error ?? res.statusText;
+        setDeleteErrors((prev) => new Map(prev).set(deletingKey, message));
+      };
       try {
         if (engine === "mlx-llm") {
-          await getClient().api["mlx-llm"].models[":model"].$delete({
-            param: { model: defId },
-          });
+          await keepRefusal(
+            await getClient().api["mlx-llm"].models[":model"].$delete({
+              param: { model: defId },
+            }),
+          );
           await loadMlxLlmStatus();
         } else if (engine === "mlx") {
-          await getClient().api["mlx-asr"].models[":model"].$delete({
-            param: { model: defId },
-          });
+          await keepRefusal(
+            await getClient().api["mlx-asr"].models[":model"].$delete({
+              param: { model: defId },
+            }),
+          );
           await loadMlxStatus();
         } else {
           await getClient().api.whisper.models[":model"].$delete({
@@ -609,6 +656,17 @@ export function useModels(): UseModels {
           await loadWhisperStatus();
         }
         await loadData();
+        // The server removes task model overrides that name the deleted
+        // model. The seed effect runs one time only, so read the stored
+        // assignments again. Otherwise a later task edit writes the old
+        // override back.
+        const fresh = await queryClient.fetchQuery({
+          ...settingsQueryOptions(),
+          staleTime: 0,
+        });
+        setTaskAssignments(
+          parseLlmTaskAssignments(fresh[SETTINGS_KEYS.llmTaskAssignments]),
+        );
       } finally {
         setDeletingKeys((prev) => {
           const next = new Set(prev);
@@ -617,7 +675,7 @@ export function useModels(): UseModels {
         });
       }
     },
-    [loadMlxStatus, loadMlxLlmStatus, loadWhisperStatus, loadData],
+    [loadMlxStatus, loadMlxLlmStatus, loadWhisperStatus, loadData, queryClient],
   );
 
   const retryLocalMlx = useCallback(
@@ -938,6 +996,9 @@ export function useModels(): UseModels {
     mlxLlmKeepAliveMinutes,
     deletingKeys,
     deletingProviders,
+    deleteErrors,
+    diskBytes,
+    diskTotalBytes,
     keyProviders,
     defaultVoice,
     defaultLlm,
