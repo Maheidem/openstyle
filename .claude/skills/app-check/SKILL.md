@@ -119,6 +119,7 @@ Delete `<out>` when the numbers are in your report. Delete `apps/electron/test-r
 6. **Do not use `pkill`/`killall`.** The guard hook blocks them, and they kill the installed app's worker.
 7. **`session_open` in Nexus can answer PERMISSION_DENIED for dev agents.** Claim handoffs without a session. This does not affect the script.
 8. **A GPU lock held by another session blocks the run.** The script prints `GPU lock busy: <owner>` every 60 s. Wait. Do not remove the lock.
+9. **A partial Electron install fails the boot step after the lock wait** (2026-10-25, dev_senior worktree). Error in `run.log`: `Error: electron.launch: Electron failed to install correctly, please delete node_modules/electron and try installing again` at `helpers/e2e-app.ts:43`, then `1 failed` (boot) and `7 did not run`. Cause: `node_modules/.pnpm/electron@<ver>/node_modules/electron/dist/` held only `LICENSES.chromium.html` and `path.txt` was missing. `node install.js` in that folder exited 0 and installed nothing. Check before a run, in `apps/electron`: `node -e "console.log(require('electron'))"` must print a path to `Electron.app/Contents/MacOS/Electron`. Fix: clone `dist/` and `path.txt` from a checkout with the same Electron version: `cp -Rc <good>/dist <bad>/dist && cp <good>/path.txt <bad>/`.
 
 ## Run record
 
