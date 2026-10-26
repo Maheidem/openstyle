@@ -1481,6 +1481,14 @@ Evidence ranks first because only ADDRESSED-AS needs a model judgment of who the
 
 ### 4.5 Node `summarize`
 
+> **Update 2026-10-26 (graph version 9, branch `feat/split-summarize`): narrow stage calls.** This replaces the one `single` call and the map and reduce calls of 4.5.1 to 4.5.5. The stored object (`MeetingSummary`), `save` and the UI do not change.
+> 1. The transcript is one part when it fits the context budget, else parts of whole segments (`chunkTranscript`, with overlap).
+> 2. For each part, three calls with one job each, each with its own short prompt and schema (`summaryStageStepSchema`): `decisions`, `actionItems` (task, owner label, due as spoken), `points` (key points and open questions). Step keys: the stage name, or `<stage>:<part>` for more parts.
+> 3. Code merges the parts in order and removes duplicates (`withoutDuplicates`: the same text, or two wordings with 80 % of the content words of the shorter one). Code sets an owner to null when it is not a speaker label and not a name that the transcript says (`supportedOwner`, issue #273).
+> 4. One `overview` call writes the overview from the merged items (the notes), not from the transcript. Only this call gets project memory.
+> 5. Calls: 3 per part + 1. `MAX_SUMMARIZE_CALLS` is 40 (13 parts). A cut answer splits its part (the halves only add items) or is repaired; a context refusal splits the part, or the notes of the overview call (the two overviews are joined).
+> Evidence (E2B, gold meetings, blind judge): see the PR of the branch.
+
 **Purpose.** Write a structured summary. Code renders it to Markdown. The Summary tab and `meeting_summaries.markdown` keep their format. Code stores the object too, in `meeting_summaries.summary_json` (4.5.6).
 
 **When it runs.** The Enhance trigger chains into Summarize in one run: the auto-run after transcription and the Enhance button start stages `enhance` and `summarize` (decided 2026-10-17, Q2; routing 3.6). The Summarize button stays: stage `summarize` only. In a chained run, `summarize` starts after `verifyEvidence` (3.2 edge rule 3), also when `correctChunk` or `identifySpeakers` failed (stored or raw text). It does not run when the run is cancelled or stopped (3.4.5). Names confirmed later make the summary stale; the existing warning stays (`S/routes/meetings.ts:1932-1940`). A chained summary prints "Them N" for an unconfirmed label, because suggestions are never used.
