@@ -7,8 +7,8 @@ import { join } from "node:path";
  * line and serves `GET /v1/models` and `POST /v1/chat/completions` on
  * 127.0.0.1. It exits when stdin closes or on SIGTERM.
  *
- * Env: FAKE_LLM_LOG appends one JSON line per request (with the prefix cache
- * header). FAKE_LLM_CONTENT sets
+ * Env: FAKE_LLM_LOG appends one JSON line with the arguments at start and one
+ * JSON line per request (with the prefix cache header). FAKE_LLM_CONTENT sets
  * the answer text. FAKE_LLM_FAIL=1 prints an error line before ready.
  */
 export const FAKE_LLM_WORKER_SOURCE = `#!/usr/bin/env node
@@ -29,6 +29,7 @@ if (process.env.FAKE_LLM_FAIL === "1") {
 const log = (entry) => {
   if (process.env.FAKE_LLM_LOG) fs.appendFileSync(process.env.FAKE_LLM_LOG, JSON.stringify(entry) + "\\n");
 };
+log({ start: true, args });
 const server = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => { body += c; });

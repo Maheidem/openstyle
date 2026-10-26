@@ -459,6 +459,7 @@ def _engine(chunks: list[tuple[str, str | None]], **kw: object):
         make_sampler=make_sampler,
         make_logits_processors=make_logits_processors,
         grammar_factory=grammar_factory,
+        context_tokens=kw.get("context_tokens"),  # type: ignore[arg-type]
     )
     return engine, tok, calls
 
@@ -833,6 +834,120 @@ class JsonGrammarTests(unittest.TestCase):
         self.assertEqual(grammar(np.array([1, 0]), "L"), "L")
 
 
+class ContextGuardTests(unittest.TestCase):
+    """The worker context guard (specs/llm-runtime-tuning.md 7 step 4)."""
+
+    def setUp(self) -> None:
+        self.logged: list[str] = []
+        self._log_patch = mock.patch.object(mlx_asr_server, "_log", self.logged.append)
+        self._log_patch.start()
+
+    def tearDown(self) -> None:
+        mock.patch.stopall()
+
+    def _req(self, max_tokens: int) -> dict[str, object]:
+        return mlx_asr_server._parse_chat_request({"messages": [{"role": "user", "content": "x"}], "max_tokens": max_tokens})
+
+    def test_a_request_that_fits_generates(self) -> None:
+        # FakeLlmTokenizer gives 3 prompt tokens.
+        engine, _, calls = _engine([("ok", "stop")], context_tokens=100)
+        out = engine.complete(self._req(50))
+        self.assertEqual(out["choices"][0]["message"]["content"], "ok")
+        self.assertEqual(calls["stream"]["max_tokens"], 50)
+        self.assertFalse(any("CONTEXT EXCEEDED" in m for m in self.logged))
+
+    def test_exactly_at_the_limit_generates(self) -> None:
+        engine, _, calls = _engine([("ok", "stop")], context_tokens=100)
+        out = engine.complete(self._req(97))  # 3 + 97 = 100
+        self.assertEqual(out["choices"][0]["message"]["content"], "ok")
+        self.assertIn("stream", calls)
+
+    def test_one_token_over_the_limit_is_refused_and_not_generated(self) -> None:
+        engine, _, calls = _engine([("ok", "stop")], context_tokens=100)
+        with self.assertRaises(mlx_asr_server._ContextExceeded) as ctx:
+            engine.complete(self._req(98))  # 3 + 98 = 101
+        self.assertNotIn("stream", calls)
+        self.assertEqual(
+            ctx.exception.body(),
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "context_length_exceeded",
+                    "message": "prompt 3 tokens + max_tokens 98 > context window 100 tokens",
+                    "prompt_tokens": 3,
+                    "max_tokens": 98,
+                    "context_tokens": 100,
+                }
+            },
+        )
+        self.assertEqual(
+            self.logged,
+            ["CONTEXT EXCEEDED: request refused, not generated: prompt 3 tokens + max_tokens 98 > context window 100 tokens"],
+        )
+
+    def test_no_context_window_means_no_guard(self) -> None:
+        engine, _, calls = _engine([("ok", "stop")])
+        engine.complete(self._req(1_000_000))
+        self.assertEqual(calls["stream"]["max_tokens"], 1_000_000)
+
+    def test_prefix_cache_tokens_count_in_full(self) -> None:
+        engine, _, calls = _engine([("ok", "stop")])
+        engine.tok = PrefixTokenizer()
+        made: list[FakeKv] = []
+
+        def make_cache() -> list[FakeKv]:
+            made.append(FakeKv())
+            return made[-1:]
+
+        engine._prefix_cache = mlx_asr_server._PrefixCache(make_cache, lambda cache, ids: cache[0].chunks.append(len(ids)))
+        system = " ".join(f"rule{i}" for i in range(100))
+
+        def req(text: str, max_tokens: int) -> dict[str, object]:
+            r = mlx_asr_server._parse_chat_request(
+                {
+                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": text}],
+                    "max_tokens": max_tokens,
+                }
+            )
+            r["prefix_cache"] = "on"
+            return r
+
+        n = len(engine._prompt_ids(req("a b", 1)))  # 102 prefix + 3 user tokens
+        engine.context_tokens = n + 10
+        first = engine.complete(req("a b", 10))  # exactly at the limit: a miss
+        self.assertEqual(first["usage"]["cached_tokens"], 0)
+        second = engine.complete(req("c d", 10))  # at the limit: a hit
+        self.assertEqual(second["usage"]["cached_tokens"], 102)
+        self.assertEqual(second["usage"]["prompt_tokens"], n)
+        del calls["stream"]
+        # A hit feeds only 3 new tokens, but the guard counts all n tokens.
+        with self.assertRaises(mlx_asr_server._ContextExceeded) as ctx:
+            engine.complete(req("e f", 11))
+        self.assertEqual((ctx.exception.prompt_tokens, ctx.exception.max_tokens), (n, 11))
+        self.assertNotIn("stream", calls)
+        self.assertEqual(len(made), 1)  # the refusal made no new prefill
+        # A refusal on a miss does not prefill either.
+        with self.assertRaises(mlx_asr_server._ContextExceeded):
+            engine.complete(req("x " * 50, 10))
+        self.assertEqual(len(made), 1)
+
+    def test_main_passes_the_context_window(self) -> None:
+        seen: list[tuple[object, ...]] = []
+        argv = ["mlx_asr_server.py", "--llm", "--model", "m", "--port", "1", "--context-tokens", "32768"]
+        with mock.patch.object(sys, "argv", argv), \
+            mock.patch.object(mlx_asr_server, "_run_llm", lambda *a: seen.append(a)):
+            mlx_asr_server.main()
+        self.assertEqual(seen, [("m", 1, 32768)])
+        argv = ["mlx_asr_server.py", "--llm", "--model", "m", "--port", "1"]
+        with mock.patch.object(sys, "argv", argv), \
+            mock.patch.object(mlx_asr_server, "_run_llm", lambda *a: seen.append(a)):
+            mlx_asr_server.main()
+        self.assertEqual(seen[-1], ("m", 1, None))
+        argv = ["mlx_asr_server.py", "--llm", "--model", "m", "--port", "1", "--context-tokens", "0"]
+        with mock.patch.object(sys, "argv", argv), mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            mlx_asr_server.main()
+
+
 class LlmHttpTests(unittest.TestCase):
     def setUp(self) -> None:
         from http.server import HTTPServer
@@ -889,6 +1004,26 @@ class LlmHttpTests(unittest.TestCase):
     def test_unknown_path_is_404(self) -> None:
         self.assertEqual(self._call("GET", "/nope")[0], 404)
 
+    def test_context_exceeded_is_a_typed_400(self) -> None:
+        self.engine.context_tokens = 10
+        status, out = self._call("POST", "/v1/chat/completions", {"messages": [{"role": "user", "content": "x"}], "max_tokens": 8})
+        self.assertEqual(status, 400)
+        self.assertEqual(
+            out,
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "context_length_exceeded",
+                    "message": "prompt 3 tokens + max_tokens 8 > context window 10 tokens",
+                    "prompt_tokens": 3,
+                    "max_tokens": 8,
+                    "context_tokens": 10,
+                }
+            },
+        )
+        status, _ = self._call("POST", "/v1/chat/completions", {"messages": [{"role": "user", "content": "x"}], "max_tokens": 7})
+        self.assertEqual(status, 200)
+
     def test_prefix_cache_header_reaches_the_engine(self) -> None:
         import urllib.error
         import urllib.request
@@ -930,7 +1065,7 @@ class RunLlmTests(unittest.TestCase):
 
     def test_ready_line_after_load(self) -> None:
         engine, _, _ = _engine([])
-        lines = self._run(_load_llm_engine=lambda _m: engine)
+        lines = self._run(_load_llm_engine=lambda _m, _c=None: engine)
         self.assertEqual(len(lines), 1)
         self.assertEqual(lines[0]["type"], "ready")
         self.assertEqual(lines[0]["model"], "mlx-community/Fake-LLM")
@@ -943,7 +1078,7 @@ class RunLlmTests(unittest.TestCase):
     def test_ready_line_has_metal_info(self) -> None:
         engine, _, _ = _engine([])
         metal = {"metal": {"max_recommended_working_set_size": 107_000_000_000, "memory_size": 137_000_000_000}}
-        lines = self._run(_load_llm_engine=lambda _m: engine, _metal_info=lambda: metal)
+        lines = self._run(_load_llm_engine=lambda _m, _c=None: engine, _metal_info=lambda: metal)
         self.assertEqual(lines[0]["metal"], metal["metal"])
 
     def test_metal_info_is_empty_without_mlx(self) -> None:
@@ -951,7 +1086,7 @@ class RunLlmTests(unittest.TestCase):
             self.assertEqual(mlx_asr_server._metal_info(), {})
 
     def test_load_error_line_and_exit_1(self) -> None:
-        def boom(_m: str) -> object:
+        def boom(_m: str, _c: object = None) -> object:
             raise RuntimeError("no weights")
 
         with self.assertRaises(SystemExit) as ctx:

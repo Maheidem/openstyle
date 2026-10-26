@@ -69,12 +69,18 @@ const worker = createMlxHttpWorker({
   overrideEnv: "OPENSTYLE_MLX_LLM_WORKER",
   getModel: getMlxLlmModel,
   isDownloaded: (def) => isHfSnapshotPresent(def.hfId),
+  // --context-tokens turns on the worker context guard: the worker refuses a
+  // request whose prompt + max_tokens is more than the window, with a typed
+  // HTTP 400 (specs/llm-runtime-tuning.md 7 step 4). The callers keep each
+  // call inside the window first (llm/token-budget.ts), so a refusal is rare.
   workerArgs: (def, port) => [
     "--llm",
     "--model",
     def.hfId,
     "--port",
     String(port),
+    "--context-tokens",
+    String(def.contextTokens),
   ],
   keepAliveMinutes: getMlxLlmKeepAliveMinutes,
   onReady: (line) => {
