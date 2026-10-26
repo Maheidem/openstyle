@@ -656,6 +656,17 @@ export function useModels(): UseModels {
           await loadWhisperStatus();
         }
         await loadData();
+        // The server removes task model overrides that name the deleted
+        // model. The seed effect runs one time only, so read the stored
+        // assignments again. Otherwise a later task edit writes the old
+        // override back.
+        const fresh = await queryClient.fetchQuery({
+          ...settingsQueryOptions(),
+          staleTime: 0,
+        });
+        setTaskAssignments(
+          parseLlmTaskAssignments(fresh[SETTINGS_KEYS.llmTaskAssignments]),
+        );
       } finally {
         setDeletingKeys((prev) => {
           const next = new Set(prev);
@@ -664,7 +675,7 @@ export function useModels(): UseModels {
         });
       }
     },
-    [loadMlxStatus, loadMlxLlmStatus, loadWhisperStatus, loadData],
+    [loadMlxStatus, loadMlxLlmStatus, loadWhisperStatus, loadData, queryClient],
   );
 
   const retryLocalMlx = useCallback(
