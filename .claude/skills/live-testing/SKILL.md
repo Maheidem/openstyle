@@ -82,6 +82,8 @@ cd apps/electron && PORT=4651 HOST=127.0.0.1 OPENSTYLE_AUTH_TOKEN=$TOKEN \
   isolated_run nohup node ../server/dist/startup.js > /tmp/<task-name>/server.log 2>&1 &
 ```
 
+`isolated_run` is a shell function, so `$!` after `isolated_run ... &` is the PID of a subshell, not of node. `kill $!` leaves the server running, and a "restart" then talks to the old server (2026-10-25, retention e2e). Stop the server by its port: `kill $(lsof -iTCP:4651 -sTCP:LISTEN -t)`, then check that `lsof -iTCP:4651 -sTCP:LISTEN` prints nothing.
+
 It exports `OPENSTYLE_USER_DATA`, `OPENSTYLE_DB_PATH`, `HF_HOME`, `HUGGINGFACE_HUB_CACHE` and (with the 2nd argument) `OPENSTYLE_MLX_ASR_WORKER`, all in the scratch folder. `isolated_run` sets `HOME` to a scratch home for one command, because the server refreshes the managed worker under `homedir()` before each worker start, also when `OPENSTYLE_MLX_ASR_WORKER` is set (`apps/server/src/lib/mlx-asr/server.ts:401`). It refuses a scratch folder outside `/tmp` or `/private/tmp`.
 
 ## 1. Build

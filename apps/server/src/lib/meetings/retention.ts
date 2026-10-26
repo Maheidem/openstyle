@@ -18,6 +18,7 @@ import { getDb, readSetting } from "../db.js";
  * track repair, and the temp file of a repair that stopped half way) once a
  * meeting is older than `meeting_retention_days` and nulls `audio_dir` as
  * the "audio is gone" marker. DB rows (segments + summaries) are kept forever.
+ * A meeting with retention_exempt = 1 (eval gold meetings) is never swept.
  *
  * Uses the same daily sweep as lib/history-store.ts.
  */
@@ -31,7 +32,7 @@ interface ExpiredMeetingRow {
 
 /**
  * Delete the audio files of every expired meeting and null its audio_dir.
- * Meetings still 'recording' are never touched. Returns the number of
+ * Meetings still 'recording' and exempt meetings are never touched. Returns the number of
  * meetings whose audio was purged.
  */
 export function purgeExpiredMeetingAudio(): number {
@@ -45,6 +46,7 @@ export function purgeExpiredMeetingAudio(): number {
     .prepare(
       `SELECT id, audio_dir FROM meetings
        WHERE status != 'recording'
+         AND retention_exempt = 0
          AND audio_dir IS NOT NULL
          AND created_at < ?`,
     )

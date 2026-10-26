@@ -140,6 +140,24 @@ One file per meeting: `~/.openstyle-eval/gold/<id8>.json`. The folder must have 
 - `tags.expected[]` `{name, synonyms[]}`; `speakers` `{label: name or null}`.
 - Ids match `[A-Za-z0-9_.-]{1,40}`: results and baselines show them, so an id never holds meeting text.
 
+### Keep gold audio safe from the retention sweep
+
+The 30-day audio sweep deleted the WAVs of two gold meetings on 2026-10-24. Mark every gold meeting `retention_exempt` (schema 47). The sweep then never deletes its audio (`apps/server/src/lib/meetings/retention.ts`). The app must run a build with schema 47 once before the column exists. The guard hook blocks agents from both commands below (rules a and b), so the owner runs them.
+
+```bash
+# App running: the app's server takes the flag on the meeting PATCH route.
+curl -s -X PATCH -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+  -d '{"retentionExempt":true}' http://127.0.0.1:4649/api/meetings/<full meeting id>
+# App quit: set it in the database directly.
+sqlite3 ~/Library/Application\ Support/Openstyle/freestyle.db \
+  "UPDATE meetings SET retention_exempt = 1 WHERE id IN ('<full id>', '<full id>')"
+# Check (read-only, agents may run it):
+sqlite3 -readonly ~/Library/Application\ Support/Openstyle/freestyle.db \
+  "SELECT id, retention_exempt, audio_dir IS NOT NULL FROM meetings WHERE retention_exempt = 1"
+```
+
+`{"retentionExempt":false}` clears the flag. No UI shows or sets it.
+
 ### Building a gold key (gold-draft, gold-clips, gold-merge)
 
 Claude cannot listen to audio. So a gold key comes from two ASR engines, a Claude pass that reads the context, and the owner, who checks by ear the spans that the context does not settle.

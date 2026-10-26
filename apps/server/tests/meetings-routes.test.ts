@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import {
   type LlmRunInfo,
   type LlmRunListResponse,
+  type MeetingDetail,
   type StartRunResponse,
   SYSTEM_REPAIR_TMP,
 } from "@openstyle/validations";
@@ -2808,6 +2809,45 @@ describe("meeting audio retention sweep", () => {
     expect(existsSync(join(doneDir, "mic.wav"))).toBe(false);
     // Second sweep is a no-op: audio_dir was nulled.
     expect(purgeExpiredMeetingAudio()).toBe(0);
+  });
+
+  it("never sweeps a meeting marked retentionExempt (eval gold)", async () => {
+    const goldDir = makeMeetingDir("gold");
+    const normalDir = makeMeetingDir("normal");
+    insertMeeting("gold", "summarized", goldDir, Date.now() - 400 * DAY_MS);
+    insertMeeting("normal", "summarized", normalDir, Date.now() - 400 * DAY_MS);
+
+    const res = await app.request("/api/meetings/gold", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retentionExempt: true }),
+    });
+    expect(res.status).toBe(200);
+    // Read the flag back: a 200 alone does not prove it was stored.
+    const detail = await app.request("/api/meetings/gold");
+    expect(((await detail.json()) as MeetingDetail).retention_exempt).toBe(
+      true,
+    );
+    const normalDetail = await app.request("/api/meetings/normal");
+    expect(
+      ((await normalDetail.json()) as MeetingDetail).retention_exempt,
+    ).toBe(false);
+
+    expect(purgeExpiredMeetingAudio()).toBe(1);
+    expect(existsSync(join(goldDir, "mic.wav"))).toBe(true);
+    expect(existsSync(join(goldDir, "system.wav"))).toBe(true);
+    expect((await getMeeting("gold")).audio_dir).toBe(goldDir);
+    expect(existsSync(join(normalDir, "mic.wav"))).toBe(false);
+    expect((await getMeeting("normal")).audio_dir).toBeNull();
+
+    // Clearing the flag makes the meeting sweepable again.
+    await app.request("/api/meetings/gold", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retentionExempt: false }),
+    });
+    expect(purgeExpiredMeetingAudio()).toBe(1);
+    expect(existsSync(join(goldDir, "mic.wav"))).toBe(false);
   });
 });
 

@@ -67,6 +67,9 @@ export interface MeetingDetail extends MeetingListItem {
    * editable anytime. Feeds both the naming prompt and the summarize
    * prompt. NULL means unset. */
   context: string | null;
+  /** True = the audio retention sweep never deletes this meeting's audio
+   * (eval gold meetings). Set with PATCH {"retentionExempt"}. */
+  retention_exempt?: boolean;
   /** The meeting's tag names, sorted (issue #231). */
   tags: string[];
   /** The linked calendar event, or null (specs/calendar-eventkit.md). */
