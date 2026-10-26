@@ -1,5 +1,6 @@
 import { overlapTokens } from "./chunking.js";
 import {
+  type EvidenceItem,
   type MeetingSummary,
   type SummaryStageAnswer,
   valueOrNull,
@@ -13,12 +14,15 @@ import {
 
 /**
  * Hard ceiling on the LLM calls of one Summarize run (4.5.3). A part costs
- * SUMMARY_CALLS_PER_PART calls and the overview one more, so 40 calls hold 13
- * parts: at the default budget of 8000 tokens, about 100,000 transcript tokens.
+ * SUMMARY_CALLS_PER_PART calls and the overview one more, so 49 calls hold 12
+ * parts: at the default budget of 8000 tokens, about 91,000 transcript tokens.
  */
-export const MAX_SUMMARIZE_CALLS = 40;
-/** The extraction calls of one transcript part (decisions, action items, points). */
-export const SUMMARY_CALLS_PER_PART = 3;
+export const MAX_SUMMARIZE_CALLS = 49;
+/**
+ * The extraction calls of one transcript part: decisions, action items, key
+ * points, open questions.
+ */
+export const SUMMARY_CALLS_PER_PART = 4;
 
 /** Replace line breaks with spaces, so one item stays one list line. */
 export function oneLine(text: string): string {
@@ -67,7 +71,7 @@ export function plannedSummaryParts(tokens: number, budget: number): number {
   return Math.ceil(tokens / fresh);
 }
 
-/** The calls of `parts` transcript parts: three per part, then the overview. */
+/** The calls of `parts` transcript parts: four per part, then the overview. */
 export function summaryCallsFor(parts: number): number {
   return SUMMARY_CALLS_PER_PART * parts + 1;
 }
@@ -92,21 +96,72 @@ export function plannedSummaryCalls(
 /** The four lists of a summary, without the overview. */
 export type SummaryItems = Omit<MeetingSummary, "overview">;
 
+/** The words of a text as the quote check compares them. */
+function matchWords(text: string): string {
+  return (
+    text
+      .normalize("NFKC")
+      .replace(/[\u2018\u2019\u02bc]/g, "'")
+      .toLowerCase()
+      .match(/[\p{L}\p{N}']+/gu) ?? []
+  ).join(" ");
+}
+
+/** A quote must hold this many words: a short quote proves nothing. */
+const QUOTE_MIN_WORDS = 3;
+
+/**
+ * True when the quote is in one transcript line: its words, in order, after a
+ * change to lower case and with punctuation removed (the idea of
+ * `verifyEvidence`). A quote of fewer than QUOTE_MIN_WORDS words fails.
+ */
+export function quoteInLines(quote: string, lines: readonly string[]): boolean {
+  const q = matchWords(quote);
+  if (q.split(" ").filter(Boolean).length < QUOTE_MIN_WORDS) return false;
+  return lines.some((l) => ` ${matchWords(l)} `.includes(` ${q} `));
+}
+
+/** The texts of the items whose quote is in the transcript, and the drop count. */
+function verifiedTexts(
+  items: readonly EvidenceItem[],
+  lines: readonly string[],
+): { texts: string[]; dropped: number } {
+  const texts = items
+    .filter((i) => quoteInLines(i.quote, lines))
+    .map((i) => i.text);
+  return { texts, dropped: items.length - texts.length };
+}
+
 /**
  * Join the answers of the extraction calls, in part order, into one set of
- * lists, and remove the duplicates (`withoutDuplicates`): the parts overlap,
- * so one item can come from two parts.
+ * lists. A decision or an open question stays only when its quote is in a
+ * transcript line (`quoteInLines`). Then the duplicates go
+ * (`withoutDuplicates`): the parts overlap, so one item can come from two
+ * parts, and a decision that restates an action item goes too.
  */
 export function mergeSummaryAnswers(
   answers: readonly SummaryStageAnswer[],
-): SummaryItems {
-  const items: SummaryItems = {
+  lines: readonly string[],
+): { items: SummaryItems; droppedDecisions: number; droppedQuestions: number } {
+  const decisions = verifiedTexts(
+    answers.flatMap((a) => a.decisions ?? []),
+    lines,
+  );
+  const questions = verifiedTexts(
+    answers.flatMap((a) => a.openQuestions ?? []),
+    lines,
+  );
+  const items: SummaryItems = withoutDuplicates({
     keyPoints: answers.flatMap((a) => a.keyPoints ?? []),
-    decisions: answers.flatMap((a) => a.decisions ?? []),
+    decisions: decisions.texts,
     actionItems: answers.flatMap((a) => a.actionItems ?? []),
-    openQuestions: answers.flatMap((a) => a.openQuestions ?? []),
+    openQuestions: questions.texts,
+  });
+  return {
+    items,
+    droppedDecisions: decisions.dropped,
+    droppedQuestions: questions.dropped,
   };
-  return withoutDuplicates(items);
 }
 
 const wordsOf = (text: string) =>

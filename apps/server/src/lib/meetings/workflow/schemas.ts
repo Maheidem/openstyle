@@ -243,16 +243,38 @@ export type MeetingSummary = z.infer<typeof MeetingSummarySchema>;
  * The calls of one Summarize run. The three extraction stages run on each
  * part of the transcript; `overview` runs once, last, on the merged items.
  */
-export type SummaryStage = "decisions" | "actionItems" | "points" | "overview";
+export type SummaryStage =
+  | "decisions"
+  | "actionItems"
+  | "keyPoints"
+  | "openQuestions"
+  | "overview";
+
+/**
+ * A `decisions` or `openQuestions` item: the claim and the transcript words
+ * that show it. Code keeps the item only when the quote is in one transcript
+ * line (`quoteInLines`), then stores the text alone.
+ */
+export interface EvidenceItem {
+  quote: string;
+  text: string;
+}
 
 /** The answer of one stage call: the fields of its stage only. */
-export type SummaryStageAnswer = Partial<MeetingSummary>;
+export interface SummaryStageAnswer {
+  overview?: string;
+  keyPoints?: string[];
+  decisions?: EvidenceItem[];
+  actionItems?: MeetingSummary["actionItems"];
+  openQuestions?: EvidenceItem[];
+}
 
 /** The wire name of each stage schema. */
 const SUMMARY_STAGE_NAMES: Record<SummaryStage, string> = {
   decisions: "summary_decisions",
   actionItems: "summary_action_items",
-  points: "summary_points",
+  keyPoints: "summary_key_points",
+  openQuestions: "summary_open_questions",
   overview: "summary_overview",
 };
 
@@ -260,36 +282,51 @@ const SUMMARY_STAGE_NAMES: Record<SummaryStage, string> = {
 export const SUMMARY_STAGE_LISTS: Record<SummaryStage, readonly string[]> = {
   decisions: ["decisions"],
   actionItems: ["actionItems"],
-  points: ["keyPoints", "openQuestions"],
+  keyPoints: ["keyPoints"],
+  openQuestions: ["openQuestions"],
   overview: [],
 };
 
 /**
- * The schema of one stage call: the summary fields of that stage only.
+ * The schema of one stage call: the field of that stage only. Version 2: the
+ * `decisions` and `openQuestions` items carry a quote (`EvidenceItem`).
  *
  * `sizeLimits`: only for a grammar engine that applies JSON Schema size
  * keywords (the local MLX LLM, llguidance). Each list gets `maxItems` and
- * each string gets `maxLength` (SUMMARY_SIZE_LIMITS). Without them Gemma 4
- * E2B wrote one key point again and again until the output limit, so the
- * answer did not parse (issue #246). Cloud providers reject these keywords
- * (4.0.3 rule 4), so the default schema has none.
+ * each string gets `maxLength` (SUMMARY_SIZE_LIMITS, QUOTE_MAX_CHARS).
+ * Without them Gemma 4 E2B wrote one key point again and again until the
+ * output limit, so the answer did not parse (issue #246). Cloud providers
+ * reject these keywords (4.0.3 rule 4), so the default schema has none.
  */
 export function summaryStageStepSchema(
   stage: SummaryStage,
   opts: { sizeLimits?: boolean } = {},
 ): StepSchema<SummaryStageAnswer> {
-  const f = summaryFields(opts.sizeLimits === true);
+  const limits = opts.sizeLimits === true;
+  const f = summaryFields(limits);
+  const L = SUMMARY_SIZE_LIMITS;
+  const text = (max: number) =>
+    limits ? z.string().meta({ maxLength: max }) : z.string();
+  const evidence = (max: number) => {
+    const item = z.object({
+      quote: text(QUOTE_MAX_CHARS),
+      text: text(L.itemChars),
+    });
+    return limits ? z.array(item).meta({ maxItems: max }) : z.array(item);
+  };
   const shape =
     stage === "decisions"
-      ? { decisions: f.decisions }
+      ? { decisions: evidence(L.decisions) }
       : stage === "actionItems"
         ? { actionItems: f.actionItems }
-        : stage === "points"
-          ? { keyPoints: f.keyPoints, openQuestions: f.openQuestions }
-          : { overview: f.overview };
+        : stage === "keyPoints"
+          ? { keyPoints: f.keyPoints }
+          : stage === "openQuestions"
+            ? { openQuestions: evidence(L.openQuestions) }
+            : { overview: f.overview };
   return {
     name: SUMMARY_STAGE_NAMES[stage],
-    version: 1,
+    version: 2,
     zod: z.object(shape) as z.ZodType<SummaryStageAnswer>,
   };
 }

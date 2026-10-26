@@ -77,7 +77,8 @@ async function assertPortableSchema(schema: z.ZodType): Promise<void> {
 const SUMMARY_STAGES = [
   "decisions",
   "actionItems",
-  "points",
+  "keyPoints",
+  "openQuestions",
   "overview",
 ] as const;
 
@@ -334,12 +335,12 @@ describe("the per-call schemas (ids and labels enum)", () => {
 });
 
 describe("the step schemas", () => {
-  it("names are wire-safe and versions start at 1", () => {
+  it("names are wire-safe; versions start at 1 (the summary stages are at 2)", () => {
     for (const s of STEPS) {
       expect(s.name).toMatch(/^[A-Za-z0-9_]+$/);
-      expect(s.version).toBe(1);
+      expect(s.version).toBe(s.name.startsWith("summary_") ? 2 : 1);
     }
-    expect(new Set(STEPS.map((s) => s.name)).size).toBe(6);
+    expect(new Set(STEPS.map((s) => s.name)).size).toBe(7);
   });
 
   it("the JSON Schema of each step is a snapshot (a change needs a graph version bump)", async () => {
@@ -530,17 +531,18 @@ describe("MeetingSummary: placeholder owner and due", () => {
 describe("summaryStageStepSchema (issue #246)", () => {
   const L = SUMMARY_SIZE_LIMITS;
 
-  it("one wire name for each stage, version 1, only the fields of the stage", async () => {
+  it("one wire name for each stage, version 2, only the field of the stage", async () => {
     const fields: Record<(typeof SUMMARY_STAGES)[number], string[]> = {
       decisions: ["decisions"],
       actionItems: ["actionItems"],
-      points: ["keyPoints", "openQuestions"],
+      keyPoints: ["keyPoints"],
+      openQuestions: ["openQuestions"],
       overview: ["overview"],
     };
     for (const stage of SUMMARY_STAGES) {
       for (const sizeLimits of [false, true]) {
         const step = summaryStageStepSchema(stage, { sizeLimits });
-        expect(step.version).toBe(1);
+        expect(step.version).toBe(2);
         expect(step.name).toBe(summaryStageStepSchema(stage).name);
         const json = (await asSchema(step.zod).jsonSchema) as {
           properties: Record<string, unknown>;
@@ -575,17 +577,26 @@ describe("summaryStageStepSchema (issue #246)", () => {
       type: "string",
       maxLength: L.overviewChars,
     });
-    const lists = [
-      ["decisions", "decisions", L.decisions],
-      ["points", "keyPoints", L.keyPoints],
-      ["points", "openQuestions", L.openQuestions],
-    ] as const;
-    for (const [stage, key, max] of lists) {
-      expect((await props(stage))[key]).toEqual({
-        type: "array",
-        maxItems: max,
-        items: { type: "string", maxLength: L.itemChars },
+    expect((await props("keyPoints")).keyPoints).toEqual({
+      type: "array",
+      maxItems: L.keyPoints,
+      items: { type: "string", maxLength: L.itemChars },
+    });
+    // A decision and an open question carry the quote that code checks.
+    for (const [stage, max] of [
+      ["decisions", L.decisions],
+      ["openQuestions", L.openQuestions],
+    ] as const) {
+      const list = (await props(stage))[stage] as {
+        maxItems: number;
+        items: { properties: Record<string, unknown>; required: string[] };
+      };
+      expect(list.maxItems).toBe(max);
+      expect(list.items.properties).toEqual({
+        quote: { type: "string", maxLength: QUOTE_MAX_CHARS },
+        text: { type: "string", maxLength: L.itemChars },
       });
+      expect(list.items.required).toEqual(["quote", "text"]);
     }
     const actions = (await props("actionItems")).actionItems as {
       maxItems: number;
@@ -611,9 +622,9 @@ describe("summaryStageStepSchema (issue #246)", () => {
   it("the zod side of a limited schema accepts any size", () => {
     const long = "a".repeat(L.itemChars + 50);
     const many = Array.from({ length: L.keyPoints + 5 }, (_, i) => `p${i}`);
-    const parsed = summaryStageStepSchema("points", {
+    const parsed = summaryStageStepSchema("keyPoints", {
       sizeLimits: true,
-    }).zod.parse({ keyPoints: [long, ...many], openQuestions: [] });
+    }).zod.parse({ keyPoints: [long, ...many] });
     expect(parsed.keyPoints).toHaveLength(L.keyPoints + 6);
     expect(parsed.keyPoints?.[0]).toBe(long);
   });

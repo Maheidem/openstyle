@@ -93,7 +93,13 @@ describe.skipIf(SUMMARIZE_IS_STUB)(
       expect(summaryStep?.step_key).toBe("decisions");
       expect(
         steps.filter((s) => s.node === "summarize").map((s) => s.step_key),
-      ).toEqual(["decisions", "actionItems", "points", "overview"]);
+      ).toEqual([
+        "decisions",
+        "actionItems",
+        "keyPoints",
+        "openQuestions",
+        "overview",
+      ]);
       for (const s of steps.filter(
         (x) =>
           x.node !== "summarize" &&
@@ -107,7 +113,8 @@ describe.skipIf(SUMMARIZE_IS_STUB)(
       expect(tagsStep?.seq).toBeGreaterThan(summaryStep?.seq ?? 0);
       // Each extraction prompt shows the corrections of this run, not the raw text.
       const summaryRequests = h.requests.filter(isSummary);
-      expect(summaryRequests).toHaveLength(3);
+      // Four extraction calls and the overview, which reads the transcript too.
+      expect(summaryRequests).toHaveLength(5);
       for (const summaryRequest of summaryRequests) {
         for (const chunk of f.segmentIdsByChunk) {
           expect(summaryRequest.user).toContain(

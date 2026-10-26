@@ -32,6 +32,7 @@ import {
   MAX_SUMMARIZE_CALLS,
   mergeSummaryAnswers,
   plannedSummaryCalls,
+  quoteInLines,
   renderSummaryMarkdown,
   repairCutAnswer,
   supportedOwner,
@@ -75,15 +76,22 @@ const MIN = 60 * 60 * 1000;
 
 // --- helpers -----------------------------------------------------------------
 
-type Stage = "decisions" | "actionItems" | "points" | "overview";
+type Stage =
+  | "decisions"
+  | "actionItems"
+  | "keyPoints"
+  | "openQuestions"
+  | "overview";
 
 /** The stage of a summary request, from the job line of its system prompt. */
 function stageOf(r: RecordedRequest): Stage | null {
   if (r.system.startsWith("You write the overview")) return "overview";
   if (!r.system.startsWith("You read a meeting transcript")) return null;
+  if (r.system.includes("write its overview")) return "overview";
   if (r.system.includes("List the decisions")) return "decisions";
   if (r.system.includes("List the action items")) return "actionItems";
-  if (r.system.includes("List the key points")) return "points";
+  if (r.system.includes("List the key points")) return "keyPoints";
+  if (r.system.includes("List the open questions")) return "openQuestions";
   return null;
 }
 const isOverview = (r: RecordedRequest) => stageOf(r) === "overview";
@@ -92,7 +100,12 @@ const isExtract = (r: RecordedRequest) => stageOf(r) !== null && !isOverview(r);
 const partOf = (r: RecordedRequest) =>
   Number(/This is part (\d+) of/.exec(r.user)?.[1] ?? 1) - 1;
 
-const STAGES = ["decisions", "actionItems", "points"] as const;
+const STAGES = [
+  "decisions",
+  "actionItems",
+  "keyPoints",
+  "openQuestions",
+] as const;
 /** The step keys of `parts` parts, then the overview. */
 const keysFor = (parts: number) => [
   ...Array.from({ length: parts }, (_, i) =>
@@ -100,6 +113,12 @@ const keysFor = (parts: number) => [
   ).flat(),
   "overview",
 ];
+
+/**
+ * Words of fixture line 4, so they are in every fixture transcript with 4
+ * lines or more. A decision or an open question needs a quote that code finds.
+ */
+const QUOTE = "move the vendor call to Thursday";
 
 function summary(over: Partial<MeetingSummary> = {}): MeetingSummary {
   return {
@@ -111,26 +130,30 @@ function summary(over: Partial<MeetingSummary> = {}): MeetingSummary {
     ...over,
   };
 }
+/** A summary as the model writes it: decisions and questions with a quote. */
+const wire = (s: MeetingSummary, quote = QUOTE) => ({
+  ...s,
+  decisions: s.decisions.map((text) => ({ quote, text })),
+  openQuestions: s.openQuestions.map((text) => ({ quote, text })),
+});
 /** One answer for every stage: each call parses only the fields of its stage. */
 const sum = (over: Partial<MeetingSummary> = {}) =>
-  okReply(JSON.stringify(summary(over)));
+  okReply(JSON.stringify(wire(summary(over))));
 /** The answer of each stage call, from one summary object. */
 const byStage =
-  (s: MeetingSummary) =>
+  (s: MeetingSummary, quote = QUOTE) =>
   (r: RecordedRequest): ScriptStep => {
+    const w = wire(s, quote);
     const stage = stageOf(r);
     if (stage === "decisions")
-      return okReply(JSON.stringify({ decisions: s.decisions }));
+      return okReply(JSON.stringify({ decisions: w.decisions }));
     if (stage === "actionItems")
-      return okReply(JSON.stringify({ actionItems: s.actionItems }));
-    if (stage === "points")
-      return okReply(
-        JSON.stringify({
-          keyPoints: s.keyPoints,
-          openQuestions: s.openQuestions,
-        }),
-      );
-    return okReply(JSON.stringify({ overview: s.overview }));
+      return okReply(JSON.stringify({ actionItems: w.actionItems }));
+    if (stage === "keyPoints")
+      return okReply(JSON.stringify({ keyPoints: w.keyPoints }));
+    if (stage === "openQuestions")
+      return okReply(JSON.stringify({ openQuestions: w.openQuestions }));
+    return okReply(JSON.stringify({ overview: w.overview }));
   };
 const LENGTH_CUT = reply("length", "length", '{"overview":"cut');
 const down = new APICallError({
@@ -241,7 +264,7 @@ function stubRegistry(mode: "price" | "reject"): void {
 // --- one part: the stage calls, rendering, prompts ---------------------------
 
 describe("summarize: one part", () => {
-  it("a short meeting is three extraction calls and the overview; the Markdown is the render of summary_json", async () => {
+  it("a short meeting is four extraction calls and the overview; the Markdown is the render of summary_json", async () => {
     expect(SUMMARIZE_IS_STUB).toBe(false);
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const s = summary({
@@ -255,19 +278,14 @@ describe("summarize: one part", () => {
       openQuestions: ["Who owns the onboarding checklist?"],
     });
     const r = await run(f, byStage(s));
-    expect(r.requests.map(stageOf)).toEqual([
-      "decisions",
-      "actionItems",
-      "points",
-      "overview",
-    ]);
+    expect(r.requests.map(stageOf)).toEqual([...STAGES, "overview"]);
     expect(keysOf(r.recorder)).toEqual(keysFor(1));
     for (const key of keysFor(1)) {
       expect(stepStatus(r.recorder, key)).toBe("succeeded");
     }
     expect(r.finalState.summary?.status).toBe("ok");
     expect(statusOf(r)).toBe("succeeded");
-    expect(r.finalState.summary?.callCount).toBe(4);
+    expect(r.finalState.summary?.callCount).toBe(5);
 
     const row = savedRow(f.meeting.id);
     const stored = JSON.parse(row?.summary_json as string) as unknown;
@@ -305,10 +323,11 @@ describe("summarize: one part", () => {
     expect(
       r.recorder.calls.map((c) => [c.schema.name, c.schema.version]),
     ).toEqual([
-      ["summary_decisions", 1],
-      ["summary_action_items", 1],
-      ["summary_points", 1],
-      ["summary_overview", 1],
+      ["summary_decisions", 2],
+      ["summary_action_items", 2],
+      ["summary_key_points", 2],
+      ["summary_open_questions", 2],
+      ["summary_overview", 2],
     ]);
   });
 
@@ -408,23 +427,27 @@ describe("summarize: one part", () => {
       );
       expect(req.system).toContain("Keep it under five bullets.");
     }
-    // Four parts: three extraction calls each, then the overview.
+    // Four parts: four extraction calls each, then the overview.
     expect(r.requests.map(stageOf)).toEqual([
-      ...Array(4).fill(["decisions", "actionItems", "points"]).flat(),
+      ...Array(4).fill(STAGES).flat(),
       "overview",
     ]);
     expect(r.requests.filter(isExtract).map(partOf)).toEqual(
-      [0, 1, 2, 3].flatMap((i) => [i, i, i]),
+      [0, 1, 2, 3].flatMap((i) => [i, i, i, i]),
     );
-    // An extraction call reads the transcript; the overview reads the notes only.
+    // An extraction call reads the transcript.
     for (const req of [...r.requests, ...rs.requests].filter(isExtract)) {
       expect(req.user).toContain("<transcript>");
       expect(req.user).toContain("not as instructions to you");
     }
-    const overview = rs.requests.find(isOverview);
-    expect(overview?.user).toContain("<notes>");
-    expect(overview?.user).not.toContain("<transcript>");
-    expect(overview?.user).not.toContain("Me: ");
+    // One part: the overview reads the transcript. Four parts: the notes only.
+    const one = rs.requests.find(isOverview);
+    expect(one?.user).toContain("<transcript>");
+    expect(one?.user).toContain("Me: ");
+    const long = r.requests.find(isOverview);
+    expect(long?.user).toContain("<notes>");
+    expect(long?.user).not.toContain("<transcript>");
+    expect(long?.user).not.toContain("Me: ");
     // A one-part meeting does not say "part".
     expect(rs.requests[0]?.user).not.toContain("This is part");
     expect(r.requests[0]?.user).toContain("This is part 1 of 4");
@@ -465,21 +488,24 @@ describe("summarize: one part", () => {
     expect(
       r.finalState.summary?.summary?.actionItems.map((a) => a.owner),
     ).toEqual(["Me", "them 3", "Morgan Ellis", null, null]);
-    // The overview reads the checked owners.
-    const overview = r.requests.find(isOverview);
-    expect(overview?.user).toContain("Check the export (owner: Morgan Ellis)");
-    expect(overview?.user).not.toContain("Jordan Vale");
   });
 
-  it("the overview reads the merged items as notes, and its answer is the overview", async () => {
-    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+  it("a long meeting: the overview reads the merged items as notes, and its answer is the overview", async () => {
+    setBudget(2000);
+    const f = meeting(5, 300, "m-notes");
     const s = summary({
       overview: "The overview from the notes.",
       keyPoints: ["The export job takes four minutes."],
       decisions: ["Move the vendor call to Thursday."],
       actionItems: [{ task: "Send the draft", owner: "Me", due: "Friday" }],
     });
-    const r = await run(f, byStage(s));
+    const r = await run(f, (req) =>
+      isOverview(req)
+        ? byStage(s)(req)
+        : partOf(req) === 0
+          ? byStage(s)(req)
+          : sum(),
+    );
     const overview = r.requests.find(isOverview);
     const notes = renderSummaryNotes({
       keyPoints: s.keyPoints,
@@ -497,24 +523,75 @@ describe("summarize: one part", () => {
 });
 
 describe("summary-pure: merge and owner check", () => {
-  it("mergeSummaryAnswers joins the stage answers in order and removes duplicates", () => {
-    expect(
-      mergeSummaryAnswers([
-        { decisions: ["Ship on Friday."] },
+  it("mergeSummaryAnswers joins the stage answers in order, keeps quoted items only, and removes duplicates", () => {
+    const lines = [
+      "Me: ok so we ship on Friday, everyone agrees.",
+      "Them 2: who pays for the new laptops?",
+      "Me: and we hire a designer next month.",
+    ];
+    const q = (quote: string, text: string) => ({ quote, text });
+    const out = mergeSummaryAnswers(
+      [
+        { decisions: [q("we ship on Friday", "Ship on Friday.")] },
         { actionItems: [{ task: "Send the draft", owner: null, due: null }] },
-        { keyPoints: ["Kestrel latency is high."], openQuestions: [] },
-        { decisions: ["ship on friday.", "Hire a designer."] },
+        { keyPoints: ["Kestrel latency is high."] },
+        { openQuestions: [q("who pays for the new laptops", "Who pays?")] },
+        {
+          decisions: [
+            q("WE SHIP ON FRIDAY!", "ship on friday."),
+            q("hire a designer", "Hire a designer."),
+            q("we agreed to move the office", "Move the office."),
+          ],
+        },
         {
           actionItems: [{ task: "Send the draft", owner: "Me", due: "Friday" }],
         },
         { keyPoints: ["Kestrel latency is high.", "The budget is open."] },
-      ]),
-    ).toEqual({
+        { openQuestions: [q("pays", "Who pays?"), q("is it late", "Late?")] },
+      ],
+      lines,
+    );
+    expect(out.items).toEqual({
       keyPoints: ["Kestrel latency is high.", "The budget is open."],
       decisions: ["Ship on Friday.", "Hire a designer."],
       actionItems: [{ task: "Send the draft", owner: "Me", due: "Friday" }],
-      openQuestions: [],
+      openQuestions: ["Who pays?"],
     });
+    // "move the office" is in no line; "pays" is too short; "is it late" is in no line.
+    expect(out.droppedDecisions).toBe(1);
+    expect(out.droppedQuestions).toBe(2);
+  });
+
+  it("quoteInLines: the words of the quote, in order, in one line; case and punctuation do not count", () => {
+    const lines = ["Them 2: OK, so the launch moves to Friday.", "Me: fine."];
+    expect(quoteInLines("the launch moves to friday", lines)).toBe(true);
+    expect(quoteInLines("Them 2: OK so the launch", lines)).toBe(true);
+    expect(quoteInLines("“the launch moves”", lines)).toBe(true);
+    // Words of two lines, a changed word, a short quote: no.
+    expect(quoteInLines("to Friday. Me: fine", lines)).toBe(false);
+    expect(quoteInLines("the launch moved to Friday", lines)).toBe(false);
+    expect(quoteInLines("fine", lines)).toBe(false);
+    // A part of a word is not a word.
+    expect(quoteInLines("launch moves to Fri", lines)).toBe(false);
+  });
+
+  it("a decision with a quote that is not in the transcript is not stored", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2, meetingId: "m-q" });
+    const r = await run(f, (req) =>
+      stageOf(req) === "decisions"
+        ? okReply(
+            JSON.stringify({
+              decisions: [
+                { quote: QUOTE, text: "Move the vendor call." },
+                { quote: "we will buy a boat", text: "Buy a boat." },
+              ],
+            }),
+          )
+        : sum(),
+    );
+    expect(r.finalState.summary?.summary?.decisions).toEqual([
+      "Move the vendor call.",
+    ]);
   });
 
   it("supportedOwner keeps a label or a name that the transcript says, and drops the rest", () => {
@@ -633,7 +710,7 @@ describe("summarize: the text of the lines (4.5 Inputs)", () => {
       { stages: ["enhance", "summarize"] },
     );
     const extract = r.requests.filter(isExtract);
-    expect(extract).toHaveLength(3);
+    expect(extract).toHaveLength(4);
     for (const req of extract) {
       expect(req.user).toContain(`Me: ${a?.text} fresh`);
       expect(req.user).toContain(`Me: ${b?.text}`);
@@ -645,7 +722,7 @@ describe("summarize: the text of the lines (4.5 Inputs)", () => {
 // --- long meetings: parts ----------------------------------------------------
 
 describe("summarize: parts of a long meeting (4.5.3)", () => {
-  it("a long transcript is three calls for each part, then the overview; code merges the parts", async () => {
+  it("a long transcript is four calls for each part, then the overview; code merges the parts", async () => {
     setBudget(2000);
     const f = meeting(5, 300, "m-parts"); // 20 lines of about 300 tokens
     const r = await run(f, (req) => {
@@ -679,7 +756,7 @@ describe("summarize: parts of a long meeting (4.5.3)", () => {
     // The overview reads the merged notes, once.
     const overview = r.requests.find(isOverview);
     expect(overview?.user.match(/four minutes/g)).toHaveLength(1);
-    expect(r.finalState.summary?.callCount).toBe(13);
+    expect(r.finalState.summary?.callCount).toBe(17);
     expect(statusOf(r)).toBe("succeeded");
     // There is no row named `summarize`.
     expect(r.recorder.steps.has("summarize")).toBe(false);
@@ -699,19 +776,19 @@ describe("summarize: parts of a long meeting (4.5.3)", () => {
     );
   });
 
-  it("GR20 (b): a persistent 503 on the overview call sends 12 + 2 requests and no extraction call again", async () => {
+  it("GR20 (b): a persistent 503 on the overview call sends 16 + 2 requests and no extraction call again", async () => {
     setBudget(2000);
     const f = meeting(5, 300, "m-gr20b");
     const r = await run(f, (req) => (isOverview(req) ? down : sum()));
-    // 12 extraction calls, the overview call, and its one retry.
-    expect(r.requests).toHaveLength(12 + 2);
-    expect(r.requests.filter(isExtract)).toHaveLength(12);
+    // 16 extraction calls, the overview call, and its one retry.
+    expect(r.requests).toHaveLength(16 + 2);
+    expect(r.requests.filter(isExtract)).toHaveLength(16);
     expect(r.finalState.summary?.status).toBe("failed");
     expect(r.finalState.summary?.failure?.kind).toBe("provider_unavailable");
     expect(r.finalState.summary?.failure?.unitKey).toBe("overview");
     expect(savedRow(f.meeting.id)).toBeUndefined();
     expect(stepStatus(r.recorder, "overview")).toBe("failed");
-    expect(stepStatus(r.recorder, "points:3")).toBe("succeeded");
+    expect(stepStatus(r.recorder, "openQuestions:3")).toBe("succeeded");
   });
 
   it("a failed extraction call stops the node: no later call, no overview, no summary", async () => {
@@ -720,8 +797,8 @@ describe("summarize: parts of a long meeting (4.5.3)", () => {
     const r = await run(f, (req) =>
       stageOf(req) === "actionItems" && partOf(req) === 1 ? down : sum(),
     );
-    // Part 1: decisions:0..points:0, decisions:1, actionItems:1 and its retry.
-    expect(r.requests).toHaveLength(3 + 1 + 2);
+    // Part 1: decisions:0..openQuestions:0, decisions:1, actionItems:1 and its retry.
+    expect(r.requests).toHaveLength(4 + 1 + 2);
     expect(r.requests.filter(isOverview)).toHaveLength(0);
     expect(r.finalState.summary?.failure?.unitKey).toBe("actionItems:1");
     expect(savedRow(f.meeting.id)).toBeUndefined();
@@ -731,15 +808,15 @@ describe("summarize: parts of a long meeting (4.5.3)", () => {
 // --- GR26 (b), the ceiling ---------------------------------------------------
 
 describe("GR26 (b): plannedSummaryCalls and the ceiling", () => {
-  it("plans 4 calls under budget; 3 for each part plus the overview above it; budget_exceeded over 40", () => {
-    expect(plannedSummaryCalls(1500, 2000)).toEqual({ calls: 4 });
+  it("plans 5 calls under budget; 4 for each part plus the overview above it; budget_exceeded over 49", () => {
+    expect(plannedSummaryCalls(1500, 2000)).toEqual({ calls: 5 });
     // 6000 tokens at 2000 (fresh 1800): 4 parts.
-    expect(plannedSummaryCalls(6000, 2000)).toEqual({ calls: 13 });
-    expect(plannedSummaryCalls(10800, 2000)).toEqual({ calls: 19 });
+    expect(plannedSummaryCalls(6000, 2000)).toEqual({ calls: 17 });
+    expect(plannedSummaryCalls(10800, 2000)).toEqual({ calls: 25 });
     expect(plannedSummaryCalls(200000, 2000)).toEqual({
       error: "budget_exceeded",
     });
-    expect(MAX_SUMMARIZE_CALLS).toBe(40);
+    expect(MAX_SUMMARIZE_CALLS).toBe(49);
   });
 
   it("the ceiling is clamp(2 x perCallMs x plannedCalls, 2 x perCallMs, 4 h)", () => {
@@ -777,7 +854,7 @@ describe("GR22: the deadline", () => {
     const r = await run(f, (req) => (partOf(req) === 1 ? HANG : sum()));
     expect(r.finalState.summary?.failure?.kind).toBe("deadline_exceeded");
     expect(r.requests.filter(isOverview)).toHaveLength(0);
-    expect(r.requests.filter(isExtract).map(partOf)).toEqual([0, 0, 0, 1]);
+    expect(r.requests.filter(isExtract).map(partOf)).toEqual([0, 0, 0, 0, 1]);
     expect(savedRow("m-dl-map")).toBeUndefined();
   });
 });
@@ -900,19 +977,18 @@ describe("closeCutJson and repairCutAnswer (pure, PR #258)", () => {
   });
 
   it("fills the missing lists of the stage and checks the stage schema", () => {
-    const points = summaryStageStepSchema("points").zod;
+    const points = summaryStageStepSchema("keyPoints").zod;
     expect(
-      repairCutAnswer('{"keyPoints": ["K", "L', points, [
-        "keyPoints",
-        "openQuestions",
-      ]),
-    ).toEqual({ keyPoints: ["K"], openQuestions: [] });
+      repairCutAnswer('{"keyPoints": ["K", "L', points, ["keyPoints"]),
+    ).toEqual({ keyPoints: ["K"] });
+    expect(repairCutAnswer("{", points, ["keyPoints"])).toBeNull();
+    // A missing list becomes an empty list.
+    expect(repairCutAnswer('{"x": 1}', points, ["keyPoints"])).toEqual({
+      keyPoints: [],
+    });
     // A wrong type fails the schema.
     expect(
-      repairCutAnswer('{"keyPoints": [1, 2', points, [
-        "keyPoints",
-        "openQuestions",
-      ]),
+      repairCutAnswer('{"keyPoints": [1, 2', points, ["keyPoints"]),
     ).toBeNull();
     // A cut overview string cannot close.
     const overview = summaryStageStepSchema("overview").zod;
@@ -1077,7 +1153,7 @@ async function runWithModel(
 describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
   const price = { input: 0.15 / 1_000_000, output: 0.6 / 1_000_000 };
 
-  it("(a) a priced model: cost_usd = 4 calls x (1000 x price.input + 200 x price.output), read back; tokens and provider", async () => {
+  it("(a) a priced model: cost_usd = 5 calls x (1000 x price.input + 200 x price.output), read back; tokens and provider", async () => {
     useOpenAi();
     stubRegistry("price");
     const f = seedFixtureMeeting({ chunks: 1, speakers: 1, meetingId: "m-a" });
@@ -1090,11 +1166,11 @@ describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
     const row = savedRow("m-a");
     expect(row?.cost_usd).not.toBeNull();
     expect(row?.cost_usd).toBeCloseTo(
-      4 * (1000 * price.input + 200 * price.output),
+      5 * (1000 * price.input + 200 * price.output),
       12,
     );
-    expect(row?.input_tokens).toBe(4000);
-    expect(row?.output_tokens).toBe(800);
+    expect(row?.input_tokens).toBe(5000);
+    expect(row?.output_tokens).toBe(1000);
     expect(row?.llm_provider).toBe("openai");
   });
 
@@ -1105,8 +1181,8 @@ describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
     expect(row?.cost_usd).toBeNull();
     expect(row?.llm_provider).toBe("server");
     // The scripted model reports 120 input and 30 output tokens for each call.
-    expect(row?.input_tokens).toBe(4 * 120);
-    expect(row?.output_tokens).toBe(4 * 30);
+    expect(row?.input_tokens).toBe(5 * 120);
+    expect(row?.output_tokens).toBe(5 * 30);
   });
 
   it("(c) a models.dev read that fails: cost_usd NULL and the node does not fail", async () => {
@@ -1152,9 +1228,9 @@ describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
       }),
     );
     expect(savedRow("m-e2")?.llm_model).toBe(TEST_MODEL);
-    // 12 extraction calls and the overview: 13 x 120 input and 13 x 30 output tokens.
-    expect(savedRow("m-e2")?.input_tokens).toBe(13 * 120);
-    expect(savedRow("m-e2")?.output_tokens).toBe(13 * 30);
+    // 16 extraction calls and the overview: 17 x 120 input and 17 x 30 output tokens.
+    expect(savedRow("m-e2")?.input_tokens).toBe(17 * 120);
+    expect(savedRow("m-e2")?.output_tokens).toBe(17 * 30);
   });
 
   it("the requested model is used when the served model is absent", async () => {
@@ -1254,9 +1330,11 @@ describe("GR10 (c): resume sends no finished call again", () => {
       (req) => (isOverview(req) ? sum({ overview: "Final." }) : sum()),
     );
     expect(r.before.filter(isExtract).map(partOf)).toEqual([
-      0, 0, 0, 1, 1, 1, 2,
+      0, 0, 0, 0, 1, 1, 1, 1, 2,
     ]);
-    expect(r.after.filter(isExtract).map(partOf)).toEqual([2, 2, 2, 3, 3, 3]);
+    expect(r.after.filter(isExtract).map(partOf)).toEqual([
+      2, 2, 2, 2, 3, 3, 3, 3,
+    ]);
     expect(r.after.filter(isOverview)).toHaveLength(1);
     expect(r.finalState.summary?.status).toBe("ok");
     // No unit has two finished calls.
@@ -1274,7 +1352,7 @@ describe("GR10 (c): resume sends no finished call again", () => {
       (req) => (isOverview(req) ? "kill" : answer(req)),
       (req) => (isOverview(req) ? sum({ overview: "Final." }) : answer(req)),
     );
-    expect(r.before).toHaveLength(13);
+    expect(r.before).toHaveLength(17);
     expect(r.after).toHaveLength(1);
     expect(r.after[0]?.user.match(/Point from part/g)).toHaveLength(4);
     expect(r.finalState.summary?.status).toBe("ok");
@@ -1325,7 +1403,8 @@ describe("summarize: the context guard", () => {
       "decisions/0",
       "decisions/1",
       "actionItems",
-      "points",
+      "keyPoints",
+      "openQuestions",
       "overview",
     ]);
     expect(r.finalState.summary?.status).toBe("ok");

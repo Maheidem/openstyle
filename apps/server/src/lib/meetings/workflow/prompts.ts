@@ -196,22 +196,35 @@ const PLAIN = "Write plain text: no Markdown and no headings.";
 export const SUMMARY_EXTRACT_STAGES = [
   "decisions",
   "actionItems",
-  "points",
+  "keyPoints",
+  "openQuestions",
 ] as const;
 export type SummaryExtractStage = (typeof SUMMARY_EXTRACT_STAGES)[number];
 
+/**
+ * The evidence field of the `decisions` and `openQuestions` items. Code keeps
+ * an item only when its quote is in one transcript line (`quoteInLines`).
+ */
+const QUOTE_FIELD =
+  "quote: copy, word for word, the words of the one transcript line that shows it, without the speaker label (at most 160 characters).";
+
 /** The job of each extraction stage: what to list, and how. */
 const STAGE_JOB: Record<SummaryExtractStage, string> = {
-  decisions:
-    "List the decisions that were made in the meeting. A decision is a choice that the speakers agreed on, or a choice that a speaker stated as final. A suggestion, an idea, an open option or a task for one person is not a decision. Write each decision as one short sentence. Use an empty list when no decision was made.",
-  actionItems: `List the action items of the meeting. An action item is a concrete task that a person will do after the meeting. Fill each item like this:
+  decisions: `List the decisions of the meeting. A decision is something that the group agreed to do, or a choice that the group made. A proposal, an idea, an opinion, an open option or a task for one person is not a decision. Fill each item like this:
+- ${QUOTE_FIELD}
+- text: the decision in one short sentence.
+Use an empty list when no decision was made.`,
+  actionItems: `List the action items of the meeting. An action item is a task that a person will do after the meeting: a concrete task, or a follow-up such as sending something, checking something, asking someone, or setting up the next meeting. Fill each item like this:
 - task: what to do, in one short sentence.
 - owner: the person who will do the task, or null when the text names no person. ${SUMMARY_OWNER_RULE}
 - due: the time exactly as spoken, for example "next Friday", or null when none is given. Do not work out a date.
 Use an empty list when there are no action items.`,
-  points: `List the key points and the open questions of the meeting:
-- keyPoints: the substantive points that were discussed, one short sentence each. Name a speaker only when it matters.
-- openQuestions: questions that were raised and not answered. Use an empty list when there are none.`,
+  keyPoints:
+    "List the key points of the meeting: the substantive points that were discussed, one short sentence each. Name a speaker only when it matters.",
+  openQuestions: `List the open questions of the meeting: questions that a speaker asked and that nobody answered before the end of the meeting. A question that is answered later in the transcript is not open. Fill each item like this:
+- ${QUOTE_FIELD}
+- text: the question in one short sentence.
+Use an empty list when every question was answered.`,
 };
 
 export interface SummaryPromptInput {
@@ -281,7 +294,7 @@ export function buildSummaryPartUserPrompt(
   return `Read only the transcript inside the <transcript> tags. ${TRANSCRIPT_GUARD}${part}\n\n<transcript>\n${lines.join("\n")}\n</transcript>`;
 }
 
-/** System prompt of the `overview` call: the last call, on the merged items. */
+/** System prompt of the `overview` call of a long meeting: the last call, on the merged items. */
 export function buildSummaryOverviewSystemPrompt(
   input: SummaryPromptInput,
 ): string {
@@ -289,6 +302,26 @@ export function buildSummaryOverviewSystemPrompt(
     withContext(
       withInstructions(
         `You write the overview of a meeting from its notes. The notes list the key points, decisions, action items and open questions of the meeting, in time order. ${summaryLanguageLine(input.language)}\n\nWrite two to four sentences about what the meeting was about and its outcome. Use only facts from the notes. ${PLAIN}`,
+        input.instructions,
+      ),
+      input.context,
+    ),
+    input.earlierMeetings,
+  );
+}
+
+/**
+ * System prompt of the `overview` call of a one-part meeting: it reads the
+ * transcript (blind judge 2026-10-26: better than the overview from the
+ * merged items on both gold meetings).
+ */
+export function buildSummaryOverviewFromTranscriptSystemPrompt(
+  input: SummaryPromptInput,
+): string {
+  return withEarlierMeetings(
+    withContext(
+      withInstructions(
+        `You read a meeting transcript and write its overview. ${SUMMARY_SPEAKERS} ${summaryLanguageLine(input.language)}\n\nWrite two to four sentences about what the meeting was about and its outcome.\n${NO_INVENT} ${PLAIN}`,
         input.instructions,
       ),
       input.context,

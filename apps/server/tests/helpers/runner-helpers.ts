@@ -35,7 +35,10 @@ export const SUMMARY_ANSWER = okReply(
   JSON.stringify({
     overview: "The team agreed to ship on Friday.",
     keyPoints: ["Ship on Friday."],
-    decisions: ["Ship on Friday."],
+    // A decision needs a quote from the transcript (fixture line 4).
+    decisions: [
+      { quote: "move the vendor call to Thursday", text: "Ship on Friday." },
+    ],
     actionItems: [],
     openQuestions: [],
   }),

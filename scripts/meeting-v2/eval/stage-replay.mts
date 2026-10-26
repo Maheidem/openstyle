@@ -65,6 +65,7 @@ import {
   buildIdentifySystemPrompt,
   buildIdentifyUserPrompt,
   buildPromptContext,
+  buildSummaryOverviewFromTranscriptSystemPrompt,
   buildSummaryOverviewSystemPrompt,
   buildSummaryOverviewUserPrompt,
   buildSummaryPartUserPrompt,
@@ -1085,9 +1086,10 @@ const CONTEXT_WINDOW = 32_768;
 
 /**
  * One Summarize run (summarize.ts): the transcript is one part when it fits
- * the budget, else parts of whole segments. Three extraction calls for each
- * part (decisions, action items, points), then code merges the parts and
- * checks the owners, then one overview call on the merged items. A call that
+ * the budget, else parts of whole segments. Four extraction calls for each
+ * part (decisions, action items, key points, open questions), then code
+ * merges the parts (quote check, duplicates, owners), then one overview call
+ * (on the transcript for one part, else on the merged items). A call that
  * ends at the token limit is repaired from its cut answer (repairCutAnswer)
  * or fails; the server's split and raise steps are not run.
  */
@@ -1221,16 +1223,25 @@ export async function runSummary(
     ),
   ];
   const merged = withSupportedOwners(
-    mergeSummaryAnswers(answers),
+    mergeSummaryAnswers(answers, lines).items,
     labels,
     lines.join("\n"),
   );
-  const overview = await call(
-    "overview",
-    "overview",
-    buildSummaryOverviewSystemPrompt(promptInput),
-    buildSummaryOverviewUserPrompt(renderSummaryNotes(merged.items)),
-  );
+  // One part: the overview reads the transcript; more: the merged items.
+  const overview =
+    parts.length === 1
+      ? await call(
+          "overview",
+          "overview",
+          buildSummaryOverviewFromTranscriptSystemPrompt(promptInput),
+          buildSummaryPartUserPrompt(lines, 0, 1),
+        )
+      : await call(
+          "overview",
+          "overview",
+          buildSummaryOverviewSystemPrompt(promptInput),
+          buildSummaryOverviewUserPrompt(renderSummaryNotes(merged.items)),
+        );
   if (!overview) {
     out.failedUnits++;
     return out;

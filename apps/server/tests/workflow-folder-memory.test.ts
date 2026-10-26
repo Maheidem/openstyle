@@ -20,7 +20,7 @@ import {
 } from "../src/lib/meetings/workflow/folder-memory.js";
 import {
   buildCorrectSystemPrompt,
-  buildSummaryOverviewSystemPrompt,
+  buildSummaryOverviewFromTranscriptSystemPrompt,
 } from "../src/lib/meetings/workflow/prompts.js";
 import { startRun } from "../src/lib/meetings/workflow/runner.js";
 import type {
@@ -58,7 +58,7 @@ const EARLIER_SUMMARY =
 
 /** The overview call: the one summary call that gets project memory. */
 const isSummary = (r: RecordedRequest) =>
-  r.system.startsWith("You write the overview");
+  r.system.startsWith("You read a meeting transcript and write its overview");
 const isCorrect = (r: RecordedRequest) =>
   r.system.startsWith(
     "You fix misheard words in a speech-to-text meeting transcript",
@@ -383,7 +383,7 @@ function expectMainPrompts(
 ): void {
   const summary = requests.find(isSummary);
   expect(summary?.system).toBe(
-    buildSummaryOverviewSystemPrompt({
+    buildSummaryOverviewFromTranscriptSystemPrompt({
       language: "en",
       instructions: "",
       context: (
@@ -516,7 +516,7 @@ describe("the workflow with project memory", () => {
     expect(runRow(runId).error_kind).toBeNull();
     const summary = h.requests.find(isSummary);
     expect(summary?.system).toBe(
-      buildSummaryOverviewSystemPrompt({
+      buildSummaryOverviewFromTranscriptSystemPrompt({
         language: "en",
         instructions: "",
         context: (

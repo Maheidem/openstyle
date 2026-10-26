@@ -19,6 +19,7 @@ import { speakerDisplayLabel } from "../../merge.js";
 import { chunkTranscript, estimateTokens, formatSegment } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
 import {
+  buildSummaryOverviewFromTranscriptSystemPrompt,
   buildSummaryOverviewSystemPrompt,
   buildSummaryOverviewUserPrompt,
   buildSummaryPartUserPrompt,
@@ -66,11 +67,13 @@ const log = createAppLogger("summarize");
 
 // Node `summarize` (specs/meeting-enhance-agentic.md 4.5), split into narrow
 // calls (LLM design ethos, AGENTS.md). The transcript is one part when it
-// fits the context budget, else parts of whole segments. For each part, three
-// extraction calls: `decisions`, `actionItems` and `points` (key points and
-// open questions). Code merges the parts, removes duplicates and drops an
-// owner that the transcript does not support. Then one `overview` call writes
-// the overview from the merged items. Code renders the Markdown. The node
+// fits the context budget, else parts of whole segments. For each part, four
+// extraction calls: `decisions`, `actionItems`, `keyPoints` and
+// `openQuestions`. Code merges the parts: it keeps a decision or an open
+// question only when its quote is in the transcript, removes duplicates and
+// drops an owner that the transcript does not support. Then one `overview`
+// call writes the overview: from the transcript for a one-part meeting, from
+// the merged items for a longer one. Code renders the Markdown. The node
 // writes no meeting data: `save` does (SW3).
 
 /** Today `DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS` (4.0.5, 4.5.4). */
@@ -574,31 +577,39 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
     }
 
     // --- Code: merge the parts, check the owners ------------------------------
-    const merged = withSupportedOwners(
-      mergeSummaryAnswers(answers),
-      labels,
-      lines.join("\n"),
-    );
-    if (merged.dropped > 0) {
+    const joined = mergeSummaryAnswers(answers, lines);
+    const merged = withSupportedOwners(joined.items, labels, lines.join("\n"));
+    if (
+      merged.dropped + joined.droppedDecisions + joined.droppedQuestions >
+      0
+    ) {
       log.info(
-        `summarize: ${merged.dropped} owner(s) not in the transcript set to null`,
+        `summarize: code checks dropped ${joined.droppedDecisions} decision(s) and ${joined.droppedQuestions} open question(s) with no quote in the transcript, and set ${merged.dropped} owner(s) to null`,
       );
     }
 
-    // --- The overview: one call on the merged items -------------------------
+    // --- The overview: one last call ------------------------------------------
+    // A one-part meeting: the overview reads the transcript. A longer one: it
+    // reads the merged items (the notes). The members are lines: a text that
+    // the model refuses as too long for the window splits in two halves, and
+    // the two overviews are joined (specs/llm-runtime-tuning.md 9 item 5).
     if (parts.length > 1) ctx.progress.summaryPart("combine");
-    // The members are the note lines. A notes text that the model refuses as
-    // too long for the window splits in two halves, and the two overviews are
-    // joined (specs/llm-runtime-tuning.md 9 item 5).
-    const notes = renderSummaryNotes(merged.items).split("\n");
+    const fromTranscript = parts.length === 1;
     const done = await stage("overview", async () =>
       settle(
         await routeStage<string>({
           stage: "overview",
           key: "overview",
-          members: notes,
-          system: overviewSystem,
-          user: (members) => buildSummaryOverviewUserPrompt(members.join("\n")),
+          members: fromTranscript
+            ? lines
+            : renderSummaryNotes(merged.items).split("\n"),
+          system: fromTranscript
+            ? buildSummaryOverviewFromTranscriptSystemPrompt(promptInput)
+            : overviewSystem,
+          user: (members) =>
+            fromTranscript
+              ? buildSummaryPartUserPrompt(members, 0, 1)
+              : buildSummaryOverviewUserPrompt(members.join("\n")),
           tokensOf: lineTokens,
           minSplitTokens: Number.POSITIVE_INFINITY,
           minSplitTokensInput: 0,

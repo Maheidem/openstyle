@@ -1251,20 +1251,20 @@ describe("GR26 (a): renderSummaryMarkdown (4.5.6)", () => {
 });
 
 describe("GR26 (b): plannedSummaryCalls (4.5.3)", () => {
-  it("under the budget plans one part: three extraction calls and the overview", () => {
-    expect(plannedSummaryCalls(900, 1000)).toEqual({ calls: 3 + 1 });
+  it("under the budget plans one part: four extraction calls and the overview", () => {
+    expect(plannedSummaryCalls(900, 1000)).toEqual({ calls: 4 + 1 });
   });
-  it("above the budget plans three calls for each part, then the overview", () => {
+  it("above the budget plans four calls for each part, then the overview", () => {
     // Budget 2000: overlap 200, fresh 1800; 10 800 tokens give 6 parts.
-    expect(plannedSummaryCalls(10_800, 2000)).toEqual({ calls: 6 * 3 + 1 });
+    expect(plannedSummaryCalls(10_800, 2000)).toEqual({ calls: 6 * 4 + 1 });
     // Budget 8000: overlap 400 (the cap), fresh 7600; 40 000 tokens give 6 parts.
-    expect(plannedSummaryCalls(8000 * 5, 8000)).toEqual({ calls: 6 * 3 + 1 });
+    expect(plannedSummaryCalls(8000 * 5, 8000)).toEqual({ calls: 6 * 4 + 1 });
   });
   it("a plan over MAX_SUMMARIZE_CALLS gives budget_exceeded", () => {
-    expect(MAX_SUMMARIZE_CALLS).toBe(40);
-    // 13 parts: 40 calls, the limit.
-    expect(plannedSummaryCalls(13 * 7600, 8000)).toEqual({ calls: 40 });
-    expect(plannedSummaryCalls(13 * 7600 + 1, 8000)).toEqual({
+    expect(MAX_SUMMARIZE_CALLS).toBe(49);
+    // 12 parts: 49 calls, the limit.
+    expect(plannedSummaryCalls(12 * 7600, 8000)).toEqual({ calls: 49 });
+    expect(plannedSummaryCalls(12 * 7600 + 1, 8000)).toEqual({
       error: "budget_exceeded",
     });
     expect(plannedSummaryCalls(2_000_000, 8000)).toEqual({

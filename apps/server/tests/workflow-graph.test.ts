@@ -776,7 +776,8 @@ describe("GR25: step rows and the run context", () => {
         "save",
         "decisions",
         "actionItems",
-        "points",
+        "keyPoints",
+        "openQuestions",
         "overview",
         "tags",
         "verify",
@@ -792,7 +793,8 @@ describe("GR25: step rows and the run context", () => {
       "verify",
       "decisions",
       "actionItems",
-      "points",
+      "keyPoints",
+      "openQuestions",
       "overview",
       "save",
       "tags",
@@ -957,7 +959,7 @@ describe("GR25: step rows and the run context", () => {
 });
 
 describe("edges", () => {
-  it("a summarize-only run goes prepare, summarize, save and sends the four summary calls", async () => {
+  it("a summarize-only run goes prepare, summarize, save and sends the five summary calls", async () => {
     const f = seedFixtureMeeting({
       chunks: 2,
       speakers: 3,
@@ -969,9 +971,9 @@ describe("edges", () => {
       deps,
       meetingId: f.meeting.id,
       stages: ["summarize"],
-      script: [SUMMARY, SUMMARY, SUMMARY, SUMMARY],
+      script: [SUMMARY],
     });
-    expect(r.requests).toHaveLength(4);
+    expect(r.requests).toHaveLength(5);
     expect(r.ctx.startedNodes).toEqual(["prepare", "summarize", "save"]);
     expect(r.finalState.corrections).toEqual([]);
     expect(r.finalState.identify).toBeNull();
