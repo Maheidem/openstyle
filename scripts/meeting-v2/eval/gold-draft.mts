@@ -53,8 +53,10 @@ import { CHANNELS, type Channel } from "./gold.mts";
 import {
   type Call,
   checkBuild,
+  EVAL_HOME,
   ensureTranscribed,
-  isTmp,
+  HF_CACHE_DEFAULT,
+  isCacheDir,
   ROOT,
   releaseLock,
   removeAllScratch,
@@ -100,8 +102,9 @@ if (!Number.isInteger(basePort) || basePort < 1024)
 for (let p = basePort; p < basePort + 4; p++)
   if (p === 4649)
     usage("the ports must not include 4649 (the installed app owns it)");
-const hfCache = resolve(arg("hf-cache") ?? join(ROOT, "hf"));
-if (!isTmp(hfCache)) usage(`--hf-cache must be under /tmp: ${hfCache}`);
+const hfCache = resolve(arg("hf-cache") ?? HF_CACHE_DEFAULT);
+if (!isCacheDir(hfCache))
+  usage(`--hf-cache must be under /tmp or ${EVAL_HOME}: ${hfCache}`);
 
 // --- Rows -------------------------------------------------------------------------
 

@@ -21,6 +21,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
+import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
@@ -93,6 +94,22 @@ export const WORKER =
   join(repoRoot, "dist", "mlx_asr_worker", "mlx_asr_worker");
 
 export const isTmp = (p: string) => /^\/(private\/)?tmp\//.test(resolve(p));
+/**
+ * The model cache lives outside /tmp: the macOS tmp cleanup deleted 5 model
+ * folders from /tmp/meeting-eval/hf at 00:00 on 2026-10-25. Set
+ * OPENSTYLE_EVAL_HF_HOME to use another folder.
+ */
+export const EVAL_HOME = join(
+  homedir(),
+  "Library",
+  "Application Support",
+  "Openstyle-eval",
+);
+export const HF_CACHE_DEFAULT =
+  process.env.OPENSTYLE_EVAL_HF_HOME ?? join(EVAL_HOME, "hf");
+/** A model cache folder may sit under /tmp or under the eval home. */
+export const isCacheDir = (p: string) =>
+  isTmp(p) || resolve(p).startsWith(`${EVAL_HOME}/`);
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const hhmm = () => new Date().toTimeString().slice(0, 5);
 export const sha = (s: string | Buffer) =>

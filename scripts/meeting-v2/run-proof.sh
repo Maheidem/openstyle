@@ -30,7 +30,7 @@
 # Optional env:
 #   REPO      repo root (default: resolved from this script's location)
 #   SCRATCH   scratch profile dir (default /tmp/meeting-v2)
-#   HF_CACHE  Hugging Face cache dir argument (default /tmp/meeting-eval/hf,
+#   HF_CACHE  Hugging Face cache dir argument (default ~/Library/Application Support/Openstyle-eval/hf,
 #             the cache of pnpm meeting:eval): it must hold the built-in ASR
 #             model (Qwen3-ASR-1.7B-8bit; pnpm meeting:eval downloads it).
 #             The automatic aligner download (~1.2 GB) goes here, never into
@@ -67,7 +67,7 @@ SCRATCH=${SCRATCH:-/tmp/meeting-v2}
 # must be EXPORTED to cross that boundary (an assignment as the first
 # command word is not an env prefix once it comes from "$@").
 export SCRATCH
-HF_CACHE=${HF_CACHE:-/tmp/meeting-eval/hf}
+HF_CACHE=${HF_CACHE:-${OPENSTYLE_EVAL_HF_HOME:-$HOME/Library/Application Support/Openstyle-eval/hf}}
 PORT=${PORT:-4787}
 if [ "$PORT" = "4649" ]; then
   echo "REFUSED: port 4649 (the installed app owns it)" >&2

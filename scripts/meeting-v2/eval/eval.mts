@@ -115,8 +115,10 @@ import {
   ASR_VOICE,
   type Call,
   checkBuild,
+  EVAL_HOME,
   ensureTranscribed as ensureTranscribedIn,
-  isTmp,
+  HF_CACHE_DEFAULT,
+  isCacheDir,
   needPort,
   ROOT,
   releaseLock,
@@ -161,8 +163,8 @@ function usage(msg: string): never {
 const rescoreDir = arg("rescore");
 const models = (arg("models") ?? "").split(",").filter(Boolean);
 if (models.length === 0 && !rescoreDir) usage("--models is required");
-if (rescoreDir && !isTmp(rescoreDir))
-  usage(`--rescore must be under /tmp: ${rescoreDir}`);
+if (rescoreDir && !isCacheDir(rescoreDir))
+  usage(`--rescore must be under /tmp or ${EVAL_HOME}: ${rescoreDir}`);
 const catalog = new Map(MLX_LLM_MODELS.map((m) => [m.id, m]));
 for (const m of models)
   if (!catalog.has(m))
@@ -172,7 +174,7 @@ for (const m of models)
 const meetingArgs = (arg("meetings") ?? "").split(",").filter(Boolean);
 const keep = has("keep");
 const noDownload = has("no-download");
-const hfCache = resolve(arg("hf-cache") ?? join(ROOT, "hf"));
+const hfCache = resolve(arg("hf-cache") ?? HF_CACHE_DEFAULT);
 // The private scratch profiles (work/<pid>) and the shared transcription
 // cache (cache/), see runtime.mts.
 const ASR_DIR = join(ROOT, "asr");
@@ -202,9 +204,12 @@ const compareBase = comparePath
 const noiseFrom = noiseFromPath
   ? parseBaseline(readFileSync(noiseFromPath, "utf8"))
   : null;
-if (!isTmp(outDir))
-  usage(`--out must be under /tmp (it holds meeting text): ${outDir}`);
-if (!isTmp(hfCache)) usage(`--hf-cache must be under /tmp: ${hfCache}`);
+if (!isCacheDir(outDir))
+  usage(
+    `--out must be under /tmp or ${EVAL_HOME} (it holds meeting text): ${outDir}`,
+  );
+if (!isCacheDir(hfCache))
+  usage(`--hf-cache must be under /tmp or ${EVAL_HOME}: ${hfCache}`);
 if (!Number.isInteger(basePort) || basePort < 1024)
   usage("--port must be a port number");
 for (let p = basePort; p < basePort + 4; p++)
