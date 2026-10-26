@@ -919,6 +919,20 @@
       "descCold": "Unload the AI model from memory after each request. Uses less RAM, but the next cleanup or summary waits for a full reload.",
       "descOneMinute": "Keep the AI model in memory for about 1 minute after each request, so quick follow-ups stay fast.",
       "descMinutes": "Keep the AI model loaded in memory for up to {{minutes}} minutes after each request. Faster repeat use, more RAM while warm."
+    },
+    "fit": {
+      "runsWell": "Runs well",
+      "tight": "Tight fit",
+      "wontFit": "Won't fit",
+      "hintRunsWell": "Needs about {{need}} GB of memory. This Mac has {{ram}} GB.",
+      "hintTight": "Needs about {{need}} GB of memory. This Mac has {{ram}} GB, so it can be slow when other apps are open.",
+      "hintWontFit": "Needs about {{need}} GB of memory. This Mac has {{ram}} GB, so it will be very slow or not start.",
+      "hintSmallMac": "This Mac has {{ram}} GB of memory. The model runs, but it can be slow here.",
+      "showAll": "Show all models",
+      "showAllHint": "Also show models that won't fit on this Mac",
+      "confirmTitle": "This model may not fit on this Mac",
+      "confirmMsg": "<b>{{name}}</b> needs about {{need}} GB of memory. This Mac has {{ram}} GB. The model can be very slow, or it can fail to start. The download is {{size}}.",
+      "confirmAction": "Download anyway"
     }
   },
   "shell": {

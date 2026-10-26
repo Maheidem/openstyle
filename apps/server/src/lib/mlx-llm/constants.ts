@@ -11,6 +11,8 @@ export const MLX_LLM_PROVIDER_ID = "local-mlx-llm";
 
 export const MLX_LLM_PROVIDER_NAME = "On-device · MLX";
 
+export const GIB = 1024 ** 3;
+
 /** `config.model_type` of the HF repo. The worker loads each with mlx-lm. */
 export type MlxLlmFamily = "gemma4" | "qwen3_5";
 
@@ -25,6 +27,13 @@ export interface MlxLlmModelDef {
   contextTokens: number;
   /** The output limit the app plans with. */
   maxOutputTokens: number;
+  /**
+   * P(model) of the fit label (specs/llm-runtime-tuning.md 5.1): the MLX peak
+   * of a 28k-token Summarize plus the KV of 4.8k more tokens, rounded up to
+   * 0.1 GiB. It is the MLX peak, not the RSS: RSS is lower for big models.
+   */
+  peakBytes: number;
+  /** The default model. The fit label never shows it as "Won't fit". */
   recommended?: boolean;
 }
 
@@ -55,6 +64,7 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     sizeBytes: 4_361_680_121,
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
+    peakBytes: Math.round(5.1 * GIB),
     recommended: true,
   },
   {
@@ -65,6 +75,7 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     sizeBytes: 6_830_817_013,
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
+    peakBytes: Math.round(7.5 * GIB),
   },
   // License note (2026-10-25). The catalog has no license field.
   // - Quant repo (lmstudio-community): its card has no license field.
@@ -82,6 +93,7 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     sizeBytes: 4_231_265_397,
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
+    peakBytes: Math.round(6.0 * GIB),
   },
   // License note (2026-10-26). The catalog has no license field (issue #331).
   // - Quant repo (mlx-community): its card has no license field.
@@ -97,6 +109,7 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     sizeBytes: 15_641_239_295,
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
+    peakBytes: Math.round(16.3 * GIB),
   },
   // License note (2026-10-26). The catalog has no license field (issue #331).
   // - Quant repo (mlx-community): license "apache-2.0", base model
@@ -113,6 +126,7 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     sizeBytes: 16_081_488_731,
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
+    peakBytes: Math.round(18.7 * GIB),
   },
 ];
 

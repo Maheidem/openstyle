@@ -741,6 +741,20 @@
       "descCold": "Entlädt das KI-Modell nach jeder Anfrage aus dem Speicher. Braucht weniger RAM, aber die nächste Bereinigung oder Zusammenfassung wartet auf ein vollständiges Neuladen.",
       "descOneMinute": "Hält das KI-Modell nach jeder Anfrage etwa 1 Minute im Speicher, damit schnelle Folgeanfragen schnell bleiben.",
       "descMinutes": "Hält das KI-Modell nach jeder Anfrage bis zu {{minutes}} Minuten im Speicher. Schneller bei wiederholter Nutzung, mehr RAM, solange es warm ist."
+    },
+    "fit": {
+      "runsWell": "Läuft gut",
+      "tight": "Knapp",
+      "wontFit": "Passt nicht",
+      "hintRunsWell": "Braucht etwa {{need}} GB Arbeitsspeicher. Dieser Mac hat {{ram}} GB.",
+      "hintTight": "Braucht etwa {{need}} GB Arbeitsspeicher. Dieser Mac hat {{ram}} GB, daher kann es langsam sein, wenn andere Apps offen sind.",
+      "hintWontFit": "Braucht etwa {{need}} GB Arbeitsspeicher. Dieser Mac hat {{ram}} GB, daher ist es sehr langsam oder startet nicht.",
+      "hintSmallMac": "Dieser Mac hat {{ram}} GB Arbeitsspeicher. Das Modell läuft, kann hier aber langsam sein.",
+      "showAll": "Alle Modelle anzeigen",
+      "showAllHint": "Auch Modelle anzeigen, die nicht auf diesen Mac passen",
+      "confirmTitle": "Dieses Modell passt eventuell nicht auf diesen Mac",
+      "confirmMsg": "<b>{{name}}</b> braucht etwa {{need}} GB Arbeitsspeicher. Dieser Mac hat {{ram}} GB. Das Modell kann sehr langsam sein oder nicht starten. Der Download ist {{size}} groß.",
+      "confirmAction": "Trotzdem herunterladen"
     }
   },
   "shell": {

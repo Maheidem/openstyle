@@ -740,6 +740,20 @@
       "descCold": "Descarrega o modelo de IA da memória após cada pedido. Usa menos RAM, mas a próxima limpeza ou resumo espera um recarregamento completo.",
       "descOneMinute": "Mantém o modelo de IA na memória por cerca de 1 minuto após cada pedido, para que os próximos pedidos sejam rápidos.",
       "descMinutes": "Mantém o modelo de IA na memória por até {{minutes}} minutos após cada pedido. Mais rápido no uso repetido, mais RAM enquanto ativo."
+    },
+    "fit": {
+      "runsWell": "Roda bem",
+      "tight": "No limite",
+      "wontFit": "Não cabe",
+      "hintRunsWell": "Precisa de cerca de {{need}} GB de memória. Este Mac tem {{ram}} GB.",
+      "hintTight": "Precisa de cerca de {{need}} GB de memória. Este Mac tem {{ram}} GB, então pode ficar lento com outros apps abertos.",
+      "hintWontFit": "Precisa de cerca de {{need}} GB de memória. Este Mac tem {{ram}} GB, então vai ficar muito lento ou não vai iniciar.",
+      "hintSmallMac": "Este Mac tem {{ram}} GB de memória. O modelo roda, mas pode ficar lento aqui.",
+      "showAll": "Mostrar todos os modelos",
+      "showAllHint": "Mostrar também os modelos que não cabem neste Mac",
+      "confirmTitle": "Este modelo pode não caber neste Mac",
+      "confirmMsg": "<b>{{name}}</b> precisa de cerca de {{need}} GB de memória. Este Mac tem {{ram}} GB. O modelo pode ficar muito lento ou não iniciar. O download tem {{size}}.",
+      "confirmAction": "Baixar mesmo assim"
     }
   },
   "shell": {

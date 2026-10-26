@@ -24,6 +24,7 @@ import {
   type AvailableModel,
   displayProviderName,
   type LocalEngine,
+  type LocalLlmItem,
   PROVIDER_KEY_URLS,
 } from "@renderer/lib/models";
 import { AlertTriangle, Key, Loader2, X } from "lucide-react";
@@ -91,6 +92,7 @@ export function ModelModal({
   onPickLocalVoice,
   onPickServerModel,
   onRequestDeleteLocal,
+  onRequestWontFitDownload,
   onRequestRemoveServer,
   onBack,
   onSaveKey,
@@ -108,6 +110,7 @@ export function ModelModal({
   ) => void;
   onPickServerModel: (serverId: string, modelId: string) => void;
   onRequestDeleteLocal: (defId: string, engine?: LocalEngine) => void;
+  onRequestWontFitDownload: (item: LocalLlmItem) => void;
   onRequestRemoveServer: (server: ServerView) => void;
   onBack: () => void;
   onSaveKey: (key: string) => void;
@@ -147,6 +150,7 @@ export function ModelModal({
         onPickLocalVoice={onPickLocalVoice}
         onPickServerModel={onPickServerModel}
         onRequestDeleteLocal={onRequestDeleteLocal}
+        onRequestWontFitDownload={onRequestWontFitDownload}
         onRequestRemoveServer={onRequestRemoveServer}
       />
     </Backdrop>
@@ -291,19 +295,22 @@ function KeyStep({
 }
 
 // ---------------------------------------------------------------------------
-// ConfirmDialog — single reusable destructive confirm
+// ConfirmDialog — single reusable confirm (destructive by default)
 // ---------------------------------------------------------------------------
 
 export function ConfirmDialog({
   title,
   message,
   confirmLabel,
+  confirmVariant = "destructive",
   onCancel,
   onConfirm,
 }: {
   title: string;
   message: React.ReactNode;
   confirmLabel?: string;
+  /** "default" for a confirm that deletes nothing (a download warning). */
+  confirmVariant?: "destructive" | "default";
   onCancel: () => void;
   onConfirm: () => void;
 }): React.JSX.Element {
@@ -317,7 +324,7 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={onConfirm}>
+          <AlertDialogAction variant={confirmVariant} onClick={onConfirm}>
             {confirmLabel ?? t("common.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>

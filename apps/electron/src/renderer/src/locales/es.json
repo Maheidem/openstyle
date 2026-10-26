@@ -741,6 +741,20 @@
       "descCold": "Descarga el modelo de IA de la memoria después de cada solicitud. Usa menos RAM, pero la siguiente limpieza o resumen espera una recarga completa.",
       "descOneMinute": "Mantiene el modelo de IA en memoria durante 1 minuto aproximadamente después de cada solicitud, para que las siguientes sean rápidas.",
       "descMinutes": "Mantiene el modelo de IA en memoria hasta {{minutes}} minutos después de cada solicitud. Más rápido al repetir, más RAM mientras está activo."
+    },
+    "fit": {
+      "runsWell": "Funciona bien",
+      "tight": "Justo",
+      "wontFit": "No cabe",
+      "hintRunsWell": "Necesita unos {{need}} GB de memoria. Este Mac tiene {{ram}} GB.",
+      "hintTight": "Necesita unos {{need}} GB de memoria. Este Mac tiene {{ram}} GB, así que puede ir lento con otras apps abiertas.",
+      "hintWontFit": "Necesita unos {{need}} GB de memoria. Este Mac tiene {{ram}} GB, así que irá muy lento o no se iniciará.",
+      "hintSmallMac": "Este Mac tiene {{ram}} GB de memoria. El modelo funciona, pero aquí puede ir lento.",
+      "showAll": "Mostrar todos los modelos",
+      "showAllHint": "Mostrar también los modelos que no caben en este Mac",
+      "confirmTitle": "Puede que este modelo no quepa en este Mac",
+      "confirmMsg": "<b>{{name}}</b> necesita unos {{need}} GB de memoria. Este Mac tiene {{ram}} GB. El modelo puede ir muy lento o no iniciarse. La descarga ocupa {{size}}.",
+      "confirmAction": "Descargar igualmente"
     }
   },
   "shell": {

@@ -11,16 +11,21 @@ import {
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
+import { Switch } from "@renderer/components/ui/switch";
 import type {
   AvailableModel,
   LocalEngine,
+  LocalLlmItem,
+  MlxLlmFit,
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
 import {
   diskUseKey,
   displayProviderName,
   formatBytes,
+  formatMemoryGb,
   formatSpeed,
+  hiddenByFit,
 } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import type { TFunction } from "i18next";
@@ -28,6 +33,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  CircleCheck,
+  CircleX,
   Download,
   Key,
   Loader2,
@@ -39,7 +46,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AddCustomModelDialog } from "./add-custom-model-dialog";
 import { kindFitsRole, type ModelRole, type ServerView } from "./server-roles";
@@ -78,6 +85,10 @@ export interface Row {
   deleting?: boolean;
   /** Show the delete button also when the row is selected (the search model). */
   deleteWhenSelected?: boolean;
+  /** Built-in LLM rows: how well the model fits this Mac. */
+  fit?: MlxLlmFit;
+  /** A "Won't fit" row that waits behind the "Show all models" switch. */
+  hiddenByFit?: boolean;
   onSelect?: () => void;
   onDownload?: () => void;
   onCancel?: () => void;
@@ -191,6 +202,7 @@ function buildLlmRows(
   h: {
     onPickCloud: (model: AvailableModel) => void;
     onRequestDeleteLocal: (defId: string, engine?: LocalEngine) => void;
+    onRequestWontFitDownload: (item: LocalLlmItem) => void;
     onClose: () => void;
   },
   t: TFunction,
@@ -217,7 +229,13 @@ function buildLlmRows(
     // the recommended model, or to no model).
     deleteWhenSelected: true,
     onSelect: () => void m.selectLocalLlm(it.defId, it.name).then(h.onClose),
-    onDownload: () => m.downloadLocal(it.defId, "mlx-llm"),
+    fit: it.fit,
+    hiddenByFit: hiddenByFit(it),
+    // A "Won't fit" download asks first (owner decision 2026-10-26).
+    onDownload: () =>
+      it.fit.label === "wont_fit"
+        ? h.onRequestWontFitDownload(it)
+        : m.downloadLocal(it.defId, "mlx-llm"),
     onCancel: () => m.cancelLocal(it.defId, "mlx-llm"),
     onDelete: () => h.onRequestDeleteLocal(it.defId, "mlx-llm"),
     onRetry: () => void m.retryLocalMlxLlm(it.defId),
@@ -318,6 +336,7 @@ export function ModelList({
   onPickLocalVoice,
   onPickServerModel,
   onRequestDeleteLocal,
+  onRequestWontFitDownload,
   onRequestRemoveServer,
 }: {
   type: "voice" | "llm";
@@ -331,6 +350,7 @@ export function ModelList({
   ) => void;
   onPickServerModel: (serverId: string, modelId: string) => void;
   onRequestDeleteLocal: (defId: string, engine?: LocalEngine) => void;
+  onRequestWontFitDownload: (item: LocalLlmItem) => void;
   onRequestRemoveServer: (server: ServerView) => void;
 }): React.JSX.Element {
   const [search, setSearch] = useState("");
@@ -360,17 +380,28 @@ export function ModelList({
             },
             t,
           )
-        : buildLlmRows(m, { onPickCloud, onRequestDeleteLocal, onClose }, t);
+        : buildLlmRows(
+            m,
+            {
+              onPickCloud,
+              onRequestDeleteLocal,
+              onRequestWontFitDownload,
+              onClose,
+            },
+            t,
+          );
 
   const q = search.toLowerCase();
   // Some rows wait behind "Show all models": the models of an own server that
-  // do not fit the role, and the non-curated LLM registry models. Searching
-  // always searches everything. The selected model of a server stays visible.
+  // do not fit the role, the non-curated LLM registry models, and the
+  // built-in LLMs that won't fit this Mac. Searching always searches
+  // everything. The selected model of a server stays visible.
   const collapsed = !showAll && !q;
   const isHidden = (r: Row): boolean =>
     group === "server"
       ? r.fits === false && !r.selected
-      : type === "llm" && r.source === "cloud" && r.curated !== true;
+      : r.hiddenByFit === true ||
+        (type === "llm" && r.source === "cloud" && r.curated !== true);
   const filteredRows = rows.filter((r) => {
     if (group === "builtin" && r.source !== "local") return false;
     if (group === "cloud" && r.source !== "cloud") return false;
@@ -385,6 +416,9 @@ export function ModelList({
     ? filteredRows.filter((r) => !isHidden(r))
     : filteredRows;
   const hiddenCount = filteredRows.length - visible.length;
+  // The built-in LLM list has a switch, so "Won't fit" rows can hide again.
+  const fitSwitch =
+    group === "builtin" && filteredRows.some((r) => r.hiddenByFit === true);
 
   // Same gate as the MLX rows: Apple Silicon only.
   const showAddModel =
@@ -505,7 +539,14 @@ export function ModelList({
             <ModelRow key={row.key} row={row} first={i === 0} />
           ))
         )}
-        {hiddenCount > 0 && (
+        {fitSwitch && (
+          <FitSwitch
+            checked={!collapsed}
+            disabled={q !== ""}
+            onChange={setShowAll}
+          />
+        )}
+        {hiddenCount > 0 && !fitSwitch && (
           <Button
             variant="ghost"
             onClick={() => setShowAll(true)}
@@ -621,6 +662,7 @@ export function ModelRow({
             {row.warning}
           </div>
         )}
+        {row.fit && <FitLine fit={row.fit} />}
         {local && status === "error" && row.state?.error && (
           <div className="text-destructive mt-1 text-[11.5px] leading-snug">
             {row.state.error}
@@ -687,6 +729,92 @@ export function ModelRow({
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The "Show all models" switch of the built-in LLM list. */
+function FitSwitch({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onChange: (on: boolean) => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const id = useId();
+  return (
+    <label
+      htmlFor={id}
+      className="border-border flex cursor-pointer items-center gap-3 border-t px-5 py-3"
+    >
+      <Switch
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onChange}
+        data-testid="models-fit-show-all"
+      />
+      <span className="min-w-0">
+        <span className="text-foreground block text-[12.5px] font-medium">
+          {t("models.fit.showAll")}
+        </span>
+        <span className="text-muted-foreground block text-[11.5px] leading-snug">
+          {t("models.fit.showAllHint")}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/**
+ * The fit label and its one-line hint (specs/llm-runtime-tuning.md 5): plain
+ * words, the memory the model needs and the memory of this Mac.
+ */
+function FitLine({ fit }: { fit: MlxLlmFit }): React.JSX.Element {
+  const { t } = useTranslation();
+  const values = {
+    need: formatMemoryGb(fit.peakBytes, 1),
+    ram: formatMemoryGb(fit.ramBytes),
+  };
+  const { Icon, tone, label, hint } =
+    fit.label === "runs_well"
+      ? {
+          Icon: CircleCheck,
+          tone: "text-foreground/75",
+          label: t("models.fit.runsWell"),
+          hint: t("models.fit.hintRunsWell", values),
+        }
+      : fit.label === "tight"
+        ? {
+            Icon: AlertTriangle,
+            tone: "text-yellow-700 dark:text-yellow-300",
+            label: t("models.fit.tight"),
+            // The owner rule raised the label: the model is slow here.
+            hint: t(
+              fit.raised ? "models.fit.hintSmallMac" : "models.fit.hintTight",
+              values,
+            ),
+          }
+        : {
+            Icon: CircleX,
+            tone: "text-destructive",
+            label: t("models.fit.wontFit"),
+            hint: t("models.fit.hintWontFit", values),
+          };
+  return (
+    <div
+      className="mt-1 flex items-start gap-1.5 text-[11.5px] leading-snug"
+      data-testid="model-fit"
+      data-fit={fit.label}
+    >
+      <Icon className={cn("mt-px size-3 shrink-0", tone)} />
+      <span>
+        <span className={cn("font-semibold", tone)}>{label}</span>
+        <span className="text-muted-foreground"> · {hint}</span>
+      </span>
     </div>
   );
 }
