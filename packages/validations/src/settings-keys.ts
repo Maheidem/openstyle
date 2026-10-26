@@ -49,9 +49,9 @@ export const SETTINGS_KEYS = {
   meetingEnhanceAutoRun: "meeting_enhance_auto_run",
   /**
    * Project memory (issue #234, specs/local-semantic-search.md 8.4): Summary
-   * and Enhance of a filed meeting use earlier meetings of its folder. OFF by
-   * default (owner decision 2026-10-22): only `"true"` turns it on. The 3-run
-   * Gemma 4 E2B test lost summary items with it on.
+   * and Enhance of a filed meeting use earlier meetings of its folder. ON by
+   * default (owner decision 2026-10-26, reversing 2026-10-22): a missing row
+   * means on, and only `"false"` turns it off.
    */
   meetingProjectMemory: "meeting_project_memory",
   /**
