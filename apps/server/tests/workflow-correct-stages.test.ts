@@ -1,10 +1,12 @@
 // The stages of Enhance `correctChunk` (the owner rule "specialization over
 // over-prompting", AGENTS.md): code vocabulary spelling, the LLM job "fix
-// misheard words". Each stage has its own tests. All text is made up.
+// misheard words", code exact-repeat removal. Each stage has its own tests.
+// All text is made up.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
 import { __clearModeCacheForTests } from "../src/lib/llm/model-profiles.js";
+import { removeRepeatedWords } from "../src/lib/meetings/repeat-words.js";
 import { fixVocabSpelling } from "../src/lib/meetings/vocab-spelling.js";
 import { estimateTokens } from "../src/lib/meetings/workflow/chunking.js";
 import { mergeStages } from "../src/lib/meetings/workflow/nodes/correct-chunk.js";
@@ -86,6 +88,35 @@ describe("stage 1 (code): vocabulary spelling", () => {
   });
 });
 
+describe("stage 1b (code): exact repeated words", () => {
+  it("removes an immediate repeat in any case and keeps the first word", () => {
+    expect(removeRepeatedWords("so the the plan is fine")).toBe(
+      "so the plan is fine",
+    );
+    expect(removeRepeatedWords("The the plan")).toBe("The plan");
+    expect(removeRepeatedWords("no no no way")).toBe("no way");
+  });
+
+  it("moves the punctuation after the removed word", () => {
+    expect(removeRepeatedWords("I, I think so")).toBe("I think so");
+    expect(removeRepeatedWords("we ship it it, then")).toBe("we ship it, then");
+  });
+
+  it("keeps words across a sentence end, after a quote, and numbers", () => {
+    expect(removeRepeatedWords("No. No. We wait.")).toBe("No. No. We wait.");
+    expect(removeRepeatedWords('he said "said" twice')).toBe(
+      'he said "said" twice',
+    );
+    expect(removeRepeatedWords("in 20 20 and twenty twenty")).toBe(
+      "in 20 20 and twenty twenty",
+    );
+  });
+
+  it("returns an unchanged text as it is, spacing included", () => {
+    expect(removeRepeatedWords("  a  plan ")).toBe("  a  plan ");
+  });
+});
+
 describe("stage 2 (LLM): the fix-misheard-words prompt has one job", () => {
   it("has no punctuation, repeat or translation job and is short", () => {
     const prompt = buildCorrectSystemPrompt({ language: "en", vocabTerms: [] });
@@ -93,7 +124,7 @@ describe("stage 2 (LLM): the fix-misheard-words prompt has one job", () => {
     expect(prompt).not.toMatch(/punctuation and capitalization/i);
     expect(prompt).not.toMatch(/translated/i);
     expect(prompt).not.toMatch(/remove a word that the speaker repeated/i);
-    expect(prompt).toContain("Keep all other words, fillers, repeats");
+    expect(prompt).toContain("Keep all other words, fillers and punctuation");
     // The old multi-job prompt was 696 tokens (estimateTokens), the new one 248.
     expect(estimateTokens(prompt)).toBeLessThan(330);
   });
@@ -140,6 +171,25 @@ describe("mergeStages: the LLM fix wins, else the code fix", () => {
     ]);
   });
 
+  it("the repeat rule runs on the LLM fix; a text equal to raw is no correction", () => {
+    const [u] = mergeStages(
+      [
+        unit({
+          corrections: [
+            { id: "b", text: "b b llm", seq: 0, callId: 1 },
+            { id: "c", text: "c c raw", seq: 1, callId: 1 },
+          ],
+        }),
+      ],
+      raw,
+      code,
+    );
+    expect(u?.corrections.map((c) => [c.id, c.text])).toEqual([
+      ["a", "a code"],
+      ["b", "b llm"],
+    ]);
+  });
+
   it("a unit that is not ok stays as it is", () => {
     const failed = unit({ status: "failed" });
     expect(mergeStages([failed], raw, code)).toEqual([failed]);
@@ -163,7 +213,7 @@ describe("the stages in a graph run", () => {
     const update = getDb().prepare(
       "UPDATE meeting_segments SET text = ? WHERE id = ?",
     );
-    update.run("we keep the notes in open style for the whole team", a);
+    update.run("we keep the the notes in open style for the whole team", a);
     update.run(PT_LINE, b);
     getDb()
       .prepare("INSERT INTO vocabulary (term) VALUES (?)")

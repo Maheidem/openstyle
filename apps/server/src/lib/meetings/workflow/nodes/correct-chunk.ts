@@ -1,6 +1,7 @@
 import type { CorrectionDropReason } from "@openstyle/validations";
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
+import { removeRepeatedWords } from "../../repeat-words.js";
 import { fixVocabSpelling } from "../../vocab-spelling.js";
 import { estimateTokens, formatEnhanceLine } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
@@ -36,9 +37,11 @@ import {
 //
 // The owner rule "specialization over over-prompting" (AGENTS.md) splits the
 // task into stages, each with one job:
-// 1. Code: vocabulary spelling (`vocab-spelling.ts`).
+// 1. Code: vocabulary spelling (`vocab-spelling.ts`), then exact repeated
+//    words go (`repeat-words.ts`, owner decision 2026-10-26).
 // 2. LLM `correctChunk`: fix misheard words only. The checks of 4.2.3 run on
-//    its answer against the text that it saw (after stage 1).
+//    its answer against the text that it saw (after stage 1). Then the
+//    repeat rule runs on the kept answer too.
 // The result keeps one unit list per chunk: an ok unit of stage 2 carries the
 // final text of each of its segments.
 
@@ -502,8 +505,11 @@ function toUnit(
 /**
  * The final units of a chunk. Each ok unit of the `correctChunk` stage gets,
  * for each of its segments, the last stage that changed the text: a kept
- * `correctChunk` fix, else the code spelling fix. A code fix has no call (`callId` null). A unit that is not ok
- * stays as it is, so `save` writes nothing for it.
+ * `correctChunk` fix (after the repeat rule), else the code fix. A code fix
+ * has no call (`callId` null), so no call link records it; it is saved and
+ * counted like every applied correction. A text equal to the raw text is no
+ * correction. A unit that is not ok stays as it is, so `save` writes nothing
+ * for it.
  */
 export function mergeStages(
   units: readonly CorrectUnitResult[],
@@ -515,13 +521,13 @@ export function mergeStages(
     const llm = new Map(unit.corrections.map((c) => [c.id, c]));
     const corrections: CorrectUnitResult["corrections"] = [];
     for (const id of unit.segmentIds) {
-      const code = codeById.get(id);
-      const pick =
-        llm.get(id) ??
-        (code !== undefined && code !== rawById.get(id)
-          ? { id, text: code, seq: -1, callId: null }
-          : undefined);
-      if (pick) corrections.push(pick);
+      const fix = llm.get(id);
+      const pick = fix
+        ? { ...fix, text: removeRepeatedWords(fix.text) }
+        : { id, text: codeById.get(id), seq: -1, callId: null };
+      if (pick.text !== undefined && pick.text !== rawById.get(id)) {
+        corrections.push({ ...pick, text: pick.text });
+      }
     }
     return { ...unit, corrections };
   });
@@ -534,10 +540,11 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
     input: CorrectChunkInput,
     ctx: RunContext,
   ): Promise<CorrectChunkResult> {
-    // Stage 1 (code): vocabulary spelling. The LLM stages see this text.
+    // Stage 1 (code): vocabulary spelling, then exact repeats. The LLM
+    // stage sees this text.
     const segments = input.segments.map((s) => ({
       ...s,
-      text: fixVocabSpelling(s.text, input.vocabTerms),
+      text: removeRepeatedWords(fixVocabSpelling(s.text, input.vocabTerms)),
     }));
     const system = buildCorrectSystemPrompt({
       language: input.language,

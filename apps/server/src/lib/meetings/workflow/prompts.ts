@@ -96,11 +96,11 @@ export interface CorrectPromptInput {
 /**
  * System prompt of one `correctChunk` call. One job only: fix misheard words
  * (the owner rule "specialization over over-prompting", AGENTS.md). Code does
- * the vocabulary spelling first (`vocab-spelling.ts`). No stage does the other
- * jobs of the old prompt, by measurement on the gold meetings (2026-10-26):
- * the gold transcripts keep exact repeats and keep a line in the language
- * that was spoken, and the speech recognizer already writes punctuation and
- * capitals.
+ * the vocabulary spelling and the removal of exact repeats first
+ * (`vocab-spelling.ts`, `repeat-words.ts`). No stage does the other jobs of the
+ * old prompt, by measurement on the gold meetings (2026-10-26): the gold
+ * transcripts keep a line in the language that was spoken, and the speech
+ * recognizer already writes punctuation and capitals.
  */
 export function buildCorrectSystemPrompt(input: CorrectPromptInput): string {
   const vocabLine =
@@ -112,7 +112,7 @@ export function buildCorrectSystemPrompt(input: CorrectPromptInput): string {
 A misheard word sounds like the word that the speaker said, but it does not make sense in its sentence. Replace it with the word that the speaker most likely said. A misspelled name or term from the list is also a misheard word.
 
 Rules:
-- Change only misheard words. Keep all other words, fillers, repeats and punctuation as they are.
+- Change only misheard words. Keep all other words, fillers and punctuation as they are.
 - Return only the lines that you change. An empty list is a normal answer.
 - Copy the id exactly. Write the text without the speaker label.
 - ${FULL_SEGMENT_RULE}
