@@ -25,6 +25,8 @@ Today every LLM call (dictation cleanup, Meeting Enhance, Summarize) needs a clo
 |---|---|---|---|---|
 | `gemma-4-e2b-qat-4bit` (recommended) | `mlx-community/gemma-4-E2B-it-qat-4bit` | 4,361,680,121 | gemma4 | QAT: Google states "similar quality to bf16". |
 | `gemma-4-e4b-qat-4bit` | `mlx-community/gemma-4-E4B-it-qat-4bit` | 6,830,817,013 | gemma4 | QAT: Google states "similar quality to bf16". |
+| `gemma-4-26b-a4b-qat-4bit` | `mlx-community/gemma-4-26B-A4B-it-qat-4bit` | 15,641,239,295 | gemma4 | Owner decision 2026-10-26: optional, better Summarize on Macs with 32 GB or more. License: quant card none; base `apache-2.0` with the Gemma 4 terms link (needs a legal read). |
+| `qwen3.8-27b-4bit` | `mlx-community/Qwen3.8-27B-4bit` | 16,081,488,731 | qwen3_5 | Owner decision 2026-10-26: optional, same reason. License: `apache-2.0` on the quant and the base. Thinking stays off (`enable_thinking: false`). |
 
 Rejected: the Jundot oQ4e repos (an MTP weight file breaks the strict mlx-lm load, and the repo has no license). The Gemma `qat-mobile` repos (`quant_method: gemma` is not supported in mlx-lm 0.32.2).
 

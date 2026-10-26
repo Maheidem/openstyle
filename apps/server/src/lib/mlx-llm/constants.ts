@@ -1,6 +1,8 @@
 // The built-in local MLX LLM catalog (specs/local-mlx-llm.md section 1 and
 // 3.1). Owner decision 2026-10-20: the catalog holds the two Gemma 4 models.
 // Owner decision 2026-10-24: a third, optional model (Nemotron 3.5 Bolt E4B).
+// Owner decision 2026-10-26: two large, optional models (Gemma 4 26B-A4B and
+// Qwen3.8 27B) for better Summarize quality on Macs with 32 GB or more.
 // The sizes are the sums of the files that match
 // MLX_LLM_ALLOW_PATTERNS, from the HF API tree of each repo (2026-10-20).
 
@@ -9,7 +11,8 @@ export const MLX_LLM_PROVIDER_ID = "local-mlx-llm";
 
 export const MLX_LLM_PROVIDER_NAME = "On-device · MLX";
 
-export type MlxLlmFamily = "gemma4";
+/** `config.model_type` of the HF repo. The worker loads each with mlx-lm. */
+export type MlxLlmFamily = "gemma4" | "qwen3_5";
 
 export interface MlxLlmModelDef {
   id: string;
@@ -77,6 +80,37 @@ export const MLX_LLM_MODELS: readonly MlxLlmModelDef[] = [
     displayName: "Nemotron 3.5 Bolt E4B",
     family: "gemma4",
     sizeBytes: 4_231_265_397,
+    contextTokens: 32_768,
+    maxOutputTokens: 8_192,
+  },
+  // License note (2026-10-26). The catalog has no license field (issue #331).
+  // - Quant repo (mlx-community): its card has no license field.
+  // - Google source repo google/gemma-4-26B-A4B-it: license "apache-2.0",
+  //   license link https://ai.google.dev/gemma/docs/gemma_4_license. The two
+  //   values differ, so this needs a legal read (not done), as for E2B and E4B.
+  // Peak worker RSS is about 14.8 GiB (overnight eval 2026-10-25).
+  {
+    id: "gemma-4-26b-a4b-qat-4bit",
+    hfId: "mlx-community/gemma-4-26B-A4B-it-qat-4bit",
+    displayName: "Gemma 4 26B-A4B",
+    family: "gemma4",
+    sizeBytes: 15_641_239_295,
+    contextTokens: 32_768,
+    maxOutputTokens: 8_192,
+  },
+  // License note (2026-10-26). The catalog has no license field (issue #331).
+  // - Quant repo (mlx-community): license "apache-2.0", base model
+  //   Qwen/Qwen3.8-27B.
+  // - Qwen source repo Qwen/Qwen3.8-27B: license "apache-2.0" (card and
+  //   LICENSE file, https://huggingface.co/Qwen/Qwen3.8-27B).
+  // The worker turns thinking off: the chat template gets
+  // enable_thinking=false and the answer drops an empty <think> block.
+  {
+    id: "qwen3.8-27b-4bit",
+    hfId: "mlx-community/Qwen3.8-27B-4bit",
+    displayName: "Qwen3.8 27B",
+    family: "qwen3_5",
+    sizeBytes: 16_081_488_731,
     contextTokens: 32_768,
     maxOutputTokens: 8_192,
   },

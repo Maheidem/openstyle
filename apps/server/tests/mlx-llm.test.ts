@@ -127,7 +127,7 @@ afterAll(() => {
 });
 
 describe("catalog (spec 1 decision 4, 3.1)", () => {
-  it("has the 3 models with the HF ids and byte sizes", () => {
+  it("has the 5 models with the HF ids and byte sizes", () => {
     expect(
       MLX_LLM_MODELS.map((m) => [m.id, m.hfId, m.family, m.sizeBytes]),
     ).toEqual([
@@ -148,6 +148,18 @@ describe("catalog (spec 1 decision 4, 3.1)", () => {
         "lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit",
         "gemma4",
         4_231_265_397,
+      ],
+      [
+        "gemma-4-26b-a4b-qat-4bit",
+        "mlx-community/gemma-4-26B-A4B-it-qat-4bit",
+        "gemma4",
+        15_641_239_295,
+      ],
+      [
+        "qwen3.8-27b-4bit",
+        "mlx-community/Qwen3.8-27B-4bit",
+        "qwen3_5",
+        16_081_488_731,
       ],
     ]);
     for (const m of MLX_LLM_MODELS) {
