@@ -17,7 +17,35 @@ import { getMlxLlmModel } from "./constants.js";
 // OpenAI-style HTTP API on 127.0.0.1:<port>. The lifecycle is the shared
 // MLX HTTP worker (mlx-asr/http-worker.ts).
 
-export type MlxLlmWorkerState = MlxHttpWorkerState;
+/** Metal memory facts from the ready line of the worker (specs/llm-runtime-tuning.md). */
+export interface MlxLlmGpuInfo {
+  /** The GPU ceiling that mlx-lm wires to (Metal recommendedMaxWorkingSetSize). */
+  maxRecommendedWorkingSetBytes: number;
+  /** The unified memory size that Metal reports. */
+  memoryBytes: number | null;
+}
+
+export interface MlxLlmWorkerState extends MlxHttpWorkerState {
+  /** From the last worker that became ready. null before the first start. */
+  gpu: MlxLlmGpuInfo | null;
+}
+
+let readyGpu: MlxLlmGpuInfo | null = null;
+
+/** Read the `metal` object of a ready line. Exported for tests. */
+export function gpuInfoFromReadyLine(
+  line: Record<string, unknown>,
+): MlxLlmGpuInfo | null {
+  const metal = line.metal;
+  if (!metal || typeof metal !== "object") return null;
+  const { max_recommended_working_set_size: cap, memory_size: mem } =
+    metal as Record<string, unknown>;
+  if (typeof cap !== "number" || cap <= 0) return null;
+  return {
+    maxRecommendedWorkingSetBytes: cap,
+    memoryBytes: typeof mem === "number" ? mem : null,
+  };
+}
 
 export function getMlxLlmKeepAliveMinutes(): number {
   try {
@@ -49,6 +77,10 @@ const worker = createMlxHttpWorker({
     String(port),
   ],
   keepAliveMinutes: getMlxLlmKeepAliveMinutes,
+  onReady: (line) => {
+    // The GPU ceiling does not change while the Mac runs, so keep the last value.
+    readyGpu = gpuInfoFromReadyLine(line) ?? readyGpu;
+  },
 });
 
 export function mlxLlmWorkerOverride(): string | undefined {
@@ -61,7 +93,7 @@ export function mlxLlmSetupBlocker(): MlxSetupBlocker | null {
 }
 
 export function getMlxLlmWorkerState(): MlxLlmWorkerState {
-  return worker.getState();
+  return { ...worker.getState(), gpu: readyGpu };
 }
 
 /**

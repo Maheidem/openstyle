@@ -891,8 +891,12 @@ class _LlmEngine:
         make_sampler: Any,
         make_logits_processors: Any,
         grammar_factory: Any,
+        reset_peak_memory: Any = None,
     ) -> None:
         self.model_id = model_id
+        # Resets the MLX peak memory counter before each request, so
+        # usage.peak_memory_bytes is the peak of that request only.
+        self._reset_peak_memory = reset_peak_memory
         self.model = model
         self.tok = tok
         self.stop_ids = set(stop_ids)
@@ -923,6 +927,9 @@ class _LlmEngine:
         return list(self.tok.encode(prompt, add_special_tokens=False))
 
     def complete(self, req: dict[str, Any]) -> dict[str, Any]:
+        started = time.perf_counter()
+        if self._reset_peak_memory is not None:
+            self._reset_peak_memory()
         ids = self._prompt_ids(req)
         sampler_kwargs: dict[str, Any] = {"temp": req["temperature"] or 0.0}
         for name in ("top_p", "top_k", "min_p"):
@@ -940,7 +947,7 @@ class _LlmEngine:
             grammar = self._grammar_factory(json.dumps(req["schema"]), think)
             procs.append(grammar)
 
-        text, last, finish = "", None, None
+        text, last, finish, first_at = "", None, None, None
         for response in self._stream_generate(
             self.model,
             self.tok,
@@ -949,6 +956,8 @@ class _LlmEngine:
             sampler=self._make_sampler(**sampler_kwargs),
             logits_processors=procs,
         ):
+            if first_at is None:
+                first_at = time.perf_counter()
             text += response.text
             last = response
             if req["stop"]:
@@ -977,8 +986,49 @@ class _LlmEngine:
                 "prompt_tokens": len(ids),
                 "completion_tokens": completion_tokens,
                 "total_tokens": len(ids) + completion_tokens,
+                **_generation_stats(last, started, first_at, time.perf_counter()),
             },
         }
+
+
+def _generation_stats(last: Any, started: float, first_at: float | None, ended: float) -> dict[str, Any]:
+    """The mlx-lm stats of one request, for usage (specs/llm-runtime-tuning.md).
+
+    ttft_ms runs from the request start (template, grammar, prefill) to the
+    first token. prompt_tps, generation_tps and peak_memory come from the last
+    mlx-lm GenerationResponse; peak_memory there is in GB (1e9 bytes).
+    """
+    stats: dict[str, Any] = {"total_ms": round((ended - started) * 1000, 1)}
+    if first_at is not None:
+        stats["ttft_ms"] = round((first_at - started) * 1000, 1)
+    for name in ("prompt_tps", "generation_tps"):
+        value = getattr(last, name, None)
+        if isinstance(value, (int, float)):
+            stats[name] = round(float(value), 2)
+    peak = getattr(last, "peak_memory", None)
+    if isinstance(peak, (int, float)):
+        stats["peak_memory_bytes"] = int(peak * 1e9)
+    return stats
+
+
+def _metal_info() -> dict[str, Any]:
+    """The Metal memory facts of this Mac for the ready line, or {} without Metal.
+
+    max_recommended_working_set_size is the GPU ceiling that mlx-lm wires to
+    (mlx_lm/utils.py). The server uses it for the model fit label.
+    """
+    try:
+        import mlx.core as mx
+
+        info = mx.device_info()
+    except Exception:
+        return {}
+    out = {}
+    for key in ("max_recommended_working_set_size", "memory_size"):
+        value = info.get(key)
+        if isinstance(value, int):
+            out[key] = value
+    return {"metal": out} if out else {}
 
 
 def _vocab_size(model: Any, hf_tok: Any) -> int:
@@ -996,6 +1046,7 @@ def _vocab_size(model: Any, hf_tok: Any) -> int:
 
 def _load_llm_engine(model_id: str) -> _LlmEngine:
     import llguidance.hf
+    import mlx.core as mx
     from llguidance import LLMatcher
     from llguidance.mlx import apply_token_bitmask
     from llguidance.numpy import allocate_token_bitmask, fill_next_token_bitmask
@@ -1035,6 +1086,7 @@ def _load_llm_engine(model_id: str) -> _LlmEngine:
         make_sampler=make_sampler,
         make_logits_processors=make_logits_processors,
         grammar_factory=grammar_factory,
+        reset_peak_memory=mx.reset_peak_memory,
     )
 
 
@@ -1296,7 +1348,7 @@ def _run_llm(model_id: str, port: int | None) -> None:
         port,
         lambda: _load_llm_engine(model_id),
         _make_llm_handler,
-        lambda _engine: {"model": model_id},
+        lambda _engine: {"model": model_id, **_metal_info()},
     )
 
 
