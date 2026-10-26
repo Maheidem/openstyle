@@ -546,7 +546,6 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
 
     // --- Extraction: three narrow calls for each part ------------------------
     const answers: SummaryStageAnswer[] = [];
-    let cut: NodeFailure | null = null;
     for (const [i, part] of parts.entries()) {
       if (parts.length > 1) {
         ctx.progress.summaryPart({ n: i + 1, of: parts.length });
@@ -570,7 +569,6 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           ),
         );
         if (!done.ok) return stop(done);
-        cut ??= done.cut;
         answers.push(...done.answers);
       }
     }
@@ -608,7 +606,6 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       ),
     );
     if (!done.ok) return stop(done);
-    cut ??= done.cut;
     const summary: MeetingSummary = {
       overview: done.answers
         .map((a) => a.overview ?? "")
@@ -632,7 +629,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       callCount: totals.callIds.length,
       failure: null,
       llmCallIds: totals.callIds,
-      partial: cut !== null || repaired.size > 0,
+      partial: repaired.size > 0,
     };
   }
 
