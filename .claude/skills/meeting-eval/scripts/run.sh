@@ -23,7 +23,7 @@ for id in $GOLD_IDS; do
   for ch in mic system; do
     [ -s "$REAL_MEETINGS/$id/$ch.wav" ] && continue
     if [ -s "$PRIVATE_AUDIO/$id/$ch.wav" ]; then
-      fail "$id/$ch.wav is missing in the real profile. Restore: mkdir -p \"$REAL_MEETINGS/$id\" && cp \"$PRIVATE_AUDIO/$id/\"* \"$REAL_MEETINGS/$id/\""
+      fail "$id/$ch.wav is missing in the real profile. A private copy exists: $PRIVATE_AUDIO/$id/. Ask the owner to restore it (the guard hook blocks an agent from writing into the real profile)."
     fi
     fail "$id/$ch.wav is missing in both places. The gold clips cannot run."
   done
@@ -45,10 +45,44 @@ export OPENSTYLE_MLX_LLM_WORKER=$WORKER
 [ -d node_modules/.pnpm ] || fail "no node_modules: run pnpm install --frozen-lockfile --prefer-offline --ignore-scripts"
 pnpm turbo build --filter=@openstyle/server >/dev/null
 
+# An unfinished run (failure, INT, TERM) must not leave meeting text without
+# results. A finished run keeps pack/ for the blind step.
+DONE=0
+CHILD=
+cleanup() {
+  if [ "$DONE" != 1 ]; then
+    rm -rf "$OUT/pack" "$OUT/arms" "$OUT/runs"
+    rmdir "$OUT" 2>/dev/null || true
+    echo "run did not finish: removed pack/ arms/ runs/ of $OUT" >&2
+  fi
+}
+# pnpm does not pass TERM on to node: signal the whole tree under the child.
+tree_pids() {
+  local p c
+  echo "$1"
+  for c in $(ps -A -o pid=,ppid= | awk -v p="$1" '$2 == p {print $1}'); do
+    tree_pids "$c"
+  done
+}
+on_signal() {
+  # A background child of a non-interactive shell ignores SIGINT, so send TERM.
+  # eval.mts releases the GPU lock and its scratch profiles on SIGTERM.
+  if [ -n "$CHILD" ]; then
+    kill -TERM $(tree_pids "$CHILD") 2>/dev/null || true
+    wait "$CHILD" 2>/dev/null || true
+  fi
+  exit 130
+}
+trap cleanup EXIT
+trap on_signal INT TERM
+
 echo "model=$MODEL out=$OUT worker=$WORKER hf=$HF"
 START=$(date +%s)
 pnpm meeting:eval --models "$MODEL" --meetings 5578edb0,ca70f895 --gold \
-  --keep --no-download --hf-cache "$HF" --out "$OUT"
+  --keep --no-download --hf-cache "$HF" --out "$OUT" &
+CHILD=$!
+wait "$CHILD"
+DONE=1
 echo "elapsed_sec=$(( $(date +%s) - START ))"
 echo "--- results.md ---"
 cat "$OUT/results.md"

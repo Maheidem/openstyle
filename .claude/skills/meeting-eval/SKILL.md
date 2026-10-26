@@ -24,7 +24,7 @@ This skill wraps `pnpm meeting:eval` (see `.claude/skills/meeting-benchmarks/SKI
   - `out/<model>-<date>/`: the default output of `run.sh`.
 - `--out` and `--hf-cache` accept `/tmp` or the eval home. No other place.
 - Gold meetings: `5578edb0` (831 s) and `ca70f895` (2142 s). Gold files are in `~/.openstyle-eval/gold/<id8>.json`.
-- The eval reads the wav from the real profile `~/Library/Application Support/Openstyle/meetings/<id>/`. The app retention sweep (30 days) deleted the wav of gold meetings `2943c36a` and `9243bea0`. Only `5578edb0` and `ca70f895` have a private copy. `run.sh` checks both places.
+- The eval reads the wav from the real profile `~/Library/Application Support/Openstyle/meetings/<id>/`. The app retention sweep (30 days) deleted the wav of gold meetings `2943c36a` and `9243bea0`. Only `5578edb0` and `ca70f895` have a private copy. `run.sh` checks both places. If only the private copy exists, `run.sh` stops and asks the owner to restore the wav. The guard hook blocks an agent from writing into the real profile. Mark the gold meetings `retention_exempt` once PR #329 merges.
 - The ASR transcripts come from the cache `/tmp/meeting-eval/asr/cache/`. A cache hit needs the same worker, diarizer and server code (same ASR hash). Without a hit, the run transcribes first and takes much longer. This cache is in `/tmp` and can vanish too.
 - Run time, measured 2026-10-25 with `gemma-4-e4b-qat-4bit`, transcripts cached: Enhance and Summarize 244.7 s and 271.3 s (run 1), 93.8 s and 228.0 s (run 2, total 321.8 s). Peak RSS of the LLM worker 6.75 GB. `elapsed_sec` in the `run.sh` output includes the wait for the GPU lock (934 s in run 2, of which about 10 min was queue). Run 3 (dev_senior review, same model): Enhance 93.9 s and 236.1 s, `elapsed_sec=1000` with about 12 min of queue behind an app-check run; same scores. Unverified for other models.
 - A pack with one model gives one blind label (`A`). The blind step only hides names when you pass two or more models (`run.sh model-a,model-b`).
@@ -49,10 +49,13 @@ This skill wraps `pnpm meeting:eval` (see `.claude/skills/meeting-benchmarks/SKI
 4. It runs `pnpm meeting:eval --models <id> --meetings 5578edb0,ca70f895 --gold --keep --no-download`. The tool takes and releases the GPU lock.
 5. It prints the elapsed seconds and `results.md`.
 
+Abort rule: a `trap` on `EXIT`, `INT` and `TERM` removes `pack/`, `arms/` and `runs/` of the out dir when the run does not finish (failure, Ctrl-C, `kill`). It then removes the out dir if it is empty. It signals the whole process tree, so `eval.mts` releases the GPU lock. A finished run keeps `pack/` for the blind step. `kill -9` skips the trap and leaves the lock and the files: remove them by hand.
+
 Traps:
 
 - `meeting:eval failed: the server build is older than apps/server/src`. Run `pnpm turbo build --filter=@openstyle/server`. `run.sh` does this.
 - A new worktree has no diarizer files. Copy `apps/electron/resources/bin/darwin-arm64/fluidaudio-diarize` and `apps/electron/resources/models/speaker-diarization` from the main checkout. Without them the server skips diarization with no error.
+- The worker copy in `/tmp/meeting-eval/worker-*` is also under `/tmp`, so the tmp cleanup can remove it. Copy it again when it is missing.
 - A new worktree has no worker build. Copy the shipped one: `cp -R ~/.cache/freestyle/mlx-asr/runtime/darwin-arm64/mlx_asr_worker /tmp/meeting-eval/worker-<version>/`.
 - Do not use `pkill`. The guard hook blocks it. Kill a PID that you started.
 - A `GPU lock: queued` line is normal. The run waits and checks every 30 s.
