@@ -254,6 +254,8 @@
       "systemAudioUnknownNote": "Silent isn't necessarily denied. Nothing may have been playing during the check."
     },
     "meetings": {
+      "projectMemory": "Use earlier meetings",
+      "projectMemoryDesc": "Uses earlier meetings in the same folder to write the summary.",
       "useCalendar": "Use my calendar",
       "useCalendarDesc": "Link each meeting recording to the calendar event that is running. Openstyle only reads events. It never changes your calendar. macOS asks for permission when you turn this on.",
       "calendarDenied": "Openstyle has no access to your calendar. Allow access in System Settings, then turn this on again.",

@@ -195,6 +195,8 @@ export default function SettingsPage(): React.JSX.Element {
   const [historyPaused, setHistoryPaused] = useState(false);
   // Link meetings to calendar events (specs/calendar-eventkit.md).
   const [calendarEnabled, setCalendarEnabled] = useState(false);
+  // Project memory (#234) is on unless the row says "false".
+  const [projectMemory, setProjectMemory] = useState(true);
   const [calendarProblem, setCalendarProblem] = useState<
     "denied" | "restricted" | "unavailable" | "saveFailed" | null
   >(null);
@@ -477,6 +479,9 @@ export default function SettingsPage(): React.JSX.Element {
     setPillCancel(normalizePillCancelMode(s[SETTINGS_KEYS.pillCancelButton]));
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
     if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
+    if (s[SETTINGS_KEYS.meetingProjectMemory] === "false") {
+      setProjectMemory(false);
+    }
     if (s[SETTINGS_KEYS.calendarEnabled] === "true") {
       setCalendarEnabled(true);
       // The user may have removed the grant in System Settings since.
@@ -718,6 +723,11 @@ export default function SettingsPage(): React.JSX.Element {
     setSoundEnabled(enabled);
     window.api?.sendSoundEnabledChanged(enabled);
     void putSetting(SETTINGS_KEYS.soundEnabled, String(enabled));
+  }, []);
+
+  const handleProjectMemoryToggle = useCallback((enabled: boolean) => {
+    setProjectMemory(enabled);
+    void putSetting(SETTINGS_KEYS.meetingProjectMemory, String(enabled));
   }, []);
 
   const handleHistoryPausedToggle = useCallback((paused: boolean) => {
@@ -1241,6 +1251,17 @@ export default function SettingsPage(): React.JSX.Element {
           )}
           {activeSection === "meetings" && showMeetingsSection && (
             <SettingsPanel>
+              <Row
+                label={t("settings.meetings.projectMemory")}
+                desc={t("settings.meetings.projectMemoryDesc")}
+              >
+                <Switch
+                  id="settings-project-memory"
+                  checked={projectMemory}
+                  onCheckedChange={handleProjectMemoryToggle}
+                  aria-label={t("settings.meetings.projectMemory")}
+                />
+              </Row>
               <Row
                 label={t("settings.meetings.useCalendar")}
                 desc={t("settings.meetings.useCalendarDesc")}

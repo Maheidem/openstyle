@@ -214,6 +214,8 @@
       "systemAudioUnknownNote": "El silencio no significa necesariamente que se haya denegado: puede que simplemente no hubiera nada reproduciéndose durante la comprobación."
     },
     "meetings": {
+      "projectMemory": "Usar reuniones anteriores",
+      "projectMemoryDesc": "Usa reuniones anteriores de la misma carpeta para redactar el resumen.",
       "useCalendar": "Usar mi calendario",
       "useCalendarDesc": "Vincula cada grabación de reunión con el evento del calendario que está en curso. Openstyle solo lee eventos. Nunca cambia tu calendario. macOS pide permiso cuando activas esta opción.",
       "calendarDenied": "Openstyle no tiene acceso a tu calendario. Permite el acceso en Ajustes del Sistema y luego activa esta opción de nuevo.",
