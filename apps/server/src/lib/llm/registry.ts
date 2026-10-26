@@ -3,7 +3,10 @@ import type { PostProcessParams } from "@openstyle/stt";
 import type { CleanupSampling } from "@openstyle/validations";
 import { parseServerModelId, SERVER_PROVIDER_ID } from "@openstyle/validations";
 import type { LanguageModel } from "ai";
-import { MLX_LLM_PROVIDER_ID } from "../mlx-llm/constants.js";
+import {
+  MLX_LLM_PREFIX_CACHE_HEADER,
+  MLX_LLM_PROVIDER_ID,
+} from "../mlx-llm/constants.js";
 import { stripModelPrefix } from "../model-id.js";
 import { getOwnServer } from "../own-servers.js";
 import { traceLlmFetch } from "../trace.js";
@@ -476,6 +479,12 @@ const PROVIDERS: LlmProvider[] = [
       return createOpenAI({
         apiKey: "local",
         baseURL,
+        // Dictation cleanup only: the worker keeps the KV of the system prompt
+        // (specs/llm-runtime-tuning.md 9 item 1). Enhance and Summarize keep
+        // the plain path.
+        ...(taskContext?.task === "cleanup"
+          ? { headers: { [MLX_LLM_PREFIX_CACHE_HEADER]: "on" } }
+          : {}),
         fetch: trackMlxLlmFetch(taskSamplingFetch(taskContext)),
         // The worker reports the HF repo id as the served model.
       }).chat(hfId);

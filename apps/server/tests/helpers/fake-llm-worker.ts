@@ -7,7 +7,8 @@ import { join } from "node:path";
  * line and serves `GET /v1/models` and `POST /v1/chat/completions` on
  * 127.0.0.1. It exits when stdin closes or on SIGTERM.
  *
- * Env: FAKE_LLM_LOG appends one JSON line per request. FAKE_LLM_CONTENT sets
+ * Env: FAKE_LLM_LOG appends one JSON line per request (with the prefix cache
+ * header). FAKE_LLM_CONTENT sets
  * the answer text. FAKE_LLM_FAIL=1 prints an error line before ready.
  */
 export const FAKE_LLM_WORKER_SOURCE = `#!/usr/bin/env node
@@ -40,7 +41,7 @@ const server = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/v1/chat/completions") {
       let parsed;
       try { parsed = JSON.parse(body); } catch { return send(400, { error: { message: "bad json", type: "invalid_request_error" } }); }
-      log({ method: "POST", url: req.url, body: parsed, hf_hub_offline: process.env.HF_HUB_OFFLINE ?? null });
+      log({ method: "POST", url: req.url, body: parsed, hf_hub_offline: process.env.HF_HUB_OFFLINE ?? null, prefix_cache: req.headers["x-openstyle-prefix-cache"] ?? null });
       if (parsed.stream === true) return send(400, { error: { message: "stream is not supported", type: "invalid_request_error" } });
       const content = process.env.FAKE_LLM_CONTENT ?? "Fake worker reply.";
       return send(200, {

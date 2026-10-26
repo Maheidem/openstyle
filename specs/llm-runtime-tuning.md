@@ -305,3 +305,34 @@ Each PR keeps the quality gate: no new hard fails in `pnpm meeting:eval` on 5578
 5. Context guard: approved, but a refusal means the app failed. The main work is in the callers: each caller (cleanup, Enhance chunks, Summarize and its reduce step, tags) counts tokens and keeps the prompt inside `contextTokens - max_tokens` before it sends it. The worker guard is a last safety net only: a typed error, a loud log, and a caller that splits the input and tries again. The person never sees this error.
 6. Apple FM: try one short cleanup prompt written for Apple Foundation Models, as a separate experiment. Stop the topic if it still loses on speed or quality against E2B.
 7. Cleanup: the 26B qat-6bit eval model (21.8 GB) is deleted.
+
+---
+
+## 10. Step 2 result: prefix cache for cleanup (built 2026-10-26)
+
+Build: the "boundary-consistent" variant of 9 item 1.
+
+- The server sends `X-Openstyle-Prefix-Cache: on` for the `cleanup` task only (`apps/server/src/lib/llm/registry.ts`). Enhance and Summarize send no header and keep the mlx-lm path.
+- The system prefix ends where the first user text starts. The worker finds it from the request only: it renders the template with the system messages and one empty user message, and takes the common token prefix with the prompt. (Qwen3.8 refuses a template with no user message, so a system-only render does not work.)
+- With the header, the worker always prefills the system prefix in its own chunks (2048 tokens each), also on a miss. The rest goes to `stream_generate` with that KV cache. One entry per worker, a deep copy per request, no entry over 1 GiB.
+- `usage.cached_tokens` and `usage.prompt_tokens_details.cached_tokens` report the tokens that came from the cache.
+- `OPENSTYLE_MLX_LLM_PREFIX_CACHE=off` makes "on" act as "off" (same output, no stored KV). The byte-compare proof uses it.
+
+Proof (frozen workers built from `32b89fb6` ("old") and from this branch ("new"), each run under the GPU lock):
+
+| Check | E2B | E4B |
+|---|---|---|
+| Dictation, cache on vs off (new worker), byte-equal | 108/108 | 108/108 |
+| Dictation, old vs new, byte-equal | 108/108 | 104/108 (1 zh case, all 4 passes) |
+| Dictation bench pass, old -> new | 32/108 -> 32/108 | 44/108 -> 40/108 |
+| Dictation p50 / p95 (ms), old -> new | 295 / 490 -> 155 / 330 | 874 / 1,230 -> 269 / 617 |
+| Dictation TTFT p50 / p95 (ms), old -> new | 168 / 203 -> 30 / 37 | 660 / 725 -> 61 / 65 |
+| Cache hits (new) | 107 of 108 | 107 of 108 |
+| Gold meeting calls, old vs new without header | 18/18 | 18/18 |
+| Gold meeting calls, header on vs off | 18/18 (10 hits) | 18/18 (10 hits) |
+| Gold meeting calls, old vs header on (not used by the app) | 9/18 | 13/18 |
+
+- The changed E4B case is `preserve-reminder-zh`: the new output moves one word. A blind pair judge (Claude subagent) picked the old output (the new one rewords; both keep the meaning).
+- `meeting:eval` E2B, both gold meetings, old and new worker: same pack files (sha256 of all 6 files equal), same tokens (20,253 / 4,216 and 43,935 / 12,377), same hard fails (5578edb0: 1, gold `claim:c1`, also in the baseline; ca70f895: 0). No new hard fail. The outputs are identical, so no blind judge for meetings.
+- Real app (app-check skill, E2B, new worker, fictional data): 3 dictation cleanups 371, 210 and 265 ms; the worker log says `prefix 3959 of 4056 tokens, cached 0`, then `cached 3959` twice. Enhance + Summarize: 9 calls, all `stop`, 0 errors, `cached_tokens` 0 in `llm_calls`.
+- MLflow: the app run exported 1 Enhance + Summarize trace to experiment `llm-runtime-tuning` (id 68), read back with status OK. Dictation cleanup has no MLflow path. The bench and the replay call the worker directly, and `meeting:eval` strips tracing on purpose.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import threading
 import tempfile
@@ -584,7 +585,17 @@ class LlmEngineTests(unittest.TestCase):
         usage = dict(out["usage"])
         self.assertGreaterEqual(usage.pop("total_ms"), 0)
         self.assertGreaterEqual(usage.pop("ttft_ms"), 0)
-        self.assertEqual(usage, {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5})
+        self.assertEqual(
+            usage,
+            {
+                "prompt_tokens": 3,
+                "completion_tokens": 2,
+                "total_tokens": 5,
+                "cached_tokens": 0,
+                "prompt_tokens_details": {"cached_tokens": 0},
+            },
+        )
+        self.assertNotIn("prompt_cache", calls["stream"])
         self.assertEqual(calls["stream"]["max_tokens"], 9)
         self.assertEqual(calls["stream"]["logits_processors"], [])
         self.assertEqual(calls["sampler"], {"temp": 0.0})
@@ -624,6 +635,129 @@ class LlmEngineTests(unittest.TestCase):
         out = engine.complete(self._req(stop=["END"]))
         self.assertEqual(out["choices"][0]["message"]["content"], "one two ")
         self.assertEqual(out["choices"][0]["finish_reason"], "stop")
+
+
+class PrefixTokenizer(FakeLlmTokenizer):
+    """Each message becomes a header token and one token per word; the system
+    prompt is long, so the prefix spans more than one prefill step."""
+
+    def apply_chat_template(self, messages: list[dict[str, str]], **kwargs: object) -> str:
+        parts = [f"<{m['role']}> {m['content']}" for m in messages]
+        return " ".join(parts) + (" <model>" if kwargs.get("add_generation_prompt") else "")
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.vocab: dict[str, int] = {}
+
+    def encode(self, text: str, add_special_tokens: bool = True) -> list[int]:
+        return [self.vocab.setdefault(w, 1000 + len(self.vocab)) for w in text.split()]
+
+
+class FakeKv:
+    """One fake cache layer: it records the chunk lengths it was fed."""
+
+    def __init__(self) -> None:
+        self.chunks: list[int] = []
+        self.nbytes = 0
+
+
+class PrefixCacheTests(unittest.TestCase):
+    SYSTEM = " ".join(f"rule{i}" for i in range(4500))
+
+    def setUp(self) -> None:
+        self._log_patch = mock.patch.object(mlx_asr_server, "_log", lambda _m: None)
+        self._log_patch.start()
+        self.engine, _, self.calls = _engine([("ok", "stop")])
+        self.engine.tok = PrefixTokenizer()
+        self.made: list[FakeKv] = []
+
+        def make_cache() -> list[FakeKv]:
+            kv = FakeKv()
+            self.made.append(kv)
+            return [kv]
+
+        def forward(cache: list[FakeKv], ids: list[int]) -> None:
+            cache[0].chunks.append(len(ids))
+
+        self.engine._prefix_cache = mlx_asr_server._PrefixCache(make_cache, forward)
+
+    def tearDown(self) -> None:
+        mock.patch.stopall()
+
+    def _req(self, mode: str | None, text: str = "hello world", system: str | None = None):
+        req = mlx_asr_server._parse_chat_request(
+            {"messages": [{"role": "system", "content": system or self.SYSTEM}, {"role": "user", "content": text}]}
+        )
+        req["prefix_cache"] = mode
+        return req
+
+    def test_prefix_is_prefilled_in_step_chunks_up_to_the_user_text(self) -> None:
+        req = self._req("off")
+        ids = self.engine._prompt_ids(req)
+        out = self.engine.complete(req)
+        # "<system>" + 4500 words + "<user>" = 4502 prefix tokens.
+        n = 4502
+        self.assertEqual(self.engine._system_prefix_len(req, ids), n)
+        self.assertEqual(self.made[0].chunks, [2048, 2048, 406])
+        self.assertEqual(self.calls["stream"]["ids"], ids[n:])
+        self.assertIs(self.calls["stream"]["prompt_cache"][0], self.made[0])
+        self.assertEqual(out["usage"]["cached_tokens"], 0)
+        self.assertEqual(out["usage"]["prompt_tokens"], len(ids))
+        self.assertIsNone(self.engine._prefix_cache.ids)  # "off" keeps nothing
+
+    def test_on_hit_gives_a_copy_and_the_same_cut(self) -> None:
+        first = self.engine.complete(self._req("on", "one two"))
+        first_cache = self.calls["stream"]["prompt_cache"]
+        first_feed = self.calls["stream"]["ids"]
+        second = self.engine.complete(self._req("on", "three four five"))
+        second_cache = self.calls["stream"]["prompt_cache"]
+        self.assertEqual(len(self.made), 1)  # one prefill only
+        self.assertEqual((first["usage"]["cached_tokens"], second["usage"]["cached_tokens"]), (0, 4502))
+        self.assertEqual(second["usage"]["prompt_tokens_details"], {"cached_tokens": 4502})
+        stored = self.engine._prefix_cache.cache
+        self.assertIsNot(first_cache, stored)
+        self.assertIsNot(second_cache, stored)
+        second_cache[0].chunks.append(99)  # a request writes into its copy only
+        self.assertEqual(stored[0].chunks, [2048, 2048, 406])
+        self.assertEqual(len(first_feed), 3)  # "one two <model>": no system token
+        self.assertEqual(len(self.calls["stream"]["ids"]), 4)
+
+    def test_on_and_off_feed_the_same_tokens_and_chunks(self) -> None:
+        self.engine.complete(self._req("off"))
+        off_feed, off_chunks = self.calls["stream"]["ids"], self.calls["stream"]["prompt_cache"][0].chunks
+        self.engine.complete(self._req("on"))
+        self.engine.complete(self._req("on"))
+        self.assertEqual(self.calls["stream"]["ids"], off_feed)
+        self.assertEqual(self.calls["stream"]["prompt_cache"][0].chunks, off_chunks)
+
+    def test_new_system_prompt_replaces_the_entry(self) -> None:
+        self.engine.complete(self._req("on", system="short system"))
+        out = self.engine.complete(self._req("on", system="other system"))
+        self.assertEqual(out["usage"]["cached_tokens"], 0)
+        self.assertEqual(len(self.made), 2)
+        self.assertEqual(len(self.engine._prefix_cache.ids), 4)
+
+    def test_big_prefix_is_not_kept(self) -> None:
+        with mock.patch.object(mlx_asr_server, "_PREFIX_CACHE_MAX_BYTES", -1):
+            self.engine.complete(self._req("on"))
+        self.assertIsNone(self.engine._prefix_cache.ids)
+        self.assertIn("prompt_cache", self.calls["stream"])
+
+    def test_no_system_message_keeps_the_plain_path(self) -> None:
+        req = mlx_asr_server._parse_chat_request({"messages": [{"role": "user", "content": "hi"}]})
+        req["prefix_cache"] = "on"
+        self.engine.complete(req)
+        self.assertNotIn("prompt_cache", self.calls["stream"])
+        self.assertEqual(self.made, [])
+
+    def test_header_values_and_env_switch(self) -> None:
+        mode = mlx_asr_server._prefix_cache_mode
+        self.assertIsNone(mode(None))
+        self.assertEqual((mode("on"), mode(" OFF ")), ("on", "off"))
+        with self.assertRaises(mlx_asr_server._BadRequest):
+            mode("yes")
+        with mock.patch.dict(os.environ, {"OPENSTYLE_MLX_LLM_PREFIX_CACHE": "off"}):
+            self.assertEqual(mode("on"), "off")
 
 
 class FakeMatcher:
@@ -754,6 +888,25 @@ class LlmHttpTests(unittest.TestCase):
 
     def test_unknown_path_is_404(self) -> None:
         self.assertEqual(self._call("GET", "/nope")[0], 404)
+
+    def test_prefix_cache_header_reaches_the_engine(self) -> None:
+        import urllib.error
+        import urllib.request
+
+        seen: list[object] = []
+        body = json.dumps({"messages": [{"role": "user", "content": "x"}]}).encode()
+        with mock.patch.object(self.engine, "complete", side_effect=lambda req: seen.append(req["prefix_cache"]) or {}):
+            for value in (None, "on", "bad"):
+                req = urllib.request.Request(f"http://127.0.0.1:{self.port}/v1/chat/completions", data=body, method="POST")
+                if value is not None:
+                    req.add_header("X-Openstyle-Prefix-Cache", value)
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        status = resp.status
+                except urllib.error.HTTPError as err:
+                    status = err.code
+                seen.append(status)
+        self.assertEqual(seen, [None, 200, "on", 200, 400])
 
 
 class RunLlmTests(unittest.TestCase):
