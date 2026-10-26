@@ -59,7 +59,9 @@ const EARLIER_SUMMARY =
 const isSummary = (r: RecordedRequest) =>
   r.system.startsWith("You summarize meeting transcripts");
 const isCorrect = (r: RecordedRequest) =>
-  r.system.startsWith("You clean up a speech-to-text meeting transcript");
+  r.system.startsWith(
+    "You fix misheard words in a speech-to-text meeting transcript",
+  );
 
 function seedFolder(): void {
   getDb()

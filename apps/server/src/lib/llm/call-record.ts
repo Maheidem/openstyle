@@ -9,6 +9,7 @@ import type { LlmParamsLedger } from "@openstyle/validations";
 /** The LLM steps. A later consumer widens the union. */
 export type LlmStepId =
   | "correctChunk"
+  | "retranscribeLines"
   | "identifySpeakers"
   | "summarize"
   | "suggestTags";

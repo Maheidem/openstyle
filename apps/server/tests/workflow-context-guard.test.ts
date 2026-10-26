@@ -92,7 +92,9 @@ describe("the context guard in a graph run", () => {
     resetWorkflowTables();
     windowTokens = 32_768;
     const b = await run(cjkMeeting("m-cbw1a").meeting.id);
-    expect(a.requests).toHaveLength(1);
+    // One correctChunk call, and one retranscribeLines call: the CJK lines
+    // are not in the pinned meeting language "en".
+    expect(a.requests).toHaveLength(2);
     expect(b.requests).toEqual(a.requests);
   });
 

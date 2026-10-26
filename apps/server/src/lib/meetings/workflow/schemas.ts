@@ -249,6 +249,21 @@ export function correctChunkStepSchema(
   };
 }
 
+/**
+ * The `retranscribeLines` schema of one call: the same shape as
+ * `correctChunk` (changed lines with their ids), with an enum of the ids of
+ * the lines that the call shows.
+ */
+export function retranscribeStepSchema(
+  ids: readonly string[],
+): StepSchema<CorrectChunk> {
+  return {
+    ...correctChunkStepSchema(ids),
+    name: "retranscribe_lines",
+    version: 1,
+  };
+}
+
 export const IDENTIFY_SPEAKERS_STEP_SCHEMA: StepSchema<IdentifySpeakers> = {
   name: "identify_speakers",
   version: 1,

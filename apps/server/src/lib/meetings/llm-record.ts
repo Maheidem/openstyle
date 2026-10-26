@@ -19,6 +19,7 @@ export const MEETING_SUMMARY_NODE: LlmStepId = "summarize";
 /** The LLM nodes of a meeting run. The code nodes `prepare`, `verify` and `save` are not LLM nodes. */
 export const MEETING_LLM_NODES: readonly LlmStepId[] = [
   "correctChunk",
+  "retranscribeLines",
   "identifySpeakers",
   MEETING_SUMMARY_NODE,
   "suggestTags",

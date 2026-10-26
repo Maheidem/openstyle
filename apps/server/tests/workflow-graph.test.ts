@@ -476,14 +476,14 @@ describe("GR14: checkpoint size", () => {
     expect(r.finalState.prepared?.chunks.length).toBeGreaterThan(5);
     const rows = getDb()
       .prepare(
-        "SELECT length(checkpoint) AS bytes, instr(checkpoint, CAST('You clean up a speech-to-text' AS BLOB)) AS sys FROM llm_checkpoints WHERE thread_id = ?",
+        "SELECT length(checkpoint) AS bytes, instr(checkpoint, CAST('You fix misheard words in a speech-to-text' AS BLOB)) AS sys FROM llm_checkpoints WHERE thread_id = ?",
       )
       .all(r.ctx.runId) as { bytes: number; sys: number }[];
     expect(rows.length).toBeGreaterThan(3);
     expect(rows.every((x) => x.sys === 0)).toBe(true);
     const writes = getDb()
       .prepare(
-        "SELECT count(*) AS n FROM llm_checkpoint_writes WHERE thread_id = ? AND instr(value, CAST('You clean up a speech-to-text' AS BLOB)) > 0",
+        "SELECT count(*) AS n FROM llm_checkpoint_writes WHERE thread_id = ? AND instr(value, CAST('You fix misheard words in a speech-to-text' AS BLOB)) > 0",
       )
       .get(r.ctx.runId) as { n: number };
     expect(writes.n).toBe(0);

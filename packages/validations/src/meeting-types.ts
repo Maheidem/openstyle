@@ -164,7 +164,8 @@ export type CorrectionDropReason =
   | "too_different"
   | "meaning_flip"
   | "inflection_only"
-  | "lowercases_name";
+  | "lowercases_name"
+  | "wrong_language";
 
 export interface SpeakerVerdict {
   unitKey: string;

@@ -70,6 +70,7 @@ export function buildGraph(deps: WorkflowDeps) {
         language: prepared.language,
         vocabTerms: prepared.vocabTerms,
         profile: models.correctChunk,
+        retranscribeProfile: models.retranscribeLines,
       };
       return new Send("correctChunk", input);
     });

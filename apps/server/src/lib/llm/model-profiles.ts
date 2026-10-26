@@ -27,6 +27,7 @@ export type MeetingLlmTaskId = Extract<
 /** The task each step runs under. A later consumer adds its steps here. */
 export const STEP_TASK: Record<LlmStepId, MeetingLlmTaskId> = {
   correctChunk: "meetingEnhance",
+  retranscribeLines: "meetingEnhance",
   identifySpeakers: "meetingEnhance",
   summarize: "meetingSummarize",
   suggestTags: "meetingEnhance",

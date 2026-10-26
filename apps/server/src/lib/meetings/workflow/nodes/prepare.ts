@@ -104,6 +104,7 @@ export function makePrepareNode(deps: WorkflowDeps) {
       const models = await resolveModels({
         maxReasoningTokens: {
           correctChunk: 0,
+          retranscribeLines: 0,
           identifySpeakers: IDENTIFY_REASONING_MAX,
           summarize: 0,
           suggestTags: 0,

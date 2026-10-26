@@ -795,7 +795,12 @@ function profilesFor(
   if (!models) return [];
   const steps: string[] = [];
   if (stages.includes("enhance"))
-    steps.push("correctChunk", "identifySpeakers", "suggestTags");
+    steps.push(
+      "correctChunk",
+      "retranscribeLines",
+      "identifySpeakers",
+      "suggestTags",
+    );
   if (stages.includes("summarize")) steps.push("summarize");
   return steps.flatMap((s) => (models[s] ? [models[s]] : []));
 }

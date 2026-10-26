@@ -160,17 +160,17 @@ test("wireBody puts messages and schema back; applyOverrides changes only a copy
     top_k: 64,
     thinking: true,
     maxTokensExtra: 2048,
-    perturb: ["garbled words", "jumbled words"],
+    perturb: ["most likely said", "probably said"],
   });
   assert.equal(o.temperature, 0.3);
   assert.equal(o.top_p, 0.95);
   assert.equal(o.top_k, 64);
   assert.equal(o.chat_template_kwargs.enable_thinking, true);
   assert.equal(o.max_tokens, Number(body.max_tokens) + 2048);
-  assert.match(o.messages[0].content, /jumbled words/);
+  assert.match(o.messages[0].content, /probably said/);
   // The input body did not change.
   assert.equal(body.temperature, 0);
-  assert.match((body.messages as any)[0].content, /garbled words/);
+  assert.match((body.messages as any)[0].content, /most likely said/);
   assert.equal((body.chat_template_kwargs as any).enable_thinking, false);
 });
 

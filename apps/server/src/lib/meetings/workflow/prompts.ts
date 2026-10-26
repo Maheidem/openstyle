@@ -93,29 +93,58 @@ export interface CorrectPromptInput {
   vocabTerms: readonly string[];
 }
 
-/** System prompt of one `correctChunk` call: role, language, vocabulary, rules. */
+/**
+ * System prompt of one `correctChunk` call. One job only: fix misheard words
+ * (the owner rule "specialization over over-prompting", AGENTS.md). Code does
+ * the other jobs of the old prompt: vocabulary spelling
+ * (`vocab-spelling.ts`), lines in another language (`line-language.ts` and
+ * the `retranscribeLines` call). The speech recognizer already writes
+ * punctuation, capitals and exact repeats, and the gold transcripts keep the
+ * repeats, so no stage changes them.
+ */
 export function buildCorrectSystemPrompt(input: CorrectPromptInput): string {
-  const vocabBlock =
+  const vocabLine =
     input.vocabTerms.length > 0
-      ? `\n\nReference vocabulary (correct spellings of names and terms this speaker uses). Use it ONLY to fix a word that is clearly a mis-transcription of one of them. Never add a term that is not really being referred to:\n${input.vocabTerms.join(", ")}`
+      ? `\nNames and terms of this user: ${input.vocabTerms.join(", ")}`
       : "";
-  return `You clean up a speech-to-text meeting transcript. "Me" is the user of this app. Another speaker is marked "Them 1", "Them 2" and so on, or by a confirmed name. The text came from an automatic speech recognizer and may contain garbled words, dropped syllables, or (rarely) a line that was translated into another language instead of transcribed. ${languageLine(input.language)}${vocabBlock}
+  return `You fix misheard words in a speech-to-text meeting transcript. ${languageLine(input.language)}${vocabLine}
+
+A misheard word sounds like the word that the speaker said, but it does not make sense in its sentence. Replace it with the word that the speaker most likely said. A misspelled name or term from the list is also a misheard word.
 
 Rules:
-- Include a segment ONLY if you change its text. Leave out every segment you would keep as it is. Do not echo unchanged segments.
-- Never invent, merge, split, or reorder segments. Copy each segment id exactly as given.
-- Fix each clear speech-to-text error. A word that makes no sense in its sentence is a recognition error: replace it with the word the speaker most likely said. This includes: a misheard word, a wrong homophone, and a name or product that is misspelled. A line that was translated instead of transcribed is also an error: write it again as a faithful transcription in the language of the transcript.
-- Names and terms have one correct spelling. Use the spelling from the vocabulary or from other lines of the transcript. When a speaker says their own name, write that same name in every line where a word sounds like it.
-- You may also fix punctuation and capitalization (full stops, commas, question marks, capital letters). You may remove a word that the speaker repeated exactly, one after the other ("the the" becomes "the", "I I" becomes "I", "to to" becomes "to").
-- Do NOT paraphrase or summarize. Do NOT fix grammar, style or register. Do NOT remove or change fillers ("um", "uh", "ah", "like", "you know"). Do NOT remove false starts or any other word. Do NOT add or remove content. Do NOT add or remove a negation. Never delete a word the speaker said, except an exact repeat of the word right before or after it. Never copy text from another segment. Do NOT change the grammar of a word that is a real word and fits the sentence: keep its verb agreement, tense, and plural or singular form. Do NOT replace a real word with another real word, unless the context or the vocabulary clearly shows that the speaker said the other word.
-- Do NOT translate a segment into a different language than the rest of the transcript.
-- Return one entry for each segment you correct: its id and its corrected text. Write the text only, without the speaker label.
-- ${FULL_SEGMENT_RULE} Example. Input line: [seg-7] Them 1: we moved the cluster to cooper netties last week. Output entry: id "seg-7", text "we moved the cluster to Kubernetes last week." Wrong output: text "Kubernetes".`;
+- Change only misheard words. Keep all other words, fillers, repeats and punctuation as they are.
+- Return only the lines that you change. An empty list is a normal answer.
+- Copy the id exactly. Write the text without the speaker label.
+- ${FULL_SEGMENT_RULE}
+Example. Input line: [seg-7] Them 1: we moved the cluster to cooper netties last week. Output entry: id "seg-7", text "we moved the cluster to Kubernetes last week." Wrong output: text "Kubernetes".`;
 }
 
 /** User prompt of one `correctChunk` call. `lines` are `[id] Speaker: text`. */
 export function buildCorrectUserPrompt(lines: readonly string[]): string {
-  return `Correct only the transcript inside the <transcript> tags. ${TRANSCRIPT_GUARD}\n\n<transcript>\n${lines.join("\n")}\n</transcript>`;
+  return `Fix only the transcript inside the <transcript> tags. ${TRANSCRIPT_GUARD}\n\n<transcript>\n${lines.join("\n")}\n</transcript>`;
+}
+
+// ---------------------------------------------------------------------------
+// retranscribeLines
+// ---------------------------------------------------------------------------
+
+/**
+ * System prompt of one `retranscribeLines` call. One job only: write a line
+ * that the speech recognizer wrote in another language again in the meeting
+ * language. Code finds the lines first (`line-language.ts`).
+ */
+export function buildRetranscribeSystemPrompt(language: string): string {
+  return `The meeting language is "${language}" (ISO code). A speech recognizer wrote each line below in another language by mistake. Write each line again in "${language}".
+
+Rules:
+- Keep the meaning, the order of the ideas and the length. Do not add or remove content.
+- Keep names, numbers and terms as they are.
+- Return one entry for each line: its id and its new text. Copy the id exactly. Write the text without the speaker label.`;
+}
+
+/** User prompt of one `retranscribeLines` call. `lines` are `[id] Speaker: text`. */
+export function buildRetranscribeUserPrompt(lines: readonly string[]): string {
+  return `Rewrite only the lines inside the <transcript> tags. ${TRANSCRIPT_GUARD}\n\n<transcript>\n${lines.join("\n")}\n</transcript>`;
 }
 
 // ---------------------------------------------------------------------------
