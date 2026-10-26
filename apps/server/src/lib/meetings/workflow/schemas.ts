@@ -7,7 +7,7 @@ import { NAME_MAX_CHARS, QUOTE_MAX_CHARS } from "./types.js";
 // 4.2.1, 4.3.1, 4.5.1). Strict-mode rules (4.0.3): every field is required and
 // `.nullable()` marks an absent value; no `.optional()`, no `.default()`, no
 // size limits (exceptions: `identifySpeakersStepSchema` and
-// `meetingSummaryStepSchema` with `sizeLimits` for the local MLX LLM). Field order is generation order. Code checks sizes after the
+// `summaryStageStepSchema` with `sizeLimits` for the local MLX LLM). Field order is generation order. Code checks sizes after the
 // parse. Change a schema, and bump WORKFLOW_GRAPH_VERSION (3.4).
 //
 // The ids and labels exception (owner decision 2026-10-20): small local models
@@ -52,17 +52,6 @@ function sameText(value: string | null): string {
   return (value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-/** The first entry of each key, in the order of the list. */
-function uniqueBy<T>(items: readonly T[], keyOf: (item: T) => string): T[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = keyOf(item);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 /** Short words that carry no content for the repeat check. */
 const FILLER_WORDS = new Set(
   "the and for with that this will was were are has have had not but from into onto about after before their them they then than its our your who whom what when which also all any can may must should would could shall agreed agree decided decide".split(
@@ -104,38 +93,101 @@ export function repeatsActionItem(
   });
 }
 
+/** The share of content words at which two list entries say the same thing. */
+const SAME_ITEM_SHARE = 0.8;
+/** An entry with fewer content words than this is only equal to the same text. */
+const SAME_ITEM_MIN_WORDS = 3;
+
+/**
+ * True when two list entries say the same thing: the same text (case and
+ * spaces aside), or at least SAME_ITEM_SHARE of the content words of the
+ * shorter entry are in the other one. The parts of a long meeting overlap, so
+ * two parts can list one item in two wordings.
+ */
+export function sameItem(a: string, b: string): boolean {
+  if (sameText(a) === sameText(b)) return true;
+  const x = contentWords(a);
+  const y = contentWords(b);
+  const small = Math.min(x.size, y.size);
+  if (small < SAME_ITEM_MIN_WORDS) return false;
+  let shared = 0;
+  for (const w of x) if (y.has(w)) shared++;
+  return shared / small >= SAME_ITEM_SHARE;
+}
+
+/** The first entry of each group of same items (`sameItem`), in list order. */
+function uniqueItems(items: readonly string[]): string[] {
+  const kept: string[] = [];
+  for (const item of items) {
+    if (!kept.some((k) => sameItem(k, item))) kept.push(item);
+  }
+  return kept;
+}
+
+type ActionItemLike = {
+  task: string;
+  owner: string | null;
+  due: string | null;
+};
+
+/** Two owners or two dues agree when one is absent or both are the same text. */
+const agree = (a: string | null, b: string | null) =>
+  a === null || b === null || sameText(a) === sameText(b);
+
+/**
+ * The first action item of each group of same tasks whose owner and due agree.
+ * A kept item takes the owner or the due of a dropped item when it has none.
+ */
+function uniqueActionItems<A extends ActionItemLike>(items: readonly A[]): A[] {
+  const kept: A[] = [];
+  for (const item of items) {
+    const i = kept.findIndex(
+      (k) =>
+        sameItem(k.task, item.task) &&
+        agree(k.owner, item.owner) &&
+        agree(k.due, item.due),
+    );
+    if (i < 0) {
+      kept.push(item);
+      continue;
+    }
+    const k = kept[i] as A;
+    kept[i] = { ...k, owner: k.owner ?? item.owner, due: k.due ?? item.due };
+  }
+  return kept;
+}
+
 /**
  * Remove the duplicate entries of each list; keep the order (issue #246).
- * Two entries are the same when they are equal after a change to lower case
- * and one space for each run of spaces. An action item compares task, owner
- * and due. A decision that only restates an action item goes too
- * (`repeatsActionItem`, #211): the follow-up stays in its own list.
+ * Two entries are the same when `sameItem` says so. An action item compares
+ * the task, and its owner and due must agree. A decision that only restates
+ * an action item goes too (`repeatsActionItem`, #211): the follow-up stays in
+ * its own list.
  */
 export function withoutDuplicates<
   S extends {
     keyPoints: string[];
     decisions: string[];
-    actionItems: { task: string; owner: string | null; due: string | null }[];
+    actionItems: ActionItemLike[];
     openQuestions: string[];
   },
 >(summary: S): S {
-  const tasks = summary.actionItems.map((a) => a.task);
+  const actionItems = uniqueActionItems(summary.actionItems);
+  const tasks = actionItems.map((a) => a.task);
   return {
     ...summary,
-    keyPoints: uniqueBy(summary.keyPoints, sameText),
-    decisions: uniqueBy(summary.decisions, sameText).filter(
+    keyPoints: uniqueItems(summary.keyPoints),
+    decisions: uniqueItems(summary.decisions).filter(
       (d) => !repeatsActionItem(d, tasks),
     ),
-    actionItems: uniqueBy(summary.actionItems, (a) =>
-      [a.task, a.owner, a.due].map(sameText).join("\u0000"),
-    ),
-    openQuestions: uniqueBy(summary.openQuestions, sameText),
+    actionItems,
+    openQuestions: uniqueItems(summary.openQuestions),
   };
 }
 
 /**
  * The size limits of the summary schema for a grammar engine that applies
- * them (`meetingSummaryStepSchema` with `sizeLimits`, issue #246).
+ * them (`summaryStageStepSchema` with `sizeLimits`, issue #246).
  */
 export const SUMMARY_SIZE_LIMITS = {
   keyPoints: 16,
@@ -148,11 +200,10 @@ export const SUMMARY_SIZE_LIMITS = {
 } as const;
 
 /**
- * The summary object. With `limits`, the JSON Schema gets `maxItems` and
- * `maxLength`; the zod side accepts any size in both cases. The parse removes
- * duplicate list entries (`withoutDuplicates`).
+ * The summary fields. With `limits`, the JSON Schema gets `maxItems` and
+ * `maxLength`; the zod side accepts any size in both cases.
  */
-function meetingSummaryObject(limits: boolean) {
+function summaryFields(limits: boolean) {
   const L = SUMMARY_SIZE_LIMITS;
   const text = (max: number) =>
     limits ? z.string().meta({ maxLength: max }) : z.string();
@@ -162,26 +213,86 @@ function meetingSummaryObject(limits: boolean) {
     (limits ? z.string().meta({ maxLength: L.ownerDueChars }) : z.string())
       .nullable()
       .transform(valueOrNull);
-  return z
-    .object({
-      overview: text(L.overviewChars),
-      keyPoints: list(text(L.itemChars), L.keyPoints),
-      decisions: list(text(L.itemChars), L.decisions),
-      actionItems: list(
-        z.object({
-          task: text(L.itemChars),
-          owner: nullableText(), // null when the transcript names no owner
-          due: nullableText(), // time as spoken, e.g. "next Friday". null when none
-        }),
-        L.actionItems,
-      ),
-      openQuestions: list(text(L.itemChars), L.openQuestions),
-    })
-    .transform(withoutDuplicates);
+  return {
+    overview: text(L.overviewChars),
+    keyPoints: list(text(L.itemChars), L.keyPoints),
+    decisions: list(text(L.itemChars), L.decisions),
+    actionItems: list(
+      z.object({
+        task: text(L.itemChars),
+        owner: nullableText(), // null when the transcript names no owner
+        due: nullableText(), // time as spoken, e.g. "next Friday". null when none
+      }),
+      L.actionItems,
+    ),
+    openQuestions: list(text(L.itemChars), L.openQuestions),
+  };
 }
 
-export const MeetingSummarySchema = meetingSummaryObject(false);
+/**
+ * The stored summary object, the contract of `save` and the UI. The parse
+ * removes duplicate list entries (`withoutDuplicates`). No call answers it
+ * whole: code builds it from the stage answers (`summarize`).
+ */
+export const MeetingSummarySchema = z
+  .object(summaryFields(false))
+  .transform(withoutDuplicates);
 export type MeetingSummary = z.infer<typeof MeetingSummarySchema>;
+
+/**
+ * The calls of one Summarize run. The three extraction stages run on each
+ * part of the transcript; `overview` runs once, last, on the merged items.
+ */
+export type SummaryStage = "decisions" | "actionItems" | "points" | "overview";
+
+/** The answer of one stage call: the fields of its stage only. */
+export type SummaryStageAnswer = Partial<MeetingSummary>;
+
+/** The wire name of each stage schema. */
+const SUMMARY_STAGE_NAMES: Record<SummaryStage, string> = {
+  decisions: "summary_decisions",
+  actionItems: "summary_action_items",
+  points: "summary_points",
+  overview: "summary_overview",
+};
+
+/** The list fields of each stage. A repaired cut answer gets [] for a missing one. */
+export const SUMMARY_STAGE_LISTS: Record<SummaryStage, readonly string[]> = {
+  decisions: ["decisions"],
+  actionItems: ["actionItems"],
+  points: ["keyPoints", "openQuestions"],
+  overview: [],
+};
+
+/**
+ * The schema of one stage call: the summary fields of that stage only.
+ *
+ * `sizeLimits`: only for a grammar engine that applies JSON Schema size
+ * keywords (the local MLX LLM, llguidance). Each list gets `maxItems` and
+ * each string gets `maxLength` (SUMMARY_SIZE_LIMITS). Without them Gemma 4
+ * E2B wrote one key point again and again until the output limit, so the
+ * answer did not parse (issue #246). Cloud providers reject these keywords
+ * (4.0.3 rule 4), so the default schema has none.
+ */
+export function summaryStageStepSchema(
+  stage: SummaryStage,
+  opts: { sizeLimits?: boolean } = {},
+): StepSchema<SummaryStageAnswer> {
+  const f = summaryFields(opts.sizeLimits === true);
+  const shape =
+    stage === "decisions"
+      ? { decisions: f.decisions }
+      : stage === "actionItems"
+        ? { actionItems: f.actionItems }
+        : stage === "points"
+          ? { keyPoints: f.keyPoints, openQuestions: f.openQuestions }
+          : { overview: f.overview };
+  return {
+    name: SUMMARY_STAGE_NAMES[stage],
+    version: 1,
+    zod: z.object(shape) as z.ZodType<SummaryStageAnswer>,
+  };
+}
 
 export const MeetingTagsSchema = z.object({
   tags: z.array(z.string()),
@@ -291,35 +402,6 @@ export function identifySpeakersStepSchema(
     name: IDENTIFY_SPEAKERS_STEP_SCHEMA.name,
     version: 4,
     zod: z.object({ speakers }),
-  };
-}
-
-export const MEETING_SUMMARY_STEP_SCHEMA: StepSchema<MeetingSummary> = {
-  name: "meeting_summary",
-  version: 1,
-  zod: MeetingSummarySchema,
-};
-/**
- * The `summarize` schema of one call (map, reduce and single). Version 2 adds
- * `sizeLimits` and the duplicate removal of the parse.
- *
- * `sizeLimits`: only for a grammar engine that applies JSON Schema size
- * keywords (the local MLX LLM, llguidance). Each list gets `maxItems` and
- * each string gets `maxLength` (SUMMARY_SIZE_LIMITS). Without them Gemma 4
- * E2B wrote one key point again and again until the output limit, so the
- * answer did not parse (issue #246). Cloud providers reject these keywords
- * (4.0.3 rule 4), so the default schema has none.
- */
-export function meetingSummaryStepSchema(
-  opts: { sizeLimits?: boolean } = {},
-): StepSchema<MeetingSummary> {
-  return {
-    name: MEETING_SUMMARY_STEP_SCHEMA.name,
-    version: 2,
-    zod:
-      opts.sizeLimits === true
-        ? meetingSummaryObject(true)
-        : MeetingSummarySchema,
   };
 }
 

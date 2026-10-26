@@ -11,33 +11,41 @@ import {
   LengthError,
 } from "../../../llm/gateway-errors.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
-import { estimateCallTokens, fitsWindow } from "../../../llm/token-budget.js";
 import {
   fetchModelsFromRegistry,
   getModelCostCached,
 } from "../../../model-registry.js";
+import { speakerDisplayLabel } from "../../merge.js";
 import { chunkTranscript, estimateTokens, formatSegment } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
 import {
-  buildSummaryMapSystemPrompt,
-  buildSummaryMapUserPrompt,
-  buildSummaryReduceSystemPrompt,
-  buildSummaryReduceUserPrompt,
-  buildSummarySingleSystemPrompt,
-  buildSummarySingleUserPrompt,
-  reduceBlocks,
+  buildSummaryOverviewSystemPrompt,
+  buildSummaryOverviewUserPrompt,
+  buildSummaryPartUserPrompt,
+  buildSummaryStageSystemPrompt,
+  renderSummaryNotes,
+  SUMMARY_EXTRACT_STAGES,
+  type SummaryExtractStage,
 } from "../prompts.js";
-import { type MeetingSummary, meetingSummaryStepSchema } from "../schemas.js";
+import {
+  type MeetingSummary,
+  SUMMARY_STAGE_LISTS,
+  type SummaryStage,
+  type SummaryStageAnswer,
+  summaryStageStepSchema,
+} from "../schemas.js";
 import type { WorkflowStateType } from "../state.js";
 import {
   MAX_SUMMARIZE_CALLS,
+  mergeSummaryAnswers,
   plannedSummaryCalls,
   renderSummaryMarkdown,
-  repairCutSummary,
+  repairCutAnswer,
+  summaryCallsFor,
+  withSupportedOwners,
 } from "../summary-pure.js";
 import {
   type CorrectChunkResult,
-  foldStatus,
   type NodeFailure,
   type NodeStatus,
   type PreparedMeeting,
@@ -56,15 +64,18 @@ import {
 
 const log = createAppLogger("summarize");
 
-// Node `summarize` (specs/meeting-enhance-agentic.md 4.5). One `single` call
-// when the transcript fits the context budget. Else one `map` call for each
-// chunk, then `reduce` calls until one summary is left. Every call returns the
-// same five-field object (4.5.1). Code renders the Markdown. The node writes
-// no meeting data: `save` does (SW3).
+// Node `summarize` (specs/meeting-enhance-agentic.md 4.5), split into narrow
+// calls (LLM design ethos, AGENTS.md). The transcript is one part when it
+// fits the context budget, else parts of whole segments. For each part, three
+// extraction calls: `decisions`, `actionItems` and `points` (key points and
+// open questions). Code merges the parts, removes duplicates and drops an
+// owner that the transcript does not support. Then one `overview` call writes
+// the overview from the merged items. Code renders the Markdown. The node
+// writes no meeting data: `save` does (SW3).
 
 /** Today `DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS` (4.0.5, 4.5.4). */
 const SUMMARY_ANSWER_TOKENS = 4096;
-/** A map chunk is split only when each half keeps this many tokens (4.0.5). */
+/** A part is split for a cut answer only when each half keeps this many tokens (4.0.5). */
 const MIN_SPLIT_TOKENS_SUMMARY = 2000;
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 
@@ -121,7 +132,7 @@ function readSettingFrom(deps: WorkflowDeps, key: string): string | undefined {
   }
 }
 
-/** A plan or a call count over `MAX_SUMMARIZE_CALLS` stops the unit (4.5.3). */
+/** A call count over `MAX_SUMMARIZE_CALLS` stops the unit (4.5.3). */
 class CallLimitStop extends Error {}
 
 function failure(
@@ -142,17 +153,28 @@ function failure(
 }
 
 /**
- * `cut`: the `length` failure of a unit whose cut answer was repaired, so the
- * summary may miss content (PR #258). null for a complete summary.
+ * The end of one stage step: the answers of its leaves (more than one when
+ * the part was split), or the reason to stop. `cut`: the `length` failure of
+ * a leaf whose cut answer was repaired (PR #258).
  */
-type Outcome =
-  | { ok: true; summary: MeetingSummary; cut: NodeFailure | null }
+type StageOutcome =
+  | { ok: true; answers: SummaryStageAnswer[]; cut: NodeFailure | null }
   | { ok: false; status: NodeStatus; failure: NodeFailure | null };
 
 const lineTokens = (lines: readonly string[]) =>
   lines.reduce((sum, l) => sum + estimateTokens(l) + 1, 0);
-const partialTokens = (partials: readonly MeetingSummary[]) =>
-  reduceBlocks(partials).reduce((sum, b) => sum + estimateTokens(b) + 1, 0);
+
+/**
+ * The step key of a stage call. One part: the stage name ("decisions"). More
+ * parts: the stage and the part index ("decisions:2" is part 3).
+ */
+export function summaryStepKey(
+  stage: SummaryStage,
+  part: number,
+  parts: number,
+): string {
+  return stage === "overview" || parts === 1 ? stage : `${stage}:${part}`;
+}
 
 /**
  * The segments as `chunkTranscript` takes them (4.5 Inputs). The text of a
@@ -221,6 +243,9 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
     // `formatSegment` labels an undiarized speaker "Unidentified" (4.5 Inputs).
     const lines = segments.map(formatSegment);
     const transcriptTokens = estimateTokens(lines.join("\n"));
+    const labels = [
+      ...new Set(segments.map((s) => speakerDisplayLabel(s, "Unidentified"))),
+    ];
 
     const promptInput = {
       language: prepared.language,
@@ -228,11 +253,17 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       context: prepared.context,
       earlierMeetings: prepared.folderMemory?.summaryBlock ?? null,
     };
-    const singleSystem = buildSummarySingleSystemPrompt(promptInput);
-    const mapSystem = buildSummaryMapSystemPrompt(promptInput);
-    const reduceSystem = buildSummaryReduceSystemPrompt(promptInput);
+    const systems = Object.fromEntries(
+      SUMMARY_EXTRACT_STAGES.map((s) => [
+        s,
+        buildSummaryStageSystemPrompt(s, promptInput),
+      ]),
+    ) as Record<SummaryExtractStage, string>;
+    const overviewSystem = buildSummaryOverviewSystemPrompt(promptInput);
+    // The overview call reads the merged items, not the transcript: only the
+    // extraction prompts count for the size of a part.
     const systemTokens = Math.max(
-      ...[singleSystem, mapSystem, reduceSystem].map(estimateTokens),
+      ...Object.values(systems).map(estimateTokens),
     );
     const maxOut = Math.min(
       profile.maxOutputTokens ?? Number.POSITIVE_INFINITY,
@@ -260,60 +291,56 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
     const perCallMs = meetingSummaryTimeoutMs(
       readSettingFrom(deps, MEETING_SUMMARY_TIMEOUT_SETTING_KEY),
     );
-    const ceilingFor = (plannedCalls: number) =>
+    const ceilingMs = (plannedCalls: number) =>
       ceilingOverrideMs ?? summaryCeilingMs(perCallMs, plannedCalls);
     let callSignal = ctx.signal;
-    const armCeiling = (plannedCalls: number) => {
-      callSignal = AbortSignal.any([
-        ctx.signal,
-        AbortSignal.timeout(ceilingFor(plannedCalls)),
-      ]);
-    };
 
     const totals = {
       input: 0,
       output: 0,
       callIds: [] as (number | null)[],
-      last: null as CallStructuredResult<MeetingSummary> | null,
+      last: null as CallStructuredResult<SummaryStageAnswer> | null,
     };
     let made = 0;
-    const absorb = (r: CallStructuredResult<MeetingSummary>) => {
+    const absorb = (r: CallStructuredResult<SummaryStageAnswer>) => {
       totals.input += r.usage.input ?? 0;
       totals.output += r.usage.output ?? 0;
       totals.callIds.push(r.callId);
       totals.last = r;
     };
 
-    /** Unit keys that did not fit the context window. For the log only. */
-    const contextRefused = new Set<string>();
     /** The newest cut answer of each unit key (PR #258). */
     const cutAnswers = new Map<string, LengthError>();
     /** Leaf key -> the `length` failure of a leaf repaired from its cut answer. */
     const repaired = new Map<string, NodeFailure>();
-    const summarySchema = meetingSummaryStepSchema({
-      sizeLimits: appliesSizeLimits(profile),
-    }).zod;
 
     /**
      * A leaf that failed `length` at the end of the route, with a cut answer
-     * that closes into a valid summary, becomes `ok` with the repaired object
-     * (PR #258). Its failure stays in `repaired`: the step row is `partial`
-     * and the result is marked partial. Other leaves stay as they are.
+     * that closes into a valid answer of its stage, becomes `ok` with the
+     * repaired object (PR #258). Its failure stays in `repaired`: the step
+     * row is `partial` and the result is marked partial.
      */
     const repairLeaves = <M>(
-      leaves: Leaf<M, MeetingSummary>[],
-    ): Leaf<M, MeetingSummary>[] =>
+      stage: SummaryStage,
+      leaves: Leaf<M, SummaryStageAnswer>[],
+    ): Leaf<M, SummaryStageAnswer>[] =>
       leaves.map((leaf) => {
         if (leaf.status !== "failed" || leaf.failure?.kind !== "length") {
           return leaf;
         }
         const cut = cutAnswers.get(leaf.key);
         if (!cut?.cutText) return leaf;
-        const object = repairCutSummary(cut.cutText, summarySchema);
+        const object = repairCutAnswer(
+          cut.cutText,
+          summaryStageStepSchema(stage, {
+            sizeLimits: appliesSizeLimits(profile),
+          }).zod,
+          SUMMARY_STAGE_LISTS[stage],
+        );
         if (object === null) return leaf;
         repaired.set(leaf.key, leaf.failure);
         const f = cut.facts;
-        const result: CallStructuredResult<MeetingSummary> = {
+        const result: CallStructuredResult<SummaryStageAnswer> = {
           object,
           finishReason: "stop",
           rawFinishReason: f.rawFinishReason ?? "length",
@@ -335,38 +362,30 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
         return { ...leaf, status: "ok", result, failure: null };
       });
 
-    /** One unit through the length route (4.0.6, 4.5.5). */
-    async function routeUnit<M>(o: {
+    /** One stage call through the length route (4.0.6, 4.5.5). */
+    async function routeStage<M>(o: {
+      stage: SummaryStage;
       key: string;
       members: M[];
       system: string;
       user: (members: readonly M[]) => string;
       tokensOf: (members: readonly M[]) => number;
-      /** Step 2 `split`: Infinity turns it off. */
+      /** Step 2 `split` for a cut answer: Infinity turns it off. */
       minSplitTokens: number;
       /** Step 2 `split` for an input that is too long for the window. */
-      minSplitTokensInput?: number;
-      /** Step 3 `raise`. */
-      raise: boolean;
-      /** A `length` failure will be replanned: it is not a failed call. */
-      quietLength?: boolean;
-      /** Repair a final `length` leaf from its cut answer. Default true. */
-      repair?: boolean;
-    }): Promise<Leaf<M, MeetingSummary>[]> {
+      minSplitTokensInput: number;
+    }): Promise<Leaf<M, SummaryStageAnswer>[]> {
       try {
-        const leaves = await runUnitRoute<M, MeetingSummary>(
+        const leaves = await runUnitRoute<M, SummaryStageAnswer>(
           {
             node: "summarize",
             ctx,
             profile,
             minSplitTokens: o.minSplitTokens,
-            ...(o.minSplitTokensInput !== undefined
-              ? { minSplitTokensInput: o.minSplitTokensInput }
-              : {}),
+            minSplitTokensInput: o.minSplitTokensInput,
             tokensOf: o.tokensOf,
             maxOutput: () => maxOut,
             fits: (members, out, p) =>
-              o.raise &&
               fitsContext(
                 p,
                 estimateTokens(o.system) + estimateTokens(o.user(members)),
@@ -382,7 +401,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
                   runId: state.runId,
                   unitKey: unit.key,
                   chunkIndex: null,
-                  schema: meetingSummaryStepSchema({
+                  schema: summaryStageStepSchema(o.stage, {
                     sizeLimits: appliesSizeLimits(unit.profile),
                   }),
                   instructions: o.system,
@@ -400,7 +419,9 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
                   cutAnswers.set(unit.key, err);
                 }
                 if (err instanceof ContextExceededError) {
-                  contextRefused.add(unit.key);
+                  log.warn(
+                    `context budget: summarize ${unit.key} is too long for the window`,
+                  );
                 }
                 throw err;
               });
@@ -408,17 +429,14 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
             onSplit: () => ctx.progress.addTotal(1),
             onLeafEnd: (leaf) => {
               if (leaf.status === "ok") ctx.progress.callEnded("ok");
-              else if (leaf.status === "failed") {
-                if (o.quietLength && leaf.failure?.kind === "length") {
-                  ctx.progress.callEnded("ok");
-                } else ctx.progress.callEnded("failed");
-              }
+              else if (leaf.status === "failed")
+                ctx.progress.callEnded("failed");
             },
           },
           o.key,
           o.members,
         );
-        const out = o.repair === false ? leaves : repairLeaves(leaves);
+        const out = repairLeaves(o.stage, leaves);
         for (const leaf of out) if (leaf.result) absorb(leaf.result);
         return out;
       } catch (err) {
@@ -439,34 +457,10 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       }
     }
 
-    /**
-     * The outcome of a step row: the fold over its leaves. A repaired leaf
-     * makes the row `partial` with its `length` failure (PR #258).
-     */
-    const stepOutcome = (leaves: readonly Leaf<unknown, MeetingSummary>[]) => {
-      const status = foldStatus(leaves.map((l) => l.status));
-      const cut = leaves.find((l) => repaired.has(l.key));
-      if (status === "ok" && cut) {
-        return {
-          status: "partial" as const,
-          failure: repaired.get(cut.key) ?? null,
-        };
-      }
-      return {
-        status,
-        failure: leaves.find((l) => l.failure !== null)?.failure ?? null,
-      };
-    };
-    const step = <M>(
-      key: string,
-      body: () => Promise<Leaf<M, MeetingSummary>[]>,
-    ) =>
-      runStep(deps, state.runId, { key, node: "summarize" }, body, stepOutcome);
-
-    /** All leaves ok: their objects in order. Else the reason to stop. */
+    /** All leaves ok: their answers in order. Else the reason to stop. */
     const settle = <M>(
-      leaves: readonly Leaf<M, MeetingSummary>[],
-    ): Outcome & { partials?: MeetingSummary[] } => {
+      leaves: readonly Leaf<M, SummaryStageAnswer>[],
+    ): StageOutcome => {
       const bad =
         leaves.find((l) => l.status === "failed") ??
         leaves.find((l) => l.status === "cancelled") ??
@@ -478,186 +472,17 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           failure: bad.failure,
         };
       }
-      const partials = leaves.flatMap((l) =>
-        l.result ? [l.result.object] : [],
-      );
       const cutLeaf = leaves.find((l) => repaired.has(l.key));
       return {
         ok: true,
-        summary: partials[0] as MeetingSummary,
-        partials,
+        answers: leaves.flatMap((l) => (l.result ? [l.result.object] : [])),
         cut: cutLeaf ? (repaired.get(cutLeaf.key) ?? null) : null,
       };
     };
 
-    /**
-     * The context guard of a reduce call (specs/llm-runtime-tuning.md 9
-     * item 5): the estimate of the gateway, so a group that passes here is
-     * sent.
-     */
-    const reduceFits = (group: readonly MeetingSummary[]) =>
-      fitsWindow(
-        estimateCallTokens({
-          instructions: reduceSystem,
-          messages: [{ content: buildSummaryReduceUserPrompt(group) }],
-        }),
-        maxOut,
-        profile.contextWindow,
-      );
-
-    /** Greedy groups of consecutive partials; each group fits the budget. */
-    const groupPartials = (partials: MeetingSummary[]): MeetingSummary[][] => {
-      const groups: MeetingSummary[][] = [];
-      let cur: MeetingSummary[] = [];
-      for (const p of partials) {
-        const next = [...cur, p];
-        if (
-          cur.length > 0 &&
-          (partialTokens(next) > contextBudget || !reduceFits(next))
-        ) {
-          groups.push(cur);
-          cur = [p];
-        } else cur = next;
-      }
-      if (cur.length > 0) groups.push(cur);
-      return groups;
-    };
-
-    const reduceUnit = async (
-      key: string,
-      group: MeetingSummary[],
-    ): Promise<Outcome & { partials?: MeetingSummary[] }> =>
-      settle(
-        await step(key, () =>
-          routeUnit<MeetingSummary>({
-            key,
-            members: group,
-            system: reduceSystem,
-            user: buildSummaryReduceUserPrompt,
-            tokensOf: partialTokens,
-            minSplitTokens: Number.POSITIVE_INFINITY,
-            // A group that the model refuses as too long is cut in two.
-            minSplitTokensInput: 0,
-            raise: true,
-          }),
-        ),
-      );
-
-    /** Map every chunk, then reduce level by level (4.5.3). */
-    async function mapReduce(
-      chunkBudget: number,
-    ): Promise<Outcome | "one_chunk"> {
-      const chunks = chunkTranscript(segments, chunkBudget);
-      if (chunks.length < 2) return "one_chunk";
-      const budgetFailure = (message: string): Outcome => ({
-        ok: false,
-        status: "failed",
-        failure: failure("budget_exceeded", null, message),
-      });
-      const overLimit = (): Outcome =>
-        budgetFailure(
-          `The summary needs more than ${MAX_SUMMARIZE_CALLS} calls.`,
-        );
-      if (made + chunks.length + 1 > MAX_SUMMARIZE_CALLS) {
-        return overLimit();
-      }
-      const partials: MeetingSummary[] = [];
-      for (const [i, chunk] of chunks.entries()) {
-        const key = `map:${i}`;
-        ctx.progress.summaryPart({ n: i + 1, of: chunks.length });
-        const done = settle(
-          await step(key, () =>
-            routeUnit<string>({
-              key,
-              members: chunk.split("\n"),
-              system: mapSystem,
-              user: (members) =>
-                buildSummaryMapUserPrompt(members.join("\n"), i, chunks.length),
-              tokensOf: lineTokens,
-              minSplitTokens: MIN_SPLIT_TOKENS_SUMMARY,
-              // A chunk that is too long for the window always splits.
-              minSplitTokensInput: 0,
-              raise: true,
-            }),
-          ),
-        );
-        if (!done.ok) return done;
-        partials.push(...(done.partials ?? []));
-      }
-      ctx.progress.summaryPart("combine");
-      let current = partials;
-      for (let level = 1; ; level++) {
-        const groups = groupPartials(current);
-        if (groups.length === current.length && current.length > 1) {
-          // No pair fits one call: grouping cannot make progress.
-          return budgetFailure(
-            "The context budget cannot hold two partial summaries.",
-          );
-        }
-        if (
-          groups.length > 1 &&
-          made + groups.length + 1 > MAX_SUMMARIZE_CALLS
-        ) {
-          return overLimit();
-        }
-        if (groups.length === 1) {
-          const done = await reduceUnit(
-            `reduce:${level}:0`,
-            groups[0] as MeetingSummary[],
-          );
-          // A group that was split for its length gives more than one
-          // summary: reduce them on the next level.
-          if (!done.ok || (done.partials?.length ?? 1) <= 1) return done;
-          current = done.partials as MeetingSummary[];
-          continue;
-        }
-        const next: MeetingSummary[] = [];
-        for (const [g, group] of groups.entries()) {
-          // A lone partial goes to the next level as it is: no call.
-          if (group.length === 1) {
-            next.push(group[0] as MeetingSummary);
-            continue;
-          }
-          const done = await reduceUnit(`reduce:${level}:${g}`, group);
-          if (!done.ok) return done;
-          next.push(...(done.partials ?? [done.summary]));
-        }
-        current = next;
-      }
-    }
-
-    const singleCall = (quietLength: boolean) =>
-      routeUnit<string>({
-        key: "single",
-        members: lines,
-        system: singleSystem,
-        user: (members) => buildSummarySingleUserPrompt(members.join("\n")),
-        tokensOf: lineTokens,
-        minSplitTokens: Number.POSITIVE_INFINITY,
-        raise: false,
-        quietLength,
-        // A quiet `length` replans first. The cut answer is the fallback.
-        repair: !quietLength,
-      });
-    /** The fallback of a `single` call that cannot be replanned. */
-    const repairedSingle = (
-      leaves: Leaf<string, MeetingSummary>[],
-      first: Outcome,
-    ): Outcome => {
-      const fixed = repairLeaves(leaves);
-      if (!fixed.some((l) => repaired.has(l.key))) return first;
-      for (const leaf of fixed) {
-        if (repaired.has(leaf.key) && leaf.result) absorb(leaf.result);
-      }
-      return settle(fixed);
-    };
-
-    /**
-     * The step row of an Outcome. A summary made from a repaired unit (this
-     * one or one of its map and reduce units) is `partial`.
-     */
-    const outcomeRow = (
-      o: Outcome,
+    /** The step row of a stage: `partial` when a leaf was repaired (PR #258). */
+    const stepRow = (
+      o: StageOutcome,
     ): {
       status: NodeStatus;
       failure: NodeFailure | null;
@@ -669,21 +494,23 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           ? { status: o.status, failure: o.failure, skipReason: "stopped" }
           : { status: o.status, failure: o.failure };
       }
-      const cut = o.cut ?? repaired.values().next().value ?? null;
-      return cut
-        ? { status: "partial", failure: cut }
+      return o.cut
+        ? { status: "partial", failure: o.cut }
         : { status: "ok", failure: null };
     };
 
+    const stage = (key: string, body: () => Promise<StageOutcome>) =>
+      runStep(deps, state.runId, { key, node: "summarize" }, body, stepRow);
+
+    const stop = (o: StageOutcome & { ok: false }): SummarizeResult => ({
+      ...skippedSummary(),
+      status: o.status,
+      failure: o.failure,
+    });
+
     // --- The plan -----------------------------------------------------------
-    const plan = plannedSummaryCalls(transcriptTokens, contextBudget);
-    if ("error" in plan) {
-      const key = transcriptTokens <= contextBudget ? "single" : "map:0";
-      const f = failure(
-        "budget_exceeded",
-        key,
-        "The context budget cannot hold two partial summaries.",
-      );
+    const budgetStop = async (key: string, message: string) => {
+      const f = failure("budget_exceeded", key, message);
       await runStep(
         deps,
         state.runId,
@@ -692,65 +519,109 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
         (r) => ({ status: "failed", failure: r }),
       );
       return failedSummary(f);
-    }
-    ctx.progress.addTotal(plan.calls);
-    armCeiling(plan.calls);
-
-    let outcome: Outcome;
-    if (transcriptTokens <= contextBudget) {
-      // One row `single`. It stays open when a `length` replans the summary
-      // into map and reduce calls, and ends `succeeded` with the summary.
-      outcome = await runStep(
-        deps,
-        state.runId,
-        { key: "single", node: "summarize" },
-        async (): Promise<Outcome> => {
-          const leaves = await singleCall(true);
-          const first = settle(leaves);
-          if (first.ok || first.failure?.kind !== "length") return first;
-          if (contextRefused.has("single")) {
-            log.warn(
-              "context budget: summarize single is too long for the window; map and reduce at half the tokens",
-            );
-          }
-          // Step 2 of 4.5.5: a map and reduce plan at half the tokens.
-          const half = Math.ceil(transcriptTokens / 2);
-          const replan = plannedSummaryCalls(transcriptTokens, half);
-          if ("error" in replan) return repairedSingle(leaves, first);
-          ctx.progress.addTotal(replan.calls);
-          armCeiling(replan.calls);
-          const done = await mapReduce(half);
-          return done === "one_chunk" ? repairedSingle(leaves, first) : done;
-        },
-        outcomeRow,
+    };
+    const firstKey = summaryStepKey(SUMMARY_EXTRACT_STAGES[0], 0, 1);
+    if ("error" in plannedSummaryCalls(transcriptTokens, contextBudget)) {
+      return budgetStop(
+        firstKey,
+        `The summary needs more than ${MAX_SUMMARIZE_CALLS} calls.`,
       );
-    } else {
-      const done = await mapReduce(contextBudget);
-      outcome =
-        done === "one_chunk"
-          ? // One oversized segment: it cannot be chunked, so send it whole.
-            await runStep(
-              deps,
-              state.runId,
-              { key: "single", node: "summarize" },
-              async () => settle(await singleCall(false)),
-              outcomeRow,
-            )
-          : done;
+    }
+    const parts =
+      transcriptTokens <= contextBudget
+        ? [lines]
+        : chunkTranscript(segments, contextBudget).map((c) => c.split("\n"));
+    const plannedCalls = summaryCallsFor(parts.length);
+    if (plannedCalls > MAX_SUMMARIZE_CALLS) {
+      return budgetStop(
+        firstKey,
+        `The summary needs more than ${MAX_SUMMARIZE_CALLS} calls.`,
+      );
+    }
+    ctx.progress.addTotal(plannedCalls);
+    callSignal = AbortSignal.any([
+      ctx.signal,
+      AbortSignal.timeout(ceilingMs(plannedCalls)),
+    ]);
+
+    // --- Extraction: three narrow calls for each part ------------------------
+    const answers: SummaryStageAnswer[] = [];
+    let cut: NodeFailure | null = null;
+    for (const [i, part] of parts.entries()) {
+      if (parts.length > 1) {
+        ctx.progress.summaryPart({ n: i + 1, of: parts.length });
+      }
+      for (const s of SUMMARY_EXTRACT_STAGES) {
+        const key = summaryStepKey(s, i, parts.length);
+        const done = await stage(key, async () =>
+          settle(
+            await routeStage<string>({
+              stage: s,
+              key,
+              members: part,
+              system: systems[s],
+              user: (members) =>
+                buildSummaryPartUserPrompt(members, i, parts.length),
+              tokensOf: lineTokens,
+              minSplitTokens: MIN_SPLIT_TOKENS_SUMMARY,
+              // A part that is too long for the window always splits.
+              minSplitTokensInput: 0,
+            }),
+          ),
+        );
+        if (!done.ok) return stop(done);
+        cut ??= done.cut;
+        answers.push(...done.answers);
+      }
     }
 
-    if (!outcome.ok) {
-      return {
-        ...skippedSummary(),
-        status: outcome.status,
-        failure: outcome.failure,
-      };
+    // --- Code: merge the parts, check the owners ------------------------------
+    const merged = withSupportedOwners(
+      mergeSummaryAnswers(answers),
+      labels,
+      lines.join("\n"),
+    );
+    if (merged.dropped > 0) {
+      log.info(
+        `summarize: ${merged.dropped} owner(s) not in the transcript set to null`,
+      );
     }
-    const last = totals.last as CallStructuredResult<MeetingSummary> | null;
+
+    // --- The overview: one call on the merged items -------------------------
+    if (parts.length > 1) ctx.progress.summaryPart("combine");
+    // The members are the note lines. A notes text that the model refuses as
+    // too long for the window splits in two halves, and the two overviews are
+    // joined (specs/llm-runtime-tuning.md 9 item 5).
+    const notes = renderSummaryNotes(merged.items).split("\n");
+    const done = await stage("overview", async () =>
+      settle(
+        await routeStage<string>({
+          stage: "overview",
+          key: "overview",
+          members: notes,
+          system: overviewSystem,
+          user: (members) => buildSummaryOverviewUserPrompt(members.join("\n")),
+          tokensOf: lineTokens,
+          minSplitTokens: Number.POSITIVE_INFINITY,
+          minSplitTokensInput: 0,
+        }),
+      ),
+    );
+    if (!done.ok) return stop(done);
+    cut ??= done.cut;
+    const summary: MeetingSummary = {
+      overview: done.answers
+        .map((a) => a.overview ?? "")
+        .join(" ")
+        .trim(),
+      ...merged.items,
+    };
+
+    const last = totals.last as CallStructuredResult<SummaryStageAnswer> | null;
     return {
       status: "ok",
-      summary: outcome.summary,
-      markdown: renderSummaryMarkdown(outcome.summary),
+      summary,
+      markdown: renderSummaryMarkdown(summary),
       llmProvider: profile.provider,
       llmModel: last ? (last.modelServed ?? last.modelRequested) : null,
       inputTokens: totals.input,
@@ -761,7 +632,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       callCount: totals.callIds.length,
       failure: null,
       llmCallIds: totals.callIds,
-      partial: repaired.size > 0,
+      partial: cut !== null || repaired.size > 0,
     };
   }
 

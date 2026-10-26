@@ -55,7 +55,7 @@ import {
 } from "../src/lib/llm/task-profiles.js";
 import {
   CORRECT_CHUNK_STEP_SCHEMA,
-  MEETING_SUMMARY_STEP_SCHEMA,
+  summaryStageStepSchema,
 } from "../src/lib/meetings/workflow/schemas.js";
 import { insertOwnServer } from "../src/lib/own-servers.js";
 import { okReply, scriptedModel, seamFor } from "./helpers/fake-model.js";
@@ -100,21 +100,11 @@ async function callGateway(
     maxReasoningTokens: 0,
   });
   const fake = scriptedModel("mock-meeting-model", [
-    okReply(
-      enhance
-        ? '{"corrections":[]}'
-        : JSON.stringify({
-            overview: "x",
-            keyPoints: [],
-            decisions: [],
-            actionItems: [],
-            openQuestions: [],
-          }),
-    ),
+    okReply(enhance ? '{"corrections":[]}' : JSON.stringify({ overview: "x" })),
   ]);
   const common = {
     runId: "run-timeouts",
-    unitKey: enhance ? "chunk:0" : "single",
+    unitKey: enhance ? "chunk:0" : "overview",
     chunkIndex: null,
     instructions: "Fictional instructions.",
     messages: [{ role: "user" as const, content: "[abc123] Me: hello" }],
@@ -134,7 +124,7 @@ async function callGateway(
     await callStructured({
       ...common,
       step: "summarize",
-      schema: MEETING_SUMMARY_STEP_SCHEMA,
+      schema: summaryStageStepSchema("overview"),
     });
   }
   lastMaxOutput = fake.calls[0]?.maxOutputTokens;

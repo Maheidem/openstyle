@@ -23,11 +23,14 @@ export const isIdentify = (r: RecordedRequest) =>
 export const firstIdOf = (r: RecordedRequest): string =>
   /\[([^\]]+)\]/.exec(r.user)?.[1] ?? "";
 
-/** A request of the `summarize` node: single, map or reduce. */
+/** A request of the `summarize` node: an extraction stage or the overview. */
 export const isSummaryRequest = (r: RecordedRequest) =>
-  /^You (summarize|combine)/.test(r.system);
+  /^You (read a meeting transcript|write the overview)/.test(r.system);
 
-/** A valid summary answer. */
+/**
+ * A valid summary answer. Each stage call parses only the fields of its stage
+ * from it, so one answer serves every summary request.
+ */
 export const SUMMARY_ANSWER = okReply(
   JSON.stringify({
     overview: "The team agreed to ship on Friday.",

@@ -1,15 +1,24 @@
 import { overlapTokens } from "./chunking.js";
-import { type MeetingSummary, valueOrNull } from "./schemas.js";
+import {
+  type MeetingSummary,
+  type SummaryStageAnswer,
+  valueOrNull,
+  withoutDuplicates,
+} from "./schemas.js";
 
 // Pure functions of the summary (specs/meeting-enhance-agentic.md 4.5.3, 4.5.6).
 // WP5a owns the full bodies, because the `save` test compares the stored
 // Markdown with the real function and WP5a runs before WP6. No LangGraph, no
 // database, no model.
 
-/** Hard ceiling on the LLM calls of one Summarize run (4.5.3). */
-export const MAX_SUMMARIZE_CALLS = 24;
-/** Assumed size of one partial summary, for the plan (4.5.3). */
-export const SUMMARY_PARTIAL_TOKENS = 800;
+/**
+ * Hard ceiling on the LLM calls of one Summarize run (4.5.3). A part costs
+ * SUMMARY_CALLS_PER_PART calls and the overview one more, so 40 calls hold 13
+ * parts: at the default budget of 8000 tokens, about 100,000 transcript tokens.
+ */
+export const MAX_SUMMARIZE_CALLS = 40;
+/** The extraction calls of one transcript part (decisions, action items, points). */
+export const SUMMARY_CALLS_PER_PART = 3;
 
 /** Replace line breaks with spaces, so one item stays one list line. */
 export function oneLine(text: string): string {
@@ -49,29 +58,95 @@ export function renderSummaryMarkdown(s: MeetingSummary): string {
 }
 
 /**
- * The calls a transcript of `tokens` costs at `budget` tokens for each call:
- * 1 for a single pass, else N map calls plus the grouped reduce calls of each
- * level until one is left. A plan over `MAX_SUMMARIZE_CALLS`, or a budget that
- * cannot hold two partials, gives `budget_exceeded`.
+ * The parts of a transcript of `tokens` at `budget` tokens for each part: 1
+ * when it fits, else one part for each `budget` minus its overlap.
+ */
+export function plannedSummaryParts(tokens: number, budget: number): number {
+  if (tokens <= budget) return 1;
+  const fresh = Math.max(1, budget - overlapTokens(budget));
+  return Math.ceil(tokens / fresh);
+}
+
+/** The calls of `parts` transcript parts: three per part, then the overview. */
+export function summaryCallsFor(parts: number): number {
+  return SUMMARY_CALLS_PER_PART * parts + 1;
+}
+
+/**
+ * The calls a transcript of `tokens` costs at `budget` tokens for each part
+ * (`summaryCallsFor`). A plan over `MAX_SUMMARIZE_CALLS` gives
+ * `budget_exceeded`.
  */
 export function plannedSummaryCalls(
   tokens: number,
   budget: number,
 ): { calls: number } | { error: "budget_exceeded" } {
-  if (tokens <= budget) return { calls: 1 };
-  const fresh = Math.max(1, budget - overlapTokens(budget));
-  const perGroup = Math.floor(budget / SUMMARY_PARTIAL_TOKENS);
-  if (perGroup < 2) return { error: "budget_exceeded" };
-  let partials = Math.ceil(tokens / fresh);
-  let calls = partials;
-  for (;;) {
-    const groups = Math.ceil(partials / perGroup);
-    calls += groups;
-    if (calls > MAX_SUMMARIZE_CALLS) return { error: "budget_exceeded" };
-    if (groups === 1) break;
-    partials = groups;
-  }
-  return { calls };
+  const calls = summaryCallsFor(plannedSummaryParts(tokens, budget));
+  return calls > MAX_SUMMARIZE_CALLS ? { error: "budget_exceeded" } : { calls };
+}
+
+// ---------------------------------------------------------------------------
+// Merge of the stage answers, and the owner check (code after the calls)
+// ---------------------------------------------------------------------------
+
+/** The four lists of a summary, without the overview. */
+export type SummaryItems = Omit<MeetingSummary, "overview">;
+
+/**
+ * Join the answers of the extraction calls, in part order, into one set of
+ * lists, and remove the duplicates (`withoutDuplicates`): the parts overlap,
+ * so one item can come from two parts.
+ */
+export function mergeSummaryAnswers(
+  answers: readonly SummaryStageAnswer[],
+): SummaryItems {
+  const items: SummaryItems = {
+    keyPoints: answers.flatMap((a) => a.keyPoints ?? []),
+    decisions: answers.flatMap((a) => a.decisions ?? []),
+    actionItems: answers.flatMap((a) => a.actionItems ?? []),
+    openQuestions: answers.flatMap((a) => a.openQuestions ?? []),
+  };
+  return withoutDuplicates(items);
+}
+
+const wordsOf = (text: string) =>
+  text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+/**
+ * The owner of an action item when the transcript supports it, else null
+ * (issue #273). An owner is supported when it is a speaker label of the
+ * transcript ("Me", "Them 2", a confirmed name), or when each of its words is
+ * in the transcript or in a label: a name that the speakers say. A name that
+ * only the context or the title holds is not supported: they do not say which
+ * label is which person.
+ */
+export function supportedOwner(
+  owner: string | null,
+  labels: readonly string[],
+  transcript: string,
+): string | null {
+  const value = valueOrNull(owner);
+  if (value === null) return null;
+  const key = value.replace(/\s+/g, " ").trim().toLowerCase();
+  if (labels.some((l) => l.trim().toLowerCase() === key)) return value;
+  const known = new Set([...wordsOf(transcript), ...labels.flatMap(wordsOf)]);
+  const words = wordsOf(value);
+  return words.length > 0 && words.every((w) => known.has(w)) ? value : null;
+}
+
+/** The items with each unsupported owner set to null (`supportedOwner`). */
+export function withSupportedOwners(
+  items: SummaryItems,
+  labels: readonly string[],
+  transcript: string,
+): { items: SummaryItems; dropped: number } {
+  let dropped = 0;
+  const actionItems = items.actionItems.map((a) => {
+    const owner = supportedOwner(a.owner, labels, transcript);
+    if (owner === null && valueOrNull(a.owner) !== null) dropped++;
+    return { ...a, owner };
+  });
+  return { items: { ...items, actionItems }, dropped };
 }
 
 // ---------------------------------------------------------------------------
@@ -170,25 +245,18 @@ export function closeCutJson(text: string): string | null {
   return text.slice(start, end) + closers;
 }
 
-/** The list fields of the summary. A cut can drop the last ones. */
-const SUMMARY_LIST_KEYS = [
-  "keyPoints",
-  "decisions",
-  "actionItems",
-  "openQuestions",
-] as const;
-
 /**
- * The summary object of a cut answer, or null. It closes the JSON
- * (`closeCutJson`), gives each missing list field an empty list, and checks
- * the result with `schema`. The overview must be complete and not empty: it
- * is the first field, so without it the cut kept nothing useful.
+ * The answer object of a cut stage answer, or null. It closes the JSON
+ * (`closeCutJson`), gives each missing field of `lists` an empty list, and
+ * checks the result with `schema`. A cut string field (the overview) cannot
+ * close, so its answer stays null.
  */
-export function repairCutSummary<T>(
+export function repairCutAnswer<T>(
   text: string,
   schema: {
     safeParse(v: unknown): { success: true; data: T } | { success: false };
   },
+  lists: readonly string[],
 ): T | null {
   const closed = closeCutJson(text);
   if (closed === null) return null;
@@ -202,10 +270,7 @@ export function repairCutSummary<T>(
     return null;
   }
   const obj = value as Record<string, unknown>;
-  if (typeof obj.overview !== "string" || obj.overview.trim() === "") {
-    return null;
-  }
-  for (const key of SUMMARY_LIST_KEYS) if (!(key in obj)) obj[key] = [];
+  for (const key of lists) if (!(key in obj)) obj[key] = [];
   const parsed = schema.safeParse(obj);
   return parsed.success ? parsed.data : null;
 }

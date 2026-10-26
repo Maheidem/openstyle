@@ -1,5 +1,7 @@
-// Node `summarize` (specs/meeting-enhance-agentic.md 4.5, 10.6 row `summarize`).
-// LR9 to LR11, GR10 (c), GR20 (b), GR22, GR26 (b), and the cost and token cases.
+// Node `summarize` (specs/meeting-enhance-agentic.md 4.5, 10.6 row `summarize`),
+// split into narrow calls: three extraction calls for each transcript part
+// (`decisions`, `actionItems`, `points`), code merges the parts and checks the
+// owners, then one `overview` call on the merged items.
 // The real graph, the real gateway and the real saver run over a scripted model.
 import { APICallError } from "ai";
 import type { MockLanguageModelV4 } from "ai/test";
@@ -13,21 +15,27 @@ import {
   __setSummaryCeilingMsForTests,
   SUMMARIZE_IS_STUB,
   summaryCeilingMs,
+  summaryStepKey,
 } from "../src/lib/meetings/workflow/nodes/summarize.js";
 import {
   FOLDER_CONTEXT_LABEL,
+  renderSummaryNotes,
   SUMMARY_OWNER_RULE,
 } from "../src/lib/meetings/workflow/prompts.js";
 import {
   type MeetingSummary,
   MeetingSummarySchema,
+  summaryStageStepSchema,
 } from "../src/lib/meetings/workflow/schemas.js";
 import {
   closeCutJson,
   MAX_SUMMARIZE_CALLS,
+  mergeSummaryAnswers,
   plannedSummaryCalls,
   renderSummaryMarkdown,
-  repairCutSummary,
+  repairCutAnswer,
+  supportedOwner,
+  withSupportedOwners,
 } from "../src/lib/meetings/workflow/summary-pure.js";
 import {
   deriveRunStatus,
@@ -67,14 +75,31 @@ const MIN = 60 * 60 * 1000;
 
 // --- helpers -----------------------------------------------------------------
 
-const isSingle = (r: RecordedRequest) =>
-  r.system.includes("You summarize meeting transcripts");
-const isMap = (r: RecordedRequest) =>
-  r.system.includes("You summarize one part");
-const isReduce = (r: RecordedRequest) =>
-  r.system.includes("You combine partial summaries");
+type Stage = "decisions" | "actionItems" | "points" | "overview";
+
+/** The stage of a summary request, from the job line of its system prompt. */
+function stageOf(r: RecordedRequest): Stage | null {
+  if (r.system.startsWith("You write the overview")) return "overview";
+  if (!r.system.startsWith("You read a meeting transcript")) return null;
+  if (r.system.includes("List the decisions")) return "decisions";
+  if (r.system.includes("List the action items")) return "actionItems";
+  if (r.system.includes("List the key points")) return "points";
+  return null;
+}
+const isOverview = (r: RecordedRequest) => stageOf(r) === "overview";
+const isExtract = (r: RecordedRequest) => stageOf(r) !== null && !isOverview(r);
+/** The part index of an extraction request (0 for a one-part meeting). */
 const partOf = (r: RecordedRequest) =>
-  Number(/This is part (\d+) of/.exec(r.user)?.[1] ?? Number.NaN) - 1;
+  Number(/This is part (\d+) of/.exec(r.user)?.[1] ?? 1) - 1;
+
+const STAGES = ["decisions", "actionItems", "points"] as const;
+/** The step keys of `parts` parts, then the overview. */
+const keysFor = (parts: number) => [
+  ...Array.from({ length: parts }, (_, i) =>
+    STAGES.map((s) => summaryStepKey(s, i, parts)),
+  ).flat(),
+  "overview",
+];
 
 function summary(over: Partial<MeetingSummary> = {}): MeetingSummary {
   return {
@@ -86,8 +111,27 @@ function summary(over: Partial<MeetingSummary> = {}): MeetingSummary {
     ...over,
   };
 }
+/** One answer for every stage: each call parses only the fields of its stage. */
 const sum = (over: Partial<MeetingSummary> = {}) =>
   okReply(JSON.stringify(summary(over)));
+/** The answer of each stage call, from one summary object. */
+const byStage =
+  (s: MeetingSummary) =>
+  (r: RecordedRequest): ScriptStep => {
+    const stage = stageOf(r);
+    if (stage === "decisions")
+      return okReply(JSON.stringify({ decisions: s.decisions }));
+    if (stage === "actionItems")
+      return okReply(JSON.stringify({ actionItems: s.actionItems }));
+    if (stage === "points")
+      return okReply(
+        JSON.stringify({
+          keyPoints: s.keyPoints,
+          openQuestions: s.openQuestions,
+        }),
+      );
+    return okReply(JSON.stringify({ overview: s.overview }));
+  };
 const LENGTH_CUT = reply("length", "length", '{"overview":"cut');
 const down = new APICallError({
   message: "HTTP 503",
@@ -194,10 +238,10 @@ function stubRegistry(mode: "price" | "reject"): void {
   }) as typeof fetch;
 }
 
-// --- the five-field summary, rendering, prompts ------------------------------
+// --- one part: the stage calls, rendering, prompts ---------------------------
 
-describe("summarize: one call (single)", () => {
-  it("a short meeting is one request with key `single`; the Markdown is the render of summary_json", async () => {
+describe("summarize: one part", () => {
+  it("a short meeting is three extraction calls and the overview; the Markdown is the render of summary_json", async () => {
     expect(SUMMARIZE_IS_STUB).toBe(false);
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const s = summary({
@@ -205,25 +249,32 @@ describe("summarize: one call (single)", () => {
       keyPoints: ["The export job takes four minutes."],
       decisions: ["Move the vendor call to Thursday."],
       actionItems: [
-        { task: "Send the draft", owner: "Casey", due: "tomorrow morning" },
+        { task: "Send the draft", owner: "Them 2", due: "tomorrow morning" },
         { task: "Write the notes", owner: null, due: null },
       ],
       openQuestions: ["Who owns the onboarding checklist?"],
     });
-    const r = await run(f, [okReply(JSON.stringify(s))]);
-    expect(r.requests).toHaveLength(1);
-    expect(keysOf(r.recorder)).toEqual(["single"]);
-    expect(stepStatus(r.recorder, "single")).toBe("succeeded");
+    const r = await run(f, byStage(s));
+    expect(r.requests.map(stageOf)).toEqual([
+      "decisions",
+      "actionItems",
+      "points",
+      "overview",
+    ]);
+    expect(keysOf(r.recorder)).toEqual(keysFor(1));
+    for (const key of keysFor(1)) {
+      expect(stepStatus(r.recorder, key)).toBe("succeeded");
+    }
     expect(r.finalState.summary?.status).toBe("ok");
     expect(statusOf(r)).toBe("succeeded");
-    expect(r.finalState.summary?.callCount).toBe(1);
+    expect(r.finalState.summary?.callCount).toBe(4);
 
     const row = savedRow(f.meeting.id);
     const stored = JSON.parse(row?.summary_json as string) as unknown;
     expect(MeetingSummarySchema.parse(stored)).toEqual(s);
     expect(row?.markdown).toBe(renderSummaryMarkdown(stored as MeetingSummary));
     expect(row?.markdown).toContain(
-      "- Send the draft (Owner: Casey; Due: tomorrow morning)",
+      "- Send the draft (Owner: Them 2; Due: tomorrow morning)",
     );
     expect(row?.markdown).toContain("- Write the notes");
     const status = getDb()
@@ -232,25 +283,33 @@ describe("summarize: one call (single)", () => {
     expect(status.status).toBe("summarized");
   });
 
-  it("a `server` provider gets the portable schema; the stored summary has no duplicate entry (issue #246)", async () => {
+  it("a `server` provider gets the portable stage schemas; the stored summary has no duplicate entry (issue #246)", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const point = "The export job takes four minutes.";
     const s = summary({
       keyPoints: [point, "The vendor call moves.", ...Array(5).fill(point)],
     });
-    const r = await run(f, [okReply(JSON.stringify(s))]);
+    const r = await run(f, byStage(s));
     expect(r.finalState.summary?.status).toBe("ok");
-    const wire = JSON.stringify(r.requests[0]?.responseFormat);
-    expect(wire).toContain('"keyPoints"');
-    expect(wire).not.toContain("maxItems");
-    expect(wire).not.toContain("maxLength");
+    const wires = r.requests.map((q) => JSON.stringify(q.responseFormat));
+    expect(wires[2]).toContain('"keyPoints"');
+    expect(wires[2]).not.toContain('"decisions"');
+    for (const wire of wires) {
+      expect(wire).not.toContain("maxItems");
+      expect(wire).not.toContain("maxLength");
+    }
     const stored = JSON.parse(
       savedRow(f.meeting.id)?.summary_json as string,
     ) as MeetingSummary;
     expect(stored.keyPoints).toEqual([point, "The vendor call moves."]);
     expect(
-      r.recorder.calls.find((c) => c.unitKey === "single")?.schema.version,
-    ).toBe(2);
+      r.recorder.calls.map((c) => [c.schema.name, c.schema.version]),
+    ).toEqual([
+      ["summary_decisions", 1],
+      ["summary_action_items", 1],
+      ["summary_points", 1],
+      ["summary_overview", 1],
+    ]);
   });
 
   it('an owner or due of "null", "None", "N/A", "unknown" or blank is stored as null and not rendered', async () => {
@@ -260,10 +319,10 @@ describe("summarize: one call (single)", () => {
         { task: "Send the draft", owner: "null", due: " NULL " },
         { task: "Book the room", owner: "None", due: "n/a" },
         { task: "Check the export", owner: " Unknown", due: "  " },
-        { task: "Write the notes", owner: "Casey", due: "Friday" },
+        { task: "Write the notes", owner: "Me", due: "Friday" },
       ],
     });
-    const r = await run(f, [okReply(JSON.stringify(s))]);
+    const r = await run(f, byStage(s));
     expect(r.finalState.summary?.status).toBe("ok");
     const row = savedRow(f.meeting.id);
     const stored = JSON.parse(row?.summary_json as string) as MeetingSummary;
@@ -271,14 +330,14 @@ describe("summarize: one call (single)", () => {
       [null, null],
       [null, null],
       [null, null],
-      ["Casey", "Friday"],
+      ["Me", "Friday"],
     ]);
     // Only the real owner and due are rendered.
     expect(row?.markdown?.match(/Owner: /g)).toHaveLength(1);
     expect(row?.markdown?.match(/Due: /g)).toHaveLength(1);
     expect(row?.markdown).toContain("- Send the draft\n");
     expect(row?.markdown).toContain(
-      "- Write the notes (Owner: Casey; Due: Friday)",
+      "- Write the notes (Owner: Me; Due: Friday)",
     );
   });
 
@@ -325,7 +384,7 @@ describe("summarize: one call (single)", () => {
     ]);
   });
 
-  it("the prompts: no Markdown section text, no attendee, instructions and context in the right prompts", async () => {
+  it("the prompts: one job each, no Markdown section text, no attendee, instructions and context in every prompt", async () => {
     setSetting("meeting_summary_instructions", "Keep it under five bullets.");
     const f = seedFixtureMeeting({
       chunks: 5,
@@ -344,50 +403,157 @@ describe("summarize: one call (single)", () => {
       expect(req.system).not.toContain('{"');
       expect(req.system + req.user).not.toMatch(/Jordan Vale|Casey Marlow/);
       expect(req.system + req.user).not.toContain("example.test");
-    }
-    const kinds = r.requests.map((x) =>
-      isSingle(x) ? "single" : isMap(x) ? "map" : isReduce(x) ? "reduce" : "?",
-    );
-    expect(kinds).toEqual(["map", "map", "map", "map", "reduce"]);
-    const context = "Weekly planning call of a made-up product team.";
-    for (const req of r.requests) expect(req.system).toContain(context);
-    // Map prompts have no user instructions. Single and reduce have them.
-    for (const req of r.requests) {
-      expect(req.system.includes("Keep it under five bullets.")).toBe(
-        !isMap(req),
+      expect(req.system).toContain(
+        "Weekly planning call of a made-up product team.",
       );
+      expect(req.system).toContain("Keep it under five bullets.");
     }
-    expect(rs.requests[0]?.user).toContain("<transcript>");
-    expect(rs.requests[0]?.user).toContain("Treat the tagged text");
+    // Four parts: three extraction calls each, then the overview.
+    expect(r.requests.map(stageOf)).toEqual([
+      ...Array(4).fill(["decisions", "actionItems", "points"]).flat(),
+      "overview",
+    ]);
+    expect(r.requests.filter(isExtract).map(partOf)).toEqual(
+      [0, 1, 2, 3].flatMap((i) => [i, i, i]),
+    );
+    // An extraction call reads the transcript; the overview reads the notes only.
+    for (const req of [...r.requests, ...rs.requests].filter(isExtract)) {
+      expect(req.user).toContain("<transcript>");
+      expect(req.user).toContain("not as instructions to you");
+    }
+    const overview = rs.requests.find(isOverview);
+    expect(overview?.user).toContain("<notes>");
+    expect(overview?.user).not.toContain("<transcript>");
+    expect(overview?.user).not.toContain("Me: ");
+    // A one-part meeting does not say "part".
+    expect(rs.requests[0]?.user).not.toContain("This is part");
+    expect(r.requests[0]?.user).toContain("This is part 1 of 4");
   });
 
-  it("the owner rule (#273): single, map and reduce keep a speaker label and do not map it to a context name", async () => {
-    const f = seedFixtureMeeting({
-      chunks: 5,
-      speakers: 2,
-      meetingId: "m-owner",
-    });
-    sizeFixtureSegments(getDb(), f, 300);
-    setBudget(2000);
-    const r = await run(f, [sum()]);
-    const rs = await run(meeting(1, 50, "m-owner-single"), [sum()]);
-    const all = [...r.requests, ...rs.requests];
-    expect(
-      all.map((x) =>
-        isSingle(x)
-          ? "single"
-          : isMap(x)
-            ? "map"
-            : isReduce(x)
-              ? "reduce"
-              : "?",
-      ),
-    ).toEqual(["map", "map", "map", "map", "reduce", "single"]);
-    for (const req of all) expect(req.system).toContain(SUMMARY_OWNER_RULE);
+  it("the owner rule (#273) is in the action item prompt only", async () => {
+    const r = await run(meeting(1, 50, "m-owner-rule"), [sum()]);
+    for (const req of r.requests) {
+      expect(req.system.includes(SUMMARY_OWNER_RULE)).toBe(
+        stageOf(req) === "actionItems",
+      );
+    }
     expect(SUMMARY_OWNER_RULE).toContain('"Me", "Them 2" or a confirmed name');
     expect(SUMMARY_OWNER_RULE).toContain(
       "Do not change a label into a name from the context or the title",
     );
+  });
+
+  it("the owner check (#273): a label or a spoken name stays; a name from the calendar or the context only becomes null", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 2,
+      speakers: 3,
+      selfIntroduction: true,
+      withCalendar: true,
+      meetingId: "m-owner-check",
+    });
+    const s = summary({
+      actionItems: [
+        { task: "Send the draft", owner: "Me", due: null },
+        { task: "Book the room", owner: "them 3", due: null },
+        { task: "Check the export", owner: "Morgan Ellis", due: null },
+        { task: "Write the notes", owner: "Jordan Vale", due: null },
+        { task: "Call the vendor", owner: "Them 9", due: null },
+      ],
+    });
+    const r = await run(f, byStage(s));
+    expect(r.finalState.summary?.status).toBe("ok");
+    expect(
+      r.finalState.summary?.summary?.actionItems.map((a) => a.owner),
+    ).toEqual(["Me", "them 3", "Morgan Ellis", null, null]);
+    // The overview reads the checked owners.
+    const overview = r.requests.find(isOverview);
+    expect(overview?.user).toContain("Check the export (owner: Morgan Ellis)");
+    expect(overview?.user).not.toContain("Jordan Vale");
+  });
+
+  it("the overview reads the merged items as notes, and its answer is the overview", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
+    const s = summary({
+      overview: "The overview from the notes.",
+      keyPoints: ["The export job takes four minutes."],
+      decisions: ["Move the vendor call to Thursday."],
+      actionItems: [{ task: "Send the draft", owner: "Me", due: "Friday" }],
+    });
+    const r = await run(f, byStage(s));
+    const overview = r.requests.find(isOverview);
+    const notes = renderSummaryNotes({
+      keyPoints: s.keyPoints,
+      decisions: s.decisions,
+      actionItems: s.actionItems,
+      openQuestions: [],
+    });
+    expect(overview?.user).toContain(notes);
+    expect(notes).toContain("- Send the draft (owner: Me; due: Friday)");
+    expect(notes).toContain("Open questions:\n- none");
+    expect(r.finalState.summary?.summary?.overview).toBe(
+      "The overview from the notes.",
+    );
+  });
+});
+
+describe("summary-pure: merge and owner check", () => {
+  it("mergeSummaryAnswers joins the stage answers in order and removes duplicates", () => {
+    expect(
+      mergeSummaryAnswers([
+        { decisions: ["Ship on Friday."] },
+        { actionItems: [{ task: "Send the draft", owner: null, due: null }] },
+        { keyPoints: ["Kestrel latency is high."], openQuestions: [] },
+        { decisions: ["ship on friday.", "Hire a designer."] },
+        {
+          actionItems: [{ task: "Send the draft", owner: "Me", due: "Friday" }],
+        },
+        { keyPoints: ["Kestrel latency is high.", "The budget is open."] },
+      ]),
+    ).toEqual({
+      keyPoints: ["Kestrel latency is high.", "The budget is open."],
+      decisions: ["Ship on Friday.", "Hire a designer."],
+      actionItems: [{ task: "Send the draft", owner: "Me", due: "Friday" }],
+      openQuestions: [],
+    });
+  });
+
+  it("supportedOwner keeps a label or a name that the transcript says, and drops the rest", () => {
+    const labels = ["Me", "Them 2", "Ana Souza"];
+    const transcript = "Me: Bruno will send it.\nAna Souza: ok.";
+    expect(supportedOwner("Me", labels, transcript)).toBe("Me");
+    expect(supportedOwner(" them 2 ", labels, transcript)).toBe(" them 2 ");
+    expect(supportedOwner("Ana Souza", labels, transcript)).toBe("Ana Souza");
+    expect(supportedOwner("Bruno", labels, transcript)).toBe("Bruno");
+    expect(supportedOwner("Them 2 (Bruno)", labels, transcript)).toBe(
+      "Them 2 (Bruno)",
+    );
+    expect(supportedOwner("Carla", labels, transcript)).toBeNull();
+    expect(supportedOwner("Bruno Lima", labels, transcript)).toBeNull();
+    expect(supportedOwner("N/A", labels, transcript)).toBeNull();
+    expect(supportedOwner(null, labels, transcript)).toBeNull();
+  });
+
+  it("withSupportedOwners counts the owners it drops", () => {
+    const out = withSupportedOwners(
+      {
+        keyPoints: [],
+        decisions: [],
+        actionItems: [
+          { task: "a", owner: "Me", due: null },
+          { task: "b", owner: "Carla", due: null },
+          { task: "c", owner: null, due: "Friday" },
+        ],
+        openQuestions: [],
+      },
+      ["Me"],
+      "Me: hello.",
+    );
+    expect(out.dropped).toBe(1);
+    expect(out.items.actionItems.map((a) => a.owner)).toEqual([
+      "Me",
+      null,
+      null,
+    ]);
   });
 });
 
@@ -410,7 +576,7 @@ describe("summarize: no folder context (#230, P8b)", () => {
     setBudget(2000);
     const rf = await run(filed, [sum()]);
     const ru = await run(unfiled, [sum()]);
-    expect(rf.requests.length).toBeGreaterThan(1);
+    expect(rf.requests.length).toBeGreaterThan(4);
     for (const req of rf.requests) {
       expect(req.system).toContain(
         "Weekly planning call of a made-up product team.",
@@ -441,10 +607,11 @@ describe("summarize: the text of the lines (4.5 Inputs)", () => {
       )
       .run(b?.id as string);
     const r = await run(f, [sum()]);
-    const user = r.requests[0]?.user ?? "";
-    expect(user).toContain("Me: The stored correction text.");
-    expect(user).not.toContain(a?.text as string);
-    expect(user).toContain(`Unidentified: ${b?.text}`);
+    for (const req of r.requests.filter(isExtract)) {
+      expect(req.user).toContain("Me: The stored correction text.");
+      expect(req.user).not.toContain(a?.text as string);
+      expect(req.user).toContain(`Unidentified: ${b?.text}`);
+    }
   });
 
   it("a chained run uses this run's correction; an ok unit with no correction gives the raw text, not a stale value", async () => {
@@ -456,7 +623,7 @@ describe("summarize: the text of the lines (4.5 Inputs)", () => {
     const r = await run(
       f,
       (req) =>
-        isSingle(req)
+        stageOf(req) !== null
           ? sum()
           : okReply(
               JSON.stringify({
@@ -465,131 +632,114 @@ describe("summarize: the text of the lines (4.5 Inputs)", () => {
             ),
       { stages: ["enhance", "summarize"] },
     );
-    const summaryReq = r.requests.find(isSingle);
-    expect(summaryReq?.user).toContain(`Me: ${a?.text} fresh`);
-    expect(summaryReq?.user).toContain(`Me: ${b?.text}`);
-    expect(summaryReq?.user).not.toContain("STALE");
+    const extract = r.requests.filter(isExtract);
+    expect(extract).toHaveLength(3);
+    for (const req of extract) {
+      expect(req.user).toContain(`Me: ${a?.text} fresh`);
+      expect(req.user).toContain(`Me: ${b?.text}`);
+      expect(req.user).not.toContain("STALE");
+    }
   });
 });
 
-// --- map and reduce ----------------------------------------------------------
+// --- long meetings: parts ----------------------------------------------------
 
-describe("summarize: map and reduce (4.5.3)", () => {
-  it("a long transcript is N map calls and one reduce; keys map:0 to map:N-1 then reduce:1:0", async () => {
+describe("summarize: parts of a long meeting (4.5.3)", () => {
+  it("a long transcript is three calls for each part, then the overview; code merges the parts", async () => {
     setBudget(2000);
-    const f = meeting(5, 300, "m-mr"); // 20 lines of about 300 tokens
-    const r = await run(f, (req) =>
-      isReduce(req) ? sum({ overview: "Final." }) : sum(),
-    );
+    const f = meeting(5, 300, "m-parts"); // 20 lines of about 300 tokens
+    const r = await run(f, (req) => {
+      if (isOverview(req)) return sum({ overview: "Final." });
+      const i = partOf(req);
+      return sum({
+        keyPoints: [
+          `Point from part ${i + 1}.`,
+          "The export job takes four minutes.",
+        ],
+        decisions: [`Decision of part ${i + 1}.`],
+      });
+    });
+    expect(keysOf(r.recorder)).toEqual(keysFor(4));
     const planned = plannedSummaryCalls(5900, 2000);
     expect("calls" in planned && r.requests.length <= planned.calls).toBe(true);
-    expect(r.requests.length).toBeLessThanOrEqual(MAX_SUMMARIZE_CALLS);
-    expect(keysOf(r.recorder)).toEqual([
-      "map:0",
-      "map:1",
-      "map:2",
-      "map:3",
-      "reduce:1:0",
+    const stored = JSON.parse(
+      savedRow(f.meeting.id)?.summary_json as string,
+    ) as MeetingSummary;
+    expect(stored.overview).toBe("Final.");
+    expect(stored.keyPoints).toEqual([
+      "Point from part 1.",
+      "The export job takes four minutes.",
+      "Point from part 2.",
+      "Point from part 3.",
+      "Point from part 4.",
     ]);
-    expect(r.requests.filter(isMap).map(partOf)).toEqual([0, 1, 2, 3]);
-    // The reduce prompt holds the four partials as tagged JSON.
-    const reduceReq = r.requests.find(isReduce);
-    expect(reduceReq?.user.match(/<partial index="\d">/g)).toHaveLength(4);
-    expect(reduceReq?.user).toContain('"overview":"A planning call."');
-    expect(savedRow(f.meeting.id)?.summary_json).toContain('"Final."');
-    expect(r.finalState.summary?.callCount).toBe(5);
+    expect(stored.decisions).toEqual(
+      [1, 2, 3, 4].map((i) => `Decision of part ${i}.`),
+    );
+    // The overview reads the merged notes, once.
+    const overview = r.requests.find(isOverview);
+    expect(overview?.user.match(/four minutes/g)).toHaveLength(1);
+    expect(r.finalState.summary?.callCount).toBe(13);
     expect(statusOf(r)).toBe("succeeded");
     // There is no row named `summarize`.
     expect(r.recorder.steps.has("summarize")).toBe(false);
   });
 
-  it("two reduce levels use the keys reduce:1:0, reduce:1:1 and reduce:2:0; level 2 reads the level-1 results", async () => {
+  it("a plan over MAX_SUMMARIZE_CALLS fails with budget_exceeded before any call", async () => {
     setBudget(2000);
-    const f = meeting(5, 300, "m-2lvl");
-    const big = "w".repeat(3600); // about 900 tokens: two fit one group, three do not
-    const r = await run(f, (req) => {
-      if (isMap(req)) return sum({ overview: big });
-      if (req.user.includes(big)) {
-        return sum({ overview: `Level one result ${partialCount(req)}.` });
-      }
-      return sum({ overview: "Final." });
-    });
-    expect(keysOf(r.recorder)).toEqual([
-      "map:0",
-      "map:1",
-      "map:2",
-      "map:3",
-      "reduce:1:0",
-      "reduce:1:1",
-      "reduce:2:0",
-    ]);
-    const last = r.requests.at(-1);
-    expect(last?.user).toContain("Level one result 2.");
-    expect(last?.user.match(/Level one result/g)).toHaveLength(2);
-    expect(last?.user).not.toContain(big);
-    expect(r.requests.length).toBeLessThanOrEqual(MAX_SUMMARIZE_CALLS);
-    expect(statusOf(r)).toBe("succeeded");
-  });
-
-  it("a context budget that cannot hold two partials fails with budget_exceeded, no call, no summary", async () => {
-    setBudget(300);
-    const f = meeting(2, 300, "m-300");
+    const f = meeting(40, 300, "m-big-plan"); // 160 lines: 27 parts, 82 calls
     const r = await run(f, [sum()]);
     expect(r.requests).toHaveLength(0);
     expect(r.finalState.summary?.status).toBe("failed");
     expect(r.finalState.summary?.failure?.kind).toBe("budget_exceeded");
     expect(savedRow(f.meeting.id)).toBeUndefined();
     expect(statusOf(r)).toBe("failed");
-    expect(r.recorder.steps.get("map:0")?.errorKind).toBe("budget_exceeded");
+    expect(r.recorder.steps.get("decisions")?.errorKind).toBe(
+      "budget_exceeded",
+    );
   });
 
-  it("a plan over 24 calls fails with budget_exceeded before any call", async () => {
-    setBudget(2000);
-    const f = meeting(40, 300, "m-big-plan"); // 160 lines: more than 24 chunks
-    const r = await run(f, [sum()]);
-    expect(r.requests).toHaveLength(0);
-    expect(r.finalState.summary?.failure?.kind).toBe("budget_exceeded");
-    expect(savedRow(f.meeting.id)).toBeUndefined();
-  });
-
-  it("GR20 (b): a persistent 503 on the reduce call sends N + 2 requests and no map call again", async () => {
+  it("GR20 (b): a persistent 503 on the overview call sends 12 + 2 requests and no extraction call again", async () => {
     setBudget(2000);
     const f = meeting(5, 300, "m-gr20b");
-    const r = await run(f, (req) => (isReduce(req) ? down : sum()));
-    // 4 map calls, the reduce call, and its one retry.
-    expect(r.requests).toHaveLength(4 + 2);
-    expect(r.requests.filter(isMap)).toHaveLength(4);
+    const r = await run(f, (req) => (isOverview(req) ? down : sum()));
+    // 12 extraction calls, the overview call, and its one retry.
+    expect(r.requests).toHaveLength(12 + 2);
+    expect(r.requests.filter(isExtract)).toHaveLength(12);
     expect(r.finalState.summary?.status).toBe("failed");
     expect(r.finalState.summary?.failure?.kind).toBe("provider_unavailable");
-    expect(r.finalState.summary?.failure?.unitKey).toBe("reduce:1:0");
+    expect(r.finalState.summary?.failure?.unitKey).toBe("overview");
     expect(savedRow(f.meeting.id)).toBeUndefined();
-    expect(stepStatus(r.recorder, "reduce:1:0")).toBe("failed");
-    expect(stepStatus(r.recorder, "map:3")).toBe("succeeded");
+    expect(stepStatus(r.recorder, "overview")).toBe("failed");
+    expect(stepStatus(r.recorder, "points:3")).toBe("succeeded");
+  });
+
+  it("a failed extraction call stops the node: no later call, no overview, no summary", async () => {
+    setBudget(2000);
+    const f = meeting(5, 300, "m-stop");
+    const r = await run(f, (req) =>
+      stageOf(req) === "actionItems" && partOf(req) === 1 ? down : sum(),
+    );
+    // Part 1: decisions:0..points:0, decisions:1, actionItems:1 and its retry.
+    expect(r.requests).toHaveLength(3 + 1 + 2);
+    expect(r.requests.filter(isOverview)).toHaveLength(0);
+    expect(r.finalState.summary?.failure?.unitKey).toBe("actionItems:1");
+    expect(savedRow(f.meeting.id)).toBeUndefined();
   });
 });
-
-function partialCount(req: RecordedRequest): number {
-  return req.user.match(/<partial index="\d+">/g)?.length ?? 0;
-}
 
 // --- GR26 (b), the ceiling ---------------------------------------------------
 
 describe("GR26 (b): plannedSummaryCalls and the ceiling", () => {
-  it("plans one call under budget; map plus grouped reduces above it; budget_exceeded over 24 or under two partials", () => {
-    expect(plannedSummaryCalls(1500, 2000)).toEqual({ calls: 1 });
-    // 6000 tokens at 2000: 4 map, 2 level-1 reduces, 1 final reduce.
-    expect(plannedSummaryCalls(6000, 2000)).toEqual({ calls: 7 });
-    // Six map chunks that do not fit one reduce: 6 map, 3 + 2 grouped reduces, 1 final.
-    expect(plannedSummaryCalls(10800, 2000)).toEqual({ calls: 12 });
+  it("plans 4 calls under budget; 3 for each part plus the overview above it; budget_exceeded over 40", () => {
+    expect(plannedSummaryCalls(1500, 2000)).toEqual({ calls: 4 });
+    // 6000 tokens at 2000 (fresh 1800): 4 parts.
+    expect(plannedSummaryCalls(6000, 2000)).toEqual({ calls: 13 });
+    expect(plannedSummaryCalls(10800, 2000)).toEqual({ calls: 19 });
     expect(plannedSummaryCalls(200000, 2000)).toEqual({
       error: "budget_exceeded",
     });
-    expect(plannedSummaryCalls(6000, 1599)).toEqual({
-      error: "budget_exceeded",
-    });
-    expect(plannedSummaryCalls(6000, 300)).toEqual({
-      error: "budget_exceeded",
-    });
+    expect(MAX_SUMMARIZE_CALLS).toBe(40);
   });
 
   it("the ceiling is clamp(2 x perCallMs x plannedCalls, 2 x perCallMs, 4 h)", () => {
@@ -614,101 +764,107 @@ describe("GR22: the deadline", () => {
     expect(
       [...r.recorder.steps.values()].some((s) => s.status === "cancelled"),
     ).toBe(false);
-    expect(stepStatus(r.recorder, "single")).toBe("failed");
-    expect(r.recorder.steps.get("single")?.errorKind).toBe("deadline_exceeded");
+    expect(stepStatus(r.recorder, "decisions")).toBe("failed");
+    expect(r.recorder.steps.get("decisions")?.errorKind).toBe(
+      "deadline_exceeded",
+    );
   });
 
-  it("the ceiling during the map phase skips the rest: no reduce, no summary", async () => {
+  it("the ceiling during the parts skips the rest: no overview, no summary", async () => {
     __setSummaryCeilingMsForTests(80);
     setBudget(2000);
     const f = meeting(5, 300, "m-dl-map");
     const r = await run(f, (req) => (partOf(req) === 1 ? HANG : sum()));
     expect(r.finalState.summary?.failure?.kind).toBe("deadline_exceeded");
-    expect(r.requests.filter(isReduce)).toHaveLength(0);
-    expect(r.requests.filter(isMap)).toHaveLength(2);
+    expect(r.requests.filter(isOverview)).toHaveLength(0);
+    expect(r.requests.filter(isExtract).map(partOf)).toEqual([0, 0, 0, 1]);
     expect(savedRow("m-dl-map")).toBeUndefined();
   });
 });
 
-// --- the length route (LR9 to LR11) ------------------------------------------
+// --- the length route --------------------------------------------------------
 
 describe("the length route", () => {
-  it("LR9: a single call that ends `length` replans into map and reduce; step `single` ends succeeded", async () => {
-    const f = meeting(4, 300, "m-lr9"); // about 4700 tokens, budget 8000: single
+  it("an extraction call that ends `length` on a big part splits it: keys decisions, decisions/0, decisions/1; both answers are merged", async () => {
+    const f = meeting(4, 300, "m-lr9"); // about 4700 tokens, budget 8000: one part
     const r = await run(f, (req) => {
       if (req.n === 0) return LENGTH_CUT;
-      return isReduce(req) ? sum({ overview: "Merged." }) : sum();
+      if (stageOf(req) === "decisions") {
+        return sum({ decisions: [`Half ${req.n} decision.`] });
+      }
+      return sum();
     });
     const keys = keysOf(r.recorder);
-    expect(keys[0]).toBe("single");
-    expect(
-      keys.slice(1).filter((k) => k.startsWith("map:")).length,
-    ).toBeGreaterThanOrEqual(2);
-    expect(keys.at(-1)).toMatch(/^reduce:\d+:0$/);
-    expect(r.requests.length).toBeLessThanOrEqual(MAX_SUMMARIZE_CALLS);
-    expect(stepStatus(r.recorder, "single")).toBe("succeeded");
-    expect(r.finalState.summary?.status).toBe("ok");
-    expect(savedRow(f.meeting.id)?.summary_json).toContain('"Merged."');
+    expect(keys.slice(0, 3)).toEqual([
+      "decisions",
+      "decisions/0",
+      "decisions/1",
+    ]);
+    expect(stepStatus(r.recorder, "decisions")).toBe("succeeded");
+    expect(r.finalState.summary?.summary?.decisions).toEqual([
+      "Half 1 decision.",
+      "Half 2 decision.",
+    ]);
     expect(statusOf(r)).toBe("succeeded");
   });
 
-  it("LR9: a single call that ends `length` on a transcript too small to replan fails with kind length", async () => {
+  it("an extraction call that ends `length` on a small part is raised once, then fails with kind length", async () => {
     const f = seedFixtureMeeting({
       chunks: 1,
       speakers: 1,
       meetingId: "m-lr9s",
     });
     const r = await run(f, [LENGTH_CUT]);
-    expect(r.requests).toHaveLength(1);
+    expect(r.requests.map((q) => q.maxOutputTokens)).toEqual([4096, 8192]);
     expect(r.finalState.summary?.failure?.kind).toBe("length");
-    expect(stepStatus(r.recorder, "single")).toBe("failed");
+    expect(stepStatus(r.recorder, "decisions")).toBe("failed");
+    expect(r.requests.filter(isOverview)).toHaveLength(0);
   });
 
-  it("LR10: a map call that ends `length` splits; keys map:2, map:2/0, map:2/1; the reduce reads both halves", async () => {
+  it("LR10: a cut answer of a part splits that part; keys decisions:2, decisions:2/0, decisions:2/1", async () => {
     setBudget(6000);
-    const f = meeting(14, 400, "m-lr10"); // 56 lines of about 400 tokens: 4 chunks
-    let mapCalls = 0;
+    const f = meeting(14, 400, "m-lr10"); // 56 lines of about 400 tokens: 4 parts
+    let cutDone = false;
     const r = await run(f, (req) => {
-      if (isMap(req)) {
-        mapCalls += 1;
-        if (partOf(req) === 2 && mapCalls === 3) return LENGTH_CUT;
-        return sum({ overview: `Part ${partOf(req) + 1} result.` });
+      if (stageOf(req) === "decisions" && partOf(req) === 2 && !cutDone) {
+        cutDone = true;
+        return LENGTH_CUT;
       }
-      return sum({ overview: "Final." });
+      return sum({ decisions: [`Decision ${req.n}.`] });
     });
     const keys = keysOf(r.recorder);
-    expect(keys.filter((k) => k.startsWith("map:2"))).toEqual([
-      "map:2",
-      "map:2/0",
-      "map:2/1",
+    expect(keys.filter((k) => k.startsWith("decisions:2"))).toEqual([
+      "decisions:2",
+      "decisions:2/0",
+      "decisions:2/1",
     ]);
-    expect(keys.at(-1)).toBe("reduce:1:0");
-    const reduceReq = r.requests.find(isReduce);
-    // Four chunks, one of them in two halves: five partials, in order.
-    expect(partialCount(reduceReq as RecordedRequest)).toBe(5);
+    expect(keys.at(-1)).toBe("overview");
+    // Four parts, one of them in two halves: five decision answers.
+    expect(r.finalState.summary?.summary?.decisions).toHaveLength(5);
     expect(r.finalState.summary?.status).toBe("ok");
   });
 
-  it("LR11: a reduce call that ends `length` is raised once: same key, attempt 2, max_tokens doubled", async () => {
-    setBudget(2000);
-    const f = meeting(5, 300, "m-lr11");
-    let reduces = 0;
+  it("LR11: an overview call that ends `length` is raised once: same key, attempt 2, max_tokens doubled", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 1,
+      speakers: 1,
+      meetingId: "m-lr11",
+    });
+    let overviews = 0;
     const r = await run(f, (req) => {
-      if (isReduce(req)) {
-        reduces += 1;
-        return reduces === 1 ? LENGTH_CUT : sum({ overview: "Final." });
+      if (isOverview(req)) {
+        overviews += 1;
+        return overviews === 1 ? LENGTH_CUT : sum({ overview: "Final." });
       }
       return sum();
     });
-    const reduceRequests = r.requests.filter(isReduce);
-    expect(reduceRequests).toHaveLength(2);
-    expect(reduceRequests[0]?.maxOutputTokens).toBe(4096);
-    expect(reduceRequests[1]?.maxOutputTokens).toBe(8192);
-    const reduceCalls = r.recorder.calls.filter(
-      (c) => c.unitKey === "reduce:1:0",
-    );
-    expect(reduceCalls.map((c) => c.attempt)).toEqual([1, 2]);
-    expect(r.finalState.summary?.status).toBe("ok");
+    const overviewRequests = r.requests.filter(isOverview);
+    expect(overviewRequests.map((q) => q.maxOutputTokens)).toEqual([
+      4096, 8192,
+    ]);
+    const calls = r.recorder.calls.filter((c) => c.unitKey === "overview");
+    expect(calls.map((c) => c.attempt)).toEqual([1, 2]);
+    expect(r.finalState.summary?.summary?.overview).toBe("Final.");
   });
 });
 
@@ -721,7 +877,7 @@ const partialRow = (meetingId: string) =>
       .get(meetingId) as { partial: number | null } | undefined
   )?.partial;
 
-describe("closeCutJson and repairCutSummary (pure, PR #258)", () => {
+describe("closeCutJson and repairCutAnswer (pure, PR #258)", () => {
   it("closes at the last complete list element or top member", () => {
     expect(closeCutJson('{"a": ["x", "y')).toBe('{"a": ["x"]}');
     expect(closeCutJson('{"a": "x", "b": [1, 2')).toBe('{"a": "x", "b": [1]}');
@@ -743,34 +899,32 @@ describe("closeCutJson and repairCutSummary (pure, PR #258)", () => {
     expect(closeCutJson('text {"a": 1}')).toBeNull();
   });
 
-  it("fills the missing lists, checks the schema, and needs an overview", () => {
+  it("fills the missing lists of the stage and checks the stage schema", () => {
+    const points = summaryStageStepSchema("points").zod;
     expect(
-      repairCutSummary(
-        '{"overview": "A call.", "keyPoints": ["K"], "decisions": [',
-        MeetingSummarySchema,
-      ),
-    ).toEqual(summary({ overview: "A call.", keyPoints: ["K"] }));
-    expect(
-      repairCutSummary(
-        '{"overview": "", "keyPoints": ["K"',
-        MeetingSummarySchema,
-      ),
-    ).toBeNull();
-    expect(
-      repairCutSummary('{"keyPoints": ["K"], "x', MeetingSummarySchema),
-    ).toBeNull();
+      repairCutAnswer('{"keyPoints": ["K", "L', points, [
+        "keyPoints",
+        "openQuestions",
+      ]),
+    ).toEqual({ keyPoints: ["K"], openQuestions: [] });
     // A wrong type fails the schema.
     expect(
-      repairCutSummary(
-        '{"overview": "A call.", "keyPoints": [1, 2',
-        MeetingSummarySchema,
-      ),
+      repairCutAnswer('{"keyPoints": [1, 2', points, [
+        "keyPoints",
+        "openQuestions",
+      ]),
     ).toBeNull();
+    // A cut overview string cannot close.
+    const overview = summaryStageStepSchema("overview").zod;
+    expect(repairCutAnswer('{"overview": "cut', overview, [])).toBeNull();
+    expect(repairCutAnswer('{"overview": "Done."}  ', overview, [])).toEqual({
+      overview: "Done.",
+    });
   });
 });
 
 describe("a cut answer with a valid prefix (PR #258)", () => {
-  it("a single call cut in its third list is repaired: the cut item is dropped, the rest kept, saved as partial", async () => {
+  it("an action item answer cut in its list is repaired: the cut item is dropped, the rest kept, saved as partial", async () => {
     const f = seedFixtureMeeting({
       chunks: 1,
       speakers: 1,
@@ -779,20 +933,17 @@ describe("a cut answer with a valid prefix (PR #258)", () => {
     const cut = reply(
       "length",
       "length",
-      '{\n  "overview": "The team planned the launch.",\n  "keyPoints": ["The beta opens in May.", "Two testers joined."],\n  "decisions": ["Ship the beta", "Hire a desig',
+      '{\n  "actionItems": [{"task": "Ship the beta", "owner": "Me", "due": null}, {"task": "Hire a desig',
     );
-    const r = await run(f, [cut]);
-    expect(r.requests).toHaveLength(1);
+    const r = await run(f, (req) =>
+      stageOf(req) === "actionItems" ? cut : sum({ overview: "The plan." }),
+    );
     expect(r.finalState.summary?.status).toBe("ok");
     expect(r.finalState.summary?.partial).toBe(true);
-    expect(r.finalState.summary?.summary).toEqual(
-      summary({
-        overview: "The team planned the launch.",
-        keyPoints: ["The beta opens in May.", "Two testers joined."],
-        decisions: ["Ship the beta"],
-      }),
-    );
-    expect(stepStatus(r.recorder, "single")).toBe("partial");
+    expect(r.finalState.summary?.summary?.actionItems).toEqual([
+      { task: "Ship the beta", owner: "Me", due: null },
+    ]);
+    expect(stepStatus(r.recorder, "actionItems")).toBe("partial");
     expect(partialRow(f.meeting.id)).toBe(1);
     expect(savedRow(f.meeting.id)?.markdown).toContain("- Ship the beta");
     expect(savedRow(f.meeting.id)?.markdown).not.toContain("Hire a desig");
@@ -800,32 +951,32 @@ describe("a cut answer with a valid prefix (PR #258)", () => {
     expect(statusOf(r)).toBe("succeeded");
   });
 
-  it("a reduce call that loops on whitespace at 4096 and 8192 tokens is repaired from the 8192 answer", async () => {
-    setBudget(2000);
-    const f = meeting(5, 300, "m-cut2");
+  it("an overview call that loops on whitespace at 4096 and 8192 tokens is repaired from the 8192 answer", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 1,
+      speakers: 1,
+      meetingId: "m-cut2",
+    });
     const loop = (overview: string) =>
       reply(
         "length",
         "length",
-        `{\n  "overview": "${overview}",\n  "keyPoints": [],\n  "decisions": [],\n  "actionItems": [\n    {\n      "task": "Send the plan",\n      "owner": "Ana",\n      "due": null\n    }\n  ]${"\n    ".repeat(200)}`,
+        `{\n  "overview": "${overview}"\n}${"\n    ".repeat(200)}`,
       );
-    let reduces = 0;
+    let overviews = 0;
     const r = await run(f, (req) => {
-      if (isReduce(req)) {
-        reduces += 1;
-        return loop(reduces === 1 ? "First try." : "Second try.");
+      if (isOverview(req)) {
+        overviews += 1;
+        return loop(overviews === 1 ? "First try." : "Second try.");
       }
       return sum();
     });
-    const reduceRequests = r.requests.filter(isReduce);
-    expect(reduceRequests.map((q) => q.maxOutputTokens)).toEqual([4096, 8192]);
+    expect(r.requests.filter(isOverview).map((q) => q.maxOutputTokens)).toEqual(
+      [4096, 8192],
+    );
     expect(r.finalState.summary?.partial).toBe(true);
     expect(r.finalState.summary?.summary?.overview).toBe("Second try.");
-    expect(r.finalState.summary?.summary?.actionItems).toEqual([
-      { task: "Send the plan", owner: "Ana", due: null },
-    ]);
-    expect(r.finalState.summary?.summary?.openQuestions).toEqual([]);
-    expect(stepStatus(r.recorder, "reduce:1:0")).toBe("partial");
+    expect(stepStatus(r.recorder, "overview")).toBe("partial");
     expect(partialRow(f.meeting.id)).toBe(1);
     expect(statusOf(r)).toBe("succeeded");
   });
@@ -841,35 +992,17 @@ describe("a cut answer with a valid prefix (PR #258)", () => {
     expect(partialRow(f.meeting.id)).toBe(0);
   });
 
-  it("a cut answer with no complete overview stays a failed step, as before", async () => {
+  it("a cut overview with no complete text stays a failed step: no summary", async () => {
     const f = seedFixtureMeeting({
       chunks: 1,
       speakers: 1,
       meetingId: "m-cut4",
     });
-    const r = await run(f, [LENGTH_CUT]);
+    const r = await run(f, (req) => (isOverview(req) ? LENGTH_CUT : sum()));
     expect(r.finalState.summary?.status).toBe("failed");
     expect(r.finalState.summary?.failure?.kind).toBe("length");
-    expect(stepStatus(r.recorder, "single")).toBe("failed");
+    expect(stepStatus(r.recorder, "overview")).toBe("failed");
     expect(savedRow(f.meeting.id)).toBeUndefined();
-  });
-
-  it("a single call that can replan does not repair: the map and reduce plan runs", async () => {
-    const f = meeting(4, 300, "m-cut5");
-    const cut = reply(
-      "length",
-      "length",
-      '{"overview": "Cut but valid.", "keyPoints": ["A"',
-    );
-    const r = await run(f, (req) => {
-      if (req.n === 0) return cut;
-      return isReduce(req) ? sum({ overview: "Merged." }) : sum();
-    });
-    expect(keysOf(r.recorder)[0]).toBe("single");
-    expect(keysOf(r.recorder).at(-1)).toMatch(/^reduce:\d+:0$/);
-    expect(r.finalState.summary?.partial).toBe(false);
-    expect(r.finalState.summary?.summary?.overview).toBe("Merged.");
-    expect(stepStatus(r.recorder, "single")).toBe("succeeded");
   });
 });
 
@@ -944,7 +1077,7 @@ async function runWithModel(
 describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
   const price = { input: 0.15 / 1_000_000, output: 0.6 / 1_000_000 };
 
-  it("(a) a priced model: cost_usd = 1000 x price.input + 200 x price.output, read back; tokens and provider", async () => {
+  it("(a) a priced model: cost_usd = 4 calls x (1000 x price.input + 200 x price.output), read back; tokens and provider", async () => {
     useOpenAi();
     stubRegistry("price");
     const f = seedFixtureMeeting({ chunks: 1, speakers: 1, meetingId: "m-a" });
@@ -957,11 +1090,11 @@ describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
     const row = savedRow("m-a");
     expect(row?.cost_usd).not.toBeNull();
     expect(row?.cost_usd).toBeCloseTo(
-      1000 * price.input + 200 * price.output,
+      4 * (1000 * price.input + 200 * price.output),
       12,
     );
-    expect(row?.input_tokens).toBe(1000);
-    expect(row?.output_tokens).toBe(200);
+    expect(row?.input_tokens).toBe(4000);
+    expect(row?.output_tokens).toBe(800);
     expect(row?.llm_provider).toBe("openai");
   });
 
@@ -972,8 +1105,8 @@ describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
     expect(row?.cost_usd).toBeNull();
     expect(row?.llm_provider).toBe("server");
     // The scripted model reports 120 input and 30 output tokens for each call.
-    expect(row?.input_tokens).toBe(120);
-    expect(row?.output_tokens).toBe(30);
+    expect(row?.input_tokens).toBe(4 * 120);
+    expect(row?.output_tokens).toBe(4 * 30);
   });
 
   it("(c) a models.dev read that fails: cost_usd NULL and the node does not fail", async () => {
@@ -1001,7 +1134,7 @@ describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
     expect(savedRow("m-d")?.cost_usd).not.toBeNull();
   });
 
-  it("(e) llm_model is the served model of the last call when named, else the requested model", async () => {
+  it("(e) llm_model is the served model of the last call (the overview) when named, else the requested model", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 1, meetingId: "m-e1" });
     const named = await run(f, [
       okReply(JSON.stringify(summary()), { servedModel: TEST_MODEL }),
@@ -1010,18 +1143,18 @@ describe("tokens, model and cost (4.5 rules 1 to 4)", () => {
     expect(savedRow("m-e1")?.llm_model).toBe(TEST_MODEL);
     expect(savedRow("m-e1")?.llm_provider).toBe("server");
 
-    // Map and reduce: the model of the last call in call order.
+    // Four parts: the model of the last call in call order.
     setBudget(2000);
     const g = meeting(5, 300, "m-e2");
     await run(g, (req) =>
       okReply(JSON.stringify(summary()), {
-        servedModel: isReduce(req) ? TEST_MODEL : "Qwen3.8-27B",
+        servedModel: isOverview(req) ? TEST_MODEL : "Qwen3.8-27B",
       }),
     );
     expect(savedRow("m-e2")?.llm_model).toBe(TEST_MODEL);
-    // 4 map calls and a reduce: 5 x 120 input and 5 x 30 output tokens.
-    expect(savedRow("m-e2")?.input_tokens).toBe(600);
-    expect(savedRow("m-e2")?.output_tokens).toBe(150);
+    // 12 extraction calls and the overview: 13 x 120 input and 13 x 30 output tokens.
+    expect(savedRow("m-e2")?.input_tokens).toBe(13 * 120);
+    expect(savedRow("m-e2")?.output_tokens).toBe(13 * 30);
   });
 
   it("the requested model is used when the served model is absent", async () => {
@@ -1112,58 +1245,44 @@ describe("GR10 (c): resume sends no finished call again", () => {
         .all(runId) as { step_key: string; n: number }[]
     ).map((r) => [r.step_key, r.n]);
 
-  it("a kill during map 2: the resume sends 0 requests for maps 0 and 1", async () => {
+  it("a kill during part 3: the resume sends 0 requests for parts 1 and 2", async () => {
     setBudget(2000);
     const f = meeting(5, 300, "m-kill1");
     const r = await killAndResume(
       f,
-      (req) => (isMap(req) && partOf(req) === 2 ? "kill" : sum()),
-      (req) => (isReduce(req) ? sum({ overview: "Final." }) : sum()),
+      (req) => (isExtract(req) && partOf(req) === 2 ? "kill" : sum()),
+      (req) => (isOverview(req) ? sum({ overview: "Final." }) : sum()),
     );
-    expect(r.before.filter(isMap).map(partOf)).toEqual([0, 1, 2]);
-    expect(r.after.filter(isMap).map(partOf)).toEqual([2, 3]);
-    expect(r.after.filter(isReduce)).toHaveLength(1);
+    expect(r.before.filter(isExtract).map(partOf)).toEqual([
+      0, 0, 0, 1, 1, 1, 2,
+    ]);
+    expect(r.after.filter(isExtract).map(partOf)).toEqual([2, 2, 2, 3, 3, 3]);
+    expect(r.after.filter(isOverview)).toHaveLength(1);
     expect(r.finalState.summary?.status).toBe("ok");
     // No unit has two finished calls.
     expect(finishedKeys(r.runId).every(([, n]) => n === 1)).toBe(true);
     expect(savedRow("m-kill1")?.summary_json).toContain('"Final."');
   });
 
-  it("a kill between the level-1 and level-2 calls: 0 requests for level 1; level 2 gets the level-1 results", async () => {
+  it("a kill at the overview call: the resume sends the overview call only, with the merged notes", async () => {
     setBudget(2000);
     const f = meeting(5, 300, "m-kill2");
-    const big = "w".repeat(3600);
-    const levelOne = (req: RecordedRequest) =>
-      sum({ overview: `Level one result ${partialCount(req)}.` });
+    const answer = (req: RecordedRequest) =>
+      sum({ keyPoints: [`Point from part ${partOf(req) + 1}.`] });
     const r = await killAndResume(
       f,
-      (req) => {
-        if (isMap(req)) return sum({ overview: big });
-        if (req.user.includes(big)) return levelOne(req);
-        return "kill"; // the level-2 call
-      },
-      (req) => {
-        if (isMap(req)) return sum({ overview: big });
-        if (req.user.includes(big)) return levelOne(req);
-        return sum({ overview: "Final." });
-      },
+      (req) => (isOverview(req) ? "kill" : answer(req)),
+      (req) => (isOverview(req) ? sum({ overview: "Final." }) : answer(req)),
     );
-    expect(r.before).toHaveLength(7);
-    // The resume sends the level-2 call only.
+    expect(r.before).toHaveLength(13);
     expect(r.after).toHaveLength(1);
-    expect(r.after[0]?.user.match(/Level one result/g)).toHaveLength(2);
-    expect(r.after[0]?.user).not.toContain(big);
+    expect(r.after[0]?.user.match(/Point from part/g)).toHaveLength(4);
     expect(r.finalState.summary?.status).toBe("ok");
-    const keys = finishedKeys(r.runId).map(([k]) => k);
-    expect(keys.sort()).toEqual([
-      "map:0",
-      "map:1",
-      "map:2",
-      "map:3",
-      "reduce:1:0",
-      "reduce:1:1",
-      "reduce:2:0",
-    ]);
+    expect(
+      finishedKeys(r.runId)
+        .map(([k]) => k)
+        .sort(),
+    ).toEqual(keysFor(4).sort());
     expect(finishedKeys(r.runId).every(([, n]) => n === 1)).toBe(true);
   });
 });
@@ -1190,63 +1309,71 @@ const refused = () =>
   });
 
 describe("summarize: the context guard", () => {
-  it("CB-S1: a refused single call becomes map and reduce; the summary is ok", async () => {
+  it("CB-S1: a refused extraction call on a one-part meeting splits the part in two halves; the summary is ok", async () => {
     setBudget(8000);
-    const f = meeting(5, 300, "m-cb1"); // 20 lines, about 6000 tokens: one call
-    const r = await run(f, (req) =>
-      isSingle(req) ? refused() : sum({ overview: "Final." }),
-    );
-    expect(keysOf(r.recorder)[0]).toBe("single");
-    expect(r.requests.filter(isMap).length).toBeGreaterThanOrEqual(2);
-    expect(r.requests.filter(isReduce).length).toBeGreaterThanOrEqual(1);
+    const f = meeting(5, 300, "m-cb1"); // 20 lines, about 6000 tokens: one part
+    let refusedOnce = false;
+    const r = await run(f, (req) => {
+      if (stageOf(req) === "decisions" && !refusedOnce) {
+        refusedOnce = true;
+        return refused();
+      }
+      return sum({ overview: "Final." });
+    });
+    expect(keysOf(r.recorder)).toEqual([
+      "decisions",
+      "decisions/0",
+      "decisions/1",
+      "actionItems",
+      "points",
+      "overview",
+    ]);
     expect(r.finalState.summary?.status).toBe("ok");
     expect(savedRow(f.meeting.id)?.summary_json).toContain('"Final."');
     expect(statusOf(r)).toBe("succeeded");
   });
 
-  it("CB-S2: a refused map chunk is split in two halves", async () => {
+  it("CB-S2: a refused call of part 1 is split in two halves", async () => {
     setBudget(2000);
     const f = meeting(5, 300, "m-cb2");
     let refusedOnce = false;
     const r = await run(f, (req) => {
-      if (isMap(req) && partOf(req) === 0 && !refusedOnce) {
+      if (isExtract(req) && partOf(req) === 0 && !refusedOnce) {
         refusedOnce = true;
         return refused();
       }
       return sum({ overview: "Final." });
     });
     expect(keysOf(r.recorder).slice(0, 3)).toEqual([
-      "map:0",
-      "map:0/0",
-      "map:0/1",
+      "decisions:0",
+      "decisions:0/0",
+      "decisions:0/1",
     ]);
     expect(r.finalState.summary?.status).toBe("ok");
     expect(statusOf(r)).toBe("succeeded");
   });
 
-  it("CB-S3: a refused reduce group is split; the halves are reduced on the next level", async () => {
-    setBudget(2000);
-    const f = meeting(5, 300, "m-cb3");
-    let reduces = 0;
+  it("CB-S3: a refused overview call splits the notes; the two overviews are joined", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 1,
+      speakers: 1,
+      meetingId: "m-cb3",
+    });
+    let overviews = 0;
     const r = await run(f, (req) => {
-      if (!isReduce(req)) return sum();
-      reduces += 1;
-      if (reduces === 1) return refused();
-      return sum({ overview: `Reduce ${reduces}.` });
+      if (!isOverview(req)) {
+        return sum({ keyPoints: ["Point one.", "Point two."] });
+      }
+      overviews += 1;
+      if (overviews === 1) return refused();
+      return sum({ overview: `Half ${overviews - 1}.` });
     });
     expect(keysOf(r.recorder)).toEqual([
-      "map:0",
-      "map:1",
-      "map:2",
-      "map:3",
-      "reduce:1:0",
-      "reduce:1:0/0",
-      "reduce:1:0/1",
-      "reduce:2:0",
+      ...keysFor(1),
+      "overview/0",
+      "overview/1",
     ]);
-    const last = r.requests.at(-1);
-    expect(last?.user.match(/<partial index="\d">/g)).toHaveLength(2);
-    expect(savedRow(f.meeting.id)?.summary_json).toContain('"Reduce 4."');
+    expect(r.finalState.summary?.summary?.overview).toBe("Half 1. Half 2.");
     expect(statusOf(r)).toBe("succeeded");
   });
 });

@@ -2166,13 +2166,14 @@ describe("POST /api/meetings/:id/summarize", () => {
       }
       await waitForNoJob("m1");
       expect((await getMeeting("m1")).status).toBe("summarized");
-      expect(h.requests.filter(isSummaryRequest)).toHaveLength(1);
+      // One Summarize run: three extraction calls and the overview call.
+      expect(h.requests.filter(isSummaryRequest)).toHaveLength(4);
       // The slot is free: a follow-up summarize is accepted again.
       expect((await postEmpty(app, "/api/meetings/m1/summarize")).status).toBe(
         202,
       );
       await waitForNoJob("m1");
-      expect(h.requests.filter(isSummaryRequest)).toHaveLength(2);
+      expect(h.requests.filter(isSummaryRequest)).toHaveLength(8);
     },
   );
 

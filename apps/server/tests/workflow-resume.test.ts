@@ -225,8 +225,9 @@ describe("GR24: a kill between the stages resumes at summarize", () => {
     const h = runnerHarness();
     const runId = await interrupt(f.meeting.id, h, { channel: "summary" });
     const sent = h.requests.length;
-    // Three chunks, and the summary call when the real summarize node runs.
-    expect(sent).toBe(SUMMARIZE_IS_STUB ? 3 : 4);
+    // Three chunks, and the four summary calls when the real summarize node
+    // runs (three extraction calls and the overview).
+    expect(sent).toBe(SUMMARIZE_IS_STUB ? 3 : 7);
     // Enhance results are in the checkpoint, not yet saved.
     const row = getDb()
       .prepare(

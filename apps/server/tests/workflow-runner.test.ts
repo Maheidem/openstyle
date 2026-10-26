@@ -230,10 +230,13 @@ describe("startRun: the chained Enhance run (GR24 a)", () => {
     const run = runRow(started.runId);
     expect(run.kind).toBe("summarize");
     expect(run.status).toBe("succeeded");
-    // The stub sends no call. The real node sends one `single` call.
-    expect(h.requests).toHaveLength(SUMMARIZE_IS_STUB ? 0 : 1);
+    // The stub sends no call. The real node sends three extraction calls
+    // and the overview call.
+    expect(h.requests).toHaveLength(SUMMARIZE_IS_STUB ? 0 : 4);
     expect(stepsOf(started.runId).map((s) => s.step_key)).toEqual(
-      SUMMARIZE_IS_STUB ? ["prepare", "save"] : ["prepare", "single", "save"],
+      SUMMARIZE_IS_STUB
+        ? ["prepare", "save"]
+        : ["prepare", "decisions", "actionItems", "points", "overview", "save"],
     );
     expect(JSON.parse(run.result_json ?? "null")).toBeNull();
   });

@@ -88,7 +88,7 @@ exports[`the step schemas > the JSON Schema of each step is a snapshot (a change
 }
 `;
 
-exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > meeting_summary 1`] = `
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_action_items 1`] = `
 {
   "json": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -131,12 +131,66 @@ exports[`the step schemas > the JSON Schema of each step is a snapshot (a change
         },
         "type": "array",
       },
+    },
+    "required": [
+      "actionItems",
+    ],
+    "type": "object",
+  },
+  "name": "summary_action_items",
+  "version": 1,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_decisions 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
       "decisions": {
         "items": {
           "type": "string",
         },
         "type": "array",
       },
+    },
+    "required": [
+      "decisions",
+    ],
+    "type": "object",
+  },
+  "name": "summary_decisions",
+  "version": 1,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_overview 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "overview": {
+        "type": "string",
+      },
+    },
+    "required": [
+      "overview",
+    ],
+    "type": "object",
+  },
+  "name": "summary_overview",
+  "version": 1,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_points 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
       "keyPoints": {
         "items": {
           "type": "string",
@@ -149,20 +203,14 @@ exports[`the step schemas > the JSON Schema of each step is a snapshot (a change
         },
         "type": "array",
       },
-      "overview": {
-        "type": "string",
-      },
     },
     "required": [
-      "overview",
       "keyPoints",
-      "decisions",
-      "actionItems",
       "openQuestions",
     ],
     "type": "object",
   },
-  "name": "meeting_summary",
+  "name": "summary_points",
   "version": 1,
 }
 `;

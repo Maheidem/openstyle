@@ -65,27 +65,32 @@ import {
   buildIdentifySystemPrompt,
   buildIdentifyUserPrompt,
   buildPromptContext,
-  buildSummaryMapSystemPrompt,
-  buildSummaryMapUserPrompt,
-  buildSummaryReduceSystemPrompt,
-  buildSummaryReduceUserPrompt,
-  buildSummarySingleSystemPrompt,
-  buildSummarySingleUserPrompt,
+  buildSummaryOverviewSystemPrompt,
+  buildSummaryOverviewUserPrompt,
+  buildSummaryPartUserPrompt,
+  buildSummaryStageSystemPrompt,
   buildTagsSystemPrompt,
   buildTagsUserPrompt,
-  reduceBlocks,
+  renderSummaryNotes,
+  SUMMARY_EXTRACT_STAGES,
 } from "../../../apps/server/src/lib/meetings/workflow/prompts.ts";
 import {
   correctChunkStepSchema,
   identifySpeakersStepSchema,
   MEETING_TAGS_STEP_SCHEMA,
   type MeetingSummary,
-  meetingSummaryStepSchema,
+  SUMMARY_STAGE_LISTS,
+  type SummaryStage,
+  type SummaryStageAnswer,
+  summaryStageStepSchema,
 } from "../../../apps/server/src/lib/meetings/workflow/schemas.ts";
 import {
   MAX_SUMMARIZE_CALLS,
+  mergeSummaryAnswers,
   plannedSummaryCalls,
-  repairCutSummary,
+  repairCutAnswer,
+  summaryCallsFor,
+  withSupportedOwners,
 } from "../../../apps/server/src/lib/meetings/workflow/summary-pure.ts";
 import {
   CHUNK_TOKENS_MAX,
@@ -1079,12 +1084,12 @@ const SUMMARY_ANSWER_TOKENS = 4096;
 const CONTEXT_WINDOW = 32_768;
 
 /**
- * One Summarize run (summarize.ts): `single` when the transcript fits the
- * budget, else map calls and grouped reduce calls. A `single` that ends at
- * the token limit is planned again as map and reduce at half the tokens,
- * as the server does. A map or reduce unit that ends at the token limit is
- * repaired from its cut answer (repairCutSummary) or fails; the server's
- * split and raise steps are not run (no split happened in the capture).
+ * One Summarize run (summarize.ts): the transcript is one part when it fits
+ * the budget, else parts of whole segments. Three extraction calls for each
+ * part (decisions, action items, points), then code merges the parts and
+ * checks the owners, then one overview call on the merged items. A call that
+ * ends at the token limit is repaired from its cut answer (repairCutAnswer)
+ * or fails; the server's split and raise steps are not run.
  */
 export async function runSummary(
   cap: Capture,
@@ -1110,11 +1115,12 @@ export async function runSummary(
     instructions: meeting.summaryInstructions,
     context: meeting.app.context,
   };
-  const systems = {
-    single: buildSummarySingleSystemPrompt(promptInput),
-    map: buildSummaryMapSystemPrompt(promptInput),
-    reduce: buildSummaryReduceSystemPrompt(promptInput),
-  };
+  const systems = Object.fromEntries(
+    SUMMARY_EXTRACT_STAGES.map((s) => [
+      s,
+      buildSummaryStageSystemPrompt(s, promptInput),
+    ]),
+  ) as Record<(typeof SUMMARY_EXTRACT_STAGES)[number], string>;
   const systemTokens = Math.max(...Object.values(systems).map(estimateTokens));
   const fit =
     CONTEXT_WINDOW - systemTokens - SUMMARY_ANSWER_TOKENS - SAFETY_TOKENS;
@@ -1122,19 +1128,24 @@ export async function runSummary(
     Number(params.contextBudget ?? CURRENT.contextBudget),
     fit,
   );
-  const step = meetingSummaryStepSchema({ sizeLimits: true });
-  const zod = step.zod;
-  const schema = await wireSchema(step);
+  const stages: SummaryStage[] = [...SUMMARY_EXTRACT_STAGES, "overview"];
+  const steps = Object.fromEntries(
+    stages.map((st) => [st, summaryStageStepSchema(st, { sizeLimits: true })]),
+  ) as Record<SummaryStage, ReturnType<typeof summaryStageStepSchema>>;
+  const schemas = {} as Record<SummaryStage, unknown>;
+  for (const st of stages) schemas[st] = await wireSchema(steps[st]);
   let made = 0;
 
+  /** One call; null when it fails. A cut answer that closes marks the output partial. */
   const call = async (
     key: string,
+    stage: SummaryStage,
     system: string,
     user: string,
-  ): Promise<{ obj: MeetingSummary | null; length: boolean; cut: boolean }> => {
-    if (made >= MAX_SUMMARIZE_CALLS)
-      return { obj: null, length: false, cut: false };
+  ): Promise<SummaryStageAnswer | null> => {
+    if (made >= MAX_SUMMARIZE_CALLS) return null;
     made++;
+    const zod = steps[stage].zod;
     const body = applyOverrides(
       wireBody({
         topLevel: template.topLevel,
@@ -1143,7 +1154,7 @@ export async function runSummary(
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        schema,
+        schema: schemas[stage],
       }),
       o,
     );
@@ -1159,117 +1170,76 @@ export async function runSummary(
       latencyMs: reply.latencyMs,
       jsonValid: parsed?.success === true,
     });
-    if (parsed?.success)
-      return { obj: parsed.data as MeetingSummary, length, cut: false };
+    if (parsed?.success) return parsed.data;
     if (length) {
-      const fixed = repairCutSummary(reply.text, zod) as MeetingSummary | null;
-      if (fixed) return { obj: fixed, length, cut: true };
-    }
-    return { obj: null, length, cut: false };
-  };
-
-  const partialTokens = (p: MeetingSummary[]) =>
-    reduceBlocks(p).reduce((a, b) => a + estimateTokens(b) + 1, 0);
-
-  const mapReduce = async (
-    chunkBudget: number,
-  ): Promise<MeetingSummary | null | "one"> => {
-    const chunks = chunkTranscript(segs as never, chunkBudget);
-    if (chunks.length < 2) return "one";
-    if (made + chunks.length + 1 > MAX_SUMMARIZE_CALLS) return null;
-    // The map calls are independent: send them together, keep chunk order.
-    const maps = await Promise.all(
-      chunks.map((chunk, i) =>
-        call(
-          `map:${i}`,
-          systems.map,
-          buildSummaryMapUserPrompt(chunk, i, chunks.length),
-        ),
-      ),
-    );
-    const partials: MeetingSummary[] = [];
-    for (const r of maps) {
-      if (!r.obj) return null;
-      if (r.cut) out.summaryPartial = true;
-      partials.push(r.obj);
-    }
-    let current = partials;
-    for (let level = 1; ; level++) {
-      const groups: MeetingSummary[][] = [];
-      let cur: MeetingSummary[] = [];
-      for (const p of current) {
-        const next = [...cur, p];
-        if (cur.length > 0 && partialTokens(next) > budget) {
-          groups.push(cur);
-          cur = [p];
-        } else cur = next;
+      const fixed = repairCutAnswer(
+        reply.text,
+        zod,
+        SUMMARY_STAGE_LISTS[stage],
+      );
+      if (fixed) {
+        out.summaryPartial = true;
+        return fixed;
       }
-      if (cur.length > 0) groups.push(cur);
-      if (groups.length === current.length && current.length > 1) return null;
-      if (groups.length === 1) {
-        const r = await call(
-          `reduce:${level}:0`,
-          systems.reduce,
-          buildSummaryReduceUserPrompt(groups[0] as MeetingSummary[]),
-        );
-        if (r.cut) out.summaryPartial = true;
-        return r.obj;
-      }
-      const next: MeetingSummary[] = [];
-      for (const [g, group] of groups.entries()) {
-        if (group.length === 1) {
-          next.push(group[0] as MeetingSummary);
-          continue;
-        }
-        const r = await call(
-          `reduce:${level}:${g}`,
-          systems.reduce,
-          buildSummaryReduceUserPrompt(group),
-        );
-        if (!r.obj) return null;
-        if (r.cut) out.summaryPartial = true;
-        next.push(r.obj);
-      }
-      current = next;
     }
+    return null;
   };
 
   const tokens = estimateTokens(lines.join("\n"));
-  let result: MeetingSummary | null = null;
   if ("error" in plannedSummaryCalls(tokens, budget)) {
     out.failedUnits++;
     return out;
   }
-  const single = () =>
-    call(
-      "single",
-      systems.single,
-      buildSummarySingleUserPrompt(lines.join("\n")),
-    );
-  if (tokens <= budget) {
-    const r = await single();
-    if (r.obj && !r.cut) result = r.obj;
-    else if (r.length) {
-      const half = Math.ceil(tokens / 2);
-      const done =
-        "error" in plannedSummaryCalls(tokens, half)
-          ? "one"
-          : await mapReduce(half);
-      if (done === "one") {
-        result = r.obj;
-        if (r.cut) out.summaryPartial = true;
-      } else result = done;
-    }
-  } else {
-    const done = await mapReduce(budget);
-    if (done === "one") {
-      const r = await single();
-      result = r.obj;
-      if (r.cut) out.summaryPartial = true;
-    } else result = done;
+  const parts =
+    tokens <= budget
+      ? [lines]
+      : chunkTranscript(segs as never, budget).map((c) => c.split("\n"));
+  if (summaryCallsFor(parts.length) > MAX_SUMMARIZE_CALLS) {
+    out.failedUnits++;
+    return out;
   }
-  if (result === null) out.failedUnits++;
-  out.summaryJson = result ? JSON.stringify(result) : null;
+  const answers: SummaryStageAnswer[] = [];
+  for (const [i, part] of parts.entries()) {
+    for (const st of SUMMARY_EXTRACT_STAGES) {
+      const key = parts.length === 1 ? st : `${st}:${i}`;
+      const answer = await call(
+        key,
+        st,
+        systems[st],
+        buildSummaryPartUserPrompt(part, i, parts.length),
+      );
+      if (!answer) {
+        out.failedUnits++;
+        return out;
+      }
+      answers.push(answer);
+    }
+  }
+  const labels = [
+    ...new Set(
+      segs.map((s) => speakerDisplayLabel(s as never, "Unidentified")),
+    ),
+  ];
+  const merged = withSupportedOwners(
+    mergeSummaryAnswers(answers),
+    labels,
+    lines.join("\n"),
+  );
+  const overview = await call(
+    "overview",
+    "overview",
+    buildSummaryOverviewSystemPrompt(promptInput),
+    buildSummaryOverviewUserPrompt(renderSummaryNotes(merged.items)),
+  );
+  if (!overview) {
+    out.failedUnits++;
+    return out;
+  }
+  const result: MeetingSummary = {
+    overview: overview.overview ?? "",
+    ...merged.items,
+  };
+  out.summaryJson = JSON.stringify(result);
   return out;
 }
 
@@ -1303,7 +1273,7 @@ export const NODE_OF: Record<StageName, string> = {
 export const PERTURB: Record<StageName, [string, string]> = {
   correctChunk: ["most likely said", "probably said"],
   identifySpeakers: ["read an excerpt", "read a section"],
-  summarize: ["substantive points", "important points"],
+  summarize: ["Write plain text", "Write simple text"],
   suggestTags: ["short topic tags", "brief topic tags"],
 };
 

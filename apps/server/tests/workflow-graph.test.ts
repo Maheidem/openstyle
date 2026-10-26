@@ -73,7 +73,7 @@ const isIdentify = (r: RecordedRequest) => r.system.includes("diarized labels");
 const NONE = okReply('{"corrections":[]}');
 const EMPTY_SPEAKERS = okReply('{"speakers":[]}');
 const isSummary = (r: RecordedRequest) =>
-  r.system.includes("You summarize meeting transcripts");
+  /^You (read a meeting transcript|write the overview)/.test(r.system);
 const SUMMARY = okReply(
   JSON.stringify({
     overview: "A planning call.",
@@ -774,7 +774,10 @@ describe("GR25: step rows and the run context", () => {
         "chunk:2",
         "prepare",
         "save",
-        "single",
+        "decisions",
+        "actionItems",
+        "points",
+        "overview",
         "tags",
         "verify",
       ].sort(),
@@ -787,7 +790,10 @@ describe("GR25: step rows and the run context", () => {
     expect(bySeq.slice(4)).toEqual([
       "candidates",
       "verify",
-      "single",
+      "decisions",
+      "actionItems",
+      "points",
+      "overview",
       "save",
       "tags",
     ]);
@@ -951,7 +957,7 @@ describe("GR25: step rows and the run context", () => {
 });
 
 describe("edges", () => {
-  it("a summarize-only run goes prepare, summarize, save and sends one summary call", async () => {
+  it("a summarize-only run goes prepare, summarize, save and sends the four summary calls", async () => {
     const f = seedFixtureMeeting({
       chunks: 2,
       speakers: 3,
@@ -963,9 +969,9 @@ describe("edges", () => {
       deps,
       meetingId: f.meeting.id,
       stages: ["summarize"],
-      script: [SUMMARY],
+      script: [SUMMARY, SUMMARY, SUMMARY, SUMMARY],
     });
-    expect(r.requests).toHaveLength(1);
+    expect(r.requests).toHaveLength(4);
     expect(r.ctx.startedNodes).toEqual(["prepare", "summarize", "save"]);
     expect(r.finalState.corrections).toEqual([]);
     expect(r.finalState.identify).toBeNull();
