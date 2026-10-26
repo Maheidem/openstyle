@@ -861,6 +861,92 @@ class _JsonGrammar:
         return self._mask(logits)
 
 
+# Prefix cache for dictation cleanup (specs/llm-runtime-tuning.md 4.3, 7 step 2,
+# 9 item 1: the "boundary-consistent" variant).
+#
+# The server sends this header on cleanup requests only. With the header, the
+# worker prefills the system prefix as its own chunks (_PREFILL_STEP each) and
+# then gives the rest of the prompt to stream_generate with that KV cache.
+# Value "on" keeps the prefix KV in a one-entry cache and gives each request a
+# deep copy; value "off" prefills the prefix each time. The two values do the
+# same math in the same chunks, so the output is byte-identical. The prefix
+# chunks move the chunk borders of the prompt against a request without the
+# header, so that output can differ a little (greedy decoding, float order).
+# Enhance and Summarize send no header and keep the mlx-lm path.
+#
+# _PREFILL_STEP is the mlx-lm default prefill_step_size (see complete()).
+_PREFIX_CACHE_HEADER = "X-Openstyle-Prefix-Cache"
+_PREFIX_CACHE_MODES = ("on", "off")
+_PREFILL_STEP = 2048
+# Do not keep a prefix KV that is larger than this. The request still uses the
+# prefix chunks, so its output does not change.
+_PREFIX_CACHE_MAX_BYTES = 1 << 30
+# Operator switch: OPENSTYLE_MLX_LLM_PREFIX_CACHE=off makes "on" act as "off"
+# (same output, no stored KV). The byte-compare proof uses it with the app path.
+_PREFIX_CACHE_ENV = "OPENSTYLE_MLX_LLM_PREFIX_CACHE"
+
+
+def _prefix_cache_mode(value: str | None) -> str | None:
+    """Read the prefix cache header. None when the header is absent."""
+    if value is None:
+        return None
+    mode = value.strip().lower()
+    if mode not in _PREFIX_CACHE_MODES:
+        raise _BadRequest(f"{_PREFIX_CACHE_HEADER} must be one of: {', '.join(_PREFIX_CACHE_MODES)}")
+    if os.environ.get(_PREFIX_CACHE_ENV, "").strip().lower() == "off":
+        return "off"
+    return mode
+
+
+def _common_prefix_len(a: list[int], b: list[int]) -> int:
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def _cache_nbytes(cache: list[Any]) -> int | None:
+    try:
+        return int(sum(c.nbytes for c in cache))
+    except Exception:
+        return None
+
+
+class _PrefixCache:
+    """One entry: the token ids of the last system prefix and its KV cache."""
+
+    def __init__(self, make_cache: Any, forward: Any) -> None:
+        self._make_cache = make_cache
+        self._forward = forward
+        self.ids: list[int] | None = None
+        self.cache: Any = None
+
+    def _prefill(self, ids: list[int]) -> Any:
+        cache = self._make_cache()
+        for i in range(0, len(ids), _PREFILL_STEP):
+            self._forward(cache, ids[i : i + _PREFILL_STEP])
+        return cache
+
+    def get(self, ids: list[int], keep: bool) -> tuple[Any, int]:
+        """Return a KV cache that holds ``ids`` and the number of tokens that
+        came from the stored entry (0 on a miss or when ``keep`` is False)."""
+        import copy
+
+        if keep and self.ids == ids:
+            return copy.deepcopy(self.cache), len(ids)
+        cache = self._prefill(ids)
+        if not keep:
+            return cache, 0
+        size = _cache_nbytes(cache)
+        if size is not None and size > _PREFIX_CACHE_MAX_BYTES:
+            _log(f"prefix cache: {size} bytes is over the limit; not kept")
+            return cache, 0
+        self.ids, self.cache = list(ids), cache
+        return copy.deepcopy(cache), 0
+
+
 def _strip_thinking(text: str) -> str:
     """Drop a leading thinking block (empty or not) from the answer text."""
     stripped = text.lstrip()
@@ -892,8 +978,12 @@ class _LlmEngine:
         make_logits_processors: Any,
         grammar_factory: Any,
         reset_peak_memory: Any = None,
+        make_prompt_cache: Any = None,
+        forward: Any = None,
     ) -> None:
         self.model_id = model_id
+        # forward(cache, ids) runs the model on one chunk and fills the cache.
+        self._prefix_cache = _PrefixCache(make_prompt_cache, forward)
         # Resets the MLX peak memory counter before each request, so
         # usage.peak_memory_bytes is the peak of that request only.
         self._reset_peak_memory = reset_peak_memory
@@ -926,11 +1016,44 @@ class _LlmEngine:
         )
         return list(self.tok.encode(prompt, add_special_tokens=False))
 
+    def _system_prefix_len(self, req: dict[str, Any], ids: list[int]) -> int:
+        """The number of prompt tokens before the first user message text.
+
+        The template is rendered once more with the leading system messages
+        and one empty user message. The common token prefix of that render and
+        the prompt is the system prefix. This works also for templates that
+        refuse a prompt without a user message (Qwen3.8). The value depends on
+        the request only, so a cache hit and a miss cut at the same token.
+        """
+        messages = req["messages"]
+        n_sys = 0
+        while n_sys < len(messages) and messages[n_sys]["role"] == "system":
+            n_sys += 1
+        if n_sys == 0:
+            return 0
+        head = self.tok.apply_chat_template(
+            [*messages[:n_sys], {"role": "user", "content": ""}],
+            add_generation_prompt=True,
+            enable_thinking=req["enable_thinking"],
+            tokenize=False,
+        )
+        head_ids = list(self.tok.encode(head, add_special_tokens=False))
+        # Keep at least one token for stream_generate.
+        return min(_common_prefix_len(head_ids, ids), len(ids) - 1)
+
     def complete(self, req: dict[str, Any]) -> dict[str, Any]:
         started = time.perf_counter()
         if self._reset_peak_memory is not None:
             self._reset_peak_memory()
         ids = self._prompt_ids(req)
+        feed, gen_kwargs, cached = ids, {}, 0
+        mode = req.get("prefix_cache")
+        if mode is not None:
+            n = self._system_prefix_len(req, ids)
+            if n > 0:
+                cache, cached = self._prefix_cache.get(ids[:n], keep=mode == "on")
+                feed, gen_kwargs = ids[n:], {"prompt_cache": cache}
+                _log(f"prefix cache {mode}: prefix {n} of {len(ids)} tokens, cached {cached}")
         sampler_kwargs: dict[str, Any] = {"temp": req["temperature"] or 0.0}
         for name in ("top_p", "top_k", "min_p"):
             if req[name] is not None:
@@ -948,13 +1071,17 @@ class _LlmEngine:
             procs.append(grammar)
 
         text, last, finish, first_at = "", None, None, None
+        # Keep the mlx-lm defaults: prefill step 2048, no KV quantization, no
+        # max_kv_size, no MLX cache limit. Each other value lost on speed,
+        # memory or output identity (specs/llm-runtime-tuning.md 4.2, 4.4, 4.5).
         for response in self._stream_generate(
             self.model,
             self.tok,
-            ids,
+            feed,
             max_tokens=req["max_tokens"],
             sampler=self._make_sampler(**sampler_kwargs),
             logits_processors=procs,
+            **gen_kwargs,
         ):
             if first_at is None:
                 first_at = time.perf_counter()
@@ -986,6 +1113,10 @@ class _LlmEngine:
                 "prompt_tokens": len(ids),
                 "completion_tokens": completion_tokens,
                 "total_tokens": len(ids) + completion_tokens,
+                # Prompt tokens that came from the prefix cache. The OpenAI
+                # field is what the AI SDK reads (inputTokens.cacheRead).
+                "cached_tokens": cached,
+                "prompt_tokens_details": {"cached_tokens": cached},
                 **_generation_stats(last, started, first_at, time.perf_counter()),
             },
         }
@@ -1051,6 +1182,7 @@ def _load_llm_engine(model_id: str) -> _LlmEngine:
     from llguidance.mlx import apply_token_bitmask
     from llguidance.numpy import allocate_token_bitmask, fill_next_token_bitmask
     from mlx_lm import load, stream_generate
+    from mlx_lm.models.cache import make_prompt_cache
     from mlx_lm.sample_utils import make_logits_processors, make_sampler
 
     _log(f"loading llm {model_id} ...")
@@ -1076,6 +1208,12 @@ def _load_llm_engine(model_id: str) -> _LlmEngine:
             apply=apply_token_bitmask,
         )
 
+    def forward(cache: list[Any], ids: list[int]) -> None:
+        # The same model call and eval as the mlx-lm prefill loop (generate_step).
+        model(mx.array(ids)[None], cache=cache)
+        mx.eval([c.state for c in cache])
+        mx.clear_cache()
+
     return _LlmEngine(
         model_id,
         model,
@@ -1087,6 +1225,8 @@ def _load_llm_engine(model_id: str) -> _LlmEngine:
         make_logits_processors=make_logits_processors,
         grammar_factory=grammar_factory,
         reset_peak_memory=mx.reset_peak_memory,
+        make_prompt_cache=lambda: make_prompt_cache(model),
+        forward=forward,
     )
 
 
@@ -1154,7 +1294,9 @@ def _make_llm_handler(engine: _LlmEngine) -> Any:
         route = "/v1/chat/completions"
 
         def handle_body(self, body: Any) -> dict[str, Any]:
-            return engine.complete(_parse_chat_request(body))
+            req = _parse_chat_request(body)
+            req["prefix_cache"] = _prefix_cache_mode(self.headers.get(_PREFIX_CACHE_HEADER))
+            return engine.complete(req)
 
     return Handler
 

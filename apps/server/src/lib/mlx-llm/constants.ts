@@ -13,6 +13,12 @@ export const MLX_LLM_PROVIDER_NAME = "On-device · MLX";
 
 export const GIB = 1024 ** 3;
 
+/**
+ * The request header that turns on the worker prefix cache (value "on"). The
+ * worker reads `X-Openstyle-Prefix-Cache` in scripts/mlx_asr_server.py.
+ */
+export const MLX_LLM_PREFIX_CACHE_HEADER = "X-Openstyle-Prefix-Cache";
+
 /** `config.model_type` of the HF repo. The worker loads each with mlx-lm. */
 export type MlxLlmFamily = "gemma4" | "qwen3_5";
 

@@ -334,6 +334,25 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
     expect(body.top_k).toBe(20);
     expect(posted[0]?.hf_hub_offline).toBe("1");
+    // Cleanup turns on the worker prefix cache (specs/llm-runtime-tuning.md 9 item 1).
+    expect(posted[0]?.prefix_cache).toBe("on");
+  });
+
+  it("sends the prefix cache header for cleanup only", async () => {
+    seedModel(GEMMA_E2B);
+    const before = loggedRequests().length;
+    for (const task of ["meetingEnhance", "meetingSummarize"]) {
+      const model = await createChatModel(
+        MLX_LLM_PROVIDER_ID,
+        `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
+        { task, sampling: {} },
+      );
+      await generateText({ model, prompt: "x" });
+    }
+    const posted = loggedRequests()
+      .slice(before)
+      .filter((r) => r.method === "POST");
+    expect(posted.map((r) => r.prefix_cache)).toEqual([null, null]);
   });
 
   it("reuses a running worker, and a different model replaces it", async () => {

@@ -74,6 +74,8 @@ interface WorkerUsage {
   prompt_tps?: number;
   generation_tps?: number;
   peak_memory_bytes?: number;
+  /** Prompt tokens that came from the worker prefix cache (cleanup only). */
+  cached_tokens?: number;
 }
 
 function workerUsageOf(body: unknown): WorkerUsage | undefined {
@@ -87,6 +89,7 @@ function workerUsageOf(body: unknown): WorkerUsage | undefined {
     "prompt_tps",
     "generation_tps",
     "peak_memory_bytes",
+    "cached_tokens",
   ] as const) {
     if (typeof usage[key] === "number") out[key] = usage[key] as number;
   }
