@@ -296,10 +296,12 @@ Each PR keeps the quality gate: no new hard fails in `pnpm meeting:eval` on 5578
 
 ---
 
-## 9. Open decisions for the owner
+## 9. Owner decisions (2026-10-26)
 
-1. Approve the aligned prefix cache for dictation only (section 4.3), or ask for a "boundary-consistent" variant: always prefill the system prompt as its own chunk, also without a cache. That gives the full unaligned gain (E2B dictation p50 about 142 ms) with identical output with and without the cache, but it changes today's output once. It then needs a new dictation bench and meeting:eval proof.
-2. Approve the fit thresholds (0.80 and 0.90) and the OS reserve (3 or 4 GiB), which are not measured.
-3. Approve the pool policy (section 6), including "Keep ready" on by default only for the cleanup task.
-4. Approve the GPU sharing experiment with `SIGSTOP` / `SIGCONT` (section 6 item 6).
-5. Apple FM: stop here, or try a short Apple-FM-only cleanup prompt as a separate experiment.
+1. Prefix cache: build the "boundary-consistent" variant (section 4.3). The system prompt is always prefilled as its own chunk, also without a cache. Target: E2B dictation p50 about 142 ms. It changes today's output once, so its PR needs a new dictation bench and a meeting:eval proof (no new hard fails, blind judge).
+2. Fit label: approved as in section 5, with the thresholds 0.80 and 0.90 and the 3 or 4 GiB OS reserve. These constants are not measured. Gemma 4 E2B never shows "Won't fit".
+3. Model pool: approved as in section 6. "Keep ready" is on by default only for the cleanup task.
+4. GPU sharing experiment (`SIGSTOP` / `SIGCONT`): approved, as its own small PR with numbers.
+5. Context guard: approved, but a refusal means the app failed. The main work is in the callers: each caller (cleanup, Enhance chunks, Summarize and its reduce step, tags) counts tokens and keeps the prompt inside `contextTokens - max_tokens` before it sends it. The worker guard is a last safety net only: a typed error, a loud log, and a caller that splits the input and tries again. The person never sees this error.
+6. Apple FM: try one short cleanup prompt written for Apple Foundation Models, as a separate experiment. Stop the topic if it still loses on speed or quality against E2B.
+7. Cleanup: the 26B qat-6bit eval model (21.8 GB) is deleted.
