@@ -103,7 +103,6 @@ describe("prepare", () => {
     expect(Object.keys(out.models).sort()).toEqual([
       "correctChunk",
       "identifySpeakers",
-      "retranscribeLines",
       "suggestTags",
       "summarize",
     ]);

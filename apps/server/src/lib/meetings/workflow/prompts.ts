@@ -96,11 +96,11 @@ export interface CorrectPromptInput {
 /**
  * System prompt of one `correctChunk` call. One job only: fix misheard words
  * (the owner rule "specialization over over-prompting", AGENTS.md). Code does
- * the other jobs of the old prompt: vocabulary spelling
- * (`vocab-spelling.ts`), lines in another language (`line-language.ts` and
- * the `retranscribeLines` call). The speech recognizer already writes
- * punctuation, capitals and exact repeats, and the gold transcripts keep the
- * repeats, so no stage changes them.
+ * the vocabulary spelling first (`vocab-spelling.ts`). No stage does the other
+ * jobs of the old prompt, by measurement on the gold meetings (2026-10-26):
+ * the gold transcripts keep exact repeats and keep a line in the language
+ * that was spoken, and the speech recognizer already writes punctuation and
+ * capitals.
  */
 export function buildCorrectSystemPrompt(input: CorrectPromptInput): string {
   const vocabLine =
@@ -122,29 +122,6 @@ Example. Input line: [seg-7] Them 1: we moved the cluster to cooper netties last
 /** User prompt of one `correctChunk` call. `lines` are `[id] Speaker: text`. */
 export function buildCorrectUserPrompt(lines: readonly string[]): string {
   return `Fix only the transcript inside the <transcript> tags. ${TRANSCRIPT_GUARD}\n\n<transcript>\n${lines.join("\n")}\n</transcript>`;
-}
-
-// ---------------------------------------------------------------------------
-// retranscribeLines
-// ---------------------------------------------------------------------------
-
-/**
- * System prompt of one `retranscribeLines` call. One job only: write a line
- * that the speech recognizer wrote in another language again in the meeting
- * language. Code finds the lines first (`line-language.ts`).
- */
-export function buildRetranscribeSystemPrompt(language: string): string {
-  return `The meeting language is "${language}" (ISO code). A speech recognizer wrote each line below in another language by mistake. Write each line again in "${language}".
-
-Rules:
-- Keep the meaning, the order of the ideas and the length. Do not add or remove content.
-- Keep names, numbers and terms as they are.
-- Return one entry for each line: its id and its new text. Copy the id exactly. Write the text without the speaker label.`;
-}
-
-/** User prompt of one `retranscribeLines` call. `lines` are `[id] Speaker: text`. */
-export function buildRetranscribeUserPrompt(lines: readonly string[]): string {
-  return `Rewrite only the lines inside the <transcript> tags. ${TRANSCRIPT_GUARD}\n\n<transcript>\n${lines.join("\n")}\n</transcript>`;
 }
 
 // ---------------------------------------------------------------------------

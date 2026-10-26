@@ -1345,7 +1345,6 @@
         "meaning_flip": "The correction changed the meaning of the line.",
         "inflection_only": "The correction changed only the grammar of a word.",
         "lowercases_name": "The correction removed the capital letters of a name.",
-        "wrong_language": "The rewritten line is not in the meeting language.",
         "unknown": "No reason is recorded."
       },
       "retrieval": {

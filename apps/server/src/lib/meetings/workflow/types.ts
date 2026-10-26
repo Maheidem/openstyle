@@ -179,8 +179,6 @@ export interface CorrectChunkInput {
   vocabTerms: string[];
   /** models.correctChunk */
   profile: CallProfile;
-  /** models.retranscribeLines */
-  retranscribeProfile: CallProfile;
 }
 
 /** One LLM unit: the chunk, or a half after a split (4.0.6). */

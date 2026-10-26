@@ -1,27 +1,14 @@
 import type { CorrectionDropReason } from "@openstyle/validations";
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
-import type { DetectAllFn } from "../../language.js";
-import {
-  baseLanguage,
-  isInLanguage,
-  loadDetectAll,
-  offLanguageIds,
-} from "../../line-language.js";
 import { fixVocabSpelling } from "../../vocab-spelling.js";
 import { estimateTokens, formatEnhanceLine } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
 import {
   buildCorrectSystemPrompt,
   buildCorrectUserPrompt,
-  buildRetranscribeSystemPrompt,
-  buildRetranscribeUserPrompt,
 } from "../prompts.js";
-import {
-  correctChunkStepSchema,
-  normalizeId,
-  retranscribeStepSchema,
-} from "../schemas.js";
+import { correctChunkStepSchema, normalizeId } from "../schemas.js";
 import {
   CORRECT_ANSWER_FACTOR,
   CORRECT_ANSWER_FIXED,
@@ -52,10 +39,6 @@ import {
 // 1. Code: vocabulary spelling (`vocab-spelling.ts`).
 // 2. LLM `correctChunk`: fix misheard words only. The checks of 4.2.3 run on
 //    its answer against the text that it saw (after stage 1).
-// 3. Code: find the lines in another language than the pinned meeting
-//    language (`line-language.ts`).
-// 4. LLM `retranscribeLines`: only for the lines of stage 3, write them again
-//    in the meeting language. Its own checks run on the answer.
 // The result keeps one unit list per chunk: an ok unit of stage 2 carries the
 // final text of each of its segments.
 
@@ -516,126 +499,31 @@ function toUnit(
   };
 }
 
-/** A rewritten line keeps this share of the words of the line, at least. */
-const MIN_RETRANSCRIBE_RATIO = 0.5;
-/** A rewritten line has this many times the words of the line, at most. */
-const MAX_RETRANSCRIBE_RATIO = 2;
-/**
- * A rewritten line that keeps this share of the words of the line, in order,
- * or more, was not in another language.
- */
-const MAX_RETRANSCRIBE_KEPT = 0.8;
-
-function digitsOf(text: string): string {
-  return (text.match(/\d+/g) ?? []).sort().join(" ");
-}
-
-/**
- * The code checks after a `retranscribeLines` call. A kept line is in the
- * meeting language, has about the same number of words, and keeps every
- * number.
- */
-export function checkRetranscriptions(
-  raw: { id: string; text: string }[],
-  segments: readonly PreparedSegment[],
-  callId: number | null,
-  target: string,
-  detectAll: DetectAllFn,
-): Pick<CorrectUnitResult, "corrections" | "dropped"> {
-  const byId = new Map(segments.map((s) => [s.id, s]));
-  const seen = new Set<string>();
-  const corrections: CorrectUnitResult["corrections"] = [];
-  const dropped: CorrectUnitResult["dropped"] = [];
-  raw.forEach((rawEntry, seq) => {
-    const id = normalizeId(rawEntry.id);
-    const original = byId.get(id);
-    const text = original
-      ? stripSpeakerLabel(rawEntry.text, original.displayLabel)
-      : "";
-    const reason = original
-      ? retranscriptionDrop(
-          original.text,
-          text,
-          seen.has(id),
-          target,
-          detectAll,
-        )
-      : "unknown_id";
-    if (reason) {
-      dropped.push({ id, reason, seq, callId });
-      return;
-    }
-    seen.add(id);
-    corrections.push({ id, text, seq, callId });
-  });
-  return { corrections, dropped };
-}
-
-/** The drop reason of one rewritten line, or null when it stays. */
-function retranscriptionDrop(
-  original: string,
-  text: string,
-  duplicate: boolean,
-  target: string,
-  detectAll: DetectAllFn,
-): CorrectionDropReason | null {
-  if (duplicate) return "duplicate_id";
-  if (!text) return "empty_text";
-  if (text === original.trim()) return "unchanged";
-  if (!isInLanguage(text, target, detectAll)) return "wrong_language";
-  // Most words kept: the line was in the meeting language already (a false
-  // flag), and the model only edited it.
-  const oldWords = wordsOf(original);
-  const newWords = wordsOf(text);
-  const kept = lcsTable(oldWords, newWords)[0]![0]!;
-  if (kept / Math.max(1, oldWords.length) >= MAX_RETRANSCRIBE_KEPT) {
-    return "unchanged";
-  }
-  const ratio = newWords.length / Math.max(1, oldWords.length);
-  if (
-    ratio < MIN_RETRANSCRIBE_RATIO ||
-    ratio > MAX_RETRANSCRIBE_RATIO ||
-    digitsOf(text) !== digitsOf(original)
-  ) {
-    return "too_different";
-  }
-  return null;
-}
-
 /**
  * The final units of a chunk. Each ok unit of the `correctChunk` stage gets,
  * for each of its segments, the last stage that changed the text: a kept
- * `retranscribeLines` line, else a kept `correctChunk` fix, else the code
- * spelling fix. A code fix has no call (`callId` null). A unit that is not ok
+ * `correctChunk` fix, else the code spelling fix. A code fix has no call (`callId` null). A unit that is not ok
  * stays as it is, so `save` writes nothing for it.
  */
 export function mergeStages(
   units: readonly CorrectUnitResult[],
   rawById: ReadonlyMap<string, string>,
   codeById: ReadonlyMap<string, string>,
-  retranscribed: Pick<CorrectUnitResult, "corrections" | "dropped">,
 ): CorrectUnitResult[] {
-  const retr = new Map(retranscribed.corrections.map((c) => [c.id, c]));
   return units.map((unit) => {
     if (unit.status !== "ok") return unit;
-    const ids = new Set(unit.segmentIds);
     const llm = new Map(unit.corrections.map((c) => [c.id, c]));
     const corrections: CorrectUnitResult["corrections"] = [];
     for (const id of unit.segmentIds) {
       const code = codeById.get(id);
       const pick =
-        retr.get(id) ??
         llm.get(id) ??
         (code !== undefined && code !== rawById.get(id)
           ? { id, text: code, seq: -1, callId: null }
           : undefined);
       if (pick) corrections.push(pick);
     }
-    const dropped = [
-      ...unit.dropped,
-      ...retranscribed.dropped.filter((d) => ids.has(d.id)),
-    ];
-    return { ...unit, corrections, dropped };
+    return { ...unit, corrections };
   });
 }
 
@@ -666,110 +554,22 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
         system,
         systemTokens,
       );
+      // A skipped or cancelled result carries its skip reason by identity
+      // (skippedBecause): return it as it is.
       if (fixed.status === "skipped" || fixed.status === "cancelled") {
         return fixed;
       }
-      // Stages 3 (code) and 4 (LLM): lines in another language.
-      const retranscribed = await retranscribe(input, segments, ctx);
       return {
         ...fixed,
         units: mergeStages(
           fixed.units,
           new Map(input.segments.map((s) => [s.id, s.text])),
           new Map(segments.map((s) => [s.id, s.text])),
-          retranscribed,
         ),
       };
     } finally {
       ctx.progress.chunkEnded(input.chunkIndex);
     }
-  }
-
-  /**
-   * Stages 3 and 4: code finds the lines in another language than the pinned
-   * meeting language, and one `retranscribeLines` call writes only those
-   * lines again. No pinned language or no such line: no call. A failed call
-   * keeps the lines as stage 2 left them.
-   */
-  async function retranscribe(
-    input: CorrectChunkInput,
-    segments: readonly PreparedSegment[],
-    ctx: RunContext,
-  ): Promise<Pick<CorrectUnitResult, "corrections" | "dropped">> {
-    const none = { corrections: [], dropped: [] };
-    const target = baseLanguage(input.language);
-    if (!target || ctx.isStopped()) return none;
-    const detectAll = await loadDetectAll();
-    const flagged = new Set(offLanguageIds(segments, target, detectAll));
-    if (flagged.size === 0) return none;
-    const members = segments.filter((s) => flagged.has(s.id));
-    const system = buildRetranscribeSystemPrompt(target);
-    const systemTokens = estimateTokens(system);
-    ctx.progress.addTotal(1);
-    const leaves = await runUnitRoute(
-      {
-        node: "correctChunk",
-        ctx,
-        profile: input.retranscribeProfile,
-        minSplitTokens: MIN_SPLIT_TOKENS_CORRECT,
-        minSplitTokensInput: 0,
-        tokensOf: tokensOfSegments,
-        maxOutput: maxOutputFor,
-        fits: (m, maxOut, profile) =>
-          fitsContext(profile, systemTokens + tokensOfSegments(m), maxOut),
-        call: (unit) =>
-          callUnit(
-            {
-              step: "retranscribeLines",
-              runId: input.runId,
-              unitKey: unit.key,
-              chunkIndex: input.chunkIndex,
-              schema: retranscribeStepSchema(unit.members.map((s) => s.id)),
-              instructions: system,
-              messages: [
-                {
-                  role: "user",
-                  content: buildRetranscribeUserPrompt(
-                    unit.members.map(lineOf),
-                  ),
-                },
-              ],
-              profile: unit.profile,
-              maxOutputTokens: unit.maxOutputTokens,
-              signal: ctx.signal,
-              onQueued: (i) => ctx.progress.onQueued(i),
-              onHeld: (held) => ctx.progress.callHeld(held),
-            },
-            ctx,
-            deps,
-          ),
-        onSplit: () => ctx.progress.addTotal(1),
-        onLeafEnd: (leaf) => {
-          if (leaf.status === "ok") ctx.progress.callEnded("ok");
-          else if (leaf.status === "failed") ctx.progress.callEnded("failed");
-        },
-      },
-      `chunk:${input.chunkIndex}/language`,
-      members,
-    );
-    recordUnitEnd(breaker, ctx, leaves);
-    const out: Pick<CorrectUnitResult, "corrections" | "dropped"> = {
-      corrections: [],
-      dropped: [],
-    };
-    for (const leaf of leaves) {
-      if (leaf.status !== "ok" || !leaf.result) continue;
-      const checked = checkRetranscriptions(
-        leaf.result.object.corrections,
-        leaf.members,
-        leaf.result.callId,
-        target,
-        detectAll,
-      );
-      out.corrections.push(...checked.corrections);
-      out.dropped.push(...checked.dropped);
-    }
-    return out;
   }
 
   async function correctChunk(

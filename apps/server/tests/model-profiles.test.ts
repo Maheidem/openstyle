@@ -439,7 +439,6 @@ describe("W14, the models.dev read is best effort (5.1)", () => {
     const models = await resolveModels({
       maxReasoningTokens: {
         correctChunk: 0,
-        retranscribeLines: 0,
         identifySpeakers: 1024,
         summarize: 0,
         suggestTags: 0,
@@ -448,7 +447,6 @@ describe("W14, the models.dev read is best effort (5.1)", () => {
     expect(Object.keys(models).sort()).toEqual([
       "correctChunk",
       "identifySpeakers",
-      "retranscribeLines",
       "suggestTags",
       "summarize",
     ]);
@@ -464,7 +462,6 @@ describe("W14, the models.dev read is best effort (5.1)", () => {
     await resolveModels({
       maxReasoningTokens: {
         correctChunk: 0,
-        retranscribeLines: 0,
         identifySpeakers: 0,
         summarize: 0,
         suggestTags: 0,
