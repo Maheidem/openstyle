@@ -294,8 +294,7 @@ test.beforeAll(async () => {
     ["meeting_enhance_prompt_seen", "true"],
     ["advanced_mode", "true"],
     ["mlx_llm_keep_alive_minutes", "-1"],
-    // Project memory is off by default (#234): this proof turns it on.
-    ["meeting_project_memory", "true"],
+    // Project memory is on by default (#234): the row is left unset.
   ]) {
     await api(`/api/settings/${key}`, {
       method: "PUT",

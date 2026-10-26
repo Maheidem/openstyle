@@ -356,15 +356,18 @@ describe("loadFolderMemory", () => {
   });
 });
 
-/** The project memory setting (issue #234): off unless the row is "true". */
+/**
+ * The project memory setting (issue #234): on unless the row is "false". On
+ * means the default, a missing row; off writes the "false" row.
+ */
 function setMemory(on: boolean): void {
   getDb()
     .prepare("DELETE FROM settings WHERE key = 'meeting_project_memory'")
     .run();
-  if (on) {
+  if (!on) {
     getDb()
       .prepare(
-        "INSERT INTO settings (key, value) VALUES ('meeting_project_memory', 'true')",
+        "INSERT INTO settings (key, value) VALUES ('meeting_project_memory', 'false')",
       )
       .run();
   }
@@ -403,7 +406,7 @@ function expectMainPrompts(
 
 describe("the workflow with project memory", () => {
   beforeEach(() => setMemory(true));
-  afterEach(() => setMemory(false));
+  afterEach(() => setMemory(true));
 
   /** A filed meeting "m-new" and an earlier meeting "m-old" in Aurora. */
   function seedAurora() {
@@ -435,6 +438,14 @@ describe("the workflow with project memory", () => {
   }
 
   it("Summary gets the labeled block; Enhance gets terms only, never chunk text; the run record holds the ids", async () => {
+    // The default: no settings row at all means project memory is on.
+    expect(
+      getDb()
+        .prepare(
+          "SELECT value FROM settings WHERE key = 'meeting_project_memory'",
+        )
+        .get(),
+    ).toBeUndefined();
     seedAurora();
     const fake = fakeSearch(
       [hit(11, "m-old", "transcript", 0.9), hit(12, "m-old", "summary", 0.8)],
@@ -527,7 +538,7 @@ describe("the workflow with project memory", () => {
     ).toBeUndefined();
   });
 
-  it("setting off (the default): no loader call, no retrieve call, prompts equal main", async () => {
+  it('setting off (the "false" row): no loader call, no retrieve call, prompts equal main', async () => {
     setMemory(false);
     seedAurora();
     const calls: RetrieveInput[] = [];

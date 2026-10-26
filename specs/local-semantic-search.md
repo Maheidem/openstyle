@@ -639,7 +639,7 @@ An unfiled meeting has no folder, so Summary and Enhance skip retrieval.
 
 Code: `apps/server/src/lib/meetings/workflow/folder-memory.ts`.
 
-- Off by default: setting `meeting_project_memory` (only `"true"` turns it on; owner order 2026-10-22). Reason: the 3-run Gemma 4 E2B benchmark on the #234 folder lost summary items and made more owner errors with it on (see #234). Off means no `retrieve()` call and prompts byte-equal to main. No UI toggle yet: the key is set through the settings API.
+- On by default: setting `meeting_project_memory` (a missing row means on; only `"false"` turns it off; owner order 2026-10-26, reverses the 2026-10-22 default-off). The 3-run Gemma 4 E2B benchmark on the #234 folder lost summary items and made more owner errors with it on (see #234). Off means no `retrieve()` call and prompts byte-equal to main. Settings > Meetings has a switch (owner order 2026-10-26) that writes the same key.
 
 - `prepare` calls `loadFolderMemory` once, only for a meeting with a folder. It calls `retrieve()` only when `searchState()` is `on` and an earlier meeting of the folder has `summary` or `transcript` rows for the search model. Reason: a `meeting` query of a meeting that is not indexed embeds up to 8 chunks, and that work is useless when the folder has no index rows.
 - The call: `query: meeting`, `scope: folder`, `excludeMeetingIds: [self, ...later]`, `k: 12`, a 60 s timeout joined with the run signal. "Later" = a folder meeting whose `COALESCE(started_at, created_at)` is after this meeting's. Reason: the block says "Earlier meetings", and a later meeting holds facts that did not exist yet. A meeting with no time counts as earlier. The index-row check above looks only at earlier meetings.
@@ -668,7 +668,7 @@ One switch: `searchState()` returns `on`, or `off` with a `SearchOffReason` (8.1
 
 - In all off states: meetings, Enhance and Summary run as today. #234 retrieval is off (D2). The indexer does not run. `meeting_chunk_gc` keeps growing until search is on again.
 - Only `extension.ts` and `vec-store.ts` touch the vec0 table. Each call checks the state first. Reason: a read without the module fails with "no such module: vec0" (P1 9b). `DROP TABLE` also fails without it (P1 9d). `PRAGMA integrity_check` stays `ok` (P1 9e).
-- The dylib has `minos 14.0` (`vtool -show-build`). The app's `LSMinimumSystemVersion` is `12.0` (built `Info.plist`). On macOS 12 and 13 the load may fail. UNVERIFIED. If it fails, that is `extension_load_failed`.
+- The dylib has `minos 14.0` (`vtool -show-build`). The app's `LSMinimumSystemVersion` is `14.0` (`mac.minimumSystemVersion` in `electron-builder.yml`, issue #274), so the gap is closed: macOS 12 and 13 cannot start the app.
 
 ### 9.2 Model missing or deleted
 

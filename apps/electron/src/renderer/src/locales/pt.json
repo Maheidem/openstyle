@@ -214,6 +214,8 @@
       "systemAudioUnknownNote": "Silêncio não significa necessariamente negado. Pode ser que nada estivesse tocando durante a verificação."
     },
     "meetings": {
+      "projectMemory": "Usar reuniões anteriores",
+      "projectMemoryDesc": "Usa reuniões anteriores da mesma pasta para escrever o resumo.",
       "useCalendar": "Usar meu calendário",
       "useCalendarDesc": "Vincula cada gravação de reunião ao evento do calendário que está em andamento. O Openstyle apenas lê eventos. Ele nunca altera seu calendário. O macOS pede permissão quando você ativa esta opção.",
       "calendarDenied": "O Openstyle não tem acesso ao seu calendário. Permita o acesso em Ajustes do Sistema e depois ative esta opção novamente.",

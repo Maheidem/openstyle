@@ -123,10 +123,10 @@ export function makePrepareNode(deps: WorkflowDeps) {
         : null;
 
       // Project memory (issue #234): once, for a filed meeting, when the
-      // setting is on (off by default) and search is on. Null means no
-      // memory, and the prompts are the same as before.
+      // setting is on (on by default; only "false" turns it off) and search
+      // is on. Null means no memory, and the prompts are the same as before.
       const memoryOn =
-        readSettingFrom(deps, SETTINGS_KEYS.meetingProjectMemory) === "true";
+        readSettingFrom(deps, SETTINGS_KEYS.meetingProjectMemory) !== "false";
       const folderMemory =
         memoryOn && row.folder_id
           ? await (deps.loadFolderMemory ?? loadFolderMemory)(deps.db, {
