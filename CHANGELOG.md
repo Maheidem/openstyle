@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.23.0
+
+### New Features ✨
+
+- (dx) One-command Openstyle Dev build next to the installed app by @Maheidem in [#321](https://github.com/Maheidem/openstyle/pull/321)
+- (eval) HF cache and out dir out of /tmp; meeting-eval skill by @Maheidem in [#330](https://github.com/Maheidem/openstyle/pull/330)
+- (meeting-eval) Audio second opinion for Enhance corrections (experiment) by @Maheidem in [#320](https://github.com/Maheidem/openstyle/pull/320)
+- (meetings) Folder colors by @Maheidem in [#323](https://github.com/Maheidem/openstyle/pull/323)
+- (release) Developer ID signing and notarization for macOS by @Maheidem in [#313](https://github.com/Maheidem/openstyle/pull/313)
+- (tray) Menu bar popover with live status and meeting control by @Maheidem in [#318](https://github.com/Maheidem/openstyle/pull/318)
+- Project memory on by default, require macOS 14 by @Maheidem in [#332](https://github.com/Maheidem/openstyle/pull/332)
+- Nemotron 3.5 Bolt E4B as an optional local LLM by @Maheidem in [#324](https://github.com/Maheidem/openstyle/pull/324)
+
+### Bug Fixes 🐛
+
+- (meetings) Retention sweep never deletes eval gold meetings by @Maheidem in [#329](https://github.com/Maheidem/openstyle/pull/329)
+
+### Documentation 📚
+
+- (skills) Dev:install proven runs and signing traps by @Maheidem in [#322](https://github.com/Maheidem/openstyle/pull/322)
+
+### Internal Changes 🔧
+
+- (bench) Overnight model sweep tooling by @Maheidem in [#325](https://github.com/Maheidem/openstyle/pull/325)
+- (skills) App-check and model-catalog skills by @Maheidem in [#328](https://github.com/Maheidem/openstyle/pull/328)
+
 ## 2.22.0
 
 ### Improvements ⚡
