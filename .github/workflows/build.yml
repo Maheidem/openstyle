@@ -729,8 +729,16 @@ jobs:
       - package
     runs-on: ubuntu-latest
     steps:
+      # Pass only when each needed job is "success" or "skipped". Run
+      # 40543620627 showed a gap: a macOS job that no runner acquired showed
+      # "cancelled", but the old contains() test let CI Status pass.
       - name: Check CI result
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        env:
+          NEEDS: ${{ toJSON(needs) }}
         run: |
-          echo "CI failed or was cancelled"
-          exit 1
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          bad="$(echo "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(" ")')"
+          if [ -n "$bad" ]; then
+            echo "::error::These jobs did not pass: $bad"
+            exit 1
+          fi
