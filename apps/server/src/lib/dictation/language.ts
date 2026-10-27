@@ -1,74 +1,42 @@
 // The dictation language for the stages (specs/dictation-pipeline.md 4.3).
-// The code stages have rules for en, es and zh. Other languages pass through
-// them unchanged.
+// The code stages have rules for en, es and pt (owner decision 2026-10-27).
+// Other languages pass through them unchanged.
 
-export type DictationLang = "en" | "es" | "zh";
+export type DictationLang = "en" | "es" | "pt";
 
-/** The rule language of a language code ("zh-Hans" -> "zh"), or null. */
+const RULE_LANGS: readonly DictationLang[] = ["en", "es", "pt"];
+
+/** The rule language of a language code ("pt-BR" -> "pt"), or null. */
 export function langOf(code: string | null | undefined): DictationLang | null {
-  const c = (code ?? "").trim().toLowerCase();
-  if (c.startsWith("en")) return "en";
-  if (c.startsWith("es")) return "es";
-  if (c.startsWith("zh")) return "zh";
-  return null;
+  const base = (code ?? "").trim().toLowerCase().split(/[-_]/)[0] ?? "";
+  return (RULE_LANGS as readonly string[]).includes(base)
+    ? (base as DictationLang)
+    : null;
 }
 
-const ES_WORDS = new Set([
-  "el",
-  "la",
-  "los",
-  "las",
-  "de",
-  "del",
-  "que",
-  "y",
-  "en",
-  "es",
-  "para",
-  "por",
-  "con",
-  "una",
-  "un",
-  "al",
-  "lo",
-  "se",
-  "mi",
-  "su",
-  "pero",
-  "como",
-  "muy",
-  "esta",
-  "este",
-  "hola",
-  "gracias",
-]);
-const EN_WORDS = new Set([
-  "the",
-  "and",
-  "to",
-  "of",
-  "is",
-  "for",
-  "it",
-  "you",
-  "i",
-  "we",
-  "a",
-  "in",
-  "on",
-  "at",
-  "this",
-  "that",
-  "my",
-  "me",
-  "with",
-  "but",
-  "can",
-  "be",
-  "are",
-  "hi",
-  "thanks",
-]);
+/** Common words that only one of the three languages uses. */
+const MARKER_WORDS: Record<DictationLang, Set<string>> = {
+  en: new Set(
+    "the and to of is for it you i we in on at this that my me with but can be are hi thanks".split(
+      " ",
+    ),
+  ),
+  es: new Set(
+    "el los las y del al lo se pero como muy esta este hola gracias usted mañana también".split(
+      " ",
+    ),
+  ),
+  pt: new Set(
+    "o os um uma e é do da dos das no na em não você isso obrigado obrigada olá está também amanhã com".split(
+      " ",
+    ),
+  ),
+};
+const MARKER_CHARS: Record<DictationLang, RegExp> = {
+  en: /$^/,
+  es: /[ñ¿¡]/i,
+  pt: /[ãõçâêô]/i,
+};
 
 /**
  * The language of one dictation.
@@ -77,11 +45,10 @@ const EN_WORDS = new Set([
  * - `llm`: the language list for the LLM stages. One language when it is
  *   known. The configured list when the text does not show it.
  *
- * One configured language wins. With several configured languages, the text
- * decides: Chinese characters give zh; otherwise common words decide between
- * en and es. Detection only runs when every configured language has rules
- * (or the list is empty, which means "auto"), so a German dictation with
- * ["en", "de"] never gets English rules.
+ * One configured language wins. With several configured languages, common
+ * words and letters decide. Detection only runs when every configured
+ * language has rules (or the list is empty, which means "auto"), so a German
+ * dictation with ["en", "de"] never gets English rules.
  */
 export function resolveDictationLanguage(
   text: string,
@@ -94,40 +61,28 @@ export function resolveDictationLanguage(
     const only = codes[0] as string;
     return { rules: langOf(only), llm: [only] };
   }
-  const supported = codes.every((c) => langOf(c) !== null);
-  if (!supported) return { rules: null, llm: codes };
-  const candidates: { lang: DictationLang; code: string }[] =
-    codes.length === 0
-      ? [
-          { lang: "en", code: "en" },
-          { lang: "es", code: "es" },
-          { lang: "zh", code: "zh" },
-        ]
-      : codes.map((c) => ({ lang: langOf(c) as DictationLang, code: c }));
-  const has = (lang: DictationLang) => candidates.find((c) => c.lang === lang);
-  const han = (text.match(/\p{Script=Han}/gu) ?? []).length;
-  const latin = (text.match(/\p{Script=Latin}/gu) ?? []).length;
-  const zh = has("zh");
-  if (zh && han > 0 && han >= latin / 3) return { rules: "zh", llm: [zh.code] };
-  const en = has("en");
-  const es = has("es");
-  if (en && es) {
-    const words = text
-      .toLowerCase()
-      .split(/[^\p{L}']+/u)
-      .filter(Boolean);
-    let score = /[ñáéíóú¿¡]/i.test(text) ? 2 : 0;
-    for (const w of words) {
-      if (ES_WORDS.has(w)) score += 1;
-      if (EN_WORDS.has(w)) score -= 1;
-    }
-    if (score > 0) return { rules: "es", llm: [es.code] };
-    if (score < 0) return { rules: "en", llm: [en.code] };
+  if (!codes.every((c) => langOf(c) !== null)) {
     return { rules: null, llm: codes };
   }
-  const latinOnly = en ?? es;
-  if (latinOnly && han === 0) {
-    return { rules: latinOnly.lang, llm: [latinOnly.code] };
+  const candidates =
+    codes.length === 0
+      ? RULE_LANGS.map((lang) => ({ lang, code: lang as string }))
+      : codes.map((c) => ({ lang: langOf(c) as DictationLang, code: c }));
+  const words = text
+    .toLowerCase()
+    .split(/[^\p{L}']+/u)
+    .filter(Boolean);
+  const scored = candidates
+    .map((c) => {
+      let score = MARKER_CHARS[c.lang].test(text) ? 2 : 0;
+      for (const w of words) if (MARKER_WORDS[c.lang].has(w)) score += 1;
+      return { ...c, score };
+    })
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  const second = scored[1];
+  if (!best || best.score === 0 || (second && second.score === best.score)) {
+    return { rules: null, llm: codes };
   }
-  return { rules: null, llm: codes };
+  return { rules: best.lang, llm: [best.code] };
 }

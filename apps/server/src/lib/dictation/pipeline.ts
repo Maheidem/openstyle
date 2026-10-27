@@ -138,7 +138,7 @@ export async function runDictationPipeline(
     const lead = list.leadIn ? await cleanSpan(list.leadIn) : "";
     const items: string[] = [];
     for (const item of list.items) items.push(await cleanSpan(item));
-    cleanedParts.push(formatCountedList(lead, items, lang));
+    cleanedParts.push(formatCountedList(lead, items));
   }
   let text = joinParts(cleanedParts, seps);
 
@@ -166,6 +166,6 @@ export async function runDictationPipeline(
     text = await guarded("tone", (t) => toneStagePrompt(t, llmLanguages, tone));
   }
   if (input.intensity === "high") text = listMarkers(text, input.raw, lang);
-  text = fragments(contactEnd(text), input.raw, lang);
+  text = fragments(contactEnd(text), input.raw);
   return { text, lang, llmLanguages, stages };
 }

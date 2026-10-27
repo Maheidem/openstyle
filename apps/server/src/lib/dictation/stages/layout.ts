@@ -1,12 +1,13 @@
 // Code layout stages (specs/dictation-pipeline.md 4.2): the light format of
-// low intensity, list markers (S8) and short fragments (S9).
+// low intensity, list markers (S8), the end of a contact form, and short
+// fragments (S9).
 
 import type { DictationLang } from "../language.js";
 
 const FILLERS: Record<DictationLang, RegExp> = {
   en: /(?<![\p{L}'])(?:um+|uh+|uhm+|erm+|er|ah+|hmm+|mm+)(?![\p{L}'])[,.]?\s*/giu,
   es: /(?<![\p{L}])(?:eh+|em+|mmm+|ehm+)(?![\p{L}])[,.]?\s*/giu,
-  zh: /[呃嗯][，,]?/gu,
+  pt: /(?<![\p{L}])(?:hã+|hum+|ahn+|uhm+|éh+)(?![\p{L}])[,.]?\s*/giu,
 };
 
 /**
@@ -37,9 +38,7 @@ export function lightFormat(text: string, lang: DictationLang | null): string {
     )
     .join("\n")
     .trim();
-  if (out && !/[.!?。！？:：…;；,，]$/u.test(out)) {
-    out += lang === "zh" || /\p{Script=Han}$/u.test(out) ? "。" : ".";
-  }
+  if (out && !/[.!?:…;,]$/u.test(out)) out += ".";
   return out;
 }
 
@@ -60,7 +59,14 @@ const COUNT_CUES: Record<DictationLang, RegExp[]> = {
     /\bsegundo\b/i,
     /\btercero\b/i,
   ],
-  zh: [/第一/, /第二/, /第三/, /一个/, /两个/, /三个/],
+  pt: [
+    /(?<![\p{L}])um(?![\p{L}])/iu,
+    /(?<![\p{L}])dois(?![\p{L}])/iu,
+    /(?<![\p{L}])três(?![\p{L}])/iu,
+    /(?<![\p{L}])primeiro(?![\p{L}])/iu,
+    /(?<![\p{L}])segundo(?![\p{L}])/iu,
+    /(?<![\p{L}])terceiro(?![\p{L}])/iu,
+  ],
 };
 
 /** True when the raw text counts its items (2 or more counting words). */
@@ -79,39 +85,33 @@ export function listMarkers(
   raw: string,
   lang: DictationLang | null,
 ): string {
-  if (!/^\s*\d+[.．、]\s/m.test(text) || countsItems(raw, lang)) return text;
-  return text.replace(/^(\s*)\d+[.．、]\s+/gm, "$1- ");
+  if (!/^\s*\d+\.\s/m.test(text) || countsItems(raw, lang)) return text;
+  return text.replace(/^(\s*)\d+\.\s+/gm, "$1- ");
 }
 
 /**
  * A period right after an email, URL, path or file name at the end of the
- * text reads as part of it. Remove it; a Chinese text gets "。" instead. The
- * blind judges of the first bench run chose the answer without that period.
+ * text reads as part of it, so it goes. The blind judges of the first bench
+ * run chose the answer without that period.
  */
 export function contactEnd(text: string): string {
   const m = /(\S+)\.$/u.exec(text);
   const last = m?.[1] ?? "";
   if (!/@|:\/\/|^www\.|^\/|\.[a-z][a-z0-9]{1,4}$/i.test(last)) return text;
   if (!/[a-z0-9/]$/i.test(last)) return text;
-  const body = text.slice(0, -1);
-  return /\p{Script=Han}/u.test(body) ? `${body}。` : body;
+  return text.slice(0, -1);
 }
 
 /**
- * S9: a short fragment keeps no final period (owner rule: 3 words or less;
- * Chinese: 6 characters or less). Only a single-line answer with no other
- * sentence mark changes.
+ * S9: a short fragment keeps no final period (owner rule: 3 words or less).
+ * Only a single-line answer with no other sentence mark changes. A short text
+ * with a digit is a statement ("Cuesta 25 dólares.", "It's 3 PM."), not a
+ * title, so it keeps its period (owner review 2026-10-27).
  */
-export function fragments(
-  text: string,
-  raw: string,
-  lang: DictationLang | null,
-): string {
+export function fragments(text: string, raw: string): string {
   const words = raw.trim().split(/\s+/).filter(Boolean).length;
-  const han = (raw.match(/\p{Script=Han}/gu) ?? []).length;
-  const short = lang === "zh" || han > 0 ? han > 0 && han <= 6 : words <= 3;
-  if (!short || text.includes("\n")) return text;
-  const body = text.replace(/[.。]$/, "");
-  if (/[.!?。！？]/.test(body)) return text;
+  if (words > 3 || text.includes("\n") || /\d/.test(text)) return text;
+  const body = text.replace(/\.$/, "");
+  if (/[.!?]/.test(body)) return text;
   return body;
 }

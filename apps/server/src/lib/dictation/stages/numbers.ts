@@ -1,17 +1,19 @@
 // Code stage S4 (specs/dictation-pipeline.md 4.2): spoken numbers become
 // digits (owner rule 2026-10-26: numbers are always digits). Dates, times,
 // money, percent, phone numbers and plain counts. Own number tables for en,
-// es and zh. Other languages pass through.
+// es and pt (owner decision 2026-10-27). Other languages pass through.
 //
-// Kept as words on purpose:
-// - the number one alone ("one", "un", "una", "uno", 一): "no one", "one of
-//   them", 一下, 一起. Inside a larger number, a time, money or a date it is a
-//   digit.
-// - ordinals outside a date ("the second item", 第二).
-// - es "mil" alone ("mil gracias").
-// - zh numbers without a unit: a zh number becomes digits only before a
-//   measure word, in a date or time, or with money or percent (十分 = "very",
-//   三明治 = "sandwich").
+// Kept as words on purpose (owner confirmed 2026-10-27):
+// - the number one alone ("one", "un", "una", "uno", "um", "uma"): "no one",
+//   "one of them". Inside a larger number, a time, money or a date it is a
+//   digit. In a run of counts it is a digit too ("one cable two adapters" ->
+//   "1 cable 2 adapters").
+// - ordinals outside a date ("the second item").
+// - "mil" alone ("mil gracias", "mil vezes").
+//
+// Number style: en 3,500 (years 1900-2099 have no comma); es 3500 and 12.000
+// (es-ES: no point in a number of 4 digits, as the RAE says); pt 3.500 and
+// 12.000 (pt-BR); es percent "12 %" (RAE), pt percent "12%".
 
 import type { DictationLang } from "../language.js";
 
@@ -326,76 +328,10 @@ function parseEnYear(words: readonly string[], k: number): NumParse | null {
   return null;
 }
 
-type EsState = "none" | "unit" | "tens" | "y" | "hund" | "big";
-
-function parseEs(words: readonly string[], k: number): NumParse | null {
-  let total = 0;
-  let cur = 0;
-  let used = 0;
-  let last: EsState = "none";
-  for (let i = k; i < words.length; i++) {
-    const w = fold(words[i] ?? "");
-    if (w === "y" && last === "tens") {
-      const nx = fold(words[i + 1] ?? "");
-      if (nx in ES_UNITS && (ES_UNITS[nx] as number) < 10) {
-        used++;
-        last = "y";
-        continue;
-      }
-      break;
-    }
-    if (w in ES_UNITS) {
-      const v = ES_UNITS[w] as number;
-      if (last === "unit" || last === "tens") break;
-      if (last === "y" && v >= 10) break;
-      cur += v;
-      used++;
-      last = "unit";
-      continue;
-    }
-    if (w in ES_TENS) {
-      if (last === "unit" || last === "tens" || last === "y") break;
-      cur += ES_TENS[w] as number;
-      used++;
-      last = "tens";
-      continue;
-    }
-    if (w in ES_HUNDREDS) {
-      if (last !== "none" && last !== "big") break;
-      cur += ES_HUNDREDS[w] as number;
-      used++;
-      last = "hund";
-      continue;
-    }
-    if (w === "mil" && last !== "big") {
-      total += (cur || 1) * 1000;
-      cur = 0;
-      used++;
-      last = "big";
-      continue;
-    }
-    if ((w === "millon" || w === "millones") && last !== "none") {
-      total += (cur || 1) * 1_000_000;
-      cur = 0;
-      used++;
-      last = "big";
-      continue;
-    }
-    break;
-  }
-  if (used === 0) return null;
-  return { value: total + cur, n: used, ordinal: false };
-}
-
 /** en: 3,500 and 12,000; years (1900 to 2099) have no comma. */
 function fmtEn(n: number): string {
   if (n >= 1900 && n <= 2099) return String(n);
   return n >= 1000 ? n.toLocaleString("en-US") : String(n);
-}
-
-/** es: 3500 (four digits, no point), 12.000. */
-function fmtEs(n: number): string {
-  return n >= 10000 ? n.toLocaleString("es-ES") : String(n);
 }
 
 function ordSuffix(n: number): string {
@@ -404,52 +340,6 @@ function ordSuffix(n: number): string {
   return (
     ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th"
   );
-}
-
-function phoneFormat(d: string, lang: "en" | "es"): string {
-  if (lang === "es" && d.length === 9) {
-    return `${d.slice(0, 3)} ${d.slice(3, 5)} ${d.slice(5, 7)} ${d.slice(7)}`;
-  }
-  if (d.length === 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
-  if (d.length === 10) {
-    return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
-  }
-  return d;
-}
-
-/** A word that stays a word when it is the whole number. */
-function keepsWord(lang: "en" | "es", n: NumParse, first: string): boolean {
-  if (n.ordinal) return true;
-  if (n.n !== 1) return false;
-  if (n.value === 1) return true;
-  return lang === "es" && first === "mil";
-}
-
-/**
- * One rule pass over the word tokens. At each word the rules run in order and
- * the first match wins; then the pass starts again on the new tokens.
- */
-function latinNumbers(text: string, lang: "en" | "es"): string {
-  const toks = tokenize(text.replace(/\b([ap])\.\s?m\./gi, "$1m"));
-  for (let guard = 0; guard < 500; guard++) {
-    const wi = toks.flatMap((t, i) => (t.w ? [i] : []));
-    const words = wi.map((i) => (toks[i] as Tok).t);
-    const W = (k: number) => fold(words[k] ?? "");
-    const replace = (k0: number, k1: number, s: string) => {
-      const a = wi[k0] as number;
-      const b = wi[k1] as number;
-      toks.splice(a, b - a + 1, { t: s, w: true });
-    };
-    let hit = false;
-    for (let k = 0; k < words.length && !hit; k++) {
-      hit =
-        lang === "en"
-          ? enRuleAt(k, W, words, replace)
-          : esRuleAt(k, W, words, replace);
-    }
-    if (!hit) break;
-  }
-  return toks.map((t) => t.t).join("");
 }
 
 type Replace = (k0: number, k1: number, s: string) => void;
@@ -479,7 +369,16 @@ function enRuleAt(
   if (w in EN_DIGIT && w !== "o" && w !== "oh") {
     const run = digitRun(k, W, EN_DIGIT);
     if (run) {
-      replace(k, run.end, phoneFormat(run.digits, "en"));
+      const d = run.digits;
+      replace(
+        k,
+        run.end,
+        d.length === 7
+          ? `${d.slice(0, 3)}-${d.slice(3)}`
+          : d.length === 10
+            ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`
+            : d,
+      );
       return true;
     }
   }
@@ -565,39 +464,329 @@ function enRuleAt(
       return true;
     }
   }
-  if (keepsWord("en", n, w)) return false;
+  if (keepsWord(n, w, words, k, parseEn)) return false;
   replace(k, after - 1, fmtEn(n.value));
   return true;
 }
 
-function esRuleAt(
+/** Words after a lone "one" that make it a pronoun or an article, not a count. */
+const ONE_NOT_COUNT = new Set(
+  "of the a an de del la el los las o os do da dos das que".split(" "),
+);
+/** Words before a lone "one" that make it a pronoun: "no one", "this one". */
+const ONE_AFTER_PRONOUN = new Set(
+  "no any every some each this that the which another".split(" "),
+);
+
+/**
+ * A word that stays a word when it is the whole number: an ordinal, a lone
+ * "one" (unless a count of 2 or more follows within 3 words: "one cable two
+ * adapters"), and a lone "mil".
+ */
+function keepsWord(
+  n: NumParse,
+  first: string,
+  words: readonly string[],
+  k: number,
+  parse: (words: readonly string[], k: number) => NumParse | null,
+): boolean {
+  if (n.ordinal) return true;
+  if (n.n !== 1) return false;
+  if (first === "mil") return true;
+  if (n.value !== 1) return false;
+  if (ONE_NOT_COUNT.has(fold(words[k + 1] ?? ""))) return true;
+  if (ONE_AFTER_PRONOUN.has(fold(words[k - 1] ?? ""))) return true;
+  for (let j = k + 2; j <= k + 4 && j < words.length; j++) {
+    // "por ciento" / "por cento" / "per cent" is not a count.
+    if (/^(por|per)$/.test(fold(words[j - 1] ?? ""))) continue;
+    const m = parse(words, j);
+    const loneMil = m?.n === 1 && fold(words[j] ?? "") === "mil";
+    if (m && !m.ordinal && m.value >= 2 && !loneMil) return false;
+  }
+  return true;
+}
+
+// --- es and pt -----------------------------------------------------------------
+
+interface RomanceTable {
+  lang: "es" | "pt";
+  units: Record<string, number>;
+  tens: Record<string, number>;
+  hundreds: Record<string, number>;
+  /** "y" (es), "e" (pt). */
+  and: string;
+  /** pt also joins after a hundred and after "mil": "cento e vinte", "dois mil e quinhentos". */
+  andAfterHundreds: boolean;
+  million: RegExp;
+  months: string[];
+  digits: Record<string, string>;
+  /** Digit words that only count inside a run ("meia" = 6 in pt phone numbers). */
+  runOnlyDigits: Record<string, string>;
+  currency: RegExp;
+  percent: [string, string];
+  decimal: string;
+  /** Words before the hour article. */
+  timePrep: RegExp;
+  /** The hour article ("las"/"la" in es; pt "às" is one word). */
+  hourWord: (w: string, raw: string, prev: string) => boolean;
+  /** Day 1 in a date ("1" in es, "1º" in pt-BR). */
+  firstDay: string;
+  fmt: (n: number) => string;
+  phone: (d: string) => string;
+  percentFmt: (n: number) => string;
+  /** The words of half and quarter hours. */
+  half: [string, string];
+  quarter: [string, string];
+}
+
+const ES: RomanceTable = {
+  lang: "es",
+  units: ES_UNITS,
+  tens: ES_TENS,
+  hundreds: ES_HUNDREDS,
+  and: "y",
+  andAfterHundreds: false,
+  million: /^(millon|millones)$/,
+  months: ES_MONTHS,
+  digits: ES_DIGIT,
+  runOnlyDigits: {},
+  currency: ES_CURRENCY,
+  percent: ["por", "ciento"],
+  decimal: "coma",
+  timePrep: /^(a|son|desde|hasta)$/,
+  hourWord: (w, _raw, prev) =>
+    (w === "las" || w === "la") && /^(a|son|desde|hasta)$/.test(prev),
+  firstDay: "1",
+  fmt: (n) => (n >= 10000 ? n.toLocaleString("es-ES") : String(n)),
+  phone: (d) =>
+    d.length === 9
+      ? `${d.slice(0, 3)} ${d.slice(3, 5)} ${d.slice(5, 7)} ${d.slice(7)}`
+      : d,
+  percentFmt: (n) => `${n} %`,
+  half: ["y", "media"],
+  quarter: ["y", "cuarto"],
+};
+
+const PT_UNITS: Record<string, number> = {
+  zero: 0,
+  um: 1,
+  uma: 1,
+  dois: 2,
+  duas: 2,
+  tres: 3,
+  quatro: 4,
+  cinco: 5,
+  seis: 6,
+  sete: 7,
+  oito: 8,
+  nove: 9,
+  dez: 10,
+  onze: 11,
+  doze: 12,
+  treze: 13,
+  catorze: 14,
+  quatorze: 14,
+  quinze: 15,
+  dezesseis: 16,
+  dezasseis: 16,
+  dezessete: 17,
+  dezassete: 17,
+  dezoito: 18,
+  dezenove: 19,
+  dezanove: 19,
+};
+const PT_TENS: Record<string, number> = {
+  vinte: 20,
+  trinta: 30,
+  quarenta: 40,
+  cinquenta: 50,
+  sessenta: 60,
+  setenta: 70,
+  oitenta: 80,
+  noventa: 90,
+};
+const PT_HUNDREDS: Record<string, number> = {
+  cem: 100,
+  cento: 100,
+  duzentos: 200,
+  duzentas: 200,
+  trezentos: 300,
+  trezentas: 300,
+  quatrocentos: 400,
+  quatrocentas: 400,
+  quinhentos: 500,
+  quinhentas: 500,
+  seiscentos: 600,
+  seiscentas: 600,
+  setecentos: 700,
+  setecentas: 700,
+  oitocentos: 800,
+  oitocentas: 800,
+  novecentos: 900,
+  novecentas: 900,
+};
+
+const PT: RomanceTable = {
+  lang: "pt",
+  units: PT_UNITS,
+  tens: PT_TENS,
+  hundreds: PT_HUNDREDS,
+  and: "e",
+  andAfterHundreds: true,
+  million: /^(milhao|milhoes)$/,
+  months:
+    "janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro".split(
+      " ",
+    ),
+  digits: {
+    zero: "0",
+    um: "1",
+    dois: "2",
+    tres: "3",
+    quatro: "4",
+    cinco: "5",
+    seis: "6",
+    sete: "7",
+    oito: "8",
+    nove: "9",
+  },
+  runOnlyDigits: { meia: "6" },
+  currency: /^(reais|real|dolares|dolar|euros?|centavos?|libras?)$/,
+  percent: ["por", "cento"],
+  decimal: "virgula",
+  timePrep: /^$/,
+  // pt "às" carries the article; "as" without the accent is "the" (no rule).
+  hourWord: (_w, raw) => raw.toLowerCase() === "às",
+  firstDay: "1º",
+  fmt: (n) => (n >= 1000 ? n.toLocaleString("pt-BR") : String(n)),
+  phone: (d) =>
+    d.length === 11
+      ? `${d.slice(0, 2)} ${d.slice(2, 7)}-${d.slice(7)}`
+      : d.length === 10
+        ? `${d.slice(0, 2)} ${d.slice(2, 6)}-${d.slice(6)}`
+        : d.length === 9
+          ? `${d.slice(0, 5)}-${d.slice(5)}`
+          : d.length === 8
+            ? `${d.slice(0, 4)}-${d.slice(4)}`
+            : d,
+  percentFmt: (n) => `${n}%`,
+  half: ["e", "meia"],
+  quarter: ["e", "quinze"],
+};
+
+type RomanceState = "none" | "unit" | "tens" | "and" | "hund" | "big";
+
+/** An es or pt cardinal at words[k]. */
+function parseRomance(
+  words: readonly string[],
+  k: number,
+  T: RomanceTable,
+): NumParse | null {
+  let total = 0;
+  let cur = 0;
+  let used = 0;
+  let last: RomanceState = "none";
+  for (let i = k; i < words.length; i++) {
+    const w = fold(words[i] ?? "");
+    if (
+      w === T.and &&
+      (last === "tens" ||
+        (T.andAfterHundreds && (last === "hund" || last === "big")))
+    ) {
+      const nx = fold(words[i + 1] ?? "");
+      const ok =
+        last === "tens"
+          ? nx in T.units && (T.units[nx] as number) < 10
+          : nx in T.units || nx in T.tens || nx in T.hundreds;
+      if (ok) {
+        used++;
+        last = "and";
+        continue;
+      }
+      break;
+    }
+    if (w in T.units) {
+      if (last === "unit" || last === "tens") break;
+      cur += T.units[w] as number;
+      used++;
+      last = "unit";
+      continue;
+    }
+    if (w in T.tens) {
+      if (last === "unit" || last === "tens") break;
+      cur += T.tens[w] as number;
+      used++;
+      last = "tens";
+      continue;
+    }
+    if (w in T.hundreds) {
+      if (last !== "none" && last !== "big" && last !== "and") break;
+      cur += T.hundreds[w] as number;
+      used++;
+      last = "hund";
+      continue;
+    }
+    if (w === "mil" && last !== "big") {
+      total += (cur || 1) * 1000;
+      cur = 0;
+      used++;
+      last = "big";
+      continue;
+    }
+    if (T.million.test(w) && last !== "none") {
+      total += (cur || 1) * 1_000_000;
+      cur = 0;
+      used++;
+      last = "big";
+      continue;
+    }
+    break;
+  }
+  // A trailing joiner is not part of the number.
+  if (last === "and") used--;
+  if (used <= 0) return null;
+  return { value: total + cur, n: used, ordinal: false };
+}
+
+function romanceRuleAt(
   k: number,
   W: (k: number) => string,
   words: readonly string[],
   replace: Replace,
+  T: RomanceTable,
 ): boolean {
+  const parse = (ws: readonly string[], j: number) => parseRomance(ws, j, T);
   const w = W(k);
-  if (w in ES_DIGIT) {
-    const run = digitRun(k, W, ES_DIGIT);
-    if (run) {
-      replace(k, run.end, phoneFormat(run.digits, "es"));
+  if (w in T.digits) {
+    let j = k;
+    let ds = "";
+    while (W(j) in T.digits || (j > k && W(j) in T.runOnlyDigits)) {
+      ds += T.digits[W(j)] ?? T.runOnlyDigits[W(j)];
+      j++;
+    }
+    if (ds.length >= 7) {
+      replace(k, j - 1, T.phone(ds));
       return true;
     }
   }
   // Date: N de mes [de año].
-  const day =
-    w === "primero" ? { value: 1, n: 1, ordinal: false } : parseEs(words, k);
+  const day = w === "primero" || w === "primeiro" ? null : parse(words, k);
+  const dayValue = day
+    ? day.value
+    : w === "primero" || w === "primeiro"
+      ? 1
+      : 0;
+  const dayLen = day ? day.n : 1;
   if (
-    day &&
-    day.value >= 1 &&
-    day.value <= 31 &&
-    W(k + day.n) === "de" &&
-    ES_MONTHS.includes(W(k + day.n + 1))
+    dayValue >= 1 &&
+    dayValue <= 31 &&
+    W(k + dayLen) === "de" &&
+    T.months.includes(W(k + dayLen + 1))
   ) {
-    let end = k + day.n + 1;
-    let s = `${day.value} de ${W(end)}`;
+    let end = k + dayLen + 1;
+    let s = `${dayValue === 1 ? T.firstDay : dayValue} de ${(words[end] ?? "").toLowerCase()}`;
     if (W(end + 1) === "de") {
-      const y = parseEs(words, end + 2);
+      const y = parse(words, end + 2);
       if (y && y.value >= 1900 && y.value <= 2100) {
         s += ` de ${y.value}`;
         end += 1 + y.n;
@@ -606,25 +795,25 @@ function esRuleAt(
     replace(k, end, s);
     return true;
   }
-  // Clock time: a las H [y media | y cuarto | menos cuarto | y MM].
-  if ((w === "las" || w === "la") && /^(a|son|desde|hasta)$/.test(W(k - 1))) {
-    const h = parseEs(words, k + 1);
+  // Clock time: a las H / às H [y media | e meia | y cuarto | y MM].
+  if (T.hourWord(w, words[k] ?? "", W(k - 1))) {
+    const h = parse(words, k + 1);
     if (h && h.value >= 1 && h.value <= 24) {
       let end = k + 1 + h.n;
       let mm: number | null = null;
       let hh = h.value;
-      if (W(end) === "y" && W(end + 1) === "media") {
+      if (W(end) === T.half[0] && W(end + 1) === T.half[1]) {
         mm = 30;
         end += 2;
-      } else if (W(end) === "y" && W(end + 1) === "cuarto") {
+      } else if (W(end) === T.quarter[0] && W(end + 1) === T.quarter[1]) {
         mm = 15;
         end += 2;
       } else if (W(end) === "menos" && W(end + 1) === "cuarto") {
         mm = 45;
         hh = hh === 1 ? 12 : hh - 1;
         end += 2;
-      } else if (W(end) === "y") {
-        const m = parseEs(words, end + 1);
+      } else if (W(end) === T.and) {
+        const m = parse(words, end + 1);
         if (m && m.value > 0 && m.value < 60) {
           mm = m.value;
           end += 1 + m.n;
@@ -638,22 +827,22 @@ function esRuleAt(
       return true;
     }
   }
-  const n = parseEs(words, k);
+  const n = parse(words, k);
   if (!n) return false;
   const after = k + n.n;
-  if (ES_CURRENCY.test(W(after)) && !(n.value === 1 && n.n === 1)) {
-    replace(k, after - 1, fmtEs(n.value));
+  if (T.currency.test(W(after)) && !(n.value === 1 && n.n === 1)) {
+    replace(k, after - 1, T.fmt(n.value));
     return true;
   }
-  if (W(after) === "por" && W(after + 1) === "ciento") {
-    replace(k, after + 1, `${n.value} %`);
+  if (W(after) === T.percent[0] && W(after + 1) === T.percent[1]) {
+    replace(k, after + 1, T.percentFmt(n.value));
     return true;
   }
-  if (W(after) === "coma") {
+  if (W(after) === T.decimal) {
     let j = after + 1;
     let ds = "";
-    while (W(j) in ES_DIGIT) {
-      ds += ES_DIGIT[W(j)];
+    while (W(j) in T.digits) {
+      ds += T.digits[W(j)];
       j++;
     }
     if (ds) {
@@ -661,140 +850,36 @@ function esRuleAt(
       return true;
     }
   }
-  if (keepsWord("es", n, w)) return false;
-  replace(k, after - 1, fmtEs(n.value));
+  if (keepsWord(n, w, words, k, parse)) return false;
+  replace(k, after - 1, T.fmt(n.value));
   return true;
 }
 
-// --- Chinese -----------------------------------------------------------------
-
-const ZH_DIGIT: Record<string, number> = {
-  零: 0,
-  〇: 0,
-  一: 1,
-  幺: 1,
-  二: 2,
-  两: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-  八: 8,
-  九: 9,
-};
-const ZH_NUM = "[零〇一二两三四五六七八九十百千万幺]";
-const ZH_PERIOD = "上午|下午|早上|晚上|中午|凌晨|傍晚";
-/** Measure words after a count: 三个 -> 3个. Long words first. */
-const ZH_MEASURE =
-  "个月|小时|分钟|秒钟|公里|个|位|名|次|件|本|张|台|条|份|只|天|周|年|岁|秒|人|页|号|米|斤|箱|瓶|杯|家|种|项|篇|封|遍|趟|倍|层|楼|辆|支|套|间|句|段|章|节|场|届|批|组|双";
-
-/** A zh digit string ("二零二七") or a zh number with units ("三千五百"). */
-function zhValue(s: string, allowDigitString: boolean): number | null {
-  if (!s) return null;
-  if (!/[十百千万]/.test(s)) {
-    if (s.length === 1) return ZH_DIGIT[s] ?? null;
-    if (!allowDigitString) return null;
-    return Number([...s].map((c) => ZH_DIGIT[c] ?? "x").join(""));
+/**
+ * One rule pass over the word tokens. At each word the rules run in order and
+ * the first match wins; then the pass starts again on the new tokens.
+ */
+function latinNumbers(text: string, lang: DictationLang): string {
+  const toks = tokenize(text.replace(/\b([ap])\.\s?m\./gi, "$1m"));
+  for (let guard = 0; guard < 500; guard++) {
+    const wi = toks.flatMap((t, i) => (t.w ? [i] : []));
+    const words = wi.map((i) => (toks[i] as Tok).t);
+    const W = (k: number) => fold(words[k] ?? "");
+    const replace = (k0: number, k1: number, s: string) => {
+      const a = wi[k0] as number;
+      const b = wi[k1] as number;
+      toks.splice(a, b - a + 1, { t: s, w: true });
+    };
+    let hit = false;
+    for (let k = 0; k < words.length && !hit; k++) {
+      hit =
+        lang === "en"
+          ? enRuleAt(k, W, words, replace)
+          : romanceRuleAt(k, W, words, replace, lang === "es" ? ES : PT);
+    }
+    if (!hit) break;
   }
-  let total = 0;
-  let section = 0;
-  let num = 0;
-  for (const c of s) {
-    if (c in ZH_DIGIT) num = ZH_DIGIT[c] as number;
-    else if (c === "十") {
-      section += (num || 1) * 10;
-      num = 0;
-    } else if (c === "百") {
-      section += num * 100;
-      num = 0;
-    } else if (c === "千") {
-      section += num * 1000;
-      num = 0;
-    } else if (c === "万") {
-      total += (section + num) * 10000;
-      section = 0;
-      num = 0;
-    } else return null;
-  }
-  const v = total + section + num;
-  return Number.isFinite(v) ? v : null;
-}
-
-function zhNumbers(text: string): string {
-  let out = text;
-  // Phone numbers and other digit runs.
-  out = out.replace(/[零〇一二三四五六七八九幺]{7,}/g, (m) =>
-    [...m].map((c) => ZH_DIGIT[c]).join(""),
-  );
-  // Years: 二零二七年.
-  out = out.replace(/([零〇一二三四五六七八九]{4})年/g, (m, y: string) => {
-    const v = zhValue(y, true);
-    return v !== null ? `${v}年` : m;
-  });
-  // Month + day: 三月十五号.
-  out = out.replace(
-    /([一二三四五六七八九十]{1,3})月([一二三四五六七八九十]{1,3})([号日])/g,
-    (m, a: string, b: string, c: string) => {
-      const mo = zhValue(a, false);
-      const d = zhValue(b, false);
-      return mo && d && mo <= 12 && d <= 31 ? `${mo}月${d}${c}` : m;
-    },
-  );
-  // Counts before a measure word: 两个 -> 2个, 十分钟 -> 10分钟.
-  out = out.replace(
-    new RegExp(
-      `(?<![第${ZH_NUM.slice(1, -1)}])(${ZH_NUM}+)(${ZH_MEASURE})`,
-      "g",
-    ),
-    (m, n: string, unit: string) => {
-      const v = zhValue(n, false);
-      return v !== null && v >= 2 ? `${v}${unit}` : m;
-    },
-  );
-  // Clock time: [下午]三点[半|十五分|钟]. 一点 without a period word or a
-  // suffix is "a little" (好一点), so it stays.
-  out = out.replace(
-    new RegExp(
-      `(?<!周|期|拜)(?<!(?<![周期拜])[第零〇一二两三四五六七八九十百千万])(${ZH_PERIOD})?([一二两三四五六七八九十]{1,3})点(半|钟|([零一二三四五六七八九十]{1,3})分)?(?![零〇一二两三四五六七八九十])`,
-      "g",
-    ),
-    (
-      m,
-      period: string | undefined,
-      h: string,
-      rest: string | undefined,
-      mi: string | undefined,
-    ) => {
-      const hh = zhValue(h, false);
-      if (hh === null || hh > 24) return m;
-      if (hh === 1 && !period && !rest) return m;
-      const p = period ?? "";
-      if (rest === "半") return `${p}${hh}点半`;
-      if (rest === "钟") return `${p}${hh}点钟`;
-      if (mi) {
-        const v = zhValue(mi, false);
-        return v !== null && v < 60
-          ? `${p}${hh}:${String(v).padStart(2, "0")}`
-          : m;
-      }
-      return `${p}${hh}点`;
-    },
-  );
-  // Money.
-  out = out.replace(
-    new RegExp(`(?<!第)(${ZH_NUM}+)(块钱|块|元|美元|欧元|英镑)`, "g"),
-    (m, n: string, cur: string) => {
-      const v = zhValue(n, false);
-      return v !== null && v > 0 ? `${v}${cur}` : m;
-    },
-  );
-  // Percent.
-  out = out.replace(new RegExp(`百分之(${ZH_NUM}+)`, "g"), (m, n: string) => {
-    const v = zhValue(n, false);
-    return v !== null ? `${v}%` : m;
-  });
-  return out;
+  return toks.map((t) => t.t).join("");
 }
 
 /** S4: write spoken numbers as digits. No rules for the language: no change. */
@@ -802,7 +887,5 @@ export function spokenNumbers(
   text: string,
   lang: DictationLang | null,
 ): string {
-  if (lang === "en" || lang === "es") return latinNumbers(text, lang);
-  if (lang === "zh") return zhNumbers(text);
-  return text;
+  return lang ? latinNumbers(text, lang) : text;
 }

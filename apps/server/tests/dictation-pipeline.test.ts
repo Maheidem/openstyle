@@ -215,20 +215,22 @@ describe("fallbacks", () => {
     ]);
   });
 
-  it("a zh tone answer that drops 明天 keeps its input", async () => {
+  it("a pt tone answer that drops amanhã keeps its input", async () => {
     const { llm } = fakeLlm((c) =>
-      c.stage === "cleanup" ? "把那个数字明天发我。" : "请把数字发给我。",
+      c.stage === "cleanup"
+        ? "E aí, me passa os números pra amanhã."
+        : "Por favor, envie-me os números.",
     );
     const r = await runDictationPipeline(
       {
-        raw: "嘿把那个数字明天发我呗",
+        raw: "e aí me passa os números pra amanhã",
         intensity: "medium",
         tone: workFormal,
-        languages: ["zh-Hans"],
+        languages: ["pt-BR"],
       },
       llm,
     );
-    expect(r.text).toBe("把那个数字明天发我。");
+    expect(r.text).toBe("E aí, me passa os números pra amanhã.");
   });
 
   it("no model: every LLM stage keeps its input; a short fragment has no period", async () => {

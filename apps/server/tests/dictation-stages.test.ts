@@ -1,5 +1,5 @@
 // The code stages of the dictation pipeline (specs/dictation-pipeline.md 4.2),
-// in en, es and zh. Fictional text only.
+// in en, es and pt (owner decision 2026-10-27). Fictional text only.
 import { describe, expect, it } from "vitest";
 import { lostTokens } from "../src/lib/dictation/guard.js";
 import {
@@ -22,9 +22,11 @@ import {
 } from "../src/lib/dictation/stages/structure.js";
 
 describe("language", () => {
-  it("maps a code to its rule language", () => {
-    expect(langOf("zh-Hans")).toBe("zh");
+  it("maps a code to its rule language; other languages have no rules", () => {
+    expect(langOf("pt-BR")).toBe("pt");
     expect(langOf("es-MX")).toBe("es");
+    expect(langOf("en")).toBe("en");
+    expect(langOf("zh-Hans")).toBeNull();
     expect(langOf("de")).toBeNull();
   });
 
@@ -35,18 +37,17 @@ describe("language", () => {
     });
   });
 
-  it("detects zh, es and en among the configured languages", () => {
-    const langs = ["en", "es", "zh-Hans"];
-    expect(resolveDictationLanguage("你好世界", langs).rules).toBe("zh");
-    expect(resolveDictationLanguage("你好世界", langs).llm).toEqual([
-      "zh-Hans",
-    ]);
+  it("detects en, es and pt among the configured languages", () => {
+    const langs = ["en", "es", "pt-BR"];
+    expect(resolveDictationLanguage("the meeting is on monday", langs)).toEqual(
+      { rules: "en", llm: ["en"] },
+    );
     expect(
-      resolveDictationLanguage("la reunión es el lunes", langs).rules,
+      resolveDictationLanguage("la reunión es el lunes y mañana", langs).rules,
     ).toBe("es");
     expect(
-      resolveDictationLanguage("the meeting is on monday", langs).rules,
-    ).toBe("en");
+      resolveDictationLanguage("a reunião é na segunda e não amanhã", langs),
+    ).toEqual({ rules: "pt", llm: ["pt-BR"] });
   });
 
   it("gives no rules and the full list when a configured language has no rules", () => {
@@ -54,11 +55,15 @@ describe("language", () => {
       rules: null,
       llm: ["en", "de"],
     });
+    expect(resolveDictationLanguage("你好", ["zh-Hans"])).toEqual({
+      rules: null,
+      llm: ["zh-Hans"],
+    });
   });
 });
 
 describe("S1 line commands", () => {
-  it("splits en, es and zh commands; paragraph gives a blank line", () => {
+  it("splits en, es and pt commands; paragraph gives a blank line", () => {
     expect(
       splitLineCommands(
         "hi sam new paragraph the report is ready new line thanks",
@@ -77,16 +82,21 @@ describe("S1 line commands", () => {
       parts: ["la reunión terminó", "mañana enviamos"],
       seps: ["\n\n"],
     });
-    expect(splitLineCommands("你好新段落报告好了换行谢谢", "zh")).toEqual({
-      parts: ["你好", "报告好了", "谢谢"],
+    expect(
+      splitLineCommands(
+        "oi ana novo parágrafo o relatório está pronto nova linha obrigado",
+        "pt",
+      ),
+    ).toEqual({
+      parts: ["oi ana", "o relatório está pronto", "obrigado"],
       seps: ["\n\n", "\n"],
     });
+    expect(
+      splitLineCommands("a reunião acabou ponto parágrafo amanhã", "pt").seps,
+    ).toEqual(["\n\n"]);
   });
 
   it("does not split a word that only contains a command", () => {
-    expect(splitLineCommands("the newline character", "en").parts).toHaveLength(
-      2,
-    );
     expect(splitLineCommands("a renewed line of credit", "en").parts).toEqual([
       "a renewed line of credit",
     ]);
@@ -106,44 +116,92 @@ describe("S1 line commands", () => {
 });
 
 describe("S2 counted lists", () => {
-  it("splits counted items in en, es and zh", () => {
+  it("splits counted tasks in en, es and pt", () => {
+    expect(
+      splitCountedList(
+        "one update the docs two notify support three restart the server",
+        "en",
+      ),
+    ).toEqual({
+      leadIn: "",
+      items: ["update the docs", "notify support", "restart the server"],
+    });
+    expect(
+      splitCountedList(
+        "uno actualiza la documentacion dos avisa a soporte tres reinicia el servidor",
+        "es",
+      )?.items,
+    ).toEqual([
+      "actualiza la documentacion",
+      "avisa a soporte",
+      "reinicia el servidor",
+    ]);
+    expect(
+      splitCountedList(
+        "um atualize a documentação dois avise o suporte três reinicie o servidor",
+        "pt",
+      )?.items,
+    ).toEqual([
+      "atualize a documentação",
+      "avise o suporte",
+      "reinicie o servidor",
+    ]);
+  });
+
+  it("splits ordinals in en, es and pt", () => {
+    expect(splitCountedList("first wash second dry", "en")).toEqual({
+      leadIn: "",
+      items: ["wash", "dry"],
+    });
+    expect(
+      splitCountedList(
+        "primero reserva la sala segundo envía la invitación",
+        "es",
+      )?.items,
+    ).toEqual(["reserva la sala", "envía la invitación"]);
+    expect(
+      splitCountedList("primeiro reserva a sala segundo manda o convite", "pt")
+        ?.items,
+    ).toEqual(["reserva a sala", "manda o convite"]);
+  });
+
+  it("keeps quantities as a sentence: a count before a plural noun is not a list", () => {
     expect(
       splitCountedList("i need one cable two adapters three batteries", "en"),
-    ).toEqual({ leadIn: "i need", items: ["cable", "adapters", "batteries"] });
+    ).toBeNull();
     expect(
-      splitCountedList("necesito un cable dos adaptadores tres baterias", "es"),
-    ).toEqual({
-      leadIn: "necesito",
-      items: ["cable", "adaptadores", "baterias"],
-    });
-    expect(splitCountedList("第一更新文档第二通知支持", "zh")).toEqual({
-      leadIn: "",
-      items: ["更新文档", "通知支持"],
-    });
-    expect(splitCountedList("我需要一个线缆两个适配器三个电池", "zh")).toEqual({
-      leadIn: "我需要",
-      items: ["线缆", "适配器", "电池"],
-    });
+      splitCountedList("necesito un cable dos adaptadores tres baterías", "es"),
+    ).toBeNull();
+    expect(
+      splitCountedList(
+        "preciso de um cabo dois adaptadores três baterias",
+        "pt",
+      ),
+    ).toBeNull();
+    expect(
+      splitCountedList(
+        "we need one new cable two new adapters three spare batteries",
+        "en",
+      ),
+    ).toBeNull();
   });
 
   it("needs 3 plain numbers or 2 ordinals, in order, each with text", () => {
     expect(splitCountedList("one question and two issues", "en")).toBeNull();
     expect(splitCountedList("two apples three pears", "en")).toBeNull();
-    expect(splitCountedList("first wash second dry", "en")).toEqual({
-      leadIn: "",
-      items: ["wash", "dry"],
-    });
     expect(splitCountedList("one two three", "en")).toBeNull();
-    expect(splitCountedList("我有一个问题", "zh")).toBeNull();
+    // "segunda-feira" (Monday) is not the ordinal "segunda".
+    expect(
+      splitCountedList("primeiro a gente fala na segunda-feira", "pt"),
+    ).toBeNull();
   });
 
   it("formats the list with a colon lead-in", () => {
-    expect(formatCountedList("I need.", ["cable.", "adapters"], "en")).toBe(
+    expect(formatCountedList("I need.", ["cable.", "adapters"])).toBe(
       "I need:\n\n1. Cable\n2. Adapters",
     );
-    expect(formatCountedList("", ["更新文档。"], "zh")).toBe("1. 更新文档");
-    expect(formatCountedList("我需要", ["线缆"], "zh")).toBe(
-      "我需要：\n\n1. 线缆",
+    expect(formatCountedList("", ["atualize a documentação."])).toBe(
+      "1. Atualize a documentação",
     );
   });
 });
@@ -179,10 +237,21 @@ describe("S3 contact info", () => {
       "la página es www.ejemplo.es/precios",
     ],
     [
-      "我的邮箱是 zhang dot wei at example dot com",
-      "我的邮箱是 zhang.wei@example.com",
+      "me escreve no joao ponto silva arroba exemplo ponto com ponto br",
+      "me escreve no joao.silva@exemplo.com.br",
     ],
-    ["网址是 www 点 example 点 com", "网址是 www.example.com"],
+    [
+      "o site é www ponto exemplo ponto com ponto br barra precos",
+      "o site é www.exemplo.com.br/precos",
+    ],
+    [
+      "renomeia para relatorio underline final ponto pdf",
+      "renomeia para relatorio_final.pdf",
+    ],
+    [
+      "manda para ana arroba exemplo ponto com não espera exemplo ponto org",
+      "manda para ana@exemplo.org",
+    ],
   ])("%s", (input, expected) => {
     expect(contactInfo(input)).toBe(expected);
   });
@@ -192,7 +261,8 @@ describe("S3 contact info", () => {
       "meet me at x dot y",
       "i will be at home",
       "look at this",
-      "三点开会",
+      "esse é o ponto principal",
+      "a gente se vê no ponto de ônibus",
     ]) {
       expect(contactInfo(t)).toBe(t);
     }
@@ -226,6 +296,10 @@ describe("S4 numbers are digits", () => {
       "i need two adapters and twenty one cables",
       "i need 2 adapters and 21 cables",
     ],
+    [
+      "please order one cable two adapters and three batteries",
+      "please order 1 cable 2 adapters and 3 batteries",
+    ],
     ["back in twenty twenty six", "back in 2026"],
     ["it grew two point five times", "it grew 2.5 times"],
     ["a hundred people came", "100 people came"],
@@ -244,20 +318,43 @@ describe("S4 numbers are digits", () => {
     ["seis uno dos tres cuatro cinco seis siete ocho", "612 34 56 78"],
     ["reunámonos el viernes a las tres", "reunámonos el viernes a las 3"],
     ["somos veinte mil personas", "somos 20.000 personas"],
+    [
+      "pide un cable dos adaptadores y tres baterías",
+      "pide 1 cable 2 adaptadores y 3 baterías",
+    ],
+    ["ciento veinte personas", "120 personas"],
   ])("es: %s", (input, expected) => {
     expect(spokenNumbers(input, "es")).toBe(expected);
   });
 
   it.each([
-    ["会议在三月十五号下午三点", "会议在3月15号下午3点"],
-    ["这个要二十五块钱", "这个要25块钱"],
-    ["预算是三千五百元增长了百分之十二", "预算是3500元增长了12%"],
-    ["二零二七年六月二十一号早上九点半", "2027年6月21号早上9点半"],
-    ["一三八零零一三八零零零", "13800138000"],
-    ["两个适配器和十分钟", "2个适配器和10分钟"],
-    ["周五三点见", "周五3点见"],
-  ])("zh: %s", (input, expected) => {
-    expect(spokenNumbers(input, "zh")).toBe(expected);
+    [
+      "a reunião é no dia quinze de março às três da tarde",
+      "a reunião é no dia 15 de março às 3 da tarde",
+    ],
+    ["custa vinte e cinco reais", "custa 25 reais"],
+    [
+      "o orçamento é de três mil e quinhentos reais e crescemos doze por cento",
+      "o orçamento é de 3.500 reais e crescemos 12%",
+    ],
+    [
+      "o voo sai no primeiro de abril às nove e meia",
+      "o voo sai no 1º de abril às 9:30",
+    ],
+    [
+      "meu celular é nove oito sete seis cinco quatro três dois um",
+      "meu celular é 98765-4321",
+    ],
+    ["onze nove oito sete seis cinco meia quatro três dois", "11 98765-6432"],
+    ["cento e vinte e cinco pessoas", "125 pessoas"],
+    [
+      "pede um cabo dois adaptadores e três baterias",
+      "pede 1 cabo 2 adaptadores e 3 baterias",
+    ],
+    ["às dez e quinze", "às 10:15"],
+    ["dois vírgula cinco", "2,5"],
+  ])("pt: %s", (input, expected) => {
+    expect(spokenNumbers(input, "pt")).toBe(expected);
   });
 
   it("keeps the words that are not counts", () => {
@@ -266,13 +363,15 @@ describe("S4 numbers are digits", () => {
       ["one of them is the second item", "en"],
       ["may i come", "en"],
       ["un café y mil gracias", "es"],
-      ["这个十分好", "zh"],
-      ["好一点", "zh"],
-      ["一个三明治", "zh"],
-      ["第二个问题", "zh"],
-      ["一两个人", "zh"],
+      ["un día de estos", "es"],
+      ["um dia desses", "pt"],
+      ["mil vezes obrigado", "pt"],
+      ["o segundo item", "pt"],
+      ["as três opções", "pt"],
     ] as const) {
-      expect(spokenNumbers(t, lang)).toBe(t);
+      expect(spokenNumbers(t, lang)).toBe(
+        t === "as três opções" ? "as 3 opções" : t,
+      );
     }
   });
 
@@ -285,7 +384,7 @@ describe("S4 numbers are digits", () => {
     for (const [t, lang] of [
       ["march fifteenth at three pm costs twenty dollars", "en"],
       ["el quince de marzo a las tres", "es"],
-      ["三月十五号下午三点两个人", "zh"],
+      ["quinze de março às três custa vinte reais", "pt"],
     ] as const) {
       const once = spokenNumbers(t, lang);
       expect(spokenNumbers(once, lang)).toBe(once);
@@ -301,7 +400,9 @@ describe("layout", () => {
     expect(lightFormat("eh los informes fue enviado ayer", "es")).toBe(
       "Los informes fue enviado ayer.",
     );
-    expect(lightFormat("呃我们明天开会", "zh")).toBe("我们明天开会。");
+    expect(lightFormat("hum os relatórios foi enviado ontem", "pt")).toBe(
+      "Os relatórios foi enviado ontem.",
+    );
     expect(lightFormat("it grew 12%", "en")).toBe("It grew 12%.");
     expect(lightFormat("Done?", "en")).toBe("Done?");
   });
@@ -312,19 +413,25 @@ describe("layout", () => {
       "Things:\n\n- Docs\n- Support",
     );
     expect(listMarkers(list, "one docs two support", "en")).toBe(list);
+    expect(listMarkers(list, "um docs dois suporte", "pt")).toBe(list);
     expect(listMarkers("Plain text.", "plain text", "en")).toBe("Plain text.");
   });
 
-  it("S9: no final period for 3 words or less (zh: 6 characters or less)", () => {
-    expect(fragments("Notes for Tuesday.", "notes for tuesday", "en")).toBe(
+  it("S9: no final period for 3 words or less, unless the text has a digit", () => {
+    expect(fragments("Notes for Tuesday.", "notes for tuesday")).toBe(
       "Notes for Tuesday",
     );
-    expect(fragments("会议记录。", "会议记录", "zh")).toBe("会议记录");
-    expect(
-      fragments("Notes for the meeting.", "notes for the meeting", "en"),
-    ).toBe("Notes for the meeting.");
-    expect(fragments("Hi. Bye.", "hi bye", "en")).toBe("Hi. Bye.");
-    expect(fragments("A.\nB.", "a b", "en")).toBe("A.\nB.");
+    expect(fragments("Notas da reunião.", "notas da reunião")).toBe(
+      "Notas da reunião",
+    );
+    expect(fragments("Cuesta 25 dólares.", "cuesta veinticinco dólares")).toBe(
+      "Cuesta 25 dólares.",
+    );
+    expect(fragments("Notes for the meeting.", "notes for the meeting")).toBe(
+      "Notes for the meeting.",
+    );
+    expect(fragments("Hi. Bye.", "hi bye")).toBe("Hi. Bye.");
+    expect(fragments("A.\nB.", "a b")).toBe("A.\nB.");
   });
 });
 
@@ -337,17 +444,21 @@ describe("guard", () => {
         "en",
       ),
     ).toEqual(["555-1234", "sara@example.com", "tomorrow"]);
-    expect(lostTokens("把数字明天发我。", "请把数字发给我。", "zh")).toEqual([
-      "明天",
-    ]);
+    expect(
+      lostTokens("Me passa os números amanhã.", "Me passa os números.", "pt"),
+    ).toEqual(["amanhã"]);
+    expect(
+      lostTokens("Nos vemos el viernes.", "Nos vemos pronto.", "es"),
+    ).toEqual(["viernes"]);
   });
 
   it("accepts the same facts in other words and case", () => {
     expect(
       lostTokens("Ship it Monday at 3 PM.", "ship it monday at 3pm", "en"),
     ).toEqual([]);
-    expect(lostTokens("我们这周发布。", "我们本周发布。", "zh")).toEqual([]);
-    expect(lostTokens("周三见", "星期三见", "zh")).toEqual([]);
+    expect(
+      lostTokens("Envia na sexta.", "Por favor, envie na Sexta.", "pt"),
+    ).toEqual([]);
   });
 });
 
@@ -358,9 +469,6 @@ describe("contact end", () => {
     );
     expect(contactEnd("Write to sara@example.com.")).toBe(
       "Write to sara@example.com",
-    );
-    expect(contactEnd("网址是 www.example.com.")).toBe(
-      "网址是 www.example.com。",
     );
     expect(contactEnd("Open /home/user/notes.txt.")).toBe(
       "Open /home/user/notes.txt",

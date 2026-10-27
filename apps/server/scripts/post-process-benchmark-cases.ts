@@ -1,6 +1,6 @@
 export interface BenchmarkCase {
   id: string;
-  language: "en" | "es" | "zh-Hans";
+  language: "en" | "es" | "pt";
   label: string;
   input: string;
   expected: string;
@@ -150,76 +150,87 @@ export const POST_PROCESS_BENCHMARK_CASES: BenchmarkCase[] = [
       "reunamonos en san francisco eh espera oakland en realidad no mejor hagamos una llamada de zoom remota",
     expected: "Mejor hagamos una llamada remota por Zoom.",
   },
+  // Portuguese (owner decision 2026-10-27: en, es and pt; zh is not a target).
   {
-    id: "date-correction-zh",
-    language: "zh-Hans",
-    label: "日期更正",
-    input: "我们周四见等等不对其实周五三点见",
-    expected: "我们周五三点见。",
-  },
-  {
-    id: "recipient-correction-zh",
-    language: "zh-Hans",
-    label: "收件人更正",
-    input: "把它发给市场部其实不对发给法务",
-    expected: "把它发给法务。",
-  },
-  {
-    id: "list-after-correction-zh",
-    language: "zh-Hans",
-    label: "更正后的列表",
-    input: "从仓库发货其实不对从办公室发我需要一个线缆两个适配器三个电池",
-    expected: "从办公室发：\n\n1. 线缆\n2. 适配器\n3. 电池",
-  },
-  {
-    id: "ordered-steps-zh",
-    language: "zh-Hans",
-    label: "有序步骤",
-    input: "第一更新文档第二通知支持第三重启服务器",
-    expected: "1. 更新文档\n2. 通知支持\n3. 重启服务器",
-  },
-  {
-    id: "light-punctuation-zh",
-    language: "zh-Hans",
-    label: "轻量标点",
-    input: "请在周末前把草稿发过来",
-    expected: "请在周末前把草稿发过来。",
-  },
-  {
-    id: "preserve-reminder-zh",
-    language: "zh-Hans",
-    label: "保留提醒",
-    input: "别忘了我们还欠财务修订后合同的审阅",
-    expected: "别忘了我们还欠财务修订后合同的审阅。",
-  },
-  {
-    id: "dictated-list-zh",
-    language: "zh-Hans",
-    label: "口述列表",
+    id: "date-correction-pt",
+    language: "pt",
+    label: "Correcao de data",
     input:
-      "这是我周末前需要的sam请更新草稿我们还需要设计确认模型别忘了我们还欠财务修订后合同的审阅",
-    expected:
-      "这是我周末前需要的：\n\n1. Sam，请更新草稿。\n2. 我们还需要设计确认模型。\n3. 别忘了我们还欠财务修订后合同的审阅。",
+      "vamos nos encontrar na quinta espera nao na verdade na sexta as tres",
+    expected: "Vamos nos encontrar na sexta às três.",
   },
   {
-    id: "casual-preservation-zh",
-    language: "zh-Hans",
-    label: "保留随意语气",
-    input: "嘿就是想告诉你我们得把演示稍微往后推一点因为发现了一些问题",
-    expected:
-      "嘿，就是想告诉你，我们得把演示稍微往后推一点，因为发现了一些问题。",
+    id: "recipient-correction-pt",
+    language: "pt",
+    label: "Correcao de destinatario",
+    input: "manda para o marketing na verdade nao para o juridico",
+    expected: "Manda para o jurídico.",
   },
   {
-    id: "superseded-plan-zh",
-    language: "zh-Hans",
-    label: "被替换的计划",
-    input: "我们在旧金山见吧呃等等奥克兰其实不对还是直接开个远程zoom会议吧",
-    expected: "还是直接开个远程 Zoom 会议吧。",
+    id: "list-after-correction-pt",
+    language: "pt",
+    label: "Lista apos correcao",
+    input:
+      "envia do deposito na verdade nao do escritorio e eu preciso de um cabo dois adaptadores tres baterias",
+    expected:
+      "Envia do escritório. Preciso de 1 cabo, 2 adaptadores e 3 baterias.",
+  },
+  {
+    id: "ordered-steps-pt",
+    language: "pt",
+    label: "Passos ordenados",
+    input:
+      "um atualize a documentacao dois avise o suporte tres reinicie o servidor",
+    expected:
+      "1. Atualize a documentacao\n2. Avise o suporte\n3. Reinicie o servidor",
+  },
+  {
+    id: "light-punctuation-pt",
+    language: "pt",
+    label: "Pontuacao leve",
+    input: "por favor envie o rascunho ate o fim da semana",
+    expected: "Por favor envie o rascunho ate o fim da semana.",
+  },
+  {
+    id: "preserve-reminder-pt",
+    language: "pt",
+    label: "Lembrete",
+    input:
+      "nao esquece que ainda devemos ao financeiro a revisao do contrato revisado",
+    expected:
+      "Nao esquece que ainda devemos ao financeiro a revisao do contrato revisado.",
+  },
+  {
+    id: "dictated-list-pt",
+    language: "pt",
+    label: "Lista ditada",
+    input:
+      "isso e o que eu preciso ate o fim da semana sam por favor atualiza o rascunho tambem precisamos que o design aprove o mockup e nao esquece que ainda devemos ao financeiro a revisao do contrato",
+    expected:
+      "Isso é o que eu preciso até o fim da semana:\n\n1. Sam, por favor atualiza o rascunho.\n2. Também precisamos que o design aprove o mockup.\n3. Não esquece que ainda devemos ao financeiro a revisão do contrato.",
+  },
+  {
+    id: "casual-preservation-pt",
+    language: "pt",
+    label: "Tom casual",
+    input:
+      "oi so queria te avisar que a gente vai atrasar um pouco a demo porque achamos uns problemas",
+    expected:
+      "Oi, so queria te avisar que a gente vai atrasar um pouco a demo porque achamos uns problemas.",
+  },
+  {
+    id: "superseded-plan-pt",
+    language: "pt",
+    label: "Plano substituido",
+    input:
+      "vamos nos ver em sao paulo hum espera em campinas na verdade nao melhor fazer uma chamada remota no zoom",
+    expected: "Melhor fazer uma chamada remota no Zoom.",
   },
 ];
 
-// The pass check of a bench case. Owner rule 2026-10-26: numbers are digits,
-// so the date-correction checks take "3" as well as the word.
+// The pass check of a bench case. Owner rules: numbers are digits
+// (2026-10-26), so the date-correction checks take "3" as well as the word;
+// quantities stay quantities, not a list (2026-10-27).
 function normalizeForCompare(text: string): string {
   return text
     .normalize("NFKD")
@@ -238,43 +249,39 @@ function containsNone(text: string, patterns: RegExp[]): boolean {
   return patterns.every((pattern) => !pattern.test(text));
 }
 
-export function evaluateCase(testCase: BenchmarkCase, actual: string): boolean {
-  const normalized = normalizeForCompare(actual);
+type Lang = BenchmarkCase["language"];
 
-  if (testCase.id.startsWith("date-correction")) {
-    if (testCase.language === "en") {
-      return (
-        containsAll(normalized, [/friday/i, /\b(three|3)\b/i]) &&
-        containsNone(normalized, [/thursday/i])
-      );
-    }
-    if (testCase.language === "es") {
-      return (
-        containsAll(normalized, [/viernes/i, /(tres|\b3\b)/i]) &&
-        containsNone(normalized, [/jueves/i])
-      );
-    }
-    return (
-      containsAll(normalized, [/周五/, /(三|3)点/]) &&
-      containsNone(normalized, [/周四/])
-    );
-  }
-
-  if (testCase.id.startsWith("recipient-correction")) {
-    if (testCase.language === "en" || testCase.language === "es") {
-      return (
-        containsAll(normalized, [/legal/i]) &&
-        containsNone(normalized, [/marketing/i])
-      );
-    }
-    return (
-      containsAll(normalized, [/法务/]) && containsNone(normalized, [/市场部/])
-    );
-  }
-
-  if (testCase.id.startsWith("dictated-list")) {
-    if (testCase.language === "en") {
-      return containsAll(normalized, [
+const CHECKS: Record<
+  string,
+  Record<Lang, { all: RegExp[]; none?: RegExp[] }>
+> = {
+  "date-correction": {
+    en: { all: [/friday/i, /\b(three|3)\b/i], none: [/thursday/i] },
+    es: { all: [/viernes/i, /(tres|\b3\b)/i], none: [/jueves/i] },
+    pt: { all: [/sexta/i, /(tres|\b3\b)/i], none: [/quinta/i] },
+  },
+  "recipient-correction": {
+    en: { all: [/legal/i], none: [/marketing/i] },
+    es: { all: [/legal/i], none: [/marketing/i] },
+    pt: { all: [/juridico/i], none: [/marketing/i] },
+  },
+  "list-after-correction": {
+    en: {
+      all: [/office/i, /\b1 cable/i, /\b2 adapters/i, /\b3 batteries/i],
+      none: [/warehouse/i, /^\s*\d+\.\s/m],
+    },
+    es: {
+      all: [/oficina/i, /\b1 cable/i, /\b2 adaptadores/i, /\b3 baterias/i],
+      none: [/almacen/i, /^\s*\d+\.\s/m],
+    },
+    pt: {
+      all: [/escritorio/i, /\b1 cabo/i, /\b2 adaptadores/i, /\b3 baterias/i],
+      none: [/deposito/i, /^\s*\d+\.\s/m],
+    },
+  },
+  "dictated-list": {
+    en: {
+      all: [
         /^here'?s what i need by end of week:/i,
         /1\./,
         /2\./,
@@ -282,10 +289,10 @@ export function evaluateCase(testCase: BenchmarkCase, actual: string): boolean {
         /sam/i,
         /design/i,
         /finance/i,
-      ]);
-    }
-    if (testCase.language === "es") {
-      return containsAll(normalized, [
+      ],
+    },
+    es: {
+      all: [
         /^esto es lo que necesito para fin de semana:/i,
         /1\./,
         /2\./,
@@ -293,31 +300,36 @@ export function evaluateCase(testCase: BenchmarkCase, actual: string): boolean {
         /sam/i,
         /diseno/i,
         /finanzas/i,
-      ]);
-    }
-    return containsAll(normalized, [
-      /^这是我(?:在)?周末前需要的[:：]/,
-      /1[.．、]/,
-      /2[.．、]/,
-      /3[.．、]/,
-      /Sam/i,
-      /设计/,
-      /财务/,
-    ]);
-  }
+      ],
+    },
+    pt: {
+      all: [
+        /^isso e o que eu preciso ate o fim da semana:/i,
+        /1\./,
+        /2\./,
+        /3\./,
+        /sam/i,
+        /design/i,
+        /financeiro/i,
+      ],
+    },
+  },
+  "superseded-plan": {
+    en: { all: [/zoom/i], none: [/san francisco/i, /oakland/i] },
+    es: { all: [/zoom/i], none: [/san francisco/i, /oakland/i] },
+    pt: { all: [/zoom/i], none: [/sao paulo/i, /campinas/i] },
+  },
+};
 
-  if (testCase.id.startsWith("superseded-plan")) {
-    if (testCase.language === "en" || testCase.language === "es") {
-      return (
-        containsAll(normalized, [/zoom/i]) &&
-        containsNone(normalized, [/san francisco/i, /oakland/i])
-      );
-    }
+export function evaluateCase(testCase: BenchmarkCase, actual: string): boolean {
+  const normalized = normalizeForCompare(actual);
+  const family = Object.keys(CHECKS).find((f) => testCase.id.startsWith(f));
+  const check = family ? CHECKS[family]?.[testCase.language] : undefined;
+  if (check) {
     return (
-      containsAll(normalized, [/Zoom/i]) &&
-      containsNone(normalized, [/旧金山/, /奥克兰/])
+      containsAll(normalized, check.all) &&
+      containsNone(normalized, check.none ?? [])
     );
   }
-
   return normalizeForCompare(testCase.expected) === normalized;
 }
