@@ -439,8 +439,8 @@
       "cards": {
         "low": {
           "title": "Bassa",
-          "desc": "Punteggiatura e maiuscole.",
-          "sample": "Ehi, ehm, puoi mandare l'ultima versione? Credo che il link nel piè di pagina sia ancora sbagliato."
+          "desc": "Maiuscole e cifre, senza modello IA.",
+          "sample": "Ehi puoi mandare l'ultima versione credo che il link nel piè di pagina sia ancora sbagliato."
         },
         "medium": {
           "title": "Media",

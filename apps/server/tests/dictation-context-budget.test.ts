@@ -168,10 +168,10 @@ describe("dictation cleanup keeps prompt + max_tokens inside the window", () => 
 
   it("DB4: a piece that is refused again gives its raw text, never an error", async () => {
     const text = dictation(40);
-    const calls = spyFetch((n) => (n === 2 ? okReply("Half two.") : refusal()));
+    const calls = spyFetch((n) => (n === 2 ? okReply("Half B.") : refusal()));
     const r = await postProcess(text, null);
     expect(calls).toHaveLength(3);
-    expect(r.cleaned.endsWith("Half two.")).toBe(true);
+    expect(r.cleaned.endsWith("Half B.")).toBe(true);
     expect(r.cleaned.startsWith("item 0 the riverside team")).toBe(true);
   });
 });

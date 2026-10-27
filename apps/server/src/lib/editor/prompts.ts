@@ -138,6 +138,32 @@ function buildDestinationUserPromptBlock(options: {
   }
 }
 
+export interface ToneOptions {
+  destination: CleanupToneDestination;
+  personalTone?: CleanupPersonalTone;
+  personalSurface?: "discord" | null;
+  workTone?: CleanupWorkTone;
+  emailTone?: CleanupEmailTone;
+  overallTone?: CleanupOverallTone;
+}
+
+/**
+ * The tone of the dictation tone stage (specs/dictation-pipeline.md 4.2 S7):
+ * the destination tone block (system) and its user-prompt tail. null when the
+ * tone of the destination is "off". The stage runs alone, after the cleanup,
+ * so the priority block over "the general guidance above" is not used.
+ */
+export function resolveToneStage(
+  options: ToneOptions,
+): { block: string; tail: string } | null {
+  const withPriority = buildDestinationToneBlock(options);
+  if (!withPriority.startsWith(DESTINATION_PRIORITY_BLOCK)) return null;
+  return {
+    block: withPriority.slice(DESTINATION_PRIORITY_BLOCK.length),
+    tail: buildDestinationUserPromptBlock(options),
+  };
+}
+
 /**
  * Resolve the base system prompt for a given cleanup intensity. For "custom",
  * the user-authored prompt is used when present, otherwise we fall back to the

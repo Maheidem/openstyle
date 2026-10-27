@@ -41,6 +41,12 @@ export interface LlmTaskContext {
    * above call it; it never throws into the request.
    */
   onRequestBody?: (body: unknown) => void;
+  /**
+   * false: no prefix cache header for a `cleanup` model. The dictation polish
+   * and tone stages use it, so their prompts do not replace the one cached
+   * cleanup prefix in the worker (specs/dictation-pipeline.md 4.6).
+   */
+  prefixCache?: boolean;
 }
 
 /** One group of body keys that the gateway sets or removes. */
@@ -482,7 +488,7 @@ const PROVIDERS: LlmProvider[] = [
         // Dictation cleanup only: the worker keeps the KV of the system prompt
         // (specs/llm-runtime-tuning.md 9 item 1). Enhance and Summarize keep
         // the plain path.
-        ...(taskContext?.task === "cleanup"
+        ...(taskContext?.task === "cleanup" && taskContext.prefixCache !== false
           ? { headers: { [MLX_LLM_PREFIX_CACHE_HEADER]: "on" } }
           : {}),
         fetch: trackMlxLlmFetch(taskSamplingFetch(taskContext)),

@@ -365,6 +365,23 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     expect(posted.map((r) => r.prefix_cache)).toEqual([null, null]);
   });
 
+  it("sends no prefix cache header for a cleanup model with prefixCache false (dictation polish and tone)", async () => {
+    seedModel(GEMMA_E2B);
+    const before = loggedRequests().length;
+    for (const prefixCache of [true, false]) {
+      const model = await createChatModel(
+        MLX_LLM_PROVIDER_ID,
+        `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
+        { task: "cleanup", sampling: {}, prefixCache },
+      );
+      await generateText({ model, prompt: "x" });
+    }
+    const posted = loggedRequests()
+      .slice(before)
+      .filter((r) => r.method === "POST");
+    expect(posted.map((r) => r.prefix_cache)).toEqual(["on", null]);
+  });
+
   it("reuses a running worker, and a different model replaces it", async () => {
     seedModel(GEMMA_E2B);
     seedModel(GEMMA_E4B);

@@ -13,6 +13,12 @@ export type LlmStepId =
   | "summarize"
   | "suggestTags";
 
+/** The LLM stages of a dictation (specs/dictation-pipeline.md 4.6). */
+export type DictationStepId =
+  | "dictationCleanup"
+  | "dictationPolish"
+  | "dictationTone";
+
 export interface ChatTurn {
   role: "user" | "assistant";
   content: string;
@@ -60,7 +66,7 @@ export interface CallRecord {
   /** `step_key`. */
   unitKey: string;
   /** `node`. */
-  node: LlmStepId;
+  node: LlmStepId | DictationStepId;
   /** `retry_reason`: the retry kind on the second call, else null. */
   retryReason: string | null;
   provider: string | null;

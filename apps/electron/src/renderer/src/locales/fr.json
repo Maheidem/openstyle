@@ -440,8 +440,8 @@
       "cards": {
         "low": {
           "title": "Faible",
-          "desc": "Ponctuation et majuscules.",
-          "sample": "Hé, euh, tu peux envoyer la dernière version ? Je crois que le lien du pied de page est toujours faux."
+          "desc": "Majuscules et chiffres, sans modèle IA.",
+          "sample": "Hé tu peux envoyer la dernière version je crois que le lien du pied de page est toujours faux."
         },
         "medium": {
           "title": "Moyen",

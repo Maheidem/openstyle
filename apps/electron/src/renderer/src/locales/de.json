@@ -440,8 +440,8 @@
       "cards": {
         "low": {
           "title": "Niedrig",
-          "desc": "Zeichensetzung und Großschreibung.",
-          "sample": "Hey, äh, kannst du die neueste Version schicken? Ich glaube, der Footer-Link ist immer noch falsch."
+          "desc": "Großschreibung und Ziffern, ohne KI-Modell.",
+          "sample": "Hey kannst du die neueste Version schicken ich glaube der Footer-Link ist immer noch falsch."
         },
         "medium": {
           "title": "Mittel",

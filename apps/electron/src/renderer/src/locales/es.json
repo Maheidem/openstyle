@@ -440,8 +440,8 @@
       "cards": {
         "low": {
           "title": "Baja",
-          "desc": "Puntuación y mayúsculas.",
-          "sample": "Oye, eh, ¿puedes enviar la última versión? Creo que el enlace del pie de página sigue mal."
+          "desc": "Mayúsculas y cifras, sin modelo de IA.",
+          "sample": "Oye puedes enviar la última versión creo que el enlace del pie de página sigue mal."
         },
         "medium": {
           "title": "Media",

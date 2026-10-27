@@ -89,6 +89,7 @@
       "entry": [
         "src/startup.ts",
         "scripts/benchmark-post-process.ts",
+        "scripts/benchmark-dictation-pipeline.ts",
         "scripts/tone-benchmark.ts",
         "tests/**/*.test.ts"
       ],
