@@ -8,7 +8,7 @@
 #   pnpm release:local <version> --dry-run --no-notarize
 #                                                the same without notarization
 #   pnpm release:local <version> --publish-only  resume at step 7 after the
-#                                                release PR merged
+#                                                push of step 6
 #
 # <version> is X.Y.Z (Stable) or X.Y.Z-alpha.N / -beta.N / -rc.N (Dev, prerelease).
 #
@@ -23,9 +23,10 @@
 #      specs in E2E_EXCLUDE (they open the mic or system audio).
 #   5. MLX worker + signed, notarized app (the CI "Build (macOS)" job), the
 #      shared signature check, and the assets in dist/release-<version>/.
-#   6. Release PR: push the release commit as chore/release-<version>, open a
-#      PR with squash auto-merge, wait for the merge (main is protected).
-#   7. GitHub release at the merge commit, with the assets of step 5
+#   6. Push the release commit to main (fast-forward only). The owner is a
+#      bypass actor of the main ruleset (2026-10-27). The push sets
+#      OPENSTYLE_RELEASE_LOCAL=1 (guard hook rule h).
+#   7. GitHub release at the release commit, with the assets of step 5
 #      (prerelease for a Dev version; "latest" only for the newest Stable).
 #   8. scripts/release-verify.sh <version>.
 #
@@ -91,8 +92,8 @@ cd "$ROOT"
 E="$ROOT/apps/electron"
 OUT="$ROOT/dist/release-$VERSION"
 RELEASE_BRANCH="release/$VERSION"
-PR_BRANCH="chore/release-$VERSION"
-PR_TITLE="chore(release): $VERSION"
+# The subject of the commit that craft prepare makes.
+RELEASE_SUBJECT="release: $VERSION"
 
 # Every gh and Craft call runs as the Maheidem account.
 GH_TOKEN="$(gh auth token -u Maheidem 2>/dev/null)" || die "no gh token for the Maheidem account (gh auth login)"
@@ -167,19 +168,19 @@ feed_entry() {
   ' "$1"
 }
 
-# Steps 7 and 8: release at the merge commit of the release PR.
+# Steps 7 and 8: release at the release commit on main.
 publish() {
   step "7. GitHub release $VERSION"
   [ -f "$OUT/tree" ] || die "no build stamp $OUT/tree. Build first (run without --publish-only)."
   run git fetch --quiet --prune origin
   local merge want_tree
-  merge="$(git log origin/main --format=%H --fixed-strings --grep="$PR_TITLE" -1)"
-  [ -n "$merge" ] || die "no commit '$PR_TITLE' on origin/main. Is the release PR merged?"
+  merge="$(git log origin/main --format='%H%x09%s' | awk -F'\t' -v s="$RELEASE_SUBJECT" '$2 == s { print $1; exit }')"
+  [ -n "$merge" ] || die "no commit '$RELEASE_SUBJECT' on origin/main. Did step 6 push it?"
   want_tree="$(cat "$OUT/tree")"
   [ "$(git rev-parse "$merge^{tree}")" = "$want_tree" ] ||
-    die "the merge commit $merge has another tree than the build (main moved before the merge).
+    die "the release commit $merge has another tree than the build.
   The assets do not match it. Start a new version from main."
-  echo "merge commit: $merge (same tree as the build)"
+  echo "release commit: $merge (same tree as the build)"
 
   if gh release view "$VERSION" --repo "$REPO" > /dev/null 2>&1; then
     die "release $VERSION exists already. Check it: bash scripts/release-verify.sh $VERSION"
@@ -249,7 +250,7 @@ current_version="$(jq -r .version apps/electron/package.json)"
 [ -z "$(git ls-remote --tags origin "refs/tags/$VERSION")" ] || die "tag $VERSION exists on origin."
 ! gh release view "$VERSION" --repo "$REPO" > /dev/null 2>&1 || die "release $VERSION exists on GitHub."
 ! git rev-parse --quiet --verify "refs/heads/$RELEASE_BRANCH" > /dev/null || die "local branch $RELEASE_BRANCH exists. Delete it first."
-[ -z "$(git ls-remote --heads origin "$RELEASE_BRANCH" "$PR_BRANCH")" ] || die "a branch for $VERSION exists on origin."
+[ -z "$(git ls-remote --heads origin "$RELEASE_BRANCH")" ] || die "branch $RELEASE_BRANCH exists on origin."
 echo "version: $current_version -> $VERSION ($([ "$PRERELEASE" -eq 1 ] && echo "prerelease, Dev channel" || echo "Stable"))"
 
 line="$(security find-identity -v -p codesigning | grep '"Developer ID Application:' | head -n 1 || true)"
@@ -405,22 +406,16 @@ if [ "$DRY" -eq 1 ]; then
   exit 0
 fi
 
-step "6. Release PR (main is protected: squash auto-merge)"
-# Not release/**: a push there starts the CI package build on a macOS runner.
+step "6. Push the release commit to main"
+# The commit of step 2 sits on the base commit of step 1. When origin/main
+# moved since then, the push is not a fast-forward and git refuses it.
+[ "$(git rev-parse HEAD^)" = "$BASE" ] || die "the release commit is not on the base commit $BASE"
+[ "$(git rev-parse "HEAD^{tree}")" = "$(cat "$OUT/tree")" ] || die "HEAD has another tree than the build"
 PUSHED=1
-run git push origin "HEAD:refs/heads/$PR_BRANCH"
-run gh pr create --repo "$REPO" --base main --head "$PR_BRANCH" --title "$PR_TITLE" \
-  --body "Release $VERSION: version bump and changelog (craft prepare). Built, signed and notarized on the owner's Mac (scripts/release-local.sh). After the merge, the script publishes the GitHub release at the merge commit."
-run gh pr merge "$PR_BRANCH" --repo "$REPO" --squash --auto
-echo "Wait for the merge (CI Status must pass). Check every 60 s, at most 120 min."
-for _ in $(seq 1 120); do
-  state="$(gh pr view "$PR_BRANCH" --repo "$REPO" --json state --jq .state)"
-  [ "$state" != MERGED ] || break
-  [ "$state" = OPEN ] || die "the release PR is $state. Nothing is published."
-  sleep 60
-done
-[ "$state" = MERGED ] || die "the release PR did not merge in 120 min. After the merge run:
-  pnpm release:local $VERSION --publish-only"
+# Guard hook rule h allows a push to main only with this variable.
+run env OPENSTYLE_RELEASE_LOCAL=1 git push origin "HEAD:refs/heads/main" ||
+  die "the push to main failed (origin/main moved, or no bypass). Nothing is published.
+  Delete the local branch $RELEASE_BRANCH and start again from main."
 
 publish
 exit 0

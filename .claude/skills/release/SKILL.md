@@ -278,12 +278,12 @@ release. PR CI does not change. The Craft train above stays as the fallback.
 ```bash
 pnpm release:local <version> --dry-run      # steps 1-5: no push, no tag, no upload
 pnpm release:local <version>                # full release (owner only)
-pnpm release:local <version> --publish-only # resume after the release PR merged
+pnpm release:local <version> --publish-only # resume at step 7 after the push of step 6
 ```
 
 The script is `scripts/release-local.sh`. An agent runs only `--dry-run`.
-A real run pushes a branch, opens a PR and publishes a release: only the owner
-or the main session starts it.
+A real run pushes to main and publishes a release: only the owner or the main
+session starts it.
 
 What it does, in this order:
 1. Preflight: macOS arm64, clean tree, `main` = `origin/main` (a dry run
@@ -317,12 +317,14 @@ What it does, in this order:
    (the same check as the CI step "Verify release signature"). The 6 assets go
    to `dist/release-<version>/` with a tree stamp; latest-mac.yml must name the
    version and match the zip and dmg sha512 and size.
-6. Release PR: the release commit goes to `chore/release-<version>` (not
-   `release/**`: a push there starts the CI package build on a macOS runner).
-   PR title `chore(release): <version>`, squash auto-merge. The script waits
-   up to 120 min for the merge (CI Status must pass).
-7. GitHub release at the merge commit, only when its tree equals the tree of
-   the build (else stop: main moved, start a new version). Notes = the
+6. Push the release commit to main:
+   `env OPENSTYLE_RELEASE_LOCAL=1 git push origin HEAD:refs/heads/main`.
+   It is a fast-forward only. When origin/main moved since step 1, git
+   refuses the push and nothing is published: delete the local
+   `release/<version>` and start again from main. No branch `release/**` is
+   pushed, so the CI package build does not start.
+7. GitHub release at the commit `release: <version>` on origin/main, only
+   when its tree equals the tree of the build. Notes = the
    CHANGELOG.md section. Draft, upload the 6 assets, publish.
    `--prerelease` for `-alpha`/`-beta`/`-rc`. `--latest=true` only for a
    Stable version greater than the current latest (Craft does the same).
@@ -360,9 +362,16 @@ Credentials (owner, once):
   Gatekeeper rejects it.
 
 Traps:
-- Only the release bot may push to main (ruleset 24718487). The bump reaches
-  main through the squash PR, and the tag goes on the merge commit, so that
-  `git describe --tags` (Craft uses it for the next changelog) finds it.
+- Since 2026-10-27 the owner (RepositoryRole admin) is a bypass actor of the
+  main ruleset 24718487, next to the release bot. The tag goes on the release
+  commit on main, so that `git describe --tags` (Craft uses it for the next
+  changelog) finds it.
+- Guard hook rule h blocks an agent command that pushes to main
+  (`git push origin main`, `HEAD:main`, `refs/heads/main`, `+main`,
+  `--delete main`). It allows the push only with `OPENSTYLE_RELEASE_LOCAL=1`
+  as an inline prefix or in the env of Claude Code. The hook sees only the
+  command text: the push inside `scripts/release-local.sh` is not parsed, so
+  an agent must never start a real run.
 - Craft publish cannot upload a local build: its artifact provider downloads
   the "mac-builds" artifact of a GitHub run. The script uses `gh release`
   with the same rules as Craft's github target.
@@ -506,4 +515,4 @@ gh run watch <runId> --repo Maheidem/openstyle --exit-status
 
 ## main is protected (since 2026-10-08)
 
-No direct push to main. The hand-written changelog and any pre-release merge go through a PR (`docs/changelog-<version>`) with green `CI Status`, squash-merged (auto-merge). That PR changes only `*.md`, so its CI skips the heavy jobs. It is not the pre-release check: use the manual full run above. Craft's release merge into main still works: the release bot (app 4715859) is the only bypass actor of the ruleset. A fix needed on `release/<version>` is pushed there (not protected) and must also reach main through a PR.
+No direct push to main. The hand-written changelog and any pre-release merge go through a PR (`docs/changelog-<version>`) with green `CI Status`, squash-merged (auto-merge). That PR changes only `*.md`, so its CI skips the heavy jobs. It is not the pre-release check: use the manual full run above. Craft's release merge into main still works: the release bot (app 4715859) is a bypass actor of the ruleset. Since 2026-10-27 the owner is one too, for the push of the local release (guard hook rule h blocks other pushes to main). A fix needed on `release/<version>` is pushed there (not protected) and must also reach main through a PR.
