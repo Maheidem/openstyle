@@ -13,6 +13,7 @@ import {
   type CallProfile,
   withReasoningOff,
 } from "../../llm/model-profiles.js";
+import { isOwnServerProvider } from "../../llm/registry.js";
 import { getTracing, inNode, markError, setAttrs } from "../../llm/tracing.js";
 import { MLX_LLM_PROVIDER_ID } from "../../mlx-llm/constants.js";
 import type { RunContext, WorkflowDeps } from "./context.js";
@@ -34,13 +35,26 @@ const ONE_LINE_MAX = 200;
 const log = createAppLogger("llm-unit");
 
 /**
- * True when the provider builds its grammar with llguidance, which applies
- * `maxItems` and `maxLength` (specs/local-mlx-llm.md G2). Then the schema
- * carries the size limits (`identifySpeakersStepSchema` version 4,
- * `summaryStageStepSchema`).
+ * True when the provider builds a grammar that applies `maxItems` and
+ * `maxLength`. Then the schema carries the size limits
+ * (`identifySpeakersStepSchema` version 4, `summaryStageStepSchema`).
+ *
+ * - The local MLX LLM: llguidance (specs/local-mlx-llm.md G2).
+ * - An own server (OpenAI-compatible, for example llama.cpp): measured
+ *   2026-10-27 on llama.cpp (llama-swap, Gemma 4 E4B GGUF): `maxItems: 2`
+ *   and `maxLength: 40` held on a prompt for 12 long items. Without them, E4B
+ *   wrote identifySpeakers entries again and again until the output limit
+ *   (5 calls, all `length`). A server that rejects the keywords with a 400
+ *   that names the schema moves down the mode ladder (gateway
+ *   `MODE_REJECTION`), as for any other schema fault.
+ *
+ * Cloud providers stay without them: Anthropic rejects them (4.0.3 rule 4).
  */
 export function appliesSizeLimits(profile: CallProfile): boolean {
-  return profile.provider === MLX_LLM_PROVIDER_ID;
+  return (
+    profile.provider === MLX_LLM_PROVIDER_ID ||
+    isOwnServerProvider(profile.provider)
+  );
 }
 
 function oneLineText(text: string): string {

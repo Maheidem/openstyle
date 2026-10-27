@@ -82,6 +82,39 @@ const log = createAppLogger("summarize");
 
 /** Today `DEFAULT_SUMMARY_MAX_OUTPUT_TOKENS` (4.0.5, 4.5.4). */
 const SUMMARY_ANSWER_TOKENS = 4096;
+/**
+ * The `actionTiming` answer is one fixed label for each task. Measured
+ * 2026-10-27 with the Gemma 4 tokenizer (llama.cpp `/tokenize`): the longest
+ * answer, every task "during this call", in indented JSON is 13 + 7 tokens
+ * for each task (1 task: 20, 10 tasks: 83). The limit leaves room for more
+ * spaces.
+ */
+const ACTION_TIMING_FIXED_TOKENS = 16;
+const ACTION_TIMING_TOKENS_PER_TASK = 12;
+
+/**
+ * The output limit of one `actionTiming` call. With the flat summary limit
+ * (4096), llama.cpp let Gemma 4 E4B write 11,345 reasoning characters in a
+ * thought block before the answer (`reasoning_leak`, 11.5 s) although
+ * `enable_thinking` was false. A small limit ends such an attempt early, and
+ * the gateway retry (llama.cpp completion route) answers. A reasoning budget
+ * that uses the output limit is added, as in `identifySpeakers`.
+ */
+export function actionTimingMaxOutput(
+  tasks: number,
+  profile: CallProfile,
+): number {
+  const answer =
+    ACTION_TIMING_FIXED_TOKENS + ACTION_TIMING_TOKENS_PER_TASK * tasks;
+  const reasoningShare = profile.reasoning.countsInMaxOutput
+    ? profile.reasoning.budgetTokens
+    : 0;
+  return Math.min(
+    profile.maxOutputTokens ?? Number.POSITIVE_INFINITY,
+    answer + reasoningShare,
+  );
+}
+
 /** A part is split for a cut answer only when each half keeps this many tokens (4.0.5). */
 const MIN_SPLIT_TOKENS_SUMMARY = 2000;
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
@@ -383,6 +416,8 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       minSplitTokensInput: number;
       /** `actionTiming`: the number of tasks (the schema size limit). */
       items?: number;
+      /** The output limit of the stage. Default: the summary limit `maxOut`. */
+      maxOutput?: (profile: CallProfile) => number;
     }): Promise<Leaf<M, SummaryStageAnswer>[]> {
       try {
         const leaves = await runUnitRoute<M, SummaryStageAnswer>(
@@ -393,7 +428,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
             minSplitTokens: o.minSplitTokens,
             minSplitTokensInput: o.minSplitTokensInput,
             tokensOf: o.tokensOf,
-            maxOutput: () => maxOut,
+            maxOutput: (_members, p) => o.maxOutput?.(p) ?? maxOut,
             fits: (members, out, p) =>
               fitsContext(
                 p,
@@ -550,6 +585,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
             minSplitTokens: Number.POSITIVE_INFINITY,
             minSplitTokensInput: Number.POSITIVE_INFINITY,
             items: tasks.length,
+            maxOutput: (p) => actionTimingMaxOutput(tasks.length, p),
           }),
         ),
       );

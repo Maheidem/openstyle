@@ -8,11 +8,13 @@ import type { MockLanguageModelV4 } from "ai/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
+import type { CallProfile } from "../src/lib/llm/model-profiles.js";
 import { __clearModeCacheForTests } from "../src/lib/llm/model-profiles.js";
 import { createLlmRecorder } from "../src/lib/llm/recorder.js";
 import { buildGraph } from "../src/lib/meetings/workflow/graph.js";
 import {
   __setSummaryCeilingMsForTests,
+  actionTimingMaxOutput,
   SUMMARIZE_IS_STUB,
   summaryCeilingMs,
   summaryStepKey,
@@ -25,6 +27,7 @@ import {
 import {
   type MeetingSummary,
   MeetingSummarySchema,
+  SUMMARY_SIZE_LIMITS,
   summaryStageStepSchema,
 } from "../src/lib/meetings/workflow/schemas.js";
 import {
@@ -317,7 +320,7 @@ describe("summarize: one part", () => {
     expect(status.status).toBe("summarized");
   });
 
-  it("a `server` provider gets the portable stage schemas; the stored summary has no duplicate entry (issue #246)", async () => {
+  it("a `server` provider gets the stage schemas with size limits; the stored summary has no duplicate entry (issue #246)", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2 });
     const point = "The export job takes four minutes.";
     const s = summary({
@@ -328,10 +331,9 @@ describe("summarize: one part", () => {
     const wires = r.requests.map((q) => JSON.stringify(q.responseFormat));
     expect(wires[2]).toContain('"keyPoints"');
     expect(wires[2]).not.toContain('"decisions"');
-    for (const wire of wires) {
-      expect(wire).not.toContain("maxItems");
-      expect(wire).not.toContain("maxLength");
-    }
+    // An own server (llama.cpp grammar) applies maxItems and maxLength.
+    expect(wires[2]).toContain(`"maxItems":${SUMMARY_SIZE_LIMITS.keyPoints}`);
+    expect(wires[2]).toContain(`"maxLength":${SUMMARY_SIZE_LIMITS.itemChars}`);
     const stored = JSON.parse(
       savedRow(f.meeting.id)?.summary_json as string,
     ) as MeetingSummary;
@@ -647,6 +649,9 @@ describe("summary-pure: merge and owner check", () => {
     expect(timing?.user).toContain("1. Ping the late guest");
     expect(timing?.user).toContain("2. Send the draft");
     expect(timing?.user).toContain("<transcript>");
+    // One label for each task: 16 + 12 x 2 tokens, not the summary 4096.
+    expect(timing?.maxOutputTokens).toBe(40);
+    expect(JSON.stringify(timing?.responseFormat)).toContain('"maxItems":2');
     expect(r.finalState.summary?.summary?.actionItems).toEqual([
       { task: "Send the draft", owner: "Me", due: "Friday" },
     ]);
@@ -654,6 +659,30 @@ describe("summary-pure: merge and owner check", () => {
     const g = seedFixtureMeeting({ chunks: 1, speakers: 1, meetingId: "m-t0" });
     const r0 = await run(g, [sum()]);
     expect(r0.requests.map(stageOf)).not.toContain("actionTiming");
+  });
+
+  it("actionTimingMaxOutput: 16 + 12 tokens for each task, plus a reasoning budget that uses the output limit, under the model limit", () => {
+    const profile = (o: {
+      cap?: number | null;
+      budget?: number;
+      counts?: boolean;
+    }) =>
+      ({
+        maxOutputTokens: o.cap ?? null,
+        reasoning: {
+          budgetTokens: o.budget ?? 0,
+          countsInMaxOutput: o.counts ?? false,
+        },
+      }) as CallProfile;
+    expect(actionTimingMaxOutput(1, profile({}))).toBe(28);
+    expect(actionTimingMaxOutput(10, profile({}))).toBe(136);
+    expect(
+      actionTimingMaxOutput(2, profile({ budget: 512, counts: true })),
+    ).toBe(552);
+    expect(
+      actionTimingMaxOutput(2, profile({ budget: 512, counts: false })),
+    ).toBe(40);
+    expect(actionTimingMaxOutput(10, profile({ cap: 100 }))).toBe(100);
   });
 
   it("a failed timing check keeps every task (fail open)", async () => {
