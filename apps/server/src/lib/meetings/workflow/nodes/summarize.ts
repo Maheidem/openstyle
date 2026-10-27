@@ -32,6 +32,7 @@ import {
 } from "../prompts.js";
 import {
   type MeetingSummary,
+  SUMMARY_SIZE_LIMITS,
   SUMMARY_STAGE_LISTS,
   type SummaryStage,
   type SummaryStageAnswer,
@@ -93,26 +94,57 @@ const ACTION_TIMING_FIXED_TOKENS = 16;
 const ACTION_TIMING_TOKENS_PER_TASK = 12;
 
 /**
- * The output limit of one `actionTiming` call. With the flat summary limit
- * (4096), llama.cpp let Gemma 4 E4B write 11,345 reasoning characters in a
- * thought block before the answer (`reasoning_leak`, 11.5 s) although
- * `enable_thinking` was false. A small limit ends such an attempt early, and
- * the gateway retry (llama.cpp completion route) answers. A reasoning budget
- * that uses the output limit is added, as in `identifySpeakers`.
+ * The `overview` limit when the schema has the size limits: the overview has
+ * at most `overviewChars` characters, and one token holds one character or
+ * more, in any language. 64 tokens hold the key and the JSON marks.
  */
-export function actionTimingMaxOutput(
-  tasks: number,
-  profile: CallProfile,
-): number {
-  const answer =
-    ACTION_TIMING_FIXED_TOKENS + ACTION_TIMING_TOKENS_PER_TASK * tasks;
+const OVERVIEW_BOUNDED_TOKENS = SUMMARY_SIZE_LIMITS.overviewChars + 64;
+
+/**
+ * The output limit of a stage whose answer has a known largest size, plus a
+ * reasoning budget that uses the output limit (as in `identifySpeakers`),
+ * under the model limit.
+ *
+ * Why not the flat summary limit (4096): llama.cpp lets Gemma 4 write a
+ * thought block before the answer although `enable_thinking` is false. On
+ * 2026-10-27 that cost 4096 tokens and 9 to 11.5 s on `actionTiming` (11,345
+ * reasoning characters) and `overview` (21,848 to 23,531), and without
+ * `maxItems` E4B wrote the timings list until 4096 and 8192 tokens. A small
+ * limit ends such an attempt early, and the gateway retry (llama.cpp
+ * completion route) answers.
+ */
+function stageMaxOutput(answerTokens: number, profile: CallProfile): number {
   const reasoningShare = profile.reasoning.countsInMaxOutput
     ? profile.reasoning.budgetTokens
     : 0;
   return Math.min(
     profile.maxOutputTokens ?? Number.POSITIVE_INFINITY,
-    answer + reasoningShare,
+    answerTokens + reasoningShare,
   );
+}
+
+/** The output limit of one `actionTiming` call: one label for each task. */
+export function actionTimingMaxOutput(
+  tasks: number,
+  profile: CallProfile,
+): number {
+  return stageMaxOutput(
+    ACTION_TIMING_FIXED_TOKENS + ACTION_TIMING_TOKENS_PER_TASK * tasks,
+    profile,
+  );
+}
+
+/**
+ * The output limit of the `overview` call. Without the size limits (cloud
+ * providers) the overview has no largest size, so the summary limit stays.
+ */
+export function overviewMaxOutput(
+  profile: CallProfile,
+  summaryLimit: number,
+): number {
+  return appliesSizeLimits(profile)
+    ? Math.min(summaryLimit, stageMaxOutput(OVERVIEW_BOUNDED_TOKENS, profile))
+    : summaryLimit;
 }
 
 /** A part is split for a cut answer only when each half keeps this many tokens (4.0.5). */
@@ -714,6 +746,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           tokensOf: lineTokens,
           minSplitTokens: Number.POSITIVE_INFINITY,
           minSplitTokensInput: 0,
+          maxOutput: (p) => overviewMaxOutput(p, maxOut),
         }),
       ),
     );

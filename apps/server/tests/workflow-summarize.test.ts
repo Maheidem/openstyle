@@ -15,6 +15,7 @@ import { buildGraph } from "../src/lib/meetings/workflow/graph.js";
 import {
   __setSummaryCeilingMsForTests,
   actionTimingMaxOutput,
+  overviewMaxOutput,
   SUMMARIZE_IS_STUB,
   summaryCeilingMs,
   summaryStepKey,
@@ -685,6 +686,20 @@ describe("summary-pure: merge and owner check", () => {
     expect(actionTimingMaxOutput(10, profile({ cap: 100 }))).toBe(100);
   });
 
+  it("overviewMaxOutput: overviewChars + 64 with the size limits; the summary limit without them", () => {
+    const profile = (provider: string, cap: number | null = null) =>
+      ({
+        provider,
+        maxOutputTokens: cap,
+        reasoning: { budgetTokens: 0, countsInMaxOutput: false },
+      }) as CallProfile;
+    expect(overviewMaxOutput(profile("server"), 4096)).toBe(
+      SUMMARY_SIZE_LIMITS.overviewChars + 64,
+    );
+    expect(overviewMaxOutput(profile("server", 1000), 1000)).toBe(1000);
+    expect(overviewMaxOutput(profile("anthropic"), 4096)).toBe(4096);
+  });
+
   it("a failed timing check keeps every task (fail open)", async () => {
     const f = seedFixtureMeeting({ chunks: 1, speakers: 2, meetingId: "m-tf" });
     const s = summary({
@@ -1044,8 +1059,9 @@ describe("the length route", () => {
       return sum();
     });
     const overviewRequests = r.requests.filter(isOverview);
+    // A `server` provider has the size limits: overviewChars + 64 = 1564.
     expect(overviewRequests.map((q) => q.maxOutputTokens)).toEqual([
-      4096, 8192,
+      1564, 3128,
     ]);
     const calls = r.recorder.calls.filter((c) => c.unitKey === "overview");
     expect(calls.map((c) => c.attempt)).toEqual([1, 2]);
@@ -1135,7 +1151,7 @@ describe("a cut answer with a valid prefix (PR #258)", () => {
     expect(statusOf(r)).toBe("succeeded");
   });
 
-  it("an overview call that loops on whitespace at 4096 and 8192 tokens is repaired from the 8192 answer", async () => {
+  it("an overview call that loops on whitespace at 1564 and 3128 tokens is repaired from the second answer", async () => {
     const f = seedFixtureMeeting({
       chunks: 1,
       speakers: 1,
@@ -1156,7 +1172,7 @@ describe("a cut answer with a valid prefix (PR #258)", () => {
       return sum();
     });
     expect(r.requests.filter(isOverview).map((q) => q.maxOutputTokens)).toEqual(
-      [4096, 8192],
+      [1564, 3128],
     );
     expect(r.finalState.summary?.partial).toBe(true);
     expect(r.finalState.summary?.summary?.overview).toBe("Second try.");
