@@ -18,7 +18,7 @@ It is the distilled form of the overnight proofs of 2026-10-25 (Nemotron Bolt E4
 1. Run only through `scripts/test-runner/run.sh` (the script does it). Never launch the app another way. The Test Runner keeps the Privacy grant.
 2. Quiet mode only (`OPENSTYLE_E2E=1`, set by `launchOpenstyle`). Never record, never use the mic or system audio.
 3. Fictional data only. The fixture is `defaultSegments(6)` from `apps/electron/tests/helpers/enhance-fixture.ts`.
-4. Take the shared GPU lock `/tmp/openstyle-gpu.lock` in queue order. The script appends its line to `/tmp/openstyle-gpu.queue`, then takes the lock (`mkdir`) only when the lock is free AND its line is the first live line (same rule as `scripts/meeting-v2/eval/gpu-queue.mts`; a line older than 2 h is skipped). It removes its line when it takes the lock, at exit and on INT/TERM. It releases the lock at exit. Do not kill another session's lock owner. Wait.
+4. Hold the shared GPU lock `/tmp/openstyle-gpu.lock` ONLY for the steps that run models: Enhance + Summarize, the LLM inspector and the dictation smoke. Do not hold it for setup, build, app start or the download (the download uses the network, not the GPU; on 2026-10-26 it took 353.9 s with the GPU at 0 % while other jobs waited). How it works: the spec writes `<out>/gate.want` after step 3 (download + Use). Then `run.sh` appends its line to `/tmp/openstyle-gpu.queue` and takes the lock (`mkdir`) only when the lock is free AND its line is the first live line (same rule as `scripts/meeting-v2/eval/gpu-queue.mts`; a line older than 2 h is skipped). It writes `<out>/gate.granted`, and the spec goes on. After the dictation step the spec writes `<out>/gate.release` and `run.sh` releases the lock. The release also runs at exit and on INT/TERM (trap; every command in it ends with `|| true`). The script removes only a lock that it took itself. Do not kill another session's lock owner. Wait. Lock events with ISO times are in `<out>/lock-timeline.log`.
 5. Never write to `~/.cache/huggingface`, the real profile, or `/Applications/Openstyle.app`. The script uses a scratch `HOME`, a scratch HF cache and a scratch profile.
 6. Stop at the first Privacy dialog. Report the service name. `tcc-prompts.txt` must be `0`.
 7. Look at every screenshot yourself before you report it (empty states, spinners, cut-off UI).
@@ -38,6 +38,7 @@ It is the distilled form of the overnight proofs of 2026-10-25 (Nemotron Bolt E4
 | Where files land | `<out>` = `~/Library/Application Support/Openstyle-eval/app-check/<model-id>-<timestamp>/` (or `APP_CHECK_OUT`). Not `/tmp`: macOS cleans it (same rule as the HF eval cache). Screenshots `<out>/*.png`, `proof.log`, `results.json`, `rss.csv`, `llm-calls.txt`, `run.log`, `tcc-prompts.txt`, `logs-before.txt`, `logs-after.txt`. The big scratch folder is deleted at exit (`APP_CHECK_KEEP_SCRATCH=1` keeps it). |
 | Build | The script builds the server and the app first (about 2 min). `APP_CHECK_SKIP_BUILD=1` skips it. Skip only when the build is from the current commit. |
 | Switch-back target | `gemma-4-e2b-qat-4bit`, cloned from the real HF cache (read only) with `cp -Rc` before the app starts |
+| Download vs preseed | Default: the download goes through the real Models page button (proves the user path). `APP_CHECK_PRESEED=1`: `run.sh` APFS-clones the model from `~/Library/Application Support/Openstyle-eval/hf/hub` (read only) before the app starts, and the spec skips the download (`downloadSeconds` = `SKIPPED`). Use the default for a new catalog model and for any change in the download code. Use preseed for a worker change, a prompt change or a repeat run where the download is not under test. Preseed never proves the download. |
 | Wall time (E4B, 6.8 GB) | about 12.3 min of test time (download 687 s) plus the build (about 2 min) plus any wait for the GPU lock |
 
 ## Run
@@ -62,10 +63,10 @@ tail -f "$E/proof.log"
 
 1. Boot the app with the isolated profile. Set `advanced_mode` and `meeting_enhance_prompt_seen`.
 2. Models page, AI cleanup, Change, Browse: screenshot of the list before the download (light, dark).
-3. Click Download on the row. Poll until the Use button shows. Click Use. Check that the row says "Selected" (light, dark).
-4. Seed the fixture meeting, click Enhance, poll `GET /api/meetings/app-check` until status `summarized`. Screenshots of transcript and Summary (light, dark), and a second Summary shot scrolled to Action Items and Open Questions (`step4-meeting-summary-lower-*`).
+3. Click Download on the row (no GPU lock is held). Poll until the Use button shows. With `APP_CHECK_PRESEED=1` the spec skips the click. Click Use. Check that the row says "Selected" (light, dark).
+4. Ask for the GPU lock and wait for `gate.granted`. Seed the fixture meeting, click Enhance, poll `GET /api/meetings/app-check` until status `summarized`. Screenshots of transcript and Summary (light, dark), and a second Summary shot scrolled to Action Items and Open Questions (`step4-meeting-summary-lower-*`).
 5. Open the LLM inspector. Check that it shows the HF repo name (the inspector shows the hf name, not the catalog id).
-6. Dictation smoke: 3 texts through `POST /api/post-process`. Log latency and a "think tag" check.
+6. Dictation smoke: 3 texts through `POST /api/post-process`. Log latency and a "think tag" check. Then give the GPU lock back.
 7. Switch back to Gemma 4 E2B: Use button, "Selected" check (light, dark). Skipped when the checked model is E2B.
 8. Close the app.
 
@@ -82,6 +83,7 @@ tail -f "$E/proof.log"
 | Build | `build done` in the output |
 | E2B clone | `E2B clone ok (0 dangling symlinks)` |
 | Download | `DOWNLOAD DONE wall=<s>s` in `proof.log`; `results.json` has `downloadSeconds` |
+| GPU lock | `lock-timeline.log` shows `requested`, `taken`, `released`. In `proof.log`, `DOWNLOAD DONE` is BEFORE `GPU lock granted`, and `GPU lock released by spec` is after the last `dictation` line. |
 | Use | `results.json` has `"useStep": "PASS"` |
 | Enhance + Summarize | `ENHANCE+SUMMARIZE DONE wall=<s>s`; `llm-calls.txt` shows provider `local-mlx-llm`, finish `stop`, no `error` rows |
 | Inspector | `inspectorHasHfName_light` and `_dark` are `true` |
@@ -100,7 +102,7 @@ See "Run record" at the end of this file. The summary block starts with `=== run
 
 ## Cleanup
 
-The script cleans up at exit (trap): it deletes the spec copy, stops the sampler, releases the lock, and deletes `<out>/scratch`. After a run:
+The script cleans up at exit (trap): it deletes the spec copy, stops the sampler, releases the lock (only when it took it), and deletes `<out>/scratch`. After a run:
 
 ```bash
 git status --short            # no zz-proof file, no stray files
@@ -120,6 +122,8 @@ Delete `<out>` when the numbers are in your report. Delete `apps/electron/test-r
 7. **`session_open` in Nexus can answer PERMISSION_DENIED for dev agents.** Claim handoffs without a session. This does not affect the script.
 8. **A GPU lock held by another session blocks the run.** The script prints `GPU lock or queue busy: <owner> | queue: <n> line(s)` every 30 s. Wait. Do not remove the lock.
 9. **A partial Electron install fails the boot step after the lock wait** (the script now checks this before the build and the lock wait: it exits 2 with a message when `path.txt` or the binary in `dist/` is missing; `APP_CHECK_ELECTRON_PKG` overrides the package folder, for tests) (2026-10-25, dev_senior worktree). Error in `run.log`: `Error: electron.launch: Electron failed to install correctly, please delete node_modules/electron and try installing again` at `helpers/e2e-app.ts:43`, then `1 failed` (boot) and `7 did not run`. Cause: `node_modules/.pnpm/electron@<ver>/node_modules/electron/dist/` held only `LICENSES.chromium.html` and `path.txt` was missing. `node install.js` in that folder exited 0 and installed nothing. Check before a run, in `apps/electron`: `node -e "console.log(require('electron'))"` must print a path to `Electron.app/Contents/MacOS/Electron`. Fix: clone `dist/` and `path.txt` from a checkout with the same Electron version: `cp -Rc <good>/dist <bad>/dist && cp <good>/path.txt <bad>/`.
+10. **Killing `run.sh` leaves Playwright and Electron alive** (2026-10-27). The Test Runner app starts them detached (parent pid 1), so the trap cannot reach them. The trap does release the lock and the queue line. After an aborted run, find the leftovers with `ps -eo pid,ppid,command | grep zz-proof-appcheck` and `kill` the `openstyle-test-runner` app, the `playwright/cli.js` process and the Electron main process of YOUR worktree. Never use `pkill`.
+11. **The installed worker can be older than main** (2026-10-27). Enhance hung on `status: transcribed` for 25 min, because the server passes `--context-tokens` and the worker in `~/.cache/freestyle/mlx-asr/runtime` rejects it (`unrecognized arguments` in `<out>/scratch/ud-*/logs/openstyle-server.log`). The lock stays held while the spec waits. Check `<worker> --help | grep context-tokens` before a run. If it prints nothing, set `APP_CHECK_WORKER` to a newer worker, for example `~/Library/Application Support/Openstyle-eval/worker-model-pool/mlx_asr_worker/mlx_asr_worker`.
 
 ## Run record
 
@@ -207,3 +211,14 @@ Tests with raw output are in the PR thread. Test hooks: `APP_CHECK_LOCK` and `AP
 - R1 queue: with a fake queue entry first and a free lock, the script printed `GPU lock or queue busy` twice (30 s apart) and took no lock. After the entry was removed it printed `GPU lock taken`, and its own queue line was gone.
 - R2 preflight: with `APP_CHECK_ELECTRON_PKG` on a folder with an empty `dist/`, the script printed `Electron binary missing or partial ...` and exited 2 before the build, the lock wait and any output folder.
 - R3 summary: with `rss.csv` removed from a copy of `e4b-run2` and `CODE=3`, the summary printed `(rss.csv missing: the sampler did not write it)`, still printed the TCC count `0`, and the script exited 3. The summary runs with `set +e`, so no single failed step hides the Playwright exit code.
+
+## Lock scope change (2026-10-27)
+
+Branch `chore/app-check-lock`. The lock is held only for the model steps. Proof on `gemma-4-e2b-qat-4bit`, shipped worker replaced with `worker-model-pool` (Traps 11):
+
+| Run | Download | Lock requested | Lock taken | Lock released | Held |
+|---|---|---|---|---|---|
+| run 2, real download | 221 s, 11:29:25 to 11:33:06Z, no lock | 11:33:10Z | 11:47:00Z (waited 14 min for other sessions) | 11:47:28Z | 28 s |
+| run 3, `APP_CHECK_PRESEED=1` | skipped | 11:48:13Z | 11:49:36Z | 11:50:03Z | 27 s |
+
+Both runs: Playwright 8 passed, exit 0, TCC prompts 0. Before this change the lock covered the whole run (about 18 min for run 2).

@@ -2,7 +2,10 @@
 # App check of one built-in MLX LLM: real app, isolated profile, fictional data.
 # Usage: .claude/skills/app-check/scripts/run.sh <catalog-model-id>
 # Env: APP_CHECK_OUT (evidence dir), APP_CHECK_SKIP_BUILD=1, APP_CHECK_KEEP_SCRATCH=1,
-#      APP_CHECK_WORKER (path of the mlx_asr_worker binary).
+#      APP_CHECK_WORKER (path of the mlx_asr_worker binary),
+#      APP_CHECK_PRESEED=1 (clone the model from the eval cache, skip the download proof).
+# The GPU lock is held ONLY for the model steps (Enhance, inspector, dictation). The spec asks for it
+# through gate files in <out> after the download step and gives it back after the dictation step.
 # Read .claude/skills/app-check/SKILL.md first.
 set -euo pipefail
 
@@ -23,6 +26,9 @@ REAL_HF="$HOME/.cache/huggingface/hub"
 WORKER=${APP_CHECK_WORKER:-$HOME/.cache/freestyle/mlx-asr/runtime/darwin-arm64/mlx_asr_worker/mlx_asr_worker}
 SAMPLER_PID=""
 HAVE_LOCK=0
+PW_PID=""
+PRESEED=${APP_CHECK_PRESEED:-0}
+EVAL_HF="$HOME/Library/Application Support/Openstyle-eval/hf/hub"
 
 cd "$REPO"
 
@@ -54,11 +60,30 @@ unqueue() {
   QLINE=""
 }
 
+# Log a lock event with an ISO time, to stdout and to <out>/lock-timeline.log.
+lockline() {
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$OUT/lock-timeline.log"
+}
+
+# Release the lock only when THIS script took it (HAVE_LOCK=1 is set only after our own mkdir).
+# Every command ends with || true, so the trap never fails under set -e.
+release_lock() {
+  if [[ $HAVE_LOCK == 1 ]]; then
+    rm -f "$LOCK/owner" || true
+    rmdir "$LOCK" 2>/dev/null || true
+    HAVE_LOCK=0
+    lockline "GPU lock released" || true
+  fi
+  return 0
+}
+
 cleanup() {
+  # This stops the wrapper only. The Test Runner app starts Playwright detached (parent pid 1): see SKILL.md Traps 10.
+  if [[ -n $PW_PID ]]; then kill "$PW_PID" 2>/dev/null || true; fi
   if [[ -n $SAMPLER_PID ]]; then kill "$SAMPLER_PID" 2>/dev/null || true; wait "$SAMPLER_PID" 2>/dev/null || true; fi
   rm -f "$SPEC_DST"
   unqueue
-  if [[ $HAVE_LOCK == 1 ]]; then rm -f "$LOCK/owner"; rmdir "$LOCK" 2>/dev/null || true; fi
+  release_lock
   if [[ ${APP_CHECK_KEEP_SCRATCH:-0} != 1 ]]; then rm -rf "$OUT/scratch"; fi
 }
 trap cleanup EXIT
@@ -85,25 +110,27 @@ if [[ $MODEL_ID != "$BACK_ID" ]]; then
   echo "E2B clone ok (0 dangling symlinks)"
 fi
 
-# 4. Spec copy, GPU lock, sampler.
+# 3b. Preseed (APP_CHECK_PRESEED=1): clone the checked model too, so the spec skips the download.
+#     This does NOT prove the download button. Use it only when the download is not the thing under test.
+if [[ $PRESEED == 1 ]]; then
+  pname="models--${HF_ID//\//--}"
+  [[ -d $EVAL_HF/$pname ]] || { echo "APP_CHECK_PRESEED=1 but $EVAL_HF/$pname does not exist." >&2; exit 2; }
+  cp -Rc "$EVAL_HF/$pname" "$OUT/scratch/hf/hub/"
+  broken=$(find -L "$OUT/scratch/hf/hub/$pname" -type l | wc -l | tr -d ' ')
+  [[ $broken == 0 ]] || { echo "preseed clone has $broken dangling symlinks" >&2; exit 2; }
+  echo "preseed clone ok (0 dangling symlinks)"
+fi
+
+# 4. Spec copy and sampler. The GPU lock is NOT taken here: setup, build, app start and the download need no GPU.
 cp "$HERE/app-check.spec.ts.txt" "$SPEC_DST"
+
 # GPU lock in queue order (owner rule 2026-10-20): queue first, then take the lock only
 # when it is free AND our line is the first live line of the queue.
-QLINE="app-check $MODEL_ID 100 $(date -u +%Y-%m-%dT%H:%M:%SZ) pid=$$"
-echo "$QLINE" >> "$QUEUE"
 our_turn_and_lock() {
   # Someone removed our line: queue again at the end.
   grep -q -x -F -- "$QLINE" "$QUEUE" 2>/dev/null || echo "$QLINE" >> "$QUEUE"
   python3 -I "$HERE/queue-turn.py" "$QUEUE" "$QLINE" && mkdir "$LOCK" 2>/dev/null
 }
-until our_turn_and_lock; do
-  echo "$(date +%T) GPU lock or queue busy: $(cat "$LOCK/owner" 2>/dev/null) | queue: $(grep -c . "$QUEUE" 2>/dev/null) line(s)" | tee -a "$OUT/lock-wait.log"
-  sleep 30
-done
-HAVE_LOCK=1
-unqueue
-echo "$(date +%T) GPU lock taken"
-echo "app-check $MODEL_ID $(date -u +%H:%M:%SZ)" > "$LOCK/owner"
 
 LOGS=~/Library/Logs/Openstyle
 stat -f '%N %z %Sm' "$LOGS"/* > "$OUT/logs-before.txt" 2>&1 || true
@@ -113,15 +140,43 @@ python3 -I "$HERE/sample-rss.py" "$OUT/app.pid" "$OUT/rss.csv" &
 SAMPLER_PID=$!
 
 # 5. Run through the Test Runner app (stable Privacy identity).
-export APP_CHECK_OUT="$OUT" APP_CHECK_MODEL_ID="$MODEL_ID" APP_CHECK_MODEL_NAME="$MODEL_NAME" \
+rm -f "$OUT/gate.want" "$OUT/gate.granted" "$OUT/gate.release"
+export APP_CHECK_PRESEED="$PRESEED" APP_CHECK_OUT="$OUT" APP_CHECK_MODEL_ID="$MODEL_ID" APP_CHECK_MODEL_NAME="$MODEL_NAME" \
   APP_CHECK_HF_ID="$HF_ID" APP_CHECK_WORKER="$WORKER" \
   OPENSTYLE_DEV_SIGN=0 CSC_IDENTITY_AUTO_DISCOVERY=false
 set +e
-scripts/test-runner/run.sh "$REPO/apps/electron" -- timeout 5400 pnpm exec playwright test tests/zz-proof-appcheck.test.ts > "$OUT/run.log" 2>&1
+scripts/test-runner/run.sh "$REPO/apps/electron" -- timeout 5400 pnpm exec playwright test tests/zz-proof-appcheck.test.ts > "$OUT/run.log" 2>&1 &
+PW_PID=$!
+# Gate loop: the spec writes gate.want before the first model step and gate.release after the last one.
+LAST_MSG=0
+while kill -0 "$PW_PID" 2>/dev/null; do
+  if [[ $HAVE_LOCK == 0 && -f $OUT/gate.want && ! -f $OUT/gate.release ]]; then
+    if [[ -z $QLINE ]]; then
+      QLINE="app-check $MODEL_ID 100 $(date -u +%Y-%m-%dT%H:%M:%SZ) pid=$$"
+      echo "$QLINE" >> "$QUEUE"
+      lockline "GPU lock requested (model steps next)"
+    fi
+    if our_turn_and_lock; then
+      HAVE_LOCK=1
+      unqueue
+      echo "app-check $MODEL_ID $(date -u +%H:%M:%SZ)" > "$LOCK/owner"
+      lockline "GPU lock taken"
+      touch "$OUT/gate.granted"
+    elif (( $(date +%s) - LAST_MSG >= 30 )); then
+      LAST_MSG=$(date +%s)
+      echo "$(date +%T) GPU lock or queue busy: $(cat "$LOCK/owner" 2>/dev/null) | queue: $(grep -c . "$QUEUE" 2>/dev/null) line(s)" | tee -a "$OUT/lock-wait.log"
+    fi
+  elif [[ $HAVE_LOCK == 1 && -f $OUT/gate.release ]]; then
+    release_lock
+  fi
+  sleep 2
+done
+wait "$PW_PID"
 CODE=$?
+PW_PID=""
 set -e
-# Release the GPU lock now. The evidence steps below need no GPU, and other sessions wait for the lock.
-rm -f "$LOCK/owner"; rmdir "$LOCK" 2>/dev/null || true; HAVE_LOCK=0
+# Safety net: the lock is already released after the dictation step. This covers a failed run.
+release_lock
 
 # 6. Evidence. Every step below may fail on its own: print each field, mark a missing one, keep the real exit code.
 set +e
