@@ -1,0 +1,44 @@
+# Saves the native-helper cache on main. A PR run can restore caches of its
+# own branch and of main only, and build.yml does not run on main. Without
+# this job, each new PR compiles the helpers again (~2 min).
+# No tests, no checks, no package. It is not a required check.
+# The key and the paths must stay equal to "Cache native helpers" in
+# build.yml (job app-macos), or the PR jobs miss this cache.
+
+name: Cache warm
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: cache-warm
+  cancel-in-progress: true
+
+jobs:
+  native-helpers:
+    name: Save native-helper cache
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache native helpers
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/electron/resources/bin/darwin-arm64
+            apps/electron/resources/models
+          key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('apps/electron/native/**', 'apps/electron/scripts/compile-native.js') }}
+
+      - uses: ./.github/actions/setup
+        if: steps.native-cache.outputs.cache-hit != 'true'
+
+      # native/fluidaudio-diarize needs Swift tools 6.0; macos-14 defaults to
+      # Xcode 15.4 (Swift 5.10). See the package job in build.yml.
+      - name: Compile native helpers
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        working-directory: apps/electron
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app
+          pnpm run compile:native

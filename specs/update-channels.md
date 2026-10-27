@@ -21,7 +21,7 @@ The app has an "Update channel" menu with two channels:
 ## 1. How updates work (facts)
 
 1. **Release train.** `release.yml` runs Craft (`getsentry/craft@v2`) with input `version` (`auto`, `major`, `minor`, `patch` or an explicit semver) (`.github/workflows/release.yml:7-11,52-58`). Craft runs `scripts/bump-version.sh` (`.craft.yml:14`), pushes `release/<version>` and opens a publish issue.
-2. **Build.** `Build & Test` runs on push to `main` and `release/**`. Job `build-mac` runs on `macos-14` and signs with Developer ID when `MAC_DEVID_CERT_P12` is set. The 2.23.0 release-branch run took 19 min.
+2. **Build.** `Build & Test` runs on push to `release/**` (not on `main` since 2026-10-27). Job `package` ("Build (macOS)") runs on `macos-14` and signs with Developer ID when `MAC_DEVID_CERT_P12` is set. The 2.23.0 release-branch run took 19 min.
 3. **Publish.** The `accepted` label starts `publish.yml`, which runs `craft publish` (`.github/workflows/publish.yml:20-27,103-108`). Craft uploads only the names that match `.craft.yml:26`: `.dmg`, `.zip`, `.blockmap`, `latest-mac.yml`, `mlx_asr_worker-*.tar.gz`.
 4. **Tags** have no `v` prefix (2.23.0, 2.22.0). The repo has 0 prereleases on 2026-10-27.
 5. **Check.** `updater.ts` uses electron-updater only to check, with `autoDownload = false`. It checks every 5 minutes when "Automatic updates" is on. The dev flavor ("Openstyle Dev", `pnpm dev:install`) never checks.

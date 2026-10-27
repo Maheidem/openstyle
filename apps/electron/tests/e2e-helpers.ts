@@ -49,13 +49,15 @@ export async function withPickerFile<T>(
 }
 
 /** Drops a small synthetic file on the element with `testId`. The file has
- * the text "hi". */
+ * the text "hi". It waits until the element is visible: a route change can
+ * finish before the page renders the drop zone. */
 export async function dropFile(
   page: Page,
   testId: string,
   fileName: string,
   mimeType: string,
 ): Promise<void> {
+  await page.getByTestId(testId).waitFor({ state: "visible" });
   await page.evaluate(
     ({ id, name, type }) => {
       const dropzone = document.querySelector(

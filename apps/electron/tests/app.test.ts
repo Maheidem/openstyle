@@ -122,9 +122,11 @@ test("settings API works via embedded server", async () => {
 });
 
 test("dashboard renders content", async () => {
-  const body = dashboardPage.locator("body");
-  await body.waitFor({ state: "visible" });
-  expect((await body.innerText()).length).toBeGreaterThan(0);
+  // The body is visible before React renders text into it. Retry until the
+  // body has visible text (one read can see the empty shell).
+  await expect(dashboardPage.locator("body")).toHaveText(/\S/, {
+    useInnerText: true,
+  });
 });
 
 // Runs LAST among the dashboard tests: completing onboarding changes the
