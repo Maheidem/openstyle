@@ -108,6 +108,24 @@ block|Bash|GH_TOKEN=abc gh pr list
 allow|Bash|rg "gh pr" specs
 allow|Bash|git commit -m "docs: use gh pr list"
 allow|Bash|echo gh pr list
+block|Bash|git push origin main
+block|Bash|git push origin HEAD:main
+block|Bash|git push origin HEAD:refs/heads/main
+block|Bash|git push -f origin main
+block|Bash|git push origin +main
+block|Bash|git push origin --delete main
+block|Bash|git -C /tmp/r push origin main
+block|Bash|rtk git push origin main
+block|Bash|cd /tmp/r && git push origin main
+block|Bash|OTHER=1 git push origin main
+allow|Bash|OPENSTYLE_RELEASE_LOCAL=1 git push origin HEAD:refs/heads/main
+allow|Bash|cd /tmp/r && OPENSTYLE_RELEASE_LOCAL=1 git push origin main
+allow|Bash|git push origin chore/local-release
+allow|Bash|git push -u origin fix/main-menu
+allow|Bash|git push origin main-preview
+allow|Bash|git commit -m "docs: push to main through a PR"
+allow|Bash|git fetch origin main
+allow|Bash|git pull --ff-only origin main
 block|Write|~/.cache/freestyle/x.txt
 block|Edit|~/Library/Application Support/Openstyle/settings.json
 block|MultiEdit|~/.cache/huggingface/token

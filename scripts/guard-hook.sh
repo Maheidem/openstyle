@@ -138,6 +138,20 @@ while IFS= read -r seg; do
         exit 2
       fi
       ;;
+    # Rule h: no push to main (owner rule 2026-10-27). The owner is a bypass
+    # actor of the main ruleset, so a session with his token can push there.
+    # Only the local release pushes to main. It sets OPENSTYLE_RELEASE_LOCAL=1
+    # for that one push. Limit: this hook sees only the command text, so a
+    # push inside a script file (scripts/release-local.sh) is not parsed here.
+    git)
+      if [[ $seg =~ (^|[[:space:]/])git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push([[:space:]]|$) ]] &&
+        [[ $seg =~ [[:space:]:+](refs/heads/)?main([[:space:]\"\']|$) ]] &&
+        [[ ${OPENSTYLE_RELEASE_LOCAL:-} != 1 ]] &&
+        ! [[ ${seg%%git*} =~ (^|[[:space:]])OPENSTYLE_RELEASE_LOCAL=1[[:space:]] ]]; then
+        echo "BLOCKED by guard hook (rule h): no git push to main. main changes only through a squash PR or the local release (scripts/release-local.sh)." >&2
+        exit 2
+      fi
+      ;;
     # Rule d: kill by name.
     pkill | killall)
       block "rule d" "$word kills by name and can hit the installed app or its worker; use kill <pid> of a process you started."
