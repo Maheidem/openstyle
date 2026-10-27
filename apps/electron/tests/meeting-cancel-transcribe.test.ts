@@ -349,8 +349,14 @@ test("cancelling a running transcribe job keeps the partial transcript", async (
       };
       const meeting = list.items.find((m) => m.title === "cancel-test");
       expect(meeting?.status).toBe("transcribing");
+      // On macOS the job first runs the diarizer (phase "diarizing", total
+      // 0) when the fluidaudio-diarize helper is present. Wait for the plan.
+      await expect
+        .poll(async () => (await getMeeting(meeting!.id)).job?.total, {
+          timeout: 30_000,
+        })
+        .toBe(2);
       const detail = await getMeeting(meeting!.id);
-      expect(detail.job?.total).toBe(2);
       expect(detail.job?.done).toBeLessThan(2);
 
       // Wait until chunk 2 is actually in flight (parked on the hold

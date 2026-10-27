@@ -840,12 +840,14 @@ test("the active models line names the default voice model and LLM", async () =>
     });
     expect(res.ok, `POST /api/models/configured ${model.type}`).toBe(true);
   }
-  // The server keeps an MLX voice default only where MLX runs (Apple
-  // silicon). Elsewhere GET /api/models/configured switches it to the local
-  // Whisper fallback base-q5_1 (server lib/mlx-asr/reconcile.ts), and the
-  // line shows that model. The product is Mac-only; Linux CI checks the
-  // fallback.
-  const mlx = MAC && process.arch === "arm64";
+  // The server keeps an MLX voice default only where MLX runs: Apple
+  // silicon with the worker or the Python runtime. Elsewhere GET
+  // /api/models/configured switches it to the local Whisper fallback
+  // base-q5_1 (server lib/mlx-asr/reconcile.ts), and the line shows that
+  // model. A hosted macOS CI runner has no MLX runtime, so ask the server.
+  const { canRun: mlx } = (await (
+    await fetch(`${base}/api/mlx-asr/status`)
+  ).json()) as { canRun: boolean };
   const voiceLabel = mlx ? "Qwen3 Fast" : "base-q5_1";
   const configured = (await (
     await fetch(`${base}/api/models/configured`)

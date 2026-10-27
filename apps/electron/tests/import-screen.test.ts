@@ -17,7 +17,7 @@ import {
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
-import { writeSilentWav } from "./helpers/wav";
+import { pcm16Samples, pcm16Wav, writeSilentWav } from "./helpers/wav";
 
 // ---------------------------------------------------------------------------
 // Helpers (self-contained, mirrors tests/app.test.ts)
@@ -80,6 +80,11 @@ function writeSpeechWav(path: string): boolean {
       aiffPath,
       path,
     ]);
+    // afconvert adds an FLLR padding chunk before "data". The server then
+    // needs ffmpeg to decode the file (needsDecodeFile), and the macOS CI
+    // job has no ffmpeg. Rewrite the file with the canonical 44-byte
+    // header, as the silent fallback has.
+    writeFileSync(path, pcm16Wav(pcm16Samples(readFileSync(path))));
     return existsSync(path);
   } catch {
     return false;

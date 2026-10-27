@@ -193,12 +193,16 @@ jobs:
 
       # The Mac-only E2E specs drive the native helpers (for example
       # tests/hotkey-supervisor.test.ts needs macos-key-listener). The key
-      # matches the compile:native inputs in turbo.json.
+      # matches the compile:native inputs in turbo.json. compile:native also
+      # fetches the diarization and VAD models into resources/models, so a
+      # cache hit must restore them too (else the hit runs without VAD).
       - name: Cache native helpers
         id: native-cache
         uses: actions/cache@v4
         with:
-          path: apps/electron/resources/bin/darwin-arm64
+          path: |
+            apps/electron/resources/bin/darwin-arm64
+            apps/electron/resources/models
           key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('apps/electron/native/**', 'apps/electron/scripts/compile-native.js') }}
 
       # native/fluidaudio-diarize needs Swift tools 6.0; macos-14 defaults to

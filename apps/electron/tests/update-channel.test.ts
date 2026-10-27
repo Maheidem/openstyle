@@ -265,13 +265,15 @@ test("a Stable app sees no alpha; on Dev it finds and downloads the alpha", asyn
     // "Automatic updates" on (the default), it downloads the alpha zip from
     // the alpha tag and checks its sha512.
     await chooseChannel(page, /^Dev/);
+    // The file exists while the download still writes it, so wait for the
+    // full content, not for the file.
+    const alphaZip = downloadedZip(userDataDir, ALPHA);
     await expect
-      .poll(() => existsSync(downloadedZip(userDataDir, ALPHA)), {
-        timeout: 30_000,
-      })
-      .toBe(true);
-    const zip = readFileSync(downloadedZip(userDataDir, ALPHA));
-    expect(sha512(zip)).toBe(sha512(zips.get(ALPHA) as Buffer));
+      .poll(
+        () => (existsSync(alphaZip) ? sha512(readFileSync(alphaZip)) : null),
+        { timeout: 30_000 },
+      )
+      .toBe(sha512(zips.get(ALPHA) as Buffer));
     expect(requests).toContain(
       `${OWNER_REPO}/releases/download/${ALPHA}/latest-mac.yml`,
     );
