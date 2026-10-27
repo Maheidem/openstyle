@@ -534,29 +534,36 @@ function Footer({
   return (
     <footer className="flex items-center gap-1 border-border border-t pt-2.5 pl-0.5">
       <div
-        className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground"
+        className="flex min-w-0 flex-1 items-baseline text-[12px] text-muted-foreground"
         data-testid="tray-popover-version"
       >
-        {info && t("trayPopover.footer.version", { version: info.version })}
-        {info && " · "}
-        {info?.update === "downloaded" ? (
-          // The same main-process path as "Restart & Update" in the tray
-          // menu (updater:install calls restartAndUpdate in menus.ts).
-          <button
-            type="button"
-            onClick={() => window.api.installUpdate()}
-            title={t("trayPopover.footer.updateReady")}
-            aria-label={`${t("trayPopover.footer.updateReady")}, ${t("trayPopover.footer.restartToUpdate")}`}
-            data-testid="tray-popover-restart"
-            className="font-medium text-foreground underline underline-offset-2 hover:no-underline"
-          >
-            {t("trayPopover.footer.restartToUpdate")}
-          </button>
-        ) : info?.update === "downloading" ? (
-          t("trayPopover.footer.downloading")
-        ) : (
-          info && t("trayPopover.footer.upToDate")
-        )}
+        {/* Only the version label shrinks and truncates. The separator and
+            the status keep their own cell, so a long version never covers
+            the "Restart to update" button. */}
+        <span className="min-w-0 truncate">
+          {info && t("trayPopover.footer.version", { version: info.version })}
+        </span>
+        {info && <span className="shrink-0 whitespace-pre"> · </span>}
+        <span className="shrink-0 whitespace-nowrap">
+          {info?.update === "downloaded" ? (
+            // The same main-process path as "Restart & Update" in the tray
+            // menu (updater:install calls restartAndUpdate in menus.ts).
+            <button
+              type="button"
+              onClick={() => window.api.installUpdate()}
+              title={t("trayPopover.footer.updateReady")}
+              aria-label={`${t("trayPopover.footer.updateReady")}, ${t("trayPopover.footer.restartToUpdate")}`}
+              data-testid="tray-popover-restart"
+              className="font-medium text-foreground underline underline-offset-2 hover:no-underline"
+            >
+              {t("trayPopover.footer.restartToUpdate")}
+            </button>
+          ) : info?.update === "downloading" ? (
+            t("trayPopover.footer.downloading")
+          ) : (
+            info && t("trayPopover.footer.upToDate")
+          )}
+        </span>
       </div>
       <button
         type="button"
