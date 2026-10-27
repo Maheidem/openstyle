@@ -36,6 +36,7 @@ import {
   renderSummaryMarkdown,
   repairCutAnswer,
   supportedOwner,
+  withoutDuringCall,
   withSupportedOwners,
 } from "../src/lib/meetings/workflow/summary-pure.js";
 import {
@@ -79,6 +80,7 @@ const MIN = 60 * 60 * 1000;
 type Stage =
   | "decisions"
   | "actionItems"
+  | "actionTiming"
   | "keyPoints"
   | "openQuestions"
   | "overview";
@@ -86,6 +88,7 @@ type Stage =
 /** The stage of a summary request, from the job line of its system prompt. */
 function stageOf(r: RecordedRequest): Stage | null {
   if (r.system.startsWith("You write the overview")) return "overview";
+  if (r.system.includes("numbered list of tasks")) return "actionTiming";
   if (!r.system.startsWith("You read a meeting transcript")) return null;
   if (r.system.includes("write its overview")) return "overview";
   if (r.system.includes("List the decisions")) return "decisions";
@@ -133,6 +136,8 @@ function summary(over: Partial<MeetingSummary> = {}): MeetingSummary {
 /** A summary as the model writes it: decisions and questions with a quote. */
 const wire = (s: MeetingSummary, quote = QUOTE) => ({
   ...s,
+  // The timing check: every task is a follow-up.
+  timings: s.actionItems.map(() => "after the meeting"),
   decisions: s.decisions.map((text) => ({ quote, text })),
   openQuestions: s.openQuestions.map((text) => ({ quote, text })),
 });
@@ -149,6 +154,8 @@ const byStage =
       return okReply(JSON.stringify({ decisions: w.decisions }));
     if (stage === "actionItems")
       return okReply(JSON.stringify({ actionItems: w.actionItems }));
+    if (stage === "actionTiming")
+      return okReply(JSON.stringify({ timings: w.timings }));
     if (stage === "keyPoints")
       return okReply(JSON.stringify({ keyPoints: w.keyPoints }));
     if (stage === "openQuestions")
@@ -278,14 +285,23 @@ describe("summarize: one part", () => {
       openQuestions: ["Who owns the onboarding checklist?"],
     });
     const r = await run(f, byStage(s));
-    expect(r.requests.map(stageOf)).toEqual([...STAGES, "overview"]);
-    expect(keysOf(r.recorder)).toEqual(keysFor(1));
-    for (const key of keysFor(1)) {
+    // A part with action items gets the timing check after `actionItems`.
+    const keys = [
+      "decisions",
+      "actionItems",
+      "actionTiming",
+      "keyPoints",
+      "openQuestions",
+      "overview",
+    ];
+    expect(r.requests.map(stageOf)).toEqual(keys);
+    expect(keysOf(r.recorder)).toEqual(keys);
+    for (const key of keys) {
       expect(stepStatus(r.recorder, key)).toBe("succeeded");
     }
     expect(r.finalState.summary?.status).toBe("ok");
     expect(statusOf(r)).toBe("succeeded");
-    expect(r.finalState.summary?.callCount).toBe(5);
+    expect(r.finalState.summary?.callCount).toBe(6);
 
     const row = savedRow(f.meeting.id);
     const stored = JSON.parse(row?.summary_json as string) as unknown;
@@ -594,6 +610,69 @@ describe("summary-pure: merge and owner check", () => {
     ]);
   });
 
+  it("withoutDuringCall drops a task done during the call; a missing or short timing list keeps every task", () => {
+    const items = ["a", "b", "c"];
+    expect(
+      withoutDuringCall(items, [
+        "after the meeting",
+        "during this call",
+        "after the meeting",
+      ]),
+    ).toEqual({ items: ["a", "c"], dropped: 1 });
+    expect(withoutDuringCall(items, null)).toEqual({ items, dropped: 0 });
+    expect(withoutDuringCall(items, ["during this call"])).toEqual({
+      items,
+      dropped: 0,
+    });
+  });
+
+  it("the timing check drops a task that a speaker did during the call; it runs only for a part with tasks", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2, meetingId: "m-t" });
+    const s = summary({
+      actionItems: [
+        { task: "Ping the late guest", owner: "Them 2", due: null },
+        { task: "Send the draft", owner: "Me", due: "Friday" },
+      ],
+    });
+    const r = await run(f, (req) =>
+      stageOf(req) === "actionTiming"
+        ? okReply(
+            JSON.stringify({
+              timings: ["during this call", "after the meeting"],
+            }),
+          )
+        : byStage(s)(req),
+    );
+    const timing = r.requests.find((q) => stageOf(q) === "actionTiming");
+    expect(timing?.user).toContain("1. Ping the late guest");
+    expect(timing?.user).toContain("2. Send the draft");
+    expect(timing?.user).toContain("<transcript>");
+    expect(r.finalState.summary?.summary?.actionItems).toEqual([
+      { task: "Send the draft", owner: "Me", due: "Friday" },
+    ]);
+    // No action item: no timing call.
+    const g = seedFixtureMeeting({ chunks: 1, speakers: 1, meetingId: "m-t0" });
+    const r0 = await run(g, [sum()]);
+    expect(r0.requests.map(stageOf)).not.toContain("actionTiming");
+  });
+
+  it("a failed timing check keeps every task (fail open)", async () => {
+    const f = seedFixtureMeeting({ chunks: 1, speakers: 2, meetingId: "m-tf" });
+    const s = summary({
+      actionItems: [{ task: "Send the draft", owner: "Me", due: null }],
+    });
+    const r = await run(f, (req) =>
+      stageOf(req) === "actionTiming"
+        ? reply("content-filter", "content_filter", "")
+        : byStage(s)(req),
+    );
+    expect(r.finalState.summary?.status).toBe("ok");
+    expect(r.finalState.summary?.summary?.actionItems).toEqual([
+      { task: "Send the draft", owner: "Me", due: null },
+    ]);
+    expect(stepStatus(r.recorder, "actionTiming")).toBe("failed");
+  });
+
   it("supportedOwner keeps a label or a name that the transcript says, and drops the rest", () => {
     const labels = ["Me", "Them 2", "Ana Souza"];
     const transcript = "Me: Bruno will send it.\nAna Souza: ok.";
@@ -808,15 +887,15 @@ describe("summarize: parts of a long meeting (4.5.3)", () => {
 // --- GR26 (b), the ceiling ---------------------------------------------------
 
 describe("GR26 (b): plannedSummaryCalls and the ceiling", () => {
-  it("plans 5 calls under budget; 4 for each part plus the overview above it; budget_exceeded over 49", () => {
-    expect(plannedSummaryCalls(1500, 2000)).toEqual({ calls: 5 });
+  it("plans at most 6 calls under budget; 5 for each part plus the overview above it; budget_exceeded over 61", () => {
+    expect(plannedSummaryCalls(1500, 2000)).toEqual({ calls: 6 });
     // 6000 tokens at 2000 (fresh 1800): 4 parts.
-    expect(plannedSummaryCalls(6000, 2000)).toEqual({ calls: 17 });
-    expect(plannedSummaryCalls(10800, 2000)).toEqual({ calls: 25 });
+    expect(plannedSummaryCalls(6000, 2000)).toEqual({ calls: 21 });
+    expect(plannedSummaryCalls(10800, 2000)).toEqual({ calls: 31 });
     expect(plannedSummaryCalls(200000, 2000)).toEqual({
       error: "budget_exceeded",
     });
-    expect(MAX_SUMMARIZE_CALLS).toBe(49);
+    expect(MAX_SUMMARIZE_CALLS).toBe(61);
   });
 
   it("the ceiling is clamp(2 x perCallMs x plannedCalls, 2 x perCallMs, 4 h)", () => {

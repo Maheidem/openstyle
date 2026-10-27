@@ -60,6 +60,8 @@ import { checkCorrections } from "../../../apps/server/src/lib/meetings/workflow
 import { suggestedTagNames } from "../../../apps/server/src/lib/meetings/workflow/nodes/suggest-tags.ts";
 import { verifyEvidence } from "../../../apps/server/src/lib/meetings/workflow/nodes/verify-evidence.ts";
 import {
+  buildActionTimingSystemPrompt,
+  buildActionTimingUserPrompt,
   buildCorrectSystemPrompt,
   buildCorrectUserPrompt,
   buildIdentifySystemPrompt,
@@ -91,6 +93,7 @@ import {
   plannedSummaryCalls,
   repairCutAnswer,
   summaryCallsFor,
+  withoutDuringCall,
   withSupportedOwners,
 } from "../../../apps/server/src/lib/meetings/workflow/summary-pure.ts";
 import {
@@ -1087,7 +1090,8 @@ const CONTEXT_WINDOW = 32_768;
 /**
  * One Summarize run (summarize.ts): the transcript is one part when it fits
  * the budget, else parts of whole segments. Four extraction calls for each
- * part (decisions, action items, key points, open questions), then code
+ * part (decisions, action items with the timing check, key points, open
+ * questions), then code
  * merges the parts (quote check, duplicates, owners), then one overview call
  * (on the transcript for one part, else on the merged items). A call that
  * ends at the token limit is repaired from its cut answer (repairCutAnswer)
@@ -1144,10 +1148,18 @@ export async function runSummary(
     stage: SummaryStage,
     system: string,
     user: string,
+    items?: number,
   ): Promise<SummaryStageAnswer | null> => {
     if (made >= MAX_SUMMARIZE_CALLS) return null;
     made++;
-    const zod = steps[stage].zod;
+    // The timing check sizes its schema by the number of tasks.
+    const step =
+      items === undefined
+        ? steps[stage]
+        : summaryStageStepSchema(stage, { sizeLimits: true, items });
+    const zod = step.zod;
+    const schema =
+      items === undefined ? schemas[stage] : await wireSchema(step);
     const body = applyOverrides(
       wireBody({
         topLevel: template.topLevel,
@@ -1156,7 +1168,7 @@ export async function runSummary(
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        schema: schemas[stage],
+        schema,
       }),
       o,
     );
@@ -1214,7 +1226,23 @@ export async function runSummary(
         out.failedUnits++;
         return out;
       }
-      answers.push(answer);
+      const tasks = answer.actionItems ?? [];
+      if (st === "actionItems" && tasks.length > 0) {
+        // The timing check; a failed check keeps every task (as the app).
+        const timing = await call(
+          parts.length === 1 ? "actionTiming" : `actionTiming:${i}`,
+          "actionTiming",
+          buildActionTimingSystemPrompt(),
+          buildActionTimingUserPrompt(
+            part,
+            tasks.map((t) => t.task),
+          ),
+          tasks.length,
+        );
+        answers.push({
+          actionItems: withoutDuringCall(tasks, timing?.timings).items,
+        });
+      } else answers.push(answer);
     }
   }
   const labels = [

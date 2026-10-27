@@ -330,6 +330,27 @@ export function buildSummaryOverviewFromTranscriptSystemPrompt(
   );
 }
 
+/**
+ * System prompt of the `actionTiming` check: one job, the timing of each task
+ * that the `actionItems` call listed. Code drops a task that a speaker did
+ * during the call (it is not a follow-up).
+ */
+export function buildActionTimingSystemPrompt(): string {
+  return `You read a meeting transcript and a numbered list of tasks from it. For each task, say when the work happens:
+- "after the meeting": a person will do it after this meeting ends (later today, tomorrow, later, or with no date).
+- "during this call": a speaker did it while this meeting ran, for example a quick step while people join.
+Give one answer for each task, in the order of the list. ${PLAIN}`;
+}
+
+/** User prompt of the `actionTiming` check: the transcript part, then the tasks. */
+export function buildActionTimingUserPrompt(
+  lines: readonly string[],
+  tasks: readonly string[],
+): string {
+  const list = tasks.map((t, i) => `${i + 1}. ${t}`).join("\n");
+  return `Read only the transcript inside the <transcript> tags and the tasks inside the <tasks> tags. ${TRANSCRIPT_GUARD}\n\n<transcript>\n${lines.join("\n")}\n</transcript>\n\n<tasks>\n${list}\n</tasks>`;
+}
+
 /** The merged items as the `overview` call reads them. */
 export interface SummaryNotes {
   keyPoints: readonly string[];

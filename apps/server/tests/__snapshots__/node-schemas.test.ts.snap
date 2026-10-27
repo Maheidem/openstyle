@@ -142,6 +142,33 @@ exports[`the step schemas > the JSON Schema of each step is a snapshot (a change
 }
 `;
 
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_action_timing 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "timings": {
+        "items": {
+          "enum": [
+            "after the meeting",
+            "during this call",
+          ],
+          "type": "string",
+        },
+        "type": "array",
+      },
+    },
+    "required": [
+      "timings",
+    ],
+    "type": "object",
+  },
+  "name": "summary_action_timing",
+  "version": 2,
+}
+`;
+
 exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_decisions 1`] = `
 {
   "json": {

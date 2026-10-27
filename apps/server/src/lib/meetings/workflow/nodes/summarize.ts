@@ -19,6 +19,8 @@ import { speakerDisplayLabel } from "../../merge.js";
 import { chunkTranscript, estimateTokens, formatSegment } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
 import {
+  buildActionTimingSystemPrompt,
+  buildActionTimingUserPrompt,
   buildSummaryOverviewFromTranscriptSystemPrompt,
   buildSummaryOverviewSystemPrompt,
   buildSummaryOverviewUserPrompt,
@@ -43,6 +45,7 @@ import {
   renderSummaryMarkdown,
   repairCutAnswer,
   summaryCallsFor,
+  withoutDuringCall,
   withSupportedOwners,
 } from "../summary-pure.js";
 import {
@@ -69,7 +72,8 @@ const log = createAppLogger("summarize");
 // calls (LLM design ethos, AGENTS.md). The transcript is one part when it
 // fits the context budget, else parts of whole segments. For each part, four
 // extraction calls: `decisions`, `actionItems`, `keyPoints` and
-// `openQuestions`. Code merges the parts: it keeps a decision or an open
+// `openQuestions`, and after `actionItems` the narrow `actionTiming` check,
+// which drops a task that a speaker did during the call. Code merges the parts: it keeps a decision or an open
 // question only when its quote is in the transcript, removes duplicates and
 // drops an owner that the transcript does not support. Then one `overview`
 // call writes the overview: from the transcript for a one-part meeting, from
@@ -377,6 +381,8 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       minSplitTokens: number;
       /** Step 2 `split` for an input that is too long for the window. */
       minSplitTokensInput: number;
+      /** `actionTiming`: the number of tasks (the schema size limit). */
+      items?: number;
     }): Promise<Leaf<M, SummaryStageAnswer>[]> {
       try {
         const leaves = await runUnitRoute<M, SummaryStageAnswer>(
@@ -406,6 +412,7 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
                   chunkIndex: null,
                   schema: summaryStageStepSchema(o.stage, {
                     sizeLimits: appliesSizeLimits(unit.profile),
+                    ...(o.items !== undefined ? { items: o.items } : {}),
                   }),
                   instructions: o.system,
                   messages: [{ role: "user", content: o.user(unit.members) }],
@@ -511,6 +518,55 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
       failure: o.failure,
     });
 
+    let droppedDuringCall = 0;
+    /**
+     * The `actionTiming` check of one part (a narrow call after
+     * `actionItems`): it labels each task "after the meeting" or "during this
+     * call", and code drops the second kind. A failed check keeps every task
+     * (fail open); a cancel or a stop ends the node as before.
+     */
+    async function checkActionTiming(
+      i: number,
+      part: string[],
+      found: SummaryStageAnswer[],
+    ): Promise<StageOutcome> {
+      const tasks = found.flatMap((a) => a.actionItems ?? []);
+      if (tasks.length === 0) return { ok: true, answers: found, cut: null };
+      ctx.progress.addTotal(1);
+      const key = summaryStepKey("actionTiming", i, parts.length);
+      const done = await stage(key, async () =>
+        settle(
+          await routeStage<string>({
+            stage: "actionTiming",
+            key,
+            members: part,
+            system: buildActionTimingSystemPrompt(),
+            user: (members) =>
+              buildActionTimingUserPrompt(
+                members,
+                tasks.map((t) => t.task),
+              ),
+            tokensOf: lineTokens,
+            minSplitTokens: Number.POSITIVE_INFINITY,
+            minSplitTokensInput: Number.POSITIVE_INFINITY,
+            items: tasks.length,
+          }),
+        ),
+      );
+      if (!done.ok) {
+        if (done.status !== "failed") return done;
+        log.warn(`summarize: ${key} failed; every action item stays`);
+        return { ok: true, answers: found, cut: null };
+      }
+      const kept = withoutDuringCall(tasks, done.answers[0]?.timings);
+      droppedDuringCall += kept.dropped;
+      return {
+        ok: true,
+        answers: [{ actionItems: kept.items }],
+        cut: done.cut,
+      };
+    }
+
     // --- The plan -----------------------------------------------------------
     const budgetStop = async (key: string, message: string) => {
       const f = failure("budget_exceeded", key, message);
@@ -541,7 +597,9 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
         `The summary needs more than ${MAX_SUMMARIZE_CALLS} calls.`,
       );
     }
-    ctx.progress.addTotal(plannedCalls);
+    // The timing check runs only for a part with action items: it adds
+    // itself to the total when it starts.
+    ctx.progress.addTotal(plannedCalls - parts.length);
     callSignal = AbortSignal.any([
       ctx.signal,
       AbortSignal.timeout(ceilingMs(plannedCalls)),
@@ -572,7 +630,11 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
           ),
         );
         if (!done.ok) return stop(done);
-        answers.push(...done.answers);
+        if (s === "actionItems") {
+          const checked = await checkActionTiming(i, part, done.answers);
+          if (!checked.ok) return stop(checked);
+          answers.push(...checked.answers);
+        } else answers.push(...done.answers);
       }
     }
 
@@ -580,11 +642,14 @@ export function makeSummarizeNode(deps: WorkflowDeps) {
     const joined = mergeSummaryAnswers(answers, lines);
     const merged = withSupportedOwners(joined.items, labels, lines.join("\n"));
     if (
-      merged.dropped + joined.droppedDecisions + joined.droppedQuestions >
+      merged.dropped +
+        joined.droppedDecisions +
+        joined.droppedQuestions +
+        droppedDuringCall >
       0
     ) {
       log.info(
-        `summarize: code checks dropped ${joined.droppedDecisions} decision(s) and ${joined.droppedQuestions} open question(s) with no quote in the transcript, and set ${merged.dropped} owner(s) to null`,
+        `summarize: code checks dropped ${joined.droppedDecisions} decision(s) and ${joined.droppedQuestions} open question(s) with no quote in the transcript, ${droppedDuringCall} action item(s) done during the call, and set ${merged.dropped} owner(s) to null`,
       );
     }
 

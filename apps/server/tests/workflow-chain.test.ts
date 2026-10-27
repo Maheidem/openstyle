@@ -32,9 +32,12 @@ vi.mock("../src/lib/model-registry.js", async (importOriginal) => ({
 }));
 
 const BOTH = ["enhance", "summarize"] as ("enhance" | "summarize")[];
+/** The timing check of the action items (a numbered task list). */
+const isTiming = (r: RecordedRequest) =>
+  r.system.includes("numbered list of tasks");
 /** A summary request that reads the transcript (an extraction stage). */
 const isSummary = (r: RecordedRequest) =>
-  r.system.startsWith("You read a meeting transcript");
+  r.system.startsWith("You read a meeting transcript") && !isTiming(r);
 const isOverview = (r: RecordedRequest) =>
   r.system.startsWith("You write the overview");
 
@@ -74,9 +77,11 @@ describe.skipIf(SUMMARIZE_IS_STUB)(
       const f = seedMeeting(2);
       const h = runnerHarness({
         answer: (r) =>
-          isSummary(r) || isOverview(r)
-            ? okReply(JSON.stringify(SUMMARY))
-            : defaultAnswer(r),
+          isTiming(r)
+            ? okReply(JSON.stringify({ timings: ["after the meeting"] }))
+            : isSummary(r) || isOverview(r)
+              ? okReply(JSON.stringify(SUMMARY))
+              : defaultAnswer(r),
       });
       const started = startRun(
         { meetingId: f.meeting.id, stages: BOTH, trigger: "button" },
@@ -96,6 +101,7 @@ describe.skipIf(SUMMARIZE_IS_STUB)(
       ).toEqual([
         "decisions",
         "actionItems",
+        "actionTiming",
         "keyPoints",
         "openQuestions",
         "overview",

@@ -246,9 +246,17 @@ export type MeetingSummary = z.infer<typeof MeetingSummarySchema>;
 export type SummaryStage =
   | "decisions"
   | "actionItems"
+  | "actionTiming"
   | "keyPoints"
   | "openQuestions"
   | "overview";
+
+/** When the work of an action item happens (the `actionTiming` check). */
+export const ACTION_TIMINGS = [
+  "after the meeting",
+  "during this call",
+] as const;
+export type ActionTiming = (typeof ACTION_TIMINGS)[number];
 
 /**
  * A `decisions` or `openQuestions` item: the claim and the transcript words
@@ -266,6 +274,8 @@ export interface SummaryStageAnswer {
   keyPoints?: string[];
   decisions?: EvidenceItem[];
   actionItems?: MeetingSummary["actionItems"];
+  /** The `actionTiming` check: one timing for each listed task, in order. */
+  timings?: ActionTiming[];
   openQuestions?: EvidenceItem[];
 }
 
@@ -273,6 +283,7 @@ export interface SummaryStageAnswer {
 const SUMMARY_STAGE_NAMES: Record<SummaryStage, string> = {
   decisions: "summary_decisions",
   actionItems: "summary_action_items",
+  actionTiming: "summary_action_timing",
   keyPoints: "summary_key_points",
   openQuestions: "summary_open_questions",
   overview: "summary_overview",
@@ -282,6 +293,7 @@ const SUMMARY_STAGE_NAMES: Record<SummaryStage, string> = {
 export const SUMMARY_STAGE_LISTS: Record<SummaryStage, readonly string[]> = {
   decisions: ["decisions"],
   actionItems: ["actionItems"],
+  actionTiming: ["timings"],
   keyPoints: ["keyPoints"],
   openQuestions: ["openQuestions"],
   overview: [],
@@ -290,6 +302,8 @@ export const SUMMARY_STAGE_LISTS: Record<SummaryStage, readonly string[]> = {
 /**
  * The schema of one stage call: the field of that stage only. Version 2: the
  * `decisions` and `openQuestions` items carry a quote (`EvidenceItem`).
+ * `actionTiming` answers one timing for each task; with `sizeLimits`, its list
+ * gets `maxItems` = `items` (the number of tasks).
  *
  * `sizeLimits`: only for a grammar engine that applies JSON Schema size
  * keywords (the local MLX LLM, llguidance). Each list gets `maxItems` and
@@ -300,7 +314,7 @@ export const SUMMARY_STAGE_LISTS: Record<SummaryStage, readonly string[]> = {
  */
 export function summaryStageStepSchema(
   stage: SummaryStage,
-  opts: { sizeLimits?: boolean } = {},
+  opts: { sizeLimits?: boolean; items?: number } = {},
 ): StepSchema<SummaryStageAnswer> {
   const limits = opts.sizeLimits === true;
   const f = summaryFields(limits);
@@ -314,16 +328,24 @@ export function summaryStageStepSchema(
     });
     return limits ? z.array(item).meta({ maxItems: max }) : z.array(item);
   };
+  const timings = () => {
+    const list = z.array(z.enum(ACTION_TIMINGS));
+    return limits && opts.items !== undefined
+      ? list.meta({ maxItems: opts.items })
+      : list;
+  };
   const shape =
-    stage === "decisions"
-      ? { decisions: evidence(L.decisions) }
-      : stage === "actionItems"
-        ? { actionItems: f.actionItems }
-        : stage === "keyPoints"
-          ? { keyPoints: f.keyPoints }
-          : stage === "openQuestions"
-            ? { openQuestions: evidence(L.openQuestions) }
-            : { overview: f.overview };
+    stage === "actionTiming"
+      ? { timings: timings() }
+      : stage === "decisions"
+        ? { decisions: evidence(L.decisions) }
+        : stage === "actionItems"
+          ? { actionItems: f.actionItems }
+          : stage === "keyPoints"
+            ? { keyPoints: f.keyPoints }
+            : stage === "openQuestions"
+              ? { openQuestions: evidence(L.openQuestions) }
+              : { overview: f.overview };
   return {
     name: SUMMARY_STAGE_NAMES[stage],
     version: 2,

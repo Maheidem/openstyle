@@ -13,16 +13,18 @@ import {
 // database, no model.
 
 /**
- * Hard ceiling on the LLM calls of one Summarize run (4.5.3). A part costs
- * SUMMARY_CALLS_PER_PART calls and the overview one more, so 49 calls hold 12
- * parts: at the default budget of 8000 tokens, about 91,000 transcript tokens.
+ * Hard ceiling on the LLM calls of one Summarize run (4.5.3). A part costs at
+ * most SUMMARY_CALLS_PER_PART calls and the overview one more, so 61 calls
+ * hold 12 parts: at the default budget of 8000 tokens, about 91,000
+ * transcript tokens.
  */
-export const MAX_SUMMARIZE_CALLS = 49;
+export const MAX_SUMMARIZE_CALLS = 61;
 /**
- * The extraction calls of one transcript part: decisions, action items, key
+ * The calls of one transcript part, at most: decisions, action items, the
+ * timing check of the action items (only when the part has some), key
  * points, open questions.
  */
-export const SUMMARY_CALLS_PER_PART = 4;
+export const SUMMARY_CALLS_PER_PART = 5;
 
 /** Replace line breaks with spaces, so one item stays one list line. */
 export function oneLine(text: string): string {
@@ -71,7 +73,7 @@ export function plannedSummaryParts(tokens: number, budget: number): number {
   return Math.ceil(tokens / fresh);
 }
 
-/** The calls of `parts` transcript parts: four per part, then the overview. */
+/** The calls of `parts` transcript parts, at most: five per part, then the overview. */
 export function summaryCallsFor(parts: number): number {
   return SUMMARY_CALLS_PER_PART * parts + 1;
 }
@@ -95,6 +97,22 @@ export function plannedSummaryCalls(
 
 /** The four lists of a summary, without the overview. */
 export type SummaryItems = Omit<MeetingSummary, "overview">;
+
+/**
+ * The action items of one part without the tasks that a speaker did during
+ * the call (`actionTiming` check). No timings, or not one timing for each
+ * item: all items stay (the check fails open).
+ */
+export function withoutDuringCall<A>(
+  items: readonly A[],
+  timings: readonly string[] | null | undefined,
+): { items: A[]; dropped: number } {
+  if (!timings || timings.length !== items.length) {
+    return { items: [...items], dropped: 0 };
+  }
+  const kept = items.filter((_, i) => timings[i] !== "during this call");
+  return { items: kept, dropped: items.length - kept.length };
+}
 
 /** The words of a text as the quote check compares them. */
 function matchWords(text: string): string {

@@ -77,6 +77,7 @@ async function assertPortableSchema(schema: z.ZodType): Promise<void> {
 const SUMMARY_STAGES = [
   "decisions",
   "actionItems",
+  "actionTiming",
   "keyPoints",
   "openQuestions",
   "overview",
@@ -340,7 +341,7 @@ describe("the step schemas", () => {
       expect(s.name).toMatch(/^[A-Za-z0-9_]+$/);
       expect(s.version).toBe(s.name.startsWith("summary_") ? 2 : 1);
     }
-    expect(new Set(STEPS.map((s) => s.name)).size).toBe(7);
+    expect(new Set(STEPS.map((s) => s.name)).size).toBe(8);
   });
 
   it("the JSON Schema of each step is a snapshot (a change needs a graph version bump)", async () => {
@@ -535,6 +536,7 @@ describe("summaryStageStepSchema (issue #246)", () => {
     const fields: Record<(typeof SUMMARY_STAGES)[number], string[]> = {
       decisions: ["decisions"],
       actionItems: ["actionItems"],
+      actionTiming: ["timings"],
       keyPoints: ["keyPoints"],
       openQuestions: ["openQuestions"],
       overview: ["overview"],
@@ -598,6 +600,21 @@ describe("summaryStageStepSchema (issue #246)", () => {
       });
       expect(list.items.required).toEqual(["quote", "text"]);
     }
+    // The timing check: an enum per task, at most one per listed task.
+    const timing = (
+      (await asSchema(
+        summaryStageStepSchema("actionTiming", { sizeLimits: true, items: 3 })
+          .zod,
+      ).jsonSchema) as { properties: Record<string, Record<string, unknown>> }
+    ).properties.timings;
+    expect(timing).toEqual({
+      type: "array",
+      maxItems: 3,
+      items: {
+        type: "string",
+        enum: ["after the meeting", "during this call"],
+      },
+    });
     const actions = (await props("actionItems")).actionItems as {
       maxItems: number;
       items: { properties: Record<string, unknown>; required: string[] };
