@@ -1,5 +1,6 @@
 import {
   appendFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   writeFileSync,
@@ -91,6 +92,24 @@ async function openLlmList(): Promise<void> {
   });
 }
 
+// GPU lock gate. run.sh holds the shared lock only between gate.want and gate.release.
+// Setup, boot and the download need no GPU, so the spec asks for the lock only before Enhance.
+const PRESEED = process.env.APP_CHECK_PRESEED === "1";
+async function takeGpuLock(): Promise<void> {
+  writeFileSync(join(OUT, "gate.want"), new Date().toISOString());
+  log("GPU lock requested");
+  const t0 = Date.now();
+  while (!existsSync(join(OUT, "gate.granted"))) {
+    if (Date.now() - t0 > 2.5 * 60 * 60_000) throw new Error("GPU lock not granted in 2.5 h");
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  log(`GPU lock granted after ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+}
+function giveGpuLock(): void {
+  writeFileSync(join(OUT, "gate.release"), new Date().toISOString());
+  log("GPU lock released by spec");
+}
+
 const row = (name: string) =>
   page
     .getByRole("dialog")
@@ -156,24 +175,33 @@ test("step 3: download through the Models page, then Use", async () => {
   await setTheme("light");
   await openLlmList();
   const t0 = Date.now();
-  await row(MODEL_NAME).getByRole("button", { name: "Download" }).click();
-  log("download clicked");
-  let last = 0;
-  await expect
-    .poll(
-      async () => {
-        const txt = await row(MODEL_NAME).innerText();
-        if (Date.now() - last > 30_000) {
-          last = Date.now();
-          log(`dl progress: ${txt.replace(/\s+/g, " ").slice(0, 160)}`);
-        }
-        return await row(MODEL_NAME).getByRole("button", { name: "Use" }).count();
-      },
-      { timeout: 45 * 60_000, intervals: [2000] },
-    )
-    .toBeGreaterThan(0);
-  results.downloadSeconds = Number(((Date.now() - t0) / 1000).toFixed(1));
-  log(`DOWNLOAD DONE wall=${results.downloadSeconds}s`);
+  if (PRESEED) {
+    // run.sh cloned the model into the cache: no download, the Use button is already there.
+    await expect(row(MODEL_NAME).getByRole("button", { name: "Use" })).toBeVisible({
+      timeout: 20_000,
+    });
+    results.downloadSeconds = "SKIPPED (APP_CHECK_PRESEED=1)";
+    log("DOWNLOAD SKIPPED (preseed)");
+  } else {
+    await row(MODEL_NAME).getByRole("button", { name: "Download" }).click();
+    log("download clicked");
+    let last = 0;
+    await expect
+      .poll(
+        async () => {
+          const txt = await row(MODEL_NAME).innerText();
+          if (Date.now() - last > 30_000) {
+            last = Date.now();
+            log(`dl progress: ${txt.replace(/\s+/g, " ").slice(0, 160)}`);
+          }
+          return await row(MODEL_NAME).getByRole("button", { name: "Use" }).count();
+        },
+        { timeout: 45 * 60_000, intervals: [2000] },
+      )
+      .toBeGreaterThan(0);
+    results.downloadSeconds = Number(((Date.now() - t0) / 1000).toFixed(1));
+    log(`DOWNLOAD DONE wall=${results.downloadSeconds}s`);
+  }
   await row(MODEL_NAME).getByRole("button", { name: "Use" }).click();
   await page.waitForTimeout(1500);
   for (const theme of ["light", "dark"] as const) {
@@ -190,6 +218,7 @@ test("step 3: download through the Models page, then Use", async () => {
 });
 
 test("step 4: meeting Enhance + Summarize", async () => {
+  await takeGpuLock(); // first model step: the lock is held from here to the end of step 5
   seedMeeting(userDataDir, MEETING, TITLE, defaultSegments(6));
   await setTheme("light");
   await openMeeting(page, TITLE);
@@ -274,6 +303,7 @@ test("step 5: dictation smoke via POST /api/post-process", async () => {
   }
   results.dictationLatenciesMs = latencies;
   save();
+  giveGpuLock(); // last model step done: step 6 only clicks buttons
 });
 
 test("step 6: switch back to Gemma 4 E2B", async () => {
