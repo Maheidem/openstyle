@@ -231,12 +231,19 @@ export function makeIdentifySpeakersNode(deps: WorkflowDeps) {
     if (lines.length === 0) return skipped("no_labels", stats);
 
     ctx.progress.addTotal(1);
+    const bounded = appliesSizeLimits(profile);
     const leaves = await runUnitRoute<PreparedSegment, IdentifySpeakers>(
       {
         node: "identifySpeakers",
         ctx,
         profile,
-        minSplitTokens: MIN_SPLIT_TOKENS_IDENTIFY,
+        // With the size limits the answer has at most one entry for each
+        // label, whatever the number of lines. A half has the same labels and
+        // the same output limit, so a split for a cut answer only adds calls
+        // (2026-10-27: 1 + 4 calls, all `length`). Only the raise step stays.
+        minSplitTokens: bounded
+          ? Number.POSITIVE_INFINITY
+          : MIN_SPLIT_TOKENS_IDENTIFY,
         // A unit that is too long for the window always splits.
         minSplitTokensInput: 0,
         tokensOf: tokensOfLines,

@@ -1,6 +1,7 @@
 // Node `identifySpeakers` (specs/meeting-enhance-agentic.md 4.3, 10.6 row
 // `identifySpeakers`, LR4, LR6). The real graph, gateway and saver run over a
 // scripted model.
+import { APICallError } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import { __resetLlmLanesForTests } from "../src/lib/llm/lane.js";
@@ -200,9 +201,10 @@ describe("candidate lines (4.3.2)", () => {
 describe("schema size limits by provider", () => {
   const profileOf = (provider: string) => ({ provider }) as CallProfile;
 
-  it("only the local MLX LLM (llguidance) gets the size limits", () => {
+  it("the local MLX LLM and an own server get the size limits; cloud providers do not", () => {
     expect(appliesSizeLimits(profileOf(MLX_LLM_PROVIDER_ID))).toBe(true);
-    for (const p of ["server", "openai", "anthropic", "groq"]) {
+    expect(appliesSizeLimits(profileOf("server"))).toBe(true);
+    for (const p of ["openai", "anthropic", "groq", "openrouter"]) {
       expect(appliesSizeLimits(profileOf(p))).toBe(false);
     }
   });
@@ -228,11 +230,13 @@ describe("identifySpeakers in the graph", () => {
       ),
     );
     expect(r.identifyRequests).toHaveLength(1);
-    // A `server` provider gets the portable schema: no size keyword.
+    // A `server` provider (llama.cpp grammar) gets the size limits: at most
+    // one entry for each open label, and short quote and name.
     const wire = JSON.stringify(r.identifyRequests[0]?.responseFormat);
     expect(wire).toContain('"speakers"');
-    expect(wire).not.toContain("maxItems");
-    expect(wire).not.toContain("maxLength");
+    expect(wire).toContain('"maxItems":2');
+    expect(wire).toContain('"maxLength":160');
+    expect(wire).toContain('"maxLength":80');
     expect(r.finalState.identify?.status).toBe("ok");
     expect(r.finalState.identify?.proposals[0]).toMatchObject({
       unitKey: "candidates",
@@ -442,16 +446,38 @@ describe("identifySpeakers: the length route", () => {
     return f;
   }
 
+  it("a cut answer with the size limits: no split, one raise to twice the limit, then the unit fails (2 requests)", async () => {
+    const f = splitMeeting("m-bounded");
+    const r = await run(f, () =>
+      reply("length", "length", '{"speakers":[{"segmentId":"s1"'),
+    );
+    // 2 labels to identify: 140 x 2 + 64 = 344 tokens, then 688.
+    expect(r.identifyRequests.map((q) => q.maxOutputTokens)).toEqual([
+      344, 688,
+    ]);
+    expect(r.finalState.identify?.status).toBe("failed");
+    expect(r.finalState.identify?.failures[0]?.kind).toBe("length");
+    expect(r.finalState.identify?.failures[0]?.unitKey).toBe("candidates");
+  });
+
   it("a split: each half checks segmentId against its own shown lines; one failed half gives partial", async () => {
     const f = splitMeeting("m-split");
     const them = f.segments.filter((s) => s.source === "system");
     const first = them[0] as (typeof them)[number];
     const last = them[them.length - 1] as (typeof them)[number];
+    // The input is too long for the model (HTTP 413). That splits a unit for
+    // every provider; a cut answer does not when the schema has size limits.
+    const tooLong = new APICallError({
+      message: "HTTP 413",
+      url: "http://127.0.0.1:1/v1/chat/completions",
+      requestBodyValues: {},
+      statusCode: 413,
+      isRetryable: false,
+    });
     let identifyCalls = 0;
     const r = await run(f, (req) => {
       identifyCalls += 1;
-      if (identifyCalls === 1)
-        return reply("length", "length", '{"speakers":[');
+      if (identifyCalls === 1) return tooLong;
       // Half 0 holds the early lines; half 1 holds the late lines.
       return req.user.includes(`[${first.id}]`)
         ? // Half 0 cites a line that only half 1 showed: unknown_segment.

@@ -7,7 +7,7 @@ import { NAME_MAX_CHARS, QUOTE_MAX_CHARS } from "./types.js";
 // 4.2.1, 4.3.1, 4.5.1). Strict-mode rules (4.0.3): every field is required and
 // `.nullable()` marks an absent value; no `.optional()`, no `.default()`, no
 // size limits (exceptions: `identifySpeakersStepSchema` and
-// `summaryStageStepSchema` with `sizeLimits` for the local MLX LLM). Field order is generation order. Code checks sizes after the
+// `summaryStageStepSchema` with `sizeLimits` for a grammar engine: `appliesSizeLimits`). Field order is generation order. Code checks sizes after the
 // parse. Change a schema, and bump WORKFLOW_GRAPH_VERSION (3.4).
 //
 // The ids and labels exception (owner decision 2026-10-20): small local models
@@ -319,7 +319,8 @@ export const SUMMARY_STAGE_LISTS: Record<SummaryStage, readonly string[]> = {
  * gets `maxItems` = `items` (the number of tasks).
  *
  * `sizeLimits`: only for a grammar engine that applies JSON Schema size
- * keywords (the local MLX LLM, llguidance). Each list gets `maxItems` and
+ * keywords (the local MLX LLM, an own server such as llama.cpp:
+ * `appliesSizeLimits`). Each list gets `maxItems` and
  * each string gets `maxLength` (SUMMARY_SIZE_LIMITS, QUOTE_MAX_CHARS).
  * Without them Gemma 4 E2B wrote one key point again and again until the
  * output limit, so the answer did not parse (issue #246). Cloud providers
@@ -444,7 +445,8 @@ export const IDENTIFY_SPEAKERS_STEP_SCHEMA: StepSchema<IdentifySpeakers> = {
  * `segmentId` enum. Version 4 adds `sizeLimits`.
  *
  * `sizeLimits`: only for a grammar engine that applies JSON Schema size
- * keywords (the local MLX LLM, llguidance). The array gets `maxItems` = the
+ * keywords (the local MLX LLM, an own server such as llama.cpp:
+ * `appliesSizeLimits`). The array gets `maxItems` = the
  * number of labels, `quote` gets `maxLength` = QUOTE_MAX_CHARS and `name` gets
  * `maxLength` = NAME_MAX_CHARS. Without them a small model writes one entry
  * for each line and copies the full line, so it hits the output limit of
