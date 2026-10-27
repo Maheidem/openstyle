@@ -7,6 +7,7 @@ import {
   isPrerelease,
   releasesUrl,
   resolveChannel,
+  restartDecision,
   runningVersion,
   switchNeedsDowngrade,
 } from "./update-channel";
@@ -198,5 +199,21 @@ describe("feed URL and E2E seams", () => {
       repo: "openstyle",
     });
     expect(githubFeedOptions("http://127.0.0.1:5123/feed")).toBeNull();
+  });
+});
+
+describe("restartDecision (Restart & Update while a meeting records)", () => {
+  it("installs at once when no meeting records", () => {
+    expect(restartDecision("idle", false)).toBe("install");
+    expect(restartDecision("finalizing", false)).toBe("install");
+    expect(restartDecision("idle", true)).toBe("install");
+  });
+
+  it("asks first while a meeting records", () => {
+    expect(restartDecision("recording", false)).toBe("ask");
+  });
+
+  it("stops the recording, then installs, after the user agreed", () => {
+    expect(restartDecision("recording", true)).toBe("stop-then-install");
   });
 });

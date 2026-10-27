@@ -119,3 +119,18 @@ export function switchNeedsDowngrade(
 ): boolean {
   return channel === "stable" && isPrerelease(version);
 }
+
+/**
+ * What "Restart & Update" does for a meeting recorder status:
+ * - "install": no meeting records. Install at once.
+ * - "ask": a meeting records and the user did not agree yet. Ask first.
+ * - "stop-then-install": the user agreed. Stop and save the recording, then
+ *   install.
+ */
+export function restartDecision(
+  recorderStatus: string,
+  stopRecording: boolean,
+): "install" | "ask" | "stop-then-install" {
+  if (recorderStatus !== "recording") return "install";
+  return stopRecording ? "stop-then-install" : "ask";
+}

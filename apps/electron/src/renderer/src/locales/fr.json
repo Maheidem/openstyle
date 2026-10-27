@@ -111,6 +111,9 @@
     "title": "Réglages",
     "updateAvailable": "Version {{version}} disponible",
     "updateReady": "Version {{version}} prête à installer",
+    "restartRecordingTitle": "Une réunion est en cours d'enregistrement",
+    "restartRecordingDesc": "Redémarrer et mettre à jour maintenant ? Cela arrête l'enregistrement. Openstyle enregistre d'abord l'enregistrement.",
+    "restartRecordingAction": "Arrêter l'enregistrement et mettre à jour",
     "interfaceLanguage": {
       "label": "Langue de l'interface",
       "desc": "Changez la langue de l'interface de l'app."
@@ -134,6 +137,8 @@
       "updateChannelStableTitle": "Passer à Stable ?",
       "updateChannelStableDesc": "Openstyle installe maintenant la version stable actuelle et redémarre. Cette version peut être plus ancienne que celle que vous utilisez.",
       "updateChannelStableAction": "Installer Stable",
+      "updateChannelStableRecordingDesc": "Une réunion est en cours d'enregistrement. Passer à Stable maintenant ? Cela arrête l'enregistrement.",
+      "updateChannelStableRecordingAction": "Arrêter l'enregistrement et changer",
       "launchAtStartup": "Lancer au démarrage",
       "launchAtStartupDesc": "Démarre Openstyle automatiquement quand vous vous connectez à votre ordinateur.",
       "showOnLaunch": "Afficher le tableau de bord au lancement",

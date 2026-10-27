@@ -18,6 +18,7 @@ import {
 } from "@playwright/test";
 import {
   closeApp,
+  embeddedServerUrl,
   launchOpenstyle,
   waitForDashboardWindow,
 } from "./helpers/e2e-app";
@@ -151,11 +152,17 @@ test.afterAll(async () => {
 async function startApp(
   version: string,
   settings: Record<string, unknown>,
+  extraEnv: Record<string, string> = {},
 ): Promise<{ app: ElectronApplication; page: Page; userDataDir: string }> {
   const userDataDir = mkdtempSync(join(tmpdir(), "openstyle-e2e-channel-"));
   writeFileSync(
     join(userDataDir, "settings.json"),
     JSON.stringify({ onboardingComplete: true, ...settings }),
+  );
+  // Meetings are behind a server-owned flag (config.freestyle.json).
+  writeFileSync(
+    join(userDataDir, "config.freestyle.json"),
+    JSON.stringify({ version: 1, flags: { meetings: true } }),
   );
   requests.length = 0;
   const app = await launchOpenstyle({
@@ -165,6 +172,7 @@ async function startApp(
       OPENSTYLE_E2E_APP_VERSION: version,
       // Skip the probe of the owner's model server (live-testing skill).
       OPENSTYLE_E2E_OMLX_URL: "http://127.0.0.1:1",
+      ...extraEnv,
     },
   });
   const page = await waitForDashboardWindow(app, 15_000);
@@ -359,6 +367,137 @@ test("an alpha build on Stable never downgrades by itself", async () => {
     await new Promise((r) => setTimeout(r, 2_000));
     expect(requests.some((p) => p.endsWith(".zip"))).toBe(false);
     expect(existsSync(join(userDataDir, "updates", STABLE))).toBe(false);
+  } finally {
+    await closeApp(app);
+    rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// A meeting records during the update (owner decision 2026-10-27): the dialog
+// says so, and a confirm stops and saves the recording the normal way before
+// the install. The meeting uses the E2E fake capture: no mic, no system
+// audio, no native helper (src/main/fake-meeting-capture.ts).
+// ---------------------------------------------------------------------------
+
+async function startFakeMeeting(page: Page): Promise<string> {
+  const started = await page.evaluate(() => window.api.startMeetingRecording());
+  expect(started.ok).toBe(true);
+  await expect
+    .poll(
+      async () =>
+        (await page.evaluate(() => window.api.getMeetingStatus())).status,
+      { timeout: 15_000 },
+    )
+    .toBe("recording");
+  return started.id as string;
+}
+
+/** The meeting row and its audio files, after the stop. */
+async function savedMeeting(
+  app: ElectronApplication,
+  id: string,
+): Promise<{ status: string; files: string[] }> {
+  const res = await fetch(`${embeddedServerUrl(app)}/api/meetings/${id}`);
+  const row = (await res.json()) as {
+    status: string;
+    audio_dir: string | null;
+  };
+  const files = ["mic.wav", "system.wav", "sync.json"].filter(
+    (f) => row.audio_dir && existsSync(join(row.audio_dir, f)),
+  );
+  return { status: row.status, files };
+}
+
+function restartRequested(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(
+    ({ app: electronApp }) =>
+      new Promise<boolean>((done) =>
+        (electronApp as NodeJS.EventEmitter).once(
+          "e2e:restart-and-update",
+          () => done(true),
+        ),
+      ),
+  );
+}
+
+test("a recording meeting: Switch to Stable and Restart & Update ask, then stop and save it", async () => {
+  test.setTimeout(120_000);
+  const { app, page, userDataDir } = await startApp(
+    ALPHA,
+    { updateChannel: "dev", autoUpdate: false },
+    { OPENSTYLE_E2E_FAKE_MEETING_CAPTURE: "1" },
+  );
+  try {
+    // 1. Switch to Stable while a meeting records.
+    const first = await startFakeMeeting(page);
+    for (const theme of ["Light", "Dark"] as const) {
+      await setTheme(page, theme);
+      await openApplication(page);
+      if (theme === "Light") await advancedSwitch(page).click();
+      await chooseChannel(page, /^Stable/);
+      const dialog = page.getByRole("alertdialog");
+      await expect(dialog).toContainText(
+        "A meeting is recording. Switch to Stable now? This stops the recording.",
+      );
+      await expect(
+        dialog.getByRole("button", { name: "Stop recording and switch" }),
+      ).toBeVisible();
+      await shoot(
+        page,
+        `switch-to-stable-recording-${theme.toLowerCase()}.png`,
+      );
+      if (theme === "Light") {
+        // Cancel keeps Dev and the recording.
+        await dialog.getByRole("button", { name: "Cancel" }).click();
+        await expect(page.locator("#settings-update-channel")).toContainText(
+          "Dev",
+        );
+      }
+    }
+    const switched = restartRequested(app);
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Stop recording and switch" })
+      .click();
+    expect(await switched).toBe(true);
+    // The recording stopped before the install, the normal way.
+    expect(
+      (await page.evaluate(() => window.api.getMeetingStatus())).status,
+    ).toBe("idle");
+    const firstSaved = await savedMeeting(app, first);
+    expect(firstSaved.status).toBe("recorded");
+    expect(firstSaved.files).toEqual(["mic.wav", "system.wav", "sync.json"]);
+    expect(existsSync(downloadedZip(userDataDir, STABLE))).toBe(true);
+
+    // 2. Restart & Update while a meeting records (2.24.0 is staged now).
+    const second = await startFakeMeeting(page);
+    for (const theme of ["Light", "Dark"] as const) {
+      await setTheme(page, theme);
+      await page.evaluate(() => window.api.installUpdate());
+      const dialog = page.getByRole("alertdialog");
+      await expect(dialog).toContainText("A meeting is recording");
+      await expect(dialog).toContainText(
+        "Restart and update now? This stops the recording.",
+      );
+      await shoot(page, `restart-update-recording-${theme.toLowerCase()}.png`);
+      if (theme === "Light") {
+        await dialog.getByRole("button", { name: "Cancel" }).click();
+        await expect(page.getByRole("alertdialog")).toHaveCount(0);
+        expect(
+          (await page.evaluate(() => window.api.getMeetingStatus())).status,
+        ).toBe("recording");
+      }
+    }
+    const restarted = restartRequested(app);
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Stop recording and update" })
+      .click();
+    expect(await restarted).toBe(true);
+    const secondSaved = await savedMeeting(app, second);
+    expect(secondSaved.status).toBe("recorded");
+    expect(secondSaved.files).toEqual(["mic.wav", "system.wav", "sync.json"]);
   } finally {
     await closeApp(app);
     rmSync(userDataDir, { recursive: true, force: true });

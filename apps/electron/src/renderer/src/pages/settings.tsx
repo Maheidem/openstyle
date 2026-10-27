@@ -74,6 +74,7 @@ import {
   settingsQueryOptions,
 } from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
+import { stableSwitchDialogKeys } from "@renderer/lib/update-dialogs";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -242,6 +243,8 @@ export default function SettingsPage(): React.JSX.Element {
     version: string;
   } | null>(null);
   const [stableConfirmOpen, setStableConfirmOpen] = useState(false);
+  // True when a meeting recorded at the time the Stable dialog opened.
+  const [stableConfirmRecording, setStableConfirmRecording] = useState(false);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
   const [advancedMode, setAdvancedMode] = useState(false);
@@ -703,10 +706,13 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.setAutoUpdate(enabled);
   }, []);
 
-  const applyUpdateChannel = useCallback((channel: "stable" | "dev") => {
-    setUpdateChannel((prev) => (prev ? { ...prev, channel } : prev));
-    void window.api?.setUpdateChannel(channel);
-  }, []);
+  const applyUpdateChannel = useCallback(
+    (channel: "stable" | "dev", stopRecording = false) => {
+      setUpdateChannel((prev) => (prev ? { ...prev, channel } : prev));
+      void window.api?.setUpdateChannel(channel, stopRecording);
+    },
+    [],
+  );
 
   const handleUpdateChannelChange = useCallback(
     (value: string) => {
@@ -715,7 +721,13 @@ export default function SettingsPage(): React.JSX.Element {
       // The switch from a Dev (alpha) build to Stable installs the current
       // Stable version at once, also when it is older. Ask first.
       if (value === "stable" && updateChannel.version.includes("-")) {
-        setStableConfirmOpen(true);
+        void (async () => {
+          const meeting = await window.api
+            ?.getMeetingStatus()
+            .catch(() => null);
+          setStableConfirmRecording(meeting?.status === "recording");
+          setStableConfirmOpen(true);
+        })();
         return;
       }
       applyUpdateChannel(value);
@@ -924,7 +936,9 @@ export default function SettingsPage(): React.JSX.Element {
                           {t("settings.application.updateChannelStableTitle")}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          {t("settings.application.updateChannelStableDesc")}
+                          {t(
+                            stableSwitchDialogKeys(stableConfirmRecording).desc,
+                          )}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -932,9 +946,14 @@ export default function SettingsPage(): React.JSX.Element {
                           {t("common.cancel")}
                         </AlertDialogCancel>
                         <AlertDialogAction
-                          onClick={() => applyUpdateChannel("stable")}
+                          onClick={() =>
+                            applyUpdateChannel("stable", stableConfirmRecording)
+                          }
                         >
-                          {t("settings.application.updateChannelStableAction")}
+                          {t(
+                            stableSwitchDialogKeys(stableConfirmRecording)
+                              .action,
+                          )}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>

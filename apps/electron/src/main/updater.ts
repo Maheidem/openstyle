@@ -9,7 +9,11 @@ import { parse } from "semver";
 import { shouldStartAutoDownload } from "./auto-update-policy";
 import { readSettings, writeSettings } from "./local-settings";
 import { state } from "./main-state";
-import { rebuildMenus, restartAndUpdate } from "./menus";
+import {
+  rebuildMenus,
+  restartAndUpdate,
+  takeStopRecordingConfirm,
+} from "./menus";
 import { notify } from "./notifications";
 import {
   isRunningFromReadOnlyLocation,
@@ -62,6 +66,8 @@ export function registerUpdater(): void {
   // The version to install at once when its download ends (the switch to
   // Stable installs the Stable version right away).
   let installWhenDownloaded: string | null = null;
+  // True when the user agreed that the switch to Stable stops a recording.
+  let switchStopsRecording = false;
 
   // Downloads the release zip through selfUpdater (see the updater:download
   // handler for why). A click on the banner opens the releases page when the
@@ -214,7 +220,7 @@ export function registerUpdater(): void {
       if (installWhenDownloaded === info.version) {
         installWhenDownloaded = null;
         log.info(`Switch to Stable: installing ${info.version} now`);
-        restartAndUpdate();
+        restartAndUpdate({ stopRecording: switchStopsRecording });
       }
     });
 
@@ -268,9 +274,15 @@ export function registerUpdater(): void {
     startSelfUpdateDownload(true);
   });
 
-  ipcMain.on("updater:install", () => {
-    restartAndUpdate();
+  ipcMain.on("updater:install", (_event, options: unknown) => {
+    const stopRecording =
+      typeof options === "object" &&
+      options !== null &&
+      (options as { stopRecording?: unknown }).stopRecording === true;
+    restartAndUpdate({ stopRecording });
   });
+
+  ipcMain.handle("updater:take-stop-confirm", () => takeStopRecordingConfirm());
 
   ipcMain.handle("updater:check", async () => {
     if (!updatesOn) return null;
@@ -295,9 +307,9 @@ export function registerUpdater(): void {
 
   ipcMain.handle(
     "settings:set-update-channel",
-    async (_event, channel: unknown): Promise<void> => {
+    async (_event, channel: unknown, stopRecording: unknown): Promise<void> => {
       if (!isUpdateChannel(channel)) return;
-      await switchChannel(channel);
+      await switchChannel(channel, stopRecording === true);
     },
   );
 
@@ -305,7 +317,10 @@ export function registerUpdater(): void {
   // The switch to Stable from an alpha build checks with downgrade on, then
   // downloads and installs the current Stable version (owner decision D4).
   // Every other check keeps downgrade off.
-  async function switchChannel(channel: UpdateChannel): Promise<void> {
+  async function switchChannel(
+    channel: UpdateChannel,
+    stopRecording: boolean,
+  ): Promise<void> {
     writeSettings({ updateChannel: channel });
     if (!updatesOn) return;
     log.info(`Update channel set to ${channel}`);
@@ -322,6 +337,7 @@ export function registerUpdater(): void {
     state.updateDownloadState = "idle";
     availableUpdate = null;
     installWhenDownloaded = null;
+    switchStopsRecording = stopRecording;
     notifiedAvailableVersion = null;
     notifiedDownloadedVersion = null;
     refreshTrayIcon();

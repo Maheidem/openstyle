@@ -100,6 +100,11 @@ If it prints files, cut a new alpha first, or the owner accepts the newer code.
    5. Check at once. For the switch to Stable from an alpha build: download the Stable version also with "Automatic updates" off, then install it at once (`restartAndUpdate`).
    6. Set `allowDowngrade = false` again. Every later check keeps it off.
 6. The fake feed of an E2E run has no MLX worker, so an E2E run skips the worker prefetch.
+7. **A meeting records during the update** (owner decision 2026-10-27: no wait, no queue). `restartDecision(recorderStatus, stopRecording)` in `update-channel.ts` gives `install`, `ask` or `stop-then-install`.
+   - "Restart & Update" (banner, tray popover, menu) calls `restartAndUpdate()` in `menus.ts`. While a meeting records, main opens the dashboard and the dashboard asks: "A meeting is recording" / "Restart and update now? This stops the recording. Openstyle saves the recording first." / Cancel / "Stop recording and update".
+   - The switch to Stable from an alpha build reads `meeting:status` first. While a meeting records, the dialog says: "A meeting is recording. Switch to Stable now? This stops the recording." / Cancel / "Stop recording and switch".
+   - After a confirm, main calls `meetingRecorder.stop()` before the install. That is the normal stop: WAV files, `sync.json`, and row status `recorded`. Before this change, the install quit ran only `stopSync()`: WAV headers only, no `sync.json`, and the next start marked the row `interrupted`.
+   - If no meeting records, the dialogs stay the same.
 
 ### 4.6 App UI
 
@@ -127,7 +132,7 @@ If it prints files, cut a new alpha first, or the owner accepts the newer code.
 4. **The version on main changes.** Craft merges each alpha back into main, so `apps/electron/package.json` on main shows `X.Y.Z-alpha.N`. A `pnpm dev:install` build then shows that version.
 5. **Hotfix of Stable during a Dev series** (for example `2.23.1` after `2.24.0-alpha.3`). Dev users do not get it, because `2.23.1 < 2.24.0-alpha.3`. That is correct.
 6. **Rebuild is not byte-identical.** Stable is a new build of the same commit.
-7. **The install after the switch to Stable restarts the app at once.** The dialog asks first. A running meeting recording stops like with "Restart & Update".
+7. **The install after the switch to Stable restarts the app at once.** The dialog asks first. While a meeting records, the dialog says that the switch stops the recording (section 4.5, item 7).
 
 ## 7. Owner decisions (2026-10-27)
 
