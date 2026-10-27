@@ -29,15 +29,17 @@ import {
   swapBundle,
   sweepOldBackups,
 } from "./self-updater-core";
+import {
+  e2eReleasesUrl,
+  isNewerVersion,
+  releasesUrl,
+  runningVersion,
+} from "./update-channel";
 
 const log = createAppLogger("electron");
 
 // Only the E2E harness may point the updater at a local feed.
-const RELEASES_URL =
-  (process.env.OPENSTYLE_E2E === "1" &&
-    process.env.OPENSTYLE_E2E_RELEASES_URL) ||
-  "https://github.com/Maheidem/openstyle/releases";
-const MANIFEST_URL = `${RELEASES_URL}/latest/download/latest-mac.yml`;
+const RELEASES_URL = releasesUrl();
 
 // Above this share of the zip, a delta saves too little. Download it all.
 const MAX_DELTA_FRACTION = 0.7;
@@ -54,7 +56,7 @@ async function downloadDelta(
   destPath: string,
   onProgress: (p: DownloadProgress) => void,
 ): Promise<boolean> {
-  const currentVersion = app.getVersion();
+  const currentVersion = runningVersion(app.getVersion());
   const zipName = zipUrl.split("/").pop() ?? "";
   const oldZipName = zipName.replace(newVersion, currentVersion);
   const oldZipPath = join(
@@ -106,7 +108,14 @@ async function downloadDelta(
 class SelfUpdater extends EventEmitter {
   private downloadedZipPath: string | null = null;
   private downloadedVersion: string | null = null;
-  private downloadInFlight: Promise<void> | null = null;
+  private downloadInFlight: {
+    version: string;
+    generation: number;
+    promise: Promise<void>;
+  } | null = null;
+  // discardDownload() increments this. A download that started before the
+  // increment ends without a "downloaded" event.
+  private generation = 0;
 
   /**
    * Returns why self-update isn't available right now, or null when it is.
@@ -114,6 +123,9 @@ class SelfUpdater extends EventEmitter {
    * page.
    */
   unavailableReason(): string | null {
+    // E2E seam: a run with the fake release feed downloads, but never installs
+    // (restartAndUpdate() stops before the install in an E2E run).
+    if (e2eReleasesUrl()) return null;
     if (!app.isPackaged) return "not packaged";
     if (process.platform !== "darwin") return "not macOS";
     const bundle = findAppBundle(app.getPath("exe"));
@@ -129,31 +141,78 @@ class SelfUpdater extends EventEmitter {
   }
 
   /**
-   * Download the newest release zip. A second call while a download runs
-   * returns the same promise, so two callers never write the same file.
+   * Download the release zip of `version`, the version that the update check
+   * found on the current channel. The version must be newer than the running
+   * version. Only the explicit switch to Stable passes `allowOlder`.
+   * A second call for the same version while its download runs returns the
+   * same promise, so two callers never write the same file.
    */
-  downloadUpdate(): Promise<void> {
-    this.downloadInFlight ??= this.runDownload().finally(() => {
-      this.downloadInFlight = null;
-    });
-    return this.downloadInFlight;
+  downloadUpdate(
+    version: string,
+    options: { allowOlder?: boolean } = {},
+  ): Promise<void> {
+    const generation = this.generation;
+    if (
+      this.downloadInFlight?.version === version &&
+      this.downloadInFlight.generation === generation
+    ) {
+      return this.downloadInFlight.promise;
+    }
+    const previous = this.downloadInFlight?.promise.catch(() => {});
+    const promise = Promise.resolve(previous)
+      .then(() =>
+        this.runDownload(version, options.allowOlder === true, generation),
+      )
+      .finally(() => {
+        if (this.downloadInFlight?.promise === promise) {
+          this.downloadInFlight = null;
+        }
+      });
+    this.downloadInFlight = { version, generation, promise };
+    return promise;
   }
 
-  private async runDownload(): Promise<void> {
+  /**
+   * Forget the staged download, for example after a change of the update
+   * channel. A download that runs now ends without a "downloaded" event.
+   */
+  discardDownload(): void {
+    this.generation += 1;
+    this.downloadedZipPath = null;
+    this.downloadedVersion = null;
+  }
+
+  private async runDownload(
+    version: string,
+    allowOlder: boolean,
+    generation: number,
+  ): Promise<void> {
     const reason = this.unavailableReason();
     if (reason) throw new Error(`Self-update unavailable: ${reason}`);
+    const current = runningVersion(app.getVersion());
+    if (version === current) {
+      throw new Error(`Version ${version} is already installed`);
+    }
+    if (!allowOlder && !isNewerVersion(version, current)) {
+      throw new Error(
+        `Version ${version} is not newer than the installed version ${current}`,
+      );
+    }
 
-    // The manifest is the source of truth for what we download — the
-    // renderer's "available" version (surfaced via updater:check) is only
-    // used to decide whether to offer a download at all.
-    const manifest = await fetchLatestManifest(MANIFEST_URL);
+    // Read the feed file of the release tag that the check found. Tags have
+    // no "v" prefix. Before 2.24.0 this read releases/latest, so a Dev check
+    // that found an alpha downloaded the Stable zip.
+    const tagUrl = `${RELEASES_URL}/download/${version}`;
+    const manifest = await fetchLatestManifest(`${tagUrl}/latest-mac.yml`);
+    if (manifest.version !== version) {
+      throw new Error(
+        `latest-mac.yml of release ${version} names version ${manifest.version}`,
+      );
+    }
     const entry = selectZipEntry(manifest, process.arch);
-    // Resolve relative to "latest/download/" (same base as the manifest
-    // itself) rather than guessing the release tag's "v" prefix — GitHub
-    // redirects this to the real tagged asset URL either way.
     const zipUrl = entry.url.startsWith("http")
       ? entry.url
-      : `${RELEASES_URL}/latest/download/${entry.url}`;
+      : `${tagUrl}/${entry.url}`;
 
     const destDir = join(app.getPath("userData"), "updates", manifest.version);
     const destPath = join(destDir, entry.url.split("/").pop() ?? "update.zip");
@@ -168,6 +227,10 @@ class SelfUpdater extends EventEmitter {
     );
     if (!usedDelta) {
       await downloadAndVerify(zipUrl, entry.sha512, destPath, onProgress);
+    }
+    if (generation !== this.generation) {
+      log.info(`Download of ${version} discarded: the update channel changed`);
+      return;
     }
 
     this.downloadedZipPath = destPath;

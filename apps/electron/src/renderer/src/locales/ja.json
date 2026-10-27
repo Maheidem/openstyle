@@ -111,6 +111,9 @@
     "title": "設定",
     "updateAvailable": "バージョン {{version}} が利用可能です",
     "updateReady": "バージョン {{version}} のインストール準備ができました",
+    "restartRecordingTitle": "会議を録音中です",
+    "restartRecordingDesc": "今すぐ再起動してアップデートしますか？録音は停止します。Openstyle は先に録音を保存します。",
+    "restartRecordingAction": "録音を停止してアップデート",
     "interfaceLanguage": {
       "label": "インターフェース言語",
       "desc": "アプリのインターフェース表示言語を変更します。"
@@ -127,6 +130,15 @@
     "application": {
       "autoUpdate": "自動アップデート",
       "autoUpdateDesc": "バックグラウンドで新しいバージョンを確認します。macOSでは、アップデートが自動でダウンロードされ、再起動を待ちます。",
+      "updateChannel": "アップデートチャンネル",
+      "updateChannelDesc": "Openstyle がインストールするバージョンを選びます。",
+      "updateChannelStable": "安定版（推奨）",
+      "updateChannelDev": "Dev：すべての新しいビルド、不安定な場合があります",
+      "updateChannelStableTitle": "安定版に切り替えますか？",
+      "updateChannelStableDesc": "Openstyle は現在の安定版を今すぐインストールして再起動します。このバージョンは、今使っているバージョンより古い場合があります。",
+      "updateChannelStableAction": "安定版をインストール",
+      "updateChannelStableRecordingDesc": "会議を録音中です。今すぐ安定版に切り替えますか？録音は停止します。",
+      "updateChannelStableRecordingAction": "録音を停止して切り替え",
       "launchAtStartup": "システム起動時に起動",
       "launchAtStartupDesc": "コンピューターにログインした際、自動的に Openstyle を起動します。",
       "showOnLaunch": "起動時にダッシュボードを表示",

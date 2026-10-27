@@ -134,6 +134,9 @@
     "title": "Settings",
     "updateAvailable": "Version {{version}} available",
     "updateReady": "Version {{version}} ready to install",
+    "restartRecordingTitle": "A meeting is recording",
+    "restartRecordingDesc": "Restart and update now? This stops the recording. Openstyle saves the recording first.",
+    "restartRecordingAction": "Stop recording and update",
     "interfaceLanguage": {
       "label": "Interface language",
       "desc": "Change the language of the app interface."
@@ -150,6 +153,15 @@
     "application": {
       "autoUpdate": "Automatic updates",
       "autoUpdateDesc": "Check for new versions in the background. On macOS the update downloads by itself and waits for you to restart.",
+      "updateChannel": "Update channel",
+      "updateChannelDesc": "Choose which versions Openstyle installs.",
+      "updateChannelStable": "Stable (recommended)",
+      "updateChannelDev": "Dev: every new build, can break",
+      "updateChannelStableTitle": "Switch to Stable?",
+      "updateChannelStableDesc": "Openstyle installs the current Stable version now and restarts. This version can be older than the version that you use now.",
+      "updateChannelStableAction": "Install Stable",
+      "updateChannelStableRecordingDesc": "A meeting is recording. Switch to Stable now? This stops the recording.",
+      "updateChannelStableRecordingAction": "Stop recording and switch",
       "launchAtStartup": "Launch at startup",
       "launchAtStartupDesc": "Automatically start Openstyle when you log in to your computer.",
       "showOnLaunch": "Show dashboard on launch",

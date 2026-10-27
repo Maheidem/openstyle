@@ -111,6 +111,9 @@
     "title": "Einstellungen",
     "updateAvailable": "Version {{version}} verfügbar",
     "updateReady": "Version {{version}} installationsbereit",
+    "restartRecordingTitle": "Ein Meeting wird aufgenommen",
+    "restartRecordingDesc": "Jetzt neu starten und aktualisieren? Das beendet die Aufnahme. Openstyle speichert die Aufnahme zuerst.",
+    "restartRecordingAction": "Aufnahme beenden und aktualisieren",
     "interfaceLanguage": {
       "label": "Oberflächensprache",
       "desc": "Ändert die Sprache der App-Oberfläche."
@@ -127,6 +130,15 @@
     "application": {
       "autoUpdate": "Automatische Updates",
       "autoUpdateDesc": "Prüft im Hintergrund auf neue Versionen. Unter macOS wird das Update selbst heruntergeladen und wartet auf Ihren Neustart.",
+      "updateChannel": "Update-Kanal",
+      "updateChannelDesc": "Wählen Sie, welche Versionen Openstyle installiert.",
+      "updateChannelStable": "Stabil (empfohlen)",
+      "updateChannelDev": "Dev: jeder neue Build, kann Fehler haben",
+      "updateChannelStableTitle": "Zu Stabil wechseln?",
+      "updateChannelStableDesc": "Openstyle installiert jetzt die aktuelle stabile Version und startet neu. Diese Version kann älter sein als die Version, die Sie jetzt verwenden.",
+      "updateChannelStableAction": "Stabil installieren",
+      "updateChannelStableRecordingDesc": "Ein Meeting wird aufgenommen. Jetzt zu Stabil wechseln? Das beendet die Aufnahme.",
+      "updateChannelStableRecordingAction": "Aufnahme beenden und wechseln",
       "launchAtStartup": "Beim Start ausführen",
       "launchAtStartupDesc": "Openstyle automatisch starten, wenn Sie sich an Ihrem Computer anmelden.",
       "showOnLaunch": "Dashboard beim Start anzeigen",

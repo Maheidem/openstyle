@@ -210,18 +210,36 @@ const api = {
     downloadState: string;
   } | null> => ipcRenderer.invoke("updater:check"),
   downloadUpdate: (): void => ipcRenderer.send("updater:download"),
-  installUpdate: (): void => ipcRenderer.send("updater:install"),
+  /** `stopRecording: true` after the user agreed to stop a meeting. */
+  installUpdate: (options?: { stopRecording?: boolean }): void =>
+    ipcRenderer.send("updater:install", options),
+  // Main asks the dashboard to confirm a restart that stops a meeting.
+  onUpdateConfirmStopRecording: listen("updater:confirm-stop-recording"),
+  takeUpdateStopConfirm: (): Promise<boolean> =>
+    ipcRenderer.invoke("updater:take-stop-confirm"),
   onUpdateAvailable: listen<[info: { version: string }]>("updater:available"),
   onUpdateDownloaded: listen<[info: { version: string }]>("updater:downloaded"),
   onUpdateDownloading: listen<
     [progress: { percent: number; transferred: number; total: number }]
   >("updater:downloading"),
   onUpdateError: listen<[info: { message: string }]>("updater:error"),
+  // The update of the old channel is gone after a channel switch.
+  onUpdateCleared: listen("updater:cleared"),
   // Auto-update setting
   getAutoUpdate: (): Promise<boolean> =>
     ipcRenderer.invoke("settings:auto-update"),
   setAutoUpdate: (enabled: boolean): void =>
     ipcRenderer.send("settings:set-auto-update", enabled),
+  // Update channel ("stable" or "dev"), and the running version
+  getUpdateChannel: (): Promise<{
+    channel: "stable" | "dev";
+    version: string;
+  }> => ipcRenderer.invoke("settings:update-channel"),
+  setUpdateChannel: (
+    channel: "stable" | "dev",
+    stopRecording?: boolean,
+  ): Promise<void> =>
+    ipcRenderer.invoke("settings:set-update-channel", channel, stopRecording),
   // Launch at startup setting
   getLaunchAtStartup: (): Promise<boolean> =>
     ipcRenderer.invoke("settings:launch-at-startup"),

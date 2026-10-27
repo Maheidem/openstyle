@@ -35,6 +35,11 @@ import {
   startTrayJobWatch,
   trayImage,
 } from "./tray-icon";
+import {
+  isNewerVersion,
+  restartDecision,
+  runningVersion,
+} from "./update-channel";
 import { showSettingsWindow } from "./windows/settings-window";
 import {
   createTrayPopoverWindow,
@@ -44,7 +49,50 @@ import {
 
 const log = createAppLogger("electron");
 
-export function restartAndUpdate(): void {
+// True while the dashboard must ask "Stop recording and update?". The
+// renderer takes it with updater:take-stop-confirm, also when the window
+// opens after the request.
+let stopConfirmPending = false;
+
+/** Read and clear the request to ask before a restart that stops a meeting. */
+export function takeStopRecordingConfirm(): boolean {
+  const pending = stopConfirmPending;
+  stopConfirmPending = false;
+  return pending;
+}
+
+/**
+ * Install the downloaded update and restart. While a meeting records, the
+ * dashboard first asks the user (no wait, no queue). `stopRecording: true`
+ * means the user agreed: the recording stops and is saved the normal way
+ * (WAV files, sync.json, status "recorded") before the install.
+ */
+export function restartAndUpdate(
+  options: { stopRecording?: boolean } = {},
+): void {
+  const decision = restartDecision(
+    state.meetingRecorder?.status ?? "idle",
+    options.stopRecording === true,
+  );
+  if (decision === "ask") {
+    log.info("Restart and update: a meeting records; asking the user");
+    stopConfirmPending = true;
+    showSettingsWindow();
+    state.settingsWindow?.webContents.send("updater:confirm-stop-recording");
+    return;
+  }
+  void (async () => {
+    if (decision === "stop-then-install") {
+      log.info("Restart and update: stopping the meeting recording first");
+      await state.meetingRecorder?.stop().catch((err) => {
+        log.warn(`Meeting stop before the update failed: ${String(err)}`);
+      });
+    }
+    installAndRestart();
+  })();
+}
+
+function installAndRestart(): void {
   // E2E seam: a test checks that this path runs. It never installs or quits.
   if ((process.env.OPENSTYLE_E2E ?? process.env.FREESTYLE_E2E) === "1") {
     log.info("E2E: restart and update requested; no install");
@@ -104,7 +152,9 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   try {
     const result = await autoUpdater.checkForUpdates();
     const latest = result?.updateInfo?.version;
-    if (latest && latest !== app.getVersion()) {
+    // Only a newer version is an update. A plain inequality reported an
+    // OLDER Stable version to a Dev build.
+    if (latest && isNewerVersion(latest, runningVersion(app.getVersion()))) {
       const { response } = await dialog.showMessageBox({
         type: "info",
         title: "Update Available",

@@ -111,6 +111,9 @@
     "title": "Configurações",
     "updateAvailable": "Versão {{version}} disponível",
     "updateReady": "Versão {{version}} pronta para instalar",
+    "restartRecordingTitle": "Uma reunião está sendo gravada",
+    "restartRecordingDesc": "Reiniciar e atualizar agora? Isto para a gravação. O Openstyle salva a gravação primeiro.",
+    "restartRecordingAction": "Parar a gravação e atualizar",
     "interfaceLanguage": {
       "label": "Idioma da interface",
       "desc": "Alterar o idioma da interface do aplicativo."
@@ -127,6 +130,15 @@
     "application": {
       "autoUpdate": "Atualizações automáticas",
       "autoUpdateDesc": "Verifica novas versões em segundo plano. No macOS a atualização é baixada sozinha e espera você reiniciar.",
+      "updateChannel": "Canal de atualização",
+      "updateChannelDesc": "Escolha quais versões o Openstyle instala.",
+      "updateChannelStable": "Estável (recomendado)",
+      "updateChannelDev": "Dev: cada novo build, pode quebrar",
+      "updateChannelStableTitle": "Mudar para Estável?",
+      "updateChannelStableDesc": "O Openstyle instala agora a versão estável atual e reinicia. Esta versão pode ser mais antiga que a versão que você usa agora.",
+      "updateChannelStableAction": "Instalar Estável",
+      "updateChannelStableRecordingDesc": "Uma reunião está sendo gravada. Mudar para Estável agora? Isto para a gravação.",
+      "updateChannelStableRecordingAction": "Parar a gravação e mudar",
       "launchAtStartup": "Iniciar com o sistema",
       "launchAtStartupDesc": "Iniciar automaticamente o Openstyle quando você entrar no computador.",
       "showOnLaunch": "Mostrar painel ao iniciar",

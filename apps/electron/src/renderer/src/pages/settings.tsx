@@ -24,6 +24,16 @@ import {
   useLanguageOptions,
 } from "@renderer/components/language-combobox";
 import { LanguageSelector } from "@renderer/components/language-selector";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@renderer/components/ui/alert-dialog";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import {
@@ -64,6 +74,7 @@ import {
   settingsQueryOptions,
 } from "@renderer/lib/query";
 import { putSetting } from "@renderer/lib/settings";
+import { stableSwitchDialogKeys } from "@renderer/lib/update-dialogs";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -227,6 +238,13 @@ export default function SettingsPage(): React.JSX.Element {
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [autoUpdate, setAutoUpdate] = useState(true);
+  const [updateChannel, setUpdateChannel] = useState<{
+    channel: "stable" | "dev";
+    version: string;
+  } | null>(null);
+  const [stableConfirmOpen, setStableConfirmOpen] = useState(false);
+  // True when a meeting recorded at the time the Stable dialog opened.
+  const [stableConfirmRecording, setStableConfirmRecording] = useState(false);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
   const [advancedMode, setAdvancedMode] = useState(false);
@@ -565,6 +583,10 @@ export default function SettingsPage(): React.JSX.Element {
       ?.getAutoUpdate()
       .then((v) => setAutoUpdate(v))
       .catch(() => {});
+    window.api
+      ?.getUpdateChannel()
+      .then((v) => setUpdateChannel(v))
+      .catch(() => {});
 
     // Launch at startup setting
     window.api
@@ -683,6 +705,35 @@ export default function SettingsPage(): React.JSX.Element {
     setAutoUpdate(enabled);
     window.api?.setAutoUpdate(enabled);
   }, []);
+
+  const applyUpdateChannel = useCallback(
+    (channel: "stable" | "dev", stopRecording = false) => {
+      setUpdateChannel((prev) => (prev ? { ...prev, channel } : prev));
+      void window.api?.setUpdateChannel(channel, stopRecording);
+    },
+    [],
+  );
+
+  const handleUpdateChannelChange = useCallback(
+    (value: string) => {
+      if (!updateChannel || (value !== "stable" && value !== "dev")) return;
+      if (value === updateChannel.channel) return;
+      // The switch from a Dev (alpha) build to Stable installs the current
+      // Stable version at once, also when it is older. Ask first.
+      if (value === "stable" && updateChannel.version.includes("-")) {
+        void (async () => {
+          const meeting = await window.api
+            ?.getMeetingStatus()
+            .catch(() => null);
+          setStableConfirmRecording(meeting?.status === "recording");
+          setStableConfirmOpen(true);
+        })();
+        return;
+      }
+      applyUpdateChannel(value);
+    },
+    [updateChannel, applyUpdateChannel],
+  );
 
   const handleLaunchAtStartupToggle = useCallback((enabled: boolean) => {
     setLaunchAtStartup(enabled);
@@ -850,6 +901,65 @@ export default function SettingsPage(): React.JSX.Element {
                   onCheckedChange={handleAutoUpdateToggle}
                 />
               </Row>
+              {advancedMode && updateChannel && (
+                <Row
+                  label={t("settings.application.updateChannel")}
+                  desc={t("settings.application.updateChannelDesc")}
+                >
+                  <Select
+                    value={updateChannel.channel}
+                    onValueChange={handleUpdateChannelChange}
+                  >
+                    <SelectTrigger
+                      id="settings-update-channel"
+                      aria-label={t("settings.application.updateChannel")}
+                      className="w-full max-w-md"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stable">
+                        {t("settings.application.updateChannelStable")}
+                      </SelectItem>
+                      <SelectItem value="dev">
+                        {t("settings.application.updateChannelDev")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <AlertDialog
+                    open={stableConfirmOpen}
+                    onOpenChange={setStableConfirmOpen}
+                  >
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          {t("settings.application.updateChannelStableTitle")}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {t(
+                            stableSwitchDialogKeys(stableConfirmRecording).desc,
+                          )}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>
+                          {t("common.cancel")}
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() =>
+                            applyUpdateChannel("stable", stableConfirmRecording)
+                          }
+                        >
+                          {t(
+                            stableSwitchDialogKeys(stableConfirmRecording)
+                              .action,
+                          )}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </Row>
+              )}
               <Row
                 label={t("settings.application.launchAtStartup")}
                 desc={t("settings.application.launchAtStartupDesc")}
