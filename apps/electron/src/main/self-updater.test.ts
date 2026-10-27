@@ -64,7 +64,7 @@ describe("selfUpdater.downloadUpdate", () => {
       `${RELEASES}/download/2.25.0-alpha.1/latest-mac.yml`,
     ]);
     expect(zipUrls[0]).toBe(
-      `${RELEASES}/download/2.25.0-alpha.1/Openstyle-2.25.0-alpha.1-${process.arch}.zip`,
+      `${RELEASES}/download/2.25.0-alpha.1/Openstyle-2.25.0-alpha.1-arm64.zip`,
     );
     expect(manifestUrls.concat(zipUrls).join(" ")).not.toContain("/latest/");
     expect(done).toHaveBeenCalledWith({ version: "2.25.0-alpha.1" });
@@ -84,7 +84,7 @@ describe("selfUpdater.downloadUpdate", () => {
     const updater = await load();
     await updater.downloadUpdate("2.24.0", { allowOlder: true });
     expect(zipUrls[0]).toBe(
-      `${RELEASES}/download/2.24.0/Openstyle-2.24.0-${process.arch}.zip`,
+      `${RELEASES}/download/2.24.0/Openstyle-2.24.0-arm64.zip`,
     );
     expect(updater.isReadyToInstall).toBe(true);
   });
