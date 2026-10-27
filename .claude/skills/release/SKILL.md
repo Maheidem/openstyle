@@ -227,8 +227,8 @@ staples the ticket to the app, before it makes the dmg and the zip.
   to the Developer ID, so macOS asks for the Privacy permissions once more.
   Later updates keep them. Say this in the changelog of that release.
 - **Cost:** notarization adds some minutes to each signed macOS build. Only
-  `release/**` pushes and manual runs notarize. A PR that changes packaging
-  files signs with Developer ID but does not notarize.
+  `release/**` pushes and manual runs with `package=true` build the package
+  (sign and notarize). A PR never builds it.
 - **Rollback:** delete the `MAC_DEVID_CERT_P12` secret. The next build uses the
   self-signed path again (or ad-hoc if `MAC_RELEASE_CERT_P12` is also empty).
   Users who updated to a Developer ID build then get one more Privacy prompt.
@@ -370,7 +370,7 @@ gh run list --repo Maheidem/openstyle --workflow build.yml --branch main --limit
 gh run watch <runId> --repo Maheidem/openstyle --exit-status
 ```
 
-`package=true` also builds the worker and the signed, notarized package (the same path as the release branch). Use `package=false` when no packaging, native or worker file changed since the last release: it runs Checks and the macOS app + E2E only. A push to main runs no CI (since 2026-10-27), so this manual run is the only CI on the merged code. The Electron E2E suite also runs locally next to the installed app, in quiet mode only (see the live-testing skill). Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
+`package=true` also builds the worker and the signed, notarized package (the same path as the release branch). A PR never builds the package, so use `package=true` when a packaging, native or signing file changed since the last release. Use `package=false` when no packaging, native or worker file changed since the last release: it runs Checks and the macOS app + E2E only. A push to main runs no CI (since 2026-10-27), so this manual run is the only CI on the merged code. The Electron E2E suite also runs locally next to the installed app, in quiet mode only (see the live-testing skill). Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
 
 ## main is protected (since 2026-10-08)
 
