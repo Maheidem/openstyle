@@ -755,6 +755,36 @@ describe("sameItem", () => {
     // Fewer than 3 content words: only the same text is the same item.
     expect(sameItem("Ship it.", "Ship it now.")).toBe(false);
   });
+
+  it("longer entries (5 content words or more) need 70%; shorter ones keep 80%", () => {
+    // 5 of 7: a rewording of one key point (E2B, fictional meeting).
+    expect(
+      sameItem(
+        "The team went through open items and agreed on next steps.",
+        "The team consistently reviewed open items and agreed on next steps.",
+      ),
+    ).toBe(true);
+    // 3 of 4 (shorter entry has 4 words): not enough, also for one changed word.
+    expect(
+      sameItem(
+        "The lunch date moved to Friday.",
+        "The discussion repeatedly confirmed the lunch date change to Friday.",
+      ),
+    ).toBe(false);
+    expect(
+      sameItem(
+        "Ship the Android app on Friday.",
+        "Ship the iOS app on Friday.",
+      ),
+    ).toBe(false);
+    // 3 of 6: below 70%.
+    expect(
+      sameItem(
+        "Grace sends the Snowflake schema guide to Marcos.",
+        "Grace sends the Tableau dashboard guide to Darko.",
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("repeatsActionItem (#211)", () => {

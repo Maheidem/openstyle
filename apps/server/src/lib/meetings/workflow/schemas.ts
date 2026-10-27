@@ -95,14 +95,25 @@ export function repeatsActionItem(
 
 /** The share of content words at which two list entries say the same thing. */
 const SAME_ITEM_SHARE = 0.8;
+/**
+ * The share for two longer entries (the shorter one has LONG_ITEM_WORDS
+ * content words or more). Measured 2026-10-26: E2B wrote key points in two
+ * wordings at 5 of 7 shared words (0.71). On both gold meetings no pair of
+ * items was in the band 0.7 to 0.8. A short entry keeps 0.8: 3 of 4 shared
+ * words also fit two different items ("ship the Android app on Friday",
+ * "ship the iOS app on Friday").
+ */
+const SAME_ITEM_SHARE_LONG = 0.7;
+const LONG_ITEM_WORDS = 5;
 /** An entry with fewer content words than this is only equal to the same text. */
 const SAME_ITEM_MIN_WORDS = 3;
 
 /**
  * True when two list entries say the same thing: the same text (case and
- * spaces aside), or at least SAME_ITEM_SHARE of the content words of the
- * shorter entry are in the other one. The parts of a long meeting overlap, so
- * two parts can list one item in two wordings.
+ * spaces aside), or a share of the content words of the shorter entry are in
+ * the other one: SAME_ITEM_SHARE, or SAME_ITEM_SHARE_LONG for longer
+ * entries. The parts of a long meeting overlap, and a small model can repeat
+ * one point in other words.
  */
 export function sameItem(a: string, b: string): boolean {
   if (sameText(a) === sameText(b)) return true;
@@ -112,7 +123,9 @@ export function sameItem(a: string, b: string): boolean {
   if (small < SAME_ITEM_MIN_WORDS) return false;
   let shared = 0;
   for (const w of x) if (y.has(w)) shared++;
-  return shared / small >= SAME_ITEM_SHARE;
+  const need =
+    small >= LONG_ITEM_WORDS ? SAME_ITEM_SHARE_LONG : SAME_ITEM_SHARE;
+  return shared / small >= need;
 }
 
 /** The first entry of each group of same items (`sameItem`), in list order. */
