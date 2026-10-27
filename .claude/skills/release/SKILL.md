@@ -46,7 +46,10 @@ See "Channels (Stable and Dev)" below.
 
 ## 3. Watch the Build & Test workflow
 
-Runs automatically on push to the `release/<version>` branch, takes ~7 min.
+Runs automatically on push to the `release/<version>` branch. It runs every
+job. The longest path is "Build MLX worker" (~3 min) then "Build (macOS)" with
+notarization (~10 min), so plan ~14 min. A wait for a free macOS runner can
+add ~10 min (measured on manual run 40525439109, 2026-10-27).
 
 ```bash
 gh run list --repo Maheidem/openstyle --branch release/<version>
