@@ -14,7 +14,7 @@ import * as linuxAutostart from "./linux-autostart";
 const log = createAppLogger("electron");
 
 interface RegisterAppSettingsIpcOptions {
-  getServerPort: () => number;
+  getServerPort: () => Promise<number>;
   getServerUrl: () => string;
   getServerToken: () => string;
   readSettings: () => Record<string, unknown>;
@@ -33,7 +33,8 @@ export function registerAppSettingsIpc({
   broadcastServerChanged,
   logsDir,
 }: RegisterAppSettingsIpcOptions): void {
-  // IPC: expose the server port to the renderer
+  // IPC: expose the server port to the renderer. The answer waits until the
+  // port is known (see server-target.ts).
   ipcMain.handle("server:port", () => getServerPort());
 
   // IPC: read the configured server URL ("" = use the local server).

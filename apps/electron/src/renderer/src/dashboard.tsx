@@ -60,9 +60,12 @@ installGlobalErrorHandlers();
 // serializing the whole panel behind auth. Prefetching here races the auth
 // check, so settings is cached or in-flight by the time the subtree mounts.
 // Failures are swallowed — the real useQuery hooks retry on mount.
-void initApiBase().then(() => {
-  void queryClient.prefetchQuery(settingsQueryOptions());
-});
+// A failed port lookup is tried again by the next request.
+void initApiBase()
+  .then(() => {
+    void queryClient.prefetchQuery(settingsQueryOptions());
+  })
+  .catch(() => {});
 
 // Opt into the translucent "glass" surfaces only on macOS, where the window is
 // transparent and backed by native vibrancy. On other platforms the window

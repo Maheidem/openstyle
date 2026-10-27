@@ -13,8 +13,9 @@ import { ThemeProvider } from "next-themes";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-initApiBase();
 installGlobalErrorHandlers();
+// A failed port lookup is tried again by the next request.
+void initApiBase().catch(() => {});
 
 function mount(): void {
   createRoot(document.getElementById("root")!).render(

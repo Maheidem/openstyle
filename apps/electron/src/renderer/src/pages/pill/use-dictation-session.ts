@@ -2,6 +2,7 @@
 import {
   getApiBase,
   getClient,
+  hasApiBase,
   isRemoteServer,
   refreshApiBase,
 } from "@renderer/lib/api";
@@ -17,6 +18,12 @@ import { useCallback } from "react";
 import { getAudioPlaybackMode, playTone } from "../pill-tones";
 import type { BarMode, PillExit, TranscribeResult } from "./constants";
 import type { PillShared } from "./pill-shared";
+
+// The server base URL for an error message. Without a known port (main did
+// not answer), show the host only: getApiBase() throws then.
+function apiBaseLabel(): string {
+  return hasApiBase() ? getApiBase() : "127.0.0.1";
+}
 
 export type UseDictationSessionDeps = Pick<
   PillShared,
@@ -471,8 +478,8 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
     const serverOk = await refreshApiBase();
     if (!serverOk) {
       failedTranscriptionErrorRef.current = isRemoteServer()
-        ? i18n.t("pill.error.cannotReachRemote", { url: getApiBase() })
-        : i18n.t("pill.error.cannotReachLocal", { url: getApiBase() });
+        ? i18n.t("pill.error.cannotReachRemote", { url: apiBaseLabel() })
+        : i18n.t("pill.error.cannotReachLocal", { url: apiBaseLabel() });
       setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
       setPillNotice("unavailable");
       setPillState("error");
@@ -536,11 +543,11 @@ export function useDictationSession(deps: UseDictationSessionDeps) {
           msg.includes("fetch") || msg.includes("Failed")
             ? isRemoteServer()
               ? ` (${i18n.t("pill.error.hintRemote", {
-                  url: getApiBase(),
+                  url: apiBaseLabel(),
                   settings: i18n.t("settings.title"),
                   network: i18n.t("settings.sections.network"),
                 })})`
-              : ` (${i18n.t("pill.error.hintLocal", { url: getApiBase() })})`
+              : ` (${i18n.t("pill.error.hintLocal", { url: apiBaseLabel() })})`
             : "";
         return { raw: "", cleaned: "", error: `${msg}${hint}` };
       });

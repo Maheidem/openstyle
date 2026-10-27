@@ -1,4 +1,9 @@
-import { getClient, refreshApiBase } from "@renderer/lib/api";
+import {
+  getClient,
+  hasApiBase,
+  initApiBase,
+  refreshApiBase,
+} from "@renderer/lib/api";
 import {
   applyNeedsAppContextForCleanup,
   refreshNeedsAppContextForCleanup,
@@ -349,7 +354,11 @@ export default function AppPage(): React.JSX.Element {
     // connects and the onConfig callback (which sets supportsSessionTransportRef)
     // fires before the first recording. Session-transport support is negotiated
     // per provider — non-streaming providers fall back to the batch path.
-    getStreamer();
+    // Wait for the server base first: the streamer reads it once, when it is
+    // created.
+    void initApiBase()
+      .then(() => getStreamer())
+      .catch(() => {});
     window.api
       ?.getPillPosition()
       .then(applyPillPosition)
@@ -386,7 +395,7 @@ export default function AppPage(): React.JSX.Element {
         streamerRef.current?.destroy();
         streamerRef.current = null;
         supportsSessionTransportRef.current = false;
-        getStreamer();
+        if (hasApiBase()) getStreamer();
       });
     });
     return () => {
