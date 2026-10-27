@@ -28,7 +28,9 @@ Writing rules: Simplified Technical English. Fictional test data only.
 | 11 | App rule: one narrow job per LLM call; rule-like work is code (AGENTS.md "LLM design ethos"). | Each LLM stage has one prompt with one job. |
 | 12 | Keep: the prefix cache for the cleanup call (#339), the context budget (#340), the start-error raw-text fallback (#341), the user's Custom prompt, the injection guard, the interactive lane, call recording. Reuse Enhance patterns, not the LangGraph runtime. | Cleanup calls send `X-Openstyle-Prefix-Cache: on`. Polish and tone send no header (`prefixCache: false` on the model), so they do not replace the cached cleanup prefix. Every call goes through the context guard (a long cleanup text is cut into pieces; a polish or tone text that does not fit skips the stage). A model that does not start gives the raw text. Custom keeps the single call with the user's prompt. Cleanup keeps `TRANSCRIPT_EDIT_USER_PROMPT`; polish and tone have a short `<text>` guard. Every call runs in the `interactive` lane. Every call is written to `llm_calls` (scope `dictation`, one run per dictation, the newest 200 runs stay). |
 
-Not built in this branch: an LLM inspector screen for dictation runs (the rows exist; the inspector shows meeting runs only), rules for de/fr/it/ja/pt, the vocabulary guard (4.5).
+Not built in this branch: an LLM inspector screen for dictation runs (the rows exist; the inspector shows meeting runs only), rules for de/fr/it/ja, the vocabulary guard (4.5).
+
+**Owner decisions 2026-10-27 (they win over the table above and over sections 1 to 11):** the target languages are en, es and pt. zh is not a target: its tables, prompt examples and bench cases are removed; zh and every other language without rules pass through the code stages with no change. pt has rules at the same depth as en and es. A count before a plural noun is a quantity, not a list ("1 cable, 2 adapters, 3 batteries"). Low makes no LLM call, also with a tone on (confirmed). The "always digits" exceptions stay. Section 12 has the result.
 
 ---
 
@@ -300,7 +302,7 @@ A fresh Claude subagent judged pass 1 of E2B round 2, today against pre-ng, 81 p
 
 ---
 
-## 11. Build result (2026-10-26, branch `feat/dictation-pipeline`)
+## 11. Build result round 1 (2026-10-26; en, es, zh; superseded by section 12)
 
 Method: `apps/server/scripts/benchmark-dictation-pipeline.ts`, the app provider `local-mlx-llm` (task `cleanup`), the worker `Openstyle-eval/worker-split-correct` (main `031df921`, `--context-tokens`), temperature 0, 4 passes, each run under `/tmp/openstyle-gpu.lock`. Arm "main" is the one-call prompt of main (`buildRewritePrompt`, preset + tone + language). Arm "pipeline" is `runDictationPipeline`. 81 cases: the 27 bench cases (medium) and the 54 fictional cases of `scripts/dictation-bench-cases.ts`. The `date-correction-*` checks accept "3" (owner rule: digits). The es and zh `list-after-correction` expectations use the counted-list style of en ("1. Cable"). Both arms are scored with the same checks. Every arm gave the same output in all 4 passes (81/81).
 
@@ -336,3 +338,42 @@ Blind pair judge (3 fresh Claude subagents, own random order and sides each, E2B
 Remaining failures (pipeline, E2B): self-corrections and uncounted lists in the cleanup call (bench), E2B rewrites some digits back to Chinese numerals (`itn-money-zh`: 25 -> 二十五), the zh formal tone answer drops 明天 and the guard keeps the cleanup text (`tone-work-formal-zh`), polish over-edits lists (`list-bullets-*`), the 3-word fragment rule misses the 4-word `fragment-es`.
 
 Real app (Test Runner, quiet mode, isolated profile, Qwen3-ASR 1.7B + Gemma 4 E2B, fictional audio through `POST /api/transcribe`): low, medium, high and medium + professional tone all 200; History shows the four results in light and dark; `llm_calls` holds 0 calls for low, 2 cleanup for medium, 2 cleanup + 1 polish for high, 1 cleanup + 1 tone for the tone run; 0 Privacy prompts in that run.
+
+---
+
+## 12. Build result round 3 (2026-10-27; en, es, pt)
+
+Same method as section 11. Cases: 27 bench cases (9 en, 9 es, 9 pt; the pt cases replace zh) and 67 pipeline cases in en, es and pt, with quantity and enumeration cases. Changed checks: `list-after-correction-*` wants the quantities in the sentence ("1 cable, 2 adapters, 3 batteries", no numbered list); `intensity-high-pt` accepts "somente se" / "apenas se". Every arm gave the same output in all 4 passes (94/94).
+
+Fixes found in round 2 and built before round 3: S4 runs once more on the LLM answer (E2B wrote "1 cable" back as "one cable"); S8 turns "* " bullets into "- "; the guard skips list markers, so a polish answer that turns a numbered list into bullets is kept.
+
+Prompt sizes (real input tokens p50, E2B): cleanup 691, polish 319, tone 549; main 4,024.
+
+| Pass counts (of 4 passes) | E2B main | E2B pipeline | E4B main | E4B pipeline |
+|---|---|---|---|---|
+| All (376) | 164 | **308** | 208 | **328** |
+| Bench (108) | 40 | 52 | 36 | 68 |
+| Numbers (52) | 16 | 52 | 40 | 52 |
+| Contact (56) | 40 | 56 | 52 | 56 |
+| Line commands (24) | 0 | 24 | 0 | 24 |
+| Mixed (12) | 0 | 12 | 0 | 12 |
+| Lists (40) | 16 | 40 | 20 | 36 |
+| Fragments (16) | 12 | 12 | 16 | 12 |
+| Tone (32) | 24 | 24 | 24 | 32 |
+| Intensity (36) | 16 | 36 | 20 | 36 |
+| en / es / pt | 88 / 32 / 44 | 128 / 84 / 96 | 96 / 52 / 60 | 132 / 92 / 104 |
+
+Latency per dictation, ms p50 / p95:
+
+| Setting | E2B main | E2B pipeline | E4B main | E4B pipeline |
+|---|---|---|---|---|
+| low (n=12) | 173 / 222 | 0 / 1 (no LLM call) | 411 / 515 | 0 / 1 |
+| medium (n=304) | 170 / 375 | 148 / 251 | 316 / 846 | 277 / 486 |
+| high (n=28) | 343 / 398 | 412 / 505 | 834 / 891 | 834 / 899 |
+| medium + tone (n=32) | 326 / 442 | 278 / 441 | 839 / 1,085 | 554 / 815 |
+
+Blind pair judge (3 fresh Claude subagents, own random order and sides, E2B pass 1, 94 pairs): pipeline 56 / 53 / 51 wins, main 4 / 5 / 5, tie 34 / 36 / 38. All 3 agree on 86/94 pairs (pairwise 94 %). By majority: pipeline 52, main 4, tie 37, no majority 1. Main won `tone-email-pt` (the pipeline added the name "Marcos" as a signature), `recipient-correction-en`, `tone-very-casual-en` (the tone answer dropped "are you"), `fragment-es` (4 words, outside the 3-word rule).
+
+Remaining failures (pipeline, E2B): self-corrections and uncounted lists in the cleanup call (bench), the email tone invents a signature, the very casual tone drops words, the 4-word Spanish title keeps its period, the LLM writes the es percent as "12%" (RAE: "12 %").
+
+Real app (Test Runner, quiet mode, isolated profile, Qwen3-ASR 1.7B + Gemma 4 E2B, fictional audio through `POST /api/transcribe`, languages en, es, pt): 7 dictations, all 200. Low with a professional tone made 0 LLM calls; medium en 2 cleanup calls; high 2 cleanup + 1 polish; tone 1 cleanup + 1 tone; quantities "Please order 1 cable, 2 adapters, and 3 batteries."; es "Envíale el informe a ana@ejemplo.com antes del 15 de marzo.\nCuesta 25 dólares."; pt "Por favor, pede 1 cabo, 2 adaptadores e 3 baterias.\nReunião é dia 15 de março às 3 da tarde.". History shows all 7 in light and dark. 0 Privacy prompts.
