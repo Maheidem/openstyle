@@ -355,3 +355,46 @@ Proof (E2B, frozen worker of this branch against the main script in the same pin
 | Raw request at the limit / 1 token over / 40,832-token prompt | 200 / 400 / 400, also with the prefix cache on |
 | Server, worker window 4,900 (test only), dictation cleanup | refusal, split in 3 pieces, cleaned text, HTTP 200 |
 | Server, worker window 6,500 (test only), Enhance + Summarize | summarize refused, map and reduce, meeting `summarized`, no error |
+
+---
+
+## 12. Step 5 result: model pool, Keep ready, engine not ready (built 2026-10-27)
+
+Build (owner decisions 9 item 3 and the brief of 2026-10-26):
+
+- `apps/server/src/lib/mlx-llm/server.ts` is a pool: a map of model id to one HTTP worker (`mlx-asr/http-worker.ts`). Two tasks with the same model share one worker. A ready worker answers at once. Starts run one at a time.
+- Admission (`mlx-llm/pool.ts`, pure): the sum of `peakBytes` (P, the MLX peak of 5.1, not the RSS) of the loaded workers plus the new model must stay at or under the limit. Limit = RAM - reserve - app - ASR (when the ASR worker is loaded), capped by the smallest GPU cap a worker reported. Over the limit, the pool stops the least recently used worker that is not pinned and not busy, "Keep ready" workers last. If the model still does not fit, the start throws `MlxLlmPoolNoRoomError` (gateway: `model_unavailable`, reason `not_enough_memory`). A model that is the only worker always starts (the one-worker shape of a small Mac).
+- Pinned: the model of task `cleanup` while `llm_cleanup` is on and the task uses the built-in LLM.
+- "Keep ready" (`mlx_llm_keep_ready`, JSON per task, default cleanup only): the model never unloads when idle. Switch in the task rows of the Models page, one note in the AI model warming dialog, 7 locales.
+- Lanes (`llm/lane.ts`): one lane with one slot per built-in model (`lane:local-mlx-llm/<id>`). Before, all built-in models shared one lane, so a dictation still waited behind a meeting call on another model. The 15 s background gate (meeting calls start only after 15 s with no dictation) did not change.
+- Engine not ready: `MlxRuntimeUpdatePendingError` maps to the gateway error `engine_not_ready` (run-wide). The run shows a neutral notice and starts again by itself when the engine is ready (`meetings/workflow/engine-retry.ts`: one timer, download try, 30 s doubling to 5 min).
+- Start error: a worker that exits before its ready line (for example an old worker: `unrecognized arguments: --context-tokens`) throws `MlxWorkerStartError` with its last stderr line. Gateway: `model_unavailable`, reason `engine_start_failed`, run-wide. Real isolated server with the shipped 2.23.0 worker: the run ends in 1.2 s on main (4 steps `internal`, 4 worker starts) and on this branch (1 step `model_unavailable`).
+
+Worker exit (C). Root cause: `_watch_stdin` and the SIGTERM handler logged with `print(..., file=sys.stderr)` before `os._exit(0)`. When the parent is gone, stderr is a broken pipe: `print` raises `BrokenPipeError` and `os._exit(0)` never runs. The worker stays alive with its model in memory. Fix: `_exit_now()` writes the line with `os.write(2, ...)` and always calls `os._exit(0)`.
+
+| Case (E2B unless noted) | Old worker | New worker |
+|---|---|---|
+| Node parent dies by SIGKILL (2 runs) | alive after 30 s, 2/2 | exits after ~100 ms, 2/2 |
+| Real isolated server killed with `kill -9`, LLM worker loaded | alive after 30 s (RSS 4.3 GiB) | exits after ~100 ms |
+| Parent stops the worker (stdin end + SIGTERM), idle | 38, 39, 39 ms (direct); 37 to 143 ms (`POST /api/mlx-llm/server/stop`) | 26, 34 ms; 133 to 160 ms |
+| SIGTERM during a 20k-token request (E2B and 26B, 6 cases) | 37 to 124 ms | not changed |
+| Python test: stdin EOF with a broken stderr (`ShutdownTests`) | process alive after 10 s (main script) | exit 0 |
+
+The "every unload waits 5 s" report did not reproduce in any of these cases: a normal stop took at most 160 ms. The proven fault is the worker that stays alive after its parent died.
+
+R6 through the real isolated server (dictation = `POST /api/transcribe`, ASR Qwen3-ASR 1.7B 8-bit + E2B cleanup; Summarize on 26B-A4B of a 520-line fictional meeting; 4 Summarize rounds; one dictation every 16 to 19 s, so the next dictation comes while a Summarize call runs):
+
+| | main (`4d7a03fc`, one worker) | pool (this branch) |
+|---|---|---|
+| Dictation idle, p50 / p95 (n 20) | 274 / 323 ms | 282 / 331 ms |
+| Dictation during Summarize, p50 / p95 / max | 6,876 / 7,891 / 7,891 ms (n 8) | 954 / 1,599 / 1,805 ms (n 24) |
+| Summarize runs | 4 of 4 failed (the dictation swapped the worker during a call) | 4 of 4 succeeded (94 to 124 s) |
+| Peak RSS of the workers | 17.16 GiB (one LLM at a time) | 21.50 GiB (ASR 2.49, E2B 4.35, 26B 14.66) |
+| MLX peak per request (trace) | E2B 4.00 GiB | E2B 4.00, 26B 15.35 GiB |
+| Pool memory (status) | - | P sum 21.40 GiB, limit 119.8 GiB |
+
+This Mac now reports `max_recommended_working_set_size` 130,566,586,368 B (121.6 GiB, `mx.device_info()`), not the 107.5 GiB of section 2. So the limit here is the budget.
+
+`pnpm meeting:eval` E2B on 5578edb0 and ca70f895, main and branch with the same new worker: the 6 pack files have the same sha256, the same tokens (34,845 / 1,848 and 76,727 / 10,652), and 0 hard fails on both meetings in both arms.
+
+Real app (Test Runner, quiet mode, fictional data, 0 privacy prompts), dictation every 16 to 19 s during 5 Summarize rounds on 26B-A4B: dictation idle p50 / p95 275 / 321 ms (n 10), during Summarize 1,252 / 1,634 ms, max 1,634 ms (n 15, all HTTP 200); 5 of 5 Summarize runs succeeded (50 to 55 s); the status showed E2B pinned with Keep ready for cleanup and 26B-A4B with Keep ready for Summarize, P sum 21.40 GiB. Keep ready toggles persist after a restart (`{"cleanup":false,"meetingSummarize":true}` before and after); the engine-not-ready notice shows (neutral, clock icon) with a stale runtime and a dead download URL, and when the URL serves the archive, Enhance starts again by itself (`started_by: auto`, `succeeded`, 48 s).
