@@ -1,26 +1,46 @@
-# Build workflow: produces artifacts for Craft releases
-# Triggered on push to main/release branches and PRs
+# Build workflow: checks every PR on the platform that ships (macOS), and
+# produces the signed artifacts for Craft releases.
+# - checks (Linux): lint, knip, types, unit tests, meeting eval checks.
+# - app-macos (macos-14): electron unit tests, typecheck + bundle, E2E.
+#   No xvfb and no apt. The Mac-only specs run here.
+# - worker + package (macos-14): on release/** pushes, on a manual run with
+#   package=true, or on a PR that changes the packaging or the worker.
+#   Only release/** pushes and manual runs notarize. A PR signs but does not
+#   notarize. Craft downloads the "mac-builds" artifact of the release-branch
+#   run (.craft.yml).
+# A push to main runs nothing: the PR checks ran before the merge.
 
 name: Build & Test
 on:
   push:
     branches:
-      - main
       - "release/**"
   pull_request:
     branches: [main]
+  # A full run on any branch, for example the pre-release check of the
+  # release skill. package=false skips the signed build.
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Also build, sign and notarize the macOS package
+        type: boolean
+        default: true
 
+# A new push to a PR stops the old run. Release and manual runs finish.
 concurrency:
-  group: build-${{ github.ref_name }}
-  cancel-in-progress: true
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
     outputs:
-      run_quality: ${{ steps.paths.outputs.run_quality }}
-      run_electron: ${{ steps.paths.outputs.run_electron }}
+      code: ${{ steps.paths.outputs.code }}
+      app: ${{ steps.paths.outputs.app }}
+      worker: ${{ steps.paths.outputs.worker }}
+      package: ${{ steps.paths.outputs.package }}
+      notarize: ${{ steps.paths.outputs.notarize }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,53 +49,87 @@ jobs:
       - name: Classify changed paths
         id: paths
         shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DISPATCH_PACKAGE: ${{ inputs.package }}
         run: |
           set -euo pipefail
-
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+          # $1 = worker, package and notarize. code and app are always on.
+          full() {
             {
-              echo "run_quality=true"
-              echo "run_electron=true"
+              echo "code=true"
+              echo "app=true"
+              echo "worker=$1"
+              echo "package=$1"
+              echo "notarize=$1"
             } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          }
+
+          case "$EVENT" in
+            push)
+              # Only release/** pushes start this workflow. Craft needs
+              # mac-builds from this run.
+              full true
+              exit 0
+              ;;
+            workflow_dispatch)
+              full "${DISPATCH_PACKAGE:-true}"
+              exit 0
+              ;;
+          esac
 
           git diff --name-only \
             "${{ github.event.pull_request.base.sha }}...HEAD" > changed-files.txt
 
-          run_quality=false
-          run_electron=false
-
+          code=false app=false worker=false package=false
           echo "Changed files:"
           while IFS= read -r file; do
             echo "- $file"
 
             case "$file" in
-              docs/*|apps/docs/*|*.md)
-                ;;
-              *)
-                run_quality=true
-                ;;
+              docs/*|apps/docs/*|*.md) ;;
+              *) code=true ;;
+            esac
+
+            # What ships in the app. scripts/ holds eval tooling too, so only
+            # the worker server script (packaged by electron-builder.yml) counts.
+            case "$file" in
+              apps/electron/*|apps/server/*|packages/*|scripts/mlx_asr_server.py|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.node-version|.github/actions/*|.github/workflows/build.yml)
+                app=true ;;
             esac
 
             case "$file" in
-              apps/electron/*|apps/server/*|packages/*|scripts/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.node-version|.github/actions/*|.github/workflows/build.yml)
-                run_electron=true
-                ;;
+              scripts/build_mlx_asr_worker.sh|scripts/mlx_asr_server.py)
+                worker=true ;;
             esac
 
+            # What can break the signed package but not the E2E build.
+            case "$file" in
+              apps/electron/electron-builder.yml|apps/electron/build/*|apps/electron/native/*|apps/electron/package.json|pnpm-lock.yaml|.github/workflows/build.yml|.github/actions/*|apps/electron/scripts/compile-native.js|apps/electron/scripts/download-ffmpeg.mjs|apps/electron/scripts/download-whisper-cpp.mjs|apps/electron/scripts/verify-native-binaries.mjs|apps/electron/scripts/dev-sign.mjs|apps/electron/scripts/copy-sqlite-vec.mjs)
+                package=true ;;
+            esac
           done < changed-files.txt
 
+          # The package job uploads the worker archive, so it needs the worker build.
+          if [[ "$package" == true ]]; then worker=true; fi
           {
-            echo "run_quality=$run_quality"
-            echo "run_electron=$run_electron"
+            echo "code=$code"
+            echo "app=$app"
+            echo "worker=$worker"
+            echo "package=$package"
+            # A PR never notarizes: it signs and checks the signature only.
+            echo "notarize=false"
           } >> "$GITHUB_OUTPUT"
 
-  lint:
-    name: Lint
+  # Lint, knip, server types and every unit test that needs no Electron.
+  # One job: each old job spent ~15 s on setup and ~23 s on the same server build.
+  checks:
+    name: Checks (lint, types, unit)
     needs: [changes]
-    if: needs.changes.outputs.run_quality == 'true'
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -84,70 +138,27 @@ jobs:
       - name: Biome check
         run: pnpm biome check .
 
+      - name: Check unused files and dependencies
+        run: pnpm run knip
+
       # Isolation guard hook (.claude/settings.json PreToolUse): allow/block table.
       - name: Guard hook tests
         run: bash scripts/guard-hook.test.sh
 
-      # The sweep tests import server modules, which import the built
-      # workspace packages (dist/).
-      - name: Build the server's workspace packages
-        run: pnpm --filter "@openstyle/server^..." run build
+      - name: Build server (and its workspace packages)
+        run: pnpm turbo build --filter=@openstyle/server
 
       # The hard-fail checks of pnpm meeting:eval (fictional text only).
       - name: Meeting eval check tests
         run: pnpm meeting:eval:test
 
-  knip:
-    name: Knip
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup
-
-      - name: Check unused files and dependencies
-        run: pnpm run knip
-
-  typecheck:
-    name: Typecheck
-    needs: [changes]
-    if: needs.changes.outputs.run_electron == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup
-
-      - name: Build server (generates type declarations)
-        run: pnpm turbo build --filter=@openstyle/server
-
-      - name: Typecheck electron (web)
-        working-directory: apps/electron
-        run: pnpm run typecheck:web
-
-      - name: Typecheck electron (tests)
-        working-directory: apps/electron
-        run: pnpm run typecheck:tests
-
       - name: Typecheck server (tests)
         working-directory: apps/server
         run: pnpm run typecheck:tests
 
-  test-server:
-    name: Test (Server API)
-    needs: [changes]
-    if: needs.changes.outputs.run_electron == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup
-
       - name: Run server tests
         # --expose-gc: the import memory-shape tests drive GC via
-        # globalThis.gc() to separate "held" from "not yet collected" —
-        # without it, CI runners' lazier V8 external-memory accounting
-        # fails the assertions on garbage nothing references.
+        # globalThis.gc() to separate "held" from "not yet collected".
         env:
           NODE_OPTIONS: "--expose-gc"
         run: pnpm --filter @openstyle/server run test
@@ -158,22 +169,19 @@ jobs:
       - name: Run validations package tests
         run: pnpm --filter @openstyle/validations run test
 
-  test-electron:
-    name: Test (Electron E2E)
-    needs: [changes, test-server]
-    if: needs.changes.outputs.run_electron == 'true'
-    runs-on: ubuntu-latest
+  # The app on the platform that ships. The electron "build" script runs
+  # typecheck:node + typecheck:web + typecheck:tests before electron-vite
+  # (apps/electron/package.json "build"), so no separate typecheck job.
+  app-macos:
+    name: Test (macOS app + E2E)
+    needs: [changes]
+    if: needs.changes.outputs.app == 'true'
+    runs-on: macos-14
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup
-
-      - name: Install system dependencies
-        # The apt step wedges on the runners often enough to matter, and with no
-        # timeout it holds the job for the six-hour default instead of failing
-        # where a re-run would clear it.
-        timeout-minutes: 10
-        run: sudo apt-get update && sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libgbm1 libasound2t64 libx11-xcb1 libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
@@ -183,40 +191,98 @@ jobs:
       - name: Run Electron unit tests
         run: pnpm --filter @openstyle/electron run test
 
-      - name: Build electron app
+      # The Mac-only E2E specs drive the native helpers (for example
+      # tests/hotkey-supervisor.test.ts needs macos-key-listener). The key
+      # matches the compile:native inputs in turbo.json.
+      - name: Cache native helpers
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: apps/electron/resources/bin/darwin-arm64
+          key: ${{ runner.os }}-${{ runner.arch }}-native-${{ hashFiles('apps/electron/native/**', 'apps/electron/scripts/compile-native.js') }}
+
+      # native/fluidaudio-diarize needs Swift tools 6.0; macos-14 defaults to
+      # Xcode 15.4 (Swift 5.10). See the package job for the full note.
+      - name: Compile native helpers
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        working-directory: apps/electron
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app
+          pnpm run compile:native
+
+      # Issue #170: --self-test sends synthetic buffers through the real
+      # format and conversion code. It opens no device, mic or tap.
+      - name: Self-test meeting capture helper
+        working-directory: apps/electron
+        run: |
+          set -euo pipefail
+          helper="resources/bin/darwin-$(node -p process.arch)/macos-meeting-capture"
+          test -x "$helper"
+          "$helper" --self-test
+
+      - name: Typecheck and build electron app
         working-directory: apps/electron
         run: pnpm run build
 
       - name: Verify electron build output
         run: test -f apps/electron/out/main/index.js
 
-      # The app ships without node_modules (electron-builder.yml
-      # !node_modules/**), so every require() in the built bundles must
-      # resolve to Electron, a Node builtin, a relative chunk, or an
-      # allowlisted external — anything else would be dead in the packaged
-      # app. See apps/electron/scripts/check-bundled-requires.mjs.
+      # See apps/electron/scripts/check-bundled-requires.mjs.
       - name: Guard bundled require() surface
         working-directory: apps/electron
         run: node scripts/check-bundled-requires.mjs
 
-      # Emitted renderer HTML must reference assets root-absolute (/assets/…).
-      # electron-vite clobbers renderer base to './' in production; the
-      # enforce:'post' rendererRootBaseUrl plugin in electron.vite.config.ts is
-      # what restores '/' — if an upgrade defeats it, deep routes go blank with
-      # no error and no failing test. See
-      # apps/electron/scripts/check-renderer-asset-urls.mjs.
+      # See apps/electron/scripts/check-renderer-asset-urls.mjs.
       - name: Guard root-absolute renderer asset URLs
         working-directory: apps/electron
         run: node scripts/check-renderer-asset-urls.mjs
 
       - name: Run Electron E2E tests
-        timeout-minutes: 5
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @openstyle/electron run test:e2e
+        timeout-minutes: 10
+        run: pnpm --filter @openstyle/electron run test:e2e
 
-  build-mac:
+      - name: Upload E2E traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces
+          path: apps/electron/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Builds the MLX ASR worker once, in parallel with the other jobs. The
+  # package job takes the archive from this job.
+  worker:
+    name: Build MLX worker
+    needs: [changes]
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build MLX ASR worker archive
+        run: ./scripts/build_mlx_asr_worker.sh
+
+      - name: Verify MLX ASR worker archive exists
+        run: test -f dist/mlx_asr_worker-darwin-arm64.tar.gz
+
+      - name: Upload MLX ASR worker archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlx-worker
+          path: dist/mlx_asr_worker-darwin-arm64.tar.gz
+          retention-days: 7
+          if-no-files-found: error
+
+  package:
     name: Build (macOS)
-    needs: [changes, lint, typecheck, test-server]
-    if: needs.changes.outputs.run_electron == 'true'
+    needs: [changes, worker]
+    if: ${{ !cancelled() && needs.changes.outputs.package == 'true' && needs.worker.result == 'success' }}
     runs-on: macos-14
     # Notarization waits for Apple; the first submissions can take long.
     timeout-minutes: 90
@@ -224,14 +290,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup
-        with:
-          python-version: "3.12"
 
       - name: Build server
         run: pnpm turbo build --filter=@openstyle/server
 
-      - name: Build MLX ASR worker archive
-        run: ./scripts/build_mlx_asr_worker.sh
+      - name: Download MLX ASR worker archive
+        uses: actions/download-artifact@v4
+        with:
+          name: mlx-worker
+          path: dist
 
       - name: Verify MLX ASR worker archive exists
         run: test -f dist/mlx_asr_worker-darwin-arm64.tar.gz
@@ -280,7 +347,8 @@ jobs:
       #      the "Developer ID Application" identity, with the hardened
       #      runtime, and electron-builder notarizes and staples the app
       #      (App Store Connect API key: APPLE_API_KEY_P8, APPLE_API_KEY_ID,
-      #      APPLE_API_ISSUER).
+      #      APPLE_API_ISSUER). In a PR run (changes.outputs.notarize is
+      #      false) it signs with the hardened runtime but does not notarize.
       #   2. self: MAC_DEVID_CERT_P12 is empty and MAC_RELEASE_CERT_P12 is set.
       #      The job signs with the self-signed certificate "Openstyle
       #      Release" (scripts/release-cert-setup.sh). Not notarized.
@@ -415,6 +483,7 @@ jobs:
           # Progress lines for codesign and notarization (no secrets are printed).
           DEBUG: electron-osx-sign*,electron-notarize*,@electron/notarize*
           MODE: ${{ steps.signing.outputs.mode }}
+          NOTARIZE: ${{ needs.changes.outputs.notarize }}
           IDENTITY: ${{ steps.signing.outputs.identity }}
           API_KEY_PATH: ${{ steps.signing.outputs.api_key_path }}
           DEVID_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -422,12 +491,17 @@ jobs:
         run: |
           case "$MODE" in
             devid)
-              echo "Developer ID path: hardened runtime, notarization on."
               export CSC_FOR_PULL_REQUEST=true
-              export APPLE_API_KEY="$API_KEY_PATH"
-              export APPLE_API_KEY_ID="$DEVID_API_KEY_ID"
-              export APPLE_API_ISSUER="$DEVID_API_ISSUER"
-              pnpm run build:mac -c.mac.identity="$IDENTITY" -c.mac.hardenedRuntime=true -c.mac.notarize=true
+              if [ "$NOTARIZE" = "true" ]; then
+                echo "Developer ID path: hardened runtime, notarization on."
+                export APPLE_API_KEY="$API_KEY_PATH"
+                export APPLE_API_KEY_ID="$DEVID_API_KEY_ID"
+                export APPLE_API_ISSUER="$DEVID_API_ISSUER"
+                pnpm run build:mac -c.mac.identity="$IDENTITY" -c.mac.hardenedRuntime=true -c.mac.notarize=true
+              else
+                echo "Developer ID path: hardened runtime, notarization off (pull request)."
+                pnpm run build:mac -c.mac.identity="$IDENTITY" -c.mac.hardenedRuntime=true -c.mac.notarize=false
+              fi
               ;;
             self)
               echo "Release signing path: identity Openstyle Release, notarization off."
@@ -486,6 +560,7 @@ jobs:
         shell: bash
         env:
           MODE: ${{ steps.signing.outputs.mode }}
+          NOTARIZE: ${{ needs.changes.outputs.notarize }}
         run: |
           set -euo pipefail
           app=""
@@ -600,6 +675,10 @@ jobs:
           if [ "$MODE" != "devid" ]; then
             exit 0
           fi
+          if [ "$NOTARIZE" != "true" ]; then
+            echo "::notice::No notarization in this run (pull request). Gatekeeper and stapler checks skipped."
+            exit 0
+          fi
 
           echo "== spctl -a -vv -t exec $app"
           assessment="$(spctl -a -vv -t exec "$app" 2>&1 || true)"
@@ -653,17 +732,17 @@ jobs:
           security delete-keychain "$dir/release-signing.keychain-db" || true
           rm -rf "$dir"
 
+  # The only required check (ruleset 24718487 "main: PR + green CI").
+  # A skipped job passes; a failed or cancelled job fails.
   ci-status:
     name: CI Status
     if: always()
     needs:
       - changes
-      - lint
-      - knip
-      - typecheck
-      - test-server
-      - test-electron
-      - build-mac
+      - checks
+      - app-macos
+      - worker
+      - package
     runs-on: ubuntu-latest
     steps:
       - name: Check CI result

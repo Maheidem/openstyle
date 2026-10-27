@@ -223,8 +223,9 @@ staples the ticket to the app, before it makes the dmg and the zip.
 - **First Developer ID update:** the identity changes from "Openstyle Release"
   to the Developer ID, so macOS asks for the Privacy permissions once more.
   Later updates keep them. Say this in the changelog of that release.
-- **Cost:** notarization adds some minutes to each signed macOS build, also on
-  pull request builds from the same repository.
+- **Cost:** notarization adds some minutes to each signed macOS build. Only
+  `release/**` pushes and manual runs notarize. A PR that changes packaging
+  files signs with Developer ID but does not notarize.
 - **Rollback:** delete the `MAC_DEVID_CERT_P12` secret. The next build uses the
   self-signed path again (or ad-hoc if `MAC_RELEASE_CERT_P12` is also empty).
   Users who updated to a Developer ID build then get one more Privacy prompt.
@@ -358,8 +359,16 @@ rm -rf /tmp/release-<version>
 
 Releases 2.13.0 and 2.14.0 both failed on the release branch for Linux-only reasons: tests that assumed Apple silicon (`getDefaultModels()` swaps an MLX default on Linux; the aligner gate is off), a test that spawned `ffmpeg` (not on the runner), and an E2E test with an old concurrency assumption. Each failure cost a fix-and-push cycle on the release branch.
 
-Before `gh workflow run release.yml`: push the merged code to a throwaway branch (for example `ci/pre-release-<version>`), wait for Build & Test (all jobs, including Electron E2E), and only then dispatch. The Electron E2E suite also runs locally next to the installed app, in quiet mode only (see the live-testing skill). Delete the throwaway branch after. Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
+Before `gh workflow run release.yml`, start a manual full run of Build & Test on main and wait until it is green:
+
+```bash
+gh workflow run build.yml --repo Maheidem/openstyle --ref main -f package=true
+gh run list --repo Maheidem/openstyle --workflow build.yml --branch main --limit 1
+gh run watch <runId> --repo Maheidem/openstyle --exit-status
+```
+
+`package=true` also builds the worker and the signed, notarized package (the same path as the release branch). Use `package=false` when no packaging, native or worker file changed since the last release: it runs Checks and the macOS app + E2E only. A push to main runs no CI (since 2026-10-27), so this manual run is the only CI on the merged code. The Electron E2E suite also runs locally next to the installed app, in quiet mode only (see the live-testing skill). Also run `./node_modules/.bin/biome` and `pnpm run knip` directly (an output-filter wrapper once reported a false knip exit code).
 
 ## main is protected (since 2026-10-08)
 
-No direct push to main. The hand-written changelog and any pre-release merge go through a PR (`docs/changelog-<version>`) with green `CI Status`, squash-merged (auto-merge). That PR's CI run is also the pre-release CI check above. Craft's release merge into main still works: the release bot (app 4715859) is the only bypass actor of the ruleset. A fix needed on `release/<version>` is pushed there (not protected) and must also reach main through a PR.
+No direct push to main. The hand-written changelog and any pre-release merge go through a PR (`docs/changelog-<version>`) with green `CI Status`, squash-merged (auto-merge). That PR changes only `*.md`, so its CI skips the heavy jobs. It is not the pre-release check: use the manual full run above. Craft's release merge into main still works: the release bot (app 4715859) is the only bypass actor of the ruleset. A fix needed on `release/<version>` is pushed there (not protected) and must also reach main through a PR.
