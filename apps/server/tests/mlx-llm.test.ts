@@ -201,13 +201,23 @@ describe("provider resolution and the local / ownServer split (3.4)", () => {
     expect(isOwnServerProvider("openai")).toBe(false);
   });
 
-  it("gets its own lane with one slot", async () => {
+  it("gets one lane with one slot per model (one worker per model, pool)", async () => {
     await expect(
       llmLaneKeyForProvider(
         MLX_LLM_PROVIDER_ID,
         `${MLX_LLM_PROVIDER_ID}/${GEMMA_E2B}`,
       ),
-    ).resolves.toEqual({ key: "lane:local-mlx-llm", limit: 1 });
+    ).resolves.toEqual({ key: `lane:local-mlx-llm/${GEMMA_E2B}`, limit: 1 });
+    // The bare catalog id (registry callers strip the prefix) is the same lane.
+    await expect(
+      llmLaneKeyForProvider(MLX_LLM_PROVIDER_ID, GEMMA_E2B),
+    ).resolves.toEqual({ key: `lane:local-mlx-llm/${GEMMA_E2B}`, limit: 1 });
+    await expect(
+      llmLaneKeyForProvider(
+        MLX_LLM_PROVIDER_ID,
+        `${MLX_LLM_PROVIDER_ID}/${GEMMA_E4B}`,
+      ),
+    ).resolves.toEqual({ key: `lane:local-mlx-llm/${GEMMA_E4B}`, limit: 1 });
   });
 
   it("a task override to a local LLM needs no API key and gets verbatim sampling", async () => {

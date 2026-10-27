@@ -32,6 +32,7 @@ vi.mock("../src/lib/mlx-asr/constants.js", async (importOriginal) => ({
 }));
 
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
+import { __resetLlmLanesForTests, withLlmLane } from "../src/lib/llm/lane.js";
 import { hfRepoCacheDir } from "../src/lib/mlx-asr/constants.js";
 import {
   GIB,
@@ -400,6 +401,42 @@ describe("the model pool with a fake worker", () => {
     }
     expect(getMlxLlmWorkerState(E2B).state).toBe("ready");
     expect(getMlxLlmWorkerState(E4B).state).toBe("stopped");
+  });
+
+  it("each worker has its own lane: a call on one model does not wait behind another model", async () => {
+    __resetLlmLanesForTests();
+    let releaseSummary: () => void = () => {};
+    const summary = withLlmLane(
+      MLX_LLM_PROVIDER_ID,
+      `${MLX_LLM_PROVIDER_ID}/${B26}`,
+      { cls: "interactive", taskId: "meetingSummarize" },
+      () => new Promise<void>((r) => (releaseSummary = r)),
+    );
+    // The dictation model answers while the Summarize call holds its lane.
+    const order: string[] = [];
+    await withLlmLane(
+      MLX_LLM_PROVIDER_ID,
+      `${MLX_LLM_PROVIDER_ID}/${E2B}`,
+      { cls: "interactive", taskId: "cleanup" },
+      async () => {
+        order.push("cleanup");
+      },
+    );
+    // The same model still has one slot: a second call waits.
+    const second = withLlmLane(
+      MLX_LLM_PROVIDER_ID,
+      `${MLX_LLM_PROVIDER_ID}/${B26}`,
+      { cls: "interactive", taskId: "meetingEnhance" },
+      async () => {
+        order.push("enhance");
+      },
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    expect(order).toEqual(["cleanup"]);
+    releaseSummary();
+    await summary;
+    await second;
+    expect(order).toEqual(["cleanup", "enhance"]);
   });
 
   it("stopMlxLlmWorker(model) stops only that worker", async () => {
