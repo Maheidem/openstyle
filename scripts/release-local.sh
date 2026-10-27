@@ -335,9 +335,11 @@ lock_take e2e
 e2e_rc=0
 # The Test Runner app owns the Privacy grants (live-testing skill). HOME goes
 # after "--": a HOME in front of run.sh breaks its bundle lookup.
+# --retries=1 as in CI (playwright.config.ts retries once when CI is set): the
+# timed tray-popover specs flaked once in a full local run (2026-10-27).
 run scripts/test-runner/run.sh "$E" -- env HOME="$OPENSTYLE_ISOLATED_HOME" \
   OPENSTYLE_E2E_OMLX_URL=http://127.0.0.1:1 CSC_IDENTITY_AUTO_DISCOVERY=false \
-  timeout 2400 ./node_modules/.bin/playwright test "${specs[@]}" || e2e_rc=$?
+  timeout 2400 ./node_modules/.bin/playwright test --retries=1 "${specs[@]}" || e2e_rc=$?
 lock_release
 # Only AUTHREQ_PROMPTING means that macOS showed a Privacy dialog.
 tcc_prompts="$(/usr/bin/log show --start "$tcc_start" --predicate 'subsystem == "com.apple.TCC"' --style compact 2>/dev/null |
