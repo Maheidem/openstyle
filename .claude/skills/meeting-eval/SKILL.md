@@ -89,32 +89,63 @@ There is no `Downloading` line. A download line means the cache path is wrong.
 
 ## Blind judgment step
 
-Who judges: a Claude subagent that you start. The judge sees only the relabeled files. The lead (you) keeps the mapping.
+Who judges: Claude subagents that you start. A judge sees only the judge folder. The lead (you) keeps the mapping.
+
+The judge harness was rebuilt on 2026-10-26 after an owner review of 22 items. The old harness (one judge, one big rubric, cut compare lines, fault sums) picked main 3 of 3 where the owner saw a near tie. Its defects: 9 changed lines per meeting were hidden, quotes had 3 words of context, a fault sum punished the longer summary, and nothing checked order bias or the judge itself.
+
+The harness now works like this:
+
+- `transcript.md`: the RAW transcript, one line id per segment. Every summary task reads it, so the judge has the full context.
+- `corrections.md`: every line that an arm changed, in full, with 2 full lines before and after. No cap.
+- One task file per judge call: `TASK-corrections.md`, `TASK-decisions.md`, `TASK-actionItems.md`, `TASK-openQuestions.md`, `TASK-keyPoints.md`. Each call judges one section, item by item, against the transcript (decided / not decided, correct / wrong owner / wrong due / not an action, open / answered, supported / unsupported).
+- For decisions, action items and open questions, the judge also makes a reference list from the transcript. `score` reports precision (good items / items) and recall (covered reference items / reference items) per section. It never sums faults, so a longer summary is not punished for its length.
+- Verdict: summary F1 (pooled over the 3 sections) within 0.10 is a near tie. Corrections: the arm that is best on more changed lines is ahead.
 
 ```bash
 OUT=<out-dir of run.sh>
-for m in 5578edb0 ca70f895; do
-  python3 -I .claude/skills/meeting-eval/scripts/blind.py make --pack "$OUT/pack" --meeting $m
-done
+B=.claude/skills/meeting-eval/scripts/blind.py
+# Models of one out folder:
+python3 -I $B make --pack "$OUT/pack" --meeting <id8>
+# Builds of the same model (one out folder per build):
+python3 -I $B make --arm main=<out-main> --arm split=<out-split> --meeting <id8> --tag -j1
 ```
 
-Each call writes `$OUT/judge/<id8>/{A..F}.compare.md`, `{A..F}.summary.md` and `JUDGE.md`. It writes the mapping to `$OUT/blind-map-<id8>.json` (mode 0600), outside the judge folder. It replaces the model names in the text with `MODEL`.
+Each call writes `<root>/judge<tag>/<id8>/` and the mapping `<root>/blind-map<tag>-<id8>.json` (mode 0600, outside the judge folder). `<root>` is `$OUT` with `--pack`, else the parent folder of the first arm.
 
-1. Start one judge subagent per meeting. Brief: "Read `$OUT/judge/<id8>/JUDGE.md` and follow it. Read nothing else. Write `scores.json` in that folder." Do not give the judge the map path.
-2. The judge writes `scores.json` with fixes, harms, neutral, summary faults and rank per label.
-3. Unblind:
-   `python3 -I .claude/skills/meeting-eval/scripts/blind.py reveal --map "$OUT/blind-map-<id8>.json" --scores "$OUT/judge/<id8>/scores.json"`
-4. Report numbers per model. Use a model only if it has 0 hard fails on both meetings, or say why not.
+1. Start one fresh judge subagent per task file (5 per meeting). Brief: "Read `<judge dir>/TASK-<name>.md` and follow it. Read nothing else outside that folder." Do not give the judge the map path. Start them in parallel.
+2. Each judge writes `<name>.json` in the judge folder.
+3. Score and unblind: `python3 -I $B score --map <root>/blind-map<tag>-<id8>.json`. It prints the numbers per arm and writes `<map>.score.json`.
+4. Use 3 judge folders per meeting (`--tag -j1`, `-j2`, `-j3`: each gets its own random order). Report the verdict of each.
+5. Order-swap test: `make ... --swap-of <map of j1> --tag -swap`, judge it, score it, then `python3 -I $B consistency --a <j1 score> --b <swap score>`. A good judge gives the same verdict per item in both orders.
+6. Planted-error test: `make ... --plant --tag -plant`. The tool plants an invented decision, an invented owner, an invented due date, a lost negation, a changed number and a swapped name in one arm. `score` prints `plants caught: n/m`. A judge that misses planted errors cannot be trusted on that meeting.
+7. Report numbers per arm. Use a model only if it has 0 hard fails on both meetings, or say why not.
 
-Models compare only inside one `pack/`. To compare models, pass them as one comma list: `run.sh model-a,model-b`. Then all packs land in one `pack/` folder.
+Calibration against the owner (2026-10-26, E2B, both gold meetings): see `## Calibration` below.
 
 ## Cleanup
 
 ```bash
-rm -rf "$OUT/runs" "$OUT/pack" "$OUT/arms" "$OUT/judge" "$OUT"/blind-map-*.json
+rm -rf "$OUT/runs" "$OUT/pack" "$OUT/arms" "$OUT"/judge* "$OUT"/blind-map*.json
 ```
 
 Keep `results.md` and `results.json` (numbers only). Remove the GPU lock only if you hold it and the run died: `rm -rf /tmp/openstyle-gpu.lock` (check `owner` first).
+
+## Calibration
+
+Measured 2026-10-26 against 22 owner answers (16 Summarize questions on main vs split, 6 correction lines on main vs branch), E2B, both gold meetings, 3 fresh Claude judges per harness. A cell is one question for one arm (32 Summarize cells, 6 correction lines).
+
+| | Old harness | New, round 1 | New, round 2 |
+|---|---|---|---|
+| Summarize cells agree (per judge) | 21, 20, 21 of 32 | 21, 19, 20 of 32 | 25, 23, 25 of 32 |
+| Correction lines agree (per judge) | 3, 3, 3 of 6 | 4, 4, 4 of 6 | (same judges) |
+| Summarize verdict | main better (5 of 6 judge-meetings) | near tie (5 of 6) | near tie (4 of 6) |
+| Planted errors caught | not tested | 12 of 12 | 6 of 6 (summary) |
+| Order swap, same verdict per item | not tested | 30 of 32 items, 178 of 178 marks | not run |
+
+- Round 2 uses the rubric in this file now. Its 3 rubric rules come from the same owner answers (a to-do is not a decision; a question for a later call stays open; coverage needs the same task). The round-2 numbers are in-sample. Check them on a new owner review before you trust them.
+- The correction line winner comes from the marks. A free "best" pick changed with the label order (10 of 60 lines the same after a swap).
+- The old harness hid 9 changed lines per meeting and showed the model name in the compare header.
+- Disagreements left in round 2: the point of contact at the end of ca70f895 (the transcript says one thing, the owner knows another), and one action item that the judge counts as covered by a different task.
 
 ## Update this skill
 
