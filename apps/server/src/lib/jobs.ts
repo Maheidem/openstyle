@@ -81,11 +81,13 @@ function modelJob(
 function modelJobs(): ModelJobItem[] {
   if (!isAppleSiliconMac()) return [];
   const voice = getMlxAsrWorkerState();
-  const llm = getMlxLlmWorkerState();
   const embed = getMlxEmbedWorkerState();
   return [
     ...getAllMlxModelStatuses().map((s) => modelJob("voice", s, voice)),
-    ...getAllMlxLlmModelStatuses().map((s) => modelJob("llm", s, llm)),
+    // The LLM pool has one worker per model (specs/llm-runtime-tuning.md 6).
+    ...getAllMlxLlmModelStatuses().map((s) =>
+      modelJob("llm", s, getMlxLlmWorkerState(s.model)),
+    ),
     ...getAllMlxEmbedModelStatuses().map((s) =>
       modelJob("embedding", s, embed),
     ),

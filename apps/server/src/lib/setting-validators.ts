@@ -18,6 +18,7 @@ import {
   meetingSttModelSettingSchema,
   meetingSummaryInstructionsSchema,
   meetingSummaryTimeoutSecondsSettingSchema,
+  mlxLlmKeepReadySchema,
   proxyUrlSettingSchema,
 } from "@openstyle/validations";
 import { HISTORY_RETENTION_SETTING_KEY } from "./history-store.js";
@@ -167,6 +168,10 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
     ),
   ],
   ["llm_task_assignments", checkTaskAssignments],
+  [
+    "mlx_llm_keep_ready",
+    jsonCheck(mlxLlmKeepReadySchema, "Invalid keep ready setting"),
+  ],
   [
     PROXY_URL_SETTING,
     schemaCheck(proxyUrlSettingSchema, { fallback: "Invalid proxy URL" }),

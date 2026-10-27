@@ -25,6 +25,7 @@ const KNOWN_ERROR_KINDS: ReadonlySet<string> = new Set([
   "provider_invalid_request",
   "model_mismatch",
   "model_unavailable",
+  "engine_not_ready",
   "deadline_exceeded",
   "budget_exceeded",
   "empty_input",
@@ -73,6 +74,36 @@ export interface RunNotice {
   canResume: boolean;
   /** The "Start again" label says that it discards the stopped run's work. */
   startAgainDiscards: boolean;
+  /**
+   * The run stopped because the on-device engine was not ready (an update of
+   * the MLX worker is not installed). The server starts the run again when
+   * the engine is ready, so the notice is neutral and has its own text.
+   */
+  waitingForEngine: boolean;
+}
+
+/**
+ * True when the newest run of a kind stopped because the on-device engine was
+ * not ready. The server starts it again by itself, so the view polls.
+ */
+export function waitsForEngine(
+  runs: readonly LlmRunInfo[] | undefined,
+): boolean {
+  if (!runs) return false;
+  const newest = new Map<LlmRunKind, LlmRunInfo>();
+  for (const run of runs) {
+    const seen = newest.get(run.kind);
+    if (!seen || run.startedAt > seen.startedAt) newest.set(run.kind, run);
+  }
+  return [...newest.values()].some(
+    (run) =>
+      run.status !== "interrupted" && run.errorKind === "engine_not_ready",
+  );
+}
+
+/** The i18n key of the headline of a run that waits for the on-device engine. */
+export function engineNotReadyTextKey(kind: LlmRunKind): string {
+  return `meetings.llmRun.engineNotReady.${kind}`;
 }
 
 /** The i18n key of the text for an error kind. An unknown kind reads as `unknown`. */
@@ -218,16 +249,21 @@ export function runNotice(
     return null;
   }
   const interrupted = run.status === "interrupted";
+  const waitingForEngine = !interrupted && run.errorKind === "engine_not_ready";
   return {
     runId: run.id,
     kind: run.kind,
     status: run.status,
-    tone: interrupted ? "neutral" : "destructive",
-    lines: interrupted && run.errorKind === null ? [] : noticeLines(run),
+    tone: interrupted || waitingForEngine ? "neutral" : "destructive",
+    lines:
+      (interrupted && run.errorKind === null) || waitingForEngine
+        ? []
+        : noticeLines(run),
     failedSteps: run.failedStepCount,
     totalSteps: run.llmStepCount,
     canResume: interrupted,
     startAgainDiscards: interrupted,
+    waitingForEngine,
   };
 }
 

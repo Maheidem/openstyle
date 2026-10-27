@@ -35,6 +35,7 @@ import {
   WORKFLOW_FANOUT_CAP,
   type WorkflowDeps,
 } from "./context.js";
+import { cancelEngineRetry, scheduleEngineRetry } from "./engine-retry.js";
 import { type FolderMemory, folderMemoryRecord } from "./folder-memory.js";
 import type { CompiledWorkflow } from "./graph.js";
 import { loadGraph } from "./load-graph.js";
@@ -105,6 +106,8 @@ interface RunContextHandle {
   ctx: RunContext;
   /** What `recordLost` counted. */
   lostRecords(): number;
+  /** The kind that stopped the run (`ctx.stopRun`), or null. */
+  stoppedKind(): FailureKind | null;
   /** A resume: take the plan and the finished chunks from the checkpoint. */
   resumeFrom(values: StateValues): void;
 }
@@ -271,6 +274,7 @@ function makeRunContext(o: {
   return {
     ctx,
     lostRecords: () => lost,
+    stoppedKind: () => stoppedKind,
     resumeFrom(values) {
       const chunks = (values.prepared as { chunks?: unknown[] } | undefined)
         ?.chunks;
@@ -342,7 +346,17 @@ export function startRun(
     return { ok: false, reason: "error" };
   }
   runRegistry.claim(SCOPE, meetingId, { runId, controller });
-  void execute({ runId, meetingId, mode: "start", stages, deps, controller });
+  // A new run replaces a run that waits for the on-device engine.
+  cancelEngineRetry(meetingId);
+  void execute({
+    runId,
+    meetingId,
+    mode: "start",
+    stages,
+    deps,
+    controller,
+    overrides,
+  });
   return { ok: true, runId };
 }
 
@@ -362,6 +376,8 @@ interface ExecuteArgs {
   graph?: CompiledWorkflow;
   /** A resume: the checkpoint values that `resumeRun` read. */
   resumed?: StateValues;
+  /** The test seams of the caller. A run that starts again uses them too. */
+  overrides?: RunnerDeps;
 }
 
 interface StateValues {
@@ -594,6 +610,13 @@ function finish(o: {
     errorKind = "internal";
     errorDetail = o.faultDetail;
   }
+  // The on-device engine was not ready (the MLX worker update is not
+  // installed). The run names this state, and it starts again when the
+  // engine is ready (engine-retry.ts).
+  const engineNotReady =
+    handle?.stoppedKind() === "engine_not_ready" &&
+    (status === "failed" || status === "partial");
+  if (engineNotReady) errorKind ??= "engine_not_ready";
   const counts =
     kindOf(final.stages) === "enhance" && final.saved
       ? {
@@ -628,6 +651,14 @@ function finish(o: {
   }
   if (status !== "interrupted") admin.deleteCheckpoints(runId);
   log.info(`meeting ${meetingId}: run ${runId} ${status}`);
+  if (engineNotReady) {
+    const stages = final.stages;
+    scheduleEngineRetry(meetingId, () => {
+      const r = startRun({ meetingId, stages, trigger: "auto" }, a.overrides);
+      if (r.ok) return "started";
+      return r.reason === "job_running" ? "busy" : "gone";
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -754,6 +785,7 @@ export async function resumeRun(
       controller,
       graph,
       resumed: snap.values as StateValues,
+      overrides,
     });
     return { ok: true, runId };
   } catch (err) {

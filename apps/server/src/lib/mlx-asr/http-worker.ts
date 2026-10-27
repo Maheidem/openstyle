@@ -112,6 +112,24 @@ function reservePort(): Promise<number> {
   });
 }
 
+/**
+ * Why an HTTP mode worker cannot run now, or null when it can. An existing
+ * binary in `overrideEnv` (TRUSTED-OPERATOR-ONLY) skips the runtime check.
+ */
+export function mlxHttpWorkerSetupBlocker(
+  overrideEnv: string,
+): MlxSetupBlocker | null {
+  if (!isAppleSiliconMac()) {
+    return {
+      code: "unsupported-platform",
+      message: MLX_UNSUPPORTED_PLATFORM_REASON,
+    };
+  }
+  const path = process.env[overrideEnv];
+  if (path && existsSync(path)) return null;
+  return mlxSetupBlocker();
+}
+
 export function createMlxHttpWorker<D extends MlxHttpModelDef>(
   opts: MlxHttpWorkerOptions<D>,
 ): MlxHttpWorker<D> {
@@ -140,15 +158,7 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
     process.env[opts.overrideEnv] || undefined;
 
   function setupBlocker(): MlxSetupBlocker | null {
-    if (!isAppleSiliconMac()) {
-      return {
-        code: "unsupported-platform",
-        message: MLX_UNSUPPORTED_PLATFORM_REASON,
-      };
-    }
-    const path = override();
-    if (path && existsSync(path)) return null;
-    return mlxSetupBlocker();
+    return mlxHttpWorkerSetupBlocker(opts.overrideEnv);
   }
 
   function getState(): MlxHttpWorkerState {

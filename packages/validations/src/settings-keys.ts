@@ -81,6 +81,8 @@ export const SETTINGS_KEYS = {
   micDeviceId: "mic_device_id",
   mlxAsrKeepAliveMinutes: "mlx_asr_keep_alive_minutes",
   mlxLlmKeepAliveMinutes: "mlx_llm_keep_alive_minutes",
+  /** JSON `MlxLlmKeepReady`: per task, keep the built-in local model loaded. */
+  mlxLlmKeepReady: "mlx_llm_keep_ready",
   networkCaCertPath: "network_ca_cert_path",
   networkProxyUrl: "network_proxy_url",
   outputMode: "output_mode",

@@ -10,6 +10,7 @@ import { join } from "node:path";
  * Env: FAKE_LLM_LOG appends one JSON line with the arguments at start and one
  * JSON line per request (with the prefix cache header). FAKE_LLM_CONTENT sets
  * the answer text. FAKE_LLM_FAIL=1 prints an error line before ready.
+ * FAKE_LLM_DELAY_MS holds each chat answer for that time (a busy worker).
  */
 export const FAKE_LLM_WORKER_SOURCE = `#!/usr/bin/env node
 const http = require("node:http");
@@ -45,11 +46,12 @@ const server = http.createServer((req, res) => {
       log({ method: "POST", url: req.url, body: parsed, hf_hub_offline: process.env.HF_HUB_OFFLINE ?? null, prefix_cache: req.headers["x-openstyle-prefix-cache"] ?? null });
       if (parsed.stream === true) return send(400, { error: { message: "stream is not supported", type: "invalid_request_error" } });
       const content = process.env.FAKE_LLM_CONTENT ?? "Fake worker reply.";
-      return send(200, {
+      const delay = Number(process.env.FAKE_LLM_DELAY_MS ?? 0);
+      return setTimeout(() => send(200, {
         id: "chatcmpl-fake", object: "chat.completion", created: Math.floor(Date.now() / 1000), model,
         choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
         usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
-      });
+      }), delay);
     }
     send(404, { error: { message: "not found", type: "invalid_request_error" } });
   });

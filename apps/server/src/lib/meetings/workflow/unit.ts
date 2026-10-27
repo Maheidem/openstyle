@@ -517,6 +517,7 @@ export async function runUnitRoute<M, T>(
       // A call that reached the wire but wrote no record is a lost record.
       const neverSent =
         err.kind === "model_unavailable" ||
+        err.kind === "engine_not_ready" ||
         (err instanceof CancelledError && err.phase === "queued") ||
         (err instanceof ContextExceededError && err.source === "estimate");
       if (err.facts.callId === null && !neverSent) ctx.recordLost();

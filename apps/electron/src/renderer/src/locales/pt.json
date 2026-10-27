@@ -655,6 +655,8 @@
       "customOption": "Personalizado…",
       "modelOverrideLabel": "Modelo",
       "modelOverrideDefault": "Usar padrão ({{name}})",
+      "keepReadyLabel": "Manter pronto",
+      "keepReadyDesc": "Mantém este modelo carregado para responder na hora. Usa memória enquanto o Openstyle está aberto.",
       "reset": "Redefinir",
       "newPreset": "Nova predefinição",
       "presetNameLabel": "Nome",
@@ -739,7 +741,8 @@
       "descAlways": "Mantém o modelo de IA na memória o tempo todo, até você fechar o Openstyle. Mais rápido no uso repetido, usa mais RAM.",
       "descCold": "Descarrega o modelo de IA da memória após cada pedido. Usa menos RAM, mas a próxima limpeza ou resumo espera um recarregamento completo.",
       "descOneMinute": "Mantém o modelo de IA na memória por cerca de 1 minuto após cada pedido, para que os próximos pedidos sejam rápidos.",
-      "descMinutes": "Mantém o modelo de IA na memória por até {{minutes}} minutos após cada pedido. Mais rápido no uso repetido, mais RAM enquanto ativo."
+      "descMinutes": "Mantém o modelo de IA na memória por até {{minutes}} minutos após cada pedido. Mais rápido no uso repetido, mais RAM enquanto ativo.",
+      "keepReadyNote": "Uma tarefa com “Manter pronto” ligado mantém o modelo carregado o tempo todo."
     },
     "fit": {
       "runsWell": "Roda bem",
@@ -978,6 +981,10 @@
         "partial": "O resumo terminou com erros. {{failed}} de {{total}} etapas falharam.",
         "interrupted": "O resumo parou quando o Openstyle foi fechado."
       },
+      "engineNotReady": {
+        "enhance": "O motor de IA do dispositivo está sendo atualizado. O aprimoramento começa de novo quando o motor estiver pronto.",
+        "summarize": "O motor de IA do dispositivo está sendo atualizado. O resumo começa de novo quando o motor estiver pronto."
+      },
       "line": "{{where}}: {{reason}}",
       "node": {
         "correctChunk": "Correções",
@@ -1005,6 +1012,7 @@
       "provider_invalid_request": "O provedor recusou a solicitação.",
       "model_mismatch": "O servidor respondeu com outro modelo.",
       "model_unavailable": "O Openstyle não pode usar o modelo escolhido. Verifique Configurações › Modelos e tente de novo.",
+      "engine_not_ready": "O motor de IA do dispositivo ainda não está pronto. Ele está instalando uma atualização.",
       "deadline_exceeded": "O resumo levou mais tempo que o seu limite de tempo.",
       "budget_exceeded": "A reunião é longa demais para o limite de resumo de 24 chamadas.",
       "empty_input": "A reunião não tem texto para processar.",

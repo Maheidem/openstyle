@@ -107,6 +107,9 @@ beforeAll(() => {
   process.env.HUGGINGFACE_HUB_CACHE = join(scratch, "hf");
   process.env.OPENSTYLE_MLX_LLM_WORKER = writeFakeLlmWorker(scratch);
   process.env.FAKE_LLM_LOG = workerLog;
+  // A big Mac, so the pool budget never stops a worker here. CI runners have
+  // less RAM. The pool tests (mlx-llm-pool.test.ts) set small values.
+  process.env.OPENSTYLE_MLX_LLM_FIT_RAM_GIB = "128";
 });
 
 afterEach(async () => {
@@ -125,6 +128,7 @@ afterAll(() => {
     delete process.env.OPENSTYLE_MLX_LLM_WORKER;
   else process.env.OPENSTYLE_MLX_LLM_WORKER = ORIGINAL_ENV.worker;
   delete process.env.FAKE_LLM_LOG;
+  delete process.env.OPENSTYLE_MLX_LLM_FIT_RAM_GIB;
   rmSync(scratch, { recursive: true, force: true });
 });
 
@@ -382,7 +386,7 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     expect(posted.map((r) => r.prefix_cache)).toEqual(["on", null]);
   });
 
-  it("reuses a running worker, and a different model replaces it", async () => {
+  it("reuses a running worker, and a different model gets its own worker (pool)", async () => {
     seedModel(GEMMA_E2B);
     seedModel(GEMMA_E4B);
     const a = await ensureMlxLlmWorker(GEMMA_E2B);
@@ -390,9 +394,12 @@ describe("status and worker lifecycle with a fake worker (3.2, 3.3)", () => {
     expect(again.baseURL).toBe(a.baseURL);
     const b = await ensureMlxLlmWorker(GEMMA_E4B);
     expect(b.hfId).toBe("mlx-community/gemma-4-E4B-it-qat-4bit");
-    expect(getMlxLlmWorkerState().model).toBe(GEMMA_E4B);
-    // The old worker no longer answers.
-    await expect(fetch(`${a.baseURL}/models`)).rejects.toThrow();
+    expect(b.baseURL).not.toBe(a.baseURL);
+    expect(getMlxLlmWorkerState(GEMMA_E4B).state).toBe("ready");
+    // This Mac has room for both (specs/llm-runtime-tuning.md 6): the first
+    // worker still answers.
+    expect(getMlxLlmWorkerState(GEMMA_E2B).state).toBe("ready");
+    expect((await fetch(`${a.baseURL}/models`)).status).toBe(200);
   });
 
   it("keep-alive 0 unloads the worker after the request", async () => {
@@ -441,6 +448,15 @@ describe("/api/mlx-llm routes (3.5)", () => {
       state: "stopped",
       port: null,
     });
+    // The model pool (specs/llm-runtime-tuning.md 6): no worker yet, and the
+    // owner default for "Keep ready" (cleanup only).
+    expect(data.workers).toEqual([]);
+    expect(data.keepReady).toEqual({
+      cleanup: true,
+      meetingSummarize: false,
+      meetingEnhance: false,
+    });
+    expect(data.memory).toMatchObject({ usedBytes: 0 });
     const models = data.models as Array<Record<string, unknown>>;
     expect(models.map((m) => m.model)).toEqual(MLX_LLM_MODELS.map((m) => m.id));
     expect(Object.keys(models[0] ?? {}).sort()).toEqual(

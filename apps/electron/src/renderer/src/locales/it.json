@@ -655,6 +655,8 @@
       "customOption": "Personalizzato…",
       "modelOverrideLabel": "Modello",
       "modelOverrideDefault": "Usa predefinito ({{name}})",
+      "keepReadyLabel": "Tieni pronto",
+      "keepReadyDesc": "Tiene questo modello caricato, così risponde subito. Usa memoria finché Openstyle è aperto.",
       "reset": "Reimposta",
       "newPreset": "Nuovo preset",
       "presetNameLabel": "Nome",
@@ -739,7 +741,8 @@
       "descAlways": "Tiene il modello di IA sempre in memoria, finché non chiudi Openstyle. È il più veloce nell'uso ripetuto, usa più RAM.",
       "descCold": "Scarica il modello di IA dalla memoria dopo ogni richiesta. Usa meno RAM, ma la pulizia o il riepilogo successivo attende un ricaricamento completo.",
       "descOneMinute": "Tiene il modello di IA in memoria per circa 1 minuto dopo ogni richiesta, così le richieste successive restano veloci.",
-      "descMinutes": "Tiene il modello di IA in memoria fino a {{minutes}} minuti dopo ogni richiesta. Più veloce nell'uso ripetuto, più RAM mentre è attivo."
+      "descMinutes": "Tiene il modello di IA in memoria fino a {{minutes}} minuti dopo ogni richiesta. Più veloce nell'uso ripetuto, più RAM mentre è attivo.",
+      "keepReadyNote": "Un’attività con «Tieni pronto» attivo tiene sempre caricato il suo modello."
     },
     "fit": {
       "runsWell": "Funziona bene",
@@ -978,6 +981,10 @@
         "partial": "Il riepilogo è terminato con errori. {{failed}} passaggi su {{total}} sono falliti.",
         "interrupted": "Il riepilogo si è fermato alla chiusura di Openstyle."
       },
+      "engineNotReady": {
+        "enhance": "Il motore IA sul dispositivo si sta aggiornando. Il miglioramento ripartirà quando il motore sarà pronto.",
+        "summarize": "Il motore IA sul dispositivo si sta aggiornando. Il riepilogo ripartirà quando il motore sarà pronto."
+      },
       "line": "{{where}}: {{reason}}",
       "node": {
         "correctChunk": "Correzioni",
@@ -1005,6 +1012,7 @@
       "provider_invalid_request": "Il provider ha rifiutato la richiesta.",
       "model_mismatch": "Il server ha risposto con un altro modello.",
       "model_unavailable": "Openstyle non può usare il modello scelto. Controlla Impostazioni › Modelli e riprova.",
+      "engine_not_ready": "Il motore IA sul dispositivo non è ancora pronto. Sta installando un aggiornamento.",
       "deadline_exceeded": "Il riepilogo ha superato il suo limite di tempo.",
       "budget_exceeded": "La riunione è troppo lunga per il limite di riepilogo di 24 chiamate.",
       "empty_input": "La riunione non ha testo da elaborare.",

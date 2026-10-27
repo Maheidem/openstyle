@@ -491,7 +491,7 @@ const PROVIDERS: LlmProvider[] = [
         ...(taskContext?.task === "cleanup" && taskContext.prefixCache !== false
           ? { headers: { [MLX_LLM_PREFIX_CACHE_HEADER]: "on" } }
           : {}),
-        fetch: trackMlxLlmFetch(taskSamplingFetch(taskContext)),
+        fetch: trackMlxLlmFetch(modelId, taskSamplingFetch(taskContext)),
         // The worker reports the HF repo id as the served model.
       }).chat(hfId);
     },

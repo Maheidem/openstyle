@@ -1,4 +1,8 @@
-import type { LlmRunKind, MeetingDetail } from "@openstyle/validations";
+import type {
+  LlmRunKind,
+  LlmRunListResponse,
+  MeetingDetail,
+} from "@openstyle/validations";
 import { InlineNotice } from "@renderer/components/inline-notice";
 import { Markdown } from "@renderer/components/markdown";
 import {
@@ -69,6 +73,7 @@ import { type HeaderActionKey, primaryActionKey } from "./header-model";
 import { type InspectorTarget, LlmInspectorPanel } from "./llm-inspector";
 import { isAdvancedMode } from "./llm-inspector-model";
 import {
+  engineNotReadyTextKey,
   enhanceNoteOf,
   formatChunkList,
   isSummarizeCancelled,
@@ -77,7 +82,12 @@ import {
   noticeTextKey,
   type RunNotice,
   runNotice,
+  waitsForEngine,
 } from "./run-notice";
+
+/** While a run waits for the on-device engine, the meeting refetches this often. */
+const ENGINE_WAIT_POLL_MS = 5000;
+
 import { SummaryInstructionsPopover } from "./settings-popovers";
 import {
   CopyButton,
@@ -190,7 +200,15 @@ export function MeetingDetailView({
       query.state.data?.job?.kind === "summarize" ||
       query.state.data?.job?.kind === "enhance"
         ? 1000
-        : false,
+        : // A run waits for the on-device engine: the server starts it
+          // again by itself, so watch for its job.
+          waitsForEngine(
+              queryClient.getQueryData<LlmRunListResponse>(
+                queryKeys.meetings.llmRunsLatest(id),
+              )?.runs,
+            )
+          ? ENGINE_WAIT_POLL_MS
+          : false,
   });
 
   const hasTranscript =
@@ -1529,21 +1547,32 @@ function RunNoticeView({
   return (
     <InlineNotice
       tone={notice.tone}
-      icon={notice.status === "interrupted" ? CircleSlash : AlertTriangle}
+      icon={
+        notice.waitingForEngine
+          ? Clock
+          : notice.status === "interrupted"
+            ? CircleSlash
+            : AlertTriangle
+      }
       iconClassName={
-        notice.status === "interrupted" ? "text-muted-foreground" : undefined
+        notice.status === "interrupted" || notice.waitingForEngine
+          ? "text-muted-foreground"
+          : undefined
       }
     >
       <span
         className="flex min-w-0 flex-col gap-2"
         data-testid={`meetings-run-notice-${notice.kind}`}
         data-run-status={notice.status}
+        data-waiting-for-engine={notice.waitingForEngine ? "true" : undefined}
       >
         <span>
-          {t(noticeTextKey(notice.kind, notice.status), {
-            failed: notice.failedSteps,
-            total: notice.totalSteps,
-          })}
+          {notice.waitingForEngine
+            ? t(engineNotReadyTextKey(notice.kind))
+            : t(noticeTextKey(notice.kind, notice.status), {
+                failed: notice.failedSteps,
+                total: notice.totalSteps,
+              })}
         </span>
         {notice.lines.length > 0 && (
           <ul className="m-0 list-none space-y-1 p-0">

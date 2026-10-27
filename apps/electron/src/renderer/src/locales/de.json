@@ -656,6 +656,8 @@
       "customOption": "Benutzerdefiniert…",
       "modelOverrideLabel": "Modell",
       "modelOverrideDefault": "Standard verwenden ({{name}})",
+      "keepReadyLabel": "Bereit halten",
+      "keepReadyDesc": "Dieses Modell geladen lassen, damit es sofort antwortet. Es belegt Speicher, solange Openstyle läuft.",
       "reset": "Zurücksetzen",
       "newPreset": "Neues Preset",
       "presetNameLabel": "Name",
@@ -740,7 +742,8 @@
       "descAlways": "Hält das KI-Modell immer im Speicher, bis du Openstyle beendest. Am schnellsten bei wiederholter Nutzung, braucht am meisten RAM.",
       "descCold": "Entlädt das KI-Modell nach jeder Anfrage aus dem Speicher. Braucht weniger RAM, aber die nächste Bereinigung oder Zusammenfassung wartet auf ein vollständiges Neuladen.",
       "descOneMinute": "Hält das KI-Modell nach jeder Anfrage etwa 1 Minute im Speicher, damit schnelle Folgeanfragen schnell bleiben.",
-      "descMinutes": "Hält das KI-Modell nach jeder Anfrage bis zu {{minutes}} Minuten im Speicher. Schneller bei wiederholter Nutzung, mehr RAM, solange es warm ist."
+      "descMinutes": "Hält das KI-Modell nach jeder Anfrage bis zu {{minutes}} Minuten im Speicher. Schneller bei wiederholter Nutzung, mehr RAM, solange es warm ist.",
+      "keepReadyNote": "Eine Aufgabe mit „Bereit halten“ lässt ihr Modell immer geladen."
     },
     "fit": {
       "runsWell": "Läuft gut",
@@ -979,6 +982,10 @@
         "partial": "Zusammenfassen mit Fehlern beendet. {{failed}} von {{total}} Schritten sind fehlgeschlagen.",
         "interrupted": "Zusammenfassen wurde angehalten, als Openstyle geschlossen wurde."
       },
+      "engineNotReady": {
+        "enhance": "Die KI-Engine auf dem Gerät wird aktualisiert. Verbessern startet erneut, sobald die Engine bereit ist.",
+        "summarize": "Die KI-Engine auf dem Gerät wird aktualisiert. Zusammenfassen startet erneut, sobald die Engine bereit ist."
+      },
       "line": "{{where}}: {{reason}}",
       "node": {
         "correctChunk": "Korrekturen",
@@ -1006,6 +1013,7 @@
       "provider_invalid_request": "Der Anbieter hat die Anfrage abgelehnt.",
       "model_mismatch": "Der Server hat mit einem anderen Modell geantwortet.",
       "model_unavailable": "Openstyle kann das gewählte Modell nicht verwenden. Prüfen Sie Einstellungen › Modelle und versuchen Sie es erneut.",
+      "engine_not_ready": "Die KI-Engine auf dem Gerät ist noch nicht bereit. Sie installiert ein Update.",
       "deadline_exceeded": "Die Zusammenfassung hat ihr Zeitlimit überschritten.",
       "budget_exceeded": "Das Meeting ist zu lang für das Zusammenfassungslimit von 24 Aufrufen.",
       "empty_input": "Das Meeting enthält keinen Text zum Verarbeiten.",

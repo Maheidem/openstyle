@@ -656,6 +656,8 @@
       "customOption": "カスタム…",
       "modelOverrideLabel": "モデル",
       "modelOverrideDefault": "デフォルトを使用 ({{name}})",
+      "keepReadyLabel": "常に準備",
+      "keepReadyDesc": "このモデルを読み込んだままにして、すぐに応答できるようにします。Openstyle の実行中はメモリを使います。",
       "reset": "リセット",
       "newPreset": "新しいプリセット",
       "presetNameLabel": "名前",
@@ -740,7 +742,8 @@
       "descAlways": "Openstyle を終了するまで、AIモデルを常にメモリに保持します。繰り返し使うときに最も速く、RAM の使用量が最も多くなります。",
       "descCold": "リクエストのたびにAIモデルをメモリからアンロードします。RAM の使用量は少なくなりますが、次のクリーンアップや要約ではモデルの再読み込みを待つことになります。",
       "descOneMinute": "リクエストのあと約1分間、AIモデルをメモリに保持します。続けてすぐに使うときも速いままです。",
-      "descMinutes": "リクエストのあと最大{{minutes}}分間、AIモデルをメモリに保持します。繰り返し使うときに速くなり、保持中は RAM を多く使います。"
+      "descMinutes": "リクエストのあと最大{{minutes}}分間、AIモデルをメモリに保持します。繰り返し使うときに速くなり、保持中は RAM を多く使います。",
+      "keepReadyNote": "「常に準備」がオンのタスクは、モデルを常に読み込んだままにします。"
     },
     "fit": {
       "runsWell": "快適に動作",
@@ -979,6 +982,10 @@
         "partial": "要約はエラーありで終了しました。{{total}}ステップのうち{{failed}}ステップが失敗しました。",
         "interrupted": "Openstyleが終了したため、要約が停止しました。"
       },
+      "engineNotReady": {
+        "enhance": "デバイス上の AI エンジンを更新中です。エンジンの準備ができると、強化が自動で再開します。",
+        "summarize": "デバイス上の AI エンジンを更新中です。エンジンの準備ができると、要約が自動で再開します。"
+      },
       "line": "{{where}}: {{reason}}",
       "node": {
         "correctChunk": "修正",
@@ -1006,6 +1013,7 @@
       "provider_invalid_request": "プロバイダーがリクエストを拒否しました。",
       "model_mismatch": "サーバーが別のモデルで応答しました。",
       "model_unavailable": "Openstyleは選択したモデルを使用できません。設定 › モデルを確認してから、もう一度お試しください。",
+      "engine_not_ready": "デバイス上の AI エンジンはまだ準備できていません。アップデートをインストールしています。",
       "deadline_exceeded": "要約が制限時間を超えました。",
       "budget_exceeded": "ミーティングが長すぎるため、要約の上限である24回の呼び出しに収まりません。",
       "empty_input": "ミーティングに処理するテキストがありません。",

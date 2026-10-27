@@ -770,7 +770,7 @@ describe("HE13 to HE16, cancel, deadline, setup", () => {
   });
 });
 
-describe("the error kinds cover the 15 kinds of 5.2", () => {
+describe("the error kinds cover the 16 kinds of 5.2 (and engine_not_ready)", () => {
   it("every GatewayErrorKind has a class that produces it", () => {
     // A Record keyed by the union fails the type check when a kind is added.
     const classes: Record<GatewayErrorKind, string> = {
@@ -788,9 +788,10 @@ describe("the error kinds cover the 15 kinds of 5.2", () => {
       provider_auth: "ProviderError",
       provider_invalid_request: "ProviderError",
       model_unavailable: "ModelUnavailableError",
+      engine_not_ready: "EngineNotReadyError",
       deadline_exceeded: "DeadlineExceededError",
     };
-    expect(Object.keys(classes)).toHaveLength(15);
+    expect(Object.keys(classes)).toHaveLength(16);
   });
 });
 

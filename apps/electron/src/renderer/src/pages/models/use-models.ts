@@ -4,13 +4,16 @@ import type {
   LlmTaskAssignment,
   LlmTaskAssignments,
   LlmTaskId,
+  MlxLlmKeepReady,
 } from "@openstyle/validations";
 import {
   clampMlxKeepAliveMinutes,
   MLX_KEEP_ALIVE_DEFAULT_MINUTES,
   MLX_LLM_KEEP_ALIVE_DEFAULT_MINUTES,
+  MLX_LLM_KEEP_READY_DEFAULT,
   parseCleanupSampling,
   parseLlmTaskAssignments,
+  parseMlxLlmKeepReady,
 } from "@openstyle/validations";
 import { getClient } from "@renderer/lib/api";
 import {
@@ -170,6 +173,9 @@ export interface UseModels {
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   saveMlxLlmKeepAliveMinutes: (minutes: number) => void;
+  /** Per task: keep its built-in local model loaded (specs/llm-runtime-tuning.md 6). */
+  mlxLlmKeepReady: MlxLlmKeepReady;
+  saveMlxLlmKeepReady: (taskId: LlmTaskId, on: boolean) => void;
   saveTaskAssignment: (
     taskId: LlmTaskId,
     assignment: LlmTaskAssignment,
@@ -245,6 +251,11 @@ export function useModels(): UseModels {
   const [mlxLlmKeepAliveMinutes, setMlxLlmKeepAliveMinutes] = useState(
     MLX_LLM_KEEP_ALIVE_DEFAULT_MINUTES,
   );
+  const [mlxLlmKeepReady, setMlxLlmKeepReady] = useState<MlxLlmKeepReady>({
+    ...MLX_LLM_KEEP_READY_DEFAULT,
+  });
+  // The last value the user chose: a fast second click builds on it.
+  const keepReadyRef = useRef<MlxLlmKeepReady>(mlxLlmKeepReady);
   const [cleanupSampling, setCleanupSampling] = useState<CleanupSampling>({});
   const [taskAssignments, setTaskAssignments] = useState<LlmTaskAssignments>(
     {},
@@ -301,6 +312,9 @@ export function useModels(): UseModels {
     setTaskAssignments(
       parseLlmTaskAssignments(s[SETTINGS_KEYS.llmTaskAssignments]),
     );
+    const keepReady = parseMlxLlmKeepReady(s[SETTINGS_KEYS.mlxLlmKeepReady]);
+    keepReadyRef.current = keepReady;
+    setMlxLlmKeepReady(keepReady);
     try {
       const rawPresets = s[SETTINGS_KEYS.llmParameterPresets];
       const parsed = rawPresets ? JSON.parse(rawPresets) : null;
@@ -770,6 +784,17 @@ export function useModels(): UseModels {
       .catch((err) => console.error("Failed to save MLX LLM keep-alive:", err));
   }, []);
 
+  // Persist "Keep ready" of one task (specs/llm-runtime-tuning.md 6 item 4).
+  // The three flags are one JSON setting, so each write sends all three.
+  const saveMlxLlmKeepReady = useCallback((taskId: LlmTaskId, on: boolean) => {
+    const next: MlxLlmKeepReady = { ...keepReadyRef.current, [taskId]: on };
+    keepReadyRef.current = next;
+    setMlxLlmKeepReady(next);
+    putSetting(SETTINGS_KEYS.mlxLlmKeepReady, JSON.stringify(next)).catch(
+      (err) => console.error("Failed to save Keep ready:", err),
+    );
+  }, []);
+
   // Persist one task's sampling assignment. The whole `llm_task_assignments`
   // blob is stored under one setting key (§5.1), so every write rewrites the
   // full map — mirrors `cleanup_sampling`'s old one-blob-per-PUT shape.
@@ -1019,6 +1044,8 @@ export function useModels(): UseModels {
     setCleanup,
     saveMlxKeepAliveMinutes,
     saveMlxLlmKeepAliveMinutes,
+    mlxLlmKeepReady,
+    saveMlxLlmKeepReady,
     cleanupSampling,
     taskAssignments,
     userPresets,

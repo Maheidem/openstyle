@@ -57,6 +57,7 @@ export type GatewayErrorKind =
   | "provider_auth"
   | "provider_invalid_request"
   | "model_unavailable"
+  | "engine_not_ready"
   | "deadline_exceeded";
 
 /** One call, built after it ends. Each field maps to a column of `llm_calls`. */

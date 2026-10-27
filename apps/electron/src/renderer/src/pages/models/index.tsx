@@ -320,6 +320,8 @@ export default function ModelsPage(): React.JSX.Element {
               servers={m.servers.servers}
               defaultLlm={m.defaultLlm}
               cleanupSampling={m.cleanupSampling}
+              keepReady={m.mlxLlmKeepReady}
+              onKeepReadyChange={m.saveMlxLlmKeepReady}
               expandedTask={expandedTask}
               onExpandedTaskChange={setExpandedTask}
               onSaveAssignment={m.saveTaskAssignment}
