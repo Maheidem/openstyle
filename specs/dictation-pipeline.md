@@ -297,3 +297,42 @@ A fresh Claude subagent judged pass 1 of E2B round 2, today against pre-ng, 81 p
 3. Language detection: a wrong language label makes a stage translate. Round 1 shows the effect without a label.
 4. The prototype numbers come from 81 fictional cases written for this spike. The new cases test the new stages, so they favour the pipeline. The 27 old cases and the blind judge are the neutral checks.
 5. The tone stage can drop a fact that is not a protected token (6.4).
+
+---
+
+## 11. Build result (2026-10-26, branch `feat/dictation-pipeline`)
+
+Method: `apps/server/scripts/benchmark-dictation-pipeline.ts`, the app provider `local-mlx-llm` (task `cleanup`), the worker `Openstyle-eval/worker-split-correct` (main `031df921`, `--context-tokens`), temperature 0, 4 passes, each run under `/tmp/openstyle-gpu.lock`. Arm "main" is the one-call prompt of main (`buildRewritePrompt`, preset + tone + language). Arm "pipeline" is `runDictationPipeline`. 81 cases: the 27 bench cases (medium) and the 54 fictional cases of `scripts/dictation-bench-cases.ts`. The `date-correction-*` checks accept "3" (owner rule: digits). The es and zh `list-after-correction` expectations use the counted-list style of en ("1. Cable"). Both arms are scored with the same checks. Every arm gave the same output in all 4 passes (81/81).
+
+Prompt sizes (real input tokens p50 on E2B, with the text): cleanup 674 (350 words of instructions), polish 317 (151 words), tone 549 (57 words + the destination tone block). Main: 4,025.
+
+| Pass counts (of 4 passes) | E2B main | E2B pipeline | E4B main | E4B pipeline |
+|---|---|---|---|---|
+| All (324) | 148 | **244** | 192 | **272** |
+| Bench (108) | 40 | 52 | 44 | 68 |
+| Numbers (52) | 16 | 48 | 40 | 52 |
+| Contact (52) | 44 | 52 | 48 | 52 |
+| Line commands (20) | 0 | 20 | 0 | 20 |
+| Mixed (8) | 0 | 8 | 0 | 8 |
+| Lists, high (16) | 8 | 8 | 12 | 8 |
+| Fragments (16) | 12 | 12 | 16 | 12 |
+| Tone (24) | 16 | 16 | 20 | 24 |
+| Intensity (28) | 12 | 28 | 12 | 28 |
+| en / es / zh | 84 / 32 / 32 | 112 / 76 / 56 | 92 / 52 / 48 | 120 / 84 / 68 |
+
+Latency per dictation, ms p50 / p95 (code stages included):
+
+| Setting | E2B main | E2B pipeline | E4B main | E4B pipeline |
+|---|---|---|---|---|
+| low (n=8) | 194 / 312 | 0 / 1 (no LLM call) | 348 / 469 | 0 / 1 |
+| medium (n=264) | 145 / 307 | 127 / 250 | 272 / 719 | 232 / 495 |
+| high (n=28) | 313 / 459 | 390 / 482 | 694 / 783 | 726 / 862 |
+| medium + tone (n=24) | 291 / 391 | 206 / 407 | 717 / 903 | 436 / 747 |
+
+Cleanup prefix cache hits: main 192/324, pipeline 304/424 (cleanup calls only; polish and tone send no header).
+
+Blind pair judge (3 fresh Claude subagents, own random order and sides each, E2B pass 1, 81 pairs, owner rules in the brief): pipeline 36 / 37 / 37 wins, main 12 / 11 / 9, tie 33 / 33 / 35. All 3 agree on 74/81 pairs (pairwise 94 %). By majority: pipeline 37, main 11, tie 33. Main won: a very casual tone answer that dropped "are you" (the guard does not see it), a final period after a URL or email (3 cases; fixed after the judge with `contactEnd`, outputs re-run, same pass counts), `gonna` kept (owner rule: keep casual words), counted list split from the lead-in, `fragment-es` (4 words), `recipient-correction-en`, `list-bullets-zh`.
+
+Remaining failures (pipeline, E2B): self-corrections and uncounted lists in the cleanup call (bench), E2B rewrites some digits back to Chinese numerals (`itn-money-zh`: 25 -> 二十五), the zh formal tone answer drops 明天 and the guard keeps the cleanup text (`tone-work-formal-zh`), polish over-edits lists (`list-bullets-*`), the 3-word fragment rule misses the 4-word `fragment-es`.
+
+Real app (Test Runner, quiet mode, isolated profile, Qwen3-ASR 1.7B + Gemma 4 E2B, fictional audio through `POST /api/transcribe`): low, medium, high and medium + professional tone all 200; History shows the four results in light and dark; `llm_calls` holds 0 calls for low, 2 cleanup for medium, 2 cleanup + 1 polish for high, 1 cleanup + 1 tone for the tone run; 0 Privacy prompts in that run.
