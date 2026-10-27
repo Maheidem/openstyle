@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.25.0-alpha.1
+
+### Bug Fixes 🐛
+
+- (meetings) Bound speaker and summary stage output on own servers by @Maheidem in [#353](https://github.com/Maheidem/openstyle/pull/353)
+- (tray) Keep Restart to update clickable with a long version by @Maheidem in [#354](https://github.com/Maheidem/openstyle/pull/354)
+
+### Internal Changes 🔧
+
+- Run a lean pipeline (macOS E2E, no main push, notarize on release only) by @Maheidem in [#351](https://github.com/Maheidem/openstyle/pull/351)
+
 ## 2.24.0
 
 ### New Features ✨
