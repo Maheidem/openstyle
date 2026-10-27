@@ -165,6 +165,9 @@ export async function runDictationPipeline(
   if (text && tone) {
     text = await guarded("tone", (t) => toneStagePrompt(t, llmLanguages, tone));
   }
+  // Numbers are always digits: an LLM stage can write a count as a word again
+  // ("1 cable" -> "one cable" on E2B). S4 runs once more on the answer.
+  text = spokenNumbers(text, lang);
   if (input.intensity === "high") text = listMarkers(text, input.raw, lang);
   text = fragments(contactEnd(text), input.raw);
   return { text, lang, llmLanguages, stages };

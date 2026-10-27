@@ -25,7 +25,9 @@ export function protectedTokens(
   text: string,
   lang: DictationLang | null,
 ): string[] {
-  const forms = (text.match(TOKEN_RE) ?? []).map((t) =>
+  // A list marker ("1. ") is layout, not a fact: polish may turn it into "- ".
+  const body = text.replace(/^(\s*)\d+[.)]\s/gm, "$1");
+  const forms = (body.match(TOKEN_RE) ?? []).map((t) =>
     t.replace(/[.,;:!?)]+$/, "").toLowerCase(),
   );
   return [...new Set([...forms, ...dateWords(text, lang)])];

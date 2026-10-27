@@ -163,6 +163,45 @@ describe("stage order and contracts", () => {
     expect(r.text).toBe("Please send the numbers tomorrow.");
   });
 
+  it("quantities stay a sentence, and a count the model writes as a word becomes a digit again", async () => {
+    const { llm, seen } = fakeLlm(
+      () => "Please order one cable, two adapters and three batteries.",
+    );
+    const r = await runDictationPipeline(
+      {
+        raw: "please order one cable two adapters and three batteries",
+        intensity: "medium",
+        tone: null,
+        languages: ["en"],
+      },
+      llm,
+    );
+    expect(seen.map((s) => s.input)).toEqual([
+      "please order 1 cable 2 adapters and 3 batteries",
+    ]);
+    expect(r.text).toBe("Please order 1 cable, 2 adapters and 3 batteries.");
+  });
+
+  it("high: a bullet the model writes with * becomes -", async () => {
+    const { llm } = fakeLlm((c) =>
+      c.stage === "cleanup"
+        ? "Para amanhã:\n\n1. Atualizar a documentação\n2. Avisar o suporte"
+        : "Para amanhã:\n* Atualizar a documentação\n* Avisar o suporte",
+    );
+    const r = await runDictationPipeline(
+      {
+        raw: "para amanhã atualizar a documentação e avisar o suporte",
+        intensity: "high",
+        tone: null,
+        languages: ["pt-BR"],
+      },
+      llm,
+    );
+    expect(r.text).toBe(
+      "Para amanhã:\n- Atualizar a documentação\n- Avisar o suporte",
+    );
+  });
+
   it("no tone at medium: one call only", async () => {
     const { llm, seen } = fakeLlm(() => "Ok.");
     await runDictationPipeline(

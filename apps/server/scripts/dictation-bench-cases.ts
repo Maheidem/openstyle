@@ -112,7 +112,7 @@ export const DICTATION_PIPELINE_CASES: PipelineCase[] = [
   { id: "intensity-high-es", language: "es", feature: "intensity", intensity: "high", input: "bueno o sea lo que digo es que tenemos que eh lanzar la beta esta semana pero solo si las pruebas pasan", must: [/beta/i, /esta semana/i, /pruebas/i, /solo si/i], mustNot: [/o sea|lo que digo/i] },
   { id: "intensity-low-pt", language: "pt", feature: "intensity", intensity: "low", input: "hum os relatórios foi enviado ontem", must: [/relat[oó]rios foi enviado/i], mustNot: [/\bhum\b/i] },
   { id: "intensity-medium-pt", language: "pt", feature: "intensity", intensity: "medium", input: "hum os relatórios foi enviado ontem", must: [/relat[oó]rios foram enviados/i], mustNot: [/\bhum\b/i] },
-  { id: "intensity-high-pt", language: "pt", feature: "intensity", intensity: "high", input: "então tipo o que eu tô dizendo é que a gente precisa hum lançar o beta essa semana mas só se os testes passarem", must: [/beta/i, /(essa|esta) semana/i, /testes/i, /s[oó] se/i], mustNot: [/o que eu t[oô] dizendo|\btipo\b/i] },
+  { id: "intensity-high-pt", language: "pt", feature: "intensity", intensity: "high", input: "então tipo o que eu tô dizendo é que a gente precisa hum lançar o beta essa semana mas só se os testes passarem", must: [/beta/i, /(essa|esta) semana/i, /testes/i, /(s[oó]|somente|apenas) se/i], mustNot: [/o que eu t[oô] dizendo|\btipo\b/i] },
 
   // --- mixed ---
   { id: "mixed-en", language: "en", feature: "mixed", intensity: "medium", input: "email sara at example dot com by march fifteenth at three pm new line thanks", must: [/sara@example\.com/i, /March 15(th)?/, /3 ?PM/i, /\nThanks/], mustNot: [/new line/i] },

@@ -85,8 +85,10 @@ export function listMarkers(
   raw: string,
   lang: DictationLang | null,
 ): string {
-  if (!/^\s*\d+\.\s/m.test(text) || countsItems(raw, lang)) return text;
-  return text.replace(/^(\s*)\d+\.\s+/gm, "$1- ");
+  // A bullet the model wrote ("* ", "• ") becomes "- ".
+  const bullets = text.replace(/^(\s*)[*•]\s+/gm, "$1- ");
+  if (!/^\s*\d+\.\s/m.test(bullets) || countsItems(raw, lang)) return bullets;
+  return bullets.replace(/^(\s*)\d+\.\s+/gm, "$1- ");
 }
 
 /**
