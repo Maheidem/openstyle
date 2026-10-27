@@ -63,7 +63,7 @@ tail -f "$E/proof.log"
 1. Boot the app with the isolated profile. Set `advanced_mode` and `meeting_enhance_prompt_seen`.
 2. Models page, AI cleanup, Change, Browse: screenshot of the list before the download (light, dark).
 3. Click Download on the row. Poll until the Use button shows. Click Use. Check that the row says "Selected" (light, dark).
-4. Seed the fixture meeting, click Enhance, poll `GET /api/meetings/app-check` until status `summarized`. Screenshots of transcript and Summary (light, dark).
+4. Seed the fixture meeting, click Enhance, poll `GET /api/meetings/app-check` until status `summarized`. Screenshots of transcript and Summary (light, dark), and a second Summary shot scrolled to Action Items and Open Questions (`step4-meeting-summary-lower-*`).
 5. Open the LLM inspector. Check that it shows the HF repo name (the inspector shows the hf name, not the catalog id).
 6. Dictation smoke: 3 texts through `POST /api/post-process`. Log latency and a "think tag" check.
 7. Switch back to Gemma 4 E2B: Use button, "Selected" check (light, dark). Skipped when the checked model is E2B.

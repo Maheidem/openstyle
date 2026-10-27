@@ -88,7 +88,7 @@ exports[`the step schemas > the JSON Schema of each step is a snapshot (a change
 }
 `;
 
-exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > meeting_summary 1`] = `
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_action_items 1`] = `
 {
   "json": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -131,38 +131,155 @@ exports[`the step schemas > the JSON Schema of each step is a snapshot (a change
         },
         "type": "array",
       },
-      "decisions": {
+    },
+    "required": [
+      "actionItems",
+    ],
+    "type": "object",
+  },
+  "name": "summary_action_items",
+  "version": 2,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_action_timing 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "timings": {
         "items": {
+          "enum": [
+            "after the meeting",
+            "during this call",
+          ],
           "type": "string",
         },
         "type": "array",
       },
+    },
+    "required": [
+      "timings",
+    ],
+    "type": "object",
+  },
+  "name": "summary_action_timing",
+  "version": 2,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_decisions 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "decisions": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "quote": {
+              "type": "string",
+            },
+            "text": {
+              "type": "string",
+            },
+          },
+          "required": [
+            "quote",
+            "text",
+          ],
+          "type": "object",
+        },
+        "type": "array",
+      },
+    },
+    "required": [
+      "decisions",
+    ],
+    "type": "object",
+  },
+  "name": "summary_decisions",
+  "version": 2,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_key_points 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
       "keyPoints": {
         "items": {
           "type": "string",
         },
         "type": "array",
       },
+    },
+    "required": [
+      "keyPoints",
+    ],
+    "type": "object",
+  },
+  "name": "summary_key_points",
+  "version": 2,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_open_questions 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
       "openQuestions": {
         "items": {
-          "type": "string",
+          "additionalProperties": false,
+          "properties": {
+            "quote": {
+              "type": "string",
+            },
+            "text": {
+              "type": "string",
+            },
+          },
+          "required": [
+            "quote",
+            "text",
+          ],
+          "type": "object",
         },
         "type": "array",
       },
+    },
+    "required": [
+      "openQuestions",
+    ],
+    "type": "object",
+  },
+  "name": "summary_open_questions",
+  "version": 2,
+}
+`;
+
+exports[`the step schemas > the JSON Schema of each step is a snapshot (a change needs a graph version bump) > summary_overview 1`] = `
+{
+  "json": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
       "overview": {
         "type": "string",
       },
     },
     "required": [
       "overview",
-      "keyPoints",
-      "decisions",
-      "actionItems",
-      "openQuestions",
     ],
     "type": "object",
   },
-  "name": "meeting_summary",
-  "version": 1,
+  "name": "summary_overview",
+  "version": 2,
 }
 `;

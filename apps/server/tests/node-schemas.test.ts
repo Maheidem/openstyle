@@ -17,13 +17,13 @@ import {
   IDENTIFY_SPEAKERS_STEP_SCHEMA,
   IdentifySpeakersSchema,
   identifySpeakersStepSchema,
-  MEETING_SUMMARY_STEP_SCHEMA,
   MeetingSummarySchema,
-  meetingSummaryStepSchema,
   normalizeId,
   normalizeLabel,
   repeatsActionItem,
   SUMMARY_SIZE_LIMITS,
+  sameItem,
+  summaryStageStepSchema,
 } from "../src/lib/meetings/workflow/schemas.js";
 import {
   NAME_MAX_CHARS,
@@ -74,10 +74,19 @@ async function assertPortableSchema(schema: z.ZodType): Promise<void> {
   }
 }
 
+const SUMMARY_STAGES = [
+  "decisions",
+  "actionItems",
+  "actionTiming",
+  "keyPoints",
+  "openQuestions",
+  "overview",
+] as const;
+
 const STEPS: readonly { name: string; version: number; zod: z.ZodType }[] = [
   CORRECT_CHUNK_STEP_SCHEMA,
   IDENTIFY_SPEAKERS_STEP_SCHEMA,
-  MEETING_SUMMARY_STEP_SCHEMA,
+  ...SUMMARY_STAGES.map((stage) => summaryStageStepSchema(stage)),
 ];
 
 describe("assertPortableSchema", () => {
@@ -327,12 +336,12 @@ describe("the per-call schemas (ids and labels enum)", () => {
 });
 
 describe("the step schemas", () => {
-  it("names are wire-safe and versions start at 1", () => {
+  it("names are wire-safe; versions start at 1 (the summary stages are at 2)", () => {
     for (const s of STEPS) {
       expect(s.name).toMatch(/^[A-Za-z0-9_]+$/);
-      expect(s.version).toBe(1);
+      expect(s.version).toBe(s.name.startsWith("summary_") ? 2 : 1);
     }
-    expect(new Set(STEPS.map((s) => s.name)).size).toBe(3);
+    expect(new Set(STEPS.map((s) => s.name)).size).toBe(8);
   });
 
   it("the JSON Schema of each step is a snapshot (a change needs a graph version bump)", async () => {
@@ -520,55 +529,93 @@ describe("MeetingSummary: placeholder owner and due", () => {
   });
 });
 
-describe("meetingSummaryStepSchema (issue #246)", () => {
+describe("summaryStageStepSchema (issue #246)", () => {
   const L = SUMMARY_SIZE_LIMITS;
-  const base = {
-    overview: "A planning call.",
-    keyPoints: [],
-    decisions: [],
-    actionItems: [],
-    openQuestions: [],
-  };
 
-  it("version 2 with the wire name meeting_summary; the default zod is MeetingSummarySchema", () => {
-    expect(meetingSummaryStepSchema().version).toBe(2);
-    expect(meetingSummaryStepSchema({ sizeLimits: true }).version).toBe(2);
-    expect(meetingSummaryStepSchema({ sizeLimits: true }).name).toBe(
-      MEETING_SUMMARY_STEP_SCHEMA.name,
-    );
-    expect(meetingSummaryStepSchema().zod).toBe(MeetingSummarySchema);
+  it("one wire name for each stage, version 2, only the field of the stage", async () => {
+    const fields: Record<(typeof SUMMARY_STAGES)[number], string[]> = {
+      decisions: ["decisions"],
+      actionItems: ["actionItems"],
+      actionTiming: ["timings"],
+      keyPoints: ["keyPoints"],
+      openQuestions: ["openQuestions"],
+      overview: ["overview"],
+    };
+    for (const stage of SUMMARY_STAGES) {
+      for (const sizeLimits of [false, true]) {
+        const step = summaryStageStepSchema(stage, { sizeLimits });
+        expect(step.version).toBe(2);
+        expect(step.name).toBe(summaryStageStepSchema(stage).name);
+        const json = (await asSchema(step.zod).jsonSchema) as {
+          properties: Record<string, unknown>;
+          required: string[];
+        };
+        expect(Object.keys(json.properties)).toEqual(fields[stage]);
+        expect(json.required).toEqual(fields[stage]);
+      }
+    }
   });
 
-  it("the default schema has no size keyword (portable for cloud providers)", async () => {
-    const text = JSON.stringify(
-      await asSchema(meetingSummaryStepSchema().zod).jsonSchema,
-    );
-    for (const key of ["maxItems", "maxLength", "minItems", "minLength"]) {
-      expect(text).not.toContain(key);
+  it("the default schemas have no size keyword (portable for cloud providers)", async () => {
+    for (const stage of SUMMARY_STAGES) {
+      const text = JSON.stringify(
+        await asSchema(summaryStageStepSchema(stage).zod).jsonSchema,
+      );
+      for (const key of ["maxItems", "maxLength", "minItems", "minLength"]) {
+        expect(text).not.toContain(key);
+      }
     }
   });
 
   it("sizeLimits sets maxItems on each list and maxLength on each string", async () => {
-    const json = (await asSchema(
-      meetingSummaryStepSchema({ sizeLimits: true }).zod,
-    ).jsonSchema) as {
-      properties: Record<string, Record<string, unknown>>;
-      required: string[];
-    };
-    const p = json.properties;
-    expect(p.overview).toEqual({ type: "string", maxLength: L.overviewChars });
-    for (const [key, max] of [
-      ["keyPoints", L.keyPoints],
+    const props = async (stage: (typeof SUMMARY_STAGES)[number]) =>
+      (
+        (await asSchema(summaryStageStepSchema(stage, { sizeLimits: true }).zod)
+          .jsonSchema) as {
+          properties: Record<string, Record<string, unknown>>;
+        }
+      ).properties;
+    expect((await props("overview")).overview).toEqual({
+      type: "string",
+      maxLength: L.overviewChars,
+    });
+    expect((await props("keyPoints")).keyPoints).toEqual({
+      type: "array",
+      maxItems: L.keyPoints,
+      items: { type: "string", maxLength: L.itemChars },
+    });
+    // A decision and an open question carry the quote that code checks.
+    for (const [stage, max] of [
       ["decisions", L.decisions],
       ["openQuestions", L.openQuestions],
     ] as const) {
-      expect(p[key]).toEqual({
-        type: "array",
-        maxItems: max,
-        items: { type: "string", maxLength: L.itemChars },
+      const list = (await props(stage))[stage] as {
+        maxItems: number;
+        items: { properties: Record<string, unknown>; required: string[] };
+      };
+      expect(list.maxItems).toBe(max);
+      expect(list.items.properties).toEqual({
+        quote: { type: "string", maxLength: QUOTE_MAX_CHARS },
+        text: { type: "string", maxLength: L.itemChars },
       });
+      expect(list.items.required).toEqual(["quote", "text"]);
     }
-    const actions = p.actionItems as {
+    // The timing check: an enum per task, at most one per listed task.
+    const timing = (
+      (await asSchema(
+        summaryStageStepSchema("actionTiming", { sizeLimits: true, items: 3 })
+          .zod,
+      ).jsonSchema) as { properties: Record<string, Record<string, unknown>> }
+    ).properties.timings;
+    expect(timing).toEqual({
+      type: "array",
+      maxItems: 3,
+      items: {
+        type: "string",
+        enum: ["after the meeting", "during this call"],
+      },
+    });
+    const actions = (await props("actionItems")).actionItems as {
       maxItems: number;
       items: { properties: Record<string, unknown>; required: string[] };
     };
@@ -582,15 +629,6 @@ describe("meetingSummaryStepSchema (issue #246)", () => {
       expect(text).toContain(`"maxLength":${L.ownerDueChars}`);
       expect(text).toContain('"null"');
     }
-    // Field order and required stay as in the default schema.
-    expect(Object.keys(p)).toEqual([
-      "overview",
-      "keyPoints",
-      "decisions",
-      "actionItems",
-      "openQuestions",
-    ]);
-    expect(json.required).toEqual(Object.keys(p));
     expect(Object.keys(actions.items.properties)).toEqual([
       "task",
       "owner",
@@ -598,23 +636,35 @@ describe("meetingSummaryStepSchema (issue #246)", () => {
     ]);
   });
 
-  it("the zod side of the limited schema accepts any size", () => {
+  it("the zod side of a limited schema accepts any size", () => {
     const long = "a".repeat(L.itemChars + 50);
     const many = Array.from({ length: L.keyPoints + 5 }, (_, i) => `p${i}`);
-    const parsed = meetingSummaryStepSchema({ sizeLimits: true }).zod.parse({
-      ...base,
-      overview: "o".repeat(L.overviewChars + 1),
-      keyPoints: [long, ...many],
-    });
+    const parsed = summaryStageStepSchema("keyPoints", {
+      sizeLimits: true,
+    }).zod.parse({ keyPoints: [long, ...many] });
     expect(parsed.keyPoints).toHaveLength(L.keyPoints + 6);
-    expect(parsed.keyPoints[0]).toBe(long);
+    expect(parsed.keyPoints?.[0]).toBe(long);
   });
 
-  it.each([
-    false,
-    true,
-  ])("the parse removes duplicate list entries and keeps the order (sizeLimits %s)", (sizeLimits) => {
-    const parsed = meetingSummaryStepSchema({ sizeLimits }).zod.parse({
+  it("an action item stage maps a placeholder owner or due to null", () => {
+    const parsed = summaryStageStepSchema("actionItems").zod.parse({
+      actionItems: [{ task: "x", owner: "N/A", due: "none" }],
+    });
+    expect(parsed.actionItems).toEqual([{ task: "x", owner: null, due: null }]);
+  });
+});
+
+describe("MeetingSummarySchema: duplicate removal (withoutDuplicates)", () => {
+  const base = {
+    overview: "A planning call.",
+    keyPoints: [],
+    decisions: [],
+    actionItems: [],
+    openQuestions: [],
+  };
+
+  it("the parse removes duplicate list entries and keeps the order", () => {
+    const parsed = MeetingSummarySchema.parse({
       ...base,
       keyPoints: ["Ship on Friday.", "Fix the export.", " ship  ON friday. "],
       decisions: ["A", "a", "B"],
@@ -634,11 +684,8 @@ describe("meetingSummaryStepSchema (issue #246)", () => {
     expect(parsed.openQuestions).toEqual(["Who?"]);
   });
 
-  it.each([
-    false,
-    true,
-  ])("the parse drops a decision that restates an action item (sizeLimits %s)", (sizeLimits) => {
-    const parsed = meetingSummaryStepSchema({ sizeLimits }).zod.parse({
+  it("the parse drops a decision that restates an action item", () => {
+    const parsed = MeetingSummarySchema.parse({
       ...base,
       decisions: [
         "Casey will send the revised draft to the client.",
@@ -654,6 +701,89 @@ describe("meetingSummaryStepSchema (issue #246)", () => {
     });
     expect(parsed.decisions).toEqual(["The launch moves to March."]);
     expect(parsed.actionItems).toHaveLength(1);
+  });
+
+  it("two wordings of one item from two overlapping parts keep the first", () => {
+    const parsed = MeetingSummarySchema.parse({
+      ...base,
+      keyPoints: [
+        "The team reviewed the Kestrel dashboard latency numbers.",
+        "Kestrel dashboard latency numbers were reviewed.",
+        "The budget for March is open.",
+      ],
+      actionItems: [
+        { task: "Send the Kestrel latency report", owner: null, due: null },
+        {
+          task: "Send the Kestrel latency report to Ana",
+          owner: "Them 2",
+          due: "Friday",
+        },
+      ],
+    });
+    expect(parsed.keyPoints).toEqual([
+      "The team reviewed the Kestrel dashboard latency numbers.",
+      "The budget for March is open.",
+    ]);
+    // The kept item takes the owner and the due of the dropped one.
+    expect(parsed.actionItems).toEqual([
+      {
+        task: "Send the Kestrel latency report",
+        owner: "Them 2",
+        due: "Friday",
+      },
+    ]);
+  });
+});
+
+describe("sameItem", () => {
+  it("is true for the same text and for 80% of the content words of the shorter entry", () => {
+    expect(sameItem("Ship on Friday.", " ship  ON friday. ")).toBe(true);
+    // Shorter: kestrel, dashboard, latency, numbers, reviewed (5); 4 shared.
+    expect(
+      sameItem(
+        "The team checked the Kestrel dashboard latency numbers.",
+        "Kestrel dashboard latency numbers were reviewed.",
+      ),
+    ).toBe(true);
+  });
+
+  it("is false below 80% and for short entries with other words", () => {
+    // use, postgres, billing / use, postgres, search: 2 of 3 shared.
+    expect(
+      sameItem("Use Postgres for billing.", "Use Postgres for search."),
+    ).toBe(false);
+    // Fewer than 3 content words: only the same text is the same item.
+    expect(sameItem("Ship it.", "Ship it now.")).toBe(false);
+  });
+
+  it("longer entries (5 content words or more) need 70%; shorter ones keep 80%", () => {
+    // 5 of 7: a rewording of one key point (E2B, fictional meeting).
+    expect(
+      sameItem(
+        "The team went through open items and agreed on next steps.",
+        "The team consistently reviewed open items and agreed on next steps.",
+      ),
+    ).toBe(true);
+    // 3 of 4 (shorter entry has 4 words): not enough, also for one changed word.
+    expect(
+      sameItem(
+        "The lunch date moved to Friday.",
+        "The discussion repeatedly confirmed the lunch date change to Friday.",
+      ),
+    ).toBe(false);
+    expect(
+      sameItem(
+        "Ship the Android app on Friday.",
+        "Ship the iOS app on Friday.",
+      ),
+    ).toBe(false);
+    // 3 of 6: below 70%.
+    expect(
+      sameItem(
+        "Grace sends the Snowflake schema guide to Marcos.",
+        "Grace sends the Tableau dashboard guide to Darko.",
+      ),
+    ).toBe(false);
   });
 });
 

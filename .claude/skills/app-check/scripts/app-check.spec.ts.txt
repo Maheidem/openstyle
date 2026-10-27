@@ -231,6 +231,14 @@ test("step 4b: meeting views + LLM inspector, light + dark", async () => {
     await page.getByRole("tab", { name: "Summary" }).click();
     await page.waitForTimeout(800);
     await shot(`step4-meeting-summary-${theme}`);
+    // The lower sections (Action Items, Open Questions) are below the fold:
+    // scroll to them and take a second shot.
+    await page
+      .getByRole("heading", { name: "Action Items" })
+      .scrollIntoViewIfNeeded();
+    await page.waitForTimeout(500);
+    await shot(`step4-meeting-summary-lower-${theme}`);
+    await page.getByRole("heading", { name: "Overview" }).scrollIntoViewIfNeeded();
     await page.getByTestId("meetings-summary-inspect").click();
     const panel = page.getByTestId("meetings-inspector");
     await expect(panel).toBeVisible({ timeout: 15_000 });

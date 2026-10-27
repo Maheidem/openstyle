@@ -16,7 +16,7 @@ import type { MeetingSummary } from "./schemas.js";
  * node result type, a node schema, a prompt, a constant below, the unit key
  * grammar, or the model or reasoning choice (3.4.7, "Graph version").
  */
-export const WORKFLOW_GRAPH_VERSION = 9;
+export const WORKFLOW_GRAPH_VERSION = 10;
 
 // ---------------------------------------------------------------------------
 // Constants of 4.0.5. Names are names of this spec. Values marked "new" in the
@@ -68,7 +68,11 @@ export type FailureKind =
 /** One per failed unit. Stored by section 7, shown by section 8. */
 export interface NodeFailure {
   node: NodeId;
-  /** "chunk:3", "chunk:3/0" (half), "candidates", "single", "map:2", "reduce:1:0". */
+  /**
+   * "chunk:3", "chunk:3/0" (half), "candidates", and the summarize keys:
+   * "decisions", "actionItems", "points", "overview", or "decisions:2" (part 3
+   * of a long meeting).
+   */
   unitKey: string | null;
   kind: FailureKind;
   finishReason: string | null;

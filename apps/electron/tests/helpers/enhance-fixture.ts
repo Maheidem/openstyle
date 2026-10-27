@@ -21,12 +21,31 @@ import {
 // tests/meeting-cancel-transcribe.test.ts, a fictional meeting seeded with
 // node:sqlite, and the app set-up. All text is fictional.
 
+/**
+ * The wire names of the Summarize calls (graph version 10): per part one call
+ * for each stage, the timing check of the action items when the part has
+ * some, then the overview.
+ */
+export const SUMMARY_STEPS = [
+  "summary_decisions",
+  "summary_action_items",
+  "summary_action_timing",
+  "summary_key_points",
+  "summary_open_questions",
+  "summary_overview",
+] as const;
+export type SummaryStep = (typeof SUMMARY_STEPS)[number];
+
 export type StepName =
   | "correct_chunk"
   | "identify_speakers"
-  | "meeting_summary"
+  | SummaryStep
   | "meeting_tags"
   | "other";
+
+export function isSummaryStep(step: StepName): step is SummaryStep {
+  return (SUMMARY_STEPS as readonly string[]).includes(step);
+}
 
 /** One request that reached the fake server, as the test reads it. */
 export interface ChatRequest {
@@ -64,10 +83,60 @@ function stepOf(body: Record<string, unknown>): StepName {
   const name = rf?.json_schema?.name;
   return name === "correct_chunk" ||
     name === "identify_speakers" ||
-    name === "meeting_summary" ||
-    name === "meeting_tags"
-    ? name
+    name === "meeting_tags" ||
+    (SUMMARY_STEPS as readonly string[]).includes(name ?? "")
+    ? (name as StepName)
     : "other";
+}
+
+/** The summary that a scripted model "writes", in the stored shape. */
+export interface SummaryContent {
+  overview: string;
+  keyPoints: string[];
+  decisions: string[];
+  actionItems: { task: string; owner: string | null; due: string | null }[];
+  openQuestions: string[];
+}
+
+/**
+ * The words of the first transcript line of a summary request, without the
+ * speaker label: a quote that the app finds in the transcript. A decision or
+ * an open question needs one, or code drops it.
+ */
+function firstLineQuote(user: string): string {
+  const block = /<transcript>\n([^\n]*)/.exec(user)?.[1] ?? "";
+  const text = block.replace(/^[^:]+:\s*/, "");
+  return text.split(/\s+/).slice(0, 6).join(" ");
+}
+
+/**
+ * The answer of one Summarize call, from one summary: each stage gets its own
+ * fields, decisions and open questions with a quote of the transcript, and
+ * the timing check calls every listed task "after the meeting".
+ */
+export function summaryAnswer(req: ChatRequest, s: SummaryContent): Answer {
+  const quote = firstLineQuote(req.user);
+  const json = (v: unknown): Answer => ({ content: JSON.stringify(v) });
+  switch (req.step) {
+    case "summary_decisions":
+      return json({ decisions: s.decisions.map((text) => ({ quote, text })) });
+    case "summary_action_items":
+      return json({ actionItems: s.actionItems });
+    case "summary_action_timing": {
+      const tasks = (/<tasks>\n([\s\S]*?)\n<\/tasks>/.exec(req.user)?.[1] ?? "")
+        .split("\n")
+        .filter((l) => /^\d+\. /.test(l)).length;
+      return json({ timings: Array(tasks).fill("after the meeting") });
+    }
+    case "summary_key_points":
+      return json({ keyPoints: s.keyPoints });
+    case "summary_open_questions":
+      return json({
+        openQuestions: s.openQuestions.map((text) => ({ quote, text })),
+      });
+    default:
+      return json({ overview: s.overview });
+  }
 }
 
 function messageText(body: Record<string, unknown>, role: string): string {

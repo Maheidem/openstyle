@@ -5,7 +5,7 @@
 //   pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>]
 //     [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>]
 //     [--save-baseline <name> [--noise-from <baseline>]] [--compare <baseline>]
-//     [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>]
+//     [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>] [--summary-budget <n>]
 //   pnpm meeting:eval --rescore <out> [gold and baseline flags]
 //
 // Models: the catalog ids of the built-in MLX LLM
@@ -155,7 +155,7 @@ const has = (name: string) => process.argv.includes(`--${name}`);
 function usage(msg: string): never {
   console.error(msg);
   console.error(
-    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>] [--save-baseline <name> [--noise-from <file>]] [--compare <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>]\n       pnpm meeting:eval --rescore <out dir of a --keep run> [the gold and baseline flags]",
+    "usage: pnpm meeting:eval --models <id,...> [--meetings <id8,...>] [--out <dir>] [--keep] [--no-download] [--gold [--gold-dir <dir>] | --answer-key <file>] [--save-baseline <name> [--noise-from <file>]] [--compare <file>] [--hf-cache <dir>] [--port <n>] [--timeout-sec <n>] [--summary-budget <n>]\n       pnpm meeting:eval --rescore <out dir of a --keep run> [the gold and baseline flags]",
   );
   process.exit(2);
 }
@@ -180,6 +180,12 @@ const hfCache = resolve(arg("hf-cache") ?? HF_CACHE_DEFAULT);
 const ASR_DIR = join(ROOT, "asr");
 const basePort = Number(arg("port") ?? "4797");
 const timeoutSec = Number(arg("timeout-sec") ?? "7200");
+// The summary context budget of the arm DB (setting
+// meeting_summary_context_budget). A small value forces the long-meeting path
+// of Summarize on a short meeting. Unset: the app default.
+const summaryBudget = arg("summary-budget");
+if (summaryBudget !== undefined && !/^[1-9]\d{2,5}$/.test(summaryBudget))
+  usage("--summary-budget must be a whole number from 100 to 999999");
 const stamp = new Date()
   .toISOString()
   .replace(/[-:]/g, "")
@@ -411,6 +417,15 @@ async function prepareArm(model: string, transcribed: string): Promise<string> {
       });
       if (k.status !== 200)
         throw new Error(`keep-alive setting answered ${k.status}`);
+      if (summaryBudget !== undefined) {
+        const b = await call(
+          "PUT",
+          "/api/settings/meeting_summary_context_budget",
+          { value: summaryBudget },
+        );
+        if (b.status !== 200)
+          throw new Error(`summary budget setting answered ${b.status}`);
+      }
       const c = await call("POST", "/api/models/configured", {
         ...row,
         type: "llm",
@@ -428,7 +443,14 @@ async function prepareArm(model: string, transcribed: string): Promise<string> {
       "SELECT provider, model_id FROM model_configs WHERE type = 'llm' AND is_default = 1",
     )
     .all() as { provider: string; model_id: string }[];
+  const budget = db
+    .prepare(
+      "SELECT value FROM settings WHERE key = 'meeting_summary_context_budget'",
+    )
+    .get() as { value: string } | undefined;
   db.close();
+  if (summaryBudget !== undefined && budget?.value !== summaryBudget)
+    throw new Error(`arm DB for ${model}: summary budget not stored`);
   if (rows.length !== 1 || rows[0]?.model_id !== `local-mlx-llm/${model}`)
     throw new Error(
       `arm DB for ${model}: default LLM row not stored (${rows.length} rows)`,

@@ -37,7 +37,7 @@ const log = createAppLogger("llm-unit");
  * True when the provider builds its grammar with llguidance, which applies
  * `maxItems` and `maxLength` (specs/local-mlx-llm.md G2). Then the schema
  * carries the size limits (`identifySpeakersStepSchema` version 4,
- * `meetingSummaryStepSchema` version 2).
+ * `summaryStageStepSchema`).
  */
 export function appliesSizeLimits(profile: CallProfile): boolean {
   return profile.provider === MLX_LLM_PROVIDER_ID;

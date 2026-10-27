@@ -226,11 +226,13 @@ async function enhance(meetingId: string): Promise<RunInfo> {
 }
 
 /** The system and user text of every call of a run, by node. */
-function promptsOf(runId: string): { node: string; text: string }[] {
-  return readDb<{ node: string; messages_json: string }>(
-    "SELECT node, messages_json FROM llm_calls WHERE run_id = ? ORDER BY id",
+function promptsOf(
+  runId: string,
+): { node: string; step: string; text: string }[] {
+  return readDb<{ node: string; step_key: string; messages_json: string }>(
+    "SELECT node, step_key, messages_json FROM llm_calls WHERE run_id = ? ORDER BY id",
     runId,
-  ).map((r) => ({ node: r.node, text: r.messages_json }));
+  ).map((r) => ({ node: r.node, step: r.step_key, text: r.messages_json }));
 }
 
 function summaryOf(meetingId: string): string {
@@ -407,11 +409,14 @@ test("project memory end to end", async () => {
     expect(["summary", "transcript"]).toContain(row.kind);
   }
   const auroraPrompts = promptsOf(aurora.id);
+  // Project memory goes to the overview call only (graph version 10): the
+  // stage calls list the items of this meeting only.
   const summaryPrompts = auroraPrompts.filter((p) => p.node === "summarize");
   expect(summaryPrompts.length).toBeGreaterThan(0);
   for (const p of summaryPrompts) {
-    expect(p.text).toContain(LABEL);
-    expect(p.text).toContain("moves to Friday");
+    const isOverview = p.step === "overview";
+    expect(p.text.includes(LABEL), p.step).toBe(isOverview);
+    if (isOverview) expect(p.text).toContain("moves to Friday");
   }
   const correctPrompts = auroraPrompts.filter((p) => p.node === "correctChunk");
   expect(correctPrompts.length).toBeGreaterThan(0);
