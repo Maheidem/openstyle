@@ -141,7 +141,7 @@ let admission: Promise<void> = Promise.resolve();
 
 function isPinned(modelId: string): boolean {
   return (
-    readSetting("llm_cleanup") === "true" &&
+    readSetting(SETTINGS_KEYS.llmCleanup) === "true" &&
     taskModels.get("cleanup") === modelId
   );
 }

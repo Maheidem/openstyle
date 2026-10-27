@@ -35,6 +35,7 @@ import {
   runEngineRetryTickForTest,
 } from "../src/lib/meetings/workflow/engine-retry.js";
 import { startRun } from "../src/lib/meetings/workflow/runner.js";
+import { MlxWorkerStartError } from "../src/lib/mlx-asr/http-worker.js";
 import { MlxRuntimeUpdatePendingError } from "../src/lib/mlx-asr/runtime.js";
 import { MlxLlmPoolNoRoomError } from "../src/lib/mlx-llm/pool.js";
 import {
@@ -164,6 +165,40 @@ describe("a meeting run waits for the on-device engine and starts again", () => 
     expect(runs[1]?.started_by).toBe("auto");
     expect(runs[1]?.status).toBe("succeeded");
     expect(ready.requests.length).toBeGreaterThan(0);
+  });
+
+  it("a worker that exits before ready (old worker, unknown argument) ends the run at once: model_unavailable, no wait", async () => {
+    const f = seedFixtureMeeting({
+      chunks: 3,
+      speakers: 1,
+      meetingId: "m-engine",
+    });
+    sizeFixtureSegments(getDb(), f, 300);
+    let starts = 0;
+    const h = runnerHarness({
+      deps: {
+        createModel: async () => {
+          starts += 1;
+          throw new MlxWorkerStartError(
+            "The local LLM worker exited before it was ready: exit code 2 (mlx_asr_worker: error: unrecognized arguments: --context-tokens 32768)",
+          );
+        },
+      },
+    });
+    const s = startRun(
+      { meetingId: f.meeting.id, stages: BOTH, trigger: "button" },
+      h.deps,
+    );
+    if (!s.ok) throw new Error("start failed");
+    await waitForNoJob(f.meeting.id);
+    const run = runsOf(f.meeting.id)[0];
+    expect(run?.status).toBe("failed");
+    const failed = stepsOf(s.runId).filter((st) => st.status === "failed");
+    expect(failed[0]?.error_kind).toBe("model_unavailable");
+    // Run-wide: the first failure stops the run. Only the chunks that already
+    // ran in parallel (fan-out) tried a start. No retry loop, no engine wait.
+    expect(starts).toBeLessThanOrEqual(3);
+    expect(engineRetryWaiting()).toEqual([]);
   });
 
   it("a new run of the meeting cancels the wait", async () => {

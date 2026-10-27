@@ -34,6 +34,7 @@ vi.mock("../src/lib/mlx-asr/constants.js", async (importOriginal) => ({
 import { deleteSetting, getDb, writeSetting } from "../src/lib/db.js";
 import { __resetLlmLanesForTests, withLlmLane } from "../src/lib/llm/lane.js";
 import { hfRepoCacheDir } from "../src/lib/mlx-asr/constants.js";
+import { MlxWorkerStartError } from "../src/lib/mlx-asr/http-worker.js";
 import {
   GIB,
   getMlxLlmModel,
@@ -269,6 +270,20 @@ describe("the model pool with a fake worker", () => {
     );
   });
 
+  it("the limit is the smaller of the budget and the GPU cap that the worker reports", async () => {
+    delete process.env.OPENSTYLE_MLX_LLM_FIT_RAM_GIB;
+    process.env.OPENSTYLE_MLX_LLM_FIT_GPU_CAP_GIB = "";
+    await ensureMlxLlmWorker(E2B);
+    // The fake worker reports max_recommended_working_set_size = 100 GiB.
+    const { totalmem } = await import("node:os");
+    expect(getMlxLlmPoolMemory().limitBytes).toBe(
+      Math.min(memoryBudgetBytes(totalmem(), false), 100 * GIB),
+    );
+    expect(getMlxLlmWorkerState(E2B).gpu?.maxRecommendedWorkingSetBytes).toBe(
+      100 * GIB,
+    );
+  });
+
   it("two tasks with the same model share one worker", async () => {
     setRam(128);
     setDefaultLlm(E2B);
@@ -437,6 +452,33 @@ describe("the model pool with a fake worker", () => {
     await summary;
     await second;
     expect(order).toEqual(["cleanup", "enhance"]);
+  });
+
+  it("an old worker that exits at start on an unknown argument fails at once with a typed error", async () => {
+    // The shipped 2.23.0 worker does not know --context-tokens: argparse
+    // prints "unrecognized arguments" and exits 2 before the ready line.
+    const old = join(scratch, "old-worker");
+    writeFileSync(
+      old,
+      `#!/bin/sh\necho "mlx_asr_worker: error: unrecognized arguments: --context-tokens 32768" >&2\nexit 2\n`,
+    );
+    const { chmodSync } = await import("node:fs");
+    chmodSync(old, 0o755);
+    const saved = process.env.OPENSTYLE_MLX_LLM_WORKER;
+    process.env.OPENSTYLE_MLX_LLM_WORKER = old;
+    try {
+      const t0 = Date.now();
+      const err = await ensureMlxLlmWorker(E2B).catch((e: unknown) => e);
+      expect(Date.now() - t0).toBeLessThan(5_000);
+      expect(err).toBeInstanceOf(MlxWorkerStartError);
+      expect((err as MlxWorkerStartError).code).toBe("worker-start-failed");
+      expect(String((err as Error).message)).toContain(
+        "unrecognized arguments",
+      );
+      expect(getMlxLlmWorkerState(E2B).state).toBe("error");
+    } finally {
+      process.env.OPENSTYLE_MLX_LLM_WORKER = saved;
+    }
   });
 
   it("stopMlxLlmWorker(model) stops only that worker", async () => {

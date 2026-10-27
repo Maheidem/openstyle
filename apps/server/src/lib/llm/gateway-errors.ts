@@ -245,7 +245,10 @@ export type ModelUnavailableReason =
   | "no_api_key"
   | "server_removed"
   /** The local model pool has no room next to the models in use. */
-  | "not_enough_memory";
+  | "not_enough_memory"
+  /** The local MLX worker exited before it was ready (for example an old
+   *  worker that refuses a new argument). Final: no wait, no retry. */
+  | "engine_start_failed";
 
 /**
  * The on-device engine (the MLX worker) cannot start now, because its update
@@ -361,8 +364,9 @@ function startErrorCode(err: unknown): string | null {
  * their plain `Error` (`task-profiles.ts`, `providers.ts`, `registry.ts`); the
  * reason comes from their message. Two typed start errors of the local MLX
  * LLM map by their `code`: a pending runtime update
- * (`MlxRuntimeUpdatePendingError`) is `EngineNotReadyError`, and a full model
- * pool (`MlxLlmPoolNoRoomError`) is `not_enough_memory`. An error that
+ * (`MlxRuntimeUpdatePendingError`) is `EngineNotReadyError`, a full model
+ * pool (`MlxLlmPoolNoRoomError`) is `not_enough_memory`, and a worker that
+ * exits before ready (`MlxWorkerStartError`) is `engine_start_failed`. An error that
  * matches none of these is a bug, not a setup fault: it is returned unchanged.
  */
 export function modelUnavailableFrom(err: unknown, facts: CallFacts): unknown {
@@ -380,6 +384,7 @@ export function modelUnavailableFrom(err: unknown, facts: CallFacts): unknown {
   }
   let reason: ModelUnavailableReason;
   if (code === "llm-pool-no-room") reason = "not_enough_memory";
+  else if (code === "worker-start-failed") reason = "engine_start_failed";
   else if (/Unsupported provider/i.test(text)) reason = "unsupported_provider";
   else if (/No API key/i.test(text)) reason = "no_api_key";
   else if (/not in your list/i.test(text)) reason = "server_removed";
