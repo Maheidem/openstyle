@@ -26,6 +26,7 @@ import { getTrayPopoverURL } from "../renderer-urls";
 import { isSystemAudioCaptureSupported } from "../system-audio-capture";
 import { currentTrayAppearance, refreshTrayIcon } from "../tray-icon";
 import { trayPopoverPosition } from "../tray-popover-position";
+import { runningVersion } from "../update-channel";
 import { showSettingsWindow } from "./settings-window";
 
 const log = createAppLogger("electron");
@@ -264,10 +265,11 @@ function isOutsideClick(point: { x: number; y: number }): boolean {
 /**
  * The Openstyle version. An unpacked run (dev, E2E) starts Electron with a
  * script, and app.getVersion() then gives the Electron version. So only a
- * packaged app asks Electron; other runs use package.json.
+ * packaged app asks Electron; other runs use package.json. An E2E run with a
+ * fake feed can set OPENSTYLE_E2E_APP_VERSION (see runningVersion).
  */
 function appVersion(): string {
-  return app.isPackaged ? app.getVersion() : packageVersion;
+  return runningVersion(app.isPackaged ? app.getVersion() : packageVersion);
 }
 
 function isTarget(value: unknown): value is TrayPopoverTarget {
