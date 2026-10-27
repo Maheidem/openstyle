@@ -217,11 +217,20 @@ const api = {
     [progress: { percent: number; transferred: number; total: number }]
   >("updater:downloading"),
   onUpdateError: listen<[info: { message: string }]>("updater:error"),
+  // The update of the old channel is gone after a channel switch.
+  onUpdateCleared: listen("updater:cleared"),
   // Auto-update setting
   getAutoUpdate: (): Promise<boolean> =>
     ipcRenderer.invoke("settings:auto-update"),
   setAutoUpdate: (enabled: boolean): void =>
     ipcRenderer.send("settings:set-auto-update", enabled),
+  // Update channel ("stable" or "dev"), and the running version
+  getUpdateChannel: (): Promise<{
+    channel: "stable" | "dev";
+    version: string;
+  }> => ipcRenderer.invoke("settings:update-channel"),
+  setUpdateChannel: (channel: "stable" | "dev"): Promise<void> =>
+    ipcRenderer.invoke("settings:set-update-channel", channel),
   // Launch at startup setting
   getLaunchAtStartup: (): Promise<boolean> =>
     ipcRenderer.invoke("settings:launch-at-startup"),

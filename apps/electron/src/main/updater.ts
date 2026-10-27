@@ -5,8 +5,9 @@ import { is } from "@electron-toolkit/utils";
 import { createAppLogger } from "@openstyle/utils";
 import { app, ipcMain, shell } from "electron";
 import { autoUpdater } from "electron-updater";
+import { parse } from "semver";
 import { shouldStartAutoDownload } from "./auto-update-policy";
-import { readSettings } from "./local-settings";
+import { readSettings, writeSettings } from "./local-settings";
 import { state } from "./main-state";
 import { rebuildMenus, restartAndUpdate } from "./menus";
 import { notify } from "./notifications";
@@ -19,6 +20,17 @@ import {
 import { selfUpdater } from "./self-updater";
 import { prefetchMlxRuntime } from "./server-host";
 import { refreshTrayIcon } from "./tray-icon";
+import {
+  applyChannel,
+  e2eReleasesUrl,
+  githubFeedOptions,
+  isNewerVersion,
+  isUpdateChannel,
+  resolveChannel,
+  runningVersion,
+  switchNeedsDowngrade,
+  type UpdateChannel,
+} from "./update-channel";
 
 const log = createAppLogger("electron");
 
@@ -41,30 +53,49 @@ export function registerUpdater(): void {
     });
   }
 
+  const version = runningVersion(app.getVersion());
+  // The version that the last check found. `allowOlder` is true only after the
+  // explicit switch to Stable (owner decision D4).
+  let availableUpdate: { version: string; allowOlder: boolean } | null = null;
+  // True only during the check that the explicit switch to Stable starts.
+  let explicitDowngrade = false;
+  // The version to install at once when its download ends (the switch to
+  // Stable installs the Stable version right away).
+  let installWhenDownloaded: string | null = null;
+
   // Downloads the release zip through selfUpdater (see the updater:download
   // handler for why). A click on the banner opens the releases page when the
   // download fails. The background download of "Automatic updates" only logs
   // the failure: it must not open a browser. The next check tries again.
   function startSelfUpdateDownload(openReleasesOnFailure: boolean): void {
+    const update = availableUpdate;
+    if (!update) {
+      log.warn("Self-update download requested, but no check found an update");
+      return;
+    }
     state.updateDownloadState = "downloading";
     state.settingsWindow?.webContents.send("updater:downloading", {
       percent: 0,
       transferred: 0,
       total: 0,
     });
-    selfUpdater.downloadUpdate().catch((err) => {
-      state.updateDownloadState = "idle";
-      const msg = err instanceof Error ? err.message : String(err);
-      state.settingsWindow?.webContents.send("updater:error", { message: msg });
-      if (!openReleasesOnFailure) {
-        log.warn(`Background self-update download failed: ${msg}`);
-        return;
-      }
-      log.warn(
-        `Self-update download failed, falling back to releases page: ${msg}`,
-      );
-      void shell.openExternal(RELEASES_PAGE_URL);
-    });
+    selfUpdater
+      .downloadUpdate(update.version, { allowOlder: update.allowOlder })
+      .catch((err) => {
+        state.updateDownloadState = "idle";
+        const msg = err instanceof Error ? err.message : String(err);
+        state.settingsWindow?.webContents.send("updater:error", {
+          message: msg,
+        });
+        if (!openReleasesOnFailure) {
+          log.warn(`Background self-update download failed: ${msg}`);
+          return;
+        }
+        log.warn(
+          `Self-update download failed, falling back to releases page: ${msg}`,
+        );
+        void shell.openExternal(RELEASES_PAGE_URL);
+      });
   }
 
   function startUpdateCheckInterval(): void {
@@ -80,10 +111,28 @@ export function registerUpdater(): void {
   let notifiedDownloadedVersion: string | null = null;
 
   // The dev flavor (pnpm dev:install) updates by a rebuild, never by the feed.
-  const updatesOn = !is.dev && !state.devFlavor;
+  // An E2E run with a fake release feed turns updates on for an unpackaged app.
+  const e2eFeed = e2eReleasesUrl();
+  const updatesOn = e2eFeed !== null || (!is.dev && !state.devFlavor);
 
   if (updatesOn) {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
+    if (e2eFeed) {
+      const feed = githubFeedOptions(e2eFeed);
+      if (feed) autoUpdater.setFeedURL(feed);
+      autoUpdater.forceDevUpdateConfig = true;
+      const parsed = parse(version);
+      if (parsed) {
+        // electron-updater reads the version once, from the unpackaged app.
+        (autoUpdater as unknown as { currentVersion: unknown }).currentVersion =
+          parsed;
+      }
+    }
+    // Set the channel before the first check. allowDowngrade stays false.
+    applyChannel(
+      autoUpdater,
+      resolveChannel(readSettings().updateChannel, version),
+    );
     // Builds before 2.15.1 were ad-hoc signed, and Squirrel.Mac rejected
     // their updates AFTER downloading them ("Code signature ... did not pass
     // validation"). Since 2.15.1, CI signs with the self-signed certificate
@@ -101,6 +150,11 @@ export function registerUpdater(): void {
     autoUpdater.logger = createAppLogger("updater");
 
     autoUpdater.on("update-available", (info) => {
+      availableUpdate = {
+        version: info.version,
+        allowOlder: explicitDowngrade,
+      };
+      if (explicitDowngrade) installWhenDownloaded = info.version;
       state.settingsWindow?.webContents.send("updater:available", {
         version: info.version,
       });
@@ -111,7 +165,10 @@ export function registerUpdater(): void {
       // startup, so a toggle in settings applies to the next check.
       if (
         shouldStartAutoDownload({
-          autoUpdateEnabled: readSettings().autoUpdate !== false,
+          // The explicit switch to Stable downloads also with "Automatic
+          // updates" off: the user asked for that version.
+          autoUpdateEnabled:
+            readSettings().autoUpdate !== false || explicitDowngrade,
           downloadState: state.updateDownloadState,
           selfUpdateUnavailableReason: selfUpdater.unavailableReason(),
         })
@@ -152,7 +209,13 @@ export function registerUpdater(): void {
         updateCheckTimer = null;
       }
       rebuildMenus();
-      prefetchMlxRuntime(info.version);
+      // The fake feed of an E2E run has no MLX worker to prefetch.
+      if (!e2eFeed) prefetchMlxRuntime(info.version);
+      if (installWhenDownloaded === info.version) {
+        installWhenDownloaded = null;
+        log.info(`Switch to Stable: installing ${info.version} now`);
+        restartAndUpdate();
+      }
     });
 
     autoUpdater.on("error", (err) => {
@@ -215,11 +278,71 @@ export function registerUpdater(): void {
       const result = await autoUpdater.checkForUpdates();
       const latest = result?.updateInfo?.version;
       if (!latest) return null;
-      // Only report an update when the remote version is actually newer
-      if (latest === app.getVersion()) return null;
+      // Only report an update when the remote version is newer. A plain
+      // inequality reported an OLDER Stable version to a Dev build.
+      if (!isNewerVersion(latest, version)) return null;
       return { version: latest, downloadState: state.updateDownloadState };
     } catch {
       return null;
     }
   });
+
+  // -- Update channel (Settings > Application, Advanced mode) --
+  ipcMain.handle("settings:update-channel", () => ({
+    channel: resolveChannel(readSettings().updateChannel, version),
+    version,
+  }));
+
+  ipcMain.handle(
+    "settings:set-update-channel",
+    async (_event, channel: unknown): Promise<void> => {
+      if (!isUpdateChannel(channel)) return;
+      await switchChannel(channel);
+    },
+  );
+
+  // Save the channel, forget an update of the old channel, and check at once.
+  // The switch to Stable from an alpha build checks with downgrade on, then
+  // downloads and installs the current Stable version (owner decision D4).
+  // Every other check keeps downgrade off.
+  async function switchChannel(channel: UpdateChannel): Promise<void> {
+    writeSettings({ updateChannel: channel });
+    if (!updatesOn) return;
+    log.info(`Update channel set to ${channel}`);
+    // A check that started before the switch uses the old channel, and a new
+    // checkForUpdates() call would only return that check. Wait for it first.
+    // checkForUpdatesPromise is not in the electron-updater types.
+    const running = (
+      autoUpdater as unknown as {
+        checkForUpdatesPromise?: Promise<unknown> | null;
+      }
+    ).checkForUpdatesPromise;
+    if (running) await running.catch(() => {});
+    selfUpdater.discardDownload();
+    state.updateDownloadState = "idle";
+    availableUpdate = null;
+    installWhenDownloaded = null;
+    notifiedAvailableVersion = null;
+    notifiedDownloadedVersion = null;
+    refreshTrayIcon();
+    rebuildMenus();
+    state.settingsWindow?.webContents.send("updater:cleared");
+
+    const downgrade = switchNeedsDowngrade(channel, version);
+    applyChannel(autoUpdater, channel, { allowDowngrade: downgrade });
+    explicitDowngrade = downgrade;
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      log.warn(
+        `Update check after the channel switch failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    } finally {
+      explicitDowngrade = false;
+      applyChannel(autoUpdater, channel);
+    }
+    if (readSettings().autoUpdate !== false) startUpdateCheckInterval();
+  }
 }

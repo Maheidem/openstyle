@@ -24,6 +24,16 @@ import {
   useLanguageOptions,
 } from "@renderer/components/language-combobox";
 import { LanguageSelector } from "@renderer/components/language-selector";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@renderer/components/ui/alert-dialog";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import {
@@ -227,6 +237,11 @@ export default function SettingsPage(): React.JSX.Element {
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [autoUpdate, setAutoUpdate] = useState(true);
+  const [updateChannel, setUpdateChannel] = useState<{
+    channel: "stable" | "dev";
+    version: string;
+  } | null>(null);
+  const [stableConfirmOpen, setStableConfirmOpen] = useState(false);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
   const [advancedMode, setAdvancedMode] = useState(false);
@@ -565,6 +580,10 @@ export default function SettingsPage(): React.JSX.Element {
       ?.getAutoUpdate()
       .then((v) => setAutoUpdate(v))
       .catch(() => {});
+    window.api
+      ?.getUpdateChannel()
+      .then((v) => setUpdateChannel(v))
+      .catch(() => {});
 
     // Launch at startup setting
     window.api
@@ -683,6 +702,26 @@ export default function SettingsPage(): React.JSX.Element {
     setAutoUpdate(enabled);
     window.api?.setAutoUpdate(enabled);
   }, []);
+
+  const applyUpdateChannel = useCallback((channel: "stable" | "dev") => {
+    setUpdateChannel((prev) => (prev ? { ...prev, channel } : prev));
+    void window.api?.setUpdateChannel(channel);
+  }, []);
+
+  const handleUpdateChannelChange = useCallback(
+    (value: string) => {
+      if (!updateChannel || (value !== "stable" && value !== "dev")) return;
+      if (value === updateChannel.channel) return;
+      // The switch from a Dev (alpha) build to Stable installs the current
+      // Stable version at once, also when it is older. Ask first.
+      if (value === "stable" && updateChannel.version.includes("-")) {
+        setStableConfirmOpen(true);
+        return;
+      }
+      applyUpdateChannel(value);
+    },
+    [updateChannel, applyUpdateChannel],
+  );
 
   const handleLaunchAtStartupToggle = useCallback((enabled: boolean) => {
     setLaunchAtStartup(enabled);
@@ -850,6 +889,58 @@ export default function SettingsPage(): React.JSX.Element {
                   onCheckedChange={handleAutoUpdateToggle}
                 />
               </Row>
+              {advancedMode && updateChannel && (
+                <Row
+                  label={t("settings.application.updateChannel")}
+                  desc={t("settings.application.updateChannelDesc")}
+                >
+                  <Select
+                    value={updateChannel.channel}
+                    onValueChange={handleUpdateChannelChange}
+                  >
+                    <SelectTrigger
+                      id="settings-update-channel"
+                      aria-label={t("settings.application.updateChannel")}
+                      className="w-full max-w-md"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stable">
+                        {t("settings.application.updateChannelStable")}
+                      </SelectItem>
+                      <SelectItem value="dev">
+                        {t("settings.application.updateChannelDev")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <AlertDialog
+                    open={stableConfirmOpen}
+                    onOpenChange={setStableConfirmOpen}
+                  >
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          {t("settings.application.updateChannelStableTitle")}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {t("settings.application.updateChannelStableDesc")}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>
+                          {t("common.cancel")}
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => applyUpdateChannel("stable")}
+                        >
+                          {t("settings.application.updateChannelStableAction")}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </Row>
+              )}
               <Row
                 label={t("settings.application.launchAtStartup")}
                 desc={t("settings.application.launchAtStartupDesc")}

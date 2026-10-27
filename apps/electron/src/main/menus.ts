@@ -35,6 +35,7 @@ import {
   startTrayJobWatch,
   trayImage,
 } from "./tray-icon";
+import { isNewerVersion, runningVersion } from "./update-channel";
 import { showSettingsWindow } from "./windows/settings-window";
 import {
   createTrayPopoverWindow,
@@ -104,7 +105,9 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   try {
     const result = await autoUpdater.checkForUpdates();
     const latest = result?.updateInfo?.version;
-    if (latest && latest !== app.getVersion()) {
+    // Only a newer version is an update. A plain inequality reported an
+    // OLDER Stable version to a Dev build.
+    if (latest && isNewerVersion(latest, runningVersion(app.getVersion()))) {
       const { response } = await dialog.showMessageBox({
         type: "info",
         title: "Update Available",

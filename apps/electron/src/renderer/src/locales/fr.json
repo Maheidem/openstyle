@@ -127,6 +127,13 @@
     "application": {
       "autoUpdate": "Mises à jour automatiques",
       "autoUpdateDesc": "Recherche les nouvelles versions en arrière-plan. Sous macOS, la mise à jour se télécharge toute seule et attend votre redémarrage.",
+      "updateChannel": "Canal de mise à jour",
+      "updateChannelDesc": "Choisissez les versions qu'Openstyle installe.",
+      "updateChannelStable": "Stable (recommandé)",
+      "updateChannelDev": "Dev : chaque nouvelle build, peut casser",
+      "updateChannelStableTitle": "Passer à Stable ?",
+      "updateChannelStableDesc": "Openstyle installe maintenant la version stable actuelle et redémarre. Cette version peut être plus ancienne que celle que vous utilisez.",
+      "updateChannelStableAction": "Installer Stable",
       "launchAtStartup": "Lancer au démarrage",
       "launchAtStartupDesc": "Démarre Openstyle automatiquement quand vous vous connectez à votre ordinateur.",
       "showOnLaunch": "Afficher le tableau de bord au lancement",

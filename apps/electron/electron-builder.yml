@@ -88,6 +88,13 @@ appImage:
 deb:
   artifactName: ${productName}-${version}.${ext}
 npmRebuild: false
+# An alpha version (X.Y.Z-alpha.N) must write latest-mac.yml, not
+# alpha-mac.yml: Craft uploads only latest-mac.yml (.craft.yml includeNames).
+# app-builder-lib 26.8.1 already ignores the version channel for the github
+# provider. This line keeps that behavior if a later version changes it.
+# electron-updater asks for alpha-mac.yml first and falls back to
+# latest-mac.yml (specs/update-channels.md).
+detectUpdateChannel: false
 publish:
   provider: github
   owner: Maheidem

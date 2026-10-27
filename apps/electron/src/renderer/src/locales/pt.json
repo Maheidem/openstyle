@@ -127,6 +127,13 @@
     "application": {
       "autoUpdate": "Atualizações automáticas",
       "autoUpdateDesc": "Verifica novas versões em segundo plano. No macOS a atualização é baixada sozinha e espera você reiniciar.",
+      "updateChannel": "Canal de atualização",
+      "updateChannelDesc": "Escolha quais versões o Openstyle instala.",
+      "updateChannelStable": "Estável (recomendado)",
+      "updateChannelDev": "Dev: cada novo build, pode quebrar",
+      "updateChannelStableTitle": "Mudar para Estável?",
+      "updateChannelStableDesc": "O Openstyle instala agora a versão estável atual e reinicia. Esta versão pode ser mais antiga que a versão que você usa agora.",
+      "updateChannelStableAction": "Instalar Estável",
       "launchAtStartup": "Iniciar com o sistema",
       "launchAtStartupDesc": "Iniciar automaticamente o Openstyle quando você entrar no computador.",
       "showOnLaunch": "Mostrar painel ao iniciar",

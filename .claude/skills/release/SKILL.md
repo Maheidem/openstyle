@@ -40,6 +40,10 @@ gh workflow run release.yml --repo Maheidem/openstyle -f version=auto
 release. This dispatches Craft, which bumps the version, pushes
 `release/<version>`, and opens a publish-request issue.
 
+Since the update channels (2.24.0), give an explicit version on BOTH channels
+while a Dev series runs. What `auto` does after a prerelease is unverified.
+See "Channels (Stable and Dev)" below.
+
 ## 3. Watch the Build & Test workflow
 
 Runs automatically on push to the `release/<version>` branch, takes ~7 min.
@@ -92,6 +96,57 @@ It needs `gh`, `jq` and about 300 MB in `/tmp`; a full run takes about
   exactly — auto-update reads this file, a mismatch silently breaks it
 - `main` contains the release commit (Craft merges it as part of publish)
 - release branch `release/<version>` no longer exists (Craft deletes it)
+
+## Channels (Stable and Dev)
+
+Spec: `specs/update-channels.md`. The app has two update channels (Settings >
+Application, Advanced mode on).
+
+| Channel | Version form | GitHub release | Who gets it |
+|---|---|---|---|
+| Stable | `X.Y.Z` | normal release, "latest" | all users |
+| Dev | `X.Y.Z-alpha.N` | prerelease (Craft does this for `-alpha`) | Dev users only |
+
+Rules:
+1. Always give an explicit version: `-f version=2.25.0-alpha.1` or
+   `-f version=2.25.0`. Do not use `auto` while a Dev series runs.
+2. A Dev version is the NEXT Stable version plus `-alpha.N`, N from 1. Dev
+   users get a Stable release only when it is greater (`2.25.0` >
+   `2.25.0-alpha.3` > `2.24.0`).
+3. Cut every release (Dev and Stable) from main. Do not run the train from an
+   older tag (unverified: Craft merges the release branch back into main).
+4. A promotion is a rebuild. Never move or copy assets of an alpha release
+   into a Stable release: the version is inside the signed app.
+5. electron-builder writes `latest-mac.yml` also for an alpha version
+   (`detectUpdateChannel: false`), so `.craft.yml` and `release-verify.sh`
+   need no change.
+
+Cut a Dev release:
+
+```bash
+gh workflow run release.yml --repo Maheidem/openstyle -f version=X.Y.Z-alpha.N
+```
+
+Then steps 3 to 5 as usual, plus:
+
+```bash
+gh api repos/Maheidem/openstyle/releases/tags/X.Y.Z-alpha.N --jq .prerelease   # true
+gh api repos/Maheidem/openstyle/releases/latest --jq .tag_name                  # still the last Stable
+```
+
+Promote to Stable. First check that main holds the code that Dev users
+tested. Only the version line and the changelog can differ:
+
+```bash
+git fetch origin --tags
+git diff --stat X.Y.Z-alpha.N origin/main -- . ':(exclude)apps/electron/package.json' ':(exclude)CHANGELOG.md'
+# must print nothing; else cut a new alpha first, or the owner accepts the newer code
+gh workflow run release.yml --repo Maheidem/openstyle -f version=X.Y.Z
+```
+
+`release-verify.sh X.Y.Z` must PASS, and
+`gh api repos/Maheidem/openstyle/releases/latest --jq .tag_name` must print
+`X.Y.Z`.
 
 ## Known requirements/traps
 

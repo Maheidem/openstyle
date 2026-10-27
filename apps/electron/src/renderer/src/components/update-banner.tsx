@@ -26,6 +26,13 @@ export function UpdateBanner({
       setUpdateDownloaded(true);
       setDownloadPercent(null);
     });
+    // A channel switch drops the update of the old channel.
+    const removeCleared = window.api?.onUpdateCleared(() => {
+      setUpdateAvailable(null);
+      setUpdateDownloaded(false);
+      setUpdateError(null);
+      setDownloadPercent(null);
+    });
     const removeError = window.api?.onUpdateError((info) => {
       setUpdateError(info.message);
       setDownloadPercent(null);
@@ -49,6 +56,7 @@ export function UpdateBanner({
       removeDownloading?.();
       removeDownloaded?.();
       removeError?.();
+      removeCleared?.();
     };
   }, []);
 
