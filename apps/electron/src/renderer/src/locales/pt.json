@@ -439,8 +439,8 @@
       "cards": {
         "low": {
           "title": "Baixa",
-          "desc": "Pontuação e maiúsculas.",
-          "sample": "Ei, é, você pode enviar a última versão? Acho que o link do rodapé ainda está errado."
+          "desc": "Maiúsculas e dígitos, sem modelo de IA.",
+          "sample": "Ei você pode enviar a última versão acho que o link do rodapé ainda está errado."
         },
         "medium": {
           "title": "Média",

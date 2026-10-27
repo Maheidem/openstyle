@@ -8,6 +8,7 @@ import {
 } from "../src/lib/dictation/language.js";
 import { contactInfo } from "../src/lib/dictation/stages/contact.js";
 import {
+  contactEnd,
   fragments,
   lightFormat,
   listMarkers,
@@ -347,5 +348,33 @@ describe("guard", () => {
     ).toEqual([]);
     expect(lostTokens("我们这周发布。", "我们本周发布。", "zh")).toEqual([]);
     expect(lostTokens("周三见", "星期三见", "zh")).toEqual([]);
+  });
+});
+
+describe("contact end", () => {
+  it("drops a period that follows a contact form at the end", () => {
+    expect(contactEnd("Go to https://api.example.com/v1.")).toBe(
+      "Go to https://api.example.com/v1",
+    );
+    expect(contactEnd("Write to sara@example.com.")).toBe(
+      "Write to sara@example.com",
+    );
+    expect(contactEnd("网址是 www.example.com.")).toBe(
+      "网址是 www.example.com。",
+    );
+    expect(contactEnd("Open /home/user/notes.txt.")).toBe(
+      "Open /home/user/notes.txt",
+    );
+  });
+
+  it("keeps other periods", () => {
+    for (const t of [
+      "It costs $3.50.",
+      "See you at 3 PM.",
+      "Done etc.",
+      "Hi.",
+    ]) {
+      expect(contactEnd(t)).toBe(t);
+    }
   });
 });

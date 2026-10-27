@@ -491,8 +491,8 @@
       "cards": {
         "low": {
           "title": "Low",
-          "desc": "Punctuation and caps.",
-          "sample": "Hey, uh, can you send the latest version? I think the footer link is still wrong."
+          "desc": "Caps and digits, no AI model.",
+          "sample": "Hey can you send the latest version I think the footer link is still wrong."
         },
         "medium": {
           "title": "Medium",

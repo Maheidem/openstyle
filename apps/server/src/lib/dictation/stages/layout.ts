@@ -84,6 +84,20 @@ export function listMarkers(
 }
 
 /**
+ * A period right after an email, URL, path or file name at the end of the
+ * text reads as part of it. Remove it; a Chinese text gets "。" instead. The
+ * blind judges of the first bench run chose the answer without that period.
+ */
+export function contactEnd(text: string): string {
+  const m = /(\S+)\.$/u.exec(text);
+  const last = m?.[1] ?? "";
+  if (!/@|:\/\/|^www\.|^\/|\.[a-z][a-z0-9]{1,4}$/i.test(last)) return text;
+  if (!/[a-z0-9/]$/i.test(last)) return text;
+  const body = text.slice(0, -1);
+  return /\p{Script=Han}/u.test(body) ? `${body}。` : body;
+}
+
+/**
  * S9: a short fragment keeps no final period (owner rule: 3 words or less;
  * Chinese: 6 characters or less). Only a single-line answer with no other
  * sentence mark changes.

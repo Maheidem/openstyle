@@ -19,7 +19,12 @@ import {
   toneStagePrompt,
 } from "./prompts.js";
 import { contactInfo } from "./stages/contact.js";
-import { fragments, lightFormat, listMarkers } from "./stages/layout.js";
+import {
+  contactEnd,
+  fragments,
+  lightFormat,
+  listMarkers,
+} from "./stages/layout.js";
 import { spokenNumbers } from "./stages/numbers.js";
 import {
   formatCountedList,
@@ -161,6 +166,6 @@ export async function runDictationPipeline(
     text = await guarded("tone", (t) => toneStagePrompt(t, llmLanguages, tone));
   }
   if (input.intensity === "high") text = listMarkers(text, input.raw, lang);
-  text = fragments(text, input.raw, lang);
+  text = fragments(contactEnd(text), input.raw, lang);
   return { text, lang, llmLanguages, stages };
 }
