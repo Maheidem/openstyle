@@ -44,6 +44,11 @@ import {
 
 test.describe.configure({ mode: "serial" });
 
+test.skip(
+  process.platform !== "darwin",
+  "The self-updater runs on macOS only (self-updater.ts: not macOS).",
+);
+
 const OWNER_REPO = "/Maheidem/openstyle";
 const STABLE = "2.24.0";
 const ALPHA = "2.25.0-alpha.1";
