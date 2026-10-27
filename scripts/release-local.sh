@@ -46,9 +46,10 @@ NOTARY_PROFILE=${OPENSTYLE_NOTARY_PROFILE:-openstyle-notary}
 export PYTHON_BIN=${PYTHON_BIN:-/opt/homebrew/bin/python3.12}
 CRAFT_VERSION=${CRAFT_VERSION:-3.1.0}
 GPU_LOCK=/tmp/openstyle-gpu.lock
-# Specs that open the microphone or system audio. They stay CI-only.
+# Specs that can open a macOS Privacy dialog. They stay CI-only.
 # permission-flow calls the real getUserMedia (Microphone dialog, 2026-10-18).
-E2E_EXCLUDE=(meeting-cancel-transcribe meeting-import permission-flow)
+# hotkey-supervisor starts the native key listener (Input Monitoring dialog).
+E2E_EXCLUDE=(meeting-cancel-transcribe meeting-import permission-flow hotkey-supervisor)
 
 usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -373,7 +374,28 @@ APP="$E/dist/mac-arm64/Openstyle.app"
 [ -d "$APP" ] || die "no $APP after the build"
 run_in "$E" "resources/bin/darwin-arm64/macos-meeting-capture" --self-test
 run_in "$E" node scripts/verify-native-binaries.mjs
-NOTARIZED="$NOTARIZE" run bash scripts/verify-mac-signature.sh devid "$APP" "$E/dist/Openstyle-$VERSION.dmg"
+DMG="$E/dist/Openstyle-$VERSION.dmg"
+if [ "$NOTARIZE" -eq 1 ]; then
+  # electron-builder notarizes the .app only. Notarize and staple the dmg too,
+  # so that Gatekeeper accepts a downloaded dmg offline. (CI does not do this.)
+  run xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+  run xcrun stapler staple "$DMG"
+  # The ticket changes the dmg: write its blockmap again, and its sha512 and
+  # size in latest-mac.yml (the tool prints {"size":..,"sha512":..}).
+  app_builder="$(cd "$E" && node -p 'require(require.resolve("app-builder-bin", { paths: [require.resolve("electron-builder")] })).appBuilderPath')"
+  dmg_info="$("$app_builder" blockmap -i "$DMG" -o "$DMG.blockmap")"
+  dmg_sha="$(jq -r .sha512 <<<"$dmg_info")"
+  dmg_size="$(jq -r .size <<<"$dmg_info")"
+  awk -v want="$(basename "$DMG")" -v sha="$dmg_sha" -v size="$dmg_size" '
+    $1 == "-" && $2 == "url:" { url = $3 }
+    url == want && $1 == "sha512:" { sub(/sha512: .*/, "sha512: " sha) }
+    url == want && $1 == "size:" { sub(/size: .*/, "size: " size); url = "" }
+    { print }
+  ' "$E/dist/latest-mac.yml" > "$E/dist/latest-mac.yml.new"
+  mv "$E/dist/latest-mac.yml.new" "$E/dist/latest-mac.yml"
+  echo "dmg stapled; latest-mac.yml dmg entry: size $dmg_size"
+fi
+NOTARIZED="$NOTARIZE" run bash scripts/verify-mac-signature.sh devid "$APP" "$DMG"
 
 # The asset set of .craft.yml (includeNames) and of release-verify.sh.
 rm -rf "$OUT"

@@ -303,17 +303,23 @@ What it does, in this order:
    bundle guards).
 4. Electron E2E in quiet mode through the Test Runner app, with a scratch HOME
    (`scripts/isolated-env.sh`). It runs every spec except `E2E_EXCLUDE`:
-   `meeting-cancel-transcribe`, `meeting-import` and `permission-flow` (real
-   `getUserMedia`; it raised a Microphone dialog on 2026-10-18). Those stay
-   CI-only. The step fails when the TCC log shows any `AUTHREQ_PROMPTING`
+   `meeting-cancel-transcribe`, `meeting-import`, `permission-flow` (real
+   `getUserMedia`; it raised a Microphone dialog on 2026-10-18) and
+   `hotkey-supervisor` (the native key listener can raise an Input
+   Monitoring dialog). Those stay CI-only. The step fails when the TCC log shows any `AUTHREQ_PROMPTING`
    during the run.
 5. Build: the MLX worker (`PYTHON_BIN`, default
    `/opt/homebrew/bin/python3.12`), whisper.cpp, then the steps of
    `build:mac` with electron-builder called directly:
    `-c.mac.identity=<sha-1> -c.mac.sign=./scripts/mac-sign-by-hash.cjs
    -c.mac.hardenedRuntime=true -c.mac.notarize=true` and
-   `APPLE_KEYCHAIN_PROFILE`. Then the meeting capture self-test,
-   `verify-native-binaries.mjs` and `scripts/verify-mac-signature.sh devid`
+   `APPLE_KEYCHAIN_PROFILE`. Then the meeting capture self-test and
+   `verify-native-binaries.mjs`. electron-builder notarizes the .app only, so
+   the script notarizes and staples the dmg too (`notarytool submit --wait`,
+   `stapler staple`; CI does not). The ticket changes the dmg, so the script
+   writes the dmg blockmap again (`app-builder blockmap`) and puts the new
+   sha512 and size into latest-mac.yml. Then
+   `scripts/verify-mac-signature.sh devid`
    (the same check as the CI step "Verify release signature"). The 6 assets go
    to `dist/release-<version>/` with a tree stamp; latest-mac.yml must name the
    version and match the zip and dmg sha512 and size.
@@ -330,7 +336,7 @@ What it does, in this order:
    Stable version greater than the current latest (Craft does the same).
 8. `scripts/release-verify.sh <version>`, then back to main.
 
-Open problem (found 2026-10-27, blocks step 4 on this Mac): after
+Fixed in PR #357 (ade639f3), kept as history (found 2026-10-27): after
 `page.reload()` the renderer of a test app sends its API calls to
 `127.0.0.1:4649` (`resolvedPort` starts at `DEFAULT_SERVER_PORT` in
 `apps/electron/src/renderer/src/lib/api.ts`). On the owner's Mac the
@@ -338,16 +344,17 @@ installed app answers there. A throwaway spec logged GET `/api/settings`,
 `/api/history`, `/api/models/configured` and more to that port. The spec
 `meeting-llm-inspector` then saw the owner's `advanced_mode=true` and failed
 ("gate off", 3 runs of 3). CI has no server on that port, so CI passes.
-Until the renderer waits for its own port, do not run step 4 next to the
-installed app. It is not known whether a test also WROTE to the owner's
-server.
+The renderer now waits for its own port. The #357 run showed 128 passed and
+0 test-app sockets to the installed app's port. It is not known whether a
+test before the fix also WROTE to the owner's server.
 
 Credentials (owner, once):
 - Developer ID: the identity "Developer ID Application: Marcos André
   Heidemann Francisco (XQV5VD8YW3)" in the login keychain. Present on
   2026-10-27 (`security find-identity -v -p codesigning`).
 - Notary: a notarytool keychain profile `openstyle-notary`
-  (`OPENSTYLE_NOTARY_PROFILE` selects another name). Missing on 2026-10-27.
+  (`OPENSTYLE_NOTARY_PROFILE` selects another name). The owner created it on
+  2026-10-27 (`notarytool history` lists the CI submissions).
   Create it with the App Store Connect API key (the key of the CI secret
   `APPLE_API_KEY_P8`):
   ```bash
