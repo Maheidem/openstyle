@@ -15,13 +15,43 @@ const log = createAppLogger("electron");
 
 // Port of the embedded server. The boot code sets it once the server is bound.
 let serverPort = DEFAULT_SERVER_PORT;
+// False until the boot code sets the port. Before that, `serverPort` is only
+// the default port, and that port can belong to another Openstyle app.
+let serverPortKnown = false;
+const serverPortWaiters = new Set<(port: number) => void>();
 
-export function getServerPort(): number {
-  return serverPort;
+/** How long the renderer waits for the port before its lookup fails. */
+export const SERVER_PORT_WAIT_MS = 20_000;
+
+/**
+ * The port of this app's server, for the renderer. It resolves only after the
+ * boot code sets the port. It rejects after `timeoutMs`, so that the renderer
+ * tries again. It never answers with the default port before the port is
+ * known: the installed app owns that port, so the renderer of Openstyle Dev or
+ * of a test app would read the data of the installed app.
+ */
+export function getServerPort(
+  timeoutMs = SERVER_PORT_WAIT_MS,
+): Promise<number> {
+  if (serverPortKnown) return Promise.resolve(serverPort);
+  return new Promise((resolve, reject) => {
+    const onKnown = (port: number): void => {
+      clearTimeout(timer);
+      resolve(port);
+    };
+    const timer = setTimeout(() => {
+      serverPortWaiters.delete(onKnown);
+      reject(new Error("The server port is not known yet"));
+    }, timeoutMs);
+    serverPortWaiters.add(onKnown);
+  });
 }
 
 export function setServerPort(port: number): void {
   serverPort = port;
+  serverPortKnown = true;
+  for (const onKnown of serverPortWaiters) onKnown(port);
+  serverPortWaiters.clear();
 }
 
 /**

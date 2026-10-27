@@ -59,6 +59,7 @@ import {
   checkServerHealth,
   getClient,
   getLocalApiBase,
+  initApiBase,
   refreshApiBase,
 } from "@renderer/lib/api";
 import { formatBytes } from "@renderer/lib/models";
@@ -2026,7 +2027,17 @@ function ServerConnection(): React.JSX.Element {
       setServerTest("idle");
       return;
     }
-    const base = parsed.data || getLocalApiBase();
+    let base = parsed.data;
+    if (!base) {
+      // The local server: wait for its port. Without a port it is unreachable.
+      try {
+        await initApiBase();
+        base = getLocalApiBase();
+      } catch {
+        setServerTest("unreachable");
+        return;
+      }
+    }
     setServerTest("testing");
     if (!(await checkServerHealth(base, 5000))) {
       setServerTest("unreachable");
