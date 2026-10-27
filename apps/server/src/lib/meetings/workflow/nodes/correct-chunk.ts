@@ -1,6 +1,8 @@
 import type { CorrectionDropReason } from "@openstyle/validations";
 import { callUnit } from "../../../llm/call-unit.js";
 import type { CallProfile } from "../../../llm/model-profiles.js";
+import { removeRepeatedWords } from "../../repeat-words.js";
+import { fixVocabSpelling } from "../../vocab-spelling.js";
 import { estimateTokens, formatEnhanceLine } from "../chunking.js";
 import type { RunContext, WorkflowDeps } from "../context.js";
 import {
@@ -32,6 +34,16 @@ import {
 // Node `correctChunk` (specs/meeting-enhance-agentic.md 4.2). One task for each
 // chunk. It fixes clear speech-to-text errors and nothing else. It writes no
 // meeting data: `save` does.
+//
+// The owner rule "specialization over over-prompting" (AGENTS.md) splits the
+// task into stages, each with one job:
+// 1. Code: vocabulary spelling (`vocab-spelling.ts`), then exact repeated
+//    words go (`repeat-words.ts`, owner decision 2026-10-26).
+// 2. LLM `correctChunk`: fix misheard words only. The checks of 4.2.3 run on
+//    its answer against the text that it saw (after stage 1). Then the
+//    repeat rule runs on the kept answer too.
+// The result keeps one unit list per chunk: an ok unit of stage 2 carries the
+// final text of each of its segments.
 
 function lineOf(s: PreparedSegment): string {
   return formatEnhanceLine(s.id, s.displayLabel, s.text);
@@ -490,6 +502,37 @@ function toUnit(
   };
 }
 
+/**
+ * The final units of a chunk. Each ok unit of the `correctChunk` stage gets,
+ * for each of its segments, the last stage that changed the text: a kept
+ * `correctChunk` fix (after the repeat rule), else the code fix. A code fix
+ * has no call (`callId` null), so no call link records it; it is saved and
+ * counted like every applied correction. A text equal to the raw text is no
+ * correction. A unit that is not ok stays as it is, so `save` writes nothing
+ * for it.
+ */
+export function mergeStages(
+  units: readonly CorrectUnitResult[],
+  rawById: ReadonlyMap<string, string>,
+  codeById: ReadonlyMap<string, string>,
+): CorrectUnitResult[] {
+  return units.map((unit) => {
+    if (unit.status !== "ok") return unit;
+    const llm = new Map(unit.corrections.map((c) => [c.id, c]));
+    const corrections: CorrectUnitResult["corrections"] = [];
+    for (const id of unit.segmentIds) {
+      const fix = llm.get(id);
+      const pick = fix
+        ? { ...fix, text: removeRepeatedWords(fix.text) }
+        : { id, text: codeById.get(id), seq: -1, callId: null };
+      if (pick.text !== undefined && pick.text !== rawById.get(id)) {
+        corrections.push({ ...pick, text: pick.text });
+      }
+    }
+    return { ...unit, corrections };
+  });
+}
+
 export function makeCorrectChunkNode(deps: WorkflowDeps) {
   const breaker = createBreaker();
 
@@ -497,6 +540,12 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
     input: CorrectChunkInput,
     ctx: RunContext,
   ): Promise<CorrectChunkResult> {
+    // Stage 1 (code): vocabulary spelling, then exact repeats. The LLM
+    // stage sees this text.
+    const segments = input.segments.map((s) => ({
+      ...s,
+      text: removeRepeatedWords(fixVocabSpelling(s.text, input.vocabTerms)),
+    }));
     const system = buildCorrectSystemPrompt({
       language: input.language,
       vocabTerms: input.vocabTerms,
@@ -505,7 +554,26 @@ export function makeCorrectChunkNode(deps: WorkflowDeps) {
     ctx.progress.addTotal(1);
     ctx.progress.chunkStarted(input.chunkIndex, input.segments[0]?.text ?? "");
     try {
-      return await correctChunk(input, ctx, system, systemTokens);
+      // Stage 2 (LLM): misheard words.
+      const fixed = await correctChunk(
+        { ...input, segments },
+        ctx,
+        system,
+        systemTokens,
+      );
+      // A skipped or cancelled result carries its skip reason by identity
+      // (skippedBecause): return it as it is.
+      if (fixed.status === "skipped" || fixed.status === "cancelled") {
+        return fixed;
+      }
+      return {
+        ...fixed,
+        units: mergeStages(
+          fixed.units,
+          new Map(input.segments.map((s) => [s.id, s.text])),
+          new Map(segments.map((s) => [s.id, s.text])),
+        ),
+      };
     } finally {
       ctx.progress.chunkEnded(input.chunkIndex);
     }

@@ -1301,7 +1301,7 @@ export const NODE_OF: Record<StageName, string> = {
 
 /** The one-word change of the noise-band arm, per stage (a word of its system prompt). */
 export const PERTURB: Record<StageName, [string, string]> = {
-  correctChunk: ["garbled words", "jumbled words"],
+  correctChunk: ["most likely said", "probably said"],
   identifySpeakers: ["read an excerpt", "read a section"],
   summarize: ["substantive points", "important points"],
   suggestTags: ["short topic tags", "brief topic tags"],

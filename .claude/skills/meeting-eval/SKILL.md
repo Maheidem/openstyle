@@ -101,6 +101,11 @@ The harness now works like this:
 - For decisions, action items and open questions, the judge also makes a reference list from the transcript. `score` reports precision (good items / items) and recall (covered reference items / reference items) per section. It never sums faults, so a longer summary is not punished for its length.
 - Verdict: summary F1 (pooled over the 3 sections) within 0.10 is a near tie. Corrections: the arm that is best on more changed lines is ahead.
 
+Rubric rule (owner, 2026-10-26): Enhance removes exact repeated words, so `JUDGE.md` tells the judge to count a removed exact repeat as neutral. Traps found 2026-10-26:
+- The compare files hide changed lines after a limit ("+9 more"). A judge cannot see them, and one hidden line held a real harm. For a close call, list the lines where the arms differ in a non-repeat way and ask the owner.
+- One judge per meeting is noise: 3 fresh judges per meeting split 2 to 1 on both gold meetings. Use 3 judges, each with its own `--seed`, in separate out folders.
+- To compare two code versions (not two models), run `meeting:eval` once per version (check out each commit, build, run with its own `--out`; pass `--port` when 4800 is busy), then copy both packs into one pack folder with neutral slugs (not words such as "main", which `scrub` would also replace in the meeting text).
+
 ```bash
 OUT=<out-dir of run.sh>
 B=.claude/skills/meeting-eval/scripts/blind.py
