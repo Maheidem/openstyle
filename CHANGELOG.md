@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.24.0
+
+### New Features ✨
+
+#### Mlx Llm
+
+- Model pool, Keep ready per task, engine-not-ready state by @Maheidem in [#348](https://github.com/Maheidem/openstyle/pull/348)
+- Worker context guard and strict worker version contract by @Maheidem in [#341](https://github.com/Maheidem/openstyle/pull/341)
+- Prefix cache for dictation cleanup by @Maheidem in [#339](https://github.com/Maheidem/openstyle/pull/339)
+- Worker stats, GPU cap and run-settings spec by @Maheidem in [#337](https://github.com/Maheidem/openstyle/pull/337)
+- Add Gemma 4 26B-A4B and Qwen3.8 27B to the catalog by @Maheidem in [#335](https://github.com/Maheidem/openstyle/pull/335)
+
+#### Models
+
+- Show a fit label for each built-in LLM by @Maheidem in [#338](https://github.com/Maheidem/openstyle/pull/338)
+- Delete the model in use and show disk use by @Maheidem in [#336](https://github.com/Maheidem/openstyle/pull/336)
+
+#### Other
+
+- (dictation) Staged cleanup pipeline, code stages first by @Maheidem in [#346](https://github.com/Maheidem/openstyle/pull/346)
+- (enhance) Split correctChunk into focused stages by @Maheidem in [#344](https://github.com/Maheidem/openstyle/pull/344)
+- (llm) Keep each LLM call inside the context window by @Maheidem in [#340](https://github.com/Maheidem/openstyle/pull/340)
+- (summarize) Split Summarize into narrow stage calls by @Maheidem in [#345](https://github.com/Maheidem/openstyle/pull/345)
+- (updater) Stable and Dev update channels by @Maheidem in [#349](https://github.com/Maheidem/openstyle/pull/349)
+
+### Bug Fixes 🐛
+
+- (meeting-eval) Rebuild the blind judge harness after the owner review by @Maheidem in [#343](https://github.com/Maheidem/openstyle/pull/343)
+
+### Documentation 📚
+
+- (agents) LLM design ethos, specialization over over-prompting by @Maheidem in [#342](https://github.com/Maheidem/openstyle/pull/342)
+
+### Internal Changes 🔧
+
+- (app-check) Hold the GPU lock only for the model steps by @Maheidem in [#347](https://github.com/Maheidem/openstyle/pull/347)
+
 ## 2.23.0
 
 ### New Features ✨
