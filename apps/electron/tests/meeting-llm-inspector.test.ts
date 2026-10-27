@@ -8,6 +8,7 @@ import {
   defaultSegments,
   type EnhanceApp,
   FakeLlm,
+  isSummaryStep,
   openMeeting,
   RIGHT_WORD,
   readRuns,
@@ -15,6 +16,7 @@ import {
   seedCheckpointRows,
   seedMeeting,
   segmentId,
+  summaryAnswer,
   WRONG_WORD,
   waitForRun,
 } from "./helpers/enhance-fixture";
@@ -107,7 +109,7 @@ test.beforeAll(async () => {
       // The tag step of issue #231. It runs after save.
       content = JSON.stringify({ tags: [] });
     } else {
-      content = JSON.stringify({
+      content = summaryAnswer(req, {
         overview: SUMMARY_OVERVIEW,
         keyPoints: ["The launch date moved."],
         decisions: ["Launch on Friday."],
@@ -115,7 +117,7 @@ test.beforeAll(async () => {
           { task: "Post the plan", owner: "Ana", due: "next Friday" },
         ],
         openQuestions: [],
-      });
+      }).content;
     }
     answers.set(req.n, content);
     return { content };
@@ -303,17 +305,21 @@ test("gate on: the panel shows what the fake server logged", async () => {
     .toBe(answers.get(firstTry.n));
   await env.page.getByTestId("meetings-inspector-close").click();
 
-  // The Summary tab links to the summary call.
+  // The Summary tab links to the Summarize calls: one row for each call
+  // (the stage calls, the timing check, the overview). Open the first one.
   await env.page.getByRole("tab", { name: "Summary" }).click();
   await env.page.getByTestId("meetings-summary-inspect").click();
-  // One summary call: the list has one row. Open it.
+  const summaryRequests = fake.requests.filter((r) => isSummaryStep(r.step));
+  expect(summaryRequests.length).toBe(6);
   const summaryCalls = env.page.getByTestId("meetings-inspector-summary-call");
-  await expect(summaryCalls).toHaveCount(1, { timeout: 15_000 });
-  await summaryCalls.click();
+  await expect(summaryCalls).toHaveCount(summaryRequests.length, {
+    timeout: 15_000,
+  });
+  await summaryCalls.first().click();
   await expect(env.page.getByTestId("meetings-inspector-call")).toBeVisible({
     timeout: 15_000,
   });
-  const summary = fake.requests.find((r) => r.step === "meeting_summary");
+  const summary = summaryRequests[0];
   expect(await blocks(env.page, "meetings-inspector-messages")).toEqual(
     summary?.messages,
   );

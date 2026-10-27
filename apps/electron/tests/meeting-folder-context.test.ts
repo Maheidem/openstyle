@@ -7,8 +7,10 @@ import {
   defaultSegments,
   type EnhanceApp,
   FakeLlm,
+  isSummaryStep,
   RIGHT_WORD,
   seedMeeting,
+  summaryAnswer,
   WRONG_WORD,
   waitForRun,
 } from "./helpers/enhance-fixture";
@@ -56,15 +58,13 @@ test.beforeAll(async () => {
     if (req.step === "meeting_tags") {
       return { content: JSON.stringify({ tags: [] }) };
     }
-    return {
-      content: JSON.stringify({
-        overview: SUMMARY_OVERVIEW,
-        keyPoints: ["The launch date moved."],
-        decisions: ["Launch on Friday."],
-        actionItems: [],
-        openQuestions: [],
-      }),
-    };
+    return summaryAnswer(req, {
+      overview: SUMMARY_OVERVIEW,
+      keyPoints: ["The launch date moved."],
+      decisions: ["Launch on Friday."],
+      actionItems: [],
+      openQuestions: [],
+    });
   };
   env = await bootEnhanceApp(fake, {
     advancedMode: true,
@@ -165,19 +165,23 @@ async function shownMessages(page: Page): Promise<string[]> {
   return messages;
 }
 
-/** The messages of the summary call, as the inspector panel shows them. */
+/**
+ * The messages of the first summary call, as the inspector panel shows them.
+ * The panel lists one row for each Summarize call (`calls`).
+ */
 async function inspectorSummaryMessages(
   page: Page,
   title: string,
   folder: string | null,
+  calls: number,
 ): Promise<string[]> {
   await openMeeting(page, title, folder);
   await page.getByRole("tab", { name: "Summary" }).click();
   await expect(page.getByText(SUMMARY_OVERVIEW)).toBeVisible();
   await page.getByTestId("meetings-summary-inspect").click();
-  const calls = page.getByTestId("meetings-inspector-summary-call");
-  await expect(calls).toHaveCount(1, { timeout: 15_000 });
-  await calls.click();
+  const rows = page.getByTestId("meetings-inspector-summary-call");
+  await expect(rows).toHaveCount(calls, { timeout: 15_000 });
+  await rows.first().click();
   return shownMessages(page);
 }
 
@@ -221,12 +225,18 @@ test("a filed meeting: the folder block follows the meeting context in the speak
       );
     }
   }
-  // The summary prompt has the meeting context and no folder block (P8b).
-  for (const r of byStep("meeting_summary")) {
-    expect(r.system).toContain(MEETING_CONTEXT);
-    expect(r.system).not.toContain(FOLDER_LABEL);
-    expect(r.system).not.toContain(FOLDER_NAME);
-    expect(r.user).not.toContain(FOLDER_LABEL);
+  // Every Summarize prompt has no folder block (P8b). The stage prompts have
+  // the meeting context; the timing check of the action items has a single
+  // narrow job and gets no context.
+  const summaryCalls = requests.filter((r) => isSummaryStep(r.step));
+  expect(summaryCalls.length, "summary requests").toBeGreaterThan(0);
+  for (const r of summaryCalls) {
+    if (r.step !== "summary_action_timing") {
+      expect(r.system, r.step).toContain(MEETING_CONTEXT);
+    }
+    expect(r.system, r.step).not.toContain(FOLDER_LABEL);
+    expect(r.system, r.step).not.toContain(FOLDER_NAME);
+    expect(r.user, r.step).not.toContain(FOLDER_LABEL);
   }
   // correct_chunk had no context before, and gets none now.
   for (const r of byStep("correct_chunk")) {
@@ -249,8 +259,9 @@ test("a filed meeting: the folder block follows the meeting context in the speak
     env.page,
     FILED_TITLE,
     FOLDER_NAME,
+    summaryCalls.length,
   );
-  const summary = byStep("meeting_summary")[0] as ChatRequest;
+  const summary = summaryCalls[0] as ChatRequest;
   expect(shown).toEqual(summary.messages);
   expect(shown[0]).toContain(MEETING_CONTEXT);
   expect(shown.join("\n")).not.toContain(FOLDER_LABEL);
@@ -264,10 +275,16 @@ test("an unfiled meeting: no folder block in any prompt", async () => {
     expect(r.system, r.step).not.toContain(FOLDER_LABEL);
     expect(r.user, r.step).not.toContain(FOLDER_LABEL);
   }
-  const summary = requests.find((r) => r.step === "meeting_summary");
+  const summaryCalls = requests.filter((r) => isSummaryStep(r.step));
+  const summary = summaryCalls[0];
   expect(summary?.system).toContain(MEETING_CONTEXT);
 
-  const shown = await inspectorSummaryMessages(env.page, UNFILED_TITLE, null);
+  const shown = await inspectorSummaryMessages(
+    env.page,
+    UNFILED_TITLE,
+    null,
+    summaryCalls.length,
+  );
   expect(shown).toEqual(summary?.messages);
   expect(shown.join("\n")).not.toContain(FOLDER_LABEL);
 });

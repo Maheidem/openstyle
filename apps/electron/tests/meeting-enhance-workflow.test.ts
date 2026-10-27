@@ -10,12 +10,15 @@ import {
   defaultSegments,
   type EnhanceApp,
   FakeLlm,
+  isSummaryStep,
   openMeeting,
   RIGHT_WORD,
   readRuns,
   readStepRows,
+  SUMMARY_STEPS,
   seedMeeting,
   segmentId,
+  summaryAnswer,
   WRONG_WORD,
   waitForRun,
 } from "./helpers/enhance-fixture";
@@ -101,17 +104,15 @@ function goodAnswer(
         }),
       };
     }
-    return {
-      content: JSON.stringify({
-        overview: SUMMARY_OVERVIEW,
-        keyPoints: ["The launch date moved."],
-        decisions: ["Launch on Friday."],
-        actionItems: [
-          { task: "Post the plan", owner: "Ana", due: "next Friday" },
-        ],
-        openQuestions: [],
-      }),
-    };
+    return summaryAnswer(req, {
+      overview: SUMMARY_OVERVIEW,
+      keyPoints: ["The launch date moved."],
+      decisions: ["Launch on Friday."],
+      actionItems: [
+        { task: "Post the plan", owner: "Ana", due: "next Friday" },
+      ],
+      openQuestions: [],
+    });
   };
 }
 
@@ -128,10 +129,17 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
   const id = "e2e-happy";
   fake.requests.length = 0;
   const base = goodAnswer(id, (i) => i !== 1);
-  // Park the summary call: the list card must show the Summarizing job
-  // badge while the chained Summarize runs, so the later "Summarized"
+  // Park the first summary call: the list card must show the Summarizing
+  // job badge while the chained Summarize runs, so the later "Summarized"
   // proves a refetch.
-  fake.script = (req) => (req.step === "meeting_summary" ? "hold" : base(req));
+  let parked = false;
+  fake.script = (req) => {
+    if (isSummaryStep(req.step) && !parked) {
+      parked = true;
+      return "hold";
+    }
+    return base(req);
+  };
   seedMeeting(env.userDataDir, id, "Happy path sync", defaultSegments(3));
 
   await openMeeting(env.page, "Happy path sync");
@@ -161,7 +169,7 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
       r.request().method() === "GET",
   );
   console.log("Meeting list after job change:", listRefetch.url());
-  const held = fake.requests.find((r) => r.step === "meeting_summary");
+  const held = fake.requests.find((r) => isSummaryStep(r.step));
   if (!held) throw new Error("no summary request");
   fake.releaseHeld(base(held));
   const run = await waitForRun(env, id, ["succeeded", "partial", "failed"]);
@@ -188,18 +196,25 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
       "chunk:2",
       "candidates",
       "verify",
+      "decisions",
+      "actionItems",
+      "actionTiming",
+      "keyPoints",
+      "openQuestions",
+      "overview",
       "save",
       "tags",
     ]),
   );
 
-  // Requests: 3 chunks, one speaker call, one summary call, one tag call
-  // (issue #231). Nothing else.
+  // Requests: 3 chunks, one speaker call, one call for each Summarize stage
+  // (the timing check runs because the summary has an action item), one tag
+  // call (issue #231). Nothing else.
   const count = (step: ChatRequest["step"]) =>
     fake.requests.filter((r) => r.step === step).length;
   expect(count("correct_chunk")).toBe(3);
   expect(count("identify_speakers")).toBe(1);
-  expect(count("meeting_summary")).toBe(1);
+  for (const step of SUMMARY_STEPS) expect(count(step), step).toBe(1);
   expect(count("meeting_tags")).toBe(1);
   expect(count("other")).toBe(0);
 
@@ -224,8 +239,13 @@ test("happy path: schema on the wire, all steps done, Enhance chains into Summar
     "correct_chunk",
     "correct_chunk",
     "identify_speakers",
-    "meeting_summary",
     "meeting_tags",
+    "summary_action_items",
+    "summary_action_timing",
+    "summary_decisions",
+    "summary_key_points",
+    "summary_open_questions",
+    "summary_overview",
   ]);
   const correct = fake.requests.find((r) => r.step === "correct_chunk");
   expect(
@@ -419,8 +439,9 @@ test.describe("kill and resume", () => {
         `requests for chunk of ${id}`,
       ).toBe(expected);
     }
+    // One Summarize run: one overview call.
     expect(
-      fake.requests.filter((r) => r.step === "meeting_summary").length,
+      fake.requests.filter((r) => r.step === "summary_overview").length,
     ).toBe(1);
 
     // A call record is written when the call ends, so the killed call has no
