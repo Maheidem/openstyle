@@ -1,6 +1,6 @@
 ---
 name: release
-description: Ship a new Openstyle desktop release via the automated Craft release train (preflight, gh workflow dispatch, accept issue to publish); manual GitHub Release publish kept as a fallback. Use when asked to cut/ship/publish a release or version bump the electron app.
+description: Ship a new Openstyle desktop release. Default since 2026-10-27 is the local release on the owner's Mac (pnpm release:local <version>, section "Local release"); the Craft release train on GitHub and a manual publish stay as fallbacks. Use when asked to cut/ship/publish a release or version bump the electron app.
 ---
 
 # Openstyle release
@@ -268,6 +268,138 @@ release-branch Build & Test run, so this job signs the published files.
   ad-hoc at once.
 - **Developer ID** takes priority when `MAC_DEVID_CERT_P12` is set. See
   "Release signing (Developer ID)" above.
+
+## Local release (default since 2026-10-27)
+
+Owner decision 2026-10-27: release builds run on the owner's Mac with one
+command. GitHub macOS runners queue for a long time. GitHub only stores the
+release. PR CI does not change. The Craft train above stays as the fallback.
+
+```bash
+pnpm release:local <version> --dry-run      # steps 1-5: no push, no tag, no upload
+pnpm release:local <version>                # full release (owner only)
+pnpm release:local <version> --publish-only # resume after the release PR merged
+```
+
+The script is `scripts/release-local.sh`. An agent runs only `--dry-run`.
+A real run pushes a branch, opens a PR and publishes a release: only the owner
+or the main session starts it.
+
+What it does, in this order:
+1. Preflight: macOS arm64, clean tree, `main` = `origin/main` (a dry run
+   accepts a branch that contains origin/main), the version is greater than
+   `apps/electron/package.json`, no tag, release or branch for it exists, the
+   Developer ID identity is valid, the notary profile works, the Test Runner
+   app exists.
+2. `craft prepare <version> --no-push` (`@sentry/craft@3.1.0` through npx):
+   a local commit `release: <version>` on `release/<version>` with the
+   changelog and the version bump. Steps 3-5 run on this commit, as CI does on
+   the release branch. A dry run or a failure before step 6 goes back to the
+   start branch and deletes the local `release/<version>`.
+3. Checks: the commands of the CI jobs "Checks" and "Test (macOS app + E2E)"
+   (biome, knip, guard hook tests, server build, meeting eval checks, server
+   typecheck and tests, stt, validations, electron unit tests,
+   compile:native, the meeting capture self-test, the electron build, the two
+   bundle guards).
+4. Electron E2E in quiet mode through the Test Runner app, with a scratch HOME
+   (`scripts/isolated-env.sh`). It runs every spec except `E2E_EXCLUDE`:
+   `meeting-cancel-transcribe`, `meeting-import` and `permission-flow` (real
+   `getUserMedia`; it raised a Microphone dialog on 2026-10-18). Those stay
+   CI-only. The step fails when the TCC log shows any `AUTHREQ_PROMPTING`
+   during the run.
+5. Build: the MLX worker (`PYTHON_BIN`, default
+   `/opt/homebrew/bin/python3.12`), whisper.cpp, then the steps of
+   `build:mac` with electron-builder called directly:
+   `-c.mac.identity=<sha-1> -c.mac.sign=./scripts/mac-sign-by-hash.cjs
+   -c.mac.hardenedRuntime=true -c.mac.notarize=true` and
+   `APPLE_KEYCHAIN_PROFILE`. Then the meeting capture self-test,
+   `verify-native-binaries.mjs` and `scripts/verify-mac-signature.sh devid`
+   (the same check as the CI step "Verify release signature"). The 6 assets go
+   to `dist/release-<version>/` with a tree stamp; latest-mac.yml must name the
+   version and match the zip and dmg sha512 and size.
+6. Release PR: the release commit goes to `chore/release-<version>` (not
+   `release/**`: a push there starts the CI package build on a macOS runner).
+   PR title `chore(release): <version>`, squash auto-merge. The script waits
+   up to 120 min for the merge (CI Status must pass).
+7. GitHub release at the merge commit, only when its tree equals the tree of
+   the build (else stop: main moved, start a new version). Notes = the
+   CHANGELOG.md section. Draft, upload the 6 assets, publish.
+   `--prerelease` for `-alpha`/`-beta`/`-rc`. `--latest=true` only for a
+   Stable version greater than the current latest (Craft does the same).
+8. `scripts/release-verify.sh <version>`, then back to main.
+
+Open problem (found 2026-10-27, blocks step 4 on this Mac): after
+`page.reload()` the renderer of a test app sends its API calls to
+`127.0.0.1:4649` (`resolvedPort` starts at `DEFAULT_SERVER_PORT` in
+`apps/electron/src/renderer/src/lib/api.ts`). On the owner's Mac the
+installed app answers there. A throwaway spec logged GET `/api/settings`,
+`/api/history`, `/api/models/configured` and more to that port. The spec
+`meeting-llm-inspector` then saw the owner's `advanced_mode=true` and failed
+("gate off", 3 runs of 3). CI has no server on that port, so CI passes.
+Until the renderer waits for its own port, do not run step 4 next to the
+installed app. It is not known whether a test also WROTE to the owner's
+server.
+
+Credentials (owner, once):
+- Developer ID: the identity "Developer ID Application: Marcos André
+  Heidemann Francisco (XQV5VD8YW3)" in the login keychain. Present on
+  2026-10-27 (`security find-identity -v -p codesigning`).
+- Notary: a notarytool keychain profile `openstyle-notary`
+  (`OPENSTYLE_NOTARY_PROFILE` selects another name). Missing on 2026-10-27.
+  Create it with the App Store Connect API key (the key of the CI secret
+  `APPLE_API_KEY_P8`):
+  ```bash
+  xcrun notarytool store-credentials openstyle-notary \
+    --key /path/to/AuthKey_<KEYID>.p8 --key-id <KEYID> --issuer <ISSUER-UUID>
+  xcrun notarytool history --keychain-profile openstyle-notary   # must list, not fail
+  ```
+  electron-builder skips notarization SILENTLY when it finds no credentials.
+  The script checks the profile in step 1 and the signature check in step 5
+  fails on a non-notarized app.
+- `--no-notarize` is allowed only with `--dry-run`. Such an app is signed but
+  Gatekeeper rejects it.
+
+Traps:
+- Only the release bot may push to main (ruleset 24718487). The bump reaches
+  main through the squash PR, and the tag goes on the merge commit, so that
+  `git describe --tags` (Craft uses it for the next changelog) finds it.
+- Craft publish cannot upload a local build: its artifact provider downloads
+  the "mac-builds" artifact of a GitHub run. The script uses `gh release`
+  with the same rules as Craft's github target.
+- `pnpm run build:mac` cannot notarize: `dev-sign.mjs builder` appends
+  `-c.mac.notarize=false`. The script runs electron-builder directly.
+- The identity name has "é": the script exports `LANG`/`LC_ALL=en_US.UTF-8`
+  and signs by hash (`mac-sign-by-hash.cjs`).
+- A new worktree can have a partial Electron install. The script repairs it
+  from `~/Library/Caches/electron`.
+- The first codesign with the login keychain can ask "codesign wants to access
+  key". The owner enters the password and clicks "Always Allow".
+- The script takes `/tmp/openstyle-gpu.lock` only around E2E and the worker
+  build, and releases it on exit.
+- Node: CI uses `.node-version` (22). The script warns when the local major
+  differs.
+
+Measured 2026-10-27 (`2.25.0-alpha.2 --dry-run --no-notarize`, branch
+chore/local-release): steps 1-3 and 5 pass in about 9 min with warm caches
+(craft prepare 8 s, checks 66 s). The app has `Authority=Developer ID
+Application`, the hardened runtime and `valid on disk`; `spctl` says
+`rejected, source=Unnotarized Developer ID` (no notary profile). Step 4 ran
+24 specs: 126 passed, 1 failed (the 4649 problem above), 0 Privacy dialogs.
+
+Verify by hand (dry run or real):
+
+```bash
+APP=apps/electron/dist/mac-arm64/Openstyle.app
+codesign --verify --deep --strict --verbose=2 "$APP"   # "valid on disk", "satisfies its Designated Requirement"
+spctl -a -vvv -t exec "$APP"                            # "accepted", "source=Notarized Developer ID"
+xcrun stapler validate "$APP"                           # "The validate action worked!"
+ls -l dist/release-<version>/                           # 6 assets + tree
+```
+
+After a real run: `bash scripts/release-verify.sh <version>` must end with
+`RESULT: PASS` (the script runs it), and
+`gh api repos/Maheidem/openstyle/releases/latest --jq .tag_name` must print
+the newest Stable.
 
 ## Final verification checklist
 
