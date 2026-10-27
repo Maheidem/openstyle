@@ -402,6 +402,13 @@ Application`, the hardened runtime and `valid on disk`; `spctl` says
 `rejected, source=Unnotarized Developer ID` (no notary profile). Step 4 ran
 24 specs: 126 passed, 1 failed (the 4649 problem above), 0 Privacy dialogs.
 
+Measured 2026-10-27, full run (`pnpm release:local 2.25.0-alpha.2 --dry-run`,
+on main ade639f3 + this script): 13 min 42 s with warm caches. E2E: 23 specs,
+128 passed, 8 skipped, 0 flaky, 0 Privacy dialogs. Notarization of the app
+and of the dmg: `Accepted`. `spctl`: `accepted`, `source=Notarized
+Developer ID`. `stapler validate` on the app and the dmg: "The validate
+action worked!". The cleanup left no `release/*` branch, no tag and no lock.
+
 Verify by hand (dry run or real):
 
 ```bash
