@@ -31,6 +31,21 @@ import {
 
 const START_TIMEOUT_MS = 180_000;
 const KILL_AFTER_MS = 5_000;
+/** The stderr text that a start error keeps (its last line names the cause). */
+const STDERR_TAIL_CHARS = 2_000;
+
+/**
+ * The worker process ended before its ready line, for example an old worker
+ * that refuses a new argument ("unrecognized arguments"). Typed, so callers
+ * fail at once with a clear state and never wait or retry.
+ */
+export class MlxWorkerStartError extends Error {
+  readonly code = "worker-start-failed";
+  constructor(message: string) {
+    super(message);
+    this.name = "MlxWorkerStartError";
+  }
+}
 
 export type MlxHttpWorkerPhase = "stopped" | "starting" | "ready" | "error";
 
@@ -112,6 +127,24 @@ function reservePort(): Promise<number> {
   });
 }
 
+/**
+ * Why an HTTP mode worker cannot run now, or null when it can. An existing
+ * binary in `overrideEnv` (TRUSTED-OPERATOR-ONLY) skips the runtime check.
+ */
+export function mlxHttpWorkerSetupBlocker(
+  overrideEnv: string,
+): MlxSetupBlocker | null {
+  if (!isAppleSiliconMac()) {
+    return {
+      code: "unsupported-platform",
+      message: MLX_UNSUPPORTED_PLATFORM_REASON,
+    };
+  }
+  const path = process.env[overrideEnv];
+  if (path && existsSync(path)) return null;
+  return mlxSetupBlocker();
+}
+
 export function createMlxHttpWorker<D extends MlxHttpModelDef>(
   opts: MlxHttpWorkerOptions<D>,
 ): MlxHttpWorker<D> {
@@ -140,15 +173,7 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
     process.env[opts.overrideEnv] || undefined;
 
   function setupBlocker(): MlxSetupBlocker | null {
-    if (!isAppleSiliconMac()) {
-      return {
-        code: "unsupported-platform",
-        message: MLX_UNSUPPORTED_PLATFORM_REASON,
-      };
-    }
-    const path = override();
-    if (path && existsSync(path)) return null;
-    return mlxSetupBlocker();
+    return mlxHttpWorkerSetupBlocker(opts.overrideEnv);
   }
 
   function getState(): MlxHttpWorkerState {
@@ -329,6 +354,7 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
     return new Promise<void>((resolve, reject) => {
       let settled = false;
       let buffer = "";
+      let stderrTail = "";
       const settle = (err?: Error) => {
         if (settled) return;
         settled = true;
@@ -378,7 +404,9 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
 
       proc.stderr?.on("data", (data: Buffer) => {
         const text = data.toString().trimEnd();
-        if (text) log.warn(text);
+        if (!text) return;
+        log.warn(text);
+        stderrTail = `${stderrTail}\n${text}`.slice(-STDERR_TAIL_CHARS);
       });
 
       proc.on("error", (err) => {
@@ -387,7 +415,14 @@ export function createMlxHttpWorker<D extends MlxHttpModelDef>(
       });
 
       proc.on("close", (code) => {
-        settle(new Error(`The ${what} exited: exit code ${code}`));
+        // Before the ready line: a start error. The last stderr line names
+        // the cause (for example "unrecognized arguments" of an old worker).
+        const last = stderrTail.trim().split("\n").pop()?.trim() ?? "";
+        settle(
+          new MlxWorkerStartError(
+            `The ${what} exited before it was ready: exit code ${code}${last ? ` (${last.slice(0, 200)})` : ""}`,
+          ),
+        );
         if (workerProcess === proc) {
           if (workerReady)
             log.warn(`${opts.label} worker exited: exit code ${code}`);

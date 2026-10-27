@@ -104,6 +104,9 @@ export interface AcquireLlmLaneArgs {
  * in flight"), applied to the LLM endpoint for the same reason.
  */
 export const LLM_LANE_CONCURRENCY_LOCAL = 1;
+
+/** The provider id of the built-in local LLM (mlx-llm/constants.ts MLX_LLM_PROVIDER_ID). */
+const MLX_LLM_LANE_PROVIDER = "local-mlx-llm";
 export const LLM_LANE_CONCURRENCY_CLOUD = 2;
 
 /** Known cloud endpoints, so a cloud lane key is still a normalized
@@ -173,7 +176,8 @@ export function llmLaneKey(input: string | null | undefined): string {
 /**
  * Lane key and concurrency for a provider id and a model id. An own server
  * resolves through the server row that the model id names. The built-in
- * local MLX LLM gets the lane `lane:local-mlx-llm` with limit 1.
+ * local MLX LLM gets one lane per model, `lane:local-mlx-llm/<catalog id>`,
+ * with limit 1 (one worker per model).
  * The key is the server root and never a setting name. Known cloud providers
  * use {@link CLOUD_HOSTS}. Any other provider gets its own lane. The limit
  * comes from the provider `local` flag and not from the host name. A local
@@ -183,6 +187,20 @@ export async function llmLaneKeyForProvider(
   providerId: string,
   modelId: string,
 ): Promise<{ key: string; limit: number }> {
+  // The built-in local LLM runs one worker process per model (the model pool,
+  // specs/llm-runtime-tuning.md 6 item 5). Each worker is its own lane with
+  // one slot, so a dictation cleanup on one model never waits behind a
+  // meeting call on another model. Two tasks with the same model share it.
+  if (providerId === MLX_LLM_LANE_PROVIDER) {
+    const prefix = `${MLX_LLM_LANE_PROVIDER}/`;
+    const model = modelId.startsWith(prefix)
+      ? modelId.slice(prefix.length)
+      : modelId;
+    return {
+      key: `lane:${MLX_LLM_LANE_PROVIDER}/${model}`,
+      limit: LLM_LANE_CONCURRENCY_LOCAL,
+    };
+  }
   let local = false;
   try {
     const { isLocalProvider, isOwnServerProvider } = await import(

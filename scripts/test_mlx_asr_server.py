@@ -1094,6 +1094,79 @@ class RunLlmTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 1)
 
 
+class ShutdownTests(unittest.TestCase):
+    """The HTTP worker always exits on SIGTERM and on stdin EOF, also when
+    stderr is a broken pipe (the parent died) or a print() runs on stderr."""
+
+    def test_exit_now_exits_when_stderr_is_broken(self) -> None:
+        with mock.patch.object(mlx_asr_server.os, "write", side_effect=BrokenPipeError()), \
+            mock.patch.object(mlx_asr_server.os, "_exit") as exit_:
+            mlx_asr_server._exit_now("stdin closed; shutting down")
+        exit_.assert_called_once_with(0)
+
+    def test_exit_now_writes_one_line_to_fd_2(self) -> None:
+        with mock.patch.object(mlx_asr_server.os, "write") as write, \
+            mock.patch.object(mlx_asr_server.os, "_exit") as exit_:
+            mlx_asr_server._exit_now("SIGTERM; shutting down")
+        write.assert_called_once_with(2, b"[mlx-asr] SIGTERM; shutting down\n")
+        exit_.assert_called_once_with(0)
+
+    def test_watch_stdin_exits_on_eof_with_broken_stderr(self) -> None:
+        with mock.patch("sys.stdin", iter(["a\n", "b\n"])), \
+            mock.patch.object(mlx_asr_server.os, "write", side_effect=BrokenPipeError()), \
+            mock.patch.object(mlx_asr_server.os, "_exit") as exit_:
+            mlx_asr_server._watch_stdin()
+        exit_.assert_called_once_with(0)
+
+    def test_sigterm_handler_uses_exit_now(self) -> None:
+        engine, _, _ = _engine([])
+        handlers: dict[int, object] = {}
+        with mock.patch.object(mlx_asr_server, "_log", lambda _m: None), \
+            mock.patch("sys.stdout"), \
+            mock.patch("signal.signal", side_effect=lambda s, h: handlers.__setitem__(s, h)), \
+            mock.patch.object(mlx_asr_server.threading, "Thread"), \
+            mock.patch("http.server.HTTPServer.serve_forever", return_value=None), \
+            mock.patch.object(mlx_asr_server, "_load_llm_engine", lambda _m, _c=None: engine):
+            mlx_asr_server._run_llm("mlx-community/Fake-LLM", 0)
+        import signal
+
+        with mock.patch.object(mlx_asr_server, "_exit_now") as exit_now:
+            handlers[signal.SIGTERM](signal.SIGTERM, None)  # type: ignore[operator]
+        exit_now.assert_called_once_with("SIGTERM; shutting down")
+
+    def test_child_exits_after_stdin_eof_when_parent_closed_stderr(self) -> None:
+        """A real process: stderr is a pipe whose reader is gone, as when the
+        parent died. Before the fix, the watcher thread died on
+        BrokenPipeError and the process stayed alive."""
+        import subprocess
+
+        code = (
+            "import importlib.util, threading, time, sys\n"
+            f"spec = importlib.util.spec_from_file_location('m', {str(ROOT / 'scripts' / 'mlx_asr_server.py')!r})\n"
+            "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+            "threading.Thread(target=m._watch_stdin, daemon=True).start()\n"
+            "print('ready', flush=True)\n"
+            "while True: time.sleep(0.2)\n"
+        )
+        read_fd, write_fd = os.pipe()
+        proc = subprocess.Popen(
+            [sys.executable, "-c", code],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=write_fd,
+        )
+        os.close(write_fd)
+        try:
+            assert proc.stdout is not None and proc.stdin is not None
+            self.assertEqual(proc.stdout.readline().strip(), b"ready")
+            os.close(read_fd)  # the reader of stderr is gone: a broken pipe
+            proc.stdin.close()  # EOF, as when the parent dies
+            self.assertEqual(proc.wait(timeout=10), 0)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+
+
 # --- Embed mode (specs/local-semantic-search.md 5.2) -----------------------
 
 

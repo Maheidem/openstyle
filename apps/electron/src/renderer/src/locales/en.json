@@ -837,6 +837,8 @@
       "customOption": "Custom…",
       "modelOverrideLabel": "Model",
       "modelOverrideDefault": "Use default ({{name}})",
+      "keepReadyLabel": "Keep ready",
+      "keepReadyDesc": "Keep this model loaded, so it answers at once. It uses memory while Openstyle runs.",
       "reset": "Reset",
       "newPreset": "New preset",
       "presetNameLabel": "Name",
@@ -918,7 +920,8 @@
       "descAlways": "Keep the AI model loaded in memory at all times, until you quit Openstyle. Fastest repeat use, uses the most RAM.",
       "descCold": "Unload the AI model from memory after each request. Uses less RAM, but the next cleanup or summary waits for a full reload.",
       "descOneMinute": "Keep the AI model in memory for about 1 minute after each request, so quick follow-ups stay fast.",
-      "descMinutes": "Keep the AI model loaded in memory for up to {{minutes}} minutes after each request. Faster repeat use, more RAM while warm."
+      "descMinutes": "Keep the AI model loaded in memory for up to {{minutes}} minutes after each request. Faster repeat use, more RAM while warm.",
+      "keepReadyNote": "A task with “Keep ready” on keeps its model loaded at all times."
     },
     "fit": {
       "runsWell": "Runs well",
@@ -1174,6 +1177,10 @@
         "partial": "Summarize finished with errors. {{failed}} of {{total}} steps failed.",
         "interrupted": "Summarize stopped when Openstyle closed."
       },
+      "engineNotReady": {
+        "enhance": "The on-device AI engine is updating. Enhance starts again when the engine is ready.",
+        "summarize": "The on-device AI engine is updating. Summarize starts again when the engine is ready."
+      },
       "line": "{{where}}: {{reason}}",
       "node": {
         "correctChunk": "Corrections",
@@ -1201,6 +1208,7 @@
       "provider_invalid_request": "The provider refused the request.",
       "model_mismatch": "The server answered with another model.",
       "model_unavailable": "Openstyle cannot use the chosen model. Check Settings > Models, then try again.",
+      "engine_not_ready": "The on-device AI engine is not ready yet. It is installing an update.",
       "deadline_exceeded": "The summary took longer than its time limit.",
       "budget_exceeded": "The meeting is too long for the summary limit of 24 calls.",
       "empty_input": "The meeting has no text to process.",

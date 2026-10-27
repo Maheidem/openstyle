@@ -18,6 +18,7 @@ import {
 } from "../lib/mlx-llm/constants.js";
 import { getMlxLlmModelStatus } from "../lib/mlx-llm/models.js";
 import { reconcileRemovedMlxLlmModels } from "../lib/mlx-llm/reconcile.js";
+import { applyMlxLlmRetentionPolicy } from "../lib/mlx-llm/server.js";
 import { listModelDiskUse } from "../lib/model-disk-usage.js";
 import {
   DEPRECATED_STATUS,
@@ -314,6 +315,8 @@ const models = new Hono()
         body.type,
         body.is_default ? 1 : 0,
       );
+    // A new default LLM changes which local model is pinned or kept ready.
+    if (body.type === "llm" && body.is_default) applyMlxLlmRetentionPolicy();
 
     return c.json({ id: result.lastInsertRowid, ...body }, 201);
   })

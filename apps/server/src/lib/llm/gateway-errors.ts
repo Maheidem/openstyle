@@ -243,7 +243,28 @@ export type ModelUnavailableReason =
   | "no_model"
   | "unsupported_provider"
   | "no_api_key"
-  | "server_removed";
+  | "server_removed"
+  /** The local model pool has no room next to the models in use. */
+  | "not_enough_memory"
+  /** The local MLX worker exited before it was ready (for example an old
+   *  worker that refuses a new argument). Final: no wait, no retry. */
+  | "engine_start_failed";
+
+/**
+ * The on-device engine (the MLX worker) cannot start now, because its update
+ * is not installed yet (`MlxRuntimeUpdatePendingError`). It is not a model
+ * setup fault: the caller can wait and start the run again when the engine
+ * is ready.
+ */
+export class EngineNotReadyError extends GatewayError {
+  readonly kind = "engine_not_ready";
+  /** The original message of the start error. */
+  readonly detail: string;
+  constructor(init: Init & { detail: string }) {
+    super(init);
+    this.detail = init.detail;
+  }
+}
 
 export class ModelUnavailableError extends GatewayError {
   readonly kind = "model_unavailable";
@@ -332,17 +353,39 @@ export function blankFacts(a: {
   };
 }
 
+/** The `code` of a typed start error of the local MLX worker, or null. */
+function startErrorCode(err: unknown): string | null {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === "string" ? code : null;
+}
+
 /**
  * Turn a model setup error into the typed error. The four throw sites keep
  * their plain `Error` (`task-profiles.ts`, `providers.ts`, `registry.ts`); the
- * reason comes from their message. An error that matches none of the four
- * messages is a bug, not a setup fault: it is returned unchanged.
+ * reason comes from their message. Two typed start errors of the local MLX
+ * LLM map by their `code`: a pending runtime update
+ * (`MlxRuntimeUpdatePendingError`) is `EngineNotReadyError`, a full model
+ * pool (`MlxLlmPoolNoRoomError`) is `not_enough_memory`, and a worker that
+ * exits before ready (`MlxWorkerStartError`) is `engine_start_failed`. An error that
+ * matches none of these is a bug, not a setup fault: it is returned unchanged.
  */
 export function modelUnavailableFrom(err: unknown, facts: CallFacts): unknown {
   if (err instanceof ModelUnavailableError) return err;
+  if (err instanceof EngineNotReadyError) return err;
   const text = err instanceof Error ? err.message : String(err);
+  const code = startErrorCode(err);
+  if (code === "runtime-update-pending") {
+    return new EngineNotReadyError({
+      message: "The on-device engine is not ready (update pending).",
+      facts,
+      detail: text.slice(0, 200),
+      runWide: true,
+    });
+  }
   let reason: ModelUnavailableReason;
-  if (/Unsupported provider/i.test(text)) reason = "unsupported_provider";
+  if (code === "llm-pool-no-room") reason = "not_enough_memory";
+  else if (code === "worker-start-failed") reason = "engine_start_failed";
+  else if (/Unsupported provider/i.test(text)) reason = "unsupported_provider";
   else if (/No API key/i.test(text)) reason = "no_api_key";
   else if (/not in your list/i.test(text)) reason = "server_removed";
   else if (/No AI model is set up/i.test(text)) reason = "no_model";

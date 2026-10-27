@@ -73,6 +73,11 @@ export function MlxWarmingDialog({
         <p className="text-muted-foreground text-[12.5px] leading-relaxed">
           {mlxKeepAliveDescription(keepAliveMinutes, kind, t)}
         </p>
+        {kind === "llm" && (
+          <p className="text-muted-foreground text-[12px] leading-relaxed">
+            {t("models.mlxLlm.keepReadyNote")}
+          </p>
+        )}
 
         <div>
           <Slider

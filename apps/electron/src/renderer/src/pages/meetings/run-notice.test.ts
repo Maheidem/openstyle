@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import en from "../../locales/en.json";
 import {
   chunkNumber,
+  engineNotReadyTextKey,
   enhanceNoteOf,
   formatChunkList,
   isSummarizeCancelled,
@@ -18,6 +19,7 @@ import {
   runNotice,
   SKIP_REASONS,
   skipReasonKey,
+  waitsForEngine,
 } from "./run-notice";
 
 function step(
@@ -268,6 +270,51 @@ describe("noticeLines", () => {
     expect(noticeLines(run())).toEqual([
       { node: null, chunks: [], kind: "unknown" },
     ]);
+  });
+});
+
+describe("runNotice: the on-device engine is not ready", () => {
+  const waiting = run({
+    status: "failed",
+    errorKind: "engine_not_ready",
+    steps: [step("chunk:0", "failed", "engine_not_ready", 2)],
+  });
+
+  it("is neutral, has its own headline and no error lines", () => {
+    const n = runNotice(waiting, false);
+    expect(n?.waitingForEngine).toBe(true);
+    expect(n?.tone).toBe("neutral");
+    expect(n?.lines).toEqual([]);
+    expect(engineNotReadyTextKey("enhance")).toBe(
+      "meetings.llmRun.engineNotReady.enhance",
+    );
+    expect(en.meetings.llmRun.engineNotReady.enhance).toContain("starts again");
+    expect(llmErrorKey("engine_not_ready")).toBe(
+      "meetings.llmError.engine_not_ready",
+    );
+  });
+
+  it("hides while the retried run holds the slot", () => {
+    expect(runNotice(waiting, true)).toBeNull();
+  });
+
+  it("waitsForEngine looks at the newest run of each kind only", () => {
+    expect(waitsForEngine([waiting])).toBe(true);
+    const newer = run({ id: "run-2", status: "succeeded", startedAt: 300 });
+    expect(waitsForEngine([waiting, newer])).toBe(false);
+    expect(waitsForEngine(undefined)).toBe(false);
+    expect(
+      waitsForEngine([run({ status: "failed", errorKind: "provider_auth" })]),
+    ).toBe(false);
+  });
+
+  it("other failed runs keep the destructive notice", () => {
+    const n = runNotice(
+      run({ status: "failed", errorKind: "internal" }),
+      false,
+    );
+    expect(n?.waitingForEngine).toBe(false);
+    expect(n?.tone).toBe("destructive");
   });
 });
 

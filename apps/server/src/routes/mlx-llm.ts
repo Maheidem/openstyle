@@ -26,6 +26,9 @@ import {
 } from "../lib/mlx-llm/models.js";
 import {
   getMlxLlmKeepAliveMinutes,
+  getMlxLlmKeepReady,
+  getMlxLlmPoolMemory,
+  getMlxLlmPoolWorkers,
   getMlxLlmWorkerState,
   mlxLlmSetupBlocker,
   startMlxLlmInBackground,
@@ -47,8 +50,12 @@ const mlxLlm = new Hono()
         : MLX_UNSUPPORTED_PLATFORM_REASON,
       runtime: getMlxRuntimeDownloadStatus(),
       keepAliveMinutes: getMlxLlmKeepAliveMinutes(),
+      keepReady: getMlxLlmKeepReady(),
       models: platformSupported ? getAllMlxLlmModelStatuses() : [],
       worker: getMlxLlmWorkerState(),
+      // The model pool (specs/llm-runtime-tuning.md 6): one worker per model.
+      workers: getMlxLlmPoolWorkers(),
+      memory: getMlxLlmPoolMemory(),
     });
   })
   .post("/models/:model/download", (c) => {

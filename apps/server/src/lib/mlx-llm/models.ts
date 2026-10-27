@@ -244,8 +244,8 @@ export function mlxLlmDeleteBlocker(modelId: string): DeleteBlocker | null {
   const active = activeDownloads.get(modelId);
   if (active && !active.error) return "downloading";
   if (
-    getMlxLlmWorkerState().model === modelId &&
-    (isMlxLlmWorkerBusy() || hasMeetingJobOfKind(LLM_JOB_KINDS))
+    getMlxLlmWorkerState(modelId).model === modelId &&
+    (isMlxLlmWorkerBusy(modelId) || hasMeetingJobOfKind(LLM_JOB_KINDS))
   ) {
     return "in_use";
   }
@@ -272,9 +272,7 @@ export async function deleteMlxLlmModel(modelId: string): Promise<boolean> {
 
   cancelMlxLlmDownload(modelId);
   // Unload the model before its files go, so no worker holds deleted files.
-  if (getMlxLlmWorkerState().model === modelId) {
-    await stopMlxLlmWorker().catch(() => {});
-  }
+  await stopMlxLlmWorker(modelId).catch(() => {});
 
   const dir = hfRepoCacheDir(def.hfId);
   const existed = existsSync(dir);

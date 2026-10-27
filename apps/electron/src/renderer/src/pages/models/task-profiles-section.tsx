@@ -3,6 +3,7 @@ import type {
   LlmTaskAssignment,
   LlmTaskAssignmentMode,
   LlmTaskId,
+  MlxLlmKeepReady,
 } from "@openstyle/validations";
 import {
   BUILTIN_LLM_PRESETS,
@@ -28,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
+import { Switch } from "@renderer/components/ui/switch";
 import {
   type ConfiguredModel,
   type LocalLlmItem,
@@ -136,6 +138,8 @@ export function TaskProfilesSection({
   servers,
   defaultLlm,
   cleanupSampling,
+  keepReady,
+  onKeepReadyChange,
   expandedTask,
   onExpandedTaskChange,
   onSaveAssignment,
@@ -145,6 +149,9 @@ export function TaskProfilesSection({
   onRequestDeletePreset,
 }: {
   taskAssignments: Partial<Record<LlmTaskId, LlmTaskAssignment>>;
+  /** Per task: keep its built-in local model loaded (specs/llm-runtime-tuning.md 6). */
+  keepReady: MlxLlmKeepReady;
+  onKeepReadyChange: (taskId: LlmTaskId, on: boolean) => void;
   userPresets: LlmParameterPreset[];
   configured: ConfiguredModel[];
   /** The built-in LLM rows; the ready ones join the model override picker. */
@@ -204,6 +211,8 @@ export function TaskProfilesSection({
               llmModels={llmModels}
               servers={servers}
               defaultLlm={defaultLlm}
+              keepReady={keepReady[taskId]}
+              onKeepReadyChange={(on) => onKeepReadyChange(taskId, on)}
               expanded={expandedTask === taskId}
               onToggleExpand={() =>
                 onExpandedTaskChange(expandedTask === taskId ? null : taskId)
@@ -231,6 +240,8 @@ function TaskRow({
   llmModels,
   servers,
   defaultLlm,
+  keepReady,
+  onKeepReadyChange,
   expanded,
   onToggleExpand,
   onSaveAssignment,
@@ -240,6 +251,8 @@ function TaskRow({
   onRequestDeletePreset,
 }: {
   taskId: LlmTaskId;
+  keepReady: boolean;
+  onKeepReadyChange: (on: boolean) => void;
   first: boolean;
   assignment: LlmTaskAssignment;
   migratedFromLegacy: boolean;
@@ -305,6 +318,8 @@ function TaskRow({
 
   const effectiveProvider =
     assignment.modelOverride?.provider ?? defaultLlm?.provider;
+  // "Keep ready" applies to the built-in local model only.
+  const builtinModel = effectiveProvider === MLX_LLM_PROVIDER_ID;
   const cloudPartial =
     assignment.mode !== "auto" &&
     computeCloudPartial(effectiveProvider, params);
@@ -496,6 +511,14 @@ function TaskRow({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-0.5">
+          {builtinModel && keepReady && (
+            <span
+              className="text-muted-foreground text-[11px]"
+              data-testid={`task-keep-ready-chip-${taskId}`}
+            >
+              {t("models.taskProfiles.keepReadyLabel")}
+            </span>
+          )}
           {cloudPartial && (
             <span className="text-muted-foreground text-[11px]">
               {t("models.taskProfiles.cloudPartialNote")}
@@ -681,6 +704,26 @@ function TaskRow({
               </SelectContent>
             </Select>
           </div>
+
+          {builtinModel && (
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <span className="text-foreground block text-[13px] font-medium">
+                  {t("models.taskProfiles.keepReadyLabel")}
+                </span>
+                <span className="text-muted-foreground mt-0.5 block text-[11.5px] leading-snug">
+                  {t("models.taskProfiles.keepReadyDesc")}
+                </span>
+              </div>
+              <Switch
+                className="mt-0.5"
+                checked={keepReady}
+                onCheckedChange={onKeepReadyChange}
+                aria-label={t("models.taskProfiles.keepReadyLabel")}
+                data-testid={`task-keep-ready-${taskId}`}
+              />
+            </div>
+          )}
 
           <div className="flex justify-end">
             <Button variant="ghost" size="sm" onClick={onResetAssignment}>

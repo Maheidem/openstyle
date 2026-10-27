@@ -234,3 +234,47 @@ export const LLM_MEETING_DENYLIST_KEYS = new Set([
  * copies.
  */
 export const SAFE_SUBSET_KEYS = new Set(["temperature", "max_tokens", "top_p"]);
+
+// ---------------------------------------------------------------------------
+// "Keep ready" of the built-in local LLM (specs/llm-runtime-tuning.md 6 item 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per task: the built-in local model of this task stays loaded after its
+ * idle time. Stored as JSON in `mlx_llm_keep_ready`. A missing task key uses
+ * the default. Owner decision 2026-10-26: on by default for `cleanup` only.
+ */
+export type MlxLlmKeepReady = Record<LlmTaskId, boolean>;
+
+export const MLX_LLM_KEEP_READY_DEFAULT: Readonly<MlxLlmKeepReady> = {
+  cleanup: true,
+  meetingSummarize: false,
+  meetingEnhance: false,
+};
+
+export const mlxLlmKeepReadySchema = z
+  .object({
+    cleanup: z.boolean().optional(),
+    meetingSummarize: z.boolean().optional(),
+    meetingEnhance: z.boolean().optional(),
+  })
+  .strict();
+
+/** Parse a stored `mlx_llm_keep_ready` value. It never throws: a bad value gives the defaults. */
+export function parseMlxLlmKeepReady(
+  value: string | null | undefined,
+): MlxLlmKeepReady {
+  const out: MlxLlmKeepReady = { ...MLX_LLM_KEEP_READY_DEFAULT };
+  if (!value) return out;
+  try {
+    const parsed = mlxLlmKeepReadySchema.safeParse(JSON.parse(value));
+    if (!parsed.success) return out;
+    for (const task of LLM_TASK_IDS) {
+      const v = parsed.data[task];
+      if (typeof v === "boolean") out[task] = v;
+    }
+  } catch {
+    // Bad JSON: the defaults.
+  }
+  return out;
+}

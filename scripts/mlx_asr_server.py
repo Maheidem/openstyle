@@ -1491,12 +1491,29 @@ def _make_embed_handler(engine: _EmbedEngine) -> Any:
     return Handler
 
 
+def _exit_now(reason: str) -> None:
+    """End the HTTP worker at once, also when stderr is gone.
+
+    The log line goes straight to fd 2 with os.write. A print() can raise
+    here: when the parent died, stderr is a broken pipe (BrokenPipeError),
+    and in the SIGTERM handler a print() can interrupt another print() on
+    stderr (RuntimeError: reentrant call). Before, that error skipped
+    os._exit(0): a worker whose parent died stayed alive with its model in
+    memory. os._exit(0) now always runs.
+    """
+    try:
+        os.write(2, f"[mlx-asr] {reason}\n".encode())
+    except OSError:
+        pass
+    finally:
+        os._exit(0)
+
+
 def _watch_stdin() -> None:
-    """Exit when stdin closes: the parent process died."""
+    """Exit when stdin closes: the parent process died or stopped the worker."""
     for _ in sys.stdin:
         pass
-    _log("stdin closed; shutting down")
-    os._exit(0)
+    _exit_now("stdin closed; shutting down")
 
 
 def _serve_http(mode: str, port: int | None, load: Any, make_handler: Any, ready: Any) -> None:
@@ -1517,8 +1534,7 @@ def _serve_http(mode: str, port: int | None, load: Any, make_handler: Any, ready
         sys.exit(1)
 
     def _on_term(*_args: Any) -> None:
-        _log("SIGTERM; shutting down")
-        os._exit(0)
+        _exit_now("SIGTERM; shutting down")
 
     signal.signal(signal.SIGTERM, _on_term)
     threading.Thread(target=_watch_stdin, daemon=True).start()

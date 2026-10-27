@@ -58,6 +58,10 @@ const REDACTED_VALUE = "••••••••";
 const SETTING_SIDE_EFFECTS: ReadonlyMap<string, () => void> = new Map([
   [SETTINGS_KEYS.mlxAsrKeepAliveMinutes, applyMlxAsrRetentionPolicy],
   [SETTINGS_KEYS.mlxLlmKeepAliveMinutes, applyMlxLlmRetentionPolicy],
+  // The model pool reads these for "Keep ready" and the pinned dictation model.
+  [SETTINGS_KEYS.mlxLlmKeepReady, applyMlxLlmRetentionPolicy],
+  [SETTINGS_KEYS.llmTaskAssignments, applyMlxLlmRetentionPolicy],
+  [SETTINGS_KEYS.llmCleanup, applyMlxLlmRetentionPolicy],
   [SETTINGS_KEYS.whisperKeepAliveMinutes, applyWhisperRetentionPolicy],
   [HISTORY_RETENTION_SETTING_KEY, purgeExpiredHistory],
 ]);

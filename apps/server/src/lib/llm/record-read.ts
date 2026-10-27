@@ -65,6 +65,7 @@ const ERROR_KINDS: ReadonlySet<string> = new Set([
   "provider_auth",
   "provider_invalid_request",
   "model_unavailable",
+  "engine_not_ready",
   "deadline_exceeded",
   "budget_exceeded",
   "empty_input",

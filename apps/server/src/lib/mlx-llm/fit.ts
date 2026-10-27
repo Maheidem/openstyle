@@ -34,6 +34,17 @@ function reserveBytes(ramBytes: number): number {
   return ramBytes <= 16 * GIB ? 3 * GIB : 4 * GIB;
 }
 
+/**
+ * RAM minus the OS reserve, the app and the local ASR worker. The fit label
+ * (section 5.1) and the memory budget of the model pool (section 6 item 3)
+ * both use it.
+ */
+export function memoryBudgetBytes(ramBytes: number, localAsr: boolean): number {
+  return (
+    ramBytes - reserveBytes(ramBytes) - APP_BYTES - (localAsr ? ASR_BYTES : 0)
+  );
+}
+
 export interface MlxLlmFitInput {
   peakBytes: number;
   ramBytes: number;
@@ -50,11 +61,7 @@ export interface MlxLlmFitInput {
  */
 export function computeMlxLlmFit(input: MlxLlmFitInput): MlxLlmFit {
   const { peakBytes, ramBytes, gpuCapBytes } = input;
-  const budgetBytes =
-    ramBytes -
-    reserveBytes(ramBytes) -
-    APP_BYTES -
-    (input.localAsr ? ASR_BYTES : 0);
+  const budgetBytes = memoryBudgetBytes(ramBytes, input.localAsr);
   const gpuOk = (share: number): boolean =>
     gpuCapBytes == null || peakBytes <= share * gpuCapBytes;
 
