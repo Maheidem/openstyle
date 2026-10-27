@@ -3,8 +3,8 @@
 // scripts/meeting-v2/dump-speakers.mjs.
 //
 // Per speaker label it renders: suggested name, kind and evidence (cut to
-// 6 words) for both arms, then the changed enhanced_text lines (each quote
-// cut to 6 words).
+// 6 words) for both arms, then every changed enhanced_text line: the changed
+// words and both full lines (never cut, never capped).
 //
 // Self-check ("Compare tools must check themselves", meeting-benchmarks
 // skill): after it writes the file, the tool re-reads BOTH dumps from disk
@@ -58,7 +58,6 @@ if (!xPath || !yPath || !xName || !yName || !outPath) {
 }
 
 const MAX_WORDS = 6;
-const MAX_DIFFS_PER_LABEL = 10;
 const NONE = "(none)";
 
 const load = (p: string): Dump => JSON.parse(readFileSync(p, "utf8")) as Dump;
@@ -81,14 +80,10 @@ function labelsOf(...dumps: Dump[]): string[] {
   return [...set].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
 }
 
-const CONTEXT_WORDS = 3;
-
 /**
- * The changed words of two lines (common prefix and suffix dropped), plus up
- * to CONTEXT_WORDS unchanged words before and after. Without the context a
- * judge cannot tell a lost word from a removed repeat (round r228c).
+ * The changed words of two lines (common prefix and suffix dropped).
  */
-function changedSpan(a: string, b: string): [string, string, string, string] {
+function changedSpan(a: string, b: string): [string, string] {
   const wa = a.split(/\s+/).filter(Boolean);
   const wb = b.split(/\s+/).filter(Boolean);
   let p = 0;
@@ -103,18 +98,25 @@ function changedSpan(a: string, b: string): [string, string, string, string] {
   return [
     wa.slice(p, wa.length - s).join(" "),
     wb.slice(p, wb.length - s).join(" "),
-    wa.slice(Math.max(0, p - CONTEXT_WORDS), p).join(" "),
-    wa.slice(wa.length - s, wa.length - s + CONTEXT_WORDS).join(" "),
   ];
 }
 
-/** One diff line: the cut spans, then the unchanged words around them. */
+/**
+ * One diff entry: the changed words, then both full lines. A cut quote or a
+ * few words of context hid lost words and removed repeats from the judge
+ * (owner review 2026-10-26), so the lines are never cut.
+ */
 function diffLine(sy: Segment, sx: Segment): string | null {
-  const [a, b, before, after] = changedSpan(effective(sx), effective(sy));
-  if (a === b) return null;
-  const q = (s: string) => JSON.stringify(cut(s) || NONE);
-  const ctx = `${before ? `${before} ` : "(start) "}[...]${after ? ` ${after}` : " (end)"}`;
-  return `  - ${rowLabel(sy)} ${xName}: ${q(a)} / ${yName}: ${q(b)} / around: ${JSON.stringify(ctx)}`;
+  const x = effective(sx);
+  const y = effective(sy);
+  if (x === y) return null;
+  const [a, b] = changedSpan(x, y);
+  const q = (s: string) => JSON.stringify(s || NONE);
+  return [
+    `  - ${rowLabel(sy)} changed: ${q(a)} -> ${q(b)}`,
+    `    - ${xName} line: ${JSON.stringify(x)}`,
+    `    - ${yName} line: ${JSON.stringify(y)}`,
+  ].join("\n");
 }
 
 // Speaker-cut splits share (source, idx); start_ms tells them apart.
@@ -137,8 +139,8 @@ function render(x: Dump, y: Dump): string {
   const out: string[] = [];
   out.push(`# Speaker naming: ${xName} vs ${yName}`, "");
   out.push(
-    `Each label shows arm ${xName} and arm ${yName}. Evidence and quotes are cut to ${MAX_WORDS} words.`,
-    `Each changed line also shows up to ${CONTEXT_WORDS} unchanged words before and after the change ("around"; [...] marks the change).`,
+    `Each label shows arm ${xName} and arm ${yName}. Evidence is cut to ${MAX_WORDS} words.`,
+    "Each changed line shows the changed words and both full lines. Every changed line is listed.",
     "Both arms use the same transcript. LLM output is not repeatable.",
     "",
   );
@@ -167,9 +169,7 @@ function render(x: Dump, y: Dump): string {
       if (line) diffs.push(line);
     }
     out.push(`- enhanced_text changed lines: ${diffs.length}`);
-    out.push(...diffs.slice(0, MAX_DIFFS_PER_LABEL));
-    if (diffs.length > MAX_DIFFS_PER_LABEL)
-      out.push(`  - (+${diffs.length - MAX_DIFFS_PER_LABEL} more)`);
+    out.push(...diffs);
     out.push("");
   }
   // Segments with no speaker label (mostly mic) are in no label group above.
