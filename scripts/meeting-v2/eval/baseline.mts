@@ -47,9 +47,9 @@ const NAME_RE = /^[a-z0-9][a-z0-9.-]{0,60}$/;
 
 /** Metrics where a lower value is better (and every metric of the checks stage). */
 const LOWER_IS_BETTER =
-  /^(wer|cer|werVerified|cerVerified|werRaw|werVerifiedRaw)(\.|$)|^(fixesMissed|mustNotChangeViolations|ownerWrong|ownerMissing|dueWrong|dueMissing|mustNotClaimHits|wrong|missing)$/;
+  /^(wer|cer|werVerified|cerVerified|werRaw|werVerifiedRaw|werEligible)(\.|$)|^(fixesMissed|mustNotChangeViolations|ownerWrong|ownerMissing|dueWrong|dueMissing|mustNotClaimHits|wrong|missing)$/;
 const RATE =
-  /^(wer|cer|werVerified|cerVerified|werRaw|werVerifiedRaw)(\.|$)|Recall$|Precision$|^(precision|recall|delta|deltaRaw)$/;
+  /^(wer|cer|werVerified|cerVerified|werRaw|werVerifiedRaw|werEligible)(\.|$)|Recall$|Precision$|^(precision|recall|delta|deltaRaw)$|^spanAcc/;
 
 export const lowerIsBetter = (stage: BaselineStage, metric: string) =>
   stage === "checks" || LOWER_IS_BETTER.test(metric);

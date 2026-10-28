@@ -205,8 +205,23 @@ gold-merge (`mergeAnswers` in `gold.mts`): each answer's `from` words must occur
 | summary | decisions and action items matched by keywords (recall, precision); owner and due correct / wrong / missing on the matched items (a value where the gold has none is wrong); unmatched output items by index | a must-not-claim hit |
 | tags | precision and recall vs expected tags + synonyms (normalized with `normalizeTagName`) | - |
 | speakers | correct / wrong / missing names vs the gold map (a role is no name) | a wrong name |
+| spans (silver keys) | span accuracy of the ASR text and the Enhance text: overall, high only, by label group (term+product, person, other), by in_vocab; missed spans as `channel@startMs:label`; eligible WER (`werEligible`) | - |
 
 Gold hard fails count in the run's hard fails, so a model with one is not the floor. WER counts substitutions, deletions and insertions over the gold words. Since 2026-10-22 (#211) `wer`, `werVerified` and `delta` use normalized words on both sides (`normalizeWords` in `score.mts`): number words become digits ("twenty one" = "vinte e um" = "21"), a thousands separator goes ("1,000" = "1000"), and an exact adjacent repeat counts once ("the the" = "the"; owner decision: Enhance may remove a stutter). Since 2026-10-26 `scoreWords` also drops an exact repeated whitespace token first (`dropRepeatTokens`), because `words()` splits "I'm I'm" into "i m i m" and the word rule did not see it; Enhance removes exact repeats by owner rule, so the WER ignores them on both sides. `werRaw`, `werVerifiedRaw` and `deltaRaw` keep the old rule (`words()` only: lower case, no punctuation). `--compare` against a baseline from before 2026-10-22 maps its `wer*` and `delta` to the raw names, so old baselines compare raw to raw. CER is the character edit distance on the raw word alignment.
+
+### Silver keys: spans and the eligible WER
+
+A silver key (integer `goldVersion`, optional `goldKind`, for example `"silver-2"`) comes from several engines and a verifier, not from the owner's ear. It adds optional fields; v1 and v2 keys load as before (`gold.mts` header):
+- `spans[]` `{channel, startMs, endMs, text, label, in_vocab, confidence, witnesses[], verifier_conflict?}`. label: term, product, person, org, place, other. confidence: high, medium, unsure. The loader checks each field strictly.
+- Transcript turns: `basis[]` and `wer_eligible`. Top level: `witnesses` and `verification` (objects; not scored).
+
+Run: `pnpm meeting:eval --models <id> --meetings <id8,...> --gold --gold-dir ~/.openstyle-eval/gold-silver --no-download --out /tmp/meeting-eval/out/<name>`. The folder must have mode 0700.
+
+`scoreSpans` (score.mts): a high or medium span is a hit when its normal words (`scoreWords`, then `normalizeWords`) occur as one run in the text of the segments of its channel that overlap [startMs - 3000, endMs + 3000] ms (`SPAN_TOLERANCE_MS`). Each segment is normalized on its own, then the segments join in time order. The ASR stage reads `text`; the Enhance stage reads `enhanced_text` (else `text`). Unsure spans and spans with no words are counted, not scored. This is the same rule as the offline silver scorer (`score_silver.py`).
+
+Outputs: the `## Spans` section of `results.md` (pooled per model and stage, then per meeting, then the missed span keys; never span text), `results.json` `spans` (pooled) and `runs[].scorecard.spans`, baseline metrics `spanAcc`, `spanAccHigh`, `spanAccTerm`, `spanAccPerson`, `spanAccOther`, `spanAccInVocab`, `spanAccNotInVocab` (higher is better). With `wer_eligible` in the key, the Scorecard detail adds `WER eligible` and the baseline adds `werEligible` (only the eligible turns; the WER of all turns does not change).
+
+Measured 2026-10-28 (E4B, shipped worker 2.25.0-alpha.1 copied to `/tmp/meeting-eval/worker-*`, ab518a0c and c838735c, no ASR cache): `elapsed_sec=295`, self-check ok. Span accuracy (ASR) 96.7% (29/30) and 81.3% (39/48); the offline scorer gave 97% and 83% on the same H+M spans (it reads the app's stored transcript, not a new transcription). Delete `/tmp/meeting-eval/asr` after the run: the cache entries hold meeting text.
 
 ### How to read a compare
 

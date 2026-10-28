@@ -31,6 +31,7 @@ import {
 } from "./checks.mts";
 import {
   type Gold,
+  type GoldSpan,
   goldFromAnswerKey,
   goldInfo,
   loadGold,
@@ -39,6 +40,7 @@ import {
 import {
   floorModel,
   hardFailsOf,
+  pooledSpans,
   type Results,
   type RunResult,
   renderResults,
@@ -50,6 +52,7 @@ import {
   scoreChannel,
   scoreFixes,
   scoreRun,
+  scoreSpans,
   scoreSpeakers,
   scoreSummary,
   scoreTags,
@@ -898,4 +901,406 @@ test("baseline: save, read back, compare with a planted regression and improveme
     () => parseBaseline(JSON.stringify(textInside)),
     /must be a number/,
   );
+});
+
+// --- Silver keys: spans and the eligible WER -------------------------------------------
+
+/** A fictional silver key: two people talk about the Zorblax tool. */
+const SILVER_JSON = {
+  format: "openstyle-gold",
+  meeting: "cccc3333",
+  goldVersion: 3,
+  goldKind: "silver-2",
+  asrHash: "hash-s",
+  builtAt: "2026-10-28T10:00:00Z",
+  verifiedSpans: 0,
+  timeToleranceMs: 2000,
+  transcript: {
+    mic: [
+      {
+        startMs: 0,
+        endMs: 4000,
+        text: "We tried Zorblax yesterday.",
+        verified: false,
+        basis: ["h1", "h2"],
+        wer_eligible: true,
+      },
+      {
+        startMs: 4000,
+        endMs: 8000,
+        text: "It was fine I guess.",
+        verified: false,
+        basis: ["h1"],
+        wer_eligible: false,
+      },
+    ],
+    system: [
+      {
+        startMs: 10000,
+        endMs: 12000,
+        text: "Ask Quillon about twenty one seats.",
+        verified: false,
+        basis: ["h1", "h2", "h3"],
+        wer_eligible: true,
+      },
+    ],
+  },
+  fixes: [],
+  mustNotChange: [],
+  witnesses: { h1: "engine one", h2: "engine two" },
+  verification: { verifier: "blind", chunks: 3 },
+  spans: [
+    {
+      channel: "mic",
+      startMs: 1000,
+      endMs: 2000,
+      text: "Zorblax",
+      label: "product",
+      in_vocab: true,
+      confidence: "high",
+      witnesses: ["h1", "h2"],
+    },
+    {
+      channel: "system",
+      startMs: 10000,
+      endMs: 11000,
+      text: "Quillon",
+      label: "person",
+      in_vocab: false,
+      confidence: "medium",
+      witnesses: ["h1"],
+      verifier_conflict: true,
+    },
+    {
+      channel: "system",
+      startMs: 11000,
+      endMs: 12000,
+      text: "twenty-one seats",
+      label: "other",
+      in_vocab: false,
+      confidence: "high",
+      witnesses: ["h2"],
+    },
+    {
+      channel: "mic",
+      startMs: 5000,
+      endMs: 6000,
+      text: "Mumblecore",
+      label: "org",
+      in_vocab: false,
+      confidence: "unsure",
+      witnesses: [],
+    },
+  ],
+};
+const silver = (patch: Record<string, unknown> = {}): Gold =>
+  parseGold(JSON.stringify({ ...SILVER_JSON, ...patch }), "cccc3333");
+
+const segE = (
+  source: "mic" | "system",
+  idx: number,
+  start: number,
+  end: number,
+  text: string,
+  enhanced: string | null = null,
+): SegmentRow => ({ ...seg(source, idx, start, text, enhanced), end_ms: end });
+
+test("silver key: loads spans, basis, wer_eligible, witnesses and verification", () => {
+  const g = silver();
+  assert.deepEqual([g.goldVersion, g.goldKind], [3, "silver-2"]);
+  assert.equal(g.spans?.length, 4);
+  assert.deepEqual(g.spans?.[1], {
+    channel: "system",
+    startMs: 10000,
+    endMs: 11000,
+    text: "Quillon",
+    label: "person",
+    inVocab: false,
+    confidence: "medium",
+    witnesses: ["h1"],
+    verifierConflict: true,
+  });
+  assert.equal(g.spans?.[0]?.verifierConflict, false);
+  assert.deepEqual(
+    g.transcript?.mic.map((t) => t.werEligible),
+    [true, false],
+  );
+  // Old keys load as before: no spans, no werEligible field.
+  const old = gold();
+  assert.equal(old.spans, null);
+  assert.deepEqual([old.goldVersion, old.goldKind], [2, null]);
+  assert.ok(!("werEligible" in (old.transcript?.mic[0] ?? {})));
+});
+
+test("silver key: strict span validation, errors never hold the text", () => {
+  const bad = (f: (j: Record<string, any>) => void, re: RegExp) => {
+    const j = structuredClone(SILVER_JSON) as Record<string, any>;
+    f(j);
+    assert.throws(
+      () => parseGold(JSON.stringify(j), "cccc3333"),
+      (e: Error) =>
+        re.test(e.message) &&
+        !e.message.includes("Zorblax") &&
+        !e.message.includes("Quillon"),
+    );
+  };
+  bad((j) => (j.goldVersion = "silver-2"), /goldVersion must be an integer/);
+  bad((j) => (j.goldKind = "silver 2 Zorblax"), /goldKind/);
+  bad((j) => (j.spans[0].label = "Zorblax"), /spans\[0\].*label/);
+  bad((j) => (j.spans[0].confidence = "low"), /spans\[0\].*confidence/);
+  bad((j) => delete j.spans[0].in_vocab, /spans\[0\].*in_vocab/);
+  bad((j) => (j.spans[1].witnesses = "h1"), /spans\[1\].*witnesses/);
+  bad((j) => (j.spans[1].verifier_conflict = false), /verifier_conflict/);
+  bad((j) => (j.spans[0].endMs = 500), /spans\[0\].*startMs <= endMs/);
+  bad((j) => (j.spans[0].channel = "room"), /spans\[0\].*channel/);
+  bad((j) => (j.spans[0].text = " "), /spans\[0\].*text/);
+  bad((j) => (j.spans = { a: 1 }), /spans must be an array/);
+  bad((j) => (j.witnesses = ["h1"]), /witnesses must be an object/);
+  bad((j) => (j.verification = "ok"), /verification must be an object/);
+  bad(
+    (j) => (j.transcript.mic[0].wer_eligible = "yes"),
+    /transcript\.mic\[0\].*wer_eligible/,
+  );
+  bad((j) => (j.transcript.mic[0].basis = [1]), /transcript\.mic\[0\].*basis/);
+});
+
+test("silver key: the loader reads it from a 0700 folder; goldInfo keeps the version", () => {
+  const dir = join(tmp, "gold-silver");
+  mkdirSync(dir);
+  chmodSync(dir, 0o700);
+  writeFileSync(join(dir, "cccc3333.json"), JSON.stringify(SILVER_JSON));
+  writeFileSync(join(dir, "aaaa1111.json"), JSON.stringify(GOLD_JSON));
+  const golds = loadGold(["cccc3333", "aaaa1111"], dir);
+  assert.deepEqual(goldInfo(golds)?.versions, {
+    aaaa1111: 2,
+    cccc3333: 3,
+  });
+});
+
+test("scoreSpans: hit, miss, normalization, unsure skipped, groups", () => {
+  const g = silver();
+  const rows = [
+    segE("mic", 0, 0, 4000, "We tried zorblax, yesterday."),
+    segE("system", 0, 10000, 12000, "Ask Quill on about 21 seats."),
+  ];
+  const s = scoreSpans(g.spans ?? [], rows, "asr");
+  // Zorblax: hit (case and punctuation do not count). Quillon: miss (two
+  // words). "twenty-one seats": hit ("21 seats" after normalization).
+  assert.deepEqual([s.all.hits, s.all.n, s.all.rate], [2, 3, 0.6667]);
+  assert.deepEqual([s.high.hits, s.high.n], [2, 2]);
+  assert.deepEqual(
+    [s.byLabel.term, s.byLabel.person, s.byLabel.other].map((c) => [
+      c.hits,
+      c.n,
+    ]),
+    [
+      [1, 1],
+      [0, 1],
+      [1, 1],
+    ],
+  );
+  assert.deepEqual([s.byVocab.inVocab.hits, s.byVocab.inVocab.n], [1, 1]);
+  assert.deepEqual([s.byVocab.notInVocab.hits, s.byVocab.notInVocab.n], [1, 2]);
+  assert.equal(s.unsure, 1);
+  assert.equal(s.empty, 0);
+  assert.deepEqual(s.missedKeys, ["system@10000:person"]);
+  // Enhance reads the enhanced text: a fix of the person name is a hit.
+  const enh = [
+    rows[0] as SegmentRow,
+    segE(
+      "system",
+      0,
+      10000,
+      12000,
+      "Ask Quill on about 21 seats.",
+      "Ask Quillon about 21 seats.",
+    ),
+  ];
+  const e = scoreSpans(g.spans ?? [], enh, "enhance");
+  assert.deepEqual([e.all.hits, e.all.n, e.missedKeys], [3, 3, []]);
+  // The asr stage of the same rows still reads the raw text.
+  assert.equal(scoreSpans(g.spans ?? [], enh, "asr").all.hits, 2);
+});
+
+test("scoreSpans: the time window edge, the channel and segments joined", () => {
+  const span = (
+    startMs: number,
+    endMs: number,
+    text = "Zorblax tool",
+  ): GoldSpan => ({
+    channel: "mic",
+    startMs,
+    endMs,
+    text,
+    label: "term",
+    inVocab: false,
+    confidence: "high",
+    witnesses: [],
+    verifierConflict: false,
+  });
+  const hit = (rows: SegmentRow[], sp = span(10000, 11000)) =>
+    scoreSpans([sp], rows, "asr").all.hits;
+  // Window = [7000, 14000] at the default tolerance of 3000 ms.
+  assert.equal(hit([segE("mic", 0, 5000, 7000, "the zorblax tool")]), 1);
+  assert.equal(hit([segE("mic", 0, 5000, 6999, "the zorblax tool")]), 0);
+  assert.equal(hit([segE("mic", 0, 14000, 15000, "zorblax tool")]), 1);
+  assert.equal(hit([segE("mic", 0, 14001, 15000, "zorblax tool")]), 0);
+  // A smaller tolerance moves the edge.
+  assert.equal(
+    scoreSpans(
+      [span(10000, 11000)],
+      [segE("mic", 0, 5000, 7000, "zorblax tool")],
+      "asr",
+      2000,
+    ).all.hits,
+    0,
+  );
+  // The other channel at the same time does not count.
+  assert.equal(hit([segE("system", 0, 10000, 11000, "zorblax tool")]), 0);
+  // A span across two segments in the window is a hit (time order).
+  assert.equal(
+    hit([
+      segE("mic", 1, 10500, 12000, "tool today"),
+      segE("mic", 0, 9000, 10500, "the zorblax"),
+    ]),
+    1,
+  );
+  // Words in another order are a miss.
+  assert.equal(hit([segE("mic", 0, 10000, 11000, "tool zorblax")]), 0);
+  // A segment without end_ms is a point at start_ms.
+  assert.equal(hit([seg("mic", 0, 6000, "zorblax tool")]), 0);
+  assert.equal(hit([seg("mic", 0, 7000, "zorblax tool")]), 1);
+  // A span with no words after normalization is counted as empty.
+  const empty = scoreSpans([span(10000, 11000, "...")], [], "asr");
+  assert.deepEqual([empty.all.n, empty.empty, empty.all.rate], [0, 1, null]);
+});
+
+test("eligible WER: only errors on eligible turns; old keys have none", () => {
+  const g = silver();
+  // Errors: one in the eligible mic turn (yesterday -> today), one in the
+  // ineligible turn (guess -> gas), one inserted word in it.
+  const rows = [
+    segE("mic", 0, 0, 4000, "We tried Zorblax today."),
+    segE("mic", 1, 4000, 8000, "It was fine fine okay I gas."),
+    segE("system", 0, 10000, 12000, "Ask Quillon about 21 seats."),
+  ];
+  const mic = scoreChannel(g, "mic", rows, "asr");
+  assert.deepEqual(
+    [mic?.words.errors, mic?.words.ref],
+    [3, 9],
+    "all-turn WER stays as before",
+  );
+  assert.deepEqual(
+    [mic?.wordsEligible?.errors, mic?.wordsEligible?.ref],
+    [1, 4],
+  );
+  const sc = scoreRun(
+    g,
+    { segments: rows, summaryJson: null, tags: [], speakers: [] },
+    "hash-s",
+  );
+  const m = stageMetrics(sc);
+  // Pooled eligible: 1 error over 4 + 5 eligible words ("21" is one word).
+  assert.equal(m.asr.werEligible, 0.1111);
+  assert.equal(m.asr["werEligible.system"], 0);
+  assert.equal(m.asr.spanAcc, 1);
+  assert.ok("spanAccNotInVocab" in m.enhance);
+  // A v2 key: no eligible WER and no span metrics.
+  const old = stageMetrics(
+    scoreRun(
+      gold(),
+      { segments: RAW, summaryJson: null, tags: [], speakers: [] },
+      "hash-1",
+    ),
+  );
+  assert.ok(!("werEligible" in old.asr));
+  assert.ok(!("spanAcc" in old.asr));
+  assert.equal(
+    scoreChannel(gold(), "mic", RAW, "asr")?.wordsEligible,
+    undefined,
+  );
+});
+
+test("report: the Spans section, numbers only, passes the self-check", () => {
+  const rows = [
+    segE("mic", 0, 0, 4000, "We tried zorblax yesterday."),
+    segE("mic", 1, 4000, 8000, "It was fine I guess."),
+    segE(
+      "system",
+      0,
+      10000,
+      12000,
+      "Ask Quill on about 21 seats.",
+      "Ask Quillon about 21 seats.",
+    ),
+  ];
+  const r: RunResult = {
+    model: "m1",
+    meeting: "cccc3333",
+    status: "ok",
+    exitCode: 0,
+    seconds: 1,
+    peakRssGb: 1,
+    diskBytes: 1e9,
+    inputTokens: 1,
+    outputTokens: 1,
+    chunksAttempted: 1,
+    chunksFailed: 0,
+    metrics: runMetrics([], [], []),
+    checks: NO_CHECKS(),
+    hardFails: 0,
+    scorecard: scoreRun(
+      silver(),
+      { segments: rows, summaryJson: null, tags: [], speakers: [] },
+      "hash-s",
+    ),
+  };
+  const res: Results = {
+    createdAt: "2026-10-28T10:00:00Z",
+    commit: "abc1234",
+    models: ["m1"],
+    meetings: [
+      { id8: "cccc3333", id: "cccc3333-x", segments: 3, durationSeconds: 12 },
+    ],
+    asrHash: "hash-s",
+    asrModel: "local-mlx/qwen3-1.7b-8bit",
+    gold: { source: "gold-v2", versions: { cccc3333: 3 } },
+    runs: [r],
+    floor: null,
+  };
+  res.floor = floorModel(res);
+  res.spans = pooledSpans(res.runs);
+  const md = renderResults(res);
+  assert.deepEqual(selfCheck(md, res), []);
+  assert.ok(md.includes("cccc3333 v3"));
+  assert.ok(
+    md.includes(
+      "| m1 | pooled | asr | 66.7 (2/3) | 100.0 (2/2) | 100.0 (1/1) | 0.0 (0/1) | 100.0 (1/1) | 100.0 (1/1) | 50.0 (1/2) | 1 | 0 |",
+    ),
+  );
+  assert.ok(md.includes("| m1 | cccc3333 | enhance | 100.0 (3/3) |"));
+  assert.ok(md.includes("- m1 cccc3333 asr (1): system@10000:person"));
+  assert.ok(md.includes("- m1 cccc3333 enhance (0): none"));
+  assert.ok(md.includes("WER eligible 0.0000 (9 ref)"));
+  // A changed cell or changed pooled JSON fails the self-check.
+  assert.ok(
+    selfCheck(md.replace("66.7 (2/3)", "70.0 (2/3)"), res).some((e) =>
+      e.includes("spans table"),
+    ),
+  );
+  const tampered = structuredClone(res);
+  const pooledM1 = tampered.spans?.m1;
+  assert.ok(pooledM1);
+  pooledM1.asr.all.hits = 3;
+  assert.ok(selfCheck(md, tampered).some((e) => e.includes("fresh pooling")));
+  // Span and turn text never goes into results.md.
+  for (const w of [
+    "Zorblax",
+    "zorblax",
+    "Quillon",
+    "Quill",
+    "Mumblecore",
+    "seats",
+  ])
+    assert.ok(!md.includes(w), `results.md holds "${w}"`);
 });

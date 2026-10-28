@@ -38,6 +38,23 @@
 // Ids are short names ([A-Za-z0-9_.-], at most 40 characters): results and
 // baselines show them, so an id must never hold meeting text.
 //
+// Silver keys (a gold built from several engines and checked by a
+// verifier, not by ear) add these optional fields:
+//
+//   "goldKind": "silver-2",
+//   "spans": [{ "channel": "mic", "startMs": 15000, "endMs": 16200,
+//               "text": "...", "label": "term", "in_vocab": true,
+//               "confidence": "high", "witnesses": ["h1", "app"],
+//               "verifier_conflict": true }],
+//   "witnesses": { ... }, "verification": { ... },
+//   transcript turns: "basis": ["h1", "h2"], "wer_eligible": true
+//
+// A span is a named term, product, person, org or place that the output must
+// spell right (score.mts scoreSpans). label is one of SPAN_LABELS,
+// confidence one of SPAN_CONFIDENCES. A turn with wer_eligible true counts
+// in the eligible WER (score.mts). The scorers do not read witnesses,
+// verification or basis; the loader only checks their types.
+//
 // Errors name the file field, never its text.
 
 import { readFileSync, statSync } from "node:fs";
@@ -53,6 +70,33 @@ export interface GoldTurn {
   endMs: number;
   text: string;
   verified: boolean;
+  /** Silver keys: the turn counts in the eligible WER. Absent in v1/v2 keys. */
+  werEligible?: boolean;
+}
+
+export const SPAN_LABELS = [
+  "term",
+  "product",
+  "person",
+  "org",
+  "place",
+  "other",
+] as const;
+export type SpanLabel = (typeof SPAN_LABELS)[number];
+export const SPAN_CONFIDENCES = ["high", "medium", "unsure"] as const;
+export type SpanConfidence = (typeof SPAN_CONFIDENCES)[number];
+
+/** A named span of a silver key: a word group the output must spell right. */
+export interface GoldSpan {
+  channel: Channel;
+  startMs: number;
+  endMs: number;
+  text: string;
+  label: SpanLabel;
+  inVocab: boolean;
+  confidence: SpanConfidence;
+  witnesses: string[];
+  verifierConflict: boolean;
 }
 export interface GoldFix {
   channel: Channel;
@@ -91,6 +135,8 @@ export interface Gold {
   source: GoldSource;
   meeting: string;
   goldVersion: number;
+  /** Optional kind of the key, for example "silver-2"; null when absent. */
+  goldKind?: string | null;
   asrHash: string | null;
   builtAt: string | null;
   verifiedSpans: number;
@@ -101,6 +147,8 @@ export interface Gold {
   summary: GoldSummary | null;
   tags: { expected: GoldTag[] } | null;
   speakers: Record<string, string | null> | null;
+  /** Silver keys only; null or absent when the key has no spans field. */
+  spans?: GoldSpan[] | null;
 }
 
 /** The gold info that results.json and a baseline record (no text). */
@@ -189,6 +237,12 @@ export function parseGold(json: string, id8: string): Gold {
   if (typeof v.goldVersion !== "number" || !Number.isInteger(v.goldVersion))
     fail(id8, "goldVersion must be an integer");
   if (v.goldVersion < 1) fail(id8, "goldVersion must be 1 or more");
+  const goldKind = v.goldKind ?? null;
+  if (
+    goldKind !== null &&
+    (typeof goldKind !== "string" || !ID_RE.test(goldKind))
+  )
+    fail(id8, "goldKind must match [A-Za-z0-9_.-]{1,40}");
   const verifiedSpans = v.verifiedSpans ?? 0;
   if (!isMs(verifiedSpans))
     fail(id8, "verifiedSpans must be an integer of 0 or more");
@@ -210,11 +264,21 @@ export function parseGold(json: string, id8: string): Gold {
           if (typeof x.text !== "string") fail(w, "text must be a string");
           if (typeof x.verified !== "boolean")
             fail(w, "verified must be true or false");
+          if (x.basis !== undefined && !isStringArray(x.basis))
+            fail(w, "basis must be an array of strings");
+          if (
+            x.wer_eligible !== undefined &&
+            typeof x.wer_eligible !== "boolean"
+          )
+            fail(w, "wer_eligible must be true or false");
           return {
             startMs: x.startMs,
             endMs: x.endMs,
             text: x.text,
             verified: x.verified,
+            ...(typeof x.wer_eligible === "boolean"
+              ? { werEligible: x.wer_eligible }
+              : {}),
           };
         })
         .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
@@ -293,6 +357,15 @@ export function parseGold(json: string, id8: string): Gold {
     };
   }
 
+  for (const k of ["witnesses", "verification"])
+    if (v[k] !== undefined && v[k] !== null && !isObj(v[k]))
+      fail(id8, `${k} must be an object`);
+  let spans: GoldSpan[] | null = null;
+  if (v.spans !== null && v.spans !== undefined) {
+    if (!Array.isArray(v.spans)) fail(id8, "spans must be an array");
+    spans = v.spans.map((x, i) => parseSpan(x, `${id8} spans[${i}]`));
+  }
+
   let speakers: Gold["speakers"] = null;
   if (v.speakers !== null && v.speakers !== undefined) {
     if (!isObj(v.speakers)) fail(id8, "speakers must be an object");
@@ -305,6 +378,7 @@ export function parseGold(json: string, id8: string): Gold {
     source: "gold-v2",
     meeting: id8,
     goldVersion: v.goldVersion,
+    goldKind,
     asrHash: typeof v.asrHash === "string" ? v.asrHash : null,
     builtAt: typeof v.builtAt === "string" ? v.builtAt : null,
     verifiedSpans,
@@ -315,6 +389,40 @@ export function parseGold(json: string, id8: string): Gold {
     summary,
     tags,
     speakers,
+    spans,
+  };
+}
+
+const isStringArray = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((s) => typeof s === "string");
+
+function parseSpan(x: unknown, w: string): GoldSpan {
+  if (!isObj(x)) fail(w, "must be an object");
+  if (!isChannel(x.channel)) fail(w, "channel must be mic or system");
+  if (!isMs(x.startMs) || !isMs(x.endMs) || x.endMs < x.startMs)
+    fail(w, "needs integer startMs <= endMs");
+  if (typeof x.text !== "string" || x.text.trim() === "")
+    fail(w, "text must be a non-empty string");
+  if (!SPAN_LABELS.includes(x.label as SpanLabel))
+    fail(w, `label must be one of ${SPAN_LABELS.join(", ")}`);
+  if (typeof x.in_vocab !== "boolean")
+    fail(w, "in_vocab must be true or false");
+  if (!SPAN_CONFIDENCES.includes(x.confidence as SpanConfidence))
+    fail(w, `confidence must be one of ${SPAN_CONFIDENCES.join(", ")}`);
+  if (!isStringArray(x.witnesses))
+    fail(w, "witnesses must be an array of strings");
+  if (x.verifier_conflict !== undefined && x.verifier_conflict !== true)
+    fail(w, "verifier_conflict must be true or absent");
+  return {
+    channel: x.channel,
+    startMs: x.startMs,
+    endMs: x.endMs,
+    text: x.text,
+    label: x.label as SpanLabel,
+    inVocab: x.in_vocab,
+    confidence: x.confidence as SpanConfidence,
+    witnesses: x.witnesses,
+    verifierConflict: x.verifier_conflict === true,
   };
 }
 
@@ -380,6 +488,7 @@ export function goldFromAnswerKey(key: AnswerKey): Map<string, Gold> {
       source: "answer-key-v1",
       meeting: id8,
       goldVersion: 1,
+      goldKind: null,
       asrHash: null,
       builtAt: null,
       verifiedSpans: 0,
@@ -397,6 +506,7 @@ export function goldFromAnswerKey(key: AnswerKey): Map<string, Gold> {
       summary: null,
       tags: null,
       speakers: null,
+      spans: null,
     });
   }
   return out;

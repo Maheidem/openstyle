@@ -104,6 +104,7 @@ import {
   floorModel,
   hardFailsOf,
   type MeetingInfo,
+  pooledSpans,
   type Results,
   type RunResult,
   renderResults,
@@ -520,7 +521,7 @@ function readRun(dbPath: string, id: string) {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   const segments = db
     .prepare(
-      "SELECT id, source, idx, start_ms, text, enhanced_text FROM meeting_segments WHERE meeting_id = ? ORDER BY source, idx, start_ms",
+      "SELECT id, source, idx, start_ms, end_ms, text, enhanced_text FROM meeting_segments WHERE meeting_id = ? ORDER BY source, idx, start_ms",
     )
     .all(id) as unknown as SegmentRow[];
   const meeting = db
@@ -876,6 +877,7 @@ async function main(): Promise<number> {
     floor: null,
   };
   results.floor = floorModel(results);
+  results.spans = pooledSpans(runs);
   const jsonPath = join(outDir, "results.json");
   const mdPath = join(outDir, "results.md");
   writeFileSync(jsonPath, `${JSON.stringify(results, null, 1)}\n`);
@@ -1016,6 +1018,7 @@ function rescore(dir: string): number {
     floor: null,
   };
   results.floor = floorModel(results);
+  results.spans = pooledSpans(runs);
   const jsonPath = join(dir, "results-rescore.json");
   const mdPath = join(dir, "results-rescore.md");
   writeFileSync(jsonPath, `${JSON.stringify(results, null, 1)}\n`);
