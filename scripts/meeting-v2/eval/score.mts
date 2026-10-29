@@ -18,10 +18,20 @@
 //             must-not-claim hits (a hit is a hard fail)
 //   tags      precision and recall against the expected tags and synonyms
 //   speakers  suggested names vs the gold map (a wrong name is a hard fail)
+//   spans     silver keys: the share of named spans (terms, products,
+//             people, ...) that the ASR text and the Enhance text hold near
+//             the span time (scoreSpans). A turn with wer_eligible gives the
+//             eligible WER (wordsEligible) next to the WER of all turns.
 
 import { normalizeTagName } from "../../../packages/validations/src/meeting-tags.ts";
 import { levenshtein, type SegmentRow } from "./checks.mts";
-import { CHANNELS, type Channel, type Gold, type GoldItem } from "./gold.mts";
+import {
+  CHANNELS,
+  type Channel,
+  type Gold,
+  type GoldItem,
+  type GoldSpan,
+} from "./gold.mts";
 
 // --- Text normalization ----------------------------------------------------------
 
@@ -397,6 +407,11 @@ export interface ChannelScore {
   wordsVerified: ErrorRate;
   wordsVerifiedRaw: ErrorRate;
   charsVerified: ErrorRate;
+  /**
+   * Normalized words of the turns with wer_eligible true (silver keys).
+   * Absent when no gold turn has the field.
+   */
+  wordsEligible?: ErrorRate;
   /** Edit counts of the normalized alignment. */
   substitutions: number;
   deletions: number;
@@ -428,7 +443,8 @@ function charCount(ws: string[], flags: boolean[], onlyVerified: boolean) {
  * WER and CER of a hypothesis against a reference. `verified` holds one
  * flag per reference word. An error counts as verified when its reference
  * word is verified; an insertion takes the flag of the reference word
- * before it (or the first word at the start).
+ * before it (or the first word at the start). `eligible` (optional, one
+ * flag per reference word) gives `wordsEligible` by the same rule.
  *
  * WER = (substitutions + deletions + insertions) / reference words.
  * CER is computed on the word alignment: the character edit distance of
@@ -440,9 +456,12 @@ export function errorRates(
   ref: string[],
   hyp: string[],
   verified: boolean[] = ref.map(() => true),
+  eligible?: boolean[],
 ): ErrorRates {
   const steps = alignWords(ref, hyp);
   const flagAt = (r: number) => (r < 0 ? false : (verified[r] ?? false));
+  const eligibleAt = (r: number) => (r < 0 ? false : (eligible?.[r] ?? false));
+  let werE = 0;
   let lastRef = -1;
   let sub = 0;
   let del = 0;
@@ -458,6 +477,7 @@ export function errorRates(
     else if (s.op === "del") del++;
     else ins++;
     if (flagAt(anchor)) werV++;
+    if (eligibleAt(anchor)) werE++;
   }
   let charErr = 0;
   let charErrV = 0;
@@ -487,6 +507,9 @@ export function errorRates(
     chars: er(charErr, charCount(ref, verified, false)),
     wordsVerified: er(werV, nV),
     charsVerified: er(charErrV, charCount(ref, verified, true)),
+    ...(eligible
+      ? { wordsEligible: er(werE, eligible.filter(Boolean).length) }
+      : {}),
     substitutions: sub,
     deletions: del,
     insertions: ins,
@@ -516,6 +539,7 @@ export function scoreChannel(
   const flags: boolean[] = [];
   const nRef: string[] = [];
   const nFlags: boolean[] = [];
+  const eFlags: boolean[] = [];
   for (const t of turns) {
     for (const w of words(t.text)) {
       ref.push(w);
@@ -524,6 +548,7 @@ export function scoreChannel(
     for (const w of scoreWords(t.text)) {
       nRef.push(w);
       nFlags.push(t.verified);
+      eFlags.push(t.werEligible === true);
     }
   }
   const texts = rows
@@ -532,10 +557,13 @@ export function scoreChannel(
     .map((s) => (stage === "asr" ? (s.text ?? "") : effective(s)));
   const raw = errorRates(ref, texts.flatMap(words), flags);
   const n = normalizeWords(nRef, nFlags);
+  // normalizeWords gives the same words for any flags, so the eligible
+  // flags line up with n.words.
   const norm = errorRates(
     n.words,
     normalizeWords(texts.flatMap(scoreWords)).words,
     n.flags,
+    hasEligible(gold) ? normalizeWords(nRef, eFlags).flags : undefined,
   );
   return {
     ...norm,
@@ -546,7 +574,17 @@ export function scoreChannel(
   };
 }
 
-/** WER or CER of several channels together (sum of errors / sum of words). */
+/** True when a gold turn has wer_eligible (a silver key with the field). */
+function hasEligible(gold: Gold): boolean {
+  return CHANNELS.some((c) =>
+    gold.transcript?.[c]?.some((t) => t.werEligible !== undefined),
+  );
+}
+
+/**
+ * WER or CER of several channels together (sum of errors / sum of words).
+ * A channel score without the field (wordsEligible of a v2 key) is left out.
+ */
 export function pooled(
   scores: (ChannelScore | null)[],
   field: keyof Pick<
@@ -557,12 +595,13 @@ export function pooled(
     | "wordsVerified"
     | "wordsVerifiedRaw"
     | "charsVerified"
+    | "wordsEligible"
   >,
 ): ErrorRate | null {
-  const own = scores.filter((s): s is ChannelScore => s !== null);
+  const own = scores.flatMap((s) => (s?.[field] ? [s[field]] : []));
   if (own.length === 0) return null;
-  const e = own.reduce((a, s) => a + s[field].errors, 0);
-  const r = own.reduce((a, s) => a + s[field].ref, 0);
+  const e = own.reduce((a, x) => a + x.errors, 0);
+  const r = own.reduce((a, x) => a + x.ref, 0);
   return er(e, r);
 }
 
@@ -942,6 +981,263 @@ export function scoreSpeakers(
   return s;
 }
 
+// --- Named spans (silver keys) ------------------------------------------------------
+
+/** The time window around a span, on each side (ms). */
+export const SPAN_TOLERANCE_MS = 3000;
+export const SPAN_GROUPS = ["term", "person", "other"] as const;
+export type SpanGroup = (typeof SPAN_GROUPS)[number];
+
+export interface SpanCount {
+  hits: number;
+  n: number;
+  /** hits / n, or null when n is 0. */
+  rate: number | null;
+}
+
+export interface SpanScore {
+  /** The scored spans: confidence high or medium. */
+  all: SpanCount;
+  high: SpanCount;
+  /** term = term + product; other = org, place, other. */
+  byLabel: Record<SpanGroup, SpanCount>;
+  byVocab: { inVocab: SpanCount; notInVocab: SpanCount };
+  /** Spans with confidence unsure: not scored. */
+  unsure: number;
+  /** Spans with no words after normalization: not scored. */
+  empty: number;
+  /**
+   * "<channel>@<startMs>:<label>" of the missed spans, never their text.
+   * Each key occurs once per meeting (two missed spans can share a key).
+   */
+  missedKeys: string[];
+}
+
+export const spanGroup = (label: GoldSpan["label"]): SpanGroup =>
+  label === "term" || label === "product"
+    ? "term"
+    : label === "person"
+      ? "person"
+      : "other";
+
+const spanCount = (hits: number, n: number): SpanCount => ({
+  hits,
+  n,
+  rate: rate(hits, n),
+});
+
+/** The sum of span scores (pooled over meetings). */
+export function addSpanScores(xs: SpanScore[]): SpanScore {
+  const sum = (f: (x: SpanScore) => SpanCount) =>
+    spanCount(
+      xs.reduce((a, x) => a + f(x).hits, 0),
+      xs.reduce((a, x) => a + f(x).n, 0),
+    );
+  return {
+    all: sum((x) => x.all),
+    high: sum((x) => x.high),
+    byLabel: Object.fromEntries(
+      SPAN_GROUPS.map((g) => [g, sum((x) => x.byLabel[g])]),
+    ) as Record<SpanGroup, SpanCount>,
+    byVocab: {
+      inVocab: sum((x) => x.byVocab.inVocab),
+      notInVocab: sum((x) => x.byVocab.notInVocab),
+    },
+    unsure: xs.reduce((a, x) => a + x.unsure, 0),
+    empty: xs.reduce((a, x) => a + x.empty, 0),
+    missedKeys: xs.flatMap((x) => x.missedKeys),
+  };
+}
+
+/**
+ * The words of a text for span matching: scoreWords, normalizeWords, then
+ * the accent fold of the silver vote (normalize_silver3.py): NFKD, and the
+ * combining marks go ("José" is "jose"). Python drops the characters with a
+ * combining class; this drops \p{Mn}. They differ only for a few marks of
+ * other scripts (for example Thai), not for Latin text. The WER does not
+ * use this rule.
+ */
+export function spanWords(text: string): string[] {
+  return normalizeWords(scoreWords(text))
+    .words.join(" ")
+    .normalize("NFKD")
+    .replace(/\p{Mn}/gu, "")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** A span to match: its channel, its time and its words (spanWords). */
+export interface SpanTarget {
+  channel: Channel;
+  startMs: number;
+  endMs: number;
+  words: string[];
+}
+
+/** A segment of the output: its channel, its time and its words (spanWords). */
+export interface SpanSegment {
+  source: string;
+  start: number;
+  end: number;
+  words: string[];
+}
+
+/**
+ * The number of window words from `i` whose text without spaces equals
+ * `target`, or 0. The vote rule (normalize_silver3.py contains): join whole
+ * words from `i` until the length reaches the target length, then compare.
+ * So the match starts and ends at word edges, "open style" and "openstyle"
+ * match both ways, and "zor" does not match "zorblax".
+ */
+function joinedMatch(win: string[], i: number, target: string): number {
+  let acc = "";
+  let j = i;
+  while (j < win.length && acc.length < target.length) acc += win[j++];
+  return acc === target ? j - i : 0;
+}
+
+/**
+ * The hit of each span (true or false, in input order). A span is a hit
+ * when its words, without spaces, equal a run of whole words of the window:
+ * the segments of its channel that overlap [startMs - tolMs, endMs +
+ * tolMs], joined in the order of `segs`. One occurrence of the output
+ * words counts for one span only: the spans take occurrences in the order
+ * of their window end, each the first free occurrence of its window. This
+ * greedy order gives the most hits that one-occurrence-per-span allows
+ * (two spans of the same words never lose a hit to the order).
+ * score_silver.py (span_match.py) uses the same rule. `segs` must be in
+ * time order.
+ */
+export function spanHits(
+  spans: SpanTarget[],
+  segs: SpanSegment[],
+  tolMs: number = SPAN_TOLERANCE_MS,
+): boolean[] {
+  const offset: number[] = [];
+  segs.reduce((n, s, i) => {
+    offset[i] = n;
+    return n + s.words.length;
+  }, 0);
+  const used = new Set<string>();
+  const hits = spans.map(() => false);
+  const order = spans
+    .map((_, i) => i)
+    .sort((a, b) => {
+      const x = spans[a] as SpanTarget;
+      const y = spans[b] as SpanTarget;
+      return x.endMs - y.endMs || x.startMs - y.startMs || a - b;
+    });
+  for (const k of order) {
+    const sp = spans[k] as SpanTarget;
+    const target = sp.words.join("");
+    if (target === "") continue;
+    // The window words with their position in all of `segs`: the key of
+    // an occurrence is the list of positions of its words.
+    const win: { w: string; pos: number }[] = [];
+    segs.forEach((s, si) => {
+      if (
+        s.source === sp.channel &&
+        s.end >= sp.startMs - tolMs &&
+        s.start <= sp.endMs + tolMs
+      )
+        s.words.forEach((w, wi) => {
+          win.push({ w, pos: (offset[si] as number) + wi });
+        });
+    });
+    const ws = win.map((x) => x.w);
+    for (let i = 0; !hits[k] && i < win.length; i++) {
+      const n = joinedMatch(ws, i, target);
+      if (n === 0) continue;
+      const key = win
+        .slice(i, i + n)
+        .map((x) => x.pos)
+        .join(",");
+      if (used.has(key)) continue;
+      used.add(key);
+      hits[k] = true;
+    }
+  }
+  return hits;
+}
+
+/**
+ * Span accuracy of one stage. A span with confidence high or medium is a hit
+ * when its words (spanWords: normal words with accents folded) occur in the
+ * words of the stage text of the segments of its channel that overlap
+ * [startMs - tolMs, endMs + tolMs], as one run or as one run without spaces
+ * (spanHits). One output occurrence counts for one span only. Each segment
+ * is normalized on its own, then the segments join in time order. A segment
+ * without end_ms counts as a point at start_ms. asr reads the raw text;
+ * enhance reads the enhanced text (the raw text when there is none). Unsure
+ * spans and spans with no words are counted, not scored.
+ */
+export function scoreSpans(
+  spans: GoldSpan[],
+  rows: SegmentRow[],
+  stage: "asr" | "enhance",
+  tolMs: number = SPAN_TOLERANCE_MS,
+): SpanScore {
+  const segs = rows
+    .filter((s) => s.start_ms !== null)
+    .sort(byStart)
+    .map((s) => ({
+      source: s.source,
+      start: s.start_ms as number,
+      end: Math.max(s.start_ms as number, s.end_ms ?? (s.start_ms as number)),
+      words: spanWords(stage === "asr" ? (s.text ?? "") : effective(s)),
+    }));
+  const targets: { sp: GoldSpan; words: string[] }[] = [];
+  let unsure = 0;
+  let empty = 0;
+  for (const sp of spans) {
+    if (sp.confidence === "unsure") {
+      unsure++;
+      continue;
+    }
+    const words = spanWords(sp.text);
+    if (words.length === 0) {
+      empty++;
+      continue;
+    }
+    targets.push({ sp, words });
+  }
+  const hits = spanHits(
+    targets.map(({ sp, words }) => ({
+      channel: sp.channel,
+      startMs: sp.startMs,
+      endMs: sp.endMs,
+      words,
+    })),
+    segs,
+    tolMs,
+  );
+  const scored = targets.map(({ sp }, i) => ({ sp, hit: hits[i] === true }));
+  const count = (f: (sp: GoldSpan) => boolean) => {
+    const xs = scored.filter((x) => f(x.sp));
+    return spanCount(xs.filter((x) => x.hit).length, xs.length);
+  };
+  return {
+    all: count(() => true),
+    high: count((sp) => sp.confidence === "high"),
+    byLabel: Object.fromEntries(
+      SPAN_GROUPS.map((g) => [g, count((sp) => spanGroup(sp.label) === g)]),
+    ) as Record<SpanGroup, SpanCount>,
+    byVocab: {
+      inVocab: count((sp) => sp.inVocab),
+      notInVocab: count((sp) => !sp.inVocab),
+    },
+    unsure,
+    empty,
+    missedKeys: [
+      ...new Set(
+        scored
+          .filter((x) => !x.hit)
+          .map((x) => `${x.sp.channel}@${x.sp.startMs}:${x.sp.label}`),
+      ),
+    ],
+  };
+}
+
 // --- Scorecard ----------------------------------------------------------------------
 
 export interface Scorecard {
@@ -960,6 +1256,8 @@ export interface Scorecard {
   summary: SummaryScore | null;
   tags: TagScore | null;
   speakers: SpeakerScore | null;
+  /** Span accuracy per stage (silver keys); absent when the gold has no spans. */
+  spans?: { asr: SpanScore; enhance: SpanScore };
   /** Gold hard fails: "claim:<id>" and "speaker:<label>". */
   hardFails: string[];
 }
@@ -1024,6 +1322,14 @@ export function scoreRun(
     summary,
     tags: scoreTags(gold, run.tags),
     speakers,
+    ...(gold.spans
+      ? {
+          spans: {
+            asr: scoreSpans(gold.spans, run.segments, "asr"),
+            enhance: scoreSpans(gold.spans, run.segments, "enhance"),
+          },
+        }
+      : {}),
     hardFails: [
       ...(summary?.mustNotClaimHits ?? []).map((id) => `claim:${id}`),
       ...(speakers?.wrongLabels ?? []).map((l) => `speaker:${l}`),
@@ -1055,8 +1361,11 @@ function channelMetrics(
     werRaw: pooled(Object.values(ch), "wordsRaw")?.rate ?? null,
     werVerifiedRaw: pooled(Object.values(ch), "wordsVerifiedRaw")?.rate ?? null,
   };
+  const eligible = pooled(Object.values(ch), "wordsEligible");
+  if (eligible) out.werEligible = eligible.rate;
   for (const c of CHANNELS) {
     const s = ch[c];
+    if (eligible) out[`werEligible.${c}`] = s?.wordsEligible?.rate ?? null;
     out[`wer.${c}`] = s?.words.rate ?? null;
     out[`cer.${c}`] = s?.chars.rate ?? null;
     out[`werVerified.${c}`] = s?.wordsVerified.rate ?? null;
@@ -1067,6 +1376,20 @@ function channelMetrics(
   return out;
 }
 
+/** The span rates of one stage (spanAcc*), or none without spans. */
+function spanMetrics(s: SpanScore | undefined): StageMetrics {
+  if (!s) return {};
+  return {
+    spanAcc: s.all.rate,
+    spanAccHigh: s.high.rate,
+    spanAccTerm: s.byLabel.term.rate,
+    spanAccPerson: s.byLabel.person.rate,
+    spanAccOther: s.byLabel.other.rate,
+    spanAccInVocab: s.byVocab.inVocab.rate,
+    spanAccNotInVocab: s.byVocab.notInVocab.rate,
+  };
+}
+
 /** The flat metrics of a scorecard, per stage. A stage with no gold has no metrics. */
 export function stageMetrics(sc: Scorecard): Record<Stage, StageMetrics> {
   const s = sc.summary;
@@ -1074,9 +1397,10 @@ export function stageMetrics(sc: Scorecard): Record<Stage, StageMetrics> {
   const sp = sc.speakers;
   const f = sc.enhance.fixes;
   return {
-    asr: channelMetrics(sc.asr),
+    asr: { ...channelMetrics(sc.asr), ...spanMetrics(sc.spans?.asr) },
     enhance: {
       ...channelMetrics(sc.enhance.channels),
+      ...spanMetrics(sc.spans?.enhance),
       ...(sc.enhance.delta
         ? { delta: sc.enhance.delta.all, deltaRaw: sc.enhance.deltaRaw }
         : {}),

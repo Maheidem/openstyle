@@ -5,10 +5,14 @@
 import type { Finding, RunMetrics } from "./checks.mts";
 import { CHANNELS, type GoldInfo } from "./gold.mts";
 import {
+  addSpanScores,
   type ChannelScore,
   type ErrorRate,
   pooled,
   type Scorecard,
+  SPAN_TOLERANCE_MS,
+  type SpanCount,
+  type SpanScore,
   STAGES,
   type Stage,
 } from "./score.mts";
@@ -66,6 +70,8 @@ export interface Results {
   gold: GoldInfo | null;
   runs: RunResult[];
   floor: string | null;
+  /** Span accuracy per model and stage, pooled over meetings (silver keys). */
+  spans?: Record<string, { asr: SpanScore; enhance: SpanScore }>;
 }
 
 /**
@@ -274,6 +280,19 @@ export function scorecardCells(
       `WER verified ${erText(pooled(ch, "wordsVerified"))}`,
       `CER verified ${erText(pooled(ch, "charsVerified"))}`,
     ];
+    const eligible = pooled(ch, "wordsEligible");
+    // A v2 key has no eligible turns, so the eligible WER can cover fewer
+    // meetings than the WER.
+    const nEligible = own.filter((sc) =>
+      CHANNELS.some(
+        (c) =>
+          (stage === "asr" ? sc.asr : sc.enhance.channels)?.[c]?.wordsEligible,
+      ),
+    ).length;
+    if (eligible)
+      detail.push(
+        `WER eligible ${erText(eligible)} (${nEligible} of ${own.length} meetings)`,
+      );
     if (stage === "asr")
       return own.length
         ? cells(own.length, `WER ${erText(w)}`, detail.join("; "), 0)
@@ -285,6 +304,7 @@ export function scorecardCells(
     );
     const delta = a?.rate == null || w?.rate == null ? null : a.rate - w.rate;
     const fx = scs.map((sc) => sc.enhance.fixes);
+    const nCh = detail.length;
     detail.push(
       `fixes found/missed ${sumOf(fx, (f) => f.fixesFound)}/${sumOf(fx, (f) => f.fixesMissed)}`,
       `must-not-change violations ${sumOf(fx, (f) => f.mustNotChangeViolations)}`,
@@ -293,7 +313,7 @@ export function scorecardCells(
     return cells(
       scs.length,
       `WER ${erText(w)}, delta ${r4(delta)}`,
-      own.length ? detail.join("; ") : detail.slice(4).join("; "),
+      own.length ? detail.join("; ") : detail.slice(nCh).join("; "),
       0,
     );
   }
@@ -402,6 +422,119 @@ export function scorecardMeetingCells(r: RunResult): string[] {
   ];
 }
 
+// --- Spans (silver keys) ------------------------------------------------------------------
+
+/** Span accuracy per model, pooled over its meetings; undefined when no run has spans. */
+export function pooledSpans(runs: RunResult[]): Results["spans"] {
+  const byModel = new Map<string, { asr: SpanScore; enhance: SpanScore }[]>();
+  for (const r of runs)
+    if (r.scorecard?.spans)
+      byModel.set(r.model, [
+        ...(byModel.get(r.model) ?? []),
+        r.scorecard.spans,
+      ]);
+  if (byModel.size === 0) return undefined;
+  // addSpanScores builds new objects, so the pooled value never aliases a run.
+  return Object.fromEntries(
+    [...byModel].map(([m, xs]) => [
+      m,
+      {
+        asr: addSpanScores(xs.map((x) => x.asr)),
+        enhance: addSpanScores(xs.map((x) => x.enhance)),
+      },
+    ]),
+  );
+}
+
+export const SPANS_HEADER = [
+  "Model",
+  "Meeting",
+  "Stage",
+  "All",
+  "High",
+  "Term+product",
+  "Person",
+  "Other",
+  "In vocab",
+  "Not in vocab",
+  "Unsure skipped",
+  "Empty skipped",
+];
+
+const pctCell = (c: SpanCount) =>
+  `${c.rate === null ? "-" : (c.rate * 100).toFixed(1)} (${c.hits}/${c.n})`;
+
+function spanCells(
+  model: string,
+  meeting: string,
+  stage: "asr" | "enhance",
+  s: SpanScore,
+): string[] {
+  return [
+    model,
+    meeting,
+    stage,
+    pctCell(s.all),
+    pctCell(s.high),
+    pctCell(s.byLabel.term),
+    pctCell(s.byLabel.person),
+    pctCell(s.byLabel.other),
+    pctCell(s.byVocab.inVocab),
+    pctCell(s.byVocab.notInVocab),
+    String(s.unsure),
+    String(s.empty),
+  ];
+}
+
+const SPAN_STAGES = ["asr", "enhance"] as const;
+
+function spanPooledRows(res: Results): string[][] {
+  const sp = pooledSpans(res.runs) ?? {};
+  return res.models.flatMap((m) => {
+    const x = sp[m];
+    return x ? SPAN_STAGES.map((st) => spanCells(m, "pooled", st, x[st])) : [];
+  });
+}
+
+function spanMeetingRows(res: Results): string[][] {
+  return res.runs.flatMap((r) => {
+    const x = r.scorecard?.spans;
+    return x
+      ? SPAN_STAGES.map((st) => spanCells(r.model, r.meeting, st, x[st]))
+      : [];
+  });
+}
+
+function renderSpans(res: Results): string[] {
+  if (!pooledSpans(res.runs)) return [];
+  const missed = res.runs.flatMap((r) => {
+    const x = r.scorecard?.spans;
+    return x
+      ? SPAN_STAGES.map(
+          (st) =>
+            `- ${r.model} ${r.meeting} ${st} (${x[st].missedKeys.length}): ${x[st].missedKeys.join(", ") || "none"}`,
+        )
+      : [];
+  });
+  return [
+    "",
+    "## Spans",
+    "",
+    `Silver keys: the named spans (confidence high or medium) that the stage text holds within ${SPAN_TOLERANCE_MS} ms of the span time, on the span channel, after normalization. Cells: percent (hits/n). asr = raw text, enhance = enhanced text. Term+product = labels term and product; Other = org, place and other. Unsure spans and spans with no words are not scored.`,
+    "",
+    ...table(SPANS_HEADER, spanPooledRows(res)),
+    "",
+    "### Spans per meeting",
+    "",
+    ...table(SPANS_HEADER, spanMeetingRows(res)),
+    "",
+    "### Missed spans (channel@startMs:label)",
+    "",
+    ...missed,
+    "",
+  ];
+}
+
 function scorecardRows(res: Results): string[][] {
   return res.models.flatMap((m) =>
     STAGES.flatMap((st) => {
@@ -420,6 +553,17 @@ const table = (header: string[], rows: string[][]) => [
 ];
 const MAX_KEYS = 20;
 
+/**
+ * "; kind <kinds>, hash <hash>" when a key has a goldKind (a silver key);
+ * else "", so the results.md of old keys does not change.
+ */
+function goldKindText(g: GoldInfo): string {
+  const kinds = (g.goldKinds ?? []).filter((k) => k !== "none");
+  return kinds.length
+    ? `; kind ${(g.goldKinds ?? []).join(", ")}, hash ${g.goldHash ?? "-"}`
+    : "";
+}
+
 export function renderResults(res: Results): string {
   const out: string[] = [
     "# Meeting Enhance eval",
@@ -435,7 +579,7 @@ export function renderResults(res: Results): string {
       res.gold
         ? `${res.gold.source} (${Object.entries(res.gold.versions)
             .map(([k, v]) => `${k} v${v}`)
-            .join(", ")})`
+            .join(", ")})${goldKindText(res.gold)}`
         : "none"
     }`,
     `- Floor (smallest model with 0 hard fails on every meeting): ${res.floor ?? "none"}`,
@@ -454,6 +598,7 @@ export function renderResults(res: Results): string {
             SCORECARD_MEETING_HEADER,
             scoredRuns(res).map(scorecardMeetingCells),
           ),
+          ...renderSpans(res),
         ]
       : ["No gold key (run with --gold, or --answer-key for a v1 key)."]),
     "",
@@ -573,6 +718,20 @@ export function selfCheck(md: string, res: Results): string[] {
       JSON.stringify(scoredRuns(res).map((r) => row(scorecardMeetingCells(r))))
     )
       errors.push("scorecard per meeting table differs from results.json");
+    if (pooledSpans(res.runs)) {
+      if (
+        JSON.stringify(rowsOf("## Spans")) !==
+        JSON.stringify(spanPooledRows(res).map(row))
+      )
+        errors.push("spans table differs from results.json");
+      if (
+        JSON.stringify(rowsOf("### Spans per meeting")) !==
+        JSON.stringify(spanMeetingRows(res).map(row))
+      )
+        errors.push("spans per meeting table differs from results.json");
+    }
+    if (JSON.stringify(res.spans) !== JSON.stringify(pooledSpans(res.runs)))
+      errors.push("results.json spans differ from a fresh pooling");
   } else if (scoredRuns(res).length > 0)
     errors.push("runs have a scorecard but results.json has no gold");
   if (

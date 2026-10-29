@@ -308,6 +308,78 @@ test("mergeAnswers: a repeated short from word resolves to the open span's own t
   assert.match(twice.errors[0] as string, /answer m1: .* 2 times/);
 });
 
+test("mergeAnswers: a silver key keeps basis and wer_eligible after a merge and a reload", () => {
+  const silver = (t: { startMs: number; endMs: number; text: string }) => ({
+    ...t,
+    verified: false,
+    basis: ["h1", "h3"],
+    wer_eligible: true,
+  });
+  const g = {
+    ...gold([]),
+    goldVersion: 3,
+    goldKind: "silver-3.3",
+    transcript: {
+      mic: [
+        silver({ startMs: 0, endMs: 3000, text: "Zorblax met Quillon today." }),
+        silver({ startMs: 4000, endMs: 6000, text: "Thanks, see you." }),
+      ],
+      system: [
+        {
+          startMs: 0,
+          endMs: 2000,
+          text: "Hello there.",
+          verified: false,
+          basis: ["h1"],
+          wer_eligible: false,
+        },
+      ],
+    },
+  };
+  const r = mergeAnswers(g, [
+    ans({ startMs: 1000, endMs: 2000, from: "Quillon", text: "Quilon" }),
+  ]);
+  assert.deepEqual(r.errors, []);
+  const tr = r.gold.transcript as Record<string, Record<string, unknown>[]>;
+  // Split parts keep the fields of their source turn; the answer turn has
+  // no witness basis, so it is not eligible.
+  assert.deepEqual(
+    tr.mic?.map((t) => [t.text, t.verified, t.basis, t.wer_eligible]),
+    [
+      ["Zorblax met", false, ["h1", "h3"], true],
+      ["Quilon", true, [], false],
+      ["today.", false, ["h1", "h3"], true],
+      ["Thanks, see you.", false, ["h1", "h3"], true],
+    ],
+  );
+  assert.deepEqual(tr.system?.[0], g.transcript.system[0]);
+  // No turn holds the internal name of the field.
+  assert.ok(
+    [...(tr.mic ?? []), ...(tr.system ?? [])].every(
+      (t) => !("werEligible" in t),
+    ),
+  );
+  // Reload: parseGold reads wer_eligible again.
+  const back = parseGold(JSON.stringify(r.gold), "abcd1234");
+  assert.deepEqual(
+    back.transcript?.mic.map((t) => t.werEligible),
+    [true, false, true, true],
+  );
+  assert.deepEqual(
+    back.transcript?.system.map((t) => t.werEligible),
+    [false],
+  );
+});
+
+test("mergeAnswers: a v2 key without wer_eligible gets no new fields", () => {
+  const r = mergeAnswers(
+    gold([{ startMs: 0, endMs: 3000, text: "Zorblax met Quillon today." }]),
+    [ans({ startMs: 1000, endMs: 2000, from: "Quillon", text: "Quilon" })],
+  );
+  const mic = (r.gold.transcript as { mic: Record<string, unknown>[] }).mic;
+  assert.ok(mic.every((t) => !("basis" in t) && !("wer_eligible" in t)));
+});
+
 test("parseAnswers: format, meeting and fields are checked", () => {
   const ok = JSON.stringify({
     format: "openstyle-gold-answers",

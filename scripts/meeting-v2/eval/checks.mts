@@ -32,6 +32,8 @@ export interface SegmentRow {
   source: string;
   idx: number;
   start_ms: number | null;
+  /** Optional: only the span scorer (score.mts scoreSpans) reads it. */
+  end_ms?: number | null;
   text: string | null;
   enhanced_text: string | null;
 }
