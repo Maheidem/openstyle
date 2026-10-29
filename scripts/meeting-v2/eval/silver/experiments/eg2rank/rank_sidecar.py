@@ -5,12 +5,21 @@
 # cosine against bare term vectors (document prefix).
 # GET /stats -> call count and latency. Logs numbers only, never text.
 # Run: <EG2 venv python> -I rank_sidecar.py   (RANK_PORT, default 8790; loopback only)
-import json, os, sys, threading, time, wave
+# Auth: every request needs the token, as ?token=<t> or the X-Rank-Token header.
+# The token is RANK_TOKEN, else a random one that is printed once to stderr.
+# The POC client sends it in its URL: OPENSTYLE_ASR_AUDIO_RANK_URL=http://127.0.0.1:8790/rank?token=<t>.
+# Without it, any local process could make the sidecar read a wav file and rank terms.
+import hmac, json, os, secrets, sys, threading, time, wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlsplit
 import numpy as np, torch
 from sentence_transformers import SentenceTransformer
 
 PORT = int(os.environ.get("RANK_PORT", "8790"))
+TOKEN = os.environ.get("RANK_TOKEN", "").strip()
+if not TOKEN:
+    TOKEN = secrets.token_urlsafe(24)
+    print(f"token {TOKEN} (terminal only)", file=sys.stderr, flush=True)
 SR, NB_S, MIN_S = 16000, 22.5, 1.0
 
 dev = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -95,7 +104,19 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    def authorized(self):
+        """Split the query from self.path, and check the token (constant-time compare)."""
+        u = urlsplit(self.path)
+        self.path = u.path
+        got = self.headers.get("X-Rank-Token") or (parse_qs(u.query).get("token") or [""])[0]
+        if hmac.compare_digest(got.encode(), TOKEN.encode()):
+            return True
+        self.reply(401, {})
+        return False
+
     def do_GET(self):
+        if not self.authorized():
+            return
         if self.path != "/stats":
             return self.reply(404, {})
         ms = stats["ms"]
@@ -104,6 +125,8 @@ class H(BaseHTTPRequestHandler):
             "p95_ms": round(float(np.percentile(ms, 95)), 1) if ms else None})
 
     def do_POST(self):
+        if not self.authorized():
+            return
         if self.path == "/reset":
             stats.update(calls=0, ms=[], windows_encoded=0, windows_cached=0, errors=0)
             return self.reply(200, {"ok": True})

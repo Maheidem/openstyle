@@ -2,6 +2,7 @@
 # Reads Openstyle data read-only. Keeps transcript text in memory only.
 # Writes: $SILVER_WORK/experiments/eg2rank/{vocab_notes_used.json, results.json} (numbers only;
 # vocab_notes_used.json holds the vocabulary terms, so it stays outside the repo).
+# Stdout: counts only. --show-terms also prints the top reference terms (terminal only, never paste or commit).
 import json, os, re, sqlite3, sys, time, resource, wave
 from collections import Counter
 import numpy as np, torch
@@ -233,7 +234,11 @@ summary = dict(
     parity_mps_bf16_vs_cpu_fp32=parity,
     results=res)
 json.dump(summary, open(f"{OUT}/results.json", "w"), indent=1, ensure_ascii=False)
-print(json.dumps({k: v for k, v in summary.items() if k != "results"}, indent=1, ensure_ascii=False))
+# The term lists stay in results.json; stdout gets their length unless --show-terms (terminal only, never paste or commit).
+TERM_KEYS = ("top10_ref_terms", "top5_excluded")
+shown = {k: (v if k not in TERM_KEYS or "--show-terms" in sys.argv else len(v))
+         for k, v in summary.items() if k != "results"}
+print(json.dumps(shown, indent=1, ensure_ascii=False))
 print(f"{'method|variant':28s} r@10   r@20   MRR    n    r@20-ex5")
 for k, v in res.items():
     print(f"{k:28s} " + " ".join(f"{v.get(x, ''):<6}" for x in ("recall@10", "recall@20", "MRR", "n_windows", "recall@20_excl_top5")))

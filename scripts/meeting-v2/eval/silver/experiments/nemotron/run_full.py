@@ -1,5 +1,5 @@
 """Feasibility run of Nemotron 3.5 Transcribe (nativ-community MLX 4-bit, mlx-audio).
-Prints counts and timings only. Transcripts go to out/ (not printed).
+Prints counts and timings only. Transcripts go to <out_dir> (not printed; a path in the repo is refused).
 Run: venv/bin/python -I run_full.py <model_dir> <app.json> <context.json> <work_dir> <out_dir> <steps>
 steps: comma list of slice,seg,full,saa
 """
@@ -8,7 +8,12 @@ import numpy as np, psutil, mlx.core as mx
 from mlx_audio.stt import load
 from mlx_audio.stt.utils import load_audio
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import silver_paths as P  # noqa: E402
+
 MD, APP, CTX, WD, OD, STEPS = sys.argv[1:7]
+if P.inside_repo(OD):
+    raise SystemExit("out_dir points into the repo: the transcripts are private meeting text")
 STEPS = STEPS.split(",")
 CAP = os.environ.get("TOKCAP") == "1"
 SUF = "_cap" if CAP else ""

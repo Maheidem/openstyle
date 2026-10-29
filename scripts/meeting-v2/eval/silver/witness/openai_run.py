@@ -176,7 +176,7 @@ def run_channel(m, ch, only_k=None):
 
 
 if __name__ == "__main__":
-    mlflow.set_tracking_uri(P.MLFLOW_URI)
+    mlflow.set_tracking_uri(P.mlflow_uri())
     exp = mlflow.set_experiment(P.MLFLOW_EXPERIMENT)
     print("experiment", exp.experiment_id, "model", MODEL, "format", FMT, f"cap {CAP_USD:.3f} stop {STOP_USD:.3f} USD", flush=True)
     jobs = [(m, ch, None) for m in IDS for ch in ("mic", "system")]

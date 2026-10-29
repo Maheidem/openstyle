@@ -1,6 +1,6 @@
 """Pilot WER vs H1 on the pilot chunks. Counts only.
 
-Run: python3 -I pilot_wer.py   (reads $SILVER_WORK/cloud/raw/*/; PILOT lists the 2026-10-28 pilot chunks)
+Run: python3 -I pilot_wer.py --pilot id8:ch:k[,id8:ch:k...]   (reads $SILVER_WORK/cloud/raw/*/; --pilot has no default)
 Ref = H1 segments whose midpoint is in [lo, e) of the chunk; hyp = the model's chunk text.
 lo = chunk start, except for timestamped outputs (Gemini) where lo = k*600 s and only items with
 midpoint >= lo count (so the 5 s overlap is out on both sides). OpenAI text has no times: lo = chunk start.
@@ -12,7 +12,9 @@ import silver_paths as P  # noqa: E402
 
 CORP = P.CORPUS
 RAW = os.path.join(P.WORK, "cloud", "raw")
-PILOT = [("f92c076d", "mic", 0), ("c1dfd423", "system", 2)]
+if "--pilot" not in sys.argv:
+    raise SystemExit("give --pilot id8:ch:k[,id8:ch:k...] (the pilot chunks)")
+PILOT = [(m, ch, int(k)) for m, ch, k in (x.split(":") for x in sys.argv[sys.argv.index("--pilot") + 1].split(",") if x)]
 
 
 def J(p):

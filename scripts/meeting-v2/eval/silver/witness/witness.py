@@ -6,8 +6,8 @@ Writes $SILVER_CORPUS/<id8>/{app,context,h1,h2,h3}.json (mode 600). Temp wavs go
 context.json owner_name: the app setting owner_name when the DB has it, else env SILVER_OWNER_NAME, else null.
 Takes the GPU lock (runtime.mts convention). Prints counts, ids and seconds only.
 """
-import json, os, re, selectors, shutil, sqlite3, subprocess, sys, time, wave
-from datetime import datetime, timezone
+import json, os, re, selectors, sqlite3, subprocess, sys, time, wave
+from datetime import datetime
 
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,7 +23,6 @@ QWEN = "mlx-community/Qwen3-ASR-1.7B-8bit"
 WHISPER = "mlx-community/whisper-large-v3-turbo"
 CTX_TERMS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ctxterms.mts")
 LOCK = P.GPU_LOCK
-QUEUE = P.GPU_QUEUE
 
 PROMPT_BUDGET = 900
 MIN_BIAS_MS = 3000
@@ -37,70 +36,9 @@ def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-# ---------- GPU lock (same convention as scripts/meeting-v2/eval/runtime.mts) ----------
-HELD = None
-QLINE = None
-
-
-def take_lock():
-    global HELD, QLINE
-    QLINE = f"witness-corpus asr 240 {datetime.now(timezone.utc).isoformat()} pid={os.getpid()}"
-    with open(QUEUE, "a") as f:
-        f.write(QLINE + "\n")
-    waited = 0
-    while True:
-        lines = [l for l in open(QUEUE).read().split("\n") if l.strip()]
-        first_live = None
-        for l in lines:
-            m = re.search(r" (\d{4}-\d{2}-\d{2}T[^ ]+) ", l)
-            if m:
-                try:
-                    t = datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))
-                    if (datetime.now(timezone.utc) - t).total_seconds() > 7200:
-                        continue
-                except ValueError:
-                    pass
-            first_live = l
-            break
-        if first_live == QLINE:
-            try:
-                os.mkdir(LOCK)
-                break
-            except FileExistsError:
-                pass
-        if waited >= 3600:
-            raise SystemExit("GPU lock wait exceeded 60 min")
-        log(f"GPU lock: waiting ({waited}s)")
-        time.sleep(180)
-        waited += 180
-    HELD = f"witness-corpus asr {datetime.now().strftime('%H:%M')} pid={os.getpid()}"
-    with open(os.path.join(LOCK, "owner"), "w") as f:
-        f.write(HELD + "\n")
-    unqueue()
-    log(f"GPU lock taken (waited {waited}s)")
-    return waited
-
-
-def unqueue():
-    global QLINE
-    if QLINE and os.path.exists(QUEUE):
-        kept = [l for l in open(QUEUE).read().split("\n") if l != QLINE]
-        open(QUEUE, "w").write("\n".join(kept))
-    QLINE = None
-
-
-def release_lock():
-    global HELD
-    if HELD:
-        try:
-            owner = open(os.path.join(LOCK, "owner")).read().strip()
-        except OSError:
-            owner = ""
-        if owner == HELD:
-            shutil.rmtree(LOCK, ignore_errors=True)
-            log("GPU lock released")
-        HELD = None
-    unqueue()
+# ---------- GPU lock: silver_paths.take_lock / release_lock (runtime.mts convention) ----------
+take_lock = P.take_lock
+release_lock = P.release_lock
 
 
 # ---------- worker ----------
@@ -367,9 +305,10 @@ def main():
     report = {"meetings": [], "lockWaitSec": 0, "errors": []}
     if os.path.exists(LOCK):
         log("GPU lock present at start")
-    report["lockWaitSec"] = take_lock()
     qwen = whisper = None
     try:
+        # In the try: a SIGINT during the queue wait still runs release_lock (it removes our queue line).
+        report["lockWaitSec"] = take_lock()
         qwen = Worker(QWEN)
         whisper = Worker(WHISPER)
         for id8 in ids:

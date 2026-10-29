@@ -1,11 +1,15 @@
 """Nemotron 3.5 Transcribe Lite (Core ML encoder + CTC head, no LLM, no diarizer) on mic and system.
-Writes an h1-format JSON; segments come from the model's own word start times (split at gaps > 1 s or 20 s).
+Writes an h1-format JSON (a path in the repo is refused); segments come from the model's own word start times (split at gaps > 1 s or 20 s).
 Run: venv/bin/python -I lite_run.py <lite_repo_dir> <work_dir> <out_json> <id8>
 """
-import json, sys, time, resource
+import json, os, sys, time, resource
 from pathlib import Path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import silver_paths as P  # noqa: E402
 
 REPO, WD, OUT, M = sys.argv[1:5]
+if P.inside_repo(OUT):
+    raise SystemExit("out_json points into the repo: the transcript is private meeting text")
 sys.path.insert(0, str(Path(REPO) / "demo"))  # reviewed code: frontend.py + lite_meeting.py (NumPy + coremltools)
 import numpy as np, soundfile as sf
 from frontend import AsrEncoder, Frontend, mel, per_feature_norm

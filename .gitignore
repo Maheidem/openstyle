@@ -93,19 +93,49 @@ test-results/
 !/scripts/meeting-v2/eval/silver/**/*.py
 !/scripts/meeting-v2/eval/silver/**/*.mts
 !/scripts/meeting-v2/eval/silver/**/*.sh
-!/scripts/meeting-v2/eval/silver/**/*.md
+!/scripts/meeting-v2/eval/silver/README.md
 /scripts/meeting-v2/eval/silver/**/data/
 /scripts/meeting-v2/eval/silver/**/__pycache__/
 # 2. Anywhere: meeting audio, SQLite DBs (app DB copies, arm DBs), EG2
-#    vector caches and the private eval folders.
+#    vector caches, model caches and the private eval folders.
 *.wav
 *.mp3
 *.m4a
 *.flac
+*.ogg
+*.opus
+*.webm
+*.aac
+*.caf
+*.aiff
 *.npz
+*.npy
+*.pt
+*.pkl
+*.parquet
 *.db
 *.db-wal
 *.db-shm
+*.db-journal
 *.sqlite
+*.sqlite3
 **/gold-silver/
 **/.openstyle-eval/
+# The site videos are fictional demo captures (site-captures skill).
+!/site/assets/screens/*.webm
+# 3. Anywhere: copies of the silver data folders (corpus, keys, work), key
+#    backups, the files of an app meeting folder and the unsupported-name lists.
+**/corpus/
+**/keys/*.json
+**/work/cloud/
+*.silver-*.json
+sync.json
+transcript.md
+transcript-enhanced.md
+unsup.txt
+unsup.tsv
+# 4. Eval output dropped in the eval code folders (results, out/ folders, keys <id8>.json).
+/scripts/meeting-v2/**/out/
+/scripts/meeting-v2/**/results.md
+/scripts/meeting-v2/**/results.json
+/scripts/meeting-v2/**/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json

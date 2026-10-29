@@ -5,9 +5,10 @@ calendar attendees, the owner's profile, two generic resources (wordfreq word fr
 geonamescache place names) and the local EG2 embedding model. It has no term lists
 that come from user data. No LLM judge is part of it.
 
-Run:  <eg2 venv python> -I suggest_v2.py [--db PATH] [--unmask]
+Run:  <eg2 venv python> -I suggest_v2.py [--db PATH] [--show-terms [--unmask]]
 Writes $SILVER_WORK/experiments/vocabmine/suggestions_v2_full.json (masked: person names become "name#N").
---unmask prints real names to stdout only and writes no file.
+--show-terms prints the term list (terminal only, never paste or commit). Default: counts only.
+--unmask (needs --show-terms) prints real names to stdout only and writes no file.
 """
 import difflib, hashlib, json, os, re, sqlite3, subprocess, sys, time
 from collections import Counter, defaultdict
@@ -588,6 +589,9 @@ def main():
     t0 = time.time()
     db = sys.argv[sys.argv.index("--db") + 1] if "--db" in sys.argv else DEFAULT_DB
     unmask = "--unmask" in sys.argv
+    show = "--show-terms" in sys.argv  # terminal only, never paste or commit
+    if unmask and not show:
+        raise SystemExit("--unmask needs --show-terms (terminal only, never paste or commit)")
     sugg, info = run(db)
     k = CONFIG["top_k"]
     if unmask:
@@ -600,10 +604,13 @@ def main():
         view = masked_view(sugg, mask, k)
     print(f"owner from {info['owner_source']}; candidates={info['candidates']} groups={info['groups']} "
           f"device={info['device']}\nrules fired: {info['rules_fired']}")
-    print(f"\n{'#':>2} {'term':<24} {'kind':<4} {'score':>6} {'sources':<20} {'mtg':>3} {'scope':<18} variants")
-    for i, s in enumerate(view, 1):
-        print(f"{i:>2} {s['term']:<24} {s['kind']:<4} {s['score']:>6.1f} {s['sources']:<20} {s['meetings']:>3} "
-              f"{s['scope'][:18]:<18} {', '.join(s['variants'][:3])}")
+    if show:
+        print(f"\n{'#':>2} {'term':<24} {'kind':<4} {'score':>6} {'sources':<20} {'mtg':>3} {'scope':<18} variants")
+        for i, s in enumerate(view, 1):
+            print(f"{i:>2} {s['term']:<24} {s['kind']:<4} {s['score']:>6.1f} {s['sources']:<20} {s['meetings']:>3} "
+                  f"{s['scope'][:18]:<18} {', '.join(s['variants'][:3])}")
+    else:
+        print(f"suggestions {len(view)} (terms hidden; --show-terms prints them)")
     rt = round(time.time() - t0, 1)
     print(f"\nruntime {rt}s")
     if not unmask:

@@ -6,7 +6,8 @@ copy of the DB (deleted at the end), so no method can see TEST.
 
 Run:  <eg2 venv python> -I eval_v3.py --db PATH --tag NAME            -> $SILVER_WORK/experiments/vocabmine/eval_v3_<tag>.json (masked) + table
       <eg2 venv python> -I eval_v3.py --db PATH --tag NAME --train-only  -> TRAIN lists only, no TEST metric
-      add --sheet to print a labeling sheet with real terms (terminal only)
+      add --show-terms --sheet to print a labeling sheet with real terms
+      --show-terms prints the term list (terminal only, never paste or commit). Default: counts only.
 Evaluator labels (agent labels, NOT part of any pipeline): eval_labels.json (v2 round) and
 eval_labels_v3.json (new terms): {"<sha1-12 of lower term>": {"l": "R|C|G|U", "p": 0|1}}
   R = ASR is likely to mishear it and it is a real term/name; C = real term, but the ASR already
@@ -29,6 +30,9 @@ KS = (10, 20, 40)
 TMP = os.path.join(DATA, f"_train_tmp_{TAG}.db")
 SHEET = "--sheet" in sys.argv
 TRAIN_ONLY = "--train-only" in sys.argv
+SHOW = "--show-terms" in sys.argv  # terminal only, never paste or commit
+if SHEET and not SHOW:
+    raise SystemExit("--sheet needs --show-terms (terminal only, never paste or commit)")
 
 src = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
 ms = src.execute("select id, started_at from meetings order by started_at, id").fetchall()
@@ -161,9 +165,13 @@ if SHEET:  # terminal only: real terms for the evaluator to label
 if TRAIN_ONLY:
     print(json.dumps({"split": split, "v3_rules_fired": v3_info["rules_fired"],
                       "v3_owner_source": v3_info["owner_source"]}, indent=1))
-    for i, s in enumerate(v3.masked_view(v3_sugg, mask, 40), 1):
-        print(i, s["term"], s["kind"], s["sources"], s["evidence"], s["meetings"], s["variants"][:3],
-              labels.get(v2.h12(v3_sugg[i - 1]["term"]), {}).get("l"))
+    view = v3.masked_view(v3_sugg, mask, 40)
+    if SHOW:
+        for i, s in enumerate(view, 1):
+            print(i, s["term"], s["kind"], s["sources"], s["evidence"], s["meetings"], s["variants"][:3],
+                  labels.get(v2.h12(v3_sugg[i - 1]["term"]), {}).get("l"))
+    else:
+        print(f"train top {len(view)} (terms hidden; --show-terms prints them)")
     sys.exit(0)
 
 # ------------------------------------------------------------------ TEST signals (TEST rows only)

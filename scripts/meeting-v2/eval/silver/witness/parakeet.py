@@ -14,10 +14,10 @@ IDS = W.P.meeting_ids()
 def main():
     os.makedirs(W.TMP, mode=0o700, exist_ok=True)
     t_all = time.time()
-    wait = W.take_lock()
-    rep = {"lockWaitSec": wait, "meetings": []}
+    rep = {"lockWaitSec": 0, "meetings": []}
     wk = None
     try:
+        rep["lockWaitSec"] = W.take_lock()
         wk = W.Worker(MODEL)
         for m in IDS:
             t0 = time.time()

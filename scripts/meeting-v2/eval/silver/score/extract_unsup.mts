@@ -5,9 +5,9 @@
 // usage (from the repo root; the output file must be outside the repo):
 //   pnpm meeting:silver:extract-unsup <arm> <id8,...> <out.json>
 // Input: $SILVER_EVAL_HOME/out/<arm>/raw.db (default /tmp/meeting-eval).
-import { writeFileSync } from "node:fs";
+import { existsSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { loadGold } from "../../gold.mts";
 import { normalizeWords, scoreWords } from "../../score.mts";
@@ -27,7 +27,19 @@ const KEYS =
 const REPO = resolve(import.meta.dirname, "../../../../..");
 if (!arm || !list || !outPath)
   throw new Error("usage: extract_unsup.mts <arm> <id8,...> <out.json>");
-if (resolve(outPath).startsWith(`${REPO}/`))
+/** The real path of p (symlinks resolved) when only a prefix of it exists, lower case (the macOS disk ignores case). */
+function realLower(p: string): string {
+  let head = resolve(p);
+  const tail: string[] = [];
+  while (!existsSync(head) && dirname(head) !== head) {
+    tail.unshift(basename(head));
+    head = dirname(head);
+  }
+  return join(realpathSync.native(head), ...tail).toLowerCase();
+}
+const repoReal = realLower(REPO);
+const outReal = realLower(outPath);
+if (outReal === repoReal || outReal.startsWith(`${repoReal}/`))
   throw new Error("the output holds meeting text: write it outside the repo");
 const golds = loadGold(MEETINGS, KEYS);
 const norm = (t: string) => normalizeWords(scoreWords(t)).words;

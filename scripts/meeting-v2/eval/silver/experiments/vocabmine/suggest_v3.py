@@ -12,7 +12,8 @@ Signals: text shape, counts, calendar attendees, the owner profile, wordfreq, ge
 the local EG2 embedding model (CPU fp32 by default, bf16 on MPS with --mps; never fp16).
 No term list from user data. No LLM in the pipeline.
 
-Run:  <eg2 venv python> -I suggest_v3.py --db PATH [--unmask] [--mps]
+Run:  <eg2 venv python> -I suggest_v3.py --db PATH [--show-terms [--unmask]] [--mps]
+--show-terms prints the term list (terminal only, never paste or commit). Default: counts only.
 Writes $SILVER_WORK/experiments/vocabmine/suggestions_v3_full.json (masked: person names become "name#N").
 --unmask prints real names to stdout only and writes no file.
 """
@@ -597,6 +598,9 @@ def main():
     t0 = time.time()
     db = sys.argv[sys.argv.index("--db") + 1] if "--db" in sys.argv else DEFAULT_DB
     unmask = "--unmask" in sys.argv
+    show = "--show-terms" in sys.argv  # terminal only, never paste or commit
+    if unmask and not show:
+        raise SystemExit("--unmask needs --show-terms (terminal only, never paste or commit)")
     model, dev = load_model(mps="--mps" in sys.argv)
     sugg, info = run(db, model=model)
     k = CONFIG["top_k"]
@@ -612,11 +616,14 @@ def main():
         view = masked_view(sugg, mask, k)
     print(f"owner from {info['owner_source']}; raw_forms={info['raw_forms']} candidates={info['candidates']} "
           f"groups={info['groups']} device={dev}\nrules fired: {info['rules_fired']}")
-    print(f"\n{'#':>2} {'term':<24} {'kind':<4} {'score':>6} {'sources':<16} {'pairs':>5} {'spl':>3} {'mtg':>3} variants")
-    for i, s in enumerate(view, 1):
-        print(f"{i:>2} {s['term']:<24} {s['kind']:<4} {s['score']:>6.1f} {s['sources']:<16} "
-              f"{s['evidence']['pairs']:>5} {s['evidence']['spellings']:>3} {s['meetings']:>3} "
-              f"{', '.join(s['variants'][:3])}")
+    if show:
+        print(f"\n{'#':>2} {'term':<24} {'kind':<4} {'score':>6} {'sources':<16} {'pairs':>5} {'spl':>3} {'mtg':>3} variants")
+        for i, s in enumerate(view, 1):
+            print(f"{i:>2} {s['term']:<24} {s['kind']:<4} {s['score']:>6.1f} {s['sources']:<16} "
+                  f"{s['evidence']['pairs']:>5} {s['evidence']['spellings']:>3} {s['meetings']:>3} "
+                  f"{', '.join(s['variants'][:3])}")
+    else:
+        print(f"suggestions {len(view)} (terms hidden; --show-terms prints them)")
     rt = round(time.time() - t0, 1)
     print(f"\nruntime {rt}s, knobs {len(CONFIG)}, rules {len(RULES)}")
     if not unmask:

@@ -1,7 +1,7 @@
 """Merge the gemini-3.5-flash-lite fill chunks into corpus/<id8>/gemini.json. Counts only.
 
 Run: python3 -I gemini_merge.py [--write] [--fill id8:ch:k,...] [--redo id8:ch:k,...]
-FILL and REDO default to the chunks of the 2026-10-28 fill (history). Pass your own lists for a new fill.
+FILL and REDO have no default: give one of them or both (the chunks of your fill run).
 Without --write it is a dry run.
 - Fill chunks (FILL) are added. A re-run chunk-0 (REDO) replaces the old chunk only when the new one is not flagged.
 - Every chunk gets "model". Stitch rule of gemini_stitch.py, applied again over the new chunk set:
@@ -19,9 +19,6 @@ CLOUD = os.path.join(P.WORK, "cloud")
 NEW = "gemini-3.5-flash-lite"
 OLD = "gemini-4-argon"
 CH = 600000
-FILL = {("6c6f86bd", "mic", k) for k in range(5, 12)} | {("6c6f86bd", "system", k) for k in range(6, 12)} | \
-       {("50ae1e58", "system", k) for k in (2, 3)} | {("43b34785", "mic", k) for k in range(3, 8)} | {("43b34785", "system", k) for k in range(2, 8)}
-REDO = {("3e4ea277", "system", 0), ("89e7aada", "system", 0), ("5e05a267", "mic", 0), ("5e05a267", "system", 0)}
 
 
 def _chunks(flag):
@@ -29,10 +26,10 @@ def _chunks(flag):
     return {(m, ch, int(k)) for m, ch, k in (x.split(":") for x in a.split(",") if x)}
 
 
-if "--fill" in sys.argv:
-    FILL = _chunks("--fill")
-if "--redo" in sys.argv:
-    REDO = _chunks("--redo")
+FILL = _chunks("--fill") if "--fill" in sys.argv else set()
+REDO = _chunks("--redo") if "--redo" in sys.argv else set()
+if not FILL and not REDO:
+    raise SystemExit("give --fill id8:ch:k,... and/or --redo id8:ch:k,... (the chunks of the fill run)")
 WRITE = "--write" in sys.argv
 
 

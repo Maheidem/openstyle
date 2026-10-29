@@ -93,17 +93,31 @@ def upload(path, mime):
         r = req("POST", up, headers={"Content-Length": str(n), "X-Goog-Upload-Offset": "0",
                                      "X-Goog-Upload-Command": "upload, finalize"}, data=f.read())
     fobj = r.json()["file"]
-    for _ in range(60):
-        if fobj.get("state") == "ACTIVE":
-            return fobj
-        time.sleep(2)
-        fobj = req("GET", f"{BASE}/v1beta/{fobj['name']}").json()
-    raise RuntimeError("file not ACTIVE")
+    name = fobj["name"]
+    try:
+        for _ in range(60):
+            if fobj.get("state") == "ACTIVE":
+                return fobj
+            time.sleep(2)
+            fobj = req("GET", f"{BASE}/v1beta/{name}").json()
+        raise RuntimeError("file not ACTIVE")
+    except BaseException:
+        # The file is on Google from here on: delete it when the wait fails.
+        delete_logged(name)
+        raise
 
 
 def delete(name):
     r = requests.delete(f"{BASE}/v1beta/{name}", headers=AUTH, timeout=60)
     return r.status_code
+
+
+def delete_logged(name):
+    """Delete an uploaded file and record (name, HTTP code) in DELETED."""
+    code = delete(name)
+    with LOCK:
+        DELETED.append((name, code))
+    return code
 
 
 def h1_words(m, ch, s, e):
@@ -139,9 +153,7 @@ def one_chunk(m, ch, wav, k, s, e):
             r = req("POST", f"{BASE}/v1beta/models/{MODEL}:generateContent", json=body)
             lat = time.time() - t1
         finally:
-            code = delete(fobj["name"])
-            with LOCK:
-                DELETED.append((fobj["name"], code))
+            code = delete_logged(fobj["name"])
         d = r.json()
         cand = (d.get("candidates") or [{}])[0]
         txt = "".join(p.get("text", "") for p in (cand.get("content") or {}).get("parts", []) if not p.get("thought"))
@@ -201,7 +213,7 @@ def run_channel(m, ch, only_k=None):
 
 
 if __name__ == "__main__":
-    mlflow.set_tracking_uri(P.MLFLOW_URI)
+    mlflow.set_tracking_uri(P.mlflow_uri())
     exp = mlflow.set_experiment(P.MLFLOW_EXPERIMENT)
     print("experiment", exp.experiment_id, "model", MODEL, flush=True)
     jobs = [(m, ch, None) for m in IDS for ch in ("mic", "system")]

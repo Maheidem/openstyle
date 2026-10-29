@@ -56,7 +56,11 @@ def J(p):
 
 
 ext_all = [J(f"{CORP}/{m}/{n}.json") for m in IDS for n in ("meet", "krisp") if os.path.exists(f"{CORP}/{m}/{n}.json")]
-OWNER = next(iter(set.intersection(*[set(t["speaker"] for t in d["turns"]) for d in ext_all])))
+# Owner speaker label: the one speaker in every Meet/Krisp file (as score_silver.py). Never printed.
+common = set.intersection(*[set(t["speaker"] for t in d["turns"]) for d in ext_all]) if ext_all else set()
+if len(common) != 1:
+    sys.exit(f"owner detection failed: {len(common)} common speakers")
+OWNER = next(iter(common))
 
 METHOD31 = (
     " silver-3.1 exception (replaces the forced unsure in one case): when the span's normal words equal a list entry (an attendee "
@@ -274,6 +278,7 @@ for m in IDS:
             if V31 and tuple(st) in listed:
                 snd = lev_ratio(" ".join(st), alt) >= SOUND
                 x31[("listed", "exact_s3" if ex else "email_only", "sound" if snd else "not_sound", f"agree{min(len(ind), 3)}")] += 1
+                # A list spelling with 0 independent witnesses also gets "medium" here (METHOD31 documents it).
                 if snd and not vc:
                     o["confidence"] = "high" if len(ind) >= 2 else "medium"
         if vc:

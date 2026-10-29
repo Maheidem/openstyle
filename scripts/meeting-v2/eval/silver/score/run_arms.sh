@@ -13,7 +13,9 @@ set -u
 SP=$(dirname "$0"); E=${SILVER_EVAL_HOME:-/tmp/meeting-eval}
 KEEP=${SILVER_ARMS_KEEP:-$HOME/.openstyle-eval/silver/arms}
 REPO=$(cd "$SP/../../../../.." && pwd)
-case "$KEEP/" in "$REPO"/*) echo "SILVER_ARMS_KEEP points into the repo; arm DBs hold meeting text"; exit 2;; esac
+# Compare real paths (symlinks resolved) in lower case: the macOS disk ignores case.
+real_lc() { python3 -I -c 'import os, sys; print(os.path.realpath(sys.argv[1]).casefold())' "$1"; }
+case "$(real_lc "$KEEP")/" in "$(real_lc "$REPO")"/*) echo "SILVER_ARMS_KEEP points into the repo; arm DBs hold meeting text"; exit 2;; esac
 mkdir -p -m 700 "$KEEP"
 for x in "$@"; do
   arm=${x%%:*}; envs=""; [ "$x" != "$arm" ] && envs=${x#*:}
