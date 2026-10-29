@@ -1,0 +1,8 @@
+{
+  "name": "name-forms-s35",
+  "description": "The attendee name form (full | first | both) with the owner name set, on the silver-14-s35 corpus.",
+  "stage": "asr",
+  "corpus": "silver-14-s35",
+  "base": { "owner_name": "env" },
+  "grid": { "attendee_name_form": ["full", "first", "both"] }
+}
