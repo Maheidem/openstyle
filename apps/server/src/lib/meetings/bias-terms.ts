@@ -6,7 +6,8 @@ import { type MeetingRow, parseAttendees } from "./store.js";
 /**
  * The meeting terms of the ASR bias prompt, in this order:
  * 1. The owner name (setting `owner_name`), when it has 2 or more letters.
- * 2. The full names of the calendar attendees (see {@link attendeeBiasNames}).
+ * 2. The names of the calendar attendees, in the form of
+ *    {@link attendeeNameForm} (see {@link attendeeBiasNames}).
  * 3. The terms of the free-text context (PR #39, `extractContextTerms`).
  *
  * Duplicates are removed without regard to case; the first one stays. The
@@ -63,14 +64,45 @@ export function maxAttendeeBiasNames(): number {
   return n <= 200 ? n : MAX_ATTENDEE_BIAS_NAMES;
 }
 
+/** How the attendee names enter the bias: see {@link attendeeNameForm}. */
+export type AttendeeNameForm = "full" | "first" | "both";
+
+const warnedForms = new Set<string>();
+
+/**
+ * The attendee name form of this process. The env var
+ * OPENSTYLE_ASR_ATTENDEE_NAME_FORM sets it for an eval run:
+ * - `full` (default): each attendee gives its full name.
+ * - `first`: each attendee gives its first name only.
+ * - `both`: each attendee gives its full name, then its first name.
+ * An unset or empty value gives `full`. Any other value gives `full` and one
+ * debug line per process (the line never holds the value).
+ */
+export function attendeeNameForm(): AttendeeNameForm {
+  const raw = process.env.OPENSTYLE_ASR_ATTENDEE_NAME_FORM?.trim() ?? "";
+  if (raw === "first" || raw === "both" || raw === "full") return raw;
+  if (raw !== "" && !warnedForms.has(raw)) {
+    warnedForms.add(raw);
+    console.debug(
+      "[meetings] OPENSTYLE_ASR_ATTENDEE_NAME_FORM is not full, first or both: using full",
+    );
+  }
+  return "full";
+}
+
 /**
  * The attendee names of the bias, in calendar order (the organizer first).
  * Each attendee gives its display name. An attendee with no display name
  * (the name is empty or is an email address) gives the name from its email
  * ({@link nameFromEmail}), or nothing. A name with fewer than 2 letters is
  * skipped. The calendar helper already skips rooms, resources and the user.
+ * The cap ({@link maxAttendeeBiasNames}) counts people, not terms: it keeps
+ * the first people, then {@link attendeeNameForm} turns each one into 1 or 2
+ * terms. The first name is the first word of the name; a first name with
+ * fewer than 2 letters is skipped. The caller removes duplicates.
  */
 function attendeeBiasNames(row: Pick<MeetingRow, "calendar_attendees">) {
+  const form = attendeeNameForm();
   return parseAttendees(row)
     .map((a) => {
       const name = a.name.trim();
@@ -78,7 +110,13 @@ function attendeeBiasNames(row: Pick<MeetingRow, "calendar_attendees">) {
       return nameFromEmail(a.email.trim() || name) ?? "";
     })
     .filter((name) => letterCount(name) >= 2)
-    .slice(0, maxAttendeeBiasNames());
+    .slice(0, maxAttendeeBiasNames())
+    .flatMap((name) => {
+      if (form === "full") return [name];
+      const first = name.split(/\s+/)[0] ?? "";
+      const firstTerms = letterCount(first) >= 2 ? [first] : [];
+      return form === "first" ? firstTerms : [name, ...firstTerms];
+    });
 }
 
 /**

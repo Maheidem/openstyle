@@ -79,6 +79,8 @@ function spanMetrics(s: SpanScore, noOwner: SpanScore): Metrics {
   out.spans_verified_n = v.n;
   if (v.n > 0) put("verified", v);
   out.spans_verified_unsure = s.verifiedUnsure ?? 0;
+  // verified_none spans are left out of every count above; this is their count.
+  out.spans_verified_none = s.verifiedNone ?? 0;
   out.spans_unsure_skipped = s.unsure;
   out.spans_empty_skipped = s.empty;
   return out;

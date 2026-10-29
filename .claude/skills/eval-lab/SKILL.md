@@ -69,7 +69,7 @@ A grid file is JSON (`grids/` has examples):
 
 ## Add a knob
 
-1. Find where the app reads the input (a setting, a DB row, an env var). If it is a constant, the knob needs an app change first: a small env override that keeps the default (see `OPENSTYLE_ASR_MAX_ATTENDEE_NAMES` in `apps/server/src/lib/meetings/bias-terms.ts`, with a server test).
+1. Find where the app reads the input (a setting, a DB row, an env var). If it is a constant, the knob needs an app change first: a small env override that keeps the default (see `OPENSTYLE_ASR_MAX_ATTENDEE_NAMES` and `OPENSTYLE_ASR_ATTENDEE_NAME_FORM` in `apps/server/src/lib/meetings/bias-terms.ts`, with a server test).
 2. Add an entry to `KNOBS` in `knobs.mts`: name, `apply`, target, default (the shipped value), values text, check.
 3. If the `apply` kind is new, apply it in `asr.mts` (`applyDbKnobs`, `envKnobs` or the run name).
 4. Every knob is in the ASR cache key and the snapshot without more work. Run `pnpm meeting:eval:test`.
@@ -78,8 +78,9 @@ A grid file is JSON (`grids/` has examples):
 
 - MLflow experiment `openstyle-lab-asr`. Params = every knob value. Tags `lab.*` = snapshot hash, git sha/branch/dirty flag/diff hash/untracked hash, code hash, worker and diarizer hashes, model ids and HF revisions, corpus manifest hash, gold hash/kinds/verified counts, scorer and lab versions, machine, times, local items folder.
 - Metrics: `spans_<group>` (recall %, plus `_hits` and `_n`) for all, high, person, term, other, in_vocab, not_in_vocab, person_no_owner and verified; `wer`, `wer_eligible` (+ errors, ref, edit counts); `possible_insertions` and `ins_*`; `segments`; `cell_wall_s`, `asr_wall_s`, `asr_fresh_meetings`, `asr_cached_meetings`; `peak_rss_worker_mb` and `peak_rss_tree_mb` when a meeting was transcribed; per meeting `m.<id8>.<metric>`.
+- Env knobs of the meeting bias: `max_attendee_names` (`OPENSTYLE_ASR_MAX_ATTENDEE_NAMES`, default 20; it counts people) and `attendee_name_form` (`OPENSTYLE_ASR_ATTENDEE_NAME_FORM`): `full` (default, the shipped app), `first` (the owner name as is, then the first word of each attendee name; the old arm B2) or `both` (per person: full name, then first name). An unknown value acts as `full`. Both values are in the ASR cache key and the snapshot, so each form has its own transcripts.
 - `spans_person_no_owner` leaves out the spans of the owner name of the run. With `owner_name=unset` it leaves out nothing, so compare it only between runs that both set the owner name.
-- Verified spans (owner ear check, silver-3.4: `verified`, `verified_source`, `verified_text`, `verified_unsure` on a gold span): a verified span scores as high and uses `verified_text` when present. `spans_verified_n` is always logged; the rate and hits only when n > 0. `spans_verified_unsure` counts the unsure answers. Bias: the first 30 verified spans come only from B2/B3 disagreements, so `spans_verified` favours the arm whose spelling the owner picked there. Read it next to `spans_all`, never alone.
+- Verified spans (owner ear check, silver-3.4: `verified`, `verified_source`, `verified_text`, `verified_unsure` on a gold span): a verified span scores as high and uses `verified_text` when present. `spans_verified_n` is always logged; the rate and hits only when n > 0. `spans_verified_unsure` counts the unsure answers. Since silver-3.5 a span can hold `verified_none` (the owner hears no named entity there). The scorers leave such a span out of every count (all, high, labels, vocab, verified, the insertion support) and log its count as `spans_verified_none` (tag `lab.gold_verified_none`). A verified span may keep `verifier_conflict` and `alt_text` (silver-3.4 and later). Bias: the first 30 verified spans come only from B2/B3 disagreements, so `spans_verified` favours the arm whose spelling the owner picked there. Read it next to `spans_all`, never alone.
 - `~/.openstyle-eval/lab/runs/<run id>/`: `snapshot.json`, `items.jsonl` (one scored span per line: id8, channel, start, end, label, confidence, in-vocab, hit), `meetings.jsonl`.
 
 ## The ASR cache
@@ -103,7 +104,7 @@ A grid file is JSON (`grids/` has examples):
   - `silver-14-s34`: the current keys, goldKind silver-3.4, goldHash `69dd82895b94`, 30 verified spans (5 with `verified_text`), 4 verified_unsure, 1396 scored spans. Use it for new work.
   - `silver-14-s33`: the silver-3.3 backups, goldHash `c143902811c4`, 1393 scored spans. The acceptance number lives here.
   - `silver-14`: the first manifest. It pointed at the live gold folder, so its check fails since the 3.4 keys landed (`goldHash c143902811c4 (now 69dd82895b94)`). Since then a corpus freezes its own copy of the keys. Keep it: runs B and C of 2026-10-29 refer to it.
-- The validator of the keys: `pnpm meeting:silver:validate --kind silver-3.4` (with `SILVER_MEETINGS` and `SILVER_KEYS`) gives `14/14 pass`. Its tests: `pnpm meeting:silver:test`.
+- The validator of the keys: `SILVER_KEYS=~/.openstyle-eval/gold-silver pnpm meeting:silver:validate --kind <goldKind>` gives `14/14 pass` (with no witness corpus on the Mac, it takes the ids from the key files). It knows silver-2 to silver-3.6. Its tests: `pnpm meeting:silver:test`.
 - ASR repeat runs are byte-identical, so a cache hit gives the same metrics as a fresh run.
 - A full 14-meeting ASR run takes 20 to 27 min. Run it in the background and check the log.
 

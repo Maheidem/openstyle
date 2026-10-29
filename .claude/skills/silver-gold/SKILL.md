@@ -75,6 +75,7 @@ pnpm meeting:silver:test                    # expect: Ran 15 tests ... OK
 | `pnpm meeting:silver:load-check` | `parseGold: 14/14 pass` |
 | `pnpm meeting:silver:validate --kind silver-3.3` | `14/14 pass` |
 | `pnpm meeting:silver:validate --kind silver-3.4` (the keys since 2026-10-29 15:00; 30 verified spans) | `14/14 pass` |
+| `pnpm meeting:silver:validate --kind silver-3.6` (the keys of 2026-10-29 evening; 2 verified_none spans) | `14/14 pass` |
 | `pnpm meeting:silver:vote --v33` (dry run) | `after: {'high': 1178, 'unsure': 213, 'medium': 215}` |
 | `pnpm meeting:silver:score` | APP_RAW `76.2 (1062/1393)` in the first table |
 | `pnpm meeting:silver:score-arms s33-A s33-B s33-B2 s33-B3` on the kept DBs | All `1053/1393`, `1107/1393`, `1158/1393`, `1152/1393` |

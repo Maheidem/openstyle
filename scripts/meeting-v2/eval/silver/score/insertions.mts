@@ -2,7 +2,8 @@
 // Each occurrence in the ASR text of (a) a vocabulary term or (b) an
 // attendee name token (3+ letters) is "supported" when a gold span of any
 // confidence on the same channel, within +-3 s, holds the same normal
-// words. An unsupported occurrence is a possible insertion. The owner name
+// words (a span with verified_none supports nothing: the owner hears no
+// named entity there). An unsupported occurrence is a possible insertion. The owner name
 // is a name token too; its own count is reported apart. Numbers only.
 import type { GoldSpan } from "../../gold.mts";
 import { normalizeWords, scoreWords, spanText } from "../../score.mts";
@@ -48,7 +49,9 @@ export function possibleInsertions(
   owner: string[],
   attendeesJson: string | null,
 ): Prec {
-  const gs = spans.map((sp) => ({ ...sp, words: normWords(spanText(sp)) }));
+  const gs = spans
+    .filter((sp) => !sp.verifiedNone)
+    .map((sp) => ({ ...sp, words: normWords(spanText(sp)) }));
   const nameKeys = new Set<string>();
   const names = [...attendeeTokens(attendeesJson).map(normWords), owner].filter(
     (w) =>

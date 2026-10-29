@@ -1009,6 +1009,11 @@ export interface SpanScore {
   verified?: SpanCount;
   /** Spans with verified_unsure true (not verified; they keep their confidence). */
   verifiedUnsure?: number;
+  /**
+   * Spans with verified_none true (the owner hears no named entity there):
+   * left out of every scored count, counted here.
+   */
+  verifiedNone?: number;
   /** Spans with confidence unsure: not scored. */
   unsure: number;
   /** Spans with no words after normalization: not scored. */
@@ -1059,6 +1064,7 @@ export function addSpanScores(xs: SpanScore[]): SpanScore {
     },
     verified: sum((x) => x.verified ?? spanCount(0, 0)),
     verifiedUnsure: xs.reduce((a, x) => a + (x.verifiedUnsure ?? 0), 0),
+    verifiedNone: xs.reduce((a, x) => a + (x.verifiedNone ?? 0), 0),
     unsure: xs.reduce((a, x) => a + x.unsure, 0),
     empty: xs.reduce((a, x) => a + x.empty, 0),
     missedKeys: xs.flatMap((x) => x.missedKeys),
@@ -1185,7 +1191,8 @@ export function spanHits(
  * is normalized on its own, then the segments join in time order. A segment
  * without end_ms counts as a point at start_ms. asr reads the raw text;
  * enhance reads the enhanced text (the raw text when there is none). Unsure
- * spans and spans with no words are counted, not scored.
+ * spans and spans with no words are counted, not scored. Spans with
+ * verified_none are left out of all counts and reported as verifiedNone.
  */
 export function scoreSpans(
   spans: GoldSpan[],
@@ -1211,6 +1218,7 @@ export function scoreSpans(
     },
     verified: count((sp) => sp.verified === true),
     verifiedUnsure: spans.filter((sp) => sp.verifiedUnsure === true).length,
+    verifiedNone: spans.filter((sp) => sp.verifiedNone === true).length,
     unsure,
     empty,
     missedKeys: [
@@ -1246,6 +1254,8 @@ export function scoreSpanItems(
   let unsure = 0;
   let empty = 0;
   for (const sp of spans) {
+    // No named entity here (verified_none): not scored, not unsure, not empty.
+    if (sp.verifiedNone) continue;
     if (sp.confidence === "unsure" && !sp.verified) {
       unsure++;
       continue;

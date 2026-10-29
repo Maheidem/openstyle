@@ -221,9 +221,13 @@ export interface Snapshot {
   gold: {
     goldHash: string;
     goldKinds: string[];
-    /** Spans that the owner confirmed by ear, and the verified_unsure ones. */
+    /**
+     * Spans that the owner confirmed by ear, the verified_unsure ones and the
+     * verified_none ones (no named entity; not scored).
+     */
     verified: number;
     verifiedUnsure: number;
+    verifiedNone: number;
   };
   scorerVersion: string;
   labVersion: string;

@@ -1076,6 +1076,7 @@ test("silver key: loads spans, basis, wer_eligible, witnesses and verification",
     verifiedSource: null,
     verifiedText: null,
     verifiedUnsure: false,
+    verifiedNone: false,
   });
   assert.equal(g.spans?.[0]?.verifierConflict, false);
   assert.deepEqual(
@@ -1214,6 +1215,7 @@ test("scoreSpans: the time window edge, the channel and segments joined", () => 
     verifiedSource: null,
     verifiedText: null,
     verifiedUnsure: false,
+    verifiedNone: false,
   });
   const hit = (rows: SegmentRow[], sp = span(10000, 11000)) =>
     scoreSpans([sp], rows, "asr").all.hits;
@@ -1266,6 +1268,7 @@ const termSpan = (startMs: number, endMs: number, text: string): GoldSpan => ({
   verifiedSource: null,
   verifiedText: null,
   verifiedUnsure: false,
+  verifiedNone: false,
 });
 
 test("scoreSpans: accents fold and a match without spaces, as the vote", () => {
