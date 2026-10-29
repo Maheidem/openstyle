@@ -7,10 +7,14 @@
  * up the remote speaker), and interleaves everything by corrected start time.
  *
  * No I/O and no dependencies of its own — deterministic on its inputs.
- * `normalizeText`/`textSimilarity`/`isVocabLeak` live in `@openstyle/stt`
+ * `normalizeText`/`textSimilarity`/`isSegmentVocabLeak` live in `@openstyle/stt`
  * (shared with the dictation leak filter, packages/stt/src/text.ts).
  */
-import { isVocabLeak, normalizeText, textSimilarity } from "@openstyle/stt";
+import {
+  isSegmentVocabLeak,
+  normalizeText,
+  textSimilarity,
+} from "@openstyle/stt";
 
 export type Speaker = "Me" | "Them";
 
@@ -392,7 +396,9 @@ export function mergeTranscript(
           return text === s.text ? s : { ...s, text };
         })
         .filter(
-          (s) => !isHallucination(s) && !isVocabLeak(s.text, vocabTerms ?? []),
+          (s) =>
+            !isHallucination(s) &&
+            !isSegmentVocabLeak(s.text, vocabTerms ?? []),
         ),
     );
 

@@ -407,6 +407,23 @@ describe("mergeTranscript leak backstop (Phase A1 §3.1)", () => {
     expect(merged).toHaveLength(1);
   });
 
+  it("keeps a short name-only segment and drops a longer name-list echo", () => {
+    // Fictional owner and attendee names: the meeting bias puts them first.
+    const names = ["Ana Silva", "Pedro Costa", ...vocabTerms];
+    const mic = [
+      seg(0, 600, "Ana?"),
+      seg(1000, 1800, "Ana Silva."),
+      seg(2000, 2900, "Pedro, Pedro?"),
+      seg(3000, 4500, "Ana Silva, Pedro Costa, Zylotrix1."),
+    ];
+    const merged = mergeTranscript(mic, [], undefined, names);
+    expect(merged.map((m) => m.text)).toEqual([
+      "Ana?",
+      "Ana Silva.",
+      "Pedro, Pedro?",
+    ]);
+  });
+
   it("filter-order: three consecutive leak segments produce zero survivors, not one", () => {
     // Proves the leak filter runs before filterConsecutiveRepeats — if it
     // ran after, the REPEAT_MIN_RUN=3 collapse would keep one leaked

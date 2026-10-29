@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   collapseAsrLineBreaks,
   isContextEcho,
+  isSegmentVocabLeak,
   isVocabLeak,
   sanitizeTranscriptText,
   stripThinkingBlocks,
@@ -224,6 +225,28 @@ describe("isVocabLeak", () => {
   it("does not flag real speech that merely mentions one vocab term", () => {
     const real = `so the plan is to ship ${vocabTerms[0]} next week`;
     expect(isVocabLeak(real, vocabTerms)).toBe(false);
+  });
+});
+
+describe("isSegmentVocabLeak", () => {
+  // Fictional owner and attendee names, as the meeting bias holds them.
+  const names = ["Ana Silva", "Pedro Costa"];
+
+  it("keeps a real segment of fewer than 4 words that is only names", () => {
+    for (const text of ["Ana?", "Ana Silva.", "Pedro, Pedro?"]) {
+      expect(isVocabLeak(text, names)).toBe(true);
+      expect(isSegmentVocabLeak(text, names)).toBe(false);
+    }
+  });
+
+  it("still flags a label-less echo of the name list", () => {
+    expect(isSegmentVocabLeak("Ana Silva, Pedro Costa.", names)).toBe(true);
+  });
+
+  it("does not flag real speech with a name", () => {
+    expect(isSegmentVocabLeak("Ana, can you share the deck now?", names)).toBe(
+      false,
+    );
   });
 });
 
