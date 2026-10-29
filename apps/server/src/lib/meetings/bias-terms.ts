@@ -71,12 +71,18 @@ const warnedForms = new Set<string>();
 
 /**
  * The attendee name form of this process. The env var
- * OPENSTYLE_ASR_ATTENDEE_NAME_FORM sets it for an eval run:
- * - `full` (default): each attendee gives its full name.
- * - `first`: each attendee gives its first name only.
+ * OPENSTYLE_ASR_ATTENDEE_NAME_FORM can force another form:
+ * - `first` (default): each attendee gives its first name only.
+ * - `full`: each attendee gives its full name.
  * - `both`: each attendee gives its full name, then its first name.
- * An unset or empty value gives `full`. Any other value gives `full` and one
+ * An unset or empty value gives `first`. Any other value gives `first` and one
  * debug line per process (the line never holds the value).
+ *
+ * Why `first` is the default: the Eval Lab compared the forms on 14 real
+ * meetings (1604 spans). `first` against `full`: spans_all 1235 against 1222,
+ * person spans 363 against 348, verified spans 93 against 82, possible
+ * insertions 47 against 51, owner insertions 9 against 7. 8 meetings were
+ * better, 4 worse and 2 the same.
  */
 export function attendeeNameForm(): AttendeeNameForm {
   const raw = process.env.OPENSTYLE_ASR_ATTENDEE_NAME_FORM?.trim() ?? "";
@@ -84,10 +90,10 @@ export function attendeeNameForm(): AttendeeNameForm {
   if (raw !== "" && !warnedForms.has(raw)) {
     warnedForms.add(raw);
     console.debug(
-      "[meetings] OPENSTYLE_ASR_ATTENDEE_NAME_FORM is not full, first or both: using full",
+      "[meetings] OPENSTYLE_ASR_ATTENDEE_NAME_FORM is not full, first or both: using first",
     );
   }
-  return "full";
+  return "first";
 }
 
 /**
