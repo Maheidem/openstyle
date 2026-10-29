@@ -175,7 +175,9 @@ publish() {
   [ -f "$OUT/tree" ] || die "no build stamp $OUT/tree. Build first (run without --publish-only)."
   run git fetch --quiet --prune origin
   local merge want_tree
-  merge="$(git log origin/main --format='%H%x09%s' | awk -F'\t' -v s="$RELEASE_SUBJECT" '$2 == s { print $1; exit }')"
+  # awk reads all of the log: an early exit gives git log SIGPIPE (141),
+  # and pipefail then stops the script (2.25.0-alpha.2, 2026-10-29).
+  merge="$(git log origin/main --format='%H%x09%s' | awk -F'\t' -v s="$RELEASE_SUBJECT" '$2 == s && !found { print $1; found = 1 }')"
   [ -n "$merge" ] || die "no commit '$RELEASE_SUBJECT' on origin/main. Did step 6 push it?"
   want_tree="$(cat "$OUT/tree")"
   [ "$(git rev-parse "$merge^{tree}")" = "$want_tree" ] ||
@@ -187,10 +189,11 @@ publish() {
     die "release $VERSION exists already. Check it: bash scripts/release-verify.sh $VERSION"
   fi
   # The release notes are the CHANGELOG.md section of this version (as Craft does).
+  # No early exit in awk: see the SIGPIPE note above.
   git show "$merge:CHANGELOG.md" | awk -v v="## $VERSION" '
     $0 == v { on = 1; next }
-    on && /^## / { exit }
-    on { print }
+    on && /^## / { on = 0; done = 1 }
+    on && !done { print }
   ' > "$OUT.notes.md"
   [ -s "$OUT.notes.md" ] || die "CHANGELOG.md at $merge has no section '## $VERSION'"
 
