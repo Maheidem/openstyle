@@ -28,7 +28,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import psutil
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import silver_paths as P  # noqa: E402
+
 MD, STATS_DIR = sys.argv[1], sys.argv[2]
+if P.inside_repo(STATS_DIR):
+    raise SystemExit("stats_dir points into the repo: refused")
 PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8765
 TOKCAP = os.environ.get("NEMO_TOKCAP", "1") == "1"
 MODEL_NAME = os.path.basename(MD.rstrip("/"))

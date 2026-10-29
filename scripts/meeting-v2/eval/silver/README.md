@@ -182,3 +182,34 @@ Eval span metric (`scoreSpans`, `../score.mts`): a high or medium span is a hit 
 
 - The import of Google Meet and Krisp transcripts into `meet.json`/`krisp.json`. Krisp recorded only 3 of 14 work meetings; Google Meet transcripts exist for 10 of 14.
 - The silver-1 adjudication and the blind verifier: Claude workflows that read the witnesses and wrote the silver-1 keys and `verification`. Claude is the evaluator here, never a step of the app.
+
+## Nemotron 3.5 Transcribe experiment (2026-10-29)
+
+Scripts for the eval of Nemotron 3.5 Transcribe (MLX 4-bit) against the shipped Qwen3-ASR 1.7B.
+Every script refuses an output path inside the repo. Transcripts stay private. Output is numbers only.
+
+### serve_openai.py
+
+- It is a small OpenAI-compatible speech server for one local model. It binds to 127.0.0.1 only.
+- It answers `POST /v1/audio/transcriptions` and `GET /v1/models`.
+- oMLX 0.7.3rc1 bundles mlx-audio 0.5.7. That version has no `nemotron_transcribe` model type.
+- The server loads the model with mlx-audio 0.6.2 (pinned at the commit used) in a private venv outside the repo.
+- Start it, then set `LAB_ASR_SERVER_URL` and run an Eval Lab grid with the knob `asr_server_model`.
+- The `model` field of the request picks the bias mode: `nemotron-ctx`, `nemotron-hot`, `nemotron-plain`, `nemotron-offw`.
+
+### Best prompt
+
+- The official contextual instruction (technical report A.5): "This audio may contain the following words or phrases (some may not be present in the clip): ..."
+- Only the meeting terms go in the list, not the full vocabulary.
+- The written-form wording follows the instruction: omit fillers and accidental repetitions, keep the remaining spoken wording unchanged.
+
+### Result (silver-3.6, 14 meetings, 1604 spans, real app pipeline)
+
+| Setup | Run | Span hits | Person % | Verified % | WER % | Possible insertions |
+|---|---|---|---|---|---|---|
+| Qwen3-ASR 1.7B (control) | f60d76b7 | 1222 (76.18%) | 73.26 | 34.31 | 4.09 | 51 |
+| Nemotron, A.5 + meeting terms + written form | 5c880731 | 1159 (72.26%) | 77.05 | 38.49 | 12.0 | 259 |
+| Nemotron, full vocabulary | 55c31633 | 1050 | 80.42 | - | 13.7 | 694 |
+| Nemotron, no prompt | cc95fc18 | 1028 | 39.79 | - | 13.2 | 13 |
+
+Nemotron does not beat the control. The MLX port has no word timestamps, so it cannot replace the aligner or the diarizer.
