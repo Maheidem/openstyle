@@ -128,6 +128,46 @@ test("knobs: values, numbers as strings, run names", () => {
   });
 });
 
+test("knob asr_server_model: default none, check, own-server row, no URL", () => {
+  assert.equal(resolveKnobs({}).asr_server_model, "none");
+  assert.equal(
+    resolveKnobs({ asr_server_model: "nemo-1" }).asr_server_model,
+    "nemo-1",
+  );
+  assert.throws(() => resolveKnobs({ asr_server_model: "a b/c" }), /model id/);
+  const dir = mkdtempSync(join(tmpdir(), "lab-srv-"));
+  try {
+    const p = join(dir, "t.db");
+    const db = new DatabaseSync(p);
+    db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)");
+    db.exec("CREATE TABLE vocabulary (term TEXT)");
+    db.exec(
+      "CREATE TABLE meetings (id TEXT, calendar_attendees TEXT, context TEXT)",
+    );
+    db.close();
+    // default: no own_servers table is touched
+    applyDbKnobs(p, resolveKnobs({}), undefined);
+    const kv = resolveKnobs({ asr_server_model: "nemo-1" });
+    assert.throws(() => applyDbKnobs(p, kv, undefined), /LAB_ASR_SERVER_URL/);
+    applyDbKnobs(p, kv, undefined, "http://127.0.0.1:9/v1");
+    applyDbKnobs(p, kv, undefined, "http://127.0.0.1:9/v1"); // twice: no UNIQUE error
+    const r = new DatabaseSync(p);
+    const rows = r
+      .prepare("SELECT id, base_url, flavor FROM own_servers")
+      .all();
+    r.close();
+    assert.deepEqual(JSON.parse(JSON.stringify(rows)), [
+      {
+        id: "srv_lab00001",
+        base_url: "http://127.0.0.1:9/v1",
+        flavor: "openai",
+      },
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- Snapshot and cache key -----------------------------------------------------------
 
 const snap = (knobs: Record<string, string>): Snapshot => ({
