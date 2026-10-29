@@ -82,3 +82,30 @@ test-results/
 
 # Local agent handoffs and scratch notes
 .scratchpad/
+
+# Silver-gold eval (scripts/meeting-v2/eval/silver/README.md): the corpus,
+# witness JSON, gold keys, arm DBs, audio, raw cloud responses and EG2 caches
+# are private meeting data and stay outside the repo (~/.openstyle-eval/).
+# These guards stop a copy that lands in the repo by mistake.
+# 1. In the silver folder, only code and docs can be added; a data/ folder never.
+/scripts/meeting-v2/eval/silver/**
+!/scripts/meeting-v2/eval/silver/**/
+!/scripts/meeting-v2/eval/silver/**/*.py
+!/scripts/meeting-v2/eval/silver/**/*.mts
+!/scripts/meeting-v2/eval/silver/**/*.sh
+!/scripts/meeting-v2/eval/silver/**/*.md
+/scripts/meeting-v2/eval/silver/**/data/
+/scripts/meeting-v2/eval/silver/**/__pycache__/
+# 2. Anywhere: meeting audio, SQLite DBs (app DB copies, arm DBs), EG2
+#    vector caches and the private eval folders.
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.npz
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+**/gold-silver/
+**/.openstyle-eval/
