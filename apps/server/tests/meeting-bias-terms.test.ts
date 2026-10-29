@@ -42,13 +42,7 @@ describe("buildMeetingBiasTerms", () => {
         ),
         "Ana Silva",
       ),
-    ).toEqual([
-      "Ana Silva",
-      "Jane Doe",
-      "Raj Patel",
-      "Nova Rollout",
-      "zetaLab",
-    ]);
+    ).toEqual(["Ana Silva", "Jane", "Raj", "Nova Rollout", "zetaLab"]);
   });
 
   it("derives First Last from a first.last email when the name is empty or an email", () => {
@@ -63,7 +57,7 @@ describe("buildMeetingBiasTerms", () => {
         ]),
         "",
       ),
-    ).toEqual(["Grace Gao", "Tom Berg"]);
+    ).toEqual(["Grace", "Tom"]);
   });
 
   it("removes duplicates without regard to case and keeps the first", () => {
@@ -75,19 +69,19 @@ describe("buildMeetingBiasTerms", () => {
             { name: "Jane Doe" },
             { name: "", email: "jane.doe@acme.io" },
           ],
-          "Jane Doe",
+          "JANE",
         ),
-        "Ana Silva",
+        "Ana",
       ),
-    ).toEqual(["Ana Silva", "Jane Doe"]);
+    ).toEqual(["Ana", "Jane"]);
   });
 
   it("gives no owner term for an empty, blank, missing or 1-letter owner", () => {
     const r = row([{ name: "Jane Doe" }]);
     for (const owner of ["", "   ", null, undefined, "A", "1"]) {
-      expect(buildMeetingBiasTerms(r, owner)).toEqual(["Jane Doe"]);
+      expect(buildMeetingBiasTerms(r, owner)).toEqual(["Jane"]);
     }
-    expect(buildMeetingBiasTerms(r, "  Al  ")).toEqual(["Al", "Jane Doe"]);
+    expect(buildMeetingBiasTerms(r, "  Al  ")).toEqual(["Al", "Jane"]);
   });
 
   it("skips attendee names with fewer than 2 letters and bad JSON", () => {
@@ -103,20 +97,20 @@ describe("buildMeetingBiasTerms", () => {
 
   it("keeps at most MAX_ATTENDEE_BIAS_NAMES attendee names, in calendar order", () => {
     const many = Array.from({ length: 50 }, (_, i) => ({
-      name: `Person Number${i}`,
+      name: `Pers${i} Number${i}`,
     }));
     const terms = buildMeetingBiasTerms(row(many, "Nova Rollout"), "Ana Silva");
     expect(terms).toHaveLength(1 + MAX_ATTENDEE_BIAS_NAMES + 1);
-    expect(terms[1]).toBe("Person Number0");
+    expect(terms[1]).toBe("Pers0");
     expect(terms[MAX_ATTENDEE_BIAS_NAMES]).toBe(
-      `Person Number${MAX_ATTENDEE_BIAS_NAMES - 1}`,
+      `Pers${MAX_ATTENDEE_BIAS_NAMES - 1}`,
     );
     expect(terms.at(-1)).toBe("Nova Rollout");
   });
 
   it("takes the attendee cap from OPENSTYLE_ASR_MAX_ATTENDEE_NAMES, and ignores a bad value", () => {
     const many = Array.from({ length: 50 }, (_, i) => ({
-      name: `Person Number${i}`,
+      name: `Pers${i} Number${i}`,
     }));
     const count = (v: string | undefined) => {
       if (v === undefined) delete process.env.OPENSTYLE_ASR_MAX_ATTENDEE_NAMES;
@@ -166,7 +160,7 @@ describe("the attendee name form (OPENSTYLE_ASR_ATTENDEE_NAME_FORM)", () => {
     }
   };
 
-  it("gives full names by default and for full", () => {
+  it("gives first names by default, and full names for full", () => {
     const full = [
       "Ana Silva",
       "Jane Doe",
@@ -176,10 +170,10 @@ describe("the attendee name form (OPENSTYLE_ASR_ATTENDEE_NAME_FORM)", () => {
       "Madonna",
       "Nova",
     ];
-    expect(terms(undefined)).toEqual(full);
     expect(terms("full")).toEqual(full);
     expect(terms("  full ")).toEqual(full);
-    expect(terms("")).toEqual(full);
+    expect(terms(undefined)).toEqual(terms("first"));
+    expect(terms("")).toEqual(terms("first"));
   });
 
   it("first: the owner as is, then the first word of each name, once", () => {
@@ -240,15 +234,15 @@ describe("the attendee name form (OPENSTYLE_ASR_ATTENDEE_NAME_FORM)", () => {
     }
   });
 
-  it("falls back to full on an unknown value and logs once, without the value", () => {
+  it("falls back to first on an unknown value and logs once, without the value", () => {
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
     try {
-      expect(terms("Zorblax")).toEqual(terms("full"));
-      expect(terms("Zorblax")).toEqual(terms("full"));
+      expect(terms("Zorblax")).toEqual(terms("first"));
+      expect(terms("Zorblax")).toEqual(terms("first"));
       expect(debug).toHaveBeenCalledTimes(1);
       expect(String(debug.mock.calls[0]?.[0])).not.toContain("Zorblax");
       process.env.OPENSTYLE_ASR_ATTENDEE_NAME_FORM = "bad";
-      expect(attendeeNameForm()).toBe("full");
+      expect(attendeeNameForm()).toBe("first");
       delete process.env.OPENSTYLE_ASR_ATTENDEE_NAME_FORM;
       expect(debug).toHaveBeenCalledTimes(2);
     } finally {
@@ -282,11 +276,11 @@ describe("nameFromEmail", () => {
 describe("meetingBiasTerms (stored owner name)", () => {
   it("reads owner_name from the settings table", () => {
     const r = row([{ name: "Jane Doe" }]);
-    expect(meetingBiasTerms(r)).toEqual(["Jane Doe"]);
+    expect(meetingBiasTerms(r)).toEqual(["Jane"]);
     writeSetting(SETTINGS_KEYS.ownerName, "Ana Silva");
-    expect(meetingBiasTerms(r)).toEqual(["Ana Silva", "Jane Doe"]);
+    expect(meetingBiasTerms(r)).toEqual(["Ana Silva", "Jane"]);
     writeSetting(SETTINGS_KEYS.ownerName, "");
-    expect(meetingBiasTerms(r)).toEqual(["Jane Doe"]);
+    expect(meetingBiasTerms(r)).toEqual(["Jane"]);
     expect(meetingBiasTerms(undefined)).toEqual([]);
   });
 });
@@ -297,7 +291,7 @@ describe("the bias prompt with meeting terms", () => {
       buildMeetingBiasTerms(row([{ name: "Jane Doe" }], "zetaLab"), "Ana"),
       ["Kubernetes", "ZetaLab", "ana"],
     );
-    expect(terms).toEqual(["ana", "Jane Doe", "ZetaLab", "Kubernetes"]);
+    expect(terms).toEqual(["ana", "Jane", "ZetaLab", "Kubernetes"]);
   });
 
   it("keeps the 900-char budget, with the owner and attendees at the front", () => {
@@ -310,8 +304,8 @@ describe("the bias prompt with meeting terms", () => {
     expect(bias?.kind).toBe("prompt");
     const text = bias?.kind === "prompt" ? bias.text : "";
     expect(text.length).toBe(900);
-    expect(
-      text.startsWith("Technical terms: Ana Silva, Jane Doe, Term0,"),
-    ).toBe(true);
+    expect(text.startsWith("Technical terms: Ana Silva, Jane, Term0,")).toBe(
+      true,
+    );
   });
 });

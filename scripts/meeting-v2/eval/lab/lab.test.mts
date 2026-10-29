@@ -105,7 +105,7 @@ test("knobs: values, numbers as strings, run names", () => {
   );
   assert.throws(() => resolveKnobs({ languages: "en" }), /languages/);
   // The name form is an env knob with the shipped default, and a distinct value.
-  assert.equal(resolveKnobs({}).attendee_name_form, "full");
+  assert.equal(resolveKnobs({}).attendee_name_form, "first");
   assert.equal(
     resolveKnobs({ attendee_name_form: "both" }).attendee_name_form,
     "both",
@@ -124,7 +124,7 @@ test("knobs: values, numbers as strings, run names", () => {
   assert.equal(rn("off", "on"), "R3c-on");
   assert.deepEqual(envKnobs(resolveKnobs({})), {
     OPENSTYLE_ASR_MAX_ATTENDEE_NAMES: "20",
-    OPENSTYLE_ASR_ATTENDEE_NAME_FORM: "full",
+    OPENSTYLE_ASR_ATTENDEE_NAME_FORM: "first",
   });
 });
 

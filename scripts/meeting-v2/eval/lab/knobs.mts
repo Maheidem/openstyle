@@ -142,10 +142,10 @@ export const KNOBS: Knob[] = [
     name: "attendee_name_form",
     apply: "env",
     target: "OPENSTYLE_ASR_ATTENDEE_NAME_FORM",
-    default: "full",
+    default: "first",
     values: "full | first | both",
     check: oneOf("full", "first", "both"),
-    doc: "The form of the attendee names in the meeting bias (bias-terms.ts). full = the full names (the app default); first = the first word of each name; both = the full name, then the first name. The cap of max_attendee_names counts people. A server without the env override ignores it. The value is in the ASR cache key.",
+    doc: "The form of the attendee names in the meeting bias (bias-terms.ts). full = the full names; first = the first word of each name (the app default); both = the full name, then the first name. The cap of max_attendee_names counts people. A server without the env override ignores it. The value is in the ASR cache key.",
   },
 ];
 
