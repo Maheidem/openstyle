@@ -528,10 +528,15 @@ function meetingHash(
     ...extra,
     q("SELECT term, notes FROM vocabulary ORDER BY term"),
     q("SELECT value FROM settings WHERE key = 'languages'"),
+    // The owner name and the attendee names are terms of the meeting bias.
+    q("SELECT value FROM settings WHERE key = 'owner_name'"),
     q(
       "SELECT provider, model_id FROM model_configs WHERE type = 'voice' AND is_default = 1",
     ),
-    q("SELECT id, title, context, duration_ms FROM meetings WHERE id = ?", id),
+    q(
+      "SELECT id, title, context, calendar_attendees, duration_ms FROM meetings WHERE id = ?",
+      id,
+    ),
   ];
   db.close();
   for (const f of ["mic.wav", "system.wav"]) {

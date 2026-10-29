@@ -2,8 +2,9 @@
 // Phase 0a helper (specs/meeting-transcription-v2.md, section 7.2).
 //
 // Seeds the fresh scratch DB with the allow-listed rows of the real DB
-// (vocabulary rows, the `languages` setting, the default llm model row when
-// it is a built-in MLX model) and inserts one `meetings` row per copied
+// (vocabulary rows, the `languages` and `owner_name` settings, the default
+// llm model row when it is a built-in MLX model) and inserts one `meetings`
+// row per copied
 // meeting (status 'recorded', audio_dir pointing at the copy, created_at
 // = now so the retention sweep ignores the row). The default voice row is
 // always the built-in MLX ASR model (local-mlx/qwen3-1.7b-8bit). Never the
@@ -74,8 +75,26 @@ try {
     INSERT OR IGNORE INTO main.vocabulary (term, notes, created_at, updated_at)
       SELECT term, notes, created_at, updated_at FROM src.vocabulary;
     INSERT OR IGNORE INTO main.settings (key, value, updated_at)
-      SELECT key, value, updated_at FROM src.settings WHERE key = 'languages';
+      SELECT key, value, updated_at FROM src.settings
+      WHERE key IN ('languages', 'owner_name');
   `);
+  // The owner name is the first term of the meeting ASR bias.
+  // MEETING_EVAL_OWNER_NAME sets it in the scratch DB only (for an eval
+  // when the real DB has no value, or to measure another value). The log
+  // shows set or unset, never the name.
+  const ownerOverride = process.env.MEETING_EVAL_OWNER_NAME?.trim();
+  if (ownerOverride) {
+    db.prepare(
+      `INSERT OR REPLACE INTO main.settings (key, value, updated_at)
+       VALUES ('owner_name', ?, datetime('now'))`,
+    ).run(ownerOverride);
+  }
+  const owner = db
+    .prepare("SELECT value FROM main.settings WHERE key = 'owner_name'")
+    .get();
+  console.log(
+    `owner_name: ${owner?.value?.trim() ? "set" : "unset"}${ownerOverride ? " (MEETING_EVAL_OWNER_NAME)" : ""}`,
+  );
 
   // Voice: the built-in MLX ASR model (the "Qwen3 Pro" entry of
   // apps/server/src/lib/mlx-asr/constants.ts), never an own-server row.
@@ -125,18 +144,19 @@ try {
   }
 
   // PR #39: the `context` column (free-text per-meeting context — the
-  // calendar invitee list) must reach the scratch DB: the context
-  // vocabulary bias reads it at transcribe time.
+  // calendar invitee list) and the `calendar_attendees` column must reach
+  // the scratch DB: the meeting ASR bias reads both at transcribe time.
   const realRow = db.prepare(
-    "SELECT title, context, started_at, ended_at, duration_ms FROM src.meetings WHERE id = ?",
+    "SELECT title, context, calendar_attendees, started_at, ended_at, duration_ms FROM src.meetings WHERE id = ?",
   );
   const insert = db.prepare(
     `INSERT INTO main.meetings
-       (id, title, context, started_at, ended_at, duration_ms, status, audio_dir, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'recorded', ?, ?)
+       (id, title, context, calendar_attendees, started_at, ended_at, duration_ms, status, audio_dir, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'recorded', ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        status = 'recorded', audio_dir = excluded.audio_dir,
        context = excluded.context,
+       calendar_attendees = excluded.calendar_attendees,
        language = NULL, error = NULL,
        stt_provider = NULL, stt_model = NULL,
        created_at = excluded.created_at`,
@@ -165,6 +185,7 @@ try {
       id,
       row?.title ?? `scratch ${id.slice(0, 8)}`,
       row?.context ?? null,
+      row?.calendar_attendees ?? null,
       startedAt,
       endedAt,
       durationMs,

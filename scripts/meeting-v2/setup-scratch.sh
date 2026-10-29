@@ -109,8 +109,10 @@ if [ "$(sqlite3 "$SCRATCH_DB" "select version from schema_version limit 1;")" !=
 fi
 
 # --- 4. Copy the allow-listed rows, insert the meetings rows --------------
-# Copied: vocabulary rows, the `languages` setting and the default llm row
-# (built-in MLX only). The default voice row is the built-in MLX ASR model.
+# Copied: vocabulary rows, the `languages` and `owner_name` settings and the
+# default llm row (built-in MLX only). MEETING_EVAL_OWNER_NAME sets
+# `owner_name` in the scratch DB only. The default voice row is the built-in
+# MLX ASR model.
 # Never the api_keys table, never the own_servers rows.
 node "$REPO_ROOT/scripts/meeting-v2/seed-scratch-db.mjs" "$SCRATCH" "$SCRATCH/dbcopy/attach.db" "$@"
 
