@@ -104,10 +104,13 @@ A grid file is JSON (`grids/` has examples):
   - `silver-14-s34`: the current keys, goldKind silver-3.4, goldHash `69dd82895b94`, 30 verified spans (5 with `verified_text`), 4 verified_unsure, 1396 scored spans. Use it for new work.
   - `silver-14-s33`: the silver-3.3 backups, goldHash `c143902811c4`, 1393 scored spans. The acceptance number lives here.
   - `silver-14`: the first manifest. It pointed at the live gold folder, so its check fails since the 3.4 keys landed (`goldHash c143902811c4 (now 69dd82895b94)`). Since then a corpus freezes its own copy of the keys. Keep it: runs B and C of 2026-10-29 refer to it.
+  - `silver-14-s36`: the keys of goldKind silver-3.6 (2026-10-29 evening), goldHash `9e2d8da06703`, 1604 scored spans, 239 verified (63 with `verified_text`), 7 verified_unsure, 2 verified_none. Use it for new work.
+  - `silver-14-s35`: the silver-3.5 backups (`--gold-suffix silver-3.5`), goldHash `8c2f343a92e0`, 1474 scored spans, 109 verified.
 - The validator of the keys: `SILVER_KEYS=~/.openstyle-eval/gold-silver pnpm meeting:silver:validate --kind <goldKind>` gives `14/14 pass` (with no witness corpus on the Mac, it takes the ids from the key files). It knows silver-2 to silver-3.6. Its tests: `pnpm meeting:silver:test`.
 - ASR repeat runs are byte-identical, so a cache hit gives the same metrics as a fresh run.
 - A full 14-meeting ASR run takes 20 to 27 min. Run it in the background and check the log.
 
+- Attendee name forms (grids `name-forms-s35.json`, `name-forms-s36.json`, owner name set, 14 meetings, 2026-10-29), spans_all hits: full / first / both = 1181 / 1195 / 1187 of 1474 (s35, runs `1003744a`, `574dd440`, `b5d46abd`) and 1222 / 1235 / 1228 of 1604 (s36, runs `b5ddca89`, `879493a2`, `e1a1934a`). `full` is the shipped B3, `first` is the old arm B2. `first` has the best person recall and the fewest possible insertions (47 against 51), but 2 more owner insertions (9 against 7). One fresh grid cell takes about 22 min; the same cell on another corpus is a cache hit.
 - Reference runs (MLflow experiment `openstyle-lab-asr`). Cite these as baselines:
   - silver-3.3, shipped config: run `d5971004` (fresh, after the rebase, clean tree). Runs `1fa07dd3` (made at the pre-rebase sha `cf42c1ac`) and `d2a3dead` (`lab.git_dirty=true`) have equal metrics (1152/1393). Do not cite them as the baseline.
   - silver-3.4, shipped config: run `e40bae04` (1150/1396, `spans_verified` 10/30).
