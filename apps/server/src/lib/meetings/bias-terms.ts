@@ -52,6 +52,18 @@ export function meetingBiasTerms(
 export const MAX_ATTENDEE_BIAS_NAMES = 20;
 
 /**
+ * The attendee name cap of this process. The env var
+ * OPENSTYLE_ASR_MAX_ATTENDEE_NAMES (a whole number from 0 to 200) sets
+ * another cap for an eval run. Any other value gives the default.
+ */
+export function maxAttendeeBiasNames(): number {
+  const raw = process.env.OPENSTYLE_ASR_MAX_ATTENDEE_NAMES?.trim() ?? "";
+  if (!/^\d{1,3}$/.test(raw)) return MAX_ATTENDEE_BIAS_NAMES;
+  const n = Number(raw);
+  return n <= 200 ? n : MAX_ATTENDEE_BIAS_NAMES;
+}
+
+/**
  * The attendee names of the bias, in calendar order (the organizer first).
  * Each attendee gives its display name. An attendee with no display name
  * (the name is empty or is an email address) gives the name from its email
@@ -66,7 +78,7 @@ function attendeeBiasNames(row: Pick<MeetingRow, "calendar_attendees">) {
       return nameFromEmail(a.email.trim() || name) ?? "";
     })
     .filter((name) => letterCount(name) >= 2)
-    .slice(0, MAX_ATTENDEE_BIAS_NAMES);
+    .slice(0, maxAttendeeBiasNames());
 }
 
 /**
