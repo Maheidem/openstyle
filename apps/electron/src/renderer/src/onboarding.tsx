@@ -18,6 +18,7 @@ import { llmScopeLabel } from "@renderer/pages/meetings/enhance-prompt-dialog";
 import { DraftStep } from "@renderer/pages/onboarding/draft-step";
 import { EnhanceStep } from "@renderer/pages/onboarding/enhance-step";
 import { LanguageStep } from "@renderer/pages/onboarding/language-step";
+import { NameStep } from "@renderer/pages/onboarding/name-step";
 import {
   type LinuxSetup,
   PermissionsStep,
@@ -29,7 +30,7 @@ import { useNavigate } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 
-type Step = "permissions" | "language" | "draft" | "enhance";
+type Step = "permissions" | "language" | "draft" | "name" | "enhance";
 
 const DEFAULT_HOTKEY =
   (typeof window !== "undefined" && window.api?.defaultHotkey) ||
@@ -60,10 +61,10 @@ export default function OnboardingPage(): React.JSX.Element {
       ? { name: defaultLlm.model_name, scope: enhanceLlmScope }
       : null;
 
-  // The auto-Enhance onboarding step only makes sense when Meeting Mode is
-  // on — the same `flags?.meetings === true` gate the app shell uses to show
-  // the Meetings nav item (shell.tsx). When the flag is off there is no
-  // Meetings feature to turn on, so onboarding finishes right after the draft step.
+  // The name and auto-Enhance onboarding steps only make sense when Meeting
+  // Mode is on — the same `flags?.meetings === true` gate the app shell uses
+  // to show the Meetings nav item (shell.tsx). When the flag is off there is
+  // no Meetings feature, so onboarding finishes right after the draft step.
   const { data: config } = useQuery(configQueryOptions());
   const meetingsEnabled = config?.flags?.meetings === true;
 
@@ -87,6 +88,10 @@ export default function OnboardingPage(): React.JSX.Element {
   // The practice email body, lifted so it survives the draft→enhance step
   // transition (and Back).
   const [draftBody, setDraftBody] = useState("");
+
+  // The owner name field of the name step, lifted so it survives Back.
+  // null until the user types: the stored value (if any) shows until then.
+  const [ownerName, setOwnerName] = useState<string | null>(null);
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
@@ -183,6 +188,19 @@ export default function OnboardingPage(): React.JSX.Element {
     navigate("/today", { replace: true });
   }, [navigate]);
 
+  // The name step writes `owner_name` only when Continue changes it. Skip
+  // writes nothing, so a missing row keeps meaning "no name".
+  const storedOwnerName = settingsData?.[SETTINGS_KEYS.ownerName] ?? "";
+  const handleNameDone = useCallback(
+    async (name: string | null) => {
+      if (name !== null && name !== storedOwnerName) {
+        await putSetting(SETTINGS_KEYS.ownerName, name);
+      }
+      setStep("enhance");
+    },
+    [storedOwnerName],
+  );
+
   // Specs/meeting-transcription-v2.md §3.2: turn on and not now both write
   // the auto-run setting (explicit off included); Skip writes only the seen
   // flag, so a missing row keeps meaning off.
@@ -258,11 +276,20 @@ export default function OnboardingPage(): React.JSX.Element {
               setStep("language");
             }}
             onContinue={() => {
-              // Meeting Mode flag off → no Enhance step, finish here.
-              if (meetingsEnabled) setStep("enhance");
+              // Meeting Mode flag off → no name or Enhance step, finish here.
+              if (meetingsEnabled) setStep("name");
               else finishSetup();
             }}
             isLastStep={!meetingsEnabled}
+          />
+        )}
+
+        {step === "name" && (
+          <NameStep
+            name={ownerName ?? storedOwnerName}
+            onNameChange={setOwnerName}
+            onDone={(name) => void handleNameDone(name)}
+            onBack={() => setStep("draft")}
           />
         )}
 
@@ -270,7 +297,7 @@ export default function OnboardingPage(): React.JSX.Element {
           <EnhanceStep
             model={enhanceModel}
             onChoose={(choice) => void handleEnhanceChoice(choice)}
-            onBack={() => setStep("draft")}
+            onBack={() => setStep("name")}
           />
         )}
       </div>

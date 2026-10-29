@@ -34,7 +34,7 @@ import {
   type WaitForDictationIdleOptions,
   waitForDictationIdle,
 } from "../lib/dictation-activity.js";
-import { extractContextTerms } from "../lib/meetings/context-terms.js";
+import { meetingBiasTerms } from "../lib/meetings/bias-terms.js";
 import {
   applyDiarization,
   createDefaultDiarizeDeps,
@@ -701,13 +701,14 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     // Loaded once per job, not per chunk — vocabulary rarely changes
     // mid-meeting and loadVocabularyTerms() hits the DB.
     const vocabTerms = loadVocabularyTerms();
-    // PR #39: terms extracted from the meeting's free-text context
-    // (the calendar invitee list). They are prepended to this meeting's
+    // The meeting terms: the owner name, the calendar attendee names and
+    // the terms of the free-text context (PR #39), in that order
+    // (lib/meetings/bias-terms.ts). They are prepended to this meeting's
     // vocabulary bias (winning the provider caps, 900 chars in
     // particular) and widen this meeting's persist-time leak check, so
-    // a prompt echo of the invitee names is still caught. Dictation and
-    // meetings without a context are untouched. Stored nowhere.
-    const contextTerms = extractContextTerms(getMeetingRow(id)?.context ?? "");
+    // a prompt echo of the names is still caught. Dictation is untouched.
+    // Stored nowhere.
+    const contextTerms = meetingBiasTerms(getMeetingRow(id));
     const meetingVocabTerms =
       contextTerms.length > 0
         ? mergeContextVocabTerms(contextTerms, vocabTerms)
@@ -729,6 +730,14 @@ async function runTranscribeJob(id: string, audioDir: string): Promise<void> {
     db.prepare(
       "UPDATE meetings SET stt_provider = ?, stt_model = ? WHERE id = ?",
     ).run(config.providerId, config.modelId, id);
+    // Debug level only (on in a dev server, off in the packaged app), the
+    // same as the dictation bias log (transcription-pipeline.ts). The text
+    // holds names and vocabulary terms.
+    if (config.bias?.kind === "prompt") {
+      log.debug(
+        `meeting ${id}: ASR bias prompt (${config.bias.text.length} chars): ${config.bias.text}`,
+      );
+    }
 
     // Issue #170: repair a system track with a known sample-rate mismatch
     // before the diarizer and the segmenter read system.wav. A failure keeps
@@ -1461,9 +1470,9 @@ const meetings = new Hono()
        WHERE meeting_id = ? AND source = ? AND start_ms = ? AND end_ms = ?`,
     );
     const vocabTerms = loadVocabularyTerms();
-    // PR #39: the retry runs with the same context terms as the main
-    // job (bias + leak check) — the row is already loaded here.
-    const contextTerms = extractContextTerms(row.context ?? "");
+    // The retry runs with the same meeting terms as the main job (bias +
+    // leak check) — the row is already loaded here.
+    const contextTerms = meetingBiasTerms(row);
     const meetingVocabTerms =
       contextTerms.length > 0
         ? mergeContextVocabTerms(contextTerms, vocabTerms)

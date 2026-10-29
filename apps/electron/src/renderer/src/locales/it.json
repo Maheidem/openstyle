@@ -69,6 +69,12 @@
       "titleEmphasis": "parli?",
       "autoDetect": "Rilevamento automatico"
     },
+    "name": {
+      "title": "Come ti chiami?",
+      "desc": "La trascrizione delle riunioni usa il tuo nome per scriverlo correttamente. Resta su questo Mac. Puoi cambiarlo più tardi nelle Impostazioni.",
+      "placeholder": "Il tuo nome completo",
+      "skip": "Salta"
+    },
     "tutorial": {
       "almostReady": "Quasi pronto — ",
       "finish": "Inizia a usare Openstyle"
@@ -226,6 +232,9 @@
       "systemAudioUnknownNote": "Il silenzio non significa necessariamente negato: potrebbe semplicemente non esserci stato nulla in riproduzione durante il controllo."
     },
     "meetings": {
+      "ownerName": "Il tuo nome",
+      "ownerNameDesc": "La trascrizione delle riunioni usa il tuo nome per scriverlo correttamente. Resta su questo Mac.",
+      "ownerNamePlaceholder": "Ad esempio, Ana Silva",
       "projectMemory": "Usa le riunioni precedenti",
       "projectMemoryDesc": "Usa le riunioni precedenti della stessa cartella per scrivere il riepilogo.",
       "useCalendar": "Usa il mio calendario",

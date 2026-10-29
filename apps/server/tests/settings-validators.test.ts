@@ -187,6 +187,12 @@ const rows: [string, string, number, string | null][] = [
   ["meeting_enhance_prompt_seen", "true", 200, null],
   ["meeting_enhance_prompt_seen", "false", 200, null],
   ["meeting_enhance_prompt_seen", "1", 400, ENHANCE_FLAG],
+  // The owner name: one line, at most 100 characters; empty means no name.
+  ["owner_name", "Ana Silva", 200, null],
+  ["owner_name", "", 200, null],
+  ["owner_name", "x".repeat(100), 200, null],
+  ["owner_name", "x".repeat(101), 400, "Name must be 100 characters or fewer"],
+  ["owner_name", "Ana\nSilva", 400, "Name must be on one line"],
   ["meeting_stt_model", "not json", 400, MEETING_STT_MODEL],
   [
     "meeting_stt_model",

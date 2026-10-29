@@ -19,6 +19,7 @@ import {
   meetingSummaryInstructionsSchema,
   meetingSummaryTimeoutSecondsSettingSchema,
   mlxLlmKeepReadySchema,
+  ownerNameSettingSchema,
   proxyUrlSettingSchema,
 } from "@openstyle/validations";
 import { HISTORY_RETENTION_SETTING_KEY } from "./history-store.js";
@@ -168,6 +169,12 @@ const SETTING_VALIDATORS: ReadonlyMap<string, SettingCheck> = new Map([
     ),
   ],
   ["llm_task_assignments", checkTaskAssignments],
+  // The owner name feeds the meeting ASR bias prompt. One line, at most 100
+  // characters; an empty value means no name.
+  [
+    "owner_name",
+    schemaCheck(ownerNameSettingSchema, { fallback: "Invalid name" }),
+  ],
   [
     "mlx_llm_keep_ready",
     jsonCheck(mlxLlmKeepReadySchema, "Invalid keep ready setting"),

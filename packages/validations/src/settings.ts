@@ -171,6 +171,25 @@ export const historyRetentionDaysSettingSchema = z
     },
   );
 
+// --- Owner name ------------------------------------------------------------
+
+/** Upper bound on the `owner_name` setting (one person's full name). */
+export const OWNER_NAME_MAX = 100;
+
+/**
+ * Route-level validator for `PUT /api/settings/owner_name`. The value is one
+ * line of at most {@link OWNER_NAME_MAX} characters. An empty string is valid
+ * and means "no name".
+ */
+export const ownerNameSettingSchema = z
+  .string()
+  .max(OWNER_NAME_MAX, {
+    message: `Name must be ${OWNER_NAME_MAX} characters or fewer`,
+  })
+  .refine((value) => !/[\r\n]/.test(value), {
+    message: "Name must be on one line",
+  });
+
 // --- Meeting Mode settings ---------------------------------------------------
 
 /** Days recorded meeting audio is kept before the retention sweep deletes it. */

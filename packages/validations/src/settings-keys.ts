@@ -86,6 +86,12 @@ export const SETTINGS_KEYS = {
   networkCaCertPath: "network_ca_cert_path",
   networkProxyUrl: "network_proxy_url",
   outputMode: "output_mode",
+  /**
+   * The name of the person who uses the app, for example "Ana Silva". Meeting
+   * transcription puts it first in the ASR bias prompt, so the model spells
+   * the owner's name right. An empty value or a missing row means no name.
+   */
+  ownerName: "owner_name",
   pausePlaybackWhileRecording: "pause_playback_while_recording",
   pillCancelButton: "pill_cancel_button",
   /**
