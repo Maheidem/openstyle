@@ -10,6 +10,8 @@ The `model` field of a request selects the bias mode:
   nemotron-ctx    "Transcribe ... Context terms: <the app terms>." (default; any other id too)
   nemotron-hot    the app terms go in the model's `hotwords` field
   nemotron-plain  the app terms are ignored (plain prompt)
+  nemotron-offw   the report's contextual instruction (A.5) with ONLY the meeting terms (found by the prefix of
+                  the app terms in NEMO_ENT, the entities.mts JSON) and the written-form wording (A.1)
 Env: NEMO_TOKCAP = 1 (default) caps new tokens by the audio length
 The stats file in <stats_dir> holds numbers only (no text).
 """
@@ -32,6 +34,25 @@ TOKCAP = os.environ.get("NEMO_TOKCAP", "1") == "1"
 MODEL_NAME = os.path.basename(MD.rstrip("/"))
 PLAIN = "Transcribe with punctuation and capitalization."
 LABEL = "Technical terms:"
+A1W = ("Audio transcription. Language: as spoken. Wording: omit fillers and accidental repetitions; keep the remaining "
+       "spoken wording unchanged. Formatting: punctuation and capitalization. Output: transcript only.")
+OFF = "This audio may contain the following words or phrases (some may not be present in the clip): "
+ENT = json.load(open(os.environ["NEMO_ENT"])) if os.environ.get("NEMO_ENT") else {}
+
+
+def meeting_terms(terms):
+    """The meeting-only terms: the meeting whose merged list shares the longest prefix with the app terms."""
+    best, bl = None, -1
+    for e in ENT.values():
+        m = ", ".join(e["merged"])
+        n = 0
+        for a, b in zip(m, terms):
+            if a != b:
+                break
+            n += 1
+        if n > bl:
+            best, bl = e["meeting"], n
+    return best or []
 
 os.makedirs(STATS_DIR, mode=0o700, exist_ok=True)
 STATS = os.path.join(STATS_DIR, "stats.jsonl")
@@ -73,7 +94,7 @@ def terms_of(prompt):
 
 
 def transcribe(wav_bytes, prompt, alias):
-    BIAS = {"nemotron-hot": "hotwords", "nemotron-plain": "plain"}.get(alias, "context")
+    BIAS = {"nemotron-hot": "hotwords", "nemotron-plain": "plain", "nemotron-offw": "offw"}.get(alias, "context")
     import mlx.core as mx
     from mlx_audio.stt.utils import load_audio
 
@@ -88,7 +109,10 @@ def transcribe(wav_bytes, prompt, alias):
     dur = audio.shape[0] / 16000
     terms = terms_of(prompt)
     kw = {}
-    if BIAS == "context" and terms:
+    if BIAS == "offw":
+        mt = meeting_terms(terms) if terms else []
+        kw["prompt"] = (OFF + ", ".join(mt) + ". " if mt else "") + A1W
+    elif BIAS == "context" and terms:
         kw["prompt"] = f"{PLAIN} Context terms: {terms}."
     elif BIAS == "hotwords" and terms:
         kw["hotwords"] = terms

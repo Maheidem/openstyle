@@ -1,0 +1,8 @@
+{
+  "name": "nemotron-s36-offw",
+  "description": "Nemotron through the own-server provider with the report's contextual instruction, the meeting terms only and the written-form wording (serve_openai.py alias nemotron-offw, env NEMO_ENT).",
+  "stage": "asr",
+  "corpus": "silver-14-s36",
+  "base": { "owner_name": "env" },
+  "cells": [{ "asr_server_model": "nemotron-offw" }]
+}
