@@ -113,6 +113,26 @@ describe("buildMeetingBiasTerms", () => {
     expect(terms.at(-1)).toBe("Nova Rollout");
   });
 
+  it("takes the attendee cap from OPENSTYLE_ASR_MAX_ATTENDEE_NAMES, and ignores a bad value", () => {
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      name: `Person Number${i}`,
+    }));
+    const count = (v: string | undefined) => {
+      if (v === undefined) delete process.env.OPENSTYLE_ASR_MAX_ATTENDEE_NAMES;
+      else process.env.OPENSTYLE_ASR_MAX_ATTENDEE_NAMES = v;
+      try {
+        return buildMeetingBiasTerms(row(many, null), null).length;
+      } finally {
+        delete process.env.OPENSTYLE_ASR_MAX_ATTENDEE_NAMES;
+      }
+    };
+    expect(count("5")).toBe(5);
+    expect(count("0")).toBe(0);
+    expect(count(undefined)).toBe(MAX_ATTENDEE_BIAS_NAMES);
+    expect(count("abc")).toBe(MAX_ATTENDEE_BIAS_NAMES);
+    expect(count("201")).toBe(MAX_ATTENDEE_BIAS_NAMES);
+  });
+
   it("keeps the context terms alone when there is no owner and no attendee", () => {
     expect(
       buildMeetingBiasTerms(

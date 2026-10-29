@@ -1,0 +1,8 @@
+{
+  "name": "owner-name-short",
+  "description": "Owner name set vs unset on the 2 shortest meetings.",
+  "stage": "asr",
+  "corpus": "silver-14-s34",
+  "meetings": ["ab518a0c", "c838735c"],
+  "grid": { "owner_name": ["unset", "env"] }
+}

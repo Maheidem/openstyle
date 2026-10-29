@@ -17,6 +17,8 @@
 #             <dir>/<id>/mic.wav there is copied from it, not from the app folder.
 #             The app deletes old meeting audio (retention sweep); see
 #             scripts/meeting-v2/eval-audio-copy.sh.
+#   MEETING_EVAL_SOURCE_DB  the DB to seed from (default: the real app DB).
+#             The Eval Lab sets it to the frozen seed DB of its corpus.
 
 set -euo pipefail
 
@@ -24,7 +26,7 @@ SCRATCH="${SCRATCH:-/tmp/meeting-v2}"
 BOOT_PORT="${BOOT_PORT:-4788}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROFILE="$HOME/Library/Application Support/Openstyle"
-REAL_DB="$PROFILE/freestyle.db"
+REAL_DB="${MEETING_EVAL_SOURCE_DB:-$PROFILE/freestyle.db}"
 SCRATCH_DB="$SCRATCH/test.db"
 EVAL_AUDIO_DIR="${MEETING_EVAL_AUDIO_DIR:-$HOME/Library/Application Support/Openstyle-eval/audio}"
 

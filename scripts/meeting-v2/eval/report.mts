@@ -459,6 +459,7 @@ export const SPANS_HEADER = [
   "Not in vocab",
   "Unsure skipped",
   "Empty skipped",
+  "Verified",
 ];
 
 const pctCell = (c: SpanCount) =>
@@ -483,6 +484,7 @@ function spanCells(
     pctCell(s.byVocab.notInVocab),
     String(s.unsure),
     String(s.empty),
+    s.verified ? pctCell(s.verified) : "-",
   ];
 }
 

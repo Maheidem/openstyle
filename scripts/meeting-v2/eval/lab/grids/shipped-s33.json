@@ -1,0 +1,7 @@
+{
+  "name": "shipped-s33",
+  "description": "The shipped config on the silver-3.3 keys (the acceptance number: 1152/1393 spans).",
+  "stage": "asr",
+  "corpus": "silver-14-s33",
+  "base": { "owner_name": "env" }
+}
