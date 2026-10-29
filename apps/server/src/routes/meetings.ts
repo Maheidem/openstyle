@@ -1,7 +1,7 @@
 import { closeSync, existsSync, openSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { zValidator } from "@hono/zod-validator";
-import { isSegmentVocabLeak, isVocabLeak, TERMS_MARKER } from "@openstyle/stt";
+import { isVocabLeak, TERMS_MARKER } from "@openstyle/stt";
 import { createAppLogger, errorMessage } from "@openstyle/utils";
 import {
   type CalendarEvent,
@@ -249,10 +249,8 @@ function leakCheckedTextAndStatus(
   }
   // Phase A1: the classic terms-only leak (label-less echo of the term
   // list). Real speech is almost never drawn this strongly from a
-  // proper-noun vocabulary. A segment of fewer than 4 words is never
-  // flagged: the bias holds the owner and attendee names, so "Ana?" is
-  // real speech.
-  if (isSegmentVocabLeak(chunk.text, vocabTerms)) {
+  // proper-noun vocabulary.
+  if (isVocabLeak(chunk.text, vocabTerms)) {
     return { text: null, status: "filtered" };
   }
   // Phase 3b (specs/meeting-transcription-v2.md §3.1): the FULL-prompt

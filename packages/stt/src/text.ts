@@ -261,25 +261,9 @@ export const TERMS_MARKER = /\b(?:technical\s+)?terms:\s*/i;
  * real speech that happens to be a couple of vocabulary words ("Claude
  * Code.") is common and indistinguishable from a leak at this length; the
  * actual ~80-term prompt echo is always far longer. Only applies to the
- * label-less fallback path below and to {@link isSegmentVocabLeak}; the
- * marker-anchored and single-chunk checks have no such guard, matching
- * {@link isVocabLeak}'s semantics. */
+ * label-less fallback path below; the marker-anchored and single-chunk
+ * checks have no such guard, matching {@link isVocabLeak}'s semantics. */
 const MIN_LEAK_CHUNK_TOKENS = 4;
-
-/**
- * {@link isVocabLeak} for one stored meeting segment, with the
- * {@link MIN_LEAK_CHUNK_TOKENS} guard. The meeting bias holds the owner and
- * attendee names, so a short real segment such as "Ana?" or "Ana Silva." is
- * all vocabulary words. A label-less echo of the term list is longer.
- */
-export function isSegmentVocabLeak(
-  text: string,
-  vocabTerms: string[],
-): boolean {
-  const tokenCount = normalizeText(text).split(" ").filter(Boolean).length;
-  if (tokenCount < MIN_LEAK_CHUNK_TOKENS) return false;
-  return isVocabLeak(text, vocabTerms);
-}
 
 /**
  * Strip a vocabulary-bias prompt echo out of dictation output.

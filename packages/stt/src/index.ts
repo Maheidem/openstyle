@@ -8,7 +8,6 @@ export { postProcess } from "./post-process.js";
 export {
   collapseAsrLineBreaks,
   isContextEcho,
-  isSegmentVocabLeak,
   isVocabLeak,
   normalizeText,
   sanitizeTranscriptText,
