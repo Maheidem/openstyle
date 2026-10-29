@@ -69,6 +69,12 @@
       "titleEmphasis": "fala?",
       "autoDetect": "Auto-detectar"
     },
+    "name": {
+      "title": "Qual é o seu nome?",
+      "desc": "A transcrição de reuniões usa seu nome para escrevê-lo certo. Ele fica neste Mac. Você pode mudá-lo depois em Configurações.",
+      "placeholder": "Seu nome completo",
+      "skip": "Pular"
+    },
     "tutorial": {
       "almostReady": "Quase pronto — ",
       "finish": "Começar a usar o Openstyle"
@@ -226,6 +232,9 @@
       "systemAudioUnknownNote": "Silêncio não significa necessariamente negado. Pode ser que nada estivesse tocando durante a verificação."
     },
     "meetings": {
+      "ownerName": "Seu nome",
+      "ownerNameDesc": "A transcrição de reuniões usa seu nome para escrevê-lo certo. Ele fica neste Mac.",
+      "ownerNamePlaceholder": "Por exemplo, Ana Silva",
       "projectMemory": "Usar reuniões anteriores",
       "projectMemoryDesc": "Usa reuniões anteriores da mesma pasta para escrever o resumo.",
       "useCalendar": "Usar meu calendário",

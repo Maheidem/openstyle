@@ -11,6 +11,7 @@ import {
   type NetworkSettingsForm,
   networkSettingsFormSchema,
   normalizeLanguageList,
+  OWNER_NAME_MAX,
   parseMeetingEnhanceTimeoutSeconds,
   parseMeetingSummaryTimeoutSeconds,
   parseRetentionDays,
@@ -209,6 +210,10 @@ export default function SettingsPage(): React.JSX.Element {
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   // Project memory (#234) is on unless the row says "false".
   const [projectMemory, setProjectMemory] = useState(true);
+  // The owner name: the first term of the meeting ASR bias. Saved on blur
+  // and on Enter; the ref holds the last saved value.
+  const [ownerName, setOwnerName] = useState("");
+  const savedOwnerName = useRef("");
   const [calendarProblem, setCalendarProblem] = useState<
     "denied" | "restricted" | "unavailable" | "saveFailed" | null
   >(null);
@@ -501,6 +506,8 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.meetingProjectMemory] === "false") {
       setProjectMemory(false);
     }
+    savedOwnerName.current = s[SETTINGS_KEYS.ownerName] ?? "";
+    setOwnerName(savedOwnerName.current);
     if (s[SETTINGS_KEYS.calendarEnabled] === "true") {
       setCalendarEnabled(true);
       // The user may have removed the grant in System Settings since.
@@ -780,6 +787,15 @@ export default function SettingsPage(): React.JSX.Element {
   const handleProjectMemoryToggle = useCallback((enabled: boolean) => {
     setProjectMemory(enabled);
     void putSetting(SETTINGS_KEYS.meetingProjectMemory, String(enabled));
+  }, []);
+
+  const commitOwnerName = useCallback(async (raw: string) => {
+    const name = raw.trim();
+    setOwnerName(name);
+    if (name === savedOwnerName.current) return;
+    if (await putSetting(SETTINGS_KEYS.ownerName, name)) {
+      savedOwnerName.current = name;
+    }
   }, []);
 
   const handleHistoryPausedToggle = useCallback((paused: boolean) => {
@@ -1362,6 +1378,26 @@ export default function SettingsPage(): React.JSX.Element {
           )}
           {activeSection === "meetings" && showMeetingsSection && (
             <SettingsPanel>
+              <Row
+                label={t("settings.meetings.ownerName")}
+                desc={t("settings.meetings.ownerNameDesc")}
+              >
+                <Input
+                  id="settings-owner-name"
+                  data-testid="settings-owner-name"
+                  value={ownerName}
+                  maxLength={OWNER_NAME_MAX}
+                  autoComplete="name"
+                  placeholder={t("settings.meetings.ownerNamePlaceholder")}
+                  aria-label={t("settings.meetings.ownerName")}
+                  className="max-w-72"
+                  onChange={(e) => setOwnerName(e.target.value)}
+                  onBlur={(e) => void commitOwnerName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                />
+              </Row>
               <Row
                 label={t("settings.meetings.projectMemory")}
                 desc={t("settings.meetings.projectMemoryDesc")}

@@ -69,6 +69,12 @@
       "titleEmphasis": "言語は何ですか？",
       "autoDetect": "自動検出"
     },
+    "name": {
+      "title": "お名前を教えてください",
+      "desc": "ミーティングの文字起こしで名前を正しく表記するために使います。この Mac の外には送られません。あとで設定から変更できます。",
+      "placeholder": "フルネーム",
+      "skip": "スキップ"
+    },
     "tutorial": {
       "almostReady": "準備完了まであと少し — ",
       "finish": "Openstyle の使用を開始"
@@ -226,6 +232,9 @@
       "systemAudioUnknownNote": "無音だからといって拒否されたとは限りません。確認中に何も再生されていなかっただけの可能性があります。"
     },
     "meetings": {
+      "ownerName": "あなたの名前",
+      "ownerNameDesc": "ミーティングの文字起こしで名前を正しく表記するために使います。この Mac の外には送られません。",
+      "ownerNamePlaceholder": "例：Ana Silva",
       "projectMemory": "過去のミーティングを使う",
       "projectMemoryDesc": "同じフォルダー内の過去のミーティングを使って要約を作成します。",
       "useCalendar": "カレンダーを使う",

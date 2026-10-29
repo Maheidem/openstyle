@@ -74,6 +74,12 @@
       "seeAll": "See all",
       "allLanguages": "All languages"
     },
+    "name": {
+      "title": "What is your name?",
+      "desc": "Meeting transcription uses your name to spell it correctly. It stays on this Mac. You can change it later in Settings.",
+      "placeholder": "Your full name",
+      "skip": "Skip"
+    },
     "modelSetup": {
       "title": "Download your private voice model",
       "idleDesc": "{{name}} runs on {{phrase}} and needs a one-time download{{size}}.",
@@ -267,6 +273,9 @@
       "systemAudioUnknownNote": "Silent isn't necessarily denied. Nothing may have been playing during the check."
     },
     "meetings": {
+      "ownerName": "Your name",
+      "ownerNameDesc": "Meeting transcription uses your name to spell it correctly. It stays on this Mac.",
+      "ownerNamePlaceholder": "For example, Ana Silva",
       "projectMemory": "Use earlier meetings",
       "projectMemoryDesc": "Uses earlier meetings in the same folder to write the summary.",
       "useCalendar": "Use my calendar",

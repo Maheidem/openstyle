@@ -69,6 +69,12 @@
       "titleEmphasis": "sprechen Sie?",
       "autoDetect": "Automatisch erkennen"
     },
+    "name": {
+      "title": "Wie heißen Sie?",
+      "desc": "Die Besprechungs-Transkription nutzt Ihren Namen, um ihn richtig zu schreiben. Er bleibt auf diesem Mac. Sie können ihn später in den Einstellungen ändern.",
+      "placeholder": "Ihr vollständiger Name",
+      "skip": "Überspringen"
+    },
     "tutorial": {
       "almostReady": "Fast fertig — ",
       "finish": "Openstyle verwenden"
@@ -226,6 +232,9 @@
       "systemAudioUnknownNote": "Stille bedeutet nicht zwangsläufig eine Ablehnung. Möglicherweise wurde während der Prüfung einfach nichts wiedergegeben."
     },
     "meetings": {
+      "ownerName": "Ihr Name",
+      "ownerNameDesc": "Die Besprechungs-Transkription nutzt Ihren Namen, um ihn richtig zu schreiben. Er bleibt auf diesem Mac.",
+      "ownerNamePlaceholder": "Zum Beispiel Ana Silva",
       "projectMemory": "Frühere Besprechungen nutzen",
       "projectMemoryDesc": "Nutzt frühere Besprechungen im selben Ordner, um die Zusammenfassung zu schreiben.",
       "useCalendar": "Meinen Kalender verwenden",
