@@ -3,8 +3,8 @@
 // A corpus is a manifest (<lab home>/corpora/<name>.json) plus a frozen
 // seed DB (<lab home>/corpora/<name>/source.db). The manifest holds the
 // meeting ids, the paths of the private audio copies, the sha256 of each
-// wav and sync.json, the gold folder with the sha256 of each key file, the
-// goldKind values and the goldHash. The seed DB holds the rows that
+// wav and sync.json, a frozen private copy of the gold keys with the
+// sha256 of each key file, the goldKind values and the goldHash. The seed DB holds the rows that
 // setup-scratch.sh copies (vocabulary, the languages setting, the meetings
 // rows), so a later change of the app DB does not change a run.
 //
@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   closeSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   openSync,
@@ -103,7 +104,16 @@ export interface Manifest {
     vocabulary: number;
   };
   gold: {
+    /**
+     * The frozen copies of the keys (<corpora>/<name>/gold/<id8>.json). A
+     * change of the live gold folder does not change the corpus.
+     */
     dir: string;
+    /** Where the copies came from: the folder and the file suffix. */
+    source?: { dir: string; suffix: string | null };
+    /** Spans with verified true, and with verified_unsure true. */
+    verified?: number;
+    verifiedUnsure?: number;
     goldKinds: string[];
     goldHash: string;
     /** sha256 of each key file, by id8. */
@@ -204,21 +214,38 @@ export function buildCorpus(opts: {
   name: string;
   audioRoot: string;
   goldDir: string;
+  /** Read <id8>.<suffix>.json (a backup version) instead of <id8>.json. */
+  goldSuffix?: string;
   appDb: string;
   id8s?: string[];
 }): Manifest {
-  const goldDir = resolve(opts.goldDir);
+  const srcDir = resolve(opts.goldDir);
+  const suffix = opts.goldSuffix ?? null;
+  if (suffix !== null && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/.test(suffix))
+    throw new Error("bad gold suffix");
+  const tail = suffix === null ? ".json" : `.${suffix}.json`;
   const id8s =
     opts.id8s ??
-    readdirSync(goldDir)
-      .filter((f) => /^[0-9a-f]{8}\.json$/.test(f))
+    readdirSync(srcDir)
+      .filter((f) => f.length === 8 + tail.length && f.endsWith(tail))
       .map((f) => f.slice(0, 8))
+      .filter((k) => /^[0-9a-f]{8}$/.test(k))
       .sort();
   const ids = resolveAudioIds(opts.audioRoot, id8s);
+  const dir = privateDir(join(corporaDir(), opts.name));
+  // Freeze the keys: a private copy of each file, as <id8>.json.
+  const goldDir = join(dir, "gold");
+  rmSync(goldDir, { recursive: true, force: true });
+  privateDir(goldDir);
+  for (const k of id8s) {
+    const to = join(goldDir, `${k}.json`);
+    copyFileSync(join(srcDir, `${k}${tail}`), to);
+    chmodSync(to, 0o600);
+  }
   const golds = loadGold(id8s, goldDir);
   const info = goldInfo(golds);
   if (!info?.goldHash) throw new Error("the gold keys have no goldHash");
-  const dir = privateDir(join(corporaDir(), opts.name));
+  const spans = [...golds.values()].flatMap((g) => g.spans ?? []);
   const seedPath = join(dir, "source.db");
   freezeSeed(opts.appDb, ids, seedPath);
   const seed = seedContent(seedPath);
@@ -235,6 +262,9 @@ export function buildCorpus(opts: {
     },
     gold: {
       dir: goldDir,
+      source: { dir: srcDir, suffix },
+      verified: spans.filter((x) => x.verified).length,
+      verifiedUnsure: spans.filter((x) => x.verifiedUnsure).length,
       goldKinds: info.goldKinds ?? [],
       goldHash: info.goldHash,
       files: Object.fromEntries(
@@ -304,15 +334,16 @@ export function checkCorpus(m: Manifest, only?: string[]): CheckLine[] {
       ok: golds?.get(k)?.fileSha256 === m.gold.files[k],
     });
   const info = golds ? goldInfo(golds) : null;
+  const hashOk = info?.goldHash === m.gold.goldHash;
   out.push({
-    what: `goldHash ${m.gold.goldHash}`,
-    ok: info?.goldHash === m.gold.goldHash,
+    what: `goldHash ${m.gold.goldHash}${hashOk ? "" : ` (now ${info?.goldHash ?? "-"})`}`,
+    ok: hashOk,
   });
+  const kindsOk =
+    JSON.stringify(info?.goldKinds ?? []) === JSON.stringify(m.gold.goldKinds);
   out.push({
-    what: `goldKinds ${m.gold.goldKinds.join(",")}`,
-    ok:
-      JSON.stringify(info?.goldKinds ?? []) ===
-      JSON.stringify(m.gold.goldKinds),
+    what: `goldKinds ${m.gold.goldKinds.join(",")}${kindsOk ? "" : ` (now ${(info?.goldKinds ?? []).join(",") || "-"})`}`,
+    ok: kindsOk,
   });
   out.push({
     what: "manifest mode 0600",

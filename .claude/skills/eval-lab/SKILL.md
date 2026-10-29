@@ -1,6 +1,6 @@
 ---
 name: eval-lab
-description: Turn knobs on Openstyle meeting ASR and measure each change - run a grid of knob values on the frozen private corpus (silver-14), log every cell to MLflow with a full snapshot, keep per-span results privately, then find the best runs and compare two runs. Use when you must measure a meeting ASR knob or code change, run a grid search, reproduce a past ASR result, or answer "which setup is best".
+description: Turn knobs on Openstyle meeting ASR and measure each change - run a grid of knob values on a frozen private corpus (silver-14-s34, silver-14-s33), log every cell to MLflow with a full snapshot, keep per-span results privately, then find the best runs and compare two runs. Use when you must measure a meeting ASR knob or code change, run a grid search, reproduce a past ASR result, or answer "which setup is best".
 ---
 
 # Eval Lab (meeting ASR)
@@ -38,7 +38,7 @@ export LAB_MLFLOW_URI=<MLflow server>  LAB_OWNER_NAME=<owner first name>
 | Command | What it does |
 |---|---|
 | `pnpm lab knobs` | Lists the knobs (name, how applied, default, values) and the inputs that are "not a knob yet". |
-| `pnpm lab corpus build <name> [--gold-dir d] [--audio-dir d] [--meetings id8,...]` | Writes the manifest and freezes the seed DB (vocabulary, languages, meetings rows; never the owner name). |
+| `pnpm lab corpus build <name> [--gold-dir d] [--gold-suffix s] [--audio-dir d] [--meetings id8,...]` | Writes the manifest, freezes a private copy of the gold keys (`--gold-suffix silver-3.3` takes the `<id8>.silver-3.3.json` backups) and freezes the seed DB (vocabulary, languages, meetings rows; never the owner name). |
 | `pnpm lab corpus check <name>` | Checks every audio, seed and gold hash and the file modes. `pnpm lab run` does the same check for its meetings. |
 | `pnpm lab run <grid.json> [--dry-run] [--force] [--port n]` | Runs each cell. A cell with a FINISHED run of the same snapshot hash is skipped (`--force` runs it again). |
 | `pnpm lab list [--filter knob=value] [--metrics m,...]` | One row per run, with the knobs that differ. |
@@ -54,7 +54,7 @@ A grid file is JSON (`grids/` has examples):
 {
   "name": "owner-name-short",
   "stage": "asr",
-  "corpus": "silver-14",
+  "corpus": "silver-14-s34",
   "meetings": ["ab518a0c", "c838735c"],
   "base": { "vocabulary": "corpus" },
   "grid": { "owner_name": ["unset", "env"], "max_attendee_names": [0, 20] },
@@ -77,25 +77,30 @@ A grid file is JSON (`grids/` has examples):
 
 - MLflow experiment `openstyle-lab-asr`. Params = every knob value. Tags `lab.*` = snapshot hash, git sha/branch/dirty flag/diff hash/untracked hash, code hash, worker and diarizer hashes, model ids and HF revisions, corpus manifest hash, gold hash/kinds/verified counts, scorer and lab versions, machine, times, local items folder.
 - Metrics: `spans_<group>` (recall %, plus `_hits` and `_n`) for all, high, person, term, other, in_vocab, not_in_vocab, person_no_owner and verified; `wer`, `wer_eligible` (+ errors, ref, edit counts); `possible_insertions` and `ins_*`; `segments`; `cell_wall_s`, `asr_wall_s`, `asr_fresh_meetings`, `asr_cached_meetings`; `peak_rss_worker_mb` and `peak_rss_tree_mb` when a meeting was transcribed; per meeting `m.<id8>.<metric>`.
-- Verified spans (owner ear check: `verified`, `verified_source`, `verified_text`, `verified_unsure` on a gold span): a verified span scores as high and uses `verified_text` when present. `spans_verified_n` is always logged; the rate and hits only when n > 0. `spans_verified_unsure` counts the unsure answers.
+- Verified spans (owner ear check, silver-3.4: `verified`, `verified_source`, `verified_text`, `verified_unsure` on a gold span): a verified span scores as high and uses `verified_text` when present. `spans_verified_n` is always logged; the rate and hits only when n > 0. `spans_verified_unsure` counts the unsure answers. Bias: the first 30 verified spans come only from B2/B3 disagreements, so `spans_verified` favours the arm whose spelling the owner picked there. Read it next to `spans_all`, never alone.
 - `~/.openstyle-eval/lab/runs/<run id>/`: `snapshot.json`, `items.jsonl` (one scored span per line: id8, channel, start, end, label, confidence, in-vocab, hit), `meetings.jsonl`.
 
 ## The ASR cache
 
-`~/.openstyle-eval/lab/asr/cache/<meeting id>.<key>.db`. The key holds every knob, the audio sha256, the content of `apps/server/src` and `packages/*/src`, the worker, the diarizer and its models, the run name and the lab input code. A cache hit is always valid, so grids and repeats reuse transcriptions. `meta/` keeps the ASR wall time of each entry.
+`~/.openstyle-eval/lab/asr/cache/<meeting id>.<key>.db`. The key holds every knob, the audio sha256, the content of `apps/server/src` and `packages/*/src`, the worker, the diarizer and its models, the run name and the lab files that apply the knobs (`asr.mts`, `knobs.mts`). A cache hit is always valid, so grids and repeats reuse transcriptions. `meta/` keeps the ASR wall time of each entry.
 
 ## Acceptance check (expected output, 2026-10-29)
 
 | Command | Expected |
 |---|---|
 | `pnpm meeting:eval:test` | `pass 110`, `fail 0` (after the server build) |
-| `pnpm lab corpus check silver-14` | `61/61 OK` |
-| `pnpm lab run scripts/meeting-v2/eval/lab/grids/shipped.json` (14 meetings, owner name set) | `spans_all 82.7 (1152/1393)`, `READ BACK OK` |
+| `pnpm meeting:silver:test` | `Ran 15 tests ... OK`, then `Ran 7 tests ... OK` |
+| `pnpm lab corpus check silver-14-s34` | `61/61 OK` |
+| `pnpm lab run scripts/meeting-v2/eval/lab/grids/shipped-s33.json` (14 meetings, owner name set) | `spans_all 82.7 (1152/1393)`, `READ BACK OK` |
 | The same command again | `SKIP (run <id> has this snapshot)` |
 
 ## Known facts
 
-- Corpus `silver-14`: 14 work meetings, goldKind silver-3.3, goldHash `c143902811c4`, 80 vocabulary rows frozen 2026-10-29. Audio from `~/Library/Application Support/Openstyle-eval/audio/` (the app copies go away after 30 days).
+- Corpora (2026-10-29, 14 work meetings, 80 vocabulary rows, audio from `~/Library/Application Support/Openstyle-eval/audio/`; the app copies go away after 30 days):
+  - `silver-14-s34`: the current keys, goldKind silver-3.4, goldHash `69dd82895b94`, 30 verified spans (5 with `verified_text`), 4 verified_unsure, 1396 scored spans. Use it for new work.
+  - `silver-14-s33`: the silver-3.3 backups, goldHash `c143902811c4`, 1393 scored spans. The acceptance number lives here.
+  - `silver-14`: the first manifest. It pointed at the live gold folder, so its check fails since the 3.4 keys landed (`goldHash c143902811c4 (now 69dd82895b94)`). Since then a corpus freezes its own copy of the keys. Keep it: runs B and C of 2026-10-29 refer to it.
+- The validator of the keys: `pnpm meeting:silver:validate --kind silver-3.4` (with `SILVER_MEETINGS` and `SILVER_KEYS`) gives `14/14 pass`. Its tests: `pnpm meeting:silver:test`.
 - ASR repeat runs are byte-identical, so a cache hit gives the same metrics as a fresh run.
 - A full 14-meeting ASR run takes 20 to 27 min. Run it in the background and check the log.
 

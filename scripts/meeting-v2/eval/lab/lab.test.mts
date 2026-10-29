@@ -377,11 +377,41 @@ test("corpus: build, check OK, then a changed wav and a changed key fail", () =>
     writeFileSync(join(audio, "mic.wav"), "fake mic changed");
     assert.deepEqual(ok(), ["audio abcd1234 mic.wav"]);
     writeFileSync(join(audio, "mic.wav"), "fake mic");
+    // A new version of the live key does not change the frozen corpus.
     writeFileSync(
       join(gold, "abcd1234.json"),
       goldJson([span({ text: "Other" })]),
     );
-    assert.deepEqual(ok(), ["gold abcd1234", "goldHash " + m.gold.goldHash]);
+    assert.deepEqual(ok(), []);
+    // A change of the frozen copy fails, and the line names the new hash.
+    const frozen = join(m.gold.dir, "abcd1234.json");
+    assert.ok(frozen.startsWith(join(home, "lab", "corpora", "c1")));
+    assert.equal(statSync(frozen).mode & 0o777, 0o600);
+    writeFileSync(frozen, goldJson([span({ text: "Other" })]));
+    const bad = ok();
+    assert.equal(bad[0], "gold abcd1234");
+    assert.match(
+      bad[1] as string,
+      new RegExp(`^goldHash ${m.gold.goldHash} \\(now [0-9a-f]{12}\\)$`),
+    );
+    // --gold-suffix freezes a backup version (<id8>.<suffix>.json).
+    writeFileSync(
+      join(gold, "abcd1234.silver-3.3.json"),
+      goldJson([
+        span({ verified: true, verified_source: "ear-check:b1:2026-10-29" }),
+      ]),
+    );
+    const m2 = buildCorpus({
+      name: "c2",
+      audioRoot: join(home, "audio"),
+      goldDir: gold,
+      goldSuffix: "silver-3.3",
+      appDb: app,
+    });
+    assert.deepEqual(Object.keys(m2.gold.files), ["abcd1234"]);
+    assert.deepEqual([m2.gold.verified, m2.gold.verifiedUnsure], [1, 0]);
+    assert.notEqual(m2.gold.goldHash, m.gold.goldHash);
+    assert.deepEqual(ok(readManifest("c2").manifest), []);
   } finally {
     if (old === undefined) delete process.env.LAB_HOME;
     else process.env.LAB_HOME = old;
@@ -437,13 +467,23 @@ test("verified spans: parse, errors name the field only", () => {
   assert.match(secret, /verified_text must be/);
   assert.match(
     err({ verified_unsure: true }),
-    /verified_unsure needs verified_source/,
+    /verified or verified_unsure needs verified_source/,
   );
   assert.match(
     err({ verified_text: "Quux" }),
     /verified_text needs verified true/,
   );
   assert.ok(!err({ verified_text: "Quux" }).includes("Quux"));
+  assert.match(err({ verified: true }), /needs verified_source/);
+  assert.match(
+    err({ verified_source: "ear-check:b1:2026-10-29" }),
+    /verified_source needs verified or verified_unsure/,
+  );
+  // verified_text equal to text is a fault (the key must leave it out).
+  assert.match(
+    err({ verified: true, verified_source: "s", verified_text: "Zorblax" }),
+    /must differ from text/,
+  );
   assert.match(
     err({ verified: true, verified_unsure: true, verified_source: "x" }),
     /must not both be true/,

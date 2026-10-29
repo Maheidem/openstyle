@@ -449,10 +449,17 @@ function parseSpan(x: unknown, w: string): GoldSpan {
       fail(w, `${k} must be a non-empty string or absent`);
   if (x.verified === true && x.verified_unsure === true)
     fail(w, "verified and verified_unsure must not both be true");
-  if (x.verified_unsure === true && x.verified_source === undefined)
-    fail(w, "verified_unsure needs verified_source");
-  if (x.verified_text !== undefined && x.verified !== true)
-    fail(w, "verified_text needs verified true");
+  // The same rules as validate_silver2.py (silver-3.4).
+  const flagged = x.verified === true || x.verified_unsure === true;
+  if (flagged && x.verified_source === undefined)
+    fail(w, "verified or verified_unsure needs verified_source");
+  if (!flagged && x.verified_source !== undefined)
+    fail(w, "verified_source needs verified or verified_unsure");
+  if (
+    x.verified_text !== undefined &&
+    (x.verified !== true || x.verified_text === x.text)
+  )
+    fail(w, "verified_text needs verified true and must differ from text");
   return {
     channel: x.channel,
     startMs: x.startMs,

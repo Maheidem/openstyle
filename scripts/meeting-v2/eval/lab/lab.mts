@@ -1,7 +1,7 @@
 // lab.mts: the Eval Lab CLI (`pnpm lab <command>`). Phase 2: meeting ASR.
 //
 //   pnpm lab knobs
-//   pnpm lab corpus build <name> [--gold-dir <dir>] [--audio-dir <dir>] [--meetings <id8,...>]
+//   pnpm lab corpus build <name> [--gold-dir <dir>] [--gold-suffix <s>] [--audio-dir <dir>] [--meetings <id8,...>]
 //   pnpm lab corpus check <name> [--meetings <id8,...>]
 //   pnpm lab run <grid.json> [--force] [--dry-run] [--port <n>]
 //   pnpm lab list [--stage asr] [--filter knob=value ...] [--metrics m,...]
@@ -84,7 +84,7 @@ const positional = argv.filter(
     !a.startsWith("--") &&
     !(
       i > 0 &&
-      /^--(gold-dir|audio-dir|meetings|port|stage|filter|metrics|metric|top)$/.test(
+      /^--(gold-dir|gold-suffix|audio-dir|meetings|port|stage|filter|metrics|metric|top)$/.test(
         argv[i - 1] as string,
       )
     ),
@@ -154,10 +154,11 @@ function cmdCorpus() {
         "Openstyle",
         "freestyle.db",
       ),
+      goldSuffix: arg("gold-suffix"),
       id8s: only,
     });
     console.log(
-      `corpus ${name}: ${m.meetings.length} meetings, ${m.seed.vocabulary} vocabulary rows, goldHash ${m.gold.goldHash}, goldKinds ${m.gold.goldKinds.join(",")}`,
+      `corpus ${name}: ${m.meetings.length} meetings, ${m.seed.vocabulary} vocabulary rows, goldHash ${m.gold.goldHash}, goldKinds ${m.gold.goldKinds.join(",")}, verified ${m.gold.verified} verified_unsure ${m.gold.verifiedUnsure}`,
     );
   } else if (sub !== "check") usage("corpus needs build|check <name>");
   const { manifest, hash } = readManifest(name);
@@ -172,7 +173,7 @@ function cmdCorpus() {
 
 // --- run ---------------------------------------------------------------------------
 
-/** The ASR cache key parts of the lab: the input-shaping lab files, the models. */
+/** The ASR cache key parts of the lab: the code hash, the diarizer models, and asr.mts and knobs.mts (they apply the knobs). */
 function labKeyParts(code: ReturnType<typeof codeFields>): string[] {
   const lab = join(repoRoot, "scripts", "meeting-v2", "eval", "lab");
   return [
@@ -180,7 +181,7 @@ function labKeyParts(code: ReturnType<typeof codeFields>): string[] {
     `diarizerModels=${code.diarizerModelsSha256}`,
     `lab=${sha256(
       treeParts(lab)
-        .filter((p) => /\/(asr|knobs|corpus)\.mts:/.test(p))
+        .filter((p) => /\/(asr|knobs)\.mts:/.test(p))
         .join("\n"),
     )}`,
   ];

@@ -2,6 +2,6 @@
   "name": "shipped",
   "description": "The shipped config on all 14 meetings: owner name set, the other knobs at their default.",
   "stage": "asr",
-  "corpus": "silver-14",
+  "corpus": "silver-14-s34",
   "base": { "owner_name": "env" }
 }

@@ -1,19 +1,16 @@
-"""JSON-schema check of the 14 silver keys (goldVersion 3; goldKind silver-2, silver-3, silver-3.1, silver-3.2 or silver-3.3). Prints ids and error paths only.
+"""JSON-schema check of the 14 silver keys (goldVersion 3; goldKind silver-2, silver-3, silver-3.1, silver-3.2, silver-3.3 or silver-3.4). Prints ids and error paths only.
 
-Run: python3 -I validate_silver2.py [--kind silver-3.3] [--suffix .silver-2]   (pnpm meeting:silver:validate --kind silver-3.3)
+Run: python3 -I validate_silver2.py [--kind silver-3.4] [--suffix .silver-2]   (pnpm meeting:silver:validate --kind silver-3.4)
 Needs the jsonschema package. Paths: silver_paths.py (SILVER_KEYS, SILVER_MEETINGS).
+silver-3.4 adds the owner's ear check on a span: verified, verified_source, verified_text, verified_unsure.
+Tests: test_validate_silver.py (fictional keys).
 """
 import json, os, sys
 import jsonschema
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import silver_paths as P  # noqa: E402
 
-KEYS = P.KEYS
-IDS = P.meeting_ids()
 MS = {"type": "integer", "minimum": 0}
 IND = ["h1", "h3", "parakeet", "openai", "gemini", "meet", "krisp"]
-KIND = sys.argv[sys.argv.index("--kind") + 1] if "--kind" in sys.argv else "silver-3"
-SUF = sys.argv[sys.argv.index("--suffix") + 1] if "--suffix" in sys.argv else ""
 CLOUD = {"type": "object", "required": ["engine", "time_basis", "time_quality"], "additionalProperties": False,
          "properties": {"engine": {"type": "string", "minLength": 1}, "time_basis": {"type": "string", "minLength": 1},
                         "time_quality": {"enum": ["good", "coarse", "bad"]}}}
@@ -30,14 +27,19 @@ SPAN = {"type": "object", "additionalProperties": False,
                        "label": {"enum": ["term", "product", "person", "org", "place", "other"]}, "in_vocab": {"type": "boolean"},
                        "confidence": {"enum": ["high", "medium", "unsure"]},
                        "witnesses": {"type": "array", "items": {"enum": ["h1", "h2", "h3", "app", "parakeet", "openai", "gemini", "meet", "krisp"]}, "uniqueItems": True},
-                       "verifier_conflict": {"const": True}, "alt_text": {"type": "string", "minLength": 1}}}
+                       "verifier_conflict": {"const": True}, "alt_text": {"type": "string", "minLength": 1},
+                       "verified": {"const": True}, "verified_source": {"type": "string", "minLength": 1},
+                       "verified_text": {"type": "string", "minLength": 1}, "verified_unsure": {"const": True}}}
 NN = {"type": ["integer", "null"], "minimum": 0}
-SCHEMA = {
+
+
+def schema(kind):
+    return {
     "type": "object", "additionalProperties": False,
     "required": ["format", "goldVersion", "goldKind", "meeting", "meetingId", "id8", "witnesses", "transcript", "spans", "verification",
                  "verifiedSpans", "timeToleranceMs", "fixes", "mustNotChange", "summary", "tags", "speakers", "asrHash", "builtAt"],
     "properties": {
-        "format": {"const": "openstyle-gold"}, "goldVersion": {"const": 3}, "goldKind": {"const": KIND},
+        "format": {"const": "openstyle-gold"}, "goldVersion": {"const": 3}, "goldKind": {"const": kind},
         "meeting": {"type": "string", "pattern": "^[0-9a-f]{8}$"}, "id8": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
         "meetingId": {"type": "string", "minLength": 9}, "asrHash": {"type": ["string", "null"]}, "builtAt": {"type": "string"},
         "verifiedSpans": MS, "timeToleranceMs": MS,
@@ -53,12 +55,18 @@ SCHEMA = {
         "summary": {"type": ["object", "null"]}, "tags": {"type": ["object", "null"]}, "speakers": {"type": ["object", "null"]},
     },
 }
-jsonschema.Draft202012Validator.check_schema(SCHEMA)
-V = jsonschema.Draft202012Validator(SCHEMA)
-bad = 0
-for m in IDS:
-    g = json.load(open(f"{KEYS}/{m}{SUF}.json", encoding="utf-8"))
-    errs = [("/".join(map(str, e.absolute_path)) or "<root>") + ": " + e.validator for e in V.iter_errors(g)]
+
+
+# The kinds where a list spelling with a sound-alike alt_text may stay high/medium (it keeps alt_text).
+ALT_TEXT_KEEP = ("silver-3.1", "silver-3.2", "silver-3.3", "silver-3.4")
+
+
+def key_errors(g, m, kind, validator=None):
+    """The error paths of one key (no text). m = the id8 of the file name."""
+    v = validator or jsonschema.Draft202012Validator(schema(kind))
+    errs = [("/".join(map(str, e.absolute_path)) or "<root>") + ": " + e.validator for e in v.iter_errors(g)]
+    if errs:
+        return errs
     # cross-field rules the schema cannot say
     if g.get("meeting") != m or g.get("id8") != m or not str(g.get("meetingId", "")).startswith(m):
         errs.append("meeting/id8/meetingId: do not match the file name")
@@ -74,15 +82,45 @@ for m in IDS:
     for i, s in enumerate(g["spans"]):
         if s["endMs"] < s["startMs"]:
             errs.append(f"spans/{i}: endMs < startMs")
-        # silver-3.1, silver-3.2 and silver-3.3 (same rule): a list spelling with a sound-alike alt_text may stay high/medium (it keeps alt_text).
-        if s.get("alt_text") and s["confidence"] != "unsure" and KIND not in ("silver-3.1", "silver-3.2", "silver-3.3"):
+        if s.get("alt_text") and s["confidence"] != "unsure" and kind not in ALT_TEXT_KEEP:
             errs.append(f"spans/{i}: alt_text but not unsure")
         if s.get("verifier_conflict") and s["confidence"] != "unsure":
             errs.append(f"spans/{i}: verifier_conflict but not unsure")
         for w in s["witnesses"]:
             if w not in ("app",) and w not in g["witnesses"]:
                 errs.append(f"spans/{i}: witness {w} not in the witness block")
-    bad += bool(errs)
-    print(m, "OK" if not errs else f"FAIL ({len(errs)}): " + "; ".join(errs[:5]))
-print(f"schema check ({KIND}{SUF}): {len(IDS) - bad}/{len(IDS)} pass")
-sys.exit(1 if bad else 0)
+        # The ear check (silver-3.4). The errors name the field, never its value.
+        ear = [k for k in ("verified", "verified_source", "verified_text", "verified_unsure") if k in s]
+        if ear and kind in ("silver-2", "silver-3", "silver-3.1", "silver-3.2", "silver-3.3"):
+            errs.append(f"spans/{i}: ear-check fields in a {kind} key")
+        if (s.get("verified") or s.get("verified_unsure")) and not s.get("verified_source"):
+            errs.append(f"spans/{i}: verified or verified_unsure without verified_source")
+        if s.get("verified_source") and not (s.get("verified") or s.get("verified_unsure")):
+            errs.append(f"spans/{i}: verified_source without verified or verified_unsure")
+        if s.get("verified") and s.get("verified_unsure"):
+            errs.append(f"spans/{i}: verified and verified_unsure together")
+        if "verified_text" in s and (not s.get("verified") or s["verified_text"] == s["text"]):
+            errs.append(f"spans/{i}: verified_text without verified, or equal to text")
+    return errs
+
+
+def main():
+    import silver_paths as P
+    kind = sys.argv[sys.argv.index("--kind") + 1] if "--kind" in sys.argv else "silver-3"
+    suf = sys.argv[sys.argv.index("--suffix") + 1] if "--suffix" in sys.argv else ""
+    sch = schema(kind)
+    jsonschema.Draft202012Validator.check_schema(sch)
+    v = jsonschema.Draft202012Validator(sch)
+    ids = P.meeting_ids()
+    bad = 0
+    for m in ids:
+        g = json.load(open(f"{P.KEYS}/{m}{suf}.json", encoding="utf-8"))
+        errs = key_errors(g, m, kind, v)
+        bad += bool(errs)
+        print(m, "OK" if not errs else f"FAIL ({len(errs)}): " + "; ".join(errs[:5]))
+    print(f"schema check ({kind}{suf}): {len(ids) - bad}/{len(ids)} pass")
+    sys.exit(1 if bad else 0)
+
+
+if __name__ == "__main__":
+    main()

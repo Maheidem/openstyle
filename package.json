@@ -32,7 +32,7 @@
     "meeting:silver:score-arms": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/silver/score/score_arms.mts",
     "meeting:silver:compare-arms": "python3 -I scripts/meeting-v2/eval/silver/score/compare_arms.py",
     "meeting:silver:extract-unsup": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/silver/score/extract_unsup.mts",
-    "meeting:silver:test": "python3 -I scripts/meeting-v2/eval/silver/test_silver_paths.py",
+    "meeting:silver:test": "python3 -I scripts/meeting-v2/eval/silver/test_silver_paths.py && python3 -I scripts/meeting-v2/eval/silver/vote/test_validate_silver.py",
     "test": "turbo test",
     "prepare": "is-ci || husky"
   },
