@@ -842,6 +842,21 @@ test("compare: deltas, meetings better/worse/same, span flips, basis warnings", 
   assert.deepEqual(c.meetings, { better: ["a"], worse: ["c"], same: ["b"] });
   assert.deepEqual(c.flips, { missToHit: 1, hitToMiss: 1, common: 3 });
   assert.deepEqual(c.knobs, [{ key: "owner_name", a: "unset", b: "set:abc" }]);
+  // Twin spans (same key) never hide each other: equal lists have no flips.
+  const twins = [it(5, true), it(5, false), it(5, true)];
+  assert.deepEqual(compareRuns(a, b, null, null, twins, [...twins]).flips, {
+    missToHit: 0,
+    hitToMiss: 0,
+    common: 3,
+  });
+  assert.deepEqual(
+    compareRuns(a, b, null, null, twins, [
+      it(5, true),
+      it(5, true),
+      it(5, true),
+    ]).flips,
+    { missToHit: 1, hitToMiss: 0, common: 3 },
+  );
   // Without local items: meetings from the m.* metrics, no flips.
   const d = compareRuns(a, b, null, null, null, null);
   assert.deepEqual(d.meetings.better, ["aaaa1111"]);

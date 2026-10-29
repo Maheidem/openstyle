@@ -103,6 +103,22 @@ export interface Comparison {
 const itemKey = (x: SpanItem) => `${x.m}|${x.ch}|${x.s}|${x.e}|${x.l}`;
 
 /**
+ * Unique keys of the items: twin spans (same channel, time and label)
+ * get "#1", "#2", ... in file order, so no item hides another.
+ */
+function keyed(xs: SpanItem[]): Map<string, boolean> {
+  const seen = new Map<string, number>();
+  const out = new Map<string, boolean>();
+  for (const x of xs) {
+    const k = itemKey(x);
+    const n = (seen.get(k) ?? 0) + 1;
+    seen.set(k, n);
+    out.set(`${k}#${n}`, x.hit);
+  }
+  return out;
+}
+
+/**
  * Compare run B against run A: pooled metric deltas (B - A), per-meeting
  * better/worse/same on span hits, span flips, the changed knobs, and a
  * warning for each basis tag that differs (corpus, gold, scorer, meetings).
@@ -159,14 +175,14 @@ export function compareRuns(
   }
   let flips: Comparison["flips"] = null;
   if (ia && ib) {
-    const mapA = new Map(ia.map((x) => [itemKey(x), x.hit]));
+    const mapA = keyed(ia);
     flips = { missToHit: 0, hitToMiss: 0, common: 0 };
-    for (const x of ib) {
-      const prev = mapA.get(itemKey(x));
+    for (const [k, hit] of keyed(ib)) {
+      const prev = mapA.get(k);
       if (prev === undefined) continue;
       flips.common++;
-      if (!prev && x.hit) flips.missToHit++;
-      if (prev && !x.hit) flips.hitToMiss++;
+      if (!prev && hit) flips.missToHit++;
+      if (prev && !hit) flips.hitToMiss++;
     }
   }
   const knobKeys = [

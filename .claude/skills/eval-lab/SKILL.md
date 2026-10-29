@@ -107,7 +107,7 @@ A grid file is JSON (`grids/` has examples):
 ## Troubleshooting
 
 - `no dev worker at .../dist/mlx_asr_worker`: set `OPENSTYLE_MLX_LLM_WORKER` (setup).
-- `the server build is older than ...`: `pnpm turbo build --filter=@openstyle/server`.
+- `the server build is older than ...`: `pnpm turbo build --filter=@openstyle/server --force`. Without `--force`, a turbo cache hit restores an old `dist/` (old mtime) after a rebase, and the check fails again (seen 2026-10-29).
 - `missing .../fluidaudio-diarize`: copy the diarizer files (setup).
 - `corpus check failed: audio ...`: the private audio changed. Find out why before you build a new corpus under a new name.
 - `port ... is in use`: pass `--port <base>` (the lab uses base+2 and base+3).
