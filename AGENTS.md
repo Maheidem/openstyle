@@ -110,6 +110,7 @@ Repeatable procedures live as skills. Check them before you start a task; do not
 | `site-captures` | Refresh the landing page screenshots and pill video (`node scripts/site-captures/capture.mjs`). |
 | `meeting-benchmarks` | Measure meeting transcription on real meetings, read-only, numbers only, against the recorded baseline. |
 | `silver-gold` | Build and check the silver gold span keys (ASR witness vote) and score the app or ASR arms against them (`scripts/meeting-v2/eval/silver/`). |
+| `eval-lab` | Turn knobs on meeting ASR: run grids on the frozen private corpus, log each cell to MLflow with a full snapshot, then `pnpm lab best` / `compare` (`scripts/meeting-v2/eval/lab/`). |
 | `branch-lifecycle` | Branch rules: draft PR at birth, WIP limit 2, session-start check (`scripts/branch-status.sh`, `--fix` closes out merged PRs), auto-merge, cleanup. |
 | `council` | Judge a meeting quality change with three independent judges (Claude, pi, Codex); release only on consensus (`scripts/council.sh`). |
 | `pi-briefs` | Delegate work to pi children (local model): brief template, time box, known failure modes. |
