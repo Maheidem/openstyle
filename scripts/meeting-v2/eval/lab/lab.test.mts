@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { parseGold } from "../gold.mts";
-import { scoreSpans } from "../score.mts";
+import { addSpanScores, scoreSpans } from "../score.mts";
 import { applyDbKnobs, envKnobs } from "./asr.mts";
 import { buildCorpus, checkCorpus, readManifest } from "./corpus.mts";
 import { expandGrid, parseGrid } from "./grid.mts";
@@ -94,6 +94,7 @@ test("grid: an empty grid is one cell of defaults; bad files fail", () => {
   bad({ ...GRID, grid: { diarization: [] } }, /non-empty/);
   bad({ ...GRID, meetings: ["not-id8"] }, /id8/);
   bad({ ...GRID, grid: { max_attendee_names: [201] } }, /0 to 200/);
+  bad({ ...GRID, grid: { attendee_name_form: ["last"] } }, /full, first, both/);
 });
 
 test("knobs: values, numbers as strings, run names", () => {
@@ -103,6 +104,17 @@ test("knobs: values, numbers as strings, run names", () => {
     '["en","pt"]',
   );
   assert.throws(() => resolveKnobs({ languages: "en" }), /languages/);
+  // The name form is an env knob with the shipped default, and a distinct value.
+  assert.equal(resolveKnobs({}).attendee_name_form, "full");
+  assert.equal(
+    resolveKnobs({ attendee_name_form: "both" }).attendee_name_form,
+    "both",
+  );
+  assert.deepEqual(
+    envKnobs(resolveKnobs({ attendee_name_form: "first" }))
+      .OPENSTYLE_ASR_ATTENDEE_NAME_FORM,
+    "first",
+  );
   assert.throws(() => resolveKnobs({ asr_model: "gpt-x" }), /catalog/);
   const rn = (diarization: string, asr_context: string) =>
     runName(resolveKnobs({ diarization, asr_context }));
@@ -112,6 +124,7 @@ test("knobs: values, numbers as strings, run names", () => {
   assert.equal(rn("off", "on"), "R3c-on");
   assert.deepEqual(envKnobs(resolveKnobs({})), {
     OPENSTYLE_ASR_MAX_ATTENDEE_NAMES: "20",
+    OPENSTYLE_ASR_ATTENDEE_NAME_FORM: "full",
   });
 });
 
@@ -128,6 +141,7 @@ const snap = (knobs: Record<string, string>): Snapshot => ({
     goldKinds: ["silver-3.3"],
     verified: 0,
     verifiedUnsure: 0,
+    verifiedNone: 0,
   },
   scorerVersion: "s1",
   labVersion: "l1",
@@ -467,7 +481,7 @@ test("verified spans: parse, errors name the field only", () => {
   assert.match(secret, /verified_text must be/);
   assert.match(
     err({ verified_unsure: true }),
-    /verified or verified_unsure needs verified_source/,
+    /verified, verified_unsure or verified_none needs verified_source/,
   );
   assert.match(
     err({ verified_text: "Quux" }),
@@ -477,7 +491,7 @@ test("verified spans: parse, errors name the field only", () => {
   assert.match(err({ verified: true }), /needs verified_source/);
   assert.match(
     err({ verified_source: "ear-check:b1:2026-10-29" }),
-    /verified_source needs verified or verified_unsure/,
+    /verified_source needs verified, verified_unsure or verified_none/,
   );
   // verified_text equal to text is a fault (the key must leave it out).
   assert.match(
@@ -488,6 +502,110 @@ test("verified spans: parse, errors name the field only", () => {
     err({ verified: true, verified_unsure: true, verified_source: "x" }),
     /must not both be true/,
   );
+});
+
+test("verified_none: parse, refuse a second ear flag, no text in errors", () => {
+  const src = "ear-check:b2:2026-10-29";
+  const g = parseGold(
+    goldJson([
+      span({ confidence: "unsure", verified_none: true, verified_source: src }),
+    ]),
+    "abcd1234",
+  );
+  assert.deepEqual(
+    g.spans?.map((s) => [s.verified, s.verifiedUnsure, s.verifiedNone]),
+    [[false, false, true]],
+  );
+  const err = (o: Record<string, unknown>) => {
+    try {
+      parseGold(goldJson([span(o)]), "abcd1234");
+    } catch (e) {
+      return (e as Error).message;
+    }
+    return "no error";
+  };
+  assert.match(err({ verified_none: "yes" }), /verified_none must be/);
+  assert.match(err({ verified_none: true }), /needs verified_source/);
+  assert.match(
+    err({ verified_none: true, verified: true, verified_source: src }),
+    /verified_none must not go with/,
+  );
+  assert.match(
+    err({ verified_none: true, verified_unsure: true, verified_source: src }),
+    /verified_none must not go with/,
+  );
+  assert.match(
+    err({ verified_none: true, verified_source: src, verified_text: "Quux" }),
+    /verified_text needs verified true/,
+  );
+});
+
+test("verified_none spans: left out of every count, counted on their own", () => {
+  const src = "ear-check:b2:2026-10-29";
+  const g = parseGold(
+    goldJson([
+      span(),
+      span({
+        startMs: 1500,
+        endMs: 1800,
+        text: "Quux",
+        confidence: "unsure",
+        verified_none: true,
+        verified_source: src,
+      }),
+      // A high span with verified_none is left out too.
+      span({
+        startMs: 9000,
+        endMs: 9500,
+        text: "Vexor",
+        verified_none: true,
+        verified_source: src,
+      }),
+    ]),
+    "abcd1234",
+  );
+  const rows = [
+    {
+      id: 1,
+      source: "mic",
+      idx: 0,
+      start_ms: 1000,
+      end_ms: 2000,
+      text: "we tried zorblax",
+      enhanced_text: null,
+    },
+    {
+      id: 2,
+      source: "mic",
+      idx: 1,
+      start_ms: 5000,
+      end_ms: 6000,
+      text: "then quux",
+      enhanced_text: null,
+    },
+  ];
+  const s = scoreSpans(g.spans ?? [], rows as never, "asr");
+  assert.deepEqual([s.all.hits, s.all.n], [1, 1]);
+  assert.deepEqual([s.high.hits, s.high.n], [1, 1]);
+  assert.equal(s.verifiedNone, 2);
+  assert.equal(s.unsure, 0);
+  assert.equal(s.empty, 0);
+  assert.equal(addSpanScores([s, s]).verifiedNone, 4);
+  const dir = tmp();
+  try {
+    const r = scoreRunDb(
+      runDb(dir, "We tried Zorblax today, Quux."),
+      [ID],
+      new Map([["abcd1234", g]]),
+    );
+    assert.equal(r.metrics.spans_all_n, 1);
+    assert.equal(r.metrics.spans_verified_none, 2);
+    assert.equal(r.items.length, 1);
+    // The span of a verified_none place supports no insertion: Quux stays unsupported.
+    assert.equal(r.metrics.ins_vocab_unsup, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("verified spans: high confidence, never skipped, matched on verified_text", () => {

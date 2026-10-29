@@ -235,6 +235,7 @@ async function cmdRun() {
     goldKinds: manifest.gold.goldKinds,
     verified: spans.filter((s) => s.verified).length,
     verifiedUnsure: spans.filter((s) => s.verifiedUnsure).length,
+    verifiedNone: spans.filter((s) => s.verifiedNone).length,
   };
   const code = codeFields();
   const keyParts = labKeyParts(code);
@@ -297,6 +298,7 @@ async function cmdRun() {
       "lab.gold_kinds": goldInfo.goldKinds.join(","),
       "lab.gold_verified": String(goldInfo.verified),
       "lab.gold_verified_unsure": String(goldInfo.verifiedUnsure),
+      "lab.gold_verified_none": String(goldInfo.verifiedNone),
       "lab.scorer_version": code.scorerVersion,
       "lab.lab_version": code.labVersion,
       "lab.git_sha": code.git.sha,

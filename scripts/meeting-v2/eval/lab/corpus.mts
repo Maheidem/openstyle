@@ -114,6 +114,8 @@ export interface Manifest {
     /** Spans with verified true, and with verified_unsure true. */
     verified?: number;
     verifiedUnsure?: number;
+    /** Spans with verified_none true (not scored). */
+    verifiedNone?: number;
     goldKinds: string[];
     goldHash: string;
     /** sha256 of each key file, by id8. */
@@ -265,6 +267,7 @@ export function buildCorpus(opts: {
       source: { dir: srcDir, suffix },
       verified: spans.filter((x) => x.verified).length,
       verifiedUnsure: spans.filter((x) => x.verifiedUnsure).length,
+      verifiedNone: spans.filter((x) => x.verifiedNone).length,
       goldKinds: info.goldKinds ?? [],
       goldHash: info.goldHash,
       files: Object.fromEntries(

@@ -115,7 +115,7 @@ for m, d in data.items():
         segs = d["sys"][base]
         ds = []
         for i, sp in enumerate(d["gold"]["spans"]):
-            if sp["confidence"] not in ("high", "medium"):
+            if sp["confidence"] not in ("high", "medium") or sp.get("verified_none"):
                 continue
             st = NORM[f"k|{m}|{i}"]
             hits = []
@@ -134,7 +134,7 @@ for m, d in data.items():
 SW = {k: fold(v).split() for k, v in NORM.items()}
 HITS = {}
 for m, d in data.items():
-    idx = [i for i, sp in enumerate(d["gold"]["spans"]) if sp["confidence"] in ("high", "medium") and SW[f"k|{m}|{i}"]]
+    idx = [i for i, sp in enumerate(d["gold"]["spans"]) if sp["confidence"] in ("high", "medium") and not sp.get("verified_none") and SW[f"k|{m}|{i}"]]
     targets = [(sp["channel"], sp["startMs"], sp["endMs"], SW[f"k|{m}|{i}"]) for i in idx for sp in [d["gold"]["spans"][i]]]
     for sname, segs in d["sys"].items():
         sw = [(ch, s, e, SW[f"s|{m}|{sname}|{j}"]) for j, (ch, s, e, t) in enumerate(segs)]

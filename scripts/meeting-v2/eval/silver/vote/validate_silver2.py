@@ -1,11 +1,12 @@
-"""JSON-schema check of the 14 silver keys (goldVersion 3; goldKind silver-2, silver-3, silver-3.1, silver-3.2, silver-3.3 or silver-3.4). Prints ids and error paths only.
+"""JSON-schema check of the 14 silver keys (goldVersion 3; goldKind silver-2, silver-3, silver-3.1, silver-3.2, silver-3.3, silver-3.4, silver-3.5 or silver-3.6). Prints ids and error paths only.
 
 Run: python3 -I validate_silver2.py [--kind silver-3.4] [--suffix .silver-2]   (pnpm meeting:silver:validate --kind silver-3.4)
 Needs the jsonschema package. Paths: silver_paths.py (SILVER_KEYS, SILVER_MEETINGS).
 silver-3.4 adds the owner's ear check on a span: verified, verified_source, verified_text, verified_unsure.
+silver-3.5 and silver-3.6 add verified_none: the owner hears no named entity at this place.
 Tests: test_validate_silver.py (fictional keys).
 """
-import json, os, sys
+import json, os, re, sys
 import jsonschema
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -29,7 +30,8 @@ SPAN = {"type": "object", "additionalProperties": False,
                        "witnesses": {"type": "array", "items": {"enum": ["h1", "h2", "h3", "app", "parakeet", "openai", "gemini", "meet", "krisp"]}, "uniqueItems": True},
                        "verifier_conflict": {"const": True}, "alt_text": {"type": "string", "minLength": 1},
                        "verified": {"const": True}, "verified_source": {"type": "string", "minLength": 1},
-                       "verified_text": {"type": "string", "minLength": 1}, "verified_unsure": {"const": True}}}
+                       "verified_text": {"type": "string", "minLength": 1}, "verified_unsure": {"const": True},
+                       "verified_none": {"const": True}}}
 NN = {"type": ["integer", "null"], "minimum": 0}
 
 
@@ -58,7 +60,12 @@ def schema(kind):
 
 
 # The kinds where a list spelling with a sound-alike alt_text may stay high/medium (it keeps alt_text).
-ALT_TEXT_KEEP = ("silver-3.1", "silver-3.2", "silver-3.3", "silver-3.4")
+ALT_TEXT_KEEP = ("silver-3.1", "silver-3.2", "silver-3.3", "silver-3.4", "silver-3.5", "silver-3.6")
+# The kinds that carry the ear check. A verified span may keep verifier_conflict and alt_text there:
+# the ear check wins and the flag stays as history.
+EAR_KINDS = ("silver-3.4", "silver-3.5", "silver-3.6")
+# verified_none (no named entity here) starts with silver-3.5.
+NONE_KINDS = ("silver-3.5", "silver-3.6")
 
 
 def key_errors(g, m, kind, validator=None):
@@ -84,21 +91,24 @@ def key_errors(g, m, kind, validator=None):
             errs.append(f"spans/{i}: endMs < startMs")
         if s.get("alt_text") and s["confidence"] != "unsure" and kind not in ALT_TEXT_KEEP:
             errs.append(f"spans/{i}: alt_text but not unsure")
-        if s.get("verifier_conflict") and s["confidence"] != "unsure":
+        if s.get("verifier_conflict") and s["confidence"] != "unsure" and not (s.get("verified") and kind in EAR_KINDS):
             errs.append(f"spans/{i}: verifier_conflict but not unsure")
         for w in s["witnesses"]:
             if w not in ("app",) and w not in g["witnesses"]:
                 errs.append(f"spans/{i}: witness {w} not in the witness block")
         # The ear check (silver-3.4). The errors name the field, never its value.
-        ear = [k for k in ("verified", "verified_source", "verified_text", "verified_unsure") if k in s]
-        if ear and kind in ("silver-2", "silver-3", "silver-3.1", "silver-3.2", "silver-3.3"):
+        ear = [k for k in ("verified", "verified_source", "verified_text", "verified_unsure", "verified_none") if k in s]
+        if ear and kind not in EAR_KINDS:
             errs.append(f"spans/{i}: ear-check fields in a {kind} key")
-        if (s.get("verified") or s.get("verified_unsure")) and not s.get("verified_source"):
-            errs.append(f"spans/{i}: verified or verified_unsure without verified_source")
-        if s.get("verified_source") and not (s.get("verified") or s.get("verified_unsure")):
-            errs.append(f"spans/{i}: verified_source without verified or verified_unsure")
-        if s.get("verified") and s.get("verified_unsure"):
-            errs.append(f"spans/{i}: verified and verified_unsure together")
+        if "verified_none" in s and kind not in NONE_KINDS and kind in EAR_KINDS:
+            errs.append(f"spans/{i}: verified_none in a {kind} key")
+        flags = [k for k in ("verified", "verified_unsure", "verified_none") if s.get(k)]
+        if flags and not s.get("verified_source"):
+            errs.append(f"spans/{i}: verified, verified_unsure or verified_none without verified_source")
+        if s.get("verified_source") and not flags:
+            errs.append(f"spans/{i}: verified_source without verified, verified_unsure or verified_none")
+        if len(flags) > 1:
+            errs.append(f"spans/{i}: more than one of verified, verified_unsure, verified_none")
         if "verified_text" in s and (not s.get("verified") or s["verified_text"] == s["text"]):
             errs.append(f"spans/{i}: verified_text without verified, or equal to text")
     return errs
@@ -111,7 +121,11 @@ def main():
     sch = schema(kind)
     jsonschema.Draft202012Validator.check_schema(sch)
     v = jsonschema.Draft202012Validator(sch)
-    ids = P.meeting_ids()
+    # No witness corpus on this Mac: take the ids from the key files.
+    if not os.environ.get("SILVER_MEETINGS") and not os.path.isdir(P.CORPUS):
+        ids = sorted(f[:-5] for f in os.listdir(P.KEYS) if re.fullmatch(r"[0-9a-f]{8}\.json", f))
+    else:
+        ids = P.meeting_ids()
     bad = 0
     for m in ids:
         g = json.load(open(f"{P.KEYS}/{m}{suf}.json", encoding="utf-8"))

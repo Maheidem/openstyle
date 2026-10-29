@@ -1,4 +1,4 @@
-"""Tests of validate_silver2.key_errors with fictional keys (silver-3.4 ear-check fields).
+"""Tests of validate_silver2.key_errors with fictional keys (silver-3.4 to 3.6 ear-check fields).
 
 Run: python3 -I scripts/meeting-v2/eval/silver/vote/test_validate_silver.py   (part of pnpm meeting:silver:test)
 """
@@ -42,9 +42,9 @@ class EarCheck(unittest.TestCase):
 
     def test_planted_faults(self):
         cases = {
-            "verified or verified_unsure without verified_source": key(verified=True),
-            "verified_source without verified or verified_unsure": key(verified_source=SRC),
-            "verified and verified_unsure together": key(verified=True, verified_unsure=True, verified_source=SRC),
+            "verified, verified_unsure or verified_none without verified_source": key(verified=True),
+            "verified_source without verified, verified_unsure or verified_none": key(verified_source=SRC),
+            "more than one of verified, verified_unsure, verified_none": key(verified=True, verified_unsure=True, verified_source=SRC),
             "verified_text without verified, or equal to text": key(verified=True, verified_source=SRC, verified_text="Zorblax"),
         }
         for want, g in cases.items():
@@ -67,6 +67,40 @@ class EarCheck(unittest.TestCase):
         self.assertEqual(errs(key(kind="silver-3.3"), "silver-3.3"), [])
         # silver-3.4 under --kind silver-3.3 fails on goldKind.
         self.assertTrue(any(e.startswith("goldKind:") for e in errs(key(), "silver-3.3")))
+
+    def test_verified_may_keep_conflict_and_alt_text(self):
+        # The ear check wins; verifier_conflict and alt_text stay as history (silver-3.4 and later).
+        for kind in ("silver-3.4", "silver-3.5", "silver-3.6"):
+            g = key(kind=kind, verified=True, verified_source=SRC, verifier_conflict=True, alt_text="Zorblocks")
+            self.assertEqual(errs(g, kind), [], kind)
+        # Without the ear check, a conflict still needs unsure.
+        self.assertIn("spans/0: verifier_conflict but not unsure", errs(key(verifier_conflict=True)))
+        self.assertEqual(errs(key(confidence="unsure", verifier_conflict=True)), [])
+        # Older kinds refuse the ear-check fields first.
+        g = key(kind="silver-3.3", verified=True, verified_source=SRC, verifier_conflict=True)
+        self.assertIn("spans/0: ear-check fields in a silver-3.3 key", errs(g, "silver-3.3"))
+
+    def test_verified_none(self):
+        for kind in ("silver-3.5", "silver-3.6"):
+            self.assertEqual(errs(key(kind=kind, verified_none=True, verified_source=SRC), kind), [], kind)
+        self.assertEqual(errs(key(kind="silver-3.5", verified_none=True, verified_source=SRC, confidence="unsure"), "silver-3.5"), [])
+        # Not in silver-3.4 and older.
+        self.assertIn("spans/0: verified_none in a silver-3.4 key", errs(key(verified_none=True, verified_source=SRC)))
+        g = key(kind="silver-3.3", verified_none=True, verified_source=SRC)
+        self.assertIn("spans/0: ear-check fields in a silver-3.3 key", errs(g, "silver-3.3"))
+        # Needs verified_source; no other ear flag with it; no verified_text.
+        k5 = "silver-3.5"
+        self.assertIn("spans/0: verified, verified_unsure or verified_none without verified_source", errs(key(kind=k5, verified_none=True), k5))
+        self.assertIn("spans/0: more than one of verified, verified_unsure, verified_none",
+                      errs(key(kind=k5, verified=True, verified_none=True, verified_source=SRC), k5))
+        self.assertIn("spans/0: more than one of verified, verified_unsure, verified_none",
+                      errs(key(kind=k5, verified_unsure=True, verified_none=True, verified_source=SRC), k5))
+        self.assertIn("spans/0: verified_text without verified, or equal to text",
+                      errs(key(kind=k5, verified_none=True, verified_source=SRC, verified_text="Other"), k5))
+        self.assertTrue(any(e.startswith("spans/0/verified_none:") for e in errs(key(kind=k5, verified_none=False, verified_source=SRC), k5)))
+        # A conflict flag does not pass a non-unsure verified_none span.
+        g = key(kind=k5, verified_none=True, verified_source=SRC, verifier_conflict=True)
+        self.assertIn("spans/0: verifier_conflict but not unsure", errs(g, k5))
 
     def test_alt_text_rule_by_kind(self):
         self.assertIn("spans/0: alt_text but not unsure", errs(key(kind="silver-3", alt_text="Zorblocks"), "silver-3"))

@@ -48,6 +48,9 @@
 //               "verifier_conflict": true,
 //               "verified": true, "verified_source": "ear-check:b1:2026-10-29",
 //               "verified_text": "..." }],
+//   (a span may also hold "verified_unsure": true, or "verified_none": true
+//   with "verified_source": the owner hears no named entity here, so the
+//   scorers leave the span out and count it on its own)
 //   "witnesses": { ... }, "verification": { ... },
 //   transcript turns: "basis": ["h1", "h2"], "wer_eligible": true
 //
@@ -111,6 +114,11 @@ export interface GoldSpan {
   verifiedText: string | null;
   /** The owner was not sure (both spellings wrong): not verified. */
   verifiedUnsure: boolean;
+  /**
+   * The owner hears no named entity at this place (verified_none, silver-3.5
+   * and later). The scorers leave the span out of every scored count.
+   */
+  verifiedNone: boolean;
 }
 export interface GoldFix {
   channel: Channel;
@@ -438,7 +446,7 @@ function parseSpan(x: unknown, w: string): GoldSpan {
   if (x.verifier_conflict !== undefined && x.verifier_conflict !== true)
     fail(w, "verifier_conflict must be true or absent");
   // The owner's ear check. Errors name the field, never its value.
-  for (const k of ["verified", "verified_unsure"])
+  for (const k of ["verified", "verified_unsure", "verified_none"])
     if (x[k] !== undefined && typeof x[k] !== "boolean")
       fail(w, `${k} must be true, false or absent`);
   for (const k of ["verified_source", "verified_text"])
@@ -449,12 +457,20 @@ function parseSpan(x: unknown, w: string): GoldSpan {
       fail(w, `${k} must be a non-empty string or absent`);
   if (x.verified === true && x.verified_unsure === true)
     fail(w, "verified and verified_unsure must not both be true");
-  // The same rules as validate_silver2.py (silver-3.4).
-  const flagged = x.verified === true || x.verified_unsure === true;
+  if (
+    x.verified_none === true &&
+    (x.verified === true || x.verified_unsure === true)
+  )
+    fail(w, "verified_none must not go with verified or verified_unsure");
+  // The same rules as validate_silver2.py (silver-3.4 and later).
+  const flagged =
+    x.verified === true ||
+    x.verified_unsure === true ||
+    x.verified_none === true;
   if (flagged && x.verified_source === undefined)
-    fail(w, "verified or verified_unsure needs verified_source");
+    fail(w, "verified, verified_unsure or verified_none needs verified_source");
   if (!flagged && x.verified_source !== undefined)
-    fail(w, "verified_source needs verified or verified_unsure");
+    fail(w, "verified_source needs verified, verified_unsure or verified_none");
   if (
     x.verified_text !== undefined &&
     (x.verified !== true || x.verified_text === x.text)
@@ -475,6 +491,7 @@ function parseSpan(x: unknown, w: string): GoldSpan {
       typeof x.verified_source === "string" ? x.verified_source : null,
     verifiedText: typeof x.verified_text === "string" ? x.verified_text : null,
     verifiedUnsure: x.verified_unsure === true,
+    verifiedNone: x.verified_none === true,
   };
 }
 
