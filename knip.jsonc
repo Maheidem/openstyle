@@ -49,6 +49,10 @@
     "scripts/meeting-v2/run-enhance.mjs",
     "scripts/meeting-v2/seed-scratch-db.mjs",
     "scripts/meeting-v2/ts-register.mjs",
+    // Silver-gold pipeline: the Python steps run these with node
+    // (scripts/meeting-v2/eval/silver/README.md), no import reaches them.
+    "scripts/meeting-v2/eval/silver/wer.mts",
+    "scripts/meeting-v2/eval/silver/witness/ctxterms.mts",
     "apps/electron/src/preload/*.d.ts",
     // Kept on purpose: specs/lean-audit-2026-09.md T0-5 keeps this entry.
     "apps/electron/src/renderer/src/components/ui/card.tsx",
