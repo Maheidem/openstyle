@@ -1002,6 +1002,13 @@ export interface SpanScore {
   /** term = term + product; other = org, place, other. */
   byLabel: Record<SpanGroup, SpanCount>;
   byVocab: { inVocab: SpanCount; notInVocab: SpanCount };
+  /**
+   * The spans that the owner confirmed by ear (verified true). Absent in
+   * old results files. n is 0 (rate null) when no span is verified.
+   */
+  verified?: SpanCount;
+  /** Spans with verified_unsure true (not verified; they keep their confidence). */
+  verifiedUnsure?: number;
   /** Spans with confidence unsure: not scored. */
   unsure: number;
   /** Spans with no words after normalization: not scored. */
@@ -1019,6 +1026,13 @@ export const spanGroup = (label: GoldSpan["label"]): SpanGroup =>
     : label === "person"
       ? "person"
       : "other";
+
+/**
+ * The spelling that a span checks: verified_text when the owner confirmed
+ * another spelling, else text.
+ */
+export const spanText = (sp: GoldSpan): string =>
+  (sp.verified ? sp.verifiedText : null) ?? sp.text;
 
 const spanCount = (hits: number, n: number): SpanCount => ({
   hits,
@@ -1043,6 +1057,8 @@ export function addSpanScores(xs: SpanScore[]): SpanScore {
       inVocab: sum((x) => x.byVocab.inVocab),
       notInVocab: sum((x) => x.byVocab.notInVocab),
     },
+    verified: sum((x) => x.verified ?? spanCount(0, 0)),
+    verifiedUnsure: xs.reduce((a, x) => a + (x.verifiedUnsure ?? 0), 0),
     unsure: xs.reduce((a, x) => a + x.unsure, 0),
     empty: xs.reduce((a, x) => a + x.empty, 0),
     missedKeys: xs.flatMap((x) => x.missedKeys),
@@ -1177,6 +1193,46 @@ export function scoreSpans(
   stage: "asr" | "enhance",
   tolMs: number = SPAN_TOLERANCE_MS,
 ): SpanScore {
+  const { scored, unsure, empty } = scoreSpanItems(spans, rows, stage, tolMs);
+  // A verified span counts as high confidence.
+  const count = (f: (sp: GoldSpan) => boolean) => {
+    const xs = scored.filter((x) => f(x.sp));
+    return spanCount(xs.filter((x) => x.hit).length, xs.length);
+  };
+  return {
+    all: count(() => true),
+    high: count((sp) => sp.verified || sp.confidence === "high"),
+    byLabel: Object.fromEntries(
+      SPAN_GROUPS.map((g) => [g, count((sp) => spanGroup(sp.label) === g)]),
+    ) as Record<SpanGroup, SpanCount>,
+    byVocab: {
+      inVocab: count((sp) => sp.inVocab),
+      notInVocab: count((sp) => !sp.inVocab),
+    },
+    verified: count((sp) => sp.verified === true),
+    verifiedUnsure: spans.filter((sp) => sp.verifiedUnsure === true).length,
+    unsure,
+    empty,
+    missedKeys: [
+      ...new Set(
+        scored
+          .filter((x) => !x.hit)
+          .map((x) => `${x.sp.channel}@${x.sp.startMs}:${x.sp.label}`),
+      ),
+    ],
+  };
+}
+
+/**
+ * The hit of each scored span (scoreSpans rule), in input order, with the
+ * counts of the spans that are not scored (unsure, no words).
+ */
+export function scoreSpanItems(
+  spans: GoldSpan[],
+  rows: SegmentRow[],
+  stage: "asr" | "enhance",
+  tolMs: number = SPAN_TOLERANCE_MS,
+): { scored: { sp: GoldSpan; hit: boolean }[]; unsure: number; empty: number } {
   const segs = rows
     .filter((s) => s.start_ms !== null)
     .sort(byStart)
@@ -1190,11 +1246,11 @@ export function scoreSpans(
   let unsure = 0;
   let empty = 0;
   for (const sp of spans) {
-    if (sp.confidence === "unsure") {
+    if (sp.confidence === "unsure" && !sp.verified) {
       unsure++;
       continue;
     }
-    const words = spanWords(sp.text);
+    const words = spanWords(spanText(sp));
     if (words.length === 0) {
       empty++;
       continue;
@@ -1212,30 +1268,7 @@ export function scoreSpans(
     tolMs,
   );
   const scored = targets.map(({ sp }, i) => ({ sp, hit: hits[i] === true }));
-  const count = (f: (sp: GoldSpan) => boolean) => {
-    const xs = scored.filter((x) => f(x.sp));
-    return spanCount(xs.filter((x) => x.hit).length, xs.length);
-  };
-  return {
-    all: count(() => true),
-    high: count((sp) => sp.confidence === "high"),
-    byLabel: Object.fromEntries(
-      SPAN_GROUPS.map((g) => [g, count((sp) => spanGroup(sp.label) === g)]),
-    ) as Record<SpanGroup, SpanCount>,
-    byVocab: {
-      inVocab: count((sp) => sp.inVocab),
-      notInVocab: count((sp) => !sp.inVocab),
-    },
-    unsure,
-    empty,
-    missedKeys: [
-      ...new Set(
-        scored
-          .filter((x) => !x.hit)
-          .map((x) => `${x.sp.channel}@${x.sp.startMs}:${x.sp.label}`),
-      ),
-    ],
-  };
+  return { scored, unsure, empty };
 }
 
 // --- Scorecard ----------------------------------------------------------------------

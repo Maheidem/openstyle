@@ -518,12 +518,13 @@ function meetingHash(
   voice: VoiceRow,
   extra: string[],
   code: string[],
+  run: string,
 ): string {
   const db = new DatabaseSync(join(work, "test.db"), { readOnly: true });
   const q = (sql: string, ...p: string[]) =>
     JSON.stringify(db.prepare(sql).all(...p));
   const parts = [
-    "run=R0d",
+    `run=${run}`,
     `asr=${voice.model_id}`,
     ...extra,
     q("SELECT term, notes FROM vocabulary ORDER BY term"),
@@ -582,15 +583,23 @@ export async function ensureTranscribed(opts: {
   port: number;
   hfCache: string;
   out: string;
-  hashExtra?: string[];
+  /** More hash inputs: one list for all meetings, or one per meeting. */
+  hashExtra?: string[] | ((id: string) => string[]);
+  /** The run-baseline.mjs run name (default R0d). */
+  run?: string;
 }): Promise<{ path: string; hash: string; hashes: Record<string, string> }> {
   const { asrDir, work, ids, voice, port, hfCache, out } = opts;
+  const run = opts.run ?? "R0d";
+  const extraOf = (id: string) =>
+    typeof opts.hashExtra === "function"
+      ? opts.hashExtra(id)
+      : (opts.hashExtra ?? []);
   const testDb = join(work, "test.db");
   forceVoiceRow(testDb, voice);
   const code = codeHashParts();
   const hashes: Record<string, string> = {};
   for (const id of ids)
-    hashes[id] = meetingHash(work, id, voice, opts.hashExtra ?? [], code);
+    hashes[id] = meetingHash(work, id, voice, extraOf(id), code, run);
   const cacheDir = join(asrDir, "cache");
   mkdirSync(cacheDir, { recursive: true });
   const cached = (id: string) => join(cacheDir, `${id}.${hashes[id]}.db`);
@@ -619,7 +628,7 @@ export async function ensureTranscribed(opts: {
             "--meeting",
             id,
             "--run",
-            "R0d",
+            run,
             "--port",
             String(port),
             "--hf-cache",

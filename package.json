@@ -19,6 +19,7 @@
     "meeting:eval:audio-verify": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/audio-verify.mts",
     "meeting:eval:screen-remote": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/screen-remote.mts",
     "meeting:eval:test": "node --import ./scripts/meeting-v2/ts-register.mjs --test scripts/meeting-v2/eval/checks.test.mts scripts/meeting-v2/eval/score.test.mts scripts/meeting-v2/eval/gold-tools.test.mts scripts/meeting-v2/eval/gpu-queue.test.mts scripts/meeting-v2/eval/sweep.test.mts scripts/meeting-v2/eval/silver/score/names.test.mts",
+    "lab": "node --import ./scripts/meeting-v2/ts-register.mjs scripts/meeting-v2/eval/lab/lab.mts",
     "meeting:silver:witness": "python3 -I scripts/meeting-v2/eval/silver/witness/witness.py",
     "meeting:silver:parakeet": "python3 -I scripts/meeting-v2/eval/silver/witness/parakeet.py",
     "meeting:silver:align": "python3 -I scripts/meeting-v2/eval/silver/align/align_ext.py",

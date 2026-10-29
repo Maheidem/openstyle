@@ -45,7 +45,9 @@
 //   "spans": [{ "channel": "mic", "startMs": 15000, "endMs": 16200,
 //               "text": "...", "label": "term", "in_vocab": true,
 //               "confidence": "high", "witnesses": ["h1", "app"],
-//               "verifier_conflict": true }],
+//               "verifier_conflict": true,
+//               "verified": true, "verified_source": "ear-check:b1:2026-10-29",
+//               "verified_text": "..." }],
 //   "witnesses": { ... }, "verification": { ... },
 //   transcript turns: "basis": ["h1", "h2"], "wer_eligible": true
 //
@@ -98,6 +100,17 @@ export interface GoldSpan {
   confidence: SpanConfidence;
   witnesses: string[];
   verifierConflict: boolean;
+  /**
+   * The owner confirmed the span by ear (verified true). The scorers treat
+   * it as high confidence; it is never skipped as unsure.
+   */
+  verified: boolean;
+  /** "<method>:<batch>:<date>" of the check; null when absent. */
+  verifiedSource: string | null;
+  /** The confirmed spelling when it differs from text; else null. */
+  verifiedText: string | null;
+  /** The owner was not sure (both spellings wrong): not verified. */
+  verifiedUnsure: boolean;
 }
 export interface GoldFix {
   channel: Channel;
@@ -424,6 +437,22 @@ function parseSpan(x: unknown, w: string): GoldSpan {
     fail(w, "witnesses must be an array of strings");
   if (x.verifier_conflict !== undefined && x.verifier_conflict !== true)
     fail(w, "verifier_conflict must be true or absent");
+  // The owner's ear check. Errors name the field, never its value.
+  for (const k of ["verified", "verified_unsure"])
+    if (x[k] !== undefined && typeof x[k] !== "boolean")
+      fail(w, `${k} must be true, false or absent`);
+  for (const k of ["verified_source", "verified_text"])
+    if (
+      x[k] !== undefined &&
+      (typeof x[k] !== "string" || (x[k] as string).trim() === "")
+    )
+      fail(w, `${k} must be a non-empty string or absent`);
+  if (x.verified === true && x.verified_unsure === true)
+    fail(w, "verified and verified_unsure must not both be true");
+  if (x.verified_unsure === true && x.verified_source === undefined)
+    fail(w, "verified_unsure needs verified_source");
+  if (x.verified_text !== undefined && x.verified !== true)
+    fail(w, "verified_text needs verified true");
   return {
     channel: x.channel,
     startMs: x.startMs,
@@ -434,6 +463,11 @@ function parseSpan(x: unknown, w: string): GoldSpan {
     confidence: x.confidence as SpanConfidence,
     witnesses: x.witnesses,
     verifierConflict: x.verifier_conflict === true,
+    verified: x.verified === true,
+    verifiedSource:
+      typeof x.verified_source === "string" ? x.verified_source : null,
+    verifiedText: typeof x.verified_text === "string" ? x.verified_text : null,
+    verifiedUnsure: x.verified_unsure === true,
   };
 }
 

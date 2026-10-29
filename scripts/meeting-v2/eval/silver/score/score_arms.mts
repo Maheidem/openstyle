@@ -21,18 +21,18 @@ import { DatabaseSync } from "node:sqlite";
 import { loadGold } from "../../gold.mts";
 import {
   addSpanScores,
-  normalizeWords,
   type SpanCount,
   type SpanScore,
   scoreSpans,
-  scoreWords,
+  spanText,
 } from "../../score.mts";
 import {
-  attendeeNames,
-  attendeeTokens,
-  countRun as count,
-  hasRun as has,
-} from "./names.mts";
+  addPrec,
+  normWords as norm,
+  type Prec,
+  possibleInsertions,
+} from "./insertions.mts";
+import { attendeeNames } from "./names.mts";
 
 const EVAL_HOME = process.env.SILVER_EVAL_HOME || "/tmp/meeting-eval";
 const KEYS =
@@ -43,9 +43,7 @@ const MEETINGS = process.env.SILVER_MEETINGS
       .filter((f) => /^[0-9a-f]{8}\.json$/.test(f))
       .map((f) => f.slice(0, 8))
       .sort();
-const TOL = 3000;
 const golds = loadGold(MEETINGS, KEYS);
-const norm = (t: string) => normalizeWords(scoreWords(t)).words;
 const pct = (c: SpanCount) =>
   `${c.rate === null ? "-" : (c.rate * 100).toFixed(1)} (${c.hits}/${c.n})`;
 const cells = (s: SpanScore) => [
@@ -78,23 +76,6 @@ const table = (h: string[], rows: string[][]) => [
   row(h.map(() => "---")),
   ...rows.map(row),
 ];
-
-type Prec = {
-  vocabOcc: number;
-  vocabUnsup: number;
-  nameOcc: number;
-  nameUnsup: number;
-  ownerOcc: number;
-  ownerUnsup: number;
-};
-const addPrec = (xs: Prec[]): Prec => ({
-  vocabOcc: xs.reduce((a, x) => a + x.vocabOcc, 0),
-  vocabUnsup: xs.reduce((a, x) => a + x.vocabUnsup, 0),
-  nameOcc: xs.reduce((a, x) => a + x.nameOcc, 0),
-  nameUnsup: xs.reduce((a, x) => a + x.nameUnsup, 0),
-  ownerOcc: xs.reduce((a, x) => a + x.ownerOcc, 0),
-  ownerUnsup: xs.reduce((a, x) => a + x.ownerUnsup, 0),
-});
 
 const summary: Record<string, unknown> = {};
 const pooledRows: string[][] = [];
@@ -146,67 +127,19 @@ for (const arm of process.argv.slice(2)) {
     const noOwner = scoreSpans(
       (gold?.spans ?? []).filter(
         (sp) =>
-          owner.length === 0 || norm(sp.text).join(" ") !== owner.join(" "),
+          owner.length === 0 ||
+          norm(spanText(sp)).join(" ") !== owner.join(" "),
       ),
       rows,
       "asr",
     );
-    const gs = (gold?.spans ?? []).map((sp) => ({
-      ...sp,
-      words: norm(sp.text),
-    }));
-    const nameKeys = new Set<string>();
-    const names = [
-      ...attendeeTokens(m.calendar_attendees).map(norm),
+    const prec = possibleInsertions(
+      rows,
+      gold?.spans ?? [],
+      vocab,
       owner,
-    ].filter(
-      (w) =>
-        w.length > 0 && !nameKeys.has(w.join(" ")) && nameKeys.add(w.join(" ")),
+      m.calendar_attendees,
     );
-    const prec: Prec = {
-      vocabOcc: 0,
-      vocabUnsup: 0,
-      nameOcc: 0,
-      nameUnsup: 0,
-      ownerOcc: 0,
-      ownerUnsup: 0,
-    };
-    for (const s of rows) {
-      if (s.start_ms === null) continue;
-      const words = norm(s.text ?? "");
-      const start = s.start_ms as number;
-      const end = Math.max(start, s.end_ms ?? start);
-      const near = gs.filter(
-        (sp) =>
-          sp.channel === s.source &&
-          sp.endMs >= start - TOL &&
-          sp.startMs <= end + TOL,
-      );
-      for (const [terms, kind] of [
-        [vocab, "vocab"],
-        [names, "name"],
-      ] as const)
-        for (const t of terms) {
-          const n = count(words, t);
-          if (n === 0) continue;
-          const ok = near.some((sp) => has(sp.words, t));
-          if (kind === "vocab") {
-            prec.vocabOcc += n;
-            if (!ok) prec.vocabUnsup += n;
-          } else {
-            prec.nameOcc += n;
-            if (!ok) prec.nameUnsup += n;
-          }
-          if (
-            kind === "name" &&
-            owner.length > 0 &&
-            t.join(" ") === owner.join(" ")
-          ) {
-            prec.ownerOcc += n;
-            if (!ok) prec.ownerUnsup += n;
-          }
-        }
-    }
     per.push({ meeting: id8, spans, noOwner, prec });
   }
   if (absent > 0)
