@@ -131,7 +131,7 @@ test("dashboard renders content", async () => {
 
 // Runs LAST among the dashboard tests: completing onboarding changes the
 // window's route, which the earlier tests must not inherit.
-test("onboarding flow reaches the draft and enhance steps and completes", async () => {
+test("onboarding flow reaches the draft, name and enhance steps and completes", async () => {
   const page = dashboardPage;
 
   // Permissions step, now first — E2E bypasses the OS grants.
@@ -149,6 +149,15 @@ test("onboarding flow reaches the draft and enhance steps and completes", async 
   await body.fill("Happy birthday Sam — cake on Friday.");
   await expect(continueButton).toBeEnabled();
   await continueButton.click();
+
+  // Name step (setting owner_name, Meeting Mode only). Continue with a
+  // name writes the trimmed name.
+  await page.getByTestId("onboarding-owner-name").fill("  Ana Silva  ");
+  const evidenceDir = process.env.OPENSTYLE_EVIDENCE_DIR;
+  if (evidenceDir) {
+    await page.screenshot({ path: join(evidenceDir, "onboarding-name.png") });
+  }
+  await page.getByTestId("onboarding-name-continue").click();
 
   // Enhance step (specs/meeting-transcription-v2.md §3.2) — the final step
   // before /today. Skip it: it must not write the auto-run setting.
@@ -169,4 +178,9 @@ test("onboarding flow reaches the draft and enhance steps and completes", async 
   }, embeddedServerUrl(app!));
   expect(seenStatus.status).toBe(200);
   expect(seenStatus.value).toBe("true");
+  const ownerName = await app!.evaluate(async (_electron, base) => {
+    const res = await fetch(`${base}/api/settings/owner_name`);
+    return ((await res.json()) as { value: string }).value;
+  }, embeddedServerUrl(app!));
+  expect(ownerName).toBe("Ana Silva");
 });
