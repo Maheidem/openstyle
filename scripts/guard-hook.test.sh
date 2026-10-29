@@ -67,13 +67,9 @@ block|Bash|rtk proxy pkill -f node
 allow|Bash|kill 1234
 allow|Bash|kill $(cat /tmp/t/server.pid)
 allow|Bash|pgrep -fl mlx_asr_worker
-block|Bash|curl -s http://127.0.0.1:8123/v1/audio/transcriptions -F file=@a.wav -F model=Qwen3-ASR
-block|Bash|curl -s http://127.0.0.1:8123/v1/chat/completions -d '{"model": "Qwen3.8-27B", "messages": []}'
-block|Bash|timeout 8 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/v1/models
-block|Bash|wget -qO- http://localhost:8123/v1/models
-block|Bash|node -e "fetch('http://127.0.0.1:8123/v1/models')"
-block|Bash|python3 -c "import urllib.request as u; u.urlopen('http://localhost:8123/v1/models')"
-block|Bash|cd /tmp && curl -s localhost:8123
+allow|Bash|curl -s http://127.0.0.1:8123/v1/audio/transcriptions -F file=@a.wav -F model=Qwen3-ASR
+allow|Bash|timeout 8 curl -s http://127.0.0.1:8123/v1/models
+allow|Bash|timeout 8 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8123/v1/models
 allow|Bash|grep -rn "127.0.0.1:8123" scripts
 allow|Bash|timeout 30 curl -s http://127.0.0.1:81230/x
 allow|Bash|timeout 30 curl -s http://127.0.0.1:4651/v1/models

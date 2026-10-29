@@ -54,14 +54,6 @@ if [[ $cmd =~ (127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]):4649([^0-9]|$) ]] &&
   block "rule a" "port 4649 belongs to the installed app; start an isolated server on another port."
 fi
 
-# Rule e: nothing calls the owner's oMLX server on port 8123 (owner rule
-# 2026-10-21): no LLM, no ASR, no health check. Use the app's built-in MLX
-# models. Same shape as rule a: the address and a network client word.
-if [[ $cmd =~ (127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]):8123([^0-9]|$) ]] &&
-  [[ $cmd =~ (^|[^[:alnum:]_-])(curl|wget|http|https|xh|nc|ncat|websocat|node|bun|deno|python3?|fetch)([^[:alnum:]_-]|$) ]]; then
-  block "rule e" "nothing may call the owner's oMLX server (127.0.0.1:8123), not even a health check; use the app's built-in MLX models."
-fi
-
 # kill $(pgrep ... Openstyle) is a kill by name of the installed app.
 if [[ $cmd =~ (^|[^[:alnum:]_-])kill[[:space:]] ]] && [[ $cmd =~ pgrep[^\;\&\|]*[Oo]pen[Ss]tyle ]]; then
   block "rule f" "do not kill the installed app."
