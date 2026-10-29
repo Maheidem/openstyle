@@ -3,6 +3,8 @@
 // Run: pnpm meeting:eval:test (node --test). Fictional text only.
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   mkdirSync,
@@ -30,6 +32,7 @@ import {
   type SegmentRow,
 } from "./checks.mts";
 import {
+  type Channel,
   type Gold,
   type GoldSpan,
   goldFromAnswerKey,
@@ -57,6 +60,8 @@ import {
   scoreSummary,
   scoreTags,
   scoreWords,
+  spanHits,
+  spanWords,
   stageMetrics,
   words,
 } from "./score.mts";
@@ -301,6 +306,51 @@ test("WER: normalized vs raw on number words and stutter repeats", () => {
     "asr",
   );
   assert.equal(bad?.words.errors, 1);
+});
+
+test("baseline: compare warns when the gold kind or the gold hash differs", () => {
+  const withGold = (gold: Results["gold"]) =>
+    buildBaseline({ ...results(RAW), gold }, "run");
+  const v2 = { source: "gold-v2" as const, versions: { aaaa1111: 2 } };
+  const now = withGold({
+    ...v2,
+    goldKinds: ["none"],
+    goldHash: "aaaaaaaaaaaa",
+  });
+  assert.deepEqual(compareBaselines(now, now).warnings, []);
+  // An old baseline has neither field: both are unknown.
+  const old = compareBaselines(withGold(v2), now);
+  assert.deepEqual(old.warnings, [
+    "WARN: the gold kind differs (baseline unknown, now none). Do not compare scores across gold kinds.",
+    "WARN: the gold hash differs (baseline unknown, now aaaaaaaaaaaa). The gold keys are not the same.",
+  ]);
+  assert.ok(old.text.includes(old.warnings[0] as string));
+  // The warning does not change the exit code.
+  assert.equal(old.exitCode, 0);
+  const silver = withGold({
+    ...v2,
+    goldKinds: ["silver-3.3"],
+    goldHash: "bbbbbbbbbbbb",
+  });
+  assert.deepEqual(compareBaselines(now, silver).warnings, [
+    "WARN: the gold kind differs (baseline none, now silver-3.3). Do not compare scores across gold kinds.",
+    "WARN: the gold hash differs (baseline aaaaaaaaaaaa, now bbbbbbbbbbbb). The gold keys are not the same.",
+  ]);
+});
+
+test("report: the gold line of an old key has no kind", () => {
+  const md = renderResults({
+    ...results(RAW),
+    gold: {
+      source: "gold-v2",
+      versions: { aaaa1111: 2 },
+      goldKinds: ["none"],
+      goldHash: "aaaaaaaaaaaa",
+    },
+  });
+  assert.ok(md.includes("- Gold: gold-v2 (aaaa1111 v2)\n"));
+  // No spans: no empty line before the next section.
+  assert.ok(!md.includes("\n\n\n"));
 });
 
 test("baseline: a legacy baseline compares its WER as the raw WER", () => {
@@ -609,9 +659,12 @@ test("gold v2: loader needs a 0700 folder and a file per meeting", () => {
   writeFileSync(join(dir, "aaaa1111.json"), JSON.stringify(GOLD_JSON));
   const golds = loadGold(["aaaa1111"], dir);
   assert.equal(golds.get("aaaa1111")?.goldVersion, 2);
+  const sha = (t: string) => createHash("sha256").update(t).digest("hex");
   assert.deepEqual(goldInfo(golds), {
     source: "gold-v2",
     versions: { aaaa1111: 2 },
+    goldKinds: ["none"],
+    goldHash: sha(`aaaa1111 ${sha(JSON.stringify(GOLD_JSON))}`).slice(0, 12),
   });
   assert.throws(
     () => loadGold(["aaaa1111", "bbbb2222"], dir),
@@ -1071,21 +1124,37 @@ test("silver key: the loader reads it from a 0700 folder; goldInfo keeps the ver
   writeFileSync(join(dir, "cccc3333.json"), JSON.stringify(SILVER_JSON));
   writeFileSync(join(dir, "aaaa1111.json"), JSON.stringify(GOLD_JSON));
   const golds = loadGold(["cccc3333", "aaaa1111"], dir);
-  assert.deepEqual(goldInfo(golds)?.versions, {
+  const info = goldInfo(golds);
+  assert.deepEqual(info?.versions, {
     aaaa1111: 2,
     cccc3333: 3,
   });
+  assert.deepEqual(info?.goldKinds, ["none", "silver-2"]);
+  assert.match(info?.goldHash ?? "", /^[0-9a-f]{12}$/);
+  // Another key file gives another hash; a v1 answer key has no hash.
+  writeFileSync(
+    join(dir, "cccc3333.json"),
+    JSON.stringify({ ...SILVER_JSON, goldKind: "silver-3.3" }),
+  );
+  const info2 = goldInfo(loadGold(["cccc3333", "aaaa1111"], dir));
+  assert.deepEqual(info2?.goldKinds, ["none", "silver-3.3"]);
+  assert.notEqual(info2?.goldHash, info?.goldHash);
+  const v1 = goldFromAnswerKey(
+    parseAnswerKey(JSON.stringify({ version: 1, meetings: {} })),
+  );
+  v1.set("dddd4444", { ...gold(), source: "answer-key-v1" });
+  assert.equal(goldInfo(v1)?.goldHash, null);
 });
 
 test("scoreSpans: hit, miss, normalization, unsure skipped, groups", () => {
   const g = silver();
   const rows = [
     segE("mic", 0, 0, 4000, "We tried zorblax, yesterday."),
-    segE("system", 0, 10000, 12000, "Ask Quill on about 21 seats."),
+    segE("system", 0, 10000, 12000, "Ask Quilan about 21 seats."),
   ];
   const s = scoreSpans(g.spans ?? [], rows, "asr");
-  // Zorblax: hit (case and punctuation do not count). Quillon: miss (two
-  // words). "twenty-one seats": hit ("21 seats" after normalization).
+  // Zorblax: hit (case and punctuation do not count). Quillon: miss (other
+  // letters). "twenty-one seats": hit ("21 seats" after normalization).
   assert.deepEqual([s.all.hits, s.all.n, s.all.rate], [2, 3, 0.6667]);
   assert.deepEqual([s.high.hits, s.high.n], [2, 2]);
   assert.deepEqual(
@@ -1112,7 +1181,7 @@ test("scoreSpans: hit, miss, normalization, unsure skipped, groups", () => {
       0,
       10000,
       12000,
-      "Ask Quill on about 21 seats.",
+      "Ask Quilan about 21 seats.",
       "Ask Quillon about 21 seats.",
     ),
   ];
@@ -1175,6 +1244,194 @@ test("scoreSpans: the time window edge, the channel and segments joined", () => 
   assert.deepEqual([empty.all.n, empty.empty, empty.all.rate], [0, 1, null]);
 });
 
+const termSpan = (startMs: number, endMs: number, text: string): GoldSpan => ({
+  channel: "mic",
+  startMs,
+  endMs,
+  text,
+  label: "term",
+  inVocab: false,
+  confidence: "high",
+  witnesses: [],
+  verifierConflict: false,
+});
+
+test("scoreSpans: accents fold and a match without spaces, as the vote", () => {
+  const hit = (span: string, out: string) =>
+    scoreSpans(
+      [termSpan(10000, 11000, span)],
+      [segE("mic", 0, 10000, 11000, out)],
+      "asr",
+    ).all.hits;
+  assert.equal(hit("José", "ask jose now"), 1);
+  assert.equal(hit("jose", "ask José now"), 1);
+  assert.equal(hit("Open Style", "we use openstyle now"), 1);
+  assert.equal(hit("openstyle", "we use Open Style now"), 1);
+  assert.equal(hit("Quillon", "ask Quill on now"), 1);
+  // The match starts and ends at word edges: a part of a word is a miss.
+  assert.equal(hit("Zor", "the zorblax tool"), 0);
+  assert.equal(hit("blax", "the zorblax tool"), 0);
+  assert.equal(hit("Zorblax", "the zorblaxes tool"), 0);
+  assert.equal(hit("Zorblax", "the zor blaxes tool"), 0);
+  // spanWords folds; the WER words do not change.
+  assert.deepEqual(spanWords("José Zorblax"), ["jose", "zorblax"]);
+  assert.deepEqual(words("José"), ["josé"]);
+});
+
+test("scoreSpans: one output occurrence counts for one span; missed keys once", () => {
+  const two = [
+    termSpan(10000, 11000, "Zorblax"),
+    termSpan(12000, 13000, "Zorblax"),
+  ];
+  const one = scoreSpans(two, [segE("mic", 0, 11000, 12000, "zorblax")], "asr");
+  assert.deepEqual([one.all.hits, one.all.n], [1, 2]);
+  assert.deepEqual(one.missedKeys, ["mic@12000:term"]);
+  const both = scoreSpans(
+    two,
+    [segE("mic", 0, 11000, 12000, "zorblax and zorblax")],
+    "asr",
+  );
+  assert.equal(both.all.hits, 2);
+  // "Open Style" and "openstyle" share the one output word.
+  const forms = scoreSpans(
+    [termSpan(10000, 11000, "Open Style"), termSpan(10000, 11000, "openstyle")],
+    [segE("mic", 0, 10000, 11000, "openstyle")],
+    "asr",
+  );
+  assert.equal(forms.all.hits, 1);
+  // The order never loses a hit: the first span takes the early word, so the
+  // second span (which sees only the late word) still has one.
+  assert.deepEqual(
+    spanHits(
+      [
+        { channel: "mic", startMs: 10000, endMs: 11000, words: ["zorblax"] },
+        { channel: "mic", startMs: 15000, endMs: 16000, words: ["zorblax"] },
+      ],
+      [
+        { source: "mic", start: 7000, end: 8000, words: ["zorblax"] },
+        { source: "mic", start: 12500, end: 13500, words: ["zorblax"] },
+      ],
+    ),
+    [true, true],
+  );
+  // Two missed spans with the same key give the key once.
+  const missed = scoreSpans(
+    [termSpan(10000, 11000, "Zorblax"), termSpan(10000, 11000, "Zorblax")],
+    [],
+    "asr",
+  );
+  assert.deepEqual([missed.all.n, missed.missedKeys], [2, ["mic@10000:term"]]);
+});
+
+test("span match parity: scoreSpans and score_silver.py (span_match.py) give the same hits", () => {
+  type Case = {
+    tol: number;
+    spans: [Channel, number, number, string][];
+    segs: [Channel, number, number, string][];
+  };
+  const cases: Case[] = [
+    {
+      tol: 3000,
+      spans: [["mic", 10000, 11000, "José"]],
+      segs: [["mic", 10000, 11000, "ask jose now"]],
+    },
+    {
+      tol: 3000,
+      spans: [["mic", 10000, 11000, "Open Style"]],
+      segs: [["mic", 10000, 11000, "openstyle"]],
+    },
+    {
+      tol: 3000,
+      spans: [["mic", 10000, 11000, "openstyle"]],
+      segs: [["mic", 10000, 11000, "open style"]],
+    },
+    {
+      tol: 3000,
+      spans: [["mic", 10000, 11000, "Zor"]],
+      segs: [["mic", 10000, 11000, "zorblax"]],
+    },
+    {
+      tol: 3000,
+      spans: [
+        ["mic", 10000, 11000, "Zorblax"],
+        ["mic", 12000, 13000, "Zorblax"],
+        ["system", 12000, 13000, "Quillon"],
+      ],
+      segs: [
+        ["mic", 11000, 12000, "zorblax"],
+        ["system", 9000, 10000, "Quill"],
+        ["system", 10000, 11000, "on twenty one"],
+      ],
+    },
+    {
+      tol: 3000,
+      spans: [
+        ["mic", 15000, 16000, "Zorblax"],
+        ["mic", 10000, 11000, "Zorblax"],
+        ["mic", 10500, 11000, "21 seats"],
+      ],
+      segs: [
+        ["mic", 12500, 13500, "zorblax twenty one seats"],
+        ["mic", 7000, 8000, "Zorblax"],
+      ],
+    },
+    {
+      tol: 1000,
+      spans: [["mic", 10000, 11000, "Zorblax"]],
+      segs: [["mic", 5000, 8999, "zorblax"]],
+    },
+  ];
+  const norm = (t: string) => normalizeWords(scoreWords(t)).words.join(" ");
+  const ts = cases.map((c) => {
+    const spans = c.spans.map(([ch, s, e, t]) => ({
+      ...termSpan(s, e, t),
+      channel: ch,
+    }));
+    const rows = c.segs.map(([ch, s, e, t], i) => segE(ch, i, s, e, t));
+    // Each span alone in the missed keys: the start times differ per channel.
+    const r = scoreSpans(spans, rows, "asr", c.tol);
+    return spans.map(
+      (sp) => !r.missedKeys.includes(`${sp.channel}@${sp.startMs}:term`),
+    );
+  });
+  const py = spawnSync(
+    "python3",
+    ["-I", join(import.meta.dirname, "silver", "score", "span_match.py")],
+    {
+      input: JSON.stringify({
+        cases: cases.map((c) => ({
+          tol: c.tol,
+          spans: c.spans.map(([channel, startMs, endMs, t]) => ({
+            channel,
+            startMs,
+            endMs,
+            norm: norm(t),
+          })),
+          segs: c.segs.map(([channel, start, end, t]) => ({
+            channel,
+            start,
+            end,
+            norm: norm(t),
+          })),
+        })),
+      }),
+      encoding: "utf8",
+    },
+  );
+  assert.equal(py.status, 0, py.stderr);
+  assert.deepEqual(JSON.parse(py.stdout).hits, ts);
+  // The cases cover hits and misses.
+  assert.deepEqual(ts, [
+    [true],
+    [true],
+    [true],
+    [false],
+    [true, false, true],
+    [true, true, true],
+    [false],
+  ]);
+});
+
 test("eligible WER: only errors on eligible turns; old keys have none", () => {
   const g = silver();
   // Errors: one in the eligible mic turn (yesterday -> today), one in the
@@ -1230,7 +1487,7 @@ test("report: the Spans section, numbers only, passes the self-check", () => {
       0,
       10000,
       12000,
-      "Ask Quill on about 21 seats.",
+      "Ask Quilan about 21 seats.",
       "Ask Quillon about 21 seats.",
     ),
   ];
@@ -1281,7 +1538,26 @@ test("report: the Spans section, numbers only, passes the self-check", () => {
   assert.ok(md.includes("| m1 | cccc3333 | enhance | 100.0 (3/3) |"));
   assert.ok(md.includes("- m1 cccc3333 asr (1): system@10000:person"));
   assert.ok(md.includes("- m1 cccc3333 enhance (0): none"));
-  assert.ok(md.includes("WER eligible 0.0000 (9 ref)"));
+  assert.ok(md.includes("WER eligible 0.0000 (9 ref) (1 of 1 meetings)"));
+  // The eligible WER names the meetings it covers: a v2 key has none.
+  const mixed = results(RAW);
+  mixed.runs.push(r);
+  mixed.meetings.push(res.meetings[0] as Results["meetings"][number]);
+  assert.ok(
+    renderResults(mixed).includes(
+      "WER eligible 0.0000 (9 ref) (1 of 2 meetings)",
+    ),
+  );
+  // The gold line shows the kind and the hash of a silver key.
+  const kinded = {
+    ...res,
+    gold: { ...res.gold, goldKinds: ["silver-2"], goldHash: "0123456789ab" },
+  } as Results;
+  assert.ok(
+    renderResults(kinded).includes(
+      "- Gold: gold-v2 (cccc3333 v3); kind silver-2, hash 0123456789ab",
+    ),
+  );
   // A changed cell or changed pooled JSON fails the self-check.
   assert.ok(
     selfCheck(md.replace("66.7 (2/3)", "70.0 (2/3)"), res).some((e) =>

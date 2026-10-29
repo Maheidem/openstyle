@@ -5,7 +5,7 @@ This folder builds and scores **silver gold keys** for real meetings. A silver k
 ## Privacy (hard rules)
 
 - The corpus, the witness files, the keys, the arm DBs, the audio, the raw cloud responses and the EG2 caches hold private meeting data. They stay outside the repo, under `~/.openstyle-eval/` (folders 700, files 600).
-- `silver_paths.py` refuses a data path inside the repo. `.gitignore` allows only `*.py`, `*.mts`, `*.sh` and `*.md` in this folder, and ignores audio, SQLite and `*.npz` files everywhere.
+- `silver_paths.py` refuses a data path inside the repo (it compares real paths without case, so a symlink or a lower-case spelling of the repo path is refused too). `.gitignore` allows only `*.py`, `*.mts`, `*.sh` and `README.md` in this folder. Everywhere, it ignores audio, SQLite, NumPy, pickle and parquet files, `corpus/` and `work/cloud/` folders, `keys/*.json`, key backups (`*.silver-*.json`), the files of an app meeting folder (`sync.json`, `transcript*.md`) and `unsup.txt`/`unsup.tsv`.
 - Every script prints counts, ids and seconds only. Never paste meeting text into a chat, a commit, a PR or an MLflow trace.
 - The cloud runners send meeting audio to OpenAI or Google. Run them only when the owner approves it for these meetings.
 - API keys come from the environment only (`OPENAI_API_KEY`, `GEMINI_API_KEY`). No script reads a key file or prints a key.
@@ -21,7 +21,7 @@ This folder builds and scores **silver gold keys** for real meetings. A silver k
 | `witness/` | `pilot_wer.py`, `mlflow_check.py` | pick a cloud model on 2 pilot chunks; read the MLflow traces back |
 | `align/` | `align_ext.py`, `eg2_embed.py`, `align_eg2.py` | put Meet/Krisp transcripts on the local clock (4-gram anchors, then EmbeddingGemma 2) |
 | `vote/` | `normalize_silver3.py`, `normalize_silver2.py`, `validate_silver2.py`, `load_gold_check.mts` | vote the spans (silver-3.3 is current); schema check; repo loader check |
-| `score/` | `score_silver.py`, `run_arm.sh`, `run_arms.sh`, `score_arms.mts`, `compare_arms.py`, `extract_unsup.mts`, `names.mts` | score every witness and the app against the keys; run and score ASR arms |
+| `score/` | `score_silver.py`, `span_match.py`, `run_arm.sh`, `run_arms.sh`, `score_arms.mts`, `compare_arms.py`, `extract_unsup.mts`, `names.mts` | score every witness and the app against the keys; run and score ASR arms |
 | `experiments/` | `vocabmine/`, `eg2rank/`, `nemotron/` | kept experiments: vocabulary suggestion, EG2 audio term rank, Nemotron 3.5 Transcribe feasibility |
 
 ## Paths and env (`silver_paths.py`)
@@ -37,8 +37,9 @@ This folder builds and scores **silver gold keys** for real meetings. A silver k
 | `OPENSTYLE_PROFILE` | `~/Library/Application Support/Openstyle` | the app profile (DB and meeting wavs), read-only |
 | `OPENSTYLE_EVAL_HF_HOME` | `~/Library/Application Support/Openstyle-eval/hf` | the model cache (offline mode) |
 | `SILVER_ASR_WORKER` | the app's shipped MLX worker | the ASR worker binary |
-| `SILVER_MLFLOW_URI`, `SILVER_MLFLOW_EXPERIMENT` | `http://192.168.31.154:5000`, `openstyle-silver-witnesses` | traces of the cloud calls (counts only) |
-| `SILVER_EVAL_HOME` | `/tmp/meeting-eval` | arm runs: `out/<arm>/raw.db`, `results.{md,json}`, `<arm>.out`, `proof-<arm>-bias.txt` |
+| `SILVER_MLFLOW_URI` | none (the cloud runners and `mlflow_check.py` stop when it is unset) | the MLflow server of the cloud traces (counts only) |
+| `SILVER_MLFLOW_EXPERIMENT` | `openstyle-silver-witnesses` | the MLflow experiment of the cloud traces |
+| `SILVER_EVAL_HOME` | `/tmp/meeting-eval` | arm runs: `out/<arm>/raw.db`, `results.{md,json}`, `<arm>.out`, `proof-<arm>-bias.txt`. It must be under `/tmp` or a folder named `meeting-eval` (`run_arm.sh` deletes paths under it) |
 | `SILVER_ARMS_KEEP` | `~/.openstyle-eval/silver/arms` | `run_arms.sh` keeps each arm DB here |
 
 ## Pipeline
@@ -54,7 +55,7 @@ Run the steps from the repo root. Each step that writes has a dry run (no `--wri
 | 5 | Clock of Meet/Krisp, EG2 | `<EG2 venv python> -I align/eg2_embed.py`, then `python3 -I align/align_eg2.py --write` | `.orig.json`, `h1`, `h3`, wavs | `eg2-cache/<id8>.npz`; `alignedMs` per line |
 | 6 | OpenAI witness (cloud) | `OPENAI_API_KEY=... <venv> -I witness/openai_run.py`, then `<EG2 venv> -I witness/openai_embed.py`, `<EG2 venv> -I witness/openai_build.py --write` | wavs, `h1`, `h3` | `cloud/raw/openai-<model>/`, `cache_oai/`, `<id8>/openai.json` |
 | 7 | Gemini witness (cloud) | `GEMINI_API_KEY=... <venv> -I witness/gemini_run.py`, then `python3 -I witness/gemini_stitch.py --write`; a fill: `GEM_MODEL=<cheaper> ... gemini_run.py --only id8:ch:k,...`, then `gemini_merge.py --write --fill ... --redo ...` | wavs, `h1`, `h3` | `cloud/raw/<model>/`, `<id8>/gemini.json` |
-| 8 | Trace check | `<venv> -I witness/mlflow_check.py [--since <unix ms>]` | MLflow | nothing |
+| 8 | Trace check | `<venv> -I witness/mlflow_check.py [--since <unix ms>]` (text-like counts of span inputs, outputs, attributes and events must all be 0) | MLflow | nothing |
 | 9 | Silver-1 keys | a Claude adjudication workflow (see "Not scripted") | witnesses | `<id8>.json` (`goldVersion` "silver-1") |
 | 10 | Silver-2 (history) | `python3 -I vote/normalize_silver2.py --write` | silver-1 keys | silver-2 keys; backup `.silver-1.json` |
 | 11 | Silver-3.3 vote | `pnpm meeting:silver:vote --v33 --write` | silver-2 and silver-3.2 keys, all witnesses | silver-3.3 keys; backup `.silver-3.2.json` |
@@ -173,7 +174,7 @@ H2 only: "promptTerms": <bool>, "promptContext": <bool>, "echoRetry": <bool>
 
 Vote rule (silver-3.3, `normalize_silver3.py`): independent witnesses are h1, h3, parakeet, openai, gemini, meet, krisp (h2 and app do not vote). A witness contains a span when the span's normal words are one run of the same-channel window words (+-3 s; line pairs for meet, krisp and openai). `exact` = the normal words equal a trusted list entry (attendee name or name part, vocabulary term, owner name). high: 3 or more agree, or 2 + exact. medium: 2 agree, or 1 + exact. unsure: otherwise, always with `verifier_conflict`, and when 2 or more witnesses agree on one other spelling (`alt_text`), except a list spelling with a sound-alike `alt_text` (edit ratio >= 0.6), which stays high or medium.
 
-Eval span metric (`scoreSpans`, `../score.mts`): a high or medium span is a hit when its normal words occur as one run in the text of its channel within 3000 ms of the span time.
+Eval span metric (`scoreSpans`, `../score.mts`): a high or medium span is a hit when its normal words (accents folded, as in the vote) occur in the text of its channel within 3000 ms of the span time, as one run or as one run without spaces (the vote's `contains` rule: whole words only, so "zor" does not match "zorblax"). One output occurrence counts for one span only: spans take occurrences in the order of their window end, each the first free occurrence. `score_silver.py` uses the same rule (`score/span_match.py`); a parity test in `score.test.mts` runs both on the same fictional cases.
 
 ## Not scripted
 

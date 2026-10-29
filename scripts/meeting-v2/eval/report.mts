@@ -281,7 +281,18 @@ export function scorecardCells(
       `CER verified ${erText(pooled(ch, "charsVerified"))}`,
     ];
     const eligible = pooled(ch, "wordsEligible");
-    if (eligible) detail.push(`WER eligible ${erText(eligible)}`);
+    // A v2 key has no eligible turns, so the eligible WER can cover fewer
+    // meetings than the WER.
+    const nEligible = own.filter((sc) =>
+      CHANNELS.some(
+        (c) =>
+          (stage === "asr" ? sc.asr : sc.enhance.channels)?.[c]?.wordsEligible,
+      ),
+    ).length;
+    if (eligible)
+      detail.push(
+        `WER eligible ${erText(eligible)} (${nEligible} of ${own.length} meetings)`,
+      );
     if (stage === "asr")
       return own.length
         ? cells(own.length, `WER ${erText(w)}`, detail.join("; "), 0)
@@ -506,6 +517,7 @@ function renderSpans(res: Results): string[] {
       : [];
   });
   return [
+    "",
     "## Spans",
     "",
     `Silver keys: the named spans (confidence high or medium) that the stage text holds within ${SPAN_TOLERANCE_MS} ms of the span time, on the span channel, after normalization. Cells: percent (hits/n). asr = raw text, enhance = enhanced text. Term+product = labels term and product; Other = org, place and other. Unsure spans and spans with no words are not scored.`,
@@ -541,6 +553,17 @@ const table = (header: string[], rows: string[][]) => [
 ];
 const MAX_KEYS = 20;
 
+/**
+ * "; kind <kinds>, hash <hash>" when a key has a goldKind (a silver key);
+ * else "", so the results.md of old keys does not change.
+ */
+function goldKindText(g: GoldInfo): string {
+  const kinds = (g.goldKinds ?? []).filter((k) => k !== "none");
+  return kinds.length
+    ? `; kind ${(g.goldKinds ?? []).join(", ")}, hash ${g.goldHash ?? "-"}`
+    : "";
+}
+
 export function renderResults(res: Results): string {
   const out: string[] = [
     "# Meeting Enhance eval",
@@ -556,7 +579,7 @@ export function renderResults(res: Results): string {
       res.gold
         ? `${res.gold.source} (${Object.entries(res.gold.versions)
             .map(([k, v]) => `${k} v${v}`)
-            .join(", ")})`
+            .join(", ")})${goldKindText(res.gold)}`
         : "none"
     }`,
     `- Floor (smallest model with 0 hard fails on every meeting): ${res.floor ?? "none"}`,
@@ -575,7 +598,6 @@ export function renderResults(res: Results): string {
             SCORECARD_MEETING_HEADER,
             scoredRuns(res).map(scorecardMeetingCells),
           ),
-          "",
           ...renderSpans(res),
         ]
       : ["No gold key (run with --gold, or --answer-key for a v1 key)."]),

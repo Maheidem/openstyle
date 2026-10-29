@@ -13,7 +13,7 @@ The code is in `scripts/meeting-v2/eval/silver/` (read its `README.md` for the l
 2. Work-meeting audio policy: audio leaves the Mac only with that approval. Never upload a wav anywhere else. Never copy audio, witness files, keys or arm DBs into the repo, a chat, a commit, a PR or an issue.
 3. Numbers only. Report counts, ids and percentages. Never quote meeting text, names of attendees or span text. The ledger may hold the owner's own vocabulary terms, nothing else.
 4. Keys come from the environment only: `OPENAI_API_KEY`, `GEMINI_API_KEY`. Never write a key to a file. Never print it. After a run, grep the work folder and the logs for the key prefix and report "no key string found".
-5. MLflow: the cloud runners trace to `http://192.168.31.154:5000`, experiment `openstyle-silver-witnesses` (id 70), with counts only (no text in inputs, outputs or attributes). A trace counts only after you read it back: `<venv python> -I scripts/meeting-v2/eval/silver/witness/mlflow_check.py --since <unix ms>` must print `text-like outputs 0` and state `OK`.
+5. MLflow: set `SILVER_MLFLOW_URI` to the MLflow server (it has no default; the cloud runners stop when it is unset). The experiment is `openstyle-silver-witnesses` (id 70), with counts only (no text in inputs, outputs, attributes or events). A trace counts only after you read it back: `<venv python> -I scripts/meeting-v2/eval/silver/witness/mlflow_check.py --since <unix ms>` must print `text-like outputs 0 inputs 0 attributes 0 events 0` and state `OK`.
 6. Private data lives in `~/.openstyle-eval/` (folders 700, files 600). `silver_paths.py` refuses a path inside the repo. Do not change that.
 7. GPU queue: `witness.py`, `parakeet.py` and `pnpm meeting:eval` take `/tmp/openstyle-gpu.lock` themselves (queue `/tmp/openstyle-gpu.queue`). Never take the lock by hand before them. Never run two GPU jobs at once. Read `/tmp/openstyle-gpu.lock/owner` first.
 8. No writes to the app DB, the meeting folders or the corpus by hand. The keys change only through `normalize_silver3.py --write`, which makes a backup first. Do the dry run (no `--write`) first and read the counts.
@@ -25,8 +25,8 @@ The code is in `scripts/meeting-v2/eval/silver/` (read its `README.md` for the l
 - Witnesses: H1 (Qwen3-ASR 1.7B, no prompt), H2 (the app prompt), H3 (Whisper large-v3-turbo), Parakeet TDT 0.6B v3 (586 s for 14 meetings), Gemini (125 chunks gemini-4-argon + 29 gemini-3.5-flash-lite), OpenAI gpt-transcribe (154 chunks), Google Meet (10 of 14 meetings), Krisp (3 of 14).
 - Costs (2026-10-28): OpenAI gpt-transcribe US$0.0045/min, 84654 billed s = US$6.349 for 14 meetings x 2 channels; with the pilot US$6.37. Gemini 4 Argon about US$0.06 per 600 s chunk. gemini-3.5-flash-lite about US$0.011 per chunk (the 29-chunk fill cost about US$0.42 with its pilot). Compute the cost BEFORE a run; stay under 70 % of the cap; `openai_run.py` stops at 85 % of the cap.
 - Model choice for a fill: a 2-chunk pilot (`pilot_wer.py`, WER vs H1). 2026-10-28: gpt-transcribe 5.44 %, gpt-4o-mini-transcribe 6.79 %, gemini-3.5-flash-lite 6.85 %, gemini-4-argon 7.90 %, gemini-3.8-flash 8.02 %, gemini-3.1-flash-lite 14.05 %. Pick the cheapest model within +3 WER points of the best.
-- Scores on silver-3.3 (`pnpm meeting:silver:score`, span H+M, n=1393): GEMINI 79.1, H3 75.7, APP_RAW 74.2, H2 74.1, APP_ENH 73.2, H1 72.4, PARAKEET 67.8, OPENAI 65.1 (rough clock; +-60 s gives 71.9). Compare systems only within one `goldKind`.
-- Arms on silver-3.3 (`score_arms.mts`, pooled hits of 1393): A 1037 (74.4 %), B 1100 (79.0 %), B2 1144 (82.1 %), B3 1142 (82.0 %). Unsupported name tokens owner/non-owner: A 2/3, B 1/25, B2 9/18, B3 9/22.
+- Scores on silver-3.3 (`pnpm meeting:silver:score`, span H+M, n=1393, match rule of 2026-10-29: accents folded, a match without spaces, one output occurrence per span): GEMINI 81.7, APP_RAW 76.2, H2 76.0, H3 75.6, APP_ENH 75.2, H1 73.8, PARAKEET 68.8, OPENAI 64.8. The rule before (exact run only) gave GEMINI 79.1, H3 75.7, APP_RAW 74.2, H2 74.1, APP_ENH 73.2, H1 72.4, PARAKEET 67.8, OPENAI 65.1. Compare systems only within one `goldKind` and one scorer version.
+- Arms on silver-3.3 (`score_arms.mts`, pooled hits of 1393, match rule of 2026-10-29): A 1053 (75.6 %), B 1107 (79.5 %), B2 1158 (83.1 %), B3 1152 (82.7 %); the ranking is the same as with the rule before (A 1037, B 1100, B2 1144, B3 1142). 71 scored spans have a twin (same channel, words and turn time): the turn holds the words 2 or more times, so the output must hold them as often. Unsupported name tokens owner/non-owner: A 2/3, B 1/25, B2 9/18, B3 9/22.
 - The eval on one meeting: `pnpm meeting:eval --models gemma-4-e2b-qat-4bit --meetings ab518a0c --gold --gold-dir ~/.openstyle-eval/gold-silver --no-download --port 4811 --out /tmp/meeting-eval/out/<name>` took 62 s with no ASR cache (2026-10-29). On main before PR #359: ASR spans 75.6 (31/41), Enhance 78.0 (32/41), 5 unsure skipped; arm A gives the same 31/41. On main with PR #359 (owner and attendee names in the ASR bias): ASR 80.5 (33/41), Enhance 82.9 (34/41).
 - An ASR-only arm run of 14 meetings takes 20 to 27 min.
 
@@ -38,7 +38,7 @@ Run every command from the repo root. Set the paths once (the defaults are in `R
 export SILVER_CORPUS=<corpus folder>        # default ~/.openstyle-eval/silver/corpus
 export SILVER_KEYS=~/.openstyle-eval/gold-silver
 export SILVER_WORK=~/.openstyle-eval/silver/work
-pnpm meeting:silver:test                    # expect: Ran 6 tests ... OK
+pnpm meeting:silver:test                    # expect: Ran 15 tests ... OK
 ```
 
 ### A. Score a change (no new keys)
@@ -60,7 +60,7 @@ pnpm meeting:silver:test                    # expect: Ran 6 tests ... OK
 
 1. Local witnesses (GPU lock): `pnpm meeting:silver:witness <id8,...>`, then `pnpm meeting:silver:parakeet`. Set `SILVER_OWNER_NAME` if the app DB has no `owner_name` setting.
 2. Meet/Krisp: import by hand into `<id8>/meet.json` / `krisp.json`, then `pnpm meeting:silver:align --write`, then `<EG2 venv python> -I scripts/meeting-v2/eval/silver/align/eg2_embed.py` and `python3 -I scripts/meeting-v2/eval/silver/align/align_eg2.py --write`.
-3. Cloud witnesses, only after the owner approves (rule 1): compute the cost, run the pilot, then `openai_run.py` + `openai_embed.py` + `openai_build.py --write`, and `gemini_run.py` + `gemini_stitch.py --write` (+ `gemini_merge.py` for a fill). Then check the traces (rule 5) and the key grep (rule 4).
+3. Cloud witnesses, only after the owner approves (rule 1): compute the cost, run the pilot (`pilot_wer.py --pilot id8:ch:k,...`), then `openai_run.py` + `openai_embed.py` + `openai_build.py --write`, and `gemini_run.py` + `gemini_stitch.py --write` (+ `gemini_merge.py` for a fill). Then check the traces (rule 5) and the key grep (rule 4).
 4. New meetings need silver-1 keys first (a Claude adjudication workflow; see README "Not scripted"), then `python3 -I scripts/meeting-v2/eval/silver/vote/normalize_silver2.py --write`.
 5. Vote, dry run first: `pnpm meeting:silver:vote --v33`. Read the transitions and the `before`/`after` counts. Then `pnpm meeting:silver:vote --v33 --write`.
 6. Check: `pnpm meeting:silver:validate --kind silver-3.3` (expect `schema check (silver-3.3): 14/14 pass`) and `pnpm meeting:silver:load-check` (expect `parseGold: 14/14 pass` and `loadGold (folder mode + all files): pass`).
@@ -70,13 +70,13 @@ pnpm meeting:silver:test                    # expect: Ran 6 tests ... OK
 
 | Command | Expected |
 |---|---|
-| `pnpm meeting:silver:test` | `Ran 6 tests`, `OK` |
-| `pnpm meeting:eval:test` | `pass 88`, `fail 0` (after the server build) |
+| `pnpm meeting:silver:test` | `Ran 15 tests`, `OK` |
+| `pnpm meeting:eval:test` | `pass 95`, `fail 0` (after the server build) |
 | `pnpm meeting:silver:load-check` | `parseGold: 14/14 pass` |
 | `pnpm meeting:silver:validate --kind silver-3.3` | `14/14 pass` |
 | `pnpm meeting:silver:vote --v33` (dry run) | `after: {'high': 1178, 'unsure': 213, 'medium': 215}` |
-| `pnpm meeting:silver:score` | APP_RAW `74.2 (1033/1393)` in the first table |
-| `pnpm meeting:silver:score-arms s33-A s33-B s33-B2 s33-B3` on the kept DBs | All `1037/1393`, `1100/1393`, `1144/1393`, `1142/1393` |
+| `pnpm meeting:silver:score` | APP_RAW `76.2 (1062/1393)` in the first table |
+| `pnpm meeting:silver:score-arms s33-A s33-B s33-B2 s33-B3` on the kept DBs | All `1053/1393`, `1107/1393`, `1158/1393`, `1152/1393` |
 
 ## Traps (from the ledger)
 
@@ -90,7 +90,7 @@ pnpm meeting:silver:test                    # expect: Ran 6 tests ... OK
 - The eval refuses a stale server build: `pnpm turbo build --filter=@openstyle/server`.
 - A new worktree has no `node_modules`, no diarizer files and no worker. Run `pnpm install --frozen-lockfile --prefer-offline --ignore-scripts`, copy `apps/electron/resources/bin/darwin-arm64` and `apps/electron/resources/models/{speaker-diarization,silero-vad}` from the main checkout, and use the worker in `/tmp/meeting-eval/worker-*` (see the meeting-eval skill).
 - The leak filter of the app drops short segments that hold only a name. In the one test (2026-10-29, 2 segments) both were hallucinations on noise, so the drop is useful. Do not "fix" it without a bigger test.
-- `run_arm.sh` deletes the shared ASR cache `/tmp/meeting-eval/asr/cache`: the cache key does not hold the arm env.
+- `run_arm.sh` deletes the shared ASR cache `/tmp/meeting-eval/asr/cache` under the GPU lock (the cache key does not hold the arm env), then starts the eval. If the eval log still shows a cached transcription, the arm run fails: run it again. `SILVER_ARM_DRY_RUN=1` checks the arm name and `SILVER_EVAL_HOME` and deletes nothing.
 - A vote change moves every score. Silver-2 to silver-3 lowered all systems by about 8 points. Never compare numbers across `goldKind`.
 
 ## Cleanup

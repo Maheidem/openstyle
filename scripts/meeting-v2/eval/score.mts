@@ -1006,7 +1006,10 @@ export interface SpanScore {
   unsure: number;
   /** Spans with no words after normalization: not scored. */
   empty: number;
-  /** "<channel>@<startMs>:<label>" of each missed span, never its text. */
+  /**
+   * "<channel>@<startMs>:<label>" of the missed spans, never their text.
+   * Each key occurs once per meeting (two missed spans can share a key).
+   */
   missedKeys: string[];
 }
 
@@ -1047,14 +1050,126 @@ export function addSpanScores(xs: SpanScore[]): SpanScore {
 }
 
 /**
+ * The words of a text for span matching: scoreWords, normalizeWords, then
+ * the accent fold of the silver vote (normalize_silver3.py): NFKD, and the
+ * combining marks go ("José" is "jose"). Python drops the characters with a
+ * combining class; this drops \p{Mn}. They differ only for a few marks of
+ * other scripts (for example Thai), not for Latin text. The WER does not
+ * use this rule.
+ */
+export function spanWords(text: string): string[] {
+  return normalizeWords(scoreWords(text))
+    .words.join(" ")
+    .normalize("NFKD")
+    .replace(/\p{Mn}/gu, "")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** A span to match: its channel, its time and its words (spanWords). */
+export interface SpanTarget {
+  channel: Channel;
+  startMs: number;
+  endMs: number;
+  words: string[];
+}
+
+/** A segment of the output: its channel, its time and its words (spanWords). */
+export interface SpanSegment {
+  source: string;
+  start: number;
+  end: number;
+  words: string[];
+}
+
+/**
+ * The number of window words from `i` whose text without spaces equals
+ * `target`, or 0. The vote rule (normalize_silver3.py contains): join whole
+ * words from `i` until the length reaches the target length, then compare.
+ * So the match starts and ends at word edges, "open style" and "openstyle"
+ * match both ways, and "zor" does not match "zorblax".
+ */
+function joinedMatch(win: string[], i: number, target: string): number {
+  let acc = "";
+  let j = i;
+  while (j < win.length && acc.length < target.length) acc += win[j++];
+  return acc === target ? j - i : 0;
+}
+
+/**
+ * The hit of each span (true or false, in input order). A span is a hit
+ * when its words, without spaces, equal a run of whole words of the window:
+ * the segments of its channel that overlap [startMs - tolMs, endMs +
+ * tolMs], joined in the order of `segs`. One occurrence of the output
+ * words counts for one span only: the spans take occurrences in the order
+ * of their window end, each the first free occurrence of its window. This
+ * greedy order gives the most hits that one-occurrence-per-span allows
+ * (two spans of the same words never lose a hit to the order).
+ * score_silver.py (span_match.py) uses the same rule. `segs` must be in
+ * time order.
+ */
+export function spanHits(
+  spans: SpanTarget[],
+  segs: SpanSegment[],
+  tolMs: number = SPAN_TOLERANCE_MS,
+): boolean[] {
+  const offset: number[] = [];
+  segs.reduce((n, s, i) => {
+    offset[i] = n;
+    return n + s.words.length;
+  }, 0);
+  const used = new Set<string>();
+  const hits = spans.map(() => false);
+  const order = spans
+    .map((_, i) => i)
+    .sort((a, b) => {
+      const x = spans[a] as SpanTarget;
+      const y = spans[b] as SpanTarget;
+      return x.endMs - y.endMs || x.startMs - y.startMs || a - b;
+    });
+  for (const k of order) {
+    const sp = spans[k] as SpanTarget;
+    const target = sp.words.join("");
+    if (target === "") continue;
+    // The window words with their position in all of `segs`: the key of
+    // an occurrence is the list of positions of its words.
+    const win: { w: string; pos: number }[] = [];
+    segs.forEach((s, si) => {
+      if (
+        s.source === sp.channel &&
+        s.end >= sp.startMs - tolMs &&
+        s.start <= sp.endMs + tolMs
+      )
+        s.words.forEach((w, wi) => {
+          win.push({ w, pos: (offset[si] as number) + wi });
+        });
+    });
+    const ws = win.map((x) => x.w);
+    for (let i = 0; !hits[k] && i < win.length; i++) {
+      const n = joinedMatch(ws, i, target);
+      if (n === 0) continue;
+      const key = win
+        .slice(i, i + n)
+        .map((x) => x.pos)
+        .join(",");
+      if (used.has(key)) continue;
+      used.add(key);
+      hits[k] = true;
+    }
+  }
+  return hits;
+}
+
+/**
  * Span accuracy of one stage. A span with confidence high or medium is a hit
- * when its normal words (scoreWords, then normalizeWords) occur as one run
- * in the normal words of the stage text of the segments of its channel that
- * overlap [startMs - tolMs, endMs + tolMs]. Each segment is normalized on
- * its own, then the segments join in time order. A segment without end_ms
- * counts as a point at start_ms. asr reads the raw text; enhance reads the
- * enhanced text (the raw text when there is none). Unsure spans and spans
- * with no words are counted, not scored.
+ * when its words (spanWords: normal words with accents folded) occur in the
+ * words of the stage text of the segments of its channel that overlap
+ * [startMs - tolMs, endMs + tolMs], as one run or as one run without spaces
+ * (spanHits). One output occurrence counts for one span only. Each segment
+ * is normalized on its own, then the segments join in time order. A segment
+ * without end_ms counts as a point at start_ms. asr reads the raw text;
+ * enhance reads the enhanced text (the raw text when there is none). Unsure
+ * spans and spans with no words are counted, not scored.
  */
 export function scoreSpans(
   spans: GoldSpan[],
@@ -1062,7 +1177,6 @@ export function scoreSpans(
   stage: "asr" | "enhance",
   tolMs: number = SPAN_TOLERANCE_MS,
 ): SpanScore {
-  const norm = (t: string) => normalizeWords(scoreWords(t)).words;
   const segs = rows
     .filter((s) => s.start_ms !== null)
     .sort(byStart)
@@ -1070,9 +1184,9 @@ export function scoreSpans(
       source: s.source,
       start: s.start_ms as number,
       end: Math.max(s.start_ms as number, s.end_ms ?? (s.start_ms as number)),
-      words: norm(stage === "asr" ? (s.text ?? "") : effective(s)),
+      words: spanWords(stage === "asr" ? (s.text ?? "") : effective(s)),
     }));
-  const scored: { sp: GoldSpan; hit: boolean }[] = [];
+  const targets: { sp: GoldSpan; words: string[] }[] = [];
   let unsure = 0;
   let empty = 0;
   for (const sp of spans) {
@@ -1080,24 +1194,24 @@ export function scoreSpans(
       unsure++;
       continue;
     }
-    const want = norm(sp.text);
-    if (want.length === 0) {
+    const words = spanWords(sp.text);
+    if (words.length === 0) {
       empty++;
       continue;
     }
-    const win = segs
-      .filter(
-        (s) =>
-          s.source === sp.channel &&
-          s.end >= sp.startMs - tolMs &&
-          s.start <= sp.endMs + tolMs,
-      )
-      .flatMap((s) => s.words);
-    let hit = false;
-    for (let i = 0; !hit && i + want.length <= win.length; i++)
-      hit = want.every((w, k) => win[i + k] === w);
-    scored.push({ sp, hit });
+    targets.push({ sp, words });
   }
+  const hits = spanHits(
+    targets.map(({ sp, words }) => ({
+      channel: sp.channel,
+      startMs: sp.startMs,
+      endMs: sp.endMs,
+      words,
+    })),
+    segs,
+    tolMs,
+  );
+  const scored = targets.map(({ sp }, i) => ({ sp, hit: hits[i] === true }));
   const count = (f: (sp: GoldSpan) => boolean) => {
     const xs = scored.filter((x) => f(x.sp));
     return spanCount(xs.filter((x) => x.hit).length, xs.length);
@@ -1114,9 +1228,13 @@ export function scoreSpans(
     },
     unsure,
     empty,
-    missedKeys: scored
-      .filter((x) => !x.hit)
-      .map((x) => `${x.sp.channel}@${x.sp.startMs}:${x.sp.label}`),
+    missedKeys: [
+      ...new Set(
+        scored
+          .filter((x) => !x.hit)
+          .map((x) => `${x.sp.channel}@${x.sp.startMs}:${x.sp.label}`),
+      ),
+    ],
   };
 }
 

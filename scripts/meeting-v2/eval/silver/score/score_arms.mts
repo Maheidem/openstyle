@@ -123,11 +123,19 @@ for (const arm of process.argv.slice(2)) {
     noOwner: SpanScore;
     prec: Prec;
   }[] = [];
+  let absent = 0;
   for (const id8 of MEETINGS) {
     const gold = golds.get(id8);
     const m = db
       .prepare("SELECT id, calendar_attendees FROM meetings WHERE id LIKE ?")
-      .get(`${id8}%`) as { id: string; calendar_attendees: string | null };
+      .get(`${id8}%`) as
+      | { id: string; calendar_attendees: string | null }
+      | undefined;
+    // A meeting that the arm DB does not hold is skipped (counted below).
+    if (!m) {
+      absent++;
+      continue;
+    }
     const rows = db
       .prepare(
         "SELECT id, source, idx, start_ms, end_ms, text, enhanced_text FROM meeting_segments WHERE meeting_id = ? ORDER BY source, idx, start_ms",
@@ -201,6 +209,10 @@ for (const arm of process.argv.slice(2)) {
     }
     per.push({ meeting: id8, spans, noOwner, prec });
   }
+  if (absent > 0)
+    console.warn(
+      `WARN ${arm}: ${absent} of ${MEETINGS.length} meetings are not in raw.db; the scores leave them out`,
+    );
   // Proof: the bias prompt per meeting (length, attendee full names found).
   const proofPath = join(EVAL_HOME, `proof-${arm}-bias.txt`);
   const proof: {

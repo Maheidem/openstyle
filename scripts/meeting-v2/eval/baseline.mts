@@ -197,6 +197,8 @@ export interface CompareRow {
 
 export interface CompareResult {
   rows: CompareRow[];
+  /** "WARN: ..." lines: the gold kind or the gold hash differs (or is unknown). */
+  warnings: string[];
   /** Metrics marked worse or missing. */
   worse: number;
   /** "<model> <meeting> <hard fail id>" for hard fails that the baseline did not have. */
@@ -244,6 +246,32 @@ export function legacyRawKeys(m: StageMetrics): StageMetrics {
       .replace(/^delta$/, "deltaRaw");
     out[raw] = v;
   }
+  return out;
+}
+
+/**
+ * The WARN lines of a compare: scores on another gold kind or other gold
+ * keys do not compare. A baseline made before the fields existed gives
+ * "unknown".
+ */
+export function goldWarnings(base: Baseline, now: Baseline): string[] {
+  const kinds = (b: Baseline) =>
+    b.gold === null ? "no gold" : (b.gold.goldKinds?.join(",") ?? "unknown");
+  const hash = (b: Baseline) =>
+    b.gold === null
+      ? "no gold"
+      : b.gold.goldHash === undefined
+        ? "unknown"
+        : (b.gold.goldHash ?? "none");
+  const out: string[] = [];
+  if (kinds(base) !== kinds(now))
+    out.push(
+      `WARN: the gold kind differs (baseline ${kinds(base)}, now ${kinds(now)}). Do not compare scores across gold kinds.`,
+    );
+  if (hash(base) !== hash(now))
+    out.push(
+      `WARN: the gold hash differs (baseline ${hash(base)}, now ${hash(now)}). The gold keys are not the same.`,
+    );
   return out;
 }
 
@@ -309,9 +337,11 @@ export function compareBaselines(base: Baseline, now: Baseline): CompareResult {
   ).length;
   const exitCode = worse > 0 || newHardFails.length > 0 ? 3 : 0;
 
+  const warnings = goldWarnings(base, now);
   const lines: string[] = [
     `# Compare with baseline ${base.name} (commit ${base.commit})`,
     "",
+    ...warnings.flatMap((w) => [w, ""]),
     `Noise bands: ${base.noise ? "from the baseline" : "default (0.005 for a rate, 0 for a count)"}.`,
     "",
     "| Model | Meeting | Stage | Better | Worse | Same | Worse metrics |",
@@ -361,6 +391,7 @@ export function compareBaselines(base: Baseline, now: Baseline): CompareResult {
   );
   return {
     rows,
+    warnings,
     worse,
     newHardFails,
     notCompared,

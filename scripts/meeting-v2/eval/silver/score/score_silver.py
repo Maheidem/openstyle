@@ -2,7 +2,8 @@
 
 silver-2: needs goldVersion "silver-2" keys and aligned meet.json/krisp.json
 (every line has startMs; EG2 method A, see align_eg2.py). WER counts only
-gold turns with wer_eligible; span accuracy uses the silver-2 confidence.
+gold turns with wer_eligible; span accuracy uses the silver-2 confidence and the
+match rule of span_match.py (the same rule as scoreSpans in score.mts).
 
 Run: python3 -I score_silver.py [--suffix .silver-2]   (default: the current <id8>.json keys)
      (pnpm meeting:silver:score; paths and meetings from silver_paths.py: SILVER_KEYS, SILVER_CORPUS,
@@ -13,7 +14,9 @@ scoreChannel, scoreWords, normalizeWords of the repo's eval). No port.
 """
 import json, os, sqlite3, subprocess, collections, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import silver_paths as P  # noqa: E402
+from span_match import fold, span_hits  # noqa: E402
 
 IDS = P.meeting_ids()
 KEYS = P.KEYS
@@ -126,6 +129,19 @@ for m, d in data.items():
         SHIFT[(m, base)] = (ds[len(ds) // 2] if ds else 0, len(ds))
 
 # ---- span accuracy -------------------------------------------------------------
+# The match rule of scoreSpans (span_match.py): accents folded, a run of whole window words with or
+# without spaces, one output occurrence per span. HITS[(m, sys, tol, span index)] = 0 or 1.
+SW = {k: fold(v).split() for k, v in NORM.items()}
+HITS = {}
+for m, d in data.items():
+    idx = [i for i, sp in enumerate(d["gold"]["spans"]) if sp["confidence"] in ("high", "medium") and SW[f"k|{m}|{i}"]]
+    targets = [(sp["channel"], sp["startMs"], sp["endMs"], SW[f"k|{m}|{i}"]) for i in idx for sp in [d["gold"]["spans"][i]]]
+    for sname, segs in d["sys"].items():
+        sw = [(ch, s, e, SW[f"s|{m}|{sname}|{j}"]) for j, (ch, s, e, t) in enumerate(segs)]
+        for tol in (TOL, WIDE):
+            for i, h in zip(idx, span_hits(targets, sw, tol)):
+                HITS[(m, sname, tol, i)] = int(h)
+
 # acc[(sys, scope, cut)] = [hit, n]
 acc = collections.defaultdict(lambda: [0, 0])
 
@@ -141,18 +157,19 @@ for m, d in data.items():
         conf = sp["confidence"]
         if conf not in ("high", "medium"):
             continue
-        st = NORM[f"k|{m}|{i}"]
+        st = "".join(SW[f"k|{m}|{i}"])
         if not st:
             continue
         wits = set(sp["witnesses"])
         lg = LGROUP.get(sp["label"], "other")
         for sname, segs in d["sys"].items():
             def hit_at(tol, loose=False):
-                win = " ".join(NORM[f"s|{m}|{sname}|{j}"] for j, (ch, s, e, t) in enumerate(segs)
-                               if ch == sp["channel"] and e >= sp["startMs"] - tol and s <= sp["endMs"] + tol)
-                if loose:
-                    return int(st.replace(" ", "") in win.replace(" ", ""))
-                return int(f" {st} " in f" {win} ")
+                if not loose:
+                    return HITS[(m, sname, tol, i)]
+                # loose: the span without spaces anywhere in the window without spaces (no word edges).
+                win = "".join("".join(SW[f"s|{m}|{sname}|{j}"]) for j, (ch, s, e, t) in enumerate(segs)
+                              if ch == sp["channel"] and e >= sp["startMs"] - tol and s <= sp["endMs"] + tol)
+                return int(st in win)
             h = hit_at(TOL)
             w = WIT[sname]
             loo_ok = (w not in wits) or len((wits & INDEP) - {w}) >= 1
