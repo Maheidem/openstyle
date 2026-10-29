@@ -69,7 +69,6 @@ A PreToolUse hook (`scripts/guard-hook.sh`, registered in `.claude/settings.json
 | b | Write, delete or move under `~/.cache/freestyle`, `~/.cache/huggingface`, `~/Library/Application Support/Openstyle`, `/Applications/Openstyle.app` (rm, mv, touch, `>`, `sed -i`, `find -delete`, `cp`/`rsync` into them, `sqlite3` without `-readonly`, Write/Edit tools) | `ls`, `cat`, `du`, `stat`, `sqlite3 -readonly`, `cp` out of them, the same paths under `/tmp` |
 | c | `say` without `-o`/`--output-file`, any `afplay` | `say -v <voice> -o <file> "text"` |
 | d | `pkill`, `killall`, `kill $(pgrep ... Openstyle)` | `kill <pid>` |
-| e | A network client (curl, wget, node, fetch, python...) to `127.0.0.1:8123` or `localhost:8123`: any path, any model, also a health check (owner rule 2026-10-21) | `grep "127.0.0.1:8123"`, other ports |
 | f | `osascript` that names Openstyle, `open -a Openstyle`, `open /Applications/Openstyle.app` | other `open` and `osascript` calls |
 
 The hook does not parse quotes. A separator inside a quoted string can make an extra check, so a rare false block is possible. Rewrite the command; do not disable the hook. Test the table with `bash scripts/guard-hook.test.sh` (CI runs it in the Lint job).
@@ -237,9 +236,14 @@ A throwaway Playwright spec proved the Speakers dialog with fictional data in 18
 
 pi children start without skills or context files (`--no-skills --no-context-files`). The coordinating agent must write this line in every pi brief that runs the app, the server or an E2E spec: "Read `.claude/skills/live-testing/SKILL.md` first and follow it." On 2026-10-15 a brief left the line out. The pi child launched the app without the recipe, failed twice, and the owner saw privacy pop-ups. For a UI proof, also paste the recipe steps above into the brief.
 
-## The owner's model server (127.0.0.1:8123): never call it
+## The owner's model server (127.0.0.1:8123): calls are allowed
 
-Owner rule 2026-10-21: nothing may call `127.0.0.1:8123`. No LLM, no ASR, no health check. It is live infrastructure for the owner's dictation and AI cleanup. Use only the app's built-in MLX models in tests and benchmarks. Guard rule e blocks a network client call to that port.
+Owner rule 2026-10-29: oMLX calls are allowed. The guard hook has no rule for this port. Follow these steps:
+
+- Send only model types that oMLX lists for that task.
+- Start with one synthetic request. Then run a health check (`GET /v1/models`).
+- A request with an unsupported speech model hung oMLX 0.7.0 for 15 minutes on 2026-10-07.
+- Take the shared GPU lock for batches.
 
 ## Synthetic audio is silent
 

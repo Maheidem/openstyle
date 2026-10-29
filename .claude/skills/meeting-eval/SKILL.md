@@ -10,7 +10,7 @@ This skill wraps `pnpm meeting:eval` (see `.claude/skills/meeting-benchmarks/SKI
 ## Hard rules
 
 1. Report numbers only. Never quote meeting text in chat, a commit or a PR.
-2. Never call the owner's oMLX server. Only the built-in MLX models run.
+2. oMLX calls are allowed (owner rule 2026-10-29). Send only model types that oMLX lists for that task. Start with one synthetic request, then run a health check. A request with an unsupported speech model hung oMLX 0.7.0 for 15 minutes on 2026-10-07. Take the shared GPU lock for batches.
 3. Never take the GPU lock yourself before `run.sh`. `pnpm meeting:eval` queues in `/tmp/openstyle-gpu.queue` and takes `/tmp/openstyle-gpu.lock` itself. A lock you hold blocks your own run.
 4. Never run two evals at once. Another session may hold the lock for up to 90 minutes (the app-check run has a 5400 s timeout). Read `/tmp/openstyle-gpu.lock/owner`.
 5. Work in your own worktree. Do not commit `eval-baselines/*.json` unless the lead says so.

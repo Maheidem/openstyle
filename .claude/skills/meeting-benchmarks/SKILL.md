@@ -17,7 +17,7 @@ The scripts are in `scripts/meeting-v2/`. They came from `specs/meeting-transcri
 4. `DELETE /api/meetings/<id>` removes the meeting's `audio_dir` folder. Before any DELETE test, run `sqlite3 "$DB" "select audio_dir from meetings"` and check that every path starts with `/tmp/`. If one does not, stop.
 5. A screenshot of a meeting page shows the transcript. Never take a screenshot of a real meeting. For UI proof screenshots, use a fictional meeting (seed it as `scripts/site-captures/seed-data.mjs` does) or crop to the control you prove. On 2026-10-06 a pi child saved 3 screenshots with real meeting text; the coordinator deleted them.
 6. Leave `OPENSTYLE_LOG_DIR` unset, so the request trace (which has text) stays off the disk.
-7. Nothing may call the owner's model server at `127.0.0.1:8123` (owner rule 2026-10-21): no LLM, no ASR, no health check. Use only the app's built-in MLX models. The guard hook (`scripts/guard-hook.sh` rule e) blocks a network client call to that port.
+7. oMLX calls are allowed (owner rule 2026-10-29). Send only model types that oMLX lists for that task. Start with one synthetic request, then run a health check. A request with an unsupported speech model hung oMLX 0.7.0 for 15 minutes on 2026-10-07. Take the shared GPU lock for batches.
 
 ## Proof meetings
 
