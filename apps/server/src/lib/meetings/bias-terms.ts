@@ -45,10 +45,18 @@ export function meetingBiasTerms(
 }
 
 /**
- * The attendee names of the bias. Each attendee gives its display name. An
- * attendee with no display name (the name is empty or is an email address)
- * gives the name from its email ({@link nameFromEmail}), or nothing. A name
- * with fewer than 2 characters is skipped.
+ * The most attendee names in the bias. About 15 chars each, so 20 names use
+ * about 300 of the 900-char prompt budget. A large invite then cannot push
+ * the context terms and the vocabulary out of the prompt.
+ */
+export const MAX_ATTENDEE_BIAS_NAMES = 20;
+
+/**
+ * The attendee names of the bias, in calendar order (the organizer first).
+ * Each attendee gives its display name. An attendee with no display name
+ * (the name is empty or is an email address) gives the name from its email
+ * ({@link nameFromEmail}), or nothing. A name with fewer than 2 letters is
+ * skipped. The calendar helper already skips rooms, resources and the user.
  */
 function attendeeBiasNames(row: Pick<MeetingRow, "calendar_attendees">) {
   return parseAttendees(row)
@@ -57,7 +65,8 @@ function attendeeBiasNames(row: Pick<MeetingRow, "calendar_attendees">) {
       if (name !== "" && !name.includes("@")) return name;
       return nameFromEmail(a.email.trim() || name) ?? "";
     })
-    .filter((name) => name.length >= 2);
+    .filter((name) => letterCount(name) >= 2)
+    .slice(0, MAX_ATTENDEE_BIAS_NAMES);
 }
 
 /**

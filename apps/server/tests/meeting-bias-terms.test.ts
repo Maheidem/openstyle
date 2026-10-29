@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { writeSetting } from "../src/lib/db.js";
 import {
   buildMeetingBiasTerms,
+  MAX_ATTENDEE_BIAS_NAMES,
   meetingBiasTerms,
   nameFromEmail,
 } from "../src/lib/meetings/bias-terms.js";
@@ -88,14 +89,28 @@ describe("buildMeetingBiasTerms", () => {
     expect(buildMeetingBiasTerms(r, "  Al  ")).toEqual(["Al", "Jane Doe"]);
   });
 
-  it("skips attendee names shorter than 2 characters and bad JSON", () => {
+  it("skips attendee names with fewer than 2 letters and bad JSON", () => {
     expect(buildMeetingBiasTerms(row([{ name: "J" }]), "")).toEqual([]);
+    expect(buildMeetingBiasTerms(row([{ name: "J." }]), "")).toEqual([]);
     expect(
       buildMeetingBiasTerms(
         { calendar_attendees: "not json", context: null },
         "Ana",
       ),
     ).toEqual(["Ana"]);
+  });
+
+  it("keeps at most MAX_ATTENDEE_BIAS_NAMES attendee names, in calendar order", () => {
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      name: `Person Number${i}`,
+    }));
+    const terms = buildMeetingBiasTerms(row(many, "Nova Rollout"), "Ana Silva");
+    expect(terms).toHaveLength(1 + MAX_ATTENDEE_BIAS_NAMES + 1);
+    expect(terms[1]).toBe("Person Number0");
+    expect(terms[MAX_ATTENDEE_BIAS_NAMES]).toBe(
+      `Person Number${MAX_ATTENDEE_BIAS_NAMES - 1}`,
+    );
+    expect(terms.at(-1)).toBe("Nova Rollout");
   });
 
   it("keeps the context terms alone when there is no owner and no attendee", () => {
