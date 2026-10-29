@@ -65,6 +65,7 @@ A grid file is JSON (`grids/` has examples):
 - Cells = the cartesian product of `grid` plus the explicit `cells`, each over `base`, then over the knob defaults. Equal cells run once.
 - `meetings` is optional (default: all of the corpus). Start with the 2 shortest meetings (`ab518a0c` 927 s, `c838735c` 1394 s), then run the full corpus for the winner.
 - Run `--dry-run` first: it prints each cell, its snapshot hash and SKIP or "would run".
+- Resume and SKIP: the snapshot hash holds the git sha and the `labVersion` (`scripts/meeting-v2/eval/lab/snapshot.mts`). A rerun is a SKIP only at the same commit. After any commit, the grid runs again. The ASR cache can still serve the transcripts (a cache hit took about 6 s for 14 meetings), so the cost is mostly scoring. This is on purpose: the code version is part of the experiment setup.
 
 ## Add a knob
 
@@ -93,7 +94,8 @@ A grid file is JSON (`grids/` has examples):
 | `pnpm meeting:silver:test` | `Ran 15 tests ... OK`, then `Ran 7 tests ... OK` |
 | `pnpm lab corpus check silver-14-s34` | `61/61 OK` |
 | `pnpm lab run scripts/meeting-v2/eval/lab/grids/shipped-s33.json` (14 meetings, owner name set) | `spans_all 82.7 (1152/1393)`, `READ BACK OK` |
-| The same command again | `SKIP (run <id> has this snapshot)` |
+| The same command again, at the same commit | `SKIP (run <id> has this snapshot)` |
+| The same command after a new commit | No SKIP. The grid runs again. The ASR cache serves the transcripts, so only scoring costs time. |
 
 ## Known facts
 
@@ -104,6 +106,16 @@ A grid file is JSON (`grids/` has examples):
 - The validator of the keys: `pnpm meeting:silver:validate --kind silver-3.4` (with `SILVER_MEETINGS` and `SILVER_KEYS`) gives `14/14 pass`. Its tests: `pnpm meeting:silver:test`.
 - ASR repeat runs are byte-identical, so a cache hit gives the same metrics as a fresh run.
 - A full 14-meeting ASR run takes 20 to 27 min. Run it in the background and check the log.
+
+- Reference runs (MLflow experiment `openstyle-lab-asr`). Cite these as baselines:
+  - silver-3.3, shipped config: run `d5971004` (fresh, after the rebase, clean tree). Runs `1fa07dd3` (made at the pre-rebase sha `cf42c1ac`) and `d2a3dead` (`lab.git_dirty=true`) have equal metrics (1152/1393). Do not cite them as the baseline.
+  - silver-3.4, shipped config: run `e40bae04` (1150/1396, `spans_verified` 10/30).
+
+## Environment
+
+- A fresh shell has no MLflow URI. Before any `lab` command, set `SILVER_MLFLOW_URI` (or `LAB_MLFLOW_URI`) in the env. Never write the address into the repo.
+- Set `LAB_OWNER_NAME` for cells with `owner_name=env`. The owner fingerprint in MLflow (`set:<salted fingerprint>`) must match, or the snapshot differs.
+- The MLflow REST endpoint `experiments/get-by-name` accepts GET only. A POST gives 405.
 
 ## Troubleshooting
 
