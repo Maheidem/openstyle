@@ -17,6 +17,10 @@ import {
   MLX_ALIGNER_MODEL,
   MLX_ASR_MODELS,
 } from "../../../../apps/server/src/lib/mlx-asr/constants.ts";
+import {
+  serverKey,
+  serverModelId,
+} from "../../../../packages/validations/src/servers.ts";
 import type { Gold } from "../gold.mts";
 import {
   ensureTranscribed,
@@ -50,6 +54,11 @@ export interface CellResult {
 
 /** The HF ids of the models of a cell; throws when a model is not cached. */
 export function cellModels(kv: KnobValues): { asr: string; aligner: string } {
+  if (kv.asr_server_model !== "none")
+    return {
+      asr: `server:${kv.asr_server_model}`,
+      aligner: MLX_ALIGNER_MODEL.hfId,
+    };
   const d = MLX_ASR_MODELS.find((m) => m.id === kv.asr_model);
   if (!d) throw new Error(`asr_model ${kv.asr_model} is not in the catalog`);
   return {
@@ -88,14 +97,35 @@ function treeRss(): { worker: number; tree: number } {
   return { worker, tree };
 }
 
+/** The id of the own-server row that the lab writes into a scratch DB. */
+const LAB_SERVER_ID = "srv_lab00001";
+
 /** Apply the scratch-DB knobs to <work>/test.db. */
 export function applyDbKnobs(
   dbPath: string,
   kv: KnobValues,
   ownerName: string | undefined,
+  serverUrl?: string,
 ): void {
   const db = new DatabaseSync(dbPath);
   try {
+    if (kv.asr_server_model !== "none") {
+      if (!serverUrl?.trim())
+        throw new Error(
+          "asr_server_model needs LAB_ASR_SERVER_URL in the env (the speech server address)",
+        );
+      // The same row that Settings > Models writes for an own server.
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS own_servers (
+           id TEXT PRIMARY KEY, base_url TEXT NOT NULL, api_key TEXT,
+           flavor TEXT, server_key TEXT NOT NULL UNIQUE,
+           created_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+      );
+      db.prepare("DELETE FROM own_servers WHERE id = ?").run(LAB_SERVER_ID);
+      db.prepare(
+        "INSERT INTO own_servers (id, base_url, api_key, flavor, server_key) VALUES (?, ?, NULL, 'openai', ?)",
+      ).run(LAB_SERVER_ID, serverUrl.trim(), serverKey(serverUrl.trim()));
+    }
     const setSetting = (key: string, value: string | null) => {
       db.prepare("DELETE FROM settings WHERE key = ?").run(key);
       if (value !== null)
@@ -170,13 +200,20 @@ export async function runAsrCell(opts: {
   const run = runName(kv);
   const def = MLX_ASR_MODELS.find((m) => m.id === kv.asr_model);
   if (!def) throw new Error(`asr_model ${kv.asr_model} is not in the catalog`);
-  const voice: VoiceRow = {
-    provider: "local-mlx",
-    model_id: `local-mlx/${def.id}`,
-    model_name: def.displayName,
-  };
+  const viaServer = kv.asr_server_model !== "none";
+  const voice: VoiceRow = viaServer
+    ? {
+        provider: "server",
+        model_id: serverModelId(LAB_SERVER_ID, kv.asr_server_model as string),
+        model_name: kv.asr_server_model as string,
+      }
+    : {
+        provider: "local-mlx",
+        model_id: `local-mlx/${def.id}`,
+        model_name: def.displayName,
+      };
   for (const hf of [
-    def.hfId,
+    ...(viaServer ? [] : [def.hfId]),
     ...(kv.diarization === "on" ? [cellModels(kv).aligner] : []),
   ]) {
     const snap = join(
@@ -216,7 +253,12 @@ export async function runAsrCell(opts: {
             );
         }
       }
-      applyDbKnobs(join(work, "test.db"), kv, opts.ownerName);
+      applyDbKnobs(
+        join(work, "test.db"),
+        kv,
+        opts.ownerName,
+        process.env.LAB_ASR_SERVER_URL,
+      );
       const keyOf = (id: string) => {
         const m = manifest.meetings.find((x) => x.id === id);
         return [

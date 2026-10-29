@@ -18,6 +18,7 @@ export type KnobApply =
   | "db-setting" // a row of the settings table of the scratch DB
   | "db-vocabulary" // the vocabulary table of the scratch DB
   | "db-meetings" // a column of the meetings rows of the scratch DB
+  | "db-server" // an own-server row plus the voice row of the scratch DB
   | "run" // the run name of run-baseline.mjs
   | "env"; // an env var of the isolated server
 
@@ -58,6 +59,19 @@ export const KNOBS: Knob[] = [
         ? null
         : "is not an id of the MLX ASR catalog",
     doc: "The built-in MLX ASR model. The model must be in the eval HF cache (no download).",
+  },
+  {
+    name: "asr_server_model",
+    apply: "db-server",
+    target: "own_servers + model_configs voice row",
+    default: "none",
+    values:
+      "none | a model id of the own speech server at LAB_ASR_SERVER_URL (OpenAI-compatible /v1/audio/transcriptions)",
+    check: (v) =>
+      v === "none" || /^[A-Za-z0-9._-]{1,100}$/.test(v)
+        ? null
+        : "must be none or a model id of letters, digits, . _ -",
+    doc: "none = the built-in MLX model of asr_model. A model id = the app's own-server voice provider (provider server), as a user sets it under Models. The URL comes from the env only. The server runs outside the lab; its settings are not in the cache key, so give each setup its own model id.",
   },
   {
     name: "owner_name",

@@ -1,0 +1,12 @@
+{
+  "name": "nemotron-s36",
+  "description": "Nemotron 3.5 Transcribe through the app's own-server voice provider (serve_openai.py on LAB_ASR_SERVER_URL), with and without the bias prompt, next to the shipped Qwen3-ASR cell. Owner name set.",
+  "stage": "asr",
+  "corpus": "silver-14-s36",
+  "base": { "owner_name": "env" },
+  "cells": [
+    { "asr_server_model": "nemotron-ctx" },
+    {},
+    { "asr_server_model": "nemotron-plain" }
+  ]
+}
