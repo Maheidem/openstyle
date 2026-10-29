@@ -15,7 +15,7 @@
 // prints ids, knob values, hashes and numbers, never meeting text.
 // Read .claude/skills/eval-lab/SKILL.md first.
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
@@ -339,6 +339,15 @@ async function cmdRun() {
         keyParts,
       });
       const wall = Math.round((performance.now() - t0) / 10) / 100;
+      // The ASR cache holds meeting text: private modes (runtime.mts does
+      // not set them). Here, not in asr.mts, so the cache key stays.
+      const cacheDir = join(labHome(), "asr", "cache");
+      chmodSync(cacheDir, 0o700);
+      for (const id of ids)
+        chmodSync(
+          join(cacheDir, `${id}.${r.cacheKeys[id.slice(0, 8)]}.db`),
+          0o600,
+        );
       const metrics: Record<string, number> = {
         ...r.score.metrics,
         cell_wall_s: wall,
