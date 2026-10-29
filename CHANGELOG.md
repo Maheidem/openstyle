@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.25.0-alpha.2
+
+### New Features ✨
+
+- (meetings) Owner and attendee names first in the ASR bias prompt by @Maheidem in [#359](https://github.com/Maheidem/openstyle/pull/359)
+
+### Bug Fixes 🐛
+
+- (electron) No renderer request before the app's own server port is known by @Maheidem in [#357](https://github.com/Maheidem/openstyle/pull/357)
+
+### Internal Changes 🔧
+
+- (release) Local release script for macOS builds by @Maheidem in [#356](https://github.com/Maheidem/openstyle/pull/356)
+
 ## 2.25.0-alpha.1
 
 ### Bug Fixes 🐛
