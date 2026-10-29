@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.25.0-alpha.3
+
+### New Features ✨
+
+#### Eval
+
+- Gold 3.5/3.6 rules and an attendee-name-form knob by @Maheidem in [#364](https://github.com/Maheidem/openstyle/pull/364)
+- Eval Lab — knob grids and an MLflow run ledger (meeting ASR) by @Maheidem in [#363](https://github.com/Maheidem/openstyle/pull/363)
+
+#### Other
+
+- (meeting-eval) Span gold metric and silver-gold pipeline by @Maheidem in [#360](https://github.com/Maheidem/openstyle/pull/360)
+- (meetings) First names of attendees in the ASR bias by default by @Maheidem in [#367](https://github.com/Maheidem/openstyle/pull/367)
+
+### Bug Fixes 🐛
+
+- (guard) Allow calls to the owner's oMLX server by @Maheidem in [#365](https://github.com/Maheidem/openstyle/pull/365)
+- (release) No SIGPIPE stop in step 7 of the local release by @Maheidem in [#361](https://github.com/Maheidem/openstyle/pull/361)
+
 ## 2.25.0-alpha.2
 
 ### New Features ✨
