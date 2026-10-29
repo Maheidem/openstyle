@@ -211,8 +211,8 @@ Gold hard fails count in the run's hard fails, so a model with one is not the fl
 
 ### Silver keys: spans and the eligible WER
 
-A silver key (integer `goldVersion`, optional `goldKind`, for example `"silver-2"`) comes from several engines and a verifier, not from the owner's ear. It adds optional fields; v1 and v2 keys load as before (`gold.mts` header):
-- `spans[]` `{channel, startMs, endMs, text, label, in_vocab, confidence, witnesses[], verifier_conflict?}`. label: term, product, person, org, place, other. confidence: high, medium, unsure. The loader checks each field strictly.
+A silver key (integer `goldVersion`, optional `goldKind`, for example `"silver-2"`) comes from several engines and a verifier, not from the owner's ear. To build, re-vote or check the keys, or to score ASR arms against them, use `.claude/skills/silver-gold/SKILL.md` (code in `scripts/meeting-v2/eval/silver/`). The current keys are `goldKind` "silver-3.3". It adds optional fields; v1 and v2 keys load as before (`gold.mts` header):
+- `spans[]` `{channel, startMs, endMs, text, label, in_vocab, confidence, witnesses[], verifier_conflict?, alt_text?}`. label: term, product, person, org, place, other. confidence: high, medium, unsure. The loader checks each field strictly.
 - Transcript turns: `basis[]` and `wer_eligible`. Top level: `witnesses` and `verification` (objects; not scored).
 
 Run: `pnpm meeting:eval --models <id> --meetings <id8,...> --gold --gold-dir ~/.openstyle-eval/gold-silver --no-download --out /tmp/meeting-eval/out/<name>`. The folder must have mode 0700.
