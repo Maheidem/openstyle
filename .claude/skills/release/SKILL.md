@@ -369,6 +369,12 @@ Credentials (owner, once):
   Gatekeeper rejects it.
 
 Traps:
+- The script runs with `set -euo pipefail`. An `awk` (or `head`) that exits
+  before it reads all of a pipe gives the writer SIGPIPE (exit 141), and the
+  script stops. The first real run (2.25.0-alpha.2, 2026-10-29) stopped twice
+  in step 7 for this reason, after the push of step 6. The dry run never
+  reaches step 7. Fixed: the `awk` programs read all input. A stop after step 6
+  is safe: fix it, then run `--publish-only`.
 - Since 2026-10-27 the owner (RepositoryRole admin) is a bypass actor of the
   main ruleset 24718487, next to the release bot. The tag goes on the release
   commit on main, so that `git describe --tags` (Craft uses it for the next
