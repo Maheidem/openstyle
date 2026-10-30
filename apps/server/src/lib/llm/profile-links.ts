@@ -1,5 +1,6 @@
 import { createAppLogger } from "@openstyle/utils";
 import {
+  BUILTIN_MODEL_PRESETS,
   builtinProfile,
   builtinProfileKey,
   type LlmParameterPreset,
@@ -81,7 +82,9 @@ function migrateOldAssignments(): LlmProfileLinks {
     if (a.modelOverride) {
       key = profileLinkKey(a.modelOverride.provider, a.modelOverride.model_id);
     } else {
-      const name = presets.find((p) => p.id === a.presetId)?.name ?? "";
+      const name =
+        [...presets, ...BUILTIN_MODEL_PRESETS].find((p) => p.id === a.presetId)
+          ?.name ?? "";
       const hit = NAME_HINTS.find(([re]) => re.test(name));
       const def = hit ? MLX_LLM_MODELS.find((m) => m.id === hit[1]) : undefined;
       if (def) key = profileLinkKey(MLX_LLM_PROVIDER_ID, def.id);

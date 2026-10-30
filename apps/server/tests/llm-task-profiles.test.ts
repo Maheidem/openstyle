@@ -147,7 +147,7 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
   it("a mapped-subset provider gets an empty sampling object", async () => {
     seedDefaultLlm("openai", "gpt-4o-mini");
     setAssignments({
-      cleanup: { mode: "preset", presetId: "builtin:qwen-thinking" },
+      cleanup: { mode: "preset", presetId: "builtin:model:qwen3.8:thinking" },
     });
     getDb()
       .prepare("INSERT INTO api_keys (provider, key) VALUES ('openai', 'k')")
@@ -165,21 +165,21 @@ describe("resolveTaskCall — mode: auto (§6.1)", () => {
   });
 });
 
-describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)", () => {
+describe("resolveTaskCall — mode: preset, the Qwen 3.8 Thinking built-in (§6.1, §6.4)", () => {
   beforeEach(() => {
     setAssignments({
-      cleanup: { mode: "preset", presetId: "builtin:qwen-thinking" },
+      cleanup: { mode: "preset", presetId: "builtin:model:qwen3.8:thinking" },
     });
   });
 
-  it("on a server: every key survives except `stream` (denylisted), and the preset's enable_thinking wins over the task seed", async () => {
+  it("on a server: every key survives, and the preset's enable_thinking wins over the task seed", async () => {
     const resolved = await resolveTaskCall("cleanup", {
       autoMaxOutputTokens: 512,
     });
     const preset = BUILTIN_LLM_PRESETS.find(
-      (p) => p.id === "builtin:qwen-thinking",
+      (p) => p.id === "builtin:model:qwen3.8:thinking",
     )!;
-    const { stream: _stream, chat_template_kwargs, ...rest } = preset.params;
+    const { chat_template_kwargs, ...rest } = preset.params;
     expect(resolved.samplingParams).toEqual({
       ...rest,
       chat_template_kwargs,
@@ -190,7 +190,6 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
       (resolved.samplingParams.chat_template_kwargs as Record<string, unknown>)
         .enable_thinking,
     ).toBe(true);
-    expect(resolved.samplingParams).not.toHaveProperty("stream");
     // Local providers get top_p inside samplingParams, never as `topP`.
     expect(resolved.topP).toBeUndefined();
   });
@@ -198,7 +197,7 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
   it("on a mapped-subset provider: only the safe subset survives, floor applies", async () => {
     seedDefaultLlm("openai", "gpt-4o-mini");
     setAssignments({
-      cleanup: { mode: "preset", presetId: "builtin:qwen-thinking" },
+      cleanup: { mode: "preset", presetId: "builtin:model:qwen3.8:thinking" },
     });
     getDb()
       .prepare("INSERT INTO api_keys (provider, key) VALUES ('openai', 'k')")
@@ -208,8 +207,8 @@ describe("resolveTaskCall — mode: preset, builtin:qwen-thinking (§6.1, §6.4)
     });
     expect(resolved.temperature).toBe(1.0);
     expect(resolved.topP).toBe(0.95);
-    // Preset's max_tokens (512) beats the small auto budget (100).
-    expect(resolved.maxOutputTokens).toBe(512);
+    // A built-in profile has no max_tokens: the task budget stays.
+    expect(resolved.maxOutputTokens).toBe(100);
     expect(resolved.samplingParams).toEqual({});
   });
 });

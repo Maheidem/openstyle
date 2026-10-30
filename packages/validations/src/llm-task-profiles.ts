@@ -81,60 +81,19 @@ export const llmParameterPresetsSettingSchema = z.object({
 });
 
 /**
- * Built-in starter presets — code constants, never written to the
- * `llm_parameter_presets` setting row (§4.2). Payloads copied verbatim from
- * the approved spec, byte for byte — not re-derived. `stream: false` is kept
- * even though it's on the resolver's denylist (§7.4) and gets stripped at
- * resolution time for every task; it's shown in the raw editor exactly as
- * approved and simply never reaches the wire.
- *
- * Amendment, 2026-08-27 (spec §4.2 amendment note, §12 item 6 resolved):
- * the field is `repetition_penalty`, not `repeat_penalty` — user-verified
- * against oMLX's own `openapi.json`, which is the wire target for both
- * presets on `local-llm`. This also matches every other spelling of this
- * knob already in this codebase (`cleanupSamplingSchema.repetition_penalty`,
- * `settings.ts`). Values unchanged (`1.0` for both presets).
+ * The two starter presets of the first release ("Qwen thinking", "Qwen fast")
+ * are retired (owner decision 2026-10-30). Their ids stay reserved, and a
+ * stored link to one is read as the matching Qwen 3.8 built-in profile.
  */
-const QWEN_STARTER_PRESETS: readonly LlmParameterPreset[] = [
-  {
-    id: "builtin:qwen-thinking",
-    name: "Qwen thinking",
-    params: {
-      temperature: 1.0,
-      max_tokens: 512,
-      stream: false,
-      top_p: 0.95,
-      top_k: 20,
-      min_p: 0.0,
-      presence_penalty: 0.0,
-      repetition_penalty: 1.0,
-      chat_template_kwargs: {
-        enable_thinking: true,
-        preserve_thinking: false,
-        reasoning_effort: "xhigh",
-      },
-    },
-    createdAt: "2026-08-27T00:00:00.000Z",
-    updatedAt: "2026-08-27T00:00:00.000Z",
-  },
-  {
-    id: "builtin:qwen-fast",
-    name: "Qwen fast",
-    params: {
-      temperature: 0.7,
-      max_tokens: 512,
-      stream: false,
-      top_p: 0.8,
-      top_k: 20,
-      min_p: 0.0,
-      presence_penalty: 1.5,
-      repetition_penalty: 1.0,
-      chat_template_kwargs: { enable_thinking: false },
-    },
-    createdAt: "2026-08-27T00:00:00.000Z",
-    updatedAt: "2026-08-27T00:00:00.000Z",
-  },
-];
+export const RETIRED_BUILTIN_PRESETS: Readonly<Record<string, string>> = {
+  "builtin:qwen-thinking": "builtin:model:qwen3.8:thinking",
+  "builtin:qwen-fast": "builtin:model:qwen3.8:instruct",
+};
+
+/** The id of a stored profile link, with a retired id replaced. */
+export function remapRetiredPresetId(id: string): string {
+  return RETIRED_BUILTIN_PRESETS[id] ?? id;
+}
 
 /**
  * The built-in profiles are data: one parameter set for each (family key,
@@ -352,14 +311,14 @@ export function builtinProfile(
   return BUILTIN_MODEL_PRESETS.find((p) => p.model === key && p.mode === mode);
 }
 
-export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] = [
-  ...QWEN_STARTER_PRESETS,
-  ...BUILTIN_MODEL_PRESETS,
-];
+export const BUILTIN_LLM_PRESETS: readonly LlmParameterPreset[] =
+  BUILTIN_MODEL_PRESETS;
 
-export const BUILTIN_LLM_PRESET_IDS = new Set(
-  BUILTIN_LLM_PRESETS.map((p) => p.id),
-);
+/** Built-in ids, the retired ones too: a user preset may not take them. */
+export const BUILTIN_LLM_PRESET_IDS = new Set([
+  ...BUILTIN_LLM_PRESETS.map((p) => p.id),
+  ...Object.keys(RETIRED_BUILTIN_PRESETS),
+]);
 
 // ---------------------------------------------------------------------------
 // Task assignment storage (§5)
@@ -412,7 +371,14 @@ export function parseLlmTaskAssignments(
     )) {
       if (!(LLM_TASK_IDS as readonly string[]).includes(key)) continue;
       const result = llmTaskAssignmentSchema.safeParse(entry);
-      if (result.success) out[key as LlmTaskId] = result.data;
+      if (result.success) {
+        out[key as LlmTaskId] = {
+          ...result.data,
+          ...(result.data.presetId
+            ? { presetId: remapRetiredPresetId(result.data.presetId) }
+            : {}),
+        };
+      }
     }
     return out;
   } catch {
@@ -468,7 +434,14 @@ export function parseLlmProfileLinks(
       for (const [task, entry] of Object.entries(tasks)) {
         if (!(LLM_TASK_IDS as readonly string[]).includes(task)) continue;
         const r = llmProfileLinkSchema.safeParse(entry);
-        if (r.success) (out[model] ??= {})[task as LlmTaskId] = r.data;
+        if (r.success) {
+          (out[model] ??= {})[task as LlmTaskId] = {
+            ...r.data,
+            ...(r.data.presetId
+              ? { presetId: remapRetiredPresetId(r.data.presetId) }
+              : {}),
+          };
+        }
       }
     }
     return out;

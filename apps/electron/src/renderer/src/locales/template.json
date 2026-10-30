@@ -774,6 +774,7 @@
         "desc": "Cleans up transcript text after a meeting."
       },
       "assignmentAuto": "Auto",
+      "assignmentAutoProfile": "Auto ({{profile}})",
       "assignmentCustomized": "Customized",
       "cloudPartialNote": "Cloud model: partial",
       "paramsLabel": "Params",

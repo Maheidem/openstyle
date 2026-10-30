@@ -229,6 +229,23 @@ describe("migration of the old task assignments", () => {
     expect(readSetting("llm_profile_links_migrated")).toBe("1");
   });
 
+  it("an old link to the retired builtin:qwen-fast moves to Qwen 3.8 Instruct, bound to Qwen 3.8", () => {
+    writeSetting(
+      "llm_task_assignments",
+      JSON.stringify({
+        meetingEnhance: { mode: "preset", presetId: "builtin:qwen-fast" },
+        meetingSummarize: { mode: "preset", presetId: "builtin:qwen-thinking" },
+      }),
+    );
+    const links = readProfileLinks()[profileLinkKey("local-mlx-llm", QWEN)];
+    expect(links?.meetingEnhance?.presetId).toBe(
+      "builtin:model:qwen3.8:instruct",
+    );
+    expect(links?.meetingSummarize?.presetId).toBe(
+      "builtin:model:qwen3.8:thinking",
+    );
+  });
+
   it("the owner case: a Qwen-linked Enhance does not stay active on Gemma", async () => {
     writeSetting(
       "llm_parameter_presets",
@@ -276,13 +293,16 @@ describe("PUT /api/settings/llm_task_assignments", () => {
     expect(
       (
         await put({
-          meetingEnhance: { mode: "preset", presetId: "builtin:qwen-fast" },
+          meetingEnhance: {
+            mode: "preset",
+            presetId: "builtin:model:qwen3.8:instruct",
+          },
         })
       ).status,
     ).toBe(200);
     const qwenKey = profileLinkKey("local-mlx-llm", QWEN);
     expect(readProfileLinks()[qwenKey]?.meetingEnhance?.presetId).toBe(
-      "builtin:qwen-fast",
+      "builtin:model:qwen3.8:instruct",
     );
 
     // The page switches the task to Gemma. The entry still holds the Qwen
@@ -291,18 +311,20 @@ describe("PUT /api/settings/llm_task_assignments", () => {
     await put({
       meetingEnhance: {
         mode: "preset",
-        presetId: "builtin:qwen-fast",
+        presetId: "builtin:model:qwen3.8:instruct",
         modelOverride: override,
       },
     });
     const links = readProfileLinks();
     expect(links[profileLinkKey("local-mlx-llm", E2B)]).toBeUndefined();
-    expect(links[qwenKey]?.meetingEnhance?.presetId).toBe("builtin:qwen-fast");
+    expect(links[qwenKey]?.meetingEnhance?.presetId).toBe(
+      "builtin:model:qwen3.8:instruct",
+    );
 
     // Back to Qwen: the link is active again.
     await put({ meetingEnhance: { mode: "auto" } });
     expect(readProfileLinks()[qwenKey]?.meetingEnhance?.presetId).toBe(
-      "builtin:qwen-fast",
+      "builtin:model:qwen3.8:instruct",
     );
   });
 });
