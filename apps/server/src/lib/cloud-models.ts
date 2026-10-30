@@ -16,7 +16,7 @@
  * pages above.
  */
 import { createAppLogger } from "@openstyle/utils";
-import { getDb } from "./db.js";
+import { getDb, readSetting, writeSetting } from "./db.js";
 import { stripModelPrefix } from "./model-id.js";
 
 const log = createAppLogger("cloud-models");
@@ -536,6 +536,13 @@ export function reconcileRetiredCloudLlmModels(): number {
     const next = retiredReplacement(row.provider, row.model_id);
     if (!next) continue;
     warnRetiredOnce(row.provider, row.model_id, next.message);
+    if (row.is_default) {
+      recordRetiredNotice({
+        provider: row.provider,
+        from: stripModelPrefix(row.provider, row.model_id),
+        to: next.modelId,
+      });
+    }
     // Keep the id style of the saved row: with or without the provider prefix.
     const storedId = row.model_id.startsWith(`${row.provider}/`)
       ? `${row.provider}/${next.modelId}`
@@ -561,4 +568,64 @@ export function reconcileRetiredCloudLlmModels(): number {
     changed++;
   }
   return changed;
+}
+
+/** One replacement of a retired default model that the person has not seen yet. */
+export interface RetiredNotice {
+  provider: string;
+  /** The retired model id, without the provider prefix. */
+  from: string;
+  /** The model that replaced it. */
+  to: string;
+}
+
+const NOTICES_SETTING = "retired_model_notices";
+
+interface NoticeState {
+  pending: RetiredNotice[];
+  /** `provider/from` of the notices the person has seen. */
+  seen: string[];
+}
+
+function readNoticeState(): NoticeState {
+  try {
+    const raw = readSetting(NOTICES_SETTING);
+    const data = raw ? (JSON.parse(raw) as Partial<NoticeState>) : {};
+    return {
+      pending: Array.isArray(data.pending) ? data.pending : [],
+      seen: Array.isArray(data.seen) ? data.seen : [],
+    };
+  } catch {
+    return { pending: [], seen: [] };
+  }
+}
+
+/** Remember a replacement for the one-time notice. Once for each retired id. */
+function recordRetiredNotice(notice: RetiredNotice): void {
+  const state = readNoticeState();
+  const key = `${notice.provider}/${notice.from}`;
+  if (
+    state.seen.includes(key) ||
+    state.pending.some((n) => `${n.provider}/${n.from}` === key)
+  ) {
+    return;
+  }
+  state.pending.push(notice);
+  writeSetting(NOTICES_SETTING, JSON.stringify(state));
+}
+
+/** The replacements that the app has not shown yet. */
+export function listRetiredNotices(): RetiredNotice[] {
+  return readNoticeState().pending;
+}
+
+/** Mark a notice as seen. It never comes back for this retired id. */
+export function dismissRetiredNotice(provider: string, from: string): void {
+  const state = readNoticeState();
+  const key = `${provider}/${from}`;
+  state.pending = state.pending.filter(
+    (n) => `${n.provider}/${n.from}` !== key,
+  );
+  if (!state.seen.includes(key)) state.seen.push(key);
+  writeSetting(NOTICES_SETTING, JSON.stringify(state));
 }

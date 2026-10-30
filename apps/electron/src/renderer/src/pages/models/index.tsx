@@ -26,7 +26,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, Info, Key, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { MeetingModelRow } from "./meeting-model-row";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
@@ -42,6 +42,7 @@ export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const m = useModels();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Advanced mode gates this page in the sidebar. When it's off, the page can
   // still be reached directly (deep link / redirect); surface a banner that
@@ -121,6 +122,15 @@ export default function ModelsPage(): React.JSX.Element {
     m.setCleanup(true);
     setModal({ kind: "list", type: "llm" });
   };
+
+  // The one-time retired-model notice links here with ?pick=llm: open the AI
+  // model picker once, then drop the parameter.
+  const pickLlm = searchParams.get("pick") === "llm";
+  useEffect(() => {
+    if (!pickLlm) return;
+    setModal({ kind: "list", type: "llm" });
+    setSearchParams({}, { replace: true });
+  }, [pickLlm, setSearchParams]);
 
   const onToggleCleanup = (next: boolean): void => {
     if (!next) {

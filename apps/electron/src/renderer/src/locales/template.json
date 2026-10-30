@@ -949,6 +949,12 @@
       "confirmTitle": "This model may not fit on this Mac",
       "confirmMsg": "<b>{{name}}</b> needs about {{need}} GB of memory. This Mac has {{ram}} GB. The model can be very slow, or it can fail to start. The download is {{size}}.",
       "confirmAction": "Download anyway"
+    },
+    "retiredNotice": {
+      "title": "{{provider}} retired {{from}}",
+      "desc": "Openstyle now uses {{to}} for AI cleanup.",
+      "action": "Change",
+      "dismiss": "Dismiss"
     }
   },
   "shell": {

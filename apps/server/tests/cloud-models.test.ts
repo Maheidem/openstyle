@@ -3,8 +3,10 @@ import {
   CLOUD_LLM_LINEUP,
   CLOUD_VOICE_LINEUP,
   CURATED_LLM_IDS,
+  dismissRetiredNotice,
   isLineupCloudLlm,
   legacyNotice,
+  listRetiredNotices,
   reconcileRetiredCloudLlmModels,
   retiredReplacement,
 } from "../src/lib/cloud-models.js";
@@ -197,5 +199,51 @@ describe("saved selections of a retired model", () => {
     expect(typeof model === "string" ? model : model.modelId).toBe(
       "claude-opus-5-5",
     );
+  });
+});
+
+describe("one-time notice of a replaced default model", () => {
+  beforeEach(() => {
+    getDb().exec("DELETE FROM model_configs");
+    getDb().exec("DELETE FROM settings WHERE key = 'retired_model_notices'");
+  });
+
+  const addDefault = (provider: string, id: string) =>
+    getDb()
+      .prepare(
+        "INSERT INTO model_configs (provider, model_id, model_name, type, is_default) VALUES (?, ?, ?, 'llm', 1)",
+      )
+      .run(provider, id, id);
+
+  it("records the replacement once and returns it until it is dismissed", () => {
+    addDefault("groq", "groq/qwen/qwen3-32b");
+    reconcileRetiredCloudLlmModels();
+    expect(listRetiredNotices()).toEqual([
+      { provider: "groq", from: "qwen/qwen3-32b", to: "openai/gpt-oss-120b" },
+    ]);
+    // A second reconcile finds nothing to replace and adds nothing.
+    reconcileRetiredCloudLlmModels();
+    expect(listRetiredNotices()).toHaveLength(1);
+  });
+
+  it("never shows a dismissed id again, also if the id is saved again", () => {
+    addDefault("groq", "qwen/qwen3-32b");
+    reconcileRetiredCloudLlmModels();
+    dismissRetiredNotice("groq", "qwen/qwen3-32b");
+    expect(listRetiredNotices()).toEqual([]);
+    getDb().exec("DELETE FROM model_configs");
+    addDefault("groq", "groq/qwen/qwen3-32b");
+    reconcileRetiredCloudLlmModels();
+    expect(listRetiredNotices()).toEqual([]);
+  });
+
+  it("gives no notice for a retired id that is not the default", () => {
+    getDb()
+      .prepare(
+        "INSERT INTO model_configs (provider, model_id, model_name, type, is_default) VALUES ('groq', 'qwen/qwen3-32b', 'x', 'llm', 0)",
+      )
+      .run();
+    reconcileRetiredCloudLlmModels();
+    expect(listRetiredNotices()).toEqual([]);
   });
 });

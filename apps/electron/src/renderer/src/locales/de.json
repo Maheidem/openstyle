@@ -785,6 +785,12 @@
       "confirmTitle": "Dieses Modell passt eventuell nicht auf diesen Mac",
       "confirmMsg": "<b>{{name}}</b> braucht etwa {{need}} GB Arbeitsspeicher. Dieser Mac hat {{ram}} GB. Das Modell kann sehr langsam sein oder nicht starten. Der Download ist {{size}} groß.",
       "confirmAction": "Trotzdem herunterladen"
+    },
+    "retiredNotice": {
+      "title": "{{provider}} hat {{from}} eingestellt",
+      "desc": "Openstyle nutzt jetzt {{to}} für die KI-Bereinigung.",
+      "action": "Ändern",
+      "dismiss": "Schließen"
     }
   },
   "shell": {

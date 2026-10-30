@@ -1,11 +1,14 @@
 import { zValidator } from "@hono/zod-validator";
 import { configureModelSchema } from "@openstyle/validations";
 import { Hono } from "hono";
+import { z } from "zod";
 import {
   CLOUD_LLM_LINEUP,
   CLOUD_VOICE_LINEUP,
   CURATED_LLM_IDS,
+  dismissRetiredNotice,
   legacyNotice,
+  listRetiredNotices,
   reconcileRetiredCloudLlmModels,
 } from "../lib/cloud-models.js";
 import { getDb } from "../lib/db.js";
@@ -236,6 +239,23 @@ const models = new Hono()
   })
   // The real disk use of each downloaded app model and the total.
   .get("/disk-usage", (c) => c.json(listModelDiskUse()))
+  // Replacements of retired default models that the app has not shown yet.
+  .get("/retired-notices", (c) => {
+    reconcileRetiredCloudLlmModels();
+    return c.json(listRetiredNotices());
+  })
+  .post(
+    "/retired-notices/dismiss",
+    zValidator(
+      "json",
+      z.object({ provider: z.string().min(1), from: z.string().min(1) }),
+    ),
+    (c) => {
+      const { provider, from } = c.req.valid("json");
+      dismissRetiredNotice(provider, from);
+      return c.json({ ok: true });
+    },
+  )
   .get("/configured", (c) => {
     reconcileUnsupportedMlxVoiceDefault();
     reconcileRemovedMlxLlmModels();
