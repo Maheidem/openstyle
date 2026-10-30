@@ -462,10 +462,19 @@ export function retiredReplacement(
   const short = stripModelPrefix(providerId, modelId);
   return {
     modelId: entry.replacement,
-    message: `${providerId} retired the model "${short}"${
+    message: `${providerLabel(providerId)} retired the model "${short}"${
       entry.shutdown ? ` on ${entry.shutdown}` : ""
     }. Openstyle uses "${entry.replacement}" instead. Pick a model again under Models to change it.`,
   };
+}
+
+/** The display name of a provider ("openai" becomes "OpenAI"). */
+function providerLabel(providerId: string): string {
+  return (
+    CLOUD_LLM_LINEUP.find((m) => m.providerId === providerId)?.providerName ??
+    CLOUD_VOICE_LINEUP.find((m) => m.providerId === providerId)?.providerName ??
+    providerId
+  );
 }
 
 /** A short note for a legacy model (shown in the picker), or null. */
@@ -475,9 +484,10 @@ export function legacyNotice(
 ): string | null {
   const entry = lifecycleOf(providerId, modelId);
   if (entry?.status !== "legacy") return null;
+  const provider = providerLabel(providerId);
   const when = entry.shutdown
-    ? `${providerId} removes it on ${entry.shutdown}`
-    : `${providerId} no longer updates it`;
+    ? `${provider} removes it on ${entry.shutdown}`
+    : `${provider} no longer updates it`;
   return `Legacy: ${when}. Use ${entry.replacement ?? "a newer model"}.`;
 }
 
