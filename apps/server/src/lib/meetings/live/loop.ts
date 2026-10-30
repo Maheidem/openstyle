@@ -21,6 +21,7 @@ import { MLX_ASR_PROVIDER_ID } from "../../mlx-asr/constants.js";
 import { resolveMlxLanguage } from "../../mlx-asr/language.js";
 import { getMlxModelStatus } from "../../mlx-asr/models.js";
 import { canRunMlxAsr, transcribeWithMlxAsr } from "../../mlx-asr/server.js";
+import { getDefaultModels } from "../../providers.js";
 import { stripProviderPrefix } from "../../streaming/types.js";
 import { isHallucination } from "../merge.js";
 import { MIN_MIC_VOICED_MS, type Segment } from "../segmenter.js";
@@ -59,22 +60,49 @@ export interface LiveDeps {
   tickMs: number;
 }
 
+/**
+ * Choose the ASR model of the live loop. The meeting model wins when it is
+ * local MLX: the single ASR worker then holds one model for the live loop and
+ * the final pass. A meeting model that is not local MLX (Whisper, an own
+ * server, a cloud model) never loads the MLX worker. So the live loop can use
+ * the dictation model when that one is local MLX, and no model reloads.
+ * Else the reason is `provider_not_local`.
+ */
+export function pickLiveAsrModel(
+  meeting: { provider: string; modelId: string } | null,
+  dictation: { provider: string; model_id: string } | null,
+): { modelId: string } | { unavailable: string } {
+  if (meeting?.provider === MLX_ASR_PROVIDER_ID) {
+    return { modelId: meeting.modelId };
+  }
+  if (dictation?.provider === MLX_ASR_PROVIDER_ID) {
+    return { modelId: dictation.model_id };
+  }
+  return { unavailable: "provider_not_local" };
+}
+
 export const defaultLiveDeps: LiveDeps = {
   isEnabled: () => readSetting(SETTINGS_KEYS.liveChatEnabled) === "true",
   resolveModel: async () => {
-    // The live loop uses the SAME model as the meeting setting. A second
-    // model would reload the single ASR worker at each tick.
+    // The live loop uses the model of the meeting setting when it is local
+    // MLX. Else it uses the dictation model when that one is local MLX
+    // (see `pickLiveAsrModel`).
     const deps = await createDefaultTranscriberDeps();
-    let config: ReturnType<typeof deps.resolveConfig>;
+    const dictation = getDefaultModels().voice;
+    let meeting: { provider: string; modelId: string } | null = null;
+    let configError: string | null = null;
     try {
-      config = deps.resolveConfig();
+      const config = deps.resolveConfig();
+      meeting = { provider: config.providerId, modelId: config.modelId };
     } catch (err) {
-      return { unavailable: errorMessage(err) };
+      configError = errorMessage(err);
     }
-    if (config.providerId !== MLX_ASR_PROVIDER_ID) {
-      return { unavailable: "provider_not_local" };
+    const picked = pickLiveAsrModel(meeting, dictation);
+    if ("unavailable" in picked) {
+      if (configError) log.info(`Live model: ${configError}`);
+      return picked;
     }
-    const modelId = stripProviderPrefix(config.modelId);
+    const modelId = stripProviderPrefix(picked.modelId);
     if (!canRunMlxAsr()) return { unavailable: "worker_missing" };
     if (getMlxModelStatus(modelId)?.status !== "ready") {
       return { unavailable: "model_missing" };

@@ -28,8 +28,6 @@ import {
   planKeys,
 } from "../../../../shared/meeting-devices";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
-import { LiveChatPanel } from "./live-chat-panel";
-import { LiveTranscriptPanel } from "./live-transcript-panel";
 import type { RecorderStatus } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -396,23 +394,10 @@ export function LevelMeter({
   );
 }
 
-/**
- * Live transcript and chat of the running recording (issue #375).
- * Experimental: it shows nothing while the setting is off.
- */
-function LiveSection({
-  meetingId,
-}: {
-  meetingId: string | null;
-}): React.JSX.Element | null {
+/** True while the experimental live view (issue #375) is switched on. */
+export function useLiveChatEnabled(): boolean {
   const { data: appSettings } = useQuery(settingsQueryOptions());
-  if (appSettings?.[SETTINGS_KEYS.liveChatEnabled] !== "true") return null;
-  return (
-    <>
-      <LiveTranscriptPanel meetingId={meetingId} />
-      <LiveChatPanel meetingId={meetingId} />
-    </>
-  );
+  return appSettings?.[SETTINGS_KEYS.liveChatEnabled] === "true";
 }
 
 export function RecordingCard({
@@ -420,8 +405,12 @@ export function RecordingCard({
   compact = false,
   targetName,
   targetReady = true,
+  onOpenLive,
 }: {
   recorder: ReturnType<typeof useRecorder>;
+  /** Opens the live view of the recording in the right pane (#375). Set
+   * only while the live setting is on. */
+  onOpenLive?: () => void;
   targetName?: string;
   targetReady?: boolean;
   /** Rail context (mockup artboard 02): swap the idle/finalizing "Record a
@@ -581,7 +570,17 @@ export function RecordingCard({
           </Button>
         )}
       </div>
-      {recording && <LiveSection meetingId={recorder.meetingId} />}
+      {recording && onOpenLive && (
+        <Button
+          variant="link"
+          size="xs"
+          className="mt-2 h-auto p-0"
+          onClick={onOpenLive}
+          data-testid="open-live-view"
+        >
+          {t("meetings.liveChat.openLiveView")}
+        </Button>
+      )}
       {!recording && !finalizing && targetName && (
         <p className="text-muted-foreground mt-2 text-xs">
           {t("meetings.folders.recordsInto")}{" "}

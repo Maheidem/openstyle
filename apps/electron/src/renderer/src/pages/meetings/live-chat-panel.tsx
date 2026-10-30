@@ -2,7 +2,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatLiveTime } from "./live-transcript-panel";
 
@@ -50,15 +50,17 @@ function CiteChip({ cite }: { cite: Cite }): React.JSX.Element {
 }
 
 /**
- * Chat panel in the recording view (issue #375, experimental). One question
- * gives one JSON answer; there is no token streaming and nothing is stored.
+ * Chat panel in the right column of the live view (issue #375, experimental).
+ * One question gives one JSON answer; there is no token streaming and nothing
+ * is stored. The input stays at the bottom of the column.
  */
 export function LiveChatPanel({
   meetingId,
 }: {
   meetingId: string | null;
-}): React.JSX.Element | null {
+}): React.JSX.Element {
   const { t } = useTranslation();
+  const endRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [unavailable, setUnavailable] = useState(false);
@@ -105,6 +107,10 @@ export function LiveChatPanel({
   });
 
   const pending = ask.isPending;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on new messages
+  useEffect(() => {
+    endRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [messages.length, pending]);
   useEffect(() => {
     setSlow(false);
     if (!pending) return;
@@ -121,8 +127,12 @@ export function LiveChatPanel({
   };
 
   return (
-    <div className="border-border mt-4 border-t pt-3" data-testid="live-chat">
-      <div className="mb-2 flex items-center gap-2">
+    <section
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="live-chat"
+      aria-label={t("meetings.liveChat.chatTitle")}
+    >
+      <div className="mb-2 flex shrink-0 items-center gap-2">
         <span className="text-foreground text-[12px] font-medium">
           {t("meetings.liveChat.chatTitle")}
         </span>
@@ -139,7 +149,7 @@ export function LiveChatPanel({
         </p>
       ) : (
         <>
-          <div className="mb-2 flex max-h-56 flex-col gap-2 overflow-y-auto pr-1 text-[12.5px] leading-snug">
+          <div className="mb-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 text-[12.5px] leading-snug">
             {messages.length === 0 && (
               <p className="text-muted-foreground">
                 {t("meetings.liveChat.chatEmpty")}
@@ -180,8 +190,9 @@ export function LiveChatPanel({
                   : t("meetings.liveChat.chatThinking")}
               </p>
             )}
+            <div ref={endRef} />
           </div>
-          <div className="flex gap-2">
+          <div className="flex shrink-0 gap-2">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -203,6 +214,6 @@ export function LiveChatPanel({
           </div>
         </>
       )}
-    </div>
+    </section>
   );
 }

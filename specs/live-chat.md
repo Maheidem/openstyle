@@ -41,9 +41,11 @@ The live store (`live/store.ts`) is in memory only. It holds final lines and one
 
 ## 2. Model
 
-Live ASR uses the **same model as the meeting setting** (`meeting_stt_model`, else the dictation voice model). The reason: the MLX ASR worker holds one model. A second model would stop and reload the worker at each tick.
+Live ASR uses the **same model as the meeting setting** (`meeting_stt_model`, else the dictation voice model) when that model is local MLX. The reason: the MLX ASR worker holds one model. A second model would stop and reload the worker at each tick.
 
-Live transcript works only with the provider `local-mlx`, with the model downloaded and the worker present. In all other cases the live state is `unavailable` and the panel says so. The reason is in `reason`: `provider_not_local`, `worker_missing`, `model_missing` or the error text.
+When the meeting model is not local MLX (Whisper, an own server, a cloud model), the final pass does not use the MLX worker. Then the live loop uses the dictation model, if that one is local MLX (`pickLiveAsrModel`). The worker keeps the dictation model, and nothing reloads.
+
+Live transcript works only with the provider `local-mlx`, with the model downloaded and the worker present. In all other cases the live state is `unavailable` and the live view says why. The reason is in `reason`: `provider_not_local` (neither the meeting model nor the dictation model is local MLX), `worker_missing`, `model_missing` or the error text.
 
 No new model is added to the catalog. The catalog has `qwen3-0.6b-8bit` (Apache-2.0) as the fast option.
 
@@ -86,10 +88,13 @@ Code builds the context. The model does not choose it. The budget is about 6000 
 | `GET /api/meetings/:id/live` | `{ status, reason?, lines[], skippedTicks }`. `status` is `off`, `starting`, `warming`, `ready` or `unavailable`. `off` means the setting is off, the meeting is not recording, or the id is unknown. Poll it every second. |
 | `POST /api/meetings/:id/chat` | Body `{ question, history? }` (at most 4 turns). Result `{ answer, cites[], ms, cold, sourceTokens }`. Each cite has `label`, `kind` (`live`, `past`, `folder`), and `title`, `meetingId`, `timeMs` when known. Errors: 404 unknown meeting, 409 setting off or model not local, 413 question too long, 502 failure. |
 
-UI (inside the recording card, hidden while the setting is off):
+UI (hidden while the setting is off). The live view fills the right pane (the meeting detail column). It is not in the small recording card:
 
-- `LiveTranscriptPanel`: final lines, one grey partial for each channel, a time and a source label (Me / Them). States: warming, unavailable.
+- Auto-open: when a recording starts and the setting is on, the right pane shows the live view of that meeting. The user can click away. A click on the RECORDING row (list or folder tree), or on the "Open live view" link of the card, opens it again. The view shows only while the meeting records. After Stop the pane shows the normal meeting detail.
+- Layout: header with the meeting title, the RECORDING badge and the timer. Two columns: the live transcript on the left, the chat on the right with the input at the bottom. When the pane is narrower than 32 rem, the columns stack (transcript on top).
+- `LiveTranscriptPanel`: final lines, one grey partial for each channel, a time and a source label (Me / Them). It scrolls to the end. States: warming, unavailable (with the reason: `provider_not_local`, `model_missing`, `worker_missing`).
 - `LiveChatPanel`: input, messages, cite chips (live time, or past meeting title and time). A first answer that takes more than 3 s shows the "warming" text. A non-local model shows "unavailable".
+- The recording card keeps the timer, the mic and system levels and Stop. With the setting on it also has the "Open live view" link.
 - Settings, Meetings section: a switch "Live transcript and chat (experimental)".
 - Strings: `meetings.liveChat.*` and `settings.meetings.liveChat*` in the 7 locales and the template. Models page row: `models.taskProfiles.liveChat`.
 
@@ -127,5 +132,5 @@ The proofs are:
 - One ASR worker. While a dictation runs, live text pauses.
 - If the dictation model differs from the meeting model, a dictation reloads the worker. Live text then pauses until the meeting model loads again.
 - Live text is less exact than the final pass. It is not saved.
-- No token streaming. No chat storage. No second ASR worker. No live diarization. No chat in the meeting detail view.
+- No token streaming. No chat storage. No second ASR worker. No live diarization. No chat in the detail view of a finished meeting.
 - The claim "30 minutes on a 16 GB Mac without memory pressure" is **not verified**. The test Mac has 128 GB. Section 6 gives the memory of a 10-minute run on this Mac only. The peak of 9.0 GB with the 1.7B ASR model and the chat model loaded together is a warning for a 16 GB Mac. A test on a 16 GB Mac is still open. Only English and one voice for each channel were tested.
